@@ -9,6 +9,7 @@ type RawEvent struct {
 	EventType string
 	Schema    string
 	Table     string
+	Query     string // SQL query for QUERY_EVENT (e.g., BEGIN, COMMIT)
 	RowCount  int
 	Position  uint32
 }
