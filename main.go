@@ -1,13 +1,12 @@
 package main
 
 import (
-	"os"
-
 	"binlogviz/cmd/binlogviz"
+
+	"github.com/spf13/cobra"
 )
 
 func main() {
-	if err := binlogviz.NewRootCommand().Execute(); err != nil {
-		os.Exit(1)
-	}
+	err := binlogviz.NewRootCommand().Execute()
+	cobra.CheckErr(err)
 }
