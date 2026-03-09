@@ -17,6 +17,7 @@ type TransactionBuilder struct {
 
 type inFlightTxn struct {
 	txnKey     string
+	isExplicit bool // true if started with BEGIN, false if implicit
 	startTime  time.Time
 	endTime    time.Time
 	totalRows  int
@@ -36,13 +37,10 @@ func NewTransactionBuilder() *TransactionBuilder {
 func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 	switch ev.EventType {
 	case "BEGIN":
-		// Start a new explicit transaction
-		b.startTransaction(ev.Timestamp)
+		return b.handleBegin(ev.Timestamp)
 	case "XID", "COMMIT":
-		// Complete the current transaction
-		b.completeTransaction(ev.Timestamp)
+		b.handleCommit(ev.Timestamp)
 	case "ROWS":
-		// Accumulate row event into current transaction
 		b.accumulateRowEvent(ev)
 	default:
 		// Ignore other event types (TABLE_MAP, etc.)
@@ -50,10 +48,10 @@ func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 	return nil
 }
 
-// Flush completes any in-flight implicit transaction.
+// Flush completes any in-flight transaction using its current end time.
 func (b *TransactionBuilder) Flush() {
 	if b.current != nil {
-		b.completeTransaction(b.current.endTime)
+		b.finalizeTransaction()
 	}
 }
 
@@ -62,14 +60,39 @@ func (b *TransactionBuilder) Completed() []model.Transaction {
 	return b.completed
 }
 
-func (b *TransactionBuilder) startTransaction(ts time.Time) {
-	// If there's already a transaction in flight, complete it first (implicit)
-	if b.current != nil {
-		b.completeTransaction(ts)
+func (b *TransactionBuilder) handleBegin(ts time.Time) error {
+	if b.current != nil && b.current.isExplicit {
+		// Explicit transaction already in-flight - this is a boundary error
+		// Save txnKey before finalizing
+		txnKey := b.current.txnKey
+		b.finalizeTransaction()
+		return fmt.Errorf("BEGIN received while explicit transaction %s is in-flight", txnKey)
 	}
+	// If there's an implicit transaction, complete it with its own end time
+	if b.current != nil {
+		b.finalizeTransaction()
+	}
+	// Start a new explicit transaction
+	b.startTransaction(ts, true)
+	return nil
+}
 
+func (b *TransactionBuilder) handleCommit(ts time.Time) {
+	if b.current == nil {
+		return
+	}
+	// For explicit transactions, use COMMIT/XID timestamp as end time
+	// For implicit transactions (shouldn't normally get here), use current end time
+	if b.current.isExplicit {
+		b.current.endTime = ts
+	}
+	b.finalizeTransaction()
+}
+
+func (b *TransactionBuilder) startTransaction(ts time.Time, isExplicit bool) {
 	b.current = &inFlightTxn{
 		txnKey:     b.generateTxnKey(),
+		isExplicit: isExplicit,
 		startTime:  ts,
 		endTime:    ts,
 		tables:     make(map[string]int),
@@ -80,7 +103,7 @@ func (b *TransactionBuilder) startTransaction(ts time.Time) {
 func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent) {
 	// If no transaction in flight, start an implicit one
 	if b.current == nil {
-		b.startTransaction(ev.Timestamp)
+		b.startTransaction(ev.Timestamp, false)
 	}
 
 	b.current.totalRows += ev.RowCount
@@ -99,12 +122,10 @@ func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent) {
 	}
 }
 
-func (b *TransactionBuilder) completeTransaction(endTime time.Time) {
+func (b *TransactionBuilder) finalizeTransaction() {
 	if b.current == nil {
 		return
 	}
-
-	b.current.endTime = endTime
 
 	txn := model.Transaction{
 		TxnKey:     b.current.txnKey,
