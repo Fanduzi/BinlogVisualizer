@@ -1,6 +1,7 @@
 package binlog
 
 import (
+	"strings"
 	"time"
 
 	"github.com/go-mysql-org/go-mysql/replication"
@@ -30,8 +31,11 @@ func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error 
 				Position:  ev.Header.LogPos,
 			}
 
-			// Extract schema and table from row events
+			// Extract event-specific information
 			switch e := ev.Event.(type) {
+			case *replication.QueryEvent:
+				raw.Query = string(e.Query)
+				raw.Schema = string(e.Schema)
 			case *replication.TableMapEvent:
 				raw.Schema = string(e.Schema)
 				raw.Table = string(e.Table)
@@ -40,7 +44,13 @@ func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error 
 					raw.Schema = string(e.Table.Schema)
 					raw.Table = string(e.Table.Table)
 				}
-				raw.RowCount = len(e.Rows)
+				// For UPDATE events, rows come in pairs (before/after image)
+				// so affected rows = len(rows) / 2
+				if strings.Contains(raw.EventType, "UPDATE") {
+					raw.RowCount = len(e.Rows) / 2
+				} else {
+					raw.RowCount = len(e.Rows)
+				}
 			}
 
 			return handler(raw)
