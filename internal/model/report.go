@@ -14,20 +14,20 @@ type WorkloadSummary struct {
 
 // Alert represents a detected anomaly or threshold breach.
 type Alert struct {
-	Type        string // "large_transaction", "spike"
-	Severity    string // "info", "warning", "critical"
+	Type        string         // "large_transaction", "spike"
+	Severity    string         // "info", "warning", "critical"
 	Message     string
 	TxnKey      string
 	Minute      time.Time
-	Details     map[string]int
+	Details     map[string]any // supports int, float64, string, time.Duration, etc.
 }
 
 // AnalysisResult is the complete output of binlog analysis.
 type AnalysisResult struct {
-	Summary    WorkloadSummary
-	Tables     []TableStats
-	Txn        []Transaction
-	Minutes    []MinuteBucket
-	Alerts     []Alert
-	Warnings   int
+	Summary      WorkloadSummary
+	Tables       []TableStats
+	Transactions []Transaction
+	Minutes      []MinuteBucket
+	Alerts       []Alert
+	Warnings     int
 }
