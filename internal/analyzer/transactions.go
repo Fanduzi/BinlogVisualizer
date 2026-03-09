@@ -63,10 +63,8 @@ func (b *TransactionBuilder) Completed() []model.Transaction {
 func (b *TransactionBuilder) handleBegin(ts time.Time) error {
 	if b.current != nil && b.current.isExplicit {
 		// Explicit transaction already in-flight - this is a boundary error
-		// Save txnKey before finalizing
-		txnKey := b.current.txnKey
-		b.finalizeTransaction()
-		return fmt.Errorf("BEGIN received while explicit transaction %s is in-flight", txnKey)
+		// Do NOT mutate state - return error and let caller decide what to do
+		return fmt.Errorf("BEGIN received while explicit transaction %s is in-flight", b.current.txnKey)
 	}
 	// If there's an implicit transaction, complete it with its own end time
 	if b.current != nil {

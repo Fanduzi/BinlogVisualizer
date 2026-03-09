@@ -222,10 +222,39 @@ func TestExplicitBeginWhileExplicitTransactionInFlightReturnsError(t *testing.T)
 		t.Fatal("expected error for BEGIN while explicit transaction in-flight")
 	}
 
-	// The in-flight transaction should still be completed (defensive)
+	// The in-flight transaction should NOT be silently completed
+	result := builder.Completed()
+	if len(result) != 0 {
+		t.Fatalf("expected 0 completed transactions (state unchanged after error), got %d", len(result))
+	}
+}
+
+func TestExplicitBeginErrorDoesNotMutateState(t *testing.T) {
+	builder := NewTransactionBuilder()
+	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	// First explicit transaction with rows
+	_ = builder.Consume(model.NormalizedEvent{Timestamp: ts, EventType: "BEGIN"})
+	_ = builder.Consume(model.NormalizedEvent{Timestamp: ts.Add(time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5})
+
+	// Second BEGIN - should return error
+	err := builder.Consume(model.NormalizedEvent{Timestamp: ts.Add(2 * time.Second), EventType: "BEGIN"})
+	if err == nil {
+		t.Fatal("expected error for BEGIN while explicit transaction in-flight")
+	}
+
+	// After error, caller can choose to Flush the in-flight transaction
+	builder.Flush()
+
+	// Now the transaction should be completed
 	result := builder.Completed()
 	if len(result) != 1 {
-		t.Fatalf("expected 1 completed transaction, got %d", len(result))
+		t.Fatalf("expected 1 completed transaction after Flush, got %d", len(result))
+	}
+
+	// The transaction should have the correct row count
+	if result[0].TotalRows != 5 {
+		t.Fatalf("expected 5 total rows, got %d", result[0].TotalRows)
 	}
 }
 
