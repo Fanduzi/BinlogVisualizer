@@ -161,3 +161,52 @@ func TestMinuteAggregatorIgnoresEventsWithoutSchemaOrTable(t *testing.T) {
 		t.Fatalf("expected 0 buckets (missing schema/table), got %d", len(buckets))
 	}
 }
+
+func TestMinuteAggregatorReturnsDefensiveCopyOfTableRows(t *testing.T) {
+	agg := NewMinuteAggregator()
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	// Consume some events
+	agg.Consume(model.NormalizedEvent{Timestamp: base, Schema: "shop", Table: "orders", RowCount: 5, TxnKey: "t1"})
+	agg.Consume(model.NormalizedEvent{Timestamp: base, Schema: "shop", Table: "users", RowCount: 3, TxnKey: "t1"})
+
+	// Get snapshot
+	snapshot1 := agg.Snapshot()
+	if len(snapshot1) != 1 {
+		t.Fatalf("expected 1 bucket, got %d", len(snapshot1))
+	}
+
+	// Verify original values
+	if snapshot1[0].TableRows["shop.orders"] != 5 {
+		t.Fatalf("expected shop.orders 5 rows, got %d", snapshot1[0].TableRows["shop.orders"])
+	}
+
+	// MUTATE the returned snapshot's TableRows
+	snapshot1[0].TableRows["shop.orders"] = 999
+	snapshot1[0].TableRows["shop.malicious"] = 100
+
+	// Get a fresh snapshot
+	snapshot2 := agg.Snapshot()
+	if len(snapshot2) != 1 {
+		t.Fatalf("expected 1 bucket, got %d", len(snapshot2))
+	}
+
+	// Internal state should NOT be polluted by the mutation
+	if snapshot2[0].TableRows["shop.orders"] != 5 {
+		t.Fatalf("internal state polluted: expected shop.orders 5 rows, got %d", snapshot2[0].TableRows["shop.orders"])
+	}
+
+	// Malicious entry should not exist
+	if _, exists := snapshot2[0].TableRows["shop.malicious"]; exists {
+		t.Fatal("internal state polluted: shop.malicious should not exist")
+	}
+
+	// Consume more events after external mutation
+	agg.Consume(model.NormalizedEvent{Timestamp: base, Schema: "shop", Table: "orders", RowCount: 2, TxnKey: "t2"})
+
+	snapshot3 := agg.Snapshot()
+	// Should be 5 + 2 = 7, not affected by the 999 we set earlier
+	if snapshot3[0].TableRows["shop.orders"] != 7 {
+		t.Fatalf("expected shop.orders 7 rows after additional event, got %d", snapshot3[0].TableRows["shop.orders"])
+	}
+}
