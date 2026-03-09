@@ -62,14 +62,22 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 }
 
 // Snapshot returns all minute buckets sorted by time ascending.
+// Returns defensive copies of TableRows to prevent external mutations
+// from polluting internal aggregator state.
 func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 	result := make([]model.MinuteBucket, 0, len(a.buckets))
 	for _, bucket := range a.buckets {
+		// Create defensive copy of tableRows to prevent external mutation
+		tableRowsCopy := make(map[string]int, len(bucket.tableRows))
+		for k, v := range bucket.tableRows {
+			tableRowsCopy[k] = v
+		}
+
 		result = append(result, model.MinuteBucket{
 			Minute:    bucket.minute,
 			TotalRows: bucket.totalRows,
 			TxnCount:  len(bucket.txnSet),
-			TableRows: bucket.tableRows,
+			TableRows: tableRowsCopy,
 		})
 	}
 
