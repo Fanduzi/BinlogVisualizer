@@ -29,7 +29,13 @@ func NewTableAggregator() *TableAggregator {
 }
 
 // Consume processes a normalized event and updates table statistics.
+// Only row mutation events (INSERT, UPDATE, DELETE) are counted.
+// Non-row events like TABLE_MAP, BEGIN, COMMIT are ignored.
 func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
+	// Only process actual row mutation events
+	if !isRowMutation(ev.Operation) {
+		return
+	}
 	if ev.Schema == "" || ev.Table == "" {
 		return
 	}
@@ -89,4 +95,14 @@ func (a *TableAggregator) Snapshot() []model.TableStats {
 	})
 
 	return result
+}
+
+// isRowMutation returns true if the operation represents a row mutation.
+func isRowMutation(op string) bool {
+	switch op {
+	case "INSERT", "UPDATE", "DELETE":
+		return true
+	default:
+		return false
+	}
 }

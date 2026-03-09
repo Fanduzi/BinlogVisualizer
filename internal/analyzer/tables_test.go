@@ -171,3 +171,55 @@ func TestTableAggregatorHandlesDeleteOperation(t *testing.T) {
 		t.Fatalf("expected 10 total rows, got %d", stats[0].TotalRows)
 	}
 }
+
+func TestTableAggregatorIgnoresNonRowEvents(t *testing.T) {
+	agg := NewTableAggregator()
+
+	// Non-row events with schema/table but no row mutation operation
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", EventType: "TABLE_MAP", TxnKey: "t1"})
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", EventType: "BEGIN", TxnKey: "t1"})
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", EventType: "COMMIT", TxnKey: "t1"})
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", EventType: "XID", TxnKey: "t1"})
+
+	// No tables should be created
+	stats := agg.Snapshot()
+	if len(stats) != 0 {
+		t.Fatalf("expected 0 tables (non-row events should be ignored), got %d", len(stats))
+	}
+}
+
+func TestTableAggregatorIgnoresEmptyOperation(t *testing.T) {
+	agg := NewTableAggregator()
+
+	// Event with empty Operation (e.g., control event with schema/table populated)
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", Operation: "", RowCount: 5, TxnKey: "t1"})
+
+	stats := agg.Snapshot()
+	if len(stats) != 0 {
+		t.Fatalf("expected 0 tables (empty operation should be ignored), got %d", len(stats))
+	}
+}
+
+func TestTableAggregatorDoesNotCountTxnFromNonRowEvents(t *testing.T) {
+	agg := NewTableAggregator()
+
+	// Real row event
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5, TxnKey: "t1"})
+
+	// Non-row event with same transaction key - should NOT increment TxnCount
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", EventType: "TABLE_MAP", TxnKey: "t2"})
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", EventType: "BEGIN", TxnKey: "t3"})
+
+	// Another row event from different transaction
+	agg.Consume(model.NormalizedEvent{Schema: "shop", Table: "orders", Operation: "UPDATE", RowCount: 2, TxnKey: "t4"})
+
+	stats := agg.Snapshot()
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 table, got %d", len(stats))
+	}
+
+	// Only t1 and t4 should be counted (2 distinct transactions)
+	if stats[0].TxnCount != 2 {
+		t.Fatalf("expected 2 distinct transactions, got %d", stats[0].TxnCount)
+	}
+}
