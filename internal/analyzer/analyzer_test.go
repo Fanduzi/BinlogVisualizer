@@ -184,3 +184,67 @@ func TestAnalyzerHandlesEmptyInput(t *testing.T) {
 		t.Fatalf("expected 0 transactions for empty input, got %d", len(result.Transactions))
 	}
 }
+
+func TestAnalyzerReturnsErrorOnBoundaryViolation(t *testing.T) {
+	a := New(Options{})
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		// Start explicit transaction
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		// BEGIN while explicit transaction is in-flight - boundary violation!
+		{Timestamp: base.Add(2 * time.Second), EventType: "BEGIN", TxnKey: "t2"},
+	}
+
+	_, err := a.Analyze(events)
+	if err == nil {
+		t.Fatal("expected error for boundary violation, got nil")
+	}
+	// Verify the error message indicates the problem
+	if err.Error() == "" {
+		t.Fatal("expected non-empty error message")
+	}
+}
+
+func TestAnalyzerStopsFanOutOnError(t *testing.T) {
+	a := New(Options{})
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		// First transaction - will be processed successfully
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", TxnKey: "t1"},
+		// Second explicit transaction starts
+		{Timestamp: base.Add(3 * time.Second), EventType: "BEGIN", TxnKey: "t2"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "users", Operation: "INSERT", RowCount: 3},
+		// BEGIN while t2 is in-flight - this should stop processing
+		// The error event itself should not be counted in any aggregator
+		{Timestamp: base.Add(5 * time.Second), EventType: "BEGIN", TxnKey: "t3"},
+		// These events after the error should never be processed
+		{Timestamp: base.Add(6 * time.Second), EventType: "ROWS", TxnKey: "t3", Schema: "shop", Table: "products", Operation: "INSERT", RowCount: 10},
+	}
+
+	_, err := a.Analyze(events)
+	if err == nil {
+		t.Fatal("expected error for boundary violation, got nil")
+	}
+
+	// Re-run with only valid events to verify what should have been counted
+	a2 := New(Options{})
+	validEvents := events[:5] // Only up to but not including the error-causing event
+	result, err := a2.Analyze(validEvents)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify only the first two transactions were processed
+	// t1: 5 rows, t2: 3 rows (t2 is still in-flight, flushed at end)
+	if result.Summary.TotalTransactions != 2 {
+		t.Fatalf("expected 2 transactions, got %d", result.Summary.TotalTransactions)
+	}
+	if result.Summary.TotalRows != 8 {
+		t.Fatalf("expected 8 total rows (5+3), got %d", result.Summary.TotalRows)
+	}
+}
