@@ -34,6 +34,7 @@ func New(opts Options) *Analyzer {
 
 // Analyze processes a slice of normalized events and returns the complete analysis result.
 // Events are processed in order, passing each to all sub-aggregators.
+// If a boundary error occurs (e.g., malformed transaction sequence), an error is returned.
 // After all events are consumed, Flush is called to finalize in-flight transactions.
 func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error) {
 	// Reset state for fresh analysis
@@ -41,7 +42,9 @@ func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResul
 
 	// Process all events
 	for _, ev := range events {
-		a.consume(ev)
+		if err := a.consume(ev); err != nil {
+			return nil, err
+		}
 	}
 
 	// Finalize in-flight transactions
@@ -52,8 +55,9 @@ func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResul
 }
 
 // consume passes a single event to all sub-aggregators.
-// This single-pass approach ensures consistent state across all aggregators.
-func (a *Analyzer) consume(ev model.NormalizedEvent) {
+// If TransactionBuilder returns an error (e.g., boundary violation),
+// fan-out to other aggregators is stopped to prevent inconsistent state.
+func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 	// Track event count and time bounds
 	a.eventCount++
 	if a.startTime.IsZero() || ev.Timestamp.Before(a.startTime) {
@@ -63,12 +67,16 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) {
 		a.endTime = ev.Timestamp
 	}
 
-	// Fan out to all sub-aggregators
-	// Note: TransactionBuilder returns error for boundary violations,
-	// but we continue processing. The error is informational.
-	_ = a.txnBuilder.Consume(ev)
+	// TransactionBuilder is the source of truth for transaction boundaries.
+	// If it returns an error, stop processing to avoid inconsistent state.
+	if err := a.txnBuilder.Consume(ev); err != nil {
+		return err
+	}
+
+	// Only fan out to other aggregators if transaction processing succeeded.
 	a.tableAgg.Consume(ev)
 	a.minuteAgg.Consume(ev)
+	return nil
 }
 
 // reset clears all internal state for a fresh analysis run.
