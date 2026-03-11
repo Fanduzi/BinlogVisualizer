@@ -1,6 +1,8 @@
 package analyzer
 
 import (
+	"sort"
+
 	"binlogviz/internal/model"
 )
 
@@ -45,12 +47,13 @@ func DetectLargeTransactionAlerts(transactions []model.Transaction, opts Options
 			alert.Details["duration_threshold_ms"] = opts.LargeTxnDuration.Milliseconds()
 		}
 
-		// Include affected tables (keys only, sorted for determinism)
+		// Include affected tables (sorted alphabetically for deterministic output)
 		if len(txn.Tables) > 0 {
 			tables := make([]string, 0, len(txn.Tables))
 			for table := range txn.Tables {
 				tables = append(tables, table)
 			}
+			sort.Strings(tables)
 			alert.Details["tables"] = tables
 		}
 

@@ -117,6 +117,56 @@ func TestDetectLargeTransactionAlertsIncludesTableInfo(t *testing.T) {
 	}
 }
 
+func TestDetectLargeTransactionAlertsTablesOrderIsDeterministic(t *testing.T) {
+	// Use table names that would have different orders depending on map iteration
+	// and insertion order. This test verifies alphabetical sorting.
+	transactions := []model.Transaction{
+		{
+			TxnKey:    "t-multi-table",
+			TotalRows: 2000,
+			Duration:  5 * time.Second,
+			Tables: map[string]int{
+				"shop.zebra":  100,
+				"shop.alpha":  500,
+				"shop.middle": 300,
+				"shop.beta":   200,
+			},
+		},
+	}
+
+	alerts := DetectLargeTransactionAlerts(transactions, Options{LargeTxnRows: 1000})
+	if len(alerts) != 1 {
+		t.Fatalf("expected 1 alert, got %d", len(alerts))
+	}
+
+	tables, ok := alerts[0].Details["tables"].([]string)
+	if !ok {
+		t.Fatal("expected Details['tables'] to be []string")
+	}
+
+	// Verify alphabetical order
+	expected := []string{"shop.alpha", "shop.beta", "shop.middle", "shop.zebra"}
+	if len(tables) != len(expected) {
+		t.Fatalf("expected %d tables, got %d", len(expected), len(tables))
+	}
+	for i, exp := range expected {
+		if tables[i] != exp {
+			t.Fatalf("tables[%d]: expected %q, got %q (full order: %v)", i, exp, tables[i], tables)
+		}
+	}
+
+	// Run multiple times to ensure consistency (map iteration order is random in Go)
+	for i := 0; i < 10; i++ {
+		alerts := DetectLargeTransactionAlerts(transactions, Options{LargeTxnRows: 1000})
+		tables := alerts[0].Details["tables"].([]string)
+		for j, exp := range expected {
+			if tables[j] != exp {
+				t.Fatalf("iteration %d: tables[%d]: expected %q, got %q", i, j, exp, tables[j])
+			}
+		}
+	}
+}
+
 func TestDetectLargeTransactionAlertsNoneTriggered(t *testing.T) {
 	transactions := []model.Transaction{
 		{
