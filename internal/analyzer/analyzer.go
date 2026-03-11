@@ -36,12 +36,17 @@ func New(opts Options) *Analyzer {
 // Events are processed in order, passing each to all sub-aggregators.
 // If a boundary error occurs (e.g., malformed transaction sequence), an error is returned.
 // After all events are consumed, Flush is called to finalize in-flight transactions.
+// Events outside the configured time window (Start/End) are filtered out before aggregation.
 func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error) {
 	// Reset state for fresh analysis
 	a.reset()
 
-	// Process all events
+	// Process all events that fall within the time window
 	for _, ev := range events {
+		// Filter events outside the time window before aggregation
+		if !a.isInWindow(ev.Timestamp) {
+			continue
+		}
 		if err := a.consume(ev); err != nil {
 			return nil, err
 		}
@@ -52,6 +57,21 @@ func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResul
 
 	// Assemble final result
 	return a.assembleResult(), nil
+}
+
+// isInWindow checks if a timestamp falls within the configured time window.
+// Both Start and End boundaries are inclusive. If Start or End is nil,
+// that boundary is not enforced.
+func (a *Analyzer) isInWindow(ts time.Time) bool {
+	// Check start boundary (inclusive)
+	if a.opts.Start != nil && ts.Before(*a.opts.Start) {
+		return false
+	}
+	// Check end boundary (inclusive)
+	if a.opts.End != nil && ts.After(*a.opts.End) {
+		return false
+	}
+	return true
 }
 
 // consume passes a single event to all sub-aggregators.
