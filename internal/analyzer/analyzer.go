@@ -118,13 +118,16 @@ func (a *Analyzer) assembleResult() *model.AnalysisResult {
 	// Calculate workload summary
 	summary := a.buildSummary(transactions)
 
+	// Detect large transaction alerts
+	alerts := DetectLargeTransactionAlerts(transactions, a.opts)
+
 	return &model.AnalysisResult{
 		Summary:      summary,
 		Tables:       tables,
 		Transactions: transactions,
 		Minutes:      minutes,
-		Alerts:       nil, // No alerts in MVP
-		Warnings:     0,  // No warnings in MVP
+		Alerts:       alerts,
+		Warnings:     0, // No warnings in MVP
 	}
 }
 
