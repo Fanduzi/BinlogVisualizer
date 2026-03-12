@@ -118,8 +118,10 @@ func (a *Analyzer) assembleResult() *model.AnalysisResult {
 	// Calculate workload summary
 	summary := a.buildSummary(transactions)
 
-	// Detect large transaction alerts
-	alerts := DetectLargeTransactionAlerts(transactions, a.opts)
+	// Detect alerts
+	var alerts []model.Alert
+	alerts = append(alerts, DetectLargeTransactionAlerts(transactions, a.opts)...)
+	alerts = append(alerts, DetectSpikeAlerts(minutes, a.opts)...)
 
 	return &model.AnalysisResult{
 		Summary:      summary,
