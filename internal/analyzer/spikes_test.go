@@ -441,3 +441,76 @@ func TestDetectSpikeAlertsDistinguishesOverallVsTable(t *testing.T) {
 		t.Fatal("table alert should have 'table' key")
 	}
 }
+
+func TestDetectSpikeAlertsTableLevelOrderIsDeterministic(t *testing.T) {
+	// Multiple tables spike in the same minute - should be ordered alphabetically
+	minute := time.Date(2026, time.March, 9, 10, 2, 0, 0, time.UTC)
+	buckets := []model.MinuteBucket{
+		{
+			Minute:    minute.Add(-2 * time.Minute),
+			TotalRows: 30,
+			TableRows: map[string]int{"shop.zebra": 10, "shop.alpha": 10, "shop.beta": 10},
+		},
+		{
+			Minute:    minute.Add(-1 * time.Minute),
+			TotalRows: 30,
+			TableRows: map[string]int{"shop.zebra": 10, "shop.alpha": 10, "shop.beta": 10},
+		},
+		{
+			Minute:    minute,
+			TotalRows: 300,
+			// All three tables spike - order should be deterministic (alphabetical)
+			TableRows: map[string]int{"shop.zebra": 100, "shop.alpha": 100, "shop.beta": 100},
+		},
+	}
+
+	alerts := DetectSpikeAlerts(buckets, Options{
+		DetectSpikes: true,
+		SpikeWindow:  2,
+		SpikeFactor:  5.0,
+		SpikeMinRows: 50,
+	})
+
+	// Collect table-level alerts in order
+	var tableAlerts []string
+	for _, alert := range alerts {
+		if alert.Details["table"] != nil {
+			tableAlerts = append(tableAlerts, alert.Details["table"].(string))
+		}
+	}
+
+	if len(tableAlerts) != 3 {
+		t.Fatalf("expected 3 table-level alerts, got %d", len(tableAlerts))
+	}
+
+	// Verify alphabetical order
+	expected := []string{"shop.alpha", "shop.beta", "shop.zebra"}
+	for i, exp := range expected {
+		if tableAlerts[i] != exp {
+			t.Fatalf("tableAlerts[%d]: expected %q, got %q (full order: %v)", i, exp, tableAlerts[i], tableAlerts)
+		}
+	}
+
+	// Run multiple times to ensure consistency (map iteration order is random in Go)
+	for iter := 0; iter < 10; iter++ {
+		alerts := DetectSpikeAlerts(buckets, Options{
+			DetectSpikes: true,
+			SpikeWindow:  2,
+			SpikeFactor:  5.0,
+			SpikeMinRows: 50,
+		})
+
+		var tables []string
+		for _, alert := range alerts {
+			if alert.Details["table"] != nil {
+				tables = append(tables, alert.Details["table"].(string))
+			}
+		}
+
+		for i, exp := range expected {
+			if tables[i] != exp {
+				t.Fatalf("iteration %d: tables[%d]: expected %q, got %q", iter, i, exp, tables[i])
+			}
+		}
+	}
+}
