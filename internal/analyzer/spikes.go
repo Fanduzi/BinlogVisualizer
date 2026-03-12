@@ -65,7 +65,15 @@ func DetectSpikeAlerts(buckets []model.MinuteBucket, opts Options) []model.Alert
 		}
 
 		// === Table-level spike detection ===
-		for table, rows := range bucket.TableRows {
+		// Collect table names and sort for deterministic ordering
+		tableNames := make([]string, 0, len(bucket.TableRows))
+		for table := range bucket.TableRows {
+			tableNames = append(tableNames, table)
+		}
+		sort.Strings(tableNames)
+
+		for _, table := range tableNames {
+			rows := bucket.TableRows[table]
 			if rows < opts.SpikeMinRows {
 				continue
 			}
