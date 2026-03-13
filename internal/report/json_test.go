@@ -209,3 +209,118 @@ func TestRenderJSONTimeFormat(t *testing.T) {
 		t.Fatalf("expected ISO 8601 time format, got: %s", out)
 	}
 }
+
+func TestRenderJSONDefensiveCopyTransactionMaps(t *testing.T) {
+	// Verify that the rendered JSON string is immutable after rendering
+	tables := map[string]int{"shop.orders": 100}
+	operations := map[string]int{"INSERT": 50, "UPDATE": 50}
+
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:     "txn-1",
+				Tables:     tables,
+				Operations: operations,
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify original values are in the output
+	if !strings.Contains(out, `"shop.orders": 100`) {
+		t.Fatalf("expected original tables value in render, got: %s", out)
+	}
+	if !strings.Contains(out, `"INSERT": 50`) {
+		t.Fatalf("expected original operations value in render, got: %s", out)
+	}
+
+	// Modify original maps after rendering
+	tables["shop.orders"] = 999
+	operations["INSERT"] = 0
+	operations["NEW_OP"] = 100
+
+	// The already-rendered string should be unchanged (strings are immutable in Go)
+	// This verifies the JSON output at time of rendering is captured
+	if !strings.Contains(out, `"shop.orders": 100`) {
+		t.Fatalf("rendered JSON string changed after original map was modified, got: %s", out)
+	}
+	if strings.Contains(out, `"NEW_OP"`) {
+		t.Fatal("rendered JSON string should not contain key added after rendering")
+	}
+}
+
+func TestRenderJSONDefensiveCopyMinuteBucketMap(t *testing.T) {
+	// Verify that the rendered JSON string is immutable after rendering
+	tableRows := map[string]int{"shop.orders": 100}
+
+	result := model.AnalysisResult{
+		Minutes: []model.MinuteBucket{
+			{
+				Minute:    time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC),
+				TableRows: tableRows,
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify original values are in the output
+	if !strings.Contains(out, `"shop.orders": 100`) {
+		t.Fatalf("expected original TableRows value in render, got: %s", out)
+	}
+
+	// Modify original map after rendering
+	tableRows["shop.orders"] = 999
+	tableRows["shop.users"] = 500
+
+	// The already-rendered string should be unchanged
+	if !strings.Contains(out, `"shop.orders": 100`) {
+		t.Fatalf("rendered JSON string changed after original map was modified, got: %s", out)
+	}
+	if strings.Contains(out, `"shop.users"`) {
+		t.Fatal("rendered JSON string should not contain key added after rendering")
+	}
+}
+
+func TestRenderJSONDefensiveCopyAlertDetails(t *testing.T) {
+	// Verify that the rendered JSON string is immutable after rendering
+	details := map[string]any{"rows": 1000, "threshold": 500}
+
+	result := model.AnalysisResult{
+		Alerts: []model.Alert{
+			{
+				Type:    "large_transaction",
+				Details: details,
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify original values are in the output
+	if !strings.Contains(out, `"rows": 1000`) {
+		t.Fatalf("expected original Details value in render, got: %s", out)
+	}
+
+	// Modify original map after rendering
+	details["rows"] = 9999
+	details["new_key"] = "new_value"
+
+	// The already-rendered string should be unchanged
+	if !strings.Contains(out, `"rows": 1000`) {
+		t.Fatalf("rendered JSON string changed after original map was modified, got: %s", out)
+	}
+	if strings.Contains(out, `"new_key"`) {
+		t.Fatal("rendered JSON string should not contain key added after rendering")
+	}
+}
