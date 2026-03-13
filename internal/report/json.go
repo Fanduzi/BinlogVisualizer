@@ -145,8 +145,8 @@ func convertTransactions(txns []model.Transaction) []jsonTransaction {
 			Duration:   t.Duration.String(),
 			TotalRows:  t.TotalRows,
 			EventCount: t.EventCount,
-			Tables:     t.Tables,
-			Operations: t.Operations,
+			Tables:     copyStringIntMap(t.Tables),
+			Operations: copyStringIntMap(t.Operations),
 		}
 	}
 	return result
@@ -162,7 +162,7 @@ func convertMinutes(minutes []model.MinuteBucket) []jsonMinuteBucket {
 			Minute:    m.Minute.Format(time.RFC3339),
 			TotalRows: m.TotalRows,
 			TxnCount:  m.TxnCount,
-			TableRows: m.TableRows,
+			TableRows: copyStringIntMap(m.TableRows),
 		}
 	}
 	return result
@@ -180,8 +180,30 @@ func convertAlerts(alerts []model.Alert) []jsonAlert {
 			Message:  a.Message,
 			TxnKey:   a.TxnKey,
 			Minute:   formatJSONTime(a.Minute),
-			Details:  a.Details,
+			Details:  copyStringAnyMap(a.Details),
 		}
+	}
+	return result
+}
+
+func copyStringIntMap(m map[string]int) map[string]int {
+	if m == nil {
+		return nil
+	}
+	result := make(map[string]int, len(m))
+	for k, v := range m {
+		result[k] = v
+	}
+	return result
+}
+
+func copyStringAnyMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	result := make(map[string]any, len(m))
+	for k, v := range m {
+		result[k] = v
 	}
 	return result
 }
