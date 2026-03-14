@@ -45,7 +45,7 @@ func newAnalyzeCommand() *cobra.Command {
 
 	// Register flags
 	cmd.Flags().StringVar(&opts.startTime, "start", "", "Start time (inclusive, RFC3339 format)")
-	cmd.Flags().StringVar(&opts.endTime, "end", "", "End time (exclusive, RFC3339 format)")
+	cmd.Flags().StringVar(&opts.endTime, "end", "", "End time (inclusive, RFC3339 format)")
 	cmd.Flags().BoolVar(&opts.json, "json", false, "Output in JSON format")
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, "Number of top tables to show")
 	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, "Number of top transactions to show")
