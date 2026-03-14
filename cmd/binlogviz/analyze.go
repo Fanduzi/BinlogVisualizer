@@ -2,11 +2,15 @@ package binlogviz
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/analyzer"
+	"binlogviz/internal/binlog"
+	"binlogviz/internal/model"
+	"binlogviz/internal/report"
 )
 
 // analyzeOptions holds the parsed CLI flags for the analyze command.
@@ -35,11 +39,16 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
-			// Build analyzer options (validation only - actual execution in Task 15)
-			_ = buildAnalyzerOptions(opts, startTime, endTime)
-			_ = args // placeholder - actual processing in Task 15
+			// Validate input files exist
+			if err := validateFiles(args); err != nil {
+				return err
+			}
 
-			return nil
+			// Build analyzer options
+			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
+
+			// Execute the analysis pipeline
+			return runAnalysis(args, analyzerOpts, opts.json)
 		},
 	}
 
@@ -54,6 +63,49 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().DurationVar(&opts.largeTrxDuration, "large-trx-duration", 30*time.Second, "Duration threshold for large transaction alert")
 
 	return cmd
+}
+
+// validateFiles checks that all input files exist.
+func validateFiles(paths []string) error {
+	for _, path := range paths {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return fmt.Errorf("file not found: %s", path)
+		}
+	}
+	return nil
+}
+
+// runAnalysis executes the complete analysis pipeline.
+func runAnalysis(paths []string, opts analyzer.Options, jsonOutput bool) error {
+	// Step 1: Parse binlog files and collect raw events
+	parser := binlog.NewParser()
+	var events []model.NormalizedEvent
+
+	if err := parser.ParseFiles(paths, func(raw binlog.RawEvent) error {
+		normalized, err := binlog.NormalizeRawEvent(raw)
+		if err != nil {
+			return fmt.Errorf("normalize error at position %d: %w", raw.Position, err)
+		}
+		if normalized != nil {
+			events = append(events, *normalized)
+		}
+		return nil
+	}); err != nil {
+		return fmt.Errorf("parse error: %w", err)
+	}
+
+	// Step 2: Run analyzer
+	a := analyzer.New(opts)
+	result, err := a.Analyze(events)
+	if err != nil {
+		return fmt.Errorf("analysis error: %w", err)
+	}
+
+	// Step 3: Render output
+	if jsonOutput {
+		return report.RenderJSONToStdout(*result)
+	}
+	return report.RenderTextToStdout(*result)
 }
 
 // parseTimeRange parses start and end time strings into time.Time values.
@@ -87,7 +139,7 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	}
 	if !endTime.IsZero() {
 		end = &endTime
-	 }
+	}
 	return analyzer.Options{
 		TopTables:        opts.topTables,
 		TopTransactions:  opts.topTransactions,
