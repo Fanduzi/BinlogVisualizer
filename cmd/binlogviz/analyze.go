@@ -77,8 +77,13 @@ func validateFiles(paths []string) error {
 
 // runAnalysis executes the complete analysis pipeline.
 func runAnalysis(paths []string, opts analyzer.Options, jsonOutput bool) error {
+	return runAnalysisWithParser(paths, opts, jsonOutput, binlog.NewParser())
+}
+
+// runAnalysisWithParser executes the analysis pipeline with an injected parser.
+// This allows testing with mock parsers without requiring real binlog files.
+func runAnalysisWithParser(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser) error {
 	// Step 1: Parse binlog files and collect raw events
-	parser := binlog.NewParser()
 	var events []model.NormalizedEvent
 
 	if err := parser.ParseFiles(paths, func(raw binlog.RawEvent) error {
@@ -101,11 +106,38 @@ func runAnalysis(paths []string, opts analyzer.Options, jsonOutput bool) error {
 		return fmt.Errorf("analysis error: %w", err)
 	}
 
-	// Step 3: Render output
+	// Step 3: Apply top limits before rendering
+	applyTopLimits(result, opts)
+
+	// Step 4: Render output
 	if jsonOutput {
 		return report.RenderJSONToStdout(*result)
 	}
 	return report.RenderTextToStdout(*result)
+}
+
+// applyTopLimits truncates tables and transactions to the configured limits.
+// This is done in the command layer to keep analyzer returning complete results.
+func applyTopLimits(result *model.AnalysisResult, opts analyzer.Options) {
+	if opts.TopTables > 0 && len(result.Tables) > opts.TopTables {
+		result.Tables = result.Tables[:opts.TopTables]
+	}
+	if opts.TopTransactions > 0 && len(result.Transactions) > opts.TopTransactions {
+		// Sort by TotalRows descending before truncating to get top transactions
+		sorted := make([]model.Transaction, len(result.Transactions))
+		copy(sorted, result.Transactions)
+		for i, j := 0, len(sorted)-1; i < j; i, j = i+1, j-1 {
+			sorted[i], sorted[j] = sorted[j], sorted[i]
+		}
+		for i := 0; i < len(sorted); i++ {
+			for j := i + 1; j < len(sorted); j++ {
+				if sorted[i].TotalRows < sorted[j].TotalRows {
+					sorted[i], sorted[j] = sorted[j], sorted[i]
+				}
+			}
+		}
+		result.Transactions = sorted[:opts.TopTransactions]
+	}
 }
 
 // parseTimeRange parses start and end time strings into time.Time values.
