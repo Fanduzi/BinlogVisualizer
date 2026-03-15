@@ -142,7 +142,8 @@ The current implementation loads all normalized events into memory before analys
 
 - **Parser**: Uses `go-mysql-org/go-mysql/replication` which streams events via callbacks
 - **Command Layer**: Collects all normalized events into a slice before passing to the analyzer
-- **Analyzer**: Processes events in a single pass,- **Renderer**: Outputs final result
+- **Analyzer**: Processes events in a single pass
+- **Renderer**: Outputs final result
 
 ### Expected Performance
 
@@ -158,13 +159,14 @@ From benchmarks on Apple M4 Pro:
 
 ### Large File Recommendations
 
-For binlog files exceeding 100MB or1M+ events, consider:
+For large binlog files, consider:
 
-1. **Use time window filtering**: `--start` and `--end` flags reduce memory footprint
-2. **Process in chunks**: Split large binlog files by time range
-3. **Ensure sufficient RAM**: 2-4GB for large workloads
+1. **Process in chunks**: Split binlog files by time range before analysis
+2. **Ensure sufficient RAM**: Memory scales roughly linearly with event count
 
-Future versions may add improved memory efficiency through true streaming analysis without full event retention in## Limitations
+Future versions may add improved memory efficiency through true streaming analysis without full event retention.
+
+## Limitations
 
 - **ROW binlog only**: STATEMENT and MIXED formats are not supported in MVP
 - **Local files only**: Cannot connect to MySQL servers directly
