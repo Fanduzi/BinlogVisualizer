@@ -16,6 +16,14 @@
 
 # Claude Code
 .claude/
+CLAUDE.md
+AGENTS.md
+
+# Local toolchain
+.tool-versions
+
+# Local planning artifacts
+docs/plans/
 
 # Build artifacts
 /binlogviz
