@@ -186,6 +186,77 @@ func TestApplyTopLimitsNoTruncationWhenLimitExceedsCount(t *testing.T) {
 	}
 }
 
+func TestApplyTopLimitsDeterministicOrderByTxnKey(t *testing.T) {
+	// Create transactions with same TotalRows but different TxnKeys
+	// Order should be deterministic: TotalRows DESC, TxnKey ASC
+	result := &model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{TxnKey: "txn-c", TotalRows: 10},
+			{TxnKey: "txn-a", TotalRows: 10},
+			{TxnKey: "txn-b", TotalRows: 10},
+			{TxnKey: "txn-d", TotalRows: 5},
+		},
+	}
+	opts := analyzer.Options{TopTransactions: 3}
+
+	applyTopLimits(result, opts)
+
+	if len(result.Transactions) != 3 {
+		t.Fatalf("expected 3 transactions, got %d", len(result.Transactions))
+	}
+
+	// All 3 with TotalRows=10 should be kept, sorted by TxnKey ASC
+	// txn-a, txn-b, txn-c (all have 10 rows)
+	if result.Transactions[0].TxnKey != "txn-a" {
+		t.Errorf("expected first transaction to be txn-a, got %s", result.Transactions[0].TxnKey)
+	}
+	if result.Transactions[1].TxnKey != "txn-b" {
+		t.Errorf("expected second transaction to be txn-b, got %s", result.Transactions[1].TxnKey)
+	}
+	if result.Transactions[2].TxnKey != "txn-c" {
+		t.Errorf("expected third transaction to be txn-c, got %s", result.Transactions[2].TxnKey)
+	}
+
+	// txn-d with 5 rows should be excluded
+	for _, txn := range result.Transactions {
+		if txn.TxnKey == "txn-d" {
+			t.Error("txn-d with lower TotalRows should not be in top 3")
+		}
+	}
+}
+
+func TestApplyTopLimitsMixedRowssWithTieBreaker(t *testing.T) {
+	// Test with mixed TotalRows where tie-breaker matters for middle items
+	result := &model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{TxnKey: "z-large", TotalRows: 100},
+			{TxnKey: "a-medium", TotalRows: 50},
+			{TxnKey: "c-medium", TotalRows: 50},
+			{TxnKey: "b-medium", TotalRows: 50},
+			{TxnKey: "x-small", TotalRows: 10},
+		},
+	}
+	opts := analyzer.Options{TopTransactions: 3}
+
+	applyTopLimits(result, opts)
+
+	if len(result.Transactions) != 3 {
+		t.Fatalf("expected 3 transactions, got %d", len(result.Transactions))
+	}
+
+	// Expected order: z-large (100), a-medium (50), b-medium (50)
+	// The 3 with 50 rows should be sorted by TxnKey, and we take top 2 of them
+	if result.Transactions[0].TxnKey != "z-large" {
+		t.Errorf("expected first to be z-large, got %s", result.Transactions[0].TxnKey)
+	}
+	if result.Transactions[1].TxnKey != "a-medium" {
+		t.Errorf("expected second to be a-medium, got %s", result.Transactions[1].TxnKey)
+	}
+	if result.Transactions[2].TxnKey != "b-medium" {
+		t.Errorf("expected third to be b-medium, got %s", result.Transactions[2].TxnKey)
+	}
+}
+
 // Helper functions to create test data
 
 func createTestTableStats(count int) []model.TableStats {

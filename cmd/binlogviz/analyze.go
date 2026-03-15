@@ -3,6 +3,7 @@ package binlogviz
 import (
 	"fmt"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -123,19 +124,15 @@ func applyTopLimits(result *model.AnalysisResult, opts analyzer.Options) {
 		result.Tables = result.Tables[:opts.TopTables]
 	}
 	if opts.TopTransactions > 0 && len(result.Transactions) > opts.TopTransactions {
-		// Sort by TotalRows descending before truncating to get top transactions
+		// Sort by TotalRows descending, with TxnKey ascending as tie-breaker for determinism
 		sorted := make([]model.Transaction, len(result.Transactions))
 		copy(sorted, result.Transactions)
-		for i, j := 0, len(sorted)-1; i < j; i, j = i+1, j-1 {
-			sorted[i], sorted[j] = sorted[j], sorted[i]
-		}
-		for i := 0; i < len(sorted); i++ {
-			for j := i + 1; j < len(sorted); j++ {
-				if sorted[i].TotalRows < sorted[j].TotalRows {
-					sorted[i], sorted[j] = sorted[j], sorted[i]
-				}
+		sort.Slice(sorted, func(i, j int) bool {
+			if sorted[i].TotalRows != sorted[j].TotalRows {
+				return sorted[i].TotalRows > sorted[j].TotalRows
 			}
-		}
+			return sorted[i].TxnKey < sorted[j].TxnKey
+		})
 		result.Transactions = sorted[:opts.TopTransactions]
 	}
 }
