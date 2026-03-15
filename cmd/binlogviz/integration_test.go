@@ -359,32 +359,18 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 	}
 }
 
-// TestRealBinlogFixtureEndToEnd is a placeholder for a real binlog fixture test.
-// This test requires a valid MySQL ROW-format binlog file in testdata/.
-//
-// To create a fixture:
-//  1. Start MySQL with binlog enabled (log_bin, binlog_format=ROW)
-//  2. Execute: CREATE DATABASE testdb; USE testdb;
-//  3. Execute: CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));
-//  4. Execute: INSERT INTO users VALUES (1, 'alice'), (2, 'bob');
-//  5. Execute: FLUSH LOGS;
-//  6. Copy the binlog file (e.g., mysql-bin.000001) to testdata/minimal.binlog
-//
-// The test would verify:
-//   - Real binlog file → parser.ParseFiles → NormalizeRawEvent → Analyzer.Analyze → Render output
-//   - Output contains expected sections and table names
-//
-// Known limitation: This MVP lacks automated real-binlog fixture testing.
-// The mock-based integration tests cover the command→analyzer→report pipeline,
-// but do not validate the go-mysql parser integration with actual binlog files.
+// TestRealBinlogFixtureEndToEnd verifies the complete parsing pipeline with a real MySQL binlog file.
+// This test uses testdata/minimal.binlog which was generated from MySQL 5.7 with ROW binlog format.
+// See testdata/README.md for fixture generation instructions.
 func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	fixturePath := "testdata/minimal.binlog"
 
+	// Verify fixture exists
 	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
-		t.Skip("skipping: no real binlog fixture available at " + fixturePath)
+		t.Fatalf("fixture not found: %s - see testdata/README.md for generation instructions", fixturePath)
 	}
 
-	// If fixture exists, run the full pipeline
+	// Run the full pipeline with real parser
 	opts := analyzer.DefaultOptions()
 
 	old := os.Stdout
@@ -410,6 +396,14 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("=== Top Tables ===")) {
 		t.Error("expected output to contain Top Tables section")
+	}
+	// The fixture contains INSERT/UPDATE/DELETE on testdb.users
+	if !bytes.Contains([]byte(output), []byte("testdb.users")) {
+		t.Error("expected output to contain testdb.users table")
+	}
+	// Verify we have row activity (the fixture has 5 total rows)
+	if !bytes.Contains([]byte(output), []byte("5 rows")) {
+		t.Error("expected output to contain '5 rows'")
 	}
 }
 

@@ -173,7 +173,6 @@ Future versions may add improved memory efficiency through true streaming analys
 - **No real-time streaming**: Analysis is performed on static files
 - **No SQL reconstruction**: Shows aggregated statistics, not actual SQL statements
 - **No row values**: Focuses on operation patterns, not data content
-- **No fixture-based E2E tests**: Real binlog file parsing lacks automated fixture-level end-to-end testing. The mock-based integration tests cover command→analyzer→report pipeline correctness, but do not validate go-mysql parser integration with actual binlog files. See `cmd/binlogviz/integration_test.go:TestRealBinlogFixtureEndToEnd` for fixture creation instructions.
 
 ## Non-Goals
 

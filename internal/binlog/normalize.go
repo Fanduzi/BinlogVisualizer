@@ -19,22 +19,22 @@ func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	switch {
 	case raw.EventType == "QUERY_EVENT":
 		return normalizeQueryEvent(raw, ev)
-	case strings.HasPrefix(raw.EventType, "WRITE_ROWS"):
+	case strings.HasPrefix(raw.EventType, "WriteRows") || strings.HasPrefix(raw.EventType, "WRITE_ROWS"):
 		ev.EventType = "ROWS"
 		ev.Operation = "INSERT"
 		return ev, nil
-	case strings.HasPrefix(raw.EventType, "UPDATE_ROWS"):
+	case strings.HasPrefix(raw.EventType, "UpdateRows") || strings.HasPrefix(raw.EventType, "UPDATE_ROWS"):
 		ev.EventType = "ROWS"
 		ev.Operation = "UPDATE"
 		return ev, nil
-	case strings.HasPrefix(raw.EventType, "DELETE_ROWS"):
+	case strings.HasPrefix(raw.EventType, "DeleteRows") || strings.HasPrefix(raw.EventType, "DELETE_ROWS"):
 		ev.EventType = "ROWS"
 		ev.Operation = "DELETE"
 		return ev, nil
-	case raw.EventType == "XID_EVENT":
+	case raw.EventType == "XID_EVENT" || raw.EventType == "XIDEvent":
 		ev.EventType = "XID"
 		return ev, nil
-	case raw.EventType == "TABLE_MAP_EVENT":
+	case raw.EventType == "TABLE_MAP_EVENT" || raw.EventType == "TableMapEvent":
 		ev.EventType = "TABLE_MAP"
 		return ev, nil
 	default:
