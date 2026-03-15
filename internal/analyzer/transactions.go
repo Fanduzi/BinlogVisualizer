@@ -16,14 +16,17 @@ type TransactionBuilder struct {
 }
 
 type inFlightTxn struct {
-	txnKey     string
-	isExplicit bool // true if started with BEGIN, false if implicit
-	startTime  time.Time
-	endTime    time.Time
-	totalRows  int
-	eventCount int
-	tables     map[string]int
-	operations map[string]int
+	txnKey           string
+	isExplicit       bool // true if started with BEGIN, false if implicit
+	startTime        time.Time
+	endTime          time.Time
+	totalRows        int
+	eventCount       int
+	tables           map[string]int
+	operations       map[string]int
+	querySQL         string // Bounded SQL from ROWS_QUERY event
+	queryTruncated   bool
+	queryOriginalBytes int  // Original SQL byte count before truncation
 }
 
 // NewTransactionBuilder creates a new TransactionBuilder.
@@ -40,6 +43,9 @@ func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 		return b.handleBegin(ev.Timestamp)
 	case "XID", "COMMIT":
 		b.handleCommit(ev.Timestamp)
+	case "ROWS_QUERY":
+		// Capture SQL context for next ROWS events in this transaction
+		b.handleRowsQuery(ev)
 	case "ROWS":
 		b.accumulateRowEvent(ev)
 	default:
@@ -87,6 +93,20 @@ func (b *TransactionBuilder) handleCommit(ts time.Time) {
 	b.finalizeTransaction()
 }
 
+// handleRowsQuery captures SQL context from ROWS_QUERY event.
+// The SQL has already been bounded by the normalization layer.
+func (b *TransactionBuilder) handleRowsQuery(ev model.NormalizedEvent) {
+	// If no transaction in flight, start an implicit one
+	if b.current == nil {
+		b.startTransaction(ev.Timestamp, false)
+	}
+
+	// Capture the SQL context (already bounded at normalize layer)
+	b.current.querySQL = ev.QuerySQL
+	b.current.queryTruncated = ev.QueryTruncated
+	b.current.queryOriginalBytes = ev.QueryOriginalBytes
+}
+
 func (b *TransactionBuilder) startTransaction(ts time.Time, isExplicit bool) {
 	b.current = &inFlightTxn{
 		txnKey:     b.generateTxnKey(),
@@ -126,14 +146,20 @@ func (b *TransactionBuilder) finalizeTransaction() {
 	}
 
 	txn := model.Transaction{
-		TxnKey:     b.current.txnKey,
-		StartTime:  b.current.startTime,
-		EndTime:    b.current.endTime,
-		Duration:   b.current.endTime.Sub(b.current.startTime),
-		TotalRows:  b.current.totalRows,
-		EventCount: b.current.eventCount,
-		Tables:     b.current.tables,
-		Operations: b.current.operations,
+		TxnKey:       b.current.txnKey,
+		StartTime:    b.current.startTime,
+		EndTime:      b.current.endTime,
+		Duration:     b.current.endTime.Sub(b.current.startTime),
+		TotalRows:    b.current.totalRows,
+		EventCount:   b.current.eventCount,
+		Tables:       b.current.tables,
+		Operations:   b.current.operations,
+		QuerySummary: model.MakeQuerySummary(b.current.querySQL),
+		QueryContext: model.NewQueryContextFromNormalized(
+			b.current.querySQL,
+			b.current.queryTruncated,
+			b.current.queryOriginalBytes,
+		),
 	}
 
 	b.completed = append(b.completed, txn)

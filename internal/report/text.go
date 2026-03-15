@@ -73,8 +73,11 @@ func renderTopTransactions(buf *strings.Builder, transactions []model.Transactio
 		})
 
 		for _, txn := range sorted {
-		buf.WriteString(fmt.Sprintf("  %s: %d rows in %s (%d events)\n",
-			txn.TxnKey, txn.TotalRows, formatDuration(txn.Duration), txn.EventCount))
+			buf.WriteString(fmt.Sprintf("  %s: %d rows in %s (%d events)\n",
+				txn.TxnKey, txn.TotalRows, formatDuration(txn.Duration), txn.EventCount))
+			if txn.QuerySummary != "" {
+				buf.WriteString(fmt.Sprintf("    Query: %s\n", txn.QuerySummary))
+			}
 		}
 	}
 	buf.WriteString("\n")
