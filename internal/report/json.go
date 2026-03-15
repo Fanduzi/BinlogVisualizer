@@ -40,14 +40,17 @@ type jsonTableStats struct {
 }
 
 type jsonTransaction struct {
-	TxnKey     string         `json:"txn_key"`
-	StartTime  string         `json:"start_time"`
-	EndTime    string         `json:"end_time"`
-	Duration   string         `json:"duration"`
-	TotalRows  int            `json:"total_rows"`
-	EventCount int            `json:"event_count"`
-	Tables     map[string]int `json:"tables,omitempty"`
-	Operations map[string]int `json:"operations,omitempty"`
+	TxnKey             string         `json:"txn_key"`
+	StartTime        string         `json:"start_time"`
+	EndTime          string         `json:"end_time"`
+	Duration         string         `json:"duration"`
+	TotalRows         int            `json:"total_rows"`
+	EventCount       int            `json:"event_count"`
+	Tables           map[string]int `json:"tables,omitempty"`
+	Operations      map[string]int `json:"operations,omitempty"`
+	QuerySummary     string         `json:"query_summary,omitempty"`
+	QueryTruncated    bool           `json:"query_truncated,omitempty"`
+	QueryOriginalBytes int            `json:"query_original_bytes,omitempty"`
 }
 
 type jsonMinuteBucket struct {
@@ -138,16 +141,22 @@ func convertTransactions(txns []model.Transaction) []jsonTransaction {
 	}
 	result := make([]jsonTransaction, len(txns))
 	for i, t := range txns {
-		result[i] = jsonTransaction{
-			TxnKey:     t.TxnKey,
-			StartTime:  formatJSONTime(t.StartTime),
-			EndTime:    formatJSONTime(t.EndTime),
-			Duration:   t.Duration.String(),
-			TotalRows:  t.TotalRows,
-			EventCount: t.EventCount,
-			Tables:     copyStringIntMap(t.Tables),
-			Operations: copyStringIntMap(t.Operations),
+		jt := jsonTransaction{
+			TxnKey:      t.TxnKey,
+			StartTime:   formatJSONTime(t.StartTime),
+			EndTime:     formatJSONTime(t.EndTime),
+			Duration:    t.Duration.String(),
+			TotalRows:   t.TotalRows,
+			EventCount:  t.EventCount,
+			Tables:      copyStringIntMap(t.Tables),
+			Operations:  copyStringIntMap(t.Operations),
+			QuerySummary: t.QuerySummary,
 		}
+		if t.QueryContext != nil {
+			jt.QueryTruncated = t.QueryContext.Truncated
+			jt.QueryOriginalBytes = t.QueryContext.OriginalBytes
+		}
+		result[i] = jt
 	}
 	return result
 }

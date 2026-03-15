@@ -10,6 +10,7 @@ type RawEvent struct {
 	Schema    string
 	Table     string
 	Query     string // SQL query for QUERY_EVENT (e.g., BEGIN, COMMIT)
+	QuerySQL  string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
 	RowCount  int
 	Position  uint32
 }

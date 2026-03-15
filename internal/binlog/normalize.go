@@ -19,6 +19,8 @@ func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	switch {
 	case raw.EventType == "QUERY_EVENT" || raw.EventType == "QueryEvent":
 		return normalizeQueryEvent(raw, ev)
+	case raw.EventType == "RowsQueryEvent" || raw.EventType == "ROWS_QUERY_EVENT":
+		return normalizeRowsQueryEvent(raw, ev)
 	case strings.HasPrefix(raw.EventType, "WriteRows") || strings.HasPrefix(raw.EventType, "WRITE_ROWS"):
 		ev.EventType = "ROWS"
 		ev.Operation = "INSERT"
@@ -56,4 +58,50 @@ func normalizeQueryEvent(raw RawEvent, ev *model.NormalizedEvent) (*model.Normal
 		// Skip other QUERY events (DDL, etc.)
 		return nil, nil
 	}
+}
+
+// normalizeRowsQueryEvent handles Rows_query_log_event which contains the original SQL.
+// The SQL is bounded at model.MaxStoredSQLBytes to prevent memory issues with huge queries.
+// OriginalBytes is preserved for accurate reporting even when SQL is truncated.
+func normalizeRowsQueryEvent(raw RawEvent, ev *model.NormalizedEvent) (*model.NormalizedEvent, error) {
+	ev.EventType = "ROWS_QUERY"
+
+	sql := raw.QuerySQL
+	if sql == "" {
+		return ev, nil
+	}
+
+	// Preserve original byte count before any truncation
+	originalBytes := len(sql)
+	ev.QueryOriginalBytes = originalBytes
+
+	// Bound the SQL to prevent memory bloat
+	if originalBytes > model.MaxStoredSQLBytes {
+		sql = safeTruncateBytes(sql, model.MaxStoredSQLBytes)
+		ev.QueryTruncated = true
+	}
+	ev.QuerySQL = sql
+
+	return ev, nil
+}
+
+// safeTruncateBytes truncates to maxBytes without cutting UTF-8 characters.
+func safeTruncateBytes(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+
+	// Find the last valid UTF-8 boundary at or before maxBytes
+	for maxBytes > 0 {
+		if s[maxBytes-1] < 0x80 || (s[maxBytes-1] >= 0xC0) {
+			// Valid boundary: ASCII byte or start of multi-byte sequence
+			break
+		}
+		maxBytes--
+	}
+
+	if maxBytes <= 0 {
+		return ""
+	}
+	return s[:maxBytes]
 }

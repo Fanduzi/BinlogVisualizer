@@ -36,6 +36,9 @@ func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error 
 			case *replication.QueryEvent:
 				raw.Query = string(e.Query)
 				raw.Schema = string(e.Schema)
+			case *replication.RowsQueryEvent:
+				// This event contains the original SQL when binlog_rows_query_log_events=ON
+				raw.QuerySQL = string(e.Query)
 			case *replication.TableMapEvent:
 				raw.Schema = string(e.Schema)
 				raw.Table = string(e.Table)

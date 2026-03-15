@@ -234,3 +234,125 @@ func TestNormalizeDeleteRowsEventV2(t *testing.T) {
 		t.Fatalf("unexpected normalized event: %+v", ev)
 	}
 }
+
+// Tests for RowsQueryEvent (original SQL capture)
+
+func TestNormalizeRowsQueryEvent(t *testing.T) {
+	ts := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	sql := "INSERT INTO users (id, name) VALUES (1, 'Alice')"
+	ev, err := NormalizeRawEvent(RawEvent{
+		Timestamp: ts,
+		EventType: "RowsQueryEvent",
+		QuerySQL:  sql,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.EventType != "ROWS_QUERY" {
+		t.Fatalf("expected ROWS_QUERY event type, got: %s", ev.EventType)
+	}
+	if ev.QuerySQL != sql {
+		t.Fatalf("unexpected QuerySQL: %s", ev.QuerySQL)
+	}
+	if ev.QueryTruncated {
+		t.Fatalf("expected QueryTruncated=false for short query")
+	}
+	if ev.QueryOriginalBytes != len(sql) {
+		t.Fatalf("expected QueryOriginalBytes=%d, got %d", len(sql), ev.QueryOriginalBytes)
+	}
+}
+
+func TestNormalizeRowsQueryEventCamelCase(t *testing.T) {
+	ts := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	ev, err := NormalizeRawEvent(RawEvent{
+		Timestamp: ts,
+		EventType: "ROWS_QUERY_EVENT",
+		QuerySQL:  "UPDATE products SET price = 99.99 WHERE id = 42",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.EventType != "ROWS_QUERY" {
+		t.Fatalf("expected ROWS_QUERY event type, got: %s", ev.EventType)
+	}
+}
+
+func TestNormalizeRowsQueryEventEmptySQL(t *testing.T) {
+	ev, err := NormalizeRawEvent(RawEvent{
+		EventType: "RowsQueryEvent",
+		QuerySQL:  "",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.EventType != "ROWS_QUERY" {
+		t.Fatalf("expected ROWS_QUERY event type, got: %s", ev.EventType)
+	}
+	if ev.QuerySQL != "" {
+		t.Fatalf("expected empty QuerySQL, got: %s", ev.QuerySQL)
+	}
+}
+
+func TestNormalizeRowsQueryEventTruncation(t *testing.T) {
+	// Create a SQL string longer than 4096 bytes
+	longSQL := "INSERT INTO big_table VALUES (" + makeLongString(5000) + ")"
+	originalBytes := len(longSQL)
+	if originalBytes <= 4096 {
+		t.Fatalf("test SQL not long enough: %d bytes", originalBytes)
+	}
+
+	ev, err := NormalizeRawEvent(RawEvent{
+		EventType: "RowsQueryEvent",
+		QuerySQL:  longSQL,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev.EventType != "ROWS_QUERY" {
+		t.Fatalf("expected ROWS_QUERY event type, got: %s", ev.EventType)
+	}
+	if len(ev.QuerySQL) > 4096 {
+		t.Fatalf("expected QuerySQL to be truncated to <=4096 bytes, got: %d", len(ev.QuerySQL))
+	}
+	if !ev.QueryTruncated {
+		t.Fatalf("expected QueryTruncated=true for truncated query")
+	}
+	// KEY TEST: OriginalBytes must be the ORIGINAL length, not the truncated length
+	if ev.QueryOriginalBytes != originalBytes {
+		t.Fatalf("expected QueryOriginalBytes=%d (original), got %d", originalBytes, ev.QueryOriginalBytes)
+	}
+	if ev.QueryOriginalBytes == len(ev.QuerySQL) {
+		t.Fatalf("QueryOriginalBytes should NOT equal truncated SQL length %d, but it does", len(ev.QuerySQL))
+	}
+}
+
+func TestNormalizeRowsQueryEventTruncationUTF8Boundary(t *testing.T) {
+	// Create a string with multi-byte UTF-8 characters that exceeds 4096 bytes
+	base := "SELECT '日本語テスト' " // Each Japanese char is 3 bytes
+	var longSQL string
+	for len(longSQL) < 4100 {
+		longSQL += base
+	}
+
+	ev, err := NormalizeRawEvent(RawEvent{
+		EventType: "RowsQueryEvent",
+		QuerySQL:  longSQL,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ev.QuerySQL) > 4096 {
+		t.Fatalf("expected QuerySQL to be truncated to <=4096 bytes, got: %d", len(ev.QuerySQL))
+	}
+	// Verify it's valid UTF-8 (should not panic if we check)
+	_ = []rune(ev.QuerySQL)
+}
+
+// makeLongString creates a string of the specified byte length (approximate)
+func makeLongString(targetLen int) string {
+	result := "'"
+	for len(result) < targetLen {
+		result += "x"
+	}
+	return result + "'"
+}
