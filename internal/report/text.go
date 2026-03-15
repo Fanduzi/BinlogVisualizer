@@ -62,11 +62,14 @@ func renderTopTransactions(buf *strings.Builder, transactions []model.Transactio
 	if len(transactions) == 0 {
 		buf.WriteString("  (no transactions)\n")
 	} else {
-		// Sort by TotalRows descending for top transactions
+		// Sort by TotalRows descending, with TxnKey ascending as tie-breaker for determinism
 		sorted := make([]model.Transaction, len(transactions))
 		copy(sorted, transactions)
 		sort.Slice(sorted, func(i, j int) bool {
-			return sorted[i].TotalRows > sorted[j].TotalRows
+			if sorted[i].TotalRows != sorted[j].TotalRows {
+				return sorted[i].TotalRows > sorted[j].TotalRows
+			}
+			return sorted[i].TxnKey < sorted[j].TxnKey
 		})
 
 		for _, txn := range sorted {

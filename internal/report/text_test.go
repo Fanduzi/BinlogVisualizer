@@ -150,3 +150,72 @@ func TestRenderTextSectionOrder(t *testing.T) {
 		t.Fatal("sections not in correct order: Workload Summary < Top Tables < Top Transactions < Minute Activity < Alerts")
 	}
 }
+
+func TestRenderTopTransactionsDeterministicOrder(t *testing.T) {
+	// Create transactions with same TotalRows but different TxnKey
+	// Order should be deterministic: TotalRows DESC, TxnKey ASC
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{TxnKey: "txn-z", TotalRows: 100, Duration: 1 * time.Second},
+			{TxnKey: "txn-a", TotalRows: 100, Duration: 1 * time.Second},
+			{TxnKey: "txn-m", TotalRows: 100, Duration: 1 * time.Second},
+			{TxnKey: "txn-b", TotalRows: 50, Duration: 500 * time.Millisecond},
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify transactions with same TotalRows appear in TxnKey order (a, m, z)
+	// All three with 100 rows should come before the one with 50 rows
+	idxA := strings.Index(out, "txn-a")
+	idxM := strings.Index(out, "txn-m")
+	idxZ := strings.Index(out, "txn-z")
+	idxB := strings.Index(out, "txn-b")
+
+	if idxA == -1 || idxM == -1 || idxZ == -1 || idxB == -1 {
+		t.Fatalf("missing transaction in output: a=%d, m=%d, z=%d, b=%d", idxA, idxM, idxZ, idxB)
+	}
+
+	// Verify order: txn-a < txn-m < txn-z (all with 100 rows)
+	// and all 100-row txns come before txn-b (50 rows)
+	if !(idxA < idxM && idxM < idxZ) {
+		t.Errorf("transactions with same TotalRows should be ordered by TxnKey ASC: got a=%d, m=%d, z=%d", idxA, idxM, idxZ)
+	}
+	if !(idxZ < idxB) {
+		t.Errorf("transactions with higher TotalRows should come first: got z(100)=%d, b(50)=%d", idxZ, idxB)
+	}
+}
+
+func TestRenderTopTransactionsMixedRowsDeterministic(t *testing.T) {
+	// Test with mixed TotalRows where tie-breaker matters for middle items
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{TxnKey: "z-large", TotalRows: 1000, Duration: 1 * time.Second},
+			{TxnKey: "c-medium", TotalRows: 500, Duration: 1 * time.Second},
+			{TxnKey: "a-medium", TotalRows: 500, Duration: 1 * time.Second},
+			{TxnKey: "b-medium", TotalRows: 500, Duration: 1 * time.Second},
+			{TxnKey: "x-small", TotalRows: 100, Duration: 1 * time.Second},
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Find positions
+	idxLarge := strings.Index(out, "z-large")
+	idxA := strings.Index(out, "a-medium")
+	idxB := strings.Index(out, "b-medium")
+	idxC := strings.Index(out, "c-medium")
+	idxSmall := strings.Index(out, "x-small")
+
+	// Expected order: z-large (1000), a-medium (500), b-medium (500), c-medium (500), x-small (100)
+	if !(idxLarge < idxA && idxA < idxB && idxB < idxC && idxC < idxSmall) {
+		t.Errorf("unexpected order: large=%d, a=%d, b=%d, c=%d, small=%d",
+			idxLarge, idxA, idxB, idxC, idxSmall)
+	}
+}
