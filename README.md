@@ -132,7 +132,39 @@ See example outputs in:
 - MySQL ROW-format binlog files
 - Go 1.24+ (for building)
 
-## Limitations
+## Large File Handling
+
+BinlogViz is designed for MVP efficiency and has the following characteristics:
+
+### Memory Model
+
+The current implementation loads all normalized events into memory before analysis:
+
+- **Parser**: Uses `go-mysql-org/go-mysql/replication` which streams events via callbacks
+- **Command Layer**: Collects all normalized events into a slice before passing to the analyzer
+- **Analyzer**: Processes events in a single pass,- **Renderer**: Outputs final result
+
+### Expected Performance
+
+From benchmarks on Apple M4 Pro:
+
+| Input Size | Time/op | Memory/op | Allocs/op |
+|-----------|---------|------------|-----------|
+| 1 event | ~1μs | 2.5 KB | 32 |
+| 100 events | ~40μs | 55 KB | 756 |
+| 1000 events | ~492μs | 665 KB | 7.1K |
+| 100 tables | ~41μs | 55 KB | 756 |
+| 10 transactions | ~245 ns | 469 B | 12 |
+
+### Large File Recommendations
+
+For binlog files exceeding 100MB or1M+ events, consider:
+
+1. **Use time window filtering**: `--start` and `--end` flags reduce memory footprint
+2. **Process in chunks**: Split large binlog files by time range
+3. **Ensure sufficient RAM**: 2-4GB for large workloads
+
+Future versions may add improved memory efficiency through true streaming analysis without full event retention in## Limitations
 
 - **ROW binlog only**: STATEMENT and MIXED formats are not supported in MVP
 - **Local files only**: Cannot connect to MySQL servers directly
