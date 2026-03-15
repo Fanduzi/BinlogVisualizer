@@ -1,0 +1,26 @@
+# BinlogViz - Git Ignore
+
+# GitNexus
+.gitnexus
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code
+.claude/
+
+# Build artifacts
+/binlogviz
+*.exe
+
+# Test artifacts
+*.test
+*.out
