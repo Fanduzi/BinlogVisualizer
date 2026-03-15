@@ -160,22 +160,27 @@ func parseTimeRange(startStr, endStr string) (time.Time, time.Time, error) {
 	return startTime, endTime, nil
 }
 
-// buildAnalyzerOptions converts CLI options to analyzer.Options
+// buildAnalyzerOptions converts CLI options to analyzer.Options.
+// It starts from DefaultOptions() to ensure spike detection parameters
+// have sensible defaults even when only --detect-spikes is passed.
 func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) analyzer.Options {
-	var start, end *time.Time
+	// Start with defaults to get spike detection defaults
+	result := analyzer.DefaultOptions()
+
+	// Override with CLI-specific values
+	result.TopTables = opts.topTables
+	result.TopTransactions = opts.topTransactions
+	result.DetectSpikes = opts.detectSpikes
+	result.LargeTxnRows = opts.largeTrxRows
+	result.LargeTxnDuration = opts.largeTrxDuration
+
+	// Set time window if specified
 	if !startTime.IsZero() {
-		start = &startTime
+		result.Start = &startTime
 	}
 	if !endTime.IsZero() {
-		end = &endTime
+		result.End = &endTime
 	}
-	return analyzer.Options{
-		TopTables:        opts.topTables,
-		TopTransactions:  opts.topTransactions,
-		DetectSpikes:     opts.detectSpikes,
-		LargeTxnRows:     opts.largeTrxRows,
-		LargeTxnDuration: opts.largeTrxDuration,
-		Start:            start,
-		End:              end,
-	}
+
+	return result
 }

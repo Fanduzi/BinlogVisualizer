@@ -257,6 +257,108 @@ func TestApplyTopLimitsMixedRowssWithTieBreaker(t *testing.T) {
 	}
 }
 
+func TestBuildAnalyzerOptionsIncludesSpikeDefaults(t *testing.T) {
+	// When detectSpikes is enabled, spike detection parameters should have defaults
+	cliOpts := &analyzeOptions{
+		detectSpikes: true,
+	}
+
+	result := buildAnalyzerOptions(cliOpts, time.Time{}, time.Time{})
+
+	// Verify spike detection is enabled
+	if !result.DetectSpikes {
+		t.Error("expected DetectSpikes to be true")
+	}
+
+	// Verify spike detection has valid defaults (not zero values)
+	if result.SpikeWindow <= 0 {
+		t.Errorf("expected SpikeWindow > 0, got %d", result.SpikeWindow)
+	}
+	if result.SpikeFactor <= 0 {
+		t.Errorf("expected SpikeFactor > 0, got %f", result.SpikeFactor)
+	}
+	if result.SpikeMinRows <= 0 {
+		t.Errorf("expected SpikeMinRows > 0, got %d", result.SpikeMinRows)
+	}
+}
+
+func TestBuildAnalyzerOptionsUsesDefaultOptions(t *testing.T) {
+	// Verify that buildAnalyzerOptions uses DefaultOptions as base
+	cliOpts := &analyzeOptions{
+		topTables:        10,
+		topTransactions:  10,
+		largeTrxRows:     1000,
+		largeTrxDuration: 30 * time.Second,
+	}
+
+	result := buildAnalyzerOptions(cliOpts, time.Time{}, time.Time{})
+
+	// Check that we got the defaults from analyzer.DefaultOptions()
+	defaults := analyzer.DefaultOptions()
+
+	// These should match defaults when not overridden by CLI
+	if result.SpikeWindow != defaults.SpikeWindow {
+		t.Errorf("SpikeWindow: expected %d, got %d", defaults.SpikeWindow, result.SpikeWindow)
+	}
+	if result.SpikeFactor != defaults.SpikeFactor {
+		t.Errorf("SpikeFactor: expected %f, got %f", defaults.SpikeFactor, result.SpikeFactor)
+	}
+	if result.SpikeMinRows != defaults.SpikeMinRows {
+		t.Errorf("SpikeMinRows: expected %d, got %d", defaults.SpikeMinRows, result.SpikeMinRows)
+	}
+}
+
+func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
+	// Create events spanning 10 minutes with a spike at minute 7
+	base := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	mock := &mockParser{}
+
+	// Generate events: 6 minutes of baseline, then a spike
+	for minute := 0; minute < 10; minute++ {
+		rowCount := 100 // baseline
+		if minute >= 7 {
+			rowCount = 600 // spike (6x baseline)
+		}
+		for i := 0; i < rowCount; i++ {
+			mock.events = append(mock.events, binlog.RawEvent{
+				Timestamp: base.Add(time.Duration(minute)*time.Minute + time.Duration(i)*time.Millisecond),
+				EventType:  "WRITE_ROWS_EVENT",
+				Schema:    "shop",
+				Table:     "orders",
+				RowCount:   1,
+			})
+		}
+	}
+
+	// Use DefaultOptions which includes spike detection defaults
+	opts := analyzer.DefaultOptions()
+	opts.DetectSpikes = true
+
+	// Capture stdout
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, true, mock)
+
+	// Restore stdout
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify spike alert is produced
+	if !bytes.Contains([]byte(output), []byte(`"type": "spike"`)) {
+		t.Error("expected spike alert in output")
+	}
+}
+
 // Helper functions to create test data
 
 func createTestTableStats(count int) []model.TableStats {
