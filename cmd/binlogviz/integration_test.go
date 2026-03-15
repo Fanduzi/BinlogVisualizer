@@ -359,6 +359,60 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 	}
 }
 
+// TestRealBinlogFixtureEndToEnd is a placeholder for a real binlog fixture test.
+// This test requires a valid MySQL ROW-format binlog file in testdata/.
+//
+// To create a fixture:
+//  1. Start MySQL with binlog enabled (log_bin, binlog_format=ROW)
+//  2. Execute: CREATE DATABASE testdb; USE testdb;
+//  3. Execute: CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100));
+//  4. Execute: INSERT INTO users VALUES (1, 'alice'), (2, 'bob');
+//  5. Execute: FLUSH LOGS;
+//  6. Copy the binlog file (e.g., mysql-bin.000001) to testdata/minimal.binlog
+//
+// The test would verify:
+//   - Real binlog file → parser.ParseFiles → NormalizeRawEvent → Analyzer.Analyze → Render output
+//   - Output contains expected sections and table names
+//
+// Known limitation: This MVP lacks automated real-binlog fixture testing.
+// The mock-based integration tests cover the command→analyzer→report pipeline,
+// but do not validate the go-mysql parser integration with actual binlog files.
+func TestRealBinlogFixtureEndToEnd(t *testing.T) {
+	fixturePath := "testdata/minimal.binlog"
+
+	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
+		t.Skip("skipping: no real binlog fixture available at " + fixturePath)
+	}
+
+	// If fixture exists, run the full pipeline
+	opts := analyzer.DefaultOptions()
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runAnalysis([]string{fixturePath}, opts, false)
+
+	w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	output := buf.String()
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify output contains expected sections
+	if !bytes.Contains([]byte(output), []byte("=== Workload Summary ===")) {
+		t.Error("expected output to contain Workload Summary section")
+	}
+	if !bytes.Contains([]byte(output), []byte("=== Top Tables ===")) {
+		t.Error("expected output to contain Top Tables section")
+	}
+}
+
 // Helper functions to create test data
 
 func createTestTableStats(count int) []model.TableStats {
