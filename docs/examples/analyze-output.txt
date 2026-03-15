@@ -45,7 +45,7 @@
   2026-03-15 10:14: 2513 rows, 8 txn
 
 === Alerts ===
-  [HIGH] large_transaction: Transaction txn-10f3a2 affected 5200 rows (threshold: 1000)
-  [HIGH] large_transaction: Transaction txn-10f1b8 affected 3800 rows (threshold: 1000)
-  [HIGH] large_transaction: Transaction txn-10e4c1 affected 2400 rows (threshold: 1000)
-  [MEDIUM] write_spike: Minute 2026-03-15 10:03 had 8450 rows (baseline median: 2940, spike factor: 2.9x)
+  [WARNING] large_transaction: Transaction txn-10f3a2 exceeds row threshold
+  [WARNING] large_transaction: Transaction txn-10f1b8 exceeds row threshold
+  [WARNING] large_transaction: Transaction txn-10e4c1 exceeds row threshold
+  [WARNING] spike: Write spike detected
