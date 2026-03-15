@@ -1,0 +1,231 @@
+{
+  "summary": {
+    "total_transactions": 156,
+    "total_rows": 45823,
+    "total_events": 892,
+    "start_time": "2026-03-15T10:00:00Z",
+    "end_time": "2026-03-15T10:14:59Z",
+    "duration": "14m59s"
+  },
+  "tables": [
+    {
+      "schema": "shop",
+      "table": "orders",
+      "total_rows": 28450,
+      "insert_rows": 18520,
+      "update_rows": 7230,
+      "delete_rows": 2700,
+      "txn_count": 89
+    },
+    {
+      "schema": "shop",
+      "table": "order_items",
+      "total_rows": 12400,
+      "insert_rows": 9800,
+      "update_rows": 2100,
+      "delete_rows": 500,
+      "txn_count": 89
+    },
+    {
+      "schema": "shop",
+      "table": "users",
+      "total_rows": 2800,
+      "insert_rows": 1200,
+      "update_rows": 1400,
+      "delete_rows": 200,
+      "txn_count": 45
+    },
+    {
+      "schema": "shop",
+      "table": "sessions",
+      "total_rows": 1500,
+      "insert_rows": 800,
+      "update_rows": 600,
+      "delete_rows": 100,
+      "txn_count": 120
+    },
+    {
+      "schema": "inventory",
+      "table": "stock",
+      "total_rows": 420,
+      "insert_rows": 200,
+      "update_rows": 180,
+      "delete_rows": 40,
+      "txn_count": 15
+    },
+    {
+      "schema": "shop",
+      "table": "products",
+      "total_rows": 200,
+      "insert_rows": 50,
+      "update_rows": 120,
+      "delete_rows": 30,
+      "txn_count": 35
+    },
+    {
+      "schema": "analytics",
+      "table": "events",
+      "total_rows": 38,
+      "insert_rows": 38,
+      "update_rows": 0,
+      "delete_rows": 0,
+      "txn_count": 12
+    },
+    {
+      "schema": "shop",
+      "table": "audit_log",
+      "total_rows": 15,
+      "insert_rows": 15,
+      "update_rows": 0,
+      "delete_rows": 0,
+      "txn_count": 15
+    }
+  ],
+  "transactions": [
+    {
+      "txn_key": "txn-10f3a2",
+      "start_time": "2026-03-15T10:03:12Z",
+      "end_time": "2026-03-15T10:03:14Z",
+      "duration": "2.3s",
+      "total_rows": 5200,
+      "event_count": 12,
+      "tables": {
+        "shop.orders": 3200,
+        "shop.order_items": 2000
+      },
+      "operations": {
+        "INSERT": 4500,
+        "UPDATE": 700
+      }
+    },
+    {
+      "txn_key": "txn-10f1b8",
+      "start_time": "2026-03-15T10:02:45Z",
+      "end_time": "2026-03-15T10:02:47Z",
+      "duration": "1.8s",
+      "total_rows": 3800,
+      "event_count": 8,
+      "tables": {
+        "shop.orders": 2100,
+        "shop.order_items": 1700
+      },
+      "operations": {
+        "INSERT": 3200,
+        "UPDATE": 600
+      }
+    },
+    {
+      "txn_key": "txn-10e4c1",
+      "start_time": "2026-03-15T10:01:20Z",
+      "end_time": "2026-03-15T10:01:23Z",
+      "duration": "3.1s",
+      "total_rows": 2400,
+      "event_count": 6,
+      "tables": {
+        "shop.users": 1200,
+        "shop.sessions": 800,
+        "shop.orders": 400
+      },
+      "operations": {
+        "INSERT": 1800,
+        "UPDATE": 600
+      }
+    }
+  ],
+  "minutes": [
+    {
+      "minute": "2026-03-15T10:00:00Z",
+      "total_rows": 2850,
+      "txn_count": 12,
+      "table_rows": {
+        "shop.orders": 1800,
+        "shop.order_items": 850,
+        "shop.users": 200
+      }
+    },
+    {
+      "minute": "2026-03-15T10:01:00Z",
+      "total_rows": 3420,
+      "txn_count": 14,
+      "table_rows": {
+        "shop.orders": 2100,
+        "shop.order_items": 920,
+        "shop.users": 400
+      }
+    },
+    {
+      "minute": "2026-03-15T10:02:00Z",
+      "total_rows": 2980,
+      "txn_count": 11,
+      "table_rows": {
+        "shop.orders": 1900,
+        "shop.order_items": 780,
+        "shop.users": 300
+      }
+    },
+    {
+      "minute": "2026-03-15T10:03:00Z",
+      "total_rows": 8450,
+      "txn_count": 8,
+      "table_rows": {
+        "shop.orders": 5200,
+        "shop.order_items": 2800,
+        "shop.users": 450
+      }
+    },
+    {
+      "minute": "2026-03-15T10:04:00Z",
+      "total_rows": 3120,
+      "txn_count": 10,
+      "table_rows": {
+        "shop.orders": 1950,
+        "shop.order_items": 970,
+        "shop.users": 200
+      }
+    }
+  ],
+  "alerts": [
+    {
+      "type": "large_transaction",
+      "severity": "HIGH",
+      "message": "Transaction txn-10f3a2 affected 5200 rows (threshold: 1000)",
+      "txn_key": "txn-10f3a2",
+      "details": {
+        "total_rows": 5200,
+        "threshold": 1000
+      }
+    },
+    {
+      "type": "large_transaction",
+      "severity": "HIGH",
+      "message": "Transaction txn-10f1b8 affected 3800 rows (threshold: 1000)",
+      "txn_key": "txn-10f1b8",
+      "details": {
+        "total_rows": 3800,
+        "threshold": 1000
+      }
+    },
+    {
+      "type": "large_transaction",
+      "severity": "HIGH",
+      "message": "Transaction txn-10e4c1 affected 2400 rows (threshold: 1000)",
+      "txn_key": "txn-10e4c1",
+      "details": {
+        "total_rows": 2400,
+        "threshold": 1000
+      }
+    },
+    {
+      "type": "write_spike",
+      "severity": "MEDIUM",
+      "message": "Minute 2026-03-15 10:03 had 8450 rows (baseline median: 2940, spike factor: 2.9x)",
+      "minute": "2026-03-15T10:03:00Z",
+      "details": {
+        "actual_rows": 8450,
+        "baseline_median": 2940,
+        "spike_factor": 2.9
+      }
+    }
+  ],
+  "warnings": 0
+}

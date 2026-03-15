@@ -1,0 +1,51 @@
+=== Workload Summary ===
+  Total Transactions: 156
+  Total Rows: 45823
+  Total Events: 892
+  Time Range: 2026-03-15 10:00:00 - 2026-03-15 10:14:59
+  Duration: 14m59s
+
+=== Top Tables ===
+  shop.orders: 28450 rows (18520 insert, 7230 update, 2700 delete, 89 txn)
+  shop.order_items: 12400 rows (9800 insert, 2100 update, 500 delete, 89 txn)
+  shop.users: 2800 rows (1200 insert, 1400 update, 200 delete, 45 txn)
+  shop.sessions: 1500 rows (800 insert, 600 update, 100 delete, 120 txn)
+  inventory.stock: 420 rows (200 insert, 180 update, 40 delete, 15 txn)
+  shop.products: 200 rows (50 insert, 120 update, 30 delete, 35 txn)
+  analytics.events: 38 rows (38 insert, 0 update, 0 delete, 12 txn)
+  shop.audit_log: 15 rows (15 insert, 0 update, 0 delete, 15 txn)
+
+=== Top Transactions ===
+  txn-10f3a2: 5200 rows in 2.3s (12 events)
+  txn-10f1b8: 3800 rows in 1.8s (8 events)
+  txn-10e4c1: 2400 rows in 3.1s (6 events)
+  txn-10f290: 1850 rows in 1.2s (4 events)
+  txn-10e8a5: 1200 rows in 0.8s (3 events)
+  txn-10d7f2: 980 rows in 1.5s (5 events)
+  txn-10f3b7: 850 rows in 0.6s (2 events)
+  txn-10e2d4: 720 rows in 2.1s (4 events)
+  txn-10c9a1: 650 rows in 0.4s (2 events)
+  txn-10f0e3: 580 rows in 0.9s (3 events)
+
+=== Minute Activity ===
+  2026-03-15 10:00: 2850 rows, 12 txn
+  2026-03-15 10:01: 3420 rows, 14 txn
+  2026-03-15 10:02: 2980 rows, 11 txn
+  2026-03-15 10:03: 8450 rows, 8 txn
+  2026-03-15 10:04: 3120 rows, 10 txn
+  2026-03-15 10:05: 2890 rows, 12 txn
+  2026-03-15 10:06: 2650 rows, 9 txn
+  2026-03-15 10:07: 3180 rows, 13 txn
+  2026-03-15 10:08: 2940 rows, 11 txn
+  2026-03-15 10:09: 2780 rows, 10 txn
+  2026-03-15 10:10: 3250 rows, 14 txn
+  2026-03-15 10:11: 3100 rows, 12 txn
+  2026-03-15 10:12: 2860 rows, 10 txn
+  2026-03-15 10:13: 2940 rows, 11 txn
+  2026-03-15 10:14: 2513 rows, 8 txn
+
+=== Alerts ===
+  [HIGH] large_transaction: Transaction txn-10f3a2 affected 5200 rows (threshold: 1000)
+  [HIGH] large_transaction: Transaction txn-10f1b8 affected 3800 rows (threshold: 1000)
+  [HIGH] large_transaction: Transaction txn-10e4c1 affected 2400 rows (threshold: 1000)
+  [MEDIUM] write_spike: Minute 2026-03-15 10:03 had 8450 rows (baseline median: 2940, spike factor: 2.9x)
