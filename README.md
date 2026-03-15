@@ -130,7 +130,7 @@ See example outputs in:
 ## Requirements
 
 - MySQL ROW-format binlog files
-- Go 1.21+ (for building)
+- Go 1.24+ (for building)
 
 ## Limitations
 

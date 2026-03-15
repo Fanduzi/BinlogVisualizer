@@ -52,33 +52,6 @@
       "update_rows": 180,
       "delete_rows": 40,
       "txn_count": 15
-    },
-    {
-      "schema": "shop",
-      "table": "products",
-      "total_rows": 200,
-      "insert_rows": 50,
-      "update_rows": 120,
-      "delete_rows": 30,
-      "txn_count": 35
-    },
-    {
-      "schema": "analytics",
-      "table": "events",
-      "total_rows": 38,
-      "insert_rows": 38,
-      "update_rows": 0,
-      "delete_rows": 0,
-      "txn_count": 12
-    },
-    {
-      "schema": "shop",
-      "table": "audit_log",
-      "total_rows": 15,
-      "insert_rows": 15,
-      "update_rows": 0,
-      "delete_rows": 0,
-      "txn_count": 15
     }
   ],
   "transactions": [
@@ -187,43 +160,63 @@
   "alerts": [
     {
       "type": "large_transaction",
-      "severity": "HIGH",
-      "message": "Transaction txn-10f3a2 affected 5200 rows (threshold: 1000)",
+      "severity": "warning",
+      "message": "Transaction txn-10f3a2 exceeds row threshold",
       "txn_key": "txn-10f3a2",
       "details": {
-        "total_rows": 5200,
-        "threshold": 1000
+        "rows": 5200,
+        "duration_ms": 2300,
+        "event_count": 12,
+        "rows_threshold": 1000,
+        "tables": [
+          "shop.order_items",
+          "shop.orders"
+        ]
       }
     },
     {
       "type": "large_transaction",
-      "severity": "HIGH",
-      "message": "Transaction txn-10f1b8 affected 3800 rows (threshold: 1000)",
+      "severity": "warning",
+      "message": "Transaction txn-10f1b8 exceeds row threshold",
       "txn_key": "txn-10f1b8",
       "details": {
-        "total_rows": 3800,
-        "threshold": 1000
+        "rows": 3800,
+        "duration_ms": 1800,
+        "event_count": 8,
+        "rows_threshold": 1000,
+        "tables": [
+          "shop.order_items",
+          "shop.orders"
+        ]
       }
     },
     {
       "type": "large_transaction",
-      "severity": "HIGH",
-      "message": "Transaction txn-10e4c1 affected 2400 rows (threshold: 1000)",
+      "severity": "warning",
+      "message": "Transaction txn-10e4c1 exceeds row threshold",
       "txn_key": "txn-10e4c1",
       "details": {
-        "total_rows": 2400,
-        "threshold": 1000
+        "rows": 2400,
+        "duration_ms": 3100,
+        "event_count": 6,
+        "rows_threshold": 1000,
+        "tables": [
+          "shop.orders",
+          "shop.sessions",
+          "shop.users"
+        ]
       }
     },
     {
-      "type": "write_spike",
-      "severity": "MEDIUM",
-      "message": "Minute 2026-03-15 10:03 had 8450 rows (baseline median: 2940, spike factor: 2.9x)",
+      "type": "spike",
+      "severity": "warning",
+      "message": "Write spike detected",
       "minute": "2026-03-15T10:03:00Z",
       "details": {
-        "actual_rows": 8450,
-        "baseline_median": 2940,
-        "spike_factor": 2.9
+        "rows": 8450,
+        "baseline": 2940,
+        "factor": 2.87,
+        "minute": "2026-03-15T10:03:00Z"
       }
     }
   ],
