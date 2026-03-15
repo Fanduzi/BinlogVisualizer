@@ -17,7 +17,7 @@ func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	}
 
 	switch {
-	case raw.EventType == "QUERY_EVENT":
+	case raw.EventType == "QUERY_EVENT" || raw.EventType == "QueryEvent":
 		return normalizeQueryEvent(raw, ev)
 	case strings.HasPrefix(raw.EventType, "WriteRows") || strings.HasPrefix(raw.EventType, "WRITE_ROWS"):
 		ev.EventType = "ROWS"
