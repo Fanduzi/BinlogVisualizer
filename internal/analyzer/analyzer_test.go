@@ -1,6 +1,12 @@
+// Package analyzer validates analyzer orchestration and streaming result semantics.
+// input: analyzer test fixtures expressed as model.NormalizedEvent sequences and analyzer.Options values.
+// output: regression coverage for slice-wrapper compatibility, streaming finalization, window filtering, and failure handling.
+// pos: module-level behavioral test suite for the analyzer entrypoint and its external contracts.
+// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -246,5 +252,199 @@ func TestAnalyzerStopsFanOutOnError(t *testing.T) {
 	}
 	if result.Summary.TotalRows != 8 {
 		t.Fatalf("expected 8 total rows (5+3), got %d", result.Summary.TotalRows)
+	}
+}
+
+func TestAnalyzerStreamingMatchesAnalyze(t *testing.T) {
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	opts := Options{
+		DetectSpikes: true,
+		SpikeWindow:  3,
+		SpikeFactor:  3,
+		SpikeMinRows: 5,
+	}
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS_QUERY", TxnKey: "t1", QuerySQL: "UPDATE orders SET status='done' WHERE id IN (1,2,3)"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "UPDATE", RowCount: 7},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Minute), EventType: "BEGIN", TxnKey: "t2"},
+		{Timestamp: base.Add(time.Minute + time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "users", Operation: "INSERT", RowCount: 3},
+		{Timestamp: base.Add(time.Minute + 2*time.Second), EventType: "XID", TxnKey: "t2"},
+		{Timestamp: base.Add(2 * time.Minute), EventType: "ROWS", TxnKey: "t3", Schema: "shop", Table: "orders", Operation: "DELETE", RowCount: 20},
+	}
+
+	sliceAnalyzer := New(opts)
+	want, err := sliceAnalyzer.Analyze(events)
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	streamingAnalyzer := New(opts)
+	for _, ev := range events {
+		if err := streamingAnalyzer.Consume(ev); err != nil {
+			t.Fatalf("Consume returned error: %v", err)
+		}
+	}
+	got, err := streamingAnalyzer.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize returned error: %v", err)
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("streaming result mismatch\nwant: %#v\ngot: %#v", want, got)
+	}
+}
+
+func TestAnalyzerStreamingHandlesEmptyInput(t *testing.T) {
+	a := New(Options{})
+
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Summary.TotalTransactions != 0 {
+		t.Fatalf("expected 0 transactions, got %d", result.Summary.TotalTransactions)
+	}
+	if result.Summary.TotalRows != 0 {
+		t.Fatalf("expected 0 total rows, got %d", result.Summary.TotalRows)
+	}
+	if result.Summary.TotalEvents != 0 {
+		t.Fatalf("expected 0 total events, got %d", result.Summary.TotalEvents)
+	}
+	if len(result.Tables) != 0 || len(result.Transactions) != 0 || len(result.Minutes) != 0 || len(result.Alerts) != 0 {
+		t.Fatalf("expected empty aggregates, got %#v", result)
+	}
+}
+
+func TestAnalyzerStreamingTracksMultipleTransactions(t *testing.T) {
+	a := New(Options{})
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", TxnKey: "t1"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "BEGIN", TxnKey: "t2"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "users", Operation: "INSERT", RowCount: 3},
+		{Timestamp: base.Add(5 * time.Second), EventType: "XID", TxnKey: "t2"},
+	}
+
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume returned error: %v", err)
+		}
+	}
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize returned error: %v", err)
+	}
+
+	if result.Summary.TotalTransactions != 2 {
+		t.Fatalf("expected 2 transactions, got %d", result.Summary.TotalTransactions)
+	}
+	if result.Summary.TotalRows != 8 {
+		t.Fatalf("expected 8 total rows, got %d", result.Summary.TotalRows)
+	}
+}
+
+func TestAnalyzerStreamingFiltersTimeWindow(t *testing.T) {
+	start := time.Date(2026, 3, 9, 10, 0, 30, 0, time.UTC)
+	end := time.Date(2026, 3, 9, 10, 1, 30, 0, time.UTC)
+	a := New(Options{Start: &start, End: &end})
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(15 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: base.Add(45 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 3},
+		{Timestamp: base.Add(90 * time.Second), EventType: "XID", TxnKey: "t1"},
+		{Timestamp: base.Add(2 * time.Minute), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "users", Operation: "INSERT", RowCount: 9},
+	}
+
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume returned error: %v", err)
+		}
+	}
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize returned error: %v", err)
+	}
+
+	if result.Summary.TotalRows != 3 {
+		t.Fatalf("expected 3 total rows inside window, got %d", result.Summary.TotalRows)
+	}
+	if result.Summary.TotalEvents != 2 {
+		t.Fatalf("expected 2 events inside window, got %d", result.Summary.TotalEvents)
+	}
+	if len(result.Transactions) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(result.Transactions))
+	}
+	if result.Transactions[0].TotalRows != 3 {
+		t.Fatalf("expected transaction rows 3, got %d", result.Transactions[0].TotalRows)
+	}
+}
+
+func TestAnalyzerStreamingPreservesStateOnTransactionBuilderError(t *testing.T) {
+	a := New(Options{})
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	validEvents := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", TxnKey: "t1"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "BEGIN", TxnKey: "t2"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "users", Operation: "INSERT", RowCount: 3},
+	}
+	for _, ev := range validEvents {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume returned error: %v", err)
+		}
+	}
+
+	err := a.Consume(model.NormalizedEvent{
+		Timestamp: base.Add(5 * time.Second),
+		EventType: "BEGIN",
+		TxnKey:    "t3",
+	})
+	if err == nil {
+		t.Fatal("expected boundary error, got nil")
+	}
+
+	result, finalizeErr := a.Finalize()
+	if finalizeErr == nil {
+		t.Fatal("expected Finalize to return the stored error")
+	}
+	if result != nil {
+		t.Fatalf("expected nil result after error, got %#v", result)
+	}
+
+	err = a.Consume(model.NormalizedEvent{
+		Timestamp: base.Add(6 * time.Second),
+		EventType: "ROWS",
+		TxnKey:    "t3",
+		Schema:    "shop",
+		Table:     "products",
+		Operation: "INSERT",
+		RowCount:  10,
+	})
+	if err == nil {
+		t.Fatal("expected analyzer to remain failed after error")
+	}
+
+	expected := New(Options{})
+	for _, ev := range validEvents {
+		if consumeErr := expected.Consume(ev); consumeErr != nil {
+			t.Fatalf("expected analyzer setup failed: %v", consumeErr)
+		}
+	}
+	want, err := expected.Finalize()
+	if err != nil {
+		t.Fatalf("expected Finalize to succeed: %v", err)
+	}
+	if want.Summary.TotalTransactions != 2 {
+		t.Fatalf("expected reference total transactions 2, got %d", want.Summary.TotalTransactions)
+	}
+	if want.Summary.TotalRows != 8 {
+		t.Fatalf("expected reference total rows 8, got %d", want.Summary.TotalRows)
 	}
 }

@@ -1,6 +1,12 @@
+// Package analyzer orchestrates incremental binlog analysis over normalized events.
+// input: analyzer.Options plus ordered model.NormalizedEvent values from the binlog normalization pipeline.
+// output: streaming Consume/Finalize analysis state and model.AnalysisResult snapshots for command/report layers.
+// pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
+// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
+	"errors"
 	"time"
 
 	"binlogviz/internal/model"
@@ -12,51 +18,76 @@ type Analyzer struct {
 	opts Options
 
 	// Sub-aggregators
-	txnBuilder   *TransactionBuilder
-	tableAgg     *TableAggregator
-	minuteAgg    *MinuteAggregator
+	txnBuilder *TransactionBuilder
+	tableAgg   *TableAggregator
+	minuteAgg  *MinuteAggregator
 
 	// Event tracking
-	eventCount   int
-	startTime    time.Time
-	endTime      time.Time
+	eventCount int
+	startTime  time.Time
+	endTime    time.Time
+
+	// Lifecycle state
+	finalized bool
+	result    *model.AnalysisResult
+	err       error
 }
 
 // New creates a new Analyzer with the given options.
 func New(opts Options) *Analyzer {
-	return &Analyzer{
-		opts:         opts,
-		txnBuilder:   NewTransactionBuilder(),
-		tableAgg:     NewTableAggregator(),
-		minuteAgg:    NewMinuteAggregator(),
-	}
+	a := &Analyzer{opts: opts}
+	a.reset()
+	return a
 }
 
 // Analyze processes a slice of normalized events and returns the complete analysis result.
-// Events are processed in order, passing each to all sub-aggregators.
-// If a boundary error occurs (e.g., malformed transaction sequence), an error is returned.
-// After all events are consumed, Flush is called to finalize in-flight transactions.
-// Events outside the configured time window (Start/End) are filtered out before aggregation.
+// It is a thin wrapper around the streaming Consume/Finalize API.
 func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error) {
-	// Reset state for fresh analysis
 	a.reset()
 
-	// Process all events that fall within the time window
 	for _, ev := range events {
-		// Filter events outside the time window before aggregation
-		if !a.isInWindow(ev.Timestamp) {
-			continue
-		}
-		if err := a.consume(ev); err != nil {
+		if err := a.Consume(ev); err != nil {
 			return nil, err
 		}
 	}
 
-	// Finalize in-flight transactions
-	a.txnBuilder.Flush()
+	return a.Finalize()
+}
 
-	// Assemble final result
-	return a.assembleResult(), nil
+// Consume processes a single normalized event through the analyzer's streaming pipeline.
+// Events outside the configured time window are ignored.
+// Once an error is returned, the analyzer remains failed and future Consume/Finalize calls return that error.
+func (a *Analyzer) Consume(ev model.NormalizedEvent) error {
+	if a.err != nil {
+		return a.err
+	}
+	if a.finalized {
+		return errors.New("analyzer already finalized")
+	}
+	if !a.isInWindow(ev.Timestamp) {
+		return nil
+	}
+	if err := a.consume(ev); err != nil {
+		a.err = err
+		return err
+	}
+	return nil
+}
+
+// Finalize flushes any in-flight state and assembles the final analysis result.
+// It is idempotent after a successful finalize.
+func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
+	if a.err != nil {
+		return nil, a.err
+	}
+	if a.finalized {
+		return a.result, nil
+	}
+
+	a.txnBuilder.Flush()
+	a.result = a.assembleResult()
+	a.finalized = true
+	return a.result, nil
 }
 
 // isInWindow checks if a timestamp falls within the configured time window.
@@ -78,19 +109,19 @@ func (a *Analyzer) isInWindow(ts time.Time) bool {
 // If TransactionBuilder returns an error (e.g., boundary violation),
 // fan-out to other aggregators is stopped to prevent inconsistent state.
 func (a *Analyzer) consume(ev model.NormalizedEvent) error {
-	// Track event count and time bounds
+	// TransactionBuilder is the source of truth for transaction boundaries.
+	// If it returns an error, stop processing to avoid inconsistent state.
+	if err := a.txnBuilder.Consume(ev); err != nil {
+		return err
+	}
+
+	// Track event count and time bounds only after transaction state accepted the event.
 	a.eventCount++
 	if a.startTime.IsZero() || ev.Timestamp.Before(a.startTime) {
 		a.startTime = ev.Timestamp
 	}
 	if a.endTime.IsZero() || ev.Timestamp.After(a.endTime) {
 		a.endTime = ev.Timestamp
-	}
-
-	// TransactionBuilder is the source of truth for transaction boundaries.
-	// If it returns an error, stop processing to avoid inconsistent state.
-	if err := a.txnBuilder.Consume(ev); err != nil {
-		return err
 	}
 
 	// Only fan out to other aggregators if transaction processing succeeded.
@@ -107,6 +138,9 @@ func (a *Analyzer) reset() {
 	a.eventCount = 0
 	a.startTime = time.Time{}
 	a.endTime = time.Time{}
+	a.finalized = false
+	a.result = nil
+	a.err = nil
 }
 
 // assembleResult builds the final AnalysisResult from all sub-aggregator snapshots.
