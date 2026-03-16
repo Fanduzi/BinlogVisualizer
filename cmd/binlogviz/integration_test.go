@@ -1,3 +1,8 @@
+// Package binlogviz validates end-to-end analyze command behavior and DuckDB temp-store lifecycle.
+// input: mock parsers, fixture binlog files, CLI-derived analyzer options, and temporary directories for command resources.
+// output: regression coverage for rendered reports, temp DuckDB cleanup, and command/analyzer integration semantics.
+// pos: command-layer integration test suite covering parse-normalize-analyze-render execution paths.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -135,125 +140,49 @@ func TestRunAnalysisJSONOutput(t *testing.T) {
 	}
 }
 
-func TestApplyTopLimitsTruncatesTables(t *testing.T) {
-	result := &model.AnalysisResult{
-		Tables: createTestTableStats(5),
+func TestCreateDuckDBTempStoreCreatesAndCleansFiles(t *testing.T) {
+	root := t.TempDir()
+
+	store, cleanup, path, err := createDuckDBTempStore(root)
+	if err != nil {
+		t.Fatalf("createDuckDBTempStore returned error: %v", err)
 	}
-	opts := analyzer.Options{TopTables: 2}
-
-	applyTopLimits(result, opts)
-
-	if len(result.Tables) != 2 {
-		t.Errorf("expected 2 tables, got %d", len(result.Tables))
+	if store == nil {
+		t.Fatal("expected non-nil store")
 	}
-}
-
-func TestApplyTopLimitsTruncatesTransactions(t *testing.T) {
-	result := &model.AnalysisResult{
-		Transactions: createTestTransactions(5),
-	}
-	opts := analyzer.Options{TopTransactions: 2}
-
-	applyTopLimits(result, opts)
-
-	if len(result.Transactions) != 2 {
-		t.Errorf("expected 2 transactions, got %d", len(result.Transactions))
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected DuckDB file at %s: %v", path, err)
 	}
 
-	// Verify top transactions by TotalRows are kept
-	if result.Transactions[0].TotalRows != 5 {
-		t.Errorf("expected first transaction to have 5 rows, got %d", result.Transactions[0].TotalRows)
+	if err := cleanup(); err != nil {
+		t.Fatalf("cleanup returned error: %v", err)
 	}
-	if result.Transactions[1].TotalRows != 4 {
-		t.Errorf("expected second transaction to have 4 rows, got %d", result.Transactions[1].TotalRows)
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected DuckDB file to be removed, got err=%v", err)
 	}
 }
 
-func TestApplyTopLimitsNoTruncationWhenLimitExceedsCount(t *testing.T) {
-	result := &model.AnalysisResult{
-		Tables:       createTestTableStats(3),
-		Transactions: createTestTransactions(3),
-	}
-	opts := analyzer.Options{TopTables: 10, TopTransactions: 10}
+func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
+	root := t.TempDir()
+	var createdPath string
 
-	applyTopLimits(result, opts)
-
-	if len(result.Tables) != 3 {
-		t.Errorf("expected 3 tables, got %d", len(result.Tables))
-	}
-	if len(result.Transactions) != 3 {
-		t.Errorf("expected 3 transactions, got %d", len(result.Transactions))
-	}
-}
-
-func TestApplyTopLimitsDeterministicOrderByTxnKey(t *testing.T) {
-	// Create transactions with same TotalRows but different TxnKeys
-	// Order should be deterministic: TotalRows DESC, TxnKey ASC
-	result := &model.AnalysisResult{
-		Transactions: []model.Transaction{
-			{TxnKey: "txn-c", TotalRows: 10},
-			{TxnKey: "txn-a", TotalRows: 10},
-			{TxnKey: "txn-b", TotalRows: 10},
-			{TxnKey: "txn-d", TotalRows: 5},
+	err := runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
 		},
+	}, root, func(path string) {
+		createdPath = path
+	})
+	if err == nil {
+		t.Fatal("expected analysis error")
 	}
-	opts := analyzer.Options{TopTransactions: 3}
-
-	applyTopLimits(result, opts)
-
-	if len(result.Transactions) != 3 {
-		t.Fatalf("expected 3 transactions, got %d", len(result.Transactions))
+	if createdPath == "" {
+		t.Fatal("expected created DuckDB path to be captured")
 	}
-
-	// All 3 with TotalRows=10 should be kept, sorted by TxnKey ASC
-	// txn-a, txn-b, txn-c (all have 10 rows)
-	if result.Transactions[0].TxnKey != "txn-a" {
-		t.Errorf("expected first transaction to be txn-a, got %s", result.Transactions[0].TxnKey)
-	}
-	if result.Transactions[1].TxnKey != "txn-b" {
-		t.Errorf("expected second transaction to be txn-b, got %s", result.Transactions[1].TxnKey)
-	}
-	if result.Transactions[2].TxnKey != "txn-c" {
-		t.Errorf("expected third transaction to be txn-c, got %s", result.Transactions[2].TxnKey)
-	}
-
-	// txn-d with 5 rows should be excluded
-	for _, txn := range result.Transactions {
-		if txn.TxnKey == "txn-d" {
-			t.Error("txn-d with lower TotalRows should not be in top 3")
-		}
-	}
-}
-
-func TestApplyTopLimitsMixedRowssWithTieBreaker(t *testing.T) {
-	// Test with mixed TotalRows where tie-breaker matters for middle items
-	result := &model.AnalysisResult{
-		Transactions: []model.Transaction{
-			{TxnKey: "z-large", TotalRows: 100},
-			{TxnKey: "a-medium", TotalRows: 50},
-			{TxnKey: "c-medium", TotalRows: 50},
-			{TxnKey: "b-medium", TotalRows: 50},
-			{TxnKey: "x-small", TotalRows: 10},
-		},
-	}
-	opts := analyzer.Options{TopTransactions: 3}
-
-	applyTopLimits(result, opts)
-
-	if len(result.Transactions) != 3 {
-		t.Fatalf("expected 3 transactions, got %d", len(result.Transactions))
-	}
-
-	// Expected order: z-large (100), a-medium (50), b-medium (50)
-	// The 3 with 50 rows should be sorted by TxnKey, and we take top 2 of them
-	if result.Transactions[0].TxnKey != "z-large" {
-		t.Errorf("expected first to be z-large, got %s", result.Transactions[0].TxnKey)
-	}
-	if result.Transactions[1].TxnKey != "a-medium" {
-		t.Errorf("expected second to be a-medium, got %s", result.Transactions[1].TxnKey)
-	}
-	if result.Transactions[2].TxnKey != "b-medium" {
-		t.Errorf("expected third to be b-medium, got %s", result.Transactions[2].TxnKey)
+	if _, statErr := os.Stat(createdPath); !os.IsNotExist(statErr) {
+		t.Fatalf("expected cleanup to remove DuckDB path on failure, got err=%v", statErr)
 	}
 }
 
@@ -322,10 +251,10 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 		for i := 0; i < rowCount; i++ {
 			mock.events = append(mock.events, binlog.RawEvent{
 				Timestamp: base.Add(time.Duration(minute)*time.Minute + time.Duration(i)*time.Millisecond),
-				EventType:  "WRITE_ROWS_EVENT",
+				EventType: "WRITE_ROWS_EVENT",
 				Schema:    "shop",
 				Table:     "orders",
-				RowCount:   1,
+				RowCount:  1,
 			})
 		}
 	}
