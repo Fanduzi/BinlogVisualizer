@@ -448,3 +448,14 @@ func TestAnalyzerStreamingPreservesStateOnTransactionBuilderError(t *testing.T) 
 		t.Fatalf("expected reference total rows 8, got %d", want.Summary.TotalRows)
 	}
 }
+
+func TestAnalyzerNewUsesInMemoryStoreByDefault(t *testing.T) {
+	a := New(Options{})
+
+	if a.store == nil {
+		t.Fatal("expected default analyzer store to be initialized")
+	}
+	if _, ok := a.store.(*DuckDBStore); ok {
+		t.Fatal("expected New to avoid implicit DuckDB temp store ownership")
+	}
+}

@@ -7,8 +7,6 @@ package analyzer
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 	"time"
 
 	"binlogviz/internal/model"
@@ -34,18 +32,13 @@ type Analyzer struct {
 	finalized bool
 	result    *model.AnalysisResult
 	err       error
-
-	ownedTempDir string
 }
 
 // New creates a new Analyzer with the given options.
 func New(opts Options) *Analyzer {
-	store, tempDir, err := newOwnedDuckDBStore()
 	a := &Analyzer{
-		opts:         opts,
-		store:        store,
-		ownedTempDir: tempDir,
-		err:          err,
+		opts:  opts,
+		store: newInMemoryStore(),
 	}
 	a.reset()
 	return a
@@ -266,17 +259,4 @@ func (a *Analyzer) persistMinuteBuckets(buckets []model.MinuteBucket) error {
 		return nil
 	}
 	return a.store.RecordMinuteBuckets(buckets)
-}
-
-func newOwnedDuckDBStore() (analysisStore, string, error) {
-	tempDir, err := os.MkdirTemp("", "binlogviz-analyzer-*")
-	if err != nil {
-		return nil, "", err
-	}
-	store, err := NewDuckDBStore(filepath.Join(tempDir, "analysis.duckdb"), DefaultBatchFlushRows)
-	if err != nil {
-		_ = os.RemoveAll(tempDir)
-		return nil, "", err
-	}
-	return store, tempDir, nil
 }
