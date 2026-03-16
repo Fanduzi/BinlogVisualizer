@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"binlogviz/internal/model"
@@ -36,6 +35,12 @@ type analysisStore interface {
 	QueryMinuteBuckets() ([]model.MinuteBucket, error)
 	QueryAlerts() ([]model.Alert, error)
 	Close() error
+}
+
+type inMemoryStore struct {
+	transactions []persistedTransaction
+	minutes      []model.MinuteBucket
+	alerts       []model.Alert
 }
 
 type persistedTransaction struct {
@@ -759,6 +764,189 @@ func limitTables(tables []model.TableStats, limit int) []model.TableStats {
 	return limited
 }
 
-func normalizedDetailsJSON(v string) string {
-	return strings.TrimSpace(v)
+func newInMemoryStore() analysisStore {
+	return &inMemoryStore{}
+}
+
+func (s *inMemoryStore) Reset() error {
+	s.transactions = nil
+	s.minutes = nil
+	s.alerts = nil
+	return nil
+}
+
+func (s *inMemoryStore) RecordTransactions(transactions []persistedTransaction) error {
+	for _, txn := range transactions {
+		s.transactions = append(s.transactions, clonePersistedTransaction(txn))
+	}
+	return nil
+}
+
+func (s *inMemoryStore) RecordMinuteBuckets(buckets []model.MinuteBucket) error {
+	for _, bucket := range buckets {
+		s.minutes = append(s.minutes, cloneMinuteBucket(bucket))
+	}
+	return nil
+}
+
+func (s *inMemoryStore) RecordAlerts(alerts []model.Alert) error {
+	s.alerts = make([]model.Alert, len(alerts))
+	for i, alert := range alerts {
+		s.alerts[i] = cloneAlert(alert)
+	}
+	return nil
+}
+
+func (s *inMemoryStore) Flush() error {
+	return nil
+}
+
+func (s *inMemoryStore) QueryAllTransactions() ([]model.Transaction, error) {
+	txns := buildTransactionsFromPersisted(s.transactions)
+	sort.Slice(txns, func(i, j int) bool {
+		if !txns[i].StartTime.Equal(txns[j].StartTime) {
+			return txns[i].StartTime.Before(txns[j].StartTime)
+		}
+		return txns[i].TxnKey < txns[j].TxnKey
+	})
+	return txns, nil
+}
+
+func (s *inMemoryStore) QueryTopTransactions(limit int) ([]model.Transaction, error) {
+	txns := buildTransactionsFromPersisted(s.transactions)
+	sort.Slice(txns, func(i, j int) bool {
+		if txns[i].TotalRows != txns[j].TotalRows {
+			return txns[i].TotalRows > txns[j].TotalRows
+		}
+		return txns[i].TxnKey < txns[j].TxnKey
+	})
+	if limit > 0 && len(txns) > limit {
+		txns = txns[:limit]
+	}
+	return txns, nil
+}
+
+func (s *inMemoryStore) QueryMinuteBuckets() ([]model.MinuteBucket, error) {
+	minutes := make([]model.MinuteBucket, len(s.minutes))
+	for i, bucket := range s.minutes {
+		minutes[i] = cloneMinuteBucket(bucket)
+	}
+	sort.Slice(minutes, func(i, j int) bool {
+		return minutes[i].Minute.Before(minutes[j].Minute)
+	})
+	return minutes, nil
+}
+
+func (s *inMemoryStore) QueryAlerts() ([]model.Alert, error) {
+	alerts := make([]model.Alert, len(s.alerts))
+	for i, alert := range s.alerts {
+		alerts[i] = cloneAlert(alert)
+	}
+	sort.Slice(alerts, func(i, j int) bool {
+		rank := func(a model.Alert) int {
+			if a.Type == "large_transaction" {
+				return 0
+			}
+			return 1
+		}
+		if rank(alerts[i]) != rank(alerts[j]) {
+			return rank(alerts[i]) < rank(alerts[j])
+		}
+		if !alerts[i].Minute.Equal(alerts[j].Minute) {
+			if alerts[i].Minute.IsZero() {
+				return true
+			}
+			if alerts[j].Minute.IsZero() {
+				return false
+			}
+			return alerts[i].Minute.Before(alerts[j].Minute)
+		}
+		if alerts[i].TxnKey != alerts[j].TxnKey {
+			return alerts[i].TxnKey < alerts[j].TxnKey
+		}
+		if alerts[i].Type != alerts[j].Type {
+			return alerts[i].Type < alerts[j].Type
+		}
+		return alerts[i].Message < alerts[j].Message
+	})
+	return alerts, nil
+}
+
+func (s *inMemoryStore) Close() error {
+	return nil
+}
+
+func clonePersistedTransaction(txn persistedTransaction) persistedTransaction {
+	return persistedTransaction{
+		TxnKey:             txn.TxnKey,
+		StartTime:          txn.StartTime,
+		EndTime:            txn.EndTime,
+		DurationMS:         txn.DurationMS,
+		TotalRows:          txn.TotalRows,
+		EventCount:         txn.EventCount,
+		QuerySummary:       txn.QuerySummary,
+		QueryTruncated:     txn.QueryTruncated,
+		QueryOriginalBytes: txn.QueryOriginalBytes,
+		TableRows:          cloneStringIntMap(txn.TableRows),
+		Operations:         cloneStringIntMap(txn.Operations),
+	}
+}
+
+func cloneMinuteBucket(bucket model.MinuteBucket) model.MinuteBucket {
+	return model.MinuteBucket{
+		Minute:    bucket.Minute,
+		TotalRows: bucket.TotalRows,
+		TxnCount:  bucket.TxnCount,
+		TableRows: cloneStringIntMap(bucket.TableRows),
+	}
+}
+
+func cloneAlert(alert model.Alert) model.Alert {
+	return model.Alert{
+		Type:     alert.Type,
+		Severity: alert.Severity,
+		Message:  alert.Message,
+		TxnKey:   alert.TxnKey,
+		Minute:   alert.Minute,
+		Details:  cloneStringAnyMap(alert.Details),
+	}
+}
+
+func cloneStringAnyMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]any, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
+}
+
+func buildTransactionsFromPersisted(src []persistedTransaction) []model.Transaction {
+	if len(src) == 0 {
+		return nil
+	}
+	txns := make([]model.Transaction, len(src))
+	for i, row := range src {
+		txns[i] = model.Transaction{
+			TxnKey:       row.TxnKey,
+			StartTime:    row.StartTime,
+			EndTime:      row.EndTime,
+			Duration:     time.Duration(row.DurationMS) * time.Millisecond,
+			TotalRows:    int(row.TotalRows),
+			EventCount:   int(row.EventCount),
+			QuerySummary: row.QuerySummary,
+			Tables:       cloneStringIntMap(row.TableRows),
+			Operations:   cloneStringIntMap(row.Operations),
+		}
+		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
+			txns[i].QueryContext = &model.QueryContext{
+				SQL:           "",
+				Truncated:     row.QueryTruncated,
+				OriginalBytes: int(row.QueryOriginalBytes),
+			}
+		}
+	}
+	return txns
 }
