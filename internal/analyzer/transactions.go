@@ -1,3 +1,8 @@
+// Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
+// input: ordered normalized events that carry BEGIN/COMMIT/XID/ROWS/ROWS_QUERY transaction semantics.
+// output: completed model.Transaction values plus deterministic txn keys for downstream aggregation and persistence.
+// pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
+// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
@@ -16,17 +21,17 @@ type TransactionBuilder struct {
 }
 
 type inFlightTxn struct {
-	txnKey           string
-	isExplicit       bool // true if started with BEGIN, false if implicit
-	startTime        time.Time
-	endTime          time.Time
-	totalRows        int
-	eventCount       int
-	tables           map[string]int
-	operations       map[string]int
-	querySQL         string // Bounded SQL from ROWS_QUERY event
-	queryTruncated   bool
-	queryOriginalBytes int  // Original SQL byte count before truncation
+	txnKey             string
+	isExplicit         bool // true if started with BEGIN, false if implicit
+	startTime          time.Time
+	endTime            time.Time
+	totalRows          int
+	eventCount         int
+	tables             map[string]int
+	operations         map[string]int
+	querySQL           string // Bounded SQL from ROWS_QUERY event
+	queryTruncated     bool
+	queryOriginalBytes int // Original SQL byte count before truncation
 }
 
 // NewTransactionBuilder creates a new TransactionBuilder.
@@ -64,6 +69,16 @@ func (b *TransactionBuilder) Flush() {
 // Completed returns all completed transactions.
 func (b *TransactionBuilder) Completed() []model.Transaction {
 	return b.completed
+}
+
+// DrainCompleted returns completed transactions accumulated so far and clears the internal buffer.
+func (b *TransactionBuilder) DrainCompleted() []model.Transaction {
+	if len(b.completed) == 0 {
+		return nil
+	}
+	drained := b.completed
+	b.completed = nil
+	return drained
 }
 
 func (b *TransactionBuilder) handleBegin(ts time.Time) error {

@@ -5,6 +5,7 @@
 | File | Responsibility |
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, streaming lifecycle, final result assembly. |
+| `store.go` | DuckDB-backed internal result store with batch flush and Finalize-time query assembly. |
 | `transactions.go` | Reconstructs completed transactions from normalized event boundaries. |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows. |
@@ -17,8 +18,10 @@
 | API | Contract |
 |-----|----------|
 | `New(opts Options) *Analyzer` | Creates a fresh analyzer with bounded in-memory live state. |
+| `NewWithStore(opts Options, store *DuckDBStore) *Analyzer` | Creates an analyzer that uses a caller-managed DuckDB temp store. |
+| `NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error)` | Opens and initializes the internal DuckDB result store schema. |
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event, applying time-window filtering and failing atomically on transaction-boundary errors. |
-| `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state and assembles the final analysis result. Successful calls are idempotent. |
+| `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the final analysis result. Successful calls are idempotent. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
 | `NewTransactionBuilder() *TransactionBuilder` | Reconstructs transaction boundaries and completed transaction snapshots. |
 | `NewTableAggregator() *TableAggregator` | Tracks table-level aggregates for reporting. |
@@ -28,12 +31,13 @@
 
 - Upstream:
   - `internal/model` provides normalized event input plus result/report structures.
-  - `cmd/binlogviz/analyze.go` constructs `Analyzer` and still calls the compatibility `Analyze` wrapper in Stage 1.
+  - `cmd/binlogviz/analyze.go` creates a command-owned DuckDB temp store and injects it into `NewWithStore`.
 - Downstream:
   - `internal/report` renders `model.AnalysisResult` produced by this module.
   - Analyzer tests and benchmarks validate ordering, aggregation, and failure semantics.
 
 ## Notes
 
-- Stage 1 Phase 2 keeps the analyzer's live state bounded to the in-flight transaction, table aggregates, minute buckets, and summary counters.
-- DuckDB integration, command-layer streaming, CLI flag changes, and renderer changes are intentionally out of scope for this module revision.
+- Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `1000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
+- Live state remains bounded to the in-flight transaction builder, live table aggregates, current minute buckets pending flush, and summary counters.
+- Command-layer streaming, CLI flag changes, renderer changes, benchmarks, and release tasks remain out of scope for this module revision.

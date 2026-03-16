@@ -1,3 +1,8 @@
+// Package analyzer aggregates row activity into minute buckets that can later be persisted and queried.
+// input: normalized row events with timestamps, transaction keys, and schema/table identifiers.
+// output: deterministic minute-level aggregates and per-table minute rows for spike detection and activity reporting.
+// pos: live bounded minute aggregation layer that lets Analyzer drain finalized buckets to DuckDB as time advances.
+// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
@@ -17,7 +22,7 @@ type minuteBucket struct {
 	minute    time.Time
 	totalRows int
 	txnSet    map[string]struct{} // distinct transactions
-	tableRows map[string]int // "schema.table" -> row count
+	tableRows map[string]int      // "schema.table" -> row count
 }
 
 // NewMinuteAggregator creates a new MinuteAggregator.
@@ -89,7 +94,56 @@ func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 	return result
 }
 
+// DrainBefore returns and removes buckets older than cutoffMinute.
+func (a *MinuteAggregator) DrainBefore(cutoffMinute time.Time) []model.MinuteBucket {
+	if len(a.buckets) == 0 {
+		return nil
+	}
+	result := make([]model.MinuteBucket, 0)
+	for minute, bucket := range a.buckets {
+		if !minute.Before(cutoffMinute) {
+			continue
+		}
+		result = append(result, snapshotMinuteBucket(bucket))
+		delete(a.buckets, minute)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Minute.Before(result[j].Minute)
+	})
+	return result
+}
+
+// DrainAll returns and clears all remaining minute buckets.
+func (a *MinuteAggregator) DrainAll() []model.MinuteBucket {
+	if len(a.buckets) == 0 {
+		return nil
+	}
+	result := make([]model.MinuteBucket, 0, len(a.buckets))
+	for minute, bucket := range a.buckets {
+		result = append(result, snapshotMinuteBucket(bucket))
+		delete(a.buckets, minute)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Minute.Before(result[j].Minute)
+	})
+	return result
+}
+
 // truncateToMinute truncates a timestamp to the start of its minute.
 func truncateToMinute(t time.Time) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, t.Location())
+}
+
+func snapshotMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
+	tableRowsCopy := make(map[string]int, len(bucket.tableRows))
+	for k, v := range bucket.tableRows {
+		tableRowsCopy[k] = v
+	}
+
+	return model.MinuteBucket{
+		Minute:    bucket.minute,
+		TotalRows: bucket.totalRows,
+		TxnCount:  len(bucket.txnSet),
+		TableRows: tableRowsCopy,
+	}
 }

@@ -7,6 +7,8 @@ package analyzer
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"time"
 
 	"binlogviz/internal/model"
@@ -15,7 +17,8 @@ import (
 // Analyzer orchestrates the complete binlog analysis pipeline.
 // It consumes normalized events and produces a complete analysis result.
 type Analyzer struct {
-	opts Options
+	opts  Options
+	store analysisStore
 
 	// Sub-aggregators
 	txnBuilder *TransactionBuilder
@@ -31,11 +34,29 @@ type Analyzer struct {
 	finalized bool
 	result    *model.AnalysisResult
 	err       error
+
+	ownedTempDir string
 }
 
 // New creates a new Analyzer with the given options.
 func New(opts Options) *Analyzer {
-	a := &Analyzer{opts: opts}
+	store, tempDir, err := newOwnedDuckDBStore()
+	a := &Analyzer{
+		opts:         opts,
+		store:        store,
+		ownedTempDir: tempDir,
+		err:          err,
+	}
+	a.reset()
+	return a
+}
+
+// NewWithStore creates a new Analyzer backed by a caller-managed store.
+func NewWithStore(opts Options, store *DuckDBStore) *Analyzer {
+	a := &Analyzer{
+		opts:  opts,
+		store: store,
+	}
 	a.reset()
 	return a
 }
@@ -85,7 +106,23 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 	}
 
 	a.txnBuilder.Flush()
-	a.result = a.assembleResult()
+	if err := a.persistCompletedTransactions(); err != nil {
+		a.err = err
+		return nil, err
+	}
+	if err := a.persistMinuteBuckets(a.minuteAgg.DrainAll()); err != nil {
+		a.err = err
+		return nil, err
+	}
+	if err := a.store.Flush(); err != nil {
+		a.err = err
+		return nil, err
+	}
+
+	a.result, a.err = a.assembleResult()
+	if a.err != nil {
+		return nil, a.err
+	}
 	a.finalized = true
 	return a.result, nil
 }
@@ -127,6 +164,13 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 	// Only fan out to other aggregators if transaction processing succeeded.
 	a.tableAgg.Consume(ev)
 	a.minuteAgg.Consume(ev)
+
+	if err := a.persistCompletedTransactions(); err != nil {
+		return err
+	}
+	if err := a.persistMinuteBuckets(a.minuteAgg.DrainBefore(truncateToMinute(ev.Timestamp))); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -140,31 +184,51 @@ func (a *Analyzer) reset() {
 	a.endTime = time.Time{}
 	a.finalized = false
 	a.result = nil
-	a.err = nil
+	if a.store != nil && a.err == nil {
+		a.err = a.store.Reset()
+	}
+	if a.err == nil {
+		a.err = nil
+	}
 }
 
 // assembleResult builds the final AnalysisResult from all sub-aggregator snapshots.
-func (a *Analyzer) assembleResult() *model.AnalysisResult {
-	transactions := a.txnBuilder.Completed()
-	tables := a.tableAgg.Snapshot()
-	minutes := a.minuteAgg.Snapshot()
+func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
+	allTransactions, err := a.store.QueryAllTransactions()
+	if err != nil {
+		return nil, err
+	}
+	topTransactions, err := a.store.QueryTopTransactions(a.opts.TopTransactions)
+	if err != nil {
+		return nil, err
+	}
+	minutes, err := a.store.QueryMinuteBuckets()
+	if err != nil {
+		return nil, err
+	}
+	alerts := append(DetectLargeTransactionAlerts(allTransactions, a.opts), DetectSpikeAlerts(minutes, a.opts)...)
+	if err := a.store.RecordAlerts(alerts); err != nil {
+		return nil, err
+	}
+	if err := a.store.Flush(); err != nil {
+		return nil, err
+	}
+	persistedAlerts, err := a.store.QueryAlerts()
+	if err != nil {
+		return nil, err
+	}
 
 	// Calculate workload summary
-	summary := a.buildSummary(transactions)
-
-	// Detect alerts
-	var alerts []model.Alert
-	alerts = append(alerts, DetectLargeTransactionAlerts(transactions, a.opts)...)
-	alerts = append(alerts, DetectSpikeAlerts(minutes, a.opts)...)
+	summary := a.buildSummary(allTransactions)
 
 	return &model.AnalysisResult{
 		Summary:      summary,
-		Tables:       tables,
-		Transactions: transactions,
+		Tables:       limitTables(a.tableAgg.Snapshot(), a.opts.TopTables),
+		Transactions: topTransactions,
 		Minutes:      minutes,
-		Alerts:       alerts,
+		Alerts:       persistedAlerts,
 		Warnings:     0, // No warnings in MVP
-	}
+	}, nil
 }
 
 // buildSummary creates the WorkloadSummary from transaction data.
@@ -187,4 +251,32 @@ func (a *Analyzer) buildSummary(transactions []model.Transaction) model.Workload
 		EndTime:           a.endTime,
 		Duration:          duration,
 	}
+}
+
+func (a *Analyzer) persistCompletedTransactions() error {
+	drained := a.txnBuilder.DrainCompleted()
+	if len(drained) == 0 {
+		return nil
+	}
+	return a.store.RecordTransactions(toPersistedTransactions(drained))
+}
+
+func (a *Analyzer) persistMinuteBuckets(buckets []model.MinuteBucket) error {
+	if len(buckets) == 0 {
+		return nil
+	}
+	return a.store.RecordMinuteBuckets(buckets)
+}
+
+func newOwnedDuckDBStore() (analysisStore, string, error) {
+	tempDir, err := os.MkdirTemp("", "binlogviz-analyzer-*")
+	if err != nil {
+		return nil, "", err
+	}
+	store, err := NewDuckDBStore(filepath.Join(tempDir, "analysis.duckdb"), DefaultBatchFlushRows)
+	if err != nil {
+		_ = os.RemoveAll(tempDir)
+		return nil, "", err
+	}
+	return store, tempDir, nil
 }

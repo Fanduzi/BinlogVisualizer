@@ -1,9 +1,14 @@
+// Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
+// input: CLI flags, binlog file paths, parser callbacks, and command-owned temporary directory roots.
+// output: rendered text/JSON analysis reports plus command-level creation and cleanup of temporary DuckDB stores.
+// pos: CLI orchestration layer between parser normalization, analyzer execution, and final report rendering.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
 	"fmt"
 	"os"
-	"sort"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -78,12 +83,26 @@ func validateFiles(paths []string) error {
 
 // runAnalysis executes the complete analysis pipeline.
 func runAnalysis(paths []string, opts analyzer.Options, jsonOutput bool) error {
-	return runAnalysisWithParser(paths, opts, jsonOutput, binlog.NewParser())
+	return runAnalysisWithParserAndTempDir(paths, opts, jsonOutput, binlog.NewParser(), "", nil)
 }
 
 // runAnalysisWithParser executes the analysis pipeline with an injected parser.
 // This allows testing with mock parsers without requiring real binlog files.
 func runAnalysisWithParser(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser) error {
+	return runAnalysisWithParserAndTempDir(paths, opts, jsonOutput, parser, "", nil)
+}
+
+func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
+	store, cleanup, _, err := createDuckDBTempStore(tempRoot)
+	if err != nil {
+		return fmt.Errorf("create temp DuckDB store: %w", err)
+	}
+	defer cleanup()
+
+	if onStoreCreated != nil {
+		onStoreCreated(store.Path())
+	}
+
 	// Step 1: Parse binlog files and collect raw events
 	var events []model.NormalizedEvent
 
@@ -101,40 +120,39 @@ func runAnalysisWithParser(paths []string, opts analyzer.Options, jsonOutput boo
 	}
 
 	// Step 2: Run analyzer
-	a := analyzer.New(opts)
+	a := analyzer.NewWithStore(opts, store)
 	result, err := a.Analyze(events)
 	if err != nil {
 		return fmt.Errorf("analysis error: %w", err)
 	}
 
-	// Step 3: Apply top limits before rendering
-	applyTopLimits(result, opts)
-
-	// Step 4: Render output
+	// Step 3: Render output
 	if jsonOutput {
 		return report.RenderJSONToStdout(*result)
 	}
 	return report.RenderTextToStdout(*result)
 }
 
-// applyTopLimits truncates tables and transactions to the configured limits.
-// This is done in the command layer to keep analyzer returning complete results.
-func applyTopLimits(result *model.AnalysisResult, opts analyzer.Options) {
-	if opts.TopTables > 0 && len(result.Tables) > opts.TopTables {
-		result.Tables = result.Tables[:opts.TopTables]
+func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, string, error) {
+	tempDir, err := os.MkdirTemp(root, "binlogviz-duckdb-*")
+	if err != nil {
+		return nil, nil, "", err
 	}
-	if opts.TopTransactions > 0 && len(result.Transactions) > opts.TopTransactions {
-		// Sort by TotalRows descending, with TxnKey ascending as tie-breaker for determinism
-		sorted := make([]model.Transaction, len(result.Transactions))
-		copy(sorted, result.Transactions)
-		sort.Slice(sorted, func(i, j int) bool {
-			if sorted[i].TotalRows != sorted[j].TotalRows {
-				return sorted[i].TotalRows > sorted[j].TotalRows
-			}
-			return sorted[i].TxnKey < sorted[j].TxnKey
-		})
-		result.Transactions = sorted[:opts.TopTransactions]
+	path := filepath.Join(tempDir, "analysis.duckdb")
+	store, err := analyzer.NewDuckDBStore(path, analyzer.DefaultBatchFlushRows)
+	if err != nil {
+		_ = os.RemoveAll(tempDir)
+		return nil, nil, "", err
 	}
+	cleanup := func() error {
+		closeErr := store.Close()
+		removeErr := os.RemoveAll(tempDir)
+		if closeErr != nil {
+			return closeErr
+		}
+		return removeErr
+	}
+	return store, cleanup, path, nil
 }
 
 // parseTimeRange parses start and end time strings into time.Time values.
