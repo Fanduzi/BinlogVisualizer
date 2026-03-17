@@ -9,8 +9,8 @@
 ## Notes
 
 - The release workflow is intentionally limited to the Phase 2 platform matrix:
-  - `darwin/amd64`
-  - `darwin/arm64`
+  - `darwin/amd64` on `macos-15-intel`
+  - `darwin/arm64` on `macos-14`
   - `linux/amd64`
   - `linux/arm64`
 - Native GitHub runners are the only trusted multi-platform release path; local GoReleaser usage is limited to `goreleaser check` and optional single-target validation on the current host.
