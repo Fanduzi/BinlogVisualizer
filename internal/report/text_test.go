@@ -1,3 +1,8 @@
+// Package report verifies text rendering order and SQL context presentation modes.
+// input: synthetic AnalysisResult fixtures with and without bounded QueryContext payloads.
+// output: regression coverage for stable section ordering and summary/off/full text behavior.
+// pos: text renderer regression suite guarding user-facing CLI report formatting.
+// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -7,6 +12,17 @@ import (
 
 	"binlogviz/internal/model"
 )
+
+func sampleTransactionWithQueryContext() model.Transaction {
+	return model.Transaction{
+		TxnKey:       "txn-1",
+		TotalRows:    100,
+		EventCount:   2,
+		Duration:     5 * time.Second,
+		QuerySummary: "UPDATE orders SET status = ? WHERE id = ?",
+		QueryContext: model.NewQueryContext("UPDATE orders SET status = 'paid' WHERE id = 42"),
+	}
+}
 
 func TestRenderTextIncludesWorkloadSummary(t *testing.T) {
 	result := model.AnalysisResult{
@@ -127,11 +143,11 @@ func TestRenderTextHandlesEmptySections(t *testing.T) {
 func TestRenderTextSectionOrder(t *testing.T) {
 	// Verify sections appear in the correct order
 	result := model.AnalysisResult{
-		Summary: model.WorkloadSummary{TotalTransactions: 1},
-		Tables:  []model.TableStats{{Schema: "s", Table: "t", TotalRows: 1}},
+		Summary:      model.WorkloadSummary{TotalTransactions: 1},
+		Tables:       []model.TableStats{{Schema: "s", Table: "t", TotalRows: 1}},
 		Transactions: []model.Transaction{{TxnKey: "t1"}},
-		Minutes: []model.MinuteBucket{{Minute: time.Now()}},
-		Alerts:  []model.Alert{{Type: "test"}},
+		Minutes:      []model.MinuteBucket{{Minute: time.Now()}},
+		Alerts:       []model.Alert{{Type: "test"}},
 	}
 
 	out, err := RenderText(result)
@@ -217,5 +233,63 @@ func TestRenderTopTransactionsMixedRowsDeterministic(t *testing.T) {
 	if !(idxLarge < idxA && idxA < idxB && idxB < idxC && idxC < idxSmall) {
 		t.Errorf("unexpected order: large=%d, a=%d, b=%d, c=%d, small=%d",
 			idxLarge, idxA, idxB, idxC, idxSmall)
+	}
+}
+
+func TestRenderTextSQLContextSummaryMode(t *testing.T) {
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{sampleTransactionWithQueryContext()},
+	}
+
+	out, err := RenderTextWithOptions(result, Options{SQLContextMode: SQLContextSummary})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Query: UPDATE orders SET status = ? WHERE id = ?") {
+		t.Fatalf("expected summary query line, got: %s", out)
+	}
+	if strings.Contains(out, "WHERE id = 42") {
+		t.Fatalf("summary mode should not render bounded SQL, got: %s", out)
+	}
+}
+
+func TestRenderTextSQLContextOffMode(t *testing.T) {
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{sampleTransactionWithQueryContext()},
+	}
+
+	out, err := RenderTextWithOptions(result, Options{SQLContextMode: SQLContextOff})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "Query:") {
+		t.Fatalf("off mode should omit query line, got: %s", out)
+	}
+}
+
+func TestRenderTextSQLContextFullModeUsesBoundedSQL(t *testing.T) {
+	longSQL := strings.Repeat("x", model.MaxStoredSQLBytes+128)
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:       "txn-1",
+				TotalRows:    100,
+				EventCount:   2,
+				Duration:     5 * time.Second,
+				QuerySummary: "summary",
+				QueryContext: model.NewQueryContext(longSQL),
+			},
+		},
+	}
+
+	out, err := RenderTextWithOptions(result, Options{SQLContextMode: SQLContextFull})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Query: "+strings.Repeat("x", model.MaxStoredSQLBytes)) {
+		t.Fatal("expected bounded SQL in full mode")
+	}
+	if strings.Contains(out, longSQL) {
+		t.Fatal("full mode should not render unbounded original SQL")
 	}
 }

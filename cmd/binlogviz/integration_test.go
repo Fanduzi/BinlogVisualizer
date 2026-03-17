@@ -7,15 +7,18 @@ package binlogviz
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
 	"binlogviz/internal/model"
+	"binlogviz/internal/report"
 )
 
 type fakeStreamingAnalyzer struct {
@@ -164,7 +167,7 @@ func TestRunAnalysisStreamsEventsDirectlyIntoAnalyzer(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return fakeAnalyzer
 	}, createDuckDBTempStore, "")
 
@@ -228,6 +231,127 @@ func TestRunAnalysisJSONOutput(t *testing.T) {
 	}
 }
 
+func TestRunAnalysisTextSQLContextModes(t *testing.T) {
+	result := &model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:       "txn-1",
+				TotalRows:    3,
+				EventCount:   1,
+				Duration:     time.Second,
+				QuerySummary: "UPDATE users SET name = ? WHERE id = ?",
+				QueryContext: model.NewQueryContext("UPDATE users SET name = 'alice' WHERE id = 7"),
+			},
+		},
+	}
+	tests := []struct {
+		name        string
+		mode        report.SQLContextMode
+		want        string
+		notContains string
+	}{
+		{name: "summary", mode: report.SQLContextSummary, want: "Query: UPDATE users SET name = ? WHERE id = ?", notContains: "name = 'alice'"},
+		{name: "off", mode: report.SQLContextOff, want: "", notContains: "Query:"},
+		{name: "full", mode: report.SQLContextFull, want: "Query: UPDATE users SET name = 'alice' WHERE id = 7", notContains: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, false, &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+				return &fakeStreamingAnalyzer{finalResult: result}
+			}, createDuckDBTempStore, "")
+
+			w.Close()
+			os.Stdout = old
+
+			var buf bytes.Buffer
+			_, _ = io.Copy(&buf, r)
+			out := buf.String()
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if tt.want != "" && !strings.Contains(out, tt.want) {
+				t.Fatalf("expected output to contain %q, got: %s", tt.want, out)
+			}
+			if tt.notContains != "" && strings.Contains(out, tt.notContains) {
+				t.Fatalf("expected output to omit %q, got: %s", tt.notContains, out)
+			}
+		})
+	}
+}
+
+func TestRunAnalysisJSONSQLContextModes(t *testing.T) {
+	result := &model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:       "txn-1",
+				TotalRows:    3,
+				EventCount:   1,
+				Duration:     time.Second,
+				QuerySummary: "UPDATE users SET name = ? WHERE id = ?",
+				QueryContext: model.NewQueryContext("UPDATE users SET name = 'alice' WHERE id = 7"),
+			},
+		},
+	}
+	tests := []struct {
+		name         string
+		mode         report.SQLContextMode
+		wantFields   []string
+		omitFields   []string
+		wantQuerySQL string
+	}{
+		{name: "summary", mode: report.SQLContextSummary, wantFields: []string{"query_summary", "query_truncated", "query_original_bytes"}, omitFields: []string{"query_sql"}},
+		{name: "off", mode: report.SQLContextOff, omitFields: []string{"query_summary", "query_truncated", "query_original_bytes", "query_sql"}},
+		{name: "full", mode: report.SQLContextFull, wantFields: []string{"query_summary", "query_truncated", "query_original_bytes", "query_sql"}, wantQuerySQL: "UPDATE users SET name = 'alice' WHERE id = 7"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, true, &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+				return &fakeStreamingAnalyzer{finalResult: result}
+			}, createDuckDBTempStore, "")
+
+			w.Close()
+			os.Stdout = old
+
+			var buf bytes.Buffer
+			_, _ = io.Copy(&buf, r)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var parsed map[string]any
+			if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+				t.Fatalf("invalid JSON output: %v", err)
+			}
+			txn := parsed["transactions"].([]any)[0].(map[string]any)
+			for _, field := range tt.wantFields {
+				if _, ok := txn[field]; !ok {
+					t.Fatalf("expected field %q in output", field)
+				}
+			}
+			for _, field := range tt.omitFields {
+				if _, ok := txn[field]; ok {
+					t.Fatalf("expected field %q to be omitted", field)
+				}
+			}
+			if tt.wantQuerySQL != "" && txn["query_sql"] != tt.wantQuerySQL {
+				t.Fatalf("unexpected query_sql: %v", txn["query_sql"])
+			}
+		})
+	}
+}
+
 func TestCreateDuckDBTempStoreCreatesAndCleansFiles(t *testing.T) {
 	root := t.TempDir()
 
@@ -276,7 +400,7 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 
 func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 	wantErr := errors.New("normalize boom")
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Position: 42}},
 	}, func(raw binlog.RawEvent) (*model.NormalizedEvent, error) {
 		return nil, wantErr
@@ -293,7 +417,7 @@ func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 
 func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 	wantErr := errors.New("consume boom")
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
 	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{consumeErr: wantErr}
@@ -308,7 +432,7 @@ func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 
 func TestRunAnalysisPropagatesAnalyzerFinalizeError(t *testing.T) {
 	wantErr := errors.New("finalize boom")
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
 	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{finalizeErr: wantErr}

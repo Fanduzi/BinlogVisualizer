@@ -1,3 +1,8 @@
+// Package report renders human-readable text reports from bounded analysis results.
+// input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
+// output: stable five-section text reports with configurable transaction SQL display.
+// pos: text renderer for the CLI output path after analyzer Finalize.
+// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -14,6 +19,12 @@ import (
 // RenderText renders an AnalysisResult as human-readable text.
 // Sections are always rendered in a fixed order, even if empty.
 func RenderText(result model.AnalysisResult) (string, error) {
+	return RenderTextWithOptions(result, DefaultOptions())
+}
+
+// RenderTextWithOptions renders an AnalysisResult with explicit presentation controls.
+func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, error) {
+	opts = normalizeOptions(opts)
 	var buf strings.Builder
 
 	// Section 1: Workload Summary
@@ -23,7 +34,7 @@ func RenderText(result model.AnalysisResult) (string, error) {
 	renderTopTables(&buf, result.Tables)
 
 	// Section 3: Top Transactions
-	renderTopTransactions(&buf, result.Transactions)
+	renderTopTransactions(&buf, result.Transactions, opts.SQLContextMode)
 
 	// Section 4: Minute Activity
 	renderMinuteActivity(&buf, result.Minutes)
@@ -50,14 +61,14 @@ func renderTopTables(buf *strings.Builder, tables []model.TableStats) {
 		buf.WriteString("  (no table activity)\n")
 	} else {
 		for _, t := range tables {
-		buf.WriteString(fmt.Sprintf("  %s.%s: %d rows (%d insert, %d update, %d delete, %d txn)\n",
-			t.Schema, t.Table, t.TotalRows, t.InsertRows, t.UpdateRows, t.DeleteRows, t.TxnCount))
+			buf.WriteString(fmt.Sprintf("  %s.%s: %d rows (%d insert, %d update, %d delete, %d txn)\n",
+				t.Schema, t.Table, t.TotalRows, t.InsertRows, t.UpdateRows, t.DeleteRows, t.TxnCount))
 		}
 	}
 	buf.WriteString("\n")
 }
 
-func renderTopTransactions(buf *strings.Builder, transactions []model.Transaction) {
+func renderTopTransactions(buf *strings.Builder, transactions []model.Transaction, mode SQLContextMode) {
 	buf.WriteString("=== Top Transactions ===\n")
 	if len(transactions) == 0 {
 		buf.WriteString("  (no transactions)\n")
@@ -75,12 +86,28 @@ func renderTopTransactions(buf *strings.Builder, transactions []model.Transactio
 		for _, txn := range sorted {
 			buf.WriteString(fmt.Sprintf("  %s: %d rows in %s (%d events)\n",
 				txn.TxnKey, txn.TotalRows, formatDuration(txn.Duration), txn.EventCount))
-			if txn.QuerySummary != "" {
-				buf.WriteString(fmt.Sprintf("    Query: %s\n", txn.QuerySummary))
+			if queryLine := transactionTextQuery(txn, mode); queryLine != "" {
+				buf.WriteString(fmt.Sprintf("    Query: %s\n", queryLine))
 			}
 		}
 	}
 	buf.WriteString("\n")
+}
+
+func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
+	switch mode {
+	case SQLContextOff:
+		return ""
+	case SQLContextFull:
+		if txn.QueryContext != nil {
+			return txn.QueryContext.SQL
+		}
+		return ""
+	case SQLContextSummary:
+		fallthrough
+	default:
+		return txn.QuerySummary
+	}
 }
 
 func renderMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket) {
@@ -89,8 +116,8 @@ func renderMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket) {
 		buf.WriteString("  (no minute activity)\n")
 	} else {
 		for _, m := range minutes {
-		buf.WriteString(fmt.Sprintf("  %s: %d rows, %d txn\n",
-			m.Minute.Format("2006-01-02 15:04"), m.TotalRows, m.TxnCount))
+			buf.WriteString(fmt.Sprintf("  %s: %d rows, %d txn\n",
+				m.Minute.Format("2006-01-02 15:04"), m.TotalRows, m.TxnCount))
 		}
 	}
 	buf.WriteString("\n")
@@ -102,7 +129,7 @@ func renderAlerts(buf *strings.Builder, alerts []model.Alert) {
 		buf.WriteString("  (no alerts)\n")
 	} else {
 		for _, a := range alerts {
-		buf.WriteString(fmt.Sprintf("  [%s] %s: %s\n", strings.ToUpper(a.Severity), a.Type, a.Message))
+			buf.WriteString(fmt.Sprintf("  [%s] %s: %s\n", strings.ToUpper(a.Severity), a.Type, a.Message))
 		}
 	}
 	buf.WriteString("\n")
@@ -130,7 +157,12 @@ func formatDuration(d time.Duration) string {
 
 // RenderTextTo writes the text report to the specified writer.
 func RenderTextTo(result model.AnalysisResult, w io.Writer) error {
-	text, err := RenderText(result)
+	return RenderTextToWithOptions(result, w, DefaultOptions())
+}
+
+// RenderTextToWithOptions writes the text report with explicit presentation controls.
+func RenderTextToWithOptions(result model.AnalysisResult, w io.Writer, opts Options) error {
+	text, err := RenderTextWithOptions(result, opts)
 	if err != nil {
 		return err
 	}
@@ -141,4 +173,9 @@ func RenderTextTo(result model.AnalysisResult, w io.Writer) error {
 // RenderTextToStdout writes the text report to stdout.
 func RenderTextToStdout(result model.AnalysisResult) error {
 	return RenderTextTo(result, os.Stdout)
+}
+
+// RenderTextToStdoutWithOptions writes the text report with explicit presentation controls.
+func RenderTextToStdoutWithOptions(result model.AnalysisResult, opts Options) error {
+	return RenderTextToWithOptions(result, os.Stdout, opts)
 }
