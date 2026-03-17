@@ -36,3 +36,8 @@ The script:
 - **Size**: ~1.5KB
 - **Format**: MySQL 5.7 ROW binlog
 - **Server ID**: 1
+
+## Stage 5 Coverage Notes
+
+- Multi-file command-path coverage reuses `minimal.binlog` twice in ordered input tests and benchmarks to exercise the real parser over more than one file without duplicating fixture assets.
+- `Rows_query_log_event` present/absent cases still use controlled parser input in `cmd/binlogviz` tests because producing paired real fixtures with and without `binlog_rows_query_log_events=ON` would require maintaining multiple MySQL fixture-generation modes for a narrow renderer contract.
