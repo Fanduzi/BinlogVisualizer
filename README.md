@@ -13,11 +13,43 @@ BinlogViz answers critical operational questions:
 
 ## Installation
 
+### Preferred: Release Artifact
+
+Download the release archive for your platform from GitHub Releases, verify the checksum, and move the binary onto your `PATH`.
+
+Example for `darwin/arm64` and the planned Phase 2 release `v0.2.0`:
+
 ```bash
-# Clone and build
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.0/binlogviz_0.2.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.0/binlogviz_0.2.0_checksums.txt
+shasum -a 256 -c binlogviz_0.2.0_checksums.txt 2>/dev/null | grep "binlogviz_0.2.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.2.0_darwin_arm64.tar.gz
+install ./binlogviz /usr/local/bin/binlogviz
+```
+
+Or use the included install helper:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.2.0
+```
+
+To preview the resolved artifact without downloading:
+
+```bash
+./install.sh --version v0.2.0 --dry-run
+```
+
+### Fallback: Build From Source
+
+```bash
 git clone <repository-url>
 cd BinlogVisualizer
+
+# Build locally
 go build -o binlogviz .
+
+# Or install into GOPATH/bin
+go install .
 
 # Or run directly
 go run . analyze <binlog files...>
@@ -76,6 +108,7 @@ binlogviz analyze mysql-bin.* \
 | `--start` | (none) | Start time (inclusive, RFC3339 format) |
 | `--end` | (none) | End time (inclusive, RFC3339 format) |
 | `--json` | false | Output in JSON format |
+| `--sql-context` | summary | SQL context presentation mode: `summary`, `off`, or `full` |
 | `--top-tables` | 10 | Number of top tables to show |
 | `--top-transactions` | 10 | Number of top transactions to show |
 | `--detect-spikes` | false | Enable write spike detection |
@@ -138,12 +171,13 @@ BinlogViz is designed for MVP efficiency and has the following characteristics:
 
 ### Memory Model
 
-The current implementation loads all normalized events into memory before analysis:
+The current implementation uses a streaming command path with DuckDB-backed finalize-time result assembly:
 
-- **Parser**: Uses `go-mysql-org/go-mysql/replication` which streams events via callbacks
-- **Command Layer**: Collects all normalized events into a slice before passing to the analyzer
-- **Analyzer**: Processes events in a single pass
-- **Renderer**: Outputs final result
+- **Parser**: Streams raw binlog events via callbacks
+- **Command Layer**: Immediately normalizes and forwards events to `analyzer.Consume`
+- **Analyzer**: Keeps bounded live state in memory
+- **DuckDB Temp Store**: Persists completed high-cardinality results for `Finalize()`
+- **Renderer**: Outputs the final assembled report
 
 ### Expected Performance
 
@@ -159,12 +193,10 @@ From benchmarks on Apple M4 Pro:
 
 ### Large File Recommendations
 
-For large binlog files, consider:
+For large binlog files:
 
-1. **Process in chunks**: Split binlog files by time range before analysis
-2. **Ensure sufficient RAM**: Memory scales roughly linearly with event count
-
-Future versions may add improved memory efficiency through true streaming analysis without full event retention.
+1. Prefer analyzing ordered binlog ranges directly; the command path is already streaming.
+2. Ensure sufficient disk space for the temporary DuckDB result store used during analysis.
 
 ## Limitations
 
