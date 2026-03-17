@@ -1,4 +1,14 @@
+<div align="center">
+
 # BinlogViz
+
+[![Release](https://img.shields.io/github/v/release/Fanduzi/BinlogVisualizer?display_name=tag)](https://github.com/Fanduzi/BinlogVisualizer/releases)
+![Platform](https://img.shields.io/badge/platform-darwin%20amd64%20%7C%20darwin%20arm64%20%7C%20linux%20amd64%20%7C%20linux%20arm64-blue)
+![Go Version](https://img.shields.io/badge/go-1.24%2B-00ADD8?logo=go)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+
+English | [中文](README_ZH.md) | [Release Notes](docs/release-notes-v0.2.1.md)
+</div>
 
 A CLI tool for MySQL binlog analysis, designed to help DBAs quickly identify hot tables, large transactions, write spikes, and workload patterns from local ROW binlog files.
 
@@ -19,26 +29,26 @@ Download the release archive for your platform from GitHub Releases, verify the 
 
 The authoritative release artifacts are produced by the GitHub Actions release workflow on native runners. Local `goreleaser` is only intended for config checks and optional current-host validation.
 
-Example for `darwin/arm64` and the planned Phase 2 release `v0.2.0`:
+Example for `darwin/arm64` and the current Phase 2 release `v0.2.1`:
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.0/binlogviz_0.2.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.0/binlogviz_0.2.0_checksums.txt
-shasum -a 256 -c binlogviz_0.2.0_checksums.txt 2>/dev/null | grep "binlogviz_0.2.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.2.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.1/binlogviz_0.2.1_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.1/binlogviz_0.2.1_checksums.txt
+shasum -a 256 -c binlogviz_0.2.1_checksums.txt 2>/dev/null | grep "binlogviz_0.2.1_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.2.1_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 Or use the included install helper:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.2.0
+curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.2.1
 ```
 
 To preview the resolved artifact without downloading:
 
 ```bash
-./install.sh --version v0.2.0 --dry-run
+./install.sh --version v0.2.1 --dry-run
 ```
 
 ### Fallback: Build From Source
