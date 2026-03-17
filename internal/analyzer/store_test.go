@@ -102,7 +102,7 @@ func TestAnalyzerFinalizeReadsBackPersistedResultsAndAppliesTopN(t *testing.T) {
 	}
 }
 
-func TestDuckDBStoreHydratesBoundedQuerySQLForTopTransactions(t *testing.T) {
+func TestDuckDBStoreResolvesBoundedQuerySQLForRequestedTransactions(t *testing.T) {
 	store := newTestDuckDBStore(t, DefaultBatchFlushRows)
 	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
 
@@ -135,8 +135,57 @@ func TestDuckDBStoreHydratesBoundedQuerySQLForTopTransactions(t *testing.T) {
 	if len(txns) != 1 {
 		t.Fatalf("expected 1 transaction, got %d", len(txns))
 	}
-	if txns[0].QueryContext == nil || txns[0].QueryContext.SQL != "UPDATE users SET name = 'alice' WHERE id = 7" {
-		t.Fatalf("expected hydrated bounded query SQL, got %#v", txns[0].QueryContext)
+	if txns[0].QueryContext == nil || txns[0].QueryContext.SQL != "" {
+		t.Fatalf("expected QueryTopTransactions to omit eager SQL hydration, got %#v", txns[0].QueryContext)
+	}
+
+	sqlByTxn, err := store.ResolveTransactionQuerySQL([]string{"txn-1"})
+	if err != nil {
+		t.Fatalf("ResolveTransactionQuerySQL returned error: %v", err)
+	}
+	if sqlByTxn["txn-1"] != "UPDATE users SET name = 'alice' WHERE id = 7" {
+		t.Fatalf("expected resolved bounded query SQL, got %#v", sqlByTxn)
+	}
+}
+
+func TestDuckDBStoreQueryAllTransactionsDoesNotHydrateFullSQL(t *testing.T) {
+	store := newTestDuckDBStore(t, DefaultBatchFlushRows)
+	base := time.Date(2026, 3, 16, 12, 30, 0, 0, time.UTC)
+
+	if err := store.RecordTransactions([]persistedTransaction{
+		{
+			TxnKey:             "txn-1",
+			StartTime:          base,
+			EndTime:            base.Add(time.Second),
+			DurationMS:         1000,
+			TotalRows:          9,
+			EventCount:         1,
+			QuerySummary:       "UPDATE users SET name = ? WHERE id = ?",
+			QuerySQL:           "UPDATE users SET name = 'alice' WHERE id = 7",
+			QueryTruncated:     false,
+			QueryOriginalBytes: 43,
+			TableRows:          map[string]int{"testdb.users": 9},
+			Operations:         map[string]int{"UPDATE": 9},
+		},
+	}); err != nil {
+		t.Fatalf("RecordTransactions returned error: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+
+	txns, err := store.QueryAllTransactions()
+	if err != nil {
+		t.Fatalf("QueryAllTransactions returned error: %v", err)
+	}
+	if len(txns) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txns))
+	}
+	if txns[0].QueryContext == nil {
+		t.Fatal("expected query context metadata to remain available")
+	}
+	if txns[0].QueryContext.SQL != "" {
+		t.Fatalf("expected QueryAllTransactions to omit full SQL hydration, got %#v", txns[0].QueryContext)
 	}
 }
 
