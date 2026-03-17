@@ -195,6 +195,9 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := a.attachTopTransactionSQL(topTransactions); err != nil {
+		return nil, err
+	}
 	minutes, err := a.store.QueryMinuteBuckets()
 	if err != nil {
 		return nil, err
@@ -222,6 +225,32 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		Alerts:       persistedAlerts,
 		Warnings:     0, // No warnings in MVP
 	}, nil
+}
+
+func (a *Analyzer) attachTopTransactionSQL(transactions []model.Transaction) error {
+	if len(transactions) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(transactions))
+	for _, txn := range transactions {
+		if txn.QueryContext != nil {
+			keys = append(keys, txn.TxnKey)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	sqlByTxn, err := a.store.ResolveTransactionQuerySQL(keys)
+	if err != nil {
+		return err
+	}
+	for i := range transactions {
+		if transactions[i].QueryContext == nil {
+			continue
+		}
+		transactions[i].QueryContext.SQL = sqlByTxn[transactions[i].TxnKey]
+	}
+	return nil
 }
 
 // buildSummary creates the WorkloadSummary from transaction data.

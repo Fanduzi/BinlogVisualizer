@@ -1,16 +1,18 @@
 // Package analyzer persists high-cardinality analysis results in DuckDB batches for Finalize-time queries.
 // input: completed transaction snapshots, finalized minute buckets, generated alerts, and a DuckDB file path owned by internal callers.
-// output: batched DuckDB writes plus query-backed reconstruction of transactions, minutes, and alerts for AnalysisResult assembly.
+// output: batched DuckDB writes plus query-backed reconstruction of transactions, minutes, alerts, and on-demand top-transaction SQL hydration.
 // pos: internal result-store layer that decouples hot in-memory state from persisted finalize-time query workloads.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"time"
 
@@ -32,6 +34,7 @@ type analysisStore interface {
 	Flush() error
 	QueryAllTransactions() ([]model.Transaction, error)
 	QueryTopTransactions(limit int) ([]model.Transaction, error)
+	ResolveTransactionQuerySQL(txnKeys []string) (map[string]string, error)
 	QueryMinuteBuckets() ([]model.MinuteBucket, error)
 	QueryAlerts() ([]model.Alert, error)
 	Close() error
@@ -41,7 +44,6 @@ type inMemoryStore struct {
 	transactions []persistedTransaction
 	minutes      []model.MinuteBucket
 	alerts       []model.Alert
-	querySQL     map[string]string
 }
 
 type persistedTransaction struct {
@@ -57,6 +59,11 @@ type persistedTransaction struct {
 	QueryOriginalBytes int64
 	TableRows          map[string]int
 	Operations         map[string]int
+}
+
+type querySQLSidecarRow struct {
+	TxnKey string `json:"txn_key"`
+	SQL    string `json:"sql"`
 }
 
 type transactionRow struct {
@@ -106,8 +113,9 @@ type alertRow struct {
 
 // DuckDBStore persists analysis results in a temporary DuckDB database.
 type DuckDBStore struct {
-	path string
-	db   *sql.DB
+	path           string
+	db             *sql.DB
+	sqlContextPath string
 
 	batchRowThreshold  int
 	batchByteThreshold int
@@ -120,7 +128,6 @@ type DuckDBStore struct {
 	minutesBatch      []minuteBucketRow
 	minuteTablesBatch []minuteTableRow
 	alertsBatch       []alertRow
-	querySQL          map[string]string
 }
 
 // Path returns the underlying DuckDB file path.
@@ -141,11 +148,15 @@ func NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error) {
 	store := &DuckDBStore{
 		path:               path,
 		db:                 db,
+		sqlContextPath:     path + ".querysql.jsonl",
 		batchRowThreshold:  batchRows,
 		batchByteThreshold: defaultBatchFlushBytes,
-		querySQL:           make(map[string]string),
 	}
 	if err := store.initSchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := store.resetSQLContextSidecar(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -173,8 +184,7 @@ func (s *DuckDBStore) Reset() error {
 	s.alertsBatch = nil
 	s.bufferedRows = 0
 	s.bufferedBytes = 0
-	s.querySQL = make(map[string]string)
-	return nil
+	return s.resetSQLContextSidecar()
 }
 
 func (s *DuckDBStore) Close() error {
@@ -182,10 +192,10 @@ func (s *DuckDBStore) Close() error {
 }
 
 func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) error {
+	if err := s.appendQuerySQLSidecar(transactions); err != nil {
+		return err
+	}
 	for _, txn := range transactions {
-		if txn.QuerySQL != "" {
-			s.querySQL[txn.TxnKey] = txn.QuerySQL
-		}
 		s.transactionsBatch = append(s.transactionsBatch, transactionRow{
 			TxnKey:             txn.TxnKey,
 			StartTime:          txn.StartTime,
@@ -373,6 +383,49 @@ ORDER BY total_rows DESC, txn_key ASC`
 		return nil, err
 	}
 	return s.hydrateTransactions(baseRows)
+}
+
+func (s *DuckDBStore) ResolveTransactionQuerySQL(txnKeys []string) (map[string]string, error) {
+	if len(txnKeys) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]struct{}, len(txnKeys))
+	for _, key := range txnKeys {
+		if key != "" {
+			wanted[key] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 {
+		return nil, nil
+	}
+
+	file, err := os.Open(s.sqlContextPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	resolved := make(map[string]string, len(wanted))
+	scanner := bufio.NewScanner(file)
+	// Allow bounded SQL payloads plus JSON framing.
+	scanner.Buffer(make([]byte, 0, model.MaxStoredSQLBytes+256), model.MaxStoredSQLBytes+1024)
+	for scanner.Scan() {
+		var row querySQLSidecarRow
+		if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
+			return nil, err
+		}
+		if _, ok := wanted[row.TxnKey]; ok {
+			resolved[row.TxnKey] = row.SQL
+			delete(wanted, row.TxnKey)
+			if len(wanted) == 0 {
+				break
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return resolved, nil
 }
 
 func (s *DuckDBStore) QueryMinuteBuckets() ([]model.MinuteBucket, error) {
@@ -617,7 +670,7 @@ func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow) ([]model.Tr
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 			txns[i].QueryContext = &model.QueryContext{
-				SQL:           s.querySQL[row.TxnKey],
+				SQL:           "",
 				Truncated:     row.QueryTruncated,
 				OriginalBytes: int(row.QueryOriginalBytes),
 			}
@@ -722,6 +775,33 @@ func estimateStringBytes(v string) int {
 	return len(v)
 }
 
+func (s *DuckDBStore) resetSQLContextSidecar() error {
+	file, err := os.OpenFile(s.sqlContextPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	return file.Close()
+}
+
+func (s *DuckDBStore) appendQuerySQLSidecar(transactions []persistedTransaction) error {
+	file, err := os.OpenFile(s.sqlContextPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	enc := json.NewEncoder(file)
+	for _, txn := range transactions {
+		if txn.QuerySQL == "" {
+			continue
+		}
+		if err := enc.Encode(querySQLSidecarRow{TxnKey: txn.TxnKey, SQL: txn.QuerySQL}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func zeroTimeToNil(ts time.Time) any {
 	if ts.IsZero() {
 		return nil
@@ -774,22 +854,18 @@ func limitTables(tables []model.TableStats, limit int) []model.TableStats {
 }
 
 func newInMemoryStore() analysisStore {
-	return &inMemoryStore{querySQL: make(map[string]string)}
+	return &inMemoryStore{}
 }
 
 func (s *inMemoryStore) Reset() error {
 	s.transactions = nil
 	s.minutes = nil
 	s.alerts = nil
-	s.querySQL = make(map[string]string)
 	return nil
 }
 
 func (s *inMemoryStore) RecordTransactions(transactions []persistedTransaction) error {
 	for _, txn := range transactions {
-		if txn.QuerySQL != "" {
-			s.querySQL[txn.TxnKey] = txn.QuerySQL
-		}
 		s.transactions = append(s.transactions, clonePersistedTransaction(txn))
 	}
 	return nil
@@ -815,7 +891,7 @@ func (s *inMemoryStore) Flush() error {
 }
 
 func (s *inMemoryStore) QueryAllTransactions() ([]model.Transaction, error) {
-	txns := buildTransactionsFromPersisted(s.transactions)
+	txns := buildTransactionsFromPersisted(s.transactions, false)
 	sort.Slice(txns, func(i, j int) bool {
 		if !txns[i].StartTime.Equal(txns[j].StartTime) {
 			return txns[i].StartTime.Before(txns[j].StartTime)
@@ -826,7 +902,7 @@ func (s *inMemoryStore) QueryAllTransactions() ([]model.Transaction, error) {
 }
 
 func (s *inMemoryStore) QueryTopTransactions(limit int) ([]model.Transaction, error) {
-	txns := buildTransactionsFromPersisted(s.transactions)
+	txns := buildTransactionsFromPersisted(s.transactions, false)
 	sort.Slice(txns, func(i, j int) bool {
 		if txns[i].TotalRows != txns[j].TotalRows {
 			return txns[i].TotalRows > txns[j].TotalRows
@@ -837,6 +913,29 @@ func (s *inMemoryStore) QueryTopTransactions(limit int) ([]model.Transaction, er
 		txns = txns[:limit]
 	}
 	return txns, nil
+}
+
+func (s *inMemoryStore) ResolveTransactionQuerySQL(txnKeys []string) (map[string]string, error) {
+	if len(txnKeys) == 0 {
+		return nil, nil
+	}
+	wanted := make(map[string]struct{}, len(txnKeys))
+	for _, key := range txnKeys {
+		if key != "" {
+			wanted[key] = struct{}{}
+		}
+	}
+	resolved := make(map[string]string, len(wanted))
+	for _, txn := range s.transactions {
+		if _, ok := wanted[txn.TxnKey]; ok && txn.QuerySQL != "" {
+			resolved[txn.TxnKey] = txn.QuerySQL
+			delete(wanted, txn.TxnKey)
+			if len(wanted) == 0 {
+				break
+			}
+		}
+	}
+	return resolved, nil
 }
 
 func (s *inMemoryStore) QueryMinuteBuckets() ([]model.MinuteBucket, error) {
@@ -937,7 +1036,7 @@ func cloneStringAnyMap(src map[string]any) map[string]any {
 	return dst
 }
 
-func buildTransactionsFromPersisted(src []persistedTransaction) []model.Transaction {
+func buildTransactionsFromPersisted(src []persistedTransaction, includeSQL bool) []model.Transaction {
 	if len(src) == 0 {
 		return nil
 	}
@@ -955,8 +1054,12 @@ func buildTransactionsFromPersisted(src []persistedTransaction) []model.Transact
 			Operations:   cloneStringIntMap(row.Operations),
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
+			sql := ""
+			if includeSQL {
+				sql = row.QuerySQL
+			}
 			txns[i].QueryContext = &model.QueryContext{
-				SQL:           row.QuerySQL,
+				SQL:           sql,
 				Truncated:     row.QueryTruncated,
 				OriginalBytes: int(row.QueryOriginalBytes),
 			}
