@@ -17,6 +17,8 @@ BinlogViz answers critical operational questions:
 
 Download the release archive for your platform from GitHub Releases, verify the checksum, and move the binary onto your `PATH`.
 
+The authoritative release artifacts are produced by the GitHub Actions release workflow on native runners. Local `goreleaser` is only intended for config checks and optional current-host validation.
+
 Example for `darwin/arm64` and the planned Phase 2 release `v0.2.0`:
 
 ```bash
@@ -203,7 +205,7 @@ For large binlog files:
 - **ROW binlog only**: STATEMENT and MIXED formats are not supported in MVP
 - **Local files only**: Cannot connect to MySQL servers directly
 - **No real-time streaming**: Analysis is performed on static files
-- **No SQL reconstruction**: Shows aggregated statistics, not actual SQL statements
+- **Bounded SQL context only**: When binlog input includes `Rows_query_log_event`, BinlogViz can show bounded SQL context via `--sql-context summary|full`, but it does not support SQL replay or full statement reconstruction
 - **No row values**: Focuses on operation patterns, not data content
 
 ## Non-Goals
