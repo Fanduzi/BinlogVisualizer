@@ -6,7 +6,7 @@
 |------|----------------|
 | `root.go` | Builds the CLI root command and registers subcommands. |
 | `analyze.go` | Orchestrates true streaming parse-normalize-consume-finalize execution, report rendering, command-owned DuckDB temp-store lifecycle, and `--sql-context` presentation selection. |
-| `*_test.go` | Covers flag parsing, SQL context mode validation, end-to-end analyze execution, fixture runs, and temp-store cleanup behavior. |
+| `*_test.go` | Covers flag parsing, SQL context mode validation, end-to-end analyze execution, streaming regression checks, fixture runs, benchmarks, and temp-store cleanup behavior. |
 
 ## Interfaces
 
@@ -32,4 +32,5 @@
 
 - Stage 3 keeps CLI semantics stable while moving the command execution path to true streaming consumption with command-owned DuckDB lifecycle.
 - Stage 4 adds `--sql-context summary|off|full`; CLI parses the mode and delegates presentation decisions to `internal/report`.
+- Stage 5 adds command-path benchmarks for real fixture parsing and synthetic high-volume streaming workloads, and keeps fixture assets under `internal/binlog/testdata`.
 - Top-N truncation is no longer applied in the command layer; it now happens during analyzer Finalize result assembly.

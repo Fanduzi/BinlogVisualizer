@@ -102,6 +102,44 @@ func TestAnalyzerFinalizeReadsBackPersistedResultsAndAppliesTopN(t *testing.T) {
 	}
 }
 
+func TestDuckDBStoreHydratesBoundedQuerySQLForTopTransactions(t *testing.T) {
+	store := newTestDuckDBStore(t, DefaultBatchFlushRows)
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+
+	if err := store.RecordTransactions([]persistedTransaction{
+		{
+			TxnKey:             "txn-1",
+			StartTime:          base,
+			EndTime:            base.Add(time.Second),
+			DurationMS:         1000,
+			TotalRows:          9,
+			EventCount:         1,
+			QuerySummary:       "UPDATE users SET name = ? WHERE id = ?",
+			QuerySQL:           "UPDATE users SET name = 'alice' WHERE id = 7",
+			QueryTruncated:     false,
+			QueryOriginalBytes: 43,
+			TableRows:          map[string]int{"testdb.users": 9},
+			Operations:         map[string]int{"UPDATE": 9},
+		},
+	}); err != nil {
+		t.Fatalf("RecordTransactions returned error: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+
+	txns, err := store.QueryTopTransactions(1)
+	if err != nil {
+		t.Fatalf("QueryTopTransactions returned error: %v", err)
+	}
+	if len(txns) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(txns))
+	}
+	if txns[0].QueryContext == nil || txns[0].QueryContext.SQL != "UPDATE users SET name = 'alice' WHERE id = 7" {
+		t.Fatalf("expected hydrated bounded query SQL, got %#v", txns[0].QueryContext)
+	}
+}
+
 func newTestDuckDBStore(t *testing.T, batchRows int) *DuckDBStore {
 	t.Helper()
 

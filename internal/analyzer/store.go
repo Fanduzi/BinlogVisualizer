@@ -41,6 +41,7 @@ type inMemoryStore struct {
 	transactions []persistedTransaction
 	minutes      []model.MinuteBucket
 	alerts       []model.Alert
+	querySQL     map[string]string
 }
 
 type persistedTransaction struct {
@@ -51,6 +52,7 @@ type persistedTransaction struct {
 	TotalRows          int64
 	EventCount         int64
 	QuerySummary       string
+	QuerySQL           string
 	QueryTruncated     bool
 	QueryOriginalBytes int64
 	TableRows          map[string]int
@@ -118,6 +120,7 @@ type DuckDBStore struct {
 	minutesBatch      []minuteBucketRow
 	minuteTablesBatch []minuteTableRow
 	alertsBatch       []alertRow
+	querySQL          map[string]string
 }
 
 // Path returns the underlying DuckDB file path.
@@ -140,6 +143,7 @@ func NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error) {
 		db:                 db,
 		batchRowThreshold:  batchRows,
 		batchByteThreshold: defaultBatchFlushBytes,
+		querySQL:           make(map[string]string),
 	}
 	if err := store.initSchema(); err != nil {
 		_ = db.Close()
@@ -169,6 +173,7 @@ func (s *DuckDBStore) Reset() error {
 	s.alertsBatch = nil
 	s.bufferedRows = 0
 	s.bufferedBytes = 0
+	s.querySQL = make(map[string]string)
 	return nil
 }
 
@@ -178,6 +183,9 @@ func (s *DuckDBStore) Close() error {
 
 func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) error {
 	for _, txn := range transactions {
+		if txn.QuerySQL != "" {
+			s.querySQL[txn.TxnKey] = txn.QuerySQL
+		}
 		s.transactionsBatch = append(s.transactionsBatch, transactionRow{
 			TxnKey:             txn.TxnKey,
 			StartTime:          txn.StartTime,
@@ -609,7 +617,7 @@ func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow) ([]model.Tr
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 			txns[i].QueryContext = &model.QueryContext{
-				SQL:           "",
+				SQL:           s.querySQL[row.TxnKey],
 				Truncated:     row.QueryTruncated,
 				OriginalBytes: int(row.QueryOriginalBytes),
 			}
@@ -736,6 +744,7 @@ func toPersistedTransactions(transactions []model.Transaction) []persistedTransa
 			Operations:   cloneStringIntMap(txn.Operations),
 		}
 		if txn.QueryContext != nil {
+			pt.QuerySQL = txn.QueryContext.SQL
 			pt.QueryTruncated = txn.QueryContext.Truncated
 			pt.QueryOriginalBytes = int64(txn.QueryContext.OriginalBytes)
 		}
@@ -765,18 +774,22 @@ func limitTables(tables []model.TableStats, limit int) []model.TableStats {
 }
 
 func newInMemoryStore() analysisStore {
-	return &inMemoryStore{}
+	return &inMemoryStore{querySQL: make(map[string]string)}
 }
 
 func (s *inMemoryStore) Reset() error {
 	s.transactions = nil
 	s.minutes = nil
 	s.alerts = nil
+	s.querySQL = make(map[string]string)
 	return nil
 }
 
 func (s *inMemoryStore) RecordTransactions(transactions []persistedTransaction) error {
 	for _, txn := range transactions {
+		if txn.QuerySQL != "" {
+			s.querySQL[txn.TxnKey] = txn.QuerySQL
+		}
 		s.transactions = append(s.transactions, clonePersistedTransaction(txn))
 	}
 	return nil
@@ -885,6 +898,7 @@ func clonePersistedTransaction(txn persistedTransaction) persistedTransaction {
 		TotalRows:          txn.TotalRows,
 		EventCount:         txn.EventCount,
 		QuerySummary:       txn.QuerySummary,
+		QuerySQL:           txn.QuerySQL,
 		QueryTruncated:     txn.QueryTruncated,
 		QueryOriginalBytes: txn.QueryOriginalBytes,
 		TableRows:          cloneStringIntMap(txn.TableRows),
@@ -942,7 +956,7 @@ func buildTransactionsFromPersisted(src []persistedTransaction) []model.Transact
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 			txns[i].QueryContext = &model.QueryContext{
-				SQL:           "",
+				SQL:           row.QuerySQL,
 				Truncated:     row.QueryTruncated,
 				OriginalBytes: int(row.QueryOriginalBytes),
 			}
