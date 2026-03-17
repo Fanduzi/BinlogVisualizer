@@ -1,12 +1,19 @@
+// Package binlogviz validates analyze command flag parsing and CLI option translation.
+// input: synthetic CLI args, parsed flag values, and analyzer/report option expectations.
+// output: regression coverage for stable flag defaults, validation, and option builders.
+// pos: command-layer unit test suite for analyze command configuration behavior.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/analyzer"
+	"binlogviz/internal/report"
 )
 
 func TestParseTimeRange(t *testing.T) {
@@ -251,6 +258,7 @@ func TestAnalyzeCommandDefinesFlags(t *testing.T) {
 		"start",
 		"end",
 		"json",
+		"sql-context",
 		"top-tables",
 		"top-transactions",
 		"detect-spikes",
@@ -264,5 +272,31 @@ func TestAnalyzeCommandDefinesFlags(t *testing.T) {
 		if cmd.Flags().Lookup(name) == nil {
 			t.Fatalf("missing flag %q", name)
 		}
+	}
+}
+
+func TestAnalyzeCommandSQLContextDefaultIsSummary(t *testing.T) {
+	cmd := newAnalyzeCommand()
+	flag := cmd.Flags().Lookup("sql-context")
+	if flag == nil {
+		t.Fatal("expected sql-context flag")
+	}
+	if flag.DefValue != string(report.SQLContextSummary) {
+		t.Fatalf("expected default sql-context %q, got %q", report.SQLContextSummary, flag.DefValue)
+	}
+}
+
+func TestAnalyzeCommandRejectsInvalidSQLContext(t *testing.T) {
+	cmd := newAnalyzeCommand()
+	cmd.SetArgs([]string{"dummy.binlog", "--sql-context=invalid"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid sql-context error")
+	}
+	if !strings.Contains(err.Error(), "invalid --sql-context") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

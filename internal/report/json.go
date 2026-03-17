@@ -1,3 +1,8 @@
+// Package report renders JSON reports from bounded analysis results.
+// input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
+// output: stable JSON objects with mode-controlled transaction query fields.
+// pos: JSON serializer for the CLI output path after analyzer Finalize.
+// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -41,16 +46,17 @@ type jsonTableStats struct {
 
 type jsonTransaction struct {
 	TxnKey             string         `json:"txn_key"`
-	StartTime        string         `json:"start_time"`
-	EndTime          string         `json:"end_time"`
-	Duration         string         `json:"duration"`
-	TotalRows         int            `json:"total_rows"`
-	EventCount       int            `json:"event_count"`
-	Tables           map[string]int `json:"tables,omitempty"`
-	Operations      map[string]int `json:"operations,omitempty"`
-	QuerySummary     string         `json:"query_summary,omitempty"`
-	QueryTruncated    bool           `json:"query_truncated,omitempty"`
-	QueryOriginalBytes int            `json:"query_original_bytes,omitempty"`
+	StartTime          string         `json:"start_time"`
+	EndTime            string         `json:"end_time"`
+	Duration           string         `json:"duration"`
+	TotalRows          int            `json:"total_rows"`
+	EventCount         int            `json:"event_count"`
+	Tables             map[string]int `json:"tables,omitempty"`
+	Operations         map[string]int `json:"operations,omitempty"`
+	QuerySummary       string         `json:"query_summary,omitempty"`
+	QuerySQL           string         `json:"query_sql,omitempty"`
+	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
+	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
 }
 
 type jsonMinuteBucket struct {
@@ -71,7 +77,12 @@ type jsonAlert struct {
 
 // RenderJSON serializes an AnalysisResult to JSON with stable, script-friendly field names.
 func RenderJSON(result model.AnalysisResult) (string, error) {
-	jr := convertToJSON(result)
+	return RenderJSONWithOptions(result, DefaultOptions())
+}
+
+// RenderJSONWithOptions serializes an AnalysisResult with explicit presentation controls.
+func RenderJSONWithOptions(result model.AnalysisResult, opts Options) (string, error) {
+	jr := convertToJSON(result, normalizeOptions(opts))
 
 	data, err := json.MarshalIndent(jr, "", "  ")
 	if err != nil {
@@ -82,7 +93,12 @@ func RenderJSON(result model.AnalysisResult) (string, error) {
 
 // RenderJSONTo writes the JSON output to the specified writer.
 func RenderJSONTo(result model.AnalysisResult, w io.Writer) error {
-	jr := convertToJSON(result)
+	return RenderJSONToWithOptions(result, w, DefaultOptions())
+}
+
+// RenderJSONToWithOptions writes the JSON output with explicit presentation controls.
+func RenderJSONToWithOptions(result model.AnalysisResult, w io.Writer, opts Options) error {
+	jr := convertToJSON(result, normalizeOptions(opts))
 
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
@@ -94,11 +110,16 @@ func RenderJSONToStdout(result model.AnalysisResult) error {
 	return RenderJSONTo(result, os.Stdout)
 }
 
-func convertToJSON(result model.AnalysisResult) jsonAnalysisResult {
+// RenderJSONToStdoutWithOptions writes the JSON output with explicit presentation controls.
+func RenderJSONToStdoutWithOptions(result model.AnalysisResult, opts Options) error {
+	return RenderJSONToWithOptions(result, os.Stdout, opts)
+}
+
+func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult {
 	return jsonAnalysisResult{
 		Summary:      convertSummary(result.Summary),
 		Tables:       convertTables(result.Tables),
-		Transactions: convertTransactions(result.Transactions),
+		Transactions: convertTransactions(result.Transactions, opts.SQLContextMode),
 		Minutes:      convertMinutes(result.Minutes),
 		Alerts:       convertAlerts(result.Alerts),
 		Warnings:     result.Warnings,
@@ -135,26 +156,40 @@ func convertTables(tables []model.TableStats) []jsonTableStats {
 	return result
 }
 
-func convertTransactions(txns []model.Transaction) []jsonTransaction {
+func convertTransactions(txns []model.Transaction, mode SQLContextMode) []jsonTransaction {
 	if txns == nil {
 		return []jsonTransaction{}
 	}
 	result := make([]jsonTransaction, len(txns))
 	for i, t := range txns {
 		jt := jsonTransaction{
-			TxnKey:      t.TxnKey,
-			StartTime:   formatJSONTime(t.StartTime),
-			EndTime:     formatJSONTime(t.EndTime),
-			Duration:    t.Duration.String(),
-			TotalRows:   t.TotalRows,
-			EventCount:  t.EventCount,
-			Tables:      copyStringIntMap(t.Tables),
-			Operations:  copyStringIntMap(t.Operations),
-			QuerySummary: t.QuerySummary,
+			TxnKey:     t.TxnKey,
+			StartTime:  formatJSONTime(t.StartTime),
+			EndTime:    formatJSONTime(t.EndTime),
+			Duration:   t.Duration.String(),
+			TotalRows:  t.TotalRows,
+			EventCount: t.EventCount,
+			Tables:     copyStringIntMap(t.Tables),
+			Operations: copyStringIntMap(t.Operations),
 		}
-		if t.QueryContext != nil {
-			jt.QueryTruncated = t.QueryContext.Truncated
-			jt.QueryOriginalBytes = t.QueryContext.OriginalBytes
+		switch mode {
+		case SQLContextOff:
+			// omit all query-related fields
+		case SQLContextFull:
+			jt.QuerySummary = t.QuerySummary
+			if t.QueryContext != nil {
+				jt.QuerySQL = t.QueryContext.SQL
+				jt.QueryTruncated = boolPtr(t.QueryContext.Truncated)
+				jt.QueryOriginalBytes = intPtr(t.QueryContext.OriginalBytes)
+			}
+		case SQLContextSummary:
+			fallthrough
+		default:
+			jt.QuerySummary = t.QuerySummary
+			if t.QueryContext != nil {
+				jt.QueryTruncated = boolPtr(t.QueryContext.Truncated)
+				jt.QueryOriginalBytes = intPtr(t.QueryContext.OriginalBytes)
+			}
 		}
 		result[i] = jt
 	}
@@ -222,4 +257,12 @@ func formatJSONTime(t time.Time) string {
 		return ""
 	}
 	return t.Format(time.RFC3339)
+}
+
+func boolPtr(v bool) *bool {
+	return &v
+}
+
+func intPtr(v int) *int {
+	return &v
 }

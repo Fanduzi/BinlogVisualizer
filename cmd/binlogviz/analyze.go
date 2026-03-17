@@ -33,6 +33,7 @@ type analyzeOptions struct {
 	startTime        string
 	endTime          string
 	json             bool
+	sqlContext       string
 	topTables        int
 	topTransactions  int
 	detectSpikes     bool
@@ -54,6 +55,11 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
+			reportOpts, err := buildReportOptions(opts)
+			if err != nil {
+				return err
+			}
+
 			// Validate input files exist
 			if err := validateFiles(args); err != nil {
 				return err
@@ -63,7 +69,7 @@ func newAnalyzeCommand() *cobra.Command {
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 
 			// Execute the analysis pipeline
-			return runAnalysis(args, analyzerOpts, opts.json)
+			return runAnalysisWithReportOptions(args, analyzerOpts, reportOpts, opts.json)
 		},
 	}
 
@@ -71,6 +77,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.startTime, "start", "", "Start time (inclusive, RFC3339 format)")
 	cmd.Flags().StringVar(&opts.endTime, "end", "", "End time (inclusive, RFC3339 format)")
 	cmd.Flags().BoolVar(&opts.json, "json", false, "Output in JSON format")
+	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), "SQL context mode: summary, off, or full")
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, "Number of top tables to show")
 	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, "Number of top transactions to show")
 	cmd.Flags().BoolVar(&opts.detectSpikes, "detect-spikes", false, "Enable spike detection")
@@ -92,17 +99,25 @@ func validateFiles(paths []string) error {
 
 // runAnalysis executes the complete analysis pipeline.
 func runAnalysis(paths []string, opts analyzer.Options, jsonOutput bool) error {
-	return runAnalysisWithParserAndTempDir(paths, opts, jsonOutput, binlog.NewParser(), "", nil)
+	return runAnalysisWithReportOptions(paths, opts, report.DefaultOptions(), jsonOutput)
+}
+
+func runAnalysisWithReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, jsonOutput bool) error {
+	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, reportOpts, jsonOutput, binlog.NewParser(), "", nil)
 }
 
 // runAnalysisWithParser executes the analysis pipeline with an injected parser.
 // This allows testing with mock parsers without requiring real binlog files.
 func runAnalysisWithParser(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser) error {
-	return runAnalysisWithParserAndTempDir(paths, opts, jsonOutput, parser, "", nil)
+	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, report.DefaultOptions(), jsonOutput, parser, "", nil)
 }
 
 func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	return runAnalysisStreamingWithDeps(paths, opts, jsonOutput, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, report.DefaultOptions(), jsonOutput, parser, tempRoot, onStoreCreated)
+}
+
+func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, jsonOutput bool, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
+	return runAnalysisStreamingWithDeps(paths, opts, reportOpts, jsonOutput, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return analyzer.NewWithStore(opts, store)
 	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
 		store, cleanup, path, err := createDuckDBTempStore(root)
@@ -116,6 +131,7 @@ func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, json
 func runAnalysisStreamingWithDeps(
 	paths []string,
 	opts analyzer.Options,
+	reportOpts report.Options,
 	jsonOutput bool,
 	parser binlog.Parser,
 	normalize normalizeRawEventFunc,
@@ -153,9 +169,9 @@ func runAnalysisStreamingWithDeps(
 	}
 
 	if jsonOutput {
-		return report.RenderJSONToStdout(*result)
+		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 	}
-	return report.RenderTextToStdout(*result)
+	return report.RenderTextToStdoutWithOptions(*result, reportOpts)
 }
 
 func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, string, error) {
@@ -226,4 +242,12 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	}
 
 	return result
+}
+
+func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
+	mode, err := report.ParseSQLContextMode(opts.sqlContext)
+	if err != nil {
+		return report.Options{}, err
+	}
+	return report.Options{SQLContextMode: mode}, nil
 }

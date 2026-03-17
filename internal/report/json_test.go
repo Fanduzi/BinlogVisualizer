@@ -1,3 +1,8 @@
+// Package report verifies JSON rendering stability and SQL context presentation modes.
+// input: synthetic AnalysisResult fixtures with bounded transaction query context variations.
+// output: regression coverage for stable field names and summary/off/full JSON query fields.
+// pos: JSON renderer regression suite guarding script-facing output contracts.
+// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -8,6 +13,15 @@ import (
 
 	"binlogviz/internal/model"
 )
+
+func parseJSONMap(t *testing.T, out string) map[string]any {
+	t.Helper()
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	return parsed
+}
 
 func TestRenderJSONProducesValidObject(t *testing.T) {
 	result := model.AnalysisResult{
@@ -322,5 +336,90 @@ func TestRenderJSONDefensiveCopyAlertDetails(t *testing.T) {
 	}
 	if strings.Contains(out, `"new_key"`) {
 		t.Fatal("rendered JSON string should not contain key added after rendering")
+	}
+}
+
+func TestRenderJSONSQLContextSummaryMode(t *testing.T) {
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:       "txn-1",
+				QuerySummary: "UPDATE orders SET status = ? WHERE id = ?",
+				QueryContext: model.NewQueryContext("UPDATE orders SET status = 'paid' WHERE id = 42"),
+			},
+		},
+	}
+
+	out, err := RenderJSONWithOptions(result, Options{SQLContextMode: SQLContextSummary})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	txn := parsed["transactions"].([]any)[0].(map[string]any)
+	if txn["query_summary"] != "UPDATE orders SET status = ? WHERE id = ?" {
+		t.Fatalf("unexpected query_summary: %v", txn["query_summary"])
+	}
+	if _, ok := txn["query_sql"]; ok {
+		t.Fatal("summary mode should not output query_sql")
+	}
+	if _, ok := txn["query_original_bytes"]; !ok {
+		t.Fatal("summary mode should output query_original_bytes")
+	}
+}
+
+func TestRenderJSONSQLContextOffMode(t *testing.T) {
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:       "txn-1",
+				QuerySummary: "UPDATE orders SET status = ? WHERE id = ?",
+				QueryContext: model.NewQueryContext("UPDATE orders SET status = 'paid' WHERE id = 42"),
+			},
+		},
+	}
+
+	out, err := RenderJSONWithOptions(result, Options{SQLContextMode: SQLContextOff})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	txn := parsed["transactions"].([]any)[0].(map[string]any)
+	for _, field := range []string{"query_summary", "query_truncated", "query_original_bytes", "query_sql"} {
+		if _, ok := txn[field]; ok {
+			t.Fatalf("off mode should omit %s", field)
+		}
+	}
+}
+
+func TestRenderJSONSQLContextFullModeUsesBoundedSQL(t *testing.T) {
+	longSQL := strings.Repeat("x", model.MaxStoredSQLBytes+128)
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:       "txn-1",
+				QuerySummary: "summary",
+				QueryContext: model.NewQueryContext(longSQL),
+			},
+		},
+	}
+
+	out, err := RenderJSONWithOptions(result, Options{SQLContextMode: SQLContextFull})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	txn := parsed["transactions"].([]any)[0].(map[string]any)
+	querySQL, ok := txn["query_sql"].(string)
+	if !ok {
+		t.Fatal("full mode should output query_sql")
+	}
+	if len(querySQL) != model.MaxStoredSQLBytes {
+		t.Fatalf("expected bounded query_sql length %d, got %d", model.MaxStoredSQLBytes, len(querySQL))
+	}
+	if querySQL == longSQL {
+		t.Fatal("full mode should not output unbounded original SQL")
 	}
 }
