@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 # input: git tags, module source tree, and native CGO-capable build environments for supported release platforms.
-# output: GitHub-release-ready tar.gz archives plus a checksums manifest for darwin/linux amd64/arm64.
-# pos: release packaging configuration that standardizes artifact naming and checksum generation without changing product behavior.
-# note: if this file changes, update README.md and workflow docs to keep packaging guidance aligned.
+# output: a single source of truth for release artifact naming and native-target build settings used by the release workflow and local static validation.
+# pos: release packaging contract that keeps GoReleaser, the GitHub workflow, and install docs aligned without changing runtime behavior.
+# note: CI native runners are the only trusted multi-platform release path for this DuckDB/CGO project; local goreleaser usage is limited to check/single-target validation.
 version: 2
 
 project_name: binlogviz
@@ -42,8 +42,3 @@ snapshot:
 
 changelog:
   disable: true
-
-release:
-  github:
-    owner: Fanduzi
-    name: BinlogVisualizer

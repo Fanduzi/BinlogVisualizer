@@ -1,6 +1,6 @@
 # input: version tags matching v* or a manual workflow_dispatch trigger on the default repository branch.
 # output: tested darwin/linux amd64/arm64 release archives, a checksum manifest, and a GitHub Release for tag builds.
-# pos: release automation that mirrors the supported Phase 2 distribution matrix without changing runtime behavior.
+# pos: the only trusted release pipeline, using native runners plus goreleaser-driven single-target builds so artifact naming stays aligned with install docs.
 # note: if this file changes, keep .goreleaser.yml, install.sh, and README.md artifact naming in sync.
 
 name: release
@@ -20,8 +20,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          install-only: true
       - name: Run tests
         run: go test ./...
+      - name: Validate GoReleaser config
+        run: goreleaser check
 
   build:
     name: build-${{ matrix.goos }}-${{ matrix.goarch }}
@@ -48,13 +54,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          install-only: true
       - name: Build archive
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" CGO_ENABLED=1 go build -trimpath -o "dist/binlogviz" .
+          goreleaser build --snapshot --clean --single-target --output dist/binlogviz
           ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           tar -C dist -czf "dist/${ARCHIVE}" binlogviz
           rm -f dist/binlogviz
