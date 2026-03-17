@@ -19,6 +19,15 @@ import (
 	"binlogviz/internal/report"
 )
 
+type commandAnalyzer interface {
+	Consume(model.NormalizedEvent) error
+	Finalize() (*model.AnalysisResult, error)
+}
+
+type normalizeRawEventFunc func(binlog.RawEvent) (*model.NormalizedEvent, error)
+type commandAnalyzerFactory func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer
+type tempStoreFactory func(root string) (*analyzer.DuckDBStore, func() error, string, error)
+
 // analyzeOptions holds the parsed CLI flags for the analyze command.
 type analyzeOptions struct {
 	startTime        string
@@ -93,40 +102,56 @@ func runAnalysisWithParser(paths []string, opts analyzer.Options, jsonOutput boo
 }
 
 func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	store, cleanup, _, err := createDuckDBTempStore(tempRoot)
+	return runAnalysisStreamingWithDeps(paths, opts, jsonOutput, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return analyzer.NewWithStore(opts, store)
+	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
+		store, cleanup, path, err := createDuckDBTempStore(root)
+		if err == nil && onStoreCreated != nil {
+			onStoreCreated(path)
+		}
+		return store, cleanup, path, err
+	}, tempRoot)
+}
+
+func runAnalysisStreamingWithDeps(
+	paths []string,
+	opts analyzer.Options,
+	jsonOutput bool,
+	parser binlog.Parser,
+	normalize normalizeRawEventFunc,
+	newAnalyzer commandAnalyzerFactory,
+	newTempStore tempStoreFactory,
+	tempRoot string,
+) error {
+	store, cleanup, _, err := newTempStore(tempRoot)
 	if err != nil {
 		return fmt.Errorf("create temp DuckDB store: %w", err)
 	}
 	defer cleanup()
 
-	if onStoreCreated != nil {
-		onStoreCreated(store.Path())
-	}
-
-	// Step 1: Parse binlog files and collect raw events
-	var events []model.NormalizedEvent
+	streamAnalyzer := newAnalyzer(opts, store)
 
 	if err := parser.ParseFiles(paths, func(raw binlog.RawEvent) error {
-		normalized, err := binlog.NormalizeRawEvent(raw)
+		normalized, err := normalize(raw)
 		if err != nil {
 			return fmt.Errorf("normalize error at position %d: %w", raw.Position, err)
 		}
-		if normalized != nil {
-			events = append(events, *normalized)
+		if normalized == nil {
+			return nil
+		}
+		if err := streamAnalyzer.Consume(*normalized); err != nil {
+			return fmt.Errorf("analysis consume error: %w", err)
 		}
 		return nil
 	}); err != nil {
 		return fmt.Errorf("parse error: %w", err)
 	}
 
-	// Step 2: Run analyzer
-	a := analyzer.NewWithStore(opts, store)
-	result, err := a.Analyze(events)
+	result, err := streamAnalyzer.Finalize()
 	if err != nil {
-		return fmt.Errorf("analysis error: %w", err)
+		return fmt.Errorf("analysis finalize error: %w", err)
 	}
 
-	// Step 3: Render output
 	if jsonOutput {
 		return report.RenderJSONToStdout(*result)
 	}

@@ -7,6 +7,7 @@ package binlogviz
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"testing"
@@ -17,13 +18,46 @@ import (
 	"binlogviz/internal/model"
 )
 
+type fakeStreamingAnalyzer struct {
+	consumed     []model.NormalizedEvent
+	consumeErr   error
+	finalizeErr  error
+	finalResult  *model.AnalysisResult
+	finalized    bool
+	consumeCalls int
+}
+
+func (f *fakeStreamingAnalyzer) Consume(ev model.NormalizedEvent) error {
+	f.consumeCalls++
+	if f.consumeErr != nil {
+		return f.consumeErr
+	}
+	f.consumed = append(f.consumed, ev)
+	return nil
+}
+
+func (f *fakeStreamingAnalyzer) Finalize() (*model.AnalysisResult, error) {
+	f.finalized = true
+	if f.finalizeErr != nil {
+		return nil, f.finalizeErr
+	}
+	if f.finalResult != nil {
+		return f.finalResult, nil
+	}
+	return &model.AnalysisResult{}, nil
+}
+
 // mockParser implements binlog.Parser for testing.
 type mockParser struct {
-	events []binlog.RawEvent
-	err    error
+	events     []binlog.RawEvent
+	err        error
+	parseFiles func(paths []string, handler func(binlog.RawEvent) error) error
 }
 
 func (m *mockParser) ParseFiles(paths []string, handler func(binlog.RawEvent) error) error {
+	if m.parseFiles != nil {
+		return m.parseFiles(paths, handler)
+	}
 	if m.err != nil {
 		return m.err
 	}
@@ -95,6 +129,60 @@ func TestRunAnalysisHappyPath(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("Total Transactions: 1")) {
 		t.Error("expected output to show 1 transaction")
+	}
+}
+
+func TestRunAnalysisStreamsEventsDirectlyIntoAnalyzer(t *testing.T) {
+	fakeAnalyzer := &fakeStreamingAnalyzer{
+		finalResult: &model.AnalysisResult{
+			Summary: model.WorkloadSummary{TotalTransactions: 1, TotalRows: 5, TotalEvents: 3},
+			Tables:  []model.TableStats{{Schema: "shop", Table: "orders", TotalRows: 5}},
+		},
+	}
+	parserSawConsume := false
+	mock := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+		},
+	}
+
+	mock.parseFiles = func(paths []string, handler func(binlog.RawEvent) error) error {
+		for idx, ev := range mock.events {
+			if err := handler(ev); err != nil {
+				return err
+			}
+			if idx == 1 && fakeAnalyzer.consumeCalls > 0 {
+				parserSawConsume = true
+			}
+		}
+		return nil
+	}
+
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return fakeAnalyzer
+	}, createDuckDBTempStore, "")
+
+	w.Close()
+	os.Stdout = old
+	_, _ = io.Copy(&bytes.Buffer{}, r)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !parserSawConsume {
+		t.Fatal("expected analyzer.Consume to run during parser callback, not after full collection")
+	}
+	if fakeAnalyzer.consumeCalls != 3 {
+		t.Fatalf("expected 3 consume calls, got %d", fakeAnalyzer.consumeCalls)
+	}
+	if !fakeAnalyzer.finalized {
+		t.Fatal("expected Finalize to be called after parsing")
 	}
 }
 
@@ -183,6 +271,53 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 	}
 	if _, statErr := os.Stat(createdPath); !os.IsNotExist(statErr) {
 		t.Fatalf("expected cleanup to remove DuckDB path on failure, got err=%v", statErr)
+	}
+}
+
+func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
+	wantErr := errors.New("normalize boom")
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Position: 42}},
+	}, func(raw binlog.RawEvent) (*model.NormalizedEvent, error) {
+		return nil, wantErr
+	}, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return &fakeStreamingAnalyzer{}
+	}, createDuckDBTempStore, "")
+	if err == nil {
+		t.Fatal("expected normalize error")
+	}
+	if got := err.Error(); got != "parse error: normalize error at position 42: normalize boom" {
+		t.Fatalf("unexpected error: %s", got)
+	}
+}
+
+func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
+	wantErr := errors.New("consume boom")
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
+	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return &fakeStreamingAnalyzer{consumeErr: wantErr}
+	}, createDuckDBTempStore, "")
+	if err == nil {
+		t.Fatal("expected analyzer consume error")
+	}
+	if got := err.Error(); got != "parse error: analysis consume error: consume boom" {
+		t.Fatalf("unexpected error: %s", got)
+	}
+}
+
+func TestRunAnalysisPropagatesAnalyzerFinalizeError(t *testing.T) {
+	wantErr := errors.New("finalize boom")
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
+	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return &fakeStreamingAnalyzer{finalizeErr: wantErr}
+	}, createDuckDBTempStore, "")
+	if err == nil {
+		t.Fatal("expected analyzer finalize error")
+	}
+	if got := err.Error(); got != "analysis finalize error: finalize boom" {
+		t.Fatalf("unexpected error: %s", got)
 	}
 }
 
