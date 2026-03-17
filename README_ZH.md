@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Fanduzi/BinlogVisualizer?display_name=tag)](https://github.com/Fanduzi/BinlogVisualizer/releases)
 ![Platform](https://img.shields.io/badge/platform-darwin%20amd64%20%7C%20darwin%20arm64%20%7C%20linux%20amd64%20%7C%20linux%20arm64-blue)
-![Go Version](https://img.shields.io/badge/go-1.24%2B-00ADD8?logo=go)
+![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
 [English](README.md) | 中文 | [发行说明](docs/release-notes-v0.2.1.zh-CN.md)
@@ -175,7 +175,7 @@ binlogviz analyze mysql-bin.* \
 ## 环境要求
 
 - MySQL `ROW` format binlog 文件
-- Go 1.24+（构建时）
+- Go 1.26.1+（构建时）
 
 ## 大文件处理
 

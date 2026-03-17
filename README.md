@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Fanduzi/BinlogVisualizer?display_name=tag)](https://github.com/Fanduzi/BinlogVisualizer/releases)
 ![Platform](https://img.shields.io/badge/platform-darwin%20amd64%20%7C%20darwin%20arm64%20%7C%20linux%20amd64%20%7C%20linux%20arm64-blue)
-![Go Version](https://img.shields.io/badge/go-1.24%2B-00ADD8?logo=go)
+![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
 English | [中文](README_ZH.md) | [Release Notes](docs/release-notes-v0.2.1.md)
@@ -175,7 +175,7 @@ See example outputs in:
 ## Requirements
 
 - MySQL ROW-format binlog files
-- Go 1.24+ (for building)
+- Go 1.26.1+ (for building)
 
 ## Large File Handling
 
