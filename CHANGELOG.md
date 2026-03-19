@@ -15,8 +15,8 @@ Highlights:
 
 Related notes:
 
-- [v0.2.2 release notes](docs/release-notes-v0.2.2.md)
-- [v0.2.2 中文发行说明](docs/release-notes-v0.2.2.zh-CN.md)
+- [v0.2.2 release notes](docs/releases/release-notes-v0.2.2.md)
+- [v0.2.2 中文发行说明](docs/releases/release-notes-v0.2.2.zh-CN.md)
 
 ## v0.2.1
 
@@ -34,8 +34,8 @@ Highlights:
 
 Related notes:
 
-- [v0.2.1 release notes](docs/release-notes-v0.2.1.md)
-- [v0.2.1 中文发行说明](docs/release-notes-v0.2.1.zh-CN.md)
+- [v0.2.1 release notes](docs/releases/release-notes-v0.2.1.md)
+- [v0.2.1 中文发行说明](docs/releases/release-notes-v0.2.1.zh-CN.md)
 
 ## v0.2.0
 
