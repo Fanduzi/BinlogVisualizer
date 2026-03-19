@@ -6,7 +6,7 @@ Security fixes are only guaranteed for the latest tagged release.
 
 Current supported line:
 
-- `v0.2.1`
+- `v0.2.2`
 
 Older tags may remain visible for historical reasons, but they should not be treated as supported production releases.
 
