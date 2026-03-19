@@ -365,6 +365,9 @@ func TestCreateDuckDBTempStoreCreatesAndCleansFiles(t *testing.T) {
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected DuckDB file at %s: %v", path, err)
 	}
+	if _, err := os.Stat(path + ".querysql.jsonl"); !os.IsNotExist(err) {
+		t.Fatalf("expected no SQL context sidecar file, got err=%v", err)
+	}
 
 	if err := cleanup(); err != nil {
 		t.Fatalf("cleanup returned error: %v", err)

@@ -33,4 +33,5 @@
 - Stage 3 keeps CLI semantics stable while moving the command execution path to true streaming consumption with command-owned DuckDB lifecycle.
 - Stage 4 adds `--sql-context summary|off|full`; CLI parses the mode and delegates presentation decisions to `internal/report`.
 - Stage 5 adds command-path benchmarks for real fixture parsing and synthetic high-volume streaming workloads, and keeps fixture assets under `internal/binlog/testdata`.
+- Command temp-store cleanup remains directory-scoped and no longer depends on any SQL-context sidecar file; bounded SQL context now lives entirely inside the analyzer's DuckDB temp DB.
 - Top-N truncation is no longer applied in the command layer; it now happens during analyzer Finalize result assembly.

@@ -19,6 +19,7 @@ func TestDuckDBStoreInitializesSchema(t *testing.T) {
 
 	for _, table := range []string{
 		"transactions",
+		"transaction_sql_contexts",
 		"transaction_tables",
 		"transaction_operations",
 		"minute_buckets",
@@ -127,6 +128,9 @@ func TestDuckDBStoreResolvesBoundedQuerySQLForRequestedTransactions(t *testing.T
 	if err := store.Flush(); err != nil {
 		t.Fatalf("Flush returned error: %v", err)
 	}
+	if got := store.mustCountRows(t, "transaction_sql_contexts"); got != 1 {
+		t.Fatalf("expected 1 persisted SQL context row, got %d", got)
+	}
 
 	txns, err := store.QueryTopTransactions(1)
 	if err != nil {
@@ -173,6 +177,9 @@ func TestDuckDBStoreQueryAllTransactionsDoesNotHydrateFullSQL(t *testing.T) {
 	if err := store.Flush(); err != nil {
 		t.Fatalf("Flush returned error: %v", err)
 	}
+	if got := store.mustCountRows(t, "transaction_sql_contexts"); got != 1 {
+		t.Fatalf("expected 1 persisted SQL context row, got %d", got)
+	}
 
 	txns, err := store.QueryAllTransactions()
 	if err != nil {
@@ -204,6 +211,9 @@ func newTestDuckDBStore(t *testing.T, batchRows int) *DuckDBStore {
 	})
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("expected DuckDB file to exist at %s: %v", path, err)
+	}
+	if _, err := os.Stat(path + ".querysql.jsonl"); !os.IsNotExist(err) {
+		t.Fatalf("expected no SQL context sidecar file, got err=%v", err)
 	}
 	return store
 }

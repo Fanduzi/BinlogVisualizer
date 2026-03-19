@@ -39,7 +39,7 @@
 ## Notes
 
 - Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `1000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
-- DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is written to a sidecar temp file and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
+- DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is stored in the `transaction_sql_contexts` subtable and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
 - Live state remains bounded to the in-flight transaction builder, live table aggregates, current minute buckets pending flush, and summary counters.
 - `New(opts)` is now the explicit no-external-resource path; only `NewWithStore` participates in command-managed DuckDB lifecycle.
 - Command-layer streaming, CLI flag changes, renderer changes, benchmarks, and release tasks remain out of scope for this module revision.
