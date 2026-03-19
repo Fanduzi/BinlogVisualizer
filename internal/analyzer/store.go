@@ -6,14 +6,13 @@
 package analyzer
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"database/sql/driver"
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
+	"strings"
 	"time"
 
 	"binlogviz/internal/model"
@@ -61,11 +60,6 @@ type persistedTransaction struct {
 	Operations         map[string]int
 }
 
-type querySQLSidecarRow struct {
-	TxnKey string `json:"txn_key"`
-	SQL    string `json:"sql"`
-}
-
 type transactionRow struct {
 	TxnKey             string
 	StartTime          time.Time
@@ -88,6 +82,13 @@ type transactionOperationRow struct {
 	TxnKey    string
 	Operation string
 	Rows      int64
+}
+
+type transactionSQLContextRow struct {
+	TxnKey             string
+	QuerySQL           string
+	QueryTruncated     bool
+	QueryOriginalBytes int64
 }
 
 type minuteBucketRow struct {
@@ -113,9 +114,8 @@ type alertRow struct {
 
 // DuckDBStore persists analysis results in a temporary DuckDB database.
 type DuckDBStore struct {
-	path           string
-	db             *sql.DB
-	sqlContextPath string
+	path string
+	db   *sql.DB
 
 	batchRowThreshold  int
 	batchByteThreshold int
@@ -123,6 +123,7 @@ type DuckDBStore struct {
 	bufferedBytes      int
 
 	transactionsBatch []transactionRow
+	txnSQLBatch       []transactionSQLContextRow
 	txnTablesBatch    []transactionTableRow
 	txnOpsBatch       []transactionOperationRow
 	minutesBatch      []minuteBucketRow
@@ -148,15 +149,10 @@ func NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error) {
 	store := &DuckDBStore{
 		path:               path,
 		db:                 db,
-		sqlContextPath:     path + ".querysql.jsonl",
 		batchRowThreshold:  batchRows,
 		batchByteThreshold: defaultBatchFlushBytes,
 	}
 	if err := store.initSchema(); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
-	if err := store.resetSQLContextSidecar(); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -168,6 +164,7 @@ func (s *DuckDBStore) Reset() error {
 		"DELETE FROM alerts",
 		"DELETE FROM minute_table_rows",
 		"DELETE FROM minute_buckets",
+		"DELETE FROM transaction_sql_contexts",
 		"DELETE FROM transaction_operations",
 		"DELETE FROM transaction_tables",
 		"DELETE FROM transactions",
@@ -177,6 +174,7 @@ func (s *DuckDBStore) Reset() error {
 		}
 	}
 	s.transactionsBatch = nil
+	s.txnSQLBatch = nil
 	s.txnTablesBatch = nil
 	s.txnOpsBatch = nil
 	s.minutesBatch = nil
@@ -184,7 +182,7 @@ func (s *DuckDBStore) Reset() error {
 	s.alertsBatch = nil
 	s.bufferedRows = 0
 	s.bufferedBytes = 0
-	return s.resetSQLContextSidecar()
+	return nil
 }
 
 func (s *DuckDBStore) Close() error {
@@ -192,9 +190,6 @@ func (s *DuckDBStore) Close() error {
 }
 
 func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) error {
-	if err := s.appendQuerySQLSidecar(transactions); err != nil {
-		return err
-	}
 	for _, txn := range transactions {
 		s.transactionsBatch = append(s.transactionsBatch, transactionRow{
 			TxnKey:             txn.TxnKey,
@@ -208,6 +203,15 @@ func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) er
 			QueryOriginalBytes: txn.QueryOriginalBytes,
 		})
 		s.bufferTopLevelRow(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.QuerySummary) + 48)
+		if txn.QuerySQL != "" {
+			s.txnSQLBatch = append(s.txnSQLBatch, transactionSQLContextRow{
+				TxnKey:             txn.TxnKey,
+				QuerySQL:           txn.QuerySQL,
+				QueryTruncated:     txn.QueryTruncated,
+				QueryOriginalBytes: txn.QueryOriginalBytes,
+			})
+			s.bufferBytes(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.QuerySQL) + 16)
+		}
 
 		for tableKey, rows := range txn.TableRows {
 			s.txnTablesBatch = append(s.txnTablesBatch, transactionTableRow{
@@ -301,6 +305,19 @@ func (s *DuckDBStore) Flush() error {
 		}
 		s.txnTablesBatch = nil
 	}
+	if len(s.txnSQLBatch) > 0 {
+		if err := s.appendRows("transaction_sql_contexts", func(app *duckdb.Appender) error {
+			for _, row := range s.txnSQLBatch {
+				if err := app.AppendRow(row.TxnKey, row.QuerySQL, row.QueryTruncated, row.QueryOriginalBytes); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.txnSQLBatch = nil
+	}
 	if len(s.txnOpsBatch) > 0 {
 		if err := s.appendRows("transaction_operations", func(app *duckdb.Appender) error {
 			for _, row := range s.txnOpsBatch {
@@ -389,40 +406,42 @@ func (s *DuckDBStore) ResolveTransactionQuerySQL(txnKeys []string) (map[string]s
 	if len(txnKeys) == 0 {
 		return nil, nil
 	}
+	keys := make([]string, 0, len(txnKeys))
 	wanted := make(map[string]struct{}, len(txnKeys))
 	for _, key := range txnKeys {
 		if key != "" {
-			wanted[key] = struct{}{}
-		}
-	}
-	if len(wanted) == 0 {
-		return nil, nil
-	}
-
-	file, err := os.Open(s.sqlContextPath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	resolved := make(map[string]string, len(wanted))
-	scanner := bufio.NewScanner(file)
-	// Allow bounded SQL payloads plus JSON framing.
-	scanner.Buffer(make([]byte, 0, model.MaxStoredSQLBytes+256), model.MaxStoredSQLBytes+1024)
-	for scanner.Scan() {
-		var row querySQLSidecarRow
-		if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
-			return nil, err
-		}
-		if _, ok := wanted[row.TxnKey]; ok {
-			resolved[row.TxnKey] = row.SQL
-			delete(wanted, row.TxnKey)
-			if len(wanted) == 0 {
-				break
+			if _, ok := wanted[key]; !ok {
+				wanted[key] = struct{}{}
+				keys = append(keys, key)
 			}
 		}
 	}
-	if err := scanner.Err(); err != nil {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
+	args := make([]any, 0, len(keys))
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	rows, err := s.db.Query(`
+SELECT txn_key, query_sql
+FROM transaction_sql_contexts
+WHERE txn_key IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	resolved := make(map[string]string, len(wanted))
+	for rows.Next() {
+		var txnKey string
+		var sqlText string
+		if err := rows.Scan(&txnKey, &sqlText); err != nil {
+			return nil, err
+		}
+		resolved[txnKey] = sqlText
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return resolved, nil
@@ -586,6 +605,12 @@ func (s *DuckDBStore) initSchema() error {
 			txn_key VARCHAR,
 			table_key VARCHAR,
 			rows BIGINT
+		)`,
+		`CREATE TABLE IF NOT EXISTS transaction_sql_contexts (
+			txn_key VARCHAR PRIMARY KEY,
+			query_sql VARCHAR,
+			query_truncated BOOLEAN,
+			query_original_bytes BIGINT
 		)`,
 		`CREATE TABLE IF NOT EXISTS transaction_operations (
 			txn_key VARCHAR,
@@ -773,33 +798,6 @@ func (s *DuckDBStore) bufferBytes(bytes int) {
 
 func estimateStringBytes(v string) int {
 	return len(v)
-}
-
-func (s *DuckDBStore) resetSQLContextSidecar() error {
-	file, err := os.OpenFile(s.sqlContextPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-	if err != nil {
-		return err
-	}
-	return file.Close()
-}
-
-func (s *DuckDBStore) appendQuerySQLSidecar(transactions []persistedTransaction) error {
-	file, err := os.OpenFile(s.sqlContextPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	enc := json.NewEncoder(file)
-	for _, txn := range transactions {
-		if txn.QuerySQL == "" {
-			continue
-		}
-		if err := enc.Encode(querySQLSidecarRow{TxnKey: txn.TxnKey, SQL: txn.QuerySQL}); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func zeroTimeToNil(ts time.Time) any {
