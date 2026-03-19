@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.2.2
+
+Release date: 2026-03-19
+
+Highlights:
+
+- Raised the documented and enforced Go toolchain requirement to `1.26.1`
+- Added a Chinese repository README
+- Added repository-level `CHANGELOG.md` and `SECURITY.md`
+- Updated top-level documentation navigation and release entry links
+
+Related notes:
+
+- [v0.2.2 release notes](docs/release-notes-v0.2.2.md)
+- [v0.2.2 中文发行说明](docs/release-notes-v0.2.2.zh-CN.md)
+
 ## v0.2.1
 
 Release date: 2026-03-19
@@ -24,4 +40,3 @@ Related notes:
 ## v0.2.0
 
 This tag was superseded and is not a supported public release.
-

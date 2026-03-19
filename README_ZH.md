@@ -7,7 +7,7 @@
 ![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
-[English](README.md) | 中文 | [变更记录](CHANGELOG.md) | [安全策略](SECURITY.md) | [发行说明](docs/release-notes-v0.2.1.zh-CN.md)
+[English](README.md) | 中文 | [变更记录](CHANGELOG.md) | [安全策略](SECURITY.md) | [发行说明](docs/release-notes-v0.2.2.zh-CN.md)
 </div>
 
 BinlogViz 是一个用于分析 MySQL binlog 的 CLI 工具，帮助 DBA 从本地 `ROW` binlog 文件中快速识别热点表、大事务、写入尖峰和整体负载模式。
@@ -29,26 +29,26 @@ BinlogViz 主要回答这些运维问题：
 
 权威 release artifact 由 GitHub Actions release workflow 在原生 runner 上产出。本地 `goreleaser` 仅用于配置检查和当前宿主机的单目标验证。
 
-下面是 `darwin/arm64` + 当前 Phase 2 版本 `v0.2.1` 的示例：
+下面是 `darwin/arm64` + 当前 Phase 2 版本 `v0.2.2` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.1/binlogviz_0.2.1_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.1/binlogviz_0.2.1_checksums.txt
-shasum -a 256 -c binlogviz_0.2.1_checksums.txt 2>/dev/null | grep "binlogviz_0.2.1_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.2.1_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.2/binlogviz_0.2.2_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.2/binlogviz_0.2.2_checksums.txt
+shasum -a 256 -c binlogviz_0.2.2_checksums.txt 2>/dev/null | grep "binlogviz_0.2.2_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.2.2_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 也可以直接使用仓库内置的安装脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.2.1
+curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.2.2
 ```
 
 仅预览解析到的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.2.1 --dry-run
+./install.sh --version v0.2.2 --dry-run
 ```
 
 ### 备选：从源码构建
