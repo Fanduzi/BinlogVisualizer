@@ -7,10 +7,12 @@ package binlogviz
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/analyzer"
@@ -27,6 +29,13 @@ type commandAnalyzer interface {
 type normalizeRawEventFunc func(binlog.RawEvent) (*model.NormalizedEvent, error)
 type commandAnalyzerFactory func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer
 type tempStoreFactory func(root string) (*analyzer.DuckDBStore, func() error, string, error)
+
+type aggregateProgress struct {
+	bar          *progressbar.ProgressBar
+	fileSizes    []int64
+	offsets      []int64
+	statusWriter io.Writer
+}
 
 // analyzeOptions holds the parsed CLI flags for the analyze command.
 type analyzeOptions struct {
@@ -128,6 +137,91 @@ func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyz
 	}, tempRoot)
 }
 
+func totalInputBytes(paths []string) (int64, []int64) {
+	fileSizes := make([]int64, len(paths))
+	total := int64(0)
+	for index, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return 0, nil
+		}
+		size := info.Size()
+		fileSizes[index] = size
+		total += size
+	}
+	return total, fileSizes
+}
+
+func newAggregateProgress(paths []string, out io.Writer) (*aggregateProgress, error) {
+	totalBytes, fileSizes := totalInputBytes(paths)
+	if totalBytes <= 0 || len(fileSizes) == 0 {
+		return &aggregateProgress{fileSizes: fileSizes, offsets: make([]int64, len(paths)), statusWriter: out}, nil
+	}
+	bar := progressbar.NewOptions64(
+		totalBytes,
+		progressbar.OptionSetWriter(out),
+		progressbar.OptionSetDescription("Parsing binlogs"),
+		progressbar.OptionSetWidth(20),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetRenderBlankState(true),
+		progressbar.OptionThrottle(65*time.Millisecond),
+	)
+	return &aggregateProgress{bar: bar, fileSizes: fileSizes, offsets: make([]int64, len(paths)), statusWriter: out}, nil
+}
+
+func (p *aggregateProgress) Advance(progress binlog.ParseProgress) {
+	if p == nil {
+		return
+	}
+	if progress.Index < 0 || progress.Index >= len(p.fileSizes) {
+		return
+	}
+	fileSize := p.fileSizes[progress.Index]
+	offset := progress.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	if fileSize > 0 && offset > fileSize {
+		offset = fileSize
+	}
+	if offset < p.offsets[progress.Index] {
+		offset = p.offsets[progress.Index]
+	}
+	p.offsets[progress.Index] = offset
+	if p.bar != nil {
+		_ = p.bar.Set64(p.currentTotal())
+	}
+}
+
+func (p *aggregateProgress) currentTotal() int64 {
+	total := int64(0)
+	for _, offset := range p.offsets {
+		total += offset
+	}
+	return total
+}
+
+func (p *aggregateProgress) FinishFile(index int) {
+	if p == nil || index < 0 || index >= len(p.fileSizes) {
+		return
+	}
+	p.Advance(binlog.ParseProgress{Index: index, Offset: p.fileSizes[index]})
+}
+
+func (p *aggregateProgress) FinishParse() {
+	if p == nil || p.bar == nil {
+		return
+	}
+	_ = p.bar.Finish()
+}
+
+func (p *aggregateProgress) Finalizing() {
+	if p == nil || p.statusWriter == nil {
+		return
+	}
+	_, _ = fmt.Fprintln(p.statusWriter, "Finalizing analysis...")
+}
+
 func runAnalysisStreamingWithDeps(
 	paths []string,
 	opts analyzer.Options,
@@ -139,6 +233,11 @@ func runAnalysisStreamingWithDeps(
 	newTempStore tempStoreFactory,
 	tempRoot string,
 ) error {
+	progress, err := newAggregateProgress(paths, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("build parse progress: %w", err)
+	}
+
 	store, cleanup, _, err := newTempStore(tempRoot)
 	if err != nil {
 		return fmt.Errorf("create temp DuckDB store: %w", err)
@@ -147,7 +246,7 @@ func runAnalysisStreamingWithDeps(
 
 	streamAnalyzer := newAnalyzer(opts, store)
 
-	if err := parser.ParseFiles(paths, func(raw binlog.RawEvent) error {
+	handler := func(raw binlog.RawEvent) error {
 		normalized, err := normalize(raw)
 		if err != nil {
 			return fmt.Errorf("normalize error at position %d: %w", raw.Position, err)
@@ -159,9 +258,24 @@ func runAnalysisStreamingWithDeps(
 			return fmt.Errorf("analysis consume error: %w", err)
 		}
 		return nil
-	}); err != nil {
-		return fmt.Errorf("parse error: %w", err)
 	}
+
+	if progressParser, ok := parser.(binlog.ProgressParser); ok {
+		if err := progressParser.ParseFilesWithProgress(paths, func(progressEvent binlog.ParseProgress) {
+			progress.Advance(progressEvent)
+		}, handler); err != nil {
+			return fmt.Errorf("parse error: %w", err)
+		}
+		for index := range paths {
+			progress.FinishFile(index)
+		}
+	} else {
+		if err := parser.ParseFiles(paths, handler); err != nil {
+			return fmt.Errorf("parse error: %w", err)
+		}
+	}
+	progress.FinishParse()
+	progress.Finalizing()
 
 	result, err := streamAnalyzer.Finalize()
 	if err != nil {

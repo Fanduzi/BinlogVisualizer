@@ -1,6 +1,7 @@
 package binlog
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -17,12 +18,28 @@ func NewParser() Parser {
 
 // ParseFiles reads binlog files and calls handler for each event.
 func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error {
+	return p.ParseFilesWithProgress(paths, nil, handler)
+}
+
+// ParseFilesWithProgress reads binlog files and optionally reports file-relative offsets.
+func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParseProgress), handler func(RawEvent) error) error {
 	bp := replication.NewBinlogParser()
 
-	for _, path := range paths {
+	for index, path := range paths {
+		fileSize := int64(0)
+		if info, err := os.Stat(path); err == nil {
+			fileSize = info.Size()
+		}
+		lastOffset := int64(0)
 		if err := bp.ParseFile(path, 0, func(ev *replication.BinlogEvent) error {
 			if ev == nil {
 				return nil
+			}
+
+			offset := clampProgressOffset(int64(ev.Header.LogPos), fileSize)
+			lastOffset = maxInt64(lastOffset, offset)
+			if onProgress != nil {
+				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
 			}
 
 			raw := RawEvent{
@@ -60,6 +77,26 @@ func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error 
 		}); err != nil {
 			return err
 		}
+		if onProgress != nil && fileSize > 0 {
+			onProgress(ParseProgress{Path: path, Index: index, Offset: fileSize})
+		}
 	}
 	return nil
+}
+
+func clampProgressOffset(offset, fileSize int64) int64 {
+	if offset < 0 {
+		return 0
+	}
+	if fileSize > 0 && offset > fileSize {
+		return fileSize
+	}
+	return offset
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }

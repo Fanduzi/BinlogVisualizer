@@ -2,6 +2,21 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.2.3
+
+Release date: 2026-03-24
+
+Highlights:
+
+- Added aggregate parse progress for `binlogviz analyze`, based on the summed size of ordered input binlog files
+- Kept progress and finalization status on `stderr` so text and JSON reports remain clean on `stdout`
+- Added parser progress plumbing and regression coverage for duplicate input paths and output-stream separation
+
+Related notes:
+
+- [v0.2.3 release notes](docs/releases/release-notes-v0.2.3.md)
+- [v0.2.3 中文发行说明](docs/releases/release-notes-v0.2.3.zh-CN.md)
+
 ## v0.2.2
 
 Release date: 2026-03-19
