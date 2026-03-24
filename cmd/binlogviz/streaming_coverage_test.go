@@ -59,6 +59,36 @@ func captureStdoutRun(t *testing.T, fn func() error) (string, error) {
 	return buf.String(), runErr
 }
 
+func captureStdoutStderrRun(t *testing.T, fn func() error) (string, string, error) {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stdout pipe error: %v", err)
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("stderr pipe error: %v", err)
+	}
+	os.Stdout = stdoutW
+	os.Stderr = stderrW
+
+	runErr := fn()
+
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	os.Stdout = oldStdout
+	os.Stderr = oldStderr
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	_, _ = io.Copy(&stdoutBuf, stdoutR)
+	_, _ = io.Copy(&stderrBuf, stderrR)
+	return stdoutBuf.String(), stderrBuf.String(), runErr
+}
+
 func mustFixturePath(t *testing.T, name string) string {
 	t.Helper()
 	path := filepath.Join("..", "..", "internal", "binlog", "testdata", name)
@@ -81,6 +111,116 @@ func TestRunAnalysisRealFixtureMultiFileOrderedInput(t *testing.T) {
 	}
 	if !strings.Contains(out, `"total_rows": 10`) {
 		t.Fatalf("expected doubled row count from two ordered files, got: %s", out)
+	}
+}
+
+func TestRunAnalysisJSONProgressDoesNotPolluteStdout(t *testing.T) {
+	fixture := mustFixturePath(t, "minimal.binlog")
+	parser := &mockParser{
+		parseFilesWithProgress: func(paths []string, onProgress func(binlog.ParseProgress), handler func(binlog.RawEvent) error) error {
+			now := time.Date(2026, 3, 24, 12, 0, 0, 0, time.UTC)
+			if onProgress != nil {
+				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 16})
+			}
+			if err := handler(binlog.RawEvent{Timestamp: now, EventType: "QUERY_EVENT", Query: "BEGIN", Position: 16}); err != nil {
+				return err
+			}
+			if onProgress != nil {
+				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 64})
+			}
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 2, Position: 64}); err != nil {
+				return err
+			}
+			if onProgress != nil {
+				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 96})
+			}
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(2 * time.Second), EventType: "XID_EVENT", Position: 96}); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), true, parser, "", nil)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !json.Valid([]byte(stdout)) {
+		t.Fatalf("stdout must remain valid JSON, got: %s", stdout)
+	}
+	if strings.Contains(stdout, "Parsing") || strings.Contains(stdout, "Finalizing") {
+		t.Fatalf("stdout must not contain progress output, got: %s", stdout)
+	}
+	if !strings.Contains(stderr, "Finalizing analysis") {
+		t.Fatalf("expected finalizing status on stderr, got: %s", stderr)
+	}
+}
+
+func TestRunAnalysisTextModeWritesProgressToStderr(t *testing.T) {
+	fixture := mustFixturePath(t, "minimal.binlog")
+	parser := &mockParser{
+		parseFilesWithProgress: func(paths []string, onProgress func(binlog.ParseProgress), handler func(binlog.RawEvent) error) error {
+			now := time.Date(2026, 3, 24, 12, 1, 0, 0, time.UTC)
+			if onProgress != nil {
+				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 12})
+			}
+			if err := handler(binlog.RawEvent{Timestamp: now, EventType: "QUERY_EVENT", Query: "BEGIN", Position: 12}); err != nil {
+				return err
+			}
+			if onProgress != nil {
+				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 48})
+			}
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 3, Position: 48}); err != nil {
+				return err
+			}
+			if onProgress != nil {
+				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 72})
+			}
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(2 * time.Second), EventType: "XID_EVENT", Position: 72}); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), false, parser, "", nil)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stdout, "=== Workload Summary ===") {
+		t.Fatalf("expected text report on stdout, got: %s", stdout)
+	}
+	if !strings.Contains(stderr, "Finalizing analysis") {
+		t.Fatalf("expected progress/finalizing output on stderr, got: %s", stderr)
+	}
+	if strings.Contains(stdout, "Finalizing analysis") {
+		t.Fatalf("stdout must not contain finalizing status, got: %s", stdout)
+	}
+}
+
+func TestAggregateProgressTracksDuplicatePathsIndependently(t *testing.T) {
+	progress := &aggregateProgress{
+		fileSizes: []int64{100, 100},
+		offsets:   []int64{0, 0},
+	}
+
+	progress.Advance(binlog.ParseProgress{Path: "dup.binlog", Index: 0, Offset: 60})
+	if got := progress.currentTotal(); got != 60 {
+		t.Fatalf("expected total 60 after first file update, got %d", got)
+	}
+
+	progress.Advance(binlog.ParseProgress{Path: "dup.binlog", Index: 1, Offset: 30})
+	if got := progress.currentTotal(); got != 90 {
+		t.Fatalf("expected total 90 with duplicate path second file progress, got %d", got)
+	}
+
+	progress.Advance(binlog.ParseProgress{Path: "dup.binlog", Index: 1, Offset: 10})
+	if got := progress.currentTotal(); got != 90 {
+		t.Fatalf("expected duplicate path progress not to regress, got %d", got)
 	}
 }
 

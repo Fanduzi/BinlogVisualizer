@@ -52,9 +52,10 @@ func (f *fakeStreamingAnalyzer) Finalize() (*model.AnalysisResult, error) {
 
 // mockParser implements binlog.Parser for testing.
 type mockParser struct {
-	events     []binlog.RawEvent
-	err        error
-	parseFiles func(paths []string, handler func(binlog.RawEvent) error) error
+	events                 []binlog.RawEvent
+	err                    error
+	parseFiles             func(paths []string, handler func(binlog.RawEvent) error) error
+	parseFilesWithProgress func(paths []string, onProgress func(binlog.ParseProgress), handler func(binlog.RawEvent) error) error
 }
 
 func (m *mockParser) ParseFiles(paths []string, handler func(binlog.RawEvent) error) error {
@@ -67,6 +68,29 @@ func (m *mockParser) ParseFiles(paths []string, handler func(binlog.RawEvent) er
 	for _, ev := range m.events {
 		if err := handler(ev); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func (m *mockParser) ParseFilesWithProgress(paths []string, onProgress func(binlog.ParseProgress), handler func(binlog.RawEvent) error) error {
+	if m.parseFilesWithProgress != nil {
+		return m.parseFilesWithProgress(paths, onProgress, handler)
+	}
+	if m.parseFiles != nil {
+		return m.parseFiles(paths, handler)
+	}
+	if m.err != nil {
+		return m.err
+	}
+	for index, path := range paths {
+		for _, ev := range m.events {
+			if onProgress != nil {
+				onProgress(binlog.ParseProgress{Path: path, Index: index, Offset: int64(ev.Position)})
+			}
+			if err := handler(ev); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

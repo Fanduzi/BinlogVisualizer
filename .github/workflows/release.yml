@@ -1,5 +1,5 @@
-# input: version tags matching v* or a manual workflow_dispatch trigger on the default repository branch.
-# output: tested darwin/linux amd64/arm64 release archives, a checksum manifest, and a GitHub Release for tag builds.
+# input: version tags matching v*.
+# output: tested darwin/linux amd64/arm64 release archives, a checksum manifest, and a GitHub Release with bilingual release notes.
 # pos: the only trusted release pipeline, using native runners plus goreleaser-driven single-target builds so artifact naming stays aligned with install docs.
 # note: if this file changes, keep .goreleaser.yml, install.sh, and README.md artifact naming in sync.
 
@@ -9,7 +9,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 jobs:
   test:
@@ -82,10 +81,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
-      - name: Collect artifacts and checksums
+      - name: Collect artifacts, checksums, and release notes
         shell: bash
         run: |
           set -euo pipefail
@@ -94,9 +94,30 @@ jobs:
           find dist -type f -name '*.tar.gz' -exec cp {} release/ \;
           cd release
           shasum -a 256 *.tar.gz > "binlogviz_${VERSION}_checksums.txt"
+          ENGLISH_NOTE="${GITHUB_WORKSPACE}/docs/releases/release-notes-v${VERSION}.md"
+          CHINESE_NOTE="${GITHUB_WORKSPACE}/docs/releases/release-notes-v${VERSION}.zh-CN.md"
+          if [[ ! -f "${ENGLISH_NOTE}" ]]; then
+            echo "Missing release note file: ${ENGLISH_NOTE}" >&2
+            exit 1
+          fi
+          if [[ ! -f "${CHINESE_NOTE}" ]]; then
+            echo "Missing release note file: ${CHINESE_NOTE}" >&2
+            exit 1
+          fi
+          grep -q "# BinlogViz v${VERSION} Release Notes" "${ENGLISH_NOTE}"
+          grep -q "# BinlogViz v${VERSION} 发布说明" "${CHINESE_NOTE}"
+          BODY_FILE="release-notes-v${VERSION}.md"
+          {
+            printf '## English\n\n'
+            cat "${ENGLISH_NOTE}"
+            printf '\n\n---\n\n## 中文\n\n'
+            cat "${CHINESE_NOTE}"
+          } > "${BODY_FILE}"
+          printf 'RELEASE_BODY_PATH=%s/%s\n' "$PWD" "${BODY_FILE}" >> "$GITHUB_ENV"
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: ${{ env.RELEASE_BODY_PATH }}
           files: |
             release/*.tar.gz
             release/*_checksums.txt

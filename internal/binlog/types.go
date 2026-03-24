@@ -21,3 +21,15 @@ type Parser interface {
 	// ParseFiles reads one or more binlog files and calls handler for each event.
 	ParseFiles(paths []string, handler func(RawEvent) error) error
 }
+
+// ParseProgress reports file-relative parse progress for a specific input path occurrence.
+type ParseProgress struct {
+	Path   string
+	Index  int
+	Offset int64
+}
+
+// ProgressParser optionally reports file-relative parse progress during parsing.
+type ProgressParser interface {
+	ParseFilesWithProgress(paths []string, onProgress func(ParseProgress), handler func(RawEvent) error) error
+}
