@@ -1,3 +1,8 @@
+// Package binlog defines raw binlog event types and parser contracts used by the command layer.
+// input: timestamps, table/query metadata, row counts, file-relative offsets, and parser callback expectations.
+// output: stable RawEvent values plus Parser and ProgressParser interfaces shared across parsing and analysis code.
+// pos: contract boundary isolating analyzer and CLI orchestration from concrete binlog parser implementations.
+// note: if this file changes, update this header and README.md.
 package binlog
 
 import "time"
