@@ -1,3 +1,8 @@
+// Package binlog extracts raw events and parse progress from local MySQL binlog files.
+// input: binlog file paths, go-mysql replication parser callbacks, and optional progress consumers.
+// output: Parser implementations that emit RawEvent values plus monotonic per-input ParseProgress updates.
+// pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
+// note: if this file changes, update this header and README.md.
 package binlog
 
 import (

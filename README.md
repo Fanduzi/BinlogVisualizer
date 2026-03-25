@@ -238,10 +238,19 @@ binlog files → parser → normalizer → analyzer → renderer → output
 ```
 
 Components:
-- **Parser**: Wraps `go-mysql-org/go-mysql/replication` for binlog parsing
+- **Parser**: Wraps `go-mysql-org/go-mysql/replication` for binlog parsing and optional per-input progress reporting
 - **Normalizer**: Converts parser events to stable internal format
 - **Analyzer**: Reconstructs transactions, aggregates tables/minutes, detects alerts
-- **Renderer**: Produces text or JSON output
+- **Renderer**: Produces text or JSON output while progress remains on `stderr`
+
+### Modules
+
+| Module | Description | Doc |
+|--------|-------------|-----|
+| `cmd/binlogviz` | Cobra CLI entrypoints, analyze orchestration, progress rendering, and command-owned temp-store lifecycle | [README](cmd/binlogviz/README.md) |
+| `internal/binlog` | Binlog parser abstraction, raw event extraction, normalization, and parse-progress contracts | [README](internal/binlog/README.md) |
+| `internal/analyzer` | Streaming workload analyzer, DuckDB-backed finalize-time aggregation, and alerts | [README](internal/analyzer/README.md) |
+| `internal/report` | Text and JSON rendering for analysis results | [README](internal/report/README.md) |
 
 ## License
 
