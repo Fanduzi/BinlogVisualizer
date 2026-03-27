@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.3.0
+
+Release date: 2026-03-27
+
+Highlights:
+
+- Added discovery mode with `--from-dir` and `--prefix` flags to automatically discover and order binlog files from a directory
+- Added `binlogviz version` command (prints ASCII logo + version) and `--version` flag (prints version only)
+- Restructured documentation into concept/recipe/reference sections with bilingual coverage
+- Improved `validateFiles` error messages to distinguish "file not found" from other access errors
+
+Related notes:
+
+- [v0.3.0 release notes](docs/releases/release-notes-v0.3.0.md)
+- [v0.3.0 中文发行说明](docs/releases/release-notes-v0.3.0.zh-CN.md)
+
 ## v0.2.3
 
 Release date: 2026-03-24

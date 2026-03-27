@@ -1,7 +1,7 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
-// input: CLI flags, binlog file paths, parser callbacks, and command-owned temporary directory roots.
+// input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks, and command-owned temporary directory roots.
 // output: rendered text/JSON analysis reports plus command-level creation and cleanup of temporary DuckDB stores.
-// pos: CLI orchestration layer between parser normalization, analyzer execution, and final report rendering.
+// pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 
@@ -10,6 +10,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
@@ -41,6 +44,8 @@ type aggregateProgress struct {
 type analyzeOptions struct {
 	startTime        string
 	endTime          string
+	fromDir          string
+	prefix           string
 	json             bool
 	sqlContext       string
 	topTables        int
@@ -54,9 +59,23 @@ func newAnalyzeCommand() *cobra.Command {
 	opts := &analyzeOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "analyze <binlog files...>",
+		Use:   "analyze <binlog files...> | --from-dir DIR --prefix PREFIX",
 		Short: "Analyze binlog files",
-		Args:  cobra.MinimumNArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			hasArgs := len(args) > 0
+			hasFromDir := opts.fromDir != ""
+			hasPrefix := opts.prefix != ""
+			if hasArgs && (hasFromDir || hasPrefix) {
+				return fmt.Errorf("cannot combine positional binlog files with --from-dir/--prefix")
+			}
+			if hasFromDir != hasPrefix {
+				return fmt.Errorf("--from-dir and --prefix must be provided together")
+			}
+			if hasArgs || hasFromDir {
+				return nil
+			}
+			return cobra.MinimumNArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Parse time range
 			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
@@ -69,8 +88,16 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
+			paths, discovered, err := resolveAnalyzePaths(args, opts)
+			if err != nil {
+				return err
+			}
+			if discovered {
+				printResolvedPaths(os.Stderr, paths)
+			}
+
 			// Validate input files exist
-			if err := validateFiles(args); err != nil {
+			if err := validateFiles(paths); err != nil {
 				return err
 			}
 
@@ -78,13 +105,15 @@ func newAnalyzeCommand() *cobra.Command {
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 
 			// Execute the analysis pipeline
-			return runAnalysisWithReportOptions(args, analyzerOpts, reportOpts, opts.json)
+			return runAnalysisWithReportOptions(paths, analyzerOpts, reportOpts, opts.json)
 		},
 	}
 
 	// Register flags
 	cmd.Flags().StringVar(&opts.startTime, "start", "", "Start time (inclusive, RFC3339 format)")
 	cmd.Flags().StringVar(&opts.endTime, "end", "", "End time (inclusive, RFC3339 format)")
+	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", "Discover binlog files from this directory")
+	cmd.Flags().StringVar(&opts.prefix, "prefix", "", "Filename prefix used with --from-dir")
 	cmd.Flags().BoolVar(&opts.json, "json", false, "Output in JSON format")
 	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), "SQL context mode: summary, off, or full")
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, "Number of top tables to show")
@@ -96,11 +125,98 @@ func newAnalyzeCommand() *cobra.Command {
 	return cmd
 }
 
-// validateFiles checks that all input files exist.
+func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, error) {
+	hasArgs := len(args) > 0
+	hasFromDir := opts.fromDir != ""
+	hasPrefix := opts.prefix != ""
+
+	if hasArgs && (hasFromDir || hasPrefix) {
+		return nil, false, fmt.Errorf("cannot combine positional binlog files with --from-dir/--prefix")
+	}
+	if hasFromDir != hasPrefix {
+		return nil, false, fmt.Errorf("--from-dir and --prefix must be provided together")
+	}
+	if hasArgs {
+		return args, false, nil
+	}
+	if hasFromDir {
+		paths, err := discoverBinlogPaths(opts.fromDir, opts.prefix)
+		if err != nil {
+			return nil, false, err
+		}
+		return paths, true, nil
+	}
+	return nil, false, fmt.Errorf("requires at least one binlog file or --from-dir + --prefix")
+}
+
+func discoverBinlogPaths(dir, prefix string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("read binlog directory: %w", err)
+	}
+
+	candidates := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		suffix := strings.TrimPrefix(name, prefix)
+		if suffix == "" || !isDigits(suffix) {
+			continue
+		}
+		candidates = append(candidates, filepath.Join(dir, name))
+	}
+
+	sortBinlogPaths(candidates, prefix)
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no matching binlog files found under %s with prefix %q", dir, prefix)
+	}
+	return candidates, nil
+}
+
+func sortBinlogPaths(paths []string, prefix string) {
+	sort.SliceStable(paths, func(i, j int) bool {
+		leftBase := filepath.Base(paths[i])
+		rightBase := filepath.Base(paths[j])
+		leftSuffix := strings.TrimPrefix(leftBase, prefix)
+		rightSuffix := strings.TrimPrefix(rightBase, prefix)
+		leftValue, leftErr := strconv.ParseInt(leftSuffix, 10, 64)
+		rightValue, rightErr := strconv.ParseInt(rightSuffix, 10, 64)
+		if leftErr == nil && rightErr == nil && leftValue != rightValue {
+			return leftValue < rightValue
+		}
+		return leftBase < rightBase
+	})
+}
+
+func isDigits(value string) bool {
+	for _, ch := range value {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	return value != ""
+}
+
+func printResolvedPaths(out io.Writer, paths []string) {
+	_, _ = fmt.Fprintln(out, "Resolved binlog files:")
+	for _, path := range paths {
+		_, _ = fmt.Fprintf(out, "- %s\n", path)
+	}
+}
+
+// validateFiles checks that all input files are accessible.
 func validateFiles(paths []string) error {
 	for _, path := range paths {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return fmt.Errorf("file not found: %s", path)
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("file not found: %s", path)
+			}
+			return fmt.Errorf("cannot access file %s: %w", path, err)
 		}
 	}
 	return nil

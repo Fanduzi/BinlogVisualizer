@@ -109,6 +109,179 @@ func TestAnalyzeCommandRejectsMissingFiles(t *testing.T) {
 	}
 }
 
+func TestResolveAnalyzePathsRejectsMixedModes(t *testing.T) {
+	opts := &analyzeOptions{fromDir: "/tmp/binlogs", prefix: "mysql-bin."}
+
+	_, _, err := resolveAnalyzePaths([]string{"mysql-bin.000123"}, opts)
+	if err == nil || !strings.Contains(err.Error(), "cannot combine") {
+		t.Fatalf("expected mixed-mode error, got %v", err)
+	}
+}
+
+func TestResolveAnalyzePathsRejectsIncompleteDiscoveryFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		opts *analyzeOptions
+	}{
+		{name: "missing prefix", opts: &analyzeOptions{fromDir: "/tmp/binlogs"}},
+		{name: "missing from-dir", opts: &analyzeOptions{prefix: "mysql-bin."}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, err := resolveAnalyzePaths(nil, tt.opts)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+		})
+	}
+}
+
+func TestResolveAnalyzePathsExplicitArgsRemainUnchanged(t *testing.T) {
+	opts := &analyzeOptions{}
+	want := []string{"a", "b"}
+
+	got, discovered, err := resolveAnalyzePaths(want, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if discovered {
+		t.Fatal("expected explicit mode")
+	}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected paths: %#v", got)
+	}
+}
+
+func TestDiscoverBinlogPathsFindsAndSortsNumericSuffixes(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, dir+"/mysql-bin.000124")
+	mustWriteFile(t, dir+"/mysql-bin.000123")
+	mustWriteFile(t, dir+"/mysql-bin.index")
+	mustWriteFile(t, dir+"/other.log")
+
+	got, err := discoverBinlogPaths(dir, "mysql-bin.")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{dir + "/mysql-bin.000123", dir + "/mysql-bin.000124"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected paths: want=%v got=%v", want, got)
+	}
+}
+
+func TestDiscoverBinlogPathsSortsByNumericSuffixNotLexicalOrder(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, dir+"/mysql-bin.10")
+	mustWriteFile(t, dir+"/mysql-bin.9")
+
+	got, err := discoverBinlogPaths(dir, "mysql-bin.")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{dir + "/mysql-bin.9", dir + "/mysql-bin.10"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected numeric order: want=%v got=%v", want, got)
+	}
+}
+
+func TestDiscoverBinlogPathsSortsNumericSuffixesWithoutDotSeparator(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, dir+"/mysql-bin10")
+	mustWriteFile(t, dir+"/mysql-bin9")
+
+	got, err := discoverBinlogPaths(dir, "mysql-bin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{dir + "/mysql-bin9", dir + "/mysql-bin10"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected numeric order without dot separator: want=%v got=%v", want, got)
+	}
+}
+
+func TestDiscoverBinlogPathsFailsWhenNoMatches(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, dir+"/mysql-bin.index")
+
+	_, err := discoverBinlogPaths(dir, "mysql-bin.")
+	if err == nil || !strings.Contains(err.Error(), "no matching binlog files") {
+		t.Fatalf("expected no-match error, got %v", err)
+	}
+}
+
+func TestAnalyzeCommandRejectsFromDirWithoutPrefix(t *testing.T) {
+	cmd := newAnalyzeCommand()
+	cmd.SetArgs([]string{"--from-dir", t.TempDir()})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "must be provided together") {
+		t.Fatalf("expected paired-flag error, got %v", err)
+	}
+}
+
+func TestAnalyzeCommandRejectsPrefixWithoutFromDir(t *testing.T) {
+	cmd := newAnalyzeCommand()
+	cmd.SetArgs([]string{"--prefix", "mysql-bin."})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "must be provided together") {
+		t.Fatalf("expected paired-flag error, got %v", err)
+	}
+}
+
+func TestAnalyzeCommandRejectsMixedPositionalAndDiscoveryModes(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "binlog.*")
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close temp file: %v", err)
+	}
+
+	cmd := newAnalyzeCommand()
+	cmd.SetArgs([]string{file.Name(), "--from-dir", t.TempDir(), "--prefix", "mysql-bin."})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "cannot combine") {
+		t.Fatalf("expected mixed-mode error, got %v", err)
+	}
+}
+
+func TestAnalyzeCommandDiscoveryModePrintsResolvedFilesToStderr(t *testing.T) {
+	dir := t.TempDir()
+	fixture := mustFixturePath(t, "minimal.binlog")
+	copyFile(t, fixture, dir+"/mysql-bin.000123")
+	copyFile(t, fixture, dir+"/mysql-bin.000124")
+
+	cmd := newAnalyzeCommand()
+	cmd.SetArgs([]string{"--from-dir", dir, "--prefix", "mysql-bin.", "--json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !json.Valid([]byte(stdout)) {
+		t.Fatalf("stdout must be valid json: %s", stdout)
+	}
+	if !strings.Contains(stderr, "mysql-bin.000123") || !strings.Contains(stderr, "mysql-bin.000124") {
+		t.Fatalf("stderr must list resolved files, got: %s", stderr)
+	}
+}
+
 func TestRunAnalysisHappyPath(t *testing.T) {
 	// Create mock parser with sample events
 	mock := &mockParser{
@@ -578,13 +751,7 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 // This test uses internal/binlog/testdata/minimal.binlog which was generated from MySQL 5.7 with ROW binlog format.
 // See internal/binlog/testdata/README.md for fixture generation instructions.
 func TestRealBinlogFixtureEndToEnd(t *testing.T) {
-	// Fixture is in internal/binlog/testdata/, relative to project root
-	fixturePath := "../../internal/binlog/testdata/minimal.binlog"
-
-	// Verify fixture exists
-	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
-		t.Fatalf("fixture not found: %s - see internal/binlog/testdata/README.md for generation instructions", fixturePath)
-	}
+	fixturePath := mustFixturePath(t, "minimal.binlog")
 
 	// Run the full pipeline with real parser
 	opts := analyzer.DefaultOptions()
@@ -624,6 +791,24 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 }
 
 // Helper functions to create test data
+
+func mustWriteFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
+		t.Fatalf("write file %s: %v", path, err)
+	}
+}
+
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read file %s: %v", src, err)
+	}
+	if err := os.WriteFile(dst, data, 0o644); err != nil {
+		t.Fatalf("write file %s: %v", dst, err)
+	}
+}
 
 func createTestTableStats(count int) []model.TableStats {
 	stats := make([]model.TableStats, count)

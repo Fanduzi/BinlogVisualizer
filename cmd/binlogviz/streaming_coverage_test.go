@@ -202,6 +202,28 @@ func TestRunAnalysisTextModeWritesProgressToStderr(t *testing.T) {
 	}
 }
 
+func TestDiscoveryModeProgressUsesResolvedOrderedFiles(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "mysql-bin.10"))
+	mustWriteFile(t, filepath.Join(dir, "mysql-bin.9"))
+
+	paths, err := discoverBinlogPaths(dir, "mysql-bin.")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := strings.Join(paths, ","), strings.Join([]string{filepath.Join(dir, "mysql-bin.9"), filepath.Join(dir, "mysql-bin.10")}, ","); got != want {
+		t.Fatalf("unexpected discovered order: want=%s got=%s", want, got)
+	}
+
+	total, sizes := totalInputBytes(paths)
+	if total != 8 {
+		t.Fatalf("expected total bytes 8, got %d", total)
+	}
+	if len(sizes) != 2 || sizes[0] != 4 || sizes[1] != 4 {
+		t.Fatalf("unexpected file sizes: %v", sizes)
+	}
+}
+
 func TestAggregateProgressTracksDuplicatePathsIndependently(t *testing.T) {
 	progress := &aggregateProgress{
 		fileSizes: []int64{100, 100},
