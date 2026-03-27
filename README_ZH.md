@@ -7,7 +7,7 @@
 ![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
-[English](README.md) | 中文 | [变更记录](CHANGELOG.md) | [安全策略](SECURITY.md) | [发行说明](docs/releases/release-notes-v0.2.3.zh-CN.md)
+[English](README.md) | 中文 | [变更记录](CHANGELOG.md) | [安全策略](SECURITY.md) | [发行说明](docs/releases/)
 </div>
 
 BinlogViz 是一个用于分析 MySQL binlog 的 CLI 工具，帮助 DBA 从本地 `ROW` binlog 文件中快速识别热点表、大事务、写入尖峰和整体负载模式。
@@ -54,7 +54,7 @@ curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/insta
 ### 备选：从源码构建
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Fanduzi/BinlogVisualizer.git
 cd BinlogVisualizer
 
 go build -o binlogviz .
@@ -72,6 +72,9 @@ binlogviz analyze mysql-bin.000123
 
 # 分析多个文件
 binlogviz analyze mysql-bin.000123 mysql-bin.000124
+
+# 从目录和前缀自动发现有序 binlog 范围
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 
 # 用 shell 展开分析一组文件
 binlogviz analyze mysql-bin.*
@@ -107,138 +110,38 @@ binlogviz analyze mysql-bin.* \
   --large-trx-duration 60s
 ```
 
-## CLI Flags
+## 文档导航
 
-| Flag | 默认值 | 说明 |
-|------|--------|------|
-| `--start` | 无 | 开始时间，包含边界，RFC3339 格式 |
-| `--end` | 无 | 结束时间，包含边界，RFC3339 格式 |
-| `--json` | false | 使用 JSON 输出 |
-| `--sql-context` | summary | SQL 上下文展示模式：`summary`、`off`、`full` |
-| `--top-tables` | 10 | 输出的 Top 表数量 |
-| `--top-transactions` | 10 | 输出的 Top 事务数量 |
-| `--detect-spikes` | false | 开启写入尖峰检测 |
-| `--large-trx-rows` | 1000 | 大事务行数阈值 |
-| `--large-trx-duration` | 30s | 大事务耗时阈值 |
+BinlogViz 现在按读者意图拆分产品文档，这样 README 可以专注于安装方式和第一次成功运行，而更稳定的契约与设计说明则放到 `docs/` 下。
 
-## 报告部分
+### 概念文档
 
-输出包含 5 个 section：
+- [产品架构](docs/concept/architecture.zh-CN.md)
+- [DuckDB 临时存储](docs/concept/duckdb-temp-store.zh-CN.md)
+- [分析模型](docs/concept/analysis-model.zh-CN.md)
+- [限制与边界](docs/concept/limitations.zh-CN.md)
 
-### 1. Workload Summary
+### 操作指南
 
-分析时间窗口内的整体统计：
+- [快速开始](docs/recipe/quickstart.zh-CN.md)
+- [分析本地 Binlog](docs/recipe/analyze-local-binlogs.zh-CN.md)
+- [常见错误排查](docs/recipe/troubleshoot-common-errors.zh-CN.md)
 
-- 总事务数
-- 总影响行数
-- 总事件数
-- 时间范围和持续时长
+### 参考文档
 
-### 2. Top Tables
+- [CLI 参考](docs/reference/cli.zh-CN.md)
+- [输入发现参考](docs/reference/input-discovery.zh-CN.md)
+- [输出格式参考](docs/reference/output-format.zh-CN.md)
 
-按总影响行数排序的表，展示：
+### 其他资源
 
-- schema 和表名
-- 总行数
-- 各操作类型明细（INSERT/UPDATE/DELETE）
-- 涉及该表的 distinct transaction 数量
-
-### 3. Top Transactions
-
-按总行数排序的最大事务，展示：
-
-- 事务标识
-- 行数和持续时间
-- 事件数
-
-### 4. Minute Activity
-
-按分钟拆分的写入活动：
-
-- 每分钟写入行数
-- 每分钟事务数
-
-### 5. Alerts
-
-识别出的异常包括：
-
-- **Large Transaction**：超过行数或持续时间阈值的事务
-- **Write Spike**：某分钟写入异常高，且开启了 `--detect-spikes`
-
-## 示例
-
-示例输出见：
-
-- [Text Output](docs/examples/analyze-output.txt)
-- [JSON Output](docs/examples/analyze-output.json)
+- [示例输出](docs/examples/)
+- [发行说明](docs/releases/)
 
 ## 环境要求
 
 - MySQL `ROW` format binlog 文件
 - Go 1.26.1+（构建时）
-
-## 大文件处理
-
-BinlogViz 当前使用 streaming command path + DuckDB finalize-time result assembly：
-
-- **Parser**：通过 callback 流式读取原始 binlog 事件
-- **Command Layer**：立即 normalize 并转发给 `analyzer.Consume`
-- **Analyzer**：在内存中只保留 bounded live state
-- **DuckDB Temp Store**：在 `Finalize()` 阶段持久化高基数结果
-- **Renderer**：输出最终报告
-
-### 性能预期
-
-在 Apple M4 Pro 上的 benchmark：
-
-| 输入规模 | Time/op | Memory/op | Allocs/op |
-|---------|---------|-----------|-----------|
-| 1 event | ~1μs | 2.5 KB | 32 |
-| 100 events | ~40μs | 55 KB | 756 |
-| 1000 events | ~492μs | 665 KB | 7.1K |
-| 100 tables | ~41μs | 55 KB | 756 |
-| 10 transactions | ~245 ns | 469 B | 12 |
-
-### 大文件建议
-
-对较大的 binlog 文件：
-
-1. 优先按顺序直接分析 binlog 范围，command path 本身已经是 streaming。
-2. 预留足够的磁盘空间，用于分析过程中的临时 DuckDB 结果存储。
-
-## 限制
-
-- **仅支持 ROW binlog**：MVP 不支持 STATEMENT 和 MIXED
-- **仅支持本地文件**：不能直接连接 MySQL 服务端
-- **不是实时流式消费**：分析对象是静态文件
-- **仅支持 bounded SQL context**：当输入 binlog 包含 `Rows_query_log_event` 时，可通过 `--sql-context summary|full` 展示受限长度 SQL 上下文，但不支持 SQL replay 或完整 statement reconstruction
-- **不展示 row values**：关注的是操作模式，不是数据内容
-
-## 非目标
-
-BinlogViz 目前刻意不做这些事情：
-
-- 复制故障排查器
-- SQL 重放器
-- 实时监控系统
-- Prometheus exporter
-- Web dashboard
-- AI 异常检测器
-
-## 架构
-
-BinlogViz 使用单次流式分析管线：
-
-```text
-binlog files → parser → normalizer → analyzer → renderer → output
-```
-
-组件职责：
-
-- **Parser**：封装 `go-mysql-org/go-mysql/replication` 做 binlog 解析
-- **Normalizer**：把 parser 事件转换为稳定的内部格式
-- **Analyzer**：重建事务、聚合表/分钟指标、检测告警
-- **Renderer**：输出 text 或 JSON
 
 ## License
 
