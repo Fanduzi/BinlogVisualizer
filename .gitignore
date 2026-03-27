@@ -16,6 +16,7 @@
 
 # Claude Code
 .claude/
+.worktrees/
 CLAUDE.md
 AGENTS.md
 
