@@ -751,13 +751,7 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 // This test uses internal/binlog/testdata/minimal.binlog which was generated from MySQL 5.7 with ROW binlog format.
 // See internal/binlog/testdata/README.md for fixture generation instructions.
 func TestRealBinlogFixtureEndToEnd(t *testing.T) {
-	// Fixture is in internal/binlog/testdata/, relative to project root
-	fixturePath := "../../internal/binlog/testdata/minimal.binlog"
-
-	// Verify fixture exists
-	if _, err := os.Stat(fixturePath); os.IsNotExist(err) {
-		t.Fatalf("fixture not found: %s - see internal/binlog/testdata/README.md for generation instructions", fixturePath)
-	}
+	fixturePath := mustFixturePath(t, "minimal.binlog")
 
 	// Run the full pipeline with real parser
 	opts := analyzer.DefaultOptions()
