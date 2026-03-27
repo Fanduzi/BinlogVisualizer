@@ -7,7 +7,7 @@
 ![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
-English | [中文](README_ZH.md) | [Changelog](CHANGELOG.md) | [Security](SECURITY.md) | [Release Notes](docs/releases/release-notes-v0.2.3.md)
+English | [中文](README_ZH.md) | [Changelog](CHANGELOG.md) | [Security](SECURITY.md) | [Release Notes](docs/releases/)
 </div>
 
 A CLI tool for MySQL binlog analysis, designed to help DBAs quickly identify hot tables, large transactions, write spikes, and workload patterns from local ROW binlog files.
@@ -54,7 +54,7 @@ To preview the resolved artifact without downloading:
 ### Fallback: Build From Source
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Fanduzi/BinlogVisualizer.git
 cd BinlogVisualizer
 
 # Build locally
@@ -77,6 +77,9 @@ binlogviz analyze mysql-bin.000123
 
 # Analyze multiple files
 binlogviz analyze mysql-bin.000123 mysql-bin.000124
+
+# Discover an ordered binlog range from a directory and prefix
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 
 # Use shell expansion for multiple files
 binlogviz analyze mysql-bin.*
@@ -113,144 +116,38 @@ binlogviz analyze mysql-bin.* \
   --large-trx-duration 60s
 ```
 
-## CLI Flags
+## Documentation
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--start` | (none) | Start time (inclusive, RFC3339 format) |
-| `--end` | (none) | End time (inclusive, RFC3339 format) |
-| `--json` | false | Output in JSON format |
-| `--sql-context` | summary | SQL context presentation mode: `summary`, `off`, or `full` |
-| `--top-tables` | 10 | Number of top tables to show |
-| `--top-transactions` | 10 | Number of top transactions to show |
-| `--detect-spikes` | false | Enable write spike detection |
-| `--large-trx-rows` | 1000 | Rows threshold for large transaction alerts |
-| `--large-trx-duration` | 30s | Duration threshold for large transaction alerts |
+BinlogViz now splits product documentation by reader intent so the README can stay focused on installation and the shortest path to first success.
 
-## Report Sections
+### Concepts
 
-The output contains five sections:
+- [Architecture](docs/concept/architecture.md)
+- [DuckDB Temp Store](docs/concept/duckdb-temp-store.md)
+- [Analysis Model](docs/concept/analysis-model.md)
+- [Limitations](docs/concept/limitations.md)
 
-### 1. Workload Summary
+### Recipes
 
-Overall statistics for the analyzed time window:
-- Total transactions count
-- Total rows affected
-- Total events processed
-- Time range and duration
+- [Quickstart](docs/recipe/quickstart.md)
+- [Analyze Local Binlogs](docs/recipe/analyze-local-binlogs.md)
+- [Troubleshoot Common Errors](docs/recipe/troubleshoot-common-errors.md)
 
-### 2. Top Tables
+### Reference
 
-Tables ranked by total rows affected, showing:
-- Schema and table name
-- Total row count
-- Breakdown by operation (INSERT/UPDATE/DELETE)
-- Number of distinct transactions touching the table
+- [CLI Reference](docs/reference/cli.md)
+- [Input Discovery Reference](docs/reference/input-discovery.md)
+- [Output Format Reference](docs/reference/output-format.md)
 
-### 3. Top Transactions
+### Additional Resources
 
-Largest transactions ranked by total rows, showing:
-- Transaction identifier
-- Row count and duration
-- Event count
-
-### 4. Minute Activity
-
-Per-minute breakdown of write activity:
-- Rows written per minute
-- Transaction count per minute
-
-### 5. Alerts
-
-Detected anomalies including:
-- **Large Transaction**: Transactions exceeding row or duration thresholds
-- **Write Spike**: Minutes with abnormally high write activity (when `--detect-spikes` is enabled)
-
-## Examples
-
-See example outputs in:
-- [Text Output](docs/examples/analyze-output.txt)
-- [JSON Output](docs/examples/analyze-output.json)
+- [Examples](docs/examples/)
+- [Release Notes](docs/releases/)
 
 ## Requirements
 
 - MySQL ROW-format binlog files
 - Go 1.26.1+ (for building)
-
-## Large File Handling
-
-BinlogViz is designed for MVP efficiency and has the following characteristics:
-
-### Memory Model
-
-The current implementation uses a streaming command path with DuckDB-backed finalize-time result assembly:
-
-- **Parser**: Streams raw binlog events via callbacks
-- **Command Layer**: Immediately normalizes and forwards events to `analyzer.Consume`
-- **Analyzer**: Keeps bounded live state in memory
-- **DuckDB Temp Store**: Persists completed high-cardinality results for `Finalize()`
-- **Renderer**: Outputs the final assembled report
-
-### Expected Performance
-
-From benchmarks on Apple M4 Pro:
-
-| Input Size | Time/op | Memory/op | Allocs/op |
-|-----------|---------|------------|-----------|
-| 1 event | ~1μs | 2.5 KB | 32 |
-| 100 events | ~40μs | 55 KB | 756 |
-| 1000 events | ~492μs | 665 KB | 7.1K |
-| 100 tables | ~41μs | 55 KB | 756 |
-| 10 transactions | ~245 ns | 469 B | 12 |
-
-### Large File Recommendations
-
-For large binlog files:
-
-1. Prefer analyzing ordered binlog ranges directly; the command path is already streaming.
-2. Ensure sufficient disk space for the temporary DuckDB result store used during analysis.
-
-## Limitations
-
-- **ROW binlog only**: STATEMENT and MIXED formats are not supported in MVP
-- **Local files only**: Cannot connect to MySQL servers directly
-- **No real-time streaming**: Analysis is performed on static files
-- **Bounded SQL context only**: When binlog input includes `Rows_query_log_event`, BinlogViz can show bounded SQL context via `--sql-context summary|full`, but it does not support SQL replay or full statement reconstruction
-- **No row values**: Focuses on operation patterns, not data content
-
-## Non-Goals
-
-BinlogViz is intentionally not:
-
-- A replication debugger
-- A SQL replayer
-- A real-time monitoring tool
-- A Prometheus exporter
-- A web-based dashboard
-- An AI-powered anomaly detector
-
-## Architecture
-
-BinlogViz uses a single-pass streaming analysis pipeline:
-
-```
-binlog files → parser → normalizer → analyzer → renderer → output
-```
-
-Components:
-- **Parser**: Wraps `go-mysql-org/go-mysql/replication` for binlog parsing and optional per-input progress reporting
-- **Normalizer**: Converts parser events to stable internal format
-- **Analyzer**: Reconstructs transactions, aggregates tables/minutes, detects alerts
-- **Renderer**: Produces text or JSON output while progress remains on `stderr`
-
-### Modules
-
-| Module | Description | Doc |
-|--------|-------------|-----|
-| `cmd/binlogviz` | Cobra CLI entrypoints, analyze orchestration, progress rendering, and command-owned temp-store lifecycle | [README](cmd/binlogviz/README.md) |
-| `internal/binlog` | Binlog parser abstraction, raw event extraction, normalization, and parse-progress contracts | [README](internal/binlog/README.md) |
-| `internal/analyzer` | Streaming workload analyzer, DuckDB-backed finalize-time aggregation, and alerts | [README](internal/analyzer/README.md) |
-| `internal/report` | Text and JSON rendering for analysis results | [README](internal/report/README.md) |
 
 ## License
 
