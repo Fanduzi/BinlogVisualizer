@@ -209,11 +209,14 @@ func printResolvedPaths(out io.Writer, paths []string) {
 	}
 }
 
-// validateFiles checks that all input files exist.
+// validateFiles checks that all input files are accessible.
 func validateFiles(paths []string) error {
 	for _, path := range paths {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			return fmt.Errorf("file not found: %s", path)
+		if _, err := os.Stat(path); err != nil {
+			if os.IsNotExist(err) {
+				return fmt.Errorf("file not found: %s", path)
+			}
+			return fmt.Errorf("cannot access file %s: %w", path, err)
 		}
 	}
 	return nil
