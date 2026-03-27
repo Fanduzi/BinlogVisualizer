@@ -29,26 +29,26 @@ Download the release archive for your platform from GitHub Releases, verify the 
 
 The authoritative release artifacts are produced by the GitHub Actions release workflow on native runners. Local `goreleaser` is only intended for config checks and optional current-host validation.
 
-Example for `darwin/arm64` and the current Phase 2 release `v0.2.3`:
+Example for `darwin/arm64` and the current release `v0.3.0`:
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.3/binlogviz_0.2.3_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.3/binlogviz_0.2.3_checksums.txt
-shasum -a 256 -c binlogviz_0.2.3_checksums.txt 2>/dev/null | grep "binlogviz_0.2.3_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.2.3_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.3.0/binlogviz_0.3.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.3.0/binlogviz_0.3.0_checksums.txt
+shasum -a 256 -c binlogviz_0.3.0_checksums.txt 2>/dev/null | grep "binlogviz_0.3.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.3.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 Or use the included install helper:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.2.3
+curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.3.0
 ```
 
 To preview the resolved artifact without downloading:
 
 ```bash
-./install.sh --version v0.2.3 --dry-run
+./install.sh --version v0.3.0 --dry-run
 ```
 
 ### Fallback: Build From Source

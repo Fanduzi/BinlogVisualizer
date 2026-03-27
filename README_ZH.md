@@ -29,26 +29,26 @@ BinlogViz 主要回答这些运维问题：
 
 权威 release artifact 由 GitHub Actions release workflow 在原生 runner 上产出。本地 `goreleaser` 仅用于配置检查和当前宿主机的单目标验证。
 
-下面是 `darwin/arm64` + 当前 Phase 2 版本 `v0.2.3` 的示例：
+下面是 `darwin/arm64` + 当前版本 `v0.3.0` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.3/binlogviz_0.2.3_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.2.3/binlogviz_0.2.3_checksums.txt
-shasum -a 256 -c binlogviz_0.2.3_checksums.txt 2>/dev/null | grep "binlogviz_0.2.3_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.2.3_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.3.0/binlogviz_0.3.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.3.0/binlogviz_0.3.0_checksums.txt
+shasum -a 256 -c binlogviz_0.3.0_checksums.txt 2>/dev/null | grep "binlogviz_0.3.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.3.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 也可以直接使用仓库内置的安装脚本：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.2.3
+curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.3.0
 ```
 
 仅预览解析到的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.2.3 --dry-run
+./install.sh --version v0.3.0 --dry-run
 ```
 
 ### 备选：从源码构建
