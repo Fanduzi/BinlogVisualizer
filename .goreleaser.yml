@@ -23,6 +23,8 @@ builds:
     goarch:
       - amd64
       - arm64
+    ldflags:
+      - -s -w -X binlogviz/internal/version.Version={{ .Version }}
 
 archives:
   - id: release-archive
