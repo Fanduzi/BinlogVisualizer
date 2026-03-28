@@ -1,4 +1,4 @@
-# v0.5.0 Release Notes
+# BinlogViz v0.5.0 Release Notes
 
 Release date: 2026-03-28
 
