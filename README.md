@@ -171,4 +171,4 @@ BinlogViz now splits product documentation by reader intent so the README can st
 
 ## License
 
-MIT
+Apache 2.0
