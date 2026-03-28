@@ -7,7 +7,9 @@
 ![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
 
-English | [中文](README_ZH.md) | [Changelog](CHANGELOG.md) | [Security](SECURITY.md) | [Release Notes](docs/releases/)
+[![English](https://img.shields.io/badge/docs-English-blue)](README.md) [![简体中文](https://img.shields.io/badge/docs-简体中文-yellow)](README_ZH.md)
+
+[Changelog](CHANGELOG.md) | [Security](SECURITY.md) | [Release Notes](docs/releases/)
 </div>
 
 A CLI tool for MySQL binlog analysis, designed to help DBAs quickly identify hot tables, large transactions, write spikes, and workload patterns from local ROW binlog files.
