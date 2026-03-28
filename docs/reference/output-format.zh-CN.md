@@ -2,6 +2,8 @@
 
 本文档说明 `binlogviz analyze` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
+如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
+
 ## 输出通道契约
 
 BinlogViz 会把不同用途的输出写到不同通道：
@@ -9,7 +11,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `stdout` 承载最终分析报告。
 - `stderr` 承载进度、discovery 解析出的文件列表、最终组装状态以及运行时错误。
 
-这种分离对操作者很重要，因为它能让报告输出保持适合重定向和自动化处理。
+这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json

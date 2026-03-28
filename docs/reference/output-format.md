@@ -2,14 +2,16 @@
 
 This document explains what `binlogviz analyze` writes to `stdout` and `stderr`.
 
+If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
+
 ## Output Channel Contract
 
 BinlogViz uses separate output channels for different purposes:
 
 - `stdout` carries the final analysis report.
-- `stderr` carries progress, resolved discovery files, finalize status, and runtime errors.
+- `stderr` carries progress, resolved discovery files, finalization status, and runtime errors.
 
-This separation matters for operators because it keeps report output safe for redirection and automation.
+This separation matters because it keeps report output safe for redirection and automation.
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
@@ -31,7 +33,7 @@ The `Workload Summary` section provides top-level totals for the analyzed result
 - time range
 - duration
 
-Example headings from the shipped sample:
+Example heading from the shipped sample:
 
 ```text
 === Workload Summary ===

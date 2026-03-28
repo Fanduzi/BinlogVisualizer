@@ -4,13 +4,13 @@
 
 ## 概述
 
-v0.5.0 将此前隐藏的分析器参数暴露为 CLI 标志，并支持在分析阶段对 schema 和表进行过滤。
+v0.5.0 让 CLI 更贴近真实运维场景：此前隐藏的分析器参数现在可通过命令行配置，同时支持在分析阶段按 schema 和表过滤。
 
 ## 新功能
 
-### 暴露 CLI 标志（Feature A）
+### 暴露 CLI 标志
 
-以下分析器参数此前仅在代码中硬编码，现已通过 CLI 标志完全开放配置：
+以下分析器参数此前是硬编码或无法通过 CLI 调整的，现在都可以配置：
 
 | 标志 | 默认值 | 说明 |
 |------|--------|------|
@@ -29,9 +29,9 @@ binlogviz analyze mysql-bin.000001 \
   --top-minutes 30
 ```
 
-### Schema/表过滤（Feature B）
+### Schema / 表过滤
 
-支持在分析入口阶段过滤 schema 和表，而非仅在输出层过滤。当只关注特定 schema 或表时，可降低噪音、提升性能。
+现在可以在分析阶段而不是仅在输出阶段过滤 schema 和表。当你只关心特定对象时，这能有效减少噪音并收紧分析范围。
 
 | 标志 | 说明 |
 |------|------|
@@ -40,7 +40,7 @@ binlogviz analyze mysql-bin.000001 \
 | `--include-table` | 仅分析指定表（逗号分隔） |
 | `--exclude-table` | 跳过指定表（逗号分隔） |
 
-排除规则优先于包含规则。表名不含 schema 前缀。
+排除规则优先于包含规则。表名按不带 schema 前缀的形式匹配。
 
 示例：
 
@@ -50,7 +50,7 @@ binlogviz analyze mysql-bin.000001 \
   --include-schema orders \
   --exclude-table audit_log
 
-# 跳过内部 schema
+# 完全跳过内部 schema
 binlogviz analyze mysql-bin.000001 \
   --exclude-schema mysql,sys,information_schema,performance_schema
 ```
@@ -61,4 +61,4 @@ binlogviz analyze mysql-bin.000001 \
 
 ## 破坏性变更
 
-无。所有新标志均有默认值，保持向后兼容。
+无。所有新增标志都带有默认值，因此保持现有行为不变。

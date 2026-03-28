@@ -12,42 +12,84 @@
 [![变更记录](https://img.shields.io/badge/变更记录-informational)](CHANGELOG.md) [![安全策略](https://img.shields.io/badge/安全策略-important)](SECURITY.md) [![发行说明](https://img.shields.io/badge/发行说明-success)](docs/releases/)
 </div>
 
-BinlogViz 是一个用于分析 MySQL binlog 的 CLI 工具，帮助 DBA 从本地 `ROW` binlog 文件中快速识别热点表、大事务、写入尖峰和整体负载模式。
+BinlogViz 是一个面向 DBA 和运维人员的本地 MySQL `ROW` binlog 分析 CLI。它专门用于回答真实运维问题：哪些表写入最重、哪些事务异常大、尖峰发生在哪些分钟、某个故障窗口内的负载究竟发生了什么。
 
-## 概览
+## 从这里开始
 
-BinlogViz 主要回答这些运维问题：
+如果你已经拿到了本地 binlog 文件，下面这些命令就是最快能看到有价值结果的路径：
 
-- **哪些表的写入最重？**
-- **是否存在异常大的事务？**
-- **某些分钟是否出现了写入尖峰？**
-- **指定时间窗口内的整体负载是什么样？**
+### 快速检查单个文件
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+### 按 binlog 顺序分析整个目录
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
+```
+
+### 聚焦某个故障时间窗口
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-03-15T10:00:00Z" \
+  --end "2026-03-15T10:30:00Z"
+```
+
+### 只看某个 schema 或表
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders \
+  --include-table payments
+```
+
+### 把机器可读结果交给脚本或其他工具
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+```
+
+BinlogViz 的输出约定是：最终报告写到 `stdout`，进度、discovery 解析出的文件列表、最终组装状态和错误写到 `stderr`。
+
+## BinlogViz 适合回答什么问题
+
+BinlogViz 重点服务这些 DBA 常见问题：
+
+- **哪些表承受了最重的写入负载？**
+- **哪些事务大到值得优先排查？**
+- **某个分钟级尖峰是否真实发生过？**
+- **指定故障窗口内到底发生了什么变化？**
+- **结果能否安全交给脚本、管道或其他工具？**
 
 ## 安装
 
 ### 首选：下载 Release Artifact
 
-从 GitHub Releases 下载与你平台匹配的归档文件，校验 checksum 后将二进制放到 `PATH` 中。
+从 GitHub Releases 下载与你平台匹配的归档文件，校验 checksum 后再把二进制放到 `PATH` 中。
 
-权威 release artifact 由 GitHub Actions release workflow 在原生 runner 上产出。本地 `goreleaser` 仅用于配置检查和当前宿主机的单目标验证。
+权威 release artifact 由 GitHub Actions release workflow 在原生 runner 上构建。本地 `goreleaser` 更适合做配置校验和当前宿主机的可选验证，不是主要发布路径。
 
-下面是 `darwin/arm64` + 当前版本 `v0.5.0` 的示例：
+下面是 `darwin/arm64` 和当前版本 `v0.5.0` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.3.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.3.0_checksums.txt
-shasum -a 256 -c binlogviz_0.3.0_checksums.txt 2>/dev/null | grep "binlogviz_0.3.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.3.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.5.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.5.0_checksums.txt
+shasum -a 256 -c binlogviz_0.5.0_checksums.txt 2>/dev/null | grep "binlogviz_0.5.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.5.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
-也可以直接使用仓库内置的安装脚本：
+也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.5.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.5.0/install.sh
+sh ./install.sh --version v0.5.0
 ```
 
-仅预览解析到的 artifact，而不实际下载：
+如果只想预览将要解析出的 artifact，而不实际下载：
 
 ```bash
 ./install.sh --version v0.5.0 --dry-run
@@ -64,117 +106,137 @@ go install .
 go run . analyze <binlog files...>
 ```
 
-## 用法
+如果你从源码构建且没有注入 release ldflags，那么 `binlogviz --version` 会显示 `dev`，而不是某个发布版本号。
 
-### 基础分析
+### 验证二进制
 
 ```bash
-# 分析单个 binlog 文件
+binlogviz --version
+binlogviz version
+```
+
+- `binlogviz --version` 只输出版本号
+- `binlogviz version` 输出 ASCII Logo 加 `binlogviz <version>`
+
+## 常见 DBA 工作流
+
+### 1. 先用一个文件验证分析链路
+
+```bash
 binlogviz analyze mysql-bin.000123
+```
 
-# 分析多个文件
-binlogviz analyze mysql-bin.000123 mysql-bin.000124
+适用场景：
 
-# 从目录和前缀自动发现有序 binlog 范围
+- 先确认文件可读
+- 先确认解析成功
+- 先看默认文本报告是否已经足够支撑第一轮判断
+
+### 2. 分析整个目录时优先用 discovery 模式
+
+```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
-
-# 用 shell 展开分析一组文件
-binlogviz analyze mysql-bin.*
 ```
 
-### 时间窗口过滤
+discovery 模式通常是目录分析时最稳妥的运维路径。BinlogViz 会：
+
+1. 扫描目录下的直接子项
+2. 只保留前缀之后是纯数字后缀的文件
+3. 按数字后缀排序
+4. 把最终解析出的有序文件列表打印到 `stderr`
+5. 按该顺序执行分析
+
+### 3. 用时间和对象过滤减少噪音
 
 ```bash
-binlogviz analyze mysql-bin.* \
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --start "2026-03-15T10:00:00Z" \
-  --end "2026-03-15T10:30:00Z"
+  --end "2026-03-15T10:30:00Z" \
+  --exclude-schema mysql,sys,information_schema,performance_schema
 ```
 
-### 输出选项
-
 ```bash
-# JSON 输出，适合脚本处理
-binlogviz analyze mysql-bin.* --json
-
-# 调整 Top 项数量
-binlogviz analyze mysql-bin.* --top-tables 20 --top-transactions 20
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders \
+  --include-table payments,refunds
 ```
 
-### 告警检测
+适合用于已知故障时间窗口、特定服务 schema，或者一组明确的热点表排查。
+
+### 4. 安全地输出 JSON
 
 ```bash
-# 开启写入尖峰检测
-binlogviz analyze mysql-bin.* --detect-spikes
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+```
 
-# 自定义大事务阈值
-binlogviz analyze mysql-bin.* \
+这样机器可读结果保留在 `stdout`，进度和运行状态保留在 `stderr`。
+
+### 5. 默认 Top-N 不够时扩大报告范围
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --top-tables 20 \
+  --top-transactions 20 \
+  --top-minutes 30
+```
+
+### 6. 关注异常时打开告警检测
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --detect-spikes \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
 ```
 
-### Schema / 表过滤
+## 多语言支持
+
+BinlogViz 支持多语言运行时输出，包括错误信息、报告和进度提示。
 
 ```bash
-# 仅分析指定 schema
-binlogviz analyze mysql-bin.* --include-schema mydb
-
-# 排除系统 schema
-binlogviz analyze mysql-bin.* --exclude-schema mysql,sys,information_schema
-
-# 仅分析指定表（过滤在摄入阶段生效）
-binlogviz analyze mysql-bin.* --include-schema mydb --include-table orders,payments
+binlogviz --lang zh-CN analyze mysql-bin.000123
+LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.000123
 ```
 
-### 多语言支持
+支持的语言：
 
-BinlogViz 支持多种语言的运行时输出（错误消息、报告、进度提示）。
-
-```bash
-# 通过命令行参数使用中文输出
-binlogviz --lang zh-CN analyze mysql-bin.*
-
-# 或通过环境变量
-LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.*
-```
-
-**支持的语言：**
 - `en` - English（默认）
 - `zh-CN` - 简体中文
 
-**注意：** 命令帮助文本（`--help`）始终显示英文，这是 CLI 框架的限制。运行时输出（错误、报告、告警）已完全本地化。
+`--help` 当前仍然是英文，因为 help 文本生成早于语言初始化；运行时输出已支持本地化。
 
-## 文档导航
+## 按任务阅读文档
 
-BinlogViz 现在按读者意图拆分产品文档，这样 README 可以专注于安装方式和第一次成功运行，而更稳定的契约与设计说明则放到 `docs/` 下。
+### 建议先读这些
 
-### 概念文档
+- [快速开始](docs/recipe/quickstart.zh-CN.md)
+- [分析本地 Binlog](docs/recipe/analyze-local-binlogs.zh-CN.md)
+- [常见错误排查](docs/recipe/troubleshoot-common-errors.zh-CN.md)
+
+### 需要精确契约和参数行为时
+
+- [CLI 参考](docs/reference/cli.zh-CN.md)
+- [输入发现参考](docs/reference/input-discovery.zh-CN.md)
+- [输出格式参考](docs/reference/output-format.zh-CN.md)
+
+### 需要理解内部设计或分析模型时
 
 - [产品架构](docs/concept/architecture.zh-CN.md)
 - [DuckDB 临时存储](docs/concept/duckdb-temp-store.zh-CN.md)
 - [分析模型](docs/concept/analysis-model.zh-CN.md)
 - [限制与边界](docs/concept/limitations.zh-CN.md)
 
-### 操作指南
-
-- [快速开始](docs/recipe/quickstart.zh-CN.md)
-- [分析本地 Binlog](docs/recipe/analyze-local-binlogs.zh-CN.md)
-- [常见错误排查](docs/recipe/troubleshoot-common-errors.zh-CN.md)
-
-### 参考文档
-
-- [CLI 参考](docs/reference/cli.zh-CN.md)
-- [输入发现参考](docs/reference/input-discovery.zh-CN.md)
-- [输出格式参考](docs/reference/output-format.zh-CN.md)
-
-### 其他资源
+### 发布与补充资料
 
 - [示例输出](docs/examples/)
 - [发行说明](docs/releases/)
+- [变更记录](CHANGELOG.md)
+- [安全策略](SECURITY.md)
 
 ## 环境要求
 
-- MySQL `ROW` format binlog 文件
-- Go 1.26.1+（构建时）
+- 本地 MySQL `ROW` 格式 binlog 文件
+- 如果从源码构建，需要 Go 1.26.1+
 
 ## License
 
