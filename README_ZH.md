@@ -5,11 +5,11 @@
 [![Release](https://img.shields.io/github/v/release/Fanduzi/BinlogVisualizer?display_name=tag)](https://github.com/Fanduzi/BinlogVisualizer/releases)
 ![Platform](https://img.shields.io/badge/platform-darwin%20amd64%20%7C%20darwin%20arm64%20%7C%20linux%20amd64%20%7C%20linux%20arm64-blue)
 ![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](#license)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](#license)
 
 [![English](https://img.shields.io/badge/docs-English-blue)](README.md) [![简体中文](https://img.shields.io/badge/docs-简体中文-yellow)](README_ZH.md)
 
-[变更记录](CHANGELOG.md) | [安全策略](SECURITY.md) | [发行说明](docs/releases/)
+[![变更记录](https://img.shields.io/badge/变更记录-informational)](CHANGELOG.md) [![安全策略](https://img.shields.io/badge/安全策略-important)](SECURITY.md) [![发行说明](https://img.shields.io/badge/发行说明-success)](docs/releases/)
 </div>
 
 BinlogViz 是一个用于分析 MySQL binlog 的 CLI 工具，帮助 DBA 从本地 `ROW` binlog 文件中快速识别热点表、大事务、写入尖峰和整体负载模式。
