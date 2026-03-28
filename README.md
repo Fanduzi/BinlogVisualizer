@@ -31,11 +31,11 @@ Download the release archive for your platform from GitHub Releases, verify the 
 
 The authoritative release artifacts are produced by the GitHub Actions release workflow on native runners. Local `goreleaser` is only intended for config checks and optional current-host validation.
 
-Example for `darwin/arm64` and the current release `v0.3.0`:
+Example for `darwin/arm64` and the current release `v0.5.0`:
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.3.0/binlogviz_0.3.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.3.0/binlogviz_0.3.0_checksums.txt
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.3.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.3.0_checksums.txt
 shasum -a 256 -c binlogviz_0.3.0_checksums.txt 2>/dev/null | grep "binlogviz_0.3.0_darwin_arm64.tar.gz: OK"
 tar -xzf binlogviz_0.3.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
@@ -44,13 +44,13 @@ install ./binlogviz /usr/local/bin/binlogviz
 Or use the included install helper:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.3.0
+curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.5.0
 ```
 
 To preview the resolved artifact without downloading:
 
 ```bash
-./install.sh --version v0.3.0 --dry-run
+./install.sh --version v0.5.0 --dry-run
 ```
 
 ### Fallback: Build From Source
@@ -116,6 +116,19 @@ binlogviz analyze mysql-bin.* --detect-spikes
 binlogviz analyze mysql-bin.* \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
+```
+
+### Schema / Table Filtering
+
+```bash
+# Only analyze a specific schema
+binlogviz analyze mysql-bin.* --include-schema mydb
+
+# Exclude system schemas
+binlogviz analyze mysql-bin.* --exclude-schema mysql,sys,information_schema
+
+# Only analyze specific tables (filtering applied at ingestion time)
+binlogviz analyze mysql-bin.* --include-schema mydb --include-table orders,payments
 ```
 
 ### Language Support
