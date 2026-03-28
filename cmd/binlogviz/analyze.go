@@ -20,6 +20,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
@@ -59,17 +60,17 @@ func newAnalyzeCommand() *cobra.Command {
 	opts := &analyzeOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "analyze <binlog files...> | --from-dir DIR --prefix PREFIX",
-		Short: "Analyze binlog files",
+		Use:   i18n.T("cmd.analyze.use"),
+		Short: i18n.T("cmd.analyze.short"),
 		Args: func(cmd *cobra.Command, args []string) error {
 			hasArgs := len(args) > 0
 			hasFromDir := opts.fromDir != ""
 			hasPrefix := opts.prefix != ""
 			if hasArgs && (hasFromDir || hasPrefix) {
-				return fmt.Errorf("cannot combine positional binlog files with --from-dir/--prefix")
+				return fmt.Errorf("%s", i18n.T("error.combineArgsWithDir"))
 			}
 			if hasFromDir != hasPrefix {
-				return fmt.Errorf("--from-dir and --prefix must be provided together")
+				return fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
 			}
 			if hasArgs || hasFromDir {
 				return nil
@@ -110,17 +111,17 @@ func newAnalyzeCommand() *cobra.Command {
 	}
 
 	// Register flags
-	cmd.Flags().StringVar(&opts.startTime, "start", "", "Start time (inclusive, RFC3339 format)")
-	cmd.Flags().StringVar(&opts.endTime, "end", "", "End time (inclusive, RFC3339 format)")
-	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", "Discover binlog files from this directory")
-	cmd.Flags().StringVar(&opts.prefix, "prefix", "", "Filename prefix used with --from-dir")
-	cmd.Flags().BoolVar(&opts.json, "json", false, "Output in JSON format")
-	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), "SQL context mode: summary, off, or full")
-	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, "Number of top tables to show")
-	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, "Number of top transactions to show")
-	cmd.Flags().BoolVar(&opts.detectSpikes, "detect-spikes", false, "Enable spike detection")
-	cmd.Flags().IntVar(&opts.largeTrxRows, "large-trx-rows", 1000, "Rows threshold for large transaction alert")
-	cmd.Flags().DurationVar(&opts.largeTrxDuration, "large-trx-duration", 30*time.Second, "Duration threshold for large transaction alert")
+	cmd.Flags().StringVar(&opts.startTime, "start", "", i18n.T("cmd.analyze.flag.start"))
+	cmd.Flags().StringVar(&opts.endTime, "end", "", i18n.T("cmd.analyze.flag.end"))
+	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
+	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
+	cmd.Flags().BoolVar(&opts.json, "json", false, i18n.T("cmd.analyze.flag.json"))
+	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
+	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
+	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, i18n.T("cmd.analyze.flag.topTransactions"))
+	cmd.Flags().BoolVar(&opts.detectSpikes, "detect-spikes", false, i18n.T("cmd.analyze.flag.detectSpikes"))
+	cmd.Flags().IntVar(&opts.largeTrxRows, "large-trx-rows", 1000, i18n.T("cmd.analyze.flag.largeTrxRows"))
+	cmd.Flags().DurationVar(&opts.largeTrxDuration, "large-trx-duration", 30*time.Second, i18n.T("cmd.analyze.flag.largeTrxDuration"))
 
 	return cmd
 }
@@ -131,10 +132,10 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, e
 	hasPrefix := opts.prefix != ""
 
 	if hasArgs && (hasFromDir || hasPrefix) {
-		return nil, false, fmt.Errorf("cannot combine positional binlog files with --from-dir/--prefix")
+		return nil, false, fmt.Errorf("%s", i18n.T("error.combineArgsWithDir"))
 	}
 	if hasFromDir != hasPrefix {
-		return nil, false, fmt.Errorf("--from-dir and --prefix must be provided together")
+		return nil, false, fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
 	}
 	if hasArgs {
 		return args, false, nil
@@ -146,13 +147,13 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, e
 		}
 		return paths, true, nil
 	}
-	return nil, false, fmt.Errorf("requires at least one binlog file or --from-dir + --prefix")
+	return nil, false, fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
 }
 
 func discoverBinlogPaths(dir, prefix string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("read binlog directory: %w", err)
+		return nil, fmt.Errorf("%s", i18n.Tf("error.readBinlogDir", map[string]any{"Error": err.Error()}))
 	}
 
 	candidates := make([]string, 0, len(entries))
@@ -173,7 +174,7 @@ func discoverBinlogPaths(dir, prefix string) ([]string, error) {
 
 	sortBinlogPaths(candidates, prefix)
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("no matching binlog files found under %s with prefix %q", dir, prefix)
+		return nil, fmt.Errorf("%s", i18n.Tf("error.noMatchingFiles", map[string]any{"Dir": dir, "Prefix": prefix}))
 	}
 	return candidates, nil
 }
@@ -203,7 +204,7 @@ func isDigits(value string) bool {
 }
 
 func printResolvedPaths(out io.Writer, paths []string) {
-	_, _ = fmt.Fprintln(out, "Resolved binlog files:")
+	_, _ = fmt.Fprintln(out, i18n.T("progress.resolvedFiles"))
 	for _, path := range paths {
 		_, _ = fmt.Fprintf(out, "- %s\n", path)
 	}
@@ -214,9 +215,9 @@ func validateFiles(paths []string) error {
 	for _, path := range paths {
 		if _, err := os.Stat(path); err != nil {
 			if os.IsNotExist(err) {
-				return fmt.Errorf("file not found: %s", path)
+				return fmt.Errorf("%s", i18n.Tf("error.fileNotFound", map[string]any{"Path": path}))
 			}
-			return fmt.Errorf("cannot access file %s: %w", path, err)
+			return fmt.Errorf("%s", i18n.Tf("error.cannotAccessFile", map[string]any{"Path": path, "Error": err.Error()}))
 		}
 	}
 	return nil
@@ -276,7 +277,7 @@ func newAggregateProgress(paths []string, out io.Writer) (*aggregateProgress, er
 	bar := progressbar.NewOptions64(
 		totalBytes,
 		progressbar.OptionSetWriter(out),
-		progressbar.OptionSetDescription("Parsing binlogs"),
+		progressbar.OptionSetDescription(i18n.T("progress.parsingBinlogs")),
 		progressbar.OptionSetWidth(20),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetRenderBlankState(true),
@@ -335,7 +336,7 @@ func (p *aggregateProgress) Finalizing() {
 	if p == nil || p.statusWriter == nil {
 		return
 	}
-	_, _ = fmt.Fprintln(p.statusWriter, "Finalizing analysis...")
+	_, _ = fmt.Fprintln(p.statusWriter, i18n.T("progress.finalizingAnalysis"))
 }
 
 func runAnalysisStreamingWithDeps(
@@ -351,12 +352,12 @@ func runAnalysisStreamingWithDeps(
 ) error {
 	progress, err := newAggregateProgress(paths, os.Stderr)
 	if err != nil {
-		return fmt.Errorf("build parse progress: %w", err)
+		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
 	}
 
 	store, cleanup, _, err := newTempStore(tempRoot)
 	if err != nil {
-		return fmt.Errorf("create temp DuckDB store: %w", err)
+		return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
 	}
 	defer cleanup()
 
@@ -365,13 +366,13 @@ func runAnalysisStreamingWithDeps(
 	handler := func(raw binlog.RawEvent) error {
 		normalized, err := normalize(raw)
 		if err != nil {
-			return fmt.Errorf("normalize error at position %d: %w", raw.Position, err)
+			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
 		}
 		if normalized == nil {
 			return nil
 		}
 		if err := streamAnalyzer.Consume(*normalized); err != nil {
-			return fmt.Errorf("analysis consume error: %w", err)
+			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
 		}
 		return nil
 	}
@@ -380,14 +381,14 @@ func runAnalysisStreamingWithDeps(
 		if err := progressParser.ParseFilesWithProgress(paths, func(progressEvent binlog.ParseProgress) {
 			progress.Advance(progressEvent)
 		}, handler); err != nil {
-			return fmt.Errorf("parse error: %w", err)
+			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
 		}
 		for index := range paths {
 			progress.FinishFile(index)
 		}
 	} else {
 		if err := parser.ParseFiles(paths, handler); err != nil {
-			return fmt.Errorf("parse error: %w", err)
+			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
 		}
 	}
 	progress.FinishParse()
@@ -395,7 +396,7 @@ func runAnalysisStreamingWithDeps(
 
 	result, err := streamAnalyzer.Finalize()
 	if err != nil {
-		return fmt.Errorf("analysis finalize error: %w", err)
+		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
 
 	if jsonOutput {
@@ -433,18 +434,18 @@ func parseTimeRange(startStr, endStr string) (time.Time, time.Time, error) {
 	if startStr != "" {
 		startTime, err = time.Parse(time.RFC3339, startStr)
 		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("invalid start time format: %w (use RFC3339)", err)
+			return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidStartTime", map[string]any{"Error": err.Error()}))
 		}
 	}
 	if endStr != "" {
 		endTime, err = time.Parse(time.RFC3339, endStr)
 		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("invalid end time format: %w (use RFC3339)", err)
+			return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidEndTime", map[string]any{"Error": err.Error()}))
 		}
 	}
 	// Validate that end is after start if both are specified
 	if !startTime.IsZero() && !endTime.IsZero() && endTime.Before(startTime) {
-		return time.Time{}, time.Time{}, fmt.Errorf("end time must be after start time")
+		return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.T("error.endTimeBeforeStart"))
 	}
 	return startTime, endTime, nil
 }

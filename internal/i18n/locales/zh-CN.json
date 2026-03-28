@@ -1,0 +1,250 @@
+{
+  "meta.language": {
+    "description": "当前语言代码",
+    "other": "zh-CN"
+  },
+  "cmd.root.short": {
+    "description": "根命令简短描述",
+    "other": "分析 MySQL binlog 文件"
+  },
+  "cmd.root.flag.version": {
+    "description": "版本标志描述",
+    "other": "打印版本号"
+  },
+  "cmd.analyze.use": {
+    "description": "analyze 命令用法",
+    "other": "analyze <binlog 文件...> | --from-dir 目录 --prefix 前缀"
+  },
+  "cmd.analyze.short": {
+    "description": "analyze 命令简短描述",
+    "other": "分析 binlog 文件"
+  },
+  "cmd.analyze.flag.start": {
+    "description": "开始时间标志描述",
+    "other": "开始时间（包含，RFC3339 格式）"
+  },
+  "cmd.analyze.flag.end": {
+    "description": "结束时间标志描述",
+    "other": "结束时间（包含，RFC3339 格式）"
+  },
+  "cmd.analyze.flag.fromDir": {
+    "description": "from-dir 标志描述",
+    "other": "从此目录发现 binlog 文件"
+  },
+  "cmd.analyze.flag.prefix": {
+    "description": "prefix 标志描述",
+    "other": "配合 --from-dir 使用的文件名前缀"
+  },
+  "cmd.analyze.flag.json": {
+    "description": "JSON 输出标志描述",
+    "other": "以 JSON 格式输出"
+  },
+  "cmd.analyze.flag.sqlContext": {
+    "description": "SQL 上下文标志描述",
+    "other": "SQL 上下文模式：summary、off 或 full"
+  },
+  "cmd.analyze.flag.topTables": {
+    "description": "top tables 标志描述",
+    "other": "显示的表数量"
+  },
+  "cmd.analyze.flag.topTransactions": {
+    "description": "top transactions 标志描述",
+    "other": "显示的事务数量"
+  },
+  "cmd.analyze.flag.detectSpikes": {
+    "description": "spike 检测标志描述",
+    "other": "启用 spike 检测"
+  },
+  "cmd.analyze.flag.largeTrxRows": {
+    "description": "大事务行数阈值标志描述",
+    "other": "大事务告警的行数阈值"
+  },
+  "cmd.analyze.flag.largeTrxDuration": {
+    "description": "大事务时长阈值标志描述",
+    "other": "大事务告警的时长阈值"
+  },
+  "cmd.version.short": {
+    "description": "version 命令简短描述",
+    "other": "打印 binlogviz 版本"
+  },
+  "error.combineArgsWithDir": {
+    "description": "位置参数与 from-dir 混用错误",
+    "other": "不能同时使用位置参数指定 binlog 文件和 --from-dir/--prefix"
+  },
+  "error.fromDirAndPrefixRequired": {
+    "description": "from-dir 或 prefix 缺失错误",
+    "other": "--from-dir 和 --prefix 必须同时提供"
+  },
+  "error.requiresBinlogOrDir": {
+    "description": "未提供 binlog 文件或 from-dir 错误",
+    "other": "需要至少一个 binlog 文件或 --from-dir + --prefix"
+  },
+  "error.readBinlogDir": {
+    "description": "读取 binlog 目录错误",
+    "other": "读取 binlog 目录：{{.Error}}"
+  },
+  "error.noMatchingFiles": {
+    "description": "未找到匹配的 binlog 文件错误",
+    "other": "在 {{.Dir}} 下未找到前缀为 \"{{.Prefix}}\" 的 binlog 文件"
+  },
+  "error.fileNotFound": {
+    "description": "文件未找到错误",
+    "other": "文件未找到：{{.Path}}"
+  },
+  "error.cannotAccessFile": {
+    "description": "无法访问文件错误",
+    "other": "无法访问文件 {{.Path}}：{{.Error}}"
+  },
+  "error.invalidStartTime": {
+    "description": "开始时间格式无效错误",
+    "other": "开始时间格式无效：{{.Error}}（请使用 RFC3339 格式）"
+  },
+  "error.invalidEndTime": {
+    "description": "结束时间格式无效错误",
+    "other": "结束时间格式无效：{{.Error}}（请使用 RFC3339 格式）"
+  },
+  "error.endTimeBeforeStart": {
+    "description": "结束时间早于开始时间错误",
+    "other": "结束时间必须晚于开始时间"
+  },
+  "error.buildParseProgress": {
+    "description": "构建解析进度错误",
+    "other": "构建解析进度：{{.Error}}"
+  },
+  "error.createTempStore": {
+    "description": "创建临时 DuckDB 存储错误",
+    "other": "创建临时 DuckDB 存储：{{.Error}}"
+  },
+  "error.normalizeError": {
+    "description": "规范化错误",
+    "other": "在位置 {{.Position}} 规范化失败：{{.Error}}"
+  },
+  "error.analysisConsumeError": {
+    "description": "分析消费错误",
+    "other": "分析消费错误：{{.Error}}"
+  },
+  "error.parseError": {
+    "description": "解析错误",
+    "other": "解析错误：{{.Error}}"
+  },
+  "error.analysisFinalizeError": {
+    "description": "分析完成错误",
+    "other": "分析完成错误：{{.Error}}"
+  },
+  "progress.parsingBinlogs": {
+    "description": "进度条描述",
+    "other": "正在解析 binlog"
+  },
+  "progress.finalizingAnalysis": {
+    "description": "完成分析消息",
+    "other": "正在完成分析..."
+  },
+  "progress.resolvedFiles": {
+    "description": "已解析的 binlog 文件标题",
+    "other": "已解析的 binlog 文件："
+  },
+  "report.section.workload": {
+    "description": "工作负载摘要章节标题",
+    "other": "工作负载摘要"
+  },
+  "report.section.tables": {
+    "description": "Top 表章节标题",
+    "other": "活跃表排行"
+  },
+  "report.section.transactions": {
+    "description": "Top 事务章节标题",
+    "other": "大事务排行"
+  },
+  "report.section.minutes": {
+    "description": "分钟活动章节标题",
+    "other": "分钟级活动"
+  },
+  "report.section.alerts": {
+    "description": "告警章节标题",
+    "other": "告警"
+  },
+  "report.label.totalTransactions": {
+    "description": "事务总数标签",
+    "other": "事务总数"
+  },
+  "report.label.totalRows": {
+    "description": "行数总数标签",
+    "other": "行数总数"
+  },
+  "report.label.totalEvents": {
+    "description": "事件总数标签",
+    "other": "事件总数"
+  },
+  "report.label.timeRange": {
+    "description": "时间范围标签",
+    "other": "时间范围"
+  },
+  "report.label.duration": {
+    "description": "持续时间标签",
+    "other": "持续时间"
+  },
+  "report.label.query": {
+    "description": "查询标签",
+    "other": "查询"
+  },
+  "report.placeholder.noTableActivity": {
+    "description": "无表活动占位符",
+    "other": "(无表活动)"
+  },
+  "report.placeholder.noTransactions": {
+    "description": "无事务占位符",
+    "other": "(无事务)"
+  },
+  "report.placeholder.noMinuteActivity": {
+    "description": "无分钟活动占位符",
+    "other": "(无分钟活动)"
+  },
+  "report.placeholder.noAlerts": {
+    "description": "无告警占位符",
+    "other": "(无告警)"
+  },
+  "report.format.rowsSummary": {
+    "description": "行数摘要格式：表、行数、插入、更新、删除、事务数",
+    "other": "{{.Schema}}.{{.Table}}：{{.TotalRows}} 行（{{.InsertRows}} 插入，{{.UpdateRows}} 更新，{{.DeleteRows}} 删除，{{.TxnCount}} 事务）"
+  },
+  "report.format.transactionSummary": {
+    "description": "事务摘要格式",
+    "other": "{{.TxnKey}}：{{.TotalRows}} 行，耗时 {{.Duration}}（{{.EventCount}} 事件）"
+  },
+  "report.format.minuteActivity": {
+    "description": "分钟活动格式",
+    "other": "{{.Minute}}：{{.TotalRows}} 行，{{.TxnCount}} 事务"
+  },
+  "report.format.alertLine": {
+    "description": "告警行格式",
+    "other": "[{{.Severity}}] {{.Type}}：{{.Message}}"
+  },
+  "alert.largeTransaction.type": {
+    "description": "大事务告警类型",
+    "other": "large_transaction"
+  },
+  "alert.largeTransaction.severity": {
+    "description": "大事务告警严重程度",
+    "other": "warning"
+  },
+  "alert.largeTransaction.exceedsRowThreshold": {
+    "description": "超过行数阈值消息部分",
+    "other": "超过行数阈值"
+  },
+  "alert.largeTransaction.exceedsDurationThreshold": {
+    "description": "超过时长阈值消息部分",
+    "other": "超过时长阈值"
+  },
+  "alert.largeTransaction.and": {
+    "description": "告警消息的连接词",
+    "other": "和"
+  },
+  "alert.largeTransaction.message": {
+    "description": "大事务告警消息",
+    "other": "事务 {{.TxnKey}} {{.Reasons}}"
+  },
+  "time.notAvailable": {
+    "description": "时间不可用占位符",
+    "other": "不可用"
+  }
+}

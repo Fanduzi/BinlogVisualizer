@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/version"
 )
 
@@ -26,7 +27,7 @@ const asciiLogo = ` ________  ___  ________   ___       ________  ________  ___ 
 func newVersionCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the binlogviz version",
+		Short: i18n.T("cmd.version.short"),
 		Run: func(cmd *cobra.Command, args []string) {
 			fmt.Print(asciiLogo)
 			fmt.Printf("binlogviz %s\n", version.Version)
