@@ -38,9 +38,8 @@ type Analyzer struct {
 // New creates a new Analyzer with the given options.
 func New(opts Options) *Analyzer {
 	a := &Analyzer{
-		opts:   opts,
-		store:  newInMemoryStore(),
-		filter: newEventFilter(opts),
+		opts:  opts,
+		store: newInMemoryStore(),
 	}
 	a.reset()
 	return a
@@ -49,9 +48,8 @@ func New(opts Options) *Analyzer {
 // NewWithStore creates a new Analyzer backed by a caller-managed store.
 func NewWithStore(opts Options, store *DuckDBStore) *Analyzer {
 	a := &Analyzer{
-		opts:   opts,
-		store:  store,
-		filter: newEventFilter(opts),
+		opts:  opts,
+		store: store,
 	}
 	a.reset()
 	return a
@@ -185,9 +183,6 @@ func (a *Analyzer) reset() {
 	a.result = nil
 	if a.store != nil && a.err == nil {
 		a.err = a.store.Reset()
-	}
-	if a.err == nil {
-		a.err = nil
 	}
 }
 
