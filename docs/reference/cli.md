@@ -56,6 +56,14 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--detect-spikes` | `false` | Enable write spike detection. |
 | `--large-trx-rows` | `1000` | Row threshold for large transaction alerts. |
 | `--large-trx-duration` | `30s` | Duration threshold for large transaction alerts. |
+| `--top-minutes` | `60` | Number of top active minutes to include in the report. |
+| `--spike-window` | `5` | Rolling baseline window in minutes for spike detection. |
+| `--spike-factor` | `3.0` | Multiplier over baseline to trigger a spike alert. |
+| `--spike-min-rows` | `100` | Minimum row count for a minute to be considered a spike candidate. |
+| `--include-schema` | none | Comma-separated list of schemas to analyze (all others excluded). |
+| `--exclude-schema` | none | Comma-separated list of schemas to skip. |
+| `--include-table` | none | Comma-separated list of tables to analyze (all others excluded). |
+| `--exclude-table` | none | Comma-separated list of tables to skip. |
 
 ## Time and Validation Behavior
 
@@ -165,7 +173,25 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze
 binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
   --top-tables 20 \
   --top-transactions 20 \
+  --top-minutes 30 \
   --detect-spikes \
+  --spike-window 10 \
+  --spike-factor 5.0 \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
+```
+
+### Filter by schema or table
+
+```bash
+# Only analyze a specific schema
+binlogviz analyze mysql-bin.000123 --include-schema mydb
+
+# Exclude system schemas
+binlogviz analyze mysql-bin.000123 --exclude-schema mysql,sys,information_schema
+
+# Only analyze specific tables
+binlogviz analyze mysql-bin.000123 \
+  --include-schema mydb \
+  --include-table orders,payments
 ```

@@ -56,6 +56,14 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--detect-spikes` | `false` | 启用写入尖峰检测。 |
 | `--large-trx-rows` | `1000` | 大事务告警的行数阈值。 |
 | `--large-trx-duration` | `30s` | 大事务告警的持续时间阈值。 |
+| `--top-minutes` | `60` | 报告中包含的最活跃分钟数。 |
+| `--spike-window` | `5` | 尖峰检测的滑动基线窗口（分钟）。 |
+| `--spike-factor` | `3.0` | 触发尖峰告警的基线倍数。 |
+| `--spike-min-rows` | `100` | 纳入尖峰检测候选的最小行数。 |
+| `--include-schema` | none | 仅分析指定 schema（逗号分隔，其余均排除）。 |
+| `--exclude-schema` | none | 跳过指定 schema（逗号分隔）。 |
+| `--include-table` | none | 仅分析指定表（逗号分隔，其余均排除）。 |
+| `--exclude-table` | none | 跳过指定表（逗号分隔）。 |
 
 ## 时间与校验行为
 
@@ -165,7 +173,25 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze
 binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
   --top-tables 20 \
   --top-transactions 20 \
+  --top-minutes 30 \
   --detect-spikes \
+  --spike-window 10 \
+  --spike-factor 5.0 \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
+```
+
+### 按 schema 或表过滤
+
+```bash
+# 仅分析指定 schema
+binlogviz analyze mysql-bin.000123 --include-schema mydb
+
+# 排除系统 schema
+binlogviz analyze mysql-bin.000123 --exclude-schema mysql,sys,information_schema
+
+# 仅分析指定表
+binlogviz analyze mysql-bin.000123 \
+  --include-schema mydb \
+  --include-table orders,payments
 ```
