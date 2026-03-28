@@ -110,6 +110,24 @@ binlogviz analyze mysql-bin.* \
   --large-trx-duration 60s
 ```
 
+### 多语言支持
+
+BinlogViz 支持多种语言的运行时输出（错误消息、报告、进度提示）。
+
+```bash
+# 通过命令行参数使用中文输出
+binlogviz --lang zh-CN analyze mysql-bin.*
+
+# 或通过环境变量
+LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.*
+```
+
+**支持的语言：**
+- `en` - English（默认）
+- `zh-CN` - 简体中文
+
+**注意：** 命令帮助文本（`--help`）始终显示英文，这是 CLI 框架的限制。运行时输出（错误、报告、告警）已完全本地化。
+
 ## 文档导航
 
 BinlogViz 现在按读者意图拆分产品文档，这样 README 可以专注于安装方式和第一次成功运行，而更稳定的契约与设计说明则放到 `docs/` 下。

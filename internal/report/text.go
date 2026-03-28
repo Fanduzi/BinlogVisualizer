@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
 
@@ -46,32 +47,39 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 }
 
 func renderWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary) {
-	buf.WriteString("=== Workload Summary ===\n")
-	buf.WriteString(fmt.Sprintf("  Total Transactions: %d\n", summary.TotalTransactions))
-	buf.WriteString(fmt.Sprintf("  Total Rows: %d\n", summary.TotalRows))
-	buf.WriteString(fmt.Sprintf("  Total Events: %d\n", summary.TotalEvents))
-	buf.WriteString(fmt.Sprintf("  Time Range: %s - %s\n", formatTime(summary.StartTime), formatTime(summary.EndTime)))
-	buf.WriteString(fmt.Sprintf("  Duration: %s\n", formatDuration(summary.Duration)))
+	buf.WriteString("=== " + i18n.T("report.section.workload") + " ===\n")
+	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
+	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
+	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
+	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.duration"), formatDuration(summary.Duration)))
 	buf.WriteString("\n")
 }
 
 func renderTopTables(buf *strings.Builder, tables []model.TableStats) {
-	buf.WriteString("=== Top Tables ===\n")
+	buf.WriteString("=== " + i18n.T("report.section.tables") + " ===\n")
 	if len(tables) == 0 {
-		buf.WriteString("  (no table activity)\n")
+		buf.WriteString("  " + i18n.T("report.placeholder.noTableActivity") + "\n")
 	} else {
 		for _, t := range tables {
-			buf.WriteString(fmt.Sprintf("  %s.%s: %d rows (%d insert, %d update, %d delete, %d txn)\n",
-				t.Schema, t.Table, t.TotalRows, t.InsertRows, t.UpdateRows, t.DeleteRows, t.TxnCount))
+			buf.WriteString("  " + i18n.Tf("report.format.rowsSummary", map[string]any{
+				"Schema":      t.Schema,
+				"Table":       t.Table,
+				"TotalRows":   t.TotalRows,
+				"InsertRows":  t.InsertRows,
+				"UpdateRows":  t.UpdateRows,
+				"DeleteRows":  t.DeleteRows,
+				"TxnCount":    t.TxnCount,
+			}) + "\n")
 		}
 	}
 	buf.WriteString("\n")
 }
 
 func renderTopTransactions(buf *strings.Builder, transactions []model.Transaction, mode SQLContextMode) {
-	buf.WriteString("=== Top Transactions ===\n")
+	buf.WriteString("=== " + i18n.T("report.section.transactions") + " ===\n")
 	if len(transactions) == 0 {
-		buf.WriteString("  (no transactions)\n")
+		buf.WriteString("  " + i18n.T("report.placeholder.noTransactions") + "\n")
 	} else {
 		// Sort by TotalRows descending, with TxnKey ascending as tie-breaker for determinism
 		sorted := make([]model.Transaction, len(transactions))
@@ -84,10 +92,14 @@ func renderTopTransactions(buf *strings.Builder, transactions []model.Transactio
 		})
 
 		for _, txn := range sorted {
-			buf.WriteString(fmt.Sprintf("  %s: %d rows in %s (%d events)\n",
-				txn.TxnKey, txn.TotalRows, formatDuration(txn.Duration), txn.EventCount))
+			buf.WriteString("  " + i18n.Tf("report.format.transactionSummary", map[string]any{
+				"TxnKey":     txn.TxnKey,
+				"TotalRows":  txn.TotalRows,
+				"Duration":   formatDuration(txn.Duration),
+				"EventCount": txn.EventCount,
+			}) + "\n")
 			if queryLine := transactionTextQuery(txn, mode); queryLine != "" {
-				buf.WriteString(fmt.Sprintf("    Query: %s\n", queryLine))
+				buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), queryLine))
 			}
 		}
 	}
@@ -111,25 +123,32 @@ func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
 }
 
 func renderMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket) {
-	buf.WriteString("=== Minute Activity ===\n")
+	buf.WriteString("=== " + i18n.T("report.section.minutes") + " ===\n")
 	if len(minutes) == 0 {
-		buf.WriteString("  (no minute activity)\n")
+		buf.WriteString("  " + i18n.T("report.placeholder.noMinuteActivity") + "\n")
 	} else {
 		for _, m := range minutes {
-			buf.WriteString(fmt.Sprintf("  %s: %d rows, %d txn\n",
-				m.Minute.Format("2006-01-02 15:04"), m.TotalRows, m.TxnCount))
+			buf.WriteString("  " + i18n.Tf("report.format.minuteActivity", map[string]any{
+				"Minute":    m.Minute.Format("2006-01-02 15:04"),
+				"TotalRows": m.TotalRows,
+				"TxnCount":  m.TxnCount,
+			}) + "\n")
 		}
 	}
 	buf.WriteString("\n")
 }
 
 func renderAlerts(buf *strings.Builder, alerts []model.Alert) {
-	buf.WriteString("=== Alerts ===\n")
+	buf.WriteString("=== " + i18n.T("report.section.alerts") + " ===\n")
 	if len(alerts) == 0 {
-		buf.WriteString("  (no alerts)\n")
+		buf.WriteString("  " + i18n.T("report.placeholder.noAlerts") + "\n")
 	} else {
 		for _, a := range alerts {
-			buf.WriteString(fmt.Sprintf("  [%s] %s: %s\n", strings.ToUpper(a.Severity), a.Type, a.Message))
+			buf.WriteString("  " + i18n.Tf("report.format.alertLine", map[string]any{
+				"Severity": strings.ToUpper(a.Severity),
+				"Type":     a.Type,
+				"Message":  a.Message,
+			}) + "\n")
 		}
 	}
 	buf.WriteString("\n")
@@ -137,7 +156,7 @@ func renderAlerts(buf *strings.Builder, alerts []model.Alert) {
 
 func formatTime(t time.Time) string {
 	if t.IsZero() {
-		return "N/A"
+		return i18n.T("time.notAvailable")
 	}
 	return t.Format("2006-01-02 15:04:05")
 }

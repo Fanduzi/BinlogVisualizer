@@ -116,6 +116,24 @@ binlogviz analyze mysql-bin.* \
   --large-trx-duration 60s
 ```
 
+### Language Support
+
+BinlogViz supports multiple languages for runtime output (error messages, reports, progress indicators).
+
+```bash
+# Use Chinese output via command-line flag
+binlogviz --lang zh-CN analyze mysql-bin.*
+
+# Or via environment variable
+LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.*
+```
+
+**Supported languages:**
+- `en` - English (default)
+- `zh-CN` - Simplified Chinese
+
+**Note:** Command help text (`--help`) is always displayed in English due to CLI framework limitations. Runtime output (errors, reports, alerts) is fully localized.
+
 ## Documentation
 
 BinlogViz now splits product documentation by reader intent so the README can stay focused on installation and the shortest path to first success.

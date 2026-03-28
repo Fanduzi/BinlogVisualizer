@@ -1,0 +1,250 @@
+{
+  "meta.language": {
+    "description": "Current language code",
+    "other": "en"
+  },
+  "cmd.root.short": {
+    "description": "Root command short description",
+    "other": "Analyze MySQL binlog files"
+  },
+  "cmd.root.flag.version": {
+    "description": "Version flag description",
+    "other": "Print the version number"
+  },
+  "cmd.analyze.use": {
+    "description": "Analyze command usage",
+    "other": "analyze <binlog files...> | --from-dir DIR --prefix PREFIX"
+  },
+  "cmd.analyze.short": {
+    "description": "Analyze command short description",
+    "other": "Analyze binlog files"
+  },
+  "cmd.analyze.flag.start": {
+    "description": "Start time flag description",
+    "other": "Start time (inclusive, RFC3339 format)"
+  },
+  "cmd.analyze.flag.end": {
+    "description": "End time flag description",
+    "other": "End time (inclusive, RFC3339 format)"
+  },
+  "cmd.analyze.flag.fromDir": {
+    "description": "From-dir flag description",
+    "other": "Discover binlog files from this directory"
+  },
+  "cmd.analyze.flag.prefix": {
+    "description": "Prefix flag description",
+    "other": "Filename prefix used with --from-dir"
+  },
+  "cmd.analyze.flag.json": {
+    "description": "JSON output flag description",
+    "other": "Output in JSON format"
+  },
+  "cmd.analyze.flag.sqlContext": {
+    "description": "SQL context flag description",
+    "other": "SQL context mode: summary, off, or full"
+  },
+  "cmd.analyze.flag.topTables": {
+    "description": "Top tables flag description",
+    "other": "Number of top tables to show"
+  },
+  "cmd.analyze.flag.topTransactions": {
+    "description": "Top transactions flag description",
+    "other": "Number of top transactions to show"
+  },
+  "cmd.analyze.flag.detectSpikes": {
+    "description": "Detect spikes flag description",
+    "other": "Enable spike detection"
+  },
+  "cmd.analyze.flag.largeTrxRows": {
+    "description": "Large transaction rows threshold flag description",
+    "other": "Rows threshold for large transaction alert"
+  },
+  "cmd.analyze.flag.largeTrxDuration": {
+    "description": "Large transaction duration threshold flag description",
+    "other": "Duration threshold for large transaction alert"
+  },
+  "cmd.version.short": {
+    "description": "Version command short description",
+    "other": "Print the binlogviz version"
+  },
+  "error.combineArgsWithDir": {
+    "description": "Error when combining positional args with from-dir",
+    "other": "cannot combine positional binlog files with --from-dir/--prefix"
+  },
+  "error.fromDirAndPrefixRequired": {
+    "description": "Error when from-dir or prefix is missing",
+    "other": "--from-dir and --prefix must be provided together"
+  },
+  "error.requiresBinlogOrDir": {
+    "description": "Error when no binlog files or from-dir provided",
+    "other": "requires at least one binlog file or --from-dir + --prefix"
+  },
+  "error.readBinlogDir": {
+    "description": "Error reading binlog directory",
+    "other": "read binlog directory: {{.Error}}"
+  },
+  "error.noMatchingFiles": {
+    "description": "Error when no matching binlog files found",
+    "other": "no matching binlog files found under {{.Dir}} with prefix \"{{.Prefix}}\""
+  },
+  "error.fileNotFound": {
+    "description": "File not found error",
+    "other": "file not found: {{.Path}}"
+  },
+  "error.cannotAccessFile": {
+    "description": "Cannot access file error",
+    "other": "cannot access file {{.Path}}: {{.Error}}"
+  },
+  "error.invalidStartTime": {
+    "description": "Invalid start time format error",
+    "other": "invalid start time format: {{.Error}} (use RFC3339)"
+  },
+  "error.invalidEndTime": {
+    "description": "Invalid end time format error",
+    "other": "invalid end time format: {{.Error}} (use RFC3339)"
+  },
+  "error.endTimeBeforeStart": {
+    "description": "End time before start time error",
+    "other": "end time must be after start time"
+  },
+  "error.buildParseProgress": {
+    "description": "Build parse progress error",
+    "other": "build parse progress: {{.Error}}"
+  },
+  "error.createTempStore": {
+    "description": "Create temp DuckDB store error",
+    "other": "create temp DuckDB store: {{.Error}}"
+  },
+  "error.normalizeError": {
+    "description": "Normalize error",
+    "other": "normalize error at position {{.Position}}: {{.Error}}"
+  },
+  "error.analysisConsumeError": {
+    "description": "Analysis consume error",
+    "other": "analysis consume error: {{.Error}}"
+  },
+  "error.parseError": {
+    "description": "Parse error",
+    "other": "parse error: {{.Error}}"
+  },
+  "error.analysisFinalizeError": {
+    "description": "Analysis finalize error",
+    "other": "analysis finalize error: {{.Error}}"
+  },
+  "progress.parsingBinlogs": {
+    "description": "Progress bar description",
+    "other": "Parsing binlogs"
+  },
+  "progress.finalizingAnalysis": {
+    "description": "Finalizing analysis message",
+    "other": "Finalizing analysis..."
+  },
+  "progress.resolvedFiles": {
+    "description": "Resolved binlog files header",
+    "other": "Resolved binlog files:"
+  },
+  "report.section.workload": {
+    "description": "Workload summary section header",
+    "other": "Workload Summary"
+  },
+  "report.section.tables": {
+    "description": "Top tables section header",
+    "other": "Top Tables"
+  },
+  "report.section.transactions": {
+    "description": "Top transactions section header",
+    "other": "Top Transactions"
+  },
+  "report.section.minutes": {
+    "description": "Minute activity section header",
+    "other": "Minute Activity"
+  },
+  "report.section.alerts": {
+    "description": "Alerts section header",
+    "other": "Alerts"
+  },
+  "report.label.totalTransactions": {
+    "description": "Total transactions label",
+    "other": "Total Transactions"
+  },
+  "report.label.totalRows": {
+    "description": "Total rows label",
+    "other": "Total Rows"
+  },
+  "report.label.totalEvents": {
+    "description": "Total events label",
+    "other": "Total Events"
+  },
+  "report.label.timeRange": {
+    "description": "Time range label",
+    "other": "Time Range"
+  },
+  "report.label.duration": {
+    "description": "Duration label",
+    "other": "Duration"
+  },
+  "report.label.query": {
+    "description": "Query label",
+    "other": "Query"
+  },
+  "report.placeholder.noTableActivity": {
+    "description": "Placeholder when no table activity",
+    "other": "(no table activity)"
+  },
+  "report.placeholder.noTransactions": {
+    "description": "Placeholder when no transactions",
+    "other": "(no transactions)"
+  },
+  "report.placeholder.noMinuteActivity": {
+    "description": "Placeholder when no minute activity",
+    "other": "(no minute activity)"
+  },
+  "report.placeholder.noAlerts": {
+    "description": "Placeholder when no alerts",
+    "other": "(no alerts)"
+  },
+  "report.format.rowsSummary": {
+    "description": "Rows summary format: table, rows, insert, update, delete, txn",
+    "other": "{{.Schema}}.{{.Table}}: {{.TotalRows}} rows ({{.InsertRows}} insert, {{.UpdateRows}} update, {{.DeleteRows}} delete, {{.TxnCount}} txn)"
+  },
+  "report.format.transactionSummary": {
+    "description": "Transaction summary format",
+    "other": "{{.TxnKey}}: {{.TotalRows}} rows in {{.Duration}} ({{.EventCount}} events)"
+  },
+  "report.format.minuteActivity": {
+    "description": "Minute activity format",
+    "other": "{{.Minute}}: {{.TotalRows}} rows, {{.TxnCount}} txn"
+  },
+  "report.format.alertLine": {
+    "description": "Alert line format",
+    "other": "[{{.Severity}}] {{.Type}}: {{.Message}}"
+  },
+  "alert.largeTransaction.type": {
+    "description": "Large transaction alert type",
+    "other": "large_transaction"
+  },
+  "alert.largeTransaction.severity": {
+    "description": "Large transaction alert severity",
+    "other": "warning"
+  },
+  "alert.largeTransaction.exceedsRowThreshold": {
+    "description": "Exceeds row threshold message part",
+    "other": "exceeds row threshold"
+  },
+  "alert.largeTransaction.exceedsDurationThreshold": {
+    "description": "Exceeds duration threshold message part",
+    "other": "exceeds duration threshold"
+  },
+  "alert.largeTransaction.and": {
+    "description": "And connector for alert message",
+    "other": "and"
+  },
+  "alert.largeTransaction.message": {
+    "description": "Large transaction alert message",
+    "other": "Transaction {{.TxnKey}} {{.Reasons}}"
+  },
+  "time.notAvailable": {
+    "description": "Time not available placeholder",
+    "other": "N/A"
+  }
+}

@@ -3,6 +3,7 @@ package analyzer
 import (
 	"sort"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
 
@@ -29,8 +30,8 @@ func DetectLargeTransactionAlerts(transactions []model.Transaction, opts Options
 
 		// Build alert with comprehensive details
 		alert := model.Alert{
-			Type:     "large_transaction",
-			Severity: "warning",
+			Type:     i18n.T("alert.largeTransaction.type"),
+			Severity: i18n.T("alert.largeTransaction.severity"),
 			TxnKey:   txn.TxnKey,
 			Details: map[string]any{
 				"rows":        txn.TotalRows,
@@ -69,21 +70,23 @@ func DetectLargeTransactionAlerts(transactions []model.Transaction, opts Options
 // buildLargeTransactionMessage creates a human-readable message for the alert.
 // This is kept simple - the renderer can provide more sophisticated formatting.
 func buildLargeTransactionMessage(txn model.Transaction, exceedsRows, exceedsDuration bool, opts Options) string {
-	msg := "Transaction " + txn.TxnKey
-
 	reasons := make([]string, 0, 2)
 	if exceedsRows {
-		reasons = append(reasons, "exceeds row threshold")
+		reasons = append(reasons, i18n.T("alert.largeTransaction.exceedsRowThreshold"))
 	}
 	if exceedsDuration {
-		reasons = append(reasons, "exceeds duration threshold")
+		reasons = append(reasons, i18n.T("alert.largeTransaction.exceedsDurationThreshold"))
 	}
 
+	var reasonsStr string
 	if len(reasons) == 1 {
-		msg += " " + reasons[0]
+		reasonsStr = reasons[0]
 	} else {
-		msg += " " + reasons[0] + " and " + reasons[1]
+		reasonsStr = reasons[0] + " " + i18n.T("alert.largeTransaction.and") + " " + reasons[1]
 	}
 
-	return msg
+	return i18n.Tf("alert.largeTransaction.message", map[string]any{
+		"TxnKey":  txn.TxnKey,
+		"Reasons": reasonsStr,
+	})
 }
