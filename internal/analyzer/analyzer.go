@@ -177,6 +177,7 @@ func (a *Analyzer) reset() {
 	a.txnBuilder = NewTransactionBuilder()
 	a.tableAgg = NewTableAggregator()
 	a.minuteAgg = NewMinuteAggregator()
+	a.filter = newEventFilter(a.opts)
 	a.eventCount = 0
 	a.startTime = time.Time{}
 	a.endTime = time.Time{}

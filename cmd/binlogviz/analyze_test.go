@@ -96,9 +96,13 @@ func TestBuildAnalyzerOptions(t *testing.T) {
 			expected: analyzer.Options{
 				TopTables:        10,
 				TopTransactions:  10,
+				TopMinutes:       60,
 				DetectSpikes:     false,
 				LargeTxnRows:     1000,
 				LargeTxnDuration: 30 * time.Second,
+				SpikeWindow:      5,
+				SpikeFactor:      5.0,
+				SpikeMinRows:     100,
 				Start:            nil,
 				End:              nil,
 			},
@@ -116,9 +120,13 @@ func TestBuildAnalyzerOptions(t *testing.T) {
 			expected: analyzer.Options{
 				TopTables:        10,
 				TopTransactions:  10,
+				TopMinutes:       60,
 				DetectSpikes:     false,
 				LargeTxnRows:     1000,
 				LargeTxnDuration: 30 * time.Second,
+				SpikeWindow:      5,
+				SpikeFactor:      5.0,
+				SpikeMinRows:     100,
 				Start:            nil,
 				End:              nil,
 			},
@@ -135,9 +143,13 @@ func TestBuildAnalyzerOptions(t *testing.T) {
 			expected: analyzer.Options{
 				TopTables:        25,
 				TopTransactions:  50,
+				TopMinutes:       60,
 				DetectSpikes:     true,
 				LargeTxnRows:     1000,
 				LargeTxnDuration: time.Minute,
+				SpikeWindow:      5,
+				SpikeFactor:      5.0,
+				SpikeMinRows:     100,
 				Start:            nil,
 				End:              nil,
 			},
@@ -165,6 +177,9 @@ func compareAnalyzerOptions(a, b analyzer.Options) bool {
 	if a.TopTransactions != b.TopTransactions {
 		return false
 	}
+	if a.TopMinutes != b.TopMinutes {
+		return false
+	}
 	if a.DetectSpikes != b.DetectSpikes {
 		return false
 	}
@@ -172,6 +187,15 @@ func compareAnalyzerOptions(a, b analyzer.Options) bool {
 		return false
 	}
 	if a.LargeTxnDuration != b.LargeTxnDuration {
+		return false
+	}
+	if a.SpikeWindow != b.SpikeWindow {
+		return false
+	}
+	if a.SpikeFactor != b.SpikeFactor {
+		return false
+	}
+	if a.SpikeMinRows != b.SpikeMinRows {
 		return false
 	}
 	// Compare Start pointers
