@@ -1,141 +1,151 @@
 # 分析本地 Binlog
 
-本文展示如何使用 `binlogviz analyze` 对本地 binlog 文件执行实际可落地的运维分析流程。
+本文聚焦实际 DBA 工作流，说明如何使用 `binlogviz analyze` 对本地 binlog 文件做可落地的分析。
 
-## 分析单个文件
+## 先从一个文件开始
 
-当你想以最快路径验证格式、输出形状以及工具基本行为时，先从单个文件开始。
+如果你希望用最快路径建立信心，先从单个文件开始：
 
 ```bash
 binlogviz analyze mysql-bin.000123
 ```
 
-这是最适合的第一次运行方式，用于确认：
+这是最快能确认以下几点的方式：
 
 - 文件确实存在于本地
 - 文件能够被成功解析
-- 默认文本报告已足够支撑初步查看
+- 默认文本报告已经足够支撑第一轮排查
 
-默认情况下，最终报告写到 `stdout`，而进度信息与运行状态写到 `stderr`。
+默认情况下，最终报告写到 `stdout`，而进度、discovery 解析出的文件列表、最终组装状态以及错误写到 `stderr`。
 
-## 分析多个文件
+## 目录分析时优先用 discovery 模式
 
-如果你已经明确知道要查看的文件集合及顺序，可以直接使用位置参数传入多个文件。
-
-```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 mysql-bin.000125
-```
-
-这种模式适用于：
-
-- 你想分析一个手工挑选好的范围
-- 你的 shell 或脚本已经解析出了目标文件列表
-- 你不希望由发现模式决定输入集合
-
-如果更符合你的运维习惯，也可以让 shell 先展开模式：
-
-```bash
-binlogviz analyze mysql-bin.*
-```
-
-需要注意，模式展开的规则来自你的 shell，而不是 BinlogViz 自己实现的。
-
-## 使用 discovery 模式
-
-如果你的文件都放在同一目录下，并且遵循稳定的数字后缀命名规则，可以使用 discovery 模式。
+如果文件位于同一个目录中，并且采用数字后缀命名，discovery 模式通常是最稳妥的运维路径：
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ```
 
-discovery 模式成功时，BinlogViz 会：
+成功时，BinlogViz 会：
 
-1. 扫描该目录下的直接子项
+1. 扫描目录下的直接子项
 2. 仅保留前缀之后为纯数字后缀的文件
 3. 按数字后缀排序
 4. 将最终解析出的有序文件列表输出到 `stderr`
 5. 按该顺序执行分析
 
-这种方式适合你希望用一条稳定、可重复执行的命令完成运维分析，而不想手工列出每个文件时使用。
-
-如果你想了解精确的匹配与排序契约，请继续阅读[输入发现参考](../reference/input-discovery.zh-CN.md)。
-
-## 按时间窗口过滤
-
-如果你只关心某个 RFC3339 时间范围内的活动，可以使用 `--start` 与 `--end`。
+如果你已经明确知道要分析哪些文件以及顺序，也可以直接使用位置参数：
 
 ```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
+binlogviz analyze mysql-bin.000123 mysql-bin.000124 mysql-bin.000125
+```
+
+如果更符合你的工作流，也可以让 shell 先展开模式：
+
+```bash
+binlogviz analyze mysql-bin.*
+```
+
+需要注意，模式展开规则来自你的 shell，而不是 BinlogViz 本身。
+
+## 聚焦已知故障时间窗口
+
+当文件集合覆盖的时间范围比你真正关心的问题更长时，可以使用 `--start` 和 `--end` 缩小范围：
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --start "2026-03-15T10:00:00Z" \
   --end "2026-03-15T10:30:00Z"
 ```
 
 适用场景包括：
 
-- 你正在排查一个已知的故障时间窗口
-- 输入文件覆盖的时间范围远大于你真正关心的范围
-- 你希望报告的总量与排名都严格限定在某个时间段内
+- 已知故障窗口排查
+- 目录中的历史数据远多于你当前想看的范围
+- 需要把排名和汇总严格限制在某个时间片内
 
-请记住，无效时间戳会在分析开始前直接失败，而且 `--end` 不能早于 `--start`。
+无效时间戳会在分析开始前直接失败，而且 `--end` 不能早于 `--start`。
 
-## 为自动化输出 JSON
+## 用 schema / 表过滤减少噪音
 
-如果结果需要被其他工具或脚本消费，使用 `--json`。
+当你需要聚焦某个服务、某个 schema 或一组热点表时，使用 schema 和表过滤会更高效。
+
+### 只分析一个 schema
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders
 ```
 
-这种方式会把机器可读报告保留在 `stdout`，同时继续让进度和运行状态输出到 `stderr`。
+### 排除内部 schema
 
-它更适合：
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --exclude-schema mysql,sys,information_schema,performance_schema
+```
+
+### 聚焦特定表
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders \
+  --include-table payments,refunds
+```
+
+这些过滤发生在分析阶段，而不是仅仅在最终渲染阶段生效，因此既能减少噪音，也能更有效地收紧负载范围。
+
+## 有意识地选择文本或 JSON 输出
+
+### 默认文本输出，适合人工查看
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+这是直接在终端中查看报告时最合适的默认方式。
+
+### JSON 输出，适合脚本和管道
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+```
+
+这种方式更适合：
 
 - shell 管道
-- 自动化检查
+- 自动化校验
 - 下游数据装载
-- 类 CI 的输出结构校验
+- CI 或运维工具中的结果比对
 
-## 调整 Top-N 输出
+## 调整报告宽度
 
-如果默认的 top-10 排名对你的排查不够，可以显式扩大范围。
+如果默认的 top-10 对你的负载来说不够宽，可以显式扩大输出范围：
 
 ```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --top-tables 20 \
-  --top-transactions 20
+  --top-transactions 20 \
+  --top-minutes 30
 ```
 
-适用场景：
+这些参数调整的是报告宽度，而不是底层解析范围。
 
-- 你的负载涉及很多热点表
-- 你需要比默认更宽的短名单
-- 你希望在最终报告里覆盖更多事务
+## 关注异常时打开告警检测
 
-这些参数调整的是报告展示范围，而不是底层解析范围。
-
-## 启用尖峰检测
-
-当你希望分析器主动指出分钟级别的异常高负载活动时，可以开启尖峰检测。
+当你希望 BinlogViz 主动指出异常负载时，可以开启尖峰检测，并在需要时配合调整大事务阈值：
 
 ```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
-  --detect-spikes
-```
-
-如果你的环境需要不同的告警灵敏度，也可以叠加自定义大事务阈值。大事务告警与尖峰检测彼此独立，所以即使不打开 `--detect-spikes`，你仍然可以单独调整这些阈值。
-
-```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --detect-spikes \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
 ```
 
-这种方式适合你关注的是运维异常，而不仅仅是负载排名。
+这更适合异常排查，而不仅仅是查看排名。
 
-## 选择 SQL 上下文模式
+## 控制 SQL 上下文暴露程度
 
-使用 `--sql-context` 控制事务查询上下文在报告中的呈现方式。
+使用 `--sql-context` 控制事务查询上下文在报告中的展示方式：
 
 ```bash
 binlogviz analyze mysql-bin.000123 --sql-context off
@@ -145,15 +155,15 @@ binlogviz analyze mysql-bin.000123 --sql-context full
 
 模式说明：
 
-- `off`：完全隐藏所有查询相关字段
+- `off`：省略查询相关字段
 - `summary`：保留有界摘要，便于运维快速建立上下文
 - `full`：在可用时包含有界存储后的 SQL 文本
 
-这个设置改变的是展示方式，而不是底层负载指标本身。
+这个设置改变的是展示方式，不改变底层负载指标。
 
 ## 有意识地重定向输出通道
 
-如果你想干净地保存最终报告，并把运行日志分开记录，可以分别重定向两个通道。
+当你希望归档报告并单独保留运行日志时，可以分别重定向两个输出通道：
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -161,15 +171,11 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   2> analyze.stderr.log
 ```
 
-适用场景：
-
-- 你要归档最终报告
-- 你希望把发现模式输出和进度日志单独保存
-- 你要把报告喂给另一个进程，同时不混入状态噪音
+这样既能保持报告流纯净，也能保留 discovery 列表、进度、最终组装状态和错误信息。
 
 ## 后续参考
 
-当你已经有一条可工作的运维命令后，可以继续阅读这些文档：
+当你已经拿到一条稳定可工作的运维命令后，可以继续阅读：
 
 - [CLI 参考](../reference/cli.zh-CN.md)
 - [输入发现参考](../reference/input-discovery.zh-CN.md)

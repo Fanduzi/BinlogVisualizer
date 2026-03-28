@@ -2,6 +2,8 @@
 
 本文档定义 `binlogviz analyze` 的用户可见契约。
 
+如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
+
 ## 命令语法
 
 ```bash
@@ -11,8 +13,8 @@ binlogviz analyze --from-dir DIR --prefix PREFIX
 
 每次调用 `analyze` 只能使用一种输入模式：
 
-- 位置参数文件模式：通过位置参数传入一个或多个本地 binlog 文件路径。
-- discovery 模式：同时提供 `--from-dir` 和 `--prefix`，由 BinlogViz 从目录中解析匹配文件。
+- **位置参数文件模式**：通过位置参数传入一个或多个本地 binlog 文件路径。
+- **discovery 模式**：同时提供 `--from-dir` 和 `--prefix`，由 BinlogViz 从目录中解析匹配文件。
 
 ## 输入规则
 
@@ -39,7 +41,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 - `--from-dir` 和 `--prefix` 必须同时提供。
 - 如果既没有位置参数文件，也没有完整的 discovery 参数对，命令会失败。
 
-关于精确的 discovery 匹配、排序、已解析文件报告以及非法组合契约，请参见 [输入发现参考](input-discovery.zh-CN.md)。
+关于精确的 discovery 匹配、排序、已解析文件报告以及非法组合契约，请参见[输入发现参考](input-discovery.zh-CN.md)。
 
 ## Flags
 
@@ -139,7 +141,7 @@ binlogviz analyze mysql-bin.000123 --json > report.json
 
 这样可以保持 `stdout` 在管道和重定向场景下的纯净。
 
-关于精确的输出通道契约和 JSON 字段级行为，请参见 [输出格式参考](output-format.zh-CN.md)。
+关于精确的输出通道契约和 JSON 字段级行为，请参见[输出格式参考](output-format.zh-CN.md)。
 
 ## 示例
 

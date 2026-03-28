@@ -1,70 +1,85 @@
 # Quickstart
 
-This guide walks through the shortest path from installation to a successful `binlogviz analyze` run.
+This guide is the shortest path from installation to a useful `binlogviz analyze` run.
 
-## 1. Install BinlogViz
+## 1. Install or Verify BinlogViz
 
-Install BinlogViz first, then come back to this guide for the first successful analysis run.
+Use a release artifact if you want a tagged binary, or build from source if you are working locally.
 
-For the current installation paths, release artifacts, and local build options, see the project [README](../../README.md#installation).
+For the current install commands and artifact examples, see the project [README](../../README.md#installation).
 
-## 2. Analyze One Binlog File
+To verify the binary you installed:
 
-Start with one local ROW-format binlog file:
+```bash
+binlogviz --version
+binlogviz version
+```
+
+- `binlogviz --version` prints the version string only
+- `binlogviz version` prints the ASCII logo plus `binlogviz <version>`
+
+## 2. Validate One File First
+
+Start with one local `ROW` binlog file:
 
 ```bash
 binlogviz analyze mysql-bin.000123
 ```
 
-By default, BinlogViz writes the final text report to `stdout` and keeps progress or runtime status on `stderr`.
+This is the fastest way to confirm:
 
-The text report includes five sections:
+- the file is readable
+- BinlogViz can parse it
+- the default text report already gives you useful output
 
-- Workload Summary
-- Top Tables
-- Top Transactions
-- Minute Activity
-- Alerts
+By default, the final report goes to `stdout` and progress/runtime information stays on `stderr`.
 
-## 3. Analyze With JSON Output
+## 3. Analyze a Directory in Binlog Order
 
-Use `--json` when you want a machine-readable result for scripts or downstream tooling:
-
-```bash
-binlogviz analyze mysql-bin.000123 --json
-```
-
-If you want to save the JSON output directly:
-
-```bash
-binlogviz analyze mysql-bin.000123 --json > analyze.json
-```
-
-## 4. Discover an Ordered Binlog Range
-
-If your binlog files live together in one directory and follow a numeric naming pattern, let BinlogViz resolve the ordered input set for you:
+If your files live in one directory and use a numeric suffix pattern, discovery mode is the most repeatable operator path:
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ```
 
-BinlogViz will resolve the ordered file set before analysis and keep the final report output clean for the terminal or shell redirection.
+BinlogViz will resolve the ordered file set before analysis and print the resolved file list to `stderr`.
 
-For the exact discovery rules, ordering behavior, and invalid combinations, see the [Input Discovery Reference](../reference/input-discovery.md).
+For the exact matching and ordering rules, see the [Input Discovery Reference](../reference/input-discovery.md).
 
-## 5. Compare Against Example Outputs
+## 4. Narrow to the Window You Care About
 
-You can inspect the shipped sample outputs to understand what successful reports look like:
+When the files cover more time than the incident you are investigating, scope the report with `--start` and `--end`:
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-03-15T10:00:00Z" \
+  --end "2026-03-15T10:30:00Z"
+```
+
+Both flags use RFC3339 timestamps.
+
+## 5. Redirect JSON Safely
+
+Use `--json` when another tool or script will consume the result:
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+```
+
+This keeps the machine-readable report on `stdout` and leaves progress and runtime information on `stderr`.
+
+## 6. Compare Against Sample Outputs
+
+If you want to see what a successful run looks like before wiring it into your own workflow, inspect the shipped samples:
 
 - text report: `docs/examples/analyze-output.txt`
 - JSON report: `docs/examples/analyze-output.json`
 
-These examples are useful for onboarding, demos, and downstream integration checks.
+## Next Steps
 
-## Next References
+Once the first run works, continue with:
 
-For the stable command and output contracts, continue with:
-
+- [Analyze Local Binlogs](analyze-local-binlogs.md)
 - [CLI Reference](../reference/cli.md)
 - [Input Discovery Reference](../reference/input-discovery.md)
 - [Output Format Reference](../reference/output-format.md)
