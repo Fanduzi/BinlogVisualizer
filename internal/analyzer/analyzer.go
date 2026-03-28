@@ -15,8 +15,9 @@ import (
 // Analyzer orchestrates the complete binlog analysis pipeline.
 // It consumes normalized events and produces a complete analysis result.
 type Analyzer struct {
-	opts  Options
-	store analysisStore
+	opts   Options
+	store  analysisStore
+	filter *EventFilter
 
 	// Sub-aggregators
 	txnBuilder *TransactionBuilder
@@ -37,8 +38,9 @@ type Analyzer struct {
 // New creates a new Analyzer with the given options.
 func New(opts Options) *Analyzer {
 	a := &Analyzer{
-		opts:  opts,
-		store: newInMemoryStore(),
+		opts:   opts,
+		store:  newInMemoryStore(),
+		filter: newEventFilter(opts),
 	}
 	a.reset()
 	return a
@@ -47,8 +49,9 @@ func New(opts Options) *Analyzer {
 // NewWithStore creates a new Analyzer backed by a caller-managed store.
 func NewWithStore(opts Options, store *DuckDBStore) *Analyzer {
 	a := &Analyzer{
-		opts:  opts,
-		store: store,
+		opts:   opts,
+		store:  store,
+		filter: newEventFilter(opts),
 	}
 	a.reset()
 	return a
@@ -155,8 +158,10 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 	}
 
 	// Only fan out to other aggregators if transaction processing succeeded.
-	a.tableAgg.Consume(ev)
-	a.minuteAgg.Consume(ev)
+	if a.filter.Allow(ev.Schema, ev.Table) {
+		a.tableAgg.Consume(ev)
+		a.minuteAgg.Consume(ev)
+	}
 
 	if err := a.persistCompletedTransactions(); err != nil {
 		return err

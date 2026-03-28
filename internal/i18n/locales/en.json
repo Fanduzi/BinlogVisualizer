@@ -55,6 +55,38 @@
     "description": "Detect spikes flag description",
     "other": "Enable spike detection"
   },
+  "cmd.analyze.flag.topMinutes": {
+    "description": "Top minutes flag description",
+    "other": "Number of top minutes to show"
+  },
+  "cmd.analyze.flag.spikeWindow": {
+    "description": "Spike window flag description",
+    "other": "Rolling baseline window in minutes for spike detection"
+  },
+  "cmd.analyze.flag.spikeFactor": {
+    "description": "Spike factor flag description",
+    "other": "Multiplier above baseline to trigger spike alert"
+  },
+  "cmd.analyze.flag.spikeMinRows": {
+    "description": "Spike minimum rows flag description",
+    "other": "Minimum rows in a minute to consider for spike detection"
+  },
+  "cmd.analyze.flag.includeSchema": {
+    "description": "Include schema filter flag description",
+    "other": "Only analyze these schemas (comma-separated)"
+  },
+  "cmd.analyze.flag.excludeSchema": {
+    "description": "Exclude schema filter flag description",
+    "other": "Skip these schemas (comma-separated)"
+  },
+  "cmd.analyze.flag.includeTable": {
+    "description": "Include table filter flag description",
+    "other": "Only analyze these tables (comma-separated)"
+  },
+  "cmd.analyze.flag.excludeTable": {
+    "description": "Exclude table filter flag description",
+    "other": "Skip these tables (comma-separated)"
+  },
   "cmd.analyze.flag.largeTrxRows": {
     "description": "Large transaction rows threshold flag description",
     "other": "Rows threshold for large transaction alert"

@@ -55,6 +55,38 @@
     "description": "spike 检测标志描述",
     "other": "启用 spike 检测"
   },
+  "cmd.analyze.flag.topMinutes": {
+    "description": "显示分钟数标志描述",
+    "other": "显示的最活跃分钟数"
+  },
+  "cmd.analyze.flag.spikeWindow": {
+    "description": "尖峰检测滑动窗口标志描述",
+    "other": "尖峰检测的滑动基线窗口（分钟）"
+  },
+  "cmd.analyze.flag.spikeFactor": {
+    "description": "尖峰检测倍数标志描述",
+    "other": "触发尖峰告警的基线倍数"
+  },
+  "cmd.analyze.flag.spikeMinRows": {
+    "description": "纳入尖峰检测的最小行数标志描述",
+    "other": "纳入尖峰检测的最小行数"
+  },
+  "cmd.analyze.flag.includeSchema": {
+    "description": "仅分析指定 schema 标志描述",
+    "other": "仅分析指定 schema（逗号分隔）"
+  },
+  "cmd.analyze.flag.excludeSchema": {
+    "description": "排除指定 schema 标志描述",
+    "other": "跳过指定 schema（逗号分隔）"
+  },
+  "cmd.analyze.flag.includeTable": {
+    "description": "仅分析指定表标志描述",
+    "other": "仅分析指定表（逗号分隔）"
+  },
+  "cmd.analyze.flag.excludeTable": {
+    "description": "排除指定表标志描述",
+    "other": "跳过指定表（逗号分隔）"
+  },
   "cmd.analyze.flag.largeTrxRows": {
     "description": "大事务行数阈值标志描述",
     "other": "大事务告警的行数阈值"
