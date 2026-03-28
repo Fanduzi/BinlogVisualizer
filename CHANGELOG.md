@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.4.0
+
+Release date: 2026-03-28
+
+Highlights:
+
+- Added internationalization (i18n) support for English and Chinese
+- Added `--lang` flag to switch output language
+- Added automatic language detection from `LANG` and `LC_ALL` environment variables
+- Localized error messages, report output, and alert messages
+
+Related notes:
+
+- [v0.4.0 release notes](docs/releases/release-notes-v0.4.0.md)
+- [v0.4.0 中文发行说明](docs/releases/release-notes-v0.4.0.zh-CN.md)
+
 ## v0.3.0
 
 Release date: 2026-03-27
