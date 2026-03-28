@@ -12,39 +12,81 @@
 [![Changelog](https://img.shields.io/badge/Changelog-informational)](CHANGELOG.md) [![Security](https://img.shields.io/badge/Security-important)](SECURITY.md) [![Release Notes](https://img.shields.io/badge/Release_Notes-success)](docs/releases/)
 </div>
 
-A CLI tool for MySQL binlog analysis, designed to help DBAs quickly identify hot tables, large transactions, write spikes, and workload patterns from local ROW binlog files.
+BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs and operators who need to quickly answer practical questions from real binlog files: which tables are absorbing the most writes, which transactions are unusually large, where spikes happened, and how workload changed over a time window.
 
-## Overview
+## Start Here
 
-BinlogViz answers critical operational questions:
+If you already have local binlog files, these are the fastest paths to useful output:
 
-- **Which tables have the heaviest writes?**
-- **Are there abnormally large transactions?**
-- **Did write spikes occur at specific minutes?**
-- **What does the workload summary look like for a given time window?**
+### Inspect one file quickly
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+### Analyze a whole directory in binlog order
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
+```
+
+### Narrow to an incident window
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-03-15T10:00:00Z" \
+  --end "2026-03-15T10:30:00Z"
+```
+
+### Focus on one schema or table
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders \
+  --include-table payments
+```
+
+### Send machine-readable output to another tool
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+```
+
+By design, the final report goes to `stdout`, while progress, resolved discovery files, finalization status, and errors stay on `stderr`.
+
+## What BinlogViz Helps You See
+
+BinlogViz is optimized for these common DBA questions:
+
+- **Which tables are taking the heaviest write load?**
+- **Which transactions are large enough to deserve attention?**
+- **Did a spike happen at a specific minute?**
+- **What changed inside a known incident window?**
+- **Can I hand the result to another script or pipeline safely?**
 
 ## Installation
 
-### Preferred: Release Artifact
+### Preferred: Download a Release Artifact
 
 Download the release archive for your platform from GitHub Releases, verify the checksum, and move the binary onto your `PATH`.
 
-The authoritative release artifacts are produced by the GitHub Actions release workflow on native runners. Local `goreleaser` is only intended for config checks and optional current-host validation.
+The authoritative release artifacts are produced by the GitHub Actions release workflow on native runners. Local `goreleaser` is intended for config validation and optional current-host checks, not as the primary release path.
 
 Example for `darwin/arm64` and the current release `v0.5.0`:
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.3.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.3.0_checksums.txt
-shasum -a 256 -c binlogviz_0.3.0_checksums.txt 2>/dev/null | grep "binlogviz_0.3.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.3.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.5.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.5.0_checksums.txt
+shasum -a 256 -c binlogviz_0.5.0_checksums.txt 2>/dev/null | grep "binlogviz_0.5.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.5.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
-Or use the included install helper:
+Or fetch the install helper from the same release tag before running it:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh | sh -s -- --version v0.5.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.5.0/install.sh
+sh ./install.sh --version v0.5.0
 ```
 
 To preview the resolved artifact without downloading:
@@ -59,128 +101,142 @@ To preview the resolved artifact without downloading:
 git clone https://github.com/Fanduzi/BinlogVisualizer.git
 cd BinlogVisualizer
 
-# Build locally
 go build -o binlogviz .
-
-# Or install into GOPATH/bin
 go install .
-
-# Or run directly
 go run . analyze <binlog files...>
 ```
 
-## Usage
+If you build from source without release ldflags, `binlogviz --version` reports `dev` instead of a tagged release version.
 
-### Basic Analysis
+### Verify the Binary
 
 ```bash
-# Analyze a single binlog file
+binlogviz --version
+binlogviz version
+```
+
+- `binlogviz --version` prints only the version string
+- `binlogviz version` prints the ASCII logo plus `binlogviz <version>`
+
+## Common DBA Workflows
+
+### 1. Validate one file before scaling up
+
+```bash
 binlogviz analyze mysql-bin.000123
+```
 
-# Analyze multiple files
-binlogviz analyze mysql-bin.000123 mysql-bin.000124
+Use this when you want the fastest check that:
 
-# Discover an ordered binlog range from a directory and prefix
+- the file is readable
+- the file parses successfully
+- the default text report is already enough for a first look
+
+### 2. Prefer discovery mode for repeatable directory analysis
+
+```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
-
-# Use shell expansion for multiple files
-binlogviz analyze mysql-bin.*
 ```
 
-### Time Window Filtering
+Discovery mode is usually the safest operator path when files live in one directory and follow a numeric suffix pattern. BinlogViz will:
+
+1. scan the immediate directory entries
+2. keep only files whose suffix after the prefix is numeric
+3. sort them by numeric suffix
+4. print the resolved ordered list to `stderr`
+5. analyze that ordered set
+
+### 3. Reduce noise with time and object filters
 
 ```bash
-# Analyze a specific time range (RFC3339 format)
-binlogviz analyze mysql-bin.* \
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --start "2026-03-15T10:00:00Z" \
-  --end "2026-03-15T10:30:00Z"
+  --end "2026-03-15T10:30:00Z" \
+  --exclude-schema mysql,sys,information_schema,performance_schema
 ```
 
-### Output Options
-
 ```bash
-# JSON output for scripting or further processing
-binlogviz analyze mysql-bin.* --json
-
-# Adjust number of top items shown
-binlogviz analyze mysql-bin.* --top-tables 20 --top-transactions 20
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders \
+  --include-table payments,refunds
 ```
 
-### Alert Detection
+Use this when you are working a known incident window, a specific service schema, or a short list of hot tables.
+
+### 4. Redirect JSON safely
 
 ```bash
-# Enable spike detection
-binlogviz analyze mysql-bin.* --detect-spikes
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+```
 
-# Customize large transaction thresholds
-binlogviz analyze mysql-bin.* \
+This keeps the machine-readable report on `stdout` while leaving progress and runtime information on `stderr`.
+
+### 5. Tune the report when default Top-N is too small
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --top-tables 20 \
+  --top-transactions 20 \
+  --top-minutes 30
+```
+
+### 6. Turn on alerting when looking for anomalies
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --detect-spikes \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
 ```
 
-### Schema / Table Filtering
+## Language Support
+
+BinlogViz supports multiple languages for runtime output such as errors, reports, and progress messages.
 
 ```bash
-# Only analyze a specific schema
-binlogviz analyze mysql-bin.* --include-schema mydb
-
-# Exclude system schemas
-binlogviz analyze mysql-bin.* --exclude-schema mysql,sys,information_schema
-
-# Only analyze specific tables (filtering applied at ingestion time)
-binlogviz analyze mysql-bin.* --include-schema mydb --include-table orders,payments
+binlogviz --lang zh-CN analyze mysql-bin.000123
+LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.000123
 ```
 
-### Language Support
+Supported languages:
 
-BinlogViz supports multiple languages for runtime output (error messages, reports, progress indicators).
-
-```bash
-# Use Chinese output via command-line flag
-binlogviz --lang zh-CN analyze mysql-bin.*
-
-# Or via environment variable
-LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.*
-```
-
-**Supported languages:**
 - `en` - English (default)
 - `zh-CN` - Simplified Chinese
 
-**Note:** Command help text (`--help`) is always displayed in English due to CLI framework limitations. Runtime output (errors, reports, alerts) is fully localized.
+`--help` output currently remains in English because help text is generated before language initialization. Runtime output is localized.
 
-## Documentation
+## Documentation by Task
 
-BinlogViz now splits product documentation by reader intent so the README can stay focused on installation and the shortest path to first success.
+### Start with these
 
-### Concepts
+- [Quickstart](docs/recipe/quickstart.md)
+- [Analyze Local Binlogs](docs/recipe/analyze-local-binlogs.md)
+- [Troubleshoot Common Errors](docs/recipe/troubleshoot-common-errors.md)
+
+### When you need contracts and exact behavior
+
+- [CLI Reference](docs/reference/cli.md)
+- [Input Discovery Reference](docs/reference/input-discovery.md)
+- [Output Format Reference](docs/reference/output-format.md)
+
+### When you need internals or operating model detail
 
 - [Architecture](docs/concept/architecture.md)
 - [DuckDB Temp Store](docs/concept/duckdb-temp-store.md)
 - [Analysis Model](docs/concept/analysis-model.md)
 - [Limitations](docs/concept/limitations.md)
 
-### Recipes
-
-- [Quickstart](docs/recipe/quickstart.md)
-- [Analyze Local Binlogs](docs/recipe/analyze-local-binlogs.md)
-- [Troubleshoot Common Errors](docs/recipe/troubleshoot-common-errors.md)
-
-### Reference
-
-- [CLI Reference](docs/reference/cli.md)
-- [Input Discovery Reference](docs/reference/input-discovery.md)
-- [Output Format Reference](docs/reference/output-format.md)
-
-### Additional Resources
+### Release and supporting material
 
 - [Examples](docs/examples/)
 - [Release Notes](docs/releases/)
+- [Changelog](CHANGELOG.md)
+- [Security Policy](SECURITY.md)
 
 ## Requirements
 
-- MySQL ROW-format binlog files
-- Go 1.26.1+ (for building)
+- local MySQL `ROW` binlog files
+- Go 1.26.1+ if building from source
 
 ## License
 

@@ -6,7 +6,7 @@ Security fixes are only guaranteed for the latest tagged release.
 
 Current supported line:
 
-- `v0.2.3`
+- `v0.5.0`
 
 Older tags may remain visible for historical reasons, but they should not be treated as supported production releases.
 
@@ -31,6 +31,11 @@ BinlogViz is a local CLI tool for offline binlog analysis. The main security-sen
 
 - parsing untrusted binlog files
 - temporary local DuckDB storage during analysis
+- optional SQL context in rendered output
 - installation and release artifact verification
 
-Users should verify release checksums before running downloaded binaries.
+Users should:
+
+- verify release checksums before running downloaded binaries
+- treat generated reports and JSON output as potentially sensitive if SQL context is enabled
+- handle archived stderr logs carefully because they may still contain runtime context such as resolved file lists, progress history, and error details

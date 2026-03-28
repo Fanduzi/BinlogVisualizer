@@ -4,13 +4,13 @@ Release date: 2026-03-28
 
 ## Overview
 
-v0.5.0 exposes previously hidden analyzer controls as CLI flags and adds schema/table filtering at the analysis stage.
+v0.5.0 makes the CLI more useful for real operator workflows by exposing previously hidden analyzer controls and adding schema/table filtering at analysis time.
 
 ## New Features
 
-### Exposed CLI Flags (Feature A)
+### Exposed CLI Flags
 
-Several analyzer parameters were previously hardcoded or unavailable via the CLI. They are now fully configurable:
+Several analyzer parameters were previously hardcoded or unavailable via the CLI. They are now configurable:
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -29,9 +29,9 @@ binlogviz analyze mysql-bin.000001 \
   --top-minutes 30
 ```
 
-### Schema/Table Filtering (Feature B)
+### Schema/Table Filtering
 
-Filter which schemas and tables are included in analysis at ingestion time — not just in output. This reduces noise and improves performance when only specific schemas or tables are relevant.
+You can now filter which schemas and tables are included during analysis, not just at output time. This reduces noise and tightens the scope when only specific objects matter.
 
 | Flag | Description |
 |------|-------------|

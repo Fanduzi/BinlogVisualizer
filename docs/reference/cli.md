@@ -2,6 +2,8 @@
 
 This document defines the user-facing contract for `binlogviz analyze`.
 
+If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
+
 ## Command Syntax
 
 ```bash
@@ -11,8 +13,8 @@ binlogviz analyze --from-dir DIR --prefix PREFIX
 
 `analyze` accepts exactly one input mode per invocation:
 
-- Positional file mode: pass one or more local binlog file paths as positional arguments.
-- Discovery mode: pass `--from-dir` and `--prefix` together so BinlogViz resolves matching files from a directory.
+- **Positional file mode**: pass one or more local binlog file paths as positional arguments.
+- **Discovery mode**: pass `--from-dir` and `--prefix` together so BinlogViz resolves matching files from a directory.
 
 ## Input Rules
 
@@ -96,10 +98,10 @@ Validation happens before analysis starts:
 
 The command rejects these invalid combinations:
 
-- Positional files plus `--from-dir` or `--prefix`
+- positional files plus `--from-dir` or `--prefix`
 - `--from-dir` without `--prefix`
 - `--prefix` without `--from-dir`
-- No positional files and no complete discovery pair
+- no positional files and no complete discovery pair
 
 Representative failure cases:
 

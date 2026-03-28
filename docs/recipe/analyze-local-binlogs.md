@@ -1,141 +1,151 @@
 # Analyze Local Binlogs
 
-This guide shows practical operator workflows for running `binlogviz analyze` against local binlog files.
+This guide focuses on practical DBA workflows for running `binlogviz analyze` against local binlog files.
 
-## Analyze One File
+## Start with One File
 
-Start with a single file when you want the fastest path to validating format, output shape, and basic tool behavior.
+When you want the fastest confidence check, start with a single file:
 
 ```bash
 binlogviz analyze mysql-bin.000123
 ```
 
-This is the best first run when you want to confirm:
+This first run is the quickest way to verify:
 
 - the file exists locally
-- the file can be parsed successfully
-- the default text report is sufficient for an initial review
+- the file parses successfully
+- the default text report is already useful
 
-By default, the final report goes to `stdout`, while progress and runtime status stay on `stderr`.
+By default, the final report goes to `stdout`, while progress, resolved discovery files, finalization status, and errors go to `stderr`.
 
-## Analyze Multiple Files
+## Prefer Discovery Mode for Directory Work
 
-Use positional files when you already know the exact subset and order you want to inspect.
-
-```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 mysql-bin.000125
-```
-
-This mode is useful when:
-
-- you want a hand-picked range
-- your shell or script already resolved the file list
-- you do not want discovery mode to decide the input set
-
-You can also let the shell expand a pattern if that matches your operational workflow:
-
-```bash
-binlogviz analyze mysql-bin.*
-```
-
-Be aware that shell expansion rules come from your shell, not from BinlogViz itself.
-
-## Use Discovery Mode
-
-Use discovery mode when your files live together in one directory and follow a stable numeric naming pattern.
+When files live together in one directory and follow a numeric naming pattern, discovery mode is usually the safest operator path:
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ```
 
-When discovery mode succeeds, BinlogViz will:
+On success, BinlogViz will:
 
 1. scan the immediate directory entries
 2. keep only files whose suffix after the prefix is numeric
 3. sort the matches by numeric suffix
-4. print the resolved ordered list to `stderr`
+4. print the resolved ordered file list to `stderr`
 5. analyze that ordered set
 
-This is a good fit when you want a repeatable operator command without hand-listing every file.
-
-For the exact matching and ordering contract, continue with the [Input Discovery Reference](../reference/input-discovery.md).
-
-## Filter by Time Window
-
-Use `--start` and `--end` when you only care about activity within a specific RFC3339 time range.
+Use positional files instead when you already know the exact subset and order you want:
 
 ```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
+binlogviz analyze mysql-bin.000123 mysql-bin.000124 mysql-bin.000125
+```
+
+You can also use shell expansion if that matches your workflow:
+
+```bash
+binlogviz analyze mysql-bin.*
+```
+
+Remember that shell expansion is controlled by your shell, not by BinlogViz.
+
+## Narrow to a Known Incident Window
+
+Use `--start` and `--end` when the file set covers more time than the problem you are investigating:
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --start "2026-03-15T10:00:00Z" \
   --end "2026-03-15T10:30:00Z"
 ```
 
 This is useful when:
 
-- you are investigating a known incident window
-- the input files cover more time than you want in the final result
-- you want report totals and rankings scoped to a specific period
+- you are working a known incident window
+- the directory contains more history than you want in the report
+- you want rankings and totals scoped to a single time slice
 
-Remember that invalid timestamps fail before analysis starts, and `--end` must not be earlier than `--start`.
+Invalid timestamps fail before analysis starts, and `--end` must not be earlier than `--start`.
 
-## Render JSON for Automation
+## Reduce Noise by Schema or Table
 
-Use `--json` when another tool or script will consume the result.
+Use schema and table filters when you need to isolate one service, one schema, or a short list of hot tables.
+
+### Include only one schema
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders
 ```
 
-This pattern keeps the machine-readable report on `stdout` while still allowing progress and runtime status to appear on `stderr`.
+### Exclude internal schemas
 
-It is the safer choice for:
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --exclude-schema mysql,sys,information_schema,performance_schema
+```
+
+### Focus on specific tables
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --include-schema orders \
+  --include-table payments,refunds
+```
+
+Filtering happens at analysis time, not just at report rendering, so it is useful both for reducing noise and for tightening the workload scope.
+
+## Choose Text or JSON Intentionally
+
+### Default text output for human review
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+This is the right default when you want to scan the report directly in a terminal.
+
+### JSON output for scripts and pipelines
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+```
+
+This is the safer pattern for:
 
 - shell pipelines
-- automated checks
-- downstream data loading
-- CI-style verification of expected output shape
+- automated validation
+- downstream ingestion
+- comparisons in CI or operator tooling
 
-## Tune Top-N Output
+## Tune Report Breadth
 
-If the default top-10 ranking is too small for your investigation, expand it explicitly.
+If the default top-10 output is too narrow for the workload you are investigating, widen it explicitly:
 
 ```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --top-tables 20 \
-  --top-transactions 20
+  --top-transactions 20 \
+  --top-minutes 30
 ```
 
-Use this when:
+These flags change report breadth, not the underlying parse scope.
 
-- your workload touches many hot tables
-- you need more than the default shortlist
-- you want wider transaction coverage in the final report
+## Turn on Alerts for Anomaly Hunting
 
-These flags change report breadth, not the underlying parsing scope.
-
-## Enable Spike Detection
-
-Turn on spike detection when you want the analyzer to call out unusually heavy minute-level activity.
+When you want BinlogViz to highlight unusual behavior, enable spike detection and, if needed, adjust the large-transaction thresholds:
 
 ```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
-  --detect-spikes
-```
-
-You can combine it with custom large-transaction thresholds when your environment needs different alert sensitivity. Large-transaction alerts are independent of spike detection, so you can tune those thresholds even if you leave `--detect-spikes` off.
-
-```bash
-binlogviz analyze mysql-bin.000123 mysql-bin.000124 \
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --detect-spikes \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
 ```
 
-This is useful when you are looking for operational anomalies, not just workload rankings.
+Use this when you are looking for abnormal load, not just rankings.
 
-## Choose an SQL Context Mode
+## Control SQL Context Exposure
 
-Use `--sql-context` to control how transaction query context appears in the report.
+Use `--sql-context` to control how transaction query context appears in the report:
 
 ```bash
 binlogviz analyze mysql-bin.000123 --sql-context off
@@ -145,15 +155,15 @@ binlogviz analyze mysql-bin.000123 --sql-context full
 
 Mode guidance:
 
-- `off`: suppress all query-related fields
+- `off`: omit query-related fields
 - `summary`: keep bounded summaries for operator context
-- `full`: include the bounded stored SQL text when available
+- `full`: include bounded stored SQL text when available
 
 This setting changes presentation, not the workload metrics themselves.
 
 ## Redirect Output Channels Intentionally
 
-When you need clean report capture plus separate runtime logs, redirect the two channels independently.
+When you want to archive the report and preserve runtime logs separately, redirect the channels independently:
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -161,15 +171,11 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   2> analyze.stderr.log
 ```
 
-Use this pattern when:
-
-- you want to archive the final report
-- you want discovery and progress logs separately
-- you are feeding the report into another process without status noise
+This keeps the report stream clean while preserving discovery listings, progress, finalization, and errors.
 
 ## Next References
 
-After you have a working operator command, use these references to go deeper:
+After you have a working operator command, continue with:
 
 - [CLI Reference](../reference/cli.md)
 - [Input Discovery Reference](../reference/input-discovery.md)
