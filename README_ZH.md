@@ -165,4 +165,4 @@ BinlogViz 现在按读者意图拆分产品文档，这样 README 可以专注�
 
 ## License
 
-MIT
+Apache 2.0
