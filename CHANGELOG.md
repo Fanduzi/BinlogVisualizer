@@ -2,6 +2,20 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.5.0
+
+Release date: 2026-03-28
+
+Highlights:
+
+- Exposed previously hidden CLI flags: `--top-minutes`, `--spike-window`, `--spike-factor`, `--spike-min-rows`
+- Added schema/table filtering at analysis time: `--include-schema`, `--exclude-schema`, `--include-table`, `--exclude-table`
+
+Related notes:
+
+- [v0.5.0 release notes](docs/releases/release-notes-v0.5.0.md)
+- [v0.5.0 中文发行说明](docs/releases/release-notes-v0.5.0.zh-CN.md)
+
 ## v0.4.0
 
 Release date: 2026-03-28

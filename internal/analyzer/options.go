@@ -20,6 +20,12 @@ type Options struct {
 	SpikeWindow     int // minutes for rolling baseline
 	SpikeFactor     float64 // multiplier for spike detection
 	SpikeMinRows    int // minimum rows to consider a spike
+
+	// Schema/table filtering
+	IncludeSchemas []string // only analyze these schemas (empty = all)
+	ExcludeSchemas []string // skip these schemas
+	IncludeTables  []string // only analyze these tables (empty = all)
+	ExcludeTables  []string // skip these tables
 }
 
 // DefaultOptions returns Options with sensible defaults.

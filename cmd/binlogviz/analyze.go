@@ -54,6 +54,14 @@ type analyzeOptions struct {
 	detectSpikes     bool
 	largeTrxRows     int
 	largeTrxDuration time.Duration
+	topMinutes       int
+	spikeWindow      int
+	spikeFactor      float64
+	spikeMinRows     int
+	includeSchemas   []string
+	excludeSchemas   []string
+	includeTables    []string
+	excludeTables    []string
 }
 
 func newAnalyzeCommand() *cobra.Command {
@@ -122,6 +130,14 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.detectSpikes, "detect-spikes", false, i18n.T("cmd.analyze.flag.detectSpikes"))
 	cmd.Flags().IntVar(&opts.largeTrxRows, "large-trx-rows", 1000, i18n.T("cmd.analyze.flag.largeTrxRows"))
 	cmd.Flags().DurationVar(&opts.largeTrxDuration, "large-trx-duration", 30*time.Second, i18n.T("cmd.analyze.flag.largeTrxDuration"))
+	cmd.Flags().IntVar(&opts.topMinutes, "top-minutes", 60, i18n.T("cmd.analyze.flag.topMinutes"))
+	cmd.Flags().IntVar(&opts.spikeWindow, "spike-window", 5, i18n.T("cmd.analyze.flag.spikeWindow"))
+	cmd.Flags().Float64Var(&opts.spikeFactor, "spike-factor", 3.0, i18n.T("cmd.analyze.flag.spikeFactor"))
+	cmd.Flags().IntVar(&opts.spikeMinRows, "spike-min-rows", 100, i18n.T("cmd.analyze.flag.spikeMinRows"))
+	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.analyze.flag.includeSchema"))
+	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.analyze.flag.excludeSchema"))
+	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.analyze.flag.includeTable"))
+	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.analyze.flag.excludeTable"))
 
 	return cmd
 }
@@ -457,12 +473,36 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	// Start with defaults to get spike detection defaults
 	result := analyzer.DefaultOptions()
 
-	// Override with CLI-specific values
-	result.TopTables = opts.topTables
-	result.TopTransactions = opts.topTransactions
+	// Override with CLI-specific values (only when non-zero, to preserve DefaultOptions fallback)
+	if opts.topTables != 0 {
+		result.TopTables = opts.topTables
+	}
+	if opts.topTransactions != 0 {
+		result.TopTransactions = opts.topTransactions
+	}
+	if opts.topMinutes != 0 {
+		result.TopMinutes = opts.topMinutes
+	}
 	result.DetectSpikes = opts.detectSpikes
-	result.LargeTxnRows = opts.largeTrxRows
-	result.LargeTxnDuration = opts.largeTrxDuration
+	if opts.largeTrxRows != 0 {
+		result.LargeTxnRows = opts.largeTrxRows
+	}
+	if opts.largeTrxDuration != 0 {
+		result.LargeTxnDuration = opts.largeTrxDuration
+	}
+	if opts.spikeWindow != 0 {
+		result.SpikeWindow = opts.spikeWindow
+	}
+	if opts.spikeFactor != 0 {
+		result.SpikeFactor = opts.spikeFactor
+	}
+	if opts.spikeMinRows != 0 {
+		result.SpikeMinRows = opts.spikeMinRows
+	}
+	result.IncludeSchemas = opts.includeSchemas
+	result.ExcludeSchemas = opts.excludeSchemas
+	result.IncludeTables = opts.includeTables
+	result.ExcludeTables = opts.excludeTables
 
 	// Set time window if specified
 	if !startTime.IsZero() {
