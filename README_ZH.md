@@ -66,7 +66,16 @@ BinlogViz 重点服务这些 DBA 常见问题：
 
 ## 安装
 
-### 首选：下载 Release Artifact
+### macOS 首选：Homebrew Cask
+
+```bash
+brew tap Fanduzi/binlogviz
+brew install --cask binlogviz
+```
+
+这条路径会安装预编译 release artifact，并在安装时移除 macOS quarantine 属性；用户不需要额外安装 DuckDB。
+
+### 通用备选：下载 Release Artifact
 
 从 GitHub Releases 下载与你平台匹配的归档文件，校验 checksum 后再把二进制放到 `PATH` 中。
 

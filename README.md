@@ -66,7 +66,16 @@ BinlogViz is optimized for these common DBA questions:
 
 ## Installation
 
-### Preferred: Download a Release Artifact
+### Preferred on macOS: Homebrew Cask
+
+```bash
+brew tap Fanduzi/binlogviz
+brew install --cask binlogviz
+```
+
+This path installs the prebuilt release artifact and removes the macOS quarantine attribute during installation, so you do not need to install DuckDB separately.
+
+### Preferred cross-platform fallback: Download a Release Artifact
 
 Download the release archive for your platform from GitHub Releases, verify the checksum, and move the binary onto your `PATH`.
 

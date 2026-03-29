@@ -53,17 +53,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: latest
-          install-only: true
       - name: Build archive
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
-          goreleaser build --snapshot --clean --single-target --output dist/binlogviz
+          GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" CGO_ENABLED=1 \
+            go build -trimpath -ldflags "-s -w -X binlogviz/internal/version.Version=${VERSION}" -o dist/binlogviz .
           ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           tar -C dist -czf "dist/${ARCHIVE}" binlogviz
           rm -f dist/binlogviz
@@ -121,3 +118,86 @@ jobs:
           files: |
             release/*.tar.gz
             release/*_checksums.txt
+
+      - name: Generate Homebrew cask definition
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          CHECKSUM_FILE="release/binlogviz_${VERSION}_checksums.txt"
+          DARWIN_AMD64_SHA="$(awk '/binlogviz_'"${VERSION}"'_darwin_amd64.tar.gz$/ {print $1}' "${CHECKSUM_FILE}")"
+          DARWIN_ARM64_SHA="$(awk '/binlogviz_'"${VERSION}"'_darwin_arm64.tar.gz$/ {print $1}' "${CHECKSUM_FILE}")"
+          LINUX_AMD64_SHA="$(awk '/binlogviz_'"${VERSION}"'_linux_amd64.tar.gz$/ {print $1}' "${CHECKSUM_FILE}")"
+          LINUX_ARM64_SHA="$(awk '/binlogviz_'"${VERSION}"'_linux_arm64.tar.gz$/ {print $1}' "${CHECKSUM_FILE}")"
+          test -n "${DARWIN_AMD64_SHA}"
+          test -n "${DARWIN_ARM64_SHA}"
+          test -n "${LINUX_AMD64_SHA}"
+          test -n "${LINUX_ARM64_SHA}"
+          cat > release/binlogviz.rb <<EOF
+          cask "binlogviz" do
+            version "${VERSION}"
+
+            on_macos do
+              on_intel do
+                sha256 "${DARWIN_AMD64_SHA}"
+                url "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${GITHUB_REF_NAME}/binlogviz_${VERSION}_darwin_amd64.tar.gz",
+                    verified: "github.com/Fanduzi/BinlogVisualizer/"
+              end
+              on_arm do
+                sha256 "${DARWIN_ARM64_SHA}"
+                url "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${GITHUB_REF_NAME}/binlogviz_${VERSION}_darwin_arm64.tar.gz",
+                    verified: "github.com/Fanduzi/BinlogVisualizer/"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                sha256 "${LINUX_AMD64_SHA}"
+                url "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${GITHUB_REF_NAME}/binlogviz_${VERSION}_linux_amd64.tar.gz",
+                    verified: "github.com/Fanduzi/BinlogVisualizer/"
+              end
+              on_arm do
+                if Hardware::CPU.is_64_bit?
+                  sha256 "${LINUX_ARM64_SHA}"
+                  url "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${GITHUB_REF_NAME}/binlogviz_${VERSION}_linux_arm64.tar.gz",
+                      verified: "github.com/Fanduzi/BinlogVisualizer/"
+                end
+              end
+            end
+
+            name "BinlogViz"
+            desc "Local CLI for MySQL ROW binlog analysis"
+            homepage "https://github.com/Fanduzi/BinlogVisualizer"
+
+            binary "binlogviz"
+
+            postflight do
+              if OS.mac?
+                system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", staged_path/"binlogviz"]
+              end
+            end
+          end
+          EOF
+
+      - name: Sync Homebrew tap cask
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAP_REPO="Fanduzi/homebrew-binlogviz"
+          TAP_DIR="${RUNNER_TEMP}/homebrew-binlogviz"
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p "${TAP_DIR}"
+          gh repo clone "${TAP_REPO}" "${TAP_DIR}"
+          mkdir -p "${TAP_DIR}/Casks"
+          cp release/binlogviz.rb "${TAP_DIR}/Casks/binlogviz.rb"
+          cd "${TAP_DIR}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$(git status --porcelain -- Casks/binlogviz.rb)" ]; then
+            echo "No Homebrew cask changes to commit"
+            exit 0
+          fi
+          git add Casks/binlogviz.rb
+          git commit -m "chore: update binlogviz cask for ${TAG}"
+          git push origin HEAD
