@@ -188,6 +188,7 @@ jobs:
           TAP_DIR="${RUNNER_TEMP}/homebrew-binlogviz"
           TAG="${GITHUB_REF_NAME}"
           mkdir -p "${TAP_DIR}"
+          gh auth setup-git
           gh repo clone "${TAP_REPO}" "${TAP_DIR}"
           mkdir -p "${TAP_DIR}/Casks"
           cp release/binlogviz.rb "${TAP_DIR}/Casks/binlogviz.rb"
