@@ -47,7 +47,7 @@ type analyzeOptions struct {
 	endTime          string
 	fromDir          string
 	prefix           string
-	json             bool
+	format           string
 	sqlContext       string
 	topTables        int
 	topTransactions  int
@@ -114,7 +114,7 @@ func newAnalyzeCommand() *cobra.Command {
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 
 			// Execute the analysis pipeline
-			return runAnalysisWithReportOptions(paths, analyzerOpts, reportOpts, opts.json)
+			return runAnalysisWithReportOptions(paths, analyzerOpts, reportOpts, opts.format)
 		},
 	}
 
@@ -123,7 +123,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.endTime, "end", "", i18n.T("cmd.analyze.flag.end"))
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
-	cmd.Flags().BoolVar(&opts.json, "json", false, i18n.T("cmd.analyze.flag.json"))
+	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.analyze.flag.format"))
 	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
 	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, i18n.T("cmd.analyze.flag.topTransactions"))
@@ -240,26 +240,26 @@ func validateFiles(paths []string) error {
 }
 
 // runAnalysis executes the complete analysis pipeline.
-func runAnalysis(paths []string, opts analyzer.Options, jsonOutput bool) error {
-	return runAnalysisWithReportOptions(paths, opts, report.DefaultOptions(), jsonOutput)
+func runAnalysis(paths []string, opts analyzer.Options, format string) error {
+	return runAnalysisWithReportOptions(paths, opts, report.DefaultOptions(), format)
 }
 
-func runAnalysisWithReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, jsonOutput bool) error {
-	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, reportOpts, jsonOutput, binlog.NewParser(), "", nil)
+func runAnalysisWithReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string) error {
+	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, reportOpts, format, binlog.NewParser(), "", nil)
 }
 
 // runAnalysisWithParser executes the analysis pipeline with an injected parser.
 // This allows testing with mock parsers without requiring real binlog files.
-func runAnalysisWithParser(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser) error {
-	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, report.DefaultOptions(), jsonOutput, parser, "", nil)
+func runAnalysisWithParser(paths []string, opts analyzer.Options, format string, parser binlog.Parser) error {
+	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, report.DefaultOptions(), format, parser, "", nil)
 }
 
-func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, jsonOutput bool, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, report.DefaultOptions(), jsonOutput, parser, tempRoot, onStoreCreated)
+func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, format string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
+	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, report.DefaultOptions(), format, parser, tempRoot, onStoreCreated)
 }
 
-func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, jsonOutput bool, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	return runAnalysisStreamingWithDeps(paths, opts, reportOpts, jsonOutput, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
+	return runAnalysisStreamingWithDeps(paths, opts, reportOpts, format, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return analyzer.NewWithStore(opts, store)
 	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
 		store, cleanup, path, err := createDuckDBTempStore(root)
@@ -359,7 +359,7 @@ func runAnalysisStreamingWithDeps(
 	paths []string,
 	opts analyzer.Options,
 	reportOpts report.Options,
-	jsonOutput bool,
+	format string,
 	parser binlog.Parser,
 	normalize normalizeRawEventFunc,
 	newAnalyzer commandAnalyzerFactory,
@@ -415,10 +415,16 @@ func runAnalysisStreamingWithDeps(
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
 
-	if jsonOutput {
+	switch format {
+	case "json":
 		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
+	case "markdown", "md":
+		return report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
+	case "html":
+		return report.RenderHTMLToStdout(*result, reportOpts)
+	default:
+		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
-	return report.RenderTextToStdoutWithOptions(*result, reportOpts)
 }
 
 func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, string, error) {

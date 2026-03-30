@@ -35,10 +35,6 @@
     "description": "Prefix flag description",
     "other": "Filename prefix used with --from-dir"
   },
-  "cmd.analyze.flag.json": {
-    "description": "JSON output flag description",
-    "other": "Output in JSON format"
-  },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL context flag description",
     "other": "SQL context mode: summary, off, or full"
@@ -278,5 +274,9 @@
   "time.notAvailable": {
     "description": "Time not available placeholder",
     "other": "N/A"
+  },
+  "cmd.analyze.flag.format": {
+    "description": "Output format flag description",
+    "other": "Output format: text, json, markdown, html"
   }
 }

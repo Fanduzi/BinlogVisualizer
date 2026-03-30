@@ -264,7 +264,7 @@ func TestAnalyzeCommandDiscoveryModePrintsResolvedFilesToStderr(t *testing.T) {
 	copyFile(t, fixture, dir+"/mysql-bin.000124")
 
 	cmd := newAnalyzeCommand()
-	cmd.SetArgs([]string{"--from-dir", dir, "--prefix", "mysql-bin.", "--json"})
+	cmd.SetArgs([]string{"--from-dir", dir, "--prefix", "mysql-bin.", "--format", "json"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
@@ -303,7 +303,7 @@ func TestRunAnalysisHappyPath(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, false, mock)
+	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "text", mock)
 
 	// Restore stdout
 	w.Close()
@@ -364,7 +364,7 @@ func TestRunAnalysisStreamsEventsDirectlyIntoAnalyzer(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return fakeAnalyzer
 	}, createDuckDBTempStore, "")
 
@@ -402,7 +402,7 @@ func TestRunAnalysisJSONOutput(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, true, mock)
+	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", mock)
 
 	// Restore stdout
 	w.Close()
@@ -458,7 +458,7 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 			r, w, _ := os.Pipe()
 			os.Stdout = w
 
-			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, false, &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "text", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 				return &fakeStreamingAnalyzer{finalResult: result}
 			}, createDuckDBTempStore, "")
 
@@ -513,7 +513,7 @@ func TestRunAnalysisJSONSQLContextModes(t *testing.T) {
 			r, w, _ := os.Pipe()
 			os.Stdout = w
 
-			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, true, &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "json", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 				return &fakeStreamingAnalyzer{finalResult: result}
 			}, createDuckDBTempStore, "")
 
@@ -578,7 +578,7 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 	root := t.TempDir()
 	var createdPath string
 
-	err := runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, analyzer.Options{}, false, &mockParser{
+	err := runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, analyzer.Options{}, "text", &mockParser{
 		events: []binlog.RawEvent{
 			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
 			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
@@ -600,7 +600,7 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 
 func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 	wantErr := errors.New("normalize boom")
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, &mockParser{
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Position: 42}},
 	}, func(raw binlog.RawEvent) (*model.NormalizedEvent, error) {
 		return nil, wantErr
@@ -617,7 +617,7 @@ func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 
 func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 	wantErr := errors.New("consume boom")
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, &mockParser{
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
 	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{consumeErr: wantErr}
@@ -632,7 +632,7 @@ func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 
 func TestRunAnalysisPropagatesAnalyzerFinalizeError(t *testing.T) {
 	wantErr := errors.New("finalize boom")
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), false, &mockParser{
+	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
 	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{finalizeErr: wantErr}
@@ -727,7 +727,7 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, true, mock)
+	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", mock)
 
 	// Restore stdout
 	w.Close()
@@ -760,7 +760,7 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	err := runAnalysis([]string{fixturePath}, opts, false)
+	err := runAnalysis([]string{fixturePath}, opts, "text")
 
 	w.Close()
 	os.Stdout = old

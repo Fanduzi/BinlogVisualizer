@@ -35,10 +35,6 @@
     "description": "prefix 标志描述",
     "other": "配合 --from-dir 使用的文件名前缀"
   },
-  "cmd.analyze.flag.json": {
-    "description": "JSON 输出标志描述",
-    "other": "以 JSON 格式输出"
-  },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL 上下文标志描述",
     "other": "SQL 上下文模式：summary、off 或 full"
@@ -278,5 +274,9 @@
   "time.notAvailable": {
     "description": "时间不可用占位符",
     "other": "不可用"
+  },
+  "cmd.analyze.flag.format": {
+    "description": "Output format flag description",
+    "other": "输出格式: text, json, markdown, html"
   }
 }
