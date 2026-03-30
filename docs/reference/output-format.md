@@ -14,10 +14,19 @@ BinlogViz uses separate output channels for different purposes:
 This separation matters because it keeps report output safe for redirection and automation.
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 In the example above, the JSON report is written to `analyze.json`, while progress and discovery status remain visible on the terminal through `stderr`.
+
+## Available Formats
+
+| Flag value | Alias | Description |
+|---|---|---|
+| `text` | — | Default. Human-readable terminal output. |
+| `json` | `--json` | Machine-readable JSON. |
+| `markdown` | `md` | GitHub-flavored Markdown with tables. |
+| `html` | — | Self-contained HTML with interactive charts and theme switcher. |
 
 ## Text Output
 
@@ -214,6 +223,37 @@ The top-level JSON object always contains these fields:
 
 It counts analysis warnings accumulated in the finalized result object. This value is part of the machine-readable report on `stdout`; it is not a count of progress lines or `stderr` messages. A non-zero value indicates the analysis completed with warning conditions recorded in the result, not that JSON output is malformed.
 
+## Markdown Output
+
+Markdown mode renders a GitHub-flavored Markdown report with five sections: workload summary, top tables, top transactions, per-minute activity, and alerts. All sections use pipe tables.
+
+```bash
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+```
+
+The output is safe to pipe into any Markdown renderer or paste directly into GitHub issues, pull request comments, or wiki pages.
+
+## HTML Output
+
+HTML mode renders a self-contained single-file report. All styles, chart library (ECharts), and data are embedded inline — no external dependencies or internet connection required.
+
+```bash
+binlogviz analyze mysql-bin.000123 --format html > report.html
+```
+
+The report includes:
+
+- Summary stat cards (transactions, rows, events, time range)
+- Interactive line chart: rows and transactions per minute
+- Interactive bar chart: top tables by rows
+- Interactive donut chart: INSERT / UPDATE / DELETE operation mix
+- Top tables detail table
+- Alert list with severity badges
+
+### Themes
+
+The HTML report includes a theme switcher in the header (five coloured dots). Available themes: **Nebula** (default, dark indigo/cyan), **Forest** (dark emerald/amber), **Navy** (dark sky/gold), **Ember** (dark orange/rose), **Light** (light). Theme preference is saved in `localStorage`.
+
 ## stderr Isolation
 
 BinlogViz keeps operator-facing runtime output off `stdout`.
@@ -246,8 +286,22 @@ binlogviz analyze mysql-bin.000123 > report.txt
 ### Save JSON output for downstream processing
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > report.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > report.json
 ```
+
+### Generate a Markdown report
+
+```bash
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+```
+
+### Generate a self-contained HTML report
+
+```bash
+binlogviz analyze mysql-bin.000123 --format html > report.html
+```
+
+The HTML file is self-contained — all charts and styles are embedded inline. Open it in any browser without an internet connection.
 
 ### Capture channels separately
 

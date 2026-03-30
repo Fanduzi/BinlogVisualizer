@@ -51,7 +51,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--end` | none | 结束时间，包含边界，RFC3339 格式。 |
 | `--from-dir` | none | 从该目录自动发现 binlog 文件。必须与 `--prefix` 一起使用。 |
 | `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。 |
-| `--json` | `false` | 以 JSON 而不是文本格式渲染分析报告。 |
+| `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
+| `--json` | `false` | `--format json` 的简写，已废弃，建议改用 `--format`。 |
 | `--sql-context` | `summary` | SQL 上下文展示模式：`summary`、`off` 或 `full`。 |
 | `--top-tables` | `10` | 报告中包含的 Top 表数量。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量。 |
@@ -122,12 +123,16 @@ BinlogViz 会刻意把机器可消费的报告输出，与面向操作者的运�
 `stdout` 专门用于最终分析报告：
 
 - 默认输出文本报告
-- 设置 `--json` 时输出 JSON 报告
+- 设置 `--format json` 或 `--json` 时输出 JSON 报告
+- 设置 `--format markdown`（或 `--format md`）时输出 Markdown 报告
+- 设置 `--format html` 时输出 HTML 报告
 
 这种行为便于安全地做 shell 重定向和脚本处理。
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json > report.json
+binlogviz analyze mysql-bin.000123 --format json > report.json
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+binlogviz analyze mysql-bin.000123 --format html > report.html
 ```
 
 ### 标准错误（`stderr`）

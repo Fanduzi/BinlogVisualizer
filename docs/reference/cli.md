@@ -51,7 +51,8 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--end` | none | End time, inclusive, in RFC3339 format. |
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
 | `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. |
-| `--json` | `false` | Render the analysis report as JSON instead of text. |
+| `--format` | `text` | Report output format: `text`, `json`, `markdown` (alias `md`), or `html`. |
+| `--json` | `false` | Shorthand for `--format json`. Deprecated in favour of `--format`. |
 | `--sql-context` | `summary` | SQL context presentation mode: `summary`, `off`, or `full`. |
 | `--top-tables` | `10` | Number of top tables to include in the report. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report. |
@@ -122,12 +123,16 @@ BinlogViz deliberately separates machine-consumable report output from operator-
 `stdout` is reserved for the final analysis report:
 
 - text report by default
-- JSON report when `--json` is set
+- JSON report when `--format json` or `--json` is set
+- Markdown report when `--format markdown` (or `--format md`) is set
+- HTML report when `--format html` is set
 
 This allows safe shell redirection and scripting.
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json > report.json
+binlogviz analyze mysql-bin.000123 --format json > report.json
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+binlogviz analyze mysql-bin.000123 --format html > report.html
 ```
 
 ### Standard error (`stderr`)
