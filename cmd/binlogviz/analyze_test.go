@@ -110,7 +110,7 @@ func TestBuildAnalyzerOptions(t *testing.T) {
 		{
 			name: "with json enabled",
 			input: analyzeOptions{
-				json:             true,
+				format:           "json",
 				topTables:        10,
 				topTransactions:  10,
 				detectSpikes:     false,
@@ -281,7 +281,7 @@ func TestAnalyzeCommandDefinesFlags(t *testing.T) {
 	requiredFlags := []string{
 		"start",
 		"end",
-		"json",
+		"format",
 		"sql-context",
 		"top-tables",
 		"top-transactions",

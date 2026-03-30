@@ -101,7 +101,7 @@ func mustFixturePath(t *testing.T, name string) string {
 func TestRunAnalysisRealFixtureMultiFileOrderedInput(t *testing.T) {
 	fixture := mustFixturePath(t, "minimal.binlog")
 	out, err := captureStdoutRun(t, func() error {
-		return runAnalysisWithReportOptions([]string{fixture, fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), true)
+		return runAnalysisWithReportOptions([]string{fixture, fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), "json")
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -142,7 +142,7 @@ func TestRunAnalysisJSONProgressDoesNotPolluteStdout(t *testing.T) {
 	}
 
 	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
-		return runAnalysisWithParserAndTempDirAndReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), true, parser, "", nil)
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), "json", parser, "", nil)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -186,7 +186,7 @@ func TestRunAnalysisTextModeWritesProgressToStderr(t *testing.T) {
 	}
 
 	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
-		return runAnalysisWithParserAndTempDirAndReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), false, parser, "", nil)
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), "text", parser, "", nil)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -257,7 +257,7 @@ func TestRunAnalysisRowsQueryPresentWithFullContext(t *testing.T) {
 	}
 
 	out, err := captureStdoutRun(t, func() error {
-		return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextFull}, true, parser, "", nil)
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextFull}, "json", parser, "", nil)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -277,7 +277,7 @@ func TestRunAnalysisRowsQueryAbsentOmitsFullContext(t *testing.T) {
 	}
 
 	out, err := captureStdoutRun(t, func() error {
-		return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextFull}, true, parser, "", nil)
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextFull}, "json", parser, "", nil)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -301,7 +301,7 @@ func TestRunAnalysisLargeTransactionAlertStreamingPath(t *testing.T) {
 	}
 
 	out, err := captureStdoutRun(t, func() error {
-		return runAnalysisWithParser([]string{"dummy.binlog"}, opts, true, parser)
+		return runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", parser)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -336,7 +336,7 @@ func TestRunAnalysisStopsParsingImmediatelyOnConsumeFailure(t *testing.T) {
 	}
 
 	_, err := captureStdoutRun(t, func() error {
-		return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.DefaultOptions(), false, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.DefaultOptions(), "text", parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 			return streamAnalyzer
 		}, createDuckDBTempStore, "")
 	})
@@ -381,7 +381,7 @@ func TestRunAnalysisRowsQueryPresentAndAbsentRegressionJSONShape(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out, err := captureStdoutRun(t, func() error {
-				return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextSummary}, true, &mockParser{events: tt.events}, "", nil)
+				return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextSummary}, "json", &mockParser{events: tt.events}, "", nil)
 			})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
