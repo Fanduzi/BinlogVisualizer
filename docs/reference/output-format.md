@@ -118,10 +118,10 @@ Example heading:
 
 ## JSON Output
 
-Use `--json` when the result needs to be consumed by scripts, automation, or downstream tools.
+Use `--format json` when the result needs to be consumed by scripts, automation, or downstream tools.
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json
+binlogviz analyze mysql-bin.000123 --format json
 ```
 
 The JSON report exposes the finalized analysis result in a stable, script-friendly shape with snake_case field names.

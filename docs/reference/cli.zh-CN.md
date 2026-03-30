@@ -171,7 +171,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ### 输出 JSON 供下游处理
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 ### 调整报告大小与告警阈值

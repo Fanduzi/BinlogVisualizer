@@ -171,7 +171,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ### Render JSON for downstream processing
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 ### Tune report size and alerts

@@ -49,10 +49,22 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 ### 把机器可读结果交给脚本或其他工具
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 BinlogViz 的输出约定是：最终报告写到 `stdout`，进度、discovery 解析出的文件列表、最终组装状态和错误写到 `stderr`。
+
+### 生成 Markdown 或 HTML 报告
+
+```bash
+# Markdown — 粘贴到 GitHub issue、wiki 或文档
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+
+# HTML — 在任意浏览器打开，无需网络
+binlogviz analyze mysql-bin.000123 --format html > report.html
+```
+
+HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）和五主题切换器。
 
 ## BinlogViz 适合回答什么问题
 
@@ -81,27 +93,27 @@ brew install --cask binlogviz
 
 权威 release artifact 由 GitHub Actions release workflow 在原生 runner 上构建。本地 `goreleaser` 更适合做配置校验和当前宿主机的可选验证，不是主要发布路径。
 
-下面是 `darwin/arm64` 和当前版本 `v0.5.0` 的示例：
+下面是 `darwin/arm64` 和当前版本 `v0.6.0` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.5.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.5.0/binlogviz_0.5.0_checksums.txt
-shasum -a 256 -c binlogviz_0.5.0_checksums.txt 2>/dev/null | grep "binlogviz_0.5.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.5.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.6.0/binlogviz_0.6.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.6.0/binlogviz_0.6.0_checksums.txt
+shasum -a 256 -c binlogviz_0.6.0_checksums.txt 2>/dev/null | grep "binlogviz_0.6.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.6.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.5.0/install.sh
-sh ./install.sh --version v0.5.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.6.0/install.sh
+sh ./install.sh --version v0.6.0
 ```
 
 如果只想预览将要解析出的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.5.0 --dry-run
+./install.sh --version v0.6.0 --dry-run
 ```
 
 ### 备选：从源码构建
@@ -175,7 +187,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 ### 4. 安全地输出 JSON
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 这样机器可读结果保留在 `stdout`，进度和运行状态保留在 `stderr`。
