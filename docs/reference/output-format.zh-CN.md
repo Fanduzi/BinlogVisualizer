@@ -14,10 +14,19 @@ BinlogViz 会把不同用途的输出写到不同通道：
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 在上面的例子中，JSON 报告会写入 `analyze.json`，而进度和 discovery 状态仍然通过 `stderr` 显示在终端上。
+
+## 可用格式
+
+| 参数值 | 别名 | 说明 |
+|---|---|---|
+| `text` | — | 默认，人类可读的终端输出。 |
+| `json` | `--json` | 机器可读的 JSON 格式。 |
+| `markdown` | `md` | 含表格的 GitHub Flavored Markdown。 |
+| `html` | — | 含交互式图表和主题切换器的自包含 HTML 文件。 |
 
 ## 文本输出
 
@@ -213,6 +222,37 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 `warnings` 始终以整数计数形式存在。
 
 它表示最终结果对象中累计的分析警告数量。这个值属于 `stdout` 上机器可读报告的一部分；它不是进度行数，也不是 `stderr` 消息数量。非零值表示分析已完成，但结果中记录了警告条件；并不表示 JSON 输出本身有问题。
+
+## Markdown 输出
+
+Markdown 模式输出 GitHub Flavored Markdown 报告，包含五个章节：工作负载摘要、热点表、热点事务、分钟级活动和告警，所有章节使用管道表格。
+
+```bash
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+```
+
+输出内容可直接粘贴到 GitHub Issue、PR 评论或 Wiki 页面。
+
+## HTML 输出
+
+HTML 模式输出自包含的单文件报告，所有样式、图表库（ECharts）和数据均内联嵌入，无需外部依赖或网络连接。
+
+```bash
+binlogviz analyze mysql-bin.000123 --format html > report.html
+```
+
+报告包含：
+
+- 摘要统计卡片（事务数、行数、事件数、时间范围）
+- 交互式折线图：每分钟行数和事务数
+- 交互式条形图：行数最多的热点表
+- 交互式环形图：INSERT / UPDATE / DELETE 操作分布
+- 热点表详情表格
+- 带严重等级徽标的告警列表
+
+### 主题
+
+HTML 报告 header 右侧提供主题切换器（五个彩色圆点）。可用主题：**Nebula**（默认，深色靛紫/青色）、**Forest**（深色翠绿/琥珀）、**Navy**（深色天蓝/金色）、**Ember**（深色橙/玫红）、**Light**（浅色）。主题选择保存在 `localStorage`，下次打开自动恢复。
 
 ## stderr 隔离
 

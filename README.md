@@ -49,10 +49,22 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 ### Send machine-readable output to another tool
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 By design, the final report goes to `stdout`, while progress, resolved discovery files, finalization status, and errors stay on `stderr`.
+
+### Generate a Markdown or HTML report
+
+```bash
+# Markdown — paste into GitHub issues, wikis, or docs
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+
+# HTML — open in any browser, no internet required
+binlogviz analyze mysql-bin.000123 --format html > report.html
+```
+
+The HTML report includes interactive charts (rows/txns per minute, top tables, operation mix) and a five-theme switcher.
 
 ## What BinlogViz Helps You See
 
@@ -175,7 +187,7 @@ Use this when you are working a known incident window, a specific service schema
 ### 4. Redirect JSON safely
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 This keeps the machine-readable report on `stdout` while leaving progress and runtime information on `stderr`.
