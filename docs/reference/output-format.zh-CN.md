@@ -118,10 +118,10 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 ## JSON 输出
 
-当结果需要被脚本、自动化流程或下游工具消费时，请使用 `--json`。
+当结果需要被脚本、自动化流程或下游工具消费时，请使用 `--format json`。
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json
+binlogviz analyze mysql-bin.000123 --format json
 ```
 
 JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终分析结果。
@@ -231,7 +231,7 @@ Markdown 模式输出 GitHub Flavored Markdown 报告，包含五个章节：工
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
 ```
 
-输出内容可直接粘贴到 GitHub Issue、PR 评论或 Wiki 页面。
+输出内容可直接传入任意 Markdown 渲染器，或粘贴到 GitHub Issue、PR 评论或 Wiki 页面。
 
 ## HTML 输出
 
@@ -286,8 +286,22 @@ binlogviz analyze mysql-bin.000123 > report.txt
 ### 保存 JSON 输出供下游处理
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > report.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > report.json
 ```
+
+### 生成 Markdown 报告
+
+```bash
+binlogviz analyze mysql-bin.000123 --format markdown > report.md
+```
+
+### 生成自包含 HTML 报告
+
+```bash
+binlogviz analyze mysql-bin.000123 --format html > report.html
+```
+
+HTML 文件完全自包含——所有图表和样式均已内联嵌入，无需互联网连接，在任意浏览器中打开即可。
 
 ### 分别捕获两个输出通道
 
