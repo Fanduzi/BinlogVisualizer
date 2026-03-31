@@ -32,8 +32,22 @@ func TestBuildCompareResultBuildsTopTableUnionSortedByAbsoluteDelta(t *testing.T
 	if len(result.TableChanges) != 3 {
 		t.Fatalf("expected 3 table changes, got %d", len(result.TableChanges))
 	}
-	if result.TableChanges[0].Schema != "orders" || result.TableChanges[0].Table != "payments" {
-		t.Fatalf("expected first table change to be orders.payments, got %s.%s", result.TableChanges[0].Schema, result.TableChanges[0].Table)
+
+	expected := []struct {
+		schema string
+		table  string
+		delta  int
+	}{
+		{schema: "orders", table: "refunds", delta: 900},
+		{schema: "orders", table: "chargebacks", delta: -400},
+		{schema: "orders", table: "payments", delta: 400},
+	}
+
+	for i, want := range expected {
+		got := result.TableChanges[i]
+		if got.Schema != want.schema || got.Table != want.table || got.DeltaRows != want.delta {
+			t.Fatalf("expected position %d to be %s.%s delta %d, got %s.%s delta %d", i, want.schema, want.table, want.delta, got.Schema, got.Table, got.DeltaRows)
+		}
 	}
 }
 

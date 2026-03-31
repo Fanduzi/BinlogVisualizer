@@ -66,15 +66,10 @@ func buildTableChanges(current, baseline []InputTable) []TableChange {
 	}
 
 	sort.Slice(result, func(i, j int) bool {
-		left := math.Max(float64(result[i].CurrentRows), float64(result[i].BaselineRows))
-		right := math.Max(float64(result[j].CurrentRows), float64(result[j].BaselineRows))
+		left := math.Abs(float64(result[i].DeltaRows))
+		right := math.Abs(float64(result[j].DeltaRows))
 		if left == right {
-			leftDelta := math.Abs(float64(result[i].DeltaRows))
-			rightDelta := math.Abs(float64(result[j].DeltaRows))
-			if leftDelta == rightDelta {
-				return fmt.Sprintf("%s.%s", result[i].Schema, result[i].Table) < fmt.Sprintf("%s.%s", result[j].Schema, result[j].Table)
-			}
-			return leftDelta > rightDelta
+			return fmt.Sprintf("%s.%s", result[i].Schema, result[i].Table) < fmt.Sprintf("%s.%s", result[j].Schema, result[j].Table)
 		}
 		return left > right
 	})
