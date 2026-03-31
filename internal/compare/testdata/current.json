@@ -1,0 +1,49 @@
+{
+  "summary": {
+    "total_transactions": 120,
+    "total_rows": 2400,
+    "total_events": 3000,
+    "start_time": "2026-03-20T10:00:00Z",
+    "end_time": "2026-03-20T10:30:00Z",
+    "duration": "30m0s"
+  },
+  "tables": [
+    {
+      "schema": "orders",
+      "table": "payments",
+      "total_rows": 1200,
+      "insert_rows": 700,
+      "update_rows": 400,
+      "delete_rows": 100,
+      "txn_count": 80
+    },
+    {
+      "schema": "orders",
+      "table": "refunds",
+      "total_rows": 900,
+      "insert_rows": 300,
+      "update_rows": 500,
+      "delete_rows": 100,
+      "txn_count": 25
+    }
+  ],
+  "transactions": [],
+  "minutes": [],
+  "alerts": [
+    {
+      "type": "spike",
+      "severity": "warning",
+      "message": "rows spiked at 10:12",
+      "minute": "2026-03-20T10:12:00Z",
+      "details": {"rows": 900}
+    },
+    {
+      "type": "large_transaction",
+      "severity": "warning",
+      "message": "large transaction detected",
+      "txn_key": "trx-current-1",
+      "details": {"rows": 1500}
+    }
+  ],
+  "warnings": 0
+}
