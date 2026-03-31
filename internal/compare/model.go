@@ -38,3 +38,44 @@ type InputAlert struct {
 	Minute   string         `json:"minute,omitempty"`
 	Details  map[string]any `json:"details,omitempty"`
 }
+
+type CompareResult struct {
+	Summary       SummaryDelta     `json:"summary"`
+	TableChanges  []TableChange    `json:"table_changes"`
+	OperationMix  []OperationDelta `json:"operation_mix"`
+	AlertChanges  AlertDelta       `json:"alert_changes"`
+	CurrentLabel  string           `json:"current_label"`
+	BaselineLabel string           `json:"baseline_label"`
+}
+
+type SummaryDelta struct {
+	CurrentTotalRows          int `json:"current_total_rows"`
+	BaselineTotalRows         int `json:"baseline_total_rows"`
+	TotalRowsDelta            int `json:"total_rows_delta"`
+	CurrentTotalTransactions  int `json:"current_total_transactions"`
+	BaselineTotalTransactions int `json:"baseline_total_transactions"`
+	TotalTransactionsDelta    int `json:"total_transactions_delta"`
+	CurrentWarnings           int `json:"current_warnings"`
+	BaselineWarnings          int `json:"baseline_warnings"`
+}
+
+type TableChange struct {
+	Schema       string  `json:"schema"`
+	Table        string  `json:"table"`
+	CurrentRows  int     `json:"current_rows"`
+	BaselineRows int     `json:"baseline_rows"`
+	DeltaRows    int     `json:"delta_rows"`
+	DeltaPercent float64 `json:"delta_percent"`
+}
+
+type OperationDelta struct {
+	Operation string `json:"operation"`
+	Current   int    `json:"current"`
+	Baseline  int    `json:"baseline"`
+	Delta     int    `json:"delta"`
+}
+
+type AlertDelta struct {
+	Added   []InputAlert `json:"added"`
+	Removed []InputAlert `json:"removed"`
+}
