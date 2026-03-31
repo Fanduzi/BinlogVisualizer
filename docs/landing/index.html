@@ -1,0 +1,1875 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      document.documentElement.classList.add('js');
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BinlogViz — Turn MySQL ROW Binlogs into Incident-Ready Reports</title>
+    <meta
+      name="description"
+      content="BinlogViz is a local CLI for MySQL ROW binlog analysis. Find hot tables, large transactions, write spikes, and incident-window workload changes, then export the result as text, JSON, Markdown, or HTML."
+    />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --surface-2: #0f141b;
+        --surface-3: #1b222c;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --accent-2: #79c0ff;
+        --good: #3fb950;
+        --warn: #d29922;
+        --danger: #f85149;
+        --radius: 12px;
+        --transition: 0.2s ease;
+        --shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+        --max: 1120px;
+      }
+
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.6;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(ellipse at top center, rgba(88,166,255,0.09) 0%, transparent 42%);
+        z-index: -2;
+      }
+
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image: linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+        background-size: 32px 32px;
+        mask-image: radial-gradient(circle at center, black 18%, transparent 76%);
+        opacity: 0.18;
+        z-index: -1;
+      }
+
+      a {
+        color: inherit;
+        text-decoration-thickness: 1px;
+        text-underline-offset: 0.18em;
+      }
+
+      code, pre, .mono, .nav-lang, .eyebrow, .section-label, .tab-button, .code-shell::before, .timeline-date, .back-to-top {
+        font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .nav-logo, .nav-links a, .nav-cta, .btn-primary, .btn-secondary, .lang-btn, .tab-button, .footer-links a, .back-to-top {
+        text-decoration: none;
+      }
+
+      .container {
+        width: min(var(--max), calc(100% - 32px));
+        margin: 0 auto;
+      }
+
+      section[id] { scroll-margin-top: 92px; }
+
+      .reveal {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .js .reveal {
+        opacity: 0;
+        transform: translateY(16px);
+        transition: opacity 0.45s ease, transform 0.45s ease;
+      }
+
+      .js .reveal.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 100;
+        background: rgba(13,17,23,0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--border);
+      }
+
+      nav .container {
+        min-height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .nav-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+
+      .nav-logo-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        color: #0d1117;
+        font-weight: 900;
+        font-size: 0.95rem;
+        letter-spacing: -0.04em;
+      }
+
+      .nav-logo-text {
+        font-weight: 800;
+        font-size: 1.05rem;
+        letter-spacing: -0.02em;
+      }
+
+      .nav-links {
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin: 0 0 0 auto;
+        padding: 0;
+      }
+
+      .nav-links a {
+        color: var(--muted);
+        font-size: 0.875rem;
+        font-weight: 500;
+        transition: color var(--transition);
+      }
+
+      .nav-links a:hover,
+      .nav-links a:focus-visible,
+      .footer-links a:hover,
+      .footer-links a:focus-visible {
+        color: var(--text);
+      }
+
+      .nav-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-shrink: 0;
+      }
+
+      .nav-lang {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 0.8rem;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 4px 10px;
+        background: rgba(255,255,255,0.02);
+      }
+
+      .lang-btn {
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        opacity: 0.7;
+      }
+
+      .lang-btn.active,
+      .lang-btn:hover {
+        color: var(--text);
+        opacity: 1;
+      }
+
+      .nav-cta,
+      .btn-primary,
+      .btn-secondary,
+      .back-to-top {
+        border-radius: var(--radius);
+        transition: transform 0.15s ease, border-color var(--transition), background var(--transition), opacity var(--transition), box-shadow var(--transition);
+      }
+
+      .nav-cta {
+        padding: 8px 14px;
+        background: var(--accent);
+        color: #0d1117;
+        font-size: 0.84rem;
+        font-weight: 700;
+      }
+
+      .hero {
+        padding: 152px 0 96px;
+        text-align: center;
+        position: relative;
+      }
+
+      .hero::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 840px;
+        max-width: 100%;
+        height: 600px;
+        background: radial-gradient(ellipse at center, rgba(88,166,255,0.08) 0%, transparent 70%);
+        pointer-events: none;
+      }
+
+      .hero-content {
+        position: relative;
+      }
+
+      .hero-badge { margin-bottom: 24px; }
+
+      .eyebrow {
+        display: inline-block;
+        padding: 3px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(88,166,255,0.28);
+        background: rgba(88,166,255,0.1);
+        color: var(--accent-2);
+        font-size: 0.74rem;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        font-size: clamp(2.9rem, 6vw, 4.8rem);
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        line-height: 1.04;
+        margin: 0 0 24px;
+        background: linear-gradient(135deg, #e6edf3 30%, #79c0ff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        white-space: pre-line;
+      }
+
+      .hero-sub {
+        font-size: clamp(1rem, 2.5vw, 1.14rem);
+        color: var(--muted);
+        max-width: 760px;
+        margin: 0 auto 38px;
+        line-height: 1.75;
+        white-space: pre-line;
+      }
+
+      .hero-actions {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 42px;
+      }
+
+      .btn-primary,
+      .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 24px;
+        font-size: 0.94rem;
+        font-weight: 700;
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: #0d1117;
+        box-shadow: 0 8px 24px rgba(88,166,255,0.26);
+      }
+
+      .btn-primary:hover,
+      .btn-secondary:hover,
+      .nav-cta:hover,
+      .back-to-top:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn-secondary {
+        background: transparent;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+
+      .btn-secondary:hover { background: rgba(88,166,255,0.08); border-color: rgba(88,166,255,0.5); }
+
+      .code-shell {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px 28px;
+        max-width: 720px;
+        margin: 0 auto;
+        text-align: left;
+        position: relative;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+      }
+
+      .code-shell::before {
+        content: 'bash';
+        position: absolute;
+        top: 12px;
+        left: 16px;
+        font-size: 0.7rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .code-shell code,
+      .code-block code {
+        display: block;
+        padding-top: 18px;
+        font-size: 0.84rem;
+        line-height: 1.78;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .code-block {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 22px 24px;
+        overflow-x: auto;
+      }
+
+      .token-comment { color: var(--muted); }
+      .token-prompt { color: var(--good); }
+      .token-command { color: #9ecbff; }
+      .token-flag { color: var(--warn); }
+      .token-string { color: #a5d6ff; }
+      .token-key { color: #ff7b72; }
+      .token-value { color: #79c0ff; }
+      .token-brace { color: #c9d1d9; }
+      .token-output { color: #c9d1d9; }
+      .token-warning { color: var(--warn); }
+      .token-alert { color: var(--danger); }
+
+      .hero-highlights {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 14px;
+        margin-top: 22px;
+      }
+
+      .stat-card,
+      .card,
+      .surface-card,
+      .workflow-panel,
+      .rules-table-wrap,
+      .timeline-wrap,
+      .cta-section,
+      .footer-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+
+      .stat-card {
+        padding: 18px;
+        text-align: left;
+      }
+
+      .stat-card strong {
+        display: block;
+        font-size: 1.55rem;
+        font-weight: 800;
+        line-height: 1;
+      }
+
+      .stat-card span {
+        display: block;
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      section { padding: 90px 0; }
+      section.band {
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        border-bottom: 1px solid var(--border);
+      }
+
+      .section-label {
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 12px;
+      }
+
+      .section-title {
+        font-size: clamp(1.9rem, 4vw, 2.9rem);
+        font-weight: 800;
+        letter-spacing: -0.04em;
+        margin: 0 0 16px;
+        line-height: 1.12;
+        white-space: pre-line;
+      }
+
+      .section-sub {
+        font-size: 1rem;
+        color: var(--muted);
+        max-width: 720px;
+        margin: 0 0 44px;
+        line-height: 1.76;
+        white-space: pre-line;
+      }
+
+      .grid-3,
+      .grid-4,
+      .surfaces-grid,
+      .proof-grid,
+      .split-grid,
+      .install-grid,
+      .footer-grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+      .grid-4, .surfaces-grid { grid-template-columns: repeat(4, 1fr); }
+      .proof-grid, .split-grid, .install-grid { grid-template-columns: 1fr 1fr; }
+
+      .card,
+      .surface-card,
+      .workflow-panel,
+      .rules-table-wrap,
+      .timeline-wrap,
+      .cta-section,
+      .footer-panel {
+        padding: 24px;
+      }
+
+      .card,
+      .surface-card {
+        transition: border-color var(--transition), transform 0.15s ease;
+      }
+
+      .card:hover,
+      .surface-card:hover {
+        border-color: rgba(88,166,255,0.42);
+        transform: translateY(-2px);
+      }
+
+      .card-icon,
+      .surface-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(88,166,255,0.1);
+        color: var(--accent-2);
+        margin-bottom: 16px;
+        font-size: 1.15rem;
+      }
+
+      .card h3,
+      .surface-card h3,
+      .workflow-panel h3,
+      .timeline-title,
+      .cta-section h2 {
+        margin: 0 0 10px;
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      .card p,
+      .surface-card p,
+      .workflow-panel p,
+      .timeline-desc,
+      .cta-section p {
+        margin: 0;
+        font-size: 0.89rem;
+        color: var(--muted);
+        line-height: 1.72;
+      }
+
+      .workflow-steps {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 28px;
+      }
+
+      .step {
+        min-width: 150px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 18px;
+        text-align: center;
+        font-size: 0.9rem;
+        font-weight: 700;
+      }
+
+      .step span {
+        display: block;
+        margin-top: 4px;
+        font-size: 0.74rem;
+        color: var(--muted);
+        font-weight: 500;
+      }
+
+      .step-arrow { color: var(--border); font-size: 1.2rem; }
+
+      .proof-list,
+      .bullet-list {
+        list-style: none;
+        padding: 0;
+        margin: 18px 0 0;
+        display: grid;
+        gap: 10px;
+      }
+
+      .proof-list li,
+      .bullet-list li {
+        position: relative;
+        padding-left: 16px;
+        color: var(--muted);
+        line-height: 1.72;
+      }
+
+      .proof-list li::before,
+      .bullet-list li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 0.72em;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--accent), var(--warn));
+      }
+
+      .tab-shell {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        margin-top: 18px;
+      }
+
+      .tab-list {
+        display: flex;
+        gap: 0;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255,255,255,0.02);
+      }
+
+      .tab-button {
+        flex: 1;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        padding: 14px 12px;
+        cursor: pointer;
+        font-size: 0.76rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .tab-button.active {
+        color: var(--text);
+        background: rgba(88,166,255,0.08);
+      }
+
+      .tab-pane {
+        display: none;
+        min-height: 340px;
+        padding: 18px;
+        background: var(--surface-2);
+        overflow-x: auto;
+      }
+
+      .tab-pane.active { display: block; }
+
+      .html-preview {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        background: linear-gradient(180deg, rgba(22,27,34,0.96), rgba(15,20,27,0.98));
+      }
+
+      .html-preview-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+
+      .preview-label {
+        font-size: 0.74rem;
+        color: var(--accent-2);
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .theme-dots { display: flex; gap: 8px; }
+      .theme-dots span { width: 10px; height: 10px; border-radius: 50%; }
+      .theme-dots span:nth-child(1) { background: #58a6ff; }
+      .theme-dots span:nth-child(2) { background: #3fb950; }
+      .theme-dots span:nth-child(3) { background: #56d4dd; }
+      .theme-dots span:nth-child(4) { background: #d29922; }
+      .theme-dots span:nth-child(5) { background: #e6edf3; }
+
+      .preview-grid {
+        display: grid;
+        grid-template-columns: 1.12fr 0.88fr;
+        gap: 14px;
+      }
+
+      .preview-card {
+        background: rgba(255,255,255,0.02);
+        border: 1px solid rgba(48,54,61,0.8);
+        border-radius: 10px;
+        padding: 14px;
+      }
+
+      .bars {
+        display: flex;
+        align-items: end;
+        gap: 8px;
+        height: 150px;
+        margin-top: 16px;
+      }
+
+      .bars span {
+        flex: 1;
+        border-radius: 999px 999px 4px 4px;
+        background: linear-gradient(180deg, rgba(88,166,255,0.92), rgba(88,166,255,0.15));
+      }
+
+      .bars span:nth-child(3), .bars span:nth-child(6) {
+        background: linear-gradient(180deg, rgba(210,153,34,0.92), rgba(210,153,34,0.15));
+      }
+
+      .table-wrap { overflow-x: auto; }
+
+      .rules-table {
+        width: 100%;
+        min-width: 700px;
+        border-collapse: collapse;
+        font-size: 0.875rem;
+      }
+
+      .rules-table th {
+        background: rgba(88,166,255,0.06);
+        color: var(--muted);
+        padding: 12px 16px;
+        text-align: left;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .rules-table td {
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(48,54,61,0.55);
+        vertical-align: top;
+      }
+
+      .rules-table tr:last-child td { border-bottom: none; }
+      .rules-table .mono { color: var(--accent); font-size: 0.82rem; }
+
+      .timeline-wrap {
+        position: relative;
+        padding-left: 32px;
+      }
+
+      .timeline-wrap::before {
+        content: "";
+        position: absolute;
+        left: 13px;
+        top: 12px;
+        bottom: 12px;
+        width: 2px;
+        background: linear-gradient(to bottom, var(--accent), rgba(88,166,255,0.08));
+      }
+
+      .timeline-item {
+        position: relative;
+        margin-bottom: 28px;
+      }
+
+      .timeline-item:last-child { margin-bottom: 0; }
+
+      .timeline-item::before {
+        content: "";
+        position: absolute;
+        left: -23px;
+        top: 8px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--accent);
+        border: 2px solid var(--bg);
+      }
+
+      .timeline-date {
+        font-size: 0.72rem;
+        color: var(--muted);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 4px;
+      }
+
+      .timeline-title {
+        font-size: 1rem;
+        font-weight: 800;
+        margin-bottom: 6px;
+      }
+
+      .cta-section {
+        text-align: center;
+        background: radial-gradient(ellipse at center, rgba(88,166,255,0.06) 0%, transparent 70%), var(--surface);
+      }
+
+      .cta-section h2 {
+        font-size: clamp(2rem, 5vw, 3rem);
+        letter-spacing: -0.04em;
+        margin-bottom: 14px;
+        white-space: pre-line;
+      }
+
+      .cta-section p {
+        font-size: 1.04rem;
+        max-width: 720px;
+        margin: 0 auto 32px;
+        white-space: pre-line;
+      }
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 48px 0 56px;
+      }
+
+      .footer-grid {
+        grid-template-columns: 2fr 1fr 1fr;
+        margin-bottom: 20px;
+      }
+
+      .footer-brand p {
+        color: var(--muted);
+        font-size: 0.86rem;
+        margin-top: 12px;
+        line-height: 1.68;
+        max-width: 360px;
+        white-space: pre-line;
+      }
+
+      .footer-title {
+        color: var(--muted);
+        font-weight: 700;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 14px;
+      }
+
+      .footer-links {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 8px;
+      }
+
+      .footer-links a {
+        color: var(--muted);
+        font-size: 0.875rem;
+      }
+
+      .footer-bottom {
+        border-top: 1px solid var(--border);
+        padding-top: 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        color: var(--muted);
+        font-size: 0.8rem;
+        flex-wrap: wrap;
+      }
+
+      .back-to-top {
+        position: fixed;
+        right: 20px;
+        bottom: 20px;
+        z-index: 90;
+        width: 44px;
+        height: 44px;
+        border: 1px solid var(--border);
+        background: rgba(22,27,34,0.92);
+        color: var(--text);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: var(--shadow);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .back-to-top.visible {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .nav-logo:focus-visible,
+      .nav-links a:focus-visible,
+      .nav-cta:focus-visible,
+      .btn-primary:focus-visible,
+      .btn-secondary:focus-visible,
+      .lang-btn:focus-visible,
+      .tab-button:focus-visible,
+      .footer-links a:focus-visible,
+      .back-to-top:focus-visible {
+        outline: 2px solid var(--accent-2);
+        outline-offset: 3px;
+      }
+
+      .i18n-root { transition: opacity 0.18s ease, transform 0.18s ease; }
+      .i18n-root.switching { opacity: 0.74; transform: translateY(4px); }
+
+      @media (max-width: 980px) {
+        .hero-highlights,
+        .grid-3,
+        .grid-4,
+        .surfaces-grid,
+        .proof-grid,
+        .split-grid,
+        .install-grid,
+        .footer-grid,
+        .preview-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        nav .container {
+          flex-wrap: wrap;
+          justify-content: center;
+          padding: 10px 0;
+        }
+
+        .nav-logo {
+          margin-right: auto;
+        }
+
+        .nav-links {
+          display: flex;
+          width: 100%;
+          order: 3;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 10px 16px;
+          margin: 4px 0 0;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .hero { padding: 120px 0 64px; }
+
+        .hero-highlights,
+        .grid-3,
+        .grid-4,
+        .surfaces-grid,
+        .proof-grid,
+        .split-grid,
+        .install-grid,
+        .footer-grid,
+        .preview-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .workflow-steps {
+          flex-direction: column;
+        }
+
+        .step-arrow { transform: rotate(90deg); }
+
+        nav .container {
+          flex-wrap: wrap;
+          justify-content: center;
+          padding: 10px 0;
+        }
+
+        .nav-logo { margin-right: auto; }
+
+        .nav-actions {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .footer-bottom {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after {
+          animation: none !important;
+          transition: none !important;
+          transform: none !important;
+        }
+        .js .reveal { opacity: 1 !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="i18n-root" id="i18n-root">
+      <nav>
+        <div class="container">
+          <a href="#top" class="nav-logo" aria-label="BinlogViz home" data-i18n-aria-label="nav.homeLabel">
+            <div class="nav-logo-icon">BV</div>
+            <span class="nav-logo-text">BinlogViz</span>
+          </a>
+
+          <ul class="nav-links">
+            <li><a href="#why" data-i18n="nav.why">Why</a></li>
+            <li><a href="#workflows" data-i18n="nav.workflows">Workflows</a></li>
+            <li><a href="#how" data-i18n="nav.how">How</a></li>
+            <li><a href="#outputs" data-i18n="nav.outputs">Outputs</a></li>
+            <li><a href="#trust" data-i18n="nav.trust">Trust</a></li>
+            <li><a href="#releases" data-i18n="nav.releases">Releases</a></li>
+            <li><a href="#install" data-i18n="nav.installGuide">Install</a></li>
+          </ul>
+
+          <div class="nav-actions">
+            <div class="nav-lang" role="group" aria-label="Language switcher" data-i18n-aria-label="nav.langLabel">
+              <button class="lang-btn active" data-lang="en" aria-pressed="true">EN</button>
+              <span>/</span>
+              <button class="lang-btn" data-lang="zh-CN" aria-pressed="false">中文</button>
+            </div>
+            <a href="https://github.com/Fanduzi/BinlogVisualizer" class="nav-cta" target="_blank" rel="noopener" data-i18n="nav.cta">GitHub</a>
+          </div>
+        </div>
+      </nav>
+
+      <main id="top">
+        <section class="hero">
+          <div class="container hero-content">
+            <div class="hero-badge reveal visible">
+              <span class="eyebrow" data-i18n="hero.badge">v0.6.0 — html + markdown reports</span>
+            </div>
+            <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
+into incident-ready reports</h1>
+            <p class="hero-sub reveal visible" data-i18n="hero.sub">BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.
+Find hot tables, large transactions, write spikes, and incident-window changes — then hand the result to your team in a format they can actually use.</p>
+            <div class="hero-actions reveal visible">
+              <a href="#install" class="btn-primary" data-i18n="hero.primary">Install BinlogViz</a>
+              <a href="#outputs" class="btn-secondary" data-i18n="hero.secondary">See output surfaces</a>
+            </div>
+            <div class="code-shell reveal visible">
+              <code data-i18n="hero.code"><span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span></code>
+            </div>
+            <div class="hero-highlights reveal visible">
+              <article class="stat-card"><strong>4</strong><span data-i18n="hero.stats.formats">Output formats</span></article>
+              <article class="stat-card"><strong>1×</strong><span data-i18n="hero.stats.stream">Streaming pipeline</span></article>
+              <article class="stat-card"><strong>0</strong><span data-i18n="hero.stats.hosted">Hosted services required</span></article>
+              <article class="stat-card"><strong>HTML</strong><span data-i18n="hero.stats.share">Browser-shareable report</span></article>
+            </div>
+          </div>
+        </section>
+
+        <section id="why" class="reveal">
+          <div class="container">
+            <p class="section-label" data-i18n="why.label">Why BinlogViz</p>
+            <h2 class="section-title" data-i18n="why.title">Answer the operator questions that matter before the incident room loses patience</h2>
+            <p class="section-sub" data-i18n="why.sub">BinlogViz does not replace low-level binlog tooling. It sits one layer above it:
+aggregating workload shape, surfacing abnormal moments, and packaging the result so it can move cleanly into an incident review, issue thread, or postmortem.</p>
+
+            <div class="grid-3">
+              <div class="card reveal">
+                <div class="card-icon">◎</div>
+                <h3 data-i18n="why.cards.hot.title">Hot tables first</h3>
+                <p data-i18n="why.cards.hot.desc">See where writes concentrated instead of scanning raw row events line by line.</p>
+              </div>
+              <div class="card reveal">
+                <div class="card-icon">!</div>
+                <h3 data-i18n="why.cards.txn.title">Large transactions surfaced</h3>
+                <p data-i18n="why.cards.txn.desc">Find outsized transactions before they disappear into a long stream of ordinary noise.</p>
+              </div>
+              <div class="card reveal">
+                <div class="card-icon">↗</div>
+                <h3 data-i18n="why.cards.spike.title">Spike-aware investigation</h3>
+                <p data-i18n="why.cards.spike.desc">Optional spike detection points attention at the minute most likely to explain impact.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="workflows" class="band reveal">
+          <div class="container">
+            <p class="section-label" data-i18n="workflows.label">Core Workflows</p>
+            <h2 class="section-title" data-i18n="workflows.title">Start where real binlog investigations actually begin</h2>
+            <p class="section-sub" data-i18n="workflows.sub">The value of BinlogViz is clearest at the moment somebody already has binlogs and needs answers fast:
+validate one file, widen to an incident window, then export something a teammate can read without replaying the whole investigation.</p>
+
+            <div class="grid-3">
+              <div class="card reveal">
+                <div class="card-icon">🗂</div>
+                <h3 data-i18n="workflows.cards.single.title">Validate one file quickly</h3>
+                <p data-i18n="workflows.cards.single.desc">Use a single binlog to prove the path, preview the default report, and sanity-check event volume fast.</p>
+              </div>
+              <div class="card reveal">
+                <div class="card-icon">⏱</div>
+                <h3 data-i18n="workflows.cards.window.title">Constrain the incident window</h3>
+                <p data-i18n="workflows.cards.window.desc">Use time, schema, and table filters to reduce noise and keep the workload story centered on the event you care about.</p>
+              </div>
+              <div class="card reveal">
+                <div class="card-icon">📄</div>
+                <h3 data-i18n="workflows.cards.handoff.title">Hand the answer off cleanly</h3>
+                <p data-i18n="workflows.cards.handoff.desc">Export HTML for review calls, Markdown for docs, JSON for pipelines, or text for terminal-first debugging.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="how" class="reveal">
+          <div class="container">
+            <p class="section-label" data-i18n="how.label">How It Works</p>
+            <h2 class="section-title" data-i18n="how.title">Resolve files, aggregate in a streaming pass, render the answer in the right surface</h2>
+            <p class="section-sub" data-i18n="how.sub">The architecture stays intentionally direct: parse, normalize, analyze, finalize, render.
+That makes the tool easier to reason about and keeps the product story focused on fast-to-insight investigation instead of infrastructure complexity.</p>
+
+            <div class="workflow-panel reveal">
+              <div class="workflow-steps">
+                <div class="step" data-i18n="how.step1">Provide files<span>single file or directory range</span></div>
+                <span class="step-arrow">→</span>
+                <div class="step" data-i18n="how.step2">Apply filters<span>time, schema, table, object focus</span></div>
+                <span class="step-arrow">→</span>
+                <div class="step" data-i18n="how.step3">Get a report<span>alerts, summaries, charts, exports</span></div>
+              </div>
+
+              <div class="split-grid">
+                <div class="card reveal">
+                  <h3 data-i18n="how.points.stream.title">Streaming by design</h3>
+                  <p data-i18n="how.points.stream.desc">Parsing, normalization, analysis, finalization, and rendering flow forward rather than collecting every event into one giant in-memory buffer first.</p>
+                </div>
+                <div class="card reveal">
+                  <h3 data-i18n="how.points.io.title">Automation-safe I/O contract</h3>
+                  <p data-i18n="how.points.io.desc">Reports stay on stdout while progress and runtime status stay on stderr, so redirecting output into files or pipelines remains predictable.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="outputs" class="band reveal">
+          <div class="container">
+            <p class="section-label" data-i18n="outputs.label">Output Surfaces</p>
+            <h2 class="section-title" data-i18n="outputs.title">One analysis run, four different handoff surfaces</h2>
+            <p class="section-sub" data-i18n="outputs.sub">Output format is part of the product. BinlogViz can end as a terminal snapshot, structured payload, Markdown artifact, or self-contained HTML report depending on who needs the result next.</p>
+
+            <div class="proof-grid">
+              <article class="workflow-panel reveal">
+                <h3 data-i18n="outputs.preview.title">Preview the same result in different forms</h3>
+                <p data-i18n="outputs.preview.desc">Use the tabs below to see how one incident summary can move across terminals, automation, docs, and browser-based review.</p>
+
+                <div class="tab-shell">
+                  <div class="tab-list" role="tablist" aria-label="Output preview tabs" data-i18n-aria-label="outputs.preview.tablistLabel">
+                    <button class="tab-button active" id="tab-text" data-pane="text" data-i18n="outputs.tabs.text" type="button" role="tab" aria-selected="true" aria-controls="pane-text" tabindex="0">Text</button>
+                    <button class="tab-button" id="tab-json" data-pane="json" data-i18n="outputs.tabs.json" type="button" role="tab" aria-selected="false" aria-controls="pane-json" tabindex="-1">JSON</button>
+                    <button class="tab-button" id="tab-markdown" data-pane="markdown" data-i18n="outputs.tabs.markdown" type="button" role="tab" aria-selected="false" aria-controls="pane-markdown" tabindex="-1">Markdown</button>
+                    <button class="tab-button" id="tab-html" data-pane="html" data-i18n="outputs.tabs.html" type="button" role="tab" aria-selected="false" aria-controls="pane-html" tabindex="-1">HTML</button>
+                  </div>
+
+                  <div class="tab-pane active" id="pane-text" role="tabpanel" aria-labelledby="tab-text" tabindex="0">
+<pre data-i18n="outputs.previewBodies.text">=== Workload Summary ===
+transactions: 438
+rows: 1,842,977
+events: 28,194
+time range: 2026-03-15 10:00 → 10:30 UTC
+
+=== Top Tables ===
+orders.payments      814,420 rows
+orders.refunds       242,199 rows
+checkout.ledger      138,501 rows
+
+=== Alerts ===
+large_transaction · txn_1842 · 17,904 rows
+spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
+                  </div>
+
+                  <div class="tab-pane" id="pane-json" role="tabpanel" aria-labelledby="tab-json" tabindex="0" hidden>
+<pre data-i18n="outputs.previewBodies.json"><span class="token-brace">{</span>
+  <span class="token-key">"summary"</span><span class="token-brace">:</span> <span class="token-brace">{</span>
+    <span class="token-key">"total_transactions"</span><span class="token-brace">:</span> <span class="token-value">438</span>,
+    <span class="token-key">"total_rows"</span><span class="token-brace">:</span> <span class="token-value">1842977</span>,
+    <span class="token-key">"total_events"</span><span class="token-brace">:</span> <span class="token-value">28194</span>
+  <span class="token-brace">}</span>,
+  <span class="token-key">"alerts"</span><span class="token-brace">:</span> <span class="token-brace">[</span>
+    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"large_transaction"</span> <span class="token-brace">}</span>,
+    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"spike"</span> <span class="token-brace">}</span>
+  <span class="token-brace">]</span>
+<span class="token-brace">}</span></pre>
+                  </div>
+
+                  <div class="tab-pane" id="pane-markdown" role="tabpanel" aria-labelledby="tab-markdown" tabindex="0" hidden>
+<pre data-i18n="outputs.previewBodies.markdown"><span class="token-key"># BinlogViz Report</span>
+
+<span class="token-key">## Workload Summary</span>
+| Transactions | Rows | Events |
+| --- | ---: | ---: |
+| 438 | 1,842,977 | 28,194 |
+
+<span class="token-key">## Top Tables</span>
+| Table | Rows | Txns |
+| --- | ---: | ---: |
+| orders.payments | 814,420 | 216 |
+| orders.refunds | 242,199 | 104 |</pre>
+                  </div>
+
+                  <div class="tab-pane" id="pane-html" role="tabpanel" aria-labelledby="tab-html" tabindex="0" hidden>
+                    <div class="html-preview">
+                      <div class="html-preview-head">
+                        <div class="preview-label" data-i18n="outputs.html.label">Self-contained HTML report</div>
+                        <div class="theme-dots" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+                      </div>
+                      <div class="preview-grid">
+                        <div class="preview-card">
+                          <div class="preview-label" data-i18n="outputs.html.chart">Rows + transactions per minute</div>
+                          <div class="bars" aria-hidden="true">
+                            <span style="height:46%"></span>
+                            <span style="height:54%"></span>
+                            <span style="height:88%"></span>
+                            <span style="height:38%"></span>
+                            <span style="height:44%"></span>
+                            <span style="height:74%"></span>
+                            <span style="height:49%"></span>
+                            <span style="height:66%"></span>
+                          </div>
+                        </div>
+                        <div class="preview-card">
+                          <div class="preview-label" data-i18n="outputs.html.read">What teammates actually read</div>
+                          <ul class="bullet-list">
+                            <li data-i18n="outputs.html.items.one">Interactive charts for minute activity and table concentration</li>
+                            <li data-i18n="outputs.html.items.two">Summary cards for transactions, rows, and range</li>
+                            <li data-i18n="outputs.html.items.three">Five-theme switcher for presentation-ready exports</li>
+                            <li data-i18n="outputs.html.items.four">Single-file artifact suitable for incident review</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </article>
+
+              <article class="workflow-panel reveal">
+                <h3 data-i18n="outputs.side.title">Why HTML changes the product story</h3>
+                <p data-i18n="outputs.side.desc">The HTML report turns a CLI investigation into a reviewable artifact. It is easier to share, easier to scan, and easier to remember than raw terminal output pasted into chat.</p>
+                <ul class="proof-list">
+                  <li data-i18n="outputs.side.points.one">Interactive charts summarize workload shape without requiring CLI context.</li>
+                  <li data-i18n="outputs.side.points.two">Theme switching makes the report feel intentional rather than disposable.</li>
+                  <li data-i18n="outputs.side.points.three">Markdown stays useful when the next destination is a wiki or incident note.</li>
+                  <li data-i18n="outputs.side.points.four">JSON remains stable for automation and downstream processing.</li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="trust" class="reveal">
+          <div class="container">
+            <p class="section-label" data-i18n="trust.label">Trust Signals</p>
+            <h2 class="section-title" data-i18n="trust.title">Trust the contract, not just the parser</h2>
+            <p class="section-sub" data-i18n="trust.sub">BinlogViz already has a stronger adoption story than “it parses binlogs.”
+It has published docs, explicit output contracts, release notes around HTML and Markdown exports, and a product boundary that makes sense for DBAs.</p>
+
+            <div class="surfaces-grid">
+              <div class="surface-card reveal">
+                <div class="surface-icon">📘</div>
+                <h3 data-i18n="trust.cards.docs.title">Documented behavior</h3>
+                <p data-i18n="trust.cards.docs.desc">CLI flags, output formats, architecture, and limitations are already documented in a way that supports product messaging.</p>
+              </div>
+              <div class="surface-card reveal">
+                <div class="surface-icon">📄</div>
+                <h3 data-i18n="trust.cards.contract.title">Stable report surfaces</h3>
+                <p data-i18n="trust.cards.contract.desc">Text, JSON, Markdown, and HTML make it clear where the answer can go next and who can consume it.</p>
+              </div>
+              <div class="surface-card reveal">
+                <div class="surface-icon">📦</div>
+                <h3 data-i18n="trust.cards.release.title">Release-driven story</h3>
+                <p data-i18n="trust.cards.release.desc">Recent releases show the project moving from core analysis toward team-facing deliverable artifacts.</p>
+              </div>
+              <div class="surface-card reveal">
+                <div class="surface-icon">🧭</div>
+                <h3 data-i18n="trust.cards.scope.title">Focused scope</h3>
+                <p data-i18n="trust.cards.scope.desc">It is not trying to be a general observability platform — and that constraint makes the positioning sharper.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="releases" class="band reveal">
+          <div class="container">
+            <p class="section-label" data-i18n="releases.label">Releases</p>
+            <h2 class="section-title" data-i18n="releases.title">A short release arc that already explains the product direction</h2>
+            <p class="section-sub" data-i18n="releases.sub">The sequence matters: filters and analysis control first, then Markdown and HTML outputs.
+That progression tells a better website story than raw feature lists alone.</p>
+
+            <div class="split-grid">
+              <div class="timeline-wrap reveal">
+                <div class="timeline-item">
+                  <div class="timeline-date">2026-03</div>
+                  <div class="timeline-title" data-i18n="releases.items.filters.title">v0.5.x — focus and control</div>
+                  <div class="timeline-desc" data-i18n="releases.items.filters.desc">Time filters, object selectors, and better control over the incident analysis surface.</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-date">2026-03</div>
+                  <div class="timeline-title" data-i18n="releases.items.reports.title">v0.6.0 — shareable report artifacts</div>
+                  <div class="timeline-desc" data-i18n="releases.items.reports.desc">Markdown and HTML outputs turned the result into something you can show, archive, and discuss.</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-date" data-i18n="releases.items.now.date">Now</div>
+                  <div class="timeline-title" data-i18n="releases.items.now.title">Clear DBA-first positioning</div>
+                  <div class="timeline-desc" data-i18n="releases.items.now.desc">A local CLI that explains workload shifts faster and hands the answer off cleanly.</div>
+                </div>
+              </div>
+
+              <div class="workflow-panel reveal">
+                <h3 data-i18n="releases.side.title">What the website should emphasize</h3>
+                <ul class="proof-list">
+                  <li data-i18n="releases.side.one">Lead with operator questions, not parser internals.</li>
+                  <li data-i18n="releases.side.two">Show that the tool works locally on files teams already have.</li>
+                  <li data-i18n="releases.side.three">Highlight HTML as the bridge between CLI investigation and team communication.</li>
+                  <li data-i18n="releases.side.four">Keep the product scope narrow and credible.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="install" class="reveal">
+          <div class="container">
+            <p class="section-label" data-i18n="install.label">Install & Start</p>
+            <h2 class="section-title" data-i18n="install.title">Install once, validate one file, widen only when the question demands it</h2>
+            <p class="section-sub" data-i18n="install.sub">The right onboarding path for a product site is simple and credible:
+install the binary, analyze one binlog, then move to ordered directory ranges and HTML export when the incident story gets wider.</p>
+
+            <div class="install-grid">
+              <div class="workflow-panel reveal">
+                <h3 data-i18n="install.quick.title">Quick start</h3>
+                <div class="code-block">
+                  <code data-i18n="install.quick.code"><span class="token-comment"># Homebrew</span>
+<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>
+<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>
+
+<span class="token-comment"># analyze one file</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>
+
+<span class="token-comment"># export a shareable HTML report</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span></code>
+                </div>
+              </div>
+
+              <div class="workflow-panel reveal">
+                <h3 data-i18n="install.first.title">What a good first session looks like</h3>
+                <ul class="proof-list">
+                  <li data-i18n="install.first.one">Validate one file to confirm the default report shape.</li>
+                  <li data-i18n="install.first.two">Use <code>--from-dir</code> and <code>--prefix</code> when the window spans multiple binlogs.</li>
+                  <li data-i18n="install.first.three">Add <code>--start</code>, <code>--end</code>, schema, or table filters to cut noise.</li>
+                  <li data-i18n="install.first.four">Export <code>html</code> when the answer needs to leave the terminal.</li>
+                </ul>
+                <div class="hero-actions" style="justify-content:flex-start; margin-top:24px; margin-bottom:0;">
+                  <a href="https://github.com/Fanduzi/BinlogVisualizer" class="btn-primary" target="_blank" rel="noopener" data-i18n="install.first.repo">Open repository</a>
+                  <a href="https://github.com/Fanduzi/BinlogVisualizer#readme" class="btn-secondary" target="_blank" rel="noopener" data-i18n="install.first.docs">Read docs</a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="reveal">
+          <div class="container">
+            <div class="cta-section reveal">
+              <h2 data-i18n="cta.title">Make the next binlog investigation easier to explain</h2>
+              <p data-i18n="cta.sub">BinlogViz gives you a local-first path from raw MySQL ROW binlogs to an answer the rest of the incident room can actually read.</p>
+              <div class="hero-actions" style="margin-bottom:0;">
+                <a href="https://github.com/Fanduzi/BinlogVisualizer/releases" class="btn-primary" target="_blank" rel="noopener" data-i18n="cta.primary">View releases</a>
+                <a href="#outputs" class="btn-secondary" data-i18n="cta.secondary">Preview reports</a>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer>
+        <div class="container footer-panel reveal">
+          <div class="footer-grid">
+            <div class="footer-brand">
+              <a href="#top" class="nav-logo" aria-label="BinlogViz home" data-i18n-aria-label="nav.homeLabel">
+                <div class="nav-logo-icon">BV</div>
+                <span class="nav-logo-text">BinlogViz</span>
+              </a>
+              <p data-i18n="footer.brand">Local CLI for MySQL ROW binlog workload analysis.
+Built for DBA investigation, incident review, and shareable reporting.</p>
+            </div>
+            <div>
+              <div class="footer-title" data-i18n="footer.product">Product</div>
+              <ul class="footer-links">
+                <li><a href="#why" data-i18n="footer.links.why">Why BinlogViz</a></li>
+                <li><a href="#how" data-i18n="footer.links.how">How it works</a></li>
+                <li><a href="#outputs" data-i18n="footer.links.outputs">Output surfaces</a></li>
+                <li><a href="#releases" data-i18n="footer.links.releasesSection">Release arc</a></li>
+                <li><a href="#install" data-i18n="footer.links.install">Install guide</a></li>
+              </ul>
+            </div>
+            <div>
+              <div class="footer-title" data-i18n="footer.linksTitle">Links</div>
+              <ul class="footer-links">
+                <li><a href="https://github.com/Fanduzi/BinlogVisualizer" target="_blank" rel="noopener">GitHub</a></li>
+                <li><a href="https://github.com/Fanduzi/BinlogVisualizer/releases" target="_blank" rel="noopener" data-i18n="footer.links.releases">Releases</a></li>
+                <li><a href="https://github.com/Fanduzi/BinlogVisualizer#readme" target="_blank" rel="noopener">README</a></li>
+              </ul>
+            </div>
+          </div>
+          <div class="footer-bottom">
+            <span data-i18n="footer.bottom.left">© 2026 BinlogViz. Local-first and shareable by design.</span>
+            <span data-i18n="footer.bottom.right">Built around DBA workflows, not parser demos.</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <button class="back-to-top" id="back-to-top" type="button" aria-label="Back to top" hidden tabindex="-1">↑</button>
+
+    <script>
+      const translations = {
+        en: {
+          title: 'BinlogViz — Turn MySQL ROW Binlogs into Incident-Ready Reports',
+          metaDescription: 'BinlogViz is a local CLI for MySQL ROW binlog analysis. Find hot tables, large transactions, write spikes, and incident-window workload changes, then export the result as text, JSON, Markdown, or HTML.',
+          nav: {
+            why: 'Why',
+            workflows: 'Workflows',
+            how: 'How',
+            outputs: 'Outputs',
+            trust: 'Trust',
+            releases: 'Releases',
+            installGuide: 'Install',
+            cta: 'GitHub',
+            langLabel: 'Language switcher',
+            homeLabel: 'BinlogViz home'
+          },
+          hero: {
+            badge: 'v0.6.0 — html + markdown reports',
+            title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
+            sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes — then hand the result to your team in a format they can actually use.',
+            primary: 'Install BinlogViz',
+            secondary: 'See output surfaces',
+            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>',
+            stats: {
+              formats: 'Output formats',
+              stream: 'Streaming pipeline',
+              hosted: 'Hosted services required',
+              share: 'Browser-shareable report'
+            }
+          },
+          why: {
+            label: 'Why BinlogViz',
+            title: 'Answer the operator questions that matter before the incident room loses patience',
+            sub: 'BinlogViz does not replace low-level binlog tooling. It sits one layer above it:\naggregating workload shape, surfacing abnormal moments, and packaging the result so it can move cleanly into an incident review, issue thread, or postmortem.',
+            cards: {
+              hot: { title: 'Hot tables first', desc: 'See where writes concentrated instead of scanning raw row events line by line.' },
+              txn: { title: 'Large transactions surfaced', desc: 'Find outsized transactions before they disappear into a long stream of ordinary noise.' },
+              spike: { title: 'Spike-aware investigation', desc: 'Optional spike detection points attention at the minute most likely to explain impact.' }
+            }
+          },
+          workflows: {
+            label: 'Core Workflows',
+            title: 'Start where real binlog investigations actually begin',
+            sub: 'The value of BinlogViz is clearest at the moment somebody already has binlogs and needs answers fast:\nvalidate one file, widen to an incident window, then export something a teammate can read without replaying the whole investigation.',
+            cards: {
+              single: { title: 'Validate one file quickly', desc: 'Use a single binlog to prove the path, preview the default report, and sanity-check event volume fast.' },
+              window: { title: 'Constrain the incident window', desc: 'Use time, schema, and table filters to reduce noise and keep the workload story centered on the event you care about.' },
+              handoff: { title: 'Hand the answer off cleanly', desc: 'Export HTML for review calls, Markdown for docs, JSON for pipelines, or text for terminal-first debugging.' }
+            }
+          },
+          how: {
+            label: 'How It Works',
+            title: 'Resolve files, aggregate in a streaming pass, render the answer in the right surface',
+            sub: 'The architecture stays intentionally direct: parse, normalize, analyze, finalize, render.\nThat makes the tool easier to reason about and keeps the product story focused on fast-to-insight investigation instead of infrastructure complexity.',
+            step1: 'Provide files<span>single file or directory range</span>',
+            step2: 'Apply filters<span>time, schema, table, object focus</span>',
+            step3: 'Get a report<span>alerts, summaries, charts, exports</span>',
+            points: {
+              stream: { title: 'Streaming by design', desc: 'Parsing, normalization, analysis, finalization, and rendering flow forward rather than collecting every event into one giant in-memory buffer first.' },
+              io: { title: 'Automation-safe I/O contract', desc: 'Reports stay on stdout while progress and runtime status stay on stderr, so redirecting output into files or pipelines remains predictable.' }
+            }
+          },
+          outputs: {
+            label: 'Output Surfaces',
+            title: 'One analysis run, four different handoff surfaces',
+            sub: 'Output format is part of the product. BinlogViz can end as a terminal snapshot, structured payload, Markdown artifact, or self-contained HTML report depending on who needs the result next.',
+            preview: {
+              title: 'Preview the same result in different forms',
+              desc: 'Use the tabs below to see how one incident summary can move across terminals, automation, docs, and browser-based review.',
+              tablistLabel: 'Output preview tabs'
+            },
+            tabs: {
+              text: 'Text',
+              json: 'JSON',
+              markdown: 'Markdown',
+              html: 'HTML'
+            },
+            previewBodies: {
+              text: '=== Workload Summary ===\ntransactions: 438\nrows: 1,842,977\nevents: 28,194\ntime range: 2026-03-15 10:00 → 10:30 UTC\n\n=== Top Tables ===\norders.payments      814,420 rows\norders.refunds       242,199 rows\ncheckout.ledger      138,501 rows\n\n=== Alerts ===\nlarge_transaction · txn_1842 · 17,904 rows\nspike · 2026-03-15T10:14:00Z · 4.7× baseline',
+              json: '<span class="token-brace">{</span>\n  <span class="token-key">"summary"</span><span class="token-brace">:</span> <span class="token-brace">{</span>\n    <span class="token-key">"total_transactions"</span><span class="token-brace">:</span> <span class="token-value">438</span>,\n    <span class="token-key">"total_rows"</span><span class="token-brace">:</span> <span class="token-value">1842977</span>,\n    <span class="token-key">"total_events"</span><span class="token-brace">:</span> <span class="token-value">28194</span>\n  <span class="token-brace">}</span>,\n  <span class="token-key">"alerts"</span><span class="token-brace">:</span> <span class="token-brace">[</span>\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"large_transaction"</span> <span class="token-brace">}</span>,\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"spike"</span> <span class="token-brace">}</span>\n  <span class="token-brace">]</span>\n<span class="token-brace">}</span>',
+              markdown: '<span class="token-key"># BinlogViz Report</span>\n\n<span class="token-key">## Workload Summary</span>\n| Transactions | Rows | Events |\n| --- | ---: | ---: |\n| 438 | 1,842,977 | 28,194 |\n\n<span class="token-key">## Top Tables</span>\n| Table | Rows | Txns |\n| --- | ---: | ---: |\n| orders.payments | 814,420 | 216 |\n| orders.refunds | 242,199 | 104 |'
+            },
+            html: {
+              label: 'Self-contained HTML report',
+              chart: 'Rows + transactions per minute',
+              read: 'What teammates actually read',
+              items: {
+                one: 'Interactive charts for minute activity and table concentration',
+                two: 'Summary cards for transactions, rows, and range',
+                three: 'Five-theme switcher for presentation-ready exports',
+                four: 'Single-file artifact suitable for incident review'
+              }
+            },
+            side: {
+              title: 'Why HTML changes the product story',
+              desc: 'The HTML report turns a CLI investigation into a reviewable artifact. It is easier to share, easier to scan, and easier to remember than raw terminal output pasted into chat.',
+              points: {
+                one: 'Interactive charts summarize workload shape without requiring CLI context.',
+                two: 'Theme switching makes the report feel intentional rather than disposable.',
+                three: 'Markdown stays useful when the next destination is a wiki or incident note.',
+                four: 'JSON remains stable for automation and downstream processing.'
+              }
+            }
+          },
+          trust: {
+            label: 'Trust Signals',
+            title: 'Trust the contract, not just the parser',
+            sub: 'BinlogViz already has a stronger adoption story than “it parses binlogs.”\nIt has published docs, explicit output contracts, release notes around HTML and Markdown exports, and a product boundary that makes sense for DBAs.',
+            cards: {
+              docs: { title: 'Documented behavior', desc: 'CLI flags, output formats, architecture, and limitations are already documented in a way that supports product messaging.' },
+              contract: { title: 'Stable report surfaces', desc: 'Text, JSON, Markdown, and HTML make it clear where the answer can go next and who can consume it.' },
+              release: { title: 'Release-driven story', desc: 'Recent releases show the project moving from core analysis toward team-facing deliverable artifacts.' },
+              scope: { title: 'Focused scope', desc: 'It is not trying to be a general observability platform — and that constraint makes the positioning sharper.' }
+            }
+          },
+          releases: {
+            label: 'Releases',
+            title: 'A short release arc that already explains the product direction',
+            sub: 'The sequence matters: filters and analysis control first, then Markdown and HTML outputs.\nThat progression tells a better website story than raw feature lists alone.',
+            items: {
+              filters: { title: 'v0.5.x — focus and control', desc: 'Time filters, object selectors, and better control over the incident analysis surface.' },
+              reports: { title: 'v0.6.0 — shareable report artifacts', desc: 'Markdown and HTML outputs turned the result into something you can show, archive, and discuss.' },
+              now: { date: 'Now', title: 'Clear DBA-first positioning', desc: 'A local CLI that explains workload shifts faster and hands the answer off cleanly.' }
+            },
+            side: {
+              title: 'What the website should emphasize',
+              one: 'Lead with operator questions, not parser internals.',
+              two: 'Show that the tool works locally on files teams already have.',
+              three: 'Highlight HTML as the bridge between CLI investigation and team communication.',
+              four: 'Keep the product scope narrow and credible.'
+            }
+          },
+          install: {
+            label: 'Install & Start',
+            title: 'Install once, validate one file, widen only when the question demands it',
+            sub: 'The right onboarding path for a product site is simple and credible:\ninstall the binary, analyze one binlog, then move to ordered directory ranges and HTML export when the incident story gets wider.',
+            quick: {
+              title: 'Quick start',
+              code: '<span class="token-comment"># Homebrew</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># analyze one file</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>\n\n<span class="token-comment"># export a shareable HTML report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>'
+            },
+            first: {
+              title: 'What a good first session looks like',
+              one: 'Validate one file to confirm the default report shape.',
+              two: 'Use <code>--from-dir</code> and <code>--prefix</code> when the window spans multiple binlogs.',
+              three: 'Add <code>--start</code>, <code>--end</code>, schema, or table filters to cut noise.',
+              four: 'Export <code>html</code> when the answer needs to leave the terminal.',
+              repo: 'Open repository',
+              docs: 'Read docs'
+            }
+          },
+          cta: {
+            title: 'Make the next binlog investigation easier to explain',
+            sub: 'BinlogViz gives you a local-first path from raw MySQL ROW binlogs to an answer the rest of the incident room can actually read.',
+            primary: 'View releases',
+            secondary: 'Preview reports'
+          },
+          footer: {
+            brand: 'Local CLI for MySQL ROW binlog workload analysis.\nBuilt for DBA investigation, incident review, and shareable reporting.',
+            product: 'Product',
+            linksTitle: 'Links',
+            links: {
+              why: 'Why BinlogViz',
+              how: 'How it works',
+              outputs: 'Output surfaces',
+              releasesSection: 'Release arc',
+              install: 'Install guide',
+              releases: 'Releases'
+            },
+            bottom: {
+              left: '© 2026 BinlogViz. Local-first and shareable by design.',
+              right: 'Built around DBA workflows, not parser demos.'
+            }
+          },
+          backToTop: 'Back to top'
+        },
+        'zh-CN': {
+          title: 'BinlogViz —— 把 MySQL ROW Binlog 变成可交付的事件报告',
+          metaDescription: 'BinlogViz 是一个面向 MySQL ROW binlog 分析的本地 CLI。可用于发现热点表、大事务、写入尖峰和事故时间窗口内的负载变化，并导出为 text、json、markdown 或 html。',
+          nav: {
+            why: '为什么',
+            workflows: '场景',
+            how: '原理',
+            outputs: '输出',
+            trust: '信任',
+            releases: '版本',
+            installGuide: '安装',
+            cta: 'GitHub',
+            langLabel: '语言切换',
+            homeLabel: 'BinlogViz 首页'
+          },
+          hero: {
+            badge: 'v0.6.0 —— html + markdown 报告',
+            title: '把 MySQL ROW binlog\n变成可交付的事件报告',
+            sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，然后以团队真正能消费的形式交付出去。',
+            primary: '安装 BinlogViz',
+            secondary: '查看输出形式',
+            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>',
+            stats: {
+              formats: '输出格式',
+              stream: '流式分析链路',
+              hosted: '无需托管服务',
+              share: '可浏览器分享报告'
+            }
+          },
+          why: {
+            label: '为什么选择 BinlogViz',
+            title: '在事故房间失去耐心之前，先回答最关键的操作问题',
+            sub: 'BinlogViz 并不替代低层 binlog 工具。它位于更上一层：\n聚合工作负载形态、突出异常时刻，并把结果包装成能进入事故复盘、issue 讨论或 postmortem 的交付物。',
+            cards: {
+              hot: { title: '先看热点表', desc: '不用逐行读 row event，也能先看清写入主要集中在哪些表。' },
+              txn: { title: '直接浮出大事务', desc: '在大事务淹没进冗长的普通事件流之前，先把它提出来。' },
+              spike: { title: '面向尖峰排查', desc: '可选尖峰检测能直接把注意力拉到最可能解释事故影响的那个分钟。' }
+            }
+          },
+          workflows: {
+            label: '核心工作流',
+            title: '从真实 binlog 排查最常开始的地方切入',
+            sub: 'BinlogViz 的价值最清楚地体现在：你已经拿到了 binlog，现在需要尽快得到答案。\n先验证一个文件，再扩大到事故窗口，最后导出一个不用重演调查过程也能看懂的结果。',
+            cards: {
+              single: { title: '先快速验证一个文件', desc: '用单个 binlog 证明链路可用，快速预览默认报告形态，并检查事件规模。' },
+              window: { title: '收窄事故时间窗口', desc: '用时间、schema、table 过滤把噪音压下去，让工作负载故事围绕真正关心的事件展开。' },
+              handoff: { title: '把答案顺滑交给别人', desc: 'HTML 用于评审和汇报，Markdown 用于文档，JSON 用于流水线，Text 适合终端排查。' }
+            }
+          },
+          how: {
+            label: '工作方式',
+            title: '解析文件、流式聚合、在合适的表面上渲染答案',
+            sub: '架构刻意保持直接：parse、normalize、analyze、finalize、render。\n这让工具更容易理解，也让产品故事聚焦在“更快得到洞察”，而不是基础设施复杂度。',
+            step1: '提供文件<span>单文件或目录范围</span>',
+            step2: '应用过滤<span>时间、schema、table、对象聚焦</span>',
+            step3: '得到报告<span>alert、汇总、图表、导出</span>',
+            points: {
+              stream: { title: '天然流式', desc: '解析、归一化、分析、汇总和渲染是向前流动的，不需要先把所有事件塞进一个巨大的内存缓冲。' },
+              io: { title: '自动化友好的 I/O 契约', desc: '最终报告输出到 stdout，进度和运行状态输出到 stderr，因此重定向和脚本化更稳定。' }
+            }
+          },
+          outputs: {
+            label: '输出表面',
+            title: '一次分析，对应四种不同的交付形式',
+            sub: '输出格式本身就是产品的一部分。BinlogViz 可以以终端快照、结构化数据、Markdown 文档或自包含 HTML 报告结束，取决于下一个阅读者是谁。',
+            preview: {
+              title: '看同一份结果如何落到不同形式上',
+              desc: '下面的标签页展示同一段事故摘要如何在终端、自动化、文档和浏览器评审之间流转。',
+              tablistLabel: '输出预览标签'
+            },
+            tabs: {
+              text: '文本',
+              json: 'JSON',
+              markdown: 'Markdown',
+              html: 'HTML'
+            },
+            previewBodies: {
+              text: '=== 工作负载摘要 ===\n事务数: 438\n行数: 1,842,977\n事件数: 28,194\n时间范围: 2026-03-15 10:00 → 10:30 UTC\n\n=== 热点表 ===\norders.payments      814,420 行\norders.refunds       242,199 行\ncheckout.ledger      138,501 行\n\n=== 告警 ===\n大事务 · txn_1842 · 17,904 行\n尖峰 · 2026-03-15T10:14:00Z · 4.7× 基线',
+              json: '<span class="token-brace">{</span>\n  <span class="token-key">"summary"</span><span class="token-brace">:</span> <span class="token-brace">{</span>\n    <span class="token-key">"total_transactions"</span><span class="token-brace">:</span> <span class="token-value">438</span>,\n    <span class="token-key">"total_rows"</span><span class="token-brace">:</span> <span class="token-value">1842977</span>,\n    <span class="token-key">"total_events"</span><span class="token-brace">:</span> <span class="token-value">28194</span>\n  <span class="token-brace">}</span>,\n  <span class="token-key">"alerts"</span><span class="token-brace">:</span> <span class="token-brace">[</span>\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"large_transaction"</span> <span class="token-brace">}</span>,\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"spike"</span> <span class="token-brace">}</span>\n  <span class="token-brace">]</span>\n<span class="token-brace">}</span>',
+              markdown: '<span class="token-key"># BinlogViz 报告</span>\n\n<span class="token-key">## 工作负载摘要</span>\n| 事务数 | 行数 | 事件数 |\n| --- | ---: | ---: |\n| 438 | 1,842,977 | 28,194 |\n\n<span class="token-key">## 热点表</span>\n| 表 | 行数 | 事务数 |\n| --- | ---: | ---: |\n| orders.payments | 814,420 | 216 |\n| orders.refunds | 242,199 | 104 |'
+            },
+            html: {
+              label: '自包含 HTML 报告',
+              chart: '每分钟 rows + transactions',
+              read: '团队真正会看的内容',
+              items: {
+                one: '交互图表展示分钟级活跃度和表集中度',
+                two: '摘要卡片概括 transactions、rows 和时间范围',
+                three: '五主题切换让报告更像正式交付物',
+                four: '单文件产物适合事故评审和归档'
+              }
+            },
+            side: {
+              title: '为什么 HTML 会改变产品故事',
+              desc: 'HTML 报告把一次 CLI 排查变成可评审的交付物。相比直接把终端输出贴进聊天，它更容易分享、更容易扫读、也更容易被记住。',
+              points: {
+                one: '交互图表不要求读者掌握 CLI 上下文也能看懂工作负载形态。',
+                two: '主题切换让报告看起来是有意设计过的，而不是临时产物。',
+                three: 'Markdown 在需要进入 wiki 或事故笔记时仍然很有价值。',
+                four: 'JSON 则为自动化和下游处理保留稳定契约。'
+              }
+            }
+          },
+          trust: {
+            label: '信任信号',
+            title: '信任的是契约，不只是解析能力',
+            sub: 'BinlogViz 已经不只是“能解析 binlog”。\n它有公开文档、明确的输出契约、围绕 HTML / Markdown 的 release notes，以及对 DBA 合理的产品边界。',
+            cards: {
+              docs: { title: '行为已文档化', desc: 'CLI 参数、输出格式、架构和限制都已经被记录下来，足以支撑产品叙事。' },
+              contract: { title: '稳定的报告表面', desc: 'Text、JSON、Markdown、HTML 清楚地说明了结果会流向哪里、谁来消费。' },
+              release: { title: '由版本演进支撑', desc: '最近几个版本显示项目正从核心分析走向面向团队的可交付产物。' },
+              scope: { title: '边界清晰', desc: '它不是一个泛化的可观测平台，而这个约束反而让定位更可信。' }
+            }
+          },
+          releases: {
+            label: '版本演进',
+            title: '一条很短但已经足够说明方向的版本线',
+            sub: '顺序很重要：先有过滤和分析控制，再有 Markdown 和 HTML 输出。\n这个演进比单纯罗列功能更能支撑官网叙事。',
+            items: {
+              filters: { title: 'v0.5.x —— 聚焦与控制', desc: '时间过滤、对象选择和更强的事故分析控制能力。' },
+              reports: { title: 'v0.6.0 —— 可分享的报告产物', desc: 'Markdown 和 HTML 输出让结果真正能够被展示、归档和讨论。' },
+              now: { date: '现在', title: '明确的 DBA-first 定位', desc: '一个本地 CLI，帮助团队更快解释负载变化，并把答案顺滑交给其他人。' }
+            },
+            side: {
+              title: '官网真正该强调什么',
+              one: '先讲操作问题，而不是 parser 内部实现。',
+              two: '强调它直接工作在团队已经有的文件上。',
+              three: '把 HTML 作为 CLI 排查与团队沟通之间的桥。',
+              four: '保持产品边界克制而可信。'
+            }
+          },
+          install: {
+            label: '安装与开始',
+            title: '安装一次，先验证一个文件，只有在问题变大时才扩大范围',
+            sub: '对产品官网来说，正确的上手路径应该简单且可信：\n安装二进制，分析一个 binlog，然后在事故故事变宽时再切到目录范围和 HTML 导出。',
+            quick: {
+              title: '快速开始',
+              code: '<span class="token-comment"># Homebrew</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># 分析一个文件</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>\n\n<span class="token-comment"># 导出可分享的 HTML 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>'
+            },
+            first: {
+              title: '一个好的首轮会话应该长这样',
+              one: '先验证一个文件，确认默认报告形态。',
+              two: '当时间窗口跨多个 binlog 时，再使用 <code>--from-dir</code> 和 <code>--prefix</code>。',
+              three: '加入 <code>--start</code>、<code>--end</code>、schema 或 table 过滤来压噪。',
+              four: '当结果需要离开终端时，导出 <code>html</code>。',
+              repo: '打开仓库',
+              docs: '阅读文档'
+            }
+          },
+          cta: {
+            title: '让下一次 binlog 排查更容易解释清楚',
+            sub: 'BinlogViz 提供一条 local-first 的路径：把原始 MySQL ROW binlog 变成事故房间里其他人也能真正看懂的答案。',
+            primary: '查看版本',
+            secondary: '预览报告'
+          },
+          footer: {
+            brand: '面向 MySQL ROW binlog 工作负载分析的本地 CLI。\n适用于 DBA 排查、事故评审和可分享报告。',
+            product: '产品',
+            linksTitle: '链接',
+            links: {
+              why: '为什么选择 BinlogViz',
+              how: '工作方式',
+              outputs: '输出形式',
+              releasesSection: '版本演进',
+              install: '安装指南',
+              releases: '版本发布'
+            },
+            bottom: {
+              left: '© 2026 BinlogViz。Local-first，可分享。',
+              right: '围绕 DBA 工作流构建，而不是 parser demo。'
+            }
+          },
+          backToTop: '回到顶部'
+        }
+      };
+
+      const root = document.getElementById('i18n-root');
+      const langButtons = document.querySelectorAll('.lang-btn');
+      const backToTop = document.getElementById('back-to-top');
+      const tabs = Array.from(document.querySelectorAll('.tab-button'));
+      const panes = Array.from(document.querySelectorAll('.tab-pane'));
+
+      function getValue(obj, path) {
+        return path.split('.').reduce((acc, key) => acc?.[key], obj);
+      }
+
+      function getLang() {
+        const params = new URLSearchParams(window.location.search);
+        const fromQuery = params.get('lang');
+        if (fromQuery && translations[fromQuery]) return fromQuery;
+        const stored = localStorage.getItem('binlogviz-landing-lang');
+        if (stored && translations[stored]) return stored;
+        return 'en';
+      }
+
+      function applyTranslations(lang) {
+        const dict = translations[lang];
+        document.documentElement.lang = lang;
+        document.title = dict.title;
+        document.querySelector('meta[name="description"]').setAttribute('content', dict.metaDescription);
+
+        document.querySelectorAll('[data-i18n]').forEach((node) => {
+          const value = getValue(dict, node.getAttribute('data-i18n'));
+          if (typeof value === 'string') {
+            node.innerHTML = value.replace(/\n/g, '<br>');
+          }
+        });
+
+        document.querySelectorAll('[data-i18n-aria-label]').forEach((node) => {
+          const value = getValue(dict, node.getAttribute('data-i18n-aria-label'));
+          if (typeof value === 'string') {
+            node.setAttribute('aria-label', value);
+          }
+        });
+
+        langButtons.forEach((button) => {
+          const active = button.dataset.lang === lang;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', String(active));
+        });
+
+        backToTop.setAttribute('aria-label', dict.backToTop);
+        backToTop.textContent = '↑';
+
+        localStorage.setItem('binlogviz-landing-lang', lang);
+        const url = new URL(window.location.href);
+        if (lang === 'en') url.searchParams.delete('lang');
+        else url.searchParams.set('lang', lang);
+        window.history.replaceState({}, '', url);
+      }
+
+      function switchLanguage(lang) {
+        root.classList.add('switching');
+        window.setTimeout(() => {
+          applyTranslations(lang);
+          root.classList.remove('switching');
+        }, 90);
+      }
+
+      function activateTab(nextTab, moveFocus = false) {
+        const target = nextTab.dataset.pane;
+
+        tabs.forEach((tab) => {
+          const selected = tab === nextTab;
+          tab.classList.toggle('active', selected);
+          tab.setAttribute('aria-selected', String(selected));
+          tab.setAttribute('tabindex', selected ? '0' : '-1');
+        });
+
+        panes.forEach((pane) => {
+          const selected = pane.id === `pane-${target}`;
+          pane.classList.toggle('active', selected);
+          pane.hidden = !selected;
+        });
+
+        if (moveFocus) nextTab.focus();
+      }
+
+      tabs.forEach((tab, index) => {
+        tab.addEventListener('click', () => activateTab(tab));
+        tab.addEventListener('keydown', (event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          let nextIndex = index;
+          if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+          if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+          if (event.key === 'Home') nextIndex = 0;
+          if (event.key === 'End') nextIndex = tabs.length - 1;
+          activateTab(tabs[nextIndex], true);
+        });
+      });
+
+      langButtons.forEach((button) => {
+        button.addEventListener('click', () => switchLanguage(button.dataset.lang));
+      });
+
+      document.querySelectorAll('a[href^="#"]').forEach((anchor) => {
+        anchor.addEventListener('click', function (event) {
+          const target = document.querySelector(this.getAttribute('href'));
+          if (!target) return;
+          event.preventDefault();
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+
+      function toggleBackToTop() {
+        const visible = window.scrollY > 520;
+        backToTop.classList.toggle('visible', visible);
+        backToTop.hidden = !visible;
+        backToTop.tabIndex = visible ? 0 : -1;
+      }
+
+      backToTop.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+
+      window.addEventListener('scroll', toggleBackToTop, { passive: true });
+      toggleBackToTop();
+
+      const observer = 'IntersectionObserver' in window
+        ? new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                entry.target.classList.add('visible');
+                observer.unobserve(entry.target);
+              }
+            });
+          }, { threshold: 0.12 })
+        : null;
+
+      document.querySelectorAll('.reveal').forEach((node) => {
+        if (observer) observer.observe(node);
+        else node.classList.add('visible');
+      });
+
+      applyTranslations(getLang());
+    </script>
+  </body>
+</html>
