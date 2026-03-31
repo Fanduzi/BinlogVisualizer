@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 func LoadReport(path string) (InputReport, error) {
@@ -33,6 +34,23 @@ func validateInputReport(report InputReport) error {
 	}
 	if report.Tables == nil {
 		return fmt.Errorf("unsupported BinlogViz report shape")
+	}
+	if strings.TrimSpace(report.Summary.StartTime) == "" {
+		return fmt.Errorf("unsupported BinlogViz report shape")
+	}
+	if strings.TrimSpace(report.Summary.EndTime) == "" {
+		return fmt.Errorf("unsupported BinlogViz report shape")
+	}
+	if strings.TrimSpace(report.Summary.Duration) == "" {
+		return fmt.Errorf("unsupported BinlogViz report shape")
+	}
+	for _, table := range report.Tables {
+		if strings.TrimSpace(table.Schema) == "" {
+			return fmt.Errorf("unsupported BinlogViz report shape")
+		}
+		if strings.TrimSpace(table.Table) == "" {
+			return fmt.Errorf("unsupported BinlogViz report shape")
+		}
 	}
 	return nil
 }
