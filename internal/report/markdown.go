@@ -51,7 +51,7 @@ func mdWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary) {
 func mdTopTables(buf *strings.Builder, tables []model.TableStats) {
 	buf.WriteString("## " + i18n.T("report.section.tables") + "\n\n")
 	if len(tables) == 0 {
-		buf.WriteString("_" + i18n.T("report.placeholder.noTables") + "_\n\n")
+		buf.WriteString("_" + i18n.T("report.placeholder.noTableActivity") + "_\n\n")
 		return
 	}
 	buf.WriteString("| Schema | Table | Total Rows | Inserts | Updates | Deletes | Transactions |\n")
@@ -98,7 +98,7 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, m
 func mdMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket) {
 	buf.WriteString("## " + i18n.T("report.section.minutes") + "\n\n")
 	if len(minutes) == 0 {
-		buf.WriteString("_" + i18n.T("report.placeholder.noActivity") + "_\n\n")
+		buf.WriteString("_" + i18n.T("report.placeholder.noMinuteActivity") + "_\n\n")
 		return
 	}
 	buf.WriteString("| Time | Rows | Transactions |\n")
