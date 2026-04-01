@@ -1,15 +1,29 @@
 # CLI 参考
 
-本文档定义 `binlogviz analyze` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze` 和 `binlogviz compare` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
 ## 命令语法
 
 ```bash
+binlogviz --version
+binlogviz --lang zh-CN analyze <binlog files...>
 binlogviz analyze <binlog files...>
 binlogviz analyze --from-dir DIR --prefix PREFIX
+binlogviz compare <current.json> <baseline.json>
 ```
+
+## 全局参数
+
+这些参数定义在根命令上，会在子命令执行前生效：
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--lang` | 按环境变量检测 | 运行时输出语言，例如 `en` 或 `zh-CN`。 |
+| `--version`, `-v` | `false` | 仅输出版本号并退出。 |
+
+## `analyze` 命令语法
 
 每次调用 `analyze` 只能使用一种输入模式：
 
@@ -67,6 +81,50 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--exclude-schema` | none | 跳过指定 schema（逗号分隔）。 |
 | `--include-table` | none | 仅分析指定表（逗号分隔，其余均排除）。 |
 | `--exclude-table` | none | 跳过指定表（逗号分隔）。 |
+
+## `compare` 命令语法
+
+```bash
+binlogviz compare <current.json> <baseline.json>
+binlogviz compare <current.json> <baseline.json> --format text
+binlogviz compare <current.json> <baseline.json> --format json
+binlogviz compare <current.json> <baseline.json> --format html
+```
+
+`compare` 每次调用只接受两个位置参数：
+
+- `current.json`：当前窗口对应的 BinlogViz 分析报告
+- `baseline.json`：基线窗口对应的 BinlogViz 分析报告
+
+该命令不支持 discovery 模式、不接受 binlog 原文件、不支持 Markdown 输出，也没有其他输入模式。
+
+## `compare` 输入规则
+
+`compare` 只接受由 `binlogviz analyze --format json` 生成的 JSON 报告。
+
+校验规则：
+
+- 必须同时提供两个位置参数
+- 每个输入都必须是可读取的本地 JSON 文件
+- 每个输入都必须符合 BinlogViz analyze JSON 报告 shape
+- 对 malformed JSON 或 foreign / 非 BinlogViz JSON，会在渲染前直接拒绝
+
+支持的输出格式：
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--format` | `text` | compare 报告输出格式：`text`、`json`、`html`。 |
+
+代表性用法：
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > current.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > baseline.json
+
+binlogviz compare current.json baseline.json
+binlogviz compare current.json baseline.json --format json > compare.json
+binlogviz compare current.json baseline.json --format html > compare.html
+```
 
 ## 时间与校验行为
 
@@ -148,6 +206,29 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 
 关于精确的输出通道契约和 JSON 字段级行为，请参见[输出格式参考](output-format.zh-CN.md)。
 
+## `compare` 输出通道
+
+`compare` 同样把最终报告写到 `stdout`，但不会像 `analyze` 那样输出解析进度：
+
+- `stdout` 承载最终 compare 报告
+- `stderr` 承载命令错误
+
+`compare` 按格式输出：
+
+- `text`：适合终端阅读的差异摘要
+- `json`：机器可读的 compare 结果
+- `html`：自包含的可视化 compare 报告
+
+示例：
+
+```bash
+binlogviz compare current.json baseline.json > compare.txt
+binlogviz compare current.json baseline.json --format json > compare.json
+binlogviz compare current.json baseline.json --format html > compare.html
+```
+
+关于 compare 输出结构和用户可见内容，请参见[输出格式参考](output-format.zh-CN.md)。
+
 ## 示例
 
 ### 分析单个文件
@@ -201,4 +282,22 @@ binlogviz analyze mysql-bin.000123 --exclude-schema mysql,sys,information_schema
 binlogviz analyze mysql-bin.000123 \
   --include-schema mydb \
   --include-table orders,payments
+```
+
+### 对比两份 JSON 报告
+
+```bash
+binlogviz compare current.json baseline.json
+```
+
+### 输出 compare JSON 供下游处理
+
+```bash
+binlogviz compare current.json baseline.json --format json > compare.json
+```
+
+### 输出可视化 compare 报告
+
+```bash
+binlogviz compare current.json baseline.json --format html > compare.html
 ```
