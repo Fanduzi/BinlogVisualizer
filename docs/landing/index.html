@@ -9,7 +9,7 @@
     <title>BinlogViz — Turn MySQL ROW Binlogs into Incident-Ready Reports</title>
     <meta
       name="description"
-      content="BinlogViz is a local CLI for MySQL ROW binlog analysis. Find hot tables, large transactions, write spikes, and incident-window workload changes, then export the result as text, JSON, Markdown, or HTML."
+      content="BinlogViz is a local CLI for MySQL ROW binlog analysis and visual compare review. Find hot tables, large transactions, write spikes, incident-window workload changes, and compare exported JSON reports as text, JSON, or chart-based HTML."
     />
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -993,18 +993,20 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.6.0 — html + markdown reports</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.7.0 — visual compare + report exports</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
             <p class="hero-sub reveal visible" data-i18n="hero.sub">BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.
-Find hot tables, large transactions, write spikes, and incident-window changes — then hand the result to your team in a format they can actually use.</p>
+Find hot tables, large transactions, write spikes, and incident-window changes, then compare the current window against a trusted baseline and hand the result to your team in a format they can actually use.</p>
             <div class="hero-actions reveal visible">
               <a href="#install" class="btn-primary" data-i18n="hero.primary">Install BinlogViz</a>
               <a href="#outputs" class="btn-secondary" data-i18n="hero.secondary">See output surfaces</a>
             </div>
             <div class="code-shell reveal visible">
-              <code data-i18n="hero.code"><span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span></code>
+              <code data-i18n="hero.code"><span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span></code>
             </div>
             <div class="hero-highlights reveal visible">
               <article class="stat-card"><strong>4</strong><span data-i18n="hero.stats.formats">Output formats</span></article>
@@ -1062,8 +1064,8 @@ validate one file, widen to an incident window, then export something a teammate
               </div>
               <div class="card reveal">
                 <div class="card-icon">📄</div>
-                <h3 data-i18n="workflows.cards.handoff.title">Hand the answer off cleanly</h3>
-                <p data-i18n="workflows.cards.handoff.desc">Export HTML for review calls, Markdown for docs, JSON for pipelines, or text for terminal-first debugging.</p>
+                <h3 data-i18n="workflows.cards.handoff.title">Compare and hand the answer off cleanly</h3>
+                <p data-i18n="workflows.cards.handoff.desc">Export JSON reports from analyze, compare current versus baseline, then share the result as HTML for review, JSON for automation, Markdown for docs, or text for terminal-first debugging.</p>
               </div>
             </div>
           </div>
@@ -1102,13 +1104,13 @@ That makes the tool easier to reason about and keeps the product story focused o
         <section id="outputs" class="band reveal">
           <div class="container">
             <p class="section-label" data-i18n="outputs.label">Output Surfaces</p>
-            <h2 class="section-title" data-i18n="outputs.title">One analysis run, four different handoff surfaces</h2>
-            <p class="section-sub" data-i18n="outputs.sub">Output format is part of the product. BinlogViz can end as a terminal snapshot, structured payload, Markdown artifact, or self-contained HTML report depending on who needs the result next.</p>
+            <h2 class="section-title" data-i18n="outputs.title">Analyze locally, compare when needed, hand off in the right surface</h2>
+            <p class="section-sub" data-i18n="outputs.sub">Output format is part of the product. Analyze can end as text, JSON, Markdown, or self-contained HTML. Compare turns two exported JSON reports into a text summary, structured JSON delta, or chart-based HTML review artifact.</p>
 
             <div class="proof-grid">
               <article class="workflow-panel reveal">
-                <h3 data-i18n="outputs.preview.title">Preview the same result in different forms</h3>
-                <p data-i18n="outputs.preview.desc">Use the tabs below to see how one incident summary can move across terminals, automation, docs, and browser-based review.</p>
+                <h3 data-i18n="outputs.preview.title">Preview the reporting surfaces teams actually use</h3>
+                <p data-i18n="outputs.preview.desc">Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. Compare reuses text, JSON, and HTML once two analyze JSON reports exist.</p>
 
                 <div class="tab-shell">
                   <div class="tab-list" role="tablist" aria-label="Output preview tabs" data-i18n-aria-label="outputs.preview.tablistLabel">
@@ -1200,13 +1202,13 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
               </article>
 
               <article class="workflow-panel reveal">
-                <h3 data-i18n="outputs.side.title">Why HTML changes the product story</h3>
-                <p data-i18n="outputs.side.desc">The HTML report turns a CLI investigation into a reviewable artifact. It is easier to share, easier to scan, and easier to remember than raw terminal output pasted into chat.</p>
+                <h3 data-i18n="outputs.side.title">Why visual compare expands the product story</h3>
+                <p data-i18n="outputs.side.desc">HTML is no longer just a prettier analyze export. It also gives DBAs a browser-ready compare view for current-versus-baseline review, with charts that make workload changes easier to scan together.</p>
                 <ul class="proof-list">
-                  <li data-i18n="outputs.side.points.one">Interactive charts summarize workload shape without requiring CLI context.</li>
-                  <li data-i18n="outputs.side.points.two">Theme switching makes the report feel intentional rather than disposable.</li>
+                  <li data-i18n="outputs.side.points.one">Interactive charts summarize workload shape and current-versus-baseline deltas without requiring CLI context.</li>
+                  <li data-i18n="outputs.side.points.two">Compare HTML exposes table shifts, operation mix changes, and alert additions or removals in one review surface.</li>
                   <li data-i18n="outputs.side.points.three">Markdown stays useful when the next destination is a wiki or incident note.</li>
-                  <li data-i18n="outputs.side.points.four">JSON remains stable for automation and downstream processing.</li>
+                  <li data-i18n="outputs.side.points.four">JSON remains stable for automation, downstream processing, and compare inputs.</li>
                 </ul>
               </article>
             </div>
@@ -1249,7 +1251,7 @@ It has published docs, explicit output contracts, release notes around HTML and 
           <div class="container">
             <p class="section-label" data-i18n="releases.label">Releases</p>
             <h2 class="section-title" data-i18n="releases.title">A short release arc that already explains the product direction</h2>
-            <p class="section-sub" data-i18n="releases.sub">The sequence matters: filters and analysis control first, then Markdown and HTML outputs.
+            <p class="section-sub" data-i18n="releases.sub">The sequence matters: filters and analysis control first, then report exports, then visual compare.
 That progression tells a better website story than raw feature lists alone.</p>
 
             <div class="split-grid">
@@ -1261,8 +1263,8 @@ That progression tells a better website story than raw feature lists alone.</p>
                 </div>
                 <div class="timeline-item">
                   <div class="timeline-date">2026-03</div>
-                  <div class="timeline-title" data-i18n="releases.items.reports.title">v0.6.0 — shareable report artifacts</div>
-                  <div class="timeline-desc" data-i18n="releases.items.reports.desc">Markdown and HTML outputs turned the result into something you can show, archive, and discuss.</div>
+                  <div class="timeline-title" data-i18n="releases.items.reports.title">v0.7.0 — visual compare for incident review</div>
+                  <div class="timeline-desc" data-i18n="releases.items.reports.desc">Compare turns two analyze JSON reports into text, JSON, and chart-based HTML deltas that teams can review together.</div>
                 </div>
                 <div class="timeline-item">
                   <div class="timeline-date" data-i18n="releases.items.now.date">Now</div>
@@ -1276,7 +1278,7 @@ That progression tells a better website story than raw feature lists alone.</p>
                 <ul class="proof-list">
                   <li data-i18n="releases.side.one">Lead with operator questions, not parser internals.</li>
                   <li data-i18n="releases.side.two">Show that the tool works locally on files teams already have.</li>
-                  <li data-i18n="releases.side.three">Highlight HTML as the bridge between CLI investigation and team communication.</li>
+                  <li data-i18n="releases.side.three">Highlight HTML as the bridge from CLI investigation to team communication and current-versus-baseline review.</li>
                   <li data-i18n="releases.side.four">Keep the product scope narrow and credible.</li>
                 </ul>
               </div>
@@ -1289,7 +1291,7 @@ That progression tells a better website story than raw feature lists alone.</p>
             <p class="section-label" data-i18n="install.label">Install & Start</p>
             <h2 class="section-title" data-i18n="install.title">Install once, validate one file, widen only when the question demands it</h2>
             <p class="section-sub" data-i18n="install.sub">The right onboarding path for a product site is simple and credible:
-install the binary, analyze one binlog, then move to ordered directory ranges and HTML export when the incident story gets wider.</p>
+install the binary, analyze one binlog, then move to ordered directory ranges and JSON export when the incident story gets wider enough to compare against a baseline.</p>
 
             <div class="install-grid">
               <div class="workflow-panel reveal">
@@ -1302,8 +1304,10 @@ install the binary, analyze one binlog, then move to ordered directory ranges an
 <span class="token-comment"># analyze one file</span>
 <span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>
 
-<span class="token-comment"># export a shareable HTML report</span>
-<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span></code>
+<span class="token-comment"># export current + baseline JSON, then open a visual compare report</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span></code>
                 </div>
               </div>
 
@@ -1313,7 +1317,7 @@ install the binary, analyze one binlog, then move to ordered directory ranges an
                   <li data-i18n="install.first.one">Validate one file to confirm the default report shape.</li>
                   <li data-i18n="install.first.two">Use <code>--from-dir</code> and <code>--prefix</code> when the window spans multiple binlogs.</li>
                   <li data-i18n="install.first.three">Add <code>--start</code>, <code>--end</code>, schema, or table filters to cut noise.</li>
-                  <li data-i18n="install.first.four">Export <code>html</code> when the answer needs to leave the terminal.</li>
+                  <li data-i18n="install.first.four">Export JSON when you need a baseline, then use <code>compare --format html</code> for browser-based review.</li>
                 </ul>
                 <div class="hero-actions" style="justify-content:flex-start; margin-top:24px; margin-bottom:0;">
                   <a href="https://github.com/Fanduzi/BinlogVisualizer" class="btn-primary" target="_blank" rel="noopener" data-i18n="install.first.repo">Open repository</a>
@@ -1382,7 +1386,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
       const translations = {
         en: {
           title: 'BinlogViz — Turn MySQL ROW Binlogs into Incident-Ready Reports',
-          metaDescription: 'BinlogViz is a local CLI for MySQL ROW binlog analysis. Find hot tables, large transactions, write spikes, and incident-window workload changes, then export the result as text, JSON, Markdown, or HTML.',
+          metaDescription: 'BinlogViz is a local CLI for MySQL ROW binlog analysis and visual compare review. Find hot tables, large transactions, write spikes, incident-window workload changes, and compare exported JSON reports as text, JSON, or chart-based HTML.',
           nav: {
             why: 'Why',
             workflows: 'Workflows',
@@ -1396,12 +1400,12 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.6.0 — html + markdown reports',
+            badge: 'v0.7.0 — visual compare + report exports',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
-            sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes — then hand the result to your team in a format they can actually use.',
+            sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, then compare the current window against a trusted baseline and hand the result to your team in a format they can actually use.',
             primary: 'Install BinlogViz',
             secondary: 'See output surfaces',
-            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>',
+            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>',
             stats: {
               formats: 'Output formats',
               stream: 'Streaming pipeline',
@@ -1426,7 +1430,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             cards: {
               single: { title: 'Validate one file quickly', desc: 'Use a single binlog to prove the path, preview the default report, and sanity-check event volume fast.' },
               window: { title: 'Constrain the incident window', desc: 'Use time, schema, and table filters to reduce noise and keep the workload story centered on the event you care about.' },
-              handoff: { title: 'Hand the answer off cleanly', desc: 'Export HTML for review calls, Markdown for docs, JSON for pipelines, or text for terminal-first debugging.' }
+              handoff: { title: 'Compare and hand the answer off cleanly', desc: 'Export JSON reports from analyze, compare current versus baseline, then share the result as HTML for review, JSON for automation, Markdown for docs, or text for terminal-first debugging.' }
             }
           },
           how: {
@@ -1443,11 +1447,11 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           },
           outputs: {
             label: 'Output Surfaces',
-            title: 'One analysis run, four different handoff surfaces',
-            sub: 'Output format is part of the product. BinlogViz can end as a terminal snapshot, structured payload, Markdown artifact, or self-contained HTML report depending on who needs the result next.',
+            title: 'Analyze locally, compare when needed, hand off in the right surface',
+            sub: 'Output format is part of the product. Analyze can end as text, JSON, Markdown, or self-contained HTML. Compare turns two exported JSON reports into a text summary, structured JSON delta, or chart-based HTML review artifact.',
             preview: {
-              title: 'Preview the same result in different forms',
-              desc: 'Use the tabs below to see how one incident summary can move across terminals, automation, docs, and browser-based review.',
+              title: 'Preview the reporting surfaces teams actually use',
+              desc: 'Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. Compare reuses text, JSON, and HTML once two analyze JSON reports exist.',
               tablistLabel: 'Output preview tabs'
             },
             tabs: {
@@ -1473,13 +1477,13 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               }
             },
             side: {
-              title: 'Why HTML changes the product story',
-              desc: 'The HTML report turns a CLI investigation into a reviewable artifact. It is easier to share, easier to scan, and easier to remember than raw terminal output pasted into chat.',
+              title: 'Why visual compare expands the product story',
+              desc: 'HTML is no longer just a prettier analyze export. It also gives DBAs a browser-ready compare view for current-versus-baseline review, with charts that make workload changes easier to scan together.',
               points: {
-                one: 'Interactive charts summarize workload shape without requiring CLI context.',
-                two: 'Theme switching makes the report feel intentional rather than disposable.',
+                one: 'Interactive charts summarize workload shape and current-versus-baseline deltas without requiring CLI context.',
+                two: 'Compare HTML exposes table shifts, operation mix changes, and alert additions or removals in one review surface.',
                 three: 'Markdown stays useful when the next destination is a wiki or incident note.',
-                four: 'JSON remains stable for automation and downstream processing.'
+                four: 'JSON remains stable for automation, downstream processing, and compare inputs.'
               }
             }
           },
@@ -1497,34 +1501,34 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           releases: {
             label: 'Releases',
             title: 'A short release arc that already explains the product direction',
-            sub: 'The sequence matters: filters and analysis control first, then Markdown and HTML outputs.\nThat progression tells a better website story than raw feature lists alone.',
+            sub: 'The sequence matters: filters and analysis control first, then report exports, then visual compare.\nThat progression tells a better website story than raw feature lists alone.',
             items: {
               filters: { title: 'v0.5.x — focus and control', desc: 'Time filters, object selectors, and better control over the incident analysis surface.' },
-              reports: { title: 'v0.6.0 — shareable report artifacts', desc: 'Markdown and HTML outputs turned the result into something you can show, archive, and discuss.' },
+              reports: { title: 'v0.7.0 — visual compare for incident review', desc: 'Compare turns two analyze JSON reports into text, JSON, and chart-based HTML deltas that teams can review together.' },
               now: { date: 'Now', title: 'Clear DBA-first positioning', desc: 'A local CLI that explains workload shifts faster and hands the answer off cleanly.' }
             },
             side: {
               title: 'What the website should emphasize',
               one: 'Lead with operator questions, not parser internals.',
               two: 'Show that the tool works locally on files teams already have.',
-              three: 'Highlight HTML as the bridge between CLI investigation and team communication.',
+              three: 'Highlight HTML as the bridge from CLI investigation to team communication and current-versus-baseline review.',
               four: 'Keep the product scope narrow and credible.'
             }
           },
           install: {
             label: 'Install & Start',
             title: 'Install once, validate one file, widen only when the question demands it',
-            sub: 'The right onboarding path for a product site is simple and credible:\ninstall the binary, analyze one binlog, then move to ordered directory ranges and HTML export when the incident story gets wider.',
+            sub: 'The right onboarding path for a product site is simple and credible:\ninstall the binary, analyze one binlog, then move to ordered directory ranges and JSON export when the incident story gets wider enough to compare against a baseline.',
             quick: {
               title: 'Quick start',
-              code: '<span class="token-comment"># Homebrew</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># analyze one file</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>\n\n<span class="token-comment"># export a shareable HTML report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>'
+              code: '<span class="token-comment"># Homebrew</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># analyze one file</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>\n\n<span class="token-comment"># export current + baseline JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: 'What a good first session looks like',
               one: 'Validate one file to confirm the default report shape.',
               two: 'Use <code>--from-dir</code> and <code>--prefix</code> when the window spans multiple binlogs.',
               three: 'Add <code>--start</code>, <code>--end</code>, schema, or table filters to cut noise.',
-              four: 'Export <code>html</code> when the answer needs to leave the terminal.',
+              four: 'Export JSON when you need a baseline, then use <code>compare --format html</code> for browser-based review.',
               repo: 'Open repository',
               docs: 'Read docs'
             }
@@ -1556,7 +1560,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
         },
         'zh-CN': {
           title: 'BinlogViz —— 把 MySQL ROW Binlog 变成可交付的事件报告',
-          metaDescription: 'BinlogViz 是一个面向 MySQL ROW binlog 分析的本地 CLI。可用于发现热点表、大事务、写入尖峰和事故时间窗口内的负载变化，并导出为 text、json、markdown 或 html。',
+          metaDescription: 'BinlogViz 是一个面向 MySQL ROW binlog 分析和 visual compare 评审的本地 CLI。可用于发现热点表、大事务、写入尖峰、事故时间窗口内的负载变化，并把导出的 JSON 报告对比成 text、json 或图表化 html。',
           nav: {
             why: '为什么',
             workflows: '场景',
@@ -1570,12 +1574,12 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.6.0 —— html + markdown 报告',
+            badge: 'v0.7.0 —— visual compare + 报告导出',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
-            sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，然后以团队真正能消费的形式交付出去。',
+            sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，再把当前窗口与可信基线做对比，然后以团队真正能消费的形式交付出去。',
             primary: '安装 BinlogViz',
             secondary: '查看输出形式',
-            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>',
+            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>',
             stats: {
               formats: '输出格式',
               stream: '流式分析链路',
@@ -1600,7 +1604,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             cards: {
               single: { title: '先快速验证一个文件', desc: '用单个 binlog 证明链路可用，快速预览默认报告形态，并检查事件规模。' },
               window: { title: '收窄事故时间窗口', desc: '用时间、schema、table 过滤把噪音压下去，让工作负载故事围绕真正关心的事件展开。' },
-              handoff: { title: '把答案顺滑交给别人', desc: 'HTML 用于评审和汇报，Markdown 用于文档，JSON 用于流水线，Text 适合终端排查。' }
+              handoff: { title: '把对比结果顺滑交给别人', desc: '先从 analyze 导出 JSON 报告，再对比 current 与 baseline，然后按场景交付成 HTML 评审稿、JSON 自动化输入、Markdown 文档或终端里的 Text。' }
             }
           },
           how: {
@@ -1617,11 +1621,11 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           },
           outputs: {
             label: '输出表面',
-            title: '一次分析，对应四种不同的交付形式',
-            sub: '输出格式本身就是产品的一部分。BinlogViz 可以以终端快照、结构化数据、Markdown 文档或自包含 HTML 报告结束，取决于下一个阅读者是谁。',
+            title: '先本地分析，按需对比，再用合适的形式交付',
+            sub: '输出格式本身就是产品的一部分。Analyze 可以落到 text、JSON、Markdown 或自包含 HTML；compare 则把两份导出的 JSON 报告变成文本摘要、结构化 JSON 差异，或图表化 HTML 评审产物。',
             preview: {
-              title: '看同一份结果如何落到不同形式上',
-              desc: '下面的标签页展示同一段事故摘要如何在终端、自动化、文档和浏览器评审之间流转。',
+              title: '看团队真正会用到的交付表面',
+              desc: '下面的标签页展示一段事故答案如何在终端、自动化、文档和浏览器评审之间流转。只要先导出两份 analyze JSON，compare 就会复用其中的 text、JSON 和 HTML 表面。',
               tablistLabel: '输出预览标签'
             },
             tabs: {
@@ -1647,13 +1651,13 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               }
             },
             side: {
-              title: '为什么 HTML 会改变产品故事',
-              desc: 'HTML 报告把一次 CLI 排查变成可评审的交付物。相比直接把终端输出贴进聊天，它更容易分享、更容易扫读、也更容易被记住。',
+              title: '为什么 visual compare 扩展了产品故事',
+              desc: 'HTML 不再只是更好看的 analyze 导出。它还给 DBA 提供了一个适合浏览器查看的 current-vs-baseline 对比视图，用图表把负载变化展示得更容易一起讨论。',
               points: {
-                one: '交互图表不要求读者掌握 CLI 上下文也能看懂工作负载形态。',
-                two: '主题切换让报告看起来是有意设计过的，而不是临时产物。',
+                one: '交互图表不要求读者掌握 CLI 上下文，也能看懂工作负载形态和 current-vs-baseline 差异。',
+                two: 'Compare HTML 在一个评审表面里展示表变化、操作类型占比变化，以及告警的新增和移除。',
                 three: 'Markdown 在需要进入 wiki 或事故笔记时仍然很有价值。',
-                four: 'JSON 则为自动化和下游处理保留稳定契约。'
+                four: 'JSON 则为自动化、下游处理和 compare 输入保留稳定契约。'
               }
             }
           },
@@ -1671,34 +1675,34 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           releases: {
             label: '版本演进',
             title: '一条很短但已经足够说明方向的版本线',
-            sub: '顺序很重要：先有过滤和分析控制，再有 Markdown 和 HTML 输出。\n这个演进比单纯罗列功能更能支撑官网叙事。',
+            sub: '顺序很重要：先有过滤和分析控制，再有报告导出，然后才是 visual compare。\n这个演进比单纯罗列功能更能支撑官网叙事。',
             items: {
               filters: { title: 'v0.5.x —— 聚焦与控制', desc: '时间过滤、对象选择和更强的事故分析控制能力。' },
-              reports: { title: 'v0.6.0 —— 可分享的报告产物', desc: 'Markdown 和 HTML 输出让结果真正能够被展示、归档和讨论。' },
+              reports: { title: 'v0.7.0 —— 面向事故评审的 visual compare', desc: 'compare 把两份 analyze JSON 报告变成 text、JSON 和图表化 HTML 差异视图，方便团队一起评审。' },
               now: { date: '现在', title: '明确的 DBA-first 定位', desc: '一个本地 CLI，帮助团队更快解释负载变化，并把答案顺滑交给其他人。' }
             },
             side: {
               title: '官网真正该强调什么',
               one: '先讲操作问题，而不是 parser 内部实现。',
               two: '强调它直接工作在团队已经有的文件上。',
-              three: '把 HTML 作为 CLI 排查与团队沟通之间的桥。',
+              three: '把 HTML 作为 CLI 排查、团队沟通和 current-vs-baseline 评审之间的桥。',
               four: '保持产品边界克制而可信。'
             }
           },
           install: {
             label: '安装与开始',
             title: '安装一次，先验证一个文件，只有在问题变大时才扩大范围',
-            sub: '对产品官网来说，正确的上手路径应该简单且可信：\n安装二进制，分析一个 binlog，然后在事故故事变宽时再切到目录范围和 HTML 导出。',
+            sub: '对产品官网来说，正确的上手路径应该简单且可信：\n安装二进制，分析一个 binlog，然后在事故故事变宽到需要基线对比时，再切到目录范围和 JSON 导出。',
             quick: {
               title: '快速开始',
-              code: '<span class="token-comment"># Homebrew</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># 分析一个文件</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>\n\n<span class="token-comment"># 导出可分享的 HTML 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">report.html</span>'
+              code: '<span class="token-comment"># Homebrew</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># 分析一个文件</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">mysql-bin.000123</span>\n\n<span class="token-comment"># 导出 current + baseline JSON，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: '一个好的首轮会话应该长这样',
               one: '先验证一个文件，确认默认报告形态。',
               two: '当时间窗口跨多个 binlog 时，再使用 <code>--from-dir</code> 和 <code>--prefix</code>。',
               three: '加入 <code>--start</code>、<code>--end</code>、schema 或 table 过滤来压噪。',
-              four: '当结果需要离开终端时，导出 <code>html</code>。',
+              four: '需要基线时先导出 JSON，再用 <code>compare --format html</code> 做浏览器评审。',
               repo: '打开仓库',
               docs: '阅读文档'
             }
