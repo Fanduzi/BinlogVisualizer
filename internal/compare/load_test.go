@@ -20,6 +20,62 @@ func TestLoadReportLoadsValidBinlogVizJSON(t *testing.T) {
 	}
 }
 
+func TestLoadReportAcceptsEmptySummaryTimestamps(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.json")
+	content := `{
+  "summary": {
+    "total_transactions": 0,
+    "total_rows": 0,
+    "total_events": 0,
+    "start_time": "",
+    "end_time": "",
+    "duration": "0s"
+  },
+  "tables": [],
+  "alerts": [],
+  "warnings": 0
+}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write temp report: %v", err)
+	}
+
+	report, err := LoadReport(path)
+	if err != nil {
+		t.Fatalf("expected valid report, got %v", err)
+	}
+	if report.Summary.StartTime != "" || report.Summary.EndTime != "" {
+		t.Fatalf("expected empty timestamps, got start=%q end=%q", report.Summary.StartTime, report.Summary.EndTime)
+	}
+}
+
+func TestLoadReportAcceptsValidEmptyReport(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.json")
+	content := `{
+  "summary": {
+    "total_transactions": 0,
+    "total_rows": 0,
+    "total_events": 0,
+    "start_time": "",
+    "end_time": "",
+    "duration": "0s"
+  },
+  "tables": [],
+  "alerts": [],
+  "warnings": 0
+}`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write temp report: %v", err)
+	}
+
+	report, err := LoadReport(path)
+	if err != nil {
+		t.Fatalf("expected valid empty report, got %v", err)
+	}
+	if report.Summary.TotalRows != 0 || len(report.Tables) != 0 || len(report.Alerts) != 0 || report.Warnings != 0 {
+		t.Fatalf("unexpected empty report contents: %+v", report)
+	}
+}
+
 func TestLoadReportRejectsInvalidJSON(t *testing.T) {
 	_, err := LoadReport(filepath.Join("testdata", "invalid.json"))
 	if err == nil || !strings.Contains(err.Error(), "decode compare input") {
@@ -40,14 +96,14 @@ func TestLoadReportRejectsReportsMissingRequiredCompareFields(t *testing.T) {
 		content string
 	}{
 		{
-			name: "missing summary time fields",
+			name: "missing summary duration field",
 			content: `{
   "summary": {
     "total_transactions": 120,
     "total_rows": 2400,
     "total_events": 3000,
-    "end_time": "2026-03-20T10:30:00Z",
-    "duration": "30m0s"
+    "start_time": "",
+    "end_time": ""
   },
   "tables": [],
   "alerts": [],

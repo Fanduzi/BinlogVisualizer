@@ -11,44 +11,66 @@ import (
 	"strings"
 )
 
+type rawInputReport struct {
+	Summary  *rawInputSummary   `json:"summary"`
+	Tables   *[]rawInputTable   `json:"tables"`
+	Alerts   *[]json.RawMessage `json:"alerts"`
+	Warnings *int               `json:"warnings"`
+}
+
+type rawInputSummary struct {
+	TotalTransactions *int    `json:"total_transactions"`
+	TotalRows         *int    `json:"total_rows"`
+	TotalEvents       *int    `json:"total_events"`
+	StartTime         *string `json:"start_time"`
+	EndTime           *string `json:"end_time"`
+	Duration          *string `json:"duration"`
+}
+
+type rawInputTable struct {
+	Schema *string `json:"schema"`
+	Table  *string `json:"table"`
+}
+
 func LoadReport(path string) (InputReport, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return InputReport{}, fmt.Errorf("read compare input %s: %w", path, err)
 	}
 
+	var raw rawInputReport
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return InputReport{}, fmt.Errorf("decode compare input %s: %w", path, err)
+	}
+	if err := validateRawInputReport(raw); err != nil {
+		return InputReport{}, err
+	}
+
 	var report InputReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return InputReport{}, fmt.Errorf("decode compare input %s: %w", path, err)
 	}
-	if err := validateInputReport(report); err != nil {
-		return InputReport{}, err
-	}
-
 	return report, nil
 }
 
-func validateInputReport(report InputReport) error {
-	if report.Summary.TotalRows == 0 && report.Summary.TotalTransactions == 0 && len(report.Tables) == 0 && len(report.Alerts) == 0 {
+func validateRawInputReport(report rawInputReport) error {
+	if report.Summary == nil || report.Tables == nil || report.Alerts == nil || report.Warnings == nil {
 		return fmt.Errorf("unsupported BinlogViz report shape")
 	}
-	if report.Tables == nil {
+	if report.Summary.TotalTransactions == nil || report.Summary.TotalRows == nil || report.Summary.TotalEvents == nil {
 		return fmt.Errorf("unsupported BinlogViz report shape")
 	}
-	if strings.TrimSpace(report.Summary.StartTime) == "" {
+	if report.Summary.StartTime == nil || report.Summary.EndTime == nil || report.Summary.Duration == nil {
 		return fmt.Errorf("unsupported BinlogViz report shape")
 	}
-	if strings.TrimSpace(report.Summary.EndTime) == "" {
+	if strings.TrimSpace(*report.Summary.Duration) == "" {
 		return fmt.Errorf("unsupported BinlogViz report shape")
 	}
-	if strings.TrimSpace(report.Summary.Duration) == "" {
-		return fmt.Errorf("unsupported BinlogViz report shape")
-	}
-	for _, table := range report.Tables {
-		if strings.TrimSpace(table.Schema) == "" {
+	for _, table := range *report.Tables {
+		if table.Schema == nil || strings.TrimSpace(*table.Schema) == "" {
 			return fmt.Errorf("unsupported BinlogViz report shape")
 		}
-		if strings.TrimSpace(table.Table) == "" {
+		if table.Table == nil || strings.TrimSpace(*table.Table) == "" {
 			return fmt.Errorf("unsupported BinlogViz report shape")
 		}
 	}
