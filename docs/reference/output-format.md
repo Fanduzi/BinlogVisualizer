@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze` writes to `stdout` and `stderr`.
+This document explains what `binlogviz analyze` and `binlogviz compare` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -8,7 +8,7 @@ If you want the fastest operator path first, start with [Quickstart](../recipe/q
 
 BinlogViz uses separate output channels for different purposes:
 
-- `stdout` carries the final analysis report.
+- `stdout` carries the final analysis report or compare report.
 - `stderr` carries progress, resolved discovery files, finalization status, and runtime errors.
 
 This separation matters because it keeps report output safe for redirection and automation.
@@ -21,12 +21,22 @@ In the example above, the JSON report is written to `analyze.json`, while progre
 
 ## Available Formats
 
+### `analyze`
+
 | Flag value | Alias | Description |
 |---|---|---|
 | `text` | — | Default. Human-readable terminal output. |
 | `json` | `--json` | Machine-readable JSON. |
 | `markdown` | `md` | GitHub-flavored Markdown with tables. |
 | `html` | — | Self-contained HTML with interactive charts and theme switcher. |
+
+### `compare`
+
+| Flag value | Description |
+|---|---|
+| `text` | Default. Human-readable compare summary with deltas. |
+| `json` | Machine-readable compare result. |
+| `html` | Self-contained visual compare report with interactive charts. |
 
 ## Text Output
 
@@ -257,6 +267,75 @@ The HTML report includes a theme switcher in the header (five coloured dots). Av
 ## stderr Isolation
 
 BinlogViz keeps operator-facing runtime output off `stdout`.
+
+For `analyze`, `stderr` carries parse progress, discovery resolution, finalization status, and errors. For `compare`, `stderr` remains clean unless the command fails; the rendered compare report always goes to `stdout`.
+
+## Compare Output
+
+Use `binlogviz compare` when you already have two JSON reports produced by `binlogviz analyze --format json` and want to understand how the current window differs from a baseline.
+
+```bash
+binlogviz compare current.json baseline.json
+binlogviz compare current.json baseline.json --format json > compare.json
+binlogviz compare current.json baseline.json --format html > compare.html
+```
+
+The compare command accepts exactly two BinlogViz analyze JSON reports:
+
+- `current.json`: the newer or incident window you want to inspect
+- `baseline.json`: the reference window you want to compare against
+
+### Compare Text Output
+
+Text mode renders a fixed compare report for terminal review. It includes:
+
+- current and baseline labels derived from each report time range
+- top-level deltas for rows, transactions, and warnings
+- top table changes sorted by absolute row delta
+- operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
+- alert additions and removals
+
+This is the fastest operator view when you want to see whether the current workload is larger, more write-heavy, or triggering different warnings than the baseline.
+
+### Compare JSON Output
+
+Use `--format json` when another tool needs structured compare data.
+
+```bash
+binlogviz compare current.json baseline.json --format json
+```
+
+The JSON report serializes the compare result in a stable snake_case shape.
+
+#### Top-level compare contract
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `summary` | object | yes | Current/baseline totals and delta values |
+| `table_changes` | array | yes | Table-level row deltas sorted by absolute change |
+| `operation_mix` | array | yes | Operation deltas for `insert`, `update`, and `delete` |
+| `alert_changes` | object | yes | Added and removed alerts |
+| `current_label` | string | yes | Human-readable label for the current report time range |
+| `baseline_label` | string | yes | Human-readable label for the baseline report time range |
+
+At a user level, the JSON output answers the same operational questions as the text report, but in a deterministic structure for pipelines, dashboards, or follow-up automation.
+
+### Compare HTML Output
+
+HTML mode renders a self-contained visual compare report. It is not a text diff page wrapped in HTML.
+
+```bash
+binlogviz compare current.json baseline.json --format html > compare.html
+```
+
+The report includes chart-based sections for:
+
+- summary comparison between baseline and current totals
+- top table changes ranked by row delta
+- operation mix comparison
+- alert change visibility for added and removed alerts
+
+The page also includes compare summary cards and detailed tables/lists so an operator can move between the chart view and the exact affected tables or alerts without switching tools.
 
 ### What goes to `stderr`
 
