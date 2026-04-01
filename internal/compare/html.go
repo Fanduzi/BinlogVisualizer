@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"html/template"
 	"time"
+
+	"binlogviz/internal/report"
 )
 
 type htmlCompareData struct {
 	Result           CompareResult
 	GeneratedAt      string
+	EChartsJS        template.JS
 	SummaryPairsJSON template.JS
 	TopTablesJSON    template.JS
 	OpsMixJSON       template.JS
@@ -22,19 +25,23 @@ type htmlCompareData struct {
 }
 
 type htmlMetricDatum struct {
-	Label    string `json:"label"`
+	Name     string `json:"name"`
 	Baseline int    `json:"baseline"`
 	Current  int    `json:"current"`
 	Delta    int    `json:"delta"`
 }
 
 type htmlAlertDatum struct {
-	Label string `json:"label"`
+	Name  string `json:"name"`
 	Value int    `json:"value"`
-	Tone  string `json:"tone"`
 }
 
 func RenderHTML(result CompareResult) (string, error) {
+	echartsJS, err := report.ReadEmbeddedECharts()
+	if err != nil {
+		return "", err
+	}
+
 	tmpl, err := template.New("compare").Funcs(template.FuncMap{
 		"formatDelta":   formatHTMLDelta,
 		"formatPercent": formatHTMLPercent,
@@ -46,6 +53,7 @@ func RenderHTML(result CompareResult) (string, error) {
 	data := htmlCompareData{
 		Result:           result,
 		GeneratedAt:      time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		EChartsJS:        template.JS(echartsJS), //nolint:gosec
 		SummaryPairsJSON: mustHTMLJSON(buildSummaryPairs(result)),
 		TopTablesJSON:    mustHTMLJSON(buildTopTableSeries(result.TableChanges)),
 		OpsMixJSON:       mustHTMLJSON(buildOperationSeries(result.OperationMix)),
@@ -70,28 +78,22 @@ func mustHTMLJSON(v any) template.JS {
 func buildSummaryPairs(result CompareResult) []htmlMetricDatum {
 	return []htmlMetricDatum{
 		{
-			Label:    "Rows",
+			Name:     "Rows",
 			Baseline: result.Summary.BaselineTotalRows,
 			Current:  result.Summary.CurrentTotalRows,
 			Delta:    result.Summary.TotalRowsDelta,
 		},
 		{
-			Label:    "Transactions",
+			Name:     "Transactions",
 			Baseline: result.Summary.BaselineTotalTransactions,
 			Current:  result.Summary.CurrentTotalTransactions,
 			Delta:    result.Summary.TotalTransactionsDelta,
 		},
 		{
-			Label:    "Warnings",
+			Name:     "Warnings",
 			Baseline: result.Summary.BaselineWarnings,
 			Current:  result.Summary.CurrentWarnings,
 			Delta:    result.Summary.CurrentWarnings - result.Summary.BaselineWarnings,
-		},
-		{
-			Label:    "Alerts",
-			Baseline: len(result.AlertChanges.Removed),
-			Current:  len(result.AlertChanges.Added),
-			Delta:    len(result.AlertChanges.Added) - len(result.AlertChanges.Removed),
 		},
 	}
 }
@@ -100,7 +102,7 @@ func buildTopTableSeries(changes []TableChange) []htmlMetricDatum {
 	series := make([]htmlMetricDatum, 0, len(changes))
 	for _, change := range changes {
 		series = append(series, htmlMetricDatum{
-			Label:    change.Schema + "." + change.Table,
+			Name:     change.Schema + "." + change.Table,
 			Baseline: change.BaselineRows,
 			Current:  change.CurrentRows,
 			Delta:    change.DeltaRows,
@@ -113,7 +115,7 @@ func buildOperationSeries(changes []OperationDelta) []htmlMetricDatum {
 	series := make([]htmlMetricDatum, 0, len(changes))
 	for _, change := range changes {
 		series = append(series, htmlMetricDatum{
-			Label:    change.Operation,
+			Name:     change.Operation,
 			Baseline: change.Baseline,
 			Current:  change.Current,
 			Delta:    change.Delta,
@@ -124,8 +126,8 @@ func buildOperationSeries(changes []OperationDelta) []htmlMetricDatum {
 
 func buildAlertCounts(changes AlertDelta) []htmlAlertDatum {
 	return []htmlAlertDatum{
-		{Label: "Added", Value: len(changes.Added), Tone: "positive"},
-		{Label: "Removed", Value: len(changes.Removed), Tone: "negative"},
+		{Name: "Added Alerts", Value: len(changes.Added)},
+		{Name: "Removed Alerts", Value: len(changes.Removed)},
 	}
 }
 
@@ -249,48 +251,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     background: var(--primary);
   }
   .section-body { padding: 18px; }
-  .chart-box {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-height: 120px;
-  }
-  .metric-row { display: grid; gap: 8px; }
-  .metric-head {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .metric-head strong {
-    color: var(--text);
-    font-size: 13px;
-  }
-  .bar-group { display: flex; flex-direction: column; gap: 8px; }
-  .bar-line { display: grid; grid-template-columns: 72px 1fr 64px; gap: 10px; align-items: center; }
-  .bar-label { color: var(--muted); font-size: 12px; }
-  .bar-track {
-    height: 10px;
-    background: var(--surface2);
-    border-radius: 999px;
-    overflow: hidden;
-    border: 1px solid var(--border);
-  }
-  .bar-fill {
-    height: 100%;
-    border-radius: inherit;
-  }
-  .bar-fill.baseline { background: rgba(129, 140, 248, 0.45); }
-  .bar-fill.current { background: rgba(34, 211, 238, 0.8); }
-  .bar-value {
-    font-family: 'Fira Code', monospace;
-    font-size: 12px;
-    text-align: right;
-    color: var(--text);
-  }
-  .delta-positive { color: var(--success); }
-  .delta-negative { color: var(--danger); }
+  .chart-box { width: 100%; height: 300px; }
   .two-col {
     display: grid;
     grid-template-columns: 1.1fr 0.9fr;
@@ -495,48 +456,79 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     </section>
   </div>
 
+  <script>{{.EChartsJS}}</script>
   <script>
     window.compareSummaryPairs = {{.SummaryPairsJSON}};
     window.compareTopTables = {{.TopTablesJSON}};
     window.compareOpsMix = {{.OpsMixJSON}};
     window.compareAlertCounts = {{.AlertCountsJSON}};
 
-    function renderCompareBars(containerId, items) {
-      const root = document.getElementById(containerId);
-      if (!root) return;
-      const max = Math.max(1, ...items.flatMap((item) => [item.baseline || 0, item.current || 0, item.value || 0]));
-      root.innerHTML = items.map((item) => {
-        const baseline = item.baseline || 0;
-        const current = item.current || 0;
-        const value = item.value || 0;
-        if (Object.prototype.hasOwnProperty.call(item, "value")) {
-          const width = (value / max) * 100;
-          const toneClass = item.tone === "negative" ? "delta-negative" : "delta-positive";
-          return '<div class="metric-row">' +
-            '<div class="metric-head"><strong>' + item.label + '</strong><span class="' + toneClass + '">' + value + '</span></div>' +
-            '<div class="bar-group">' +
-              '<div class="bar-line"><span class="bar-label">count</span><div class="bar-track"><div class="bar-fill current" style="width:' + width + '%"></div></div><span class="bar-value">' + value + '</span></div>' +
-            '</div>' +
-          '</div>';
-        }
-        const baselineWidth = (baseline / max) * 100;
-        const currentWidth = (current / max) * 100;
-        const deltaClass = item.delta < 0 ? "delta-negative" : "delta-positive";
-        const deltaText = (item.delta >= 0 ? "+" : "") + item.delta;
-        return '<div class="metric-row">' +
-          '<div class="metric-head"><strong>' + item.label + '</strong><span class="' + deltaClass + '">' + deltaText + '</span></div>' +
-          '<div class="bar-group">' +
-            '<div class="bar-line"><span class="bar-label">baseline</span><div class="bar-track"><div class="bar-fill baseline" style="width:' + baselineWidth + '%"></div></div><span class="bar-value">' + baseline + '</span></div>' +
-            '<div class="bar-line"><span class="bar-label">current</span><div class="bar-track"><div class="bar-fill current" style="width:' + currentWidth + '%"></div></div><span class="bar-value">' + current + '</span></div>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-    }
+    const summaryChart = echarts.init(document.getElementById('compare-summary-chart'));
+    summaryChart.setOption({
+      animation: false,
+      backgroundColor: 'transparent',
+      tooltip: { show: false },
+      legend: { data: ['Baseline', 'Current'], textStyle: { color: '#f1f5f9' } },
+      grid: { left: 70, right: 20, top: 36, bottom: 24 },
+      xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
+      yAxis: { type: 'category', data: window.compareSummaryPairs.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
+      series: [
+        { name: 'Baseline', type: 'bar', data: window.compareSummaryPairs.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
+        { name: 'Current', type: 'bar', data: window.compareSummaryPairs.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
+      ],
+    });
 
-    renderCompareBars('compare-summary-chart', window.compareSummaryPairs);
-    renderCompareBars('compare-top-tables', window.compareTopTables);
-    renderCompareBars('compare-ops-mix', window.compareOpsMix);
-    renderCompareBars('compare-alerts', window.compareAlertCounts);
+    const topTablesChart = echarts.init(document.getElementById('compare-top-tables'));
+    topTablesChart.setOption({
+      animation: false,
+      backgroundColor: 'transparent',
+      tooltip: { show: false },
+      legend: { data: ['Baseline', 'Current'], textStyle: { color: '#f1f5f9' } },
+      grid: { left: 110, right: 20, top: 36, bottom: 24 },
+      xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
+      yAxis: { type: 'category', data: window.compareTopTables.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
+      series: [
+        { name: 'Baseline', type: 'bar', data: window.compareTopTables.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
+        { name: 'Current', type: 'bar', data: window.compareTopTables.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
+      ],
+    });
+
+    const opsMixChart = echarts.init(document.getElementById('compare-ops-mix'));
+    opsMixChart.setOption({
+      animation: false,
+      backgroundColor: 'transparent',
+      tooltip: { show: false },
+      legend: { data: ['Baseline', 'Current'], textStyle: { color: '#f1f5f9' } },
+      grid: { left: 70, right: 20, top: 36, bottom: 24 },
+      xAxis: { type: 'category', data: window.compareOpsMix.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
+      yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
+      series: [
+        { name: 'Baseline', type: 'bar', data: window.compareOpsMix.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
+        { name: 'Current', type: 'bar', data: window.compareOpsMix.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
+      ],
+    });
+
+    const alertChart = echarts.init(document.getElementById('compare-alerts'));
+    alertChart.setOption({
+      animation: false,
+      backgroundColor: 'transparent',
+      tooltip: { show: false },
+      grid: { left: 50, right: 20, top: 20, bottom: 24 },
+      xAxis: { type: 'category', data: window.compareAlertCounts.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
+      yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
+      series: [{
+        type: 'bar',
+        data: window.compareAlertCounts.map((item, idx) => ({ value: item.value, itemStyle: { color: idx === 0 ? '#34d399' : '#f87171' } })),
+        barWidth: 48,
+      }],
+    });
+
+    window.addEventListener('resize', function () {
+      summaryChart.resize();
+      topTablesChart.resize();
+      opsMixChart.resize();
+      alertChart.resize();
+    });
   </script>
 </body>
 </html>`
