@@ -52,6 +52,24 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
+### 把当前窗口和基线窗口做对比
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-03-15T10:00:00Z" \
+  --end "2026-03-15T10:30:00Z" \
+  --format json > current.json
+
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-03-08T10:00:00Z" \
+  --end "2026-03-08T10:30:00Z" \
+  --format json > baseline.json
+
+binlogviz compare current.json baseline.json --format html > compare.html
+```
+
+`compare` 只接受两份由 `binlogviz analyze --format json` 生成的 JSON 报告，输出格式支持 `text`、`json`、`html`。其中 HTML 是面向 DBA/运维的可视化对比报告，包含 summary 差异、热点表变化、操作类型分布变化，以及告警新增/消失的图表化视图。
+
 BinlogViz 的输出约定是：最终报告写到 `stdout`，进度、discovery 解析出的文件列表、最终组装状态和错误写到 `stderr`。
 
 ### 生成 Markdown 或 HTML 报告
@@ -74,6 +92,7 @@ BinlogViz 重点服务这些 DBA 常见问题：
 - **哪些事务大到值得优先排查？**
 - **某个分钟级尖峰是否真实发生过？**
 - **指定故障窗口内到底发生了什么变化？**
+- **当前窗口和可信基线相比，负载差异到底在哪里？**
 - **结果能否安全交给脚本、管道或其他工具？**
 
 ## 安装
@@ -209,6 +228,16 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --large-trx-rows 5000 \
   --large-trx-duration 60s
 ```
+
+### 7. 把当前结果和基线结果做对比
+
+```bash
+binlogviz compare current.json baseline.json
+binlogviz compare current.json baseline.json --format json > compare.json
+binlogviz compare current.json baseline.json --format html > compare.html
+```
+
+适合在你已经导出两份 `binlogviz analyze --format json` 报告之后使用。compare 会把工作负载总量变化、热点表变化、操作类型变化，以及告警新增/移除情况集中呈现，便于 DBA 快速判断当前窗口是否比基线更重、更分散、或者更异常。
 
 ## 多语言支持
 
