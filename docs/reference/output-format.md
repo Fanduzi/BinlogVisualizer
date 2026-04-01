@@ -8,8 +8,8 @@ If you want the fastest operator path first, start with [Quickstart](../recipe/q
 
 BinlogViz uses separate output channels for different purposes:
 
-- `stdout` carries the final analysis report or compare report.
-- `stderr` carries progress, resolved discovery files, finalization status, and runtime errors.
+- `analyze`: `stdout` carries the final analysis report; `stderr` carries progress, resolved discovery files, finalization status, and runtime errors.
+- `compare`: `stdout` carries the final compare report; command failures are reported through the CLI error path on `stderr`.
 
 This separation matters because it keeps report output safe for redirection and automation.
 
@@ -266,9 +266,9 @@ The HTML report includes a theme switcher in the header (five coloured dots). Av
 
 ## stderr Isolation
 
-BinlogViz keeps operator-facing runtime output off `stdout`.
+BinlogViz keeps final report output on `stdout`.
 
-For `analyze`, `stderr` carries parse progress, discovery resolution, finalization status, and errors. For `compare`, `stderr` remains clean unless the command fails; the rendered compare report always goes to `stdout`.
+For `analyze`, `stderr` carries parse progress, discovery resolution, finalization status, and errors. For `compare`, the current implementation writes the rendered report to `stdout` and surfaces command failures through the CLI error path on `stderr`.
 
 ## Compare Output
 
@@ -289,7 +289,7 @@ The compare command accepts exactly two BinlogViz analyze JSON reports:
 
 Text mode renders a fixed compare report for terminal review. It includes:
 
-- current and baseline labels derived from each report time range
+- fixed `Current Label: current` and `Baseline Label: baseline` lines
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
 - operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
@@ -315,8 +315,8 @@ The JSON report serializes the compare result in a stable snake_case shape.
 | `table_changes` | array | yes | Table-level row deltas sorted by absolute change |
 | `operation_mix` | array | yes | Operation deltas for `insert`, `update`, and `delete` |
 | `alert_changes` | object | yes | Added and removed alerts |
-| `current_label` | string | yes | Human-readable label for the current report time range |
-| `baseline_label` | string | yes | Human-readable label for the baseline report time range |
+| `current_label` | string | yes | Current implementation emits the fixed value `current` |
+| `baseline_label` | string | yes | Current implementation emits the fixed value `baseline` |
 
 At a user level, the JSON output answers the same operational questions as the text report, but in a deterministic structure for pipelines, dashboards, or follow-up automation.
 
@@ -337,14 +337,18 @@ The report includes chart-based sections for:
 
 The page also includes compare summary cards and detailed tables/lists so an operator can move between the chart view and the exact affected tables or alerts without switching tools.
 
-### What goes to `stderr`
+### What `analyze` writes to `stderr`
 
-The command writes these items to `stderr`:
+`analyze` writes these items to `stderr`:
 
 - parse progress output
 - `Resolved binlog files:` listings when discovery mode is used
 - `Finalizing analysis...`
 - command errors
+
+### Compare errors on `stderr`
+
+`compare` does not emit analyze-style progress output today. It writes the rendered compare report to `stdout`; if the command fails, the CLI surfaces the error on `stderr`.
 
 ### Why this matters
 
@@ -352,7 +356,7 @@ This behavior lets you safely:
 
 - redirect text output to a file
 - redirect JSON output into another tool
-- inspect discovery results and progress without contaminating the report stream
+- inspect analyze discovery results and progress without contaminating the report stream
 
 ## Examples
 

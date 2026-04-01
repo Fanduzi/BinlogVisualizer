@@ -70,7 +70,7 @@ binlogviz compare current.json baseline.json --format html > compare.html
 
 `compare` 只接受两份由 `binlogviz analyze --format json` 生成的 JSON 报告，输出格式支持 `text`、`json`、`html`。其中 HTML 是面向 DBA/运维的可视化对比报告，包含 summary 差异、热点表变化、操作类型分布变化，以及告警新增/消失的图表化视图。
 
-BinlogViz 的输出约定是：最终报告写到 `stdout`，进度、discovery 解析出的文件列表、最终组装状态和错误写到 `stderr`。
+compare 生成的最终报告写到 `stdout`。如果 compare 命令失败，CLI 会通过 `stderr` 输出错误。
 
 ### 生成 Markdown 或 HTML 报告
 
