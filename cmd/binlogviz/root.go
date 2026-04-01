@@ -26,6 +26,7 @@ func NewRootCommand() *cobra.Command {
 		},
 	}
 	cmd.AddCommand(newAnalyzeCommand())
+	cmd.AddCommand(newCompareCommand())
 	cmd.AddCommand(newVersionCommand())
 
 	// Add global flags

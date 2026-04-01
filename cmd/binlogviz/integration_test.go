@@ -11,12 +11,14 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
@@ -282,7 +284,99 @@ func TestAnalyzeCommandDiscoveryModePrintsResolvedFilesToStderr(t *testing.T) {
 	}
 }
 
+func forceEnglishRuntimeOutput(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("LANG", "en_US.UTF-8")
+	t.Setenv("LC_ALL", "en_US.UTF-8")
+	i18n.ResetForTesting()
+	if err := i18n.Init("en"); err != nil {
+		t.Fatalf("init english i18n: %v", err)
+	}
+	t.Cleanup(i18n.ResetForTesting)
+}
+
+func TestAnalyzeToCompareWorkflowWithGeneratedReports(t *testing.T) {
+	fixture := mustFixturePath(t, "minimal.binlog")
+	tempDir := t.TempDir()
+	currentPath := filepath.Join(tempDir, "current.json")
+	baselinePath := filepath.Join(tempDir, "baseline.json")
+
+	runAnalyze := func(args ...string) string {
+		t.Helper()
+
+		cmd := NewRootCommand()
+		cmd.SetArgs(append([]string{"analyze"}, args...))
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+
+		stdout, _, err := captureStdoutStderrRun(t, func() error {
+			return cmd.Execute()
+		})
+		if err != nil {
+			t.Fatalf("analyze failed for args %v: %v", args, err)
+		}
+		if !json.Valid([]byte(stdout)) {
+			t.Fatalf("analyze stdout must be valid json for args %v, got: %s", args, stdout)
+		}
+		return stdout
+	}
+
+	currentJSON := runAnalyze(fixture, fixture, "--format", "json")
+	if err := os.WriteFile(currentPath, []byte(currentJSON), 0o644); err != nil {
+		t.Fatalf("write current report: %v", err)
+	}
+
+	baselineJSON := runAnalyze(fixture, "--format", "json")
+	if err := os.WriteFile(baselinePath, []byte(baselineJSON), 0o644); err != nil {
+		t.Fatalf("write baseline report: %v", err)
+	}
+
+	runCompare := func(format string) string {
+		t.Helper()
+
+		cmd := NewRootCommand()
+		cmd.SetArgs([]string{"compare", currentPath, baselinePath, "--format", format})
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		output := &bytes.Buffer{}
+		cmd.SetOut(output)
+		cmd.SetErr(io.Discard)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("compare failed for format %s: %v", format, err)
+		}
+		return output.String()
+	}
+
+	textOut := runCompare("text")
+	if !strings.Contains(textOut, "Compare Summary") {
+		t.Fatalf("expected text compare output to contain Compare Summary, got: %s", textOut)
+	}
+
+	jsonOut := runCompare("json")
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(jsonOut), &decoded); err != nil {
+		t.Fatalf("expected compare json output to be valid json: %v", err)
+	}
+	if _, ok := decoded["summary"]; !ok {
+		t.Fatalf("expected compare json output to contain summary, got: %v", decoded)
+	}
+	if _, ok := decoded["table_changes"]; !ok {
+		t.Fatalf("expected compare json output to contain table_changes, got: %v", decoded)
+	}
+
+	htmlOut := runCompare("html")
+	for _, token := range []string{"<html", "compare-summary-chart", "echarts.init(document.getElementById('compare-summary-chart'))"} {
+		if !strings.Contains(htmlOut, token) {
+			t.Fatalf("expected compare html output to contain %q, got: %s", token, htmlOut)
+		}
+	}
+}
+
 func TestRunAnalysisHappyPath(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	// Create mock parser with sample events
 	mock := &mockParser{
 		events: []binlog.RawEvent{
@@ -429,6 +523,8 @@ func TestRunAnalysisJSONOutput(t *testing.T) {
 }
 
 func TestRunAnalysisTextSQLContextModes(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	result := &model.AnalysisResult{
 		Transactions: []model.Transaction{
 			{
@@ -599,6 +695,8 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 }
 
 func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	wantErr := errors.New("normalize boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Position: 42}},
@@ -616,6 +714,8 @@ func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 }
 
 func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	wantErr := errors.New("consume boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
@@ -631,6 +731,8 @@ func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 }
 
 func TestRunAnalysisPropagatesAnalyzerFinalizeError(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	wantErr := errors.New("finalize boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
@@ -751,6 +853,8 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 // This test uses internal/binlog/testdata/minimal.binlog which was generated from MySQL 5.7 with ROW binlog format.
 // See internal/binlog/testdata/README.md for fixture generation instructions.
 func TestRealBinlogFixtureEndToEnd(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	fixturePath := mustFixturePath(t, "minimal.binlog")
 
 	// Run the full pipeline with real parser

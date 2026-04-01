@@ -1,0 +1,42 @@
+{
+  "summary": {
+    "total_transactions": 90,
+    "total_rows": 1500,
+    "total_events": 1800,
+    "start_time": "2026-03-13T10:00:00Z",
+    "end_time": "2026-03-13T10:30:00Z",
+    "duration": "30m0s"
+  },
+  "tables": [
+    {
+      "schema": "orders",
+      "table": "payments",
+      "total_rows": 800,
+      "insert_rows": 500,
+      "update_rows": 250,
+      "delete_rows": 50,
+      "txn_count": 60
+    },
+    {
+      "schema": "orders",
+      "table": "chargebacks",
+      "total_rows": 400,
+      "insert_rows": 100,
+      "update_rows": 250,
+      "delete_rows": 50,
+      "txn_count": 12
+    }
+  ],
+  "transactions": [],
+  "minutes": [],
+  "alerts": [
+    {
+      "type": "spike",
+      "severity": "warning",
+      "message": "rows spiked at 10:05",
+      "minute": "2026-03-13T10:05:00Z",
+      "details": {"rows": 600}
+    }
+  ],
+  "warnings": 0
+}

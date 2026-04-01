@@ -1,0 +1,135 @@
+// Package compare computes stable comparison results from validated input reports.
+// input: two validated InputReport values representing current and baseline analyses.
+// output: deterministic CompareResult values for text, JSON, and HTML renderers.
+// pos: compare pipeline core between report loading and output rendering.
+package compare
+
+import (
+	"fmt"
+	"math"
+	"sort"
+)
+
+func BuildCompareResult(current, baseline InputReport) CompareResult {
+	return CompareResult{
+		Summary: SummaryDelta{
+			CurrentTotalRows:          current.Summary.TotalRows,
+			BaselineTotalRows:         baseline.Summary.TotalRows,
+			TotalRowsDelta:            current.Summary.TotalRows - baseline.Summary.TotalRows,
+			CurrentTotalTransactions:  current.Summary.TotalTransactions,
+			BaselineTotalTransactions: baseline.Summary.TotalTransactions,
+			TotalTransactionsDelta:    current.Summary.TotalTransactions - baseline.Summary.TotalTransactions,
+			CurrentWarnings:           current.Warnings,
+			BaselineWarnings:          baseline.Warnings,
+		},
+		TableChanges:  buildTableChanges(current.Tables, baseline.Tables),
+		OperationMix:  buildOperationMix(current.Tables, baseline.Tables),
+		AlertChanges:  buildAlertChanges(current.Alerts, baseline.Alerts),
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+	}
+}
+
+func buildTableChanges(current, baseline []InputTable) []TableChange {
+	type tableKey struct {
+		schema string
+		table  string
+	}
+
+	merged := make(map[tableKey]TableChange, len(current)+len(baseline))
+
+	for _, item := range baseline {
+		key := tableKey{schema: item.Schema, table: item.Table}
+		merged[key] = TableChange{
+			Schema:       item.Schema,
+			Table:        item.Table,
+			BaselineRows: item.TotalRows,
+		}
+	}
+
+	for _, item := range current {
+		key := tableKey{schema: item.Schema, table: item.Table}
+		change := merged[key]
+		change.Schema = item.Schema
+		change.Table = item.Table
+		change.CurrentRows = item.TotalRows
+		merged[key] = change
+	}
+
+	result := make([]TableChange, 0, len(merged))
+	for _, item := range merged {
+		item.DeltaRows = item.CurrentRows - item.BaselineRows
+		if item.BaselineRows > 0 {
+			item.DeltaPercent = (float64(item.DeltaRows) / float64(item.BaselineRows)) * 100
+		}
+		result = append(result, item)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		left := math.Abs(float64(result[i].DeltaRows))
+		right := math.Abs(float64(result[j].DeltaRows))
+		if left == right {
+			return fmt.Sprintf("%s.%s", result[i].Schema, result[i].Table) < fmt.Sprintf("%s.%s", result[j].Schema, result[j].Table)
+		}
+		return left > right
+	})
+
+	return result
+}
+
+func buildOperationMix(current, baseline []InputTable) []OperationDelta {
+	currentInsert, currentUpdate, currentDelete := sumOperations(current)
+	baselineInsert, baselineUpdate, baselineDelete := sumOperations(baseline)
+
+	return []OperationDelta{
+		{Operation: "INSERT", Current: currentInsert, Baseline: baselineInsert, Delta: currentInsert - baselineInsert},
+		{Operation: "UPDATE", Current: currentUpdate, Baseline: baselineUpdate, Delta: currentUpdate - baselineUpdate},
+		{Operation: "DELETE", Current: currentDelete, Baseline: baselineDelete, Delta: currentDelete - baselineDelete},
+	}
+}
+
+func sumOperations(tables []InputTable) (int, int, int) {
+	var inserts, updates, deletes int
+	for _, table := range tables {
+		inserts += table.InsertRows
+		updates += table.UpdateRows
+		deletes += table.DeleteRows
+	}
+	return inserts, updates, deletes
+}
+
+func buildAlertChanges(current, baseline []InputAlert) AlertDelta {
+	baselineSet := make(map[string]InputAlert, len(baseline))
+	currentSet := make(map[string]InputAlert, len(current))
+
+	for _, alert := range baseline {
+		baselineSet[alertKey(alert)] = alert
+	}
+	for _, alert := range current {
+		currentSet[alertKey(alert)] = alert
+	}
+
+	result := AlertDelta{}
+	for key, alert := range currentSet {
+		if _, ok := baselineSet[key]; !ok {
+			result.Added = append(result.Added, alert)
+		}
+		delete(baselineSet, key)
+	}
+	for _, alert := range baselineSet {
+		result.Removed = append(result.Removed, alert)
+	}
+
+	sort.Slice(result.Added, func(i, j int) bool {
+		return alertKey(result.Added[i]) < alertKey(result.Added[j])
+	})
+	sort.Slice(result.Removed, func(i, j int) bool {
+		return alertKey(result.Removed[i]) < alertKey(result.Removed[j])
+	})
+
+	return result
+}
+
+func alertKey(alert InputAlert) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%s", alert.Type, alert.Severity, alert.Message, alert.TxnKey, alert.Minute)
+}
