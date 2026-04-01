@@ -8,7 +8,7 @@ Cobra CLI entrypoints and analyze-command orchestration for explicit binlog path
 |------|----------------|
 | `root.go` | Builds the CLI root command and registers subcommands. |
 | `analyze.go` | Orchestrates input resolution for explicit paths or `--from-dir` + `--prefix`, true streaming parse-normalize-consume-finalize execution, aggregate parse progress on `stderr`, resolved-file reporting on `stderr` in discovery mode, report rendering, command-owned DuckDB temp-store lifecycle, and `--sql-context` presentation selection. |
-| `*_test.go` | Covers flag parsing, SQL context mode validation, end-to-end analyze execution, minimal analyze->compare workflow generation, streaming regression checks, fixture runs, benchmarks, temp-store cleanup behavior, and discovery-mode input resolution. |
+| `*_test.go` | Covers flag parsing, SQL context mode validation, end-to-end analyze execution, locale-stable command assertions, minimal analyze->compare workflow generation, streaming regression checks, fixture runs, benchmarks, temp-store cleanup behavior, and discovery-mode input resolution. |
 
 ## Exports
 

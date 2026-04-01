@@ -115,6 +115,8 @@ func TestRunAnalysisRealFixtureMultiFileOrderedInput(t *testing.T) {
 }
 
 func TestRunAnalysisJSONProgressDoesNotPolluteStdout(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	fixture := mustFixturePath(t, "minimal.binlog")
 	parser := &mockParser{
 		parseFilesWithProgress: func(paths []string, onProgress func(binlog.ParseProgress), handler func(binlog.RawEvent) error) error {
@@ -159,6 +161,8 @@ func TestRunAnalysisJSONProgressDoesNotPolluteStdout(t *testing.T) {
 }
 
 func TestRunAnalysisTextModeWritesProgressToStderr(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	fixture := mustFixturePath(t, "minimal.binlog")
 	parser := &mockParser{
 		parseFilesWithProgress: func(paths []string, onProgress func(binlog.ParseProgress), handler func(binlog.RawEvent) error) error {
