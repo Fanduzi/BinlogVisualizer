@@ -18,6 +18,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
@@ -283,6 +284,18 @@ func TestAnalyzeCommandDiscoveryModePrintsResolvedFilesToStderr(t *testing.T) {
 	}
 }
 
+func forceEnglishRuntimeOutput(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("LANG", "en_US.UTF-8")
+	t.Setenv("LC_ALL", "en_US.UTF-8")
+	i18n.ResetForTesting()
+	if err := i18n.Init("en"); err != nil {
+		t.Fatalf("init english i18n: %v", err)
+	}
+	t.Cleanup(i18n.ResetForTesting)
+}
+
 func TestAnalyzeToCompareWorkflowWithGeneratedReports(t *testing.T) {
 	fixture := mustFixturePath(t, "minimal.binlog")
 	tempDir := t.TempDir()
@@ -362,6 +375,8 @@ func TestAnalyzeToCompareWorkflowWithGeneratedReports(t *testing.T) {
 }
 
 func TestRunAnalysisHappyPath(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	// Create mock parser with sample events
 	mock := &mockParser{
 		events: []binlog.RawEvent{
@@ -508,6 +523,8 @@ func TestRunAnalysisJSONOutput(t *testing.T) {
 }
 
 func TestRunAnalysisTextSQLContextModes(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	result := &model.AnalysisResult{
 		Transactions: []model.Transaction{
 			{
@@ -678,6 +695,8 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 }
 
 func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	wantErr := errors.New("normalize boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Position: 42}},
@@ -695,6 +714,8 @@ func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 }
 
 func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	wantErr := errors.New("consume boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
@@ -710,6 +731,8 @@ func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 }
 
 func TestRunAnalysisPropagatesAnalyzerFinalizeError(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	wantErr := errors.New("finalize boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
@@ -830,6 +853,8 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 // This test uses internal/binlog/testdata/minimal.binlog which was generated from MySQL 5.7 with ROW binlog format.
 // See internal/binlog/testdata/README.md for fixture generation instructions.
 func TestRealBinlogFixtureEndToEnd(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
 	fixturePath := mustFixturePath(t, "minimal.binlog")
 
 	// Run the full pipeline with real parser
