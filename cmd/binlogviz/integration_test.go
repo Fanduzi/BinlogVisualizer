@@ -11,6 +11,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -279,6 +280,84 @@ func TestAnalyzeCommandDiscoveryModePrintsResolvedFilesToStderr(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "mysql-bin.000123") || !strings.Contains(stderr, "mysql-bin.000124") {
 		t.Fatalf("stderr must list resolved files, got: %s", stderr)
+	}
+}
+
+func TestAnalyzeToCompareWorkflowWithGeneratedReports(t *testing.T) {
+	fixture := mustFixturePath(t, "minimal.binlog")
+	tempDir := t.TempDir()
+	currentPath := filepath.Join(tempDir, "current.json")
+	baselinePath := filepath.Join(tempDir, "baseline.json")
+
+	runAnalyze := func(args ...string) string {
+		t.Helper()
+
+		cmd := NewRootCommand()
+		cmd.SetArgs(append([]string{"analyze"}, args...))
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+
+		stdout, _, err := captureStdoutStderrRun(t, func() error {
+			return cmd.Execute()
+		})
+		if err != nil {
+			t.Fatalf("analyze failed for args %v: %v", args, err)
+		}
+		if !json.Valid([]byte(stdout)) {
+			t.Fatalf("analyze stdout must be valid json for args %v, got: %s", args, stdout)
+		}
+		return stdout
+	}
+
+	currentJSON := runAnalyze(fixture, fixture, "--format", "json")
+	if err := os.WriteFile(currentPath, []byte(currentJSON), 0o644); err != nil {
+		t.Fatalf("write current report: %v", err)
+	}
+
+	baselineJSON := runAnalyze(fixture, "--format", "json")
+	if err := os.WriteFile(baselinePath, []byte(baselineJSON), 0o644); err != nil {
+		t.Fatalf("write baseline report: %v", err)
+	}
+
+	runCompare := func(format string) string {
+		t.Helper()
+
+		cmd := NewRootCommand()
+		cmd.SetArgs([]string{"compare", currentPath, baselinePath, "--format", format})
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		output := &bytes.Buffer{}
+		cmd.SetOut(output)
+		cmd.SetErr(io.Discard)
+
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("compare failed for format %s: %v", format, err)
+		}
+		return output.String()
+	}
+
+	textOut := runCompare("text")
+	if !strings.Contains(textOut, "Compare Summary") {
+		t.Fatalf("expected text compare output to contain Compare Summary, got: %s", textOut)
+	}
+
+	jsonOut := runCompare("json")
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(jsonOut), &decoded); err != nil {
+		t.Fatalf("expected compare json output to be valid json: %v", err)
+	}
+	if _, ok := decoded["summary"]; !ok {
+		t.Fatalf("expected compare json output to contain summary, got: %v", decoded)
+	}
+	if _, ok := decoded["table_changes"]; !ok {
+		t.Fatalf("expected compare json output to contain table_changes, got: %v", decoded)
+	}
+
+	htmlOut := runCompare("html")
+	for _, token := range []string{"<html", "compare-summary-chart", "echarts.init(document.getElementById('compare-summary-chart'))"} {
+		if !strings.Contains(htmlOut, token) {
+			t.Fatalf("expected compare html output to contain %q, got: %s", token, htmlOut)
+		}
 	}
 }
 
