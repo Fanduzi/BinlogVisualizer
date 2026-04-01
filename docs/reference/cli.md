@@ -1,16 +1,27 @@
 # CLI Reference
 
-This document defines the user-facing contract for `binlogviz analyze` and `binlogviz compare`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, and `binlogviz compare`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
 ## Command Syntax
 
 ```bash
+binlogviz --version
+binlogviz --lang zh-CN analyze <binlog files...>
 binlogviz analyze <binlog files...>
 binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz compare <current.json> <baseline.json>
 ```
+
+## Global Flags
+
+These flags are available on the root command and apply before subcommand execution:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--lang` | env-detected | Runtime output language, for example `en` or `zh-CN`. |
+| `--version`, `-v` | `false` | Print the version string and exit. |
 
 ## `analyze` Command Syntax
 
@@ -197,7 +208,7 @@ For the exact channel contract and JSON field-level behavior, see [Output Format
 
 ## `compare` Output Channels
 
-`compare` follows the same channel split as `analyze`:
+`compare` keeps the same report-to-`stdout` behavior, but it does not emit analyze-style progress output:
 
 - `stdout` carries the final compare report
 - `stderr` carries command errors

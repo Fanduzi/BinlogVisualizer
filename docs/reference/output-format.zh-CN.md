@@ -1,6 +1,6 @@
 # 输出格式参考
 
-本文档说明 `binlogviz analyze` 会向 `stdout` 和 `stderr` 分别写入什么内容。
+本文档说明 `binlogviz analyze` 和 `binlogviz compare` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
 如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -8,8 +8,8 @@
 
 BinlogViz 会把不同用途的输出写到不同通道：
 
-- `stdout` 承载最终分析报告。
-- `stderr` 承载进度、discovery 解析出的文件列表、最终组装状态以及运行时错误。
+- `analyze`：`stdout` 承载最终分析报告；`stderr` 承载进度、discovery 解析出的文件列表、最终组装状态以及运行时错误。
+- `compare`：`stdout` 承载最终 compare 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 
@@ -21,12 +21,22 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 ## 可用格式
 
+### `analyze`
+
 | 参数值 | 别名 | 说明 |
 |---|---|---|
 | `text` | — | 默认，人类可读的终端输出。 |
 | `json` | `--json` | 机器可读的 JSON 格式。 |
 | `markdown` | `md` | 含表格的 GitHub Flavored Markdown。 |
 | `html` | — | 含交互式图表和主题切换器的自包含 HTML 文件。 |
+
+### `compare`
+
+| 参数值 | 说明 |
+|---|---|
+| `text` | 默认。适合终端阅读的 compare 差异摘要。 |
+| `json` | 机器可读的 compare 结果。 |
+| `html` | 带交互式图表的自包含可视化 compare 报告。 |
 
 ## 文本输出
 
@@ -256,11 +266,13 @@ HTML 报告 header 右侧提供主题切换器（五个彩色圆点）。可用�
 
 ## stderr 隔离
 
-BinlogViz 会把面向操作者的运行时输出隔离在 `stdout` 之外。
+BinlogViz 会把最终报告输出保留在 `stdout`。
 
-### 哪些内容会写到 `stderr`
+对于 `analyze`，`stderr` 会承载进度、discovery 解析结果、最终组装状态和错误。对于 `compare`，当前实现不会输出 analyze 风格的进度信息；compare 报告写到 `stdout`，命令失败时通过 CLI 错误链路写到 `stderr`。
 
-命令会把以下内容写到 `stderr`：
+### `analyze` 会写到 `stderr` 的内容
+
+`analyze` 会把以下内容写到 `stderr`：
 
 - 解析进度输出
 - discovery 模式下的 `Resolved binlog files:` 列表
@@ -273,7 +285,78 @@ BinlogViz 会把面向操作者的运行时输出隔离在 `stdout` 之外。
 
 - 把文本输出重定向到文件
 - 把 JSON 输出重定向到另一个工具
-- 查看 discovery 结果和进度，而不会污染报告流
+- 查看 analyze 的 discovery 结果和进度，而不会污染报告流
+
+## Compare 输出
+
+当你已经有两份由 `binlogviz analyze --format json` 生成的 JSON 报告，并且想看当前窗口相对基线窗口发生了什么变化时，使用 `binlogviz compare`。
+
+```bash
+binlogviz compare current.json baseline.json
+binlogviz compare current.json baseline.json --format json > compare.json
+binlogviz compare current.json baseline.json --format html > compare.html
+```
+
+compare 命令只接受两份 BinlogViz analyze JSON 报告：
+
+- `current.json`：要检查的当前窗口
+- `baseline.json`：用于对比的基线窗口
+
+### Compare 文本输出
+
+文本模式会渲染固定结构的 compare 报告，适合终端快速阅读。内容包括：
+
+- 固定的 `Current Label: current` 和 `Baseline Label: baseline`
+- 行数、事务数、warnings 的顶层 delta
+- 按绝对行数变化排序的热点表变化
+- `INSERT` / `UPDATE` / `DELETE` 的操作类型变化
+- 告警新增和移除情况
+
+适合 DBA 快速判断当前窗口是否比基线更重、更偏向某种操作，或者是否出现了新的告警。
+
+### Compare JSON 输出
+
+当另一个工具需要结构化 compare 数据时，使用 `--format json`。
+
+```bash
+binlogviz compare current.json baseline.json --format json
+```
+
+JSON 输出会以稳定的 snake_case 结构序列化 compare 结果。
+
+#### Compare 顶层契约
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `summary` | object | yes | current / baseline 汇总值和 delta |
+| `table_changes` | array | yes | 按绝对变化排序的表级行数差异 |
+| `operation_mix` | array | yes | `insert`、`update`、`delete` 的操作差异 |
+| `alert_changes` | object | yes | 新增和移除的告警 |
+| `current_label` | string | yes | 当前实现固定输出 `current` |
+| `baseline_label` | string | yes | 当前实现固定输出 `baseline` |
+
+从用户视角看，JSON 输出回答的仍然是文本报告中的同一批运维问题，只是更适合进入脚本、仪表盘或自动化链路。
+
+### Compare HTML 输出
+
+HTML 模式输出自包含的可视化 compare 报告，不是把文本 diff 简单包在 HTML 里。
+
+```bash
+binlogviz compare current.json baseline.json --format html > compare.html
+```
+
+报告包含图表化分区：
+
+- baseline 和 current 顶层汇总对比
+- 按行数变化排序的热点表变化
+- 操作类型分布对比
+- 告警新增 / 移除可视化
+
+页面同时包含 compare summary 卡片和明细表 / 明细列表，方便操作者在图表视图和具体表、具体告警之间快速切换。
+
+### Compare 在 `stderr` 上的错误行为
+
+`compare` 当前不会输出 analyze 风格的进度信息。它会把最终 compare 报告写到 `stdout`；如果命令失败，CLI 会通过 `stderr` 输出错误。
 
 ## 示例
 
