@@ -96,7 +96,7 @@ jobs:
               curl -fsSLo "/tmp/${GO_TARBALL}" "https://go.dev/dl/${GO_TARBALL}"
               rm -rf /usr/local/go
               tar -C /usr/local -xzf "/tmp/${GO_TARBALL}"
-              go build -trimpath \
+              go build -buildvcs=false -trimpath \
                 -ldflags "-s -w -X binlogviz/internal/version.Version=${VERSION} -linkmode external -extldflags '\''-static-libstdc++ -static-libgcc'\''" \
                 -o dist/binlogviz .
               MAX_GLIBC="$(strings dist/binlogviz | grep -o '\''GLIBC_[0-9.]*'\'' | sort -Vu | tail -1 || true)"
