@@ -9,10 +9,10 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | `load.go` | Loads and validates analyze JSON reports from files or in-memory bytes. |
 | `model.go` | Defines compare input contracts, optional snapshot metadata, and compare result structures. |
 | `diff.go` | Computes deterministic summary, table, operation, and alert deltas. |
-| `text.go` | Renders human-readable compare output. |
+| `text.go` | Renders human-readable compare output, including snapshot-aware context such as window, input mode, source summary, and filters. |
 | `json.go` | Serializes compare results for downstream tools. |
-| `html.go` | Renders the self-contained HTML compare report. |
-| `*_test.go` | Covers loading, diff behavior, renderer output, snapshot-aware labels, and contract stability. |
+| `html.go` | Renders the self-contained HTML compare report with snapshot-aware context in the header. |
+| `*_test.go` | Covers loading, diff behavior, renderer output, snapshot-aware labels/context, and contract stability. |
 
 ## Exports
 
@@ -35,3 +35,4 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Snapshot metadata in analyze JSON is optional; compare must continue to work when it is absent.
 - Compare labels fall back to `current` / `baseline` when snapshot metadata is not present.
 - Legacy file-based compare and snapshot-based compare share the same validated `InputReport` contract.
+- Text and HTML outputs now expose snapshot context beyond the time window so incident reviews can see input mode, source shape, and active filters at a glance.

@@ -237,6 +237,26 @@ func TestCompareCommandSnapshotModeWorksEndToEnd(t *testing.T) {
 	}
 }
 
+func TestCompareCommandReportsMissingSnapshotClearly(t *testing.T) {
+	cmd := newCompareCommand()
+	cmd.SetArgs([]string{
+		"--current-snapshot", "missing-current",
+		"--baseline-snapshot", "baseline",
+		"--snapshot-dir", t.TempDir(),
+		"--format", "text",
+	})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing snapshot error")
+	}
+	if !strings.Contains(err.Error(), `load current snapshot "missing-current": snapshot "missing-current" not found`) {
+		t.Fatalf("expected clear missing snapshot error, got %v", err)
+	}
+}
+
 func TestCompareCommandRejectsInvalidReportShape(t *testing.T) {
 	cmd := newCompareCommand()
 	cmd.SetArgs([]string{

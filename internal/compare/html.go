@@ -43,9 +43,12 @@ func RenderHTML(result CompareResult) (string, error) {
 	}
 
 	tmpl, err := template.New("compare").Funcs(template.FuncMap{
-		"formatDelta":    formatHTMLDelta,
-		"formatPercent":  formatHTMLPercent,
-		"snapshotWindow": formatSnapshotWindow,
+		"formatDelta":       formatHTMLDelta,
+		"formatPercent":     formatHTMLPercent,
+		"snapshotWindow":    formatSnapshotWindow,
+		"snapshotInputMode": formatSnapshotInputMode,
+		"snapshotSource":    formatSnapshotSource,
+		"snapshotFilters":   formatSnapshotFilters,
 	}).Parse(compareHTMLTemplate)
 	if err != nil {
 		return "", fmt.Errorf("parse compare html template: %w", err)
@@ -326,6 +329,12 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         <div>{{.Result.CurrentLabel}} vs {{.Result.BaselineLabel}}</div>
         {{if snapshotWindow .Result.CurrentSnapshot}}<div class="header-context">Current Window: {{snapshotWindow .Result.CurrentSnapshot}}</div>{{end}}
         {{if snapshotWindow .Result.BaselineSnapshot}}<div class="header-context">Baseline Window: {{snapshotWindow .Result.BaselineSnapshot}}</div>{{end}}
+        {{if snapshotInputMode .Result.CurrentSnapshot}}<div class="header-context">Current Input Mode: {{snapshotInputMode .Result.CurrentSnapshot}}</div>{{end}}
+        {{if snapshotInputMode .Result.BaselineSnapshot}}<div class="header-context">Baseline Input Mode: {{snapshotInputMode .Result.BaselineSnapshot}}</div>{{end}}
+        {{if snapshotSource .Result.CurrentSnapshot}}<div class="header-context">Current Source: {{snapshotSource .Result.CurrentSnapshot}}</div>{{end}}
+        {{if snapshotSource .Result.BaselineSnapshot}}<div class="header-context">Baseline Source: {{snapshotSource .Result.BaselineSnapshot}}</div>{{end}}
+        {{if snapshotFilters .Result.CurrentSnapshot}}<div class="header-context">Current Filters: {{snapshotFilters .Result.CurrentSnapshot}}</div>{{end}}
+        {{if snapshotFilters .Result.BaselineSnapshot}}<div class="header-context">Baseline Filters: {{snapshotFilters .Result.BaselineSnapshot}}</div>{{end}}
       </div>
       <div class="header-meta">
         <strong>Generated</strong>

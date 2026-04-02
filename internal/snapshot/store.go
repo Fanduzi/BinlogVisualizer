@@ -6,6 +6,7 @@
 package snapshot
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -23,8 +24,72 @@ const (
 
 // Entry identifies one stored snapshot file.
 type Entry struct {
-	Name string
-	Path string
+	Name      string `json:"name"`
+	Label     string `json:"label"`
+	Path      string `json:"path"`
+	CreatedAt string `json:"created_at"`
+	InputMode string `json:"input_mode"`
+	Window    Window `json:"window"`
+}
+
+// Summary captures top-level analyze totals stored with a snapshot.
+type Summary struct {
+	TotalTransactions int `json:"total_transactions"`
+	TotalRows         int `json:"total_rows"`
+	TotalEvents       int `json:"total_events"`
+}
+
+// Input captures the source information stored in snapshot metadata.
+type Input struct {
+	Files   []string `json:"files"`
+	FromDir string   `json:"from_dir"`
+	Prefix  string   `json:"prefix"`
+}
+
+// Window captures the requested analyze time window stored in snapshot metadata.
+type Window struct {
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
+// Filters captures include/exclude filter configuration stored in snapshot metadata.
+type Filters struct {
+	IncludeSchemas []string `json:"include_schema"`
+	ExcludeSchemas []string `json:"exclude_schema"`
+	IncludeTables  []string `json:"include_table"`
+	ExcludeTables  []string `json:"exclude_table"`
+}
+
+// Descriptor is the normalized command-facing view of one stored snapshot.
+type Descriptor struct {
+	Name             string  `json:"name"`
+	Label            string  `json:"label"`
+	Path             string  `json:"path"`
+	CreatedAt        string  `json:"created_at"`
+	BinlogvizVersion string  `json:"binlogviz_version"`
+	InputMode        string  `json:"input_mode"`
+	Input            Input   `json:"input"`
+	Window           Window  `json:"window"`
+	Filters          Filters `json:"filters"`
+	Summary          Summary `json:"summary"`
+	Warnings         int     `json:"warnings"`
+}
+
+type storedSnapshot struct {
+	Summary  Summary                 `json:"summary"`
+	Warnings int                     `json:"warnings"`
+	Snapshot *storedSnapshotMetadata `json:"snapshot"`
+}
+
+type storedSnapshotMetadata struct {
+	Name             string  `json:"name"`
+	Label            string  `json:"label"`
+	CreatedAt        string  `json:"created_at"`
+	BinlogvizVersion string  `json:"binlogviz_version"`
+	InputMode        string  `json:"input_mode"`
+	Input            Input   `json:"input"`
+	Window           Window  `json:"window"`
+	Filters          Filters `json:"filters"`
 }
 
 // DefaultSnapshotDir returns the default snapshot directory under the provided home directory.
@@ -126,10 +191,21 @@ func ListSnapshots(dir string) ([]Entry, error) {
 			continue
 		}
 		name := strings.TrimSuffix(entry.Name(), jsonExtension)
-		result = append(result, Entry{
+		path := filepath.Join(resolvedDir, entry.Name())
+		resultEntry := Entry{
 			Name: name,
-			Path: filepath.Join(resolvedDir, entry.Name()),
-		})
+			Path: path,
+		}
+		if data, err := os.ReadFile(path); err == nil {
+			desc, err := decodeDescriptor(path, data, name)
+			if err == nil {
+				resultEntry.Label = desc.Label
+				resultEntry.CreatedAt = desc.CreatedAt
+				resultEntry.InputMode = desc.InputMode
+				resultEntry.Window = desc.Window
+			}
+		}
+		result = append(result, resultEntry)
 	}
 
 	sort.Slice(result, func(i, j int) bool {
@@ -159,4 +235,115 @@ func LoadSnapshot(dir, name string) (string, []byte, error) {
 		return "", nil, err
 	}
 	return path, data, nil
+}
+
+// DescribeSnapshot loads one named snapshot and returns normalized metadata and summary details.
+func DescribeSnapshot(dir, name string) (Descriptor, error) {
+	path, data, err := LoadSnapshot(dir, name)
+	if err != nil {
+		return Descriptor{}, err
+	}
+	return decodeDescriptor(path, data, name)
+}
+
+// RenameSnapshot moves one snapshot to a new name and keeps stored snapshot identity consistent.
+func RenameSnapshot(dir, oldName, newName string) (string, error) {
+	if err := ValidateName(oldName); err != nil {
+		return "", err
+	}
+	if err := ValidateName(newName); err != nil {
+		return "", err
+	}
+
+	oldPath, data, err := LoadSnapshot(dir, oldName)
+	if err != nil {
+		return "", err
+	}
+
+	updated, err := renameSnapshotPayload(data, oldName, newName)
+	if err != nil {
+		return "", err
+	}
+
+	newPath, err := SaveJSON(dir, newName, updated)
+	if err != nil {
+		return "", err
+	}
+	if err := os.Remove(oldPath); err != nil {
+		_ = os.Remove(newPath)
+		return "", err
+	}
+	return newPath, nil
+}
+
+// DeleteSnapshot removes one named snapshot file from the store.
+func DeleteSnapshot(dir, name string) (string, error) {
+	if err := ValidateName(name); err != nil {
+		return "", err
+	}
+
+	resolvedDir, err := ResolveSnapshotDir(dir)
+	if err != nil {
+		return "", err
+	}
+
+	path := filepath.Join(resolvedDir, name+jsonExtension)
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("snapshot %q not found", name)
+		}
+		return "", err
+	}
+	return path, nil
+}
+
+func decodeDescriptor(path string, data []byte, fallbackName string) (Descriptor, error) {
+	var stored storedSnapshot
+	if err := json.Unmarshal(data, &stored); err != nil {
+		return Descriptor{}, err
+	}
+
+	desc := Descriptor{
+		Name:     fallbackName,
+		Label:    fallbackName,
+		Path:     path,
+		Summary:  stored.Summary,
+		Warnings: stored.Warnings,
+	}
+	if stored.Snapshot == nil {
+		return desc, nil
+	}
+
+	if stored.Snapshot.Name != "" {
+		desc.Name = stored.Snapshot.Name
+	}
+	if stored.Snapshot.Label != "" {
+		desc.Label = stored.Snapshot.Label
+	}
+	desc.CreatedAt = stored.Snapshot.CreatedAt
+	desc.BinlogvizVersion = stored.Snapshot.BinlogvizVersion
+	desc.InputMode = stored.Snapshot.InputMode
+	desc.Input = stored.Snapshot.Input
+	desc.Window = stored.Snapshot.Window
+	desc.Filters = stored.Snapshot.Filters
+	return desc, nil
+}
+
+func renameSnapshotPayload(data []byte, oldName, newName string) ([]byte, error) {
+	var payload map[string]any
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+
+	snapshot, ok := payload["snapshot"].(map[string]any)
+	if !ok {
+		snapshot = map[string]any{}
+	}
+	snapshot["name"] = newName
+	if label, ok := snapshot["label"].(string); !ok || label == "" || label == oldName {
+		snapshot["label"] = newName
+	}
+	payload["snapshot"] = snapshot
+
+	return json.MarshalIndent(payload, "", "  ")
 }
