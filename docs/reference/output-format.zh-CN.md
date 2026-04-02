@@ -341,12 +341,14 @@ binlogviz compare current.json baseline.json --format json
 
 ## Snapshot 命令输出
 
-`snapshot` 子命令使用简单的终端友好输出：
+`snapshot` 子命令使用以下输出契约：
 
 - `snapshot save` 不向 `stdout` 写入载荷，而是在 `stderr` 打印 `Saved snapshot "<name>" to <path>`
-- `snapshot list` 每行一个快照名输出到 `stdout`
-- `snapshot show` 把元数据和摘要块输出到 `stdout`
-- 带严重等级徽标的告警列表
+- `snapshot list --format text` 按行输出快照名到 `stdout`
+- `snapshot list --format json` 输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象
+- `snapshot show --format text` 把元数据和摘要块输出到 `stdout`
+- `snapshot show --format json` 输出一个机器可读对象，并把规范化 descriptor 放在 `snapshot` 字段下
+- `snapshot rename` 和 `snapshot delete` 不会向 `stdout` 输出报告；成功时会把确认信息打印到 `stderr`
 
 ### 主题
 
@@ -394,7 +396,8 @@ compare 命令只接受两份 BinlogViz analyze JSON 报告：
 
 文本模式会渲染固定结构的 compare 报告，适合终端快速阅读。内容包括：
 
-- 固定的 `Current Label: current` 和 `Baseline Label: baseline`
+- `Current Label` 和 `Baseline Label`；如果存在 snapshot 元数据则优先使用 snapshot-aware label，否则回退到 `current` 和 `baseline`
+- 当存在 snapshot 元数据时，还会带出请求时间窗口、input mode、来源摘要和过滤条件
 - 行数、事务数、warnings 的顶层 delta
 - 按绝对行数变化排序的热点表变化
 - `INSERT` / `UPDATE` / `DELETE` 的操作类型变化
@@ -420,8 +423,8 @@ JSON 输出会以稳定的 snake_case 结构序列化 compare 结果。
 | `table_changes` | array | yes | 按绝对变化排序的表级行数差异 |
 | `operation_mix` | array | yes | `insert`、`update`、`delete` 的操作差异 |
 | `alert_changes` | object | yes | 新增和移除的告警 |
-| `current_label` | string | yes | 当前实现固定输出 `current` |
-| `baseline_label` | string | yes | 当前实现固定输出 `baseline` |
+| `current_label` | string | yes | 如果 current 输入带 snapshot 元数据则输出 snapshot-aware label，否则为 `current` |
+| `baseline_label` | string | yes | 如果 baseline 输入带 snapshot 元数据则输出 snapshot-aware label，否则为 `baseline` |
 
 从用户视角看，JSON 输出回答的仍然是文本报告中的同一批运维问题，只是更适合进入脚本、仪表盘或自动化链路。
 
@@ -439,6 +442,8 @@ binlogviz compare current.json baseline.json --format html > compare.html
 - 按行数变化排序的热点表变化
 - 操作类型分布对比
 - 告警新增 / 移除可视化
+
+如果输入带 snapshot 元数据，HTML header 还会带出 label、请求时间窗口、input mode、来源摘要和过滤条件等 compare 上下文。
 
 页面同时包含 compare summary 卡片和明细表 / 明细列表，方便操作者在图表视图和具体表、具体告警之间快速切换。
 

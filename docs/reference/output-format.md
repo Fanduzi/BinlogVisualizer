@@ -341,12 +341,14 @@ Compatibility rules:
 
 ## Snapshot Command Output
 
-The `snapshot` subcommands use simple terminal-friendly output:
+The `snapshot` subcommands use these output contracts:
 
 - `snapshot save` writes no payload to `stdout` and prints `Saved snapshot "<name>" to <path>` to `stderr`
-- `snapshot list` writes one snapshot name per line to `stdout`
-- `snapshot show` writes metadata and a summary block to `stdout`
-- Alert list with severity badges
+- `snapshot list --format text` writes one snapshot name per line to `stdout`
+- `snapshot list --format json` writes a machine-readable object with `snapshot_dir` and `snapshots`
+- `snapshot show --format text` writes metadata and a summary block to `stdout`
+- `snapshot show --format json` writes a machine-readable object with the normalized descriptor under `snapshot`
+- `snapshot rename` and `snapshot delete` do not write a report payload to `stdout`; they print success confirmations to `stderr`
 
 ### Themes
 
@@ -377,7 +379,8 @@ The compare command accepts exactly two BinlogViz analyze JSON reports:
 
 Text mode renders a fixed compare report for terminal review. It includes:
 
-- fixed `Current Label: current` and `Baseline Label: baseline` lines
+- `Current Label` and `Baseline Label` lines derived from snapshot metadata when present, otherwise `current` and `baseline`
+- snapshot context lines for requested window, input mode, source summary, and active filters when snapshot metadata is present
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
 - operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
@@ -403,8 +406,8 @@ The JSON report serializes the compare result in a stable snake_case shape.
 | `table_changes` | array | yes | Table-level row deltas sorted by absolute change |
 | `operation_mix` | array | yes | Operation deltas for `insert`, `update`, and `delete` |
 | `alert_changes` | object | yes | Added and removed alerts |
-| `current_label` | string | yes | Current implementation emits the fixed value `current` |
-| `baseline_label` | string | yes | Current implementation emits the fixed value `baseline` |
+| `current_label` | string | yes | Snapshot-aware label when current snapshot metadata is present; otherwise `current` |
+| `baseline_label` | string | yes | Snapshot-aware label when baseline snapshot metadata is present; otherwise `baseline` |
 
 At a user level, the JSON output answers the same operational questions as the text report, but in a deterministic structure for pipelines, dashboards, or follow-up automation.
 
@@ -422,6 +425,8 @@ The report includes chart-based sections for:
 - top table changes ranked by row delta
 - operation mix comparison
 - alert change visibility for added and removed alerts
+
+When snapshot metadata is present, the HTML header also exposes compare context such as labels, requested window, input mode, source summary, and active filters.
 
 The page also includes compare summary cards and detailed tables/lists so an operator can move between the chart view and the exact affected tables or alerts without switching tools.
 

@@ -182,7 +182,11 @@ binlogviz compare current.json baseline.json --format html > compare.html
 binlogviz snapshot save <report.json> --name NAME
 binlogviz snapshot save <report.json> --name NAME --snapshot-dir /tmp/binlogviz-snapshots
 binlogviz snapshot list
+binlogviz snapshot list --format json
 binlogviz snapshot show <name>
+binlogviz snapshot show <name> --format json
+binlogviz snapshot rename <old-name> <new-name>
+binlogviz snapshot delete <name>
 ```
 
 The `snapshot` command manages analyze JSON reports stored by name.
@@ -201,15 +205,48 @@ Rules:
 
 ### `snapshot list`
 
-`snapshot list` prints one snapshot name per line to `stdout`, sorted by name.
+`snapshot list` supports two output modes:
+
+- text mode (default): prints one snapshot name per line to `stdout`, sorted by name
+- JSON mode: prints a machine-readable object with `snapshot_dir` and `snapshots`
+
+Accepted flags:
+
+- `--format text`
+- `--format json`
+- `--snapshot-dir /path/to/store`
 
 ### `snapshot show`
 
-`snapshot show <name>` loads one snapshot and prints a small text summary to `stdout`, including:
+`snapshot show <name>` supports two output modes:
 
-- snapshot name and resolved path
-- snapshot label, creation time, BinlogViz version, and input mode when present
-- `total_transactions`, `total_rows`, `total_events`, and `warnings`
+- text mode (default): prints a small summary to `stdout`, including snapshot name, resolved path, identity metadata, filters, and top-level totals
+- JSON mode: prints a machine-readable object containing the normalized snapshot descriptor under `snapshot`
+
+Accepted flags:
+
+- `--format text`
+- `--format json`
+- `--snapshot-dir /path/to/store`
+
+### `snapshot rename`
+
+`snapshot rename <old-name> <new-name>` renames a stored snapshot in the snapshot store.
+
+Rules:
+
+- both names must pass the same snapshot-name validation as `snapshot save`
+- the command keeps the stored snapshot identity aligned with the new file name
+- successful renames print `Renamed snapshot "<old>" to "<new>" at <path>` to `stderr`
+
+### `snapshot delete`
+
+`snapshot delete <name>` removes one stored snapshot from the snapshot store.
+
+Rules:
+
+- the name must pass snapshot-name validation
+- successful deletes print `Deleted snapshot "<name>" at <path>` to `stderr`
 
 ## Time and Validation Behavior
 
