@@ -182,7 +182,11 @@ binlogviz compare current.json baseline.json --format html > compare.html
 binlogviz snapshot save <report.json> --name NAME
 binlogviz snapshot save <report.json> --name NAME --snapshot-dir /tmp/binlogviz-snapshots
 binlogviz snapshot list
+binlogviz snapshot list --format json
 binlogviz snapshot show <name>
+binlogviz snapshot show <name> --format json
+binlogviz snapshot rename <old-name> <new-name>
+binlogviz snapshot delete <name>
 ```
 
 `snapshot` 命令用于按名字管理 analyze JSON 报告。
@@ -201,15 +205,48 @@ binlogviz snapshot show <name>
 
 ### `snapshot list`
 
-`snapshot list` 会按名字排序，每行一个快照名输出到 `stdout`。
+`snapshot list` 支持两种输出模式：
+
+- text 模式（默认）：按名字排序，每行一个快照名输出到 `stdout`
+- JSON 模式：输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象
+
+可用参数：
+
+- `--format text`
+- `--format json`
+- `--snapshot-dir /path/to/store`
 
 ### `snapshot show`
 
-`snapshot show <name>` 会加载一个快照，并把简短文本摘要打印到 `stdout`，包括：
+`snapshot show <name>` 支持两种输出模式：
 
-- 快照名和解析后的路径
-- 若存在则显示快照 label、创建时间、BinlogViz 版本和 input mode
-- `total_transactions`、`total_rows`、`total_events`、`warnings`
+- text 模式（默认）：把简短摘要打印到 `stdout`，包括快照名、解析后的路径、identity 元数据、过滤条件和顶层汇总
+- JSON 模式：输出一个机器可读对象，并把规范化后的 snapshot descriptor 放在 `snapshot` 字段下
+
+可用参数：
+
+- `--format text`
+- `--format json`
+- `--snapshot-dir /path/to/store`
+
+### `snapshot rename`
+
+`snapshot rename <old-name> <new-name>` 用于重命名快照目录中的一个已存储快照。
+
+规则：
+
+- 两个名字都必须满足和 `snapshot save` 相同的快照命名校验
+- 命令会在重命名文件的同时保持快照内部 identity 与新文件名一致
+- 成功重命名时 `stderr` 输出 `Renamed snapshot "<old>" to "<new>" at <path>`
+
+### `snapshot delete`
+
+`snapshot delete <name>` 会从快照目录中删除一个已存储快照。
+
+规则：
+
+- 名字必须满足快照命名校验
+- 成功删除时 `stderr` 输出 `Deleted snapshot "<name>" at <path>`
 
 ## 时间与校验行为
 
