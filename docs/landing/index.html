@@ -1251,7 +1251,7 @@ It has published docs, explicit output contracts, release notes around HTML and 
           <div class="container">
             <p class="section-label" data-i18n="releases.label">Releases</p>
             <h2 class="section-title" data-i18n="releases.title">A short release arc that already explains the product direction</h2>
-            <p class="section-sub" data-i18n="releases.sub">The sequence matters: filters and analysis control first, then report exports, then visual compare.
+            <p class="section-sub" data-i18n="releases.sub">The sequence matters: filters and analysis control first, then report exports, visual compare, and snapshot workflows.
 That progression tells a better website story than raw feature lists alone.</p>
 
             <div class="split-grid">
@@ -1270,6 +1270,11 @@ That progression tells a better website story than raw feature lists alone.</p>
                   <div class="timeline-date">2026-04</div>
                   <div class="timeline-title" data-i18n="releases.items.reports.title">v0.7.0 — visual compare for incident review</div>
                   <div class="timeline-desc" data-i18n="releases.items.reports.desc">Compare turns two analyze JSON reports into text, JSON, and chart-based HTML deltas that teams can review together.</div>
+                </div>
+                <div class="timeline-item">
+                  <div class="timeline-date">2026-04</div>
+                  <div class="timeline-title" data-i18n="releases.items.snapshots.title">v0.8.0 — snapshot workflow for baseline comparisons</div>
+                  <div class="timeline-desc" data-i18n="releases.items.snapshots.desc">Snapshot save/list/show/delete workflows made baseline windows easier to preserve and compare without manual JSON path juggling.</div>
                 </div>
                 <div class="timeline-item">
                   <div class="timeline-date" data-i18n="releases.items.now.date">Now</div>
@@ -1506,11 +1511,12 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           releases: {
             label: 'Releases',
             title: 'A short release arc that already explains the product direction',
-            sub: 'The sequence matters: filters and analysis control first, then report exports, then visual compare.\nThat progression tells a better website story than raw feature lists alone.',
+            sub: 'The sequence matters: filters and analysis control first, then report exports, visual compare, and snapshot workflows.\nThat progression tells a better website story than raw feature lists alone.',
             items: {
               filters: { title: 'v0.5.x — focus and control', desc: 'Time filters, object selectors, and better control over the incident analysis surface.' },
               exports: { title: 'v0.6.0 — report exports for handoff', desc: 'Markdown and HTML exports turned analysis results into artifacts that can move cleanly into docs, reviews, and browser-based sharing.' },
               reports: { title: 'v0.7.0 — visual compare for incident review', desc: 'Compare turns two analyze JSON reports into text, JSON, and chart-based HTML deltas that teams can review together.' },
+              snapshots: { title: 'v0.8.0 — snapshot workflow for baseline comparisons', desc: 'Snapshot save/list/show/delete workflows made baseline windows easier to preserve and compare without manual JSON path juggling.' },
               now: { date: 'Now', title: 'Clear DBA-first positioning', desc: 'A local CLI that explains workload shifts faster and hands the answer off cleanly.' }
             },
             side: {
@@ -1681,11 +1687,12 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           releases: {
             label: '版本演进',
             title: '一条很短但已经足够说明方向的版本线',
-            sub: '顺序很重要：先有过滤和分析控制，再有报告导出，然后才是 visual compare。\n这个演进比单纯罗列功能更能支撑官网叙事。',
+            sub: '顺序很重要：先有过滤和分析控制，再有报告导出、visual compare，最后补齐 snapshot 工作流。\n这个演进比单纯罗列功能更能支撑官网叙事。',
             items: {
               filters: { title: 'v0.5.x —— 聚焦与控制', desc: '时间过滤、对象选择和更强的事故分析控制能力。' },
               exports: { title: 'v0.6.0 —— 面向交付的报告导出', desc: 'Markdown 和 HTML 导出把分析结果变成可以顺滑进入文档、评审和浏览器分享的交付物。' },
               reports: { title: 'v0.7.0 —— 面向事故评审的 visual compare', desc: 'compare 把两份 analyze JSON 报告变成 text、JSON 和图表化 HTML 差异视图，方便团队一起评审。' },
+              snapshots: { title: 'v0.8.0 —— 面向基线对比的 snapshot 工作流', desc: 'snapshot save/list/show/delete 让基线窗口的保存与复用更直接，不再依赖手工管理 JSON 路径。' },
               now: { date: '现在', title: '明确的 DBA-first 定位', desc: '一个本地 CLI，帮助团队更快解释负载变化，并把答案顺滑交给其他人。' }
             },
             side: {
