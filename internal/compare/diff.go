@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 )
 
 func BuildCompareResult(current, baseline InputReport) CompareResult {
@@ -22,11 +23,33 @@ func BuildCompareResult(current, baseline InputReport) CompareResult {
 			CurrentWarnings:           current.Warnings,
 			BaselineWarnings:          baseline.Warnings,
 		},
-		TableChanges:  buildTableChanges(current.Tables, baseline.Tables),
-		OperationMix:  buildOperationMix(current.Tables, baseline.Tables),
-		AlertChanges:  buildAlertChanges(current.Alerts, baseline.Alerts),
-		CurrentLabel:  "current",
-		BaselineLabel: "baseline",
+		TableChanges:     buildTableChanges(current.Tables, baseline.Tables),
+		OperationMix:     buildOperationMix(current.Tables, baseline.Tables),
+		AlertChanges:     buildAlertChanges(current.Alerts, baseline.Alerts),
+		CurrentLabel:     compareLabel(current.Snapshot, "current"),
+		BaselineLabel:    compareLabel(baseline.Snapshot, "baseline"),
+		CurrentSnapshot:  current.Snapshot,
+		BaselineSnapshot: baseline.Snapshot,
+	}
+}
+
+func compareLabel(snapshot *InputSnapshot, fallback string) string {
+	if snapshot == nil {
+		return fallback
+	}
+
+	label := strings.TrimSpace(snapshot.Label)
+	name := strings.TrimSpace(snapshot.Name)
+
+	switch {
+	case label != "" && name != "" && label != name:
+		return fmt.Sprintf("%s (%s)", label, name)
+	case label != "":
+		return label
+	case name != "":
+		return name
+	default:
+		return fallback
 	}
 }
 

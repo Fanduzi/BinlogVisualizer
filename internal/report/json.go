@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
-// input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: stable JSON objects with mode-controlled transaction query fields.
+// input: analyzer-produced AnalysisResult values plus optional SQL context and snapshot presentation controls.
+// output: stable JSON objects with mode-controlled transaction query fields and optional snapshot envelope data.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -23,6 +23,7 @@ type jsonAnalysisResult struct {
 	Minutes      []jsonMinuteBucket `json:"minutes"`
 	Alerts       []jsonAlert        `json:"alerts"`
 	Warnings     int                `json:"warnings"`
+	Snapshot     *jsonSnapshot      `json:"snapshot,omitempty"`
 }
 
 type jsonSummary struct {
@@ -75,6 +76,35 @@ type jsonAlert struct {
 	Details  map[string]any `json:"details,omitempty"`
 }
 
+type jsonSnapshot struct {
+	Name             string              `json:"name"`
+	Label            string              `json:"label"`
+	CreatedAt        string              `json:"created_at"`
+	BinlogvizVersion string              `json:"binlogviz_version"`
+	InputMode        string              `json:"input_mode"`
+	Input            jsonSnapshotInput   `json:"input"`
+	Window           jsonSnapshotWindow  `json:"window"`
+	Filters          jsonSnapshotFilters `json:"filters"`
+}
+
+type jsonSnapshotInput struct {
+	Files   []string `json:"files"`
+	FromDir string   `json:"from_dir"`
+	Prefix  string   `json:"prefix"`
+}
+
+type jsonSnapshotWindow struct {
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
+type jsonSnapshotFilters struct {
+	IncludeSchemas []string `json:"include_schema"`
+	ExcludeSchemas []string `json:"exclude_schema"`
+	IncludeTables  []string `json:"include_table"`
+	ExcludeTables  []string `json:"exclude_table"`
+}
+
 // RenderJSON serializes an AnalysisResult to JSON with stable, script-friendly field names.
 func RenderJSON(result model.AnalysisResult) (string, error) {
 	return RenderJSONWithOptions(result, DefaultOptions())
@@ -123,6 +153,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		Minutes:      convertMinutes(result.Minutes),
 		Alerts:       convertAlerts(result.Alerts),
 		Warnings:     result.Warnings,
+		Snapshot:     convertSnapshot(result.Snapshot),
 	}
 }
 
@@ -227,6 +258,55 @@ func convertAlerts(alerts []model.Alert) []jsonAlert {
 			Details:  copyStringAnyMap(a.Details),
 		}
 	}
+	return result
+}
+
+func convertSnapshot(snapshot *model.Snapshot) *jsonSnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	return &jsonSnapshot{
+		Name:             snapshot.Name,
+		Label:            snapshot.Label,
+		CreatedAt:        formatJSONTime(snapshot.CreatedAt),
+		BinlogvizVersion: snapshot.BinlogvizVersion,
+		InputMode:        snapshot.InputMode,
+		Input:            convertSnapshotInput(snapshot.Input),
+		Window:           convertSnapshotWindow(snapshot.Window),
+		Filters:          convertSnapshotFilters(snapshot.Filters),
+	}
+}
+
+func convertSnapshotInput(input model.SnapshotInput) jsonSnapshotInput {
+	return jsonSnapshotInput{
+		Files:   copyStringSlice(input.Files),
+		FromDir: input.FromDir,
+		Prefix:  input.Prefix,
+	}
+}
+
+func convertSnapshotWindow(window model.SnapshotWindow) jsonSnapshotWindow {
+	return jsonSnapshotWindow{
+		StartTime: formatJSONTime(window.StartTime),
+		EndTime:   formatJSONTime(window.EndTime),
+	}
+}
+
+func convertSnapshotFilters(filters model.SnapshotFilters) jsonSnapshotFilters {
+	return jsonSnapshotFilters{
+		IncludeSchemas: copyStringSlice(filters.IncludeSchemas),
+		ExcludeSchemas: copyStringSlice(filters.ExcludeSchemas),
+		IncludeTables:  copyStringSlice(filters.IncludeTables),
+		ExcludeTables:  copyStringSlice(filters.ExcludeTables),
+	}
+}
+
+func copyStringSlice(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	result := make([]string, len(values))
+	copy(result, values)
 	return result
 }
 

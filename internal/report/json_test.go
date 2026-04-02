@@ -23,6 +23,102 @@ func parseJSONMap(t *testing.T, out string) map[string]any {
 	return parsed
 }
 
+func TestRenderJSONIncludesSnapshotWhenMetadataPresent(t *testing.T) {
+	result := model.AnalysisResult{
+		Snapshot: &model.Snapshot{
+			Name:             "incident-window-2026-03-09",
+			Label:            "current",
+			CreatedAt:        time.Date(2026, 3, 9, 10, 15, 0, 0, time.UTC),
+			BinlogvizVersion: "v1.2.3",
+			InputMode:        "discovery",
+			Input: model.SnapshotInput{
+				Files:   []string{"mysql-bin.000123"},
+				FromDir: "/var/lib/mysql",
+				Prefix:  "mysql-bin.",
+			},
+			Window: model.SnapshotWindow{
+				StartTime: time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC),
+				EndTime:   time.Date(2026, 3, 9, 10, 30, 0, 0, time.UTC),
+			},
+			Filters: model.SnapshotFilters{
+				IncludeSchemas: []string{"shop"},
+				ExcludeTables:  []string{"shop.temp_*"},
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	snapshot, ok := parsed["snapshot"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected 'snapshot' object, got %v", parsed["snapshot"])
+	}
+
+	if _, ok := snapshot["metadata"]; ok {
+		t.Fatalf("did not expect nested metadata wrapper, got %v", snapshot["metadata"])
+	}
+
+	expectedFields := []string{"name", "label", "created_at", "binlogviz_version", "input_mode", "input", "window", "filters"}
+	for _, field := range expectedFields {
+		if _, ok := snapshot[field]; !ok {
+			t.Fatalf("expected snapshot field %q", field)
+		}
+	}
+	if snapshot["name"] != "incident-window-2026-03-09" {
+		t.Fatalf("expected snapshot name to be rendered, got %v", snapshot["name"])
+	}
+	if snapshot["label"] != "current" {
+		t.Fatalf("expected snapshot label to be rendered, got %v", snapshot["label"])
+	}
+	if snapshot["created_at"] != "2026-03-09T10:15:00Z" {
+		t.Fatalf("expected created_at to be rendered, got %v", snapshot["created_at"])
+	}
+
+	input, ok := snapshot["input"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected input object, got %v", snapshot["input"])
+	}
+	files, ok := input["files"].([]any)
+	if !ok || len(files) != 1 || files[0] != "mysql-bin.000123" {
+		t.Fatalf("expected input.files to contain one file, got %v", input["files"])
+	}
+
+	window, ok := snapshot["window"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected window object, got %v", snapshot["window"])
+	}
+	if window["start_time"] != "2026-03-09T10:00:00Z" {
+		t.Fatalf("expected window.start_time to be rendered, got %v", window["start_time"])
+	}
+
+	filters, ok := snapshot["filters"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected filters object, got %v", snapshot["filters"])
+	}
+	includeSchemas, ok := filters["include_schema"].([]any)
+	if !ok || len(includeSchemas) != 1 || includeSchemas[0] != "shop" {
+		t.Fatalf("expected filters.include_schema to contain shop, got %v", filters["include_schema"])
+	}
+}
+
+func TestRenderJSONOmitsSnapshotWhenMetadataAbsent(t *testing.T) {
+	result := model.AnalysisResult{}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	if _, ok := parsed["snapshot"]; ok {
+		t.Fatalf("expected snapshot to be omitted, got %v", parsed["snapshot"])
+	}
+}
+
 func TestRenderJSONProducesValidObject(t *testing.T) {
 	result := model.AnalysisResult{
 		Summary: model.WorkloadSummary{

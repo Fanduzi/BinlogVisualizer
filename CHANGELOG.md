@@ -2,6 +2,23 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.8.0
+
+Release date: 2026-04-02
+
+Highlights:
+
+- Added snapshot-aware analyze workflow with `--snapshot-name` and optional `--snapshot-dir`
+- Added `binlogviz snapshot save`, `binlogviz snapshot list`, and `binlogviz snapshot show`
+- Added compare snapshot mode with `--current-snapshot` and `--baseline-snapshot`
+- Added top-level analyze JSON snapshot metadata plus compare JSON `current_snapshot` and `baseline_snapshot`
+- Kept legacy `binlogviz compare <current.json> <baseline.json>` file mode compatible for existing automation
+
+Related notes:
+
+- [v0.8.0 release notes](docs/releases/release-notes-v0.8.0.md)
+- [v0.8.0 中文发行说明](docs/releases/release-notes-v0.8.0.zh-CN.md)
+
 ## v0.5.0
 
 Release date: 2026-03-28

@@ -23,6 +23,8 @@ import (
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
+	"binlogviz/internal/snapshot"
+	"binlogviz/internal/version"
 )
 
 type commandAnalyzer interface {
@@ -48,6 +50,8 @@ type analyzeOptions struct {
 	fromDir          string
 	prefix           string
 	format           string
+	snapshotName     string
+	snapshotDir      string
 	sqlContext       string
 	topTables        int
 	topTransactions  int
@@ -96,6 +100,9 @@ func newAnalyzeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := validateAnalyzeOptions(opts); err != nil {
+				return err
+			}
 
 			paths, discovered, err := resolveAnalyzePaths(args, opts)
 			if err != nil {
@@ -112,9 +119,10 @@ func newAnalyzeCommand() *cobra.Command {
 
 			// Build analyzer options
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
+			snapshotMeta := buildSnapshotMetadata(paths, opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
-			return runAnalysisWithReportOptions(paths, analyzerOpts, reportOpts, opts.format)
+			return runAnalysisWithReportAndSnapshotOptions(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, opts.snapshotName, opts.snapshotDir)
 		},
 	}
 
@@ -124,6 +132,8 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
 	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.analyze.flag.format"))
+	cmd.Flags().StringVar(&opts.snapshotName, "snapshot-name", "", "Save JSON analyze output as a named snapshot")
+	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to save analyze snapshots")
 	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
 	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, i18n.T("cmd.analyze.flag.topTransactions"))
@@ -245,7 +255,11 @@ func runAnalysis(paths []string, opts analyzer.Options, format string) error {
 }
 
 func runAnalysisWithReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string) error {
-	return runAnalysisWithParserAndTempDirAndReportOptions(paths, opts, reportOpts, format, binlog.NewParser(), "", nil)
+	return runAnalysisWithReportAndSnapshotOptions(paths, opts, reportOpts, format, nil, "", "")
+}
+
+func runAnalysisWithReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, snapshotName, snapshotDir string) error {
+	return runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths, opts, reportOpts, format, snapshotMeta, snapshotName, snapshotDir, binlog.NewParser(), "", nil)
 }
 
 // runAnalysisWithParser executes the analysis pipeline with an injected parser.
@@ -259,7 +273,11 @@ func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, form
 }
 
 func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	return runAnalysisStreamingWithDeps(paths, opts, reportOpts, format, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	return runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths, opts, reportOpts, format, nil, "", "", parser, tempRoot, onStoreCreated)
+}
+
+func runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, snapshotName, snapshotDir string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return analyzer.NewWithStore(opts, store)
 	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
 		store, cleanup, path, err := createDuckDBTempStore(root)
@@ -267,7 +285,7 @@ func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyz
 			onStoreCreated(path)
 		}
 		return store, cleanup, path, err
-	}, tempRoot)
+	}, tempRoot, snapshotMeta, snapshotName, snapshotDir)
 }
 
 func totalInputBytes(paths []string) (int64, []int64) {
@@ -366,6 +384,23 @@ func runAnalysisStreamingWithDeps(
 	newTempStore tempStoreFactory,
 	tempRoot string,
 ) error {
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, normalize, newAnalyzer, newTempStore, tempRoot, nil, "", "")
+}
+
+func runAnalysisStreamingWithSnapshotDeps(
+	paths []string,
+	opts analyzer.Options,
+	reportOpts report.Options,
+	format string,
+	parser binlog.Parser,
+	normalize normalizeRawEventFunc,
+	newAnalyzer commandAnalyzerFactory,
+	newTempStore tempStoreFactory,
+	tempRoot string,
+	snapshotMeta *model.Snapshot,
+	snapshotName string,
+	snapshotDir string,
+) error {
 	progress, err := newAggregateProgress(paths, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
@@ -417,6 +452,12 @@ func runAnalysisStreamingWithDeps(
 
 	switch format {
 	case "json":
+		if snapshotMeta != nil {
+			result.Snapshot = snapshotMeta
+		}
+		if snapshotName != "" {
+			return saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+		}
 		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 	case "markdown", "md":
 		return report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
@@ -425,6 +466,23 @@ func runAnalysisStreamingWithDeps(
 	default:
 		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
+}
+
+func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {
+	payload, err := report.RenderJSONWithOptions(result, reportOpts)
+	if err != nil {
+		return err
+	}
+
+	savedPath, err := snapshot.SaveJSON(snapshotDir, snapshotName, []byte(payload))
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(os.Stderr, "Saved snapshot %q to %s\n", snapshotName, savedPath); err != nil {
+		return err
+	}
+	_, err = fmt.Fprint(os.Stdout, payload)
+	return err
 }
 
 func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, string, error) {
@@ -527,4 +585,50 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 		return report.Options{}, err
 	}
 	return report.Options{SQLContextMode: mode}, nil
+}
+
+func validateAnalyzeOptions(opts *analyzeOptions) error {
+	if opts.snapshotName != "" && opts.format != "json" {
+		return fmt.Errorf("--snapshot-name requires --format json")
+	}
+	if opts.snapshotName != "" {
+		return snapshot.ValidateName(opts.snapshotName)
+	}
+	return nil
+}
+
+func buildSnapshotMetadata(paths []string, opts *analyzeOptions, startTime, endTime time.Time, discovered bool) *model.Snapshot {
+	if opts.snapshotName == "" {
+		return nil
+	}
+
+	inputMode := "explicit"
+	if discovered {
+		inputMode = "discovery"
+	} else {
+		inputMode = "files"
+	}
+
+	return &model.Snapshot{
+		Name:             opts.snapshotName,
+		Label:            opts.snapshotName,
+		CreatedAt:        time.Now().UTC(),
+		BinlogvizVersion: version.Version,
+		InputMode:        inputMode,
+		Input: model.SnapshotInput{
+			Files:   append([]string(nil), paths...),
+			FromDir: opts.fromDir,
+			Prefix:  opts.prefix,
+		},
+		Window: model.SnapshotWindow{
+			StartTime: startTime,
+			EndTime:   endTime,
+		},
+		Filters: model.SnapshotFilters{
+			IncludeSchemas: append([]string(nil), opts.includeSchemas...),
+			ExcludeSchemas: append([]string(nil), opts.excludeSchemas...),
+			IncludeTables:  append([]string(nil), opts.includeTables...),
+			ExcludeTables:  append([]string(nil), opts.excludeTables...),
+		},
+	}
 }

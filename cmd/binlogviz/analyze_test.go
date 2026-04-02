@@ -282,6 +282,8 @@ func TestAnalyzeCommandDefinesFlags(t *testing.T) {
 		"start",
 		"end",
 		"format",
+		"snapshot-name",
+		"snapshot-dir",
 		"sql-context",
 		"top-tables",
 		"top-transactions",
@@ -321,6 +323,21 @@ func TestAnalyzeCommandRejectsInvalidSQLContext(t *testing.T) {
 		t.Fatal("expected invalid sql-context error")
 	}
 	if !strings.Contains(err.Error(), "invalid --sql-context") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestAnalyzeCommandRejectsSnapshotNameWithoutJSONFormat(t *testing.T) {
+	cmd := newAnalyzeCommand()
+	cmd.SetArgs([]string{"dummy.binlog", "--snapshot-name", "incident_window"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected snapshot-name validation error")
+	}
+	if !strings.Contains(err.Error(), "--snapshot-name requires --format json") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

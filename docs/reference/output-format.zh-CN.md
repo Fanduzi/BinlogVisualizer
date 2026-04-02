@@ -8,7 +8,7 @@
 
 BinlogViz 会把不同用途的输出写到不同通道：
 
-- `analyze`：`stdout` 承载最终分析报告；`stderr` 承载进度、discovery 解析出的文件列表、最终组装状态以及运行时错误。
+- `analyze`：`stdout` 承载最终分析报告；`stderr` 承载进度、discovery 解析出的文件列表、最终组装状态、快照保存确认以及运行时错误。
 - `compare`：`stdout` 承载最终 compare 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
@@ -19,6 +19,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 在上面的例子中，JSON 报告会写入 `analyze.json`，而进度和 discovery 状态仍然通过 `stderr` 显示在终端上。
 
+如果再加上 `--snapshot-name`，JSON 载荷仍然写到 `stdout`，同时 BinlogViz 会在 `stderr` 上打印类似 `Saved snapshot "incident_current" to /home/user/.binlogviz/snapshots/incident_current.json` 的保存确认。
+
 ## 可用格式
 
 ### `analyze`
@@ -26,7 +28,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 | 参数值 | 别名 | 说明 |
 |---|---|---|
 | `text` | — | 默认，人类可读的终端输出。 |
-| `json` | `--json` | 机器可读的 JSON 格式。 |
+| `json` | — | 机器可读的 JSON 格式。 |
 | `markdown` | `md` | 含表格的 GitHub Flavored Markdown。 |
 | `html` | — | 含交互式图表和主题切换器的自包含 HTML 文件。 |
 
@@ -148,6 +150,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `minutes` | array | yes | 每分钟聚合结果；没有分钟桶时为空数组 |
 | `alerts` | array | yes | 检测到的告警；没有告警时为空数组 |
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
+| `snapshot` | object | no | 仅在 `analyze` 使用 `--snapshot-name` 时出现 |
 
 ### `summary`
 
@@ -233,6 +236,45 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 它表示最终结果对象中累计的分析警告数量。这个值属于 `stdout` 上机器可读报告的一部分；它不是进度行数，也不是 `stderr` 消息数量。非零值表示分析已完成，但结果中记录了警告条件；并不表示 JSON 输出本身有问题。
 
+### `snapshot`
+
+除非 `analyze` 使用 `--snapshot-name`，否则 `snapshot` 会被省略。出现时它是顶层平铺对象，而不是再包一层 metadata。
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `name` | string | yes | 由 `--snapshot-name` 选择的快照文件名 stem |
+| `label` | string | yes | 当前实现中与 `name` 相同 |
+| `created_at` | string | yes | 渲染报告时生成的 RFC3339 时间戳 |
+| `binlogviz_version` | string | yes | 二进制内嵌的版本字符串 |
+| `input_mode` | string | yes | 位置参数文件模式为 `files`，`--from-dir`/`--prefix` 模式为 `discovery` |
+| `input` | object | yes | 快照输入详情 |
+| `window` | object | yes | 快照时间窗口详情 |
+| `filters` | object | yes | 快照 schema/table 过滤条件 |
+
+#### `snapshot.input`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `files` | array | yes | 本次 analyze 使用的有序输入文件路径 |
+| `from_dir` | string | yes | discovery 目录；位置参数文件模式下为空字符串 |
+| `prefix` | string | yes | discovery 前缀；位置参数文件模式下为空字符串 |
+
+#### `snapshot.window`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `start_time` | string | yes | RFC3339 时间戳；未设置 `--start` 时为空字符串 |
+| `end_time` | string | yes | RFC3339 时间戳；未设置 `--end` 时为空字符串 |
+
+#### `snapshot.filters`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `include_schema` | array | yes | 包含的 schema；没有时为空数组 |
+| `exclude_schema` | array | yes | 排除的 schema；没有时为空数组 |
+| `include_table` | array | yes | 包含的表；没有时为空数组 |
+| `exclude_table` | array | yes | 排除的表；没有时为空数组 |
+
 ## Markdown 输出
 
 Markdown 模式输出 GitHub Flavored Markdown 报告，包含五个章节：工作负载摘要、热点表、热点事务、分钟级活动和告警，所有章节使用管道表格。
@@ -258,6 +300,52 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 - 交互式条形图：行数最多的热点表
 - 交互式环形图：INSERT / UPDATE / DELETE 操作分布
 - 热点表详情表格
+
+## Compare JSON 输出
+
+当 compare 结果需要交给脚本或其他工具消费时，请使用 `binlogviz compare --format json`。
+
+```bash
+binlogviz compare --current-snapshot current --baseline-snapshot baseline --format json
+```
+
+compare JSON 契约始终包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `summary` | object | yes | 行数、事务数和 warning 的差异 |
+| `table_changes` | array | yes | 按表统计的行数差异 |
+| `operation_mix` | array | yes | INSERT / UPDATE / DELETE 差异 |
+| `alert_changes` | object | yes | 新增和移除的告警 |
+| `current_label` | string | yes | 有快照元数据时使用快照感知标签，否则为 `current` |
+| `baseline_label` | string | yes | 有快照元数据时使用快照感知标签，否则为 `baseline` |
+| `current_snapshot` | object | no | 当前输入报告包含 analyze 快照元数据时出现 |
+| `baseline_snapshot` | object | no | 基线输入报告包含 analyze 快照元数据时出现 |
+
+`current_snapshot` 和 `baseline_snapshot` 复用上文 analyze `snapshot` 的同一字段契约。
+
+### 与旧文件模式的兼容性
+
+快照工作流并不会替换原来的 compare 路径。`compare` 仍然支持两个显式 analyze JSON 文件：
+
+```bash
+binlogviz compare current.json baseline.json --format json
+```
+
+兼容性规则：
+
+- 文件模式仍然完全受支持
+- 如果输入报告本身已经带有顶层 `snapshot` 元数据，compare 会把它再次暴露为 `current_snapshot` 和 `baseline_snapshot`
+- 较早生成、没有 snapshot 元数据的 analyze JSON 也可以继续成功对比
+- 当缺少 snapshot 元数据时，compare 会回退到 `current` 和 `baseline` 标签，并省略 `current_snapshot` / `baseline_snapshot`
+
+## Snapshot 命令输出
+
+`snapshot` 子命令使用简单的终端友好输出：
+
+- `snapshot save` 不向 `stdout` 写入载荷，而是在 `stderr` 打印 `Saved snapshot "<name>" to <path>`
+- `snapshot list` 每行一个快照名输出到 `stdout`
+- `snapshot show` 把元数据和摘要块输出到 `stdout`
 - 带严重等级徽标的告警列表
 
 ### 主题

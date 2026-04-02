@@ -284,6 +284,94 @@ func TestAnalyzeCommandDiscoveryModePrintsResolvedFilesToStderr(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCommandJSONSnapshotFlowPersistsReportAndPrintsSavePath(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture := mustFixturePath(t, "minimal.binlog")
+	snapshotDir := t.TempDir()
+	snapshotName := "incident_window"
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"analyze",
+		fixture,
+		"--format", "json",
+		"--snapshot-name", snapshotName,
+		"--snapshot-dir", snapshotDir,
+		"--start", "2026-03-09T10:00:00Z",
+		"--end", "2026-03-09T10:30:00Z",
+		"--include-schema", "testdb",
+	})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !json.Valid([]byte(stdout)) {
+		t.Fatalf("stdout must be valid json, got: %s", stdout)
+	}
+
+	savedPath := filepath.Join(snapshotDir, snapshotName+".json")
+	savedBytes, err := os.ReadFile(savedPath)
+	if err != nil {
+		t.Fatalf("read saved snapshot: %v", err)
+	}
+	if strings.TrimSpace(string(savedBytes)) != strings.TrimSpace(stdout) {
+		t.Fatalf("saved snapshot content must match stdout\nsaved=%s\nstdout=%s", savedBytes, stdout)
+	}
+	if !strings.Contains(stderr, savedPath) {
+		t.Fatalf("stderr must contain saved snapshot path %q, got: %s", savedPath, stderr)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("unmarshal stdout json: %v", err)
+	}
+	snapshot, ok := parsed["snapshot"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snapshot metadata object, got %v", parsed["snapshot"])
+	}
+	if snapshot["name"] != snapshotName {
+		t.Fatalf("expected snapshot.name %q, got %v", snapshotName, snapshot["name"])
+	}
+	if snapshot["label"] != snapshotName {
+		t.Fatalf("expected snapshot.label %q, got %v", snapshotName, snapshot["label"])
+	}
+	if snapshot["input_mode"] != "files" {
+		t.Fatalf("expected snapshot.input_mode files, got %v", snapshot["input_mode"])
+	}
+	if !strings.Contains(stderr, `Saved snapshot "incident_window" to `) {
+		t.Fatalf("stderr must contain save message, got: %s", stderr)
+	}
+	input, ok := snapshot["input"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snapshot.input object, got %v", snapshot["input"])
+	}
+	files, ok := input["files"].([]any)
+	if !ok || len(files) != 1 || files[0] != fixture {
+		t.Fatalf("expected snapshot.input.files to contain fixture path, got %v", input["files"])
+	}
+	window, ok := snapshot["window"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snapshot.window object, got %v", snapshot["window"])
+	}
+	if window["start_time"] != "2026-03-09T10:00:00Z" || window["end_time"] != "2026-03-09T10:30:00Z" {
+		t.Fatalf("unexpected snapshot.window payload: %v", window)
+	}
+	filters, ok := snapshot["filters"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected snapshot.filters object, got %v", snapshot["filters"])
+	}
+	includeSchemas, ok := filters["include_schema"].([]any)
+	if !ok || len(includeSchemas) != 1 || includeSchemas[0] != "testdb" {
+		t.Fatalf("expected snapshot.filters.include_schema to contain testdb, got %v", filters["include_schema"])
+	}
+}
+
 func forceEnglishRuntimeOutput(t *testing.T) {
 	t.Helper()
 

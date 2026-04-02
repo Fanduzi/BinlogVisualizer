@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -96,5 +97,36 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 
 	if !reflect.DeepEqual(decoded, expected) {
 		t.Fatalf("unexpected compare contract:\n got: %#v\nwant: %#v", decoded, expected)
+	}
+}
+
+func TestRenderJSONIncludesSnapshotIdentityWhenPresent(t *testing.T) {
+	output, err := RenderJSON(CompareResult{
+		CurrentLabel:  "Current Snapshot (current-snap)",
+		BaselineLabel: "Baseline Snapshot (baseline-snap)",
+		CurrentSnapshot: &InputSnapshot{
+			Name:  "current-snap",
+			Label: "Current Snapshot",
+		},
+		BaselineSnapshot: &InputSnapshot{
+			Name:  "baseline-snap",
+			Label: "Baseline Snapshot",
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		`"current_label": "Current Snapshot (current-snap)"`,
+		`"baseline_label": "Baseline Snapshot (baseline-snap)"`,
+		`"current_snapshot": {`,
+		`"baseline_snapshot": {`,
+		`"name": "current-snap"`,
+		`"name": "baseline-snap"`,
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected json output to contain %q, got %s", token, output)
+		}
 	}
 }
