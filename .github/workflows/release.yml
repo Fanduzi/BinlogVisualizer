@@ -59,6 +59,25 @@ jobs:
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
+
+          if [[ "${{ matrix.goos }}" == "linux" && "${{ matrix.goarch }}" == "amd64" ]]; then
+            GO_VERSION="$(awk '/^go / {print $2}' go.mod)"
+            docker run --rm -v "${PWD}:/src" -w /src centos:7 /bin/bash -lc '
+              set -euo pipefail
+              yum install -y gcc gcc-c++ make curl tar gzip git >/dev/null
+              curl -fsSL "https://go.dev/dl/go'"${GO_VERSION}"'.linux-amd64.tar.gz" -o /tmp/go.tgz
+              rm -rf /usr/local/go
+              tar -C /usr/local -xzf /tmp/go.tgz
+              /usr/local/go/bin/go version
+              GOOS=linux GOARCH=amd64 CGO_ENABLED=1 \
+                /usr/local/go/bin/go build -trimpath -ldflags "-s -w -X binlogviz/internal/version.Version='"${VERSION}"'" -o dist/binlogviz .
+            '
+            ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+            tar -C dist -czf "dist/${ARCHIVE}" binlogviz
+            rm -f dist/binlogviz
+            exit 0
+          fi
+
           GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" CGO_ENABLED=1 \
             go build -trimpath -ldflags "-s -w -X binlogviz/internal/version.Version=${VERSION}" -o dist/binlogviz .
           ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
