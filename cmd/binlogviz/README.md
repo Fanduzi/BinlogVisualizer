@@ -9,7 +9,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, snap
 | `root.go` | Builds the root command and registers `analyze`, `compare`, `snapshot`, and `version`. |
 | `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, aggregate parse progress on `stderr`, optional snapshot persistence, and command-owned DuckDB temp-store lifecycle. |
 | `compare.go` | Resolves compare inputs from explicit JSON files or named snapshots and renders text/JSON/HTML compare output. |
-| `snapshot.go` | Implements `snapshot save`, `snapshot list`, and `snapshot show`. |
+| `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
 | `*_test.go` | Covers flag parsing, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, and discovery-mode input resolution. |
 
@@ -30,7 +30,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, snap
   - `internal/analyzer` provides the DuckDB-backed analyzer and result store.
   - `internal/report` renders the final `AnalysisResult`.
   - `internal/compare` validates analyze JSON for compare workflows and renders compare output.
-  - `internal/snapshot` resolves snapshot paths and persists named analyze JSON reports.
+- `internal/snapshot` resolves snapshot paths, persists named analyze JSON reports, and manages snapshot metadata/rename/delete operations.
 - Downstream:
   - The compiled `binlogviz` CLI invokes this module as the user-facing entrypoint.
 
@@ -44,6 +44,7 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - Stage 4 adds `--sql-context summary|off|full`; CLI parses the mode and delegates presentation decisions to `internal/report`.
 - Stage 5 adds command-path benchmarks for real fixture parsing and synthetic high-volume streaming workloads, keeps fixture assets under `internal/binlog/testdata`, and adds aggregate parse progress based on ordered input file sizes.
 - Stage 8 adds named snapshot persistence under `~/.binlogviz/snapshots`, snapshot management commands, and snapshot-based compare input resolution while preserving legacy file-based compare.
+- The snapshot subtree now supports long-lived snapshot management with rename/delete and JSON output for list/show so external tooling can consume the snapshot store without parsing text output.
 - Discovery mode resolves ordered binlog files before entering the existing analysis pipeline and keeps the resolved list on `stderr` so report output on `stdout` stays machine-consumable.
 - Command temp-store cleanup remains directory-scoped and no longer depends on any SQL-context sidecar file; bounded SQL context now lives entirely inside the analyzer's DuckDB temp DB.
 - Top-N truncation is no longer applied in the command layer; it now happens during analyzer Finalize result assembly.

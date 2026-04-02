@@ -6,8 +6,10 @@
 package snapshot
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -152,4 +154,218 @@ func TestLoadSnapshotReportsMissingSnapshotClearly(t *testing.T) {
 	if !strings.Contains(err.Error(), `snapshot "missing" not found`) {
 		t.Fatalf("expected missing snapshot error, got %v", err)
 	}
+}
+
+func TestDescribeSnapshotReturnsNormalizedMetadata(t *testing.T) {
+	dir := t.TempDir()
+	_, err := SaveJSON(dir, "incident", []byte(minimalSnapshotStoreReportJSON("incident", "incident", 2400, 2)))
+	if err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+
+	desc, err := DescribeSnapshot(dir, "incident")
+	if err != nil {
+		t.Fatalf("describe snapshot: %v", err)
+	}
+
+	if desc.Name != "incident" {
+		t.Fatalf("unexpected name: %q", desc.Name)
+	}
+	if desc.Path != filepath.Join(dir, "incident.json") {
+		t.Fatalf("unexpected path: %q", desc.Path)
+	}
+	if desc.InputMode != "files" {
+		t.Fatalf("unexpected input mode: %q", desc.InputMode)
+	}
+	if got, want := desc.Summary.TotalRows, 2400; got != want {
+		t.Fatalf("unexpected total rows: got %d want %d", got, want)
+	}
+	if got, want := desc.Warnings, 2; got != want {
+		t.Fatalf("unexpected warnings: got %d want %d", got, want)
+	}
+	if got, want := len(desc.Input.Files), 1; got != want {
+		t.Fatalf("unexpected file count: got %d want %d", got, want)
+	}
+	if got, want := desc.Filters.IncludeSchemas, []string{"shop"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("unexpected include schemas: %+v", got)
+	}
+}
+
+func TestRenameSnapshotUpdatesIdentityAndFilename(t *testing.T) {
+	dir := t.TempDir()
+	_, err := SaveJSON(dir, "old_name", []byte(minimalSnapshotStoreReportJSON("old_name", "old_name", 2400, 2)))
+	if err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+
+	newPath, err := RenameSnapshot(dir, "old_name", "new_name")
+	if err != nil {
+		t.Fatalf("rename snapshot: %v", err)
+	}
+	if filepath.Base(newPath) != "new_name.json" {
+		t.Fatalf("unexpected new path: %q", newPath)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "old_name.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected old file removed, got err=%v", err)
+	}
+
+	_, payload, err := LoadSnapshot(dir, "new_name")
+	if err != nil {
+		t.Fatalf("load renamed snapshot: %v", err)
+	}
+	var decoded struct {
+		Snapshot struct {
+			Name  string `json:"name"`
+			Label string `json:"label"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal renamed snapshot: %v", err)
+	}
+	if decoded.Snapshot.Name != "new_name" {
+		t.Fatalf("expected renamed snapshot.name, got %q", decoded.Snapshot.Name)
+	}
+	if decoded.Snapshot.Label != "new_name" {
+		t.Fatalf("expected renamed snapshot.label, got %q", decoded.Snapshot.Label)
+	}
+}
+
+func TestRenameSnapshotPreservesDistinctLabel(t *testing.T) {
+	dir := t.TempDir()
+	_, err := SaveJSON(dir, "old_name", []byte(minimalSnapshotStoreReportJSON("old_name", "custom_label", 2400, 2)))
+	if err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+
+	_, err = RenameSnapshot(dir, "old_name", "new_name")
+	if err != nil {
+		t.Fatalf("rename snapshot: %v", err)
+	}
+
+	_, payload, err := LoadSnapshot(dir, "new_name")
+	if err != nil {
+		t.Fatalf("load renamed snapshot: %v", err)
+	}
+	var decoded struct {
+		Snapshot struct {
+			Name  string `json:"name"`
+			Label string `json:"label"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("unmarshal renamed snapshot: %v", err)
+	}
+	if decoded.Snapshot.Name != "new_name" {
+		t.Fatalf("expected renamed snapshot.name, got %q", decoded.Snapshot.Name)
+	}
+	if decoded.Snapshot.Label != "custom_label" {
+		t.Fatalf("expected distinct label preserved, got %q", decoded.Snapshot.Label)
+	}
+}
+
+func TestRenameSnapshotReportsMissingSourceClearly(t *testing.T) {
+	_, err := RenameSnapshot(t.TempDir(), "missing", "new_name")
+	if err == nil {
+		t.Fatal("expected missing snapshot error")
+	}
+	if !strings.Contains(err.Error(), `snapshot "missing" not found`) {
+		t.Fatalf("expected clear missing error, got %v", err)
+	}
+}
+
+func TestRenameSnapshotRejectsExistingDestination(t *testing.T) {
+	dir := t.TempDir()
+	_, err := SaveJSON(dir, "old_name", []byte(minimalSnapshotStoreReportJSON("old_name", "old_name", 2400, 2)))
+	if err != nil {
+		t.Fatalf("save old snapshot: %v", err)
+	}
+	_, err = SaveJSON(dir, "new_name", []byte(minimalSnapshotStoreReportJSON("new_name", "new_name", 2400, 2)))
+	if err != nil {
+		t.Fatalf("save new snapshot: %v", err)
+	}
+
+	_, err = RenameSnapshot(dir, "old_name", "new_name")
+	if err == nil {
+		t.Fatal("expected destination conflict")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected destination conflict error, got %v", err)
+	}
+}
+
+func TestDeleteSnapshotRemovesStoredFile(t *testing.T) {
+	dir := t.TempDir()
+	_, err := SaveJSON(dir, "incident", []byte(minimalSnapshotStoreReportJSON("incident", "incident", 2400, 2)))
+	if err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+
+	deletedPath, err := DeleteSnapshot(dir, "incident")
+	if err != nil {
+		t.Fatalf("delete snapshot: %v", err)
+	}
+	if deletedPath != filepath.Join(dir, "incident.json") {
+		t.Fatalf("unexpected deleted path: %q", deletedPath)
+	}
+	if _, err := os.Stat(deletedPath); !os.IsNotExist(err) {
+		t.Fatalf("expected snapshot file removed, got err=%v", err)
+	}
+}
+
+func TestDeleteSnapshotReportsMissingSnapshotClearly(t *testing.T) {
+	_, err := DeleteSnapshot(t.TempDir(), "missing")
+	if err == nil {
+		t.Fatal("expected missing snapshot error")
+	}
+	if !strings.Contains(err.Error(), `snapshot "missing" not found`) {
+		t.Fatalf("expected clear missing error, got %v", err)
+	}
+}
+
+func minimalSnapshotStoreReportJSON(name, label string, totalRows, warnings int) string {
+	return `{
+  "summary": {
+    "total_transactions": 120,
+    "total_rows": ` + strconv.Itoa(totalRows) + `,
+    "total_events": 3000,
+    "start_time": "2026-03-20T10:00:00Z",
+    "end_time": "2026-03-20T10:30:00Z",
+    "duration": "30m0s"
+  },
+  "tables": [
+    {
+      "schema": "shop",
+      "table": "orders",
+      "total_rows": ` + strconv.Itoa(totalRows) + `,
+      "insert_rows": 700,
+      "update_rows": 400,
+      "delete_rows": 100,
+      "txn_count": 80
+    }
+  ],
+  "alerts": [],
+  "warnings": ` + strconv.Itoa(warnings) + `,
+  "snapshot": {
+    "name": "` + name + `",
+    "label": "` + label + `",
+    "created_at": "2026-03-20T10:31:00Z",
+    "binlogviz_version": "dev",
+    "input_mode": "files",
+    "input": {
+      "files": ["mysql-bin.000123"],
+      "from_dir": "",
+      "prefix": ""
+    },
+    "window": {
+      "start_time": "2026-03-20T10:00:00Z",
+      "end_time": "2026-03-20T10:30:00Z"
+    },
+    "filters": {
+      "include_schema": ["shop"],
+      "exclude_schema": [],
+      "include_table": [],
+      "exclude_table": []
+    }
+  }
+}`
 }

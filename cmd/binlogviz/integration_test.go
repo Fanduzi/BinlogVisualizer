@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -372,6 +373,131 @@ func TestAnalyzeCommandJSONSnapshotFlowPersistsReportAndPrintsSavePath(t *testin
 	}
 }
 
+func TestSnapshotImportOldAnalyzeJSONAndCompareByName(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	reportDir := t.TempDir()
+	snapshotDir := t.TempDir()
+	baselinePath := filepath.Join(reportDir, "baseline.json")
+	currentPath := filepath.Join(reportDir, "current.json")
+	if err := os.WriteFile(baselinePath, []byte(minimalAnalyzeReportJSONForIntegration(1200, 1)), 0o644); err != nil {
+		t.Fatalf("write baseline report: %v", err)
+	}
+	if err := os.WriteFile(currentPath, []byte(minimalAnalyzeReportJSONForIntegration(2400, 2)), 0o644); err != nil {
+		t.Fatalf("write current report: %v", err)
+	}
+
+	saveBaseline := NewRootCommand()
+	saveBaseline.SetArgs([]string{"snapshot", "save", baselinePath, "--name", "baseline", "--snapshot-dir", snapshotDir})
+	saveBaseline.SilenceUsage = true
+	saveBaseline.SilenceErrors = true
+	if err := saveBaseline.Execute(); err != nil {
+		t.Fatalf("save baseline snapshot: %v", err)
+	}
+
+	saveCurrent := NewRootCommand()
+	saveCurrent.SetArgs([]string{"snapshot", "save", currentPath, "--name", "current", "--snapshot-dir", snapshotDir})
+	saveCurrent.SilenceUsage = true
+	saveCurrent.SilenceErrors = true
+	if err := saveCurrent.Execute(); err != nil {
+		t.Fatalf("save current snapshot: %v", err)
+	}
+
+	compareCmd := NewRootCommand()
+	compareCmd.SetArgs([]string{
+		"compare",
+		"--current-snapshot", "current",
+		"--baseline-snapshot", "baseline",
+		"--snapshot-dir", snapshotDir,
+		"--format", "text",
+	})
+	compareCmd.SilenceUsage = true
+	compareCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return compareCmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("compare imported snapshots: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{
+		"Current Label: current",
+		"Baseline Label: baseline",
+		"Current Input Mode: imported",
+		"Baseline Input Mode: imported",
+	} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected compare output to contain %q, got %q", token, stdout)
+		}
+	}
+}
+
+func TestSnapshotCommandsUseDefaultHomeSnapshotDir(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	reportPath := filepath.Join(t.TempDir(), "import.json")
+	if err := os.WriteFile(reportPath, []byte(minimalAnalyzeReportJSONForIntegration(2400, 1)), 0o644); err != nil {
+		t.Fatalf("write import report: %v", err)
+	}
+
+	saveCmd := NewRootCommand()
+	saveCmd.SetArgs([]string{"snapshot", "save", reportPath, "--name", "default_home_snapshot"})
+	saveCmd.SilenceUsage = true
+	saveCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return saveCmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("save default-home snapshot: %v", err)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+
+	expectedDir := filepath.Join(home, ".binlogviz", "snapshots")
+	expectedPath := filepath.Join(expectedDir, "default_home_snapshot.json")
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Fatalf("expected snapshot at default path %q: %v", expectedPath, err)
+	}
+	if !strings.Contains(stderr, expectedPath) {
+		t.Fatalf("expected stderr to contain default snapshot path %q, got %q", expectedPath, stderr)
+	}
+
+	listCmd := NewRootCommand()
+	listCmd.SetArgs([]string{"snapshot", "list", "--format", "json"})
+	listCmd.SilenceUsage = true
+	listCmd.SilenceErrors = true
+
+	listStdout, _, err := captureStdoutStderrRun(t, func() error {
+		return listCmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("list default-home snapshots: %v", err)
+	}
+
+	var decoded struct {
+		SnapshotDir string `json:"snapshot_dir"`
+		Snapshots   []struct {
+			Name string `json:"name"`
+		} `json:"snapshots"`
+	}
+	if err := json.Unmarshal([]byte(listStdout), &decoded); err != nil {
+		t.Fatalf("decode list json: %v\n%s", err, listStdout)
+	}
+	if decoded.SnapshotDir != expectedDir {
+		t.Fatalf("unexpected default snapshot dir: got %q want %q", decoded.SnapshotDir, expectedDir)
+	}
+	if len(decoded.Snapshots) != 1 || decoded.Snapshots[0].Name != "default_home_snapshot" {
+		t.Fatalf("unexpected default-home snapshots: %+v", decoded.Snapshots)
+	}
+}
+
 func forceEnglishRuntimeOutput(t *testing.T) {
 	t.Helper()
 
@@ -382,6 +508,32 @@ func forceEnglishRuntimeOutput(t *testing.T) {
 		t.Fatalf("init english i18n: %v", err)
 	}
 	t.Cleanup(i18n.ResetForTesting)
+}
+
+func minimalAnalyzeReportJSONForIntegration(totalRows, warnings int) string {
+	return `{
+  "summary": {
+    "total_transactions": 120,
+    "total_rows": ` + strconv.Itoa(totalRows) + `,
+    "total_events": 3000,
+    "start_time": "2026-03-20T10:00:00Z",
+    "end_time": "2026-03-20T10:30:00Z",
+    "duration": "30m0s"
+  },
+  "tables": [
+    {
+      "schema": "shop",
+      "table": "orders",
+      "total_rows": ` + strconv.Itoa(totalRows) + `,
+      "insert_rows": 700,
+      "update_rows": 400,
+      "delete_rows": 100,
+      "txn_count": 80
+    }
+  ],
+  "alerts": [],
+  "warnings": ` + strconv.Itoa(warnings) + `
+}`
 }
 
 func TestAnalyzeToCompareWorkflowWithGeneratedReports(t *testing.T) {

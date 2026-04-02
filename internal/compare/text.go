@@ -6,6 +6,7 @@ package compare
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -20,6 +21,24 @@ func RenderText(result CompareResult) (string, error) {
 	}
 	if window := formatSnapshotWindow(result.BaselineSnapshot); window != "" {
 		fmt.Fprintf(&b, "Baseline Window: %s\n", window)
+	}
+	if inputMode := formatSnapshotInputMode(result.CurrentSnapshot); inputMode != "" {
+		fmt.Fprintf(&b, "Current Input Mode: %s\n", inputMode)
+	}
+	if inputMode := formatSnapshotInputMode(result.BaselineSnapshot); inputMode != "" {
+		fmt.Fprintf(&b, "Baseline Input Mode: %s\n", inputMode)
+	}
+	if source := formatSnapshotSource(result.CurrentSnapshot); source != "" {
+		fmt.Fprintf(&b, "Current Source: %s\n", source)
+	}
+	if source := formatSnapshotSource(result.BaselineSnapshot); source != "" {
+		fmt.Fprintf(&b, "Baseline Source: %s\n", source)
+	}
+	if filters := formatSnapshotFilters(result.CurrentSnapshot); filters != "" {
+		fmt.Fprintf(&b, "Current Filters: %s\n", filters)
+	}
+	if filters := formatSnapshotFilters(result.BaselineSnapshot); filters != "" {
+		fmt.Fprintf(&b, "Baseline Filters: %s\n", filters)
 	}
 	fmt.Fprintf(&b, "Rows: %d -> %d (%+d)\n", result.Summary.BaselineTotalRows, result.Summary.CurrentTotalRows, result.Summary.TotalRowsDelta)
 	fmt.Fprintf(&b, "Transactions: %d -> %d (%+d)\n", result.Summary.BaselineTotalTransactions, result.Summary.CurrentTotalTransactions, result.Summary.TotalTransactionsDelta)
@@ -82,4 +101,51 @@ func formatSnapshotWindow(snapshot *InputSnapshot) string {
 	default:
 		return ""
 	}
+}
+
+func formatSnapshotInputMode(snapshot *InputSnapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+	return strings.TrimSpace(snapshot.InputMode)
+}
+
+func formatSnapshotSource(snapshot *InputSnapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+
+	parts := make([]string, 0, 3)
+	if count := len(snapshot.Input.Files); count > 0 {
+		parts = append(parts, fmt.Sprintf("files=%d", count))
+	}
+	if fromDir := strings.TrimSpace(snapshot.Input.FromDir); fromDir != "" {
+		parts = append(parts, "from_dir="+fromDir)
+	}
+	if prefix := strings.TrimSpace(snapshot.Input.Prefix); prefix != "" {
+		parts = append(parts, "prefix="+prefix)
+	}
+	return strings.Join(parts, " ")
+}
+
+func formatSnapshotFilters(snapshot *InputSnapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+
+	parts := make([]string, 0, 4)
+	if len(snapshot.Filters.IncludeSchemas) > 0 {
+		parts = append(parts, "include_schema="+strings.Join(snapshot.Filters.IncludeSchemas, ","))
+	}
+	if len(snapshot.Filters.ExcludeSchemas) > 0 {
+		parts = append(parts, "exclude_schema="+strings.Join(snapshot.Filters.ExcludeSchemas, ","))
+	}
+	if len(snapshot.Filters.IncludeTables) > 0 {
+		parts = append(parts, "include_table="+strings.Join(snapshot.Filters.IncludeTables, ","))
+	}
+	if len(snapshot.Filters.ExcludeTables) > 0 {
+		parts = append(parts, "exclude_table="+strings.Join(snapshot.Filters.ExcludeTables, ","))
+	}
+	slices.Sort(parts)
+	return strings.Join(parts, " ")
 }

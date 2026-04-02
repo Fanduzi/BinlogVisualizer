@@ -57,12 +57,27 @@ func TestRenderTextIncludesSnapshotIdentityWhenPresent(t *testing.T) {
 		CurrentLabel:  "Current Snapshot (current-snap)",
 		BaselineLabel: "Baseline Snapshot (baseline-snap)",
 		CurrentSnapshot: &InputSnapshot{
+			InputMode: "files",
+			Input: InputSnapshotInput{
+				Files: []string{"mysql-bin.000123", "mysql-bin.000124"},
+			},
+			Filters: InputSnapshotFilters{
+				IncludeSchemas: []string{"shop"},
+			},
 			Window: InputSnapshotWindow{
 				StartTime: "2026-03-20T10:00:00Z",
 				EndTime:   "2026-03-20T10:30:00Z",
 			},
 		},
 		BaselineSnapshot: &InputSnapshot{
+			InputMode: "discovery",
+			Input: InputSnapshotInput{
+				FromDir: "/var/lib/mysql",
+				Prefix:  "mysql-bin.",
+			},
+			Filters: InputSnapshotFilters{
+				ExcludeSchemas: []string{"mysql"},
+			},
 			Window: InputSnapshotWindow{
 				StartTime: "2026-03-13T10:00:00Z",
 				EndTime:   "2026-03-13T10:30:00Z",
@@ -78,6 +93,12 @@ func TestRenderTextIncludesSnapshotIdentityWhenPresent(t *testing.T) {
 		"Baseline Label: Baseline Snapshot (baseline-snap)",
 		"Current Window: 2026-03-20T10:00:00Z -> 2026-03-20T10:30:00Z",
 		"Baseline Window: 2026-03-13T10:00:00Z -> 2026-03-13T10:30:00Z",
+		"Current Input Mode: files",
+		"Baseline Input Mode: discovery",
+		"Current Source: files=2",
+		"Baseline Source: from_dir=/var/lib/mysql prefix=mysql-bin.",
+		"Current Filters: include_schema=shop",
+		"Baseline Filters: exclude_schema=mysql",
 	} {
 		if !strings.Contains(output, token) {
 			t.Fatalf("expected text output to contain %q, got %s", token, output)

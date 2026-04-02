@@ -2,6 +2,23 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.8.3
+
+Release date: 2026-04-02
+
+Highlights:
+
+- Added `binlogviz snapshot rename` and `binlogviz snapshot delete` for long-lived snapshot store management
+- Added `snapshot list --format json` and `snapshot show --format json` for script-friendly snapshot inspection
+- Added richer compare text/HTML context with snapshot input mode, source summary, filters, and requested window
+- Added integration coverage for old analyze JSON import, default snapshot directory behavior, conflicts, invalid names, and missing snapshot flows
+- Kept legacy `binlogviz compare <current.json> <baseline.json>` file mode and compare JSON structure backward-compatible
+
+Related notes:
+
+- [v0.8.3 release notes](docs/releases/release-notes-v0.8.3.md)
+- [v0.8.3 中文发行说明](docs/releases/release-notes-v0.8.3.zh-CN.md)
+
 ## v0.8.0
 
 Release date: 2026-04-02
