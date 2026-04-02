@@ -111,3 +111,37 @@ func TestRenderHTMLEscapesHostileCompareContent(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHTMLIncludesSnapshotIdentityWhenPresent(t *testing.T) {
+	output, err := RenderHTML(CompareResult{
+		CurrentLabel:  "Current Snapshot (current-snap)",
+		BaselineLabel: "Baseline Snapshot (baseline-snap)",
+		CurrentSnapshot: &InputSnapshot{
+			Window: InputSnapshotWindow{
+				StartTime: "2026-03-20T10:00:00Z",
+				EndTime:   "2026-03-20T10:30:00Z",
+			},
+		},
+		BaselineSnapshot: &InputSnapshot{
+			Window: InputSnapshotWindow{
+				StartTime: "2026-03-13T10:00:00Z",
+				EndTime:   "2026-03-13T10:30:00Z",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		"Current Snapshot (current-snap) vs Baseline Snapshot (baseline-snap)",
+		">Current Snapshot (current-snap)<",
+		">Baseline Snapshot (baseline-snap)<",
+		"2026-03-20T10:00:00Z -&gt; 2026-03-20T10:30:00Z",
+		"2026-03-13T10:00:00Z -&gt; 2026-03-13T10:30:00Z",
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected html output to contain %q", token)
+		}
+	}
+}

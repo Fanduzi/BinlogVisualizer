@@ -52,23 +52,32 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
-### 把当前窗口和基线窗口做对比
+### 把两个故障窗口保存成快照后再做对比
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --start "2026-03-15T10:00:00Z" \
   --end "2026-03-15T10:30:00Z" \
-  --format json > current.json
+  --format json \
+  --snapshot-name incident_current
 
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --start "2026-03-08T10:00:00Z" \
   --end "2026-03-08T10:30:00Z" \
-  --format json > baseline.json
+  --format json \
+  --snapshot-name incident_baseline
 
-binlogviz compare current.json baseline.json --format html > compare.html
+binlogviz snapshot list
+binlogviz snapshot show incident_current
+binlogviz compare \
+  --current-snapshot incident_current \
+  --baseline-snapshot incident_baseline \
+  --format html > compare.html
 ```
 
-`compare` 只接受两份由 `binlogviz analyze --format json` 生成的 JSON 报告，输出格式支持 `text`、`json`、`html`。其中 HTML 是面向 DBA/运维的可视化对比报告，包含 summary 差异、热点表变化、操作类型分布变化，以及告警新增/消失的图表化视图。
+当设置 `--snapshot-name` 时，`analyze --format json` 仍然会把 JSON 报告写到 `stdout`，同时把同一份载荷保存到 `~/.binlogviz/snapshots/<name>.json`。保存成功提示会打印到 `stderr`。
+
+`compare` 既可以加载已保存的快照，也可以继续加载两份由 `binlogviz analyze --format json` 生成的 JSON 文件。输出格式支持 `text`、`json`、`html`。其中 HTML 是面向 DBA/运维的可视化对比报告，包含 summary 差异、热点表变化、操作类型分布变化，以及告警新增/消失的图表化视图。
 
 compare 生成的最终报告写到 `stdout`。如果 compare 命令失败，CLI 会通过 `stderr` 输出错误。
 
@@ -232,12 +241,34 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 ### 7. 把当前结果和基线结果做对比
 
 ```bash
-binlogviz compare current.json baseline.json
-binlogviz compare current.json baseline.json --format json > compare.json
-binlogviz compare current.json baseline.json --format html > compare.html
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-03-15T10:00:00Z" \
+  --end "2026-03-15T10:30:00Z" \
+  --format json \
+  --snapshot-name incident_current > /tmp/incident_current.json
+
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-03-08T10:00:00Z" \
+  --end "2026-03-08T10:30:00Z" \
+  --format json \
+  --snapshot-name incident_baseline > /tmp/incident_baseline.json
+
+binlogviz snapshot list
+binlogviz snapshot show incident_current
+binlogviz compare --current-snapshot incident_current --baseline-snapshot incident_baseline
+binlogviz compare --current-snapshot incident_current --baseline-snapshot incident_baseline --format json > compare.json
+binlogviz compare --current-snapshot incident_current --baseline-snapshot incident_baseline --format html > compare.html
 ```
 
-适合在你已经导出两份 `binlogviz analyze --format json` 报告之后使用。compare 会把工作负载总量变化、热点表变化、操作类型变化，以及告警新增/移除情况集中呈现，便于 DBA 快速判断当前窗口是否比基线更重、更分散、或者更异常。
+默认快照目录是 `~/.binlogviz/snapshots`。如果你已经有导出的 analyze JSON 文件，之后也可以通过 `binlogviz snapshot save <report.json> --name <name>` 把它补充保存进去。
+
+如果你已经在自己管理导出的 JSON 文件，旧的文件对比模式仍然可用：
+
+```bash
+binlogviz compare /tmp/incident_current.json /tmp/incident_baseline.json
+```
+
+compare 会把工作负载总量变化、热点表变化、操作类型变化，以及告警新增/移除情况集中呈现，便于 DBA 快速判断当前窗口是否比基线更重、更分散、或者更异常。
 
 ## 多语言支持
 

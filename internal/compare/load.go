@@ -38,9 +38,21 @@ func LoadReport(path string) (InputReport, error) {
 		return InputReport{}, fmt.Errorf("read compare input %s: %w", path, err)
 	}
 
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		if strings.Contains(err.Error(), "unsupported BinlogViz report shape") {
+			return InputReport{}, err
+		}
+		return InputReport{}, fmt.Errorf("decode compare input %s: %w", path, err)
+	}
+	return report, nil
+}
+
+// DecodeReportJSON decodes and validates an analyze JSON payload for compare-compatible use.
+func DecodeReportJSON(data []byte) (InputReport, error) {
 	var raw rawInputReport
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return InputReport{}, fmt.Errorf("decode compare input %s: %w", path, err)
+		return InputReport{}, err
 	}
 	if err := validateRawInputReport(raw); err != nil {
 		return InputReport{}, err
@@ -48,7 +60,7 @@ func LoadReport(path string) (InputReport, error) {
 
 	var report InputReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return InputReport{}, fmt.Errorf("decode compare input %s: %w", path, err)
+		return InputReport{}, err
 	}
 	return report, nil
 }

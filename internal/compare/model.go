@@ -5,10 +5,11 @@
 package compare
 
 type InputReport struct {
-	Summary  InputSummary `json:"summary"`
-	Tables   []InputTable `json:"tables"`
-	Alerts   []InputAlert `json:"alerts"`
-	Warnings int          `json:"warnings"`
+	Summary  InputSummary   `json:"summary"`
+	Tables   []InputTable   `json:"tables"`
+	Alerts   []InputAlert   `json:"alerts"`
+	Warnings int            `json:"warnings"`
+	Snapshot *InputSnapshot `json:"snapshot,omitempty"`
 }
 
 type InputSummary struct {
@@ -39,13 +40,44 @@ type InputAlert struct {
 	Details  map[string]any `json:"details,omitempty"`
 }
 
+type InputSnapshot struct {
+	Name             string               `json:"name"`
+	Label            string               `json:"label"`
+	CreatedAt        string               `json:"created_at"`
+	BinlogvizVersion string               `json:"binlogviz_version"`
+	InputMode        string               `json:"input_mode"`
+	Input            InputSnapshotInput   `json:"input"`
+	Window           InputSnapshotWindow  `json:"window"`
+	Filters          InputSnapshotFilters `json:"filters"`
+}
+
+type InputSnapshotInput struct {
+	Files   []string `json:"files"`
+	FromDir string   `json:"from_dir"`
+	Prefix  string   `json:"prefix"`
+}
+
+type InputSnapshotWindow struct {
+	StartTime string `json:"start_time"`
+	EndTime   string `json:"end_time"`
+}
+
+type InputSnapshotFilters struct {
+	IncludeSchemas []string `json:"include_schema"`
+	ExcludeSchemas []string `json:"exclude_schema"`
+	IncludeTables  []string `json:"include_table"`
+	ExcludeTables  []string `json:"exclude_table"`
+}
+
 type CompareResult struct {
-	Summary       SummaryDelta     `json:"summary"`
-	TableChanges  []TableChange    `json:"table_changes"`
-	OperationMix  []OperationDelta `json:"operation_mix"`
-	AlertChanges  AlertDelta       `json:"alert_changes"`
-	CurrentLabel  string           `json:"current_label"`
-	BaselineLabel string           `json:"baseline_label"`
+	Summary          SummaryDelta     `json:"summary"`
+	TableChanges     []TableChange    `json:"table_changes"`
+	OperationMix     []OperationDelta `json:"operation_mix"`
+	AlertChanges     AlertDelta       `json:"alert_changes"`
+	CurrentLabel     string           `json:"current_label"`
+	BaselineLabel    string           `json:"baseline_label"`
+	CurrentSnapshot  *InputSnapshot   `json:"current_snapshot,omitempty"`
+	BaselineSnapshot *InputSnapshot   `json:"baseline_snapshot,omitempty"`
 }
 
 type SummaryDelta struct {

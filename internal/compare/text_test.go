@@ -2,6 +2,7 @@ package compare
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,5 +48,39 @@ Removed Alerts (1)
 
 	if output != expected {
 		t.Fatalf("unexpected text output:\n%s", output)
+	}
+}
+
+func TestRenderTextIncludesSnapshotIdentityWhenPresent(t *testing.T) {
+	output, err := RenderText(CompareResult{
+		Summary:       SummaryDelta{},
+		CurrentLabel:  "Current Snapshot (current-snap)",
+		BaselineLabel: "Baseline Snapshot (baseline-snap)",
+		CurrentSnapshot: &InputSnapshot{
+			Window: InputSnapshotWindow{
+				StartTime: "2026-03-20T10:00:00Z",
+				EndTime:   "2026-03-20T10:30:00Z",
+			},
+		},
+		BaselineSnapshot: &InputSnapshot{
+			Window: InputSnapshotWindow{
+				StartTime: "2026-03-13T10:00:00Z",
+				EndTime:   "2026-03-13T10:30:00Z",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		"Current Label: Current Snapshot (current-snap)",
+		"Baseline Label: Baseline Snapshot (baseline-snap)",
+		"Current Window: 2026-03-20T10:00:00Z -> 2026-03-20T10:30:00Z",
+		"Baseline Window: 2026-03-13T10:00:00Z -> 2026-03-13T10:30:00Z",
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected text output to contain %q, got %s", token, output)
+		}
 	}
 }

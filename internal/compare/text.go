@@ -15,6 +15,12 @@ func RenderText(result CompareResult) (string, error) {
 	fmt.Fprintf(&b, "Compare Summary\n")
 	fmt.Fprintf(&b, "Current Label: %s\n", result.CurrentLabel)
 	fmt.Fprintf(&b, "Baseline Label: %s\n", result.BaselineLabel)
+	if window := formatSnapshotWindow(result.CurrentSnapshot); window != "" {
+		fmt.Fprintf(&b, "Current Window: %s\n", window)
+	}
+	if window := formatSnapshotWindow(result.BaselineSnapshot); window != "" {
+		fmt.Fprintf(&b, "Baseline Window: %s\n", window)
+	}
 	fmt.Fprintf(&b, "Rows: %d -> %d (%+d)\n", result.Summary.BaselineTotalRows, result.Summary.CurrentTotalRows, result.Summary.TotalRowsDelta)
 	fmt.Fprintf(&b, "Transactions: %d -> %d (%+d)\n", result.Summary.BaselineTotalTransactions, result.Summary.CurrentTotalTransactions, result.Summary.TotalTransactionsDelta)
 	fmt.Fprintf(&b, "Warnings: %d -> %d (%+d)\n\n", result.Summary.BaselineWarnings, result.Summary.CurrentWarnings, result.Summary.CurrentWarnings-result.Summary.BaselineWarnings)
@@ -56,4 +62,24 @@ func RenderText(result CompareResult) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+func formatSnapshotWindow(snapshot *InputSnapshot) string {
+	if snapshot == nil {
+		return ""
+	}
+
+	start := strings.TrimSpace(snapshot.Window.StartTime)
+	end := strings.TrimSpace(snapshot.Window.EndTime)
+
+	switch {
+	case start != "" && end != "":
+		return fmt.Sprintf("%s -> %s", start, end)
+	case start != "":
+		return start
+	case end != "":
+		return end
+	default:
+		return ""
+	}
 }

@@ -8,7 +8,7 @@ If you want the fastest operator path first, start with [Quickstart](../recipe/q
 
 BinlogViz uses separate output channels for different purposes:
 
-- `analyze`: `stdout` carries the final analysis report; `stderr` carries progress, resolved discovery files, finalization status, and runtime errors.
+- `analyze`: `stdout` carries the final analysis report; `stderr` carries progress, resolved discovery files, finalization status, snapshot save confirmations, and runtime errors.
 - `compare`: `stdout` carries the final compare report; command failures are reported through the CLI error path on `stderr`.
 
 This separation matters because it keeps report output safe for redirection and automation.
@@ -19,6 +19,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 In the example above, the JSON report is written to `analyze.json`, while progress and discovery status remain visible on the terminal through `stderr`.
 
+If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and BinlogViz prints a save confirmation such as `Saved snapshot "incident_current" to /home/user/.binlogviz/snapshots/incident_current.json` on `stderr`.
+
 ## Available Formats
 
 ### `analyze`
@@ -26,7 +28,7 @@ In the example above, the JSON report is written to `analyze.json`, while progre
 | Flag value | Alias | Description |
 |---|---|---|
 | `text` | — | Default. Human-readable terminal output. |
-| `json` | `--json` | Machine-readable JSON. |
+| `json` | — | Machine-readable JSON. |
 | `markdown` | `md` | GitHub-flavored Markdown with tables. |
 | `html` | — | Self-contained HTML with interactive charts and theme switcher. |
 
@@ -148,6 +150,7 @@ The top-level JSON object always contains these fields:
 | `minutes` | array | yes | Per-minute aggregates; empty array when no minute buckets exist |
 | `alerts` | array | yes | Detected alerts; empty array when no alerts exist |
 | `warnings` | integer | yes | Count of analysis warnings recorded in the finalized result |
+| `snapshot` | object | no | Present only when `analyze` is invoked with `--snapshot-name` |
 
 ### `summary`
 
@@ -233,6 +236,45 @@ The top-level JSON object always contains these fields:
 
 It counts analysis warnings accumulated in the finalized result object. This value is part of the machine-readable report on `stdout`; it is not a count of progress lines or `stderr` messages. A non-zero value indicates the analysis completed with warning conditions recorded in the result, not that JSON output is malformed.
 
+### `snapshot`
+
+`snapshot` is omitted unless `analyze` is run with `--snapshot-name`. When present, it is a flat top-level object, not a nested metadata wrapper.
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `name` | string | yes | Snapshot file stem chosen by `--snapshot-name` |
+| `label` | string | yes | Current implementation matches `name` |
+| `created_at` | string | yes | RFC3339 timestamp generated when the report is rendered |
+| `binlogviz_version` | string | yes | Version string embedded in the binary |
+| `input_mode` | string | yes | `files` for positional file mode, `discovery` for `--from-dir`/`--prefix` mode |
+| `input` | object | yes | Snapshot input details |
+| `window` | object | yes | Snapshot time-window details |
+| `filters` | object | yes | Snapshot schema/table filter details |
+
+#### `snapshot.input`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `files` | array | yes | Ordered input file paths used by the analyze run |
+| `from_dir` | string | yes | Discovery directory, or empty string in positional file mode |
+| `prefix` | string | yes | Discovery prefix, or empty string in positional file mode |
+
+#### `snapshot.window`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `start_time` | string | yes | RFC3339 timestamp, or empty string when `--start` is unset |
+| `end_time` | string | yes | RFC3339 timestamp, or empty string when `--end` is unset |
+
+#### `snapshot.filters`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `include_schema` | array | yes | Included schemas, or empty array |
+| `exclude_schema` | array | yes | Excluded schemas, or empty array |
+| `include_table` | array | yes | Included tables, or empty array |
+| `exclude_table` | array | yes | Excluded tables, or empty array |
+
 ## Markdown Output
 
 Markdown mode renders a GitHub-flavored Markdown report with five sections: workload summary, top tables, top transactions, per-minute activity, and alerts. All sections use pipe tables.
@@ -258,6 +300,52 @@ The report includes:
 - Interactive bar chart: top tables by rows
 - Interactive donut chart: INSERT / UPDATE / DELETE operation mix
 - Top tables detail table
+
+## Compare JSON Output
+
+Use `binlogviz compare --format json` when the comparison result needs to be consumed by scripts or other tools.
+
+```bash
+binlogviz compare --current-snapshot current --baseline-snapshot baseline --format json
+```
+
+The compare JSON contract always contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `summary` | object | yes | Rows, transactions, and warning deltas |
+| `table_changes` | array | yes | Per-table row deltas |
+| `operation_mix` | array | yes | INSERT / UPDATE / DELETE deltas |
+| `alert_changes` | object | yes | Added and removed alerts |
+| `current_label` | string | yes | Snapshot-aware label when metadata exists; otherwise `current` |
+| `baseline_label` | string | yes | Snapshot-aware label when metadata exists; otherwise `baseline` |
+| `current_snapshot` | object | no | Present when the current input report contains analyze snapshot metadata |
+| `baseline_snapshot` | object | no | Present when the baseline input report contains analyze snapshot metadata |
+
+`current_snapshot` and `baseline_snapshot` reuse the same field contract as the analyze `snapshot` object above.
+
+### Compatibility with legacy file mode
+
+The snapshot workflow does not replace the original compare path. `compare` still accepts two explicit analyze JSON files:
+
+```bash
+binlogviz compare current.json baseline.json --format json
+```
+
+Compatibility rules:
+
+- file mode remains fully supported
+- reports that already contain top-level `snapshot` metadata will surface it again as `current_snapshot` and `baseline_snapshot`
+- older analyze JSON files without snapshot metadata still compare successfully
+- when snapshot metadata is absent, compare falls back to `current` and `baseline` labels and omits `current_snapshot` / `baseline_snapshot`
+
+## Snapshot Command Output
+
+The `snapshot` subcommands use simple terminal-friendly output:
+
+- `snapshot save` writes no payload to `stdout` and prints `Saved snapshot "<name>" to <path>` to `stderr`
+- `snapshot list` writes one snapshot name per line to `stdout`
+- `snapshot show` writes metadata and a summary block to `stdout`
 - Alert list with severity badges
 
 ### Themes

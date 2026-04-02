@@ -43,8 +43,9 @@ func RenderHTML(result CompareResult) (string, error) {
 	}
 
 	tmpl, err := template.New("compare").Funcs(template.FuncMap{
-		"formatDelta":   formatHTMLDelta,
-		"formatPercent": formatHTMLPercent,
+		"formatDelta":    formatHTMLDelta,
+		"formatPercent":  formatHTMLPercent,
+		"snapshotWindow": formatSnapshotWindow,
 	}).Parse(compareHTMLTemplate)
 	if err != nil {
 		return "", fmt.Errorf("parse compare html template: %w", err)
@@ -323,6 +324,8 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       <div>
         <div class="header-logo">Binlog<span>Viz</span> Compare</div>
         <div>{{.Result.CurrentLabel}} vs {{.Result.BaselineLabel}}</div>
+        {{if snapshotWindow .Result.CurrentSnapshot}}<div class="header-context">Current Window: {{snapshotWindow .Result.CurrentSnapshot}}</div>{{end}}
+        {{if snapshotWindow .Result.BaselineSnapshot}}<div class="header-context">Baseline Window: {{snapshotWindow .Result.BaselineSnapshot}}</div>{{end}}
       </div>
       <div class="header-meta">
         <strong>Generated</strong>
