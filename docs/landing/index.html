@@ -993,7 +993,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.7.0 — visual compare + report exports</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.8.0 — snapshot workflow + visual compare</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1004,9 +1004,9 @@ Find hot tables, large transactions, write spikes, and incident-window changes, 
               <a href="#outputs" class="btn-secondary" data-i18n="hero.secondary">See output surfaces</a>
             </div>
             <div class="code-shell reveal visible">
-              <code data-i18n="hero.code"><span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>
-<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>
-<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span></code>
+              <code data-i18n="hero.code"><span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>
+<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span></code>
             </div>
             <div class="hero-highlights reveal visible">
               <article class="stat-card"><strong>4</strong><span data-i18n="hero.stats.formats">Output formats</span></article>
@@ -1268,8 +1268,8 @@ That progression tells a better website story than raw feature lists alone.</p>
                 </div>
                 <div class="timeline-item">
                   <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.reports.title">v0.7.0 — visual compare for incident review</div>
-                  <div class="timeline-desc" data-i18n="releases.items.reports.desc">Compare turns two analyze JSON reports into text, JSON, and chart-based HTML deltas that teams can review together.</div>
+                  <div class="timeline-title" data-i18n="releases.items.reports.title">v0.8.0 — snapshot workflow for incident baselines</div>
+                  <div class="timeline-desc" data-i18n="releases.items.reports.desc">Named snapshots let teams save analysis windows, inspect them later, and compare current versus baseline without manually juggling JSON paths.</div>
                 </div>
                 <div class="timeline-item">
                   <div class="timeline-date" data-i18n="releases.items.now.date">Now</div>
@@ -1405,12 +1405,12 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.7.0 — visual compare + report exports',
+            badge: 'v0.8.0 — snapshot workflow + visual compare',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, then compare the current window against a trusted baseline and hand the result to your team in a format they can actually use.',
             primary: 'Install BinlogViz',
             secondary: 'See output surfaces',
-            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>',
+            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>',
             stats: {
               formats: 'Output formats',
               stream: 'Streaming pipeline',
@@ -1510,7 +1510,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             items: {
               filters: { title: 'v0.5.x — focus and control', desc: 'Time filters, object selectors, and better control over the incident analysis surface.' },
               exports: { title: 'v0.6.0 — report exports for handoff', desc: 'Markdown and HTML exports turned analysis results into artifacts that can move cleanly into docs, reviews, and browser-based sharing.' },
-              reports: { title: 'v0.7.0 — visual compare for incident review', desc: 'Compare turns two analyze JSON reports into text, JSON, and chart-based HTML deltas that teams can review together.' },
+              reports: { title: 'v0.8.0 — snapshot workflow for incident baselines', desc: 'Named snapshots let teams save analysis windows, inspect them later, and compare current versus baseline without manually juggling JSON paths.' },
               now: { date: 'Now', title: 'Clear DBA-first positioning', desc: 'A local CLI that explains workload shifts faster and hands the answer off cleanly.' }
             },
             side: {
@@ -1580,12 +1580,12 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.7.0 —— visual compare + 报告导出',
+            badge: 'v0.8.0 —— snapshot workflow + visual compare',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，再把当前窗口与可信基线做对比，然后以团队真正能消费的形式交付出去。',
             primary: '安装 BinlogViz',
             secondary: '查看输出形式',
-            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">current.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> &gt; <span class="token-string">baseline.json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-string">current.json</span> <span class="token-string">baseline.json</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>',
+            code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>',
             stats: {
               formats: '输出格式',
               stream: '流式分析链路',
@@ -1685,7 +1685,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             items: {
               filters: { title: 'v0.5.x —— 聚焦与控制', desc: '时间过滤、对象选择和更强的事故分析控制能力。' },
               exports: { title: 'v0.6.0 —— 面向交付的报告导出', desc: 'Markdown 和 HTML 导出把分析结果变成可以顺滑进入文档、评审和浏览器分享的交付物。' },
-              reports: { title: 'v0.7.0 —— 面向事故评审的 visual compare', desc: 'compare 把两份 analyze JSON 报告变成 text、JSON 和图表化 HTML 差异视图，方便团队一起评审。' },
+              reports: { title: 'v0.8.0 —— 面向事故基线的 snapshot workflow', desc: '命名快照让团队可以保存分析窗口、之后再查看，并且不用手工维护 JSON 路径就能直接比较 current 与 baseline。' },
               now: { date: '现在', title: '明确的 DBA-first 定位', desc: '一个本地 CLI，帮助团队更快解释负载变化，并把答案顺滑交给其他人。' }
             },
             side: {

@@ -1,6 +1,6 @@
 # input: version tags matching v*.
 # output: tested darwin/linux amd64/arm64 release archives, a checksum manifest, and a GitHub Release with bilingual release notes.
-# pos: the only trusted release pipeline, using native runners plus goreleaser-driven single-target builds so artifact naming stays aligned with install docs.
+# pos: the only trusted release pipeline, using native macOS runners plus manylinux2014-based Linux builds so artifact naming and Linux glibc compatibility stay aligned with install docs.
 # note: if this file changes, keep .goreleaser.yml, install.sh, and README.md artifact naming in sync.
 
 name: release
@@ -39,21 +39,30 @@ jobs:
           - goos: darwin
             goarch: amd64
             runner: macos-15-intel
+            build_mode: native
           - goos: darwin
             goarch: arm64
             runner: macos-14
+            build_mode: native
           - goos: linux
             goarch: amd64
             runner: ubuntu-latest
+            build_mode: manylinux2014
+            container_image: quay.io/pypa/manylinux2014_x86_64
+            docker_platform: linux/amd64
           - goos: linux
             goarch: arm64
             runner: ubuntu-24.04-arm
+            build_mode: manylinux2014
+            container_image: quay.io/pypa/manylinux2014_aarch64
+            docker_platform: linux/arm64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       - name: Build archive
+        if: matrix.build_mode == 'native'
         shell: bash
         run: |
           set -euo pipefail
@@ -64,6 +73,43 @@ jobs:
           ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           tar -C dist -czf "dist/${ARCHIVE}" binlogviz
           rm -f dist/binlogviz
+      - name: Build Linux archive in manylinux2014 userspace
+        if: matrix.build_mode == 'manylinux2014'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          GO_VERSION="$(go env GOVERSION | sed 's/^go//')"
+          mkdir -p dist
+          docker run --rm \
+            --platform "${{ matrix.docker_platform }}" \
+            -v "${PWD}:/src" \
+            -w /src \
+            -e VERSION="${VERSION}" \
+            -e GO_VERSION="${GO_VERSION}" \
+            -e TARGET_GOARCH="${{ matrix.goarch }}" \
+            "${{ matrix.container_image }}" \
+            bash -lc '
+              set -euo pipefail
+              export PATH="/usr/local/go/bin:${PATH}"
+              GO_TARBALL="go${GO_VERSION}.linux-${TARGET_GOARCH}.tar.gz"
+              curl -fsSLo "/tmp/${GO_TARBALL}" "https://go.dev/dl/${GO_TARBALL}"
+              rm -rf /usr/local/go
+              tar -C /usr/local -xzf "/tmp/${GO_TARBALL}"
+              go build -trimpath \
+                -ldflags "-s -w -X binlogviz/internal/version.Version=${VERSION} -linkmode external -extldflags '\''-static-libstdc++ -static-libgcc'\''" \
+                -o dist/binlogviz .
+              MAX_GLIBC="$(strings dist/binlogviz | grep -o '\''GLIBC_[0-9.]*'\'' | sort -Vu | tail -1 || true)"
+              if [[ -n "${MAX_GLIBC}" ]] && [[ "${MAX_GLIBC}" != "GLIBC_2.17" ]]; then
+                if [[ "$(printf "%s\n%s\n" "GLIBC_2.17" "${MAX_GLIBC}" | sort -V | tail -1)" != "GLIBC_2.17" ]]; then
+                  echo "glibc baseline check failed: ${MAX_GLIBC}" >&2
+                  exit 1
+                fi
+              fi
+              ARCHIVE="binlogviz_${VERSION}_linux_${TARGET_GOARCH}.tar.gz"
+              tar -C dist -czf "dist/${ARCHIVE}" binlogviz
+              rm -f dist/binlogviz
+            '
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
