@@ -53,12 +53,24 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Setup Zig for glibc 2.17 Linux amd64 build
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
       - name: Build archive
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p dist
+
+          if [[ "${{ matrix.goos }}" == "linux" && "${{ matrix.goarch }}" == "amd64" ]]; then
+            export CC="zig cc -target x86_64-linux-gnu.2.17"
+            export CXX="zig c++ -target x86_64-linux-gnu.2.17"
+            export CGO_LDFLAGS="-static-libstdc++ -static-libgcc"
+          fi
+
           GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" CGO_ENABLED=1 \
             go build -trimpath -ldflags "-s -w -X binlogviz/internal/version.Version=${VERSION}" -o dist/binlogviz .
           ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
