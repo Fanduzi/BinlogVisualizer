@@ -87,6 +87,18 @@ When `--snapshot-name` is set, `analyze --format json` still writes the JSON rep
 
 The compare report is written to `stdout`. If the compare command fails, the CLI reports the error through `stderr`.
 
+### Review multiple snapshots as one ordered trend
+
+```bash
+binlogviz trend incident_week1 incident_week2 incident_week3 --format text
+
+binlogviz trend --from-snapshots 'incident_week*' \
+  --baseline-snapshot baseline_weekly \
+  --format html > trend.html
+```
+
+`trend` loads saved snapshots, orders them by `snapshot.window.start_time`, and renders `text`, `json`, or `html` output. It is designed for historical drift review across more than two windows while still allowing an optional baseline snapshot for per-point deltas.
+
 ### Generate a Markdown or HTML report
 
 ```bash

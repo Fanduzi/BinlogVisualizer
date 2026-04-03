@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, and `binlogviz snapshot`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, and `binlogviz snapshot`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -14,6 +14,8 @@ binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz analyze --from-dir DIR --prefix PREFIX --format json --snapshot-name NAME
 binlogviz compare <current.json> <baseline.json>
 binlogviz compare --current-snapshot CURRENT --baseline-snapshot BASELINE
+binlogviz trend <snapshot...>
+binlogviz trend --from-snapshots 'incident-*'
 binlogviz snapshot save <report.json> --name NAME
 binlogviz snapshot list
 binlogviz snapshot show <name>
@@ -175,6 +177,38 @@ binlogviz compare current.json baseline.json
 binlogviz compare current.json baseline.json --format json > compare.json
 binlogviz compare current.json baseline.json --format html > compare.html
 ```
+
+## `trend` Command Syntax
+
+```bash
+binlogviz trend <snapshot-a> <snapshot-b> [<snapshot-c> ...]
+binlogviz trend <snapshot-a> <snapshot-b> --baseline-snapshot baseline
+binlogviz trend --from-snapshots 'incident-*'
+binlogviz trend --from-snapshots 'incident-*' --baseline-snapshot baseline --format html > trend.html
+```
+
+`trend` is snapshot-oriented and supports two mutually exclusive input modes per invocation:
+
+- **Explicit snapshot mode**: two or more snapshot names as positional arguments
+- **Pattern mode**: `--from-snapshots <pattern>` selects snapshot names from the snapshot store
+
+Rules:
+
+- explicit snapshot mode and pattern mode cannot be combined
+- the resolved trend set must contain at least two snapshots
+- trend points are always ordered by `snapshot.window.start_time` ascending
+- each selected snapshot must contain a valid `snapshot.window.start_time`
+- `--baseline-snapshot` is optional and does not automatically become a trend point unless it was selected separately
+
+Accepted flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format` | `text` | Trend report output format: `text`, `json`, or `html`. |
+| `--from-snapshots` | none | Pattern used to select snapshots by name from the snapshot store. |
+| `--baseline-snapshot` | none | Optional snapshot used for per-point delta calculations. |
+| `--snapshot-dir` | home-based default | Directory used when loading snapshots. Default: `~/.binlogviz/snapshots`. |
+| `--top-tables` | `10` | Number of top-table trend series to include in trend output. |
 
 ## `snapshot` Command Syntax
 
