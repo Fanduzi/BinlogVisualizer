@@ -87,6 +87,18 @@ binlogviz compare \
 
 compare 生成的最终报告写到 `stdout`。如果 compare 命令失败，CLI 会通过 `stderr` 输出错误。
 
+### 把多个快照当作一条时间线查看趋势
+
+```bash
+binlogviz trend incident_week1 incident_week2 incident_week3 --format text
+
+binlogviz trend --from-snapshots 'incident_week*' \
+  --baseline-snapshot baseline_weekly \
+  --format html > trend.html
+```
+
+`trend` 会加载已保存的 snapshots，按 `snapshot.window.start_time` 排序，并输出 `text`、`json` 或 `html` 趋势报告。它适合用来查看两个以上窗口的历史漂移，同时允许指定一个可选 baseline snapshot 计算每个点相对基线的 delta。
+
 ### 生成 Markdown 或 HTML 报告
 
 ```bash

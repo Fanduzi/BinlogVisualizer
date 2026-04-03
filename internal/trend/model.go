@@ -1,0 +1,109 @@
+// Package trend defines trend-input contracts and multi-snapshot result models.
+// input: ordered snapshot-backed analyze JSON reports plus optional baseline metadata.
+// output: deterministic trend results for text, JSON, and HTML renderers.
+// pos: trend pipeline boundary between snapshot loading and renderer-specific output.
+package trend
+
+import comparepkg "binlogviz/internal/compare"
+
+type BuildInput struct {
+	Path   string
+	Report InputReport
+}
+
+type InputReport = comparepkg.InputReport
+type InputSummary = comparepkg.InputSummary
+type InputTable = comparepkg.InputTable
+type InputAlert = comparepkg.InputAlert
+type InputSnapshot = comparepkg.InputSnapshot
+type InputSnapshotInput = comparepkg.InputSnapshotInput
+type InputSnapshotWindow = comparepkg.InputSnapshotWindow
+type InputSnapshotFilters = comparepkg.InputSnapshotFilters
+
+type BuildOptions struct {
+	InputMode   string
+	SnapshotDir string
+	Points      []BuildInput
+	Baseline    *BuildInput
+	TopTables   int
+}
+
+type Result struct {
+	InputMode        string        `json:"input_mode"`
+	SnapshotDir      string        `json:"snapshot_dir"`
+	BaselineSnapshot *SnapshotMeta `json:"baseline_snapshot,omitempty"`
+	Points           []Point       `json:"points"`
+	TableTrends      []TableTrend  `json:"table_trends"`
+	Insights         Insights      `json:"insights"`
+}
+
+type SnapshotMeta struct {
+	Name      string               `json:"name"`
+	Label     string               `json:"label"`
+	Path      string               `json:"path"`
+	CreatedAt string               `json:"created_at"`
+	InputMode string               `json:"input_mode"`
+	Input     InputSnapshotInput   `json:"input"`
+	Window    InputSnapshotWindow  `json:"window"`
+	Filters   InputSnapshotFilters `json:"filters"`
+}
+
+type Point struct {
+	Snapshot      SnapshotMeta        `json:"snapshot"`
+	Window        InputSnapshotWindow `json:"window"`
+	Summary       PointSummary        `json:"summary"`
+	Operations    OperationBreakdown  `json:"operations"`
+	AlertCount    int                 `json:"alert_count"`
+	BaselineDelta *BaselineDelta      `json:"baseline_delta,omitempty"`
+}
+
+type PointSummary struct {
+	TotalRows         int `json:"total_rows"`
+	TotalTransactions int `json:"total_transactions"`
+	TotalEvents       int `json:"total_events"`
+	Warnings          int `json:"warnings"`
+}
+
+type OperationBreakdown struct {
+	Inserts     int     `json:"inserts"`
+	Updates     int     `json:"updates"`
+	Deletes     int     `json:"deletes"`
+	InsertShare float64 `json:"insert_share"`
+	UpdateShare float64 `json:"update_share"`
+	DeleteShare float64 `json:"delete_share"`
+}
+
+type BaselineDelta struct {
+	RowsDelta         int     `json:"rows_delta"`
+	TransactionsDelta int     `json:"transactions_delta"`
+	EventsDelta       int     `json:"events_delta"`
+	AlertDelta        int     `json:"alert_delta"`
+	RowsPercent       float64 `json:"rows_percent"`
+	TransactionsPct   float64 `json:"transactions_percent"`
+	EventsPercent     float64 `json:"events_percent"`
+	AlertsPercent     float64 `json:"alerts_percent"`
+}
+
+type TableTrend struct {
+	Schema    string           `json:"schema"`
+	Table     string           `json:"table"`
+	FirstRows int              `json:"first_rows"`
+	LastRows  int              `json:"last_rows"`
+	DeltaRows int              `json:"delta_rows"`
+	Series    []TableTrendItem `json:"series"`
+}
+
+type TableTrendItem struct {
+	SnapshotName string `json:"snapshot_name"`
+	StartTime    string `json:"start_time"`
+	Rows         int    `json:"rows"`
+}
+
+type Insights struct {
+	FirstSnapshot   string `json:"first_snapshot"`
+	LastSnapshot    string `json:"last_snapshot"`
+	RowsDelta       int    `json:"rows_delta"`
+	TxnsDelta       int    `json:"transactions_delta"`
+	EventsDelta     int    `json:"events_delta"`
+	AlertCountDelta int    `json:"alert_count_delta"`
+}

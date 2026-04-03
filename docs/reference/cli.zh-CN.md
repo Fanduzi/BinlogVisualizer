@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare` 和 `binlogviz snapshot` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend` 和 `binlogviz snapshot` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -14,6 +14,8 @@ binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz analyze --from-dir DIR --prefix PREFIX --format json --snapshot-name NAME
 binlogviz compare <current.json> <baseline.json>
 binlogviz compare --current-snapshot CURRENT --baseline-snapshot BASELINE
+binlogviz trend <snapshot...>
+binlogviz trend --from-snapshots 'incident-*'
 binlogviz snapshot save <report.json> --name NAME
 binlogviz snapshot list
 binlogviz snapshot show <name>
@@ -175,6 +177,38 @@ binlogviz compare current.json baseline.json
 binlogviz compare current.json baseline.json --format json > compare.json
 binlogviz compare current.json baseline.json --format html > compare.html
 ```
+
+## `trend` 命令语法
+
+```bash
+binlogviz trend <snapshot-a> <snapshot-b> [<snapshot-c> ...]
+binlogviz trend <snapshot-a> <snapshot-b> --baseline-snapshot baseline
+binlogviz trend --from-snapshots 'incident-*'
+binlogviz trend --from-snapshots 'incident-*' --baseline-snapshot baseline --format html > trend.html
+```
+
+`trend` 是一个面向 snapshot store 的历史趋势命令，每次调用支持两种互斥输入模式：
+
+- **显式快照模式**：通过位置参数传入两个或更多 snapshot 名称
+- **模式匹配模式**：通过 `--from-snapshots <pattern>` 从 snapshot store 中按名字选取
+
+规则：
+
+- 显式快照模式和模式匹配模式不能混用
+- 最终解析出的 trend 集合至少要有两个 snapshot
+- 趋势点永远按 `snapshot.window.start_time` 升序排序
+- 每个被选中的 snapshot 都必须有有效的 `snapshot.window.start_time`
+- `--baseline-snapshot` 是可选的；除非 baseline 本身也被单独选中，否则它不会自动成为 trend 点
+
+支持的 flags：
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--format` | `text` | trend 报告输出格式：`text`、`json`、`html`。 |
+| `--from-snapshots` | none | 从 snapshot store 中按名字选取快照的模式。 |
+| `--baseline-snapshot` | none | 用于计算每个 trend 点 delta 的可选 baseline snapshot。 |
+| `--snapshot-dir` | home-based default | 读取 snapshot 时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
+| `--top-tables` | `10` | trend 输出中包含的热点表趋势序列数量。 |
 
 ## `snapshot` 命令语法
 
