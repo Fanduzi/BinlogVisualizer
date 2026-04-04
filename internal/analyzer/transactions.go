@@ -81,6 +81,14 @@ func (b *TransactionBuilder) DrainCompleted() []model.Transaction {
 	return drained
 }
 
+// CurrentTxnKey returns the in-flight transaction key, if any.
+func (b *TransactionBuilder) CurrentTxnKey() string {
+	if b.current == nil {
+		return ""
+	}
+	return b.current.txnKey
+}
+
 func (b *TransactionBuilder) handleBegin(ts time.Time) error {
 	if b.current != nil && b.current.isExplicit {
 		// Explicit transaction already in-flight - this is a boundary error

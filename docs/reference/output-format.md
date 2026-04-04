@@ -236,6 +236,8 @@ The top-level JSON object always contains these fields:
 
 It counts analysis warnings accumulated in the finalized result object. This value is part of the machine-readable report on `stdout`; it is not a count of progress lines or `stderr` messages. A non-zero value indicates the analysis completed with warning conditions recorded in the result, not that JSON output is malformed.
 
+Current implementation increments this count when transaction query context had to be truncated to the bounded stored SQL size.
+
 ### `snapshot`
 
 `snapshot` is omitted unless `analyze` is run with `--snapshot-name`. When present, it is a flat top-level object, not a nested metadata wrapper.
@@ -344,7 +346,7 @@ Compatibility rules:
 The `snapshot` subcommands use these output contracts:
 
 - `snapshot save` writes no payload to `stdout` and prints `Saved snapshot "<name>" to <path>` to `stderr`
-- `snapshot list --format text` writes one snapshot name per line to `stdout`
+- `snapshot list --format text` writes a human-readable table with `name`, `label`, `created_at`, `input_mode`, and `window`
 - `snapshot list --format json` writes a machine-readable object with `snapshot_dir` and `snapshots`
 - `snapshot show --format text` writes metadata and a summary block to `stdout`
 - `snapshot show --format json` writes a machine-readable object with the normalized descriptor under `snapshot`

@@ -17,7 +17,7 @@ Release date: 2026-04-03
 ## Compatibility Notes
 
 - the existing `analyze`, `compare`, and `snapshot` workflows remain supported without contract changes
-- trend requires snapshots with a valid `snapshot.window.start_time`; invalid or incomplete snapshots fail fast instead of being skipped silently
+- trend requires snapshots to provide a valid `snapshot.window.start_time`; snapshots missing it fail fast instead of being skipped silently
 - baseline snapshots are optional and do not implicitly join the analyzed trend point set
 
 ## Breaking Changes

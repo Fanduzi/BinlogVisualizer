@@ -60,10 +60,10 @@ Both flags use RFC3339 timestamps.
 
 ## 5. Redirect JSON Safely
 
-Use `--json` when another tool or script will consume the result:
+Use `--format json` when another tool or script will consume the result:
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 This keeps the machine-readable report on `stdout` and leaves progress and runtime information on `stderr`.

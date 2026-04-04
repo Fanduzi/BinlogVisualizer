@@ -29,7 +29,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	var buf strings.Builder
 
 	// Section 1: Workload Summary
-	renderWorkloadSummary(&buf, result.Summary)
+	renderWorkloadSummary(&buf, result.Summary, result.Warnings)
 
 	// Section 2: Top Tables
 	renderTopTables(&buf, result.Tables)
@@ -46,11 +46,12 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	return buf.String(), nil
 }
 
-func renderWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary) {
+func renderWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary, warnings int) {
 	buf.WriteString("=== " + i18n.T("report.section.workload") + " ===\n")
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
+	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.warnings"), warnings))
 	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.duration"), formatDuration(summary.Duration)))
 	buf.WriteString("\n")

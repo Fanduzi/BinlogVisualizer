@@ -107,7 +107,7 @@ binlogviz analyze mysql-bin.000123
 ### JSON 输出，适合脚本和管道
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 这种方式更适合：

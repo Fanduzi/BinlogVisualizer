@@ -48,6 +48,28 @@ func TestRenderTextIncludesWorkloadSummary(t *testing.T) {
 	}
 }
 
+func TestRenderTextIncludesWarningsInWorkloadSummary(t *testing.T) {
+	result := model.AnalysisResult{
+		Summary: model.WorkloadSummary{
+			TotalTransactions: 10,
+			TotalRows:         1000,
+			TotalEvents:       50,
+			StartTime:         time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC),
+			EndTime:           time.Date(2026, 3, 9, 10, 30, 0, 0, time.UTC),
+			Duration:          30 * time.Minute,
+		},
+		Warnings: 2,
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Warnings") || !strings.Contains(out, "2") {
+		t.Fatalf("expected warnings count in workload summary, got %q", out)
+	}
+}
+
 func TestRenderTextIncludesTopTables(t *testing.T) {
 	result := model.AnalysisResult{
 		Tables: []model.TableStats{

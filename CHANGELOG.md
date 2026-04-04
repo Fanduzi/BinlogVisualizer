@@ -2,6 +2,23 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.9.1
+
+Release date: 2026-04-04
+
+Highlights:
+
+- Fixed streaming `txn_count` propagation so table and minute summaries report real transaction counts
+- Made `analyze --snapshot-name` snapshots immediately usable in `trend` even without explicit `--start` / `--end`
+- Added trend fallback to `summary.start_time` / `summary.end_time` for older snapshots missing `snapshot.window`
+- Turned `warnings` into a real bounded-degradation signal and surfaced it in text reports
+- Upgraded `snapshot list --format text` into a readable inventory table and aligned current-version docs with `v0.9.1`
+
+Related notes:
+
+- [v0.9.1 release notes](docs/releases/release-notes-v0.9.1.md)
+- [v0.9.1 中文发行说明](docs/releases/release-notes-v0.9.1.zh-CN.md)
+
 ## v0.8.3
 
 Release date: 2026-04-02

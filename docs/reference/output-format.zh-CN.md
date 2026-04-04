@@ -236,6 +236,8 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 它表示最终结果对象中累计的分析警告数量。这个值属于 `stdout` 上机器可读报告的一部分；它不是进度行数，也不是 `stderr` 消息数量。非零值表示分析已完成，但结果中记录了警告条件；并不表示 JSON 输出本身有问题。
 
+当前实现中，当事务的 query context 因为达到 SQL 存储上限而被截断时，会增加这个计数。
+
 ### `snapshot`
 
 除非 `analyze` 使用 `--snapshot-name`，否则 `snapshot` 会被省略。出现时它是顶层平铺对象，而不是再包一层 metadata。
@@ -344,7 +346,7 @@ binlogviz compare current.json baseline.json --format json
 `snapshot` 子命令使用以下输出契约：
 
 - `snapshot save` 不向 `stdout` 写入载荷，而是在 `stderr` 打印 `Saved snapshot "<name>" to <path>`
-- `snapshot list --format text` 按行输出快照名到 `stdout`
+- `snapshot list --format text` 以面向人的表格输出 `name`、`label`、`created_at`、`input_mode` 和 `window`
 - `snapshot list --format json` 输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象
 - `snapshot show --format text` 把元数据和摘要块输出到 `stdout`
 - `snapshot show --format json` 输出一个机器可读对象，并把规范化 descriptor 放在 `snapshot` 字段下

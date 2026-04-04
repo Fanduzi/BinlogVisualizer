@@ -114,6 +114,21 @@ func TestSnapshotListCommandShowsSavedSnapshots(t *testing.T) {
 	if strings.Index(stdout, "alpha") > strings.Index(stdout, "zeta") {
 		t.Fatalf("expected sorted snapshot list, got %q", stdout)
 	}
+	for _, token := range []string{
+		"NAME",
+		"LABEL",
+		"CREATED_AT",
+		"INPUT_MODE",
+		"WINDOW",
+		"candidate",
+		"baseline",
+		"files",
+		"2026-03-20T10:00:00Z -> 2026-03-20T10:30:00Z",
+	} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected snapshot list text output to contain %q, got %q", token, stdout)
+		}
+	}
 }
 
 func TestSnapshotShowCommandShowsMetadataAndSummary(t *testing.T) {

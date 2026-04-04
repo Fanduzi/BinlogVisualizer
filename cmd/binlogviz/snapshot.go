@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -94,12 +95,7 @@ func newSnapshotListCommand() *cobra.Command {
 			}
 			switch opts.format {
 			case "text":
-				for _, entry := range entries {
-					if _, err := fmt.Fprintln(cmd.OutOrStdout(), entry.Name); err != nil {
-						return err
-					}
-				}
-				return nil
+				return writeSnapshotListText(cmd.OutOrStdout(), entries)
 			case "json":
 				resolvedDir, err := snapshotpkg.ResolveSnapshotDir(opts.dir)
 				if err != nil {
@@ -309,6 +305,27 @@ func writeSnapshotJSON(out io.Writer, payload any) error {
 	return err
 }
 
+func writeSnapshotListText(out io.Writer, entries []snapshotpkg.Entry) error {
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	if _, err := fmt.Fprintln(tw, "NAME\tLABEL\tCREATED_AT\tINPUT_MODE\tWINDOW"); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if _, err := fmt.Fprintf(
+			tw,
+			"%s\t%s\t%s\t%s\t%s\n",
+			entry.Name,
+			orDash(entry.Label),
+			orDash(entry.CreatedAt),
+			orDash(entry.InputMode),
+			formatSnapshotWindow(entry.Window),
+		); err != nil {
+			return err
+		}
+	}
+	return tw.Flush()
+}
+
 func formatSnapshotSource(input snapshotpkg.Input) string {
 	parts := make([]string, 0, 3)
 	if len(input.Files) > 0 {
@@ -339,4 +356,26 @@ func formatSnapshotFilters(filters snapshotpkg.Filters) string {
 	}
 	slices.Sort(parts)
 	return strings.Join(parts, " ")
+}
+
+func formatSnapshotWindow(window snapshotpkg.Window) string {
+	start := strings.TrimSpace(window.StartTime)
+	end := strings.TrimSpace(window.EndTime)
+	switch {
+	case start != "" && end != "":
+		return start + " -> " + end
+	case start != "":
+		return start
+	case end != "":
+		return end
+	default:
+		return "-"
+	}
+}
+
+func orDash(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "-"
+	}
+	return value
 }

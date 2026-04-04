@@ -469,6 +469,8 @@ func runAnalysisStreamingWithSnapshotDeps(
 }
 
 func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {
+	result.Snapshot = resolveAnalyzeSnapshotMetadata(result.Snapshot, result.Summary)
+
 	payload, err := report.RenderJSONWithOptions(result, reportOpts)
 	if err != nil {
 		return err
@@ -483,6 +485,21 @@ func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Optio
 	}
 	_, err = fmt.Fprint(os.Stdout, payload)
 	return err
+}
+
+func resolveAnalyzeSnapshotMetadata(snapshotMeta *model.Snapshot, summary model.WorkloadSummary) *model.Snapshot {
+	if snapshotMeta == nil {
+		return nil
+	}
+
+	resolved := *snapshotMeta
+	if resolved.Window.StartTime.IsZero() {
+		resolved.Window.StartTime = summary.StartTime
+	}
+	if resolved.Window.EndTime.IsZero() {
+		resolved.Window.EndTime = summary.EndTime
+	}
+	return &resolved
 }
 
 func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, string, error) {
