@@ -17,7 +17,7 @@
 ## 兼容性说明
 
 - 现有 `analyze`、`compare`、`snapshot` 工作流保持可用，合同没有破坏性变化
-- trend 要求 snapshot 带有合法的 `snapshot.window.start_time`；无效或不完整快照会直接报错，不会被静默跳过
+- trend 仍要求快照提供有效的 `snapshot.window.start_time`；缺失该字段的快照会直接报错，不会被静默跳过
 - baseline snapshot 是可选增强信息，不会被自动并入趋势点集合
 
 ## 破坏性变更

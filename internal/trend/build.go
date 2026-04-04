@@ -71,7 +71,7 @@ func resolvePoint(input BuildInput) (resolvedPoint, error) {
 	if input.Report.Snapshot == nil {
 		return resolvedPoint{}, fmt.Errorf("snapshot %q missing snapshot metadata", input.Path)
 	}
-	startRaw := strings.TrimSpace(input.Report.Snapshot.Window.StartTime)
+	window, startRaw := resolvedSnapshotWindow(input.Report)
 	if startRaw == "" {
 		return resolvedPoint{}, fmt.Errorf("snapshot %q missing snapshot.window.start_time", displayName(input.Report.Snapshot))
 	}
@@ -87,14 +87,14 @@ func resolvePoint(input BuildInput) (resolvedPoint, error) {
 		CreatedAt: input.Report.Snapshot.CreatedAt,
 		InputMode: input.Report.Snapshot.InputMode,
 		Input:     input.Report.Snapshot.Input,
-		Window:    input.Report.Snapshot.Window,
+		Window:    window,
 		Filters:   input.Report.Snapshot.Filters,
 	}
 
 	ops := aggregateOperations(input.Report.Tables)
 	point := Point{
 		Snapshot: meta,
-		Window:   input.Report.Snapshot.Window,
+		Window:   window,
 		Summary: PointSummary{
 			TotalRows:         input.Report.Summary.TotalRows,
 			TotalTransactions: input.Report.Summary.TotalTransactions,
@@ -111,6 +111,23 @@ func resolvePoint(input BuildInput) (resolvedPoint, error) {
 		Point:  point,
 		Report: input.Report,
 	}, nil
+}
+
+func resolvedSnapshotWindow(report InputReport) (InputSnapshotWindow, string) {
+	window := report.Snapshot.Window
+	startRaw := strings.TrimSpace(window.StartTime)
+	if startRaw == "" {
+		startRaw = strings.TrimSpace(report.Summary.StartTime)
+		if startRaw != "" {
+			window.StartTime = startRaw
+		}
+	}
+	if strings.TrimSpace(window.EndTime) == "" {
+		if endRaw := strings.TrimSpace(report.Summary.EndTime); endRaw != "" {
+			window.EndTime = endRaw
+		}
+	}
+	return window, startRaw
 }
 
 func aggregateOperations(tables []InputTable) OperationBreakdown {

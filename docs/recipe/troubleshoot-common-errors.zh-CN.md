@@ -195,7 +195,7 @@ binlogviz analyze mysql-bin.000123 --sql-context full
 典型使用方式：
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json > report.json
+binlogviz analyze mysql-bin.000123 --format json > report.json
 ```
 
 ```bash

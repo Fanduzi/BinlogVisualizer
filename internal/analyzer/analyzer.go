@@ -145,6 +145,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 	if err := a.txnBuilder.Consume(ev); err != nil {
 		return err
 	}
+	ev = a.withCurrentTxnKey(ev)
 
 	// Track event count and time bounds only after transaction state accepted the event.
 	a.eventCount++
@@ -168,6 +169,16 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 		return err
 	}
 	return nil
+}
+
+func (a *Analyzer) withCurrentTxnKey(ev model.NormalizedEvent) model.NormalizedEvent {
+	if ev.TxnKey != "" {
+		return ev
+	}
+	if txnKey := a.txnBuilder.CurrentTxnKey(); txnKey != "" {
+		ev.TxnKey = txnKey
+	}
+	return ev
 }
 
 // reset clears all internal state for a fresh analysis run.
@@ -224,8 +235,18 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		Transactions: topTransactions,
 		Minutes:      minutes,
 		Alerts:       persistedAlerts,
-		Warnings:     0, // No warnings in MVP
+		Warnings:     countAnalysisWarnings(allTransactions),
 	}, nil
+}
+
+func countAnalysisWarnings(transactions []model.Transaction) int {
+	warnings := 0
+	for _, txn := range transactions {
+		if txn.QueryContext != nil && txn.QueryContext.Truncated {
+			warnings++
+		}
+	}
+	return warnings
 }
 
 func (a *Analyzer) attachTopTransactionSQL(transactions []model.Transaction) error {

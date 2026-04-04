@@ -196,8 +196,8 @@ binlogviz trend --from-snapshots 'incident-*' --baseline-snapshot baseline --for
 
 - 显式快照模式和模式匹配模式不能混用
 - 最终解析出的 trend 集合至少要有两个 snapshot
-- 趋势点永远按 `snapshot.window.start_time` 升序排序
-- 每个被选中的 snapshot 都必须有有效的 `snapshot.window.start_time`
+- 趋势点永远按有效窗口开始时间升序排序
+- trend 优先使用 `snapshot.window.start_time`；对于较旧的快照，会回退到 `summary.start_time`
 - `--baseline-snapshot` 是可选的；除非 baseline 本身也被单独选中，否则它不会自动成为 trend 点
 
 支持的 flags：
@@ -241,7 +241,7 @@ binlogviz snapshot delete <name>
 
 `snapshot list` 支持两种输出模式：
 
-- text 模式（默认）：按名字排序，每行一个快照名输出到 `stdout`
+- text 模式（默认）：输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode` 和 `window`
 - JSON 模式：输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象
 
 可用参数：

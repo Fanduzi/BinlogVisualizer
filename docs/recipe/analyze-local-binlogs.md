@@ -107,7 +107,7 @@ This is the right default when you want to scan the report directly in a termina
 ### JSON output for scripts and pipelines
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 This is the safer pattern for:

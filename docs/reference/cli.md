@@ -196,8 +196,8 @@ Rules:
 
 - explicit snapshot mode and pattern mode cannot be combined
 - the resolved trend set must contain at least two snapshots
-- trend points are always ordered by `snapshot.window.start_time` ascending
-- each selected snapshot must contain a valid `snapshot.window.start_time`
+- trend points are always ordered by effective window start time ascending
+- trend uses `snapshot.window.start_time` when present and falls back to `summary.start_time` for older snapshots
 - `--baseline-snapshot` is optional and does not automatically become a trend point unless it was selected separately
 
 Accepted flags:
@@ -241,7 +241,7 @@ Rules:
 
 `snapshot list` supports two output modes:
 
-- text mode (default): prints one snapshot name per line to `stdout`, sorted by name
+- text mode (default): prints a human-readable table with `name`, `label`, `created_at`, `input_mode`, and `window`
 - JSON mode: prints a machine-readable object with `snapshot_dir` and `snapshots`
 
 Accepted flags:

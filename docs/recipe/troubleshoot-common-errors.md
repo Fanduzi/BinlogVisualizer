@@ -195,7 +195,7 @@ What it means:
 Typical usage patterns:
 
 ```bash
-binlogviz analyze mysql-bin.000123 --json > report.json
+binlogviz analyze mysql-bin.000123 --format json > report.json
 ```
 
 ```bash

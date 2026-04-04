@@ -885,6 +885,39 @@ func TestRunAnalysisJSONSQLContextModes(t *testing.T) {
 	}
 }
 
+func TestRunAnalysisJSONReportsWarningsForTruncatedQueryContext(t *testing.T) {
+	longSQL := "UPDATE users SET bio = '" + strings.Repeat("x", model.MaxStoredSQLBytes+256) + "' WHERE id = 7"
+
+	mock := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY_EVENT", QuerySQL: longSQL},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "UPDATE_ROWS_EVENT", Schema: "shop", Table: "users", RowCount: 2},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID_EVENT"},
+		},
+	}
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "json", mock)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(stderr) == "" {
+		t.Fatal("expected progress/finalizing output on stderr")
+	}
+
+	var parsed struct {
+		Warnings int `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("decode analyze json: %v\n%s", err, stdout)
+	}
+	if parsed.Warnings != 1 {
+		t.Fatalf("expected warnings=1 for truncated query context, got %d", parsed.Warnings)
+	}
+}
+
 func TestCreateDuckDBTempStoreCreatesAndCleansFiles(t *testing.T) {
 	root := t.TempDir()
 
@@ -1131,6 +1164,138 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	// Verify we have row activity (the fixture has 5 total rows)
 	if !bytes.Contains([]byte(output), []byte("5 rows")) {
 		t.Error("expected output to contain '5 rows'")
+	}
+}
+
+func TestRealBinlogFixtureJSONIncludesNonZeroTransactionCounts(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixturePath := mustFixturePath(t, "minimal.binlog")
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysis([]string{fixturePath}, analyzer.DefaultOptions(), "json")
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(stderr) == "" {
+		t.Fatal("expected progress output on stderr for real fixture run")
+	}
+
+	var decoded struct {
+		Summary struct {
+			TotalTransactions int `json:"total_transactions"`
+		} `json:"summary"`
+		Tables []struct {
+			Schema   string `json:"schema"`
+			Table    string `json:"table"`
+			TxnCount int    `json:"txn_count"`
+		} `json:"tables"`
+		Minutes []struct {
+			Minute   string `json:"minute"`
+			TxnCount int    `json:"txn_count"`
+		} `json:"minutes"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode analyze json: %v\n%s", err, stdout)
+	}
+	if decoded.Summary.TotalTransactions == 0 {
+		t.Fatalf("expected fixture to contain transactions, got %+v", decoded.Summary)
+	}
+
+	tableTxnCounts := make(map[string]int, len(decoded.Tables))
+	hasTableTxnCount := false
+	for _, table := range decoded.Tables {
+		tableTxnCounts[table.Schema+"."+table.Table] = table.TxnCount
+		if table.TxnCount > 0 {
+			hasTableTxnCount = true
+		}
+	}
+	if !hasTableTxnCount {
+		t.Fatalf("expected at least one table txn_count > 0, got %+v", tableTxnCounts)
+	}
+
+	minuteTxnCounts := make(map[string]int, len(decoded.Minutes))
+	hasMinuteTxnCount := false
+	for _, minute := range decoded.Minutes {
+		minuteTxnCounts[minute.Minute] = minute.TxnCount
+		if minute.TxnCount > 0 {
+			hasMinuteTxnCount = true
+		}
+	}
+	if !hasMinuteTxnCount {
+		t.Fatalf("expected at least one minute txn_count > 0, got %+v", minuteTxnCounts)
+	}
+}
+
+func TestAnalyzeGeneratedSnapshotsWorkWithTrendWithoutExplicitWindow(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture := mustFixturePath(t, "minimal.binlog")
+	snapshotDir := t.TempDir()
+
+	firstAnalyze := NewRootCommand()
+	firstAnalyze.SetArgs([]string{
+		"analyze",
+		fixture,
+		"--format", "json",
+		"--snapshot-name", "fixture_single",
+		"--snapshot-dir", snapshotDir,
+	})
+	firstAnalyze.SilenceUsage = true
+	firstAnalyze.SilenceErrors = true
+	if _, _, err := captureStdoutStderrRun(t, func() error { return firstAnalyze.Execute() }); err != nil {
+		t.Fatalf("save single-fixture snapshot: %v", err)
+	}
+
+	secondAnalyze := NewRootCommand()
+	secondAnalyze.SetArgs([]string{
+		"analyze",
+		fixture,
+		fixture,
+		"--format", "json",
+		"--snapshot-name", "fixture_double",
+		"--snapshot-dir", snapshotDir,
+	})
+	secondAnalyze.SilenceUsage = true
+	secondAnalyze.SilenceErrors = true
+	if _, _, err := captureStdoutStderrRun(t, func() error { return secondAnalyze.Execute() }); err != nil {
+		t.Fatalf("save double-fixture snapshot: %v", err)
+	}
+
+	trendCmd := NewRootCommand()
+	trendCmd.SetArgs([]string{
+		"trend",
+		"fixture_single",
+		"fixture_double",
+		"--snapshot-dir", snapshotDir,
+		"--format", "json",
+	})
+	trendCmd.SilenceUsage = true
+	trendCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return trendCmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("trend analyze-generated snapshots: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var decoded struct {
+		Points []struct {
+			Snapshot struct {
+				Name string `json:"name"`
+			} `json:"snapshot"`
+		} `json:"points"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode trend json: %v\n%s", err, stdout)
+	}
+	if len(decoded.Points) != 2 {
+		t.Fatalf("expected 2 trend points, got %d", len(decoded.Points))
 	}
 }
 

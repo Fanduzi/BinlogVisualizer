@@ -203,6 +203,10 @@
     "description": "事件总数标签",
     "other": "事件总数"
   },
+  "report.label.warnings": {
+    "description": "警告数标签",
+    "other": "警告数"
+  },
   "report.label.timeRange": {
     "description": "时间范围标签",
     "other": "时间范围"

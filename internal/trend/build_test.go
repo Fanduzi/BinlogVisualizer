@@ -58,6 +58,36 @@ func TestBuildResultRejectsMissingWindowStartTime(t *testing.T) {
 	}
 }
 
+func TestBuildResultFallsBackToSummaryStartTimeWhenSnapshotWindowMissing(t *testing.T) {
+	legacy := testInputReport("legacy", "Legacy", "2026-03-21T10:00:00Z", 3000, 150, 3600, 1600, 900, 500, 3)
+	legacy.Snapshot.Window.StartTime = ""
+
+	result, err := BuildResult(BuildOptions{
+		Points: []BuildInput{
+			{
+				Path:   "/tmp/good.json",
+				Report: testInputReport("good", "Good", "2026-03-20T10:00:00Z", 1000, 50, 1200, 500, 350, 150, 0),
+			},
+			{
+				Path:   "/tmp/legacy.json",
+				Report: legacy,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected summary.start_time fallback, got %v", err)
+	}
+	if len(result.Points) != 2 {
+		t.Fatalf("expected 2 points, got %d", len(result.Points))
+	}
+	if result.Points[1].Snapshot.Name != "legacy" {
+		t.Fatalf("expected legacy snapshot to be included, got %+v", result.Points)
+	}
+	if result.Points[1].Window.StartTime != "2026-03-21T10:00:00Z" {
+		t.Fatalf("expected fallback window start time, got %+v", result.Points[1].Window)
+	}
+}
+
 func testInputReport(name, label, start string, rows, txns, events, inserts, updates, deletes, alerts int) InputReport {
 	report := InputReport{
 		Summary: InputSummary{

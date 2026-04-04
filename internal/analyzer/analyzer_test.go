@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,6 +135,37 @@ func TestAnalyzerTracksMinuteBuckets(t *testing.T) {
 	}
 	if result.Minutes[0].TotalRows != 8 {
 		t.Fatalf("expected 8 total rows in minute, got %d", result.Minutes[0].TotalRows)
+	}
+}
+
+func TestAnalyzerCountsTruncatedQueryContextsAsWarnings(t *testing.T) {
+	a := New(Options{})
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	longSQL := "UPDATE orders SET notes = '" + strings.Repeat("x", model.MaxStoredSQLBytes+128) + "' WHERE id = 7"
+
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{
+			Timestamp:          base.Add(time.Second),
+			EventType:          "ROWS_QUERY",
+			TxnKey:             "t1",
+			QuerySQL:           longSQL[:model.MaxStoredSQLBytes],
+			QueryTruncated:     true,
+			QueryOriginalBytes: len(longSQL),
+		},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "UPDATE", RowCount: 3},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Minute), EventType: "BEGIN", TxnKey: "t2"},
+		{Timestamp: base.Add(time.Minute + time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "users", Operation: "INSERT", RowCount: 1},
+		{Timestamp: base.Add(time.Minute + 2*time.Second), EventType: "XID", TxnKey: "t2"},
+	}
+
+	result, err := a.Analyze(events)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Warnings != 1 {
+		t.Fatalf("expected 1 warning for truncated query context, got %d", result.Warnings)
 	}
 }
 

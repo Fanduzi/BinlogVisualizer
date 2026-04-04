@@ -81,7 +81,7 @@ binlogviz compare \
 
 当设置 `--snapshot-name` 时，`analyze --format json` 仍然会把 JSON 报告写到 `stdout`，同时把同一份载荷保存到 `~/.binlogviz/snapshots/<name>.json`。保存成功提示会打印到 `stderr`。
 
-`snapshot list --format json` 和 `snapshot show --format json` 为脚本和外部工具提供稳定的机器可读输出。`snapshot rename` 会在重命名文件的同时保持快照内部 identity 一致，`snapshot delete` 则用于删除单个快照而不影响其余历史。
+`snapshot list` 现在会输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode` 和 `window`。`snapshot list --format json` 和 `snapshot show --format json` 仍然为脚本和外部工具提供稳定的机器可读输出。`snapshot rename` 会在重命名文件的同时保持快照内部 identity 一致，`snapshot delete` 则用于删除单个快照而不影响其余历史。
 
 `compare` 既可以加载已保存的快照，也可以继续加载两份由 `binlogviz analyze --format json` 生成的 JSON 文件。输出格式支持 `text`、`json`、`html`。其中 text 和 HTML 输出现在会带出 input mode、来源摘要、过滤条件和请求时间窗口。HTML 仍然是面向 DBA/运维的可视化对比报告，包含 summary 差异、热点表变化、操作类型分布变化，以及告警新增/消失的图表化视图。
 
@@ -97,7 +97,7 @@ binlogviz trend --from-snapshots 'incident_week*' \
   --format html > trend.html
 ```
 
-`trend` 会加载已保存的 snapshots，按 `snapshot.window.start_time` 排序，并输出 `text`、`json` 或 `html` 趋势报告。它适合用来查看两个以上窗口的历史漂移，同时允许指定一个可选 baseline snapshot 计算每个点相对基线的 delta。
+`trend` 会加载已保存的 snapshots，按有效窗口开始时间排序，并输出 `text`、`json` 或 `html` 趋势报告。新快照优先使用 `snapshot.window.start_time`；较旧的快照则可以回退到 `summary.start_time`，不需要手工重写历史文件。它适合用来查看两个以上窗口的历史漂移，同时允许指定一个可选 baseline snapshot 计算每个点相对基线的 delta。
 
 ### 生成 Markdown 或 HTML 报告
 
@@ -139,27 +139,27 @@ brew install --cask binlogviz
 
 权威 release artifact 由 GitHub Actions release workflow 产出。macOS 产物在原生 runner 上构建，Linux 产物则在 manylinux2014 用户态中构建，以保持对 CentOS 7 / glibc 2.17 的兼容基线。本地 `goreleaser` 更适合做配置校验和当前宿主机的可选验证，不是主要发布路径。
 
-下面是 `darwin/arm64` 和当前版本 `v0.9.0` 的示例：
+下面是 `darwin/arm64` 和当前版本 `v0.9.1` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.9.0/binlogviz_0.9.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.9.0/binlogviz_0.9.0_checksums.txt
-shasum -a 256 -c binlogviz_0.9.0_checksums.txt 2>/dev/null | grep "binlogviz_0.9.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.9.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.9.1/binlogviz_0.9.1_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.9.1/binlogviz_0.9.1_checksums.txt
+shasum -a 256 -c binlogviz_0.9.1_checksums.txt 2>/dev/null | grep "binlogviz_0.9.1_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.9.1_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.9.0/install.sh
-sh ./install.sh --version v0.9.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.9.1/install.sh
+sh ./install.sh --version v0.9.1
 ```
 
 如果只想预览将要解析出的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.9.0 --dry-run
+./install.sh --version v0.9.1 --dry-run
 ```
 
 ### 备选：从源码构建
@@ -282,7 +282,7 @@ binlogviz compare --current-snapshot incident_current --baseline-snapshot incide
 binlogviz compare --current-snapshot incident_current --baseline-snapshot incident_baseline --format html > compare.html
 ```
 
-默认快照目录是 `~/.binlogviz/snapshots`。如果你已经有导出的 analyze JSON 文件，之后也可以通过 `binlogviz snapshot save <report.json> --name <name>` 把它补充保存进去。对于长期维护的快照库，优先使用 `snapshot rename` 和 `snapshot delete`，而不是直接手工改文件名或删文件。
+默认快照目录是 `~/.binlogviz/snapshots`。如果你已经有导出的 analyze JSON 文件，之后也可以通过 `binlogviz snapshot save <report.json> --name <name>` 把它补充保存进去。`snapshot list` 是查看整个快照库的最快入口；对于长期维护的快照库，优先使用 `snapshot rename` 和 `snapshot delete`，而不是直接手工改文件名或删文件。
 
 如果你已经在自己管理导出的 JSON 文件，旧的文件对比模式仍然可用：
 

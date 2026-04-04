@@ -316,6 +316,73 @@ func TestTrendCommandRejectsMissingWindowStartTime(t *testing.T) {
 	}
 }
 
+func TestTrendCommandFallsBackToSummaryStartTimeWhenSnapshotWindowMissing(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	writeSnapshotFixture(t, dir, "good", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "good",
+		Label:     "Good",
+		StartTime: "2026-03-20T10:00:00Z",
+		EndTime:   "2026-03-20T10:30:00Z",
+		Rows:      2400,
+		Txns:      120,
+		Events:    3000,
+		Inserts:   1200,
+		Updates:   800,
+		Deletes:   400,
+		Alerts:    2,
+	}))
+	writeSnapshotFixture(t, dir, "legacy", trendSnapshotFixtureJSONWithWindowOverride(trendSnapshotFixture{
+		Name:      "legacy",
+		Label:     "Legacy",
+		StartTime: "2026-03-21T10:00:00Z",
+		EndTime:   "2026-03-21T10:30:00Z",
+		Rows:      3200,
+		Txns:      160,
+		Events:    3800,
+		Inserts:   1800,
+		Updates:   1000,
+		Deletes:   400,
+		Alerts:    3,
+	}, "", "2026-03-21T10:30:00Z"))
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"trend", "good", "legacy", "--snapshot-dir", dir, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("expected summary.start_time fallback, got %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var decoded struct {
+		Points []struct {
+			Snapshot struct {
+				Name string `json:"name"`
+			} `json:"snapshot"`
+			Window struct {
+				StartTime string `json:"start_time"`
+			} `json:"window"`
+		} `json:"points"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode trend json: %v\n%s", err, stdout)
+	}
+	if len(decoded.Points) != 2 {
+		t.Fatalf("expected 2 points, got %d", len(decoded.Points))
+	}
+	if decoded.Points[1].Snapshot.Name != "legacy" {
+		t.Fatalf("expected fallback snapshot to participate in trend, got %+v", decoded.Points)
+	}
+}
+
 type trendSnapshotFixture struct {
 	Name      string
 	Label     string
@@ -331,6 +398,10 @@ type trendSnapshotFixture struct {
 }
 
 func trendSnapshotFixtureJSON(f trendSnapshotFixture) string {
+	return trendSnapshotFixtureJSONWithWindowOverride(f, f.StartTime, f.EndTime)
+}
+
+func trendSnapshotFixtureJSONWithWindowOverride(f trendSnapshotFixture, windowStart, windowEnd string) string {
 	return `{
   "summary": {
     "total_transactions": ` + intString(f.Txns) + `,
@@ -376,8 +447,8 @@ func trendSnapshotFixtureJSON(f trendSnapshotFixture) string {
       "prefix": ""
     },
     "window": {
-      "start_time": "` + f.StartTime + `",
-      "end_time": "` + f.EndTime + `"
+      "start_time": "` + windowStart + `",
+      "end_time": "` + windowEnd + `"
     },
     "filters": {
       "include_schema": [],

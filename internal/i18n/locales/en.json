@@ -203,6 +203,10 @@
     "description": "Total events label",
     "other": "Total Events"
   },
+  "report.label.warnings": {
+    "description": "Warnings label",
+    "other": "Warnings"
+  },
   "report.label.timeRange": {
     "description": "Time range label",
     "other": "Time Range"

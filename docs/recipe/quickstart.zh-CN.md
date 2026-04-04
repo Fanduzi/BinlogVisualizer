@@ -60,10 +60,10 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 
 ## 5. 安全地输出 JSON
 
-如果结果要交给另一个脚本或工具处理，使用 `--json`：
+如果结果要交给另一个脚本或工具处理，使用 `--format json`：
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --json > analyze.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
 ```
 
 这样机器可读报告保留在 `stdout`，而进度和运行时状态继续保留在 `stderr`。
