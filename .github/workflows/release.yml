@@ -73,6 +73,7 @@ jobs:
             go build -trimpath -ldflags "-s -w -X binlogviz/internal/version.Version=${VERSION}" -o dist/binlogviz .
           ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
           tar -C dist -czf "dist/${ARCHIVE}" binlogviz
+          bash scripts/release_smoke.sh "dist/${ARCHIVE}"
           rm -f dist/binlogviz
       - name: Build Linux archive in manylinux2014 userspace
         if: matrix.build_mode == 'manylinux2014'
@@ -111,6 +112,8 @@ jobs:
               tar -C dist -czf "dist/${ARCHIVE}" binlogviz
               rm -f dist/binlogviz
             '
+          ARCHIVE="binlogviz_${VERSION}_linux_${{ matrix.goarch }}.tar.gz"
+          bash scripts/release_smoke.sh "dist/${ARCHIVE}"
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

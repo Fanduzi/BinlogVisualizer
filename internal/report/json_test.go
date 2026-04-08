@@ -136,6 +136,16 @@ func TestRenderJSONProducesValidObject(t *testing.T) {
 	}
 }
 
+func TestRenderJSONIncludesReportVersion(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, `"report_version": 1`) {
+		t.Fatalf("expected report_version in JSON, got: %s", out)
+	}
+}
+
 func TestRenderJSONIncludesSummary(t *testing.T) {
 	result := model.AnalysisResult{
 		Summary: model.WorkloadSummary{

@@ -11,11 +11,14 @@ import (
 	"strings"
 )
 
+const currentSupportedReportVersion = 1
+
 type rawInputReport struct {
-	Summary  *rawInputSummary   `json:"summary"`
-	Tables   *[]rawInputTable   `json:"tables"`
-	Alerts   *[]json.RawMessage `json:"alerts"`
-	Warnings *int               `json:"warnings"`
+	ReportVersion *int               `json:"report_version"`
+	Summary       *rawInputSummary   `json:"summary"`
+	Tables        *[]rawInputTable   `json:"tables"`
+	Alerts        *[]json.RawMessage `json:"alerts"`
+	Warnings      *int               `json:"warnings"`
 }
 
 type rawInputSummary struct {
@@ -40,7 +43,7 @@ func LoadReport(path string) (InputReport, error) {
 
 	report, err := DecodeReportJSON(data)
 	if err != nil {
-		if strings.Contains(err.Error(), "unsupported BinlogViz report shape") {
+		if strings.Contains(err.Error(), "unsupported BinlogViz report shape") || strings.Contains(err.Error(), "unsupported report_version") {
 			return InputReport{}, err
 		}
 		return InputReport{}, fmt.Errorf("decode compare input %s: %w", path, err)
@@ -66,6 +69,13 @@ func DecodeReportJSON(data []byte) (InputReport, error) {
 }
 
 func validateRawInputReport(report rawInputReport) error {
+	version := 0
+	if report.ReportVersion != nil {
+		version = *report.ReportVersion
+	}
+	if version < 0 || version > currentSupportedReportVersion {
+		return fmt.Errorf("unsupported report_version %d: this BinlogViz build supports up to %d", version, currentSupportedReportVersion)
+	}
 	if report.Summary == nil || report.Tables == nil || report.Alerts == nil || report.Warnings == nil {
 		return fmt.Errorf("unsupported BinlogViz report shape")
 	}

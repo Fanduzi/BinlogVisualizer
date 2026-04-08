@@ -14,16 +14,19 @@ import (
 	"binlogviz/internal/model"
 )
 
+const currentReportVersion = 1
+
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
 type jsonAnalysisResult struct {
-	Summary      jsonSummary        `json:"summary"`
-	Tables       []jsonTableStats   `json:"tables"`
-	Transactions []jsonTransaction  `json:"transactions"`
-	Minutes      []jsonMinuteBucket `json:"minutes"`
-	Alerts       []jsonAlert        `json:"alerts"`
-	Warnings     int                `json:"warnings"`
-	Snapshot     *jsonSnapshot      `json:"snapshot,omitempty"`
+	ReportVersion int                `json:"report_version"`
+	Summary       jsonSummary        `json:"summary"`
+	Tables        []jsonTableStats   `json:"tables"`
+	Transactions  []jsonTransaction  `json:"transactions"`
+	Minutes       []jsonMinuteBucket `json:"minutes"`
+	Alerts        []jsonAlert        `json:"alerts"`
+	Warnings      int                `json:"warnings"`
+	Snapshot      *jsonSnapshot      `json:"snapshot,omitempty"`
 }
 
 type jsonSummary struct {
@@ -147,13 +150,14 @@ func RenderJSONToStdoutWithOptions(result model.AnalysisResult, opts Options) er
 
 func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult {
 	return jsonAnalysisResult{
-		Summary:      convertSummary(result.Summary),
-		Tables:       convertTables(result.Tables),
-		Transactions: convertTransactions(result.Transactions, opts.SQLContextMode),
-		Minutes:      convertMinutes(result.Minutes),
-		Alerts:       convertAlerts(result.Alerts),
-		Warnings:     result.Warnings,
-		Snapshot:     convertSnapshot(result.Snapshot),
+		ReportVersion: currentReportVersion,
+		Summary:       convertSummary(result.Summary),
+		Tables:        convertTables(result.Tables),
+		Transactions:  convertTransactions(result.Transactions, opts.SQLContextMode),
+		Minutes:       convertMinutes(result.Minutes),
+		Alerts:        convertAlerts(result.Alerts),
+		Warnings:      result.Warnings,
+		Snapshot:      convertSnapshot(result.Snapshot),
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
+	snapshotpkg "binlogviz/internal/snapshot"
 )
 
 type fakeStreamingAnalyzer struct {
@@ -915,6 +916,72 @@ func TestRunAnalysisJSONReportsWarningsForTruncatedQueryContext(t *testing.T) {
 	}
 	if parsed.Warnings != 1 {
 		t.Fatalf("expected warnings=1 for truncated query context, got %d", parsed.Warnings)
+	}
+}
+
+func TestRunAnalysisJSONWarningsPersistThroughSnapshotRoundTrip(t *testing.T) {
+	longSQL := "UPDATE users SET bio = '" + strings.Repeat("x", model.MaxStoredSQLBytes+256) + "' WHERE id = 7"
+
+	mock := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY_EVENT", QuerySQL: longSQL},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "UPDATE_ROWS_EVENT", Schema: "shop", Table: "users", RowCount: 2},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID_EVENT"},
+		},
+	}
+
+	snapshotDir := t.TempDir()
+	snapshotName := "warning_snapshot"
+	opts := &analyzeOptions{snapshotName: snapshotName}
+	snapshotMeta := buildSnapshotMetadata([]string{"dummy.binlog"}, opts, time.Time{}, time.Time{}, false)
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(
+			[]string{"dummy.binlog"},
+			analyzer.DefaultOptions(),
+			report.DefaultOptions(),
+			"json",
+			snapshotMeta,
+			snapshotName,
+			snapshotDir,
+			mock,
+			"",
+			nil,
+		)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !json.Valid([]byte(stdout)) {
+		t.Fatalf("stdout must remain valid json, got: %s", stdout)
+	}
+	if !strings.Contains(stderr, "Finalizing analysis") {
+		t.Fatalf("expected finalizing status on stderr, got: %s", stderr)
+	}
+	if !strings.Contains(stderr, `Saved snapshot "warning_snapshot" to `) {
+		t.Fatalf("expected snapshot save message on stderr, got: %s", stderr)
+	}
+
+	requireWarningsPersistInSavedSnapshot(t, snapshotDir, snapshotName, stdout)
+}
+
+func requireWarningsPersistInSavedSnapshot(t *testing.T, snapshotDir, snapshotName, stdout string) {
+	t.Helper()
+
+	var rendered struct {
+		Warnings int `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &rendered); err != nil {
+		t.Fatalf("decode rendered json: %v", err)
+	}
+
+	desc, err := snapshotpkg.DescribeSnapshot(snapshotDir, snapshotName)
+	if err != nil {
+		t.Fatalf("DescribeSnapshot returned error: %v", err)
+	}
+	if desc.Warnings != rendered.Warnings {
+		t.Fatalf("expected snapshot warnings %d to match rendered warnings %d", desc.Warnings, rendered.Warnings)
 	}
 }
 

@@ -6,6 +6,7 @@
 package snapshot
 
 import (
+	comparepkg "binlogviz/internal/compare"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -298,6 +299,10 @@ func DeleteSnapshot(dir, name string) (string, error) {
 }
 
 func decodeDescriptor(path string, data []byte, fallbackName string) (Descriptor, error) {
+	if _, err := comparepkg.DecodeReportJSON(data); err != nil {
+		return Descriptor{}, err
+	}
+
 	var stored storedSnapshot
 	if err := json.Unmarshal(data, &stored); err != nil {
 		return Descriptor{}, err

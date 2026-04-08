@@ -185,6 +185,19 @@ binlogviz version
 - `binlogviz --version` prints only the version string
 - `binlogviz version` prints the ASCII logo plus `binlogviz <version>`
 
+## Release Validation
+
+Pull requests and release builds now validate packaged artifacts, not only source-tree tests.
+
+The maintainer-facing smoke path verifies that one built archive can:
+
+- extract successfully
+- run `--version`
+- execute `analyze`
+- save snapshots
+- run `compare`
+- run `trend`
+
 ## Common DBA Workflows
 
 ### 1. Validate one file before scaling up

@@ -177,3 +177,73 @@ func TestDecodeReportJSONRejectsForeignJSON(t *testing.T) {
 		t.Fatalf("expected shape error, got %v", err)
 	}
 }
+
+func TestDecodeReportJSONAcceptsLegacyReportWithoutVersion(t *testing.T) {
+	data := []byte(`{
+  "summary": {
+    "total_transactions": 1,
+    "total_rows": 2,
+    "total_events": 3,
+    "start_time": "2026-04-01T10:00:00Z",
+    "end_time": "2026-04-01T10:01:00Z",
+    "duration": "1m0s"
+  },
+  "tables": [
+    {
+      "schema": "shop",
+      "table": "orders",
+      "total_rows": 2,
+      "insert_rows": 2,
+      "update_rows": 0,
+      "delete_rows": 0,
+      "txn_count": 1
+    }
+  ],
+  "transactions": [],
+  "minutes": [],
+  "alerts": [],
+  "warnings": 0
+}`)
+
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON returned error for legacy payload: %v", err)
+	}
+	if report.Summary.TotalRows != 2 {
+		t.Fatalf("expected total rows 2, got %d", report.Summary.TotalRows)
+	}
+}
+
+func TestDecodeReportJSONRejectsUnsupportedReportVersion(t *testing.T) {
+	data := []byte(`{
+  "report_version": 99,
+  "summary": {
+    "total_transactions": 1,
+    "total_rows": 2,
+    "total_events": 3,
+    "start_time": "2026-04-01T10:00:00Z",
+    "end_time": "2026-04-01T10:01:00Z",
+    "duration": "1m0s"
+  },
+  "tables": [
+    {
+      "schema": "shop",
+      "table": "orders",
+      "total_rows": 2,
+      "insert_rows": 2,
+      "update_rows": 0,
+      "delete_rows": 0,
+      "txn_count": 1
+    }
+  ],
+  "transactions": [],
+  "minutes": [],
+  "alerts": [],
+  "warnings": 0
+}`)
+
+	_, err := DecodeReportJSON(data)
+	if err == nil || !strings.Contains(err.Error(), "unsupported report_version") {
+		t.Fatalf("expected report_version compatibility error, got %v", err)
+	}
+}
