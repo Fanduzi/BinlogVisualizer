@@ -114,6 +114,7 @@ func TestAnalyzeCommandRejectsMissingFiles(t *testing.T) {
 }
 
 func TestResolveAnalyzePathsRejectsMixedModes(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	opts := &analyzeOptions{fromDir: "/tmp/binlogs", prefix: "mysql-bin."}
 
 	_, _, err := resolveAnalyzePaths([]string{"mysql-bin.000123"}, opts)
@@ -208,6 +209,7 @@ func TestDiscoverBinlogPathsSortsNumericSuffixesWithoutDotSeparator(t *testing.T
 }
 
 func TestDiscoverBinlogPathsFailsWhenNoMatches(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	dir := t.TempDir()
 	mustWriteFile(t, dir+"/mysql-bin.index")
 
@@ -218,6 +220,7 @@ func TestDiscoverBinlogPathsFailsWhenNoMatches(t *testing.T) {
 }
 
 func TestAnalyzeCommandRejectsFromDirWithoutPrefix(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	cmd := newAnalyzeCommand()
 	cmd.SetArgs([]string{"--from-dir", t.TempDir()})
 	cmd.SilenceUsage = true
@@ -230,6 +233,7 @@ func TestAnalyzeCommandRejectsFromDirWithoutPrefix(t *testing.T) {
 }
 
 func TestAnalyzeCommandRejectsPrefixWithoutFromDir(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	cmd := newAnalyzeCommand()
 	cmd.SetArgs([]string{"--prefix", "mysql-bin."})
 	cmd.SilenceUsage = true
@@ -242,6 +246,7 @@ func TestAnalyzeCommandRejectsPrefixWithoutFromDir(t *testing.T) {
 }
 
 func TestAnalyzeCommandRejectsMixedPositionalAndDiscoveryModes(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	file, err := os.CreateTemp(t.TempDir(), "binlog.*")
 	if err != nil {
 		t.Fatalf("create temp file: %v", err)
