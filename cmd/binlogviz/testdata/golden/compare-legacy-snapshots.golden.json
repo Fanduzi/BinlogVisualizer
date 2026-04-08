@@ -1,0 +1,93 @@
+{
+  "summary": {
+    "current_total_rows": 2400,
+    "baseline_total_rows": 1500,
+    "total_rows_delta": 900,
+    "current_total_transactions": 120,
+    "baseline_total_transactions": 90,
+    "total_transactions_delta": 30,
+    "current_warnings": 0,
+    "baseline_warnings": 0
+  },
+  "table_changes": [
+    {
+      "schema": "orders",
+      "table": "refunds",
+      "current_rows": 900,
+      "baseline_rows": 0,
+      "delta_rows": 900,
+      "delta_percent": 0
+    },
+    {
+      "schema": "orders",
+      "table": "chargebacks",
+      "current_rows": 0,
+      "baseline_rows": 400,
+      "delta_rows": -400,
+      "delta_percent": -100
+    },
+    {
+      "schema": "orders",
+      "table": "payments",
+      "current_rows": 1200,
+      "baseline_rows": 800,
+      "delta_rows": 400,
+      "delta_percent": 50
+    }
+  ],
+  "operation_mix": [
+    {
+      "operation": "INSERT",
+      "current": 1000,
+      "baseline": 600,
+      "delta": 400
+    },
+    {
+      "operation": "UPDATE",
+      "current": 900,
+      "baseline": 500,
+      "delta": 400
+    },
+    {
+      "operation": "DELETE",
+      "current": 200,
+      "baseline": 100,
+      "delta": 100
+    }
+  ],
+  "alert_changes": {
+    "added": [
+      {
+        "type": "large_transaction",
+        "severity": "warning",
+        "message": "large transaction detected",
+        "txn_key": "trx-current-1",
+        "details": {
+          "rows": 1500
+        }
+      },
+      {
+        "type": "spike",
+        "severity": "warning",
+        "message": "rows spiked at 10:12",
+        "minute": "2026-03-20T10:12:00Z",
+        "details": {
+          "rows": 900
+        }
+      }
+    ],
+    "removed": [
+      {
+        "type": "spike",
+        "severity": "warning",
+        "message": "rows spiked at 10:05",
+        "minute": "2026-03-13T10:05:00Z",
+        "details": {
+          "rows": 600
+        }
+      }
+    ]
+  },
+  "current_label": "current",
+  "baseline_label": "baseline"
+}

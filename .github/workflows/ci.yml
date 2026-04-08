@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          install-only: true
+      - name: Run tests
+        run: go test ./...
+      - name: Validate GoReleaser config
+        run: goreleaser check
+      - name: Build local archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          go build -trimpath -o dist/binlogviz .
+          tar -C dist -czf dist/binlogviz_ci_linux_amd64.tar.gz binlogviz
+      - name: Smoke test packaged archive
+        run: bash scripts/release_smoke.sh dist/binlogviz_ci_linux_amd64.tar.gz

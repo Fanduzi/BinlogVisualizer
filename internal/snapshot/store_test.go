@@ -191,6 +191,19 @@ func TestDescribeSnapshotReturnsNormalizedMetadata(t *testing.T) {
 	}
 }
 
+func TestDescribeSnapshotRejectsUnsupportedReportVersion(t *testing.T) {
+	dir := t.TempDir()
+	_, err := SaveJSON(dir, "incident", []byte(minimalSnapshotStoreReportJSONWithVersion("incident", "incident", 2400, 2, 99)))
+	if err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+
+	_, err = DescribeSnapshot(dir, "incident")
+	if err == nil || !strings.Contains(err.Error(), "unsupported report_version") {
+		t.Fatalf("expected report_version compatibility error, got %v", err)
+	}
+}
+
 func TestRenameSnapshotUpdatesIdentityAndFilename(t *testing.T) {
 	dir := t.TempDir()
 	_, err := SaveJSON(dir, "old_name", []byte(minimalSnapshotStoreReportJSON("old_name", "old_name", 2400, 2)))
@@ -323,8 +336,17 @@ func TestDeleteSnapshotReportsMissingSnapshotClearly(t *testing.T) {
 }
 
 func minimalSnapshotStoreReportJSON(name, label string, totalRows, warnings int) string {
+	return minimalSnapshotStoreReportJSONWithVersion(name, label, totalRows, warnings, -1)
+}
+
+func minimalSnapshotStoreReportJSONWithVersion(name, label string, totalRows, warnings, version int) string {
+	reportVersion := ""
+	if version >= 0 {
+		reportVersion = `  "report_version": ` + strconv.Itoa(version) + `,
+`
+	}
 	return `{
-  "summary": {
+` + reportVersion + `  "summary": {
     "total_transactions": 120,
     "total_rows": ` + strconv.Itoa(totalRows) + `,
     "total_events": 3000,

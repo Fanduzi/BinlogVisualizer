@@ -178,6 +178,24 @@ binlogviz analyze mysql-bin.000123 --sql-context off
 binlogviz analyze mysql-bin.000123 --sql-context full
 ```
 
+## `unsupported report_version`
+
+Representative error:
+
+```text
+unsupported report_version 2: this BinlogViz build supports up to 1
+```
+
+What it means:
+
+- you are trying to load analyze JSON or a snapshot created by a newer BinlogViz contract
+- the current binary understands older legacy reports and the current contract, but not that newer one
+
+Typical fix:
+
+- upgrade BinlogViz to a version that supports the newer report contract
+- or regenerate the report/snapshot with the current BinlogViz build when that is operationally acceptable
+
 ## Unexpected output channel behavior
 
 Typical symptom:
