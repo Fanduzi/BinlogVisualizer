@@ -14,7 +14,7 @@ import (
 	"binlogviz/internal/model"
 )
 
-const currentReportVersion = 1
+const currentReportVersion = 2
 
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
@@ -23,6 +23,7 @@ type jsonAnalysisResult struct {
 	Summary       jsonSummary        `json:"summary"`
 	Tables        []jsonTableStats   `json:"tables"`
 	Transactions  []jsonTransaction  `json:"transactions"`
+	Patterns      []jsonPatternStats `json:"patterns"`
 	Minutes       []jsonMinuteBucket `json:"minutes"`
 	Alerts        []jsonAlert        `json:"alerts"`
 	Warnings      int                `json:"warnings"`
@@ -61,6 +62,20 @@ type jsonTransaction struct {
 	QuerySQL           string         `json:"query_sql,omitempty"`
 	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
 	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
+}
+
+type jsonPatternStats struct {
+	PatternKey          string         `json:"pattern_key"`
+	Label               string         `json:"label"`
+	TotalRows           int            `json:"total_rows"`
+	TxnCount            int            `json:"txn_count"`
+	EventCount          int            `json:"event_count"`
+	ShareOfRows         float64        `json:"share_of_rows"`
+	ShareOfTransactions float64        `json:"share_of_txns"`
+	AvgRowsPerTxn       float64        `json:"avg_rows_per_txn"`
+	Tables              map[string]int `json:"tables"`
+	Operations          map[string]int `json:"operations"`
+	SampleQuerySummary  string         `json:"sample_query_summary,omitempty"`
 }
 
 type jsonMinuteBucket struct {
@@ -154,6 +169,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		Summary:       convertSummary(result.Summary),
 		Tables:        convertTables(result.Tables),
 		Transactions:  convertTransactions(result.Transactions, opts.SQLContextMode),
+		Patterns:      convertPatterns(result.Patterns),
 		Minutes:       convertMinutes(result.Minutes),
 		Alerts:        convertAlerts(result.Alerts),
 		Warnings:      result.Warnings,
@@ -227,6 +243,29 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode) []jsonTr
 			}
 		}
 		result[i] = jt
+	}
+	return result
+}
+
+func convertPatterns(patterns []model.PatternStats) []jsonPatternStats {
+	if patterns == nil {
+		return []jsonPatternStats{}
+	}
+	result := make([]jsonPatternStats, len(patterns))
+	for i, p := range patterns {
+		result[i] = jsonPatternStats{
+			PatternKey:          p.PatternKey,
+			Label:               p.Label,
+			TotalRows:           p.TotalRows,
+			TxnCount:            p.TxnCount,
+			EventCount:          p.EventCount,
+			ShareOfRows:         p.ShareOfRows,
+			ShareOfTransactions: p.ShareOfTransactions,
+			AvgRowsPerTxn:       p.AvgRowsPerTxn,
+			Tables:              copyStringIntMap(p.Tables),
+			Operations:          copyStringIntMap(p.Operations),
+			SampleQuerySummary:  p.SampleQuerySummary,
+		}
 	}
 	return result
 }

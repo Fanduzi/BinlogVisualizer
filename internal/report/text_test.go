@@ -106,6 +106,35 @@ func TestRenderTextIncludesTopTransactions(t *testing.T) {
 	}
 }
 
+func TestRenderTextIncludesTopPatternsSection(t *testing.T) {
+	result := model.AnalysisResult{
+		Patterns: []model.PatternStats{
+			{
+				PatternKey:         "tables=shop.orders|ops=INSERT|shape=small",
+				Label:              "shop.orders / INSERT / small batch",
+				TotalRows:          12,
+				TxnCount:           3,
+				AvgRowsPerTxn:      4,
+				SampleQuerySummary: "INSERT INTO orders ...",
+			},
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Top Patterns") {
+		t.Fatalf("expected 'Top Patterns' section, got: %s", out)
+	}
+	if !strings.Contains(out, "shop.orders / INSERT / small batch") {
+		t.Fatalf("expected pattern label, got: %s", out)
+	}
+	if !strings.Contains(out, "INSERT INTO orders ...") {
+		t.Fatalf("expected sample query summary, got: %s", out)
+	}
+}
+
 func TestRenderTextIncludesMinuteActivity(t *testing.T) {
 	result := model.AnalysisResult{
 		Minutes: []model.MinuteBucket{
@@ -152,6 +181,7 @@ func TestRenderTextHandlesEmptySections(t *testing.T) {
 		"Workload Summary",
 		"Top Tables",
 		"Top Transactions",
+		"Top Patterns",
 		"Minute Activity",
 		"Alerts",
 	}
@@ -181,11 +211,12 @@ func TestRenderTextSectionOrder(t *testing.T) {
 	summaryIdx := strings.Index(out, "Workload Summary")
 	tablesIdx := strings.Index(out, "Top Tables")
 	txnIdx := strings.Index(out, "Top Transactions")
+	patternIdx := strings.Index(out, "Top Patterns")
 	minuteIdx := strings.Index(out, "Minute Activity")
 	alertsIdx := strings.Index(out, "Alerts")
 
-	if !(summaryIdx < tablesIdx && tablesIdx < txnIdx && txnIdx < minuteIdx && minuteIdx < alertsIdx) {
-		t.Fatal("sections not in correct order: Workload Summary < Top Tables < Top Transactions < Minute Activity < Alerts")
+	if !(summaryIdx < tablesIdx && tablesIdx < txnIdx && txnIdx < patternIdx && patternIdx < minuteIdx && minuteIdx < alertsIdx) {
+		t.Fatal("sections not in correct order: Workload Summary < Top Tables < Top Transactions < Top Patterns < Minute Activity < Alerts")
 	}
 }
 

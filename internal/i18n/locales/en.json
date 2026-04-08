@@ -183,6 +183,10 @@
     "description": "Top transactions section header",
     "other": "Top Transactions"
   },
+  "report.section.patterns": {
+    "description": "Top patterns section header",
+    "other": "Top Patterns"
+  },
   "report.section.minutes": {
     "description": "Minute activity section header",
     "other": "Minute Activity"
@@ -226,6 +230,10 @@
   "report.placeholder.noTransactions": {
     "description": "Placeholder when no transactions",
     "other": "(no transactions)"
+  },
+  "report.placeholder.noPatterns": {
+    "description": "Placeholder when no workload patterns",
+    "other": "(no patterns)"
   },
   "report.placeholder.noMinuteActivity": {
     "description": "Placeholder when no minute activity",

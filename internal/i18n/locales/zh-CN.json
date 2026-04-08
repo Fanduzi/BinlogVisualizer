@@ -183,6 +183,10 @@
     "description": "Top 事务章节标题",
     "other": "大事务排行"
   },
+  "report.section.patterns": {
+    "description": "Top 模式章节标题",
+    "other": "写入模式排行"
+  },
   "report.section.minutes": {
     "description": "分钟活动章节标题",
     "other": "分钟级活动"
@@ -226,6 +230,10 @@
   "report.placeholder.noTransactions": {
     "description": "无事务占位符",
     "other": "(无事务)"
+  },
+  "report.placeholder.noPatterns": {
+    "description": "无写入模式占位符",
+    "other": "(无写入模式)"
   },
   "report.placeholder.noMinuteActivity": {
     "description": "无分钟活动占位符",

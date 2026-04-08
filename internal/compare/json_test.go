@@ -53,6 +53,7 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 			{Schema: "orders", Table: "chargebacks", CurrentRows: 0, BaselineRows: 400, DeltaRows: -400, DeltaPercent: -100},
 			{Schema: "orders", Table: "payments", CurrentRows: 1200, BaselineRows: 800, DeltaRows: 400, DeltaPercent: 50},
 		},
+		PatternChanges: []PatternChange{},
 		OperationMix: []OperationDelta{
 			{Operation: "INSERT", Current: 1000, Baseline: 600, Delta: 400},
 			{Operation: "UPDATE", Current: 900, Baseline: 500, Delta: 400},
@@ -128,5 +129,33 @@ func TestRenderJSONIncludesSnapshotIdentityWhenPresent(t *testing.T) {
 		if !strings.Contains(output, token) {
 			t.Fatalf("expected json output to contain %q, got %s", token, output)
 		}
+	}
+}
+
+func TestRenderJSONIncludesPatternChanges(t *testing.T) {
+	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("load current: %v", err)
+	}
+	baseline, err := LoadReport(filepath.Join("testdata", "baseline_patterns.json"))
+	if err != nil {
+		t.Fatalf("load baseline: %v", err)
+	}
+
+	output, err := RenderJSON(BuildCompareResult(current, baseline))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(output), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	raw, ok := decoded["pattern_changes"].([]any)
+	if !ok {
+		t.Fatalf("expected pattern_changes array, got %#v", decoded["pattern_changes"])
+	}
+	if len(raw) != 3 {
+		t.Fatalf("expected 3 pattern changes, got %d", len(raw))
 	}
 }

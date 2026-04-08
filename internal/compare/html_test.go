@@ -166,3 +166,62 @@ func TestRenderHTMLIncludesSnapshotIdentityWhenPresent(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHTMLIncludesPatternChangeSection(t *testing.T) {
+	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("load current report: %v", err)
+	}
+	baseline, err := LoadReport(filepath.Join("testdata", "baseline_patterns.json"))
+	if err != nil {
+		t.Fatalf("load baseline report: %v", err)
+	}
+
+	output, err := RenderHTML(BuildCompareResult(current, baseline))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		"Pattern Changes",
+		`id="compare-pattern-changes"`,
+		"window.comparePatternChanges =",
+		"payments.update_status",
+		"refunds.create",
+		"chargebacks.create",
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected html to contain %q", token)
+		}
+	}
+}
+
+func TestRenderHTMLEscapesHostilePatternContent(t *testing.T) {
+	result := CompareResult{
+		PatternChanges: []PatternChange{{
+			PatternKey:         `p<script>alert("key")</script>`,
+			Label:              `label<img src=x onerror=alert("label")>`,
+			CurrentRows:        10,
+			BaselineRows:       5,
+			DeltaRows:          5,
+			CurrentTxnCount:    4,
+			BaselineTxnCount:   2,
+			DeltaTxnCount:      2,
+			SampleQuerySummary: `</script><script>alert("query")</script>`,
+		}},
+	}
+
+	output, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, forbidden := range []string{
+		`<script>alert("key")</script>`,
+		`<img src=x onerror=alert("label")>`,
+		`</script><script>alert("query")</script>`,
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("expected hostile pattern content to be escaped, found %q", forbidden)
+		}
+	}
+}

@@ -7,6 +7,7 @@ package compare
 type InputReport struct {
 	Summary  InputSummary   `json:"summary"`
 	Tables   []InputTable   `json:"tables"`
+	Patterns []InputPattern `json:"patterns"`
 	Alerts   []InputAlert   `json:"alerts"`
 	Warnings int            `json:"warnings"`
 	Snapshot *InputSnapshot `json:"snapshot,omitempty"`
@@ -29,6 +30,20 @@ type InputTable struct {
 	UpdateRows int    `json:"update_rows"`
 	DeleteRows int    `json:"delete_rows"`
 	TxnCount   int    `json:"txn_count"`
+}
+
+type InputPattern struct {
+	PatternKey         string         `json:"pattern_key"`
+	Label              string         `json:"label"`
+	TotalRows          int            `json:"total_rows"`
+	TxnCount           int            `json:"txn_count"`
+	EventCount         int            `json:"event_count"`
+	ShareOfRows        float64        `json:"share_of_rows"`
+	ShareOfTxns        float64        `json:"share_of_txns"`
+	Tables             map[string]int `json:"tables"`
+	Operations         map[string]int `json:"operations"`
+	AvgRowsPerTxn      float64        `json:"avg_rows_per_txn"`
+	SampleQuerySummary string         `json:"sample_query_summary,omitempty"`
 }
 
 type InputAlert struct {
@@ -72,6 +87,7 @@ type InputSnapshotFilters struct {
 type CompareResult struct {
 	Summary          SummaryDelta     `json:"summary"`
 	TableChanges     []TableChange    `json:"table_changes"`
+	PatternChanges   []PatternChange  `json:"pattern_changes"`
 	OperationMix     []OperationDelta `json:"operation_mix"`
 	AlertChanges     AlertDelta       `json:"alert_changes"`
 	CurrentLabel     string           `json:"current_label"`
@@ -98,6 +114,21 @@ type TableChange struct {
 	BaselineRows int     `json:"baseline_rows"`
 	DeltaRows    int     `json:"delta_rows"`
 	DeltaPercent float64 `json:"delta_percent"`
+}
+
+type PatternChange struct {
+	PatternKey         string         `json:"pattern_key"`
+	Label              string         `json:"label"`
+	CurrentRows        int            `json:"current_rows"`
+	BaselineRows       int            `json:"baseline_rows"`
+	DeltaRows          int            `json:"delta_rows"`
+	DeltaPercent       float64        `json:"delta_percent"`
+	CurrentTxnCount    int            `json:"current_txn_count"`
+	BaselineTxnCount   int            `json:"baseline_txn_count"`
+	DeltaTxnCount      int            `json:"delta_txn_count"`
+	Tables             map[string]int `json:"tables"`
+	Operations         map[string]int `json:"operations"`
+	SampleQuerySummary string         `json:"sample_query_summary,omitempty"`
 }
 
 type OperationDelta struct {

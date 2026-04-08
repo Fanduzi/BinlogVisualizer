@@ -60,6 +60,7 @@ type AnalysisResult struct {
 	Summary      WorkloadSummary
 	Tables       []TableStats
 	Transactions []Transaction
+	Patterns     []PatternStats
 	Minutes      []MinuteBucket
 	Alerts       []Alert
 	Warnings     int

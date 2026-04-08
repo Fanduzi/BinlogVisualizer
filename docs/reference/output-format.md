@@ -42,7 +42,7 @@ If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and
 
 ## Text Output
 
-Text mode is the default report format. It renders a fixed five-section report.
+Text mode is the default report format. It renders a fixed six-section report.
 
 ### 1. Workload Summary
 
@@ -97,7 +97,25 @@ Example heading:
 === Top Transactions ===
 ```
 
-### 4. Minute Activity
+### 4. Top Patterns
+
+The `Top Patterns` section groups recurring write transaction shapes.
+
+Useful fields shown in text output include:
+
+- pattern label
+- total rows
+- transaction count
+- average rows per transaction
+- optional sample query summary
+
+Example heading:
+
+```text
+=== Top Patterns ===
+```
+
+### 5. Minute Activity
 
 The `Minute Activity` section summarizes write activity by minute.
 
@@ -113,7 +131,7 @@ Example heading:
 === Minute Activity ===
 ```
 
-### 5. Alerts
+### 6. Alerts
 
 The `Alerts` section lists detected warnings from analysis logic.
 
@@ -144,9 +162,11 @@ The top-level JSON object always contains these fields:
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
+| `report_version` | integer | yes | Analyze report contract version; current version is `2` |
 | `summary` | object | yes | Overall totals and time bounds |
 | `tables` | array | yes | Top table aggregates; empty array when no table results exist |
 | `transactions` | array | yes | Top transaction aggregates; empty array when no transaction results exist |
+| `patterns` | array | yes | Top pattern aggregates; empty array when no pattern results exist |
 | `minutes` | array | yes | Per-minute aggregates; empty array when no minute buckets exist |
 | `alerts` | array | yes | Detected alerts; empty array when no alerts exist |
 | `warnings` | integer | yes | Count of analysis warnings recorded in the finalized result |
@@ -205,6 +225,24 @@ The top-level JSON object always contains these fields:
 - `off`: omit all query-related fields
 - `summary`: include `query_summary`; include `query_truncated` and `query_original_bytes` only when query context exists
 - `full`: include `query_summary`; include `query_sql`, `query_truncated`, and `query_original_bytes` when query context exists
+
+### `patterns`
+
+`patterns` is always present as an array. Each entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | Deterministic structural identity for the workload pattern |
+| `label` | string | yes | Human-readable pattern description |
+| `total_rows` | integer | yes | Total rows contributed by transactions in this pattern |
+| `txn_count` | integer | yes | Number of transactions grouped into this pattern |
+| `event_count` | integer | yes | Number of events grouped into this pattern |
+| `share_of_rows` | number | yes | Fraction of total analyzed rows attributed to this pattern |
+| `share_of_txns` | number | yes | Fraction of total analyzed transactions attributed to this pattern |
+| `avg_rows_per_txn` | number | yes | Average rows per transaction inside this pattern |
+| `tables` | object | yes | Aggregate table-to-row map for the pattern |
+| `operations` | object | yes | Aggregate operation-to-row map for the pattern |
+| `sample_query_summary` | string | no | Optional representative query summary when available |
 
 ### `minutes`
 
@@ -385,6 +423,7 @@ Text mode renders a fixed compare report for terminal review. It includes:
 - snapshot context lines for requested window, input mode, source summary, and active filters when snapshot metadata is present
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
+- `Top Pattern Changes` between `Top Table Changes` and `Operation Mix`
 - operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
 - alert additions and removals
 
@@ -406,6 +445,7 @@ The JSON report serializes the compare result in a stable snake_case shape.
 |------|------|----------|------|
 | `summary` | object | yes | Current/baseline totals and delta values |
 | `table_changes` | array | yes | Table-level row deltas sorted by absolute change |
+| `pattern_changes` | array | yes | Write-pattern deltas matched by `pattern_key`, sorted by absolute row delta |
 | `operation_mix` | array | yes | Operation deltas for `insert`, `update`, and `delete` |
 | `alert_changes` | object | yes | Added and removed alerts |
 | `current_label` | string | yes | Snapshot-aware label when current snapshot metadata is present; otherwise `current` |
@@ -425,6 +465,7 @@ The report includes chart-based sections for:
 
 - summary comparison between baseline and current totals
 - top table changes ranked by row delta
+- pattern changes ranked by row delta
 - operation mix comparison
 - alert change visibility for added and removed alerts
 

@@ -157,6 +157,95 @@ func TestCompareCommandHTMLOutputContainsHTMLDocument(t *testing.T) {
 	}
 }
 
+func TestCompareCommandTextOutputContainsPatternChanges(t *testing.T) {
+	cmd := newCompareCommand()
+	cmd.SetArgs([]string{
+		filepath.Join("..", "..", "internal", "compare", "testdata", "current_patterns.json"),
+		filepath.Join("..", "..", "internal", "compare", "testdata", "baseline_patterns.json"),
+		"--format", "text",
+	})
+
+	output := &bytes.Buffer{}
+	cmd.SetOut(output)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, token := range []string{"Top Pattern Changes", "payments.update_status", "refunds.create"} {
+		if !strings.Contains(output.String(), token) {
+			t.Fatalf("expected text output to contain %q, got %s", token, output.String())
+		}
+	}
+}
+
+func TestCompareCommandJSONOutputIncludesPatternChanges(t *testing.T) {
+	cmd := newCompareCommand()
+	cmd.SetArgs([]string{
+		filepath.Join("..", "..", "internal", "compare", "testdata", "current_patterns.json"),
+		filepath.Join("..", "..", "internal", "compare", "testdata", "baseline_patterns.json"),
+		"--format", "json",
+	})
+
+	output := &bytes.Buffer{}
+	cmd.SetOut(output)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(output.Bytes(), &decoded); err != nil {
+		t.Fatalf("expected valid json: %v", err)
+	}
+	if _, ok := decoded["pattern_changes"]; !ok {
+		t.Fatalf("expected pattern_changes in compare output, got %#v", decoded)
+	}
+}
+
+func TestCompareCommandAcceptsLegacyBaselineWithoutPatterns(t *testing.T) {
+	cmd := newCompareCommand()
+	cmd.SetArgs([]string{
+		filepath.Join("..", "..", "internal", "compare", "testdata", "current_patterns.json"),
+		filepath.Join("..", "..", "internal", "compare", "testdata", "legacy_no_patterns.json"),
+		"--format", "json",
+	})
+
+	output := &bytes.Buffer{}
+	cmd.SetOut(output)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(output.String(), `"baseline_rows": 0`) {
+		t.Fatalf("expected legacy baseline pattern rows to stay at 0, got %s", output.String())
+	}
+}
+
+func TestCompareCommandHTMLOutputContainsPatternSection(t *testing.T) {
+	cmd := newCompareCommand()
+	cmd.SetArgs([]string{
+		filepath.Join("..", "..", "internal", "compare", "testdata", "current_patterns.json"),
+		filepath.Join("..", "..", "internal", "compare", "testdata", "baseline_patterns.json"),
+		"--format", "html",
+	})
+
+	output := &bytes.Buffer{}
+	cmd.SetOut(output)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, token := range []string{"compare-pattern-changes", "Pattern Changes", "window.comparePatternChanges"} {
+		if !strings.Contains(output.String(), token) {
+			t.Fatalf("expected html output to contain %q, got %s", token, output.String())
+		}
+	}
+}
+
 func TestCompareCommandReportsMissingInputFile(t *testing.T) {
 	cmd := newCompareCommand()
 	cmd.SetArgs([]string{

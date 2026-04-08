@@ -35,7 +35,64 @@
       "delta_percent": 50
     }
   ],
-  "pattern_changes": [],
+  "pattern_changes": [
+    {
+      "pattern_key": "orders.refunds|INSERT|small",
+      "label": "refunds.create",
+      "current_rows": 700,
+      "baseline_rows": 0,
+      "delta_rows": 700,
+      "delta_percent": 0,
+      "current_txn_count": 40,
+      "baseline_txn_count": 0,
+      "delta_txn_count": 40,
+      "tables": {
+        "orders.refunds": 700
+      },
+      "operations": {
+        "INSERT": 700
+      },
+      "sample_query_summary": "insert into refunds ..."
+    },
+    {
+      "pattern_key": "orders.payments|UPDATE|medium",
+      "label": "payments.update_status",
+      "current_rows": 1300,
+      "baseline_rows": 600,
+      "delta_rows": 700,
+      "delta_percent": 116.66666666666667,
+      "current_txn_count": 18,
+      "baseline_txn_count": 9,
+      "delta_txn_count": 9,
+      "tables": {
+        "orders.payments": 1200,
+        "orders.refunds": 100
+      },
+      "operations": {
+        "INSERT": 100,
+        "UPDATE": 1200
+      },
+      "sample_query_summary": "update payments set status = ?"
+    },
+    {
+      "pattern_key": "orders.chargebacks|INSERT|small",
+      "label": "chargebacks.create",
+      "current_rows": 0,
+      "baseline_rows": 500,
+      "delta_rows": -500,
+      "delta_percent": -100,
+      "current_txn_count": 0,
+      "baseline_txn_count": 22,
+      "delta_txn_count": -22,
+      "tables": {
+        "orders.chargebacks": 500
+      },
+      "operations": {
+        "INSERT": 500
+      },
+      "sample_query_summary": "insert into chargebacks ..."
+    }
+  ],
   "operation_mix": [
     {
       "operation": "INSERT",
@@ -58,15 +115,6 @@
   ],
   "alert_changes": {
     "added": [
-      {
-        "type": "large_transaction",
-        "severity": "warning",
-        "message": "large transaction detected",
-        "txn_key": "trx-current-1",
-        "details": {
-          "rows": 1500
-        }
-      },
       {
         "type": "spike",
         "severity": "warning",

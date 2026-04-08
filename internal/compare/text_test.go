@@ -33,6 +33,9 @@ Top Table Changes
 - orders.chargebacks: 400 -> 0 (-400, -100.0%)
 - orders.payments: 800 -> 1200 (+400, 50.0%)
 
+Top Pattern Changes
+- none
+
 Operation Mix
 - INSERT: 600 -> 1000 (+400)
 - UPDATE: 500 -> 900 (+400)
@@ -103,5 +106,52 @@ func TestRenderTextIncludesSnapshotIdentityWhenPresent(t *testing.T) {
 		if !strings.Contains(output, token) {
 			t.Fatalf("expected text output to contain %q, got %s", token, output)
 		}
+	}
+}
+
+func TestRenderTextIncludesPatternChangesSection(t *testing.T) {
+	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("load current report: %v", err)
+	}
+	baseline, err := LoadReport(filepath.Join("testdata", "baseline_patterns.json"))
+	if err != nil {
+		t.Fatalf("load baseline report: %v", err)
+	}
+
+	output, err := RenderText(BuildCompareResult(current, baseline))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		"Top Pattern Changes",
+		"payments.update_status",
+		"txns 9 -> 18 (+9)",
+		"query: update payments set status = ?",
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected text output to contain %q, got %s", token, output)
+		}
+	}
+	if strings.Index(output, "Top Pattern Changes") < strings.Index(output, "Top Table Changes") {
+		t.Fatalf("expected pattern section after table changes, got %s", output)
+	}
+}
+
+func TestRenderTextRendersPatternEmptyState(t *testing.T) {
+	output, err := RenderText(CompareResult{
+		CurrentLabel:   "current",
+		BaselineLabel:  "baseline",
+		PatternChanges: []PatternChange{},
+		TableChanges:   []TableChange{},
+		OperationMix:   []OperationDelta{},
+		AlertChanges:   AlertDelta{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "Top Pattern Changes\n- none") {
+		t.Fatalf("expected empty pattern section, got %s", output)
 	}
 }

@@ -53,6 +53,29 @@ func RenderText(result CompareResult) (string, error) {
 		}
 	}
 
+	fmt.Fprintf(&b, "\nTop Pattern Changes\n")
+	if len(result.PatternChanges) == 0 {
+		fmt.Fprintf(&b, "- none\n")
+	} else {
+		for _, change := range result.PatternChanges {
+			fmt.Fprintf(
+				&b,
+				"- %s: %d -> %d (%+d, %.1f%%), txns %d -> %d (%+d)\n",
+				change.Label,
+				change.BaselineRows,
+				change.CurrentRows,
+				change.DeltaRows,
+				change.DeltaPercent,
+				change.BaselineTxnCount,
+				change.CurrentTxnCount,
+				change.DeltaTxnCount,
+			)
+			if strings.TrimSpace(change.SampleQuerySummary) != "" {
+				fmt.Fprintf(&b, "  query: %s\n", change.SampleQuerySummary)
+			}
+		}
+	}
+
 	fmt.Fprintf(&b, "\nOperation Mix\n")
 	if len(result.OperationMix) == 0 {
 		fmt.Fprintf(&b, "- none\n")
