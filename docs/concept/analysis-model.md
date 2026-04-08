@@ -68,6 +68,41 @@ A few semantics matter:
 
 Use this section to answer: "Which individual transactions dominated the workload or look operationally expensive?"
 
+## Top Patterns
+
+`Top Patterns` groups reconstructed transactions into repeated write shapes.
+
+Each pattern entry represents one class of similar transactions rather than one concrete transaction.
+
+The first version derives pattern identity primarily from:
+
+- touched table set
+- operation set
+- coarse rows-per-event shape bucket
+
+Optional query summary is used as explanatory context, not as the sole grouping key.
+
+Each pattern entry includes:
+
+- deterministic pattern key
+- human-readable label
+- total rows
+- transaction count
+- event count
+- share of rows
+- share of transactions
+- average rows per transaction
+- aggregate table and operation maps
+- optional sample query summary
+
+This section answers a different question from `Top Tables` and `Top Transactions`:
+
+- `Top Tables`: where the write load landed
+- `Top Transactions`: which individual transactions were biggest
+- `Top Patterns`: which repeated kinds of write activity dominated the workload
+
+Use this section to answer: "What recurring write shapes made up most of this workload window?"
+
 ## Minute Activity
 
 `Minute Activity` aggregates write activity into per-minute buckets.
@@ -126,16 +161,17 @@ This means SQL context is designed for operator orientation, not for lossless ar
 
 ## Final Result Shape
 
-The final analysis result is assembled into five stable report areas plus a warning count:
+The final analysis result is assembled into six stable report areas plus a warning count:
 
 - `summary`
 - `tables`
 - `transactions`
+- `patterns`
 - `minutes`
 - `alerts`
 - `warnings`
 
-Text output always renders the five report sections in a fixed order, even when some sections are empty. JSON output always emits the top-level fields, using empty arrays where a result set is absent.
+Text output always renders the six report sections in a fixed order, even when some sections are empty. JSON output always emits the top-level fields, using empty arrays where a result set is absent.
 
 Nested JSON fields are more selective. Optional per-transaction, per-minute, and alert-detail fields may be omitted when their source data is empty or unavailable.
 

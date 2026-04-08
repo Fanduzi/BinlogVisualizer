@@ -15,13 +15,14 @@ import (
 )
 
 type htmlCompareData struct {
-	Result           CompareResult
-	GeneratedAt      string
-	EChartsJS        template.JS
-	SummaryPairsJSON template.JS
-	TopTablesJSON    template.JS
-	OpsMixJSON       template.JS
-	AlertCountsJSON  template.JS
+	Result             CompareResult
+	GeneratedAt        string
+	EChartsJS          template.JS
+	SummaryPairsJSON   template.JS
+	TopTablesJSON      template.JS
+	PatternChangesJSON template.JS
+	OpsMixJSON         template.JS
+	AlertCountsJSON    template.JS
 }
 
 type htmlMetricDatum struct {
@@ -55,13 +56,14 @@ func RenderHTML(result CompareResult) (string, error) {
 	}
 
 	data := htmlCompareData{
-		Result:           result,
-		GeneratedAt:      time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		EChartsJS:        template.JS(echartsJS), //nolint:gosec
-		SummaryPairsJSON: mustHTMLJSON(buildSummaryPairs(result)),
-		TopTablesJSON:    mustHTMLJSON(buildTopTableSeries(result.TableChanges)),
-		OpsMixJSON:       mustHTMLJSON(buildOperationSeries(result.OperationMix)),
-		AlertCountsJSON:  mustHTMLJSON(buildAlertCounts(result.AlertChanges)),
+		Result:             result,
+		GeneratedAt:        time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		EChartsJS:          template.JS(echartsJS), //nolint:gosec
+		SummaryPairsJSON:   mustHTMLJSON(buildSummaryPairs(result)),
+		TopTablesJSON:      mustHTMLJSON(buildTopTableSeries(result.TableChanges)),
+		PatternChangesJSON: mustHTMLJSON(buildPatternSeries(result.PatternChanges)),
+		OpsMixJSON:         mustHTMLJSON(buildOperationSeries(result.OperationMix)),
+		AlertCountsJSON:    mustHTMLJSON(buildAlertCounts(result.AlertChanges)),
 	}
 
 	var buf bytes.Buffer
@@ -123,6 +125,23 @@ func buildOperationSeries(changes []OperationDelta) []htmlMetricDatum {
 			Baseline: change.Baseline,
 			Current:  change.Current,
 			Delta:    change.Delta,
+		})
+	}
+	return series
+}
+
+func buildPatternSeries(changes []PatternChange) []htmlMetricDatum {
+	series := make([]htmlMetricDatum, 0, len(changes))
+	for _, change := range changes {
+		name := change.Label
+		if name == "" {
+			name = change.PatternKey
+		}
+		series = append(series, htmlMetricDatum{
+			Name:     name,
+			Baseline: change.BaselineRows,
+			Current:  change.CurrentRows,
+			Delta:    change.DeltaRows,
 		})
 	}
 	return series
@@ -404,6 +423,52 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     </section>
 
     <section class="section">
+      <div class="section-header"><span class="dot"></span>Pattern Changes</div>
+      <div class="section-body two-col">
+        <div id="compare-pattern-changes" class="chart-box"></div>
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th>Pattern</th>
+                <th class="num">{{.Result.BaselineLabel}}</th>
+                <th class="num">{{.Result.CurrentLabel}}</th>
+                <th class="num">Delta Rows</th>
+                <th class="num">Delta %</th>
+                <th class="num">Baseline Txns</th>
+                <th class="num">Current Txns</th>
+                <th class="num">Delta Txns</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{if .Result.PatternChanges}}
+                {{range .Result.PatternChanges}}
+                <tr>
+                  <td>
+                    <div><strong>{{if .Label}}{{.Label}}{{else}}{{.PatternKey}}{{end}}</strong></div>
+                    {{if .SampleQuerySummary}}<div>{{.SampleQuerySummary}}</div>{{end}}
+                  </td>
+                  <td class="num">{{.BaselineRows}}</td>
+                  <td class="num">{{.CurrentRows}}</td>
+                  <td class="num">{{formatDelta .DeltaRows}}</td>
+                  <td class="num">{{formatPercent .DeltaPercent}}</td>
+                  <td class="num">{{.BaselineTxnCount}}</td>
+                  <td class="num">{{.CurrentTxnCount}}</td>
+                  <td class="num">{{formatDelta .DeltaTxnCount}}</td>
+                </tr>
+                {{end}}
+              {{else}}
+                <tr>
+                  <td colspan="8">No pattern changes.</td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
       <div class="section-header"><span class="dot"></span>Operation Mix</div>
       <div class="section-body two-col">
         <div id="compare-ops-mix" class="chart-box"></div>
@@ -472,6 +537,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
   <script>
     window.compareSummaryPairs = {{.SummaryPairsJSON}};
     window.compareTopTables = {{.TopTablesJSON}};
+    window.comparePatternChanges = {{.PatternChangesJSON}};
     window.compareOpsMix = {{.OpsMixJSON}};
     window.compareAlertCounts = {{.AlertCountsJSON}};
 
@@ -502,6 +568,21 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       series: [
         { name: 'Baseline', type: 'bar', data: window.compareTopTables.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
         { name: 'Current', type: 'bar', data: window.compareTopTables.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
+      ],
+    });
+
+    const patternChangesChart = echarts.init(document.getElementById('compare-pattern-changes'));
+    patternChangesChart.setOption({
+      animation: false,
+      backgroundColor: 'transparent',
+      tooltip: { show: false },
+      legend: { data: ['Baseline', 'Current'], textStyle: { color: '#f1f5f9' } },
+      grid: { left: 110, right: 20, top: 36, bottom: 24 },
+      xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
+      yAxis: { type: 'category', data: window.comparePatternChanges.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
+      series: [
+        { name: 'Baseline', type: 'bar', data: window.comparePatternChanges.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
+        { name: 'Current', type: 'bar', data: window.comparePatternChanges.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
       ],
     });
 
@@ -538,6 +619,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     window.addEventListener('resize', function () {
       summaryChart.resize();
       topTablesChart.resize();
+      patternChangesChart.resize();
       opsMixChart.resize();
       alertChart.resize();
     });

@@ -1,0 +1,81 @@
+{
+  "report_version": 2,
+  "summary": {
+    "total_transactions": 90,
+    "total_rows": 1500,
+    "total_events": 1800,
+    "start_time": "2026-03-13T10:00:00Z",
+    "end_time": "2026-03-13T10:30:00Z",
+    "duration": "30m0s"
+  },
+  "tables": [
+    {
+      "schema": "orders",
+      "table": "payments",
+      "total_rows": 800,
+      "insert_rows": 500,
+      "update_rows": 250,
+      "delete_rows": 50,
+      "txn_count": 60
+    },
+    {
+      "schema": "orders",
+      "table": "chargebacks",
+      "total_rows": 400,
+      "insert_rows": 100,
+      "update_rows": 250,
+      "delete_rows": 50,
+      "txn_count": 12
+    }
+  ],
+  "patterns": [
+    {
+      "pattern_key": "orders.payments|UPDATE|medium",
+      "label": "payments.update_status",
+      "total_rows": 600,
+      "txn_count": 9,
+      "event_count": 45,
+      "share_of_rows": 0.4,
+      "share_of_txns": 0.1,
+      "avg_rows_per_txn": 66.7,
+      "tables": {
+        "orders.payments": 600
+      },
+      "operations": {
+        "UPDATE": 600
+      },
+      "sample_query_summary": "update payments set status = ?"
+    },
+    {
+      "pattern_key": "orders.chargebacks|INSERT|small",
+      "label": "chargebacks.create",
+      "total_rows": 500,
+      "txn_count": 22,
+      "event_count": 40,
+      "share_of_rows": 0.3333,
+      "share_of_txns": 0.2444,
+      "avg_rows_per_txn": 22.7,
+      "tables": {
+        "orders.chargebacks": 500
+      },
+      "operations": {
+        "INSERT": 500
+      },
+      "sample_query_summary": "insert into chargebacks ..."
+    }
+  ],
+  "transactions": [],
+  "minutes": [],
+  "alerts": [
+    {
+      "type": "spike",
+      "severity": "warning",
+      "message": "rows spiked at 10:05",
+      "minute": "2026-03-13T10:05:00Z",
+      "details": {
+        "rows": 600
+      }
+    }
+  ],
+  "warnings": 0
+}

@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const currentSupportedReportVersion = 1
+const currentSupportedReportVersion = 2
 
 type rawInputReport struct {
 	ReportVersion *int               `json:"report_version"`

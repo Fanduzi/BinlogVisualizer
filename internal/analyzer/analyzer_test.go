@@ -379,6 +379,29 @@ func TestAnalyzerStreamingTracksMultipleTransactions(t *testing.T) {
 	}
 }
 
+func TestFinalizeIncludesPatternsDerivedFromTransactions(t *testing.T) {
+	a := New(Options{})
+	base := time.Date(2026, 4, 9, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 4},
+		{Timestamp: base.Add(2 * time.Second), EventType: "COMMIT", TxnKey: "t1"},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("consume: %v", err)
+		}
+	}
+
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("finalize: %v", err)
+	}
+	if len(result.Patterns) != 1 {
+		t.Fatalf("expected 1 pattern, got %d", len(result.Patterns))
+	}
+}
+
 func TestAnalyzerStreamingFiltersTimeWindow(t *testing.T) {
 	start := time.Date(2026, 3, 9, 10, 0, 30, 0, time.UTC)
 	end := time.Date(2026, 3, 9, 10, 1, 30, 0, time.UTC)

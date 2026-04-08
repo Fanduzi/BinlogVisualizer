@@ -188,3 +188,72 @@ func TestDecodeReportJSONCarriesSnapshotMetadataWhenPresent(t *testing.T) {
 		t.Fatalf("expected snapshot label to round-trip, got %q", report.Snapshot.Label)
 	}
 }
+
+func TestBuildCompareResultBuildsPatternUnionSortedByAbsoluteRowsDelta(t *testing.T) {
+	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("load current: %v", err)
+	}
+	baseline, err := LoadReport(filepath.Join("testdata", "baseline_patterns.json"))
+	if err != nil {
+		t.Fatalf("load baseline: %v", err)
+	}
+
+	result := BuildCompareResult(current, baseline)
+	if len(result.PatternChanges) != 3 {
+		t.Fatalf("expected 3 pattern changes, got %d", len(result.PatternChanges))
+	}
+
+	expected := []struct {
+		key   string
+		delta int
+	}{
+		{key: "orders.refunds|INSERT|small", delta: 700},
+		{key: "orders.chargebacks|INSERT|small", delta: -500},
+		{key: "orders.payments|UPDATE|medium", delta: 700},
+	}
+
+	for _, want := range expected {
+		found := false
+		for _, got := range result.PatternChanges {
+			if got.PatternKey == want.key && got.DeltaRows == want.delta {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("expected pattern %q with delta %d in %+v", want.key, want.delta, result.PatternChanges)
+		}
+	}
+}
+
+func TestBuildCompareResultTreatsLegacyPatternsAsEmptySet(t *testing.T) {
+	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("load current: %v", err)
+	}
+	baseline, err := LoadReport(filepath.Join("testdata", "legacy_no_patterns.json"))
+	if err != nil {
+		t.Fatalf("load baseline: %v", err)
+	}
+
+	result := BuildCompareResult(current, baseline)
+	if len(result.PatternChanges) != 2 {
+		t.Fatalf("expected 2 pattern changes, got %d", len(result.PatternChanges))
+	}
+	for _, change := range result.PatternChanges {
+		if change.BaselineRows != 0 {
+			t.Fatalf("expected legacy baseline rows to stay at 0, got %+v", change)
+		}
+	}
+}
+
+func TestDecodeReportJSONTreatsMissingPatternsAsEmpty(t *testing.T) {
+	report, err := LoadReport(filepath.Join("testdata", "legacy_no_patterns.json"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(report.Patterns) != 0 {
+		t.Fatalf("expected empty pattern slice for legacy report, got %+v", report.Patterns)
+	}
+}

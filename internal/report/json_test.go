@@ -141,8 +141,43 @@ func TestRenderJSONIncludesReportVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(out, `"report_version": 1`) {
+	if !strings.Contains(out, `"report_version": 2`) {
 		t.Fatalf("expected report_version in JSON, got: %s", out)
+	}
+}
+
+func TestRenderJSONIncludesPatternsTopLevelField(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{
+		Patterns: []model.PatternStats{
+			{
+				PatternKey:          "tables=shop.orders|ops=INSERT|shape=small",
+				Label:               "shop.orders / INSERT / small batch",
+				TotalRows:           12,
+				TxnCount:            3,
+				EventCount:          6,
+				ShareOfRows:         0.6,
+				ShareOfTransactions: 0.5,
+				AvgRowsPerTxn:       4,
+				Tables:              map[string]int{"shop.orders": 12},
+				Operations:          map[string]int{"INSERT": 12},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, `"patterns": [`) {
+		t.Fatalf("expected patterns top-level array, got: %s", out)
+	}
+}
+
+func TestRenderJSONPatternsUsesEmptyArrayWhenAbsent(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, `"patterns": []`) {
+		t.Fatalf("expected empty patterns array, got: %s", out)
 	}
 }
 

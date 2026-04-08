@@ -35,6 +35,7 @@
       "delta_percent": 50
     }
   ],
+  "pattern_changes": [],
   "operation_mix": [
     {
       "operation": "INSERT",

@@ -233,6 +233,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		Summary:      summary,
 		Tables:       limitTables(a.tableAgg.Snapshot(), a.opts.TopTables),
 		Transactions: topTransactions,
+		Patterns:     BuildPatterns(allTransactions),
 		Minutes:      minutes,
 		Alerts:       persistedAlerts,
 		Warnings:     countAnalysisWarnings(allTransactions),

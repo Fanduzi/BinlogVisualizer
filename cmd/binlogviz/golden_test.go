@@ -76,6 +76,47 @@ func TestCompareJSONGoldenLegacySnapshotWorkflow(t *testing.T) {
 	}
 }
 
+func TestCompareJSONGoldenPatternSnapshotWorkflow(t *testing.T) {
+	dir := t.TempDir()
+
+	current, err := os.ReadFile(filepath.Join("..", "..", "internal", "compare", "testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("read current compare fixture: %v", err)
+	}
+	baseline, err := os.ReadFile(filepath.Join("..", "..", "internal", "compare", "testdata", "baseline_patterns.json"))
+	if err != nil {
+		t.Fatalf("read baseline compare fixture: %v", err)
+	}
+
+	writeSnapshotFixture(t, dir, "current-patterns", string(current))
+	writeSnapshotFixture(t, dir, "baseline-patterns", string(baseline))
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"compare",
+		"--current-snapshot", "current-patterns",
+		"--baseline-snapshot", "baseline-patterns",
+		"--snapshot-dir", dir,
+		"--format", "json",
+	})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	output := &bytes.Buffer{}
+	cmd.SetOut(output)
+	cmd.SetErr(io.Discard)
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := mustReadGolden(t, "compare-patterns-snapshots.golden.json")
+	got := normalizeGoldenOutput(output.String(), dir)
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("compare pattern golden mismatch\n%s", diff)
+	}
+}
+
 func TestTrendJSONGoldenMinimalWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	writeSnapshotFixture(t, dir, "later", trendSnapshotFixtureJSON(trendSnapshotFixture{

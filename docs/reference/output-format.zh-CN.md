@@ -42,7 +42,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 ## 文本输出
 
-文本模式是默认报告格式。它会渲染固定的五个章节。
+文本模式是默认报告格式。它会渲染固定的六个章节。
 
 ### 1. Workload Summary
 
@@ -97,7 +97,25 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Top Transactions ===
 ```
 
-### 4. Minute Activity
+### 4. Top Patterns
+
+`Top Patterns` 章节用于归并重复出现的写入事务形状。
+
+文本输出中常见字段包括：
+
+- 模式标签
+- 总行数
+- 事务数
+- 每事务平均行数
+- 可选的代表性 query summary
+
+示例标题：
+
+```text
+=== Top Patterns ===
+```
+
+### 5. Minute Activity
 
 `Minute Activity` 章节汇总每分钟的写入活动。
 
@@ -113,7 +131,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Minute Activity ===
 ```
 
-### 5. Alerts
+### 6. Alerts
 
 `Alerts` 章节列出分析逻辑检测到的告警。
 
@@ -144,9 +162,11 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
+| `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `2` |
 | `summary` | object | yes | 总体汇总和时间边界 |
 | `tables` | array | yes | Top 表聚合结果；没有表结果时为空数组 |
 | `transactions` | array | yes | Top 事务聚合结果；没有事务结果时为空数组 |
+| `patterns` | array | yes | Top 模式聚合结果；没有模式结果时为空数组 |
 | `minutes` | array | yes | 每分钟聚合结果；没有分钟桶时为空数组 |
 | `alerts` | array | yes | 检测到的告警；没有告警时为空数组 |
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
@@ -205,6 +225,24 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 - `off`：省略所有 query 相关字段
 - `summary`：包含 `query_summary`；只有在存在 query 上下文时才包含 `query_truncated` 和 `query_original_bytes`
 - `full`：包含 `query_summary`；在存在 query 上下文时包含 `query_sql`、`query_truncated` 和 `query_original_bytes`
+
+### `patterns`
+
+`patterns` 始终以数组形式存在。每个条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | 工作负载模式的确定性结构标识 |
+| `label` | string | yes | 面向人的模式描述 |
+| `total_rows` | integer | yes | 该模式下事务贡献的总行数 |
+| `txn_count` | integer | yes | 被归入该模式的事务数 |
+| `event_count` | integer | yes | 被归入该模式的事件数 |
+| `share_of_rows` | number | yes | 该模式占总分析行数的比例 |
+| `share_of_txns` | number | yes | 该模式占总分析事务数的比例 |
+| `avg_rows_per_txn` | number | yes | 该模式内每事务平均行数 |
+| `tables` | object | yes | 该模式的表到行数聚合映射 |
+| `operations` | object | yes | 该模式的操作到行数聚合映射 |
+| `sample_query_summary` | string | no | 有可用 query summary 时的代表性摘要 |
 
 ### `minutes`
 
@@ -402,6 +440,7 @@ compare 命令只接受两份 BinlogViz analyze JSON 报告：
 - 当存在 snapshot 元数据时，还会带出请求时间窗口、input mode、来源摘要和过滤条件
 - 行数、事务数、warnings 的顶层 delta
 - 按绝对行数变化排序的热点表变化
+- 位于 `Top Table Changes` 和 `Operation Mix` 之间的 `Top Pattern Changes`
 - `INSERT` / `UPDATE` / `DELETE` 的操作类型变化
 - 告警新增和移除情况
 
@@ -423,6 +462,7 @@ JSON 输出会以稳定的 snake_case 结构序列化 compare 结果。
 |------|------|----------|------|
 | `summary` | object | yes | current / baseline 汇总值和 delta |
 | `table_changes` | array | yes | 按绝对变化排序的表级行数差异 |
+| `pattern_changes` | array | yes | 按 `pattern_key` 匹配、按绝对行数变化排序的写入模式变化 |
 | `operation_mix` | array | yes | `insert`、`update`、`delete` 的操作差异 |
 | `alert_changes` | object | yes | 新增和移除的告警 |
 | `current_label` | string | yes | 如果 current 输入带 snapshot 元数据则输出 snapshot-aware label，否则为 `current` |
@@ -442,6 +482,7 @@ binlogviz compare current.json baseline.json --format html > compare.html
 
 - baseline 和 current 顶层汇总对比
 - 按行数变化排序的热点表变化
+- 按行数变化排序的模式变化
 - 操作类型分布对比
 - 告警新增 / 移除可视化
 

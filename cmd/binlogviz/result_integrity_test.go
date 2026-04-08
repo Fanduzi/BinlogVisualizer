@@ -1,6 +1,6 @@
 // Package binlogviz verifies cross-section result integrity for real analyze output.
 // input: real fixture-backed analyze JSON rendered by the command path.
-// output: semantic invariant checks spanning summary, tables, transactions, minutes, and warnings.
+// output: semantic invariant checks spanning summary, tables, transactions, patterns, minutes, and warnings.
 // pos: command-layer regression suite guarding result correctness beyond simple shape validation.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -32,12 +32,22 @@ type integrityMinute struct {
 	TxnCount int `json:"txn_count"`
 }
 
+type integrityPattern struct {
+	PatternKey    string  `json:"pattern_key"`
+	Label         string  `json:"label"`
+	TotalRows     int     `json:"total_rows"`
+	TxnCount      int     `json:"txn_count"`
+	ShareOfRows   float64 `json:"share_of_rows"`
+	AvgRowsPerTxn float64 `json:"avg_rows_per_txn"`
+}
+
 type integrityReport struct {
-	Summary      integritySummary  `json:"summary"`
-	Tables       []integrityTable  `json:"tables"`
-	Transactions []struct{}        `json:"transactions"`
-	Minutes      []integrityMinute `json:"minutes"`
-	Warnings     int               `json:"warnings"`
+	Summary      integritySummary   `json:"summary"`
+	Tables       []integrityTable   `json:"tables"`
+	Transactions []struct{}         `json:"transactions"`
+	Patterns     []integrityPattern `json:"patterns"`
+	Minutes      []integrityMinute  `json:"minutes"`
+	Warnings     int                `json:"warnings"`
 }
 
 func TestAnalyzeJSONResultIntegrityRealFixture(t *testing.T) {
@@ -58,6 +68,7 @@ func TestAnalyzeJSONResultIntegrityRealFixture(t *testing.T) {
 	requireSummaryTxnCountCoversRenderedTransactions(t, got.Summary.TotalTransactions, got.Transactions)
 	requireTableRowsCoverSummaryRows(t, got.Tables, got.Summary.TotalRows)
 	requirePositiveTxnCountsForNonEmptyTables(t, got.Tables)
+	requireValidPatterns(t, got.Patterns)
 	requireAtLeastOneMinuteTxnCount(t, got.Minutes)
 	requireWarningsRoundTripCompatible(t, got.Warnings)
 }
@@ -121,6 +132,34 @@ func requireAtLeastOneMinuteTxnCount(t *testing.T, minutes []integrityMinute) {
 		}
 	}
 	t.Fatal("expected at least one minute bucket with txn_count > 0")
+}
+
+func requireValidPatterns(t *testing.T, patterns []integrityPattern) {
+	t.Helper()
+
+	if len(patterns) == 0 {
+		t.Fatal("expected at least one rendered pattern")
+	}
+	for _, pattern := range patterns {
+		if pattern.PatternKey == "" {
+			t.Fatal("expected non-empty pattern_key")
+		}
+		if pattern.Label == "" {
+			t.Fatalf("expected non-empty label for pattern %q", pattern.PatternKey)
+		}
+		if pattern.TotalRows <= 0 {
+			t.Fatalf("expected positive total_rows for pattern %q, got %d", pattern.PatternKey, pattern.TotalRows)
+		}
+		if pattern.TxnCount <= 0 {
+			t.Fatalf("expected positive txn_count for pattern %q, got %d", pattern.PatternKey, pattern.TxnCount)
+		}
+		if pattern.ShareOfRows < 0 {
+			t.Fatalf("expected non-negative share_of_rows for pattern %q, got %f", pattern.PatternKey, pattern.ShareOfRows)
+		}
+		if pattern.AvgRowsPerTxn <= 0 {
+			t.Fatalf("expected positive avg_rows_per_txn for pattern %q, got %f", pattern.PatternKey, pattern.AvgRowsPerTxn)
+		}
+	}
 }
 
 func requireWarningsRoundTripCompatible(t *testing.T, warnings int) {

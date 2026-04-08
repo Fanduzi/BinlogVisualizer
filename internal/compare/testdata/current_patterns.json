@@ -1,0 +1,83 @@
+{
+  "report_version": 2,
+  "summary": {
+    "total_transactions": 120,
+    "total_rows": 2400,
+    "total_events": 3000,
+    "start_time": "2026-03-20T10:00:00Z",
+    "end_time": "2026-03-20T10:30:00Z",
+    "duration": "30m0s"
+  },
+  "tables": [
+    {
+      "schema": "orders",
+      "table": "payments",
+      "total_rows": 1200,
+      "insert_rows": 700,
+      "update_rows": 400,
+      "delete_rows": 100,
+      "txn_count": 80
+    },
+    {
+      "schema": "orders",
+      "table": "refunds",
+      "total_rows": 900,
+      "insert_rows": 300,
+      "update_rows": 500,
+      "delete_rows": 100,
+      "txn_count": 25
+    }
+  ],
+  "patterns": [
+    {
+      "pattern_key": "orders.payments|UPDATE|medium",
+      "label": "payments.update_status",
+      "total_rows": 1300,
+      "txn_count": 18,
+      "event_count": 90,
+      "share_of_rows": 0.5417,
+      "share_of_txns": 0.15,
+      "avg_rows_per_txn": 72.2,
+      "tables": {
+        "orders.payments": 1200,
+        "orders.refunds": 100
+      },
+      "operations": {
+        "UPDATE": 1200,
+        "INSERT": 100
+      },
+      "sample_query_summary": "update payments set status = ?"
+    },
+    {
+      "pattern_key": "orders.refunds|INSERT|small",
+      "label": "refunds.create",
+      "total_rows": 700,
+      "txn_count": 40,
+      "event_count": 70,
+      "share_of_rows": 0.2917,
+      "share_of_txns": 0.3333,
+      "avg_rows_per_txn": 17.5,
+      "tables": {
+        "orders.refunds": 700
+      },
+      "operations": {
+        "INSERT": 700
+      },
+      "sample_query_summary": "insert into refunds ..."
+    }
+  ],
+  "transactions": [],
+  "minutes": [],
+  "alerts": [
+    {
+      "type": "spike",
+      "severity": "warning",
+      "message": "rows spiked at 10:12",
+      "minute": "2026-03-20T10:12:00Z",
+      "details": {
+        "rows": 900
+      }
+    }
+  ],
+  "warnings": 0
+}

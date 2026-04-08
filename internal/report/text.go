@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: stable five-section text reports with configurable transaction SQL display.
+// output: stable six-section text reports with configurable transaction SQL display.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -37,10 +37,13 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	// Section 3: Top Transactions
 	renderTopTransactions(&buf, result.Transactions, opts.SQLContextMode)
 
-	// Section 4: Minute Activity
+	// Section 4: Top Patterns
+	renderTopPatterns(&buf, result.Patterns)
+
+	// Section 5: Minute Activity
 	renderMinuteActivity(&buf, result.Minutes)
 
-	// Section 5: Alerts
+	// Section 6: Alerts
 	renderAlerts(&buf, result.Alerts)
 
 	return buf.String(), nil
@@ -102,6 +105,22 @@ func renderTopTransactions(buf *strings.Builder, transactions []model.Transactio
 			if queryLine := transactionTextQuery(txn, mode); queryLine != "" {
 				buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), queryLine))
 			}
+		}
+	}
+	buf.WriteString("\n")
+}
+
+func renderTopPatterns(buf *strings.Builder, patterns []model.PatternStats) {
+	buf.WriteString("=== " + i18n.T("report.section.patterns") + " ===\n")
+	if len(patterns) == 0 {
+		buf.WriteString("  " + i18n.T("report.placeholder.noPatterns") + "\n")
+		buf.WriteString("\n")
+		return
+	}
+	for _, p := range patterns {
+		buf.WriteString(fmt.Sprintf("  %s: rows=%d txns=%d avg_rows_per_txn=%.1f\n", p.Label, p.TotalRows, p.TxnCount, p.AvgRowsPerTxn))
+		if strings.TrimSpace(p.SampleQuerySummary) != "" {
+			buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), p.SampleQuerySummary))
 		}
 	}
 	buf.WriteString("\n")
