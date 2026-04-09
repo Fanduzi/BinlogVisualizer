@@ -103,6 +103,50 @@ func TestSaveJSONRejectsOverwrite(t *testing.T) {
 	}
 }
 
+func TestSaveJSONOverwriteTruncatesShorterPayload(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write an initial long payload
+	longPayload := []byte(`{"hello":"world","padding":"` + strings.Repeat("x", 500) + `"}`)
+	path, err := SaveJSON(dir, "truncate-test", longPayload)
+	if err != nil {
+		t.Fatalf("initial save: %v", err)
+	}
+
+	// Verify initial size
+	initial, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read initial: %v", err)
+	}
+	if len(initial) != len(longPayload) {
+		t.Fatalf("initial size mismatch: got %d want %d", len(initial), len(longPayload))
+	}
+
+	// Overwrite with a much shorter payload
+	shortPayload := []byte(`{"short":true}`)
+	path2, err := SaveJSONOverwrite(dir, "truncate-test", shortPayload)
+	if err != nil {
+		t.Fatalf("overwrite save: %v", err)
+	}
+	if path2 != path {
+		t.Fatalf("path mismatch: got %q want %q", path2, path)
+	}
+
+	// Read back and verify no stale tail bytes
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read overwritten: %v", err)
+	}
+	if string(got) != string(shortPayload) {
+		t.Fatalf("overwritten file has stale tail: got %d bytes want %d bytes\ncontent: %q", len(got), len(shortPayload), string(got))
+	}
+
+	// Verify the file parses as valid JSON
+	if !json.Valid(got) {
+		t.Fatalf("overwritten file is not valid JSON: %q", string(got))
+	}
+}
+
 func TestListSnapshotsReturnsSortedJSONEntries(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "zeta.json"), []byte(`{}`), 0o644); err != nil {

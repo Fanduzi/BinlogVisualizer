@@ -164,9 +164,9 @@ func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
 	}
 
 	path := filepath.Join(resolvedDir, name+jsonExtension)
-	flags := os.O_WRONLY | os.O_CREATE
+	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
 	if !overwrite {
-		flags |= os.O_EXCL
+		flags = os.O_WRONLY | os.O_CREATE | os.O_EXCL
 	}
 	file, err := os.OpenFile(path, flags, 0o644)
 	if err != nil {
