@@ -993,7 +993,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.9.1 — hardened snapshot history workflow</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.10.0 — workload pattern intelligence</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1278,6 +1278,11 @@ That progression tells a better website story than raw feature lists alone.</p>
                   <div class="timeline-desc" data-i18n="releases.items.hardening.desc">Analyze-generated snapshots now work in trend by default, older history can fall back to summary window timestamps, and warning counts reflect bounded query-context loss.</div>
                 </div>
                 <div class="timeline-item">
+                  <div class="timeline-date">2026-04</div>
+                  <div class="timeline-title" data-i18n="releases.items.patterns.title">v0.10.0 — workload pattern intelligence</div>
+                  <div class="timeline-desc" data-i18n="releases.items.patterns.desc">Analyze, compare, and trend can now explain workload drift in terms of repeated write patterns, not just totals and hot tables.</div>
+                </div>
+                <div class="timeline-item">
                   <div class="timeline-date" data-i18n="releases.items.now.date">Now</div>
                   <div class="timeline-title" data-i18n="releases.items.now.title">Clear DBA-first positioning</div>
                   <div class="timeline-desc" data-i18n="releases.items.now.desc">A local CLI that explains workload shifts faster and hands the answer off cleanly.</div>
@@ -1412,7 +1417,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.9.1 — hardened snapshot history workflow',
+            badge: 'v0.10.0 — workload pattern intelligence',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, then save named baselines, compare current versus baseline, and hand the result to your team in a format they can actually use.',
             primary: 'Install BinlogViz',
@@ -1519,6 +1524,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               exports: { title: 'v0.6.0 — report exports for handoff', desc: 'Markdown and HTML exports turned analysis results into artifacts that can move cleanly into docs, reviews, and browser-based sharing.' },
               reports: { title: 'v0.9.0 — snapshot trends across several windows', desc: 'Teams can now line up saved snapshots by window start time and render text, JSON, or HTML drift reports with optional baseline deltas.' },
               hardening: { title: 'v0.9.1 — trustworthy snapshot history workflow', desc: 'Analyze-generated snapshots now work in trend by default, older history can fall back to summary window timestamps, and warning counts reflect bounded query-context loss.' },
+              patterns: { title: 'v0.10.0 — workload pattern intelligence', desc: 'Analyze, compare, and trend can now explain workload drift in terms of repeated write patterns, not just totals and hot tables.' },
               now: { date: 'Now', title: 'Clear DBA-first positioning', desc: 'A local CLI that explains workload shifts faster and hands the answer off cleanly.' }
             },
             side: {
@@ -1588,7 +1594,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.9.1 —— 可信的 snapshot 历史工作流',
+            badge: 'v0.10.0 —— 工作负载模式洞察',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，保存命名基线，然后对比 current 与 baseline，并以团队真正能消费的形式交付出去。',
             primary: '安装 BinlogViz',
@@ -1695,6 +1701,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               exports: { title: 'v0.6.0 —— 面向交付的报告导出', desc: 'Markdown 和 HTML 导出把分析结果变成可以顺滑进入文档、评审和浏览器分享的交付物。' },
               reports: { title: 'v0.9.0 —— 多时间点 snapshot 趋势分析', desc: '团队现在可以按 window start time 排列已保存快照，并输出带可选 baseline delta 的 text、JSON 和 HTML 漂移报告。' },
               hardening: { title: 'v0.9.1 —— 可信的 snapshot 历史工作流', desc: 'analyze 直接生成的快照现在默认就能参与 trend，旧历史可回退使用 summary 窗口时间，warning 计数也能反映 query context 被截断这类分析退化。' },
+              patterns: { title: 'v0.10.0 —— 工作负载模式洞察', desc: 'analyze、compare 和 trend 现在都能用重复出现的写入模式来解释负载漂移，而不只是总量和热点表。' },
               now: { date: '现在', title: '明确的 DBA-first 定位', desc: '一个本地 CLI，帮助团队更快解释负载变化，并把答案顺滑交给其他人。' }
             },
             side: {
