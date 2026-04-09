@@ -38,6 +38,7 @@ type indexViewModel struct {
 	RunStartedAt        string
 	RunFinishedAt       string
 	Status              string
+	Error               string
 	TotalSteps          int
 	SucceededSteps      int
 	FailedSteps         int
@@ -75,6 +76,7 @@ func buildIndexViewModel(input IndexInput) indexViewModel {
 		RunStartedAt:        m.RunStartedAt,
 		RunFinishedAt:       m.RunFinishedAt,
 		Status:              m.Status,
+		Error:               m.Error,
 	}
 
 	for _, s := range m.Steps {
@@ -111,9 +113,32 @@ func buildIndexViewModel(input IndexInput) indexViewModel {
 				vm.TrendArtifacts = append(vm.TrendArtifacts, link)
 			}
 		}
+
+		// Sort step artifacts: primary (HTML) first
+		sortArtifactsPrimaryFirst(sv.Artifacts)
 		vm.Steps = append(vm.Steps, sv)
 	}
+
+	// Sort grouped artifacts: primary first
+	sortArtifactsPrimaryFirst(vm.AnalyzeArtifacts)
+	sortArtifactsPrimaryFirst(vm.CompareArtifacts)
+	sortArtifactsPrimaryFirst(vm.TrendArtifacts)
+
 	return vm
+}
+
+func sortArtifactsPrimaryFirst(links []indexArtifactLink) {
+	for i := 0; i < len(links); i++ {
+		if links[i].Primary {
+			continue
+		}
+		for j := i + 1; j < len(links); j++ {
+			if links[j].Primary {
+				links[i], links[j] = links[j], links[i]
+				break
+			}
+		}
+	}
 }
 
 const indexTemplate = `<!DOCTYPE html>
@@ -170,6 +195,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 {{if .RunFinishedAt}}<span>finished {{.RunFinishedAt}}</span>{{end}}
 </div>
 </div>
+
+{{if .Error}}<div class="step-error">{{.Error}}</div>{{end}}
 
 <div class="cards">
 <div class="card"><div class="card-value">{{.TotalSteps}}</div><div class="card-label">Steps</div></div>

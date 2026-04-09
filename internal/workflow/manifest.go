@@ -14,6 +14,7 @@ type Manifest struct {
 	RunStartedAt        string       `json:"run_started_at"`
 	RunFinishedAt       string       `json:"run_finished_at"`
 	Status              string       `json:"status"`
+	Error               string       `json:"error,omitempty"`
 	Steps               []StepRecord `json:"steps"`
 }
 

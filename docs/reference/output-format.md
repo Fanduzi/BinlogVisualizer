@@ -11,7 +11,7 @@ BinlogViz uses separate output channels for different purposes:
 - `analyze`: `stdout` carries the final analysis report; `stderr` carries progress, resolved discovery files, finalization status, snapshot save confirmations, and runtime errors.
 - `compare`: `stdout` carries the final compare report; command failures are reported through the CLI error path on `stderr`.
 - `trend`: `stdout` carries the final trend report; command failures are reported through the CLI error path on `stderr`.
-- `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` is always written regardless of success or failure.
+- `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` and `index.html` are always written regardless of success or failure.
 
 This separation matters because it keeps report output safe for redirection and automation.
 
