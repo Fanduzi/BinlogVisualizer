@@ -2,6 +2,7 @@ package binlogviz
 
 import (
 	"fmt"
+	"io"
 	"path"
 	"strings"
 
@@ -37,53 +38,7 @@ func newTrendCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			switch opts.format {
-			case "text", "json", "html":
-			default:
-				return fmt.Errorf("unsupported trend format: %s", opts.format)
-			}
-
-			points, inputMode, resolvedDir, err := resolveTrendInputs(args, opts)
-			if err != nil {
-				return err
-			}
-			var baseline *trendpkg.BuildInput
-			if strings.TrimSpace(opts.baselineSnapshot) != "" {
-				loaded, err := loadTrendSnapshot(opts.snapshotDir, opts.baselineSnapshot)
-				if err != nil {
-					return trendLoadError("baseline", opts.baselineSnapshot, err)
-				}
-				baseline = &loaded
-			}
-
-			result, err := trendpkg.BuildResult(trendpkg.BuildOptions{
-				InputMode:   inputMode,
-				SnapshotDir: resolvedDir,
-				Points:      points,
-				Baseline:    baseline,
-				TopTables:   opts.topTables,
-			})
-			if err != nil {
-				return err
-			}
-
-			var output string
-			switch opts.format {
-			case "json":
-				output, err = trendpkg.RenderJSON(result)
-			case "html":
-				output, err = trendpkg.RenderHTML(result)
-			default:
-				output, err = trendpkg.RenderText(result)
-			}
-			if err != nil {
-				return fmt.Errorf("render trend output (%s): %w", opts.format, err)
-			}
-			_, err = fmt.Fprint(cmd.OutOrStdout(), output)
-			if err != nil {
-				return fmt.Errorf("write trend output: %w", err)
-			}
-			return nil
+			return runTrend(opts, args, cmd.OutOrStdout())
 		},
 	}
 
@@ -94,6 +49,56 @@ func newTrendCommand() *cobra.Command {
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, "Number of top tables to include in trend output")
 
 	return cmd
+}
+
+func runTrend(opts *trendOptions, args []string, out io.Writer) error {
+	switch opts.format {
+	case "text", "json", "html":
+	default:
+		return fmt.Errorf("unsupported trend format: %s", opts.format)
+	}
+
+	points, inputMode, resolvedDir, err := resolveTrendInputs(args, opts)
+	if err != nil {
+		return err
+	}
+	var baseline *trendpkg.BuildInput
+	if strings.TrimSpace(opts.baselineSnapshot) != "" {
+		loaded, err := loadTrendSnapshot(opts.snapshotDir, opts.baselineSnapshot)
+		if err != nil {
+			return trendLoadError("baseline", opts.baselineSnapshot, err)
+		}
+		baseline = &loaded
+	}
+
+	result, err := trendpkg.BuildResult(trendpkg.BuildOptions{
+		InputMode:   inputMode,
+		SnapshotDir: resolvedDir,
+		Points:      points,
+		Baseline:    baseline,
+		TopTables:   opts.topTables,
+	})
+	if err != nil {
+		return err
+	}
+
+	var output string
+	switch opts.format {
+	case "json":
+		output, err = trendpkg.RenderJSON(result)
+	case "html":
+		output, err = trendpkg.RenderHTML(result)
+	default:
+		output, err = trendpkg.RenderText(result)
+	}
+	if err != nil {
+		return fmt.Errorf("render trend output (%s): %w", opts.format, err)
+	}
+	_, err = fmt.Fprint(out, output)
+	if err != nil {
+		return fmt.Errorf("write trend output: %w", err)
+	}
+	return nil
 }
 
 func resolveTrendInputs(args []string, opts *trendOptions) ([]trendpkg.BuildInput, string, string, error) {

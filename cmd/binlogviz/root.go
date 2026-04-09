@@ -30,6 +30,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newTrendCommand())
 	cmd.AddCommand(newSnapshotCommand())
 	cmd.AddCommand(newVersionCommand())
+	cmd.AddCommand(newWorkflowCommand())
 
 	// Add global flags
 	cmd.PersistentFlags().StringVar(&langFlag, "lang", "", "Language for output (e.g., en, zh-CN)")

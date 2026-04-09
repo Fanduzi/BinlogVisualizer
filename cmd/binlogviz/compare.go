@@ -2,6 +2,7 @@ package binlogviz
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -39,37 +40,7 @@ func newCompareCommand() *cobra.Command {
 			return cobra.ExactArgs(2)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			switch opts.format {
-			case "text", "json", "html":
-			default:
-				return fmt.Errorf("unsupported compare format: %s", opts.format)
-			}
-
-			current, baseline, err := resolveCompareReports(args, opts)
-			if err != nil {
-				return err
-			}
-
-			result := comparepkg.BuildCompareResult(current, baseline)
-
-			var output string
-			switch opts.format {
-			case "json":
-				output, err = comparepkg.RenderJSON(result)
-			case "html":
-				output, err = comparepkg.RenderHTML(result)
-			default:
-				output, err = comparepkg.RenderText(result)
-			}
-			if err != nil {
-				return fmt.Errorf("render compare output (%s): %w", opts.format, err)
-			}
-
-			_, err = fmt.Fprint(cmd.OutOrStdout(), output)
-			if err != nil {
-				return fmt.Errorf("write compare output: %w", err)
-			}
-			return nil
+			return runCompare(opts, args, cmd.OutOrStdout())
 		},
 	}
 
@@ -79,6 +50,40 @@ func newCompareCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to load snapshots from")
 
 	return cmd
+}
+
+func runCompare(opts *compareOptions, args []string, out io.Writer) error {
+	switch opts.format {
+	case "text", "json", "html":
+	default:
+		return fmt.Errorf("unsupported compare format: %s", opts.format)
+	}
+
+	current, baseline, err := resolveCompareReports(args, opts)
+	if err != nil {
+		return err
+	}
+
+	result := comparepkg.BuildCompareResult(current, baseline)
+
+	var output string
+	switch opts.format {
+	case "json":
+		output, err = comparepkg.RenderJSON(result)
+	case "html":
+		output, err = comparepkg.RenderHTML(result)
+	default:
+		output, err = comparepkg.RenderText(result)
+	}
+	if err != nil {
+		return fmt.Errorf("render compare output (%s): %w", opts.format, err)
+	}
+
+	_, err = fmt.Fprint(out, output)
+	if err != nil {
+		return fmt.Errorf("write compare output: %w", err)
+	}
+	return nil
 }
 
 func resolveCompareReports(args []string, opts *compareOptions) (comparepkg.InputReport, comparepkg.InputReport, error) {

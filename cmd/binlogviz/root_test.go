@@ -21,3 +21,14 @@ func TestNewRootCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestNewRootCommandRegistersWorkflow(t *testing.T) {
+	cmd := NewRootCommand()
+	found, _, err := cmd.Find([]string{"workflow", "run"})
+	if err != nil {
+		t.Fatalf("find workflow run: %v", err)
+	}
+	if found == nil || found.Name() != "run" {
+		t.Fatalf("expected workflow run subcommand, got %#v", found)
+	}
+}
