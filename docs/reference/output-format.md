@@ -524,7 +524,7 @@ This behavior lets you safely:
 | `mode` | string | yes | `run` for a fresh execution, `resume` for a resumed execution |
 | `attempt` | integer | yes | Execution attempt number; starts at `1` for `run`, increments on each `resume` |
 | `plan_sha256` | string | yes | SHA-256 hash of the plan file at the time of the first run |
-| `resolved_input_files` | object | yes | Resolved input file set per analyze window |
+| `resolved_input_files` | array<string> | yes | Resolved input file paths captured during discovery |
 | `snapshot_dir` | string | yes | Snapshot directory used during execution |
 | `steps` | array | yes | Per-step status records |
 | `error` | string | no | Present when `status` is `failed`; contains the failure message |

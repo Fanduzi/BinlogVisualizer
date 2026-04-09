@@ -524,7 +524,7 @@ binlogviz compare current.json baseline.json --format html > compare.html
 | `mode` | string | yes | `run` 表示全新执行，`resume` 表示恢复执行 |
 | `attempt` | integer | yes | 执行尝试编号；`run` 从 `1` 开始，每次 `resume` 递增 |
 | `plan_sha256` | string | yes | 首次运行时 plan 文件的 SHA-256 哈希 |
-| `resolved_input_files` | object | yes | 按 analyze 窗口解析出的输入文件集合 |
+| `resolved_input_files` | array<string> | yes | discovery 阶段解析出的输入文件路径列表 |
 | `snapshot_dir` | string | yes | 执行期间使用的快照目录 |
 | `steps` | array | yes | 每个步骤的状态记录 |
 | `error` | string | no | 当 `status` 为 `failed` 时出现，包含失败消息 |
