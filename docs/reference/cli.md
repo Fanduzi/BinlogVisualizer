@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, and `binlogviz workflow`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, and `binlogviz workflow resume`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -21,6 +21,8 @@ binlogviz snapshot list
 binlogviz snapshot show <name>
 binlogviz workflow run <plan.yaml>
 binlogviz workflow run <plan.yaml> --output-dir ./artifacts
+binlogviz workflow resume <output_dir>
+binlogviz workflow resume <output_dir> --rerun analyze:week2
 ```
 
 ## Global Flags
@@ -585,3 +587,62 @@ trend:
 - `stdout` is unused in v1
 - `stderr` carries progress lines and the final manifest path
 - `index.html` is written to `<output_dir>/index.html` as a self-contained workflow landing page showing workflow metadata, step status, and artifact links
+
+## `workflow resume` Command Syntax
+
+```bash
+binlogviz workflow resume <output_dir>
+binlogviz workflow resume <output_dir> --snapshot-dir /tmp/snapshots
+binlogviz workflow resume <output_dir> --rerun analyze:week2 --rerun compare:incident_vs_baseline
+```
+
+`workflow resume` continues a previously executed workflow from its output directory. It reads the existing `manifest.json`, reuses successful steps, and reruns failed or missing ones.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--snapshot-dir` | home-based default | Override the snapshot storage directory. |
+| `--rerun` | none | Repeatable explicit step selector. Forces a specific step to rerun regardless of its previous status. |
+
+### Selector grammar
+
+The `--rerun` flag accepts step selectors in the form `<kind>:<name>`:
+
+| Kind | Name matches | Example |
+|------|-------------|---------|
+| `analyze` | Window name from the plan | `analyze:week2` |
+| `compare` | Compare job name from the plan | `compare:incident_vs_baseline` |
+| `trend` | Trend job name from the plan | `trend:incident_series` |
+
+Multiple `--rerun` flags can be combined to force-rerun several steps in one invocation.
+
+### Resume behavior
+
+1. Load the existing `manifest.json` from `<output_dir>`
+2. Validate the manifest version (must be v2; legacy pre-v2 manifests are rejected)
+3. Verify the plan file hash matches the original run (refuses if the plan changed)
+4. For each plan step:
+   - If the step succeeded and is not listed in `--rerun`, mark it as reused
+   - If the step failed, is missing, or is listed in `--rerun`, execute it again
+5. Dependency-aware rerun: rerunning an `analyze` step invalidates downstream `compare` and `trend` steps that reference it
+6. Write an updated `manifest.json` with per-step execution status (`executed` or `reused`)
+7. Write an updated `index.html` showing mode, attempt number, and per-step execution labels
+
+### Guard conditions
+
+Resume refuses to proceed when:
+
+- `<output_dir>` does not contain a `manifest.json`
+- The manifest was produced by a legacy pre-v2 run (missing `manifest_version` field)
+- The plan file SHA-256 does not match the `plan_sha256` recorded in the manifest
+
+### Output layout
+
+The output layout is identical to `workflow run`. Resume overwrites artifacts for rerun steps and leaves reused step artifacts unchanged.
+
+### Output channels
+
+- `stdout` is unused
+- `stderr` carries progress lines and the final manifest path
+- `index.html` is written to `<output_dir>/index.html` and includes the resume mode, attempt number, and per-step execution labels (`executed` / `reused`)

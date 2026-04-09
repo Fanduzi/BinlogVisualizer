@@ -1,6 +1,6 @@
 # 输出格式参考
 
-本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend` 和 `binlogviz workflow run` 会向 `stdout` 和 `stderr` 分别写入什么内容。
+本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run` 和 `binlogviz workflow resume` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
 如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -12,6 +12,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `compare`：`stdout` 承载最终 compare 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 - `trend`：`stdout` 承载最终 trend 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 - `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json` 和 `index.html`。
+- `workflow resume`：`stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。Resume 会复用成功步骤的 artifact，并重跑失败、缺失或被显式选中的步骤。更新后的 `manifest.json` 会记录每个步骤的执行状态（`executed` 或 `reused`）。`index.html` 会包含 resume mode、attempt 编号和每个步骤的执行标签。
 
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 
@@ -509,6 +510,52 @@ binlogviz compare current.json baseline.json --format html > compare.html
 ### Compare 在 `stderr` 上的错误行为
 
 `compare` 当前不会输出 analyze 风格的进度信息。它会把最终 compare 报告写到 `stdout`；如果命令失败，CLI 会通过 `stderr` 输出错误。
+
+## Workflow Manifest
+
+`workflow run` 和 `workflow resume` 会把 `manifest.json` 写入 `<output_dir>/manifest.json`。Manifest v2 增加了支持 resume 工作流的字段。
+
+### Manifest v2 字段
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `manifest_version` | integer | yes | Manifest 契约版本；当前版本为 `2` |
+| `status` | string | yes | `success` 或 `failed` |
+| `mode` | string | yes | `run` 表示全新执行，`resume` 表示恢复执行 |
+| `attempt` | integer | yes | 执行尝试编号；`run` 从 `1` 开始，每次 `resume` 递增 |
+| `plan_sha256` | string | yes | 首次运行时 plan 文件的 SHA-256 哈希 |
+| `resolved_input_files` | object | yes | 按 analyze 窗口解析出的输入文件集合 |
+| `snapshot_dir` | string | yes | 执行期间使用的快照目录 |
+| `steps` | array | yes | 每个步骤的状态记录 |
+| `error` | string | no | 当 `status` 为 `failed` 时出现，包含失败消息 |
+
+### 每步骤字段
+
+`steps` 数组中的每个条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | 步骤类型：`analyze`、`compare` 或 `trend` |
+| `name` | string | yes | plan 中的步骤名 |
+| `status` | string | yes | `success` 或 `failed` |
+| `output` | string | yes | 相对于 `<output_dir>` 的输出 artifact 路径 |
+| `execution` | string | yes | `executed`（步骤被执行）或 `reused`（步骤从上次运行中沿用） |
+| `error` | string | no | 步骤失败时出现 |
+
+### Resume 与 Manifest 的交互
+
+- `workflow resume` 会读取已有的 `manifest.json` 来判断哪些步骤已成功、可以复用
+- Resume 会拒绝旧版 pre-v2 manifest（缺少 `manifest_version` 字段）
+- Resume 会拒绝在 plan 文件哈希与 manifest 中的 `plan_sha256` 不匹配时继续执行
+- 更新后的 manifest 会保留原始运行的所有字段，并更新 `mode`、`attempt`、`steps` 和 `status`
+
+### index.html 更新
+
+当 manifest 包含 `mode: resume` 时，`index.html` 会展示：
+
+- resume mode 标签
+- 当前 attempt 编号
+- 每个步骤的执行标签（`executed` 或 `reused`），与步骤状态并列展示
 
 ## 示例
 

@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot` 和 `binlogviz workflow` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run` 和 `binlogviz workflow resume` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -21,6 +21,8 @@ binlogviz snapshot list
 binlogviz snapshot show <name>
 binlogviz workflow run <plan.yaml>
 binlogviz workflow run <plan.yaml> --output-dir ./artifacts
+binlogviz workflow resume <output_dir>
+binlogviz workflow resume <output_dir> --rerun analyze:week2
 ```
 
 ## 全局参数
@@ -585,3 +587,62 @@ trend:
 - v1 中 `stdout` 不使用
 - `stderr` 承载进度行和最终的 manifest 路径
 - `index.html` 写入 `<output_dir>/index.html`，是自包含的 workflow 落地页，展示 workflow 元数据、步骤状态和 artifact 链接
+
+## `workflow resume` 命令语法
+
+```bash
+binlogviz workflow resume <output_dir>
+binlogviz workflow resume <output_dir> --snapshot-dir /tmp/snapshots
+binlogviz workflow resume <output_dir> --rerun analyze:week2 --rerun compare:incident_vs_baseline
+```
+
+`workflow resume` 从已有的输出目录继续执行之前运行过的 workflow。它会读取已有的 `manifest.json`，复用成功步骤，并重跑失败或缺失的步骤。
+
+### 参数
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--snapshot-dir` | home-based default | 覆盖快照存储目录。 |
+| `--rerun` | none | 可重复指定的显式步骤选择器。强制重新执行指定步骤，无论其之前的状态如何。 |
+
+### 选择器语法
+
+`--rerun` 参数接受 `<kind>:<name>` 格式的步骤选择器：
+
+| Kind | Name 匹配目标 | 示例 |
+|------|--------------|------|
+| `analyze` | plan 中的窗口名 | `analyze:week2` |
+| `compare` | plan 中的 compare 作业名 | `compare:incident_vs_baseline` |
+| `trend` | plan 中的 trend 作业名 | `trend:incident_series` |
+
+可以组合多个 `--rerun` 参数，在一次调用中强制重跑多个步骤。
+
+### Resume 行为
+
+1. 从 `<output_dir>` 加载已有的 `manifest.json`
+2. 校验 manifest 版本（必须为 v2；旧版 pre-v2 manifest 会被拒绝）
+3. 校验 plan 文件哈希是否与原始运行一致（plan 文件变更则拒绝执行）
+4. 对每个 plan 步骤：
+   - 如果步骤已成功且不在 `--rerun` 列表中，标记为 reused
+   - 如果步骤失败、缺失或在 `--rerun` 列表中，重新执行
+5. 依赖感知重跑：重跑 `analyze` 步骤会使引用它的下游 `compare` 和 `trend` 步骤失效
+6. 写入更新后的 `manifest.json`，包含每个步骤的执行状态（`executed` 或 `reused`）
+7. 写入更新后的 `index.html`，展示 mode、attempt 编号和每个步骤的执行标签
+
+### 前置校验条件
+
+Resume 会在以下情况拒绝执行：
+
+- `<output_dir>` 中不存在 `manifest.json`
+- manifest 是旧版 pre-v2 产物（缺少 `manifest_version` 字段）
+- plan 文件 SHA-256 与 manifest 中记录的 `plan_sha256` 不匹配
+
+### 输出目录布局
+
+输出目录布局与 `workflow run` 完全一致。Resume 会覆盖重跑步骤的 artifact，保留复用步骤的 artifact 不变。
+
+### 输出通道
+
+- `stdout` 不使用
+- `stderr` 承载进度行和最终的 manifest 路径
+- `index.html` 写入 `<output_dir>/index.html`，包含 resume mode、attempt 编号，以及每个步骤的执行标签（`executed` / `reused`）
