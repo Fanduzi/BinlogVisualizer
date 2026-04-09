@@ -1,0 +1,353 @@
+package workflow
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// --- Selector parsing ---
+
+func TestParseRerunSelectorsValid(t *testing.T) {
+	plan := Plan{
+		Windows: []Window{{Name: "week1"}, {Name: "week2"}},
+		Compare: []CompareJob{{Name: "week2_vs_week1", Current: "week2", Baseline: "week1"}},
+		Trend:   []TrendJob{{Name: "series", Snapshots: []string{"week1", "week2"}}},
+	}
+
+	sels, err := ParseRerunSelectors(plan, []string{"analyze:week2", "compare:week2_vs_week1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(sels) != 2 {
+		t.Fatalf("expected 2 selectors, got %d", len(sels))
+	}
+	if sels[0] != (RerunSelector{Kind: "analyze", Name: "week2"}) {
+		t.Errorf("selector 0: got %+v", sels[0])
+	}
+	if sels[1] != (RerunSelector{Kind: "compare", Name: "week2_vs_week1"}) {
+		t.Errorf("selector 1: got %+v", sels[1])
+	}
+}
+
+func TestParseRerunSelectorsInvalidKind(t *testing.T) {
+	plan := Plan{}
+	_, err := ParseRerunSelectors(plan, []string{"bogus:name"})
+	if err == nil {
+		t.Fatal("expected error for invalid kind")
+	}
+}
+
+func TestParseRerunSelectorsUnknownName(t *testing.T) {
+	plan := Plan{
+		Windows: []Window{{Name: "week1"}},
+	}
+	_, err := ParseRerunSelectors(plan, []string{"analyze:nonexistent"})
+	if err == nil {
+		t.Fatal("expected error for unknown name")
+	}
+}
+
+func TestParseRerunSelectorsBadFormat(t *testing.T) {
+	plan := Plan{}
+	_, err := ParseRerunSelectors(plan, []string{"nocolon"})
+	if err == nil {
+		t.Fatal("expected error for bad format")
+	}
+}
+
+// --- Resumability validation ---
+
+func TestValidateResumableManifestRejectsLegacyVersion(t *testing.T) {
+	m := Manifest{ManifestVersion: 0}
+	err := ValidateResumableManifest(m, "", "")
+	if err == nil {
+		t.Fatal("expected rejection for missing manifest_version")
+	}
+}
+
+func TestValidateResumableManifestRejectsUnsupportedVersion(t *testing.T) {
+	m := Manifest{ManifestVersion: 99}
+	err := ValidateResumableManifest(m, "", "")
+	if err == nil {
+		t.Fatal("expected rejection for unsupported manifest_version")
+	}
+}
+
+func TestValidateResumableManifestRejectsEmptyResolvedFiles(t *testing.T) {
+	m := Manifest{
+		ManifestVersion:    2,
+		PlanPath:           "/tmp/plan.yaml",
+		PlanSHA256:         "abc",
+		ResolvedInputFiles: []string{},
+	}
+	err := ValidateResumableManifest(m, "/tmp/plan.yaml", "abc")
+	if err == nil {
+		t.Fatal("expected rejection for empty resolved_input_files")
+	}
+}
+
+func TestValidateResumableManifestRejectsPlanHashMismatch(t *testing.T) {
+	dir := t.TempDir()
+	planPath := filepath.Join(dir, "plan.yaml")
+	os.WriteFile(planPath, []byte("version: 1\n"), 0o644)
+
+	m := Manifest{
+		ManifestVersion:    2,
+		PlanPath:           planPath,
+		PlanSHA256:         "abc",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+	}
+	err := ValidateResumableManifest(m, planPath, "different_hash")
+	if err == nil {
+		t.Fatal("expected rejection for plan hash mismatch")
+	}
+}
+
+// --- Resume plan builder ---
+
+func makeResumePlanAndManifest() (Plan, Manifest) {
+	plan := Plan{
+		Version: 1,
+		Workflow: WorkflowMeta{Name: "test-resume"},
+		Defaults: Defaults{
+			Input:   InputDefaults{FromDir: "/tmp/mysql", Prefix: "mysql-bin."},
+			Snapshot: SnapshotConfig{Save: true},
+		},
+		Windows: []Window{{Name: "week1"}, {Name: "week2"}},
+		Compare: []CompareJob{
+			{Name: "week2_vs_week1", Current: "week2", Baseline: "week1", Formats: []string{"json", "html"}},
+		},
+		Trend: []TrendJob{
+			{Name: "series", Snapshots: []string{"week1", "week2"}, Formats: []string{"json", "html"}},
+		},
+	}
+	m := Manifest{
+		ManifestVersion:    2,
+		Mode:               "run",
+		Attempt:            1,
+		WorkflowName:       "test-resume",
+		PlanSHA256:         "deadbeef",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+		SnapshotDir:        "/tmp/snapshots",
+		Status:             "success",
+		Steps: []StepRecord{
+			{Kind: "analyze", Name: "week1", Status: "success", Execution: "executed", Artifacts: []string{"analyze/week1.json"}, SnapshotName: "week1"},
+			{Kind: "analyze", Name: "week2", Status: "success", Execution: "executed", Artifacts: []string{"analyze/week2.json"}, SnapshotName: "week2"},
+			{Kind: "compare", Name: "week2_vs_week1", Status: "success", Execution: "executed", Artifacts: []string{"compare/week2_vs_week1.json", "compare/week2_vs_week1.html"}},
+			{Kind: "trend", Name: "series", Status: "success", Execution: "executed", Artifacts: []string{"trend/series.json", "trend/series.html"}},
+		},
+	}
+	return plan, m
+}
+
+func TestBuildResumePlanRerunAnalyzelnvalidatesDownstream(t *testing.T) {
+	plan, m := makeResumePlanAndManifest()
+	dir := t.TempDir()
+
+	// Create expected artifact files so "missing artifact" detection doesn't fire
+	for _, step := range m.Steps {
+		for _, art := range step.Artifacts {
+			p := filepath.Join(dir, art)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte("{}"), 0o644)
+		}
+	}
+
+	rp, err := BuildResumePlan(plan, m, []string{"analyze:week2"}, dir, "/tmp/snapshots")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var executed, reused []string
+	for _, s := range rp.Steps {
+		if s.Execute {
+			executed = append(executed, s.Kind+":"+s.Name)
+		} else {
+			reused = append(reused, s.Kind+":"+s.Name)
+		}
+	}
+
+	// week1 analyze is reusable; week2 analyze is explicitly rerun;
+	// compare depends on week2 so it must rerun; trend depends on week2 so it must rerun
+	assertContains(t, executed, "analyze:week2", "week2 should be rerun")
+	assertContains(t, executed, "compare:week2_vs_week1", "compare should rerun (depends on week2)")
+	assertContains(t, executed, "trend:series", "trend should rerun (depends on week2)")
+	assertContains(t, reused, "analyze:week1", "week1 should be reused")
+	assertNotContains(t, executed, "analyze:week1", "week1 should NOT be rerun")
+}
+
+func TestBuildResumePlanRerunCompareOnly(t *testing.T) {
+	plan, m := makeResumePlanAndManifest()
+	dir := t.TempDir()
+	for _, step := range m.Steps {
+		for _, art := range step.Artifacts {
+			p := filepath.Join(dir, art)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte("{}"), 0o644)
+		}
+	}
+
+	rp, err := BuildResumePlan(plan, m, []string{"compare:week2_vs_week1"}, dir, "/tmp/snapshots")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var executed, reused []string
+	for _, s := range rp.Steps {
+		if s.Execute {
+			executed = append(executed, s.Kind+":"+s.Name)
+		} else {
+			reused = append(reused, s.Kind+":"+s.Name)
+		}
+	}
+
+	// Rerunning compare does NOT invalidate analyze
+	assertContains(t, executed, "compare:week2_vs_week1", "compare should be rerun")
+	assertContains(t, reused, "analyze:week1", "week1 should be reused")
+	assertContains(t, reused, "analyze:week2", "week2 should be reused")
+	assertNotContains(t, executed, "analyze:week1", "week1 should NOT be rerun")
+	assertNotContains(t, executed, "analyze:week2", "week2 should NOT be rerun")
+}
+
+func TestBuildResumePlanFailedStepRerunsAutomatically(t *testing.T) {
+	plan, m := makeResumePlanAndManifest()
+	dir := t.TempDir()
+
+	// Mark the compare step as failed
+	for i := range m.Steps {
+		if m.Steps[i].Kind == "compare" {
+			m.Steps[i].Status = "failed"
+			m.Steps[i].Execution = "executed"
+			m.Steps[i].Error = "some error"
+		}
+	}
+	// Create artifact files for successful steps only
+	for _, step := range m.Steps {
+		if step.Status != "success" {
+			continue
+		}
+		for _, art := range step.Artifacts {
+			p := filepath.Join(dir, art)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte("{}"), 0o644)
+		}
+	}
+
+	// No explicit --rerun selectors: should auto-rerun the failed compare step
+	rp, err := BuildResumePlan(plan, m, nil, dir, "/tmp/snapshots")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var executed, reused []string
+	for _, s := range rp.Steps {
+		if s.Execute {
+			executed = append(executed, s.Kind+":"+s.Name)
+		} else {
+			reused = append(reused, s.Kind+":"+s.Name)
+		}
+	}
+
+	assertContains(t, executed, "compare:week2_vs_week1", "failed compare should auto-rerun")
+	assertContains(t, reused, "analyze:week1", "week1 should be reused")
+	assertContains(t, reused, "analyze:week2", "week2 should be reused")
+}
+
+func TestBuildResumePlanMissingArtifactReruns(t *testing.T) {
+	plan, m := makeResumePlanAndManifest()
+	dir := t.TempDir()
+
+	// Only create artifacts for analyze steps, not compare/trend
+	for _, step := range m.Steps {
+		if step.Kind != "analyze" {
+			continue
+		}
+		for _, art := range step.Artifacts {
+			p := filepath.Join(dir, art)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte("{}"), 0o644)
+		}
+	}
+
+	// No selectors: missing artifacts should trigger rerun of compare and trend
+	rp, err := BuildResumePlan(plan, m, nil, dir, "/tmp/snapshots")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var executed []string
+	for _, s := range rp.Steps {
+		if s.Execute {
+			executed = append(executed, s.Kind+":"+s.Name)
+		}
+	}
+
+	assertContains(t, executed, "compare:week2_vs_week1", "missing compare artifact should trigger rerun")
+	assertContains(t, executed, "trend:series", "missing trend artifact should trigger rerun")
+}
+
+func TestBuildResumePlanNothingToDoReturnsError(t *testing.T) {
+	plan, m := makeResumePlanAndManifest()
+	dir := t.TempDir()
+
+	// Create all artifact files
+	for _, step := range m.Steps {
+		for _, art := range step.Artifacts {
+			p := filepath.Join(dir, art)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte("{}"), 0o644)
+		}
+	}
+
+	// All steps succeeded, no missing artifacts, no explicit reruns
+	_, err := BuildResumePlan(plan, m, nil, dir, "/tmp/snapshots")
+	if err == nil {
+		t.Fatal("expected error when nothing needs to be done")
+	}
+}
+
+func TestBuildResumePlanSetsAttemptAndMode(t *testing.T) {
+	plan, m := makeResumePlanAndManifest()
+	dir := t.TempDir()
+	for _, step := range m.Steps {
+		for _, art := range step.Artifacts {
+			p := filepath.Join(dir, art)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte("{}"), 0o644)
+		}
+	}
+
+	rp, err := BuildResumePlan(plan, m, []string{"analyze:week2"}, dir, "/tmp/snapshots")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rp.UpdatedManifest.Mode != "resume" {
+		t.Errorf("expected mode=resume, got %q", rp.UpdatedManifest.Mode)
+	}
+	if rp.UpdatedManifest.Attempt != 2 {
+		t.Errorf("expected attempt=2, got %d", rp.UpdatedManifest.Attempt)
+	}
+}
+
+// --- helpers ---
+
+func assertContains(t *testing.T, list []string, item, msg string) {
+	t.Helper()
+	for _, v := range list {
+		if v == item {
+			return
+		}
+	}
+	t.Fatalf("%s: %q not found in %v", msg, item, list)
+}
+
+func assertNotContains(t *testing.T, list []string, item, msg string) {
+	t.Helper()
+	for _, v := range list {
+		if v == item {
+			t.Fatalf("%s: %q unexpectedly found in %v", msg, item, list)
+		}
+	}
+}
