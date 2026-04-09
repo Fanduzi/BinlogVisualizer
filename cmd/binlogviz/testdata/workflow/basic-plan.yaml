@@ -1,0 +1,30 @@
+version: 1
+
+workflow:
+  name: basic-test
+  output_dir: PLACEHOLDER/artifacts
+
+defaults:
+  input:
+    from_dir: PLACEHOLDER/binlog
+    prefix: mysql-bin.
+  analyze:
+    format: json
+  snapshot:
+    save: true
+
+windows:
+  - name: baseline
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+
+compare:
+  - name: baseline_vs_baseline
+    current: baseline
+    baseline: baseline
+    formats: [json]
+
+trend:
+  - name: baseline_series
+    snapshots: [baseline, baseline]
+    formats: [json]
