@@ -1,0 +1,10 @@
+{
+  "workflow_name": "failing-test",
+  "workflow_plan_version": 1,
+  "binlogviz_version": "dev",
+  "plan_path": "<test-root>/001/plan.yaml",
+  "run_started_at": "<timestamp>",
+  "run_finished_at": "<timestamp>",
+  "status": "failed",
+  "steps": []
+}

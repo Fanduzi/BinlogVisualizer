@@ -99,6 +99,15 @@ binlogviz trend --from-snapshots 'incident_week*' \
 
 `trend` loads saved snapshots, orders them by effective window start time, and renders `text`, `json`, or `html` output. New snapshots use `snapshot.window.start_time`; older snapshots can fall back to `summary.start_time` so historical stores remain usable without manual rewrites. In addition to total and table movement, trend now exposes `pattern_trends` so repeated write shapes can be reviewed across several windows. The HTML report includes a `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, while `text` and `json` surface the same pattern series in terminal-friendly and machine-readable forms.
 
+### Run a multi-step investigation from one plan file
+
+```bash
+binlogviz workflow run incident.yaml
+tree artifacts/incident-investigation
+```
+
+`workflow run` executes a declarative YAML plan that defines analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact directory with `analyze/`, `compare/`, `trend/`, and a `manifest.json` that records every step's status and output path. `stdout` stays empty in v1; all status goes to `stderr`. See [CLI Reference](docs/reference/cli.md) for the plan schema and flags.
+
 ### Generate a Markdown or HTML report
 
 ```bash

@@ -5,8 +5,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+)
+
+var (
+	timestampPattern = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"`)
 )
 
 func TestSnapshotShowJSONGoldenMinimalWorkflow(t *testing.T) {
@@ -293,4 +298,138 @@ func diffGolden(want, got string) string {
 
 func normalizeGoldenOutput(out, snapshotDir string) string {
 	return strings.ReplaceAll(out, snapshotDir, "<snapshot-dir>")
+}
+
+func TestWorkflowRunGoldenManifest(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+
+	got := normalizeWorkflowManifest(string(data), outputDir, snapshotDir)
+	want := mustReadGolden(t, "workflow-basic-manifest.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow manifest golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowRunGoldenArtifactTree(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	tree := listArtifactTree(t, outputDir)
+	got := normalizeWorkflowTree(tree, outputDir)
+	want := mustReadGolden(t, "workflow-basic-tree.golden.txt")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow artifact tree golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowRunGoldenFailedManifest(t *testing.T) {
+	planDir := t.TempDir()
+	outputDir := filepath.Join(t.TempDir(), "artifacts")
+
+	plan := strings.ReplaceAll(`
+version: 1
+workflow:
+  name: failing-test
+  output_dir: PLACEHOLDER
+defaults:
+  input:
+    from_dir: /nonexistent/path/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`, "PLACEHOLDER", outputDir)
+
+	planPath := filepath.Join(planDir, "plan.yaml")
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	_ = cmd.Execute()
+
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	data, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+
+	got := normalizeWorkflowManifest(string(data), outputDir, "")
+	want := mustReadGolden(t, "workflow-failed-manifest.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow failed manifest golden mismatch\n%s", diff)
+	}
+}
+
+func normalizeWorkflowManifest(raw, outputDir, snapshotDir string) string {
+	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
+	if snapshotDir != "" {
+		out = strings.ReplaceAll(out, snapshotDir, "<snapshot-dir>")
+	}
+	// Normalize dynamic timestamp fields
+	out = timestampPattern.ReplaceAllString(out, `"<timestamp>"`)
+	// Normalize plan_path — it lives under a sibling temp dir sharing the
+	// same test root, so after output-dir normalization the remaining temp
+	// prefix is the test root itself.
+	testRoot := filepath.Dir(filepath.Dir(outputDir))
+	if testRoot != "" && testRoot != "." && testRoot != "/" {
+		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
+	}
+	return out
+}
+
+func normalizeWorkflowTree(lines []string, outputDir string) string {
+	normalized := make([]string, len(lines))
+	for i, l := range lines {
+		normalized[i] = strings.ReplaceAll(l, outputDir, "<output-dir>")
+	}
+	return strings.Join(normalized, "\n")
+}
+
+func listArtifactTree(t *testing.T, root string) []string {
+	t.Helper()
+	var lines []string
+	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		lines = append(lines, rel)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk artifact tree: %v", err)
+	}
+	return lines
 }

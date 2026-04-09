@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze`, `binlogviz compare`, and `binlogviz trend` write to `stdout` and `stderr`.
+This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, and `binlogviz workflow run` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -11,6 +11,7 @@ BinlogViz uses separate output channels for different purposes:
 - `analyze`: `stdout` carries the final analysis report; `stderr` carries progress, resolved discovery files, finalization status, snapshot save confirmations, and runtime errors.
 - `compare`: `stdout` carries the final compare report; command failures are reported through the CLI error path on `stderr`.
 - `trend`: `stdout` carries the final trend report; command failures are reported through the CLI error path on `stderr`.
+- `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` is always written regardless of success or failure.
 
 This separation matters because it keeps report output safe for redirection and automation.
 

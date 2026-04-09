@@ -99,6 +99,15 @@ binlogviz trend --from-snapshots 'incident_week*' \
 
 `trend` 会加载已保存的 snapshots，按有效窗口开始时间排序，并输出 `text`、`json` 或 `html` 趋势报告。新快照优先使用 `snapshot.window.start_time`；较旧的快照则可以回退到 `summary.start_time`，不需要手工重写历史文件。除了总量和热点表变化之外，trend 现在还会输出 `pattern_trends`，用于跨多个窗口查看重复写入模式的演进。HTML 报告中的 `Pattern Trends` 分区默认展示 `share of rows`，也可以切换到绝对 `rows`；`text` 和 `json` 则会以终端友好和机器可读的形式暴露同一组模式序列。
 
+### 用一份 plan 文件跑多步调查
+
+```bash
+binlogviz workflow run incident.yaml
+tree artifacts/incident-investigation
+```
+
+`workflow run` 执行一份声明式 YAML plan，定义分析窗口、可选 compare 作业和可选 trend 作业。它会产生一个确定性的 artifact 目录，包含 `analyze/`、`compare/`、`trend/` 和一份 `manifest.json`，记录每个步骤的状态和输出路径。v1 中 `stdout` 留空，所有状态走 `stderr`。plan schema 和参数请参见 [CLI 参考](docs/reference/cli.zh-CN.md)。
+
 ### 生成 Markdown 或 HTML 报告
 
 ```bash
