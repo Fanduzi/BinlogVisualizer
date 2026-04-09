@@ -211,3 +211,72 @@ func TestRenderIndexNoErrorBlockOnSuccess(t *testing.T) {
 		t.Fatalf("did not expect step-error block on success")
 	}
 }
+
+func TestRenderIndexShowsResumeModeAndAttempt(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "resumed-workflow",
+			Mode:         "resume",
+			Attempt:      2,
+			Status:       "success",
+			Steps: []StepRecord{
+				{Kind: "analyze", Name: "week1", Status: "success", Execution: "reused"},
+				{Kind: "analyze", Name: "week2", Status: "success", Execution: "executed"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if !strings.Contains(html, "resume") {
+		t.Fatalf("expected 'resume' mode visible in html")
+	}
+	if !strings.Contains(html, "attempt 2") {
+		t.Fatalf("expected 'attempt 2' visible in html")
+	}
+}
+
+func TestRenderIndexShowsStepExecutionLabels(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "mixed-workflow",
+			Mode:         "resume",
+			Attempt:      3,
+			Status:       "success",
+			Steps: []StepRecord{
+				{Kind: "analyze", Name: "week1", Status: "success", Execution: "reused"},
+				{Kind: "analyze", Name: "week2", Status: "success", Execution: "executed"},
+				{Kind: "compare", Name: "c1", Status: "success", Execution: "executed"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if !strings.Contains(html, "reused") {
+		t.Fatalf("expected 'reused' label visible in html")
+	}
+	if !strings.Contains(html, "executed") {
+		t.Fatalf("expected 'executed' label visible in html")
+	}
+}
+
+func TestRenderIndexRunModeDoesNotShowAttempt(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "fresh-run",
+			Mode:         "run",
+			Attempt:      1,
+			Status:       "success",
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if strings.Contains(html, "attempt 1") {
+		t.Fatalf("did not expect 'attempt 1' on fresh run (attempt only shows for resume)")
+	}
+}

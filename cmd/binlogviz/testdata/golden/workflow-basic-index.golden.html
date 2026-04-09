@@ -15,6 +15,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .badge{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
 .badge-success{background:#0d7a3e;color:#fff}
 .badge-failed{background:#c0392b;color:#fff}
+.badge-reused{background:#4a4d5e;color:#a0a4b8}
+.badge-execution{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:0.7rem;font-weight:500;letter-spacing:0.3px;margin-left:6px}
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
 .card{background:#181a27;border-radius:8px;padding:16px;text-align:center;border:1px solid #2a2d45}
 .card .card-value{font-size:1.8rem;font-weight:700;color:#fff}
@@ -46,6 +48,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <h1>multi-window-test</h1>
 <div class="meta">
 <span class="badge badge-success">success</span>
+
+
 <span>v1</span>
 <span>binlogviz dev</span>
 <span>started <timestamp></span>
@@ -69,6 +73,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <span class="badge badge-success">success</span>
 <span class="step-kind">analyze</span>
 <span class="step-name">week1</span>
+<span class="badge-execution badge-executed">executed</span>
 <span class="step-snapshot">snapshot: week1</span>
 </div>
 
@@ -78,6 +83,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <span class="badge badge-success">success</span>
 <span class="step-kind">analyze</span>
 <span class="step-name">week2</span>
+<span class="badge-execution badge-executed">executed</span>
 <span class="step-snapshot">snapshot: week2</span>
 </div>
 
@@ -87,6 +93,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <span class="badge badge-success">success</span>
 <span class="step-kind">compare</span>
 <span class="step-name">week2_vs_week1</span>
+<span class="badge-execution badge-executed">executed</span>
 
 </div>
 
@@ -96,6 +103,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <span class="badge badge-success">success</span>
 <span class="step-kind">trend</span>
 <span class="step-name">weekly_series</span>
+<span class="badge-execution badge-executed">executed</span>
 
 </div>
 
