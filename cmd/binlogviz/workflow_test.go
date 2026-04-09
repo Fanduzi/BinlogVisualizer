@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestWorkflowRunWritesAnalyzeArtifacts tests that a basic plan produces analyze JSON files.
+// TestWorkflowRunWritesAnalyzeArtifacts tests that a multi-window plan produces analyze JSON files.
 func TestWorkflowRunWritesAnalyzeArtifacts(t *testing.T) {
 	binlogDir, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
@@ -21,10 +21,12 @@ func TestWorkflowRunWritesAnalyzeArtifacts(t *testing.T) {
 		t.Fatalf("workflow run: %v", err)
 	}
 
-	// Verify analyze artifact
-	analyzePath := filepath.Join(outputDir, "analyze", "baseline.json")
-	if _, err := os.Stat(analyzePath); err != nil {
-		t.Fatalf("expected analyze artifact at %s: %v", analyzePath, err)
+	// Verify both analyze artifacts
+	for _, name := range []string{"week1", "week2"} {
+		analyzePath := filepath.Join(outputDir, "analyze", name+".json")
+		if _, err := os.Stat(analyzePath); err != nil {
+			t.Fatalf("expected analyze artifact at %s: %v", analyzePath, err)
+		}
 	}
 
 	// Verify manifest exists
@@ -36,34 +38,36 @@ func TestWorkflowRunWritesAnalyzeArtifacts(t *testing.T) {
 	if mf.Status != "success" {
 		t.Fatalf("expected manifest status success, got %q", mf.Status)
 	}
-	if mf.WorkflowName != "basic-test" {
-		t.Fatalf("expected workflow_name basic-test, got %q", mf.WorkflowName)
+	if mf.WorkflowName != "multi-window-test" {
+		t.Fatalf("expected workflow_name multi-window-test, got %q", mf.WorkflowName)
 	}
 
-	// Verify analyze step record
-	found := false
-	for _, step := range mf.Steps {
-		if step.Kind == "analyze" && step.Name == "baseline" {
-			found = true
-			if step.Status != "success" {
-				t.Fatalf("expected analyze step success, got %q", step.Status)
-			}
-			if len(step.Artifacts) == 0 || step.Artifacts[0] != "analyze/baseline.json" {
-				t.Fatalf("expected artifact analyze/baseline.json, got %v", step.Artifacts)
-			}
-			if step.SnapshotName != "baseline" {
-				t.Fatalf("expected snapshot_name baseline, got %q", step.SnapshotName)
+	// Verify analyze step records with snapshot names
+	for _, window := range []string{"week1", "week2"} {
+		found := false
+		for _, step := range mf.Steps {
+			if step.Kind == "analyze" && step.Name == window {
+				found = true
+				if step.Status != "success" {
+					t.Fatalf("expected analyze step %q success, got %q", window, step.Status)
+				}
+				if len(step.Artifacts) == 0 || step.Artifacts[0] != "analyze/"+window+".json" {
+					t.Fatalf("expected artifact analyze/%s.json, got %v", window, step.Artifacts)
+				}
+				if step.SnapshotName != window {
+					t.Fatalf("expected snapshot_name %s, got %q", window, step.SnapshotName)
+				}
 			}
 		}
-	}
-	if !found {
-		t.Fatal("expected to find analyze step for baseline in manifest")
+		if !found {
+			t.Fatalf("expected to find analyze step for %q in manifest", window)
+		}
 	}
 
 	_ = binlogDir
 }
 
-// TestWorkflowRunWritesCompareAndTrendArtifacts tests full workflow with compare and trend.
+// TestWorkflowRunWritesCompareAndTrendArtifacts tests full workflow with multi-window compare and trend.
 func TestWorkflowRunWritesCompareAndTrendArtifacts(t *testing.T) {
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
@@ -76,16 +80,20 @@ func TestWorkflowRunWritesCompareAndTrendArtifacts(t *testing.T) {
 		t.Fatalf("workflow run: %v", err)
 	}
 
-	// Verify compare artifact
-	comparePath := filepath.Join(outputDir, "compare", "baseline_vs_baseline.json")
-	if _, err := os.Stat(comparePath); err != nil {
-		t.Fatalf("expected compare artifact at %s: %v", comparePath, err)
+	// Verify compare artifacts (json + html)
+	for _, format := range []string{"json", "html"} {
+		comparePath := filepath.Join(outputDir, "compare", "week2_vs_week1."+format)
+		if _, err := os.Stat(comparePath); err != nil {
+			t.Fatalf("expected compare artifact at %s: %v", comparePath, err)
+		}
 	}
 
-	// Verify trend artifact
-	trendPath := filepath.Join(outputDir, "trend", "baseline_series.json")
-	if _, err := os.Stat(trendPath); err != nil {
-		t.Fatalf("expected trend artifact at %s: %v", trendPath, err)
+	// Verify trend artifacts (json + html)
+	for _, format := range []string{"json", "html"} {
+		trendPath := filepath.Join(outputDir, "trend", "weekly_series."+format)
+		if _, err := os.Stat(trendPath); err != nil {
+			t.Fatalf("expected trend artifact at %s: %v", trendPath, err)
+		}
 	}
 
 	// Verify manifest status
@@ -98,13 +106,13 @@ func TestWorkflowRunWritesCompareAndTrendArtifacts(t *testing.T) {
 		t.Fatalf("expected manifest status success, got %q: steps=%v", mf.Status, mf.Steps)
 	}
 
-	// Verify we have analyze + compare + trend steps
+	// Verify we have 2 analyze + 1 compare + 1 trend steps
 	stepKinds := make(map[string]int)
 	for _, step := range mf.Steps {
 		stepKinds[step.Kind]++
 	}
-	if stepKinds["analyze"] != 1 {
-		t.Fatalf("expected 1 analyze step, got %d", stepKinds["analyze"])
+	if stepKinds["analyze"] != 2 {
+		t.Fatalf("expected 2 analyze steps, got %d", stepKinds["analyze"])
 	}
 	if stepKinds["compare"] != 1 {
 		t.Fatalf("expected 1 compare step, got %d", stepKinds["compare"])
@@ -208,6 +216,51 @@ windows:
 	}
 }
 
+// TestWorkflowRunSnapshotSaveFailsStep tests that snapshot save failure fails the workflow step.
+func TestWorkflowRunSnapshotSaveFailsStep(t *testing.T) {
+	binlogDir, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	// Point snapshot-dir to a file (not a directory) to force SaveJSON failure
+	filePath := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(filePath, []byte("blocker"), 0o644); err != nil {
+		t.Fatalf("write blocker file: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", filePath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected workflow to fail when snapshot save fails")
+	}
+
+	// Manifest should exist with status=failed
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	mf, merr := workflowManifestFromJSON(manifestPath)
+	if merr != nil {
+		t.Fatalf("read manifest: %v", merr)
+	}
+	if mf.Status != "failed" {
+		t.Fatalf("expected manifest status failed, got %q", mf.Status)
+	}
+
+	// The first analyze step should be failed with snapshot-related error
+	if len(mf.Steps) == 0 {
+		t.Fatal("expected at least one step in manifest")
+	}
+	firstStep := mf.Steps[0]
+	if firstStep.Kind != "analyze" {
+		t.Fatalf("expected first step kind analyze, got %q", firstStep.Kind)
+	}
+	if firstStep.Status != "failed" {
+		t.Fatalf("expected first step status failed, got %q", firstStep.Status)
+	}
+
+	_ = binlogDir
+}
+
 // setupWorkflowTestWithSnapshots creates a test environment with a binlog fixture directory, plan file, and isolated snapshot directory.
 func setupWorkflowTestWithSnapshots(t *testing.T, planFile string) (binlogDir, outputDir, planPath, snapshotDir string) {
 	t.Helper()
@@ -245,7 +298,7 @@ func setupWorkflowTestWithSnapshots(t *testing.T, planFile string) (binlogDir, o
 	return binlogDir, outputDir, planPath, snapshotDir
 }
 
-// TestWorkflowCompareOutputIsValidJSON verifies the compare output is valid JSON.
+// TestWorkflowCompareOutputIsValidJSON verifies the compare and trend outputs are valid JSON.
 func TestWorkflowCompareOutputIsValidJSON(t *testing.T) {
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
@@ -258,7 +311,7 @@ func TestWorkflowCompareOutputIsValidJSON(t *testing.T) {
 		t.Fatalf("workflow run: %v", err)
 	}
 
-	comparePath := filepath.Join(outputDir, "compare", "baseline_vs_baseline.json")
+	comparePath := filepath.Join(outputDir, "compare", "week2_vs_week1.json")
 	data, err := os.ReadFile(comparePath)
 	if err != nil {
 		t.Fatalf("read compare output: %v", err)
@@ -267,7 +320,7 @@ func TestWorkflowCompareOutputIsValidJSON(t *testing.T) {
 		t.Fatalf("compare output is not valid JSON: %s", string(data[:min(len(data), 200)]))
 	}
 
-	trendPath := filepath.Join(outputDir, "trend", "baseline_series.json")
+	trendPath := filepath.Join(outputDir, "trend", "weekly_series.json")
 	data, err = os.ReadFile(trendPath)
 	if err != nil {
 		t.Fatalf("read trend output: %v", err)

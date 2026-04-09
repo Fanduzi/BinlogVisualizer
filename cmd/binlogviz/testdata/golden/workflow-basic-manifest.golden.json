@@ -1,5 +1,5 @@
 {
-  "workflow_name": "basic-test",
+  "workflow_name": "multi-window-test",
   "workflow_plan_version": 1,
   "binlogviz_version": "dev",
   "plan_path": "<test-root>/004/plan.yaml",
@@ -9,27 +9,38 @@
   "steps": [
     {
       "kind": "analyze",
-      "name": "baseline",
+      "name": "week1",
       "status": "success",
       "artifacts": [
-        "analyze/baseline.json"
+        "analyze/week1.json"
       ],
-      "snapshot_name": "baseline"
+      "snapshot_name": "week1"
+    },
+    {
+      "kind": "analyze",
+      "name": "week2",
+      "status": "success",
+      "artifacts": [
+        "analyze/week2.json"
+      ],
+      "snapshot_name": "week2"
     },
     {
       "kind": "compare",
-      "name": "baseline_vs_baseline",
+      "name": "week2_vs_week1",
       "status": "success",
       "artifacts": [
-        "compare/baseline_vs_baseline.json"
+        "compare/week2_vs_week1.json",
+        "compare/week2_vs_week1.html"
       ]
     },
     {
       "kind": "trend",
-      "name": "baseline_series",
+      "name": "weekly_series",
       "status": "success",
       "artifacts": [
-        "trend/baseline_series.json"
+        "trend/weekly_series.json",
+        "trend/weekly_series.html"
       ]
     }
   ]

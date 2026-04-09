@@ -155,6 +155,9 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 	manifestPath := filepath.Join(outputDir, "manifest.json")
 	if writeErr := workflow.WriteManifest(manifestPath, *mf); writeErr != nil {
 		fmt.Fprintf(stderr, "workflow: failed to write manifest: %v\n", writeErr)
+		if stepErr == nil {
+			return fmt.Errorf("write manifest: %w", writeErr)
+		}
 	} else {
 		fmt.Fprintf(stderr, "workflow: manifest written to %s\n", manifestPath)
 	}
@@ -228,20 +231,20 @@ func runWorkflowAnalyzeWindow(
 		return rec, "", comparepkg.InputReport{}, fmt.Errorf("write analyze artifact for %q: %w", w.Name, err)
 	}
 
-	rec.Status = "success"
-	rec.Artifacts = []string{"analyze/" + w.Name + ".json"}
-
-	// Save snapshot if configured
+	// Save snapshot if configured (must succeed before marking step success)
 	if plan.Defaults.Snapshot.Save {
 		savedPath, err := snapshot.SaveJSON(snapshotDir, w.Name, []byte(payload))
 		if err != nil {
-			// Non-fatal: snapshot save failure shouldn't fail the workflow
-			fmt.Fprintf(stderr, "  warning: failed to save snapshot %q: %v\n", w.Name, err)
-		} else {
-			rec.SnapshotName = w.Name
-			fmt.Fprintf(stderr, "  saved snapshot %q to %s\n", w.Name, savedPath)
+			rec.Status = "failed"
+			rec.Error = err.Error()
+			return rec, "", comparepkg.InputReport{}, fmt.Errorf("save snapshot %q: %w", w.Name, err)
 		}
+		rec.SnapshotName = w.Name
+		fmt.Fprintf(stderr, "  saved snapshot %q to %s\n", w.Name, savedPath)
 	}
+
+	rec.Status = "success"
+	rec.Artifacts = []string{"analyze/" + w.Name + ".json"}
 
 	// Parse the JSON for downstream compare/trend consumption
 	reportInput, err := comparepkg.DecodeReportJSON([]byte(payload))

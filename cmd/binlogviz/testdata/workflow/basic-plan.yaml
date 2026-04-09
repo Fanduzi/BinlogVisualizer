@@ -1,7 +1,7 @@
 version: 1
 
 workflow:
-  name: basic-test
+  name: multi-window-test
   output_dir: PLACEHOLDER/artifacts
 
 defaults:
@@ -14,17 +14,20 @@ defaults:
     save: true
 
 windows:
-  - name: baseline
+  - name: week1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+  - name: week2
     start: 2025-01-01T00:00:00Z
     end: 2099-12-31T23:59:59Z
 
 compare:
-  - name: baseline_vs_baseline
-    current: baseline
-    baseline: baseline
-    formats: [json]
+  - name: week2_vs_week1
+    current: week2
+    baseline: week1
+    formats: [json, html]
 
 trend:
-  - name: baseline_series
-    snapshots: [baseline, baseline]
-    formats: [json]
+  - name: weekly_series
+    snapshots: [week1, week2]
+    formats: [json, html]

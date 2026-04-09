@@ -1,8 +1,11 @@
 .
 analyze
-analyze/baseline.json
+analyze/week1.json
+analyze/week2.json
 compare
-compare/baseline_vs_baseline.json
+compare/week2_vs_week1.html
+compare/week2_vs_week1.json
 manifest.json
 trend
-trend/baseline_series.json
+trend/weekly_series.html
+trend/weekly_series.json
