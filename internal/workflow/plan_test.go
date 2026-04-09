@@ -234,6 +234,68 @@ trend:
 	}
 }
 
+func TestLoadPlanRejectsDuplicateCompareNames(t *testing.T) {
+	_, err := LoadPlan(strings.NewReader(`
+version: 1
+workflow:
+  name: incident
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+  - name: incident
+    start: 2026-04-09T11:00:00Z
+    end: 2026-04-09T11:30:00Z
+compare:
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [json]
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [html]
+`))
+	if err == nil || !strings.Contains(err.Error(), `duplicate compare job name "drift"`) {
+		t.Fatalf("expected duplicate compare name error, got %v", err)
+	}
+}
+
+func TestLoadPlanRejectsDuplicateTrendNames(t *testing.T) {
+	_, err := LoadPlan(strings.NewReader(`
+version: 1
+workflow:
+  name: incident
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+  - name: incident
+    start: 2026-04-09T11:00:00Z
+    end: 2026-04-09T11:30:00Z
+trend:
+  - name: weekly_series
+    snapshots: [baseline, incident]
+    formats: [json]
+  - name: weekly_series
+    snapshots: [baseline, incident]
+    formats: [html]
+`))
+	if err == nil || !strings.Contains(err.Error(), `duplicate trend job name "weekly_series"`) {
+		t.Fatalf("expected duplicate trend name error, got %v", err)
+	}
+}
+
 func TestLoadPlanRejectsUnsupportedCompareFormat(t *testing.T) {
 	_, err := LoadPlan(strings.NewReader(`
 version: 1
@@ -259,6 +321,61 @@ compare:
 `))
 	if err == nil || !strings.Contains(err.Error(), `compare "drift": unsupported format "text"`) {
 		t.Fatalf("expected unsupported format error, got %v", err)
+	}
+}
+
+func TestLoadPlanRejectsDuplicateCompareFormats(t *testing.T) {
+	_, err := LoadPlan(strings.NewReader(`
+version: 1
+workflow:
+  name: incident
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+  - name: incident
+    start: 2026-04-09T11:00:00Z
+    end: 2026-04-09T11:30:00Z
+compare:
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [json, json]
+`))
+	if err == nil || !strings.Contains(err.Error(), `compare "drift": duplicate format "json"`) {
+		t.Fatalf("expected duplicate format error, got %v", err)
+	}
+}
+
+func TestLoadPlanRejectsDuplicateTrendFormats(t *testing.T) {
+	_, err := LoadPlan(strings.NewReader(`
+version: 1
+workflow:
+  name: incident
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+  - name: incident
+    start: 2026-04-09T11:00:00Z
+    end: 2026-04-09T11:30:00Z
+trend:
+  - name: series
+    snapshots: [baseline, incident]
+    formats: [html, html]
+`))
+	if err == nil || !strings.Contains(err.Error(), `trend "series": duplicate format "html"`) {
+		t.Fatalf("expected duplicate format error, got %v", err)
 	}
 }
 

@@ -730,3 +730,307 @@ func TestWorkflowResumeExplicitRerun(t *testing.T) {
 
 	_ = binlogDir
 }
+
+func TestWorkflowValidateTextOutputForValidPlan(t *testing.T) {
+	_, _, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow validate: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{"Workflow plan valid", "multi-window-test", "windows: 2", "compare jobs: 1", "trend jobs: 1"} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected %q in stdout, got %q", token, stdout)
+		}
+	}
+}
+
+func TestWorkflowValidateJSONOutputForValidPlan(t *testing.T) {
+	_, _, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow validate: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		Valid        bool   `json:"valid"`
+		WorkflowName string `json:"workflow_name"`
+		Windows      int    `json:"windows"`
+		CompareJobs  int    `json:"compare_jobs"`
+		TrendJobs    int    `json:"trend_jobs"`
+		OutputDir    string `json:"output_dir"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if !decoded.Valid || decoded.WorkflowName != "multi-window-test" || decoded.Windows != 2 || decoded.CompareJobs != 1 || decoded.TrendJobs != 1 {
+		t.Fatalf("unexpected validate json payload: %#v", decoded)
+	}
+}
+
+func TestWorkflowValidateTextOutputForInvalidPlan(t *testing.T) {
+	planDir := t.TempDir()
+	planPath := filepath.Join(planDir, "invalid-plan.yaml")
+	plan := `
+version: 1
+workflow:
+  name: invalid
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+compare:
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [json]
+`
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err == nil {
+		t.Fatal("expected workflow validate to fail")
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{"Workflow plan invalid", `compare "drift" references unknown current window "incident"`} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected %q in stdout, got %q", token, stdout)
+		}
+	}
+}
+
+func TestWorkflowValidateJSONOutputForInvalidPlan(t *testing.T) {
+	planDir := t.TempDir()
+	planPath := filepath.Join(planDir, "invalid-plan.yaml")
+	plan := `
+version: 1
+workflow:
+  name: invalid
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+compare:
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [json]
+`
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err == nil {
+		t.Fatal("expected workflow validate to fail")
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.Valid {
+		t.Fatalf("expected valid=false, got %#v", decoded)
+	}
+	if !strings.Contains(decoded.Error, `compare "drift" references unknown current window "incident"`) {
+		t.Fatalf("unexpected validate json error: %#v", decoded)
+	}
+}
+
+func TestWorkflowValidateRejectsUnsupportedFormat(t *testing.T) {
+	_, _, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath, "--format", "yaml"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid format error")
+	}
+	if !strings.Contains(err.Error(), "unsupported workflow validate format") {
+		t.Fatalf("expected invalid format error, got %v", err)
+	}
+}
+
+func TestWorkflowDescribeTextOutputForValidPlan(t *testing.T) {
+	_, _, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "describe", planPath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow describe: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{
+		"Workflow: multi-window-test",
+		"Output Root:",
+		"Snapshot Save: true",
+		"Analyze Windows",
+		"Compare Jobs",
+		"Trend Jobs",
+		"analyze/week1.json",
+		"compare/week2_vs_week1.json",
+		"trend/weekly_series.html",
+	} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected %q in stdout, got %q", token, stdout)
+		}
+	}
+}
+
+func TestWorkflowDescribeJSONOutputForValidPlan(t *testing.T) {
+	_, _, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "describe", planPath, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow describe: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		WorkflowName string `json:"workflow_name"`
+		OutputDir    string `json:"output_dir"`
+		SnapshotSave bool   `json:"snapshot_save"`
+		Windows      []struct {
+			Name         string   `json:"name"`
+			Artifacts    []string `json:"artifacts"`
+			SnapshotName string   `json:"snapshot_name"`
+		} `json:"windows"`
+		Compare []struct {
+			Name      string   `json:"name"`
+			Current   string   `json:"current"`
+			Baseline  string   `json:"baseline"`
+			Artifacts []string `json:"artifacts"`
+		} `json:"compare"`
+		Trend []struct {
+			Name      string   `json:"name"`
+			Snapshots []string `json:"snapshots"`
+			Artifacts []string `json:"artifacts"`
+		} `json:"trend"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.WorkflowName != "multi-window-test" || !decoded.SnapshotSave || len(decoded.Windows) != 2 || len(decoded.Compare) != 1 || len(decoded.Trend) != 1 {
+		t.Fatalf("unexpected describe json payload: %#v", decoded)
+	}
+}
+
+func TestWorkflowDescribeRejectsInvalidPlan(t *testing.T) {
+	planDir := t.TempDir()
+	planPath := filepath.Join(planDir, "invalid-plan.yaml")
+	plan := `
+version: 1
+workflow:
+  name: invalid
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+compare:
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [json]
+`
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "describe", planPath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err == nil {
+		t.Fatal("expected workflow describe to fail")
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, `compare "drift" references unknown current window "incident"`) {
+		t.Fatalf("expected validation error in stdout, got %q", stdout)
+	}
+}
+
+func TestWorkflowDescribeRejectsUnsupportedFormat(t *testing.T) {
+	_, _, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "describe", planPath, "--format", "yaml"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid format error")
+	}
+	if !strings.Contains(err.Error(), "unsupported workflow describe format") {
+		t.Fatalf("expected invalid format error, got %v", err)
+	}
+}

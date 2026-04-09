@@ -12,6 +12,7 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>` and `binlogviz
 | `manifest.go` | Manifest and step-record structs plus JSON serialization. |
 | `index.go` | Workflow index HTML renderer built from manifest data. |
 | `resume.go` | Resume planner: selector parsing, manifest validation, resume plan builder. |
+| `describe.go` | Static workflow preview model and deterministic description builder. |
 
 ## Manifest Versioning
 
@@ -46,8 +47,10 @@ Each `StepRecord` carries an `execution` field:
 ## Exports
 
 - `LoadPlan(io.Reader) (Plan, error)` — Decodes and validates a YAML workflow plan.
-- `ValidatePlan(Plan) error` — Checks structural and cross-reference rules.
+- `ValidatePlan(Plan) error` — Checks structural and cross-reference rules, including duplicate window, compare-job, and trend-job names.
 - `ArtifactPath(root, kind, name, format string) string` — Resolves deterministic artifact file paths.
+- `BuildDescription(plan Plan) Description` — Builds a static workflow preview from plan-only data using deterministic artifact naming.
+- `Description` / `WindowDescription` / `CompareDescription` / `TrendDescription` — Structured static preview model for text/json rendering.
 - `EnsureLayout(root string) error` — Creates the analyze/compare/trend directory tree.
 - `Manifest` / `StepRecord` — Manifest structs.
 - `WriteManifest(path string, m Manifest) error` — Writes manifest.json.

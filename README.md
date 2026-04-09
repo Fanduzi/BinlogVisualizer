@@ -110,9 +110,15 @@ tree artifacts/incident-investigation
 
 If a workflow run fails partway through, `workflow resume` picks up from the existing output directory: it reuses successful steps, reruns failed or missing ones, and supports `--rerun` selectors to force specific steps. Resume refuses to proceed if the plan file changed or the manifest is from a legacy pre-v2 run.
 
+Before execution, `workflow validate` checks whether a plan is statically runnable from `plan.yaml` alone, and `workflow describe` previews the deterministic analyze / compare / trend artifact layout that the plan would produce. Both commands support `--format text` and `--format json`, read only the plan file, and do not inspect `output_dir`, `manifest.json`, or `index.html`.
+
 ```bash
 binlogviz workflow resume ./artifacts/incident
 binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
+binlogviz workflow validate incident.yaml
+binlogviz workflow validate incident.yaml --format json
+binlogviz workflow describe incident.yaml
+binlogviz workflow describe incident.yaml --format json
 ```
 
 ### Generate a Markdown or HTML report

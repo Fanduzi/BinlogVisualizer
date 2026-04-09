@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -32,6 +33,87 @@ func newWorkflowCommand() *cobra.Command {
 	}
 	cmd.AddCommand(newWorkflowRunCommand())
 	cmd.AddCommand(newWorkflowResumeCommand())
+	cmd.AddCommand(newWorkflowValidateCommand())
+	cmd.AddCommand(newWorkflowDescribeCommand())
+	return cmd
+}
+
+type workflowDescribeOptions struct {
+	format string
+}
+
+func newWorkflowDescribeCommand() *cobra.Command {
+	opts := &workflowDescribeOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "describe <plan.yaml>",
+		Short: "Describe a workflow plan without executing it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.format != "text" && opts.format != "json" {
+				return fmt.Errorf("unsupported workflow describe format %q (allowed: text, json)", opts.format)
+			}
+
+			planPath := args[0]
+			f, err := os.Open(planPath)
+			if err != nil {
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, fmt.Errorf("open workflow plan: %w", err))
+				return err
+			}
+			defer f.Close()
+
+			plan, err := workflow.LoadPlan(f)
+			if err != nil {
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, err)
+				return err
+			}
+
+			desc := workflow.BuildDescription(plan)
+			return writeWorkflowDescribeOutput(cmd.OutOrStdout(), opts.format, desc)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
+
+	return cmd
+}
+
+type workflowValidateOptions struct {
+	format string
+}
+
+func newWorkflowValidateCommand() *cobra.Command {
+	opts := &workflowValidateOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "validate <plan.yaml>",
+		Short: "Validate a workflow plan without executing it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.format != "text" && opts.format != "json" {
+				return fmt.Errorf("unsupported workflow validate format %q (allowed: text, json)", opts.format)
+			}
+
+			planPath := args[0]
+			f, err := os.Open(planPath)
+			if err != nil {
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, fmt.Errorf("open workflow plan: %w", err))
+				return err
+			}
+			defer f.Close()
+
+			plan, err := workflow.LoadPlan(f)
+			if err != nil {
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, err)
+				return err
+			}
+
+			return writeWorkflowValidateSuccess(cmd.OutOrStdout(), opts.format, plan)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
+
 	return cmd
 }
 
@@ -102,6 +184,123 @@ func newWorkflowResumeCommand() *cobra.Command {
 	cmd.Flags().StringArrayVar(&opts.rerun, "rerun", nil, "Explicit step to rerun (repeatable, format: kind:name)")
 
 	return cmd
+}
+
+func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Plan) error {
+	payload := struct {
+		Valid        bool   `json:"valid"`
+		WorkflowName string `json:"workflow_name"`
+		Windows      int    `json:"windows"`
+		CompareJobs  int    `json:"compare_jobs"`
+		TrendJobs    int    `json:"trend_jobs"`
+		OutputDir    string `json:"output_dir"`
+	}{
+		Valid:        true,
+		WorkflowName: plan.Workflow.Name,
+		Windows:      len(plan.Windows),
+		CompareJobs:  len(plan.Compare),
+		TrendJobs:    len(plan.Trend),
+		OutputDir:    plan.Workflow.OutputDir,
+	}
+
+	if format == "json" {
+		data, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode workflow validate output: %w", err)
+		}
+		_, err = fmt.Fprintln(out, string(data))
+		return err
+	}
+
+	_, err := fmt.Fprintf(out, "Workflow plan valid\n- workflow: %s\n- windows: %d\n- compare jobs: %d\n- trend jobs: %d\n- output root: %s\n",
+		plan.Workflow.Name,
+		len(plan.Windows),
+		len(plan.Compare),
+		len(plan.Trend),
+		plan.Workflow.OutputDir,
+	)
+	return err
+}
+
+func writeWorkflowValidateFailure(out io.Writer, format string, err error) {
+	if format == "json" {
+		data, marshalErr := json.MarshalIndent(struct {
+			Valid bool   `json:"valid"`
+			Error string `json:"error"`
+		}{
+			Valid: false,
+			Error: err.Error(),
+		}, "", "  ")
+		if marshalErr == nil {
+			_, _ = fmt.Fprintln(out, string(data))
+			return
+		}
+	}
+	_, _ = fmt.Fprintf(out, "Workflow plan invalid\n- %s\n", err.Error())
+}
+
+func writeWorkflowDescribeOutput(out io.Writer, format string, desc workflow.Description) error {
+	if format == "json" {
+		data, err := json.MarshalIndent(desc, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode workflow describe output: %w", err)
+		}
+		_, err = fmt.Fprintln(out, string(data))
+		return err
+	}
+
+	if _, err := fmt.Fprintf(out, "Workflow: %s\nOutput Root: %s\nSnapshot Save: %t\n\n",
+		desc.WorkflowName,
+		desc.OutputDir,
+		desc.SnapshotSave,
+	); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(out, "Analyze Windows"); err != nil {
+		return err
+	}
+	for _, window := range desc.Windows {
+		if _, err := fmt.Fprintf(out, "- %s: %s -> %s\n", window.Name, window.Start, window.End); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "  artifacts: %s\n", strings.Join(window.Artifacts, ", ")); err != nil {
+			return err
+		}
+		if window.SnapshotName != "" {
+			if _, err := fmt.Fprintf(out, "  snapshot: %s\n", window.SnapshotName); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nCompare Jobs"); err != nil {
+		return err
+	}
+	for _, job := range desc.Compare {
+		if _, err := fmt.Fprintf(out, "- %s\n", job.Name); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "  depends on: %s, %s\n", job.Current, job.Baseline); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "  artifacts: %s\n", strings.Join(job.Artifacts, ", ")); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nTrend Jobs"); err != nil {
+		return err
+	}
+	for _, job := range desc.Trend {
+		if _, err := fmt.Fprintf(out, "- %s\n", job.Name); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "  depends on: %s\n", strings.Join(job.Snapshots, ", ")); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "  artifacts: %s\n", strings.Join(job.Artifacts, ", ")); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stderr io.Writer) error {

@@ -1,0 +1,6 @@
+Workflow plan valid
+- workflow: multi-window-test
+- windows: 2
+- compare jobs: 1
+- trend jobs: 1
+- output root: <output-dir>

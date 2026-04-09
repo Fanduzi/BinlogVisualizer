@@ -1,0 +1,21 @@
+Workflow: multi-window-test
+Output Root: <output-dir>
+Snapshot Save: true
+
+Analyze Windows
+- week1: 2025-01-01T00:00:00Z -> 2099-12-31T23:59:59Z
+  artifacts: analyze/week1.json
+  snapshot: week1
+- week2: 2025-01-01T00:00:00Z -> 2099-12-31T23:59:59Z
+  artifacts: analyze/week2.json
+  snapshot: week2
+
+Compare Jobs
+- week2_vs_week1
+  depends on: week2, week1
+  artifacts: compare/week2_vs_week1.json, compare/week2_vs_week1.html
+
+Trend Jobs
+- weekly_series
+  depends on: week1, week2
+  artifacts: trend/weekly_series.json, trend/weekly_series.html

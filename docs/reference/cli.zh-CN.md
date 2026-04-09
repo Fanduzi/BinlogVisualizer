@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run` 和 `binlogviz workflow resume` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -23,6 +23,10 @@ binlogviz workflow run <plan.yaml>
 binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 binlogviz workflow resume <output_dir>
 binlogviz workflow resume <output_dir> --rerun analyze:week2
+binlogviz workflow validate <plan.yaml>
+binlogviz workflow validate <plan.yaml> --format json
+binlogviz workflow describe <plan.yaml>
+binlogviz workflow describe <plan.yaml> --format json
 ```
 
 ## 全局参数
@@ -587,6 +591,62 @@ trend:
 - v1 中 `stdout` 不使用
 - `stderr` 承载进度行和最终的 manifest 路径
 - `index.html` 写入 `<output_dir>/index.html`，是自包含的 workflow 落地页，展示 workflow 元数据、步骤状态和 artifact 链接
+
+## `workflow validate` 命令语法
+
+```bash
+binlogviz workflow validate <plan.yaml>
+binlogviz workflow validate <plan.yaml> --format text
+binlogviz workflow validate <plan.yaml> --format json
+```
+
+`workflow validate` 用于回答一份 workflow plan 在静态层面是否可运行。它只读取 `plan.yaml`，使用严格 YAML 字段校验加载 plan，并复用 `workflow run` 在真正执行前使用的静态校验逻辑。
+
+校验覆盖 workflow 元数据、window 定义、命名引用、重复 compare / trend 作业名，以及 compare / trend 作业内重复的 format 条目。该命令不会检查 `output_dir`、`manifest.json`、`index.html` 或任何已有运行产物。
+
+### 参数
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--format` | `text` | 校验结果输出格式：`text` 或 `json`。 |
+
+### 成功契约
+
+- plan 合法时以零状态退出
+- 向 `stdout` 写出文本或 JSON 摘要
+- 输出 workflow 名称、window 数量、compare 作业数量、trend 作业数量和 output root
+
+### 失败契约
+
+- plan 非法或不可读取时以非零状态退出
+- 向 `stdout` 写出文本或 JSON 错误载荷
+- 同时沿用 CLI 正常失败链路返回命令错误，因此默认 CLI 执行下还可能在 `stderr` 再输出一行错误信息
+
+## `workflow describe` 命令语法
+
+```bash
+binlogviz workflow describe <plan.yaml>
+binlogviz workflow describe <plan.yaml> --format text
+binlogviz workflow describe <plan.yaml> --format json
+```
+
+`workflow describe` 用于回答一份 workflow plan 会如何运行，但不会真正执行。它只读取 `plan.yaml`，要求 plan 先通过静态校验，然后基于 plan 本身渲染确定性的执行预览。
+
+预览内容包括 workflow 元数据、analyze windows、compare 作业、trend 作业、声明的依赖关系、计划中的 artifact 路径，以及在 `defaults.snapshot.save` 开启时暴露的 snapshot 名称。该命令不会检查 `output_dir`、`manifest.json`、`index.html` 或任何已有输出。
+
+### 参数
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--format` | `text` | 描述输出格式：`text` 或 `json`。 |
+
+### 输出行为
+
+- 只支持 `text` 和 `json`
+- 不渲染 HTML
+- plan 非法或不可读取时，在渲染前直接失败
+- 失败时会先把错误载荷写到 `stdout`，同时继续返回命令错误，因此默认 CLI 执行下还可能在 `stderr` 再输出一行错误信息
+- 保持 analyze windows、compare 作业和 trend 作业在 plan 中声明的顺序
 
 ## `workflow resume` 命令语法
 

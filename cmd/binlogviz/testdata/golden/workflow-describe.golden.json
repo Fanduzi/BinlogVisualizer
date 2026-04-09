@@ -1,0 +1,49 @@
+{
+  "workflow_name": "multi-window-test",
+  "output_dir": "<output-dir>",
+  "snapshot_save": true,
+  "windows": [
+    {
+      "name": "week1",
+      "start": "2025-01-01T00:00:00Z",
+      "end": "2099-12-31T23:59:59Z",
+      "artifacts": [
+        "analyze/week1.json"
+      ],
+      "snapshot_name": "week1"
+    },
+    {
+      "name": "week2",
+      "start": "2025-01-01T00:00:00Z",
+      "end": "2099-12-31T23:59:59Z",
+      "artifacts": [
+        "analyze/week2.json"
+      ],
+      "snapshot_name": "week2"
+    }
+  ],
+  "compare": [
+    {
+      "name": "week2_vs_week1",
+      "current": "week2",
+      "baseline": "week1",
+      "artifacts": [
+        "compare/week2_vs_week1.json",
+        "compare/week2_vs_week1.html"
+      ]
+    }
+  ],
+  "trend": [
+    {
+      "name": "weekly_series",
+      "snapshots": [
+        "week1",
+        "week2"
+      ],
+      "artifacts": [
+        "trend/weekly_series.json",
+        "trend/weekly_series.html"
+      ]
+    }
+  ]
+}

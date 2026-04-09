@@ -392,6 +392,188 @@ windows:
 	}
 }
 
+func TestWorkflowValidateGoldenTextValid(t *testing.T) {
+	_, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow validate: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := strings.ReplaceAll(stdout, outputDir, "<output-dir>")
+	want := mustReadGolden(t, "workflow-validate-valid.golden.txt")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow validate valid text golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowValidateGoldenTextInvalid(t *testing.T) {
+	planDir := t.TempDir()
+	planPath := filepath.Join(planDir, "invalid-plan.yaml")
+	plan := `
+version: 1
+workflow:
+  name: invalid
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+compare:
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [json]
+`
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err == nil {
+		t.Fatal("expected workflow validate to fail")
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	want := mustReadGolden(t, "workflow-validate-invalid.golden.txt")
+	if diff := diffGolden(want, stdout); diff != "" {
+		t.Fatalf("workflow validate invalid text golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowValidateGoldenJSONValid(t *testing.T) {
+	_, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow validate: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := strings.ReplaceAll(stdout, outputDir, "<output-dir>")
+	want := mustReadGolden(t, "workflow-validate-valid.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow validate valid json golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowValidateGoldenJSONInvalid(t *testing.T) {
+	planDir := t.TempDir()
+	planPath := filepath.Join(planDir, "invalid-plan.yaml")
+	plan := `
+version: 1
+workflow:
+  name: invalid
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+compare:
+  - name: drift
+    current: incident
+    baseline: baseline
+    formats: [json]
+`
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err == nil {
+		t.Fatal("expected workflow validate to fail")
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	want := mustReadGolden(t, "workflow-validate-invalid.golden.json")
+	if diff := diffGolden(want, stdout); diff != "" {
+		t.Fatalf("workflow validate invalid json golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowDescribeGoldenText(t *testing.T) {
+	_, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "describe", planPath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow describe: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := strings.ReplaceAll(stdout, outputDir, "<output-dir>")
+	want := mustReadGolden(t, "workflow-describe.golden.txt")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow describe text golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowDescribeGoldenJSON(t *testing.T) {
+	_, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "describe", planPath, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow describe: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := strings.ReplaceAll(stdout, outputDir, "<output-dir>")
+	want := mustReadGolden(t, "workflow-describe.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow describe json golden mismatch\n%s", diff)
+	}
+}
+
 func normalizeWorkflowManifest(raw, outputDir, snapshotDir string) string {
 	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
 	if snapshotDir != "" {

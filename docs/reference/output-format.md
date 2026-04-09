@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, and `binlogviz workflow resume` write to `stdout` and `stderr`.
+This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow validate`, and `binlogviz workflow describe` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -13,6 +13,8 @@ BinlogViz uses separate output channels for different purposes:
 - `trend`: `stdout` carries the final trend report; command failures are reported through the CLI error path on `stderr`.
 - `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` and `index.html` are always written regardless of success or failure.
 - `workflow resume`: `stdout` is unused; `stderr` carries progress lines and the final manifest path. Resume reuses successful step artifacts and reruns failed, missing, or explicitly selected steps. The updated `manifest.json` records per-step execution status (`executed` or `reused`). `index.html` includes the resume mode, attempt number, and per-step execution labels.
+- `workflow validate`: `stdout` carries either a text or JSON validation result. The command reads only `plan.yaml`, performs static plan validation, and exits non-zero on invalid plans. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
+- `workflow describe`: `stdout` carries either a text or JSON static preview of workflow execution order and artifact paths. The command reads only `plan.yaml`, renders no HTML, and does not inspect runtime outputs. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 
 This separation matters because it keeps report output safe for redirection and automation.
 
@@ -50,6 +52,20 @@ If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and
 | `text` | Default. Human-readable multi-snapshot trend report. |
 | `json` | Machine-readable trend result with `pattern_trends`. |
 | `html` | Self-contained trend report with charts and a Pattern Trends section. |
+
+### `workflow validate`
+
+| Flag value | Description |
+|---|---|
+| `text` | Default. Human-readable validation summary or error. |
+| `json` | Machine-readable validation result with `valid` and summary/error fields. |
+
+### `workflow describe`
+
+| Flag value | Description |
+|---|---|
+| `text` | Default. Human-readable static preview of analyze, compare, and trend execution. |
+| `json` | Machine-readable static description derived from the plan. |
 
 ## Text Output
 
@@ -511,6 +527,68 @@ This behavior lets you safely:
 - redirect JSON output into another tool
 - inspect analyze discovery results and progress without contaminating the report stream
 
+## Workflow Validate Output
+
+`binlogviz workflow validate` reports whether a plan is statically valid before any execution begins.
+It rejects duplicate compare/trend job names and duplicate format entries within a single compare/trend job.
+
+### Text output
+
+Text mode writes one of these shapes to `stdout`:
+
+- success: `Workflow plan valid` followed by workflow name, window count, compare job count, trend job count, and output root
+- failure: `Workflow plan invalid` followed by the validation error message
+
+### JSON output
+
+Success output contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `valid` | boolean | yes | `true` for a valid plan |
+| `workflow_name` | string | yes | Workflow name from the plan |
+| `windows` | integer | yes | Number of analyze windows |
+| `compare_jobs` | integer | yes | Number of compare jobs |
+| `trend_jobs` | integer | yes | Number of trend jobs |
+| `output_dir` | string | yes | Output root declared in the plan |
+
+Failure output contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `valid` | boolean | yes | Always `false` |
+| `error` | string | yes | Validation or file-read error message |
+
+## Workflow Describe Output
+
+`binlogviz workflow describe` reports how a valid plan would execute, using only plan-derived data.
+
+### Text output
+
+Text mode writes these sections to `stdout` in order:
+
+1. workflow header with workflow name, output root, and snapshot-save setting
+2. `Analyze Windows` with each named window, RFC3339 start/end, planned analyze artifact paths, and optional snapshot name
+3. `Compare Jobs` with each job name, declared dependencies, and planned compare artifact paths
+4. `Trend Jobs` with each job name, declared snapshot dependencies, and planned trend artifact paths
+
+### JSON output
+
+The JSON description contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | Workflow name from the plan |
+| `output_dir` | string | yes | Output root from the plan |
+| `snapshot_save` | boolean | yes | Whether named snapshots are planned for analyze windows |
+| `windows` | array | yes | Ordered analyze-window descriptions |
+| `compare` | array | yes | Ordered compare-job descriptions |
+| `trend` | array | yes | Ordered trend-job descriptions |
+
+Each `windows` entry contains `name`, `start`, `end`, `artifacts`, and optional `snapshot_name`.
+Each `compare` entry contains `name`, `current`, `baseline`, and `artifacts`.
+Each `trend` entry contains `name`, `snapshots`, and `artifacts`.
+
 ## Workflow Manifest
 
 `workflow run` and `workflow resume` write a `manifest.json` to `<output_dir>/manifest.json`. Manifest v2 adds fields that support the resume workflow.
@@ -538,8 +616,9 @@ Each entry in the `steps` array contains:
 | `kind` | string | yes | Step kind: `analyze`, `compare`, or `trend` |
 | `name` | string | yes | Step name from the plan |
 | `status` | string | yes | `success` or `failed` |
-| `output` | string | yes | Output artifact path relative to `<output_dir>` |
-| `execution` | string | yes | `executed` (step was run) or `reused` (step was carried over from a previous run) |
+| `execution` | string | no | `executed` (step was run) or `reused` (step was carried over from a previous run) |
+| `artifacts` | array<string> | no | Planned artifact paths relative to `<output_dir>` |
+| `snapshot_name` | string | no | Present for analyze steps when snapshot saving is enabled |
 | `error` | string | no | Present when the step failed |
 
 ### Resume and manifest interaction
