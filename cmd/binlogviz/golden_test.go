@@ -131,6 +131,21 @@ func TestTrendJSONGoldenMinimalWorkflow(t *testing.T) {
 		Updates:   900,
 		Deletes:   500,
 		Alerts:    3,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          1300,
+				TxnCount:           18,
+				EventCount:         90,
+				ShareOfRows:        0.4333333333,
+				ShareOfTxns:        0.12,
+				AvgRowsPerTxn:      72.2,
+				Tables:             map[string]int{"orders.payments": 1300},
+				Operations:         map[string]int{"UPDATE": 1300},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
 	}))
 	writeSnapshotFixture(t, dir, "earlier", trendSnapshotFixtureJSON(trendSnapshotFixture{
 		Name:      "earlier",
@@ -144,6 +159,21 @@ func TestTrendJSONGoldenMinimalWorkflow(t *testing.T) {
 		Updates:   350,
 		Deletes:   150,
 		Alerts:    0,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          600,
+				TxnCount:           9,
+				EventCount:         45,
+				ShareOfRows:        0.6,
+				ShareOfTxns:        0.18,
+				AvgRowsPerTxn:      66.7,
+				Tables:             map[string]int{"orders.payments": 600},
+				Operations:         map[string]int{"UPDATE": 600},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
 	}))
 	writeSnapshotFixture(t, dir, "middle", trendSnapshotFixtureJSON(trendSnapshotFixture{
 		Name:      "middle",
@@ -157,6 +187,21 @@ func TestTrendJSONGoldenMinimalWorkflow(t *testing.T) {
 		Updates:   600,
 		Deletes:   300,
 		Alerts:    1,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          1000,
+				TxnCount:           13,
+				EventCount:         65,
+				ShareOfRows:        0.5555555556,
+				ShareOfTxns:        0.1444444444,
+				AvgRowsPerTxn:      76.9,
+				Tables:             map[string]int{"orders.payments": 1000},
+				Operations:         map[string]int{"UPDATE": 1000},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
 	}))
 
 	cmd := NewRootCommand()

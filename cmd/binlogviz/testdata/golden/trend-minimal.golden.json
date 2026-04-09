@@ -188,6 +188,53 @@
       ]
     }
   ],
+  "pattern_trends": [
+    {
+      "pattern_key": "orders.payments|UPDATE|medium",
+      "label": "payments.update_status",
+      "first_rows": 600,
+      "last_rows": 1300,
+      "delta_rows": 700,
+      "first_share_of_rows": 0.6,
+      "last_share_of_rows": 0.43333333333333335,
+      "delta_share_of_rows": -0.16666666666666663,
+      "rows_series": [
+        {
+          "snapshot_name": "earlier",
+          "start_time": "2026-03-19T10:00:00Z",
+          "rows": 600
+        },
+        {
+          "snapshot_name": "middle",
+          "start_time": "2026-03-20T10:00:00Z",
+          "rows": 1000
+        },
+        {
+          "snapshot_name": "later",
+          "start_time": "2026-03-21T10:00:00Z",
+          "rows": 1300
+        }
+      ],
+      "share_of_rows_series": [
+        {
+          "snapshot_name": "earlier",
+          "start_time": "2026-03-19T10:00:00Z",
+          "share_of_rows": 0.6
+        },
+        {
+          "snapshot_name": "middle",
+          "start_time": "2026-03-20T10:00:00Z",
+          "share_of_rows": 0.5555555555555556
+        },
+        {
+          "snapshot_name": "later",
+          "start_time": "2026-03-21T10:00:00Z",
+          "share_of_rows": 0.43333333333333335
+        }
+      ],
+      "sample_query_summary": "update payments set status = ?"
+    }
+  ],
   "insights": {
     "first_snapshot": "earlier",
     "last_snapshot": "later",

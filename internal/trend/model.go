@@ -29,12 +29,13 @@ type BuildOptions struct {
 }
 
 type Result struct {
-	InputMode        string        `json:"input_mode"`
-	SnapshotDir      string        `json:"snapshot_dir"`
-	BaselineSnapshot *SnapshotMeta `json:"baseline_snapshot,omitempty"`
-	Points           []Point       `json:"points"`
-	TableTrends      []TableTrend  `json:"table_trends"`
-	Insights         Insights      `json:"insights"`
+	InputMode        string         `json:"input_mode"`
+	SnapshotDir      string         `json:"snapshot_dir"`
+	BaselineSnapshot *SnapshotMeta  `json:"baseline_snapshot,omitempty"`
+	Points           []Point        `json:"points"`
+	TableTrends      []TableTrend   `json:"table_trends"`
+	PatternTrends    []PatternTrend `json:"pattern_trends"`
+	Insights         Insights       `json:"insights"`
 }
 
 type SnapshotMeta struct {
@@ -97,6 +98,34 @@ type TableTrendItem struct {
 	SnapshotName string `json:"snapshot_name"`
 	StartTime    string `json:"start_time"`
 	Rows         int    `json:"rows"`
+}
+
+type PatternTrend struct {
+	PatternKey        string                   `json:"pattern_key"`
+	Label             string                   `json:"label"`
+	FirstRows         int                      `json:"first_rows"`
+	LastRows          int                      `json:"last_rows"`
+	DeltaRows         int                      `json:"delta_rows"`
+	FirstShareOfRows  float64                  `json:"first_share_of_rows"`
+	LastShareOfRows   float64                  `json:"last_share_of_rows"`
+	DeltaShareOfRows  float64                  `json:"delta_share_of_rows"`
+	RowsSeries        []PatternTrendRowsPoint  `json:"rows_series"`
+	ShareOfRowsSeries []PatternTrendSharePoint `json:"share_of_rows_series"`
+	// SampleQuerySummary carries one representative query summary for display.
+	// The builder chooses it deterministically in a later task.
+	SampleQuerySummary string `json:"sample_query_summary,omitempty"`
+}
+
+type PatternTrendRowsPoint struct {
+	SnapshotName string `json:"snapshot_name"`
+	StartTime    string `json:"start_time"`
+	Rows         int    `json:"rows"`
+}
+
+type PatternTrendSharePoint struct {
+	SnapshotName string  `json:"snapshot_name"`
+	StartTime    string  `json:"start_time"`
+	ShareOfRows  float64 `json:"share_of_rows"`
 }
 
 type Insights struct {

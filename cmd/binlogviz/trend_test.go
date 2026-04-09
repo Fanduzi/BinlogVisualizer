@@ -136,6 +136,131 @@ func TestTrendCommandJSONOutputOrdersSnapshotsByWindowStartTime(t *testing.T) {
 	}
 }
 
+func TestTrendCommandJSONOutputIncludesPatternTrends(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	writeSnapshotFixture(t, dir, "later", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "later",
+		Label:     "Later",
+		StartTime: "2026-03-21T10:00:00Z",
+		EndTime:   "2026-03-21T10:30:00Z",
+		Rows:      3000,
+		Txns:      150,
+		Events:    3600,
+		Inserts:   1600,
+		Updates:   900,
+		Deletes:   500,
+		Alerts:    3,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          1300,
+				TxnCount:           18,
+				EventCount:         90,
+				ShareOfRows:        0.4333333333,
+				ShareOfTxns:        0.12,
+				AvgRowsPerTxn:      72.2,
+				Tables:             map[string]int{"orders.payments": 1300},
+				Operations:         map[string]int{"UPDATE": 1300},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
+	}))
+	writeSnapshotFixture(t, dir, "earlier", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "earlier",
+		Label:     "Earlier",
+		StartTime: "2026-03-19T10:00:00Z",
+		EndTime:   "2026-03-19T10:30:00Z",
+		Rows:      1000,
+		Txns:      50,
+		Events:    1200,
+		Inserts:   500,
+		Updates:   350,
+		Deletes:   150,
+		Alerts:    0,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          600,
+				TxnCount:           9,
+				EventCount:         45,
+				ShareOfRows:        0.6,
+				ShareOfTxns:        0.18,
+				AvgRowsPerTxn:      66.7,
+				Tables:             map[string]int{"orders.payments": 600},
+				Operations:         map[string]int{"UPDATE": 600},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
+	}))
+	writeSnapshotFixture(t, dir, "middle", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "middle",
+		Label:     "Middle",
+		StartTime: "2026-03-20T10:00:00Z",
+		EndTime:   "2026-03-20T10:30:00Z",
+		Rows:      1800,
+		Txns:      90,
+		Events:    2200,
+		Inserts:   900,
+		Updates:   600,
+		Deletes:   300,
+		Alerts:    1,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          1000,
+				TxnCount:           13,
+				EventCount:         65,
+				ShareOfRows:        0.5555555556,
+				ShareOfTxns:        0.1444444444,
+				AvgRowsPerTxn:      76.9,
+				Tables:             map[string]int{"orders.payments": 1000},
+				Operations:         map[string]int{"UPDATE": 1000},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
+	}))
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"trend", "later", "earlier", "middle", "--snapshot-dir", dir, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var decoded struct {
+		PatternTrends []struct {
+			PatternKey        string `json:"pattern_key"`
+			RowsSeries        []any  `json:"rows_series"`
+			ShareOfRowsSeries []any  `json:"share_of_rows_series"`
+		} `json:"pattern_trends"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode trend json: %v\n%s", err, stdout)
+	}
+	if len(decoded.PatternTrends) != 1 {
+		t.Fatalf("expected 1 pattern trend, got %d", len(decoded.PatternTrends))
+	}
+	if decoded.PatternTrends[0].PatternKey != "orders.payments|UPDATE|medium" {
+		t.Fatalf("expected pattern key to round-trip, got %+v", decoded.PatternTrends[0])
+	}
+	if len(decoded.PatternTrends[0].RowsSeries) != 3 || len(decoded.PatternTrends[0].ShareOfRowsSeries) != 3 {
+		t.Fatalf("expected rows/share series for each snapshot, got %+v", decoded.PatternTrends[0])
+	}
+}
+
 func TestTrendCommandPatternModeIncludesBaselineContext(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 
@@ -242,6 +367,21 @@ func TestTrendCommandHTMLOutputContainsTrendCharts(t *testing.T) {
 		Updates:   800,
 		Deletes:   400,
 		Alerts:    2,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          600,
+				TxnCount:           9,
+				EventCount:         45,
+				ShareOfRows:        0.6,
+				ShareOfTxns:        0.18,
+				AvgRowsPerTxn:      66.7,
+				Tables:             map[string]int{"orders.payments": 600},
+				Operations:         map[string]int{"UPDATE": 600},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
 	}))
 	writeSnapshotFixture(t, dir, "beta", trendSnapshotFixtureJSON(trendSnapshotFixture{
 		Name:      "beta",
@@ -255,6 +395,21 @@ func TestTrendCommandHTMLOutputContainsTrendCharts(t *testing.T) {
 		Updates:   1000,
 		Deletes:   400,
 		Alerts:    3,
+		Patterns: []trendPatternFixture{
+			{
+				PatternKey:         "orders.payments|UPDATE|medium",
+				Label:              "payments.update_status",
+				TotalRows:          1300,
+				TxnCount:           18,
+				EventCount:         90,
+				ShareOfRows:        0.40625,
+				ShareOfTxns:        0.1125,
+				AvgRowsPerTxn:      72.2,
+				Tables:             map[string]int{"orders.payments": 1300},
+				Operations:         map[string]int{"UPDATE": 1300},
+				SampleQuerySummary: "update payments set status = ?",
+			},
+		},
 	}))
 
 	cmd := NewRootCommand()
@@ -269,7 +424,7 @@ func TestTrendCommandHTMLOutputContainsTrendCharts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, token := range []string{"<html", `id="trend-overall-chart"`, `id="trend-ops-chart"`, `id="trend-tables-chart"`} {
+	for _, token := range []string{"<html", `id="trend-overall-chart"`, `id="trend-ops-chart"`, `id="trend-tables-chart"`, `Pattern Trends`, `id="trend-pattern-chart"`, `data-pattern-view="share"`, `data-pattern-view="rows"`} {
 		if !strings.Contains(output.String(), token) {
 			t.Fatalf("expected html output to contain %q, got %q", token, output.String())
 		}
@@ -395,6 +550,21 @@ type trendSnapshotFixture struct {
 	Updates   int
 	Deletes   int
 	Alerts    int
+	Patterns  []trendPatternFixture
+}
+
+type trendPatternFixture struct {
+	PatternKey         string
+	Label              string
+	TotalRows          int
+	TxnCount           int
+	EventCount         int
+	ShareOfRows        float64
+	ShareOfTxns        float64
+	AvgRowsPerTxn      float64
+	Tables             map[string]int
+	Operations         map[string]int
+	SampleQuerySummary string
 }
 
 func trendSnapshotFixtureJSON(f trendSnapshotFixture) string {
@@ -431,6 +601,7 @@ func trendSnapshotFixtureJSONWithWindowOverride(f trendSnapshotFixture, windowSt
       "txn_count": ` + intString(f.Txns-(f.Txns/2)) + `
     }
   ],
+  "patterns": ` + trendPatternsJSON(f.Patterns) + `,
   "transactions": [],
   "minutes": [],
   "alerts": ` + trendAlertsJSON(f.Alerts, f.StartTime) + `,
@@ -458,6 +629,49 @@ func trendSnapshotFixtureJSONWithWindowOverride(f trendSnapshotFixture, windowSt
     }
   }
 }`
+}
+
+func trendPatternsJSON(patterns []trendPatternFixture) string {
+	if len(patterns) == 0 {
+		return "[]"
+	}
+
+	type trendPatternFixtureJSON struct {
+		PatternKey         string         `json:"pattern_key"`
+		Label              string         `json:"label"`
+		TotalRows          int            `json:"total_rows"`
+		TxnCount           int            `json:"txn_count"`
+		EventCount         int            `json:"event_count"`
+		ShareOfRows        float64        `json:"share_of_rows"`
+		ShareOfTxns        float64        `json:"share_of_txns"`
+		AvgRowsPerTxn      float64        `json:"avg_rows_per_txn"`
+		Tables             map[string]int `json:"tables"`
+		Operations         map[string]int `json:"operations"`
+		SampleQuerySummary string         `json:"sample_query_summary,omitempty"`
+	}
+
+	encoded := make([]trendPatternFixtureJSON, 0, len(patterns))
+	for _, pattern := range patterns {
+		encoded = append(encoded, trendPatternFixtureJSON{
+			PatternKey:         pattern.PatternKey,
+			Label:              pattern.Label,
+			TotalRows:          pattern.TotalRows,
+			TxnCount:           pattern.TxnCount,
+			EventCount:         pattern.EventCount,
+			ShareOfRows:        pattern.ShareOfRows,
+			ShareOfTxns:        pattern.ShareOfTxns,
+			AvgRowsPerTxn:      pattern.AvgRowsPerTxn,
+			Tables:             pattern.Tables,
+			Operations:         pattern.Operations,
+			SampleQuerySummary: pattern.SampleQuerySummary,
+		})
+	}
+
+	data, err := json.Marshal(encoded)
+	if err != nil {
+		panic(err)
+	}
+	return string(data)
 }
 
 func trendAlertsJSON(count int, minute string) string {

@@ -199,6 +199,8 @@ binlogviz trend --from-snapshots 'incident-*' --baseline-snapshot baseline --for
 - 趋势点永远按有效窗口开始时间升序排序
 - trend 优先使用 `snapshot.window.start_time`；对于较旧的快照，会回退到 `summary.start_time`
 - `--baseline-snapshot` 是可选的；除非 baseline 本身也被单独选中，否则它不会自动成为 trend 点
+- 所有 trend 输出都会包含 pattern trends；`text` 和 `json` 会暴露 `Top Pattern Trends` / `pattern_trends`，`html` 会增加一个交互式 `Pattern Trends` 分区
+- HTML trend 输出默认展示 `share of rows` 视角，并可以切换到绝对 `rows`
 
 支持的 flags：
 

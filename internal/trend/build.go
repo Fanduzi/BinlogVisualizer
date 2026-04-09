@@ -39,10 +39,11 @@ func BuildResult(opts BuildOptions) (Result, error) {
 	}
 
 	result := Result{
-		InputMode:   opts.InputMode,
-		SnapshotDir: opts.SnapshotDir,
-		Points:      make([]Point, 0, len(sorted)),
-		TableTrends: buildTableTrends(sorted, topTables),
+		InputMode:     opts.InputMode,
+		SnapshotDir:   opts.SnapshotDir,
+		Points:        make([]Point, 0, len(sorted)),
+		TableTrends:   buildTableTrends(sorted, topTables),
+		PatternTrends: buildPatternTrends(sorted),
 	}
 	if baseline != nil {
 		meta := baseline.Meta

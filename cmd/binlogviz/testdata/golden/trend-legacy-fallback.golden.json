@@ -133,6 +133,7 @@
       ]
     }
   ],
+  "pattern_trends": [],
   "insights": {
     "first_snapshot": "legacy-alpha",
     "last_snapshot": "legacy-beta",
