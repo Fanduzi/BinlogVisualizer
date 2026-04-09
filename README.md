@@ -108,6 +108,13 @@ tree artifacts/incident-investigation
 
 `workflow run` executes a declarative YAML plan that defines analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact directory with `analyze/`, `compare/`, `trend/`, a `manifest.json` that records every step's status and output path, and an `index.html` landing page. `stdout` stays empty in v1; all status goes to `stderr`. See [CLI Reference](docs/reference/cli.md) for the plan schema and flags.
 
+If a workflow run fails partway through, `workflow resume` picks up from the existing output directory: it reuses successful steps, reruns failed or missing ones, and supports `--rerun` selectors to force specific steps. Resume refuses to proceed if the plan file changed or the manifest is from a legacy pre-v2 run.
+
+```bash
+binlogviz workflow resume ./artifacts/incident
+binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
+```
+
 ### Generate a Markdown or HTML report
 
 ```bash

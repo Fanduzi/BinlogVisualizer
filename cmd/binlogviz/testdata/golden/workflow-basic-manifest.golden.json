@@ -1,8 +1,15 @@
+
 {
+  "manifest_version": 2,
+  "mode": "run",
+  "attempt": 1,
   "workflow_name": "multi-window-test",
   "workflow_plan_version": 1,
   "binlogviz_version": "dev",
   "plan_path": "<test-root>/004/plan.yaml",
+  "plan_sha256": "<plan-sha>",
+  "resolved_input_files": ["<resolved-files>"],
+  "snapshot_dir": "<snapshot-dir>",
   "run_started_at": "<timestamp>",
   "run_finished_at": "<timestamp>",
   "status": "success",
@@ -11,6 +18,7 @@
       "kind": "analyze",
       "name": "week1",
       "status": "success",
+      "execution": "executed",
       "artifacts": [
         "analyze/week1.json"
       ],
@@ -20,6 +28,7 @@
       "kind": "analyze",
       "name": "week2",
       "status": "success",
+      "execution": "executed",
       "artifacts": [
         "analyze/week2.json"
       ],
@@ -29,6 +38,7 @@
       "kind": "compare",
       "name": "week2_vs_week1",
       "status": "success",
+      "execution": "executed",
       "artifacts": [
         "compare/week2_vs_week1.json",
         "compare/week2_vs_week1.html"
@@ -38,6 +48,7 @@
       "kind": "trend",
       "name": "weekly_series",
       "status": "success",
+      "execution": "executed",
       "artifacts": [
         "trend/weekly_series.json",
         "trend/weekly_series.html"

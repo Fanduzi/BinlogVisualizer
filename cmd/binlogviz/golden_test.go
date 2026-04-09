@@ -13,6 +13,8 @@ import (
 var (
 	timestampPattern      = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"`)
 	manifestErrorPattern  = regexp.MustCompile(`"error": "discover binlog files: .*"`)
+	planSHA256Pattern     = regexp.MustCompile(`"plan_sha256": "[0-9a-f]+"`)
+	resolvedFilesPattern  = regexp.MustCompile(`(?s)"resolved_input_files": \[.*?\]`)
 )
 
 func TestSnapshotShowJSONGoldenMinimalWorkflow(t *testing.T) {
@@ -406,6 +408,10 @@ func normalizeWorkflowManifest(raw, outputDir, snapshotDir string) string {
 	}
 	// Normalize top-level error (locale-dependent OS messages)
 	out = manifestErrorPattern.ReplaceAllString(out, `"error": "<discovery-error>"`)
+	// Normalize plan_sha256 (changes with plan content)
+	out = planSHA256Pattern.ReplaceAllString(out, `"plan_sha256": "<plan-sha>"`)
+	// Normalize resolved_input_files (contains temp paths)
+	out = resolvedFilesPattern.ReplaceAllString(out, `"resolved_input_files": ["<resolved-files>"]`)
 	return out
 }
 

@@ -108,6 +108,13 @@ tree artifacts/incident-investigation
 
 `workflow run` 执行一份声明式 YAML plan，定义分析窗口、可选 compare 作业和可选 trend 作业。它会产生一个确定性的 artifact 目录，包含 `analyze/`、`compare/`、`trend/`、一份 `manifest.json` 和一个 `index.html` 落地页。v1 中 `stdout` 留空，所有状态走 `stderr`。plan schema 和参数请参见 [CLI 参考](docs/reference/cli.zh-CN.md)。
 
+如果 workflow 运行中途失败，`workflow resume` 可以从已有的输出目录继续执行：复用成功步骤，重跑失败或缺失的步骤，并支持通过 `--rerun` 选择器强制重跑指定步骤。Resume 会在 plan 文件变更或 manifest 是旧版 pre-v2 产物时拒绝执行。
+
+```bash
+binlogviz workflow resume ./artifacts/incident
+binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
+```
+
 ### 生成 Markdown 或 HTML 报告
 
 ```bash

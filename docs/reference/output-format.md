@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, and `binlogviz workflow run` write to `stdout` and `stderr`.
+This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, and `binlogviz workflow resume` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -12,6 +12,7 @@ BinlogViz uses separate output channels for different purposes:
 - `compare`: `stdout` carries the final compare report; command failures are reported through the CLI error path on `stderr`.
 - `trend`: `stdout` carries the final trend report; command failures are reported through the CLI error path on `stderr`.
 - `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` and `index.html` are always written regardless of success or failure.
+- `workflow resume`: `stdout` is unused; `stderr` carries progress lines and the final manifest path. Resume reuses successful step artifacts and reruns failed, missing, or explicitly selected steps. The updated `manifest.json` records per-step execution status (`executed` or `reused`). `index.html` includes the resume mode, attempt number, and per-step execution labels.
 
 This separation matters because it keeps report output safe for redirection and automation.
 
@@ -509,6 +510,52 @@ This behavior lets you safely:
 - redirect text output to a file
 - redirect JSON output into another tool
 - inspect analyze discovery results and progress without contaminating the report stream
+
+## Workflow Manifest
+
+`workflow run` and `workflow resume` write a `manifest.json` to `<output_dir>/manifest.json`. Manifest v2 adds fields that support the resume workflow.
+
+### Manifest v2 fields
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `manifest_version` | integer | yes | Manifest contract version; current version is `2` |
+| `status` | string | yes | `success` or `failed` |
+| `mode` | string | yes | `run` for a fresh execution, `resume` for a resumed execution |
+| `attempt` | integer | yes | Execution attempt number; starts at `1` for `run`, increments on each `resume` |
+| `plan_sha256` | string | yes | SHA-256 hash of the plan file at the time of the first run |
+| `resolved_input_files` | object | yes | Resolved input file set per analyze window |
+| `snapshot_dir` | string | yes | Snapshot directory used during execution |
+| `steps` | array | yes | Per-step status records |
+| `error` | string | no | Present when `status` is `failed`; contains the failure message |
+
+### Per-step fields
+
+Each entry in the `steps` array contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | Step kind: `analyze`, `compare`, or `trend` |
+| `name` | string | yes | Step name from the plan |
+| `status` | string | yes | `success` or `failed` |
+| `output` | string | yes | Output artifact path relative to `<output_dir>` |
+| `execution` | string | yes | `executed` (step was run) or `reused` (step was carried over from a previous run) |
+| `error` | string | no | Present when the step failed |
+
+### Resume and manifest interaction
+
+- `workflow resume` reads the existing `manifest.json` to determine which steps succeeded and can be reused
+- Resume refuses legacy pre-v2 manifests (those missing the `manifest_version` field)
+- Resume refuses to proceed if the plan file hash does not match `plan_sha256` in the manifest
+- The updated manifest preserves all fields from the original run and updates `mode`, `attempt`, `steps`, and `status`
+
+### index.html updates
+
+When the manifest contains `mode: resume`, `index.html` shows:
+
+- the resume mode label
+- the current attempt number
+- per-step execution labels (`executed` or `reused`) alongside the step status
 
 ## Examples
 
