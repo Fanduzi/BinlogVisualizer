@@ -25,6 +25,7 @@ type indexStepView struct {
 	Kind         string
 	Name         string
 	Status       string
+	Execution    string
 	SnapshotName string
 	Error        string
 	Artifacts    []indexArtifactLink
@@ -35,6 +36,8 @@ type indexViewModel struct {
 	WorkflowPlanVersion int
 	BinlogvizVersion    string
 	PlanPath            string
+	Mode                string
+	Attempt             int
 	RunStartedAt        string
 	RunFinishedAt       string
 	Status              string
@@ -73,6 +76,8 @@ func buildIndexViewModel(input IndexInput) indexViewModel {
 		WorkflowPlanVersion: m.WorkflowPlanVersion,
 		BinlogvizVersion:    m.BinlogvizVersion,
 		PlanPath:            m.PlanPath,
+		Mode:                m.Mode,
+		Attempt:             m.Attempt,
 		RunStartedAt:        m.RunStartedAt,
 		RunFinishedAt:       m.RunFinishedAt,
 		Status:              m.Status,
@@ -84,6 +89,7 @@ func buildIndexViewModel(input IndexInput) indexViewModel {
 			Kind:         s.Kind,
 			Name:         s.Name,
 			Status:       s.Status,
+			Execution:    s.Execution,
 			SnapshotName: s.SnapshotName,
 			Error:        s.Error,
 		}
@@ -158,6 +164,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 .badge{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:0.8rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
 .badge-success{background:#0d7a3e;color:#fff}
 .badge-failed{background:#c0392b;color:#fff}
+.badge-reused{background:#4a4d5e;color:#a0a4b8}
+.badge-execution{display:inline-block;padding:1px 8px;border-radius:9999px;font-size:0.7rem;font-weight:500;letter-spacing:0.3px;margin-left:6px}
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
 .card{background:#181a27;border-radius:8px;padding:16px;text-align:center;border:1px solid #2a2d45}
 .card .card-value{font-size:1.8rem;font-weight:700;color:#fff}
@@ -189,6 +197,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <h1>{{.WorkflowName}}</h1>
 <div class="meta">
 <span class="badge badge-{{.Status}}">{{.Status}}</span>
+{{if eq .Mode "resume"}}<span class="badge badge-reused">resume</span>{{end}}
+{{if eq .Mode "resume"}}<span>attempt {{.Attempt}}</span>{{end}}
 <span>v{{.WorkflowPlanVersion}}</span>
 <span>binlogviz {{.BinlogvizVersion}}</span>
 {{if .RunStartedAt}}<span>started {{.RunStartedAt}}</span>{{end}}
@@ -212,6 +222,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;b
 <span class="badge badge-{{.Status}}">{{.Status}}</span>
 <span class="step-kind">{{.Kind}}</span>
 <span class="step-name">{{.Name}}</span>
+{{if .Execution}}<span class="badge-execution badge-{{.Execution}}">{{.Execution}}</span>{{end}}
 {{if .SnapshotName}}<span class="step-snapshot">snapshot: {{.SnapshotName}}</span>{{end}}
 </div>
 {{if .Error}}<div class="step-error">{{.Error}}</div>{{end}}
