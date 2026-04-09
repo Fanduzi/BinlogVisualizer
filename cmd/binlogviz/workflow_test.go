@@ -358,3 +358,75 @@ func TestWorkflowCompareOutputIsValidJSON(t *testing.T) {
 		t.Fatalf("trend output is not valid JSON: %s", string(data[:min(len(data), 200)]))
 	}
 }
+
+// TestWorkflowRunWritesIndexHTMLOnSuccess tests that a successful run writes index.html.
+func TestWorkflowRunWritesIndexHTMLOnSuccess(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	indexPath := filepath.Join(outputDir, "index.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+	html := string(data)
+	for _, token := range []string{"multi-window-test", "./compare/week2_vs_week1.html", "./manifest.json"} {
+		if !strings.Contains(html, token) {
+			t.Fatalf("expected %q in workflow index", token)
+		}
+	}
+}
+
+// TestWorkflowRunWritesIndexHTMLOnFailure tests that a failed run still writes index.html.
+func TestWorkflowRunWritesIndexHTMLOnFailure(t *testing.T) {
+	planDir := t.TempDir()
+	outputDir := filepath.Join(t.TempDir(), "artifacts")
+
+	plan := strings.ReplaceAll(`
+version: 1
+workflow:
+  name: failing-index-test
+  output_dir: PLACEHOLDER
+defaults:
+  input:
+    from_dir: /nonexistent/path/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`, "PLACEHOLDER", outputDir)
+
+	planPath := filepath.Join(planDir, "plan.yaml")
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	_ = cmd.Execute()
+
+	indexPath := filepath.Join(outputDir, "index.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read index.html on failure: %v", err)
+	}
+	html := string(data)
+	if !strings.Contains(html, "failed") {
+		t.Fatalf("expected 'failed' status in index.html")
+	}
+	if !strings.Contains(html, "failing-index-test") {
+		t.Fatalf("expected workflow name in index.html")
+	}
+}
