@@ -139,3 +139,62 @@ func TestWriteManifestCreatesFile(t *testing.T) {
 		t.Fatalf("expected workflow_name test, got %s", decoded.WorkflowName)
 	}
 }
+
+func TestManifestJSONIncludesResumeMetadata(t *testing.T) {
+	manifest := Manifest{
+		ManifestVersion:    2,
+		Mode:               "resume",
+		Attempt:            2,
+		PlanSHA256:         "abc123",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001", "/tmp/mysql-bin.000002"},
+		SnapshotDir:        "/tmp/snapshots",
+		Status:             "success",
+		Steps: []StepRecord{
+			{
+				Kind:      "analyze",
+				Name:      "week2",
+				Status:    "success",
+				Execution: "reused",
+			},
+		},
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	for _, token := range []string{
+		`"manifest_version": 2`,
+		`"mode": "resume"`,
+		`"attempt": 2`,
+		`"plan_sha256": "abc123"`,
+		`"resolved_input_files"`,
+		`"snapshot_dir": "/tmp/snapshots"`,
+		`"execution": "reused"`,
+	} {
+		if !strings.Contains(string(data), token) {
+			t.Fatalf("expected %q in manifest json: %s", token, data)
+		}
+	}
+}
+
+func TestManifestJSONOmitsEmptyResumeFields(t *testing.T) {
+	manifest := Manifest{
+		WorkflowName: "test",
+		Status:       "success",
+		Steps:        []StepRecord{},
+	}
+	data, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	for _, token := range []string{
+		"plan_sha256",
+		"resolved_input_files",
+		"snapshot_dir",
+		"execution",
+	} {
+		if strings.Contains(string(data), token) {
+			t.Fatalf("expected %q to be omitted when empty, got %s", token, data)
+		}
+	}
+}
