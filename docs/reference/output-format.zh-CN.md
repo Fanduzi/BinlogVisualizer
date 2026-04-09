@@ -1,6 +1,6 @@
 # 输出格式参考
 
-本文档说明 `binlogviz analyze` 和 `binlogviz compare` 会向 `stdout` 和 `stderr` 分别写入什么内容。
+本文档说明 `binlogviz analyze`、`binlogviz compare` 和 `binlogviz trend` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
 如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -10,6 +10,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 
 - `analyze`：`stdout` 承载最终分析报告；`stderr` 承载进度、discovery 解析出的文件列表、最终组装状态、快照保存确认以及运行时错误。
 - `compare`：`stdout` 承载最终 compare 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
+- `trend`：`stdout` 承载最终 trend 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 
@@ -39,6 +40,14 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 | `text` | 默认。适合终端阅读的 compare 差异摘要。 |
 | `json` | 机器可读的 compare 结果。 |
 | `html` | 带交互式图表的自包含可视化 compare 报告。 |
+
+### `trend`
+
+| 参数值 | 说明 |
+|---|---|
+| `text` | 默认。适合终端阅读的多 snapshot trend 报告。 |
+| `json` | 机器可读的 trend 结果，并包含 `pattern_trends`。 |
+| `html` | 带图表的自包含 trend 报告，并包含 `Pattern Trends` 分区。 |
 
 ## 文本输出
 
@@ -340,6 +349,12 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 - 交互式条形图：行数最多的热点表
 - 交互式环形图：INSERT / UPDATE / DELETE 操作分布
 - 热点表详情表格
+
+## Trend 输出
+
+`binlogviz trend` 会为两个或更多 snapshot 生成按时间顺序排列的报告，沿用和其他命令相同的 stdout / stderr 分离规则，并支持 `text`、`json` 和 `html`。
+
+文本输出会包含新的 `Top Pattern Trends` 章节。JSON 输出会始终包含顶层 `pattern_trends` 数组，其中每个模式都带有 rows 和 share 序列。HTML 输出会包含交互式 `Pattern Trends` 分区，默认展示 `share of rows`，并且可以切换到绝对 `rows`。
 
 ## Compare JSON 输出
 

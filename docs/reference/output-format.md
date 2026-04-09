@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze` and `binlogviz compare` write to `stdout` and `stderr`.
+This document explains what `binlogviz analyze`, `binlogviz compare`, and `binlogviz trend` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -10,6 +10,7 @@ BinlogViz uses separate output channels for different purposes:
 
 - `analyze`: `stdout` carries the final analysis report; `stderr` carries progress, resolved discovery files, finalization status, snapshot save confirmations, and runtime errors.
 - `compare`: `stdout` carries the final compare report; command failures are reported through the CLI error path on `stderr`.
+- `trend`: `stdout` carries the final trend report; command failures are reported through the CLI error path on `stderr`.
 
 This separation matters because it keeps report output safe for redirection and automation.
 
@@ -39,6 +40,14 @@ If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and
 | `text` | Default. Human-readable compare summary with deltas. |
 | `json` | Machine-readable compare result. |
 | `html` | Self-contained visual compare report with interactive charts. |
+
+### `trend`
+
+| Flag value | Description |
+|---|---|
+| `text` | Default. Human-readable multi-snapshot trend report. |
+| `json` | Machine-readable trend result with `pattern_trends`. |
+| `html` | Self-contained trend report with charts and a Pattern Trends section. |
 
 ## Text Output
 
@@ -340,6 +349,12 @@ The report includes:
 - Interactive bar chart: top tables by rows
 - Interactive donut chart: INSERT / UPDATE / DELETE operation mix
 - Top tables detail table
+
+## Trend Output
+
+`binlogviz trend` renders a chronological report for two or more snapshots. It uses the same stdout/stderr separation rules as the other commands and supports `text`, `json`, and `html`.
+
+Text output includes the new `Top Pattern Trends` section. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series. HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`.
 
 ## Compare JSON Output
 

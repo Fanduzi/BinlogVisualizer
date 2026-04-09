@@ -66,6 +66,23 @@ func RenderText(result Result) (string, error) {
 		}
 	}
 
+	fmt.Fprintf(&b, "\nTop Pattern Trends\n")
+	if len(result.PatternTrends) == 0 {
+		fmt.Fprintln(&b, "- none")
+	} else {
+		for _, trend := range result.PatternTrends {
+			fmt.Fprintf(&b, "- %s: share=%.1f%% -> %.1f%% (%+.1f%%) | rows=%d -> %d (%+d)\n",
+				formatPatternTrendDisplay(trend),
+				trend.FirstShareOfRows*100,
+				trend.LastShareOfRows*100,
+				trend.DeltaShareOfRows*100,
+				trend.FirstRows,
+				trend.LastRows,
+				trend.DeltaRows,
+			)
+		}
+	}
+
 	fmt.Fprintf(&b, "\nAggregate Insights\n")
 	fmt.Fprintf(&b, "- First snapshot: %s\n", result.Insights.FirstSnapshot)
 	fmt.Fprintf(&b, "- Last snapshot: %s\n", result.Insights.LastSnapshot)
@@ -75,6 +92,21 @@ func RenderText(result Result) (string, error) {
 	fmt.Fprintf(&b, "- Alert delta: %+d\n", result.Insights.AlertCountDelta)
 
 	return b.String(), nil
+}
+
+func formatPatternTrendDisplay(trend PatternTrend) string {
+	key := strings.TrimSpace(trend.PatternKey)
+	label := strings.TrimSpace(trend.Label)
+	switch {
+	case key != "" && label != "" && key != label:
+		return fmt.Sprintf("%s (%s)", label, key)
+	case label != "":
+		return label
+	case key != "":
+		return key
+	default:
+		return "pattern"
+	}
 }
 
 func formatSnapshotDisplay(snapshot SnapshotMeta) string {

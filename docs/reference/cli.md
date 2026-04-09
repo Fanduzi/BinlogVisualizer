@@ -199,6 +199,8 @@ Rules:
 - trend points are always ordered by effective window start time ascending
 - trend uses `snapshot.window.start_time` when present and falls back to `summary.start_time` for older snapshots
 - `--baseline-snapshot` is optional and does not automatically become a trend point unless it was selected separately
+- all trend formats include pattern trends; `text` and `json` expose `Top Pattern Trends` / `pattern_trends`, and `html` adds an interactive `Pattern Trends` section
+- HTML trend output defaults to the `share of rows` view and lets you switch to absolute `rows`
 
 Accepted flags:
 

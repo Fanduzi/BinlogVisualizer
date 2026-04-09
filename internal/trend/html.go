@@ -5,23 +5,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"strings"
 	"time"
 
 	"binlogviz/internal/report"
 )
 
 type htmlData struct {
-	Result          Result
-	GeneratedAt     string
-	EChartsJS       template.JS
-	LabelsJSON      template.JS
-	RowsJSON        template.JS
-	TxnsJSON        template.JS
-	EventsJSON      template.JS
-	InsertJSON      template.JS
-	UpdateJSON      template.JS
-	DeleteJSON      template.JS
-	TableSeriesJSON template.JS
+	Result            Result
+	GeneratedAt       string
+	EChartsJS         template.JS
+	LabelsJSON        template.JS
+	RowsJSON          template.JS
+	TxnsJSON          template.JS
+	EventsJSON        template.JS
+	InsertJSON        template.JS
+	UpdateJSON        template.JS
+	DeleteJSON        template.JS
+	TableSeriesJSON   template.JS
+	PatternSeriesJSON template.JS
 }
 
 type htmlTableSeries struct {
@@ -29,6 +31,14 @@ type htmlTableSeries struct {
 	Type   string `json:"type"`
 	Smooth bool   `json:"smooth"`
 	Data   []int  `json:"data"`
+}
+
+type htmlPatternTrendSeries struct {
+	Key         string    `json:"key"`
+	Label       string    `json:"label"`
+	Rows        []int     `json:"rows"`
+	ShareOfRows []float64 `json:"share_of_rows"`
+	SampleQuery string    `json:"sample_query,omitempty"`
 }
 
 func RenderHTML(result Result) (string, error) {
@@ -42,17 +52,18 @@ func RenderHTML(result Result) (string, error) {
 	}
 
 	data := htmlData{
-		Result:          result,
-		GeneratedAt:     time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		EChartsJS:       template.JS(echartsJS), //nolint:gosec
-		LabelsJSON:      mustHTMLJSON(buildLabels(result.Points)),
-		RowsJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalRows })),
-		TxnsJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalTransactions })),
-		EventsJSON:      mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalEvents })),
-		InsertJSON:      mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Inserts })),
-		UpdateJSON:      mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Updates })),
-		DeleteJSON:      mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
-		TableSeriesJSON: mustHTMLJSON(buildTableSeries(result.TableTrends)),
+		Result:            result,
+		GeneratedAt:       time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		EChartsJS:         template.JS(echartsJS), //nolint:gosec
+		LabelsJSON:        mustHTMLJSON(buildLabels(result.Points)),
+		RowsJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalRows })),
+		TxnsJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalTransactions })),
+		EventsJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalEvents })),
+		InsertJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Inserts })),
+		UpdateJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Updates })),
+		DeleteJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
+		TableSeriesJSON:   mustHTMLJSON(buildTableSeries(result.TableTrends)),
+		PatternSeriesJSON: mustHTMLJSON(buildPatternSeries(result.PatternTrends)),
 	}
 
 	var buf bytes.Buffer
@@ -107,6 +118,47 @@ func buildTableSeries(trends []TableTrend) []htmlTableSeries {
 	return result
 }
 
+func buildPatternSeries(trends []PatternTrend) []htmlPatternTrendSeries {
+	limit := len(trends)
+	if limit > 5 {
+		limit = 5
+	}
+	result := make([]htmlPatternTrendSeries, 0, limit)
+	for _, trend := range trends[:limit] {
+		rows := make([]int, 0, len(trend.RowsSeries))
+		for _, point := range trend.RowsSeries {
+			rows = append(rows, point.Rows)
+		}
+		shares := make([]float64, 0, len(trend.ShareOfRowsSeries))
+		for _, point := range trend.ShareOfRowsSeries {
+			shares = append(shares, point.ShareOfRows)
+		}
+		result = append(result, htmlPatternTrendSeries{
+			Key:         trend.PatternKey,
+			Label:       patternTrendDisplayLabel(trend),
+			Rows:        rows,
+			ShareOfRows: shares,
+			SampleQuery: trend.SampleQuerySummary,
+		})
+	}
+	return result
+}
+
+func patternTrendDisplayLabel(trend PatternTrend) string {
+	key := strings.TrimSpace(trend.PatternKey)
+	label := strings.TrimSpace(trend.Label)
+	switch {
+	case key != "" && label != "" && key != label:
+		return label + " (" + key + ")"
+	case label != "":
+		return label
+	case key != "":
+		return key
+	default:
+		return "pattern"
+	}
+}
+
 const trendHTMLTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -138,6 +190,13 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   .section { margin-bottom: 18px; overflow: hidden; }
   .section-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 700; }
   .section-body { padding: 18px; }
+  .section-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .segment-control { display: inline-flex; padding: 4px; background: #0b1020; border: 1px solid var(--border); border-radius: 999px; gap: 4px; }
+  .segment-control button { appearance: none; border: 0; border-radius: 999px; background: transparent; color: var(--muted); padding: 8px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; }
+  .segment-control button[aria-pressed="true"] { background: var(--primary); color: #04111c; }
+  .pattern-chart { width: 100%; height: 360px; min-height: 360px; }
+  .empty-state { padding: 18px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); background: rgba(13, 19, 38, 0.65); }
+  .pattern-hint { color: var(--muted); font-size: 13px; }
   .chart-box { width: 100%; height: 320px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
@@ -193,6 +252,24 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   </section>
 
   <section class="section">
+    <div class="section-header">Pattern Trends</div>
+    <div class="section-body">
+      {{if .Result.PatternTrends}}
+      <div class="section-tools">
+        <div class="segment-control" role="tablist" aria-label="Pattern trend view mode">
+          <button type="button" id="pattern-view-share" data-pattern-view="share" aria-pressed="true">Share of Rows</button>
+          <button type="button" id="pattern-view-rows" data-pattern-view="rows" aria-pressed="false">Rows</button>
+        </div>
+        <div class="pattern-hint">Default view shows share of rows; switch to raw rows for absolute volume.</div>
+      </div>
+      <div id="trend-pattern-chart" class="pattern-chart"></div>
+      {{else}}
+      <div class="empty-state">No pattern trends available for the selected snapshots.</div>
+      {{end}}
+    </div>
+  </section>
+
+  <section class="section">
     <div class="section-header">Ordered Points</div>
     <div class="section-body">
       <table>
@@ -233,6 +310,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   const updates = {{.UpdateJSON}};
   const deletes = {{.DeleteJSON}};
   const tableSeries = {{.TableSeriesJSON}};
+  const patternSeries = {{.PatternSeriesJSON}};
 
   const overallChart = echarts.init(document.getElementById('trend-overall-chart'));
   overallChart.setOption({
@@ -271,6 +349,58 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     yAxis: { type: 'value', axisLabel: { color: '#94a3b8' } },
     series: tableSeries
   });
+
+  const patternChartEl = document.getElementById('trend-pattern-chart');
+  if (patternChartEl && patternSeries.length > 0) {
+    const patternChart = echarts.init(patternChartEl);
+    const patternViewButtons = Array.from(document.querySelectorAll('[data-pattern-view]'));
+    const applyPatternView = (view) => {
+      const metricKey = view === 'rows' ? 'rows' : 'share_of_rows';
+      const axisLabel = view === 'rows'
+        ? { color: '#94a3b8' }
+        : { color: '#94a3b8', formatter: (value) => (Number(value) * 100).toFixed(0) + '%' };
+      const series = patternSeries.map((pattern) => {
+        const data = metricKey === 'rows' ? pattern.rows : pattern.share_of_rows;
+        return {
+          name: pattern.label,
+          type: 'line',
+          smooth: true,
+          symbolSize: 8,
+          data
+        };
+      });
+
+      patternChart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'axis',
+          valueFormatter: metricKey === 'rows'
+            ? (value) => String(value) + ' rows'
+            : (value) => (Number(value) * 100).toFixed(1) + '%'
+        },
+        legend: { textStyle: { color: '#e5eefc' } },
+        grid: { left: 50, right: 24, top: 40, bottom: 40 },
+        xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
+        yAxis: {
+          type: 'value',
+          axisLabel,
+          splitLine: { lineStyle: { color: '#1d2844' } }
+        },
+        series
+      });
+
+      patternViewButtons.forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.patternView === view));
+      });
+    };
+
+    patternViewButtons.forEach((button) => {
+      button.addEventListener('click', () => applyPatternView(button.dataset.patternView || 'share'));
+    });
+
+    applyPatternView('share');
+    window.addEventListener('resize', () => patternChart.resize());
+  }
 </script>
 </body>
 </html>`
