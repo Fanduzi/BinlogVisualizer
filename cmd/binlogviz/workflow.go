@@ -150,6 +150,7 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 
 	if stepErr != nil {
 		mf.Status = "failed"
+		mf.Error = stepErr.Error()
 	}
 
 	manifestPath := filepath.Join(outputDir, "manifest.json")

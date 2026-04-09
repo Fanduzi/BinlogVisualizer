@@ -549,6 +549,7 @@ trend:
 
 ```
 <output_dir>/
+  index.html
   manifest.json
   analyze/
     baseline.json
@@ -569,6 +570,7 @@ trend:
 4. Run compare jobs in plan order
 5. Run trend jobs in plan order
 6. Write `manifest.json`
+7. Write `index.html`
 
 ### Error handling
 
@@ -576,8 +578,10 @@ trend:
 - Runtime step failures stop at the first failed step
 - Already written artifacts remain on disk
 - `manifest.json` is always written with `status: failed` and the failed step's error
+- `index.html` is always written on both success and failure
 
 ### Output channels
 
 - `stdout` is unused in v1
 - `stderr` carries progress lines and the final manifest path
+- `index.html` is written to `<output_dir>/index.html` as a self-contained workflow landing page showing workflow metadata, step status, and artifact links

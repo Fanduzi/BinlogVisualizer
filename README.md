@@ -106,7 +106,7 @@ binlogviz workflow run incident.yaml
 tree artifacts/incident-investigation
 ```
 
-`workflow run` executes a declarative YAML plan that defines analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact directory with `analyze/`, `compare/`, `trend/`, and a `manifest.json` that records every step's status and output path. `stdout` stays empty in v1; all status goes to `stderr`. See [CLI Reference](docs/reference/cli.md) for the plan schema and flags.
+`workflow run` executes a declarative YAML plan that defines analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact directory with `analyze/`, `compare/`, `trend/`, a `manifest.json` that records every step's status and output path, and an `index.html` landing page. `stdout` stays empty in v1; all status goes to `stderr`. See [CLI Reference](docs/reference/cli.md) for the plan schema and flags.
 
 ### Generate a Markdown or HTML report
 

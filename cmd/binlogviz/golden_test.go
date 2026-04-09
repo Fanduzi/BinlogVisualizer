@@ -11,7 +11,8 @@ import (
 )
 
 var (
-	timestampPattern = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"`)
+	timestampPattern      = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"`)
+	manifestErrorPattern  = regexp.MustCompile(`"error": "discover binlog files: .*"`)
 )
 
 func TestSnapshotShowJSONGoldenMinimalWorkflow(t *testing.T) {
@@ -403,6 +404,8 @@ func normalizeWorkflowManifest(raw, outputDir, snapshotDir string) string {
 	if testRoot != "" && testRoot != "." && testRoot != "/" {
 		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
 	}
+	// Normalize top-level error (locale-dependent OS messages)
+	out = manifestErrorPattern.ReplaceAllString(out, `"error": "<discovery-error>"`)
 	return out
 }
 
@@ -432,4 +435,89 @@ func listArtifactTree(t *testing.T, root string) []string {
 		t.Fatalf("walk artifact tree: %v", err)
 	}
 	return lines
+}
+
+func TestWorkflowIndexGoldenSuccess(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	indexPath := filepath.Join(outputDir, "index.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+
+	got := normalizeWorkflowIndex(string(data), outputDir, snapshotDir)
+	want := mustReadGolden(t, "workflow-basic-index.golden.html")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow index success golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowIndexGoldenFailure(t *testing.T) {
+	planDir := t.TempDir()
+	outputDir := filepath.Join(t.TempDir(), "artifacts")
+
+	plan := strings.ReplaceAll(`
+version: 1
+workflow:
+  name: failing-index-golden
+  output_dir: PLACEHOLDER
+defaults:
+  input:
+    from_dir: /nonexistent/path/mysql
+    prefix: mysql-bin.
+windows:
+  - name: baseline
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`, "PLACEHOLDER", outputDir)
+
+	planPath := filepath.Join(planDir, "plan.yaml")
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	_ = cmd.Execute()
+
+	indexPath := filepath.Join(outputDir, "index.html")
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		t.Fatalf("read index.html: %v", err)
+	}
+
+	got := normalizeWorkflowIndex(string(data), outputDir, "")
+	want := mustReadGolden(t, "workflow-failed-index.golden.html")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow index failure golden mismatch\n%s", diff)
+	}
+}
+
+func normalizeWorkflowIndex(raw, outputDir, snapshotDir string) string {
+	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
+	if snapshotDir != "" {
+		out = strings.ReplaceAll(out, snapshotDir, "<snapshot-dir>")
+	}
+	out = timestampPattern.ReplaceAllString(out, `<timestamp>`)
+	out = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`).ReplaceAllString(out, `<timestamp>`)
+	testRoot := filepath.Dir(filepath.Dir(outputDir))
+	if testRoot != "" && testRoot != "." && testRoot != "/" {
+		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
+	}
+	// Normalize workflow error text (locale-dependent)
+	out = regexp.MustCompile(`discover binlog files: [^<]+`).ReplaceAllString(out, `<discovery-error>`)
+	return out
 }

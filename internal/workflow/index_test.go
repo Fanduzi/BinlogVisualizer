@@ -175,3 +175,39 @@ func TestRenderIndexGroupsArtifactsByKind(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderIndexShowsWorkflowLevelError(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "broken-workflow",
+			Status:       "failed",
+			Error:        "discover binlog files: no such directory",
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if !strings.Contains(html, `class="step-error"`) {
+		t.Fatalf("expected step-error block for workflow-level error")
+	}
+	if !strings.Contains(html, "discover binlog files: no such directory") {
+		t.Fatalf("expected error message in html")
+	}
+}
+
+func TestRenderIndexNoErrorBlockOnSuccess(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "clean-workflow",
+			Status:       "success",
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if strings.Contains(html, `class="step-error"`) {
+		t.Fatalf("did not expect step-error block on success")
+	}
+}

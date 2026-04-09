@@ -6,5 +6,6 @@
   "run_started_at": "<timestamp>",
   "run_finished_at": "<timestamp>",
   "status": "failed",
+  "error": "<discovery-error>",
   "steps": []
 }

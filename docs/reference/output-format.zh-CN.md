@@ -11,7 +11,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `analyze`：`stdout` 承载最终分析报告；`stderr` 承载进度、discovery 解析出的文件列表、最终组装状态、快照保存确认以及运行时错误。
 - `compare`：`stdout` 承载最终 compare 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 - `trend`：`stdout` 承载最终 trend 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
-- `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json`。
+- `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json` 和 `index.html`。
 
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 

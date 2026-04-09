@@ -549,6 +549,7 @@ trend:
 
 ```
 <output_dir>/
+  index.html
   manifest.json
   analyze/
     baseline.json
@@ -569,6 +570,7 @@ trend:
 4. 按 plan 顺序运行 compare 作业
 5. 按 plan 顺序运行 trend 作业
 6. 写入 `manifest.json`
+7. 写入 `index.html`
 
 ### 错误处理
 
@@ -576,8 +578,10 @@ trend:
 - 运行时步骤失败会在第一个失败步骤处停止
 - 已写入的 artifact 保留在磁盘上
 - `manifest.json` 总会被写入，`status: failed` 并记录失败步骤的错误信息
+- `index.html` 在成功和失败时都会写入
 
 ### 输出通道
 
 - v1 中 `stdout` 不使用
 - `stderr` 承载进度行和最终的 manifest 路径
+- `index.html` 写入 `<output_dir>/index.html`，是自包含的 workflow 落地页，展示 workflow 元数据、步骤状态和 artifact 链接

@@ -429,4 +429,10 @@ windows:
 	if !strings.Contains(html, "failing-index-test") {
 		t.Fatalf("expected workflow name in index.html")
 	}
+	if !strings.Contains(html, "step-error") {
+		t.Fatalf("expected error block in index.html")
+	}
+	if !strings.Contains(html, "discover binlog files") {
+		t.Fatalf("expected discovery error message in index.html")
+	}
 }

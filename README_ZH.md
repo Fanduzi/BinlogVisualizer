@@ -106,7 +106,7 @@ binlogviz workflow run incident.yaml
 tree artifacts/incident-investigation
 ```
 
-`workflow run` 执行一份声明式 YAML plan，定义分析窗口、可选 compare 作业和可选 trend 作业。它会产生一个确定性的 artifact 目录，包含 `analyze/`、`compare/`、`trend/` 和一份 `manifest.json`，记录每个步骤的状态和输出路径。v1 中 `stdout` 留空，所有状态走 `stderr`。plan schema 和参数请参见 [CLI 参考](docs/reference/cli.zh-CN.md)。
+`workflow run` 执行一份声明式 YAML plan，定义分析窗口、可选 compare 作业和可选 trend 作业。它会产生一个确定性的 artifact 目录，包含 `analyze/`、`compare/`、`trend/`、一份 `manifest.json` 和一个 `index.html` 落地页。v1 中 `stdout` 留空，所有状态走 `stderr`。plan schema 和参数请参见 [CLI 参考](docs/reference/cli.zh-CN.md)。
 
 ### 生成 Markdown 或 HTML 报告
 
