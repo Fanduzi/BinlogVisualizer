@@ -160,6 +160,9 @@ binlogviz compare --current-snapshot current --baseline-snapshot baseline --snap
 
 | Flag | 默认值 | 说明 |
 |------|--------|------|
+| `--current-snapshot` | none | 快照模式下作为 current report 使用的快照名。 |
+| `--baseline-snapshot` | none | 快照模式下作为 baseline report 使用的快照名。 |
+| `--snapshot-dir` | home-based default | 快照模式下使用的快照目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--format` | `text` | compare 报告输出格式：`text`、`json`、`html`。 |
 
 代表性用法：
@@ -238,6 +241,13 @@ binlogviz snapshot delete <name>
 - `--snapshot-dir` 可以覆盖默认的 `~/.binlogviz/snapshots`
 - 成功保存时 `stdout` 不输出报告内容
 - 成功保存时 `stderr` 输出 `Saved snapshot "<name>" to <path>`
+
+支持的 flags：
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--name` | none | 必填的快照名，会作为保存后的 snapshot 标识符。 |
+| `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 
 ### `snapshot list`
 

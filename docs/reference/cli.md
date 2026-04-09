@@ -160,6 +160,9 @@ Accepted output formats:
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--current-snapshot` | none | Snapshot name used as the current report in snapshot mode. |
+| `--baseline-snapshot` | none | Snapshot name used as the baseline report in snapshot mode. |
+| `--snapshot-dir` | home-based default | Snapshot directory used in snapshot mode. Default: `~/.binlogviz/snapshots`. |
 | `--format` | `text` | Compare report output format: `text`, `json`, or `html`. |
 
 Representative usage:
@@ -238,6 +241,13 @@ Rules:
 - `--snapshot-dir` overrides the default `~/.binlogviz/snapshots` location
 - successful saves print no payload to `stdout`
 - successful saves print `Saved snapshot "<name>" to <path>` to `stderr`
+
+Accepted flags:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--name` | none | Required snapshot name used as the stored snapshot identifier. |
+| `--snapshot-dir` | home-based default | Directory used when saving the snapshot. Default: `~/.binlogviz/snapshots`. |
 
 ### `snapshot list`
 
