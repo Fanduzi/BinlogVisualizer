@@ -436,3 +436,297 @@ windows:
 		t.Fatalf("expected discovery error message in index.html")
 	}
 }
+
+// --- Workflow resume tests ---
+
+// TestWorkflowResumeReusesSuccessfulSteps tests that resume reuses previously
+// successful analyze steps and only reruns failed compare/trend.
+func TestWorkflowResumeReusesSuccessfulSteps(t *testing.T) {
+	binlogDir, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	// Step 1: Run the full workflow successfully
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial workflow run: %v", err)
+	}
+
+	// Step 2: Delete compare and trend artifacts to simulate a late-stage failure
+	for _, path := range []string{
+		filepath.Join(outputDir, "compare", "week2_vs_week1.json"),
+		filepath.Join(outputDir, "compare", "week2_vs_week1.html"),
+		filepath.Join(outputDir, "trend", "weekly_series.json"),
+		filepath.Join(outputDir, "trend", "weekly_series.html"),
+	} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			t.Fatalf("remove artifact %s: %v", path, err)
+		}
+	}
+
+	// Step 3: Resume the workflow
+	cmd2 := NewRootCommand()
+	cmd2.SetArgs([]string{"workflow", "resume", outputDir, "--snapshot-dir", snapshotDir})
+	cmd2.SilenceUsage = true
+	cmd2.SilenceErrors = true
+
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("workflow resume: %v", err)
+	}
+
+	// Verify manifest shows resume mode
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	mf, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if mf.Mode != "resume" {
+		t.Fatalf("expected mode=resume, got %q", mf.Mode)
+	}
+	if mf.Attempt != 2 {
+		t.Fatalf("expected attempt=2, got %d", mf.Attempt)
+	}
+	if mf.Status != "success" {
+		t.Fatalf("expected status=success, got %q", mf.Status)
+	}
+
+	// Verify reused analyze steps
+	for _, step := range mf.Steps {
+		if step.Kind == "analyze" {
+			if step.Execution != "reused" {
+				t.Fatalf("expected analyze step %q to be reused, got %q", step.Name, step.Execution)
+			}
+		}
+		if step.Kind == "compare" || step.Kind == "trend" {
+			if step.Execution != "executed" {
+				t.Fatalf("expected %s step %q to be executed, got %q", step.Kind, step.Name, step.Execution)
+			}
+		}
+	}
+
+	// Verify restored artifacts exist
+	for _, path := range []string{
+		filepath.Join(outputDir, "compare", "week2_vs_week1.json"),
+		filepath.Join(outputDir, "trend", "weekly_series.json"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected restored artifact at %s: %v", path, err)
+		}
+	}
+
+	_ = binlogDir
+}
+
+// TestWorkflowResumeRefusesLegacyManifest tests that resume refuses a manifest
+// without manifest_version.
+func TestWorkflowResumeRefusesLegacyManifest(t *testing.T) {
+	outputDir := t.TempDir()
+
+	// Write a legacy manifest without manifest_version
+	legacyManifest := `{
+  "workflow_name": "old-run",
+  "status": "success",
+  "steps": []
+}`
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	if err := os.WriteFile(manifestPath, []byte(legacyManifest), 0o644); err != nil {
+		t.Fatalf("write legacy manifest: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "resume", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected resume to refuse legacy manifest")
+	}
+	if !strings.Contains(err.Error(), "legacy") {
+		t.Fatalf("expected legacy format error, got: %v", err)
+	}
+}
+
+// TestWorkflowResumeRefusesPlanHashMismatch tests that resume refuses when the
+// plan file has changed since the original run.
+func TestWorkflowResumeRefusesPlanHashMismatch(t *testing.T) {
+	outputDir := t.TempDir()
+
+	// Write a valid plan file
+	planDir := t.TempDir()
+	planPath := filepath.Join(planDir, "plan.yaml")
+	plan := `
+version: 1
+workflow:
+  name: hash-test
+  output_dir: /tmp/out
+defaults:
+  input:
+    from_dir: /tmp/mysql
+    prefix: mysql-bin.
+windows:
+  - name: w1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	// Write a v2 manifest with a wrong plan_sha256
+	manifest := `{
+  "manifest_version": 2,
+  "mode": "run",
+  "attempt": 1,
+  "workflow_name": "hash-test",
+  "plan_path": "` + strings.ReplaceAll(planPath, `\`, `\\`) + `",
+  "plan_sha256": "deadbeef00",
+  "resolved_input_files": ["/tmp/mysql-bin.000001"],
+  "status": "success",
+  "steps": []
+}`
+	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "resume", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected resume to refuse plan hash mismatch")
+	}
+	if !strings.Contains(err.Error(), "hash mismatch") {
+		t.Fatalf("expected hash mismatch error, got: %v", err)
+	}
+}
+
+// TestWorkflowResumeRefusesUnknownRerunSelector tests that resume refuses an
+// unknown --rerun selector.
+func TestWorkflowResumeRefusesUnknownRerunSelector(t *testing.T) {
+	binlogDir, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	// Run the full workflow first
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial run: %v", err)
+	}
+
+	// Resume with unknown selector
+	cmd2 := NewRootCommand()
+	cmd2.SetArgs([]string{"workflow", "resume", outputDir, "--snapshot-dir", snapshotDir, "--rerun", "analyze:nonexistent"})
+	cmd2.SilenceUsage = true
+	cmd2.SilenceErrors = true
+
+	err := cmd2.Execute()
+	if err == nil {
+		t.Fatal("expected resume to refuse unknown selector")
+	}
+	if !strings.Contains(err.Error(), "unknown") {
+		t.Fatalf("expected unknown selector error, got: %v", err)
+	}
+
+	_ = binlogDir
+}
+
+// TestWorkflowResumeNothingToDo tests that resume fails with a clear message
+// when the workflow is already fully successful.
+func TestWorkflowResumeNothingToDo(t *testing.T) {
+	binlogDir, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	// Run the full workflow successfully
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial run: %v", err)
+	}
+
+	// Resume without rerun should fail with "nothing to do"
+	cmd2 := NewRootCommand()
+	cmd2.SetArgs([]string{"workflow", "resume", outputDir, "--snapshot-dir", snapshotDir})
+	cmd2.SilenceUsage = true
+	cmd2.SilenceErrors = true
+
+	err := cmd2.Execute()
+	if err == nil {
+		t.Fatal("expected nothing-to-do error")
+	}
+	if !strings.Contains(err.Error(), "nothing to resume") {
+		t.Fatalf("expected nothing-to-resume error, got: %v", err)
+	}
+
+	_ = binlogDir
+}
+
+// TestWorkflowResumeExplicitRerun tests that --rerun analyze:week2 invalidates
+// dependent compare and trend jobs.
+func TestWorkflowResumeExplicitRerun(t *testing.T) {
+	binlogDir, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	// Run the full workflow first
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial run: %v", err)
+	}
+
+	// Resume with explicit --rerun analyze:week2
+	cmd2 := NewRootCommand()
+	cmd2.SetArgs([]string{"workflow", "resume", outputDir, "--snapshot-dir", snapshotDir, "--rerun", "analyze:week2"})
+	cmd2.SilenceUsage = true
+	cmd2.SilenceErrors = true
+
+	if err := cmd2.Execute(); err != nil {
+		t.Fatalf("workflow resume with rerun: %v", err)
+	}
+
+	// Verify manifest
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	mf, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if mf.Mode != "resume" {
+		t.Fatalf("expected mode=resume, got %q", mf.Mode)
+	}
+	if mf.Attempt != 2 {
+		t.Fatalf("expected attempt=2, got %d", mf.Attempt)
+	}
+
+	// week1 analyze should be reused, week2 should be executed
+	for _, step := range mf.Steps {
+		if step.Kind == "analyze" && step.Name == "week1" {
+			if step.Execution != "reused" {
+				t.Fatalf("expected week1 to be reused, got %q", step.Execution)
+			}
+		}
+		if step.Kind == "analyze" && step.Name == "week2" {
+			if step.Execution != "executed" {
+				t.Fatalf("expected week2 to be executed, got %q", step.Execution)
+			}
+		}
+		if step.Kind == "compare" {
+			if step.Execution != "executed" {
+				t.Fatalf("expected compare to be executed (depends on week2), got %q", step.Execution)
+			}
+		}
+		if step.Kind == "trend" {
+			if step.Execution != "executed" {
+				t.Fatalf("expected trend to be executed (depends on week2), got %q", step.Execution)
+			}
+		}
+	}
+
+	_ = binlogDir
+}
