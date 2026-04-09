@@ -10,6 +10,7 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>`.
 | `validate.go` | Structural and cross-reference validation rules. |
 | `layout.go` | Deterministic artifact directory and file path helpers. |
 | `manifest.go` | Manifest and step-record structs plus JSON serialization. |
+| `index.go` | Workflow index HTML renderer built from manifest data. |
 
 ## Exports
 
@@ -19,6 +20,8 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>`.
 - `EnsureLayout(root string) error` — Creates the analyze/compare/trend directory tree.
 - `Manifest` / `StepRecord` — Manifest structs.
 - `WriteManifest(path string, m Manifest) error` — Writes manifest.json.
+- `RenderIndex(input IndexInput) (string, error)` — Renders a self-contained HTML workflow index page from manifest data.
+- `IndexInput` — Renderer input holding the output root and manifest.
 
 ## Update Rule
 
