@@ -32,3 +32,14 @@ func TestNewRootCommandRegistersWorkflow(t *testing.T) {
 		t.Fatalf("expected workflow run subcommand, got %#v", found)
 	}
 }
+
+func TestNewRootCommandRegistersWorkflowResume(t *testing.T) {
+	cmd := NewRootCommand()
+	found, _, err := cmd.Find([]string{"workflow", "resume"})
+	if err != nil {
+		t.Fatalf("find workflow resume: %v", err)
+	}
+	if found == nil || found.Name() != "resume" {
+		t.Fatalf("expected workflow resume subcommand, got %#v", found)
+	}
+}

@@ -141,6 +141,15 @@ func ValidateName(name string) error {
 
 // SaveJSON writes the report to dir/name.json and rejects overwrites.
 func SaveJSON(dir, name string, report []byte) (string, error) {
+	return saveJSON(dir, name, report, false)
+}
+
+// SaveJSONOverwrite writes a snapshot file, replacing any existing file with the same name.
+func SaveJSONOverwrite(dir, name string, report []byte) (string, error) {
+	return saveJSON(dir, name, report, true)
+}
+
+func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
 	if err := ValidateName(name); err != nil {
 		return "", err
 	}
@@ -155,9 +164,13 @@ func SaveJSON(dir, name string, report []byte) (string, error) {
 	}
 
 	path := filepath.Join(resolvedDir, name+jsonExtension)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	flags := os.O_WRONLY | os.O_CREATE
+	if !overwrite {
+		flags |= os.O_EXCL
+	}
+	file, err := os.OpenFile(path, flags, 0o644)
 	if err != nil {
-		if os.IsExist(err) {
+		if os.IsExist(err) && !overwrite {
 			return "", fmt.Errorf("snapshot file %q already exists", path)
 		}
 		return "", err
