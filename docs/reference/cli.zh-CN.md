@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend` 和 `binlogviz snapshot` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot` 和 `binlogviz workflow` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -19,6 +19,8 @@ binlogviz trend --from-snapshots 'incident-*'
 binlogviz snapshot save <report.json> --name NAME
 binlogviz snapshot list
 binlogviz snapshot show <name>
+binlogviz workflow run <plan.yaml>
+binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 ```
 
 ## 全局参数
@@ -480,3 +482,102 @@ binlogviz compare current.json baseline.json --format json > compare.json
 ```bash
 binlogviz compare current.json baseline.json --format html > compare.html
 ```
+
+## `workflow run` 命令语法
+
+```bash
+binlogviz workflow run <plan.yaml>
+binlogviz workflow run <plan.yaml> --output-dir ./artifacts
+binlogviz workflow run <plan.yaml> --snapshot-dir /tmp/snapshots
+```
+
+`workflow run` 执行一份声明式 YAML plan，描述一个或多个分析窗口、可选的 compare 作业和可选的 trend 作业。它会产生一个确定性的 artifact 目录树以及一份 `manifest.json`。
+
+### Plan 格式
+
+Plan 文件使用 YAML 格式，`version: 1`。根级段落包括：
+
+- `version` — 必填，必须为 `1`
+- `workflow` — workflow 名称和输出目录
+- `defaults` — 共享输入源、分析选项和快照设置
+- `windows` — 一个或多个命名时间窗口
+- `compare` — 可选 compare 作业，引用命名窗口
+- `trend` — 可选 trend 作业，引用命名窗口
+
+示例 plan：
+
+```yaml
+version: 1
+workflow:
+  name: incident-investigation
+  output_dir: ./artifacts/incident
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+  analyze:
+    format: json
+    top_tables: 10
+  snapshot:
+    save: true
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+  - name: incident
+    start: 2026-04-09T11:00:00Z
+    end: 2026-04-09T11:30:00Z
+compare:
+  - name: incident_vs_baseline
+    current: incident
+    baseline: baseline
+    formats: [json, html]
+trend:
+  - name: incident_series
+    snapshots: [baseline, incident]
+    formats: [json, html]
+```
+
+### 参数
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--output-dir` | plan 中定义 | 覆盖 plan 中定义的输出目录。 |
+| `--snapshot-dir` | home-based default | 覆盖快照存储目录。 |
+
+### 输出目录布局
+
+```
+<output_dir>/
+  manifest.json
+  analyze/
+    baseline.json
+    incident.json
+  compare/
+    incident_vs_baseline.json
+    incident_vs_baseline.html
+  trend/
+    incident_series.json
+    incident_series.html
+```
+
+### 执行顺序
+
+1. 验证并加载 plan
+2. 创建输出目录结构
+3. 按 plan 顺序运行所有 analyze 窗口
+4. 按 plan 顺序运行 compare 作业
+5. 按 plan 顺序运行 trend 作业
+6. 写入 `manifest.json`
+
+### 错误处理
+
+- Plan 验证错误在任何 artifact 写入之前就会失败
+- 运行时步骤失败会在第一个失败步骤处停止
+- 已写入的 artifact 保留在磁盘上
+- `manifest.json` 总会被写入，`status: failed` 并记录失败步骤的错误信息
+
+### 输出通道
+
+- v1 中 `stdout` 不使用
+- `stderr` 承载进度行和最终的 manifest 路径

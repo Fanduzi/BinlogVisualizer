@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, and `binlogviz snapshot`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, and `binlogviz workflow`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -19,6 +19,8 @@ binlogviz trend --from-snapshots 'incident-*'
 binlogviz snapshot save <report.json> --name NAME
 binlogviz snapshot list
 binlogviz snapshot show <name>
+binlogviz workflow run <plan.yaml>
+binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 ```
 
 ## Global Flags
@@ -480,3 +482,102 @@ binlogviz compare current.json baseline.json --format json > compare.json
 ```bash
 binlogviz compare current.json baseline.json --format html > compare.html
 ```
+
+## `workflow run` Command Syntax
+
+```bash
+binlogviz workflow run <plan.yaml>
+binlogviz workflow run <plan.yaml> --output-dir ./artifacts
+binlogviz workflow run <plan.yaml> --snapshot-dir /tmp/snapshots
+```
+
+`workflow run` executes a declarative YAML plan that describes one or more analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact tree plus a `manifest.json`.
+
+### Plan format
+
+The plan file uses YAML with `version: 1`. The root sections are:
+
+- `version` — required, must be `1`
+- `workflow` — workflow name and output directory
+- `defaults` — shared input source, analyze options, and snapshot settings
+- `windows` — one or more named time windows to analyze
+- `compare` — optional compare jobs referencing named windows
+- `trend` — optional trend jobs referencing named windows
+
+Example plan:
+
+```yaml
+version: 1
+workflow:
+  name: incident-investigation
+  output_dir: ./artifacts/incident
+defaults:
+  input:
+    from_dir: /var/lib/mysql
+    prefix: mysql-bin.
+  analyze:
+    format: json
+    top_tables: 10
+  snapshot:
+    save: true
+windows:
+  - name: baseline
+    start: 2026-04-09T10:00:00Z
+    end: 2026-04-09T10:30:00Z
+  - name: incident
+    start: 2026-04-09T11:00:00Z
+    end: 2026-04-09T11:30:00Z
+compare:
+  - name: incident_vs_baseline
+    current: incident
+    baseline: baseline
+    formats: [json, html]
+trend:
+  - name: incident_series
+    snapshots: [baseline, incident]
+    formats: [json, html]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output-dir` | plan-defined | Override the plan-defined output directory. |
+| `--snapshot-dir` | home-based default | Override the snapshot storage directory. |
+
+### Output layout
+
+```
+<output_dir>/
+  manifest.json
+  analyze/
+    baseline.json
+    incident.json
+  compare/
+    incident_vs_baseline.json
+    incident_vs_baseline.html
+  trend/
+    incident_series.json
+    incident_series.html
+```
+
+### Execution order
+
+1. Validate and load the plan
+2. Create the output directory layout
+3. Run all analyze windows in plan order
+4. Run compare jobs in plan order
+5. Run trend jobs in plan order
+6. Write `manifest.json`
+
+### Error handling
+
+- Plan validation errors fail before any artifact is written
+- Runtime step failures stop at the first failed step
+- Already written artifacts remain on disk
+- `manifest.json` is always written with `status: failed` and the failed step's error
+
+### Output channels
+
+- `stdout` is unused in v1
+- `stderr` carries progress lines and the final manifest path

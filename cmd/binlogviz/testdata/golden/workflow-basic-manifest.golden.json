@@ -1,0 +1,36 @@
+{
+  "workflow_name": "basic-test",
+  "workflow_plan_version": 1,
+  "binlogviz_version": "dev",
+  "plan_path": "<test-root>/004/plan.yaml",
+  "run_started_at": "<timestamp>",
+  "run_finished_at": "<timestamp>",
+  "status": "success",
+  "steps": [
+    {
+      "kind": "analyze",
+      "name": "baseline",
+      "status": "success",
+      "artifacts": [
+        "analyze/baseline.json"
+      ],
+      "snapshot_name": "baseline"
+    },
+    {
+      "kind": "compare",
+      "name": "baseline_vs_baseline",
+      "status": "success",
+      "artifacts": [
+        "compare/baseline_vs_baseline.json"
+      ]
+    },
+    {
+      "kind": "trend",
+      "name": "baseline_series",
+      "status": "success",
+      "artifacts": [
+        "trend/baseline_series.json"
+      ]
+    }
+  ]
+}

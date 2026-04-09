@@ -1,18 +1,19 @@
 # Binlogviz Command Module
 
-Cobra CLI entrypoints and command-layer orchestration for analyze, compare, trend, snapshot, and version workflows.
+Cobra CLI entrypoints and command-layer orchestration for analyze, compare, trend, snapshot, version, and workflow run.
 
 ## Files
 
 | File | Responsibility |
 |------|----------------|
-| `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, and `version`. |
+| `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, `version`, and `workflow`. |
 | `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, aggregate parse progress on `stderr`, optional snapshot persistence, and command-owned DuckDB temp-store lifecycle. |
 | `compare.go` | Resolves compare inputs from explicit JSON files or named snapshots and renders text/JSON/HTML compare output. |
 | `trend.go` | Resolves explicit or pattern-selected snapshot inputs, optional baseline snapshots, and renders text/JSON/HTML multi-snapshot trend output. |
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
-| `*_test.go` | Covers flag parsing, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, and discovery-mode input resolution. |
+| `workflow.go` | Implements `workflow run <plan.yaml>`: loads and validates a YAML plan, orchestrates analyze/compare/trend phases, writes artifact tree and manifest. |
+| `*_test.go` | Covers flag parsing, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, discovery-mode input resolution, and workflow run end-to-end tests. |
 
 ## Exports
 
