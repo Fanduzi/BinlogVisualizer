@@ -83,7 +83,7 @@ binlogviz compare \
 
 `snapshot list` 现在会输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode` 和 `window`。`snapshot list --format json` 和 `snapshot show --format json` 仍然为脚本和外部工具提供稳定的机器可读输出。`snapshot rename` 会在重命名文件的同时保持快照内部 identity 一致，`snapshot delete` 则用于删除单个快照而不影响其余历史。
 
-`compare` 既可以加载已保存的快照，也可以继续加载两份由 `binlogviz analyze --format json` 生成的 JSON 文件。输出格式支持 `text`、`json`、`html`。其中 text 和 HTML 输出现在会带出 input mode、来源摘要、过滤条件和请求时间窗口。HTML 仍然是面向 DBA/运维的可视化对比报告，包含 summary 差异、热点表变化、操作类型分布变化，以及告警新增/消失的图表化视图。
+`compare` 既可以加载已保存的快照，也可以继续加载两份由 `binlogviz analyze --format json` 生成的 JSON 文件。输出格式支持 `text`、`json`、`html`。其中 text 和 HTML 输出会带出 input mode、来源摘要、过滤条件和请求时间窗口。除了 summary 差异、热点表变化、操作类型分布和告警新增/移除之外，compare 现在还会通过一等结果区 `pattern_changes` 直接展示写入模式漂移。
 
 compare 生成的最终报告写到 `stdout`。如果 compare 命令失败，CLI 会通过 `stderr` 输出错误。
 
@@ -97,7 +97,7 @@ binlogviz trend --from-snapshots 'incident_week*' \
   --format html > trend.html
 ```
 
-`trend` 会加载已保存的 snapshots，按有效窗口开始时间排序，并输出 `text`、`json` 或 `html` 趋势报告。新快照优先使用 `snapshot.window.start_time`；较旧的快照则可以回退到 `summary.start_time`，不需要手工重写历史文件。它适合用来查看两个以上窗口的历史漂移，同时允许指定一个可选 baseline snapshot 计算每个点相对基线的 delta。
+`trend` 会加载已保存的 snapshots，按有效窗口开始时间排序，并输出 `text`、`json` 或 `html` 趋势报告。新快照优先使用 `snapshot.window.start_time`；较旧的快照则可以回退到 `summary.start_time`，不需要手工重写历史文件。除了总量和热点表变化之外，trend 现在还会输出 `pattern_trends`，用于跨多个窗口查看重复写入模式的演进。HTML 报告中的 `Pattern Trends` 分区默认展示 `share of rows`，也可以切换到绝对 `rows`；`text` 和 `json` 则会以终端友好和机器可读的形式暴露同一组模式序列。
 
 ### 生成 Markdown 或 HTML 报告
 
