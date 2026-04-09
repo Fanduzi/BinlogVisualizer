@@ -216,6 +216,33 @@ windows:
 	}
 }
 
+// TestWorkflowRunManifestWriteFailsReturnsError tests that manifest write failure on an otherwise
+// successful run returns a hard error instead of silently succeeding.
+func TestWorkflowRunManifestWriteFailsReturnsError(t *testing.T) {
+	binlogDir, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	// Pre-create a directory at the manifest path to force WriteManifest to fail
+	manifestBlockingDir := filepath.Join(outputDir, "manifest.json")
+	if err := os.MkdirAll(manifestBlockingDir, 0o755); err != nil {
+		t.Fatalf("create blocking dir: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected workflow to fail when manifest write fails")
+	}
+	if !strings.Contains(err.Error(), "write manifest") {
+		t.Fatalf("expected manifest write error, got %v", err)
+	}
+
+	_ = binlogDir
+}
+
 // TestWorkflowRunSnapshotSaveFailsStep tests that snapshot save failure fails the workflow step.
 func TestWorkflowRunSnapshotSaveFailsStep(t *testing.T) {
 	binlogDir, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
@@ -265,16 +292,18 @@ func TestWorkflowRunSnapshotSaveFailsStep(t *testing.T) {
 func setupWorkflowTestWithSnapshots(t *testing.T, planFile string) (binlogDir, outputDir, planPath, snapshotDir string) {
 	t.Helper()
 
-	// Create binlog directory with the test fixture
+	// Create binlog directory with two numbered files for multi-file discovery
 	binlogDir = t.TempDir()
 	fixtureSrc := filepath.Join("testdata", "minimal.binlog")
-	fixtureDst := filepath.Join(binlogDir, "mysql-bin.000001")
 	src, err := os.ReadFile(fixtureSrc)
 	if err != nil {
 		t.Fatalf("read binlog fixture: %v", err)
 	}
-	if err := os.WriteFile(fixtureDst, src, 0o644); err != nil {
-		t.Fatalf("write binlog fixture: %v", err)
+	for _, suffix := range []string{"000001", "000002"} {
+		dst := filepath.Join(binlogDir, "mysql-bin."+suffix)
+		if err := os.WriteFile(dst, src, 0o644); err != nil {
+			t.Fatalf("write binlog fixture %s: %v", dst, err)
+		}
 	}
 
 	outputDir = filepath.Join(t.TempDir(), "artifacts")
