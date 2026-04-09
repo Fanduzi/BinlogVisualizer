@@ -1,5 +1,11 @@
 version: 1
 
+# Multi-window workflow fixture.  Both windows use a wide time range because
+# the test binlog file carries a fixed historical timestamp; narrower ranges
+# would filter out all events.  This fixture validates multi-window
+# orchestration, cross-window compare/trend, multi-format artifact output,
+# and discovery-mode file resolution — not time-boundary filtering.
+
 workflow:
   name: multi-window-test
   output_dir: PLACEHOLDER/artifacts
