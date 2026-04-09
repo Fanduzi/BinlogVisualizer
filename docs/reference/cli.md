@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, and `binlogviz workflow resume`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -23,6 +23,10 @@ binlogviz workflow run <plan.yaml>
 binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 binlogviz workflow resume <output_dir>
 binlogviz workflow resume <output_dir> --rerun analyze:week2
+binlogviz workflow validate <plan.yaml>
+binlogviz workflow validate <plan.yaml> --format json
+binlogviz workflow describe <plan.yaml>
+binlogviz workflow describe <plan.yaml> --format json
 ```
 
 ## Global Flags
@@ -587,6 +591,62 @@ trend:
 - `stdout` is unused in v1
 - `stderr` carries progress lines and the final manifest path
 - `index.html` is written to `<output_dir>/index.html` as a self-contained workflow landing page showing workflow metadata, step status, and artifact links
+
+## `workflow validate` Command Syntax
+
+```bash
+binlogviz workflow validate <plan.yaml>
+binlogviz workflow validate <plan.yaml> --format text
+binlogviz workflow validate <plan.yaml> --format json
+```
+
+`workflow validate` answers whether a workflow plan is statically runnable. It reads only `plan.yaml`, loads it with strict YAML field validation, and applies the same static plan validation used by `workflow run` before execution begins.
+
+Validation covers workflow metadata, window definitions, named references, duplicate compare/trend job names, and duplicate format entries inside compare/trend jobs. The command does not inspect `output_dir`, `manifest.json`, `index.html`, or any existing runtime artifacts.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format` | `text` | Validation result format: `text` or `json`. |
+
+### Success contract
+
+- exits zero when the plan is valid
+- writes a text or JSON summary to `stdout`
+- reports workflow name, window count, compare job count, trend job count, and output root
+
+### Failure contract
+
+- exits non-zero when the plan is invalid or unreadable
+- writes a text or JSON error payload to `stdout`
+- also returns the CLI error through the normal command failure path, so default CLI execution may emit an error line on `stderr`
+
+## `workflow describe` Command Syntax
+
+```bash
+binlogviz workflow describe <plan.yaml>
+binlogviz workflow describe <plan.yaml> --format text
+binlogviz workflow describe <plan.yaml> --format json
+```
+
+`workflow describe` answers how a workflow plan would run without executing it. It reads only `plan.yaml`, requires the plan to pass static validation first, and then renders a deterministic preview derived from the plan alone.
+
+The preview includes workflow metadata, analyze windows, compare jobs, trend jobs, declared dependencies, planned artifact paths, and snapshot names when `defaults.snapshot.save` is enabled. The command does not inspect `output_dir`, `manifest.json`, `index.html`, or any previously generated outputs.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format` | `text` | Description output format: `text` or `json`. |
+
+### Output behavior
+
+- supports `text` and `json` only
+- does not render HTML
+- fails before rendering if the plan is invalid or unreadable
+- on failure, writes the error payload to `stdout` and still returns the command error, so default CLI execution may also emit an error line on `stderr`
+- preserves plan order for analyze windows, compare jobs, and trend jobs
 
 ## `workflow resume` Command Syntax
 

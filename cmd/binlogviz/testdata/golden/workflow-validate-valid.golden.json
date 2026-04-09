@@ -1,0 +1,8 @@
+{
+  "valid": true,
+  "workflow_name": "multi-window-test",
+  "windows": 2,
+  "compare_jobs": 1,
+  "trend_jobs": 1,
+  "output_dir": "<output-dir>"
+}

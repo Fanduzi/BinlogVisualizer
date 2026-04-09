@@ -56,10 +56,15 @@ func ValidatePlan(plan Plan) error {
 	}
 
 	// Validate compare jobs
+	seenCompare := make(map[string]bool, len(plan.Compare))
 	for _, job := range plan.Compare {
 		if job.Name == "" {
 			return fmt.Errorf("compare job: name is required")
 		}
+		if seenCompare[job.Name] {
+			return fmt.Errorf("duplicate compare job name %q", job.Name)
+		}
+		seenCompare[job.Name] = true
 		if !seen[job.Current] {
 			return fmt.Errorf("compare %q references unknown current window %q", job.Name, job.Current)
 		}
@@ -72,10 +77,15 @@ func ValidatePlan(plan Plan) error {
 	}
 
 	// Validate trend jobs
+	seenTrend := make(map[string]bool, len(plan.Trend))
 	for _, job := range plan.Trend {
 		if job.Name == "" {
 			return fmt.Errorf("trend job: name is required")
 		}
+		if seenTrend[job.Name] {
+			return fmt.Errorf("duplicate trend job name %q", job.Name)
+		}
+		seenTrend[job.Name] = true
 		if len(job.Snapshots) < 2 {
 			return fmt.Errorf("trend %q requires at least 2 snapshots", job.Name)
 		}
@@ -103,12 +113,17 @@ func validateFormats(formats []string, kind, name string) error {
 	if len(formats) == 0 {
 		return fmt.Errorf("%s %q: at least one format is required", kind, name)
 	}
+	seen := make(map[string]bool, len(formats))
 	for _, f := range formats {
 		switch f {
 		case "json", "html":
 		default:
 			return fmt.Errorf("%s %q: unsupported format %q (allowed: json, html)", kind, name, f)
 		}
+		if seen[f] {
+			return fmt.Errorf("%s %q: duplicate format %q", kind, name, f)
+		}
+		seen[f] = true
 	}
 	return nil
 }

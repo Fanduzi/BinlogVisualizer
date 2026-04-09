@@ -110,9 +110,15 @@ tree artifacts/incident-investigation
 
 如果 workflow 运行中途失败，`workflow resume` 可以从已有的输出目录继续执行：复用成功步骤，重跑失败或缺失的步骤，并支持通过 `--rerun` 选择器强制重跑指定步骤。Resume 会在 plan 文件变更或 manifest 是旧版 pre-v2 产物时拒绝执行。
 
+在真正执行之前，`workflow validate` 会只基于 `plan.yaml` 做静态可运行性检查，`workflow describe` 则会预览该 plan 将产生的 analyze / compare / trend artifact 布局。两个命令都支持 `--format text` 和 `--format json`，且只读取 plan 文件，不会检查 `output_dir`、`manifest.json` 或 `index.html`。
+
 ```bash
 binlogviz workflow resume ./artifacts/incident
 binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
+binlogviz workflow validate incident.yaml
+binlogviz workflow validate incident.yaml --format json
+binlogviz workflow describe incident.yaml
+binlogviz workflow describe incident.yaml --format json
 ```
 
 ### 生成 Markdown 或 HTML 报告

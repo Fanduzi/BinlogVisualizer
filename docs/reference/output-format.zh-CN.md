@@ -1,6 +1,6 @@
 # 输出格式参考
 
-本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run` 和 `binlogviz workflow resume` 会向 `stdout` 和 `stderr` 分别写入什么内容。
+本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
 如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -13,6 +13,8 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `trend`：`stdout` 承载最终 trend 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 - `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json` 和 `index.html`。
 - `workflow resume`：`stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。Resume 会复用成功步骤的 artifact，并重跑失败、缺失或被显式选中的步骤。更新后的 `manifest.json` 会记录每个步骤的执行状态（`executed` 或 `reused`）。`index.html` 会包含 resume mode、attempt 编号和每个步骤的执行标签。
+- `workflow validate`：`stdout` 输出文本或 JSON 校验结果。命令只读取 `plan.yaml`，执行静态 plan 校验；如果 plan 非法则以非零状态退出。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
+- `workflow describe`：`stdout` 输出文本或 JSON 的静态执行预览，包括步骤顺序和 artifact 路径。命令只读取 `plan.yaml`，不会渲染 HTML，也不会检查任何运行时产物。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 
@@ -50,6 +52,20 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 | `text` | 默认。适合终端阅读的多 snapshot trend 报告。 |
 | `json` | 机器可读的 trend 结果，并包含 `pattern_trends`。 |
 | `html` | 带图表的自包含 trend 报告，并包含 `Pattern Trends` 分区。 |
+
+### `workflow validate`
+
+| 参数值 | 说明 |
+|---|---|
+| `text` | 默认。面向人的校验摘要或错误输出。 |
+| `json` | 机器可读的校验结果，包含 `valid` 及摘要/错误字段。 |
+
+### `workflow describe`
+
+| 参数值 | 说明 |
+|---|---|
+| `text` | 默认。面向人的静态执行预览，覆盖 analyze、compare 和 trend。 |
+| `json` | 由 plan 推导出的机器可读静态描述。 |
 
 ## 文本输出
 
@@ -511,6 +527,68 @@ binlogviz compare current.json baseline.json --format html > compare.html
 
 `compare` 当前不会输出 analyze 风格的进度信息。它会把最终 compare 报告写到 `stdout`；如果命令失败，CLI 会通过 `stderr` 输出错误。
 
+## Workflow Validate 输出
+
+`binlogviz workflow validate` 用于在真正执行前报告一份 plan 在静态层面是否有效。
+它会拒绝重复 compare / trend 作业名，以及单个 compare / trend 作业内重复的 format 条目。
+
+### 文本输出
+
+文本模式会向 `stdout` 写出以下两类结构之一：
+
+- 成功：`Workflow plan valid`，随后输出 workflow 名称、window 数量、compare 作业数量、trend 作业数量和 output root
+- 失败：`Workflow plan invalid`，随后输出校验错误消息
+
+### JSON 输出
+
+成功输出包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `valid` | boolean | yes | 合法 plan 时为 `true` |
+| `workflow_name` | string | yes | plan 中的 workflow 名称 |
+| `windows` | integer | yes | analyze window 数量 |
+| `compare_jobs` | integer | yes | compare 作业数量 |
+| `trend_jobs` | integer | yes | trend 作业数量 |
+| `output_dir` | string | yes | plan 中声明的输出根目录 |
+
+失败输出包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `valid` | boolean | yes | 始终为 `false` |
+| `error` | string | yes | 校验或文件读取错误消息 |
+
+## Workflow Describe 输出
+
+`binlogviz workflow describe` 用于只基于 plan 数据报告一份合法 plan 将如何执行。
+
+### 文本输出
+
+文本模式会按顺序向 `stdout` 写出以下分区：
+
+1. workflow 头部，包含 workflow 名称、output root 和 snapshot-save 设置
+2. `Analyze Windows`，列出每个命名 window、RFC3339 的 start/end、计划中的 analyze artifact 路径，以及可选的 snapshot 名称
+3. `Compare Jobs`，列出每个作业名、声明的依赖关系，以及计划中的 compare artifact 路径
+4. `Trend Jobs`，列出每个作业名、声明的 snapshot 依赖，以及计划中的 trend artifact 路径
+
+### JSON 输出
+
+JSON 描述包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | plan 中的 workflow 名称 |
+| `output_dir` | string | yes | plan 中的输出根目录 |
+| `snapshot_save` | boolean | yes | analyze windows 是否计划生成命名快照 |
+| `windows` | array | yes | 按顺序排列的 analyze window 描述 |
+| `compare` | array | yes | 按顺序排列的 compare 作业描述 |
+| `trend` | array | yes | 按顺序排列的 trend 作业描述 |
+
+每个 `windows` 条目包含 `name`、`start`、`end`、`artifacts` 和可选的 `snapshot_name`。
+每个 `compare` 条目包含 `name`、`current`、`baseline` 和 `artifacts`。
+每个 `trend` 条目包含 `name`、`snapshots` 和 `artifacts`。
+
 ## Workflow Manifest
 
 `workflow run` 和 `workflow resume` 会把 `manifest.json` 写入 `<output_dir>/manifest.json`。Manifest v2 增加了支持 resume 工作流的字段。
@@ -538,8 +616,9 @@ binlogviz compare current.json baseline.json --format html > compare.html
 | `kind` | string | yes | 步骤类型：`analyze`、`compare` 或 `trend` |
 | `name` | string | yes | plan 中的步骤名 |
 | `status` | string | yes | `success` 或 `failed` |
-| `output` | string | yes | 相对于 `<output_dir>` 的输出 artifact 路径 |
-| `execution` | string | yes | `executed`（步骤被执行）或 `reused`（步骤从上次运行中沿用） |
+| `execution` | string | no | `executed`（步骤被执行）或 `reused`（步骤从上次运行中沿用） |
+| `artifacts` | array<string> | no | 相对于 `<output_dir>` 的计划产物路径列表 |
+| `snapshot_name` | string | no | analyze 步骤开启 snapshot 保存时出现 |
 | `error` | string | no | 步骤失败时出现 |
 
 ### Resume 与 Manifest 的交互
