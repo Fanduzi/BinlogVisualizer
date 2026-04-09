@@ -54,16 +54,16 @@ Each `StepRecord` carries an `execution` field:
 - `RenderIndex(input IndexInput) (string, error)` — Renders a self-contained HTML workflow index page from manifest data.
 - `IndexInput` — Renderer input holding the output root and manifest.
 
-### Resume Planner (Task 2)
+### Resume Planner
 
-The following will be exported from `resume.go`:
+Exported from `resume.go`:
 
-- `ResumeOptions` — Options for resume execution (output dir, rerun selectors, snapshot dir override).
-- `PlannedStep` — A step with a resolved execution decision (execute or reuse).
-- `ResumePlan` — Full plan listing steps to execute and steps to reuse.
-- `ParseRerunSelectors(raw []string) ([]RerunSelector, error)` — Parses `--rerun kind:name` flags.
-- `ValidateResumableManifest(m Manifest, planPath string) error` — Checks manifest is resumable (v2, matching plan hash, has input files).
-- `BuildResumePlan(plan Plan, prev Manifest, reruns []RerunSelector) (ResumePlan, error)` — Builds dependency-aware step list.
+- `RerunSelector` — Parsed `kind:name` step selector.
+- `PlannedStep` — A step with a resolved execution decision (execute or reuse) and reason.
+- `ResumePlan` — Full plan listing steps to execute and reuse, plus updated manifest.
+- `ParseRerunSelectors(plan Plan, raw []string) ([]RerunSelector, error)` — Parses `--rerun kind:name` flags and validates against plan.
+- `ValidateResumableManifest(m Manifest, planPath string, planSHA256 string) error` — Checks manifest is resumable (v2, matching plan hash, has input files).
+- `BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error)` — Builds dependency-aware step list with invalidation propagation.
 
 ## Update Rule
 
