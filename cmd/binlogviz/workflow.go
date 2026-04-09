@@ -162,10 +162,32 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 		fmt.Fprintf(stderr, "workflow: manifest written to %s\n", manifestPath)
 	}
 
+	// Write index.html on both success and failure paths
+	if indexErr := writeWorkflowIndex(outputDir, *mf); indexErr != nil {
+		fmt.Fprintf(stderr, "workflow: failed to write index: %v\n", indexErr)
+		if stepErr == nil {
+			return fmt.Errorf("write index: %w", indexErr)
+		}
+	} else {
+		fmt.Fprintf(stderr, "workflow: index written to %s\n", filepath.Join(outputDir, "index.html"))
+	}
+
 	if stepErr != nil {
 		fmt.Fprintf(stderr, "workflow %q: failed\n", mf.WorkflowName)
 	}
 	return stepErr
+}
+
+func writeWorkflowIndex(outputDir string, manifest workflow.Manifest) error {
+	html, err := workflow.RenderIndex(workflow.IndexInput{
+		OutputRoot: outputDir,
+		Manifest:   manifest,
+	})
+	if err != nil {
+		return fmt.Errorf("render workflow index: %w", err)
+	}
+	indexPath := filepath.Join(outputDir, "index.html")
+	return os.WriteFile(indexPath, []byte(html), 0o644)
 }
 
 func runWorkflowAnalyzeWindow(

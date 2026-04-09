@@ -5,6 +5,7 @@ analyze/week2.json
 compare
 compare/week2_vs_week1.html
 compare/week2_vs_week1.json
+index.html
 manifest.json
 trend
 trend/weekly_series.html
