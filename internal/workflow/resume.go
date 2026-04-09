@@ -91,7 +91,10 @@ func ValidateResumableManifest(m Manifest, planPath string, planSHA256 string) e
 			return fmt.Errorf("cannot resume: plan file %q not found", planPath)
 		}
 	}
-	if planSHA256 != "" && m.PlanSHA256 != "" && planSHA256 != m.PlanSHA256 {
+	if m.PlanSHA256 == "" {
+		return fmt.Errorf("cannot resume: manifest has no plan_sha256")
+	}
+	if planSHA256 != m.PlanSHA256 {
 		return fmt.Errorf("cannot resume: plan file has changed since the original run (hash mismatch)")
 	}
 	if len(m.ResolvedInputFiles) == 0 {
@@ -137,6 +140,11 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 		} else if !allArtifactsExist(outputDir, prior.Artifacts) {
 			execute = true
 			reason = "artifact file missing"
+		} else if plan.Defaults.Snapshot.Save && snapshotDir != "" && prior.SnapshotName != "" {
+			if !snapshotFileExists(snapshotDir, prior.SnapshotName) {
+				execute = true
+				reason = "snapshot file missing"
+			}
 		}
 
 		steps = append(steps, PlannedStep{
@@ -278,4 +286,11 @@ func allArtifactsExist(outputDir string, artifacts []string) bool {
 // resolveArtifactPath resolves a relative artifact path against the output root.
 func resolveArtifactPath(outputDir, rel string) string {
 	return filepath.Join(outputDir, rel)
+}
+
+// snapshotFileExists checks whether a snapshot file exists in the snapshot directory.
+func snapshotFileExists(snapshotDir, name string) bool {
+	path := filepath.Join(snapshotDir, name+".json")
+	_, err := os.Stat(path)
+	return err == nil
 }

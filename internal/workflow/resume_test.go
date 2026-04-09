@@ -3,6 +3,7 @@ package workflow
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -104,6 +105,26 @@ func TestValidateResumableManifestRejectsPlanHashMismatch(t *testing.T) {
 	}
 }
 
+func TestValidateResumableManifestRejectsMissingPlanSHA256(t *testing.T) {
+	dir := t.TempDir()
+	planPath := filepath.Join(dir, "plan.yaml")
+	os.WriteFile(planPath, []byte("version: 1\n"), 0o644)
+
+	m := Manifest{
+		ManifestVersion:    2,
+		PlanPath:           planPath,
+		PlanSHA256:         "",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+	}
+	err := ValidateResumableManifest(m, planPath, "some_hash")
+	if err == nil {
+		t.Fatal("expected rejection for missing plan_sha256")
+	}
+	if !strings.Contains(err.Error(), "plan_sha256") {
+		t.Fatalf("expected plan_sha256 error, got: %v", err)
+	}
+}
+
 // --- Resume plan builder ---
 
 func makeResumePlanAndManifest() (Plan, Manifest) {
@@ -144,17 +165,11 @@ func makeResumePlanAndManifest() (Plan, Manifest) {
 func TestBuildResumePlanRerunAnalyzelnvalidatesDownstream(t *testing.T) {
 	plan, m := makeResumePlanAndManifest()
 	dir := t.TempDir()
+	snapDir := t.TempDir()
 
-	// Create expected artifact files so "missing artifact" detection doesn't fire
-	for _, step := range m.Steps {
-		for _, art := range step.Artifacts {
-			p := filepath.Join(dir, art)
-			os.MkdirAll(filepath.Dir(p), 0o755)
-			os.WriteFile(p, []byte("{}"), 0o644)
-		}
-	}
+	createTestArtifacts(t, dir, snapDir, m.Steps)
 
-	rp, err := BuildResumePlan(plan, m, []string{"analyze:week2"}, dir, "/tmp/snapshots")
+	rp, err := BuildResumePlan(plan, m, []string{"analyze:week2"}, dir, snapDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -180,15 +195,11 @@ func TestBuildResumePlanRerunAnalyzelnvalidatesDownstream(t *testing.T) {
 func TestBuildResumePlanRerunCompareOnly(t *testing.T) {
 	plan, m := makeResumePlanAndManifest()
 	dir := t.TempDir()
-	for _, step := range m.Steps {
-		for _, art := range step.Artifacts {
-			p := filepath.Join(dir, art)
-			os.MkdirAll(filepath.Dir(p), 0o755)
-			os.WriteFile(p, []byte("{}"), 0o644)
-		}
-	}
+	snapDir := t.TempDir()
 
-	rp, err := BuildResumePlan(plan, m, []string{"compare:week2_vs_week1"}, dir, "/tmp/snapshots")
+	createTestArtifacts(t, dir, snapDir, m.Steps)
+
+	rp, err := BuildResumePlan(plan, m, []string{"compare:week2_vs_week1"}, dir, snapDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -223,6 +234,7 @@ func TestBuildResumePlanFailedStepRerunsAutomatically(t *testing.T) {
 		}
 	}
 	// Create artifact files for successful steps only
+	snapDir := t.TempDir()
 	for _, step := range m.Steps {
 		if step.Status != "success" {
 			continue
@@ -232,10 +244,14 @@ func TestBuildResumePlanFailedStepRerunsAutomatically(t *testing.T) {
 			os.MkdirAll(filepath.Dir(p), 0o755)
 			os.WriteFile(p, []byte("{}"), 0o644)
 		}
+		if step.SnapshotName != "" {
+			os.MkdirAll(snapDir, 0o755)
+			os.WriteFile(filepath.Join(snapDir, step.SnapshotName+".json"), []byte("{}"), 0o644)
+		}
 	}
 
 	// No explicit --rerun selectors: should auto-rerun the failed compare step
-	rp, err := BuildResumePlan(plan, m, nil, dir, "/tmp/snapshots")
+	rp, err := BuildResumePlan(plan, m, nil, dir, snapDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -259,6 +275,7 @@ func TestBuildResumePlanMissingArtifactReruns(t *testing.T) {
 	dir := t.TempDir()
 
 	// Only create artifacts for analyze steps, not compare/trend
+	snapDir := t.TempDir()
 	for _, step := range m.Steps {
 		if step.Kind != "analyze" {
 			continue
@@ -268,10 +285,14 @@ func TestBuildResumePlanMissingArtifactReruns(t *testing.T) {
 			os.MkdirAll(filepath.Dir(p), 0o755)
 			os.WriteFile(p, []byte("{}"), 0o644)
 		}
+		if step.SnapshotName != "" {
+			os.MkdirAll(snapDir, 0o755)
+			os.WriteFile(filepath.Join(snapDir, step.SnapshotName+".json"), []byte("{}"), 0o644)
+		}
 	}
 
 	// No selectors: missing artifacts should trigger rerun of compare and trend
-	rp, err := BuildResumePlan(plan, m, nil, dir, "/tmp/snapshots")
+	rp, err := BuildResumePlan(plan, m, nil, dir, snapDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -287,9 +308,10 @@ func TestBuildResumePlanMissingArtifactReruns(t *testing.T) {
 	assertContains(t, executed, "trend:series", "missing trend artifact should trigger rerun")
 }
 
-func TestBuildResumePlanNothingToDoReturnsError(t *testing.T) {
+func TestBuildResumePlanMissingSnapshotTriggersAnalyzeRerun(t *testing.T) {
 	plan, m := makeResumePlanAndManifest()
 	dir := t.TempDir()
+	snapDir := t.TempDir()
 
 	// Create all artifact files
 	for _, step := range m.Steps {
@@ -300,8 +322,37 @@ func TestBuildResumePlanNothingToDoReturnsError(t *testing.T) {
 		}
 	}
 
+	// Create snapshot for week1 but NOT week2
+	os.WriteFile(filepath.Join(snapDir, "week1.json"), []byte("{}"), 0o644)
+	// week2.json intentionally missing
+
+	// No explicit rerun: missing snapshot should still trigger week2 rerun
+	rp, err := BuildResumePlan(plan, m, nil, dir, snapDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var executed []string
+	for _, s := range rp.Steps {
+		if s.Execute {
+			executed = append(executed, s.Kind+":"+s.Name)
+		}
+	}
+
+	assertContains(t, executed, "analyze:week2", "missing snapshot should trigger week2 analyze rerun")
+	assertContains(t, executed, "compare:week2_vs_week1", "downstream compare should rerun")
+	assertContains(t, executed, "trend:series", "downstream trend should rerun")
+}
+
+func TestBuildResumePlanNothingToDoReturnsError(t *testing.T) {
+	plan, m := makeResumePlanAndManifest()
+	dir := t.TempDir()
+	snapDir := t.TempDir()
+
+	createTestArtifacts(t, dir, snapDir, m.Steps)
+
 	// All steps succeeded, no missing artifacts, no explicit reruns
-	_, err := BuildResumePlan(plan, m, nil, dir, "/tmp/snapshots")
+	_, err := BuildResumePlan(plan, m, nil, dir, snapDir)
 	if err == nil {
 		t.Fatal("expected error when nothing needs to be done")
 	}
@@ -310,15 +361,11 @@ func TestBuildResumePlanNothingToDoReturnsError(t *testing.T) {
 func TestBuildResumePlanSetsAttemptAndMode(t *testing.T) {
 	plan, m := makeResumePlanAndManifest()
 	dir := t.TempDir()
-	for _, step := range m.Steps {
-		for _, art := range step.Artifacts {
-			p := filepath.Join(dir, art)
-			os.MkdirAll(filepath.Dir(p), 0o755)
-			os.WriteFile(p, []byte("{}"), 0o644)
-		}
-	}
+	snapDir := t.TempDir()
 
-	rp, err := BuildResumePlan(plan, m, []string{"analyze:week2"}, dir, "/tmp/snapshots")
+	createTestArtifacts(t, dir, snapDir, m.Steps)
+
+	rp, err := BuildResumePlan(plan, m, []string{"analyze:week2"}, dir, snapDir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -331,7 +378,22 @@ func TestBuildResumePlanSetsAttemptAndMode(t *testing.T) {
 	}
 }
 
-// --- helpers ---
+// createTestArtifacts writes artifact files for all steps in the manifest
+// and optionally snapshot files if snapDir is non-empty.
+func createTestArtifacts(t *testing.T, dir, snapDir string, steps []StepRecord) {
+	t.Helper()
+	for _, step := range steps {
+		for _, art := range step.Artifacts {
+			p := filepath.Join(dir, art)
+			os.MkdirAll(filepath.Dir(p), 0o755)
+			os.WriteFile(p, []byte("{}"), 0o644)
+		}
+		if snapDir != "" && step.SnapshotName != "" {
+			os.MkdirAll(snapDir, 0o755)
+			os.WriteFile(filepath.Join(snapDir, step.SnapshotName+".json"), []byte("{}"), 0o644)
+		}
+	}
+}
 
 func assertContains(t *testing.T, list []string, item, msg string) {
 	t.Helper()
