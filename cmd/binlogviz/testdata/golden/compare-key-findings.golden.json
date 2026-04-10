@@ -1,0 +1,184 @@
+{
+  "summary": {
+    "current_total_rows": 2400,
+    "baseline_total_rows": 1500,
+    "total_rows_delta": 900,
+    "current_total_transactions": 120,
+    "baseline_total_transactions": 90,
+    "total_transactions_delta": 30,
+    "current_warnings": 0,
+    "baseline_warnings": 0
+  },
+  "key_findings": [
+    {
+      "kind": "volume_change",
+      "title": "Total volume change",
+      "summary": "rows grew sharply",
+      "evidence": {
+        "baseline_rows": 1500,
+        "current_rows": 2400,
+        "delta_rows": 900
+      }
+    },
+    {
+      "kind": "pattern_driver",
+      "title": "Top pattern driver",
+      "summary": "refunds.create drove most row growth",
+      "evidence": {
+        "delta_rows": 700,
+        "pattern_key": "orders.refunds|INSERT|small",
+        "share_of_total_delta": 0.7777777777777778
+      }
+    },
+    {
+      "kind": "table_driver",
+      "title": "Top table driver",
+      "summary": "orders.refunds had the largest row change",
+      "evidence": {
+        "delta_rows": 900,
+        "share_of_total_delta": 1,
+        "table": "orders.refunds"
+      }
+    },
+    {
+      "kind": "new_pattern",
+      "title": "New significant pattern",
+      "summary": "refunds.create appeared as a new write pattern",
+      "evidence": {
+        "current_rows": 700,
+        "pattern_key": "orders.refunds|INSERT|small",
+        "share_of_rows": 0.2916666666666667
+      }
+    }
+  ],
+  "table_changes": [
+    {
+      "schema": "orders",
+      "table": "refunds",
+      "current_rows": 900,
+      "baseline_rows": 0,
+      "delta_rows": 900,
+      "delta_percent": 0
+    },
+    {
+      "schema": "orders",
+      "table": "chargebacks",
+      "current_rows": 0,
+      "baseline_rows": 400,
+      "delta_rows": -400,
+      "delta_percent": -100
+    },
+    {
+      "schema": "orders",
+      "table": "payments",
+      "current_rows": 1200,
+      "baseline_rows": 800,
+      "delta_rows": 400,
+      "delta_percent": 50
+    }
+  ],
+  "pattern_changes": [
+    {
+      "pattern_key": "orders.refunds|INSERT|small",
+      "label": "refunds.create",
+      "current_rows": 700,
+      "baseline_rows": 0,
+      "delta_rows": 700,
+      "delta_percent": 0,
+      "current_txn_count": 40,
+      "baseline_txn_count": 0,
+      "delta_txn_count": 40,
+      "tables": {
+        "orders.refunds": 700
+      },
+      "operations": {
+        "INSERT": 700
+      },
+      "sample_query_summary": "insert into refunds ..."
+    },
+    {
+      "pattern_key": "orders.payments|UPDATE|medium",
+      "label": "payments.update_status",
+      "current_rows": 1300,
+      "baseline_rows": 600,
+      "delta_rows": 700,
+      "delta_percent": 116.66666666666667,
+      "current_txn_count": 18,
+      "baseline_txn_count": 9,
+      "delta_txn_count": 9,
+      "tables": {
+        "orders.payments": 1200,
+        "orders.refunds": 100
+      },
+      "operations": {
+        "INSERT": 100,
+        "UPDATE": 1200
+      },
+      "sample_query_summary": "update payments set status = ?"
+    },
+    {
+      "pattern_key": "orders.chargebacks|INSERT|small",
+      "label": "chargebacks.create",
+      "current_rows": 0,
+      "baseline_rows": 500,
+      "delta_rows": -500,
+      "delta_percent": -100,
+      "current_txn_count": 0,
+      "baseline_txn_count": 22,
+      "delta_txn_count": -22,
+      "tables": {
+        "orders.chargebacks": 500
+      },
+      "operations": {
+        "INSERT": 500
+      },
+      "sample_query_summary": "insert into chargebacks ..."
+    }
+  ],
+  "operation_mix": [
+    {
+      "operation": "INSERT",
+      "current": 1000,
+      "baseline": 600,
+      "delta": 400
+    },
+    {
+      "operation": "UPDATE",
+      "current": 900,
+      "baseline": 500,
+      "delta": 400
+    },
+    {
+      "operation": "DELETE",
+      "current": 200,
+      "baseline": 100,
+      "delta": 100
+    }
+  ],
+  "alert_changes": {
+    "added": [
+      {
+        "type": "spike",
+        "severity": "warning",
+        "message": "rows spiked at 10:12",
+        "minute": "2026-03-20T10:12:00Z",
+        "details": {
+          "rows": 900
+        }
+      }
+    ],
+    "removed": [
+      {
+        "type": "spike",
+        "severity": "warning",
+        "message": "rows spiked at 10:05",
+        "minute": "2026-03-13T10:05:00Z",
+        "details": {
+          "rows": 600
+        }
+      }
+    ]
+  },
+  "current_label": "current",
+  "baseline_label": "baseline"
+}

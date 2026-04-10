@@ -36,6 +36,7 @@ func TestRenderHTMLIncludesCompareSections(t *testing.T) {
 		"window.compareTopTables =",
 		"window.compareOpsMix =",
 		"window.compareAlertCounts =",
+		"window.compareKeyFindings =",
 		"orders.refunds",
 		"large transaction detected",
 		"Added Alerts (2)",

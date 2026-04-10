@@ -9,6 +9,28 @@
     "current_warnings": 0,
     "baseline_warnings": 0
   },
+  "key_findings": [
+    {
+      "kind": "volume_change",
+      "title": "Total volume change",
+      "summary": "rows grew sharply",
+      "evidence": {
+        "baseline_rows": 1500,
+        "current_rows": 2400,
+        "delta_rows": 900
+      }
+    },
+    {
+      "kind": "table_driver",
+      "title": "Top table driver",
+      "summary": "orders.refunds had the largest row change",
+      "evidence": {
+        "delta_rows": 900,
+        "share_of_total_delta": 1,
+        "table": "orders.refunds"
+      }
+    }
+  ],
   "table_changes": [
     {
       "schema": "orders",

@@ -9,6 +9,48 @@
     "current_warnings": 0,
     "baseline_warnings": 0
   },
+  "key_findings": [
+    {
+      "kind": "volume_change",
+      "title": "Total volume change",
+      "summary": "rows grew sharply",
+      "evidence": {
+        "baseline_rows": 1500,
+        "current_rows": 2400,
+        "delta_rows": 900
+      }
+    },
+    {
+      "kind": "pattern_driver",
+      "title": "Top pattern driver",
+      "summary": "refunds.create drove most row growth",
+      "evidence": {
+        "delta_rows": 700,
+        "pattern_key": "orders.refunds|INSERT|small",
+        "share_of_total_delta": 0.7777777777777778
+      }
+    },
+    {
+      "kind": "table_driver",
+      "title": "Top table driver",
+      "summary": "orders.refunds had the largest row change",
+      "evidence": {
+        "delta_rows": 900,
+        "share_of_total_delta": 1,
+        "table": "orders.refunds"
+      }
+    },
+    {
+      "kind": "new_pattern",
+      "title": "New significant pattern",
+      "summary": "refunds.create appeared as a new write pattern",
+      "evidence": {
+        "current_rows": 700,
+        "pattern_key": "orders.refunds|INSERT|small",
+        "share_of_rows": 0.2916666666666667
+      }
+    }
+  ],
   "table_changes": [
     {
       "schema": "orders",

@@ -125,6 +125,60 @@ func TestCompareJSONGoldenPatternSnapshotWorkflow(t *testing.T) {
 	}
 }
 
+func TestCompareKeyFindingsGoldenText(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"compare",
+		filepath.Join("..", "..", "internal", "compare", "testdata", "current_patterns.json"),
+		filepath.Join("..", "..", "internal", "compare", "testdata", "baseline_patterns.json"),
+		"--format", "text",
+	})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("compare key findings text: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	want := mustReadGolden(t, "compare-key-findings.golden.txt")
+	if diff := diffGolden(want, stdout); diff != "" {
+		t.Fatalf("compare key findings text golden mismatch\n%s", diff)
+	}
+}
+
+func TestCompareKeyFindingsGoldenJSON(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{
+		"compare",
+		filepath.Join("..", "..", "internal", "compare", "testdata", "current_patterns.json"),
+		filepath.Join("..", "..", "internal", "compare", "testdata", "baseline_patterns.json"),
+		"--format", "json",
+	})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("compare key findings json: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	want := mustReadGolden(t, "compare-key-findings.golden.json")
+	if diff := diffGolden(want, stdout); diff != "" {
+		t.Fatalf("compare key findings json golden mismatch\n%s", diff)
+	}
+}
+
 func TestTrendJSONGoldenMinimalWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	writeSnapshotFixture(t, dir, "later", trendSnapshotFixtureJSON(trendSnapshotFixture{
