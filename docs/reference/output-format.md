@@ -388,7 +388,7 @@ The report includes:
 
 `binlogviz trend` renders a chronological report for two or more snapshots. It uses the same stdout/stderr separation rules as the other commands and supports `text`, `json`, and `html`.
 
-Text output includes the new `Top Pattern Trends` section. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series. HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`.
+Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, and a `trend_summary` array with deterministic finding objects capped at 5. HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, plus a `Key Findings` section when findings are present.
 
 ## Compare JSON Output
 
@@ -472,6 +472,7 @@ Text mode renders a fixed compare report for terminal review. It includes:
 - snapshot context lines for requested window, input mode, source summary, and active filters when snapshot metadata is present
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
+- `Key Findings` between warnings and `Top Table Changes` when findings are present
 - `Top Pattern Changes` between `Top Table Changes` and `Operation Mix`
 - operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
 - alert additions and removals
@@ -493,12 +494,24 @@ The JSON report serializes the compare result in a stable snake_case shape.
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `summary` | object | yes | Current/baseline totals and delta values |
+| `key_findings` | array | yes | Deterministic finding summaries capped at 5; empty array when signal is low |
 | `table_changes` | array | yes | Table-level row deltas sorted by absolute change |
 | `pattern_changes` | array | yes | Write-pattern deltas matched by `pattern_key`, sorted by absolute row delta |
 | `operation_mix` | array | yes | Operation deltas for `insert`, `update`, and `delete` |
 | `alert_changes` | object | yes | Added and removed alerts |
 | `current_label` | string | yes | Snapshot-aware label when current snapshot metadata is present; otherwise `current` |
 | `baseline_label` | string | yes | Snapshot-aware label when baseline snapshot metadata is present; otherwise `baseline` |
+
+#### `key_findings` entries
+
+Each entry in the `key_findings` array contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | Finding category: `volume_change`, `pattern_driver`, `table_driver`, `operation_mix_drift`, or `new_pattern` |
+| `title` | string | yes | Short human-readable title |
+| `summary` | string | yes | One-sentence evidence-based summary |
+| `evidence` | object | yes | Structured key-value map with supporting metrics |
 
 At a user level, the JSON output answers the same operational questions as the text report, but in a deterministic structure for pipelines, dashboards, or follow-up automation.
 
