@@ -48,6 +48,28 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 			CurrentWarnings:           0,
 			BaselineWarnings:          0,
 		},
+		KeyFindings: []CompareFinding{
+			{
+				Kind:    "volume_change",
+				Title:   "Total volume change",
+				Summary: "rows grew sharply",
+				Evidence: map[string]any{
+					"delta_rows":    float64(900),
+					"baseline_rows": float64(1500),
+					"current_rows":  float64(2400),
+				},
+			},
+			{
+				Kind:    "table_driver",
+				Title:   "Top table driver",
+				Summary: "orders.refunds had the largest row change",
+				Evidence: map[string]any{
+					"table":                "orders.refunds",
+					"delta_rows":           float64(900),
+					"share_of_total_delta": float64(1),
+				},
+			},
+		},
 		TableChanges: []TableChange{
 			{Schema: "orders", Table: "refunds", CurrentRows: 900, BaselineRows: 0, DeltaRows: 900, DeltaPercent: 0},
 			{Schema: "orders", Table: "chargebacks", CurrentRows: 0, BaselineRows: 400, DeltaRows: -400, DeltaPercent: -100},
