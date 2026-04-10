@@ -36,6 +36,7 @@ func newWorkflowCommand() *cobra.Command {
 	cmd.AddCommand(newWorkflowValidateCommand())
 	cmd.AddCommand(newWorkflowDescribeCommand())
 	cmd.AddCommand(newWorkflowStatusCommand())
+	cmd.AddCommand(newWorkflowCleanCommand())
 	return cmd
 }
 
@@ -45,6 +46,12 @@ type workflowDescribeOptions struct {
 
 type workflowStatusOptions struct {
 	format string
+}
+
+type workflowCleanOptions struct {
+	apply            bool
+	includeSnapshots bool
+	format           string
 }
 
 func newWorkflowStatusCommand() *cobra.Command {
@@ -94,6 +101,49 @@ func newWorkflowStatusCommand() *cobra.Command {
 		},
 	}
 
+	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
+
+	return cmd
+}
+
+func newWorkflowCleanCommand() *cobra.Command {
+	opts := &workflowCleanOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "clean <output_dir>",
+		Short: "Preview or delete orphaned workflow artifacts safely",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.format != "text" && opts.format != "json" {
+				return fmt.Errorf("unsupported workflow clean format %q (allowed: text, json)", opts.format)
+			}
+
+			outputDir := args[0]
+			manifestPath := filepath.Join(outputDir, "manifest.json")
+			manifest, err := workflowManifestFromJSON(manifestPath)
+			if err != nil {
+				return fmt.Errorf("read workflow manifest %s: %w", manifestPath, err)
+			}
+
+			result, err := workflow.DiscoverCleanCandidates(outputDir, manifest, opts.includeSnapshots)
+			if err != nil {
+				return err
+			}
+			if opts.apply {
+				result = workflow.ApplyClean(result)
+			}
+			if err := writeWorkflowCleanOutput(cmd.OutOrStdout(), opts.format, result); err != nil {
+				return err
+			}
+			if opts.apply && len(result.Skipped) > 0 {
+				return fmt.Errorf("workflow clean completed with %d skipped deletions", len(result.Skipped))
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&opts.apply, "apply", false, "Delete orphaned files instead of previewing them")
+	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Include orphaned snapshot JSON files in cleanup")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
 
 	return cmd
@@ -447,6 +497,92 @@ func writeWorkflowStatusOutput(out io.Writer, format string, status workflow.Sta
 	return nil
 }
 
+func writeWorkflowCleanOutput(out io.Writer, format string, result workflow.CleanResult) error {
+	if format == "json" {
+		data, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode workflow clean output: %w", err)
+		}
+		_, err = fmt.Fprintln(out, string(data))
+		return err
+	}
+
+	includeSnapshots := "no"
+	if result.IncludeSnapshots {
+		includeSnapshots = "yes"
+	}
+	if _, err := fmt.Fprintf(out,
+		"Workflow Clean: %s\nOutput Root: %s\nMode: %s\nInclude Snapshots: %s\nArtifact Orphans: %d\nSnapshot Orphans: %d\nDeleted: %d\nSkipped: %d\n",
+		result.WorkflowName,
+		result.OutputDir,
+		result.Mode,
+		includeSnapshots,
+		result.Counts.ArtifactOrphans,
+		result.Counts.SnapshotOrphans,
+		result.Counts.Deleted,
+		result.Counts.Skipped,
+	); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(out, "\nOrphaned Artifacts"); err != nil {
+		return err
+	}
+	if len(result.ArtifactOrphans) == 0 {
+		if _, err := fmt.Fprintln(out, "- none"); err != nil {
+			return err
+		}
+	} else {
+		for _, path := range result.ArtifactOrphans {
+			if _, err := fmt.Fprintf(out, "- %s\n", path); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nOrphaned Snapshots"); err != nil {
+		return err
+	}
+	if len(result.SnapshotOrphans) == 0 {
+		if _, err := fmt.Fprintln(out, "- none"); err != nil {
+			return err
+		}
+	} else {
+		for _, path := range result.SnapshotOrphans {
+			if _, err := fmt.Fprintf(out, "- %s\n", path); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nDeleted"); err != nil {
+		return err
+	}
+	if len(result.Deleted) == 0 {
+		if _, err := fmt.Fprintln(out, "- none"); err != nil {
+			return err
+		}
+	} else {
+		for _, path := range result.Deleted {
+			if _, err := fmt.Fprintf(out, "- %s\n", path); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nSkipped"); err != nil {
+		return err
+	}
+	if len(result.Skipped) == 0 {
+		if _, err := fmt.Fprintln(out, "- none"); err != nil {
+			return err
+		}
+	} else {
+		for _, path := range result.Skipped {
+			if _, err := fmt.Fprintf(out, "- %s\n", path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stderr io.Writer) error {
 	startedAt := time.Now().UTC()
 
@@ -640,6 +776,14 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 		return fmt.Errorf("hash plan file: %w", err)
 	}
 
+	effectiveSnapshotDir := ""
+	if plan.Defaults.Snapshot.Save {
+		effectiveSnapshotDir, err = snapshot.ResolveSnapshotDir(snapshotDir)
+		if err != nil {
+			return fmt.Errorf("resolve snapshot dir: %w", err)
+		}
+	}
+
 	mf := workflow.Manifest{
 		ManifestVersion:     2,
 		Mode:                "run",
@@ -649,7 +793,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 		BinlogvizVersion:    version.Version,
 		PlanPath:            planPath,
 		PlanSHA256:          planSHA256,
-		SnapshotDir:         snapshotDir,
+		SnapshotDir:         effectiveSnapshotDir,
 		RunStartedAt:        startedAt.Format(time.RFC3339),
 		Status:              "success",
 		Steps:               []workflow.StepRecord{},
@@ -674,7 +818,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 	for _, w := range plan.Windows {
 		fmt.Fprintf(stderr, "  analyze %q\n", w.Name)
 		rec, _, reportInput, aerr := runWorkflowAnalyzeWindow(
-			paths, analyzerOpts, reportOpts, plan, w, outputDir, snapshotDir, stderr,
+			paths, analyzerOpts, reportOpts, plan, w, outputDir, effectiveSnapshotDir, stderr,
 			false, // do not overwrite snapshots on fresh run
 		)
 		mf.Steps = append(mf.Steps, rec)

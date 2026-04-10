@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -25,6 +25,9 @@ binlogviz workflow resume <output_dir>
 binlogviz workflow resume <output_dir> --rerun analyze:week2
 binlogviz workflow status <output_dir>
 binlogviz workflow status <output_dir> --format json
+binlogviz workflow clean <output_dir>
+binlogviz workflow clean <output_dir> --format json
+binlogviz workflow clean <output_dir> --apply --include-snapshots
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
 binlogviz workflow describe <plan.yaml>
@@ -637,6 +640,83 @@ Legacy manifest 仍然可被检查。对于 pre-v2 格式的 manifest，该命�
 - 所有输出都写到 `stdout`
 - 不使用 `stderr` 输出进度
 - 当 plan 不可用或无法加载时，省略 `resume_preview`
+
+## `workflow clean` 命令语法
+
+```bash
+binlogviz workflow clean <output_dir>
+binlogviz workflow clean <output_dir> --format text
+binlogviz workflow clean <output_dir> --format json
+binlogviz workflow clean <output_dir> --apply
+binlogviz workflow clean <output_dir> --apply --include-snapshots
+```
+
+`workflow clean` 用于检查一个已有 workflow root，并报告或删除当前 `manifest.json` 已不再引用的孤儿生成文件。
+
+该命令默认是 dry-run：
+
+- 不加 `--apply` 时只报告清理候选
+- 加 `--apply` 后才实际删除，并报告 `deleted` 与 `skipped`
+- snapshots 默认不参与，只有显式加 `--include-snapshots` 才纳入候选集
+
+### 参数
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--apply` | `false` | 实际删除已发现的清理候选，而不只是预览。 |
+| `--include-snapshots` | `false` | 把 `manifest.snapshot_dir` 下的孤儿 snapshot JSON 一并纳入清理。 |
+| `--format` | `text` | 清理结果输出格式：`text` 或 `json`。 |
+
+### 清理范围与安全保证
+
+`workflow clean` 的范围被刻意限制得很窄：
+
+- 只扫描 workflow 生成目录：`analyze/`、`compare/`、`trend/`
+- 只处理这些目录下已知的生成文件扩展名
+- 以当前 manifest 中的 `steps[].artifacts` 作为 live artifact 集合
+- 以成功 analyze 步骤的 `snapshot_name` 作为 live snapshot 集合
+- 绝不会删除 `manifest.json`
+- 绝不会删除 `index.html`
+- 绝不会删除 plan 文件
+- 绝不会删除确定性 workflow artifact 集合之外的未知文件
+
+当前纳入范围的生成扩展名：
+
+- `analyze`: `.json`
+- `compare`: `.json`, `.html`
+- `trend`: `.json`, `.html`
+
+### 错误行为
+
+只有在无法有意义地评估 cleanup 时，`workflow clean` 才会在渲染前失败：
+
+- `<output_dir>/manifest.json` 缺失
+- manifest 不可读或非法
+- 某个 workflow artifact 目录不可读
+
+补充规则：
+
+- snapshot 目录缺失不是错误，只会得到零个 snapshot 候选
+- `--apply` 模式下，单个文件删除失败不会中断整个清理过程
+- 删除失败的路径会记录到 `skipped`
+- 只要出现 skipped 删除，命令会在写出结果后以非零状态退出
+
+### 输出行为
+
+- `text` 模式输出摘要块，以及 orphan、deleted、skipped 列表
+- `json` 模式输出稳定的机器可读对象，包含 `workflow_name`、`output_dir`、`mode`、`include_snapshots`、`artifact_orphans`、`snapshot_orphans`、`deleted`、`skipped` 和 `counts`
+- 输出写到 `stdout`
+- 命令错误继续沿用 CLI 默认失败链路
+
+### 非目标
+
+`workflow clean` 不会：
+
+- 修复 workflow 状态
+- 重写 manifest 内容
+- 决定 `resume` 下一步应执行什么
+- 对单个 workflow root 之外做全局清理
+- 实现 retention、TTL 或基于时间的 pruning
 
 ## `workflow validate` 命令语法
 

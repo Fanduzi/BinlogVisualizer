@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow validate`, and `binlogviz workflow describe` write to `stdout` and `stderr`.
+This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow validate`, and `binlogviz workflow describe` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -14,6 +14,7 @@ BinlogViz uses separate output channels for different purposes:
 - `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` and `index.html` are always written regardless of success or failure.
 - `workflow resume`: `stdout` is unused; `stderr` carries progress lines and the final manifest path. Resume reuses successful step artifacts and reruns failed, missing, or explicitly selected steps. The updated `manifest.json` records per-step execution status (`executed` or `reused`). `index.html` includes the resume mode, attempt number, and per-step execution labels.
 - `workflow status`: `stdout` carries either a text or JSON runtime inspection result. The command reads `manifest.json`, checks artifact presence, reports `runtime_state`, `resumable`, `resume_error`, and per-step status, and may include a dry `resume_preview`. It is read-only and does not use `stderr` for progress output.
+- `workflow clean`: `stdout` carries either a text or JSON cleanup summary. The command reads `manifest.json`, reports orphaned workflow artifacts and optional orphaned snapshots, and in `--apply` mode also reports `deleted` and `skipped`. It does not use `stderr` for progress output, but a skipped deletion still causes a non-zero command exit after the `stdout` payload is written.
 - `workflow validate`: `stdout` carries either a text or JSON validation result. The command reads only `plan.yaml`, performs static plan validation, and exits non-zero on invalid plans. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 - `workflow describe`: `stdout` carries either a text or JSON static preview of workflow execution order and artifact paths. The command reads only `plan.yaml`, renders no HTML, and does not inspect runtime outputs. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 
@@ -60,6 +61,13 @@ If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and
 |---|---|
 | `text` | Default. Human-readable runtime inspection summary with step artifact presence and optional resume preview. |
 | `json` | Machine-readable status object with `runtime_state`, `resumable`, `resume_error`, `steps`, and optional `resume_preview`. |
+
+### `workflow clean`
+
+| Flag value | Description |
+|---|---|
+| `text` | Default. Human-readable cleanup summary with orphan, deleted, and skipped lists. |
+| `json` | Machine-readable cleanup result with orphan/deletion arrays and aggregate counts. |
 
 ### `workflow validate`
 
@@ -617,6 +625,64 @@ Each `resume_preview` entry contains:
 | `reason` | string | yes | Dry-run explanation for the chosen action |
 
 Legacy manifests remain inspectable in both text and JSON output. In that case the command still renders status, but returns `resumable: false` and a non-empty `resume_error`.
+
+## Workflow Clean Output
+
+`binlogviz workflow clean` reports orphaned workflow-generated files that are not referenced by the current manifest, and optionally reports orphaned snapshot JSON files.
+
+### Text output
+
+Text mode writes a cleanup summary to `stdout` with these sections:
+
+- workflow name and output root
+- cleanup mode: `dry-run` or `apply`
+- whether snapshots were included
+- aggregate counts for artifact orphans, snapshot orphans, deleted, and skipped
+- `Orphaned Artifacts`
+- `Orphaned Snapshots`
+- `Deleted`
+- `Skipped`
+
+Representative behavior:
+
+- in dry-run mode, `Deleted` remains empty
+- without `--include-snapshots`, `Orphaned Snapshots` reports `none`
+- in apply mode, successful deletions are listed under `Deleted`
+- failed deletions are listed under `Skipped`
+
+### JSON output
+
+JSON mode writes one machine-readable object to `stdout`.
+
+Top-level fields:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | Workflow name from the manifest |
+| `output_dir` | string | yes | Output root inspected by the command |
+| `mode` | string | yes | `dry-run` or `apply` |
+| `include_snapshots` | boolean | yes | Whether snapshot cleanup was enabled |
+| `artifact_orphans` | array | yes | Relative artifact paths under `analyze/`, `compare/`, and `trend/` |
+| `snapshot_orphans` | array | yes | Snapshot file names from `manifest.snapshot_dir` |
+| `deleted` | array | yes | Successfully deleted candidate paths or snapshot file names |
+| `skipped` | array | yes | Candidate paths or snapshot file names that could not be deleted |
+| `counts` | object | yes | Aggregate orphan/deletion totals |
+
+The `counts` object contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `artifact_orphans` | integer | yes | Count of orphaned workflow artifacts |
+| `snapshot_orphans` | integer | yes | Count of orphaned snapshots |
+| `deleted` | integer | yes | Count of successful deletions |
+| `skipped` | integer | yes | Count of skipped deletions |
+
+### Failure behavior
+
+- missing or unreadable `manifest.json` fails before rendering
+- unreadable workflow artifact directories fail before rendering
+- a missing snapshot directory yields zero snapshot candidates, not an error
+- skipped deletions in apply mode still write the full output, then return a non-zero command error
 
 ## Workflow Validate Output
 

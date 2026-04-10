@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"binlogviz/internal/workflow"
 )
 
 // TestWorkflowRunWritesAnalyzeArtifacts tests that a multi-window plan produces analyze JSON files.
@@ -65,6 +67,38 @@ func TestWorkflowRunWritesAnalyzeArtifacts(t *testing.T) {
 	}
 
 	_ = binlogDir
+}
+
+func TestWorkflowRunPersistsDefaultSnapshotDirInManifest(t *testing.T) {
+	_, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	mf, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+
+	expectedDir := filepath.Join(home, ".binlogviz", "snapshots")
+	if mf.SnapshotDir != expectedDir {
+		t.Fatalf("expected manifest snapshot_dir %q, got %q", expectedDir, mf.SnapshotDir)
+	}
+
+	for _, name := range []string{"week1.json", "week2.json"} {
+		if _, err := os.Stat(filepath.Join(expectedDir, name)); err != nil {
+			t.Fatalf("expected snapshot %s in default snapshot dir: %v", name, err)
+		}
+	}
 }
 
 // TestWorkflowRunWritesCompareAndTrendArtifacts tests full workflow with multi-window compare and trend.
@@ -1294,4 +1328,264 @@ func TestWorkflowStatusShowsPlanLoadFailureAsNonResumable(t *testing.T) {
 			t.Fatalf("expected preview to be omitted, got %#v", decoded)
 		}
 	})
+}
+
+func TestWorkflowCleanTextDryRun(t *testing.T) {
+	outputDir := setupWorkflowCleanCommandFixture(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "clean", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow clean: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{"Workflow Clean:", "Mode: dry-run", "Include Snapshots: no", "compare/stale-report.json"} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected %q in stdout, got %q", token, stdout)
+		}
+	}
+}
+
+func TestWorkflowCleanJSONDryRun(t *testing.T) {
+	outputDir := setupWorkflowCleanCommandFixture(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow clean: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		WorkflowName     string   `json:"workflow_name"`
+		Mode             string   `json:"mode"`
+		IncludeSnapshots bool     `json:"include_snapshots"`
+		ArtifactOrphans  []string `json:"artifact_orphans"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.WorkflowName != "cleanup-test" || decoded.Mode != "dry-run" || decoded.IncludeSnapshots {
+		t.Fatalf("unexpected clean json payload: %#v", decoded)
+	}
+	assertStringSliceContains(t, decoded.ArtifactOrphans, "compare/stale-report.json")
+}
+
+func TestWorkflowCleanApplyDeletesCandidates(t *testing.T) {
+	outputDir := setupWorkflowCleanCommandFixture(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow clean apply: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, "Mode: apply") {
+		t.Fatalf("expected apply mode in stdout, got %q", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "compare", "stale-report.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected stale compare report to be deleted, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "snapshots", "stale-snapshot.json")); err != nil {
+		t.Fatalf("expected stale snapshot to remain without include flag: %v", err)
+	}
+}
+
+func TestWorkflowCleanApplyIncludesSnapshotsFromDefaultSnapshotDir(t *testing.T) {
+	_, outputDir, planPath, _ := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	runCmd := NewRootCommand()
+	runCmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir})
+	runCmd.SilenceUsage = true
+	runCmd.SilenceErrors = true
+	if err := runCmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	mf, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+
+	staleSnapshotPath := filepath.Join(mf.SnapshotDir, "stale-snapshot.json")
+	if err := os.WriteFile(staleSnapshotPath, []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write stale snapshot: %v", err)
+	}
+
+	cleanCmd := NewRootCommand()
+	cleanCmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots"})
+	cleanCmd.SilenceUsage = true
+	cleanCmd.SilenceErrors = true
+
+	_, stderr, err := captureStdoutStderrRun(t, func() error { return cleanCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow clean apply snapshots: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if _, err := os.Stat(staleSnapshotPath); !os.IsNotExist(err) {
+		t.Fatalf("expected stale snapshot to be deleted from default snapshot dir, stat err=%v", err)
+	}
+	for _, name := range []string{"week1.json", "week2.json"} {
+		if _, err := os.Stat(filepath.Join(mf.SnapshotDir, name)); err != nil {
+			t.Fatalf("expected live snapshot %s to remain: %v", name, err)
+		}
+	}
+}
+
+func TestWorkflowCleanApplyIncludesSnapshots(t *testing.T) {
+	outputDir := setupWorkflowCleanCommandFixture(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow clean apply snapshots: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, "Include Snapshots: yes") {
+		t.Fatalf("expected include snapshots in stdout, got %q", stdout)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "snapshots", "stale-snapshot.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected stale snapshot to be deleted, stat err=%v", err)
+	}
+}
+
+func TestWorkflowCleanRejectsUnsupportedFormat(t *testing.T) {
+	outputDir := setupWorkflowCleanCommandFixture(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--format", "yaml"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid format error")
+	}
+	if !strings.Contains(err.Error(), "unsupported workflow clean format") {
+		t.Fatalf("expected invalid format error, got %v", err)
+	}
+}
+
+func TestWorkflowCleanRejectsMissingManifest(t *testing.T) {
+	outputDir := t.TempDir()
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "clean", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing manifest error")
+	}
+	if !strings.Contains(err.Error(), "manifest.json") {
+		t.Fatalf("expected manifest error, got %v", err)
+	}
+}
+
+func setupWorkflowCleanCommandFixture(t *testing.T) string {
+	t.Helper()
+
+	outputDir := t.TempDir()
+	snapshotDir := filepath.Join(outputDir, "snapshots")
+	manifest := workflow.Manifest{
+		WorkflowName: "cleanup-test",
+		SnapshotDir:  snapshotDir,
+		Steps: []workflow.StepRecord{
+			{Kind: "analyze", Name: "week1", Status: "success", Artifacts: []string{"analyze/week1.json"}, SnapshotName: "week1"},
+			{Kind: "analyze", Name: "week2", Status: "success", Artifacts: []string{"analyze/week2.json"}, SnapshotName: "week2"},
+			{Kind: "compare", Name: "week2_vs_week1", Status: "success", Artifacts: []string{"compare/week2_vs_week1.json", "compare/week2_vs_week1.html"}},
+			{Kind: "trend", Name: "series", Status: "success", Artifacts: []string{"trend/series.json", "trend/series.html"}},
+		},
+	}
+	createWorkflowCleanCommandFiles(t, outputDir, snapshotDir, manifest)
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), append(manifestBytes, '\n'), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+	return outputDir
+}
+
+func createWorkflowCleanCommandFiles(t *testing.T, outputDir, snapshotDir string, manifest workflow.Manifest) {
+	t.Helper()
+	for _, step := range manifest.Steps {
+		for _, art := range step.Artifacts {
+			path := filepath.Join(outputDir, art)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("mkdir %s: %v", art, err)
+			}
+			if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+				t.Fatalf("write %s: %v", art, err)
+			}
+		}
+		if step.SnapshotName != "" {
+			if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
+				t.Fatalf("mkdir snapshot dir: %v", err)
+			}
+			if err := os.WriteFile(filepath.Join(snapshotDir, step.SnapshotName+".json"), []byte("{}"), 0o644); err != nil {
+				t.Fatalf("write snapshot: %v", err)
+			}
+		}
+	}
+	for path, content := range map[string]string{
+		"analyze/stale-analyze.json": "{}",
+		"compare/stale-report.json":  "{}",
+		"compare/stale-report.html":  "<html></html>",
+		"trend/stale-trend.json":     "{}",
+		"trend/stale-trend.html":     "<html></html>",
+		"compare/ignored.txt":        "ignored",
+		"index.html":                 "<html></html>",
+	} {
+		fullPath := filepath.Join(outputDir, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatalf("mkdir orphan dir %s: %v", path, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o644); err != nil {
+			t.Fatalf("write orphan %s: %v", path, err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(snapshotDir, "stale-snapshot.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write stale snapshot: %v", err)
+	}
+}
+
+func assertStringSliceContains(t *testing.T, values []string, want string) {
+	t.Helper()
+	for _, value := range values {
+		if value == want {
+			return
+		}
+	}
+	t.Fatalf("expected %q in %v", want, values)
 }

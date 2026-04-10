@@ -1,0 +1,29 @@
+Workflow Clean: cleanup-test
+Output Root: <output-dir>
+Mode: apply
+Include Snapshots: yes
+Artifact Orphans: 5
+Snapshot Orphans: 1
+Deleted: 6
+Skipped: 0
+
+Orphaned Artifacts
+- analyze/stale-analyze.json
+- compare/stale-report.html
+- compare/stale-report.json
+- trend/stale-trend.html
+- trend/stale-trend.json
+
+Orphaned Snapshots
+- stale-snapshot.json
+
+Deleted
+- analyze/stale-analyze.json
+- compare/stale-report.html
+- compare/stale-report.json
+- trend/stale-trend.html
+- trend/stale-trend.json
+- stale-snapshot.json
+
+Skipped
+- none

@@ -1,6 +1,6 @@
 # 输出格式参考
 
-本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 会向 `stdout` 和 `stderr` 分别写入什么内容。
+本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
 如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -14,6 +14,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json` 和 `index.html`。
 - `workflow resume`：`stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。Resume 会复用成功步骤的 artifact，并重跑失败、缺失或被显式选中的步骤。更新后的 `manifest.json` 会记录每个步骤的执行状态（`executed` 或 `reused`）。`index.html` 会包含 resume mode、attempt 编号和每个步骤的执行标签。
 - `workflow status`：`stdout` 输出文本或 JSON 形式的运行时检查结果。命令会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable`、`resume_error` 和每个步骤的状态，并且在可行时包含 dry `resume_preview`。它是严格只读的，也不会用 `stderr` 输出进度。
+- `workflow clean`：`stdout` 输出文本或 JSON 形式的清理摘要。命令会读取 `manifest.json`，报告 orphaned workflow artifacts 以及可选的 orphaned snapshots；在 `--apply` 模式下还会报告 `deleted` 和 `skipped`。它不会用 `stderr` 输出进度，但只要存在 skipped 删除，仍会在写完 `stdout` 后以非零状态退出。
 - `workflow validate`：`stdout` 输出文本或 JSON 校验结果。命令只读取 `plan.yaml`，执行静态 plan 校验；如果 plan 非法则以非零状态退出。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 - `workflow describe`：`stdout` 输出文本或 JSON 的静态执行预览，包括步骤顺序和 artifact 路径。命令只读取 `plan.yaml`，不会渲染 HTML，也不会检查任何运行时产物。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 
@@ -60,6 +61,13 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 |---|---|
 | `text` | 默认。面向人的运行时检查摘要，包含步骤 artifact presence 和可选的 resume preview。 |
 | `json` | 机器可读的状态对象，包含 `runtime_state`、`resumable`、`resume_error`、`steps` 和可选的 `resume_preview`。 |
+
+### `workflow clean`
+
+| 参数值 | 说明 |
+|---|---|
+| `text` | 默认。面向人的清理摘要，包含 orphan、deleted 和 skipped 列表。 |
+| `json` | 机器可读的清理结果，包含 orphan/deletion 数组和聚合计数。 |
 
 ### `workflow validate`
 
@@ -617,6 +625,64 @@ JSON 模式会把单个机器可读对象写到 `stdout`。
 | `reason` | string | yes | 该 dry-run 决策的解释 |
 
 Legacy manifest 在 text 和 JSON 模式下都仍然可被检查。此时命令依然会渲染状态，但会返回 `resumable: false` 和非空的 `resume_error`。
+
+## Workflow Clean 输出
+
+`binlogviz workflow clean` 用于报告当前 manifest 已不再引用的 workflow 生成文件，并可选报告孤儿 snapshot JSON 文件。
+
+### 文本输出
+
+文本模式会把清理摘要写到 `stdout`，包含这些区块：
+
+- workflow 名称和输出根目录
+- 清理模式：`dry-run` 或 `apply`
+- 是否包含 snapshots
+- artifact orphans、snapshot orphans、deleted、skipped 的聚合计数
+- `Orphaned Artifacts`
+- `Orphaned Snapshots`
+- `Deleted`
+- `Skipped`
+
+代表性行为：
+
+- dry-run 模式下，`Deleted` 保持为空
+- 不加 `--include-snapshots` 时，`Orphaned Snapshots` 会显示 `none`
+- apply 模式下，删除成功的路径会出现在 `Deleted`
+- 删除失败的路径会出现在 `Skipped`
+
+### JSON 输出
+
+JSON 模式会向 `stdout` 写出单个机器可读对象。
+
+顶层字段：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | manifest 中记录的 workflow 名称 |
+| `output_dir` | string | yes | 本次检查的输出根目录 |
+| `mode` | string | yes | `dry-run` 或 `apply` |
+| `include_snapshots` | boolean | yes | 是否启用了 snapshot cleanup |
+| `artifact_orphans` | array | yes | `analyze/`、`compare/`、`trend/` 下的相对 artifact 路径 |
+| `snapshot_orphans` | array | yes | `manifest.snapshot_dir` 下的 snapshot 文件名 |
+| `deleted` | array | yes | 删除成功的候选路径或 snapshot 文件名 |
+| `skipped` | array | yes | 无法删除的候选路径或 snapshot 文件名 |
+| `counts` | object | yes | cleanup 聚合计数 |
+
+`counts` 对象包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `artifact_orphans` | integer | yes | 孤儿 workflow artifact 数量 |
+| `snapshot_orphans` | integer | yes | 孤儿 snapshot 数量 |
+| `deleted` | integer | yes | 删除成功数量 |
+| `skipped` | integer | yes | 跳过删除数量 |
+
+### 失败行为
+
+- `manifest.json` 缺失或不可读时，在渲染前直接失败
+- workflow artifact 目录不可读时，在渲染前直接失败
+- snapshot 目录缺失时返回零个 snapshot 候选，而不是错误
+- apply 模式下出现 skipped 删除时，仍会先写出完整结果，再返回非零命令错误
 
 ## Workflow Validate 输出
 

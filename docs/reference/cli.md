@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -25,6 +25,9 @@ binlogviz workflow resume <output_dir>
 binlogviz workflow resume <output_dir> --rerun analyze:week2
 binlogviz workflow status <output_dir>
 binlogviz workflow status <output_dir> --format json
+binlogviz workflow clean <output_dir>
+binlogviz workflow clean <output_dir> --format json
+binlogviz workflow clean <output_dir> --apply --include-snapshots
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
 binlogviz workflow describe <plan.yaml>
@@ -637,6 +640,83 @@ Legacy manifests remain inspectable. When the manifest is from the pre-v2 format
 - keeps all output on `stdout`
 - does not use `stderr` for progress reporting
 - omits `resume_preview` when the plan is unavailable or cannot be loaded
+
+## `workflow clean` Command Syntax
+
+```bash
+binlogviz workflow clean <output_dir>
+binlogviz workflow clean <output_dir> --format text
+binlogviz workflow clean <output_dir> --format json
+binlogviz workflow clean <output_dir> --apply
+binlogviz workflow clean <output_dir> --apply --include-snapshots
+```
+
+`workflow clean` inspects one existing workflow root and reports or deletes orphaned generated files that are no longer referenced by the current `manifest.json`.
+
+The command is dry-run by default:
+
+- without `--apply`, it only reports cleanup candidates
+- with `--apply`, it deletes discovered candidates and reports `deleted` and `skipped`
+- snapshots are excluded by default and require `--include-snapshots`
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--apply` | `false` | Delete discovered cleanup candidates instead of only previewing them. |
+| `--include-snapshots` | `false` | Include orphaned snapshot JSON files from `manifest.snapshot_dir`. |
+| `--format` | `text` | Cleanup output format: `text` or `json`. |
+
+### Cleanup scope and safety guarantees
+
+`workflow clean` is intentionally narrow:
+
+- it scans only workflow-generated directories: `analyze/`, `compare/`, and `trend/`
+- it considers only known generated extensions in those directories
+- it treats `steps[].artifacts` in the current manifest as the live artifact set
+- it treats successful analyze `snapshot_name` values as the live snapshot set
+- it never deletes `manifest.json`
+- it never deletes `index.html`
+- it never deletes plan files
+- it never deletes unknown files outside the deterministic workflow artifact set
+
+Known generated extensions in scope:
+
+- `analyze`: `.json`
+- `compare`: `.json`, `.html`
+- `trend`: `.json`, `.html`
+
+### Error behavior
+
+`workflow clean` fails before rendering only when cleanup cannot be evaluated meaningfully:
+
+- `<output_dir>/manifest.json` is missing
+- the manifest is unreadable or invalid
+- one of the workflow artifact directories is unreadable
+
+Additional rules:
+
+- a missing snapshot directory is not an error; it yields zero snapshot candidates
+- per-file delete failures in `--apply` mode do not stop the cleanup pass
+- failed deletions are reported in `skipped`
+- if any deletion is skipped, the command exits non-zero after writing output
+
+### Output behavior
+
+- `text` mode prints a summary block followed by orphan, deleted, and skipped lists
+- `json` mode writes a stable machine-readable object with `workflow_name`, `output_dir`, `mode`, `include_snapshots`, `artifact_orphans`, `snapshot_orphans`, `deleted`, `skipped`, and `counts`
+- output is written to `stdout`
+- command errors continue to use the normal CLI failure path
+
+### Non-goals
+
+`workflow clean` does not:
+
+- repair workflow state
+- rewrite manifest contents
+- decide what `resume` should do next
+- perform global cleanup outside one workflow root
+- implement retention windows, TTLs, or age-based pruning
 
 ## `workflow validate` Command Syntax
 
