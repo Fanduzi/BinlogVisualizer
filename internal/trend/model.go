@@ -36,6 +36,14 @@ type Result struct {
 	TableTrends      []TableTrend   `json:"table_trends"`
 	PatternTrends    []PatternTrend `json:"pattern_trends"`
 	Insights         Insights       `json:"insights"`
+	TrendSummary     []TrendFinding `json:"trend_summary"`
+}
+
+type TrendFinding struct {
+	Kind     string         `json:"kind"`
+	Title    string         `json:"title"`
+	Summary  string         `json:"summary"`
+	Evidence map[string]any `json:"evidence"`
 }
 
 type SnapshotMeta struct {

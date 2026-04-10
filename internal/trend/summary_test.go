@@ -1,0 +1,167 @@
+package trend
+
+import (
+	"testing"
+)
+
+func TestBuildTrendSummary_RisingPattern(t *testing.T) {
+	result := buildTestResult(3, []testPatternPoint{
+		{"p1", "payments.update", 1000, 0.3, 1500, 0.5},
+		{"p2", "orders.insert", 800, 0.25, 900, 0.25},
+	})
+	summary := buildTrendSummary(result)
+
+	if len(summary) == 0 {
+		t.Fatal("expected at least one finding for rising pattern")
+	}
+	hasRising := false
+	for _, f := range summary {
+		if f.Kind == "rising_pattern" {
+			hasRising = true
+			if f.Evidence["pattern_key"] != "p1" {
+				t.Fatalf("expected rising pattern p1, got %v", f.Evidence["pattern_key"])
+			}
+		}
+	}
+	if !hasRising {
+		t.Fatalf("expected rising_pattern finding, got %+v", summary)
+	}
+}
+
+func TestBuildTrendSummary_FallingPattern(t *testing.T) {
+	result := buildTestResult(3, []testPatternPoint{
+		{"p1", "orders.insert", 1500, 0.5, 800, 0.3},
+		{"p2", "payments.update", 600, 0.2, 700, 0.25},
+	})
+	summary := buildTrendSummary(result)
+
+	hasFalling := false
+	for _, f := range summary {
+		if f.Kind == "falling_pattern" {
+			hasFalling = true
+		}
+	}
+	if !hasFalling {
+		t.Fatalf("expected falling_pattern finding, got %+v", summary)
+	}
+}
+
+func TestBuildTrendSummary_ConcentrationShift(t *testing.T) {
+	result := buildTestResult(3, []testPatternPoint{
+		{"p1", "dominant", 1000, 0.3, 2500, 0.8},
+		{"p2", "other", 700, 0.25, 600, 0.2},
+	})
+	summary := buildTrendSummary(result)
+
+	hasConcentration := false
+	for _, f := range summary {
+		if f.Kind == "concentration_shift" {
+			hasConcentration = true
+		}
+	}
+	if !hasConcentration {
+		t.Fatalf("expected concentration_shift finding, got %+v", summary)
+	}
+}
+
+func TestBuildTrendSummary_LowSignalFewFindings(t *testing.T) {
+	result := buildTestResult(2, []testPatternPoint{
+		{"p1", "stable", 1000, 0.5, 1020, 0.5},
+	})
+	summary := buildTrendSummary(result)
+
+	for _, f := range summary {
+		if f.Kind == "rising_pattern" || f.Kind == "falling_pattern" {
+			delta, _ := f.Evidence["delta_rows"].(int)
+			if delta >= 0 && delta < 100 {
+				t.Fatalf("should not emit pattern finding for tiny delta, got %+v", f)
+			}
+		}
+	}
+}
+
+func TestBuildTrendSummary_DeterministicOrdering(t *testing.T) {
+	result1 := buildTestResult(3, []testPatternPoint{
+		{"p1", "payments.update", 1000, 0.3, 1500, 0.5},
+		{"p2", "orders.insert", 800, 0.25, 900, 0.25},
+	})
+	result2 := buildTestResult(3, []testPatternPoint{
+		{"p1", "payments.update", 1000, 0.3, 1500, 0.5},
+		{"p2", "orders.insert", 800, 0.25, 900, 0.25},
+	})
+
+	s1 := buildTrendSummary(result1)
+	s2 := buildTrendSummary(result2)
+
+	if len(s1) != len(s2) {
+		t.Fatalf("non-deterministic length: %d vs %d", len(s1), len(s2))
+	}
+	for i := range s1 {
+		if s1[i].Kind != s2[i].Kind {
+			t.Fatalf("non-deterministic order at %d: %q vs %q", i, s1[i].Kind, s2[i].Kind)
+		}
+	}
+}
+
+// testPatternPoint describes a single pattern trend for test data generation.
+type testPatternPoint struct {
+	key          string
+	label        string
+	firstRows    int
+	firstShare   float64
+	lastRows     int
+	lastShare    float64
+}
+
+func buildTestResult(numPoints int, patterns []testPatternPoint) Result {
+	points := make([]Point, numPoints)
+	for i := range points {
+		points[i] = Point{
+			Snapshot: SnapshotMeta{Name: "snap", Window: InputSnapshotWindow{StartTime: "2026-03-20T10:00:00Z"}},
+			Summary:  PointSummary{TotalRows: 3000 + i*500, TotalTransactions: 100 + i*20},
+		}
+	}
+
+	patternTrends := make([]PatternTrend, len(patterns))
+	for i, p := range patterns {
+		shareSeries := make([]PatternTrendSharePoint, numPoints)
+		rowsSeries := make([]PatternTrendRowsPoint, numPoints)
+		for j := 0; j < numPoints; j++ {
+			frac := float64(j) / float64(numPoints-1)
+			if numPoints == 1 {
+				frac = 0
+			}
+			rows := int(float64(p.firstRows) + float64(p.lastRows-p.firstRows)*frac)
+			share := p.firstShare + (p.lastShare-p.firstShare)*frac
+			shareSeries[j] = PatternTrendSharePoint{SnapshotName: "snap", ShareOfRows: share}
+			rowsSeries[j] = PatternTrendRowsPoint{SnapshotName: "snap", Rows: rows}
+		}
+		patternTrends[i] = PatternTrend{
+			PatternKey:       p.key,
+			Label:            p.label,
+			FirstRows:        p.firstRows,
+			LastRows:         p.lastRows,
+			DeltaRows:        p.lastRows - p.firstRows,
+			FirstShareOfRows: p.firstShare,
+			LastShareOfRows:  p.lastShare,
+			DeltaShareOfRows: p.lastShare - p.firstShare,
+			RowsSeries:       rowsSeries,
+			ShareOfRowsSeries: shareSeries,
+		}
+	}
+
+	tableTrends := []TableTrend{
+		{Schema: "s", Table: "t1", FirstRows: 1000, LastRows: 1500, DeltaRows: 500},
+	}
+
+	return Result{
+		Points:        points,
+		PatternTrends: patternTrends,
+		TableTrends:   tableTrends,
+		Insights: Insights{
+			FirstSnapshot: "snap0",
+			LastSnapshot:  "snap_last",
+			RowsDelta:     points[len(points)-1].Summary.TotalRows - points[0].Summary.TotalRows,
+		},
+	}
+}
