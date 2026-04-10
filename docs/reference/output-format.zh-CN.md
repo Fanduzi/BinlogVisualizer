@@ -388,7 +388,7 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 
 `binlogviz trend` 会为两个或更多 snapshot 生成按时间顺序排列的报告，沿用和其他命令相同的 stdout / stderr 分离规则，并支持 `text`、`json` 和 `html`。
 
-文本输出会包含新的 `Top Pattern Trends` 章节。JSON 输出会始终包含顶层 `pattern_trends` 数组，其中每个模式都带有 rows 和 share 序列。HTML 输出会包含交互式 `Pattern Trends` 分区，默认展示 `share of rows`，并且可以切换到绝对 `rows`。
+文本输出会包含新的 `Top Pattern Trends` 章节和 `Key Findings` 章节（当存在趋势发现时）。JSON 输出会始终包含顶层 `pattern_trends` 数组（其中每个模式都带有 rows 和 share 序列）以及 `trend_summary` 数组（最多 5 条确定性发现对象）。HTML 输出会包含交互式 `Pattern Trends` 分区（默认展示 `share of rows`，可切换到绝对 `rows`）以及 `Key Findings` 分区（当存在发现时）。
 
 ## Compare JSON 输出
 
@@ -403,6 +403,7 @@ compare JSON 契约始终包含：
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `summary` | object | yes | 行数、事务数和 warning 的差异 |
+| `key_findings` | array | yes | 确定性发现摘要，最多 5 条；信号不足时为空数组 |
 | `table_changes` | array | yes | 按表统计的行数差异 |
 | `operation_mix` | array | yes | INSERT / UPDATE / DELETE 差异 |
 | `alert_changes` | object | yes | 新增和移除的告警 |
@@ -412,6 +413,17 @@ compare JSON 契约始终包含：
 | `baseline_snapshot` | object | no | 基线输入报告包含 analyze 快照元数据时出现 |
 
 `current_snapshot` 和 `baseline_snapshot` 复用上文 analyze `snapshot` 的同一字段契约。
+
+#### `key_findings` 条目
+
+`key_findings` 数组中的每个条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | 发现类别：`volume_change`、`pattern_driver`、`table_driver`、`operation_mix_drift` 或 `new_pattern` |
+| `title` | string | yes | 简短的人类可读标题 |
+| `summary` | string | yes | 单句基于证据的摘要 |
+| `evidence` | object | yes | 包含支撑指标的结构化键值映射 |
 
 ### 与旧文件模式的兼容性
 
@@ -489,6 +501,7 @@ compare 命令只接受两份 BinlogViz analyze JSON 报告：
 - 当存在 snapshot 元数据时，还会带出请求时间窗口、input mode、来源摘要和过滤条件
 - 行数、事务数、warnings 的顶层 delta
 - 按绝对行数变化排序的热点表变化
+- 位于 warnings 和 `Top Table Changes` 之间的 `Key Findings`（当发现存在时）
 - 位于 `Top Table Changes` 和 `Operation Mix` 之间的 `Top Pattern Changes`
 - `INSERT` / `UPDATE` / `DELETE` 的操作类型变化
 - 告警新增和移除情况
