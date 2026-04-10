@@ -114,11 +114,15 @@ Before execution, `workflow validate` checks whether a plan is statically runnab
 
 `workflow status` is the read-only runtime inspection command for an existing workflow root. It reads `manifest.json`, checks artifact presence, reports `runtime_state`, `resumable`, and `resume_error`, and includes a dry `resume_preview` when the saved plan can still be loaded. It never executes steps and never rewrites workflow outputs.
 
+`workflow clean` is the final maintenance command in that lifecycle. It uses the current manifest as the source of truth, defaults to dry-run, reports orphaned generated artifacts under `analyze/`, `compare/`, and `trend/`, and can optionally include orphaned snapshot JSON files when `--include-snapshots` is set. `--apply` performs best-effort deletion, while still refusing to touch `manifest.json`, `index.html`, plan files, or unknown out-of-scope files.
+
 ```bash
 binlogviz workflow resume ./artifacts/incident
 binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
 binlogviz workflow status ./artifacts/incident
 binlogviz workflow status ./artifacts/incident --format json
+binlogviz workflow clean ./artifacts/incident
+binlogviz workflow clean ./artifacts/incident --apply --include-snapshots
 binlogviz workflow validate incident.yaml
 binlogviz workflow validate incident.yaml --format json
 binlogviz workflow describe incident.yaml

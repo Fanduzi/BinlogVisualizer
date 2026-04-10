@@ -114,11 +114,15 @@ tree artifacts/incident-investigation
 
 `workflow status` 是针对已有 workflow root 的只读运行时检查命令。它会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable` 和 `resume_error`，并在保存的 plan 仍可加载时给出 dry `resume_preview`。它不会执行步骤，也不会重写任何 workflow 输出。
 
+`workflow clean` 则是这一生命周期中的最终 maintenance 命令。它以当前 manifest 为唯一真相源，默认 dry-run，报告 `analyze/`、`compare/`、`trend/` 下已不再被引用的孤儿生成物，并且只有显式加 `--include-snapshots` 时才会把孤儿 snapshot JSON 纳入候选。`--apply` 会执行 best-effort 删除，但仍然不会触碰 `manifest.json`、`index.html`、plan 文件以及任何超出范围的未知文件。
+
 ```bash
 binlogviz workflow resume ./artifacts/incident
 binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
 binlogviz workflow status ./artifacts/incident
 binlogviz workflow status ./artifacts/incident --format json
+binlogviz workflow clean ./artifacts/incident
+binlogviz workflow clean ./artifacts/incident --apply --include-snapshots
 binlogviz workflow validate incident.yaml
 binlogviz workflow validate incident.yaml --format json
 binlogviz workflow describe incident.yaml

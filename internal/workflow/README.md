@@ -1,6 +1,6 @@
 # Workflow Package
 
-Orchestration primitives for `binlogviz workflow run <plan.yaml>` and `binlogviz workflow resume <output_dir>`.
+Orchestration primitives for `binlogviz workflow run <plan.yaml>`, `binlogviz workflow resume <output_dir>`, and workflow inspection/cleanup commands such as `workflow status` and `workflow clean`.
 
 ## Files
 
@@ -14,6 +14,7 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>` and `binlogviz
 | `resume.go` | Resume planner: selector parsing, manifest validation, resume plan builder. |
 | `describe.go` | Static workflow preview model and deterministic description builder. |
 | `status.go` | Read-only runtime status model, artifact existence inspection, and dry resume preview builder. |
+| `clean.go` | Orphan discovery and apply-mode deletion for workflow-generated artifacts plus opt-in snapshot cleanup. |
 
 ## Manifest Versioning
 
@@ -54,6 +55,9 @@ Each `StepRecord` carries an `execution` field:
 - `Description` / `WindowDescription` / `CompareDescription` / `TrendDescription` — Structured static preview model for text/json rendering.
 - `BuildStatus(outputDir string, manifest Manifest, plan *Plan) (Status, error)` — Builds a read-only runtime inspection model from manifest data, artifact presence checks, and dry resume planning.
 - `Status` / `StepStatus` / `ArtifactStatus` / `ResumePreviewStep` — Structured runtime status model for text/json rendering.
+- `DiscoverCleanCandidates(outputDir string, manifest Manifest, includeSnapshots bool) (CleanResult, error)` — Discovers orphaned workflow-generated artifacts and optional snapshot JSON files using the manifest as the source of truth.
+- `ApplyClean(result CleanResult) CleanResult` — Applies best-effort deletion for discovered cleanup candidates and records deleted/skipped paths.
+- `CleanOptions` / `CleanResult` / `CleanCounts` — Structured cleanup model for text/json rendering and apply-mode summaries.
 - `EnsureLayout(root string) error` — Creates the analyze/compare/trend directory tree.
 - `Manifest` / `StepRecord` — Manifest structs.
 - `WriteManifest(path string, m Manifest) error` — Writes manifest.json.

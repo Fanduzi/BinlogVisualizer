@@ -1,0 +1,22 @@
+{
+  "workflow_name": "cleanup-test",
+  "output_dir": "<output-dir>",
+  "mode": "dry-run",
+  "include_snapshots": false,
+  "artifact_orphans": [
+    "analyze/stale-analyze.json",
+    "compare/stale-report.html",
+    "compare/stale-report.json",
+    "trend/stale-trend.html",
+    "trend/stale-trend.json"
+  ],
+  "snapshot_orphans": [],
+  "deleted": [],
+  "skipped": [],
+  "counts": {
+    "artifact_orphans": 5,
+    "snapshot_orphans": 0,
+    "deleted": 0,
+    "skipped": 0
+  }
+}

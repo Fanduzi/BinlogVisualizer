@@ -1,6 +1,6 @@
 # Binlogviz Command Module
 
-Cobra CLI entrypoints and command-layer orchestration for analyze, compare, trend, snapshot, version, and workflow commands including run, resume, validate, describe, and status.
+Cobra CLI entrypoints and command-layer orchestration for analyze, compare, trend, snapshot, version, and workflow commands including run, resume, validate, describe, status, and clean.
 
 ## Files
 
@@ -12,8 +12,8 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | `trend.go` | Resolves explicit or pattern-selected snapshot inputs, optional baseline snapshots, and renders text/JSON/HTML multi-snapshot trend output. |
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
-| `workflow.go` | Implements `workflow run <plan.yaml>`, `workflow resume <output_dir>`, pre-run `workflow validate <plan.yaml>` checks, static `workflow describe <plan.yaml>` previews, and read-only `workflow status <output_dir>` inspection. |
-| `*_test.go` | Covers flag parsing, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, discovery-mode input resolution, workflow run/resume end-to-end tests, and workflow validate/describe output contracts. |
+| `workflow.go` | Implements `workflow run <plan.yaml>`, `workflow resume <output_dir>`, pre-run `workflow validate <plan.yaml>` checks, static `workflow describe <plan.yaml>` previews, read-only `workflow status <output_dir>` inspection, and dry-run-first `workflow clean <output_dir>` cleanup. |
+| `*_test.go` | Covers flag parsing, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, discovery-mode input resolution, workflow run/resume end-to-end tests, and workflow validate/describe/clean output contracts. |
 
 ## Exports
 
