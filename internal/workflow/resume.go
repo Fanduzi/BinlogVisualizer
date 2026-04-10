@@ -103,29 +103,25 @@ func ValidateResumableManifest(m Manifest, planPath string, planSHA256 string) e
 	return nil
 }
 
-// BuildResumePlan computes which steps need execution and which can be reused.
-func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error) {
+// planResumeSteps computes execution/reuse decisions and reports whether any work is required.
+func planResumeSteps(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) ([]PlannedStep, bool, error) {
 	parsedSels, err := ParseRerunSelectors(plan, selectors)
 	if err != nil {
-		return ResumePlan{}, err
+		return nil, false, err
 	}
 
-	// Build a set of explicitly rerun steps
-	rerunSet := make(map[string]bool) // "kind:name" -> true
+	rerunSet := make(map[string]bool)
 	for _, s := range parsedSels {
 		rerunSet[s.Kind+":"+s.Name] = true
 	}
 
-	// Build lookup of prior step status by kind:name
 	priorStatus := make(map[string]StepRecord, len(m.Steps))
 	for _, s := range m.Steps {
 		priorStatus[s.Kind+":"+s.Name] = s
 	}
 
-	// Step 1: Determine initial execute/reuse decisions
 	steps := make([]PlannedStep, 0, len(plan.Windows)+len(plan.Compare)+len(plan.Trend))
 
-	// Analyze steps
 	for _, w := range plan.Windows {
 		key := "analyze:" + w.Name
 		execute := false
@@ -147,15 +143,9 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 			}
 		}
 
-		steps = append(steps, PlannedStep{
-			Kind:    "analyze",
-			Name:    w.Name,
-			Execute: execute,
-			Reason:  reason,
-		})
+		steps = append(steps, PlannedStep{Kind: "analyze", Name: w.Name, Execute: execute, Reason: reason})
 	}
 
-	// Track which analyze windows are being rerun for downstream invalidation
 	analyzeRerun := make(map[string]bool)
 	for _, s := range steps {
 		if s.Kind == "analyze" && s.Execute {
@@ -163,7 +153,6 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 		}
 	}
 
-	// Compare steps
 	for _, j := range plan.Compare {
 		key := "compare:" + j.Name
 		execute := false
@@ -183,15 +172,9 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 			reason = "artifact file missing"
 		}
 
-		steps = append(steps, PlannedStep{
-			Kind:    "compare",
-			Name:    j.Name,
-			Execute: execute,
-			Reason:  reason,
-		})
+		steps = append(steps, PlannedStep{Kind: "compare", Name: j.Name, Execute: execute, Reason: reason})
 	}
 
-	// Track which compare jobs are being rerun for downstream invalidation
 	compareRerun := make(map[string]bool)
 	for _, s := range steps {
 		if s.Kind == "compare" && s.Execute {
@@ -199,7 +182,6 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 		}
 	}
 
-	// Trend steps
 	for _, j := range plan.Trend {
 		key := "trend:" + j.Name
 		execute := false
@@ -209,7 +191,6 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 			execute = true
 			reason = "explicit rerun"
 		} else {
-			// Check if any upstream analyze window is being rerun
 			for _, snapName := range j.Snapshots {
 				if analyzeRerun[snapName] {
 					execute = true
@@ -219,10 +200,6 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 			}
 		}
 		if !execute {
-			// Check if any upstream compare job is being rerun (compare results feed into trends)
-			// Note: In the current architecture, trend reads analyze outputs directly,
-			// not compare outputs. So compare rerun does NOT invalidate trend.
-			// Keeping this check for future extensibility but NOT enabling it now.
 			_ = compareRerun
 		}
 		if !execute {
@@ -235,15 +212,9 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 			}
 		}
 
-		steps = append(steps, PlannedStep{
-			Kind:    "trend",
-			Name:    j.Name,
-			Execute: execute,
-			Reason:  reason,
-		})
+		steps = append(steps, PlannedStep{Kind: "trend", Name: j.Name, Execute: execute, Reason: reason})
 	}
 
-	// Check if anything needs to be done
 	hasWork := false
 	for _, s := range steps {
 		if s.Execute {
@@ -251,17 +222,26 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 			break
 		}
 	}
+
+	return steps, hasWork, nil
+}
+
+// BuildResumePlan computes which steps need execution and which can be reused.
+func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error) {
+	steps, hasWork, err := planResumeSteps(plan, m, selectors, outputDir, snapshotDir)
+	if err != nil {
+		return ResumePlan{}, err
+	}
 	if !hasWork {
 		return ResumePlan{}, fmt.Errorf("nothing to resume: all steps succeeded with intact artifacts and no explicit rerun requested")
 	}
 
-	// Build updated manifest
 	updated := m
 	updated.Mode = "resume"
 	updated.Attempt = m.Attempt + 1
-	updated.Status = "success" // will be overwritten if any step fails during execution
+	updated.Status = "success"
 	updated.Error = ""
-	updated.Steps = nil        // will be populated during execution
+	updated.Steps = nil
 
 	return ResumePlan{
 		Plan:            plan,

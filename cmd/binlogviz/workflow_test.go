@@ -1034,3 +1034,264 @@ func TestWorkflowDescribeRejectsUnsupportedFormat(t *testing.T) {
 		t.Fatalf("expected invalid format error, got %v", err)
 	}
 }
+
+func TestWorkflowStatusTextOutputForHealthyRoot(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{"Workflow Status:", "Runtime State: complete", "Resumable: yes", "Resume Preview", "reuse analyze:week1"} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected %q in stdout, got %q", token, stdout)
+		}
+	}
+}
+
+func TestWorkflowStatusJSONOutputForHealthyRoot(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		WorkflowName  string `json:"workflow_name"`
+		RuntimeState  string `json:"runtime_state"`
+		Resumable     bool   `json:"resumable"`
+		ResumePreview []struct {
+			Action string `json:"action"`
+		} `json:"resume_preview"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.WorkflowName != "multi-window-test" || decoded.RuntimeState != "complete" || !decoded.Resumable || len(decoded.ResumePreview) != 4 {
+		t.Fatalf("unexpected status json payload: %#v", decoded)
+	}
+}
+
+func TestWorkflowStatusShowsIncompleteWhenArtifactMissing(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+	if err := os.Remove(filepath.Join(outputDir, "compare", "week2_vs_week1.json")); err != nil {
+		t.Fatalf("remove compare artifact: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{"Runtime State: incomplete", "rerun compare:week2_vs_week1", "artifact file missing"} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected %q in stdout, got %q", token, stdout)
+		}
+	}
+}
+
+func TestWorkflowStatusLegacyManifestRemainsInspectable(t *testing.T) {
+	outputDir := t.TempDir()
+	legacyManifest := `{
+  "workflow_name": "legacy-run",
+  "status": "failed",
+  "steps": []
+}`
+	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), []byte(legacyManifest), 0o644); err != nil {
+		t.Fatalf("write legacy manifest: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		ManifestVersion int    `json:"manifest_version"`
+		Resumable       bool   `json:"resumable"`
+		ResumeError     string `json:"resume_error"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.ManifestVersion != 0 || decoded.Resumable {
+		t.Fatalf("unexpected legacy status payload: %#v", decoded)
+	}
+	if !strings.Contains(decoded.ResumeError, "legacy format") {
+		t.Fatalf("expected legacy format error, got %#v", decoded)
+	}
+}
+
+func TestWorkflowStatusRejectsMissingManifest(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "status", t.TempDir()})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing manifest error")
+	}
+	if !strings.Contains(err.Error(), "manifest.json") {
+		t.Fatalf("expected manifest error, got %v", err)
+	}
+}
+
+func TestWorkflowStatusRejectsUnsupportedFormat(t *testing.T) {
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "status", t.TempDir(), "--format", "yaml"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected invalid format error")
+	}
+	if !strings.Contains(err.Error(), "unsupported workflow status format") {
+		t.Fatalf("expected invalid format error, got %v", err)
+	}
+}
+
+func TestWorkflowStatusShowsPlanLoadFailureAsNonResumable(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	manifest, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	planDir := t.TempDir()
+	brokenPlanPath := filepath.Join(planDir, "broken-plan.yaml")
+	if err := os.WriteFile(brokenPlanPath, []byte("not: [valid"), 0o644); err != nil {
+		t.Fatalf("write broken plan: %v", err)
+	}
+	manifest.PlanPath = brokenPlanPath
+	manifest.PlanSHA256, err = computeFileSHA256(brokenPlanPath)
+	if err != nil {
+		t.Fatalf("hash broken plan: %v", err)
+	}
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile(manifestPath, append(manifestBytes, '\n'), 0o644); err != nil {
+		t.Fatalf("rewrite manifest: %v", err)
+	}
+
+	t.Run("text", func(t *testing.T) {
+		statusCmd := NewRootCommand()
+		statusCmd.SetArgs([]string{"workflow", "status", outputDir})
+		statusCmd.SilenceUsage = true
+		statusCmd.SilenceErrors = true
+
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+		if err != nil {
+			t.Fatalf("workflow status: %v", err)
+		}
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+		for _, token := range []string{"Resumable: no", "Reason:", "load plan"} {
+			if !strings.Contains(stdout, token) {
+				t.Fatalf("expected %q in stdout, got %q", token, stdout)
+			}
+		}
+		if strings.Contains(stdout, "Resume Preview") {
+			t.Fatalf("expected preview to be omitted when plan load fails, got %q", stdout)
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		statusCmd := NewRootCommand()
+		statusCmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+		statusCmd.SilenceUsage = true
+		statusCmd.SilenceErrors = true
+
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+		if err != nil {
+			t.Fatalf("workflow status: %v", err)
+		}
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+		var decoded struct {
+			Resumable     bool   `json:"resumable"`
+			ResumeError   string `json:"resume_error"`
+			ResumePreview []any  `json:"resume_preview"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+			t.Fatalf("decode json output: %v\n%s", err, stdout)
+		}
+		if decoded.Resumable {
+			t.Fatalf("expected resumable false, got %#v", decoded)
+		}
+		if !strings.Contains(decoded.ResumeError, "load plan") {
+			t.Fatalf("expected load plan error, got %#v", decoded)
+		}
+		if len(decoded.ResumePreview) != 0 {
+			t.Fatalf("expected preview to be omitted, got %#v", decoded)
+		}
+	})
+}

@@ -1,6 +1,6 @@
 # 输出格式参考
 
-本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 会向 `stdout` 和 `stderr` 分别写入什么内容。
+本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
 如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -13,6 +13,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `trend`：`stdout` 承载最终 trend 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 - `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json` 和 `index.html`。
 - `workflow resume`：`stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。Resume 会复用成功步骤的 artifact，并重跑失败、缺失或被显式选中的步骤。更新后的 `manifest.json` 会记录每个步骤的执行状态（`executed` 或 `reused`）。`index.html` 会包含 resume mode、attempt 编号和每个步骤的执行标签。
+- `workflow status`：`stdout` 输出文本或 JSON 形式的运行时检查结果。命令会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable`、`resume_error` 和每个步骤的状态，并且在可行时包含 dry `resume_preview`。它是严格只读的，也不会用 `stderr` 输出进度。
 - `workflow validate`：`stdout` 输出文本或 JSON 校验结果。命令只读取 `plan.yaml`，执行静态 plan 校验；如果 plan 非法则以非零状态退出。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 - `workflow describe`：`stdout` 输出文本或 JSON 的静态执行预览，包括步骤顺序和 artifact 路径。命令只读取 `plan.yaml`，不会渲染 HTML，也不会检查任何运行时产物。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 
@@ -52,6 +53,13 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 | `text` | 默认。适合终端阅读的多 snapshot trend 报告。 |
 | `json` | 机器可读的 trend 结果，并包含 `pattern_trends`。 |
 | `html` | 带图表的自包含 trend 报告，并包含 `Pattern Trends` 分区。 |
+
+### `workflow status`
+
+| 参数值 | 说明 |
+|---|---|
+| `text` | 默认。面向人的运行时检查摘要，包含步骤 artifact presence 和可选的 resume preview。 |
+| `json` | 机器可读的状态对象，包含 `runtime_state`、`resumable`、`resume_error`、`steps` 和可选的 `resume_preview`。 |
 
 ### `workflow validate`
 
@@ -526,6 +534,89 @@ binlogviz compare current.json baseline.json --format html > compare.html
 ### Compare 在 `stderr` 上的错误行为
 
 `compare` 当前不会输出 analyze 风格的进度信息。它会把最终 compare 报告写到 `stdout`；如果命令失败，CLI 会通过 `stderr` 输出错误。
+
+## Workflow Status 输出
+
+`binlogviz workflow status` 用于以只读方式报告一个已有 workflow root 的运行时状态。
+
+### 文本输出
+
+文本模式会把面向人的检查摘要写到 `stdout`。
+
+顶层区块包含：
+
+- `Workflow Status`
+- `Output Root`
+- `Manifest Version`
+- `Mode`
+- `Attempt`
+- `Status`
+- `Runtime State`
+- `Resumable`
+- 当 `resume_error` 非空时出现可选的 `Reason`
+
+随后会渲染：
+
+- `Steps` 分区，逐条列出 manifest 中记录的步骤
+- 每个步骤的 `status`
+- 可选的每步骤 `execution`
+- 每个步骤的 artifact presence，展示已记录的相对路径，并把缺失文件标记为 missing
+- 可选的 `Resume Preview` 分区，给出 dry-run 的 `reuse` / `rerun` 决策及其原因
+
+代表性含义：
+
+- `Runtime State: complete` 表示所有已记录 artifact 都存在，且在保存的 plan 仍可加载时，resume 所需的可复用 snapshot 也仍然存在
+- `Runtime State: incomplete` 表示至少有一个已记录 artifact 缺失，或者某个成功的 analyze 步骤所需的可复用 snapshot 已缺失
+- `Resumable: yes` 表示该 root 通过了 resume 校验
+- `Resumable: no` 且带 `Reason:` 表示该 root 仍可检查，但当前不能 resume
+
+### JSON 输出
+
+JSON 模式会把单个机器可读对象写到 `stdout`。
+
+顶层字段：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | manifest 中记录的 workflow 名称 |
+| `output_dir` | string | yes | 本次检查的输出根目录 |
+| `manifest_version` | integer | yes | Manifest 契约版本 |
+| `mode` | string | yes | `run` 或 `resume` |
+| `attempt` | integer | yes | manifest 中记录的 attempt 计数 |
+| `status` | string | yes | manifest 顶层状态，例如 `success` 或 `failed` |
+| `runtime_state` | string | yes | 基于当前运行时检查得到的 `complete` 或 `incomplete` |
+| `resumable` | boolean | yes | 当前是否允许 resume |
+| `resume_error` | string | yes | 可 resume 时为空；否则为解释性错误字符串 |
+| `steps` | array | yes | 每步骤的运行时检查记录 |
+| `resume_preview` | array | no | dry-run resume 决策；当无法基于 plan 构建 preview 时省略 |
+
+每个 `steps` 条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | 步骤类型，例如 `analyze`、`compare` 或 `trend` |
+| `name` | string | yes | manifest 中记录的步骤名 |
+| `status` | string | yes | manifest 中记录的步骤状态 |
+| `execution` | string | no | 存在时为已记录的执行标签 |
+| `artifacts` | array | no | 当前 artifact presence 记录 |
+
+每个 `artifacts` 条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `path` | string | yes | 相对于 `<output_dir>` 的 artifact 路径 |
+| `exists` | boolean | yes | 该 artifact 文件当前是否存在 |
+
+每个 `resume_preview` 条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | 计划中的步骤类型 |
+| `name` | string | yes | 计划中的步骤名 |
+| `action` | string | yes | `reuse` 或 `rerun` |
+| `reason` | string | yes | 该 dry-run 决策的解释 |
+
+Legacy manifest 在 text 和 JSON 模式下都仍然可被检查。此时命令依然会渲染状态，但会返回 `resumable: false` 和非空的 `resume_error`。
 
 ## Workflow Validate 输出
 

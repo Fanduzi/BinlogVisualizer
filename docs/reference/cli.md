@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -23,6 +23,8 @@ binlogviz workflow run <plan.yaml>
 binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 binlogviz workflow resume <output_dir>
 binlogviz workflow resume <output_dir> --rerun analyze:week2
+binlogviz workflow status <output_dir>
+binlogviz workflow status <output_dir> --format json
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
 binlogviz workflow describe <plan.yaml>
@@ -591,6 +593,50 @@ trend:
 - `stdout` is unused in v1
 - `stderr` carries progress lines and the final manifest path
 - `index.html` is written to `<output_dir>/index.html` as a self-contained workflow landing page showing workflow metadata, step status, and artifact links
+
+## `workflow status` Command Syntax
+
+```bash
+binlogviz workflow status <output_dir>
+binlogviz workflow status <output_dir> --format text
+binlogviz workflow status <output_dir> --format json
+```
+
+`workflow status` inspects an existing workflow output directory without modifying it. It reads `manifest.json`, checks whether each artifact recorded in the manifest currently exists, determines whether the workflow root is resumable, and optionally builds a dry-run resume preview when the saved plan can be loaded.
+
+The command is read-only:
+
+- it never executes workflow steps
+- it never rewrites `manifest.json`, `index.html`, or any artifact
+- it never repairs missing artifacts or snapshots
+- it never mutates runtime state on disk
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--format` | `text` | Status output format: `text` or `json`. |
+
+### Runtime inspection behavior
+
+`workflow status` reports these top-level runtime facts:
+
+- workflow name, output root, manifest version, mode, attempt, and manifest status
+- `runtime_state`, which is `complete` when all recorded artifacts are present and, if the saved plan can be loaded, reusable snapshots needed for resume are intact; otherwise `incomplete`
+- `resumable`, which is `true` only when the workflow root passes resume validation
+- `resume_error`, which explains why resume is unavailable for legacy manifests, missing plan files, plan hash mismatches, invalid plan loads, or other resume guard failures
+- per-step artifact presence, using the recorded artifact paths from the manifest
+- `resume_preview`, when the saved plan loads successfully and a dry resume plan can be derived
+
+Legacy manifests remain inspectable. When the manifest is from the pre-v2 format, the command still renders status output but reports `resumable: false` and a non-empty `resume_error`.
+
+### Output behavior
+
+- supports `text` and `json` only
+- fails before rendering when `<output_dir>/manifest.json` cannot be read
+- keeps all output on `stdout`
+- does not use `stderr` for progress reporting
+- omits `resume_preview` when the plan is unavailable or cannot be loaded
 
 ## `workflow validate` Command Syntax
 

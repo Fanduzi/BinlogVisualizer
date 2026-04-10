@@ -1,0 +1,32 @@
+Workflow Status: multi-window-test
+Output Root: <output-dir>
+Manifest Version: 2
+Mode: run
+Attempt: 1
+Status: success
+Runtime State: incomplete
+Resumable: yes
+
+Steps
+- analyze:week1
+  status: success
+  execution: executed
+  artifacts: analyze/week1.json
+- analyze:week2
+  status: success
+  execution: executed
+  artifacts: analyze/week2.json
+- compare:week2_vs_week1
+  status: success
+  execution: executed
+  artifacts: missing compare/week2_vs_week1.json, compare/week2_vs_week1.html
+- trend:weekly_series
+  status: success
+  execution: executed
+  artifacts: trend/weekly_series.json, trend/weekly_series.html
+
+Resume Preview
+- reuse analyze:week1 (reused: prior success with intact artifacts)
+- reuse analyze:week2 (reused: prior success with intact artifacts)
+- rerun compare:week2_vs_week1 (artifact file missing)
+- reuse trend:weekly_series (reused: prior success with intact artifacts)
