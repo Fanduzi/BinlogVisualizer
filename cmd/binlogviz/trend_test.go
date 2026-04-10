@@ -340,6 +340,7 @@ func TestTrendCommandPatternModeIncludesBaselineContext(t *testing.T) {
 	}
 	for _, token := range []string{
 		"Trend Summary",
+		"Key Findings",
 		"Baseline Weekly (baseline_weekly)",
 		"incident_alpha",
 		"incident_beta",

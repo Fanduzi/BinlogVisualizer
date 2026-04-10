@@ -242,5 +242,30 @@
     "transactions_delta": 100,
     "events_delta": 2400,
     "alert_count_delta": 3
-  }
+  },
+  "trend_summary": [
+    {
+      "kind": "rising_pattern",
+      "title": "Strongest rising pattern",
+      "summary": "payments.update_status grew by +700 rows across the series",
+      "evidence": {
+        "delta_rows": 700,
+        "first_rows": 600,
+        "last_rows": 1300,
+        "pattern_key": "orders.payments|UPDATE|medium",
+        "share_delta": -0.16666666666666663
+      }
+    },
+    {
+      "kind": "table_trend",
+      "title": "Top table trend",
+      "summary": "shop.orders grew by +1000 rows",
+      "evidence": {
+        "delta_rows": 1000,
+        "first_rows": 500,
+        "last_rows": 1500,
+        "table": "shop.orders"
+      }
+    }
+  ]
 }

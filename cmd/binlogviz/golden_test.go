@@ -286,6 +286,122 @@ func TestTrendJSONGoldenMinimalWorkflow(t *testing.T) {
 	}
 }
 
+func TestTrendKeyFindingsGoldenText(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	writeSnapshotFixture(t, dir, "later", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name: "later", Label: "Later",
+		StartTime: "2026-03-21T10:00:00Z", EndTime: "2026-03-21T10:30:00Z",
+		Rows: 3000, Txns: 150, Events: 3600, Inserts: 1600, Updates: 900, Deletes: 500, Alerts: 3,
+		Patterns: []trendPatternFixture{
+			{PatternKey: "orders.payments|UPDATE|medium", Label: "payments.update_status",
+				TotalRows: 1300, ShareOfRows: 0.4333333333, ShareOfTxns: 0.12, AvgRowsPerTxn: 72.2,
+				Tables: map[string]int{"orders.payments": 1300}, Operations: map[string]int{"UPDATE": 1300},
+				SampleQuerySummary: "update payments set status = ?"},
+		},
+	}))
+	writeSnapshotFixture(t, dir, "earlier", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name: "earlier", Label: "Earlier",
+		StartTime: "2026-03-19T10:00:00Z", EndTime: "2026-03-19T10:30:00Z",
+		Rows: 1000, Txns: 50, Events: 1200, Inserts: 500, Updates: 350, Deletes: 150, Alerts: 0,
+		Patterns: []trendPatternFixture{
+			{PatternKey: "orders.payments|UPDATE|medium", Label: "payments.update_status",
+				TotalRows: 600, ShareOfRows: 0.6, ShareOfTxns: 0.18, AvgRowsPerTxn: 66.7,
+				Tables: map[string]int{"orders.payments": 600}, Operations: map[string]int{"UPDATE": 600},
+				SampleQuerySummary: "update payments set status = ?"},
+		},
+	}))
+	writeSnapshotFixture(t, dir, "middle", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name: "middle", Label: "Middle",
+		StartTime: "2026-03-20T10:00:00Z", EndTime: "2026-03-20T10:30:00Z",
+		Rows: 1800, Txns: 90, Events: 2200, Inserts: 900, Updates: 600, Deletes: 300, Alerts: 1,
+		Patterns: []trendPatternFixture{
+			{PatternKey: "orders.payments|UPDATE|medium", Label: "payments.update_status",
+				TotalRows: 1000, ShareOfRows: 0.5555555556, ShareOfTxns: 0.1444444444, AvgRowsPerTxn: 76.9,
+				Tables: map[string]int{"orders.payments": 1000}, Operations: map[string]int{"UPDATE": 1000},
+				SampleQuerySummary: "update payments set status = ?"},
+		},
+	}))
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"trend", "later", "earlier", "middle", "--snapshot-dir", dir, "--format", "text"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("trend key findings text: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeGoldenOutput(stdout, dir)
+	want := mustReadGolden(t, "trend-summary.golden.txt")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("trend summary text golden mismatch\n%s", diff)
+	}
+}
+
+func TestTrendKeyFindingsGoldenJSON(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	writeSnapshotFixture(t, dir, "later", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name: "later", Label: "Later",
+		StartTime: "2026-03-21T10:00:00Z", EndTime: "2026-03-21T10:30:00Z",
+		Rows: 3000, Txns: 150, Events: 3600, Inserts: 1600, Updates: 900, Deletes: 500, Alerts: 3,
+		Patterns: []trendPatternFixture{
+			{PatternKey: "orders.payments|UPDATE|medium", Label: "payments.update_status",
+				TotalRows: 1300, ShareOfRows: 0.4333333333, ShareOfTxns: 0.12, AvgRowsPerTxn: 72.2,
+				Tables: map[string]int{"orders.payments": 1300}, Operations: map[string]int{"UPDATE": 1300},
+				SampleQuerySummary: "update payments set status = ?"},
+		},
+	}))
+	writeSnapshotFixture(t, dir, "earlier", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name: "earlier", Label: "Earlier",
+		StartTime: "2026-03-19T10:00:00Z", EndTime: "2026-03-19T10:30:00Z",
+		Rows: 1000, Txns: 50, Events: 1200, Inserts: 500, Updates: 350, Deletes: 150, Alerts: 0,
+		Patterns: []trendPatternFixture{
+			{PatternKey: "orders.payments|UPDATE|medium", Label: "payments.update_status",
+				TotalRows: 600, ShareOfRows: 0.6, ShareOfTxns: 0.18, AvgRowsPerTxn: 66.7,
+				Tables: map[string]int{"orders.payments": 600}, Operations: map[string]int{"UPDATE": 600},
+				SampleQuerySummary: "update payments set status = ?"},
+		},
+	}))
+	writeSnapshotFixture(t, dir, "middle", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name: "middle", Label: "Middle",
+		StartTime: "2026-03-20T10:00:00Z", EndTime: "2026-03-20T10:30:00Z",
+		Rows: 1800, Txns: 90, Events: 2200, Inserts: 900, Updates: 600, Deletes: 300, Alerts: 1,
+		Patterns: []trendPatternFixture{
+			{PatternKey: "orders.payments|UPDATE|medium", Label: "payments.update_status",
+				TotalRows: 1000, ShareOfRows: 0.5555555556, ShareOfTxns: 0.1444444444, AvgRowsPerTxn: 76.9,
+				Tables: map[string]int{"orders.payments": 1000}, Operations: map[string]int{"UPDATE": 1000},
+				SampleQuerySummary: "update payments set status = ?"},
+		},
+	}))
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"trend", "later", "earlier", "middle", "--snapshot-dir", dir, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("trend key findings json: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeGoldenOutput(stdout, dir)
+	want := mustReadGolden(t, "trend-summary.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("trend summary json golden mismatch\n%s", diff)
+	}
+}
+
 func TestTrendJSONGoldenLegacyFallbackWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	writeSnapshotFixture(t, dir, "legacy-alpha", trendSnapshotFixtureJSONWithWindowOverride(trendSnapshotFixture{
