@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow validate`, and `binlogviz workflow describe` write to `stdout` and `stderr`.
+This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow validate`, and `binlogviz workflow describe` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -13,6 +13,7 @@ BinlogViz uses separate output channels for different purposes:
 - `trend`: `stdout` carries the final trend report; command failures are reported through the CLI error path on `stderr`.
 - `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` and `index.html` are always written regardless of success or failure.
 - `workflow resume`: `stdout` is unused; `stderr` carries progress lines and the final manifest path. Resume reuses successful step artifacts and reruns failed, missing, or explicitly selected steps. The updated `manifest.json` records per-step execution status (`executed` or `reused`). `index.html` includes the resume mode, attempt number, and per-step execution labels.
+- `workflow status`: `stdout` carries either a text or JSON runtime inspection result. The command reads `manifest.json`, checks artifact presence, reports `runtime_state`, `resumable`, `resume_error`, and per-step status, and may include a dry `resume_preview`. It is read-only and does not use `stderr` for progress output.
 - `workflow validate`: `stdout` carries either a text or JSON validation result. The command reads only `plan.yaml`, performs static plan validation, and exits non-zero on invalid plans. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 - `workflow describe`: `stdout` carries either a text or JSON static preview of workflow execution order and artifact paths. The command reads only `plan.yaml`, renders no HTML, and does not inspect runtime outputs. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 
@@ -52,6 +53,13 @@ If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and
 | `text` | Default. Human-readable multi-snapshot trend report. |
 | `json` | Machine-readable trend result with `pattern_trends`. |
 | `html` | Self-contained trend report with charts and a Pattern Trends section. |
+
+### `workflow status`
+
+| Flag value | Description |
+|---|---|
+| `text` | Default. Human-readable runtime inspection summary with step artifact presence and optional resume preview. |
+| `json` | Machine-readable status object with `runtime_state`, `resumable`, `resume_error`, `steps`, and optional `resume_preview`. |
 
 ### `workflow validate`
 
@@ -526,6 +534,89 @@ This behavior lets you safely:
 - redirect text output to a file
 - redirect JSON output into another tool
 - inspect analyze discovery results and progress without contaminating the report stream
+
+## Workflow Status Output
+
+`binlogviz workflow status` reports the runtime state of an existing workflow root without mutating it.
+
+### Text output
+
+Text mode writes a human-readable inspection summary to `stdout`.
+
+The top block includes:
+
+- `Workflow Status`
+- `Output Root`
+- `Manifest Version`
+- `Mode`
+- `Attempt`
+- `Status`
+- `Runtime State`
+- `Resumable`
+- optional `Reason` when `resume_error` is non-empty
+
+It then renders:
+
+- a `Steps` section with one entry per recorded manifest step
+- per-step `status`
+- optional per-step `execution`
+- per-step artifact presence, showing recorded relative paths and marking missing files as missing
+- an optional `Resume Preview` section with dry-run `reuse` / `rerun` decisions and their reasons
+
+Representative meanings:
+
+- `Runtime State: complete` means all recorded artifacts exist and, when the saved plan can still be loaded, reusable snapshots needed for resume are still present
+- `Runtime State: incomplete` means at least one recorded artifact is missing, or a reusable snapshot needed by a successful analyze step is missing
+- `Resumable: yes` means the root passed resume validation
+- `Resumable: no` with `Reason:` means the root is inspectable but not resumable
+
+### JSON output
+
+JSON mode writes a single machine-readable object to `stdout`.
+
+Top-level fields:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | Workflow name from the manifest |
+| `output_dir` | string | yes | Output root inspected by the command |
+| `manifest_version` | integer | yes | Manifest contract version |
+| `mode` | string | yes | `run` or `resume` |
+| `attempt` | integer | yes | Attempt counter recorded in the manifest |
+| `status` | string | yes | Manifest status, such as `success` or `failed` |
+| `runtime_state` | string | yes | `complete` or `incomplete` based on current runtime inspection |
+| `resumable` | boolean | yes | Whether resume is currently allowed |
+| `resume_error` | string | yes | Empty when resumable; explanatory string otherwise |
+| `steps` | array | yes | Per-step runtime inspection records |
+| `resume_preview` | array | no | Dry-run resume decisions; omitted when no plan-derived preview is available |
+
+Each `steps` entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | Step kind such as `analyze`, `compare`, or `trend` |
+| `name` | string | yes | Step name from the manifest |
+| `status` | string | yes | Recorded manifest step status |
+| `execution` | string | no | Recorded execution label when present |
+| `artifacts` | array | no | Current artifact presence records |
+
+Each `artifacts` entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `path` | string | yes | Artifact path relative to `<output_dir>` |
+| `exists` | boolean | yes | Whether that artifact file exists right now |
+
+Each `resume_preview` entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | Planned step kind |
+| `name` | string | yes | Planned step name |
+| `action` | string | yes | `reuse` or `rerun` |
+| `reason` | string | yes | Dry-run explanation for the chosen action |
+
+Legacy manifests remain inspectable in both text and JSON output. In that case the command still renders status, but returns `resumable: false` and a non-empty `resume_error`.
 
 ## Workflow Validate Output
 

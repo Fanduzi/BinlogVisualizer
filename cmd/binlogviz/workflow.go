@@ -35,11 +35,68 @@ func newWorkflowCommand() *cobra.Command {
 	cmd.AddCommand(newWorkflowResumeCommand())
 	cmd.AddCommand(newWorkflowValidateCommand())
 	cmd.AddCommand(newWorkflowDescribeCommand())
+	cmd.AddCommand(newWorkflowStatusCommand())
 	return cmd
 }
 
 type workflowDescribeOptions struct {
 	format string
+}
+
+type workflowStatusOptions struct {
+	format string
+}
+
+func newWorkflowStatusCommand() *cobra.Command {
+	opts := &workflowStatusOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "status <output_dir>",
+		Short: "Inspect workflow runtime state without modifying it",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.format != "text" && opts.format != "json" {
+				return fmt.Errorf("unsupported workflow status format %q (allowed: text, json)", opts.format)
+			}
+
+			outputDir := args[0]
+			manifestPath := filepath.Join(outputDir, "manifest.json")
+			manifest, err := workflowManifestFromJSON(manifestPath)
+			if err != nil {
+				return fmt.Errorf("read workflow manifest %s: %w", manifestPath, err)
+			}
+
+			var plan *workflow.Plan
+			var planLoadErr error
+			if manifest.PlanPath != "" {
+				f, err := os.Open(manifest.PlanPath)
+				if err == nil {
+					defer f.Close()
+					loaded, loadErr := workflow.LoadPlan(f)
+					if loadErr == nil {
+						plan = &loaded
+					} else {
+						planLoadErr = fmt.Errorf("cannot resume: load plan: %w", loadErr)
+					}
+				}
+			}
+
+			status, err := workflow.BuildStatus(outputDir, manifest, plan)
+			if planLoadErr != nil {
+				status.Resumable = false
+				status.ResumeError = planLoadErr.Error()
+				status.ResumePreview = nil
+			}
+			if err != nil {
+				return err
+			}
+			return writeWorkflowStatusOutput(cmd.OutOrStdout(), opts.format, status)
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
+
+	return cmd
 }
 
 func newWorkflowDescribeCommand() *cobra.Command {
@@ -297,6 +354,93 @@ func writeWorkflowDescribeOutput(out io.Writer, format string, desc workflow.Des
 			return err
 		}
 		if _, err := fmt.Fprintf(out, "  artifacts: %s\n", strings.Join(job.Artifacts, ", ")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func writeWorkflowStatusOutput(out io.Writer, format string, status workflow.Status) error {
+	if format == "json" {
+		data, err := json.MarshalIndent(status, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode workflow status output: %w", err)
+		}
+		_, err = fmt.Fprintln(out, string(data))
+		return err
+	}
+
+	resumable := "no"
+	if status.Resumable {
+		resumable = "yes"
+	}
+	if _, err := fmt.Fprintf(out,
+		"Workflow Status: %s\nOutput Root: %s\nManifest Version: %d\nMode: %s\nAttempt: %d\nStatus: %s\nRuntime State: %s\nResumable: %s\n",
+		status.WorkflowName,
+		status.OutputDir,
+		status.ManifestVersion,
+		status.Mode,
+		status.Attempt,
+		status.Status,
+		status.RuntimeState,
+		resumable,
+	); err != nil {
+		return err
+	}
+	if status.ResumeError != "" {
+		if _, err := fmt.Fprintf(out, "Reason: %s\n", status.ResumeError); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintln(out, "\nSteps"); err != nil {
+		return err
+	}
+	for _, step := range status.Steps {
+		if _, err := fmt.Fprintf(out, "- %s:%s\n", step.Kind, step.Name); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(out, "  status: %s\n", step.Status); err != nil {
+			return err
+		}
+		if step.Execution != "" {
+			if _, err := fmt.Fprintf(out, "  execution: %s\n", step.Execution); err != nil {
+				return err
+			}
+		}
+		if len(step.Artifacts) == 0 {
+			if _, err := fmt.Fprintln(out, "  artifacts: none"); err != nil {
+				return err
+			}
+			continue
+		}
+		artifactLines := make([]string, 0, len(step.Artifacts))
+		for _, artifact := range step.Artifacts {
+			if artifact.Exists {
+				artifactLines = append(artifactLines, artifact.Path)
+				continue
+			}
+			artifactLines = append(artifactLines, "missing "+artifact.Path)
+		}
+		if _, err := fmt.Fprintf(out, "  artifacts: %s\n", strings.Join(artifactLines, ", ")); err != nil {
+			return err
+		}
+	}
+	if len(status.ResumePreview) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, "\nResume Preview"); err != nil {
+		return err
+	}
+	for _, step := range status.ResumePreview {
+		if _, err := fmt.Fprintf(out, "- %s %s:%s", step.Action, step.Kind, step.Name); err != nil {
+			return err
+		}
+		if step.Reason != "" {
+			if _, err := fmt.Fprintf(out, " (%s)", step.Reason); err != nil {
+				return err
+			}
+		}
+		if _, err := fmt.Fprintln(out); err != nil {
 			return err
 		}
 	}

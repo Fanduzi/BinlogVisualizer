@@ -694,6 +694,133 @@ windows:
 	}
 }
 
+func TestWorkflowStatusTextGoldenSuccess(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	runCmd := NewRootCommand()
+	runCmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	runCmd.SilenceUsage = true
+	runCmd.SilenceErrors = true
+	if err := runCmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeWorkflowStatusOutput(stdout, outputDir)
+	want := mustReadGolden(t, "workflow-status-success.golden.txt")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow status success text golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowStatusJSONGoldenSuccess(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	runCmd := NewRootCommand()
+	runCmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	runCmd.SilenceUsage = true
+	runCmd.SilenceErrors = true
+	if err := runCmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeWorkflowStatusOutput(stdout, outputDir)
+	want := mustReadGolden(t, "workflow-status-success.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow status success json golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowStatusTextGoldenIncomplete(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	runCmd := NewRootCommand()
+	runCmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	runCmd.SilenceUsage = true
+	runCmd.SilenceErrors = true
+	if err := runCmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+	if err := os.Remove(filepath.Join(outputDir, "compare", "week2_vs_week1.json")); err != nil {
+		t.Fatalf("remove compare artifact: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeWorkflowStatusOutput(stdout, outputDir)
+	want := mustReadGolden(t, "workflow-status-incomplete.golden.txt")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow status incomplete text golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowStatusJSONGoldenLegacy(t *testing.T) {
+	outputDir := t.TempDir()
+	legacyManifest := `{
+  "workflow_name": "legacy-run",
+  "status": "failed",
+  "steps": []
+}`
+	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), []byte(legacyManifest), 0o644); err != nil {
+		t.Fatalf("write legacy manifest: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeWorkflowStatusOutput(stdout, outputDir)
+	want := mustReadGolden(t, "workflow-status-legacy.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow status legacy json golden mismatch\n%s", diff)
+	}
+}
+
 func normalizeWorkflowIndex(raw, outputDir, snapshotDir string) string {
 	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
 	if snapshotDir != "" {
@@ -707,5 +834,15 @@ func normalizeWorkflowIndex(raw, outputDir, snapshotDir string) string {
 	}
 	// Normalize workflow error text (locale-dependent)
 	out = regexp.MustCompile(`discover binlog files: [^<]+`).ReplaceAllString(out, `<discovery-error>`)
+	return out
+}
+
+func normalizeWorkflowStatusOutput(raw, outputDir string) string {
+	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
+	testRoot := filepath.Dir(filepath.Dir(outputDir))
+	if testRoot != "" && testRoot != "." && testRoot != "/" {
+		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
+	}
+	out = planSHA256Pattern.ReplaceAllString(out, `"plan_sha256": "<plan-sha>"`)
 	return out
 }

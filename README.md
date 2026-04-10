@@ -112,9 +112,13 @@ If a workflow run fails partway through, `workflow resume` picks up from the exi
 
 Before execution, `workflow validate` checks whether a plan is statically runnable from `plan.yaml` alone, and `workflow describe` previews the deterministic analyze / compare / trend artifact layout that the plan would produce. Both commands support `--format text` and `--format json`, read only the plan file, and do not inspect `output_dir`, `manifest.json`, or `index.html`.
 
+`workflow status` is the read-only runtime inspection command for an existing workflow root. It reads `manifest.json`, checks artifact presence, reports `runtime_state`, `resumable`, and `resume_error`, and includes a dry `resume_preview` when the saved plan can still be loaded. It never executes steps and never rewrites workflow outputs.
+
 ```bash
 binlogviz workflow resume ./artifacts/incident
 binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
+binlogviz workflow status ./artifacts/incident
+binlogviz workflow status ./artifacts/incident --format json
 binlogviz workflow validate incident.yaml
 binlogviz workflow validate incident.yaml --format json
 binlogviz workflow describe incident.yaml

@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -23,6 +23,8 @@ binlogviz workflow run <plan.yaml>
 binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 binlogviz workflow resume <output_dir>
 binlogviz workflow resume <output_dir> --rerun analyze:week2
+binlogviz workflow status <output_dir>
+binlogviz workflow status <output_dir> --format json
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
 binlogviz workflow describe <plan.yaml>
@@ -591,6 +593,50 @@ trend:
 - v1 中 `stdout` 不使用
 - `stderr` 承载进度行和最终的 manifest 路径
 - `index.html` 写入 `<output_dir>/index.html`，是自包含的 workflow 落地页，展示 workflow 元数据、步骤状态和 artifact 链接
+
+## `workflow status` 命令语法
+
+```bash
+binlogviz workflow status <output_dir>
+binlogviz workflow status <output_dir> --format text
+binlogviz workflow status <output_dir> --format json
+```
+
+`workflow status` 以只读方式检查一个已有的 workflow 输出目录。它会读取 `manifest.json`，检查 manifest 中记录的每个 artifact 当前是否存在，判断该 workflow root 是否可 resume，并在保存的 plan 可以成功加载时给出 dry-run resume preview。
+
+该命令严格只读：
+
+- 不会执行任何 workflow 步骤
+- 不会重写 `manifest.json`、`index.html` 或任何 artifact
+- 不会修复缺失的 artifact 或 snapshot
+- 不会修改磁盘上的运行时状态
+
+### 参数
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--format` | `text` | 状态输出格式：`text` 或 `json`。 |
+
+### 运行时检查行为
+
+`workflow status` 会报告以下顶层运行时事实：
+
+- workflow 名称、输出根目录、manifest 版本、mode、attempt 和 manifest status
+- `runtime_state`：当所有已记录 artifact 都存在，且在保存的 plan 可以成功加载时，resume 所需的可复用 snapshot 也完整时为 `complete`；否则为 `incomplete`
+- `resumable`：只有在该 workflow root 通过 resume 校验时才为 `true`
+- `resume_error`：当 legacy manifest、plan 文件缺失、plan 哈希不匹配、plan 加载失败或其他 resume guard 失败时，用于解释为什么不能 resume
+- 每个步骤的 artifact presence，使用 manifest 中记录的 artifact 路径
+- `resume_preview`：当保存的 plan 成功加载且可以推导出 dry resume 计划时出现
+
+Legacy manifest 仍然可被检查。对于 pre-v2 格式的 manifest，该命令仍会输出状态，但会报告 `resumable: false`，并提供非空的 `resume_error`。
+
+### 输出行为
+
+- 只支持 `text` 和 `json`
+- 当 `<output_dir>/manifest.json` 无法读取时，会在渲染前直接失败
+- 所有输出都写到 `stdout`
+- 不使用 `stderr` 输出进度
+- 当 plan 不可用或无法加载时，省略 `resume_preview`
 
 ## `workflow validate` 命令语法
 
