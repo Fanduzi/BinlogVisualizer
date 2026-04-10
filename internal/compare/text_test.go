@@ -28,6 +28,10 @@ Rows: 1500 -> 2400 (+900)
 Transactions: 90 -> 120 (+30)
 Warnings: 0 -> 0 (+0)
 
+Key Findings
+1. [volume_change] rows grew sharply
+2. [table_driver] orders.refunds had the largest row change
+
 Top Table Changes
 - orders.refunds: 0 -> 900 (+900, 0.0%)
 - orders.chargebacks: 400 -> 0 (-400, -100.0%)

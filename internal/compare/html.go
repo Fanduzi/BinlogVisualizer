@@ -23,6 +23,7 @@ type htmlCompareData struct {
 	PatternChangesJSON template.JS
 	OpsMixJSON         template.JS
 	AlertCountsJSON    template.JS
+	KeyFindingsJSON    template.JS
 }
 
 type htmlMetricDatum struct {
@@ -64,6 +65,7 @@ func RenderHTML(result CompareResult) (string, error) {
 		PatternChangesJSON: mustHTMLJSON(buildPatternSeries(result.PatternChanges)),
 		OpsMixJSON:         mustHTMLJSON(buildOperationSeries(result.OperationMix)),
 		AlertCountsJSON:    mustHTMLJSON(buildAlertCounts(result.AlertChanges)),
+		KeyFindingsJSON:    mustHTMLJSON(result.KeyFindings),
 	}
 
 	var buf bytes.Buffer
@@ -384,6 +386,15 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       </article>
     </section>
 
+    {{if .Result.KeyFindings}}
+    <section class="section" id="compare-key-findings">
+      <div class="section-header"><span class="dot"></span>Key Findings</div>
+      <div class="section-body">
+        <div id="compare-findings-list"></div>
+      </div>
+    </section>
+    {{end}}
+
     <section class="section">
       <div class="section-header"><span class="dot"></span>Compare Summary</div>
       <div class="section-body">
@@ -540,6 +551,12 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     window.comparePatternChanges = {{.PatternChangesJSON}};
     window.compareOpsMix = {{.OpsMixJSON}};
     window.compareAlertCounts = {{.AlertCountsJSON}};
+    window.compareKeyFindings = {{.KeyFindingsJSON}};
+
+    const findingsEl = document.getElementById('compare-findings-list');
+    if (findingsEl && window.compareKeyFindings && window.compareKeyFindings.length > 0) {
+      findingsEl.innerHTML = '<ol>' + window.compareKeyFindings.map(f => '<li><strong>' + f.kind + '</strong>: ' + f.summary + '</li>').join('') + '</ol>';
+    }
 
     const summaryChart = echarts.init(document.getElementById('compare-summary-chart'));
     summaryChart.setOption({

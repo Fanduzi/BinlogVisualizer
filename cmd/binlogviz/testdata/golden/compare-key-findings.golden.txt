@@ -1,0 +1,36 @@
+Compare Summary
+Current Label: current
+Baseline Label: baseline
+Rows: 1500 -> 2400 (+900)
+Transactions: 90 -> 120 (+30)
+Warnings: 0 -> 0 (+0)
+
+Key Findings
+1. [volume_change] rows grew sharply
+2. [pattern_driver] refunds.create drove most row growth
+3. [table_driver] orders.refunds had the largest row change
+4. [new_pattern] refunds.create appeared as a new write pattern
+
+Top Table Changes
+- orders.refunds: 0 -> 900 (+900, 0.0%)
+- orders.chargebacks: 400 -> 0 (-400, -100.0%)
+- orders.payments: 800 -> 1200 (+400, 50.0%)
+
+Top Pattern Changes
+- refunds.create: 0 -> 700 (+700, 0.0%), txns 0 -> 40 (+40)
+  query: insert into refunds ...
+- payments.update_status: 600 -> 1300 (+700, 116.7%), txns 9 -> 18 (+9)
+  query: update payments set status = ?
+- chargebacks.create: 500 -> 0 (-500, -100.0%), txns 22 -> 0 (-22)
+  query: insert into chargebacks ...
+
+Operation Mix
+- INSERT: 600 -> 1000 (+400)
+- UPDATE: 500 -> 900 (+400)
+- DELETE: 100 -> 200 (+100)
+
+Alert Changes
+Added Alerts (1)
+- [SPIKE] rows spiked at 10:12
+Removed Alerts (1)
+- [SPIKE] rows spiked at 10:05

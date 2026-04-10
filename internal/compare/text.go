@@ -44,6 +44,14 @@ func RenderText(result CompareResult) (string, error) {
 	fmt.Fprintf(&b, "Transactions: %d -> %d (%+d)\n", result.Summary.BaselineTotalTransactions, result.Summary.CurrentTotalTransactions, result.Summary.TotalTransactionsDelta)
 	fmt.Fprintf(&b, "Warnings: %d -> %d (%+d)\n\n", result.Summary.BaselineWarnings, result.Summary.CurrentWarnings, result.Summary.CurrentWarnings-result.Summary.BaselineWarnings)
 
+	if len(result.KeyFindings) > 0 {
+		fmt.Fprintf(&b, "Key Findings\n")
+		for i, finding := range result.KeyFindings {
+			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, finding.Kind, finding.Summary)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
 	fmt.Fprintf(&b, "Top Table Changes\n")
 	if len(result.TableChanges) == 0 {
 		fmt.Fprintf(&b, "- none\n")

@@ -106,7 +106,7 @@ func TestCompareCommandTextOutputContainsCompareSummary(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, token := range []string{"Compare Summary", "Top Table Changes", "orders.refunds"} {
+	for _, token := range []string{"Compare Summary", "Top Table Changes", "Key Findings", "orders.refunds"} {
 		if !strings.Contains(output.String(), token) {
 			t.Fatalf("expected text output to contain %q, got %s", token, output.String())
 		}
