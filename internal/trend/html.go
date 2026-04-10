@@ -12,18 +12,19 @@ import (
 )
 
 type htmlData struct {
-	Result            Result
-	GeneratedAt       string
-	EChartsJS         template.JS
-	LabelsJSON        template.JS
-	RowsJSON          template.JS
-	TxnsJSON          template.JS
-	EventsJSON        template.JS
-	InsertJSON        template.JS
-	UpdateJSON        template.JS
-	DeleteJSON        template.JS
-	TableSeriesJSON   template.JS
-	PatternSeriesJSON template.JS
+	Result              Result
+	GeneratedAt         string
+	EChartsJS           template.JS
+	LabelsJSON          template.JS
+	RowsJSON            template.JS
+	TxnsJSON            template.JS
+	EventsJSON          template.JS
+	InsertJSON          template.JS
+	UpdateJSON          template.JS
+	DeleteJSON          template.JS
+	TableSeriesJSON     template.JS
+	PatternSeriesJSON   template.JS
+	TrendSummaryJSON    template.JS
 }
 
 type htmlTableSeries struct {
@@ -64,6 +65,7 @@ func RenderHTML(result Result) (string, error) {
 		DeleteJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
 		TableSeriesJSON:   mustHTMLJSON(buildTableSeries(result.TableTrends)),
 		PatternSeriesJSON: mustHTMLJSON(buildPatternSeries(result.PatternTrends)),
+		TrendSummaryJSON:  mustHTMLJSON(result.TrendSummary),
 	}
 
 	var buf bytes.Buffer
@@ -230,6 +232,15 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     </div>
   </div>
 
+  {{if .Result.TrendSummary}}
+  <section class="section" id="trend-key-findings">
+    <div class="section-header">Key Findings</div>
+    <div class="section-body">
+      <div id="trend-findings-list"></div>
+    </div>
+  </section>
+  {{end}}
+
   <section class="section">
     <div class="section-header">Overall Trend</div>
     <div class="section-body">
@@ -311,6 +322,12 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   const deletes = {{.DeleteJSON}};
   const tableSeries = {{.TableSeriesJSON}};
   const patternSeries = {{.PatternSeriesJSON}};
+  const trendSummary = {{.TrendSummaryJSON}};
+
+  const trendFindingsEl = document.getElementById('trend-findings-list');
+  if (trendFindingsEl && trendSummary && trendSummary.length > 0) {
+    trendFindingsEl.innerHTML = '<ol>' + trendSummary.map(f => '<li><strong>' + f.kind + '</strong>: ' + f.summary + '</li>').join('') + '</ol>';
+  }
 
   const overallChart = echarts.init(document.getElementById('trend-overall-chart'));
   overallChart.setOption({

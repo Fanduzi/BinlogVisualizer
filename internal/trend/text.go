@@ -22,6 +22,13 @@ func RenderText(result Result) (string, error) {
 		fmt.Fprintf(&b, "Alerts: %d -> %d (%+d)\n", first.AlertCount, last.AlertCount, result.Insights.AlertCountDelta)
 	}
 
+	if len(result.TrendSummary) > 0 {
+		fmt.Fprintf(&b, "\nKey Findings\n")
+		for i, finding := range result.TrendSummary {
+			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, finding.Kind, finding.Summary)
+		}
+	}
+
 	fmt.Fprintf(&b, "\nOrdered Points\n")
 	for _, point := range result.Points {
 		fmt.Fprintf(&b, "- %s | %s | rows=%d txns=%d events=%d alerts=%d",

@@ -1,0 +1,35 @@
+Trend Summary
+Input Mode: explicit
+Rows: 1000 -> 3000 (+2000)
+Transactions: 50 -> 150 (+100)
+Events: 1200 -> 3600 (+2400)
+Alerts: 0 -> 3 (+3)
+
+Key Findings
+1. [rising_pattern] payments.update_status grew by +700 rows across the series
+2. [table_trend] shop.orders grew by +1000 rows
+
+Ordered Points
+- 2026-03-19T10:00:00Z | Earlier (earlier) | rows=1000 txns=50 events=1200 alerts=0
+- 2026-03-20T10:00:00Z | Middle (middle) | rows=1800 txns=90 events=2200 alerts=1
+- 2026-03-21T10:00:00Z | Later (later) | rows=3000 txns=150 events=3600 alerts=3
+
+Operation Mix
+- earlier: insert=500 (50.0%) update=350 (35.0%) delete=150 (15.0%)
+- middle: insert=900 (50.0%) update=600 (33.3%) delete=300 (16.7%)
+- later: insert=1600 (53.3%) update=900 (30.0%) delete=500 (16.7%)
+
+Top Table Movement
+- shop.orders: 500 -> 1500 (+1000)
+- shop.payments: 500 -> 1500 (+1000)
+
+Top Pattern Trends
+- payments.update_status (orders.payments|UPDATE|medium): share=60.0% -> 43.3% (-16.7%) | rows=600 -> 1300 (+700)
+
+Aggregate Insights
+- First snapshot: earlier
+- Last snapshot: later
+- Rows delta: +2000
+- Transactions delta: +100
+- Events delta: +2400
+- Alert delta: +3

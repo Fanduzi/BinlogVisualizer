@@ -141,5 +141,18 @@
     "transactions_delta": 40,
     "events_delta": 800,
     "alert_count_delta": 1
-  }
+  },
+  "trend_summary": [
+    {
+      "kind": "table_trend",
+      "title": "Top table trend",
+      "summary": "shop.orders grew by +400 rows",
+      "evidence": {
+        "delta_rows": 400,
+        "first_rows": 1200,
+        "last_rows": 1600,
+        "table": "shop.orders"
+      }
+    }
+  ]
 }
