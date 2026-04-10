@@ -194,3 +194,58 @@ func TestBuildKeyFindings_DeterministicOrdering(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildKeyFindings_VolumeDeclineUsesDeclineLanguage(t *testing.T) {
+	// current has fewer rows than baseline — findings must describe decline, not growth
+	current := InputReport{
+		Summary: InputSummary{TotalRows: 2000, TotalTransactions: 100},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 1500},
+			{Schema: "shop", Table: "payments", TotalRows: 500},
+		},
+		Patterns: []InputPattern{
+			{PatternKey: "orders.insert_batch", Label: "orders.insert_batch", TotalRows: 1500, ShareOfRows: 0.75, Operations: map[string]int{"INSERT": 1500}},
+			{PatternKey: "payments.update_status", Label: "payments.update_status", TotalRows: 500, ShareOfRows: 0.25, Operations: map[string]int{"UPDATE": 500}},
+		},
+	}
+	baseline := InputReport{
+		Summary: InputSummary{TotalRows: 10000, TotalTransactions: 500},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 6000},
+			{Schema: "shop", Table: "payments", TotalRows: 4000},
+		},
+		Patterns: []InputPattern{
+			{PatternKey: "orders.insert_batch", Label: "orders.insert_batch", TotalRows: 6000, ShareOfRows: 0.6, Operations: map[string]int{"INSERT": 6000}},
+			{PatternKey: "payments.update_status", Label: "payments.update_status", TotalRows: 4000, ShareOfRows: 0.4, Operations: map[string]int{"UPDATE": 4000}},
+		},
+	}
+
+	result := BuildCompareResult(current, baseline)
+	findings := result.KeyFindings
+
+	if len(findings) == 0 {
+		t.Fatal("expected at least one finding for significant decline")
+	}
+
+	// volume_change must use decline language
+	volFinding := findings[0]
+	if volFinding.Kind != "volume_change" {
+		t.Fatalf("expected first finding kind volume_change, got %q", volFinding.Kind)
+	}
+	summary := volFinding.Summary
+	if summary == "rows more than doubled" || summary == "rows grew sharply" || summary == "rows grew moderately" || summary == "rows grew slightly" {
+		t.Fatalf("volume_change finding must not use growth language for decline, got %q", summary)
+	}
+	if summary != "rows declined sharply" {
+		t.Fatalf("expected 'rows declined sharply' for 80%% decline, got %q", summary)
+	}
+
+	// pattern_driver must use decline language, not growth
+	for _, f := range findings {
+		if f.Kind == "pattern_driver" {
+			if f.Summary != "orders.insert_batch drove most row decline" {
+				t.Fatalf("expected pattern_driver to say 'decline', got %q", f.Summary)
+			}
+		}
+	}
+}

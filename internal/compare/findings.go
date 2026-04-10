@@ -44,10 +44,14 @@ func buildKeyFindings(result CompareResult) []CompareFinding {
 			if name == "" {
 				name = top.PatternKey
 			}
+			driverDir := "growth"
+			if totalDelta < 0 {
+				driverDir = "decline"
+			}
 			findings = append(findings, CompareFinding{
 				Kind:    "pattern_driver",
 				Title:   "Top pattern driver",
-				Summary: name + " drove most row growth",
+				Summary: name + " drove most row " + driverDir,
 				Evidence: map[string]any{
 					"pattern_key":         top.PatternKey,
 					"delta_rows":          top.DeltaRows,
@@ -100,16 +104,23 @@ func volumeSeverity(delta, baseline int) string {
 	if baseline == 0 {
 		return "rows appeared in current window"
 	}
-	pct := math.Abs(float64(delta) / float64(baseline) * 100)
+	pct := math.Abs(float64(delta)/float64(baseline)) * 100
+	dir := "grew"
+	if delta < 0 {
+		dir = "declined"
+	}
 	switch {
 	case pct >= 100:
+		if delta < 0 {
+			return "rows more than halved"
+		}
 		return "rows more than doubled"
 	case pct >= 50:
-		return "rows grew sharply"
+		return "rows " + dir + " sharply"
 	case pct >= 20:
-		return "rows grew moderately"
+		return "rows " + dir + " moderately"
 	case pct >= 5:
-		return "rows grew slightly"
+		return "rows " + dir + " slightly"
 	default:
 		return "rows changed minimally"
 	}
