@@ -12,7 +12,7 @@ import (
 )
 
 func BuildCompareResult(current, baseline InputReport) CompareResult {
-	return CompareResult{
+	result := CompareResult{
 		Summary: SummaryDelta{
 			CurrentTotalRows:          current.Summary.TotalRows,
 			BaselineTotalRows:         baseline.Summary.TotalRows,
@@ -32,6 +32,8 @@ func BuildCompareResult(current, baseline InputReport) CompareResult {
 		CurrentSnapshot:  current.Snapshot,
 		BaselineSnapshot: baseline.Snapshot,
 	}
+	result.KeyFindings = buildKeyFindings(result)
+	return result
 }
 
 func compareLabel(snapshot *InputSnapshot, fallback string) string {
