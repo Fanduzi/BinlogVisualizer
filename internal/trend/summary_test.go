@@ -103,6 +103,74 @@ func TestBuildTrendSummary_DeterministicOrdering(t *testing.T) {
 	}
 }
 
+func TestBuildTrendEvidenceRefsCoversSupportedFindingKinds(t *testing.T) {
+	result := Result{
+		TrendSummary: []TrendFinding{
+			{Kind: "rising_pattern", Evidence: map[string]any{"pattern_key": "orders.insert_batch"}},
+			{Kind: "falling_pattern", Evidence: map[string]any{"pattern_key": "orders.update_single"}},
+			{Kind: "table_trend", Evidence: map[string]any{"table": "shop.orders"}},
+			{Kind: "concentration_shift", Evidence: map[string]any{"pattern_key": "orders.insert_batch"}},
+			{Kind: "spike_outlier", Evidence: map[string]any{"snapshot_name": "week3"}},
+		},
+		PatternTrends: []PatternTrend{
+			{PatternKey: "orders.insert_batch", Label: "orders.insert_batch"},
+			{PatternKey: "orders.update_single", Label: "orders.update_single"},
+		},
+		TableTrends: []TableTrend{
+			{Schema: "shop", Table: "orders", DeltaRows: 1000},
+		},
+		Points: []Point{
+			{Snapshot: SnapshotMeta{Name: "week1"}},
+			{Snapshot: SnapshotMeta{Name: "week2"}},
+			{Snapshot: SnapshotMeta{Name: "week3"}},
+		},
+	}
+
+	buildTrendEvidenceRefs(&result)
+
+	want := []struct {
+		idx     int
+		section string
+		anchor  string
+	}{
+		{0, "pattern_trends", "pattern-0"},
+		{1, "pattern_trends", "pattern-1"},
+		{2, "table_trends", "table-0"},
+		{3, "pattern_trends", "pattern-0"},
+		{4, "ordered_points", "point-2"},
+	}
+	for _, tc := range want {
+		refs := result.TrendSummary[tc.idx].EvidenceRefs
+		if len(refs) != 1 {
+			t.Fatalf("finding %d refs len = %d, want 1: %#v", tc.idx, len(refs), refs)
+		}
+		if refs[0].Section != tc.section || refs[0].Anchor != tc.anchor {
+			t.Fatalf("finding %d ref = %#v, want section %q anchor %q", tc.idx, refs[0], tc.section, tc.anchor)
+		}
+		if refs[0].Label == "" {
+			t.Fatalf("finding %d ref label should not be empty", tc.idx)
+		}
+	}
+}
+
+func TestBuildTrendEvidenceRefsOmitsMissingTargets(t *testing.T) {
+	result := Result{
+		TrendSummary: []TrendFinding{
+			{Kind: "rising_pattern", Evidence: map[string]any{"pattern_key": "missing.pattern"}},
+			{Kind: "table_trend", Evidence: map[string]any{"table": "missing.table"}},
+			{Kind: "spike_outlier", Evidence: map[string]any{"snapshot_name": "missing-point"}},
+		},
+	}
+
+	buildTrendEvidenceRefs(&result)
+
+	for i, f := range result.TrendSummary {
+		if len(f.EvidenceRefs) != 0 {
+			t.Fatalf("finding %d refs = %#v, want none", i, f.EvidenceRefs)
+		}
+	}
+}
+
 func TestBuildTrendEvidenceRefs_RisingPatternHasRef(t *testing.T) {
 	result := buildTestResult(3, []testPatternPoint{
 		{"p1", "payments.update", 1000, 0.3, 1500, 0.5},
