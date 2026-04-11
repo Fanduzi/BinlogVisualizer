@@ -80,6 +80,26 @@ func TestBuildTrendSummary_LowSignalFewFindings(t *testing.T) {
 	}
 }
 
+func TestBuildTrendSummary_KindOrdering(t *testing.T) {
+	// Build a result that produces all 5 finding kinds.
+	result := buildTestResult(4, []testPatternPoint{
+		{"p1", "rising", 1000, 0.3, 2000, 0.5},
+		{"p2", "falling", 2000, 0.4, 800, 0.15},
+		{"p3", "concentrate", 1000, 0.3, 3000, 0.75},
+	})
+	summary := buildTrendSummary(result)
+
+	expectedKinds := []string{"rising_pattern", "falling_pattern", "table_trend", "concentration_shift"}
+	if len(summary) < len(expectedKinds) {
+		t.Fatalf("expected at least %d findings, got %d: %+v", len(expectedKinds), len(summary), summary)
+	}
+	for i, want := range expectedKinds {
+		if summary[i].Kind != want {
+			t.Fatalf("finding[%d] kind = %q, want %q", i, summary[i].Kind, want)
+		}
+	}
+}
+
 func TestBuildTrendSummary_DeterministicOrdering(t *testing.T) {
 	result1 := buildTestResult(3, []testPatternPoint{
 		{"p1", "payments.update", 1000, 0.3, 1500, 0.5},
