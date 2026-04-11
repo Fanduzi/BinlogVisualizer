@@ -325,6 +325,85 @@ func TestBuildCompareEvidenceRefs_VolumeChangeNoRef(t *testing.T) {
 	}
 }
 
+func TestBuildCompareEvidenceRefsCoversSupportedFindingKinds(t *testing.T) {
+	result := CompareResult{
+		Summary: SummaryDelta{CurrentTotalRows: 2000, BaselineTotalRows: 1000, TotalRowsDelta: 1000},
+		KeyFindings: []CompareFinding{
+			{
+				Kind:     "pattern_driver",
+				Evidence: map[string]any{"pattern_key": "orders.insert_batch"},
+			},
+			{
+				Kind:     "table_driver",
+				Evidence: map[string]any{"table": "shop.orders"},
+			},
+			{
+				Kind:     "operation_mix_drift",
+				Evidence: map[string]any{"operation": "INSERT"},
+			},
+			{
+				Kind:     "new_pattern",
+				Evidence: map[string]any{"pattern_key": "orders.new_shape"},
+			},
+			{
+				Kind:     "volume_change",
+				Evidence: map[string]any{"delta_rows": 1000},
+			},
+		},
+		PatternChanges: []PatternChange{
+			{PatternKey: "orders.insert_batch", Label: "orders.insert_batch"},
+			{PatternKey: "orders.new_shape", Label: "orders.new_shape"},
+		},
+		TableChanges: []TableChange{
+			{Schema: "shop", Table: "orders", DeltaRows: 900},
+		},
+		OperationMix: []OperationDelta{
+			{Operation: "INSERT", Current: 1900, Baseline: 900, Delta: 1000},
+		},
+	}
+
+	buildCompareEvidenceRefs(&result)
+
+	assertRef := func(idx int, section, anchor string) {
+		t.Helper()
+		refs := result.KeyFindings[idx].EvidenceRefs
+		if len(refs) != 1 {
+			t.Fatalf("finding %d refs len = %d, want 1: %#v", idx, len(refs), refs)
+		}
+		if refs[0].Section != section || refs[0].Anchor != anchor {
+			t.Fatalf("finding %d ref = %#v, want section %q anchor %q", idx, refs[0], section, anchor)
+		}
+		if refs[0].Label == "" {
+			t.Fatalf("finding %d ref label should not be empty", idx)
+		}
+	}
+
+	assertRef(0, "pattern_changes", "section-pattern-changes")
+	assertRef(1, "table_changes", "section-table-changes")
+	assertRef(2, "operation_mix", "section-operation-mix")
+	assertRef(3, "pattern_changes", "section-pattern-changes")
+	if refs := result.KeyFindings[4].EvidenceRefs; len(refs) != 0 {
+		t.Fatalf("volume_change refs = %#v, want none", refs)
+	}
+}
+
+func TestBuildCompareEvidenceRefsOmitsMissingTargets(t *testing.T) {
+	result := CompareResult{
+		KeyFindings: []CompareFinding{
+			{Kind: "pattern_driver", Evidence: map[string]any{"pattern_key": "missing.pattern"}},
+			{Kind: "table_driver", Evidence: map[string]any{"table": "missing.table"}},
+		},
+	}
+
+	buildCompareEvidenceRefs(&result)
+
+	for i, f := range result.KeyFindings {
+		if len(f.EvidenceRefs) != 0 {
+			t.Fatalf("finding %d refs = %#v, want none", i, f.EvidenceRefs)
+		}
+	}
+}
+
 func TestBuildCompareEvidenceRefs_TableDriverHasRef(t *testing.T) {
 	current := InputReport{
 		Summary: InputSummary{TotalRows: 10000, TotalTransactions: 500},
