@@ -287,6 +287,67 @@ func mustBuildPatternTrendResult(t *testing.T) Result {
 	return result
 }
 
+func TestRenderHTMLContainsAllTrendEvidenceRefAnchors(t *testing.T) {
+	result := Result{
+		TrendSummary: []TrendFinding{
+			{Kind: "rising_pattern", Title: "Rising", Summary: "pattern rose", EvidenceRefs: []EvidenceRef{{Section: "pattern_trends", Key: "p0", Label: "p0", Anchor: "pattern-0"}}},
+			{Kind: "table_trend", Title: "Table", Summary: "table grew", EvidenceRefs: []EvidenceRef{{Section: "table_trends", Key: "shop.orders", Label: "shop.orders", Anchor: "table-0"}}},
+			{Kind: "spike_outlier", Title: "Spike", Summary: "week3 spiked", EvidenceRefs: []EvidenceRef{{Section: "ordered_points", Key: "week3", Label: "week3", Anchor: "point-2"}}},
+		},
+		PatternTrends: []PatternTrend{{PatternKey: "p0", Label: "p0"}},
+		TableTrends:   []TableTrend{{Schema: "shop", Table: "orders", DeltaRows: 1000}},
+		Points: []Point{
+			{Snapshot: SnapshotMeta{Name: "week1"}},
+			{Snapshot: SnapshotMeta{Name: "week2"}},
+			{Snapshot: SnapshotMeta{Name: "week3"}},
+		},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+	for _, anchor := range []string{"pattern-0", "table-0", "point-2"} {
+		if !strings.Contains(html, `id="`+anchor+`"`) {
+			t.Fatalf("html missing anchor %q", anchor)
+		}
+	}
+}
+
+func TestRenderHTMLTrendFindingsEscapeMaliciousContent(t *testing.T) {
+	result := Result{
+		TrendSummary: []TrendFinding{{
+			Kind:    "rising_pattern",
+			Title:   `<img src=x onerror=alert(1)>`,
+			Summary: `<script>alert(1)</script>`,
+			EvidenceRefs: []EvidenceRef{{
+				Section: "pattern_trends",
+				Key:     "evil",
+				Label:   `<img src=x onerror=alert(1)>`,
+				Anchor:  "pattern-0",
+			}},
+		}},
+		PatternTrends: []PatternTrend{{PatternKey: "evil", Label: `<img src=x onerror=alert(1)>`}},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+	if strings.Contains(html, "trendFindingsEl.innerHTML") {
+		t.Fatalf("findings renderer should not use innerHTML")
+	}
+	if !strings.Contains(html, "textContent") {
+		t.Fatalf("findings renderer should use textContent")
+	}
+	if strings.Contains(html, `<script>alert(1)</script>`) {
+		t.Fatalf("html contains raw script tag from finding summary")
+	}
+	if strings.Contains(html, `<img src=x onerror=alert(1)>`) {
+		t.Fatalf("html contains raw img injection from finding title or label")
+	}
+}
+
 func TestRenderHTMLContainsEvidenceRefAnchors(t *testing.T) {
 	result := mustBuildPatternTrendResult(t)
 
