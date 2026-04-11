@@ -907,9 +907,8 @@ func TestWorkflowResumeRefusesLegacyManifest(t *testing.T) {
 func TestWorkflowResumeRefusesPlanHashMismatch(t *testing.T) {
 	outputDir := t.TempDir()
 
-	// Write a valid plan file
-	planDir := t.TempDir()
-	planPath := filepath.Join(planDir, "plan.yaml")
+	// Write a valid plan file inside the workflow root
+	planPath := filepath.Join(outputDir, "plan.yaml")
 	plan := `
 version: 1
 workflow:
@@ -1743,8 +1742,8 @@ func TestWorkflowStatusShowsPlanLoadFailureAsNonResumable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read manifest: %v", err)
 	}
-	planDir := t.TempDir()
-	brokenPlanPath := filepath.Join(planDir, "broken-plan.yaml")
+	// Overwrite the trusted plan.yaml with invalid YAML to trigger load failure
+	brokenPlanPath := filepath.Join(outputDir, "plan.yaml")
 	if err := os.WriteFile(brokenPlanPath, []byte("not: [valid"), 0o644); err != nil {
 		t.Fatalf("write broken plan: %v", err)
 	}
@@ -2549,6 +2548,167 @@ func createWorkflowCleanCommandFiles(t *testing.T, outputDir, snapshotDir string
 	}
 	if err := os.WriteFile(filepath.Join(snapshotDir, "stale-snapshot.json"), []byte("{}"), 0o644); err != nil {
 		t.Fatalf("write stale snapshot: %v", err)
+	}
+}
+
+// --- Trust-boundary CLI regression tests ---
+
+func TestWorkflowStatusOutsidePlanPathDegradesToNonResumable(t *testing.T) {
+	outputDir := t.TempDir()
+	outsideDir := t.TempDir()
+	outsidePlan := filepath.Join(outsideDir, "plan.yaml")
+	if err := os.WriteFile(outsidePlan, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatalf("write outside plan: %v", err)
+	}
+
+	manifest := workflow.Manifest{
+		ManifestVersion: 2,
+		WorkflowName:    "trust-test",
+		PlanPath:        outsidePlan,
+		Status:          "success",
+		Steps:           []workflow.StepRecord{},
+	}
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), append(manifestBytes, '\n'), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	t.Run("text", func(t *testing.T) {
+		cmd := NewRootCommand()
+		cmd.SetArgs([]string{"workflow", "status", outputDir})
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+		if err != nil {
+			t.Fatalf("workflow status should succeed: %v", err)
+		}
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+		if !strings.Contains(stdout, "Resumable: no") {
+			t.Fatalf("expected Resumable: no, got %q", stdout)
+		}
+		if !strings.Contains(stdout, "Reason:") || !strings.Contains(stdout, "trust") {
+			t.Fatalf("expected trust-boundary reason, got %q", stdout)
+		}
+	})
+
+	t.Run("json", func(t *testing.T) {
+		cmd := NewRootCommand()
+		cmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+		if err != nil {
+			t.Fatalf("workflow status should succeed: %v", err)
+		}
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+			var decoded struct {
+				Resumable   bool   `json:"resumable"`
+				ResumeError string `json:"resume_error"`
+			}
+		if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+			t.Fatalf("decode json: %v\n%s", err, stdout)
+		}
+		if decoded.Resumable {
+			t.Fatal("expected resumable false")
+		}
+		if !strings.Contains(decoded.ResumeError, "trust") {
+			t.Fatalf("expected trust-boundary resume_error, got %q", decoded.ResumeError)
+		}
+	})
+}
+
+func TestWorkflowResumeOutsidePlanPathHardFails(t *testing.T) {
+	outputDir := t.TempDir()
+	outsideDir := t.TempDir()
+	outsidePlan := filepath.Join(outsideDir, "plan.yaml")
+	if err := os.WriteFile(outsidePlan, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatalf("write outside plan: %v", err)
+	}
+
+	manifest := workflow.Manifest{
+		ManifestVersion:    2,
+		WorkflowName:       "trust-test",
+		PlanPath:           outsidePlan,
+		PlanSHA256:         "abc",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+		Status:             "success",
+		Steps:              []workflow.StepRecord{},
+	}
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), append(manifestBytes, '\n'), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "resume", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err = cmd.Execute()
+	if err == nil {
+		t.Fatal("expected resume to hard-fail for outside-root plan_path")
+	}
+	if !strings.Contains(err.Error(), "trust") {
+		t.Fatalf("expected trust-boundary error, got: %v", err)
+	}
+}
+
+func TestWorkflowResumeSymlinkEscapedPlanPathFails(t *testing.T) {
+	outputDir := t.TempDir()
+	outsideDir := t.TempDir() + "-outside"
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	outsidePlan := filepath.Join(outsideDir, "plan.yaml")
+	if err := os.WriteFile(outsidePlan, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatalf("write outside plan: %v", err)
+	}
+
+	linkPath := filepath.Join(outputDir, "plan.yaml")
+	if err := os.Symlink(outsidePlan, linkPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	manifest := workflow.Manifest{
+		ManifestVersion:    2,
+		WorkflowName:       "trust-symlink-test",
+		PlanPath:           linkPath,
+		PlanSHA256:         "abc",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+		Status:             "success",
+		Steps:              []workflow.StepRecord{},
+	}
+	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal manifest: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), append(manifestBytes, '\n'), 0o644); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "resume", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	err = cmd.Execute()
+	if err == nil {
+		t.Fatal("expected resume to hard-fail for symlink-escaped plan_path")
+	}
+	if !strings.Contains(err.Error(), "trust") {
+		t.Fatalf("expected trust-boundary error, got: %v", err)
 	}
 }
 

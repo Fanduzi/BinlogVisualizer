@@ -59,9 +59,63 @@ func TestParseRerunSelectorsBadFormat(t *testing.T) {
 
 // --- Resumability validation ---
 
+func TestValidateResumableManifestRejectsOutsidePlanPath(t *testing.T) {
+	outsideDir := t.TempDir()
+	outsidePlan := filepath.Join(outsideDir, "plan.yaml")
+	if err := os.WriteFile(outsidePlan, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	workflowRoot := t.TempDir()
+	m := Manifest{
+		ManifestVersion:    2,
+		PlanPath:           outsidePlan,
+		PlanSHA256:         "abc",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+	}
+	err := ValidateResumableManifest(m, workflowRoot, outsidePlan, "abc")
+	if err == nil {
+		t.Fatal("expected rejection for outside-root plan_path")
+	}
+	if !strings.Contains(err.Error(), "trust") {
+		t.Fatalf("expected trust-boundary error, got: %v", err)
+	}
+}
+
+func TestValidateResumableManifestRejectsSymlinkEscapedPlanPath(t *testing.T) {
+	workflowRoot := t.TempDir()
+	outsideDir := t.TempDir() + "-outside"
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	outsidePlan := filepath.Join(outsideDir, "plan.yaml")
+	if err := os.WriteFile(outsidePlan, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatalf("write outside plan: %v", err)
+	}
+
+	linkPath := filepath.Join(workflowRoot, "plan.yaml")
+	if err := os.Symlink(outsidePlan, linkPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	m := Manifest{
+		ManifestVersion:    2,
+		PlanPath:           linkPath,
+		PlanSHA256:         "abc",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+	}
+	err := ValidateResumableManifest(m, workflowRoot, linkPath, "abc")
+	if err == nil {
+		t.Fatal("expected rejection for symlink-escaped plan_path")
+	}
+	if !strings.Contains(err.Error(), "trust") {
+		t.Fatalf("expected trust-boundary error, got: %v", err)
+	}
+}
+
 func TestValidateResumableManifestRejectsLegacyVersion(t *testing.T) {
 	m := Manifest{ManifestVersion: 0}
-	err := ValidateResumableManifest(m, "", "")
+	err := ValidateResumableManifest(m, "", "", "")
 	if err == nil {
 		t.Fatal("expected rejection for missing manifest_version")
 	}
@@ -69,7 +123,7 @@ func TestValidateResumableManifestRejectsLegacyVersion(t *testing.T) {
 
 func TestValidateResumableManifestRejectsUnsupportedVersion(t *testing.T) {
 	m := Manifest{ManifestVersion: 99}
-	err := ValidateResumableManifest(m, "", "")
+	err := ValidateResumableManifest(m, "", "", "")
 	if err == nil {
 		t.Fatal("expected rejection for unsupported manifest_version")
 	}
@@ -82,7 +136,7 @@ func TestValidateResumableManifestRejectsEmptyResolvedFiles(t *testing.T) {
 		PlanSHA256:         "abc",
 		ResolvedInputFiles: []string{},
 	}
-	err := ValidateResumableManifest(m, "/tmp/plan.yaml", "abc")
+	err := ValidateResumableManifest(m, "", "/tmp/plan.yaml", "abc")
 	if err == nil {
 		t.Fatal("expected rejection for empty resolved_input_files")
 	}
@@ -99,7 +153,7 @@ func TestValidateResumableManifestRejectsPlanHashMismatch(t *testing.T) {
 		PlanSHA256:         "abc",
 		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
 	}
-	err := ValidateResumableManifest(m, planPath, "different_hash")
+	err := ValidateResumableManifest(m, "", planPath, "different_hash")
 	if err == nil {
 		t.Fatal("expected rejection for plan hash mismatch")
 	}
@@ -116,7 +170,7 @@ func TestValidateResumableManifestRejectsMissingPlanSHA256(t *testing.T) {
 		PlanSHA256:         "",
 		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
 	}
-	err := ValidateResumableManifest(m, planPath, "some_hash")
+	err := ValidateResumableManifest(m, "", planPath, "some_hash")
 	if err == nil {
 		t.Fatal("expected rejection for missing plan_sha256")
 	}
