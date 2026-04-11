@@ -83,14 +83,17 @@ func newWorkflowStatusCommand() *cobra.Command {
 			var plan *workflow.Plan
 			var planLoadErr error
 			if manifest.PlanPath != "" {
-				f, err := os.Open(manifest.PlanPath)
-				if err == nil {
-					defer f.Close()
-					loaded, loadErr := workflow.LoadPlan(f)
-					if loadErr == nil {
-						plan = &loaded
-					} else {
-						planLoadErr = fmt.Errorf("cannot resume: load plan: %w", loadErr)
+				// Trust-boundary check: only open plan if inside the workflow root.
+				if trustErr := workflow.ValidateWorkflowPlanPath(outputDir, manifest.PlanPath); trustErr == nil {
+					f, err := os.Open(manifest.PlanPath)
+					if err == nil {
+						defer f.Close()
+						loaded, loadErr := workflow.LoadPlan(f)
+						if loadErr == nil {
+							plan = &loaded
+						} else {
+							planLoadErr = fmt.Errorf("cannot resume: load plan: %w", loadErr)
+						}
 					}
 				}
 			}
@@ -774,6 +777,11 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 		return fmt.Errorf("cannot resume: manifest has no plan_path")
 	}
 
+	// Trust-boundary check: reject before opening any file.
+	if err := workflow.ValidateWorkflowPlanPath(outputDir, mf.PlanPath); err != nil {
+		return err
+	}
+
 	// Load the plan referenced by the manifest
 	planPath := mf.PlanPath
 
@@ -794,7 +802,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 		return fmt.Errorf("hash plan file: %w", err)
 	}
 
-	if err := workflow.ValidateResumableManifest(mf, planPath, planSHA256); err != nil {
+	if err := workflow.ValidateResumableManifest(mf, outputDir, planPath, planSHA256); err != nil {
 		return err
 	}
 

@@ -680,6 +680,17 @@ JSON 模式会把单个机器可读对象写到 `stdout`。
 
 Legacy manifest 在 text 和 JSON 模式下都仍然可被检查。此时命令依然会渲染状态，但会返回 `resumable: false` 和非空的 `resume_error`。
 
+### status 中的信任边界失败
+
+当 manifest 中记录的 plan 路径解析到 workflow root 之外或通过符号链接逃逸时，`workflow status` 会将该 plan 视为不可信。命令仍然成功，但：
+
+- `resumable` 被设为 `false`
+- `resume_error` 包含信任边界说明字符串
+- `resume_preview` 被省略
+- 其余字段（steps、workflow_summary、runtime_state）正常报告
+
+信任检查由 `ValidateWorkflowPlanPath(outputDir, planPath)` 在 plan 文件打开前执行。
+
 ## Workflow Clean 输出
 
 `binlogviz workflow clean` 用于报告当前 manifest 已不再引用的 workflow 生成文件，并可选报告孤儿 snapshot JSON 文件。
@@ -906,6 +917,8 @@ JSON 描述包含：
 - `workflow resume` 会读取已有的 `manifest.json` 来判断哪些步骤已成功、可以复用
 - Resume 会拒绝旧版 pre-v2 manifest（缺少 `manifest_version` 字段）
 - Resume 会拒绝在 plan 文件哈希与 manifest 中的 `plan_sha256` 不匹配时继续执行
+- Resume 会拒绝在 plan 路径解析到 workflow root 之外或通过符号链接逃逸时继续执行（信任边界硬拒绝，由 `ValidateWorkflowPlanPath(outputDir, planPath)` 在文件打开前强制执行）
+- `ValidateResumableManifest` 现在接受四个参数 `(m Manifest, outputDir string, planPath string, planSHA256 string)`，以在 resume 校验期间强制执行信任边界
 - 更新后的 manifest 会保留原始运行的所有字段，并更新 `mode`、`attempt`、`steps` 和 `status`
 
 ### index.html 更新

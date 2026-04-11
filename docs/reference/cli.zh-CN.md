@@ -651,6 +651,10 @@ binlogviz workflow status <output_dir> --format json
 
 Legacy manifest 仍然可被检查。对于 pre-v2 格式的 manifest，该命令仍会输出状态，但会报告 `resumable: false`，并提供非空的 `resume_error`。
 
+### 信任边界行为
+
+`workflow status` 仅信任 workflow 本地内生根（rooted）的 plan 引用。当 `manifest.plan_path` 解析到 workflow root 之外或通过符号链接逃逸时，plan 会被视为不可信：命令仍然成功并报告完整状态，但会将 `resumable` 设为 `false`，并在 `resume_error` 中填入信任边界说明。位于 root 之外和符号链接逃逸的 plan 路径会在文件打开前被拒绝。信任检查由 `ValidateWorkflowPlanPath(outputDir, planPath)` 执行。
+
 ### 输出行为
 
 - 只支持 `text` 和 `json`
@@ -882,6 +886,9 @@ Resume 会在以下情况拒绝执行：
 - `<output_dir>` 中不存在 `manifest.json`
 - manifest 是旧版 pre-v2 产物（缺少 `manifest_version` 字段）
 - plan 文件 SHA-256 与 manifest 中记录的 `plan_sha256` 不匹配
+- manifest 中记录的 plan 路径解析到 workflow root 之外或通过符号链接逃逸（信任边界硬拒绝）
+
+`ValidateWorkflowPlanPath(outputDir, planPath)` 会在 plan 文件打开前被调用。位于 root 之外和符号链接逃逸的路径会被无条件拒绝。`ValidateResumableManifest` 现在接受四个参数 `(m Manifest, outputDir string, planPath string, planSHA256 string)`，以在 resume 校验期间强制执行信任边界。
 
 ### 输出目录布局
 
