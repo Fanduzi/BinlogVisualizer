@@ -17,6 +17,7 @@ type Status struct {
 	RuntimeState    string              `json:"runtime_state"`
 	Resumable       bool                `json:"resumable"`
 	ResumeError     string              `json:"resume_error"`
+	WorkflowSummary WorkflowSummary     `json:"workflow_summary"`
 	Steps           []StepStatus        `json:"steps"`
 	ResumePreview   []ResumePreviewStep `json:"resume_preview,omitempty"`
 }
@@ -55,6 +56,7 @@ func BuildStatus(outputDir string, manifest Manifest, plan *Plan) (Status, error
 		Status:          manifest.Status,
 		RuntimeState:    "complete",
 		ResumeError:     "",
+		WorkflowSummary: normalizeWorkflowSummary(manifest.WorkflowSummary),
 		Steps:           make([]StepStatus, 0, len(manifest.Steps)),
 	}
 

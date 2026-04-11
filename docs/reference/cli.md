@@ -619,7 +619,7 @@ binlogviz workflow status <output_dir> --format text
 binlogviz workflow status <output_dir> --format json
 ```
 
-`workflow status` inspects an existing workflow output directory without modifying it. It reads `manifest.json`, checks whether each artifact recorded in the manifest currently exists, determines whether the workflow root is resumable, and optionally builds a dry-run resume preview when the saved plan can be loaded.
+`workflow status` inspects an existing workflow output directory without modifying it. It reads `manifest.json`, checks whether each artifact recorded in the manifest currently exists, carries through the persisted `workflow_summary`, determines whether the workflow root is resumable, and optionally builds a dry-run resume preview when the saved plan can be loaded.
 
 The command is read-only:
 
@@ -642,6 +642,7 @@ The command is read-only:
 - `runtime_state`, which is `complete` when all recorded artifacts are present and, if the saved plan can be loaded, reusable snapshots needed for resume are intact; otherwise `incomplete`
 - `resumable`, which is `true` only when the workflow root passes resume validation
 - `resume_error`, which explains why resume is unavailable for legacy manifests, missing plan files, plan hash mismatches, invalid plan loads, or other resume guard failures
+- persisted `workflow_summary`, with normalized `findings`, `recommendations`, and `warnings` arrays copied from the manifest without recomputation
 - per-step artifact presence, using the recorded artifact paths from the manifest
 - `resume_preview`, when the saved plan loads successfully and a dry resume plan can be derived
 

@@ -475,6 +475,46 @@ func writeWorkflowStatusOutput(out io.Writer, format string, status workflow.Sta
 			return err
 		}
 	}
+	if len(status.WorkflowSummary.Recommendations) > 0 {
+		if _, err := fmt.Fprintln(out, "\nWorkflow Recommendations"); err != nil {
+			return err
+		}
+		for _, recommendation := range status.WorkflowSummary.Recommendations {
+			if _, err := fmt.Fprintf(out, "- [%s] %s\n", recommendation.Priority, recommendation.Title); err != nil {
+				return err
+			}
+			if recommendation.Summary != "" {
+				if _, err := fmt.Fprintf(out, "  %s\n", recommendation.Summary); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if len(status.WorkflowSummary.Findings) > 0 {
+		if _, err := fmt.Fprintln(out, "\nWorkflow Findings"); err != nil {
+			return err
+		}
+		for _, finding := range status.WorkflowSummary.Findings {
+			if _, err := fmt.Fprintf(out, "- %s\n", finding.Title); err != nil {
+				return err
+			}
+			if finding.Summary != "" {
+				if _, err := fmt.Fprintf(out, "  %s\n", finding.Summary); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if len(status.WorkflowSummary.Warnings) > 0 {
+		if _, err := fmt.Fprintln(out, "\nWorkflow Summary Warnings"); err != nil {
+			return err
+		}
+		for _, warning := range status.WorkflowSummary.Warnings {
+			if _, err := fmt.Fprintf(out, "- %s\n", warning); err != nil {
+				return err
+			}
+		}
+	}
 	if len(status.ResumePreview) == 0 {
 		return nil
 	}
