@@ -227,6 +227,105 @@ func TestRenderHTMLEscapesHostilePatternContent(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLContainsCompareEvidenceRefAnchors(t *testing.T) {
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+			CurrentTotalTransactions: 4, BaselineTotalTransactions: 2, TotalTransactionsDelta: 2,
+		},
+		KeyFindings: []CompareFinding{
+			{
+				Kind:    "pattern_driver",
+				Title:   "Top pattern driver",
+				Summary: "orders.insert_batch drove most row growth",
+				EvidenceRefs: []EvidenceRef{{
+					Section: "pattern_changes",
+					Key:     "orders.insert_batch",
+					Label:   "orders.insert_batch",
+					Anchor:  "section-pattern-changes",
+				}},
+			},
+			{
+				Kind:    "table_driver",
+				Title:   "Top table driver",
+				Summary: "shop.orders had the largest row change",
+				EvidenceRefs: []EvidenceRef{{
+					Section: "table_changes",
+					Key:     "shop.orders",
+					Label:   "shop.orders",
+					Anchor:  "section-table-changes",
+				}},
+			},
+			{
+				Kind:    "operation_mix_drift",
+				Title:   "Operation mix drift",
+				Summary: "INSERT share increased significantly",
+				EvidenceRefs: []EvidenceRef{{
+					Section: "operation_mix",
+					Label:   "Operation Mix",
+					Anchor:  "section-operation-mix",
+				}},
+			},
+		},
+		PatternChanges: []PatternChange{{PatternKey: "orders.insert_batch", Label: "orders.insert_batch"}},
+		TableChanges:   []TableChange{{Schema: "shop", Table: "orders", DeltaRows: 1000, CurrentRows: 1000, BaselineRows: 0, DeltaPercent: 0}},
+		OperationMix:   []OperationDelta{{Operation: "INSERT", Current: 1000, Baseline: 100, Delta: 900}},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+
+	for _, anchor := range []string{"section-pattern-changes", "section-table-changes", "section-operation-mix"} {
+		if !strings.Contains(html, `id="`+anchor+`"`) {
+			t.Fatalf("html missing anchor %q", anchor)
+		}
+	}
+}
+
+func TestRenderHTMLCompareFindingsEscapeMaliciousContent(t *testing.T) {
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+			CurrentTotalTransactions: 4, BaselineTotalTransactions: 2, TotalTransactionsDelta: 2,
+		},
+		KeyFindings: []CompareFinding{{
+			Kind:    "pattern_driver",
+			Title:   `<img src=x onerror=alert(1)>`,
+			Summary: `<script>alert(1)</script>`,
+			EvidenceRefs: []EvidenceRef{{
+				Section: "pattern_changes",
+				Key:     "evil",
+				Label:   `<img src=x onerror=alert(1)>`,
+				Anchor:  "section-pattern-changes",
+			}},
+		}},
+		PatternChanges: []PatternChange{{PatternKey: "evil", Label: `<img src=x onerror=alert(1)>`}},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+	if strings.Contains(html, "findingsEl.innerHTML") {
+		t.Fatalf("findings renderer should not use innerHTML")
+	}
+	if !strings.Contains(html, "textContent") {
+		t.Fatalf("findings renderer should use textContent")
+	}
+	if strings.Contains(html, `<script>alert(1)</script>`) {
+		t.Fatalf("html contains raw script tag from finding summary")
+	}
+	if strings.Contains(html, `<img src=x onerror=alert(1)>`) {
+		t.Fatalf("html contains raw img injection from finding title or label")
+	}
+}
+
 func TestRenderHTMLUsesDOMAPINotInnerHTMLForFindings(t *testing.T) {
 	result := CompareResult{
 		CurrentLabel:  "current",
