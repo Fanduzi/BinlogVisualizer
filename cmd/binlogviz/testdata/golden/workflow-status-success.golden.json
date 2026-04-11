@@ -8,6 +8,11 @@
   "runtime_state": "complete",
   "resumable": true,
   "resume_error": "",
+  "workflow_summary": {
+    "findings": [],
+    "recommendations": [],
+    "warnings": []
+  },
   "steps": [
     {
       "kind": "analyze",

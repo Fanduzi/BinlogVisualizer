@@ -619,7 +619,7 @@ binlogviz workflow status <output_dir> --format text
 binlogviz workflow status <output_dir> --format json
 ```
 
-`workflow status` 以只读方式检查一个已有的 workflow 输出目录。它会读取 `manifest.json`，检查 manifest 中记录的每个 artifact 当前是否存在，判断该 workflow root 是否可 resume，并在保存的 plan 可以成功加载时给出 dry-run resume preview。
+`workflow status` 以只读方式检查一个已有的 workflow 输出目录。它会读取 `manifest.json`，检查 manifest 中记录的每个 artifact 当前是否存在，直接带出已持久化的 `workflow_summary`，判断该 workflow root 是否可 resume，并在保存的 plan 可以成功加载时给出 dry-run resume preview。
 
 该命令严格只读：
 
@@ -642,6 +642,7 @@ binlogviz workflow status <output_dir> --format json
 - `runtime_state`：当所有已记录 artifact 都存在，且在保存的 plan 可以成功加载时，resume 所需的可复用 snapshot 也完整时为 `complete`；否则为 `incomplete`
 - `resumable`：只有在该 workflow root 通过 resume 校验时才为 `true`
 - `resume_error`：当 legacy manifest、plan 文件缺失、plan 哈希不匹配、plan 加载失败或其他 resume guard 失败时，用于解释为什么不能 resume
+- 已持久化的 `workflow_summary`，其中 `findings`、`recommendations` 和 `warnings` 会以规范化数组形式直接从 manifest 透传，不会在 status 中重建
 - 每个步骤的 artifact presence，使用 manifest 中记录的 artifact 路径
 - `resume_preview`：当保存的 plan 成功加载且可以推导出 dry resume 计划时出现
 

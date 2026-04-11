@@ -8,5 +8,10 @@
   "runtime_state": "complete",
   "resumable": false,
   "resume_error": "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead",
+  "workflow_summary": {
+    "findings": [],
+    "recommendations": [],
+    "warnings": []
+  },
   "steps": []
 }

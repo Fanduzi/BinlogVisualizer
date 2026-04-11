@@ -1420,6 +1420,70 @@ func TestWorkflowStatusJSONOutputForHealthyRoot(t *testing.T) {
 	}
 }
 
+func TestWorkflowStatusJSONOutputIncludesWorkflowSummary(t *testing.T) {
+	outputDir := t.TempDir()
+	manifest := workflow.Manifest{
+		ManifestVersion: 2,
+		WorkflowName:    "status-summary-json",
+		Status:          "success",
+		WorkflowSummary: workflow.WorkflowSummary{
+			Findings: []workflow.WorkflowFinding{{
+				Kind:              "pattern_driver",
+				Title:             "Top pattern driver",
+				Summary:           "refunds.create drove most row growth",
+				SourceStepKind:    "compare",
+				SourceStepName:    "week2_vs_week1",
+				SourceReportPath:  "compare/week2_vs_week1.html",
+				SourceReportLabel: "week2_vs_week1",
+			}},
+			Recommendations: []workflow.WorkflowRecommendation{{
+				Kind:                "check_pattern_driver",
+				Priority:            "high",
+				Title:               "Check pattern driver",
+				Summary:             "Review the source report.",
+				RelatedFindingKinds: []string{"pattern_driver"},
+				SourceStepKind:      "compare",
+				SourceStepName:      "week2_vs_week1",
+				SourceReportPath:    "compare/week2_vs_week1.html",
+				SourceReportLabel:   "week2_vs_week1",
+			}},
+			Warnings: []string{"compare step \"week2_vs_week1\": missing JSON artifact"},
+		},
+		Steps: []workflow.StepRecord{},
+	}
+	if err := workflow.WriteManifest(filepath.Join(outputDir, "manifest.json"), manifest); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		WorkflowSummary workflow.WorkflowSummary `json:"workflow_summary"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if len(decoded.WorkflowSummary.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %#v", decoded.WorkflowSummary)
+	}
+	if len(decoded.WorkflowSummary.Recommendations) != 1 {
+		t.Fatalf("expected 1 recommendation, got %#v", decoded.WorkflowSummary)
+	}
+	if len(decoded.WorkflowSummary.Warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %#v", decoded.WorkflowSummary)
+	}
+}
+
 func TestWorkflowStatusShowsIncompleteWhenArtifactMissing(t *testing.T) {
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
@@ -1477,9 +1541,10 @@ func TestWorkflowStatusLegacyManifestRemainsInspectable(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	var decoded struct {
-		ManifestVersion int    `json:"manifest_version"`
-		Resumable       bool   `json:"resumable"`
-		ResumeError     string `json:"resume_error"`
+		ManifestVersion int                     `json:"manifest_version"`
+		Resumable       bool                    `json:"resumable"`
+		ResumeError     string                  `json:"resume_error"`
+		WorkflowSummary workflow.WorkflowSummary `json:"workflow_summary"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
 		t.Fatalf("decode json output: %v\n%s", err, stdout)
@@ -1489,6 +1554,109 @@ func TestWorkflowStatusLegacyManifestRemainsInspectable(t *testing.T) {
 	}
 	if !strings.Contains(decoded.ResumeError, "legacy format") {
 		t.Fatalf("expected legacy format error, got %#v", decoded)
+	}
+	if decoded.WorkflowSummary.Findings == nil || decoded.WorkflowSummary.Recommendations == nil || decoded.WorkflowSummary.Warnings == nil {
+		t.Fatalf("expected normalized workflow_summary arrays, got %#v", decoded.WorkflowSummary)
+	}
+}
+
+func TestWorkflowStatusTextOutputIncludesWorkflowSummarySections(t *testing.T) {
+	outputDir := t.TempDir()
+	manifest := workflow.Manifest{
+		ManifestVersion: 2,
+		WorkflowName:    "status-summary-text",
+		Status:          "success",
+		WorkflowSummary: workflow.WorkflowSummary{
+			Findings: []workflow.WorkflowFinding{{
+				Kind:              "pattern_driver",
+				Title:             "Top pattern driver",
+				Summary:           "refunds.create drove most row growth",
+				SourceStepKind:    "compare",
+				SourceStepName:    "week2_vs_week1",
+				SourceReportPath:  "compare/week2_vs_week1.html",
+				SourceReportLabel: "week2_vs_week1",
+			}},
+			Recommendations: []workflow.WorkflowRecommendation{{
+				Kind:                "check_pattern_driver",
+				Priority:            "high",
+				Title:               "Check pattern driver",
+				Summary:             "Review the source report.",
+				RelatedFindingKinds: []string{"pattern_driver"},
+				SourceStepKind:      "compare",
+				SourceStepName:      "week2_vs_week1",
+				SourceReportPath:    "compare/week2_vs_week1.html",
+				SourceReportLabel:   "week2_vs_week1",
+			}},
+			Warnings: []string{"compare step \"week2_vs_week1\": missing JSON artifact"},
+		},
+		Steps: []workflow.StepRecord{},
+	}
+	if err := workflow.WriteManifest(filepath.Join(outputDir, "manifest.json"), manifest); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	for _, token := range []string{
+		"Workflow Recommendations",
+		"Workflow Findings",
+		"Workflow Summary Warnings",
+		"Check pattern driver",
+		"Top pattern driver",
+		`compare step "week2_vs_week1": missing JSON artifact`,
+	} {
+		if !strings.Contains(stdout, token) {
+			t.Fatalf("expected %q in stdout, got %q", token, stdout)
+		}
+	}
+}
+
+func TestWorkflowStatusTextOutputOmitsEmptyWorkflowSummarySections(t *testing.T) {
+	outputDir := t.TempDir()
+	manifest := workflow.Manifest{
+		ManifestVersion: 2,
+		WorkflowName:    "status-summary-empty-sections",
+		Status:          "success",
+		WorkflowSummary: workflow.WorkflowSummary{
+			Findings:        []workflow.WorkflowFinding{},
+			Recommendations: []workflow.WorkflowRecommendation{},
+			Warnings:        []string{"compare step \"week2_vs_week1\": missing JSON artifact"},
+		},
+		Steps: []workflow.StepRecord{},
+	}
+	if err := workflow.WriteManifest(filepath.Join(outputDir, "manifest.json"), manifest); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, "Workflow Summary Warnings") {
+		t.Fatalf("expected warnings section, got %q", stdout)
+	}
+	for _, token := range []string{"Workflow Recommendations", "Workflow Findings"} {
+		if strings.Contains(stdout, token) {
+			t.Fatalf("expected %q to be omitted, got %q", token, stdout)
+		}
 	}
 }
 

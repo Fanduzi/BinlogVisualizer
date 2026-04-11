@@ -613,6 +613,7 @@ It then renders:
 - per-step `status`
 - optional per-step `execution`
 - per-step artifact presence, showing recorded relative paths and marking missing files as missing
+- optional `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings` sections rendered only when the persisted manifest arrays are non-empty
 - an optional `Resume Preview` section with dry-run `reuse` / `rerun` decisions and their reasons
 
 Representative meanings:
@@ -639,6 +640,7 @@ Top-level fields:
 | `runtime_state` | string | yes | `complete` or `incomplete` based on current runtime inspection |
 | `resumable` | boolean | yes | Whether resume is currently allowed |
 | `resume_error` | string | yes | Empty when resumable; explanatory string otherwise |
+| `workflow_summary` | object | yes | Persisted manifest summary copied through as normalized arrays without recomputation |
 | `steps` | array | yes | Per-step runtime inspection records |
 | `resume_preview` | array | no | Dry-run resume decisions; omitted when no plan-derived preview is available |
 

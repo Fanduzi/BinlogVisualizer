@@ -81,6 +81,9 @@ func TestBuildStatusLegacyManifestIsNonResumable(t *testing.T) {
 	if !strings.Contains(status.ResumeError, "legacy format") {
 		t.Fatalf("expected legacy resume error, got %q", status.ResumeError)
 	}
+	if status.WorkflowSummary.Findings == nil || status.WorkflowSummary.Recommendations == nil || status.WorkflowSummary.Warnings == nil {
+		t.Fatalf("expected normalized workflow_summary arrays, got %#v", status.WorkflowSummary)
+	}
 }
 
 func TestBuildStatusMissingPlanStillBuilds(t *testing.T) {

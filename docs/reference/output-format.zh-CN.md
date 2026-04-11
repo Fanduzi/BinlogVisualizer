@@ -613,6 +613,7 @@ binlogviz compare current.json baseline.json --format html > compare.html
 - 每个步骤的 `status`
 - 可选的每步骤 `execution`
 - 每个步骤的 artifact presence，展示已记录的相对路径，并把缺失文件标记为 missing
+- 只有在已持久化数组非空时才渲染的 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings` 分区
 - 可选的 `Resume Preview` 分区，给出 dry-run 的 `reuse` / `rerun` 决策及其原因
 
 代表性含义：
@@ -639,6 +640,7 @@ JSON 模式会把单个机器可读对象写到 `stdout`。
 | `runtime_state` | string | yes | 基于当前运行时检查得到的 `complete` 或 `incomplete` |
 | `resumable` | boolean | yes | 当前是否允许 resume |
 | `resume_error` | string | yes | 可 resume 时为空；否则为解释性错误字符串 |
+| `workflow_summary` | object | yes | 已持久化的 manifest summary；以规范化数组形式直接透传，不会重建 |
 | `steps` | array | yes | 每步骤的运行时检查记录 |
 | `resume_preview` | array | no | dry-run resume 决策；当无法基于 plan 构建 preview 时省略 |
 

@@ -112,7 +112,7 @@ tree artifacts/incident-investigation
 
 在真正执行之前，`workflow validate` 会只基于 `plan.yaml` 做静态可运行性检查，`workflow describe` 则会预览该 plan 将产生的 analyze / compare / trend artifact 布局。两个命令都支持 `--format text` 和 `--format json`，且只读取 plan 文件，不会检查 `output_dir`、`manifest.json` 或 `index.html`。
 
-`workflow status` 是针对已有 workflow root 的只读运行时检查命令。它会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable` 和 `resume_error`，并在保存的 plan 仍可加载时给出 dry `resume_preview`。它不会执行步骤，也不会重写任何 workflow 输出。
+`workflow status` 是针对已有 workflow root 的只读运行时检查命令。它会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable` 和 `resume_error`，在 `--format json` 下直接带出已持久化的 `workflow_summary`，并在保存的 plan 仍可加载时给出 dry `resume_preview`。文本输出只会在这些已持久化数组非空时渲染 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings`。它不会执行步骤、不会重建 workflow summary，也不会重写任何 workflow 输出。
 
 `workflow clean` 则是这一生命周期中的最终 maintenance 命令。它以当前 manifest 为唯一真相源，默认 dry-run，报告 `analyze/`、`compare/`、`trend/` 下已不再被引用的孤儿生成物，并且只有显式加 `--include-snapshots` 时才会把孤儿 snapshot JSON 纳入候选。`--apply` 会执行 best-effort 删除，但仍然不会触碰 `manifest.json`、`index.html`、plan 文件以及任何超出范围的未知文件。
 
