@@ -152,7 +152,15 @@
         "first_rows": 1200,
         "last_rows": 1600,
         "table": "shop.orders"
-      }
+      },
+      "evidence_refs": [
+        {
+          "section": "table_trends",
+          "key": "shop.orders",
+          "label": "shop.orders",
+          "anchor": "table-0"
+        }
+      ]
     }
   ]
 }

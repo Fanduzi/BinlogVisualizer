@@ -58,6 +58,7 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 					"baseline_rows": float64(1500),
 					"current_rows":  float64(2400),
 				},
+				EvidenceRefs: nil,
 			},
 			{
 				Kind:    "table_driver",
@@ -67,6 +68,9 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 					"table":                "orders.refunds",
 					"delta_rows":           float64(900),
 					"share_of_total_delta": float64(1),
+				},
+				EvidenceRefs: []EvidenceRef{
+					{Section: "table_changes", Key: "orders.refunds", Label: "orders.refunds", Anchor: "section-table-changes"},
 				},
 			},
 		},

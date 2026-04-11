@@ -388,7 +388,7 @@ The report includes:
 
 `binlogviz trend` renders a chronological report for two or more snapshots. It uses the same stdout/stderr separation rules as the other commands and supports `text`, `json`, and `html`.
 
-Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, and a `trend_summary` array with deterministic finding objects capped at 5. HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, plus a `Key Findings` section when findings are present.
+Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, and a `trend_summary` array with deterministic finding objects capped at 5. Each finding may include `evidence_refs` linking it back to relevant report sections (`pattern_trends`, `table_trends`, `ordered_points`, `aggregate_insights`). HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, plus a `Key Findings` section with clickable evidence ref links when findings are present.
 
 ## Compare JSON Output
 
@@ -472,7 +472,7 @@ Text mode renders a fixed compare report for terminal review. It includes:
 - snapshot context lines for requested window, input mode, source summary, and active filters when snapshot metadata is present
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
-- `Key Findings` between warnings and `Top Table Changes` when findings are present
+- `Key Findings` between warnings and `Top Table Changes` when findings are present, with `evidence:` labels linking findings to relevant report sections
 - `Top Pattern Changes` between `Top Table Changes` and `Operation Mix`
 - operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
 - alert additions and removals
@@ -512,6 +512,16 @@ Each entry in the `key_findings` array contains:
 | `title` | string | yes | Short human-readable title |
 | `summary` | string | yes | One-sentence evidence-based summary |
 | `evidence` | object | yes | Structured key-value map with supporting metrics |
+| `evidence_refs` | array | no | Traceability links to report sections; omitted when empty |
+
+Each `evidence_refs` entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `section` | string | yes | Report section the finding links to (e.g. `table_changes`, `pattern_changes`, `operation_mix`) |
+| `key` | string | no | Item key within the section (e.g. `orders.refunds`); omitted for section-level refs |
+| `label` | string | yes | Human-readable label for the linked item |
+| `anchor` | string | yes | HTML anchor ID for in-page navigation |
 
 At a user level, the JSON output answers the same operational questions as the text report, but in a deterministic structure for pipelines, dashboards, or follow-up automation.
 

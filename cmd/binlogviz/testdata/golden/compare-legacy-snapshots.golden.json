@@ -28,7 +28,15 @@
         "delta_rows": 900,
         "share_of_total_delta": 1,
         "table": "orders.refunds"
-      }
+      },
+      "evidence_refs": [
+        {
+          "section": "table_changes",
+          "key": "orders.refunds",
+          "label": "orders.refunds",
+          "anchor": "section-table-changes"
+        }
+      ]
     }
   ],
   "table_changes": [

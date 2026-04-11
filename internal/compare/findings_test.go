@@ -249,3 +249,120 @@ func TestBuildKeyFindings_VolumeDeclineUsesDeclineLanguage(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildCompareEvidenceRefs_PatternDriverHasRef(t *testing.T) {
+	current := InputReport{
+		Summary: InputSummary{TotalRows: 10000, TotalTransactions: 500},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 6000},
+			{Schema: "shop", Table: "payments", TotalRows: 4000},
+		},
+		Patterns: []InputPattern{
+			{PatternKey: "orders.insert_batch", Label: "orders.insert_batch", TotalRows: 6000, ShareOfRows: 0.6},
+			{PatternKey: "payments.update_status", Label: "payments.update_status", TotalRows: 4000, ShareOfRows: 0.4},
+		},
+	}
+	baseline := InputReport{
+		Summary: InputSummary{TotalRows: 5000, TotalTransactions: 250},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 3000},
+			{Schema: "shop", Table: "payments", TotalRows: 2000},
+		},
+		Patterns: []InputPattern{
+			{PatternKey: "orders.insert_batch", Label: "orders.insert_batch", TotalRows: 3000, ShareOfRows: 0.6},
+			{PatternKey: "payments.update_status", Label: "payments.update_status", TotalRows: 2000, ShareOfRows: 0.4},
+		},
+	}
+
+	result := BuildCompareResult(current, baseline)
+
+	var patternDriver *CompareFinding
+	for i := range result.KeyFindings {
+		if result.KeyFindings[i].Kind == "pattern_driver" {
+			patternDriver = &result.KeyFindings[i]
+			break
+		}
+	}
+	if patternDriver == nil {
+		t.Fatal("expected pattern_driver finding")
+	}
+	if len(patternDriver.EvidenceRefs) == 0 {
+		t.Fatal("expected pattern_driver to have evidence_refs")
+	}
+	ref := patternDriver.EvidenceRefs[0]
+	if ref.Section != "pattern_changes" {
+		t.Fatalf("expected section pattern_changes, got %q", ref.Section)
+	}
+	if ref.Anchor == "" {
+		t.Fatal("expected non-empty anchor")
+	}
+}
+
+func TestBuildCompareEvidenceRefs_VolumeChangeNoRef(t *testing.T) {
+	current := InputReport{
+		Summary: InputSummary{TotalRows: 10000, TotalTransactions: 500},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 10000},
+		},
+	}
+	baseline := InputReport{
+		Summary: InputSummary{TotalRows: 5000, TotalTransactions: 250},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 5000},
+		},
+	}
+
+	result := BuildCompareResult(current, baseline)
+	if len(result.KeyFindings) == 0 {
+		t.Fatal("expected at least one finding")
+	}
+	vol := result.KeyFindings[0]
+	if vol.Kind != "volume_change" {
+		t.Fatalf("expected volume_change, got %q", vol.Kind)
+	}
+	if len(vol.EvidenceRefs) != 0 {
+		t.Fatalf("volume_change should have no evidence_refs, got %v", vol.EvidenceRefs)
+	}
+}
+
+func TestBuildCompareEvidenceRefs_TableDriverHasRef(t *testing.T) {
+	current := InputReport{
+		Summary: InputSummary{TotalRows: 10000, TotalTransactions: 500},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 7000},
+			{Schema: "shop", Table: "payments", TotalRows: 3000},
+		},
+		Patterns: []InputPattern{
+			{PatternKey: "orders.bulk", Label: "orders.bulk", TotalRows: 7000, ShareOfRows: 0.7},
+		},
+	}
+	baseline := InputReport{
+		Summary: InputSummary{TotalRows: 5000, TotalTransactions: 250},
+		Tables: []InputTable{
+			{Schema: "shop", Table: "orders", TotalRows: 3500},
+			{Schema: "shop", Table: "payments", TotalRows: 1500},
+		},
+		Patterns: []InputPattern{
+			{PatternKey: "orders.bulk", Label: "orders.bulk", TotalRows: 3500, ShareOfRows: 0.7},
+		},
+	}
+
+	result := BuildCompareResult(current, baseline)
+	var tableDriver *CompareFinding
+	for i := range result.KeyFindings {
+		if result.KeyFindings[i].Kind == "table_driver" {
+			tableDriver = &result.KeyFindings[i]
+			break
+		}
+	}
+	if tableDriver == nil {
+		t.Fatal("expected table_driver finding")
+	}
+	if len(tableDriver.EvidenceRefs) == 0 {
+		t.Fatal("expected table_driver to have evidence_refs")
+	}
+	ref := tableDriver.EvidenceRefs[0]
+	if ref.Section != "table_changes" {
+		t.Fatalf("expected section table_changes, got %q", ref.Section)
+	}
+}

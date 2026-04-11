@@ -103,6 +103,87 @@ func TestBuildTrendSummary_DeterministicOrdering(t *testing.T) {
 	}
 }
 
+func TestBuildTrendEvidenceRefs_RisingPatternHasRef(t *testing.T) {
+	result := buildTestResult(3, []testPatternPoint{
+		{"p1", "payments.update", 1000, 0.3, 1500, 0.5},
+		{"p2", "orders.insert", 800, 0.25, 900, 0.25},
+	})
+	summary := buildTrendSummary(result)
+	tempResult := result
+	tempResult.TrendSummary = summary
+	buildTrendEvidenceRefs(&tempResult)
+
+	var rising *TrendFinding
+	for i := range tempResult.TrendSummary {
+		if tempResult.TrendSummary[i].Kind == "rising_pattern" {
+			rising = &tempResult.TrendSummary[i]
+			break
+		}
+	}
+	if rising == nil {
+		t.Fatal("expected rising_pattern finding")
+	}
+	if len(rising.EvidenceRefs) == 0 {
+		t.Fatal("expected rising_pattern to have evidence_refs")
+	}
+	ref := rising.EvidenceRefs[0]
+	if ref.Section != "pattern_trends" {
+		t.Fatalf("expected section pattern_trends, got %q", ref.Section)
+	}
+	if ref.Anchor == "" {
+		t.Fatal("expected non-empty anchor")
+	}
+}
+
+func TestBuildTrendEvidenceRefs_TableTrendHasRef(t *testing.T) {
+	result := buildTestResult(3, []testPatternPoint{
+		{"p1", "payments.update", 1000, 0.3, 1500, 0.5},
+	})
+	summary := buildTrendSummary(result)
+	tempResult := result
+	tempResult.TrendSummary = summary
+	buildTrendEvidenceRefs(&tempResult)
+
+	var tableTrend *TrendFinding
+	for i := range tempResult.TrendSummary {
+		if tempResult.TrendSummary[i].Kind == "table_trend" {
+			tableTrend = &tempResult.TrendSummary[i]
+			break
+		}
+	}
+	if tableTrend == nil {
+		t.Fatal("expected table_trend finding")
+	}
+	if len(tableTrend.EvidenceRefs) == 0 {
+		t.Fatal("expected table_trend to have evidence_refs")
+	}
+	ref := tableTrend.EvidenceRefs[0]
+	if ref.Section != "table_trends" {
+		t.Fatalf("expected section table_trends, got %q", ref.Section)
+	}
+}
+
+func TestBuildTrendEvidenceRefs_LowSignalNoFalseRefs(t *testing.T) {
+	result := buildTestResult(2, []testPatternPoint{
+		{"p1", "stable", 1000, 0.5, 1020, 0.5},
+	})
+	summary := buildTrendSummary(result)
+	tempResult := result
+	tempResult.TrendSummary = summary
+	buildTrendEvidenceRefs(&tempResult)
+
+	for _, f := range tempResult.TrendSummary {
+		for _, ref := range f.EvidenceRefs {
+			switch ref.Section {
+			case "pattern_trends", "table_trends", "ordered_points", "aggregate_insights":
+				// valid
+			default:
+				t.Fatalf("unexpected section %q in evidence ref", ref.Section)
+			}
+		}
+	}
+}
+
 // testPatternPoint describes a single pattern trend for test data generation.
 type testPatternPoint struct {
 	key          string
