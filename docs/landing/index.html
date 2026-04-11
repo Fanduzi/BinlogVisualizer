@@ -582,6 +582,126 @@
         background: linear-gradient(135deg, var(--accent), var(--warn));
       }
 
+      .release-stack {
+        max-width: 980px;
+        margin: 0 auto;
+        display: grid;
+        gap: 24px;
+      }
+
+      .release-spotlight {
+        border: 1px solid rgba(88,166,255,0.28);
+        background: linear-gradient(135deg, rgba(88,166,255,0.12), rgba(17,24,39,0.94));
+        border-radius: 22px;
+        padding: 28px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+      }
+
+      .release-kicker {
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 10px;
+      }
+
+      .release-version-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+
+      .release-version {
+        font-size: clamp(1.5rem, 3vw, 2rem);
+        font-weight: 900;
+        letter-spacing: -0.03em;
+      }
+
+      .release-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+
+      .release-copy {
+        font-size: 0.92rem;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .release-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 0.9rem;
+      }
+
+      .release-link:hover { color: var(--text); }
+
+      .release-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .release-card {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 18px;
+        padding: 22px;
+        min-height: 100%;
+      }
+
+      .release-card.archive {
+        background: linear-gradient(180deg, rgba(88,166,255,0.06), rgba(17,24,39,0.88));
+        border-color: rgba(88,166,255,0.18);
+      }
+
+      .release-card-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+      }
+
+      .release-card-version {
+        font-weight: 800;
+        font-size: 1rem;
+      }
+
+      .release-card-label {
+        font-size: 0.8rem;
+        color: var(--muted);
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .release-card-copy {
+        font-size: 0.86rem;
+        color: var(--muted);
+        line-height: 1.65;
+        margin-bottom: 14px;
+      }
+
+      .release-card-link {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 0.86rem;
+      }
+
+      .release-card-link:hover { color: var(--text); }
+
       .tab-shell {
         border: 1px solid var(--border);
         border-radius: var(--radius);
@@ -883,6 +1003,7 @@
         .split-grid,
         .install-grid,
         .footer-grid,
+        .release-grid,
         .preview-grid {
           grid-template-columns: 1fr 1fr;
         }
@@ -919,9 +1040,13 @@
         .split-grid,
         .install-grid,
         .footer-grid,
+        .release-grid,
         .preview-grid {
           grid-template-columns: 1fr;
         }
+
+        .release-spotlight,
+        .release-card { padding: 20px; }
 
         .workflow-steps {
           flex-direction: column;
@@ -1251,72 +1376,54 @@ It has published docs, explicit output contracts, release notes around HTML and 
         <section id="releases" class="band reveal">
           <div class="container">
             <p class="section-label" data-i18n="releases.label">Releases</p>
-            <h2 class="section-title" data-i18n="releases.title">A short release arc that already explains the product direction</h2>
-            <p class="section-sub" data-i18n="releases.sub">The sequence matters: filters and analysis control first, then report exports, then visual compare.
-That progression tells a better website story than raw feature lists alone.</p>
+            <h2 class="section-title" data-i18n="releases.title">Release focus and recent milestones</h2>
+            <p class="section-sub" data-i18n="releases.sub">Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.</p>
 
-            <div class="split-grid">
-              <div class="timeline-wrap reveal">
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-02</div>
-                  <div class="timeline-title" data-i18n="releases.items.filters.title">v0.5.x — focus and control</div>
-                  <div class="timeline-desc" data-i18n="releases.items.filters.desc">Time filters, object selectors, and better control over the incident analysis surface.</div>
+            <div class="release-stack reveal">
+              <article class="release-spotlight">
+                <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
+                <div class="release-version-row">
+                  <div class="release-version">v0.14.0</div>
+                  <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">release focus</span>
                 </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-03</div>
-                  <div class="timeline-title" data-i18n="releases.items.exports.title">v0.6.0 — report exports for handoff</div>
-                  <div class="timeline-desc" data-i18n="releases.items.exports.desc">Markdown and HTML exports turned analysis results into artifacts that can move cleanly into docs, reviews, and browser-based sharing.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.reports.title">v0.9.0 — snapshot trends across several windows</div>
-                  <div class="timeline-desc" data-i18n="releases.items.reports.desc">Teams can now line up saved snapshots by window start time and render text, JSON, or HTML drift reports with optional baseline deltas.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.hardening.title">v0.9.1 — trustworthy snapshot history workflow</div>
-                  <div class="timeline-desc" data-i18n="releases.items.hardening.desc">Analyze-generated snapshots now work in trend by default, older history can fall back to summary window timestamps, and warning counts reflect bounded query-context loss.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.patterns.title">v0.10.0 — workload pattern intelligence</div>
-                  <div class="timeline-desc" data-i18n="releases.items.patterns.desc">Analyze, compare, and trend can now explain workload drift in terms of repeated write patterns, not just totals and hot tables.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.workflowv1.title">v0.11.0 — workflow v1</div>
-                  <div class="timeline-desc" data-i18n="releases.items.workflowv1.desc">Workflow run, resume, validate, describe, status, and clean now form a complete investigation lifecycle with manifest-backed state and HTML landing output.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.explanations.title">v0.12.0 — change explanation layer</div>
-                  <div class="timeline-desc" data-i18n="releases.items.explanations.desc">Compare and trend now surface deterministic, evidence-based findings before detailed tables and charts, so the main drivers are visible first.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.evidence.title">v0.13.0 — evidence drilldown</div>
-                  <div class="timeline-desc" data-i18n="releases.items.evidence.desc">Findings now link back to supporting compare and trend evidence, giving summaries traceable report anchors instead of isolated conclusions.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date">2026-04</div>
-                  <div class="timeline-title" data-i18n="releases.items.handoff.title">v0.14.0 — workflow handoff</div>
-                  <div class="timeline-desc" data-i18n="releases.items.handoff.desc">Workflow summaries, status surfaces, and deterministic export bundles now turn investigation results into shareable DBA handoff artifacts.</div>
-                </div>
-                <div class="timeline-item">
-                  <div class="timeline-date" data-i18n="releases.items.now.date">Now</div>
-                  <div class="timeline-title" data-i18n="releases.items.now.title">Clear DBA-first positioning</div>
-                  <div class="timeline-desc" data-i18n="releases.items.now.desc">A local CLI that explains workload shifts faster and hands the answer off cleanly.</div>
-                </div>
-              </div>
+                <div class="release-title" data-i18n="releases.currentTitle">Workflow handoff</div>
+                <div class="release-copy" data-i18n="releases.items.v0140">Workflow summaries, status surfaces, and deterministic export bundles now turn investigation results into shareable DBA handoff artifacts.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.14.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+              </article>
 
-              <div class="workflow-panel reveal">
-                <h3 data-i18n="releases.side.title">What the website should emphasize</h3>
-                <ul class="proof-list">
-                  <li data-i18n="releases.side.one">Lead with operator questions, not parser internals.</li>
-                  <li data-i18n="releases.side.two">Show that the tool works locally on files teams already have.</li>
-                  <li data-i18n="releases.side.three">Highlight HTML as the bridge from CLI investigation to team communication and current-versus-baseline review.</li>
-                  <li data-i18n="releases.side.four">Keep the product scope narrow and credible.</li>
-                </ul>
+              <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.13.0</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0130">Evidence</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0130">Findings now link back to supporting compare and trend evidence, so report summaries are traceable instead of isolated.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.13.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0130">Open v0.13.0 notes →</a>
+                </article>
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.12.0</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0120">Explanations</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0120">Compare and trend began surfacing deterministic findings before detailed tables and charts, making the main change drivers visible first.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.12.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0120">Open v0.12.0 notes →</a>
+                </article>
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.11.0</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0110">Workflow v1</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0110">Workflow run, resume, validate, describe, status, and clean established the first full manifest-backed investigation lifecycle.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.11.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0110">Open v0.11.0 notes →</a>
+                </article>
+                <article class="release-card archive">
+                  <div class="release-card-head">
+                    <div class="release-card-version" data-i18n="releases.archiveTitle">Release archive</div>
+                    <div class="release-card-label" data-i18n="releases.archiveLabel">All versions</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.archiveDesc">Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/releases" target="_blank" rel="noopener" data-i18n="releases.archiveLink">View all release notes →</a>
+                </article>
               </div>
             </div>
           </div>
@@ -1537,26 +1644,31 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           },
           releases: {
             label: 'Releases',
-            title: 'A short release arc that already explains the product direction',
-            sub: 'The sequence matters: filters and analysis control first, then report exports, then named snapshots and visual compare.\nThat progression tells a better website story than raw feature lists alone.',
-            items: {
-              filters: { title: 'v0.5.x — focus and control', desc: 'Time filters, object selectors, and better control over the incident analysis surface.' },
-              exports: { title: 'v0.6.0 — report exports for handoff', desc: 'Markdown and HTML exports turned analysis results into artifacts that can move cleanly into docs, reviews, and browser-based sharing.' },
-              reports: { title: 'v0.9.0 — snapshot trends across several windows', desc: 'Teams can now line up saved snapshots by window start time and render text, JSON, or HTML drift reports with optional baseline deltas.' },
-              hardening: { title: 'v0.9.1 — trustworthy snapshot history workflow', desc: 'Analyze-generated snapshots now work in trend by default, older history can fall back to summary window timestamps, and warning counts reflect bounded query-context loss.' },
-              patterns: { title: 'v0.10.0 — workload pattern intelligence', desc: 'Analyze, compare, and trend can now explain workload drift in terms of repeated write patterns, not just totals and hot tables.' },
-              workflowv1: { title: 'v0.11.0 — workflow v1', desc: 'Workflow run, resume, validate, describe, status, and clean now form a complete investigation lifecycle with manifest-backed state and HTML landing output.' },
-              explanations: { title: 'v0.12.0 — change explanation layer', desc: 'Compare and trend now surface deterministic, evidence-based findings before detailed tables and charts, so the main drivers are visible first.' },
-              evidence: { title: 'v0.13.0 — evidence drilldown', desc: 'Findings now link back to supporting compare and trend evidence, giving summaries traceable report anchors instead of isolated conclusions.' },
-              handoff: { title: 'v0.14.0 — workflow handoff', desc: 'Workflow summaries, status surfaces, and deterministic export bundles now turn investigation results into shareable DBA handoff artifacts.' },
-              now: { date: 'Now', title: 'Clear DBA-first positioning', desc: 'A local CLI that explains workload shifts faster and hands the answer off cleanly.' }
+            title: 'Release focus and recent milestones',
+            sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
+            currentLabel: 'Current release',
+            currentFocus: 'release focus',
+            currentTitle: 'Workflow handoff',
+            currentLink: 'Read release notes →',
+            labels: {
+              v0130: 'Evidence',
+              v0120: 'Explanations',
+              v0110: 'Workflow v1'
             },
-            side: {
-              title: 'What the website should emphasize',
-              one: 'Lead with operator questions, not parser internals.',
-              two: 'Show that the tool works locally on files teams already have.',
-              three: 'Highlight HTML as the bridge from CLI investigation to team communication and current-versus-baseline review.',
-              four: 'Keep the product scope narrow and credible.'
+            links: {
+              v0130: 'Open v0.13.0 notes →',
+              v0120: 'Open v0.12.0 notes →',
+              v0110: 'Open v0.11.0 notes →'
+            },
+            archiveTitle: 'Release archive',
+            archiveLabel: 'All versions',
+            archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
+            archiveLink: 'View all release notes →',
+            items: {
+              v0140: 'Workflow summaries, status surfaces, and deterministic export bundles now turn investigation results into shareable DBA handoff artifacts.',
+              v0130: 'Findings now link back to supporting compare and trend evidence, so report summaries are traceable instead of isolated.',
+              v0120: 'Compare and trend began surfacing deterministic findings before detailed tables and charts, making the main change drivers visible first.',
+              v0110: 'Workflow run, resume, validate, describe, status, and clean established the first full manifest-backed investigation lifecycle.'
             }
           },
           install: {
@@ -1718,26 +1830,31 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           },
           releases: {
             label: '版本演进',
-            title: '一条很短但已经足够说明方向的版本线',
-            sub: '顺序很重要：先有过滤和分析控制，再有报告导出，然后才是命名快照和 visual compare。\n这个演进比单纯罗列功能更能支撑官网叙事。',
-            items: {
-              filters: { title: 'v0.5.x —— 聚焦与控制', desc: '时间过滤、对象选择和更强的事故分析控制能力。' },
-              exports: { title: 'v0.6.0 —— 面向交付的报告导出', desc: 'Markdown 和 HTML 导出把分析结果变成可以顺滑进入文档、评审和浏览器分享的交付物。' },
-              reports: { title: 'v0.9.0 —— 多时间点 snapshot 趋势分析', desc: '团队现在可以按 window start time 排列已保存快照，并输出带可选 baseline delta 的 text、JSON 和 HTML 漂移报告。' },
-              hardening: { title: 'v0.9.1 —— 可信的 snapshot 历史工作流', desc: 'analyze 直接生成的快照现在默认就能参与 trend，旧历史可回退使用 summary 窗口时间，warning 计数也能反映 query context 被截断这类分析退化。' },
-              patterns: { title: 'v0.10.0 —— 工作负载模式洞察', desc: 'analyze、compare 和 trend 现在都能用重复出现的写入模式来解释负载漂移，而不只是总量和热点表。' },
-              workflowv1: { title: 'v0.11.0 —— workflow v1', desc: 'workflow run、resume、validate、describe、status 和 clean 现在组成了一条完整的调查生命周期，并带有基于 manifest 的状态记录和 HTML 落地入口。' },
-              explanations: { title: 'v0.12.0 —— 变化解释层', desc: 'compare 和 trend 现在会在详细表格和图表之前先给出确定性、基于证据的发现，让主要变化驱动因素先被看见。' },
-              evidence: { title: 'v0.13.0 —— 证据钻取', desc: 'finding 现在可以链接回支撑它的 compare 和 trend 证据，让摘要有可追溯的报告锚点，而不是孤立结论。' },
-              handoff: { title: 'v0.14.0 —— workflow 交付', desc: 'workflow summary、status surface 和确定性 export bundle 现在把调查结果变成可分享的 DBA 交付物。' },
-              now: { date: '现在', title: '明确的 DBA-first 定位', desc: '一个本地 CLI，帮助团队更快解释负载变化，并把答案顺滑交给其他人。' }
+            title: '当前版本与最近里程碑',
+            sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
+            currentLabel: '当前版本',
+            currentFocus: 'release focus',
+            currentTitle: 'Workflow 交付',
+            currentLink: '查看发布说明 →',
+            labels: {
+              v0130: '证据',
+              v0120: '解释',
+              v0110: 'Workflow v1'
             },
-            side: {
-              title: '官网真正该强调什么',
-              one: '先讲操作问题，而不是 parser 内部实现。',
-              two: '强调它直接工作在团队已经有的文件上。',
-              three: '把 HTML 作为 CLI 排查、团队沟通和 current-vs-baseline 评审之间的桥。',
-              four: '保持产品边界克制而可信。'
+            links: {
+              v0130: '打开 v0.13.0 说明 →',
+              v0120: '打开 v0.12.0 说明 →',
+              v0110: '打开 v0.11.0 说明 →'
+            },
+            archiveTitle: '发布归档',
+            archiveLabel: '全部版本',
+            archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
+            archiveLink: '查看全部发布说明 →',
+            items: {
+              v0140: 'workflow summary、status surface 和确定性 export bundle 现在把调查结果变成可分享的 DBA 交付物。',
+              v0130: 'finding 现在可以链接回支撑它的 compare 和 trend 证据，让报告摘要可追溯，而不是孤立结论。',
+              v0120: 'compare 和 trend 开始在详细表格和图表之前先给出确定性的 findings，让主要变化驱动因素先被看见。',
+              v0110: 'workflow run、resume、validate、describe、status 和 clean 建立了第一版完整的 manifest-backed 调查生命周期。'
             }
           },
           install: {
