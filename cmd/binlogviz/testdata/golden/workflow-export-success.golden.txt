@@ -1,0 +1,7 @@
+Workflow Export
+Workflow: export-test
+Output Root: <output-dir>
+Archive: <archive-path>
+Format: zip
+Included Files: 4
+Included Snapshots: 0

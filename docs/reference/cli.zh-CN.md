@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow export`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -28,6 +28,9 @@ binlogviz workflow status <output_dir> --format json
 binlogviz workflow clean <output_dir>
 binlogviz workflow clean <output_dir> --format json
 binlogviz workflow clean <output_dir> --apply --include-snapshots
+binlogviz workflow export <output_dir>
+binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> --include-snapshots --format json
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
 binlogviz workflow describe <plan.yaml>
@@ -668,12 +671,6 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 
 `workflow clean` 用于检查一个已有 workflow root，并报告或删除当前 `manifest.json` 已不再引用的孤儿生成文件。
 
-该命令默认是 dry-run：
-
-- 不加 `--apply` 时只报告清理候选
-- 加 `--apply` 后才实际删除，并报告 `deleted` 与 `skipped`
-- snapshots 默认不参与，只有显式加 `--include-snapshots` 才纳入候选集
-
 ### 参数
 
 | Flag | 默认值 | 说明 |
@@ -732,6 +729,54 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 - 决定 `resume` 下一步应执行什么
 - 对单个 workflow root 之外做全局清理
 - 实现 retention、TTL 或基于时间的 pruning
+
+## `workflow export` 命令语法
+
+```bash
+binlogviz workflow export <output_dir>
+binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> --include-snapshots
+binlogviz workflow export <output_dir> --format json
+```
+
+`workflow export` 会把一个已有 workflow root 打包成确定性、只读的 zip archive。它会读取 `manifest.json`，始终包含 `manifest.json` 本身，以 best-effort 方式包含 `index.html`，只包含 manifest 中声明的 workflow artifacts，并在 `manifest.plan_path` 存在时以 best-effort 方式把 plan 文件写入归档中的 `plan.yaml`。它不会重跑 workflow 步骤、不会重建 workflow summary，也不会修改 workflow root 下的任何文件。
+
+### 参数
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `--output` | `<output_dir>.zip` | 输出 archive 路径。默认值来自 `filepath.Clean(output_dir) + ".zip"`。 |
+| `--include-snapshots` | `false` | 仅把 manifest 引用到的 snapshot JSON 文件纳入归档。 |
+| `--format` | `text` | export 结果输出格式：`text` 或 `json`。 |
+
+### 导出规则与安全保证
+
+- `manifest.json` 是必需输入，并且始终被纳入归档
+- `index.html` 以 best-effort 方式纳入；缺失时只会生成 warning
+- workflow artifacts 只会从 manifest 的 `steps[].artifacts` 读取
+- 位于 workflow root 之外的 artifact 会被跳过并记录 warning
+- 只有当 `manifest.plan_path` 存在、解析后仍位于 workflow root 内、可读、内容仍然匹配 `manifest.plan_sha256`，并且仍然能解析为与 manifest 记录元数据一致的 workflow plan 时，plan 文件才会以 `plan.yaml` 纳入归档；否则只会生成 warning
+- snapshots 默认不纳入归档
+- 使用 `--include-snapshots` 时，只会考虑被 manifest 引用到的 snapshot JSON 文件；如果 `manifest.snapshot_dir` 为空，则只记录 warning，不会回退去读取当前工作目录
+- 缺失的 manifest artifact、snapshot、plan 或 `index.html` 会转成 warning，而不是 fatal error
+- archive 输出路径必须位于 workflow root 之外；位于 root 内部的路径会被拒绝
+- zip entry 的顺序、时间戳和文件 mode 都会被规范化，以保证重复导出结果确定性一致
+
+### 失败行为
+
+出现以下情况时，`workflow export` 会在成功写出结果前直接失败：
+
+- `<output_dir>/manifest.json` 缺失、不可读或非法
+- 某个需要纳入的 artifact 因可选 best-effort 缺失以外的原因无法读取
+- archive 创建或写入失败
+- archive 输出路径解析到 workflow root 内部
+
+### 输出行为
+
+- 所有结果输出都写到 `stdout`
+- 命令不会用 `stderr` 输出进度
+- `text` 模式输出紧凑的运维摘要，并在需要时追加 `Warnings` 分区
+- `json` 模式输出机器可读对象，包含 `workflow_name`、`output_dir`、`archive_path`、`format`、`included_files`、`included_snapshots` 和 `warnings`
 
 ## `workflow validate` 命令语法
 

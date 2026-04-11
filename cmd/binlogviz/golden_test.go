@@ -751,13 +751,7 @@ func normalizeWorkflowManifest(raw, outputDir, snapshotDir string) string {
 	}
 	// Normalize dynamic timestamp fields
 	out = timestampPattern.ReplaceAllString(out, `"<timestamp>"`)
-	// Normalize plan_path — it lives under a sibling temp dir sharing the
-	// same test root, so after output-dir normalization the remaining temp
-	// prefix is the test root itself.
-	testRoot := filepath.Dir(filepath.Dir(outputDir))
-	if testRoot != "" && testRoot != "." && testRoot != "/" {
-		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
-	}
+	// plan_path now points at the workflow-root copy: <output-dir>/plan.yaml.
 	// Normalize top-level error (locale-dependent OS messages)
 	out = manifestErrorPattern.ReplaceAllString(out, `"error": "<discovery-error>"`)
 	// Normalize plan_sha256 (changes with plan content)
@@ -1060,6 +1054,52 @@ func TestWorkflowCleanTextGoldenApply(t *testing.T) {
 	}
 }
 
+func TestWorkflowExportGoldenTextSuccess(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow export: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeWorkflowExportOutput(stdout, outputDir, outputDir+".zip")
+	want := mustReadGolden(t, "workflow-export-success.golden.txt")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow export success text golden mismatch\n%s", diff)
+	}
+}
+
+func TestWorkflowExportGoldenJSONSuccess(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow export: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	got := normalizeWorkflowExportOutput(stdout, outputDir, outputDir+".zip")
+	want := mustReadGolden(t, "workflow-export-success.golden.json")
+	if diff := diffGolden(want, got); diff != "" {
+		t.Fatalf("workflow export success json golden mismatch\n%s", diff)
+	}
+}
+
 func normalizeWorkflowIndex(raw, outputDir, snapshotDir string) string {
 	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
 	if snapshotDir != "" {
@@ -1088,6 +1128,16 @@ func normalizeWorkflowStatusOutput(raw, outputDir string) string {
 
 func normalizeWorkflowCleanOutput(raw, outputDir string) string {
 	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
+	testRoot := filepath.Dir(filepath.Dir(outputDir))
+	if testRoot != "" && testRoot != "." && testRoot != "/" {
+		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
+	}
+	return out
+}
+
+func normalizeWorkflowExportOutput(raw, outputDir, archivePath string) string {
+	out := strings.ReplaceAll(raw, archivePath, "<archive-path>")
+	out = strings.ReplaceAll(out, outputDir, "<output-dir>")
 	testRoot := filepath.Dir(filepath.Dir(outputDir))
 	if testRoot != "" && testRoot != "." && testRoot != "/" {
 		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")

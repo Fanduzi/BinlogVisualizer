@@ -116,6 +116,8 @@ Before execution, `workflow validate` checks whether a plan is statically runnab
 
 `workflow clean` is the final maintenance command in that lifecycle. It uses the current manifest as the source of truth, defaults to dry-run, reports orphaned generated artifacts under `analyze/`, `compare/`, and `trend/`, and can optionally include orphaned snapshot JSON files when `--include-snapshots` is set. `--apply` performs best-effort deletion, while still refusing to touch `manifest.json`, `index.html`, plan files, or unknown out-of-scope files.
 
+`workflow export` is the read-only handoff command for a completed workflow root. It reads `manifest.json`, bundles manifest-declared artifacts into a deterministic zip archive, includes `manifest.json` and best-effort `index.html`, and optionally includes referenced snapshots with `--include-snapshots`. It never reruns steps and rejects archive paths inside the workflow root.
+
 ```bash
 binlogviz workflow resume ./artifacts/incident
 binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
@@ -123,6 +125,8 @@ binlogviz workflow status ./artifacts/incident
 binlogviz workflow status ./artifacts/incident --format json
 binlogviz workflow clean ./artifacts/incident
 binlogviz workflow clean ./artifacts/incident --apply --include-snapshots
+binlogviz workflow export ./artifacts/incident
+binlogviz workflow export ./artifacts/incident --include-snapshots --format json
 binlogviz workflow validate incident.yaml
 binlogviz workflow validate incident.yaml --format json
 binlogviz workflow describe incident.yaml

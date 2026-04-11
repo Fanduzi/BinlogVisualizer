@@ -1,6 +1,6 @@
 # Output Format Reference
 
-This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow validate`, and `binlogviz workflow describe` write to `stdout` and `stderr`.
+This document explains what `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow export`, `binlogviz workflow validate`, and `binlogviz workflow describe` write to `stdout` and `stderr`.
 
 If you want the fastest operator path first, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -15,6 +15,7 @@ BinlogViz uses separate output channels for different purposes:
 - `workflow resume`: `stdout` is unused; `stderr` carries progress lines and the final manifest path. Resume reuses successful step artifacts and reruns failed, missing, or explicitly selected steps. The updated `manifest.json` records per-step execution status (`executed` or `reused`). `index.html` includes the resume mode, attempt number, and per-step execution labels.
 - `workflow status`: `stdout` carries either a text or JSON runtime inspection result. The command reads `manifest.json`, checks artifact presence, reports `runtime_state`, `resumable`, `resume_error`, and per-step status, and may include a dry `resume_preview`. It is read-only and does not use `stderr` for progress output.
 - `workflow clean`: `stdout` carries either a text or JSON cleanup summary. The command reads `manifest.json`, reports orphaned workflow artifacts and optional orphaned snapshots, and in `--apply` mode also reports `deleted` and `skipped`. It does not use `stderr` for progress output, but a skipped deletion still causes a non-zero command exit after the `stdout` payload is written.
+- `workflow export`: `stdout` carries either a text or JSON export summary. The command reads `manifest.json`, writes a deterministic zip archive outside the workflow root, and reports included-file counts plus warnings. It does not use `stderr` for progress output.
 - `workflow validate`: `stdout` carries either a text or JSON validation result. The command reads only `plan.yaml`, performs static plan validation, and exits non-zero on invalid plans. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 - `workflow describe`: `stdout` carries either a text or JSON static preview of workflow execution order and artifact paths. The command reads only `plan.yaml`, renders no HTML, and does not inspect runtime outputs. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 
@@ -68,6 +69,13 @@ If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and
 |---|---|
 | `text` | Default. Human-readable cleanup summary with orphan, deleted, and skipped lists. |
 | `json` | Machine-readable cleanup result with orphan/deletion arrays and aggregate counts. |
+
+### `workflow export`
+
+| Flag value | Description |
+|---|---|
+| `text` | Default. Human-readable export summary with workflow name, output root, archive path, included counts, and optional warnings. |
+| `json` | Machine-readable export result with archive metadata, included counts, and warnings. |
 
 ### `workflow validate`
 
@@ -729,6 +737,54 @@ The `counts` object contains:
 - unreadable workflow artifact directories fail before rendering
 - a missing snapshot directory yields zero snapshot candidates, not an error
 - skipped deletions in apply mode still write the full output, then return a non-zero command error
+
+## Workflow Export Output
+
+`binlogviz workflow export` reports the result of bundling an existing workflow root into a deterministic zip archive.
+
+### Text output
+
+Text mode writes a compact operator summary to `stdout`:
+
+- `Workflow Export`
+- `Workflow: <workflow_name>`
+- `Output Root: <output_dir>`
+- `Archive: <archive_path>`
+- `Format: zip`
+- `Included Files: <count>`
+- `Included Snapshots: <count>`
+- optional `Warnings` section with one warning per line prefixed by `- `
+
+Representative behavior:
+
+- the summary is written only after archive creation succeeds
+- `Format` reports the archive format (`zip`), not the CLI render mode
+- `Included Files` counts all archived entries, including `manifest.json`, `index.html` when present, manifest-declared artifacts, validated `plan.yaml` entries, and optional snapshots
+- `Included Snapshots` counts only archived entries under `snapshots/`
+- missing optional inputs such as `index.html`, manifest artifacts, referenced snapshots, or a `plan.yaml` candidate that resolves outside the workflow root, no longer matches `manifest.plan_sha256`, or no longer parses as the recorded workflow metadata appear in `Warnings`
+- when `--include-snapshots` is enabled and `manifest.snapshot_dir` is empty, the result records a warning instead of falling back to the current working directory
+
+### JSON output
+
+JSON mode writes one machine-readable object to `stdout`.
+
+Top-level fields:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | Workflow name loaded from `manifest.json` |
+| `output_dir` | string | yes | Workflow root passed to the command |
+| `archive_path` | string | yes | Final archive output path |
+| `format` | string | yes | Always `zip` in the current implementation |
+| `included_files` | integer | yes | Count of archived entries after deterministic dedupe |
+| `included_snapshots` | integer | yes | Count of archived entries under `snapshots/` |
+| `warnings` | array<string> | yes | Warning strings collected during export; empty array when none |
+
+### Channel behavior
+
+- all export result payloads are written to `stdout`
+- the command does not emit progress lines to `stderr`
+- command failures continue to use the normal CLI error path
 
 ## Workflow Validate Output
 

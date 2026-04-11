@@ -15,6 +15,7 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>`, `binlogviz wo
 | `describe.go` | Static workflow preview model and deterministic description builder. |
 | `status.go` | Read-only runtime status model, artifact existence inspection, and dry resume preview builder. |
 | `clean.go` | Orphan discovery and apply-mode deletion for workflow-generated artifacts plus opt-in snapshot cleanup. |
+| `export.go` | Manifest-driven, read-only export bundle assembly and deterministic zip archive writing. |
 
 ## Manifest Versioning
 
@@ -58,6 +59,9 @@ Each `StepRecord` carries an `execution` field:
 - `DiscoverCleanCandidates(outputDir string, manifest Manifest, includeSnapshots bool) (CleanResult, error)` — Discovers orphaned workflow-generated artifacts and optional snapshot JSON files using the manifest as the source of truth.
 - `ApplyClean(result CleanResult) CleanResult` — Applies best-effort deletion for discovered cleanup candidates and records deleted/skipped paths.
 - `CleanOptions` / `CleanResult` / `CleanCounts` — Structured cleanup model for text/json rendering and apply-mode summaries.
+- `BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (ExportResult, error)` — Builds a manifest-driven, read-only export bundle including `manifest.json`, manifest-declared artifacts, optional `index.html`, `plan.yaml` only when `manifest.plan_path` stays inside the workflow root, still matches `manifest.plan_sha256`, and still parses as the recorded workflow metadata, plus opt-in referenced snapshots.
+- `WriteExportArchive(path string, result ExportResult) error` — Writes deterministic zip output with stable entry ordering, fixed timestamps, normalized file permissions, and output-path rejection when the archive target is inside the workflow root.
+- `ExportOptions` / `ExportResult` / `ExportEntry` — Structured export model for text/json rendering and archive writing.
 - `EnsureLayout(root string) error` — Creates the analyze/compare/trend directory tree.
 - `Manifest` / `StepRecord` — Manifest structs.
 - `WriteManifest(path string, m Manifest) error` — Writes manifest.json.

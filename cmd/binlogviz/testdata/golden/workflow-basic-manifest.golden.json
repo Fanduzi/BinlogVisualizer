@@ -6,7 +6,7 @@
   "workflow_name": "multi-window-test",
   "workflow_plan_version": 1,
   "binlogviz_version": "dev",
-  "plan_path": "<test-root>/004/plan.yaml",
+  "plan_path": "<output-dir>/plan.yaml",
   "plan_sha256": "<plan-sha>",
   "resolved_input_files": ["<resolved-files>"],
   "snapshot_dir": "<snapshot-dir>",
