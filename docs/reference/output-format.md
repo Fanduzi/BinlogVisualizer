@@ -388,7 +388,7 @@ The report includes:
 
 `binlogviz trend` renders a chronological report for two or more snapshots. It uses the same stdout/stderr separation rules as the other commands and supports `text`, `json`, and `html`.
 
-Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, and a `trend_summary` array with deterministic finding objects capped at 5. Each finding may include `evidence_refs` linking it back to relevant report sections (`pattern_trends`, `table_trends`, `ordered_points`). HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, plus a `Key Findings` section with clickable evidence ref links when findings are present.
+Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present, followed by a `Recommended Next Checks` section when recommendations are available. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, a `trend_summary` array with deterministic finding objects capped at 5, and a `recommendations` array with operator follow-up suggestions derived from findings. Trend recommendation kinds: `track_rising_pattern`, `confirm_declining_pattern`, `review_growing_table`, `watch_workload_concentration`, or `capture_followup_snapshot`. Each finding may include `evidence_refs` linking it back to relevant report sections (`pattern_trends`, `table_trends`, `ordered_points`). HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, a `Key Findings` section with clickable evidence ref links when findings are present, and a `Recommended Next Checks` section with priority badges and evidence links.
 
 ## Compare JSON Output
 
@@ -404,6 +404,7 @@ The compare JSON contract always contains:
 |------|------|----------|------|
 | `summary` | object | yes | Rows, transactions, and warning deltas |
 | `key_findings` | array | yes | Deterministic finding summaries capped at 5; empty array when signal is low |
+| `recommendations` | array | yes | Operator follow-up suggestions derived from key findings; empty array when no suggestions apply |
 | `table_changes` | array | yes | Per-table row deltas |
 | `pattern_changes` | array | yes | Write-pattern deltas matched by `pattern_key`, sorted by absolute row delta |
 | `operation_mix` | array | yes | INSERT / UPDATE / DELETE deltas |
@@ -475,6 +476,7 @@ Text mode renders a fixed compare report for terminal review. It includes:
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
 - `Key Findings` between warnings and `Top Table Changes` when findings are present, with `evidence:` labels linking findings to relevant report sections
+- `Recommended Next Checks` after `Key Findings` when recommendations are present, with priority badges and evidence links
 - `Top Pattern Changes` between `Top Table Changes` and `Operation Mix`
 - operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
 - alert additions and removals
@@ -497,6 +499,7 @@ The JSON report serializes the compare result in a stable snake_case shape.
 |------|------|----------|------|
 | `summary` | object | yes | Current/baseline totals and delta values |
 | `key_findings` | array | yes | Deterministic finding summaries capped at 5; empty array when signal is low |
+| `recommendations` | array | yes | Operator follow-up suggestions derived from key findings; empty array when no suggestions apply |
 | `table_changes` | array | yes | Table-level row deltas sorted by absolute change |
 | `pattern_changes` | array | yes | Write-pattern deltas matched by `pattern_key`, sorted by absolute row delta |
 | `operation_mix` | array | yes | Operation deltas for `insert`, `update`, and `delete` |
@@ -526,6 +529,22 @@ Each `evidence_refs` entry contains:
 | `anchor` | string | yes | HTML anchor ID for in-page navigation |
 
 At a user level, the JSON output answers the same operational questions as the text report, but in a deterministic structure for pipelines, dashboards, or follow-up automation.
+
+#### `recommendations` entries
+
+Each entry in the `recommendations` array contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | Recommendation category (compare): `check_pattern_driver`, `check_table_hotspot`, `check_new_write_pattern`, `check_operation_mix_shift`, `check_volume_growth_source`, or `check_volume_drop_source` |
+| `priority` | string | yes | Follow-up priority: `high` or `medium` |
+| `title` | string | yes | Short human-readable title |
+| `summary` | string | yes | One-sentence actionable suggestion |
+| `rationale` | string | yes | Why this recommendation was generated |
+| `related_finding_kinds` | array | yes | The finding kinds that triggered this recommendation |
+| `evidence_refs` | array | no | Traceability links to report sections; omitted when empty |
+
+Recommendations use conservative language (check, confirm, review, capture) and never claim root cause. Priority indicates follow-up urgency, not incident severity. At most 5 recommendations are returned, ordered by priority then kind.
 
 ### Compare HTML Output
 

@@ -388,7 +388,7 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 
 `binlogviz trend` 会为两个或更多 snapshot 生成按时间顺序排列的报告，沿用和其他命令相同的 stdout / stderr 分离规则，并支持 `text`、`json` 和 `html`。
 
-文本输出会包含新的 `Top Pattern Trends` 章节和 `Key Findings` 章节（当存在趋势发现时）。JSON 输出会始终包含顶层 `pattern_trends` 数组（其中每个模式都带有 rows 和 share 序列）以及 `trend_summary` 数组（最多 5 条确定性发现对象）。每条发现可能包含 `evidence_refs`，将其链接回相关报告章节（`pattern_trends`、`table_trends`、`ordered_points`）。HTML 输出会包含交互式 `Pattern Trends` 分区（默认展示 `share of rows`，可切换到绝对 `rows`）以及 `Key Findings` 分区（当存在发现时，带有可点击的证据引用链接）。
+文本输出会包含新的 `Top Pattern Trends` 章节和 `Key Findings` 章节（当存在趋势发现时），随后是 `Recommended Next Checks` 章节（当存在建议时）。JSON 输出会始终包含顶层 `pattern_trends` 数组（其中每个模式都带有 rows 和 share 序列）、`trend_summary` 数组（最多 5 条确定性发现对象）以及 `recommendations` 数组（基于发现的运维后续建议）。趋势建议类别：`track_rising_pattern`、`confirm_declining_pattern`、`review_growing_table`、`watch_workload_concentration` 或 `capture_followup_snapshot`。每条发现可能包含 `evidence_refs`，将其链接回相关报告章节（`pattern_trends`、`table_trends`、`ordered_points`）。HTML 输出会包含交互式 `Pattern Trends` 分区（默认展示 `share of rows`，可切换到绝对 `rows`）、`Key Findings` 分区（当存在发现时，带有可点击的证据引用链接）以及 `Recommended Next Checks` 分区（带有优先级标签和证据链接）。
 
 ## Compare JSON 输出
 
@@ -404,6 +404,7 @@ compare JSON 契约始终包含：
 |------|------|----------|------|
 | `summary` | object | yes | 行数、事务数和 warning 的差异 |
 | `key_findings` | array | yes | 确定性发现摘要，最多 5 条；信号不足时为空数组 |
+| `recommendations` | array | yes | 基于关键发现的运维后续建议；无建议时为空数组 |
 | `table_changes` | array | yes | 按表统计的行数差异 |
 | `pattern_changes` | array | yes | 按 `pattern_key` 匹配、按绝对行数变化排序的写入模式变化 |
 | `operation_mix` | array | yes | INSERT / UPDATE / DELETE 差异 |
@@ -513,6 +514,7 @@ compare 命令只接受两份 BinlogViz analyze JSON 报告：
 - 行数、事务数、warnings 的顶层 delta
 - 按绝对行数变化排序的热点表变化
 - 位于 warnings 和 `Top Table Changes` 之间的 `Key Findings`（当发现存在时），带有 `evidence:` 标签将发现链接到相关报告章节
+- 位于 `Key Findings` 之后的 `Recommended Next Checks`（当建议存在时），带有优先级标签和证据链接
 - 位于 `Top Table Changes` 和 `Operation Mix` 之间的 `Top Pattern Changes`
 - `INSERT` / `UPDATE` / `DELETE` 的操作类型变化
 - 告警新增和移除情况
@@ -534,6 +536,8 @@ JSON 输出会以稳定的 snake_case 结构序列化 compare 结果。
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `summary` | object | yes | current / baseline 汇总值和 delta |
+| `key_findings` | array | yes | 确定性发现摘要，最多 5 条；信号不足时为空数组 |
+| `recommendations` | array | yes | 基于关键发现的运维后续建议；无建议时为空数组 |
 | `table_changes` | array | yes | 按绝对变化排序的表级行数差异 |
 | `pattern_changes` | array | yes | 按 `pattern_key` 匹配、按绝对行数变化排序的写入模式变化 |
 | `operation_mix` | array | yes | `insert`、`update`、`delete` 的操作差异 |
@@ -542,6 +546,22 @@ JSON 输出会以稳定的 snake_case 结构序列化 compare 结果。
 | `baseline_label` | string | yes | 如果 baseline 输入带 snapshot 元数据则输出 snapshot-aware label，否则为 `baseline` |
 
 从用户视角看，JSON 输出回答的仍然是文本报告中的同一批运维问题，只是更适合进入脚本、仪表盘或自动化链路。
+
+#### `recommendations` 条目
+
+`recommendations` 数组中的每个条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `kind` | string | yes | 建议类别（compare）：`check_pattern_driver`、`check_table_hotspot`、`check_new_write_pattern`、`check_operation_mix_shift`、`check_volume_growth_source` 或 `check_volume_drop_source` |
+| `priority` | string | yes | 后续优先级：`high` 或 `medium` |
+| `title` | string | yes | 简短的人类可读标题 |
+| `summary` | string | yes | 单句可执行建议 |
+| `rationale` | string | yes | 生成该建议的原因 |
+| `related_finding_kinds` | array | yes | 触发该建议的发现类别 |
+| `evidence_refs` | array | no | 指向报告章节的可追溯链接；为空时省略 |
+
+建议使用保守语言（检查、确认、审查、捕获），不会声称根因。优先级表示后续紧迫程度，而非事件严重程度。最多返回 5 条建议，按优先级和类别排序。
 
 ### Compare HTML 输出
 
