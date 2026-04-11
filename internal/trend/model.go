@@ -37,6 +37,17 @@ type Result struct {
 	PatternTrends    []PatternTrend `json:"pattern_trends"`
 	Insights         Insights       `json:"insights"`
 	TrendSummary     []TrendFinding `json:"trend_summary"`
+	Recommendations  []Recommendation `json:"recommendations"`
+}
+
+type Recommendation struct {
+	Kind                string        `json:"kind"`
+	Priority            string        `json:"priority"`
+	Title               string        `json:"title"`
+	Summary             string        `json:"summary"`
+	Rationale           string        `json:"rationale"`
+	RelatedFindingKinds []string      `json:"related_finding_kinds"`
+	EvidenceRefs        []EvidenceRef `json:"evidence_refs,omitempty"`
 }
 
 type TrendFinding struct {
