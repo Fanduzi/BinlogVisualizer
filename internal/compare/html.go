@@ -416,12 +416,14 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     </section>
     {{end}}
 
+    {{if .Result.Recommendations}}
     <section class="section" id="compare-recommendations">
       <div class="section-header"><span class="dot"></span>Recommended Next Checks</div>
       <div class="section-body">
         <div id="compare-recommendations-list"></div>
       </div>
     </section>
+    {{end}}
 
     <section class="section">
       <div class="section-header"><span class="dot"></span>Compare Summary</div>
