@@ -60,6 +60,7 @@ func BuildResult(opts BuildOptions) (Result, error) {
 	result.Insights = buildInsights(result.Points)
 	result.TrendSummary = buildTrendSummary(result)
 	buildTrendEvidenceRefs(&result)
+	result.Recommendations = buildTrendRecommendations(result)
 	return result, nil
 }
 
