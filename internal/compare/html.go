@@ -357,7 +357,6 @@ const compareHTMLTemplate = `<!DOCTYPE html>
   .rec-item { margin-bottom: 14px; }
   .rec-item:last-child { margin-bottom: 0; }
   .rec-summary { font-size: 13px; margin-top: 4px; }
-  }
   @media (max-width: 900px) {
     .two-col, .alerts-layout, .alert-columns { grid-template-columns: 1fr; }
   }
