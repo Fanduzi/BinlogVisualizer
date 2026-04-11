@@ -381,3 +381,86 @@ func TestRenderHTMLUsesDOMAPINotInnerHTMLForFindings(t *testing.T) {
 		t.Fatalf("expected findings JS to use textContent")
 	}
 }
+
+func TestRenderHTMLIncludesRecommendationSection(t *testing.T) {
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+			CurrentTotalTransactions: 4, BaselineTotalTransactions: 2, TotalTransactionsDelta: 2,
+		},
+		KeyFindings: []CompareFinding{{
+			Kind:    "pattern_driver",
+			Summary: "orders.insert_batch drove most row growth",
+			Evidence: map[string]any{
+				"pattern_key":          "orders.insert_batch",
+				"delta_rows":           5,
+				"share_of_total_delta": 0.80,
+			},
+		}},
+		Recommendations: []Recommendation{{
+			Kind:                "check_pattern_driver",
+			Priority:            "high",
+			Title:               "Check pattern driver",
+			Summary:             "orders.insert_batch drove most row growth; confirm whether a deploy changed.",
+			Rationale:           "A single write pattern explains a significant share of the row delta.",
+			RelatedFindingKinds: []string{"pattern_driver"},
+			EvidenceRefs: []EvidenceRef{{
+				Section: "pattern_changes",
+				Key:     "orders.insert_batch",
+				Label:   "orders.insert_batch",
+				Anchor:  "section-pattern-changes",
+			}},
+		}},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+
+	for _, token := range []string{
+		`id="compare-recommendations"`,
+		"Recommended Next Checks",
+		"window.compareRecommendations =",
+	} {
+		if !strings.Contains(html, token) {
+			t.Fatalf("expected html to contain %q", token)
+		}
+	}
+}
+
+func TestRenderHTMLUsesDOMAPINotInnerHTMLForRecommendations(t *testing.T) {
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+		},
+		Recommendations: []Recommendation{{
+			Kind:     "check_pattern_driver",
+			Priority: "high",
+			Title:    `<img src=x onerror=alert(1)>`,
+			Summary:  `<script>alert(1)</script>`,
+			EvidenceRefs: []EvidenceRef{{
+				Label:  `<img src=x onerror=alert(1)>`,
+				Anchor: "section-pattern-changes",
+			}},
+		}},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+	if strings.Contains(html, "recommendationsEl.innerHTML") {
+		t.Fatal("recommendation rendering should not use innerHTML")
+	}
+	if strings.Contains(html, `<script>alert(1)</script>`) {
+		t.Fatal("html contains raw malicious recommendation content")
+	}
+	if strings.Contains(html, `<img src=x onerror=alert(1)>`) {
+		t.Fatal("html contains raw malicious recommendation content")
+	}
+}

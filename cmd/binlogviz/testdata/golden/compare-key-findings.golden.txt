@@ -14,6 +14,17 @@ Key Findings
 4. [new_pattern] refunds.create appeared as a new write pattern
    evidence: refunds.create
 
+Recommended Next Checks
+1. [high] Check pattern driver
+   refunds.create drove most row growth; confirm whether a deploy, backfill, or scheduled batch changed during this window.
+   evidence: refunds.create
+2. [high] Check new write pattern
+   refunds.create appeared as a new write pattern; identify whether this new shape came from a planned rollout, backfill, or unexpected workload.
+   evidence: refunds.create
+3. [high] Check table hotspot
+   orders.refunds had the largest row change; review the table owner, recent jobs, and whether this table-specific write movement is expected.
+   evidence: orders.refunds
+
 Top Table Changes
 - orders.refunds: 0 -> 900 (+900, 0.0%)
 - orders.chargebacks: 400 -> 0 (-400, -100.0%)

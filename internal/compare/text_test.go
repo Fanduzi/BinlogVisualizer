@@ -33,6 +33,11 @@ Key Findings
 2. [table_driver] orders.refunds had the largest row change
    evidence: orders.refunds
 
+Recommended Next Checks
+1. [high] Check table hotspot
+   orders.refunds had the largest row change; review the table owner, recent jobs, and whether this table-specific write movement is expected.
+   evidence: orders.refunds
+
 Top Table Changes
 - orders.refunds: 0 -> 900 (+900, 0.0%)
 - orders.chargebacks: 400 -> 0 (-400, -100.0%)
@@ -134,6 +139,7 @@ func TestRenderTextIncludesPatternChangesSection(t *testing.T) {
 		"payments.update_status",
 		"txns 9 -> 18 (+9)",
 		"query: update payments set status = ?",
+		"Recommended Next Checks",
 	} {
 		if !strings.Contains(output, token) {
 			t.Fatalf("expected text output to contain %q, got %s", token, output)
