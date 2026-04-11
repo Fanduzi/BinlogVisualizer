@@ -263,7 +263,7 @@ func TestBuildTrendEvidenceRefs_LowSignalNoFalseRefs(t *testing.T) {
 	for _, f := range tempResult.TrendSummary {
 		for _, ref := range f.EvidenceRefs {
 			switch ref.Section {
-			case "pattern_trends", "table_trends", "ordered_points", "aggregate_insights":
+			case "pattern_trends", "table_trends", "ordered_points":
 				// valid
 			default:
 				t.Fatalf("unexpected section %q in evidence ref", ref.Section)

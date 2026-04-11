@@ -388,7 +388,7 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 
 `binlogviz trend` 会为两个或更多 snapshot 生成按时间顺序排列的报告，沿用和其他命令相同的 stdout / stderr 分离规则，并支持 `text`、`json` 和 `html`。
 
-文本输出会包含新的 `Top Pattern Trends` 章节和 `Key Findings` 章节（当存在趋势发现时）。JSON 输出会始终包含顶层 `pattern_trends` 数组（其中每个模式都带有 rows 和 share 序列）以及 `trend_summary` 数组（最多 5 条确定性发现对象）。每条发现可能包含 `evidence_refs`，将其链接回相关报告章节（`pattern_trends`、`table_trends`、`ordered_points`、`aggregate_insights`）。HTML 输出会包含交互式 `Pattern Trends` 分区（默认展示 `share of rows`，可切换到绝对 `rows`）以及 `Key Findings` 分区（当存在发现时，带有可点击的证据引用链接）。
+文本输出会包含新的 `Top Pattern Trends` 章节和 `Key Findings` 章节（当存在趋势发现时）。JSON 输出会始终包含顶层 `pattern_trends` 数组（其中每个模式都带有 rows 和 share 序列）以及 `trend_summary` 数组（最多 5 条确定性发现对象）。每条发现可能包含 `evidence_refs`，将其链接回相关报告章节（`pattern_trends`、`table_trends`、`ordered_points`）。HTML 输出会包含交互式 `Pattern Trends` 分区（默认展示 `share of rows`，可切换到绝对 `rows`）以及 `Key Findings` 分区（当存在发现时，带有可点击的证据引用链接）。
 
 ## Compare JSON 输出
 
