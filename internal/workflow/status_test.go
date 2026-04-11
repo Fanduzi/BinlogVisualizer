@@ -142,7 +142,9 @@ func TestBuildStatusSymlinkEscapedPlanPathNonResumable(t *testing.T) {
 func TestBuildStatusMissingPlanStillBuilds(t *testing.T) {
 	root, _, manifest := makeStatusFixture(t)
 	createTestArtifacts(t, root, manifest.SnapshotDir, manifest.Steps)
-	manifest.PlanPath = filepath.Join(root, "missing-plan.yaml")
+	manifest.PlanPath = filepath.Join(root, "plan.yaml")
+	// Delete the plan file so the trust check passes but hash read fails.
+	os.Remove(manifest.PlanPath)
 
 	status, err := BuildStatus(root, manifest, nil)
 	if err != nil {
@@ -151,7 +153,7 @@ func TestBuildStatusMissingPlanStillBuilds(t *testing.T) {
 	if status.Resumable {
 		t.Fatal("expected missing plan to disable resumability")
 	}
-	if !strings.Contains(status.ResumeError, "plan file") {
+	if !strings.Contains(status.ResumeError, "not found") {
 		t.Fatalf("expected plan-file resume error, got %q", status.ResumeError)
 	}
 }

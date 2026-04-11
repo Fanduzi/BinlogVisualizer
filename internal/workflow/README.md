@@ -102,7 +102,7 @@ Exported from `resume.go`:
 - `ResumePlan` — Full plan listing steps to execute and reuse, plus updated manifest.
 - `ParseRerunSelectors(plan Plan, raw []string) ([]RerunSelector, error)` — Parses `--rerun kind:name` flags and validates against plan.
 - `ValidateResumableManifest(m Manifest, outputDir string, planPath string, planSHA256 string) error` — Checks manifest is resumable (v2, trust-boundary validation, matching plan hash, has input files).
-- `ValidateWorkflowPlanPath(outputDir string, planPath string) error` — Validates that `planPath` resolves inside the workflow root; rejects outside-root paths and symlink escape.
+- `ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error)` — Validates that `planPath` resolves to the trusted workflow-local rooted `plan.yaml`, rejects outside-root/symlink-escaped/nested/renamed paths, and returns the canonical absolute path for subsequent file operations.
 - `BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error)` — Builds dependency-aware step list with invalidation propagation.
 
 ## Update Rule

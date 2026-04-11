@@ -141,16 +141,17 @@ func resumabilityError(outputDir string, manifest Manifest) error {
 		return ValidateResumableManifest(manifest, "", "", "")
 	}
 
-	// Trust-boundary check before opening any file.
-	if err := ValidateWorkflowPlanPath(outputDir, manifest.PlanPath); err != nil {
+	// Trust-boundary check before opening any file; use returned canonical path.
+	canonicalPlanPath, err := ValidateWorkflowPlanPath(outputDir, manifest.PlanPath)
+	if err != nil {
 		return fmt.Errorf("cannot resume: %w", err)
 	}
 
-	planSHA256, err := computeStatusPlanSHA256(manifest.PlanPath)
+	planSHA256, err := computeStatusPlanSHA256(canonicalPlanPath)
 	if err != nil {
-		return fmt.Errorf("cannot resume: plan file %q not found", manifest.PlanPath)
+		return fmt.Errorf("cannot resume: plan file %q not found", canonicalPlanPath)
 	}
-	return ValidateResumableManifest(manifest, outputDir, manifest.PlanPath, planSHA256)
+	return ValidateResumableManifest(manifest, outputDir, canonicalPlanPath, planSHA256)
 }
 
 func computeStatusPlanSHA256(path string) (string, error) {

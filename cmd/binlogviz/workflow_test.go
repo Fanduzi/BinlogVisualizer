@@ -1742,8 +1742,8 @@ func TestWorkflowStatusShowsPlanLoadFailureAsNonResumable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read manifest: %v", err)
 	}
-	// Write broken plan inside the workflow root (trusted path, but invalid YAML)
-	brokenPlanPath := filepath.Join(outputDir, "broken-plan.yaml")
+	// Overwrite the trusted plan.yaml with invalid YAML to trigger load failure
+	brokenPlanPath := filepath.Join(outputDir, "plan.yaml")
 	if err := os.WriteFile(brokenPlanPath, []byte("not: [valid"), 0o644); err != nil {
 		t.Fatalf("write broken plan: %v", err)
 	}
