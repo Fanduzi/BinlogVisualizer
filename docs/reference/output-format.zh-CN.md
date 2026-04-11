@@ -405,6 +405,7 @@ compare JSON 契约始终包含：
 | `summary` | object | yes | 行数、事务数和 warning 的差异 |
 | `key_findings` | array | yes | 确定性发现摘要，最多 5 条；信号不足时为空数组 |
 | `table_changes` | array | yes | 按表统计的行数差异 |
+| `pattern_changes` | array | yes | 按 `pattern_key` 匹配、按绝对行数变化排序的写入模式变化 |
 | `operation_mix` | array | yes | INSERT / UPDATE / DELETE 差异 |
 | `alert_changes` | object | yes | 新增和移除的告警 |
 | `current_label` | string | yes | 有快照元数据时使用快照感知标签，否则为 `current` |
