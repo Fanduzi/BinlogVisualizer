@@ -87,6 +87,7 @@ type InputSnapshotFilters struct {
 type CompareResult struct {
 	Summary          SummaryDelta     `json:"summary"`
 	KeyFindings      []CompareFinding `json:"key_findings"`
+	Recommendations  []Recommendation `json:"recommendations"`
 	TableChanges     []TableChange    `json:"table_changes"`
 	PatternChanges   []PatternChange  `json:"pattern_changes"`
 	OperationMix     []OperationDelta `json:"operation_mix"`
@@ -95,6 +96,16 @@ type CompareResult struct {
 	BaselineLabel    string           `json:"baseline_label"`
 	CurrentSnapshot  *InputSnapshot   `json:"current_snapshot,omitempty"`
 	BaselineSnapshot *InputSnapshot   `json:"baseline_snapshot,omitempty"`
+}
+
+type Recommendation struct {
+	Kind                string        `json:"kind"`
+	Priority            string        `json:"priority"`
+	Title               string        `json:"title"`
+	Summary             string        `json:"summary"`
+	Rationale           string        `json:"rationale"`
+	RelatedFindingKinds []string      `json:"related_finding_kinds"`
+	EvidenceRefs        []EvidenceRef `json:"evidence_refs,omitempty"`
 }
 
 type CompareFinding struct {

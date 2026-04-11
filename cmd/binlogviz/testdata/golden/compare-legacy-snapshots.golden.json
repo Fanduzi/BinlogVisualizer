@@ -39,6 +39,26 @@
       ]
     }
   ],
+  "recommendations": [
+    {
+      "kind": "check_table_hotspot",
+      "priority": "high",
+      "title": "Check table hotspot",
+      "summary": "orders.refunds had the largest row change; review the table owner, recent jobs, and whether this table-specific write movement is expected.",
+      "rationale": "A table-level delta is large enough to be an operator follow-up target.",
+      "related_finding_kinds": [
+        "table_driver"
+      ],
+      "evidence_refs": [
+        {
+          "section": "table_changes",
+          "key": "orders.refunds",
+          "label": "orders.refunds",
+          "anchor": "section-table-changes"
+        }
+      ]
+    }
+  ],
   "table_changes": [
     {
       "schema": "orders",

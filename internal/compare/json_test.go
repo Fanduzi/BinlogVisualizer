@@ -74,6 +74,19 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 				},
 			},
 		},
+		Recommendations: []Recommendation{
+			{
+				Kind:                "check_table_hotspot",
+				Priority:            "high",
+				Title:               "Check table hotspot",
+				Summary:             "orders.refunds had the largest row change; review the table owner, recent jobs, and whether this table-specific write movement is expected.",
+				Rationale:           "A table-level delta is large enough to be an operator follow-up target.",
+				RelatedFindingKinds: []string{"table_driver"},
+				EvidenceRefs: []EvidenceRef{
+					{Section: "table_changes", Key: "orders.refunds", Label: "orders.refunds", Anchor: "section-table-changes"},
+				},
+			},
+		},
 		TableChanges: []TableChange{
 			{Schema: "orders", Table: "refunds", CurrentRows: 900, BaselineRows: 0, DeltaRows: 900, DeltaPercent: 0},
 			{Schema: "orders", Table: "chargebacks", CurrentRows: 0, BaselineRows: 400, DeltaRows: -400, DeltaPercent: -100},

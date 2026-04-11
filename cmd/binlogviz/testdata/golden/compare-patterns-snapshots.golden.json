@@ -75,6 +75,62 @@
       ]
     }
   ],
+  "recommendations": [
+    {
+      "kind": "check_pattern_driver",
+      "priority": "high",
+      "title": "Check pattern driver",
+      "summary": "refunds.create drove most row growth; confirm whether a deploy, backfill, or scheduled batch changed during this window.",
+      "rationale": "A single write pattern explains a significant share of the row delta.",
+      "related_finding_kinds": [
+        "pattern_driver"
+      ],
+      "evidence_refs": [
+        {
+          "section": "pattern_changes",
+          "key": "orders.refunds|INSERT|small",
+          "label": "refunds.create",
+          "anchor": "section-pattern-changes"
+        }
+      ]
+    },
+    {
+      "kind": "check_new_write_pattern",
+      "priority": "high",
+      "title": "Check new write pattern",
+      "summary": "refunds.create appeared as a new write pattern; identify whether this new shape came from a planned rollout, backfill, or unexpected workload.",
+      "rationale": "A pattern appears in the current window without baseline rows.",
+      "related_finding_kinds": [
+        "new_pattern"
+      ],
+      "evidence_refs": [
+        {
+          "section": "pattern_changes",
+          "key": "orders.refunds|INSERT|small",
+          "label": "refunds.create",
+          "anchor": "section-pattern-changes"
+        }
+      ]
+    },
+    {
+      "kind": "check_table_hotspot",
+      "priority": "high",
+      "title": "Check table hotspot",
+      "summary": "orders.refunds had the largest row change; review the table owner, recent jobs, and whether this table-specific write movement is expected.",
+      "rationale": "A table-level delta is large enough to be an operator follow-up target.",
+      "related_finding_kinds": [
+        "table_driver"
+      ],
+      "evidence_refs": [
+        {
+          "section": "table_changes",
+          "key": "orders.refunds",
+          "label": "orders.refunds",
+          "anchor": "section-table-changes"
+        }
+      ]
+    }
+  ],
   "table_changes": [
     {
       "schema": "orders",
