@@ -11,7 +11,7 @@ BinlogViz uses separate output channels for different purposes:
 - `analyze`: `stdout` carries the final analysis report; `stderr` carries progress, resolved discovery files, finalization status, snapshot save confirmations, and runtime errors.
 - `compare`: `stdout` carries the final compare report; command failures are reported through the CLI error path on `stderr`.
 - `trend`: `stdout` carries the final trend report; command failures are reported through the CLI error path on `stderr`.
-- `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` and `index.html` are always written regardless of success or failure.
+- `workflow run`: `stdout` is unused in v1; `stderr` carries progress lines and the final manifest path. All reports are written to the artifact directory tree under `<output_dir>/`. A `manifest.json` and `index.html` are always written regardless of success or failure. `manifest.json` always includes a normalized `workflow_summary` object, and `index.html` renders `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings` when summary items are present.
 - `workflow resume`: `stdout` is unused; `stderr` carries progress lines and the final manifest path. Resume reuses successful step artifacts and reruns failed, missing, or explicitly selected steps. The updated `manifest.json` records per-step execution status (`executed` or `reused`). `index.html` includes the resume mode, attempt number, and per-step execution labels.
 - `workflow status`: `stdout` carries either a text or JSON runtime inspection result. The command reads `manifest.json`, checks artifact presence, reports `runtime_state`, `resumable`, `resume_error`, and per-step status, and may include a dry `resume_preview`. It is read-only and does not use `stderr` for progress output.
 - `workflow clean`: `stdout` carries either a text or JSON cleanup summary. The command reads `manifest.json`, reports orphaned workflow artifacts and optional orphaned snapshots, and in `--apply` mode also reports `deleted` and `skipped`. It does not use `stderr` for progress output, but a skipped deletion still causes a non-zero command exit after the `stdout` payload is written.
@@ -805,8 +805,27 @@ Each `trend` entry contains `name`, `snapshots`, and `artifacts`.
 | `plan_sha256` | string | yes | SHA-256 hash of the plan file at the time of the first run |
 | `resolved_input_files` | array<string> | yes | Resolved input file paths captured during discovery |
 | `snapshot_dir` | string | yes | Snapshot directory used during execution |
+| `workflow_summary` | object | yes | Workflow-level rollup rebuilt from successful compare/trend JSON artifacts |
 | `steps` | array | yes | Per-step status records |
 | `error` | string | no | Present when `status` is `failed`; contains the failure message |
+
+### `workflow_summary`
+
+`workflow_summary` is always normalized to this shape:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `findings` | array | yes | Workflow findings sourced from compare `key_findings` and trend `trend_summary` |
+| `recommendations` | array | yes | Workflow recommendations sourced from compare/trend `recommendations` |
+| `warnings` | array<string> | yes | Best-effort aggregation warnings |
+
+Behavior notes:
+
+- only successful `compare` and `trend` steps contribute summary items
+- summary extraction reads JSON artifacts only
+- summary warnings capture missing, unreadable, or invalid summary sources
+- summary warnings never flip workflow success/failure semantics
+- `index.html` renders `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings` only when those arrays are non-empty
 
 ### Per-step fields
 

@@ -13,6 +13,11 @@
   "run_started_at": "<timestamp>",
   "run_finished_at": "<timestamp>",
   "status": "success",
+  "workflow_summary": {
+    "findings": [],
+    "recommendations": [],
+    "warnings": []
+  },
   "steps": [
     {
       "kind": "analyze",
