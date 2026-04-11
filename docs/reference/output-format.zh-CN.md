@@ -514,7 +514,7 @@ compare 命令只接受两份 BinlogViz analyze JSON 报告：
 - 行数、事务数、warnings 的顶层 delta
 - 按绝对行数变化排序的热点表变化
 - 位于 warnings 和 `Top Table Changes` 之间的 `Key Findings`（当发现存在时），带有 `evidence:` 标签将发现链接到相关报告章节
-- 位于 `Key Findings` 之后的 `Recommended Next Checks`（当建议存在时），带有优先级标签和证据链接
+- 位于 `Key Findings` 之后的 `Recommended Next Checks`（当建议存在时），带有优先级标签和 `evidence:` 文本标签
 - 位于 `Top Table Changes` 和 `Operation Mix` 之间的 `Top Pattern Changes`
 - `INSERT` / `UPDATE` / `DELETE` 的操作类型变化
 - 告警新增和移除情况

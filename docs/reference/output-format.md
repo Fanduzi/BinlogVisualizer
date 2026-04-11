@@ -476,7 +476,7 @@ Text mode renders a fixed compare report for terminal review. It includes:
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
 - `Key Findings` between warnings and `Top Table Changes` when findings are present, with `evidence:` labels linking findings to relevant report sections
-- `Recommended Next Checks` after `Key Findings` when recommendations are present, with priority badges and evidence links
+- `Recommended Next Checks` after `Key Findings` when recommendations are present, with priority labels and `evidence:` labels
 - `Top Pattern Changes` between `Top Table Changes` and `Operation Mix`
 - operation mix changes for `INSERT`, `UPDATE`, and `DELETE`
 - alert additions and removals
