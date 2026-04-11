@@ -83,9 +83,9 @@ func newWorkflowStatusCommand() *cobra.Command {
 			var plan *workflow.Plan
 			var planLoadErr error
 			if manifest.PlanPath != "" {
-				// Trust-boundary check: only open plan if inside the workflow root.
-				if trustErr := workflow.ValidateWorkflowPlanPath(outputDir, manifest.PlanPath); trustErr == nil {
-					f, err := os.Open(manifest.PlanPath)
+				// Trust-boundary check: only open the rooted plan.yaml.
+				if canonicalPlanPath, trustErr := workflow.ValidateWorkflowPlanPath(outputDir, manifest.PlanPath); trustErr == nil {
+					f, err := os.Open(canonicalPlanPath)
 					if err == nil {
 						defer f.Close()
 						loaded, loadErr := workflow.LoadPlan(f)
@@ -777,13 +777,14 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 		return fmt.Errorf("cannot resume: manifest has no plan_path")
 	}
 
-	// Trust-boundary check: reject before opening any file.
-	if err := workflow.ValidateWorkflowPlanPath(outputDir, mf.PlanPath); err != nil {
+	// Trust-boundary check: reject before opening any file; use canonical path.
+	canonicalPlanPath, err := workflow.ValidateWorkflowPlanPath(outputDir, mf.PlanPath)
+	if err != nil {
 		return err
 	}
 
-	// Load the plan referenced by the manifest
-	planPath := mf.PlanPath
+	// Load the plan referenced by the manifest using the canonical trusted path.
+	planPath := canonicalPlanPath
 
 	f, err := os.Open(planPath)
 	if err != nil {

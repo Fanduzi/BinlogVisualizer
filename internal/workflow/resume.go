@@ -77,6 +77,7 @@ func ParseRerunSelectors(plan Plan, selectors []string) ([]RerunSelector, error)
 
 // ValidateResumableManifest checks that a manifest is safe to resume from.
 // outputDir is the workflow root used for trust-boundary validation of plan_path.
+// planPath and planSHA256 are the canonical plan path and its current hash.
 func ValidateResumableManifest(m Manifest, outputDir string, planPath string, planSHA256 string) error {
 	if m.ManifestVersion == 0 {
 		return fmt.Errorf("cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
@@ -88,7 +89,7 @@ func ValidateResumableManifest(m Manifest, outputDir string, planPath string, pl
 		return fmt.Errorf("cannot resume: manifest has no plan_path")
 	}
 	if outputDir != "" {
-		if err := ValidateWorkflowPlanPath(outputDir, m.PlanPath); err != nil {
+		if _, err := ValidateWorkflowPlanPath(outputDir, m.PlanPath); err != nil {
 			return fmt.Errorf("cannot resume: %w", err)
 		}
 	}

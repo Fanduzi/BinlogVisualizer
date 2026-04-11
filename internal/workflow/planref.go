@@ -6,18 +6,22 @@ import (
 	"strings"
 )
 
-// ValidateWorkflowPlanPath checks that planPath is a trusted plan reference
-// inside the workflow root (outputDir). It rejects empty paths, outside-root
-// resolution, and symlink escape.
-func ValidateWorkflowPlanPath(outputDir string, planPath string) error {
+// ValidateWorkflowPlanPath validates that planPath is the rooted plan.yaml copy
+// inside the workflow root (outputDir). It returns the canonical absolute path on
+// success, or an error if the path is empty, outside-root, symlink-escaped, not
+// named "plan.yaml", or not a direct child of the root.
+//
+// The returned canonical path must be used for all subsequent file operations
+// (Open, ReadFile, SHA256) instead of the raw manifest.PlanPath.
+func ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error) {
 	if planPath == "" {
-		return fmt.Errorf("plan_path is empty: manifest has no plan_path")
+		return "", fmt.Errorf("plan_path is empty: manifest has no plan_path")
 	}
 
 	// Canonicalize the workflow root.
 	canonicalRoot, err := filepath.Abs(outputDir)
 	if err != nil {
-		return fmt.Errorf("cannot canonicalize workflow root %q: %w", outputDir, err)
+		return "", fmt.Errorf("cannot canonicalize workflow root %q: %w", outputDir, err)
 	}
 	canonicalRoot = filepath.Clean(canonicalRoot)
 
@@ -35,7 +39,7 @@ func ValidateWorkflowPlanPath(outputDir string, planPath string) error {
 		// Resolve any existing prefix symlinks instead.
 		resolvedPlanPath, err = resolveExistingPrefix(absPlanPath)
 		if err != nil {
-			return fmt.Errorf("cannot resolve plan_path %q: %w", planPath, err)
+			return "", fmt.Errorf("cannot resolve plan_path %q: %w", planPath, err)
 		}
 	}
 
@@ -48,10 +52,16 @@ func ValidateWorkflowPlanPath(outputDir string, planPath string) error {
 
 	// Ensure the resolved plan path is inside the resolved root.
 	if !isInsideDir(resolvedRoot, resolvedPlanPath) {
-		return fmt.Errorf("plan_path %q resolves outside workflow root: trust boundary violated", planPath)
+		return "", fmt.Errorf("plan_path %q resolves outside workflow root: trust boundary violated", planPath)
 	}
 
-	return nil
+	// Tighten: only <root>/plan.yaml is accepted — not nested, not renamed.
+	expectedPath := filepath.Join(resolvedRoot, "plan.yaml")
+	if resolvedPlanPath != expectedPath {
+		return "", fmt.Errorf("plan_path must be <root>/plan.yaml, got %q: trust boundary violated", planPath)
+	}
+
+	return resolvedPlanPath, nil
 }
 
 // isInsideDir returns true if target is inside dir (or equals dir).
