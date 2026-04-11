@@ -119,7 +119,12 @@ func TestWriteManifestCreatesFile(t *testing.T) {
 		WorkflowPlanVersion: 1,
 		BinlogvizVersion:    "dev",
 		Status:              "success",
-		Steps:               []StepRecord{},
+		WorkflowSummary: WorkflowSummary{
+			Findings:        []WorkflowFinding{},
+			Recommendations: []WorkflowRecommendation{},
+			Warnings:        []string{},
+		},
+		Steps: []StepRecord{},
 	}
 
 	if err := WriteManifest(path, manifest); err != nil {
@@ -137,6 +142,15 @@ func TestWriteManifestCreatesFile(t *testing.T) {
 	}
 	if decoded.WorkflowName != "test" {
 		t.Fatalf("expected workflow_name test, got %s", decoded.WorkflowName)
+	}
+	if decoded.WorkflowSummary.Findings == nil {
+		t.Fatal("expected workflow_summary.findings to be non-nil")
+	}
+	if decoded.WorkflowSummary.Recommendations == nil {
+		t.Fatal("expected workflow_summary.recommendations to be non-nil")
+	}
+	if decoded.WorkflowSummary.Warnings == nil {
+		t.Fatal("expected workflow_summary.warnings to be non-nil")
 	}
 }
 

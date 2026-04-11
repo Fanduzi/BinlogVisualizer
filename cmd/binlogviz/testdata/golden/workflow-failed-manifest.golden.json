@@ -12,5 +12,10 @@
   "run_finished_at": "<timestamp>",
   "status": "failed",
   "error": "<discovery-error>",
+  "workflow_summary": {
+    "findings": [],
+    "recommendations": [],
+    "warnings": []
+  },
   "steps": []
 }

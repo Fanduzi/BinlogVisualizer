@@ -859,6 +859,8 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 		mf.Error = stepErr.Error()
 	}
 
+	mf.WorkflowSummary = workflow.BuildWorkflowSummary(outputDir, *mf)
+
 	manifestPath := filepath.Join(outputDir, "manifest.json")
 	if writeErr := workflow.WriteManifest(manifestPath, *mf); writeErr != nil {
 		fmt.Fprintf(stderr, "workflow: failed to write manifest: %v\n", writeErr)

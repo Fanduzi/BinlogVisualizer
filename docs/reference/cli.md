@@ -502,7 +502,7 @@ binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 binlogviz workflow run <plan.yaml> --snapshot-dir /tmp/snapshots
 ```
 
-`workflow run` executes a declarative YAML plan that describes one or more analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact tree plus a `manifest.json`.
+`workflow run` executes a declarative YAML plan that describes one or more analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact tree plus a `manifest.json`. The manifest always includes a normalized `workflow_summary` object with `findings`, `recommendations`, and `warnings` arrays. That summary is rebuilt best-effort from successful compare/trend JSON artifacts only, so summary warnings never change workflow or step status semantics.
 
 ### Plan format
 
@@ -582,6 +582,18 @@ trend:
 5. Run trend jobs in plan order
 6. Write `manifest.json`
 7. Write `index.html`
+
+### Workflow summary rebuild
+
+`workflow run` persists a compact workflow-level rollup into `manifest.json`:
+
+- `workflow_summary.findings`, `workflow_summary.recommendations`, and `workflow_summary.warnings` are always present as normalized arrays
+- only successful `compare` and `trend` steps contribute summary items
+- summary extraction reads JSON artifacts only
+- findings and recommendations are deterministically deduplicated and capped at 5 items each
+- `index.html` prefers HTML source links for workflow summary items and falls back to JSON when no HTML artifact exists
+- summary rebuild is best-effort: missing, unreadable, or invalid summary sources append warning strings instead of failing the workflow
+- summary warnings never change workflow or step status semantics
 
 ### Error handling
 

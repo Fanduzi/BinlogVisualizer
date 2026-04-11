@@ -2,10 +2,13 @@ package binlogviz
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"binlogviz/internal/workflow"
 )
@@ -361,6 +364,47 @@ func setupWorkflowTestWithSnapshots(t *testing.T, planFile string) (binlogDir, o
 	return binlogDir, outputDir, planPath, snapshotDir
 }
 
+func writeWorkflowSummaryFixtureArtifacts(t *testing.T, outputDir string) {
+	t.Helper()
+
+	fixtures := []struct {
+		source string
+		target string
+	}{
+		{
+			source: filepath.Join("testdata", "golden", "compare-key-findings.golden.json"),
+			target: filepath.Join(outputDir, "compare", "week2_vs_week1.json"),
+		},
+		{
+			source: filepath.Join("testdata", "golden", "trend-summary.golden.json"),
+			target: filepath.Join(outputDir, "trend", "weekly_series.json"),
+		},
+	}
+
+	for _, fixture := range fixtures {
+		data, err := os.ReadFile(fixture.source)
+		if err != nil {
+			t.Fatalf("read fixture %s: %v", fixture.source, err)
+		}
+		if err := os.MkdirAll(filepath.Dir(fixture.target), 0o755); err != nil {
+			t.Fatalf("mkdir for fixture %s: %v", fixture.target, err)
+		}
+		if err := os.WriteFile(fixture.target, data, 0o644); err != nil {
+			t.Fatalf("write fixture %s: %v", fixture.target, err)
+		}
+	}
+
+	htmlArtifacts := map[string]string{
+		filepath.Join(outputDir, "compare", "week2_vs_week1.html"): "<html><body>compare</body></html>",
+		filepath.Join(outputDir, "trend", "weekly_series.html"):    "<html><body>trend</body></html>",
+	}
+	for path, content := range htmlArtifacts {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatalf("write html artifact %s: %v", path, err)
+		}
+	}
+}
+
 // TestWorkflowCompareOutputIsValidJSON verifies the compare and trend outputs are valid JSON.
 func TestWorkflowCompareOutputIsValidJSON(t *testing.T) {
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
@@ -468,6 +512,207 @@ windows:
 	}
 	if !strings.Contains(html, "discover binlog files") {
 		t.Fatalf("expected discovery error message in index.html")
+	}
+}
+
+func TestWorkflowRunWritesWorkflowSummaryRecommendations(t *testing.T) {
+	outputDir := t.TempDir()
+	writeWorkflowSummaryFixtureArtifacts(t, outputDir)
+
+	mf := workflow.Manifest{
+		WorkflowName: "multi-window-test",
+		Status:       "success",
+		Steps: []workflow.StepRecord{
+			{Kind: "compare", Name: "week2_vs_week1", Status: "success", Artifacts: []string{"compare/week2_vs_week1.json", "compare/week2_vs_week1.html"}},
+			{Kind: "trend", Name: "weekly_series", Status: "success", Artifacts: []string{"trend/weekly_series.json", "trend/weekly_series.html"}},
+		},
+	}
+
+	if err := finalizeWorkflow(outputDir, &mf, time.Time{}, io.Discard, nil); err != nil {
+		t.Fatalf("finalize workflow: %v", err)
+	}
+
+	stored, err := workflowManifestFromJSON(filepath.Join(outputDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if stored.WorkflowSummary.Recommendations == nil {
+		t.Fatal("workflow_summary.recommendations should be non-nil")
+	}
+	if len(stored.WorkflowSummary.Recommendations) == 0 {
+		t.Fatal("expected workflow_summary.recommendations to be populated")
+	}
+	if len(stored.WorkflowSummary.Findings) == 0 {
+		t.Fatal("expected workflow_summary.findings to be populated")
+	}
+}
+
+func TestWorkflowRunFailedLateStepStillWritesWorkflowSummary(t *testing.T) {
+	outputDir := t.TempDir()
+	writeWorkflowSummaryFixtureArtifacts(t, outputDir)
+
+	mf := workflow.Manifest{
+		WorkflowName: "multi-window-test",
+		Status:       "success",
+		Steps: []workflow.StepRecord{
+			{Kind: "compare", Name: "week2_vs_week1", Status: "success", Artifacts: []string{"compare/week2_vs_week1.json", "compare/week2_vs_week1.html"}},
+			{Kind: "trend", Name: "weekly_series", Status: "failed", Error: "trend render failed"},
+		},
+	}
+
+	err := finalizeWorkflow(outputDir, &mf, time.Time{}, io.Discard, errors.New("trend render failed"))
+	if err == nil {
+		t.Fatal("expected workflow finalization to return the step error")
+	}
+
+	stored, readErr := workflowManifestFromJSON(filepath.Join(outputDir, "manifest.json"))
+	if readErr != nil {
+		t.Fatalf("read manifest: %v", readErr)
+	}
+	if stored.Status != "failed" {
+		t.Fatalf("expected failed manifest status, got %q", stored.Status)
+	}
+	if stored.WorkflowSummary.Findings == nil || stored.WorkflowSummary.Recommendations == nil || stored.WorkflowSummary.Warnings == nil {
+		t.Fatalf("expected non-nil workflow_summary arrays, got %#v", stored.WorkflowSummary)
+	}
+	if len(stored.WorkflowSummary.Findings) == 0 && len(stored.WorkflowSummary.Recommendations) == 0 {
+		t.Fatal("expected workflow_summary to keep earlier successful compare/trend rollups")
+	}
+}
+
+func TestWorkflowRunWithoutCompareOrTrendWritesEmptyWorkflowSummary(t *testing.T) {
+	binlogDir := t.TempDir()
+	fixtureSrc := filepath.Join("testdata", "minimal.binlog")
+	src, err := os.ReadFile(fixtureSrc)
+	if err != nil {
+		t.Fatalf("read binlog fixture: %v", err)
+	}
+	for _, suffix := range []string{"000001", "000002"} {
+		dst := filepath.Join(binlogDir, "mysql-bin."+suffix)
+		if err := os.WriteFile(dst, src, 0o644); err != nil {
+			t.Fatalf("write binlog fixture %s: %v", dst, err)
+		}
+	}
+
+	rootDir := t.TempDir()
+	outputDir := filepath.Join(rootDir, "artifacts")
+	plan := strings.ReplaceAll(`
+version: 1
+workflow:
+  name: analyze-only
+  output_dir: OUTPUT_PLACEHOLDER
+defaults:
+  input:
+    from_dir: BINLOG_PLACEHOLDER
+    prefix: mysql-bin.
+  analyze:
+    format: json
+  snapshot:
+    save: true
+windows:
+  - name: week1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`, "OUTPUT_PLACEHOLDER", outputDir)
+	plan = strings.ReplaceAll(plan, "BINLOG_PLACEHOLDER", binlogDir)
+
+	planPath := filepath.Join(t.TempDir(), "plan.yaml")
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", t.TempDir()})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	mf, err := workflowManifestFromJSON(filepath.Join(outputDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if len(mf.WorkflowSummary.Findings) != 0 {
+		t.Fatalf("findings len = %d, want 0", len(mf.WorkflowSummary.Findings))
+	}
+	if len(mf.WorkflowSummary.Recommendations) != 0 {
+		t.Fatalf("recommendations len = %d, want 0", len(mf.WorkflowSummary.Recommendations))
+	}
+	if len(mf.WorkflowSummary.Warnings) != 0 {
+		t.Fatalf("warnings len = %d, want 0", len(mf.WorkflowSummary.Warnings))
+	}
+}
+
+func TestWorkflowResumeRefreshesWorkflowSummary(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	runCmd := NewRootCommand()
+	runCmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	runCmd.SilenceUsage = true
+	runCmd.SilenceErrors = true
+	if err := runCmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	before, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest before resume: %v", err)
+	}
+	before.WorkflowSummary = workflow.WorkflowSummary{
+		Findings: []workflow.WorkflowFinding{{
+			Kind:              "stale_finding",
+			Title:             "Stale finding",
+			Summary:           "should be replaced on resume",
+			SourceStepKind:    "compare",
+			SourceStepName:    "week2_vs_week1",
+			SourceReportPath:  "compare/week2_vs_week1.json",
+			SourceReportLabel: "week2_vs_week1",
+		}},
+		Recommendations: []workflow.WorkflowRecommendation{{
+			Kind:              "stale_recommendation",
+			Priority:          "high",
+			Title:             "Stale recommendation",
+			Summary:           "should be replaced on resume",
+			SourceStepKind:    "compare",
+			SourceStepName:    "week2_vs_week1",
+			SourceReportPath:  "compare/week2_vs_week1.json",
+			SourceReportLabel: "week2_vs_week1",
+		}},
+		Warnings: []string{"stale warning"},
+	}
+	if err := workflow.WriteManifest(manifestPath, before); err != nil {
+		t.Fatalf("write stale manifest: %v", err)
+	}
+
+	resumeCmd := NewRootCommand()
+	resumeCmd.SetArgs([]string{"workflow", "resume", outputDir, "--snapshot-dir", snapshotDir, "--rerun", "compare:week2_vs_week1"})
+	resumeCmd.SilenceUsage = true
+	resumeCmd.SilenceErrors = true
+	if err := resumeCmd.Execute(); err != nil {
+		t.Fatalf("workflow resume: %v", err)
+	}
+
+	after, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest after resume: %v", err)
+	}
+	if after.Mode != "resume" {
+		t.Fatalf("expected mode=resume, got %q", after.Mode)
+	}
+	if after.Attempt != 2 {
+		t.Fatalf("expected attempt=2, got %d", after.Attempt)
+	}
+	if len(after.WorkflowSummary.Findings) != 0 {
+		t.Fatalf("expected refreshed workflow_summary.findings to be empty, got %#v", after.WorkflowSummary.Findings)
+	}
+	if len(after.WorkflowSummary.Recommendations) != 0 {
+		t.Fatalf("expected refreshed workflow_summary.recommendations to be empty, got %#v", after.WorkflowSummary.Recommendations)
+	}
+	if len(after.WorkflowSummary.Warnings) != 0 {
+		t.Fatalf("expected refreshed workflow_summary.warnings to be empty, got %#v", after.WorkflowSummary.Warnings)
 	}
 }
 

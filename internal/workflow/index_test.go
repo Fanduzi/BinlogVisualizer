@@ -280,3 +280,167 @@ func TestRenderIndexRunModeDoesNotShowAttempt(t *testing.T) {
 		t.Fatalf("did not expect 'attempt 1' on fresh run (attempt only shows for resume)")
 	}
 }
+
+func TestRenderIndexSummaryRecommendationsBeforeFindings(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "summary-order",
+			Status:       "success",
+			WorkflowSummary: WorkflowSummary{
+				Recommendations: []WorkflowRecommendation{{
+					Kind:              "check_pattern_driver",
+					Priority:          "high",
+					Title:             "Check pattern driver",
+					Summary:           "Review the source report.",
+					SourceStepKind:    "compare",
+					SourceStepName:    "week2_vs_week1",
+					SourceReportPath:  "compare/week2_vs_week1.html",
+					SourceReportLabel: "week2_vs_week1",
+				}},
+				Findings: []WorkflowFinding{{
+					Kind:              "pattern_driver",
+					Title:             "Top pattern driver",
+					Summary:           "refunds.create drove most row growth",
+					SourceStepKind:    "compare",
+					SourceStepName:    "week2_vs_week1",
+					SourceReportPath:  "compare/week2_vs_week1.html",
+					SourceReportLabel: "week2_vs_week1",
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	recIdx := strings.Index(html, "Workflow Recommendations")
+	findingIdx := strings.Index(html, "Workflow Findings")
+	if recIdx == -1 || findingIdx == -1 {
+		t.Fatalf("expected both workflow summary sections")
+	}
+	if recIdx > findingIdx {
+		t.Fatalf("expected recommendations before findings")
+	}
+}
+
+func TestRenderIndexSummarySourceLinks(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "summary-links",
+			Status:       "success",
+			WorkflowSummary: WorkflowSummary{
+				Recommendations: []WorkflowRecommendation{{
+					Kind:              "check_pattern_driver",
+					Priority:          "high",
+					Title:             "Check pattern driver",
+					Summary:           "Review the source report.",
+					SourceStepKind:    "compare",
+					SourceStepName:    "week2_vs_week1",
+					SourceReportPath:  "compare/week2_vs_week1.html",
+					SourceReportLabel: "week2_vs_week1",
+				}},
+				Findings: []WorkflowFinding{{
+					Kind:              "pattern_driver",
+					Title:             "Top pattern driver",
+					Summary:           "refunds.create drove most row growth",
+					SourceStepKind:    "compare",
+					SourceStepName:    "week2_vs_week1",
+					SourceReportPath:  "compare/week2_vs_week1.html",
+					SourceReportLabel: "week2_vs_week1",
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	for _, token := range []string{"./compare/week2_vs_week1.html", "Source report", "week2_vs_week1"} {
+		if !strings.Contains(html, token) {
+			t.Fatalf("expected %q in summary html", token)
+		}
+	}
+}
+
+func TestRenderIndexSummaryWarningsBlock(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "summary-warnings",
+			Status:       "success",
+			WorkflowSummary: WorkflowSummary{
+				Findings:        []WorkflowFinding{},
+				Recommendations: []WorkflowRecommendation{},
+				Warnings:        []string{"compare step \"week2_vs_week1\": missing JSON artifact"},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if !strings.Contains(html, "Workflow Summary Warnings") {
+		t.Fatalf("expected warnings block header")
+	}
+	if !strings.Contains(html, `compare step &#34;week2_vs_week1&#34;: missing JSON artifact`) {
+		t.Fatalf("expected warning text in html")
+	}
+}
+
+func TestRenderIndexSummaryEvidenceLinksOmitJSONAnchors(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "summary-json-evidence",
+			Status:       "success",
+			WorkflowSummary: WorkflowSummary{
+				Findings: []WorkflowFinding{{
+					Kind:              "rising_pattern",
+					Title:             "Rising pattern",
+					Summary:           "payments.update_status kept climbing across snapshots.",
+					SourceStepKind:    "trend",
+					SourceStepName:    "weekly_series",
+					SourceReportPath:  "trend/weekly_series.json",
+					SourceReportLabel: "weekly_series",
+					EvidenceRefs: []WorkflowEvidenceRef{{
+						Section: "pattern_trends",
+						Key:     "orders.payments|UPDATE|medium",
+						Label:   "payments.update_status",
+						Anchor:  "pattern-0",
+					}},
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if !strings.Contains(html, "./trend/weekly_series.json") {
+		t.Fatalf("expected json source link in html")
+	}
+	if strings.Contains(html, "./trend/weekly_series.json#pattern-0") {
+		t.Fatalf("did not expect json evidence link to include anchor")
+	}
+}
+
+func TestRenderIndexOmitsEmptyWorkflowSummarySections(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "summary-empty",
+			Status:       "success",
+			WorkflowSummary: WorkflowSummary{
+				Findings:        []WorkflowFinding{},
+				Recommendations: []WorkflowRecommendation{},
+				Warnings:        []string{},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	for _, token := range []string{"Workflow Recommendations", "Workflow Findings", "Workflow Summary Warnings"} {
+		if strings.Contains(html, token) {
+			t.Fatalf("did not expect %q in html", token)
+		}
+	}
+}

@@ -11,7 +11,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `analyze`：`stdout` 承载最终分析报告；`stderr` 承载进度、discovery 解析出的文件列表、最终组装状态、快照保存确认以及运行时错误。
 - `compare`：`stdout` 承载最终 compare 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
 - `trend`：`stdout` 承载最终 trend 报告；命令失败时由 CLI 通过 `stderr` 输出错误。
-- `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json` 和 `index.html`。
+- `workflow run`：v1 中 `stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。所有报告写到 `<output_dir>/` 下的 artifact 目录树中。无论成功或失败，都会写入 `manifest.json` 和 `index.html`。`manifest.json` 会始终包含一个规范化后的 `workflow_summary` 对象，而 `index.html` 会在 summary 有内容时渲染 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings` 分区。
 - `workflow resume`：`stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。Resume 会复用成功步骤的 artifact，并重跑失败、缺失或被显式选中的步骤。更新后的 `manifest.json` 会记录每个步骤的执行状态（`executed` 或 `reused`）。`index.html` 会包含 resume mode、attempt 编号和每个步骤的执行标签。
 - `workflow status`：`stdout` 输出文本或 JSON 形式的运行时检查结果。命令会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable`、`resume_error` 和每个步骤的状态，并且在可行时包含 dry `resume_preview`。它是严格只读的，也不会用 `stderr` 输出进度。
 - `workflow clean`：`stdout` 输出文本或 JSON 形式的清理摘要。命令会读取 `manifest.json`，报告 orphaned workflow artifacts 以及可选的 orphaned snapshots；在 `--apply` 模式下还会报告 `deleted` 和 `skipped`。它不会用 `stderr` 输出进度，但只要存在 skipped 删除，仍会在写完 `stdout` 后以非零状态退出。
@@ -805,8 +805,27 @@ JSON 描述包含：
 | `plan_sha256` | string | yes | 首次运行时 plan 文件的 SHA-256 哈希 |
 | `resolved_input_files` | array<string> | yes | discovery 阶段解析出的输入文件路径列表 |
 | `snapshot_dir` | string | yes | 执行期间使用的快照目录 |
+| `workflow_summary` | object | yes | 基于成功 compare/trend JSON artifact 重建的 workflow 级汇总 |
 | `steps` | array | yes | 每个步骤的状态记录 |
 | `error` | string | no | 当 `status` 为 `failed` 时出现，包含失败消息 |
+
+### `workflow_summary`
+
+`workflow_summary` 始终会被规范化成如下 shape：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `findings` | array | yes | 来源于 compare `key_findings` 和 trend `trend_summary` 的 workflow 级发现 |
+| `recommendations` | array | yes | 来源于 compare/trend `recommendations` 的 workflow 级建议 |
+| `warnings` | array<string> | yes | best-effort 聚合 warnings |
+
+行为说明：
+
+- 只有成功的 `compare` 和 `trend` 步骤才会贡献 summary 项
+- summary 提取只读取 JSON artifact
+- summary warnings 会记录缺失、不可读或无效的 summary 来源
+- summary warnings 不会改变 workflow 成功/失败语义
+- 只有在对应数组非空时，`index.html` 才会渲染 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings`
 
 ### 每步骤字段
 

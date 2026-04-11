@@ -502,7 +502,7 @@ binlogviz workflow run <plan.yaml> --output-dir ./artifacts
 binlogviz workflow run <plan.yaml> --snapshot-dir /tmp/snapshots
 ```
 
-`workflow run` 执行一份声明式 YAML plan，描述一个或多个分析窗口、可选的 compare 作业和可选的 trend 作业。它会产生一个确定性的 artifact 目录树以及一份 `manifest.json`。
+`workflow run` 执行一份声明式 YAML plan，描述一个或多个分析窗口、可选的 compare 作业和可选的 trend 作业。它会产生一个确定性的 artifact 目录树以及一份 `manifest.json`。Manifest 会始终包含一个规范化后的 `workflow_summary` 对象，其中带有 `findings`、`recommendations` 和 `warnings` 三个数组。这份 summary 只会基于成功 compare/trend 步骤的 JSON artifact 以 best-effort 方式重建，因此 summary warnings 不会改变 workflow 或步骤的状态语义。
 
 ### Plan 格式
 
@@ -582,6 +582,18 @@ trend:
 5. 按 plan 顺序运行 trend 作业
 6. 写入 `manifest.json`
 7. 写入 `index.html`
+
+### `workflow_summary` 重建行为
+
+`workflow run` 会把一份紧凑的 workflow 级汇总持久化到 `manifest.json`：
+
+- `workflow_summary.findings`、`workflow_summary.recommendations` 和 `workflow_summary.warnings` 始终以规范化数组形式出现
+- 只有成功的 `compare` 和 `trend` 步骤才会贡献 summary 项
+- summary 提取只读取 JSON artifact
+- findings 和 recommendations 会按确定性规则去重，并且各自最多保留 5 条
+- `index.html` 会优先为 workflow summary 项链接到 HTML 源报告；如果没有 HTML artifact，则回退到 JSON
+- summary 重建是 best-effort 的：缺失、不可读或无效的 summary 来源只会追加 warning 字符串，不会让 workflow 失败
+- summary warnings 永远不会改变 workflow 或步骤的状态语义
 
 ### 错误处理
 
