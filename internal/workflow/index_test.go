@@ -422,6 +422,114 @@ func TestRenderIndexSummaryEvidenceLinksOmitJSONAnchors(t *testing.T) {
 	}
 }
 
+func TestRenderIndexSummaryEvidenceLinksIncludeHTMLAnchors(t *testing.T) {
+	html, err := RenderIndex(IndexInput{
+		OutputRoot: ".",
+		Manifest: Manifest{
+			WorkflowName: "summary-html-evidence",
+			Status:       "success",
+			WorkflowSummary: WorkflowSummary{
+				Findings: []WorkflowFinding{{
+					Kind:              "pattern_driver",
+					Title:             "Top pattern driver",
+					Summary:           "refunds.create drove most row growth",
+					SourceStepKind:    "compare",
+					SourceStepName:    "week2_vs_week1",
+					SourceReportPath:  "compare/week2_vs_week1.html",
+					SourceReportLabel: "week2_vs_week1",
+					EvidenceRefs: []WorkflowEvidenceRef{{
+						Section: "pattern_changes",
+						Key:     "orders.refunds|INSERT|small",
+						Label:   "refunds.create",
+						Anchor:  "section-pattern-changes",
+					}},
+				}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("render index: %v", err)
+	}
+	if !strings.Contains(html, "./compare/week2_vs_week1.html#section-pattern-changes") {
+		t.Fatalf("expected html evidence link to include anchor")
+	}
+}
+
+func TestRenderIndexSummarySectionsRenderOnlyWhenPopulated(t *testing.T) {
+	tests := []struct {
+		name      string
+		summary   WorkflowSummary
+		want      []string
+		notWanted []string
+	}{
+		{
+			name: "warnings only",
+			summary: WorkflowSummary{
+				Findings:        []WorkflowFinding{},
+				Recommendations: []WorkflowRecommendation{},
+				Warnings:        []string{"compare step \"week2_vs_week1\": missing JSON artifact"},
+			},
+			want:      []string{"Workflow Summary Warnings"},
+			notWanted: []string{"Workflow Recommendations", "Workflow Findings"},
+		},
+		{
+			name: "findings only",
+			summary: WorkflowSummary{
+				Findings: []WorkflowFinding{{
+					Kind:    "pattern_driver",
+					Title:   "Top pattern driver",
+					Summary: "refunds.create drove most row growth",
+				}},
+				Recommendations: []WorkflowRecommendation{},
+				Warnings:        []string{},
+			},
+			want:      []string{"Workflow Findings"},
+			notWanted: []string{"Workflow Recommendations", "Workflow Summary Warnings"},
+		},
+		{
+			name: "recommendations only",
+			summary: WorkflowSummary{
+				Findings: []WorkflowFinding{},
+				Recommendations: []WorkflowRecommendation{{
+					Kind:     "check_pattern_driver",
+					Priority: "high",
+					Title:    "Check pattern driver",
+					Summary:  "Review the source report.",
+				}},
+				Warnings: []string{},
+			},
+			want:      []string{"Workflow Recommendations"},
+			notWanted: []string{"Workflow Findings", "Workflow Summary Warnings"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			html, err := RenderIndex(IndexInput{
+				OutputRoot: ".",
+				Manifest: Manifest{
+					WorkflowName:    "summary-sections",
+					Status:          "success",
+					WorkflowSummary: tc.summary,
+				},
+			})
+			if err != nil {
+				t.Fatalf("render index: %v", err)
+			}
+			for _, token := range tc.want {
+				if !strings.Contains(html, token) {
+					t.Fatalf("expected %q in html", token)
+				}
+			}
+			for _, token := range tc.notWanted {
+				if strings.Contains(html, token) {
+					t.Fatalf("did not expect %q in html", token)
+				}
+			}
+		})
+	}
+}
+
 func TestRenderIndexOmitsEmptyWorkflowSummarySections(t *testing.T) {
 	html, err := RenderIndex(IndexInput{
 		OutputRoot: ".",

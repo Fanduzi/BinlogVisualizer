@@ -295,6 +295,45 @@ func TestBuildWorkflowSummaryWarnsOnShapeMismatch(t *testing.T) {
 	}
 }
 
+func TestBuildWorkflowSummaryWarnsOnlyForMissingExpectedArray(t *testing.T) {
+	outputDir := t.TempDir()
+
+	writeWorkflowSummaryArtifact(t, outputDir, "compare/compare_missing_recommendations.json", map[string]any{
+		"key_findings": []map[string]any{},
+	})
+	writeWorkflowSummaryArtifact(t, outputDir, "trend/trend_missing_summary.json", map[string]any{
+		"recommendations": []map[string]any{},
+	})
+
+	manifest := Manifest{
+		Steps: []StepRecord{
+			{Kind: "compare", Name: "compare_missing_recommendations", Status: "success", Artifacts: []string{"compare/compare_missing_recommendations.json"}},
+			{Kind: "trend", Name: "trend_missing_summary", Status: "success", Artifacts: []string{"trend/trend_missing_summary.json"}},
+		},
+	}
+
+	summary := BuildWorkflowSummary(outputDir, manifest)
+	if len(summary.Warnings) != 2 {
+		t.Fatalf("warnings len = %d, want 2: %#v", len(summary.Warnings), summary.Warnings)
+	}
+	for _, want := range []string{
+		`compare step "compare_missing_recommendations": JSON payload missing expected array "recommendations"`,
+		`trend step "trend_missing_summary": JSON payload missing expected array "trend_summary"`,
+	} {
+		if !containsString(summary.Warnings, want) {
+			t.Fatalf("expected warning %q in %#v", want, summary.Warnings)
+		}
+	}
+	for _, notWant := range []string{
+		`compare step "compare_missing_recommendations": JSON payload missing expected array "key_findings"`,
+		`trend step "trend_missing_summary": JSON payload missing expected array "recommendations"`,
+	} {
+		if containsString(summary.Warnings, notWant) {
+			t.Fatalf("unexpected warning %q in %#v", notWant, summary.Warnings)
+		}
+	}
+}
+
 func TestBuildWorkflowSummaryDoesNotWarnOnPresentEmptyArrays(t *testing.T) {
 	outputDir := t.TempDir()
 

@@ -591,7 +591,9 @@ trend:
 - only successful `compare` and `trend` steps contribute summary items
 - summary extraction reads JSON artifacts only
 - findings and recommendations are deterministically deduplicated and capped at 5 items each
+- missing required top-level arrays append warnings, while present-but-empty arrays remain valid and warning-free
 - `index.html` prefers HTML source links for workflow summary items and falls back to JSON when no HTML artifact exists
+- workflow summary evidence links append `#anchor` only for HTML source reports; JSON fallback links omit anchors
 - summary rebuild is best-effort: missing, unreadable, or invalid summary sources append warning strings instead of failing the workflow
 - summary warnings never change workflow or step status semantics
 

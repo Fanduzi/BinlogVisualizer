@@ -591,7 +591,9 @@ trend:
 - 只有成功的 `compare` 和 `trend` 步骤才会贡献 summary 项
 - summary 提取只读取 JSON artifact
 - findings 和 recommendations 会按确定性规则去重，并且各自最多保留 5 条
+- 缺少必需顶层数组时会追加 warning；字段存在但为空数组属于有效低信号输入，不会产生 warning
 - `index.html` 会优先为 workflow summary 项链接到 HTML 源报告；如果没有 HTML artifact，则回退到 JSON
+- workflow summary 的 evidence link 只有在 HTML 源报告上才会追加 `#anchor`；JSON 回退链接不会带锚点
 - summary 重建是 best-effort 的：缺失、不可读或无效的 summary 来源只会追加 warning 字符串，不会让 workflow 失败
 - summary warnings 永远不会改变 workflow 或步骤的状态语义
 
