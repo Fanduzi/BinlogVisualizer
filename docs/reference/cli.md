@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow export`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -28,6 +28,9 @@ binlogviz workflow status <output_dir> --format json
 binlogviz workflow clean <output_dir>
 binlogviz workflow clean <output_dir> --format json
 binlogviz workflow clean <output_dir> --apply --include-snapshots
+binlogviz workflow export <output_dir>
+binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> --include-snapshots --format json
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
 binlogviz workflow describe <plan.yaml>
@@ -668,12 +671,6 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 
 `workflow clean` inspects one existing workflow root and reports or deletes orphaned generated files that are no longer referenced by the current `manifest.json`.
 
-The command is dry-run by default:
-
-- without `--apply`, it only reports cleanup candidates
-- with `--apply`, it deletes discovered candidates and reports `deleted` and `skipped`
-- snapshots are excluded by default and require `--include-snapshots`
-
 ### Flags
 
 | Flag | Default | Description |
@@ -732,6 +729,54 @@ Additional rules:
 - decide what `resume` should do next
 - perform global cleanup outside one workflow root
 - implement retention windows, TTLs, or age-based pruning
+
+## `workflow export` Command Syntax
+
+```bash
+binlogviz workflow export <output_dir>
+binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> --include-snapshots
+binlogviz workflow export <output_dir> --format json
+```
+
+`workflow export` bundles an existing workflow root into a deterministic, read-only zip archive. It reads `manifest.json`, includes `manifest.json` itself, best-effort includes `index.html`, includes only manifest-declared workflow artifacts, and best-effort includes `plan.yaml` from `manifest.plan_path` when present. It never reruns workflow steps, never rebuilds workflow summary, and never mutates files under the workflow root.
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `<output_dir>.zip` | Archive output path. The default is derived from `filepath.Clean(output_dir) + ".zip"`. |
+| `--include-snapshots` | `false` | Include only snapshot JSON files referenced by the manifest. |
+| `--format` | `text` | Export command result format: `text` or `json`. |
+
+### Export rules and safety guarantees
+
+- `manifest.json` is required and is always included in the archive
+- `index.html` is included best-effort and becomes a warning if missing
+- workflow artifacts are loaded only from `steps[].artifacts` in the manifest
+- artifacts outside the workflow root are skipped with warnings
+- `plan.yaml` is included as `plan.yaml` only when `manifest.plan_path` is present, resolves inside the workflow root, is readable, still matches `manifest.plan_sha256`, and still parses as the recorded workflow plan metadata; otherwise it becomes a warning
+- snapshots are excluded by default
+- with `--include-snapshots`, only referenced snapshot JSON files are considered, and an empty `manifest.snapshot_dir` becomes a warning instead of reading from the current working directory
+- missing manifest artifacts, missing snapshots, and missing plan/index inputs become warnings rather than fatal errors
+- the archive output path must be outside the workflow root; paths inside the root are rejected
+- zip entry ordering, timestamps, and file modes are normalized so repeated exports are deterministic
+
+### Failure behavior
+
+`workflow export` fails before writing a successful result when:
+
+- `<output_dir>/manifest.json` is missing, unreadable, or invalid
+- an included artifact cannot be read for reasons other than file absence in optional best-effort paths
+- archive creation or writing fails
+- the archive output path resolves inside the workflow root
+
+### Output behavior
+
+- all result output is written to `stdout`
+- the command does not use `stderr` for progress output
+- `text` mode writes a compact operator summary with an optional `Warnings` section
+- `json` mode writes a machine-readable object with `workflow_name`, `output_dir`, `archive_path`, `format`, `included_files`, `included_snapshots`, and `warnings`
 
 ## `workflow validate` Command Syntax
 

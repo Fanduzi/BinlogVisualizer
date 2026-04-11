@@ -116,6 +116,8 @@ tree artifacts/incident-investigation
 
 `workflow clean` 则是这一生命周期中的最终 maintenance 命令。它以当前 manifest 为唯一真相源，默认 dry-run，报告 `analyze/`、`compare/`、`trend/` 下已不再被引用的孤儿生成物，并且只有显式加 `--include-snapshots` 时才会把孤儿 snapshot JSON 纳入候选。`--apply` 会执行 best-effort 删除，但仍然不会触碰 `manifest.json`、`index.html`、plan 文件以及任何超出范围的未知文件。
 
+`workflow export` 是已完成 workflow root 的只读打包命令。它会读取 `manifest.json`，把 manifest 声明的 artifacts 打包成确定性的 zip archive，始终包含 `manifest.json`，并以 best-effort 方式包含 `index.html`；使用 `--include-snapshots` 时还可以把被引用的 snapshots 一并纳入。它不会重跑步骤，并且会拒绝位于 workflow root 内部的 archive 输出路径。
+
 ```bash
 binlogviz workflow resume ./artifacts/incident
 binlogviz workflow resume ./artifacts/incident --rerun analyze:week2
@@ -123,6 +125,8 @@ binlogviz workflow status ./artifacts/incident
 binlogviz workflow status ./artifacts/incident --format json
 binlogviz workflow clean ./artifacts/incident
 binlogviz workflow clean ./artifacts/incident --apply --include-snapshots
+binlogviz workflow export ./artifacts/incident
+binlogviz workflow export ./artifacts/incident --include-snapshots --format json
 binlogviz workflow validate incident.yaml
 binlogviz workflow validate incident.yaml --format json
 binlogviz workflow describe incident.yaml

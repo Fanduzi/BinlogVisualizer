@@ -1,6 +1,6 @@
 # 输出格式参考
 
-本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 会向 `stdout` 和 `stderr` 分别写入什么内容。
+本文档说明 `binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow export`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 会向 `stdout` 和 `stderr` 分别写入什么内容。
 
 如果你想先看最短运维路径，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -15,6 +15,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `workflow resume`：`stdout` 不使用；`stderr` 承载进度行和最终 manifest 路径。Resume 会复用成功步骤的 artifact，并重跑失败、缺失或被显式选中的步骤。更新后的 `manifest.json` 会记录每个步骤的执行状态（`executed` 或 `reused`）。`index.html` 会包含 resume mode、attempt 编号和每个步骤的执行标签。
 - `workflow status`：`stdout` 输出文本或 JSON 形式的运行时检查结果。命令会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable`、`resume_error` 和每个步骤的状态，并且在可行时包含 dry `resume_preview`。它是严格只读的，也不会用 `stderr` 输出进度。
 - `workflow clean`：`stdout` 输出文本或 JSON 形式的清理摘要。命令会读取 `manifest.json`，报告 orphaned workflow artifacts 以及可选的 orphaned snapshots；在 `--apply` 模式下还会报告 `deleted` 和 `skipped`。它不会用 `stderr` 输出进度，但只要存在 skipped 删除，仍会在写完 `stdout` 后以非零状态退出。
+- `workflow export`：`stdout` 输出文本或 JSON 形式的导出摘要。命令会读取 `manifest.json`，在 workflow root 之外写入确定性的 zip archive，并报告纳入文件计数和 warnings。它不会用 `stderr` 输出进度。
 - `workflow validate`：`stdout` 输出文本或 JSON 校验结果。命令只读取 `plan.yaml`，执行静态 plan 校验；如果 plan 非法则以非零状态退出。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 - `workflow describe`：`stdout` 输出文本或 JSON 的静态执行预览，包括步骤顺序和 artifact 路径。命令只读取 `plan.yaml`，不会渲染 HTML，也不会检查任何运行时产物。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 
@@ -68,6 +69,13 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 |---|---|
 | `text` | 默认。面向人的清理摘要，包含 orphan、deleted 和 skipped 列表。 |
 | `json` | 机器可读的清理结果，包含 orphan/deletion 数组和聚合计数。 |
+
+### `workflow export`
+
+| 参数值 | 说明 |
+|---|---|
+| `text` | 默认。面向人的导出摘要，包含 workflow 名称、输出根目录、archive 路径、纳入计数和可选 warnings。 |
+| `json` | 机器可读的导出结果，包含 archive 元数据、纳入计数和 warnings。 |
 
 ### `workflow validate`
 
@@ -729,6 +737,54 @@ JSON 模式会向 `stdout` 写出单个机器可读对象。
 - workflow artifact 目录不可读时，在渲染前直接失败
 - snapshot 目录缺失时返回零个 snapshot 候选，而不是错误
 - apply 模式下出现 skipped 删除时，仍会先写出完整结果，再返回非零命令错误
+
+## Workflow Export 输出
+
+`binlogviz workflow export` 用于报告把一个已有 workflow root 打包成确定性 zip archive 的结果。
+
+### 文本输出
+
+文本模式会向 `stdout` 写出紧凑的运维摘要：
+
+- `Workflow Export`
+- `Workflow: <workflow_name>`
+- `Output Root: <output_dir>`
+- `Archive: <archive_path>`
+- `Format: zip`
+- `Included Files: <count>`
+- `Included Snapshots: <count>`
+- 可选的 `Warnings` 分区，其中每条 warning 都以 `- ` 开头
+
+代表性行为：
+
+- 只有在 archive 创建成功后才会写出该摘要
+- `Format` 表示 archive 格式（`zip`），而不是 CLI 渲染模式
+- `Included Files` 统计所有被纳入归档的 entry，包括 `manifest.json`、存在时的 `index.html`、manifest 声明的 artifacts、通过校验的 `plan.yaml` 以及可选 snapshots
+- `Included Snapshots` 只统计归档中位于 `snapshots/` 下的 entry
+- 缺失的可选输入（如 `index.html`、manifest artifact、被引用的 snapshot，或解析后落在 workflow root 之外、已不再匹配 `manifest.plan_sha256` / 已无法解析为记录 workflow 元数据的 `plan.yaml`）会进入 `Warnings`
+- 当 `--include-snapshots` 开启且 `manifest.snapshot_dir` 为空时，结果会记录 warning，而不会回退去读取当前工作目录
+
+### JSON 输出
+
+JSON 模式会向 `stdout` 写出单个机器可读对象。
+
+顶层字段：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `workflow_name` | string | yes | 从 `manifest.json` 读取的 workflow 名称 |
+| `output_dir` | string | yes | 传给命令的 workflow root |
+| `archive_path` | string | yes | 最终 archive 输出路径 |
+| `format` | string | yes | 当前实现中固定为 `zip` |
+| `included_files` | integer | yes | 经过确定性去重后的归档 entry 数量 |
+| `included_snapshots` | integer | yes | 位于 `snapshots/` 下的归档 entry 数量 |
+| `warnings` | array<string> | yes | 导出过程中收集到的 warning；没有时为空数组 |
+
+### 通道行为
+
+- 所有 export 结果载荷都写到 `stdout`
+- 命令不会向 `stderr` 输出进度行
+- 命令失败时继续沿用 CLI 默认错误链路
 
 ## Workflow Validate 输出
 

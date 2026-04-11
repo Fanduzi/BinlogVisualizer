@@ -37,6 +37,7 @@ func newWorkflowCommand() *cobra.Command {
 	cmd.AddCommand(newWorkflowDescribeCommand())
 	cmd.AddCommand(newWorkflowStatusCommand())
 	cmd.AddCommand(newWorkflowCleanCommand())
+	cmd.AddCommand(newWorkflowExportCommand())
 	return cmd
 }
 
@@ -50,6 +51,12 @@ type workflowStatusOptions struct {
 
 type workflowCleanOptions struct {
 	apply            bool
+	includeSnapshots bool
+	format           string
+}
+
+type workflowExportOptions struct {
+	output           string
 	includeSnapshots bool
 	format           string
 }
@@ -144,6 +151,49 @@ func newWorkflowCleanCommand() *cobra.Command {
 
 	cmd.Flags().BoolVar(&opts.apply, "apply", false, "Delete orphaned files instead of previewing them")
 	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Include orphaned snapshot JSON files in cleanup")
+	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
+
+	return cmd
+}
+
+func newWorkflowExportCommand() *cobra.Command {
+	opts := &workflowExportOptions{}
+
+	cmd := &cobra.Command{
+		Use:   "export <output_dir>",
+		Short: "Bundle workflow artifacts into a read-only archive",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.format != "text" && opts.format != "json" {
+				return fmt.Errorf("unsupported workflow export format %q (allowed: text, json)", opts.format)
+			}
+
+			outputDir := args[0]
+			manifestPath := filepath.Join(outputDir, "manifest.json")
+			manifest, err := workflowManifestFromJSON(manifestPath)
+			if err != nil {
+				return fmt.Errorf("read workflow manifest %s: %w", manifestPath, err)
+			}
+
+			archivePath, err := resolveWorkflowExportArchivePath(outputDir, opts.output)
+			if err != nil {
+				return err
+			}
+
+			result, err := workflow.BuildExport(outputDir, manifest, workflow.ExportOptions{IncludeSnapshots: opts.includeSnapshots})
+			if err != nil {
+				return err
+			}
+			if err := workflow.WriteExportArchive(archivePath, result); err != nil {
+				return err
+			}
+
+			return writeWorkflowExportOutput(cmd.OutOrStdout(), opts.format, buildWorkflowExportOutput(manifest.WorkflowName, outputDir, archivePath, opts.format, result))
+		},
+	}
+
+	cmd.Flags().StringVar(&opts.output, "output", "", "Archive output path (default: <output_dir>.zip)")
+	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Include referenced snapshot JSON files in the archive")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
 
 	return cmd
@@ -623,6 +673,86 @@ func writeWorkflowCleanOutput(out io.Writer, format string, result workflow.Clea
 	return nil
 }
 
+type workflowExportOutput struct {
+	WorkflowName      string   `json:"workflow_name"`
+	OutputDir         string   `json:"output_dir"`
+	ArchivePath       string   `json:"archive_path"`
+	Format            string   `json:"format"`
+	IncludedFiles     int      `json:"included_files"`
+	IncludedSnapshots int      `json:"included_snapshots"`
+	Warnings          []string `json:"warnings"`
+}
+
+func resolveWorkflowExportArchivePath(outputDir string, output string) (string, error) {
+	if output == "" {
+		return filepath.Clean(outputDir) + ".zip", nil
+	}
+	archivePath, err := filepath.Abs(output)
+	if err != nil {
+		return "", fmt.Errorf("resolve archive path: %w", err)
+	}
+	return archivePath, nil
+}
+
+func buildWorkflowExportOutput(workflowName, outputDir, archivePath, format string, result workflow.ExportResult) workflowExportOutput {
+	warnings := append([]string(nil), result.Warnings...)
+	if warnings == nil {
+		warnings = []string{}
+	}
+
+	snapshotCount := 0
+	for _, entry := range result.Entries {
+		if strings.Contains(entry.ArchivePath, "/snapshots/") {
+			snapshotCount++
+		}
+	}
+
+	return workflowExportOutput{
+		WorkflowName:      workflowName,
+		OutputDir:         outputDir,
+		ArchivePath:       archivePath,
+		Format:            "zip",
+		IncludedFiles:     len(result.Entries),
+		IncludedSnapshots: snapshotCount,
+		Warnings:          warnings,
+	}
+}
+
+func writeWorkflowExportOutput(out io.Writer, format string, payload workflowExportOutput) error {
+	if format == "json" {
+		data, err := json.MarshalIndent(payload, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode workflow export output: %w", err)
+		}
+		_, err = fmt.Fprintln(out, string(data))
+		return err
+	}
+
+	if _, err := fmt.Fprintf(out,
+		"Workflow Export\nWorkflow: %s\nOutput Root: %s\nArchive: %s\nFormat: %s\nIncluded Files: %d\nIncluded Snapshots: %d\n",
+		payload.WorkflowName,
+		payload.OutputDir,
+		payload.ArchivePath,
+		payload.Format,
+		payload.IncludedFiles,
+		payload.IncludedSnapshots,
+	); err != nil {
+		return err
+	}
+	if len(payload.Warnings) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, "\nWarnings"); err != nil {
+		return err
+	}
+	for _, warning := range payload.Warnings {
+		if _, err := fmt.Fprintf(out, "- %s\n", warning); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stderr io.Writer) error {
 	startedAt := time.Now().UTC()
 
@@ -811,7 +941,11 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 		return fmt.Errorf("create output layout: %w", err)
 	}
 
-	planSHA256, err := computeFileSHA256(planPath)
+	copiedPlanPath, err := copyWorkflowPlanIntoOutputDir(outputDir, planPath)
+	if err != nil {
+		return fmt.Errorf("copy plan file: %w", err)
+	}
+	planSHA256, err := computeFileSHA256(copiedPlanPath)
 	if err != nil {
 		return fmt.Errorf("hash plan file: %w", err)
 	}
@@ -831,7 +965,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 		WorkflowName:        plan.Workflow.Name,
 		WorkflowPlanVersion: plan.Version,
 		BinlogvizVersion:    version.Version,
-		PlanPath:            planPath,
+		PlanPath:            copiedPlanPath,
 		PlanSHA256:          planSHA256,
 		SnapshotDir:         effectiveSnapshotDir,
 		RunStartedAt:        startedAt.Format(time.RFC3339),
@@ -1286,4 +1420,16 @@ func computeFileSHA256(path string) (string, error) {
 	}
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h[:]), nil
+}
+
+func copyWorkflowPlanIntoOutputDir(outputDir string, planPath string) (string, error) {
+	data, err := os.ReadFile(planPath)
+	if err != nil {
+		return "", err
+	}
+	copiedPlanPath := filepath.Join(outputDir, "plan.yaml")
+	if err := os.WriteFile(copiedPlanPath, data, 0o644); err != nil {
+		return "", err
+	}
+	return copiedPlanPath, nil
 }

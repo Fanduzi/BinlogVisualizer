@@ -1,6 +1,7 @@
 package binlogviz
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"errors"
 	"io"
@@ -70,6 +71,42 @@ func TestWorkflowRunWritesAnalyzeArtifacts(t *testing.T) {
 	}
 
 	_ = binlogDir
+}
+
+func TestWorkflowRunCopiesPlanIntoWorkflowRoot(t *testing.T) {
+	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run: %v", err)
+	}
+
+	manifestPath := filepath.Join(outputDir, "manifest.json")
+	mf, err := workflowManifestFromJSON(manifestPath)
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+
+	expectedPlanPath := filepath.Join(outputDir, "plan.yaml")
+	if mf.PlanPath != expectedPlanPath {
+		t.Fatalf("expected manifest plan_path %q, got %q", expectedPlanPath, mf.PlanPath)
+	}
+
+	wantPlanBody, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatalf("read source plan: %v", err)
+	}
+	gotPlanBody, err := os.ReadFile(expectedPlanPath)
+	if err != nil {
+		t.Fatalf("read copied plan: %v", err)
+	}
+	if string(gotPlanBody) != string(wantPlanBody) {
+		t.Fatalf("copied plan body mismatch")
+	}
 }
 
 func TestWorkflowRunPersistsDefaultSnapshotDirInManifest(t *testing.T) {
@@ -1961,6 +1998,413 @@ func TestWorkflowCleanRejectsMissingManifest(t *testing.T) {
 	}
 }
 
+func TestWorkflowExportWritesDefaultArchiveNextToOutputDir(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+	archivePath := outputDir + ".zip"
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow export: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(stdout, "Archive: "+archivePath) {
+		t.Fatalf("expected archive path in stdout, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "Format: zip") {
+		t.Fatalf("expected zip format in stdout, got %q", stdout)
+	}
+	if _, err := os.Stat(archivePath); err != nil {
+		t.Fatalf("expected archive at %s: %v", archivePath, err)
+	}
+}
+
+func TestWorkflowExportUsesExplicitOutputPath(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+	cwd := t.TempDir()
+	explicitPath := filepath.Join(cwd, "incident.zip")
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldwd)
+	})
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir, "--output", "./incident.zip"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow export: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	resolvedExplicitPath, err := filepath.EvalSymlinks(explicitPath)
+	if err != nil {
+		t.Fatalf("resolve explicit path: %v", err)
+	}
+	if !strings.Contains(stdout, "Archive: "+resolvedExplicitPath) {
+		t.Fatalf("expected explicit archive path in stdout, got %q", stdout)
+	}
+	if !strings.Contains(stdout, "Format: zip") {
+		t.Fatalf("expected zip format in stdout, got %q", stdout)
+	}
+	if _, err := os.Stat(explicitPath); err != nil {
+		t.Fatalf("expected archive at %s: %v", explicitPath, err)
+	}
+}
+
+func TestWorkflowExportJSONOutputIncludesArchiveFormatCountsAndNormalizedWarnings(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixtureWithoutIndex(t)
+	archivePath := outputDir + ".zip"
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow export: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var decoded struct {
+		OutputDir         string   `json:"output_dir"`
+		ArchivePath       string   `json:"archive_path"`
+		Format            string   `json:"format"`
+		IncludedFiles     int      `json:"included_files"`
+		IncludedSnapshots int      `json:"included_snapshots"`
+		Warnings          []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.OutputDir != outputDir {
+		t.Fatalf("output_dir = %q, want %q", decoded.OutputDir, outputDir)
+	}
+	if decoded.ArchivePath != archivePath {
+		t.Fatalf("archive_path = %q, want %q", decoded.ArchivePath, archivePath)
+	}
+	if decoded.Format != "zip" {
+		t.Fatalf("format = %q, want zip", decoded.Format)
+	}
+	if decoded.IncludedFiles != 3 {
+		t.Fatalf("included_files = %d, want 3", decoded.IncludedFiles)
+	}
+	if decoded.IncludedSnapshots != 0 {
+		t.Fatalf("included_snapshots = %d, want 0", decoded.IncludedSnapshots)
+	}
+	if decoded.Warnings == nil {
+		t.Fatal("warnings should be a normalized array, got nil")
+	}
+	assertStringSliceContains(t, decoded.Warnings, "missing index.html")
+}
+
+func TestWorkflowExportTextWarningsSectionRendersOnlyWhenPresent(t *testing.T) {
+	t.Run("without warnings", func(t *testing.T) {
+		outputDir := setupWorkflowExportCommandFixture(t)
+
+		cmd := NewRootCommand()
+		cmd.SetArgs([]string{"workflow", "export", outputDir})
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+		if err != nil {
+			t.Fatalf("workflow export: %v", err)
+		}
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+		if strings.Contains(stdout, "\nWarnings\n") {
+			t.Fatalf("expected warnings section omitted, got %q", stdout)
+		}
+	})
+
+	t.Run("with warnings", func(t *testing.T) {
+		outputDir := setupWorkflowExportCommandFixtureWithoutIndex(t)
+
+		cmd := NewRootCommand()
+		cmd.SetArgs([]string{"workflow", "export", outputDir})
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+		if err != nil {
+			t.Fatalf("workflow export: %v", err)
+		}
+		if strings.TrimSpace(stderr) != "" {
+			t.Fatalf("expected empty stderr, got %q", stderr)
+		}
+		if !strings.Contains(stdout, "\nWarnings\n") {
+			t.Fatalf("expected warnings section, got %q", stdout)
+		}
+		if !strings.Contains(stdout, "missing index.html") {
+			t.Fatalf("expected warning in stdout, got %q", stdout)
+		}
+	})
+}
+
+func TestWorkflowExportIncludeSnapshotsChangesExportedSnapshotCount(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+	archivePath := outputDir + ".zip"
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir, "--include-snapshots", "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow export: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+
+	var decoded struct {
+		IncludedFiles     int `json:"included_files"`
+		IncludedSnapshots int `json:"included_snapshots"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.IncludedSnapshots != 1 {
+		t.Fatalf("included_snapshots = %d, want 1", decoded.IncludedSnapshots)
+	}
+	if decoded.IncludedFiles != 5 {
+		t.Fatalf("included_files = %d, want 5", decoded.IncludedFiles)
+	}
+
+	zr, err := zip.OpenReader(archivePath)
+	if err != nil {
+		t.Fatalf("open zip: %v", err)
+	}
+	defer zr.Close()
+	if len(zr.File) != decoded.IncludedFiles {
+		t.Fatalf("zip entries = %d, want %d", len(zr.File), decoded.IncludedFiles)
+	}
+}
+
+func TestWorkflowExportRejectsOutputPathInsideWorkflowRoot(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+	insidePath := filepath.Join(outputDir, "incident.zip")
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir, "--output", insidePath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err == nil {
+		t.Fatal("expected workflow export to fail")
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(err.Error(), "inside workflow root") {
+		t.Fatalf("expected inside-workflow-root error, got %v", err)
+	}
+}
+
+func TestWorkflowExportFailsWhenArchiveWriteFails(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+	archivePath := filepath.Join(t.TempDir(), "blocked.zip")
+	if err := os.MkdirAll(archivePath, 0o755); err != nil {
+		t.Fatalf("mkdir blocking archive path: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir, "--output", archivePath})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err == nil {
+		t.Fatal("expected workflow export to fail when archive write fails")
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if !strings.Contains(err.Error(), "create export archive") {
+		t.Fatalf("expected archive creation error, got %v", err)
+	}
+}
+
+func TestWorkflowExportFailsWhenManifestReadOrDecodeFails(t *testing.T) {
+	tests := []struct {
+		name         string
+		setup        func(t *testing.T, outputDir string)
+		wantErrSubstr string
+	}{
+		{
+			name: "missing manifest",
+			setup: func(t *testing.T, outputDir string) {
+				t.Helper()
+			},
+			wantErrSubstr: "read workflow manifest",
+		},
+		{
+			name: "invalid manifest json",
+			setup: func(t *testing.T, outputDir string) {
+				t.Helper()
+				if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), []byte("{invalid"), 0o644); err != nil {
+					t.Fatalf("write invalid manifest: %v", err)
+				}
+			},
+			wantErrSubstr: "read workflow manifest",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputDir := t.TempDir()
+			tt.setup(t, outputDir)
+
+			cmd := NewRootCommand()
+			cmd.SetArgs([]string{"workflow", "export", outputDir})
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+
+			stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+			if err == nil {
+				t.Fatal("expected workflow export to fail")
+			}
+			if strings.TrimSpace(stdout) != "" {
+				t.Fatalf("expected empty stdout, got %q", stdout)
+			}
+			if strings.TrimSpace(stderr) != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErrSubstr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErrSubstr, err)
+			}
+		})
+	}
+}
+
+func TestWorkflowExportJSONOutputIncludesWarningsForMissingOptionalInputs(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		mutate     func(t *testing.T, outputDir string, manifest workflow.Manifest)
+		wantWarning string
+	}{
+		{
+			name: "missing manifest artifact",
+			args: []string{"--format", "json"},
+			mutate: func(t *testing.T, outputDir string, manifest workflow.Manifest) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(outputDir, "analyze", "week1.json")); err != nil {
+					t.Fatalf("remove manifest artifact: %v", err)
+				}
+			},
+			wantWarning: "missing manifest artifact: analyze/week1.json",
+		},
+		{
+			name: "missing plan file",
+			args: []string{"--format", "json"},
+			mutate: func(t *testing.T, outputDir string, manifest workflow.Manifest) {
+				t.Helper()
+				if err := os.Remove(manifest.PlanPath); err != nil {
+					t.Fatalf("remove plan file: %v", err)
+				}
+			},
+			wantWarning: "missing plan.yaml from manifest plan path: ",
+		},
+		{
+			name: "missing snapshot file",
+			args: []string{"--include-snapshots", "--format", "json"},
+			mutate: func(t *testing.T, outputDir string, manifest workflow.Manifest) {
+				t.Helper()
+				if err := os.Remove(filepath.Join(manifest.SnapshotDir, "week1.json")); err != nil {
+					t.Fatalf("remove snapshot file: %v", err)
+				}
+			},
+			wantWarning: "missing snapshot: week1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputDir := setupWorkflowExportCommandFixture(t)
+			manifest, err := workflowManifestFromJSON(filepath.Join(outputDir, "manifest.json"))
+			if err != nil {
+				t.Fatalf("read fixture manifest: %v", err)
+			}
+			tt.mutate(t, outputDir, manifest)
+
+			archivePath := outputDir + ".zip"
+			args := append([]string{"workflow", "export", outputDir}, tt.args...)
+			cmd := NewRootCommand()
+			cmd.SetArgs(args)
+			cmd.SilenceUsage = true
+			cmd.SilenceErrors = true
+
+			stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+			if err != nil {
+				t.Fatalf("workflow export: %v", err)
+			}
+			if strings.TrimSpace(stderr) != "" {
+				t.Fatalf("expected empty stderr, got %q", stderr)
+			}
+
+			var decoded struct {
+				ArchivePath string   `json:"archive_path"`
+				Warnings    []string `json:"warnings"`
+			}
+			if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+				t.Fatalf("decode json output: %v\n%s", err, stdout)
+			}
+			if decoded.ArchivePath != archivePath {
+				t.Fatalf("archive_path = %q, want %q", decoded.ArchivePath, archivePath)
+			}
+			if decoded.Warnings == nil {
+				t.Fatal("warnings should be a normalized array, got nil")
+			}
+			if strings.HasSuffix(tt.wantWarning, ": ") {
+				matched := false
+				for _, warning := range decoded.Warnings {
+					if strings.HasPrefix(warning, tt.wantWarning) {
+						matched = true
+						break
+					}
+				}
+				if !matched {
+					t.Fatalf("expected warning with prefix %q in %v", tt.wantWarning, decoded.Warnings)
+				}
+			} else {
+				assertStringSliceContains(t, decoded.Warnings, tt.wantWarning)
+			}
+			if _, err := os.Stat(archivePath); err != nil {
+				t.Fatalf("expected archive at %s: %v", archivePath, err)
+			}
+		})
+	}
+}
+
 func setupWorkflowCleanCommandFixture(t *testing.T) string {
 	t.Helper()
 
@@ -1984,6 +2428,84 @@ func setupWorkflowCleanCommandFixture(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(outputDir, "manifest.json"), append(manifestBytes, '\n'), 0o644); err != nil {
 		t.Fatalf("write manifest: %v", err)
 	}
+	return outputDir
+}
+
+func setupWorkflowExportCommandFixture(t *testing.T) string {
+	t.Helper()
+	return setupWorkflowExportCommandFixtureWithOptions(t, true)
+}
+
+func setupWorkflowExportCommandFixtureWithoutIndex(t *testing.T) string {
+	t.Helper()
+	return setupWorkflowExportCommandFixtureWithOptions(t, false)
+}
+
+func setupWorkflowExportCommandFixtureWithOptions(t *testing.T, includeIndex bool) string {
+	t.Helper()
+
+	outputDir := filepath.Join(t.TempDir(), "workflow-run")
+	snapshotDir := filepath.Join(t.TempDir(), "snapshots")
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatalf("mkdir output dir: %v", err)
+	}
+	planPath := filepath.Join(outputDir, "plan.yaml")
+	planBody := strings.Join([]string{
+		"version: 1",
+		"workflow:",
+		"  name: export-test",
+		"  output_dir: artifacts/export-test",
+		"defaults:",
+		"  input:",
+		"    from_dir: /var/lib/mysql",
+		"    prefix: mysql-bin.",
+		"  analyze:",
+		"    format: json",
+		"windows:",
+		"  - name: week1",
+		"    start: 2026-03-01T10:00:00Z",
+		"    end: 2026-03-01T10:30:00Z",
+	}, "\n") + "\n"
+	if err := os.WriteFile(planPath, []byte(planBody), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	planSHA256, err := computeFileSHA256(planPath)
+	if err != nil {
+		t.Fatalf("hash plan: %v", err)
+	}
+
+	manifest := workflow.Manifest{
+		WorkflowName:        "export-test",
+		WorkflowPlanVersion: 1,
+		PlanPath:            planPath,
+		PlanSHA256:          planSHA256,
+		SnapshotDir:         snapshotDir,
+		Steps: []workflow.StepRecord{
+			{Kind: "analyze", Name: "week1", Status: "success", Artifacts: []string{"analyze/week1.json"}, SnapshotName: "week1"},
+		},
+	}
+
+	if err := os.MkdirAll(filepath.Join(outputDir, "analyze"), 0o755); err != nil {
+		t.Fatalf("mkdir analyze: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "analyze", "week1.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write analyze artifact: %v", err)
+	}
+	if includeIndex {
+		if err := os.WriteFile(filepath.Join(outputDir, "index.html"), []byte("<html>index</html>\n"), 0o644); err != nil {
+			t.Fatalf("write index: %v", err)
+		}
+	}
+	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
+		t.Fatalf("mkdir snapshots: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(snapshotDir, "week1.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("write snapshot: %v", err)
+	}
+	if err := workflow.WriteManifest(filepath.Join(outputDir, "manifest.json"), manifest); err != nil {
+		t.Fatalf("write manifest: %v", err)
+	}
+
 	return outputDir
 }
 

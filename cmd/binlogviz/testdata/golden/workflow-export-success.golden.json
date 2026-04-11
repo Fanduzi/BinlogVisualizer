@@ -1,0 +1,9 @@
+{
+  "workflow_name": "export-test",
+  "output_dir": "<output-dir>",
+  "archive_path": "<archive-path>",
+  "format": "zip",
+  "included_files": 4,
+  "included_snapshots": 0,
+  "warnings": []
+}

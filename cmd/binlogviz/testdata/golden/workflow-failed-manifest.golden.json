@@ -6,7 +6,7 @@
   "workflow_name": "failing-test",
   "workflow_plan_version": 1,
   "binlogviz_version": "dev",
-  "plan_path": "<test-root>/001/plan.yaml",
+  "plan_path": "<output-dir>/plan.yaml",
   "plan_sha256": "<plan-sha>",
   "run_started_at": "<timestamp>",
   "run_finished_at": "<timestamp>",
