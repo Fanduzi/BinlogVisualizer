@@ -15,15 +15,16 @@ import (
 )
 
 type htmlCompareData struct {
-	Result             CompareResult
-	GeneratedAt        string
-	EChartsJS          template.JS
-	SummaryPairsJSON   template.JS
-	TopTablesJSON      template.JS
-	PatternChangesJSON template.JS
-	OpsMixJSON         template.JS
-	AlertCountsJSON    template.JS
-	KeyFindingsJSON    template.JS
+	Result              CompareResult
+	GeneratedAt         string
+	EChartsJS           template.JS
+	SummaryPairsJSON    template.JS
+	TopTablesJSON       template.JS
+	PatternChangesJSON  template.JS
+	OpsMixJSON          template.JS
+	AlertCountsJSON     template.JS
+	KeyFindingsJSON     template.JS
+	RecommendationsJSON template.JS
 }
 
 type htmlMetricDatum struct {
@@ -65,7 +66,8 @@ func RenderHTML(result CompareResult) (string, error) {
 		PatternChangesJSON: mustHTMLJSON(buildPatternSeries(result.PatternChanges)),
 		OpsMixJSON:         mustHTMLJSON(buildOperationSeries(result.OperationMix)),
 		AlertCountsJSON:    mustHTMLJSON(buildAlertCounts(result.AlertChanges)),
-		KeyFindingsJSON:    mustHTMLJSON(result.KeyFindings),
+		KeyFindingsJSON:     mustHTMLJSON(result.KeyFindings),
+		RecommendationsJSON: mustHTMLJSON(result.Recommendations),
 	}
 
 	var buf bytes.Buffer
@@ -340,6 +342,21 @@ const compareHTMLTemplate = `<!DOCTYPE html>
   .evidence-refs { font-size: 12px; color: var(--muted); margin-left: 4px; }
   .evidence-refs a { color: var(--accent); text-decoration: none; }
   .evidence-refs a:hover { text-decoration: underline; }
+  .rec-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .rec-badge.high { background: rgba(248,113,113,0.15); color: #f87171; }
+  .rec-badge.medium { background: rgba(251,191,36,0.15); color: #fbbf24; }
+  .rec-badge.low { background: rgba(52,211,153,0.15); color: #34d399; }
+  .rec-item { margin-bottom: 14px; }
+  .rec-item:last-child { margin-bottom: 0; }
+  .rec-summary { font-size: 13px; margin-top: 4px; }
   }
   @media (max-width: 900px) {
     .two-col, .alerts-layout, .alert-columns { grid-template-columns: 1fr; }
@@ -398,6 +415,13 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       </div>
     </section>
     {{end}}
+
+    <section class="section" id="compare-recommendations">
+      <div class="section-header"><span class="dot"></span>Recommended Next Checks</div>
+      <div class="section-body">
+        <div id="compare-recommendations-list"></div>
+      </div>
+    </section>
 
     <section class="section">
       <div class="section-header"><span class="dot"></span>Compare Summary</div>
@@ -556,6 +580,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     window.compareOpsMix = {{.OpsMixJSON}};
     window.compareAlertCounts = {{.AlertCountsJSON}};
     window.compareKeyFindings = {{.KeyFindingsJSON}};
+    window.compareRecommendations = {{.RecommendationsJSON}};
 
     const findingsEl = document.getElementById('compare-findings-list');
     if (findingsEl && window.compareKeyFindings && window.compareKeyFindings.length > 0) {
@@ -584,6 +609,44 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         ol.appendChild(li);
       });
       findingsEl.appendChild(ol);
+    }
+
+    const recommendationsEl = document.getElementById('compare-recommendations-list');
+    if (recommendationsEl && window.compareRecommendations && window.compareRecommendations.length > 0) {
+      const recOl = document.createElement('ol');
+      window.compareRecommendations.forEach(rec => {
+        const li = document.createElement('li');
+        li.className = 'rec-item';
+        const badge = document.createElement('span');
+        badge.className = 'rec-badge ' + rec.priority;
+        badge.textContent = rec.priority;
+        li.appendChild(badge);
+        li.appendChild(document.createTextNode(' '));
+        const strong = document.createElement('strong');
+        strong.textContent = rec.title;
+        li.appendChild(strong);
+        const summary = document.createElement('div');
+        summary.className = 'rec-summary';
+        summary.textContent = rec.summary;
+        li.appendChild(summary);
+        if (rec.evidence_refs && rec.evidence_refs.length > 0) {
+          const span = document.createElement('span');
+          span.className = 'evidence-refs';
+          span.appendChild(document.createTextNode('['));
+          rec.evidence_refs.forEach((r, i) => {
+            if (i > 0) { span.appendChild(document.createTextNode(', ')); }
+            const a = document.createElement('a');
+            a.setAttribute('href', '#' + r.anchor);
+            a.textContent = r.label;
+            span.appendChild(a);
+          });
+          span.appendChild(document.createTextNode(']'));
+          li.appendChild(document.createTextNode(' '));
+          li.appendChild(span);
+        }
+        recOl.appendChild(li);
+      });
+      recommendationsEl.appendChild(recOl);
     }
 
     const summaryChart = echarts.init(document.getElementById('compare-summary-chart'));

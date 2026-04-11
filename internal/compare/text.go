@@ -59,6 +59,22 @@ func RenderText(result CompareResult) (string, error) {
 		fmt.Fprintf(&b, "\n")
 	}
 
+	if len(result.Recommendations) > 0 {
+		fmt.Fprintf(&b, "Recommended Next Checks\n")
+		for i, rec := range result.Recommendations {
+			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, rec.Priority, rec.Title)
+			fmt.Fprintf(&b, "   %s\n", rec.Summary)
+			if len(rec.EvidenceRefs) > 0 {
+				labels := make([]string, 0, len(rec.EvidenceRefs))
+				for _, ref := range rec.EvidenceRefs {
+					labels = append(labels, ref.Label)
+				}
+				fmt.Fprintf(&b, "   evidence: %s\n", strings.Join(labels, ", "))
+			}
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
 	fmt.Fprintf(&b, "Top Table Changes\n")
 	if len(result.TableChanges) == 0 {
 		fmt.Fprintf(&b, "- none\n")
