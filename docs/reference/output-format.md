@@ -823,8 +823,10 @@ Behavior notes:
 
 - only successful `compare` and `trend` steps contribute summary items
 - summary extraction reads JSON artifacts only
+- missing required top-level arrays append warnings; present-but-empty arrays are valid and do not warn
 - summary warnings capture missing, unreadable, or invalid summary sources
 - summary warnings never flip workflow success/failure semantics
+- workflow summary source links prefer HTML reports; evidence links may append `#anchor` only for HTML source reports, while JSON fallbacks omit anchors
 - `index.html` renders `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings` only when those arrays are non-empty
 
 ### Per-step fields

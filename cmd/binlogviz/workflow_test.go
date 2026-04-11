@@ -580,6 +580,43 @@ func TestWorkflowRunFailedLateStepStillWritesWorkflowSummary(t *testing.T) {
 	}
 }
 
+func TestWorkflowFinalizeRecordsSummaryWarningsWithoutFailingWrites(t *testing.T) {
+	outputDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outputDir, "compare"), 0o755); err != nil {
+		t.Fatalf("mkdir compare dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(outputDir, "compare", "week2_vs_week1.json"), []byte("not-json"), 0o644); err != nil {
+		t.Fatalf("write malformed compare json: %v", err)
+	}
+
+	mf := workflow.Manifest{
+		WorkflowName: "warning-test",
+		Status:       "success",
+		Steps: []workflow.StepRecord{
+			{Kind: "compare", Name: "week2_vs_week1", Status: "success", Artifacts: []string{"compare/week2_vs_week1.json"}},
+		},
+	}
+
+	if err := finalizeWorkflow(outputDir, &mf, time.Time{}, io.Discard, nil); err != nil {
+		t.Fatalf("finalize workflow: %v", err)
+	}
+
+	stored, err := workflowManifestFromJSON(filepath.Join(outputDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if stored.Status != "success" {
+		t.Fatalf("expected manifest status success, got %q", stored.Status)
+	}
+	wantWarning := `compare step "week2_vs_week1": invalid JSON artifact "compare/week2_vs_week1.json"`
+	if len(stored.WorkflowSummary.Warnings) != 1 || stored.WorkflowSummary.Warnings[0] != wantWarning {
+		t.Fatalf("warnings = %#v, want [%q]", stored.WorkflowSummary.Warnings, wantWarning)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "index.html")); err != nil {
+		t.Fatalf("expected index.html to be written: %v", err)
+	}
+}
+
 func TestWorkflowRunWithoutCompareOrTrendWritesEmptyWorkflowSummary(t *testing.T) {
 	binlogDir := t.TempDir()
 	fixtureSrc := filepath.Join("testdata", "minimal.binlog")

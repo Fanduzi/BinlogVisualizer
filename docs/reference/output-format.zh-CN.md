@@ -823,8 +823,10 @@ JSON 描述包含：
 
 - 只有成功的 `compare` 和 `trend` 步骤才会贡献 summary 项
 - summary 提取只读取 JSON artifact
+- 缺少必需顶层数组时会追加 warning；字段存在但为空数组属于有效低信号输入，不会产生 warning
 - summary warnings 会记录缺失、不可读或无效的 summary 来源
 - summary warnings 不会改变 workflow 成功/失败语义
+- workflow summary 的源报告链接优先使用 HTML；只有 HTML 源报告的 evidence link 才会追加 `#anchor`，JSON 回退链接不会带锚点
 - 只有在对应数组非空时，`index.html` 才会渲染 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings`
 
 ### 每步骤字段
