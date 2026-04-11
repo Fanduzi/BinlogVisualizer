@@ -86,10 +86,65 @@ func TestBuildStatusLegacyManifestIsNonResumable(t *testing.T) {
 	}
 }
 
+func TestBuildStatusOutsidePlanPathNonResumable(t *testing.T) {
+	root, _, manifest := makeStatusFixture(t)
+	createTestArtifacts(t, root, manifest.SnapshotDir, manifest.Steps)
+
+	outsideDir := t.TempDir()
+	manifest.PlanPath = filepath.Join(outsideDir, "plan.yaml")
+
+	status, err := BuildStatus(root, manifest, nil)
+	if err != nil {
+		t.Fatalf("build status: %v", err)
+	}
+	if status.Resumable {
+		t.Fatal("expected outside-root plan_path to be non-resumable")
+	}
+	if !strings.Contains(status.ResumeError, "trust") {
+		t.Fatalf("expected trust-boundary resume error, got %q", status.ResumeError)
+	}
+	if len(status.ResumePreview) != 0 {
+		t.Fatalf("expected no resume preview for untrusted plan, got %d steps", len(status.ResumePreview))
+	}
+}
+
+func TestBuildStatusSymlinkEscapedPlanPathNonResumable(t *testing.T) {
+	root, _, manifest := makeStatusFixture(t)
+	createTestArtifacts(t, root, manifest.SnapshotDir, manifest.Steps)
+
+	outsideDir := t.TempDir() + "-outside"
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatalf("mkdir outside: %v", err)
+	}
+	outsidePlan := filepath.Join(outsideDir, "plan.yaml")
+	if err := os.WriteFile(outsidePlan, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatalf("write outside plan: %v", err)
+	}
+
+	linkPath := filepath.Join(root, "evil-plan.yaml")
+	if err := os.Symlink(outsidePlan, linkPath); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	manifest.PlanPath = linkPath
+
+	status, err := BuildStatus(root, manifest, nil)
+	if err != nil {
+		t.Fatalf("build status: %v", err)
+	}
+	if status.Resumable {
+		t.Fatal("expected symlink-escaped plan_path to be non-resumable")
+	}
+	if !strings.Contains(status.ResumeError, "trust") {
+		t.Fatalf("expected trust-boundary resume error, got %q", status.ResumeError)
+	}
+}
+
 func TestBuildStatusMissingPlanStillBuilds(t *testing.T) {
 	root, _, manifest := makeStatusFixture(t)
 	createTestArtifacts(t, root, manifest.SnapshotDir, manifest.Steps)
-	manifest.PlanPath = filepath.Join(root, "missing-plan.yaml")
+	manifest.PlanPath = filepath.Join(root, "plan.yaml")
+	// Delete the plan file so the trust check passes but hash read fails.
+	os.Remove(manifest.PlanPath)
 
 	status, err := BuildStatus(root, manifest, nil)
 	if err != nil {
@@ -98,7 +153,7 @@ func TestBuildStatusMissingPlanStillBuilds(t *testing.T) {
 	if status.Resumable {
 		t.Fatal("expected missing plan to disable resumability")
 	}
-	if !strings.Contains(status.ResumeError, "plan file") {
+	if !strings.Contains(status.ResumeError, "not found") {
 		t.Fatalf("expected plan-file resume error, got %q", status.ResumeError)
 	}
 }

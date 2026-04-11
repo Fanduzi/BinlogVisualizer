@@ -108,7 +108,7 @@ tree artifacts/incident-investigation
 
 `workflow run` 执行一份声明式 YAML plan，定义分析窗口、可选 compare 作业和可选 trend 作业。它会产生一个确定性的 artifact 目录，包含 `analyze/`、`compare/`、`trend/`、一份 `manifest.json` 和一个 `index.html` 落地页。`manifest.json` 会始终持久化一个 `workflow_summary` 对象，其中包含 `findings`、`recommendations` 和 `warnings` 三个数组。BinlogViz 只会基于成功 compare/trend 步骤产出的 JSON artifact 以 best-effort 方式重建这份 summary；如果 summary 输入缺失或不可读，只会追加 warnings，不会改变 workflow 或步骤的状态语义。只要 summary 中存在内容，`index.html` 就会渲染 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings` 分区，并优先链接到 HTML 源报告，必要时回退到 JSON。v1 中 `stdout` 留空，所有状态走 `stderr`。plan schema 和参数请参见 [CLI 参考](docs/reference/cli.zh-CN.md)。
 
-如果 workflow 运行中途失败，`workflow resume` 可以从已有的输出目录继续执行：复用成功步骤，重跑失败或缺失的步骤，并支持通过 `--rerun` 选择器强制重跑指定步骤。Resume 会在 plan 文件变更或 manifest 是旧版 pre-v2 产物时拒绝执行。
+如果 workflow 运行中途失败，`workflow resume` 可以从已有的输出目录继续执行：复用成功步骤，重跑失败或缺失的步骤，并支持通过 `--rerun` 选择器强制重跑指定步骤。Resume 会在 plan 文件变更或 manifest 是旧版 pre-v2 产物时拒绝执行。Resume 还会拒绝解析到 workflow root 之外或通过符号链接逃逸的 plan 路径（信任边界加固）。`workflow status` 会报告同样的信任检查：不可信的 plan 仍会产生完整状态输出，但会将 `resumable` 设为 `false`，并在 `resume_error` 中给出信任边界说明。
 
 在真正执行之前，`workflow validate` 会只基于 `plan.yaml` 做静态可运行性检查，`workflow describe` 则会预览该 plan 将产生的 analyze / compare / trend artifact 布局。两个命令都支持 `--format text` 和 `--format json`，且只读取 plan 文件，不会检查 `output_dir`、`manifest.json` 或 `index.html`。
 
