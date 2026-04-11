@@ -403,7 +403,9 @@ The compare JSON contract always contains:
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `summary` | object | yes | Rows, transactions, and warning deltas |
+| `key_findings` | array | yes | Deterministic finding summaries capped at 5; empty array when signal is low |
 | `table_changes` | array | yes | Per-table row deltas |
+| `pattern_changes` | array | yes | Write-pattern deltas matched by `pattern_key`, sorted by absolute row delta |
 | `operation_mix` | array | yes | INSERT / UPDATE / DELETE deltas |
 | `alert_changes` | object | yes | Added and removed alerts |
 | `current_label` | string | yes | Snapshot-aware label when metadata exists; otherwise `current` |

@@ -81,7 +81,7 @@ func TestBuildTrendSummary_LowSignalFewFindings(t *testing.T) {
 }
 
 func TestBuildTrendSummary_KindOrdering(t *testing.T) {
-	// Build a result that produces all 5 finding kinds.
+	// Build a result that produces 4 of 5 finding kinds (spike_outlier requires outlier points).
 	result := buildTestResult(4, []testPatternPoint{
 		{"p1", "rising", 1000, 0.3, 2000, 0.5},
 		{"p2", "falling", 2000, 0.4, 800, 0.15},
