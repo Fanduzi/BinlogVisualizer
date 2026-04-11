@@ -388,7 +388,7 @@ The report includes:
 
 `binlogviz trend` renders a chronological report for two or more snapshots. It uses the same stdout/stderr separation rules as the other commands and supports `text`, `json`, and `html`.
 
-Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, and a `trend_summary` array with deterministic finding objects capped at 5. Each finding may include `evidence_refs` linking it back to relevant report sections (`pattern_trends`, `table_trends`, `ordered_points`, `aggregate_insights`). HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, plus a `Key Findings` section with clickable evidence ref links when findings are present.
+Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, and a `trend_summary` array with deterministic finding objects capped at 5. Each finding may include `evidence_refs` linking it back to relevant report sections (`pattern_trends`, `table_trends`, `ordered_points`). HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, plus a `Key Findings` section with clickable evidence ref links when findings are present.
 
 ## Compare JSON Output
 
