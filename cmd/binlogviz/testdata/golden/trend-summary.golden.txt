@@ -11,6 +11,14 @@ Key Findings
 2. [table_trend] shop.orders grew by +1000 rows
    evidence: shop.orders
 
+Recommended Next Checks
+1. [medium] Track rising pattern
+   payments.update_status grew by +700 rows across the series; capture or compare the next window to confirm whether this is becoming a persistent workload driver.
+   evidence: payments.update_status (orders.payments|UPDATE|medium)
+2. [medium] Review growing table
+   shop.orders grew by +1000 rows; review table owners, scheduled jobs, and whether the table growth matches expectations.
+   evidence: shop.orders
+
 Ordered Points
 - 2026-03-19T10:00:00Z | Earlier (earlier) | rows=1000 txns=50 events=1200 alerts=0
 - 2026-03-20T10:00:00Z | Middle (middle) | rows=1800 txns=90 events=2200 alerts=1

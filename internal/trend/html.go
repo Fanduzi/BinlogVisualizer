@@ -25,6 +25,7 @@ type htmlData struct {
 	TableSeriesJSON     template.JS
 	PatternSeriesJSON   template.JS
 	TrendSummaryJSON    template.JS
+	RecommendationsJSON template.JS
 }
 
 type htmlTableSeries struct {
@@ -53,19 +54,20 @@ func RenderHTML(result Result) (string, error) {
 	}
 
 	data := htmlData{
-		Result:            result,
-		GeneratedAt:       time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		EChartsJS:         template.JS(echartsJS), //nolint:gosec
-		LabelsJSON:        mustHTMLJSON(buildLabels(result.Points)),
-		RowsJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalRows })),
-		TxnsJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalTransactions })),
-		EventsJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalEvents })),
-		InsertJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Inserts })),
-		UpdateJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Updates })),
-		DeleteJSON:        mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
-		TableSeriesJSON:   mustHTMLJSON(buildTableSeries(result.TableTrends)),
-		PatternSeriesJSON: mustHTMLJSON(buildPatternSeries(result.PatternTrends)),
-		TrendSummaryJSON:  mustHTMLJSON(result.TrendSummary),
+		Result:              result,
+		GeneratedAt:         time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		EChartsJS:           template.JS(echartsJS), //nolint:gosec
+		LabelsJSON:          mustHTMLJSON(buildLabels(result.Points)),
+		RowsJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalRows })),
+		TxnsJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalTransactions })),
+		EventsJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalEvents })),
+		InsertJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Inserts })),
+		UpdateJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Updates })),
+		DeleteJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
+		TableSeriesJSON:     mustHTMLJSON(buildTableSeries(result.TableTrends)),
+		PatternSeriesJSON:   mustHTMLJSON(buildPatternSeries(result.PatternTrends)),
+		TrendSummaryJSON:    mustHTMLJSON(result.TrendSummary),
+		RecommendationsJSON: mustHTMLJSON(result.Recommendations),
 	}
 
 	var buf bytes.Buffer
@@ -206,6 +208,13 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
   th { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.6px; }
+  .rec-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .rec-badge.high { background: rgba(248,113,113,0.15); color: #f87171; }
+  .rec-badge.medium { background: rgba(251,191,36,0.15); color: #fbbf24; }
+  .rec-badge.low { background: rgba(52,211,153,0.15); color: #34d399; }
+  .rec-item { margin-bottom: 14px; }
+  .rec-item:last-child { margin-bottom: 0; }
+  .rec-summary { font-size: 13px; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -240,6 +249,15 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     <div class="section-header">Key Findings</div>
     <div class="section-body">
       <div id="trend-findings-list"></div>
+    </div>
+  </section>
+  {{end}}
+
+  {{if .Result.Recommendations}}
+  <section class="section" id="trend-recommendations">
+    <div class="section-header">Recommended Next Checks</div>
+    <div class="section-body">
+      <div id="trend-recommendations-list"></div>
     </div>
   </section>
   {{end}}
@@ -328,6 +346,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   const tableSeries = {{.TableSeriesJSON}};
   const patternSeries = {{.PatternSeriesJSON}};
   const trendSummary = {{.TrendSummaryJSON}};
+  window.trendRecommendations = {{.RecommendationsJSON}};
 
   const trendFindingsEl = document.getElementById('trend-findings-list');
   if (trendFindingsEl && trendSummary && trendSummary.length > 0) {
@@ -356,6 +375,44 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       ol.appendChild(li);
     });
     trendFindingsEl.appendChild(ol);
+  }
+
+  const trendRecEl = document.getElementById('trend-recommendations-list');
+  if (trendRecEl && window.trendRecommendations && window.trendRecommendations.length > 0) {
+    const recOl = document.createElement('ol');
+    window.trendRecommendations.forEach(rec => {
+      const li = document.createElement('li');
+      li.className = 'rec-item';
+      const badge = document.createElement('span');
+      badge.className = 'rec-badge ' + rec.priority;
+      badge.textContent = rec.priority;
+      li.appendChild(badge);
+      li.appendChild(document.createTextNode(' '));
+      const strong = document.createElement('strong');
+      strong.textContent = rec.title;
+      li.appendChild(strong);
+      const summary = document.createElement('div');
+      summary.className = 'rec-summary';
+      summary.textContent = rec.summary;
+      li.appendChild(summary);
+      if (rec.evidence_refs && rec.evidence_refs.length > 0) {
+        const span = document.createElement('span');
+        span.className = 'evidence-refs';
+        span.appendChild(document.createTextNode('['));
+        rec.evidence_refs.forEach((r, i) => {
+          if (i > 0) { span.appendChild(document.createTextNode(', ')); }
+          const a = document.createElement('a');
+          a.setAttribute('href', '#' + r.anchor);
+          a.textContent = r.label;
+          span.appendChild(a);
+        });
+        span.appendChild(document.createTextNode(']'));
+        li.appendChild(document.createTextNode(' '));
+        li.appendChild(span);
+      }
+      recOl.appendChild(li);
+    });
+    trendRecEl.appendChild(recOl);
   }
 
   const overallChart = echarts.init(document.getElementById('trend-overall-chart'));

@@ -162,5 +162,25 @@
         }
       ]
     }
+  ],
+  "recommendations": [
+    {
+      "kind": "review_growing_table",
+      "priority": "medium",
+      "title": "Review growing table",
+      "summary": "shop.orders grew by +400 rows; review table owners, scheduled jobs, and whether the table growth matches expectations.",
+      "rationale": "A table-level trend was large enough to be highlighted in the trend summary.",
+      "related_finding_kinds": [
+        "table_trend"
+      ],
+      "evidence_refs": [
+        {
+          "section": "table_trends",
+          "key": "shop.orders",
+          "label": "shop.orders",
+          "anchor": "table-0"
+        }
+      ]
+    }
   ]
 }
