@@ -8,8 +8,11 @@ Warnings: 0 -> 0 (+0)
 Key Findings
 1. [volume_change] rows grew sharply
 2. [pattern_driver] refunds.create drove most row growth
+   evidence: refunds.create
 3. [table_driver] orders.refunds had the largest row change
+   evidence: orders.refunds
 4. [new_pattern] refunds.create appeared as a new write pattern
+   evidence: refunds.create
 
 Top Table Changes
 - orders.refunds: 0 -> 900 (+900, 0.0%)

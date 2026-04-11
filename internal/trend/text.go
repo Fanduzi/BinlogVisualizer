@@ -26,6 +26,13 @@ func RenderText(result Result) (string, error) {
 		fmt.Fprintf(&b, "\nKey Findings\n")
 		for i, finding := range result.TrendSummary {
 			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, finding.Kind, finding.Summary)
+			if len(finding.EvidenceRefs) > 0 {
+				labels := make([]string, 0, len(finding.EvidenceRefs))
+				for _, ref := range finding.EvidenceRefs {
+					labels = append(labels, ref.Label)
+				}
+				fmt.Fprintf(&b, "   evidence: %s\n", strings.Join(labels, ", "))
+			}
 		}
 	}
 

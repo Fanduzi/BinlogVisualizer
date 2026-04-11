@@ -198,7 +198,10 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   .segment-control button[aria-pressed="true"] { background: var(--primary); color: #04111c; }
   .pattern-chart { width: 100%; height: 360px; min-height: 360px; }
   .empty-state { padding: 18px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); background: rgba(13, 19, 38, 0.65); }
-  .pattern-hint { color: var(--muted); font-size: 13px; }
+.evidence-refs { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .evidence-refs a { color: var(--accent); text-decoration: none; }
+  .evidence-refs a:hover { text-decoration: underline; }
+    .pattern-hint { color: var(--muted); font-size: 13px; }
   .chart-box { width: 100%; height: 320px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
@@ -255,16 +258,18 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     </div>
   </section>
 
-  <section class="section">
+  <section class="section" id="section-table-trends">
     <div class="section-header">Top Table Movement</div>
     <div class="section-body">
+      {{range $idx, $trend := .Result.TableTrends}}<span id="table-{{$idx}}"></span>{{end}}
       <div id="trend-tables-chart" class="chart-box"></div>
     </div>
   </section>
 
-  <section class="section">
+  <section class="section" id="section-pattern-trends">
     <div class="section-header">Pattern Trends</div>
     <div class="section-body">
+      {{range $idx, $trend := .Result.PatternTrends}}<span id="pattern-{{$idx}}"></span>{{end}}
       {{if .Result.PatternTrends}}
       <div class="section-tools">
         <div class="segment-control" role="tablist" aria-label="Pattern trend view mode">
@@ -280,7 +285,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     </div>
   </section>
 
-  <section class="section">
+  <section class="section" id="section-ordered-points">
     <div class="section-header">Ordered Points</div>
     <div class="section-body">
       <table>
@@ -295,14 +300,14 @@ const trendHTMLTemplate = `<!DOCTYPE html>
           </tr>
         </thead>
         <tbody>
-          {{range .Result.Points}}
-          <tr>
-            <td>{{.Snapshot.Name}}</td>
-            <td>{{.Window.StartTime}}</td>
-            <td>{{.Summary.TotalRows}}</td>
-            <td>{{.Summary.TotalTransactions}}</td>
-            <td>{{.Summary.TotalEvents}}</td>
-            <td>{{.AlertCount}}</td>
+          {{range $idx, $point := .Result.Points}}
+          <tr id="point-{{$idx}}">
+            <td>{{$point.Snapshot.Name}}</td>
+            <td>{{$point.Window.StartTime}}</td>
+            <td>{{$point.Summary.TotalRows}}</td>
+            <td>{{$point.Summary.TotalTransactions}}</td>
+            <td>{{$point.Summary.TotalEvents}}</td>
+            <td>{{$point.AlertCount}}</td>
           </tr>
           {{end}}
         </tbody>
@@ -326,7 +331,31 @@ const trendHTMLTemplate = `<!DOCTYPE html>
 
   const trendFindingsEl = document.getElementById('trend-findings-list');
   if (trendFindingsEl && trendSummary && trendSummary.length > 0) {
-    trendFindingsEl.innerHTML = '<ol>' + trendSummary.map(f => '<li><strong>' + f.kind + '</strong>: ' + f.summary + '</li>').join('') + '</ol>';
+    const ol = document.createElement('ol');
+    trendSummary.forEach(f => {
+      const li = document.createElement('li');
+      const strong = document.createElement('strong');
+      strong.textContent = f.kind;
+      li.appendChild(strong);
+      li.appendChild(document.createTextNode(': ' + f.summary));
+      if (f.evidence_refs && f.evidence_refs.length > 0) {
+        const span = document.createElement('span');
+        span.className = 'evidence-refs';
+        span.appendChild(document.createTextNode('['));
+        f.evidence_refs.forEach((r, i) => {
+          if (i > 0) { span.appendChild(document.createTextNode(', ')); }
+          const a = document.createElement('a');
+          a.setAttribute('href', '#' + r.anchor);
+          a.textContent = r.label;
+          span.appendChild(a);
+        });
+        span.appendChild(document.createTextNode(']'));
+        li.appendChild(document.createTextNode(' '));
+        li.appendChild(span);
+      }
+      ol.appendChild(li);
+    });
+    trendFindingsEl.appendChild(ol);
   }
 
   const overallChart = echarts.init(document.getElementById('trend-overall-chart'));

@@ -98,10 +98,20 @@ type CompareResult struct {
 }
 
 type CompareFinding struct {
-	Kind    string         `json:"kind"`
-	Title   string         `json:"title"`
-	Summary string         `json:"summary"`
-	Evidence map[string]any `json:"evidence"`
+	Kind         string         `json:"kind"`
+	Title        string         `json:"title"`
+	Summary      string         `json:"summary"`
+	Evidence     map[string]any `json:"evidence"`
+	EvidenceRefs []EvidenceRef  `json:"evidence_refs,omitempty"`
+}
+
+// EvidenceRef points from a finding to an existing section or item in the report.
+// Anchors must be stable and predictable so HTML rendering can link directly.
+type EvidenceRef struct {
+	Section string `json:"section"`
+	Key     string `json:"key,omitempty"`
+	Label   string `json:"label"`
+	Anchor  string `json:"anchor"`
 }
 
 type SummaryDelta struct {

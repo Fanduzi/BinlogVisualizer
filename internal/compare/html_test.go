@@ -226,3 +226,59 @@ func TestRenderHTMLEscapesHostilePatternContent(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderHTMLUsesDOMAPINotInnerHTMLForFindings(t *testing.T) {
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+			CurrentTotalTransactions: 4, BaselineTotalTransactions: 2, TotalTransactionsDelta: 2,
+		},
+		KeyFindings: []CompareFinding{
+			{
+				Kind:    "table_driver",
+				Summary: `rows grew<script>alert("xss")</script>`,
+				Evidence: map[string]any{
+					"table": `evil<img src=x onerror=alert(1)>`,
+				},
+				EvidenceRefs: []EvidenceRef{{
+					Section: "table_changes",
+					Key:     `evil<img src=x onerror=alert(1)>`,
+					Label:   `evil<img src=x onerror=alert(1)>`,
+					Anchor:  "section-table-changes",
+				}},
+			},
+		},
+		TableChanges: []TableChange{{
+			Schema: "evil", Table: `table<img src=x onerror=alert(1)>`,
+			CurrentRows: 10, BaselineRows: 5, DeltaRows: 5, DeltaPercent: 100,
+		}},
+		OperationMix:   []OperationDelta{},
+		AlertChanges:   AlertDelta{},
+	}
+
+	output, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The JS must use DOM APIs (textContent, createElement) not innerHTML
+	for _, forbidden := range []string{
+		`<script>alert("xss")</script>`,
+		`<img src=x onerror=alert(1)>`,
+		`findingsEl.innerHTML`,
+	} {
+		if strings.Contains(output, forbidden) {
+			t.Fatalf("expected hostile content to be escaped / no innerHTML usage, found %q", forbidden)
+		}
+	}
+
+	// Verify the findings rendering uses createElement + textContent
+	if !strings.Contains(output, "document.createElement") {
+		t.Fatalf("expected findings JS to use document.createElement")
+	}
+	if !strings.Contains(output, ".textContent") {
+		t.Fatalf("expected findings JS to use textContent")
+	}
+}

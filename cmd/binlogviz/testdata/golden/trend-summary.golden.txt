@@ -7,7 +7,9 @@ Alerts: 0 -> 3 (+3)
 
 Key Findings
 1. [rising_pattern] payments.update_status grew by +700 rows across the series
+   evidence: payments.update_status (orders.payments|UPDATE|medium)
 2. [table_trend] shop.orders grew by +1000 rows
+   evidence: shop.orders
 
 Ordered Points
 - 2026-03-19T10:00:00Z | Earlier (earlier) | rows=1000 txns=50 events=1200 alerts=0

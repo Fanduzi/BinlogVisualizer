@@ -2,6 +2,7 @@ package trend
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -284,4 +285,122 @@ func mustBuildPatternTrendResult(t *testing.T) Result {
 	}
 
 	return result
+}
+
+func TestRenderHTMLContainsEvidenceRefAnchors(t *testing.T) {
+	result := mustBuildPatternTrendResult(t)
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	// Collect all evidence ref anchors from the result
+	for _, finding := range result.TrendSummary {
+		for _, ref := range finding.EvidenceRefs {
+			anchor := `id="` + ref.Anchor + `"`
+			if !strings.Contains(html, anchor) {
+				t.Fatalf("evidence ref anchor %q not found in HTML output for finding %q", ref.Anchor, finding.Kind)
+			}
+		}
+	}
+
+	// Also verify section-level anchors exist
+	for _, id := range []string{`id="section-pattern-trends"`, `id="section-table-trends"`, `id="section-ordered-points"`} {
+		if !strings.Contains(html, id) {
+			t.Fatalf("expected html output to contain %q", id)
+		}
+	}
+}
+
+func TestRenderHTMLAnchorsAreUniqueAcrossManyItems(t *testing.T) {
+	// Build a result with 7 patterns to verify items beyond index 5 get unique anchors.
+	reportWith7Patterns := func(name, label, start string, rows, txns, events, inserts, updates, deletes, alerts int) InputReport {
+		patterns := make([]comparepkg.InputPattern, 7)
+		for i := range patterns {
+			key := fmt.Sprintf("pat%02d", i)
+			patterns[i] = comparepkg.InputPattern{
+				PatternKey:  key,
+				Label:       key,
+				TotalRows:   rows/7 + i*10,
+				TxnCount:    txns / 7,
+				EventCount:  events / 7,
+				ShareOfRows: 1.0 / 7,
+				ShareOfTxns: 1.0 / 7,
+				Tables:      map[string]int{key: rows/7 + i*10},
+				Operations:  map[string]int{"UPDATE": rows/7 + i*10},
+			}
+		}
+		return testInputReportWithPatterns(name, label, start, rows, txns, events, inserts, updates, deletes, alerts, patterns)
+	}
+
+	result, err := BuildResult(BuildOptions{
+		InputMode:   "explicit",
+		SnapshotDir: "/tmp/snapshots",
+		Points: []BuildInput{
+			{Path: "/tmp/a.json", Report: reportWith7Patterns("a", "A", "2026-03-19T10:00:00Z", 700, 70, 840, 350, 250, 100, 0)},
+			{Path: "/tmp/b.json", Report: reportWith7Patterns("b", "B", "2026-03-21T10:00:00Z", 1400, 140, 1680, 700, 500, 200, 1)},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build result: %v", err)
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	// Verify all 7 pattern anchors exist and are unique
+	for i := 0; i < 7; i++ {
+		anchor := fmt.Sprintf(`id="pattern-%d"`, i)
+		if !strings.Contains(html, anchor) {
+			t.Fatalf("expected html to contain %q for pattern index %d", anchor, i)
+		}
+	}
+
+	// Verify point anchors exist for each snapshot
+	for i := 0; i < len(result.Points); i++ {
+		anchor := fmt.Sprintf(`id="point-%d"`, i)
+		if !strings.Contains(html, anchor) {
+			t.Fatalf("expected html to contain %q for point index %d", anchor, i)
+		}
+	}
+}
+
+func TestRenderHTMLUsesDOMAPINotInnerHTMLForFindings(t *testing.T) {
+	result := mustBuildPatternTrendResult(t)
+
+	// Inject a hostile summary into a finding to verify it cannot execute
+	for i := range result.TrendSummary {
+		result.TrendSummary[i].Summary = `growth<script>alert("xss")</script>`
+		result.TrendSummary[i].EvidenceRefs = []EvidenceRef{{
+			Section: "pattern_trends",
+			Key:     `evil<img src=x onerror=alert(1)>`,
+			Label:   `evil<img src=x onerror=alert(1)>`,
+			Anchor:  "pattern-0",
+		}}
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	for _, forbidden := range []string{
+		`<script>alert("xss")</script>`,
+		`<img src=x onerror=alert(1)>`,
+		`trendFindingsEl.innerHTML`,
+	} {
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("expected hostile content to be escaped / no innerHTML usage, found %q", forbidden)
+		}
+	}
+
+	if !strings.Contains(html, "document.createElement") {
+		t.Fatalf("expected findings JS to use document.createElement")
+	}
+	if !strings.Contains(html, ".textContent") {
+		t.Fatalf("expected findings JS to use textContent")
+	}
 }

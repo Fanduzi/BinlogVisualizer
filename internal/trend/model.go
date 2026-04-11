@@ -40,10 +40,19 @@ type Result struct {
 }
 
 type TrendFinding struct {
-	Kind     string         `json:"kind"`
-	Title    string         `json:"title"`
-	Summary  string         `json:"summary"`
-	Evidence map[string]any `json:"evidence"`
+	Kind         string         `json:"kind"`
+	Title        string         `json:"title"`
+	Summary      string         `json:"summary"`
+	Evidence     map[string]any `json:"evidence"`
+	EvidenceRefs []EvidenceRef  `json:"evidence_refs,omitempty"`
+}
+
+// EvidenceRef points from a finding to an existing section or item in the trend report.
+type EvidenceRef struct {
+	Section string `json:"section"`
+	Key     string `json:"key,omitempty"`
+	Label   string `json:"label"`
+	Anchor  string `json:"anchor"`
 }
 
 type SnapshotMeta struct {

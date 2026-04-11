@@ -33,6 +33,7 @@ func BuildCompareResult(current, baseline InputReport) CompareResult {
 		BaselineSnapshot: baseline.Snapshot,
 	}
 	result.KeyFindings = buildKeyFindings(result)
+	buildCompareEvidenceRefs(&result)
 	return result
 }
 

@@ -28,7 +28,15 @@
         "delta_rows": 700,
         "pattern_key": "orders.refunds|INSERT|small",
         "share_of_total_delta": 0.7777777777777778
-      }
+      },
+      "evidence_refs": [
+        {
+          "section": "pattern_changes",
+          "key": "orders.refunds|INSERT|small",
+          "label": "refunds.create",
+          "anchor": "section-pattern-changes"
+        }
+      ]
     },
     {
       "kind": "table_driver",
@@ -38,7 +46,15 @@
         "delta_rows": 900,
         "share_of_total_delta": 1,
         "table": "orders.refunds"
-      }
+      },
+      "evidence_refs": [
+        {
+          "section": "table_changes",
+          "key": "orders.refunds",
+          "label": "orders.refunds",
+          "anchor": "section-table-changes"
+        }
+      ]
     },
     {
       "kind": "new_pattern",
@@ -48,7 +64,15 @@
         "current_rows": 700,
         "pattern_key": "orders.refunds|INSERT|small",
         "share_of_rows": 0.2916666666666667
-      }
+      },
+      "evidence_refs": [
+        {
+          "section": "pattern_changes",
+          "key": "orders.refunds|INSERT|small",
+          "label": "refunds.create",
+          "anchor": "section-pattern-changes"
+        }
+      ]
     }
   ],
   "table_changes": [

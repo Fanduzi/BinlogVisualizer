@@ -254,7 +254,15 @@
         "last_rows": 1300,
         "pattern_key": "orders.payments|UPDATE|medium",
         "share_delta": -0.16666666666666663
-      }
+      },
+      "evidence_refs": [
+        {
+          "section": "pattern_trends",
+          "key": "orders.payments|UPDATE|medium",
+          "label": "payments.update_status (orders.payments|UPDATE|medium)",
+          "anchor": "pattern-0"
+        }
+      ]
     },
     {
       "kind": "table_trend",
@@ -265,7 +273,15 @@
         "first_rows": 500,
         "last_rows": 1500,
         "table": "shop.orders"
-      }
+      },
+      "evidence_refs": [
+        {
+          "section": "table_trends",
+          "key": "shop.orders",
+          "label": "shop.orders",
+          "anchor": "table-0"
+        }
+      ]
     }
   ]
 }

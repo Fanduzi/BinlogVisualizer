@@ -337,6 +337,10 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     margin: 0;
     font-size: 13px;
   }
+  .evidence-refs { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .evidence-refs a { color: var(--accent); text-decoration: none; }
+  .evidence-refs a:hover { text-decoration: underline; }
+  }
   @media (max-width: 900px) {
     .two-col, .alerts-layout, .alert-columns { grid-template-columns: 1fr; }
   }
@@ -402,7 +406,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="section-table-changes">
       <div class="section-header"><span class="dot"></span>Top Table Changes</div>
       <div class="section-body two-col">
         <div id="compare-top-tables" class="chart-box"></div>
@@ -433,7 +437,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="section-pattern-changes">
       <div class="section-header"><span class="dot"></span>Pattern Changes</div>
       <div class="section-body two-col">
         <div id="compare-pattern-changes" class="chart-box"></div>
@@ -479,7 +483,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       </div>
     </section>
 
-    <section class="section">
+    <section class="section" id="section-operation-mix">
       <div class="section-header"><span class="dot"></span>Operation Mix</div>
       <div class="section-body two-col">
         <div id="compare-ops-mix" class="chart-box"></div>
@@ -555,7 +559,31 @@ const compareHTMLTemplate = `<!DOCTYPE html>
 
     const findingsEl = document.getElementById('compare-findings-list');
     if (findingsEl && window.compareKeyFindings && window.compareKeyFindings.length > 0) {
-      findingsEl.innerHTML = '<ol>' + window.compareKeyFindings.map(f => '<li><strong>' + f.kind + '</strong>: ' + f.summary + '</li>').join('') + '</ol>';
+      const ol = document.createElement('ol');
+      window.compareKeyFindings.forEach(f => {
+        const li = document.createElement('li');
+        const strong = document.createElement('strong');
+        strong.textContent = f.kind;
+        li.appendChild(strong);
+        li.appendChild(document.createTextNode(': ' + f.summary));
+        if (f.evidence_refs && f.evidence_refs.length > 0) {
+          const span = document.createElement('span');
+          span.className = 'evidence-refs';
+          span.appendChild(document.createTextNode('['));
+          f.evidence_refs.forEach((r, i) => {
+            if (i > 0) { span.appendChild(document.createTextNode(', ')); }
+            const a = document.createElement('a');
+            a.setAttribute('href', '#' + r.anchor);
+            a.textContent = r.label;
+            span.appendChild(a);
+          });
+          span.appendChild(document.createTextNode(']'));
+          li.appendChild(document.createTextNode(' '));
+          li.appendChild(span);
+        }
+        ol.appendChild(li);
+      });
+      findingsEl.appendChild(ol);
     }
 
     const summaryChart = echarts.init(document.getElementById('compare-summary-chart'));
