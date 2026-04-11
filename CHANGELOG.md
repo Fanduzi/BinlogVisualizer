@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.15.0
+
+Release date: 2026-04-11
+
+Highlights:
+
+- Hardened workflow trust boundary: `workflow resume` and `workflow status` now validate that `plan_path` resolves to `<output_dir>/plan.yaml` inside the workflow root before opening any file
+- Added symlink escape detection so malicious manifests cannot reference files outside the workflow root
+- Tightened plan path acceptance to rooted `plan.yaml` only — nested paths and renamed files are rejected
+- All plan-path consumers (`resume`, `status`) now use the canonical resolved path instead of the raw manifest value
+
+Related notes:
+
+- [v0.15.0 release notes](docs/releases/release-notes-v0.15.0.md)
+- [v0.15.0 中文发行说明](docs/releases/release-notes-v0.15.0.zh-CN.md)
+
 ## v0.14.0
 
 Release date: 2026-04-11
