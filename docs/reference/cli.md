@@ -651,6 +651,10 @@ The command is read-only:
 
 Legacy manifests remain inspectable. When the manifest is from the pre-v2 format, the command still renders status output but reports `resumable: false` and a non-empty `resume_error`.
 
+### Trust-boundary behavior
+
+`workflow status` only trusts workflow-local rooted plan references. When `manifest.plan_path` resolves outside the workflow root or escapes via symlinks, the plan is treated as untrusted: the command still succeeds and reports full status, but sets `resumable` to `false` and populates `resume_error` with a trust-boundary explanation. Outside-root and symlink-escaped plan paths are rejected before the file is opened. The trust check is performed by `ValidateWorkflowPlanPath(outputDir, planPath)`.
+
 ### Output behavior
 
 - supports `text` and `json` only
@@ -882,6 +886,9 @@ Resume refuses to proceed when:
 - `<output_dir>` does not contain a `manifest.json`
 - The manifest was produced by a legacy pre-v2 run (missing `manifest_version` field)
 - The plan file SHA-256 does not match the `plan_sha256` recorded in the manifest
+- The plan path recorded in the manifest resolves outside the workflow root or escapes via symlinks (trust-boundary hard fail)
+
+`ValidateWorkflowPlanPath(outputDir, planPath)` is called before the plan file is opened. Outside-root and symlink-escaped paths are rejected unconditionally. `ValidateResumableManifest` now takes four arguments `(m Manifest, outputDir string, planPath string, planSHA256 string)` to enforce the trust boundary during resume validation.
 
 ### Output layout
 

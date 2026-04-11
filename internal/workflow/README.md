@@ -13,6 +13,7 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>`, `binlogviz wo
 | `index.go` | Workflow index HTML renderer built from manifest data. |
 | `resume.go` | Resume planner: selector parsing, manifest validation, resume plan builder. |
 | `describe.go` | Static workflow preview model and deterministic description builder. |
+| `planref.go` | Plan-path trust validation: ensures `manifest.plan_path` resolves inside the workflow root before opening. |
 | `status.go` | Read-only runtime status model, artifact existence inspection, and dry resume preview builder. |
 | `clean.go` | Orphan discovery and apply-mode deletion for workflow-generated artifacts plus opt-in snapshot cleanup. |
 | `export.go` | Manifest-driven, read-only export bundle assembly and deterministic zip archive writing. |
@@ -47,6 +48,30 @@ Each `StepRecord` carries an `execution` field:
 | `"executed"` | Step ran during this attempt. |
 | `"reused"` | Step output was reused from a previous attempt. |
 
+## Plan-Path Trust Boundary
+
+`workflow run` persists a rooted `plan.yaml` copy inside the workflow root. `workflow status` and `workflow resume` trust only workflow-local rooted plan references.
+
+- `plan_path` must resolve inside `<output_dir>`
+- `plan_path` must not escape via `..`
+- `plan_path` must not escape via symlink resolution
+- Untrusted `plan_path` values are rejected before file open
+
+### Status Behavior
+
+When `plan_path` is untrusted:
+- The command still succeeds (read-only)
+- `resumable` becomes `false`
+- `resume_error` explains the trust-boundary failure
+- The command does not open or parse the external plan file
+
+### Resume Behavior
+
+When `plan_path` is untrusted:
+- The command fails before opening the plan
+- No rerun planning happens
+- No workflow files are rewritten
+
 ## Exports
 
 - `LoadPlan(io.Reader) (Plan, error)` — Decodes and validates a YAML workflow plan.
@@ -76,7 +101,8 @@ Exported from `resume.go`:
 - `PlannedStep` — A step with a resolved execution decision (execute or reuse) and reason.
 - `ResumePlan` — Full plan listing steps to execute and reuse, plus updated manifest.
 - `ParseRerunSelectors(plan Plan, raw []string) ([]RerunSelector, error)` — Parses `--rerun kind:name` flags and validates against plan.
-- `ValidateResumableManifest(m Manifest, planPath string, planSHA256 string) error` — Checks manifest is resumable (v2, matching plan hash, has input files).
+- `ValidateResumableManifest(m Manifest, outputDir string, planPath string, planSHA256 string) error` — Checks manifest is resumable (v2, trust-boundary validation, matching plan hash, has input files).
+- `ValidateWorkflowPlanPath(outputDir string, planPath string) error` — Validates that `planPath` resolves inside the workflow root; rejects outside-root paths and symlink escape.
 - `BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error)` — Builds dependency-aware step list with invalidation propagation.
 
 ## Update Rule

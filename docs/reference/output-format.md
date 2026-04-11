@@ -680,6 +680,17 @@ Each `resume_preview` entry contains:
 
 Legacy manifests remain inspectable in both text and JSON output. In that case the command still renders status, but returns `resumable: false` and a non-empty `resume_error`.
 
+### Trust-boundary failure in status
+
+When the plan path recorded in the manifest resolves outside the workflow root or escapes via symlinks, `workflow status` treats the plan as untrusted. The command still succeeds, but:
+
+- `resumable` is set to `false`
+- `resume_error` contains a trust-boundary explanation string
+- `resume_preview` is omitted
+- all other fields (steps, workflow_summary, runtime_state) are reported normally
+
+The trust check is performed by `ValidateWorkflowPlanPath(outputDir, planPath)` before the plan file is opened.
+
 ## Workflow Clean Output
 
 `binlogviz workflow clean` reports orphaned workflow-generated files that are not referenced by the current manifest, and optionally reports orphaned snapshot JSON files.
@@ -906,6 +917,8 @@ Each entry in the `steps` array contains:
 - `workflow resume` reads the existing `manifest.json` to determine which steps succeeded and can be reused
 - Resume refuses legacy pre-v2 manifests (those missing the `manifest_version` field)
 - Resume refuses to proceed if the plan file hash does not match `plan_sha256` in the manifest
+- Resume refuses to proceed if the plan path resolves outside the workflow root or escapes via symlinks (trust-boundary hard fail, enforced by `ValidateWorkflowPlanPath(outputDir, planPath)` before the file is opened)
+- `ValidateResumableManifest` now takes four arguments `(m Manifest, outputDir string, planPath string, planSHA256 string)` to enforce the trust boundary during resume validation
 - The updated manifest preserves all fields from the original run and updates `mode`, `attempt`, `steps`, and `status`
 
 ### index.html updates

@@ -81,7 +81,7 @@ func BuildStatus(outputDir string, manifest Manifest, plan *Plan) (Status, error
 		status.Steps = append(status.Steps, stepStatus)
 	}
 
-	resumeErr := resumabilityError(manifest)
+	resumeErr := resumabilityError(outputDir, manifest)
 	if resumeErr != nil {
 		status.Resumable = false
 		status.ResumeError = resumeErr.Error()
@@ -130,22 +130,27 @@ func artifactExists(outputDir, relativePath string) bool {
 	return err == nil
 }
 
-func resumabilityError(manifest Manifest) error {
+func resumabilityError(outputDir string, manifest Manifest) error {
 	if manifest.ManifestVersion == 0 {
-		return ValidateResumableManifest(manifest, "", "")
+		return ValidateResumableManifest(manifest, "", "", "")
 	}
 	if manifest.ManifestVersion != 2 {
-		return ValidateResumableManifest(manifest, "", "")
+		return ValidateResumableManifest(manifest, "", "", "")
 	}
 	if manifest.PlanPath == "" {
-		return ValidateResumableManifest(manifest, "", "")
+		return ValidateResumableManifest(manifest, "", "", "")
+	}
+
+	// Trust-boundary check before opening any file.
+	if err := ValidateWorkflowPlanPath(outputDir, manifest.PlanPath); err != nil {
+		return fmt.Errorf("cannot resume: %w", err)
 	}
 
 	planSHA256, err := computeStatusPlanSHA256(manifest.PlanPath)
 	if err != nil {
 		return fmt.Errorf("cannot resume: plan file %q not found", manifest.PlanPath)
 	}
-	return ValidateResumableManifest(manifest, manifest.PlanPath, planSHA256)
+	return ValidateResumableManifest(manifest, outputDir, manifest.PlanPath, planSHA256)
 }
 
 func computeStatusPlanSHA256(path string) (string, error) {
