@@ -34,6 +34,7 @@ func BuildCompareResult(current, baseline InputReport) CompareResult {
 	}
 	result.KeyFindings = buildKeyFindings(result)
 	buildCompareEvidenceRefs(&result)
+	result.Recommendations = buildCompareRecommendations(result)
 	return result
 }
 
