@@ -2,6 +2,23 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.14.0
+
+Release date: 2026-04-11
+
+Highlights:
+
+- Added workflow-level summary aggregation so workflow manifests and HTML landing pages now surface cross-report findings and recommendations
+- Added `workflow status` support for persisted `workflow_summary` in both text and JSON outputs
+- Added `workflow export` for deterministic workflow handoff bundles with optional snapshot inclusion
+- Added operator recommendation surfaces for compare and trend outputs
+- Hardened explanation evidence refs, workflow summary contracts, and export containment/path normalization behavior
+
+Related notes:
+
+- [v0.14.0 release notes](docs/releases/release-notes-v0.14.0.md)
+- [v0.14.0 中文发行说明](docs/releases/release-notes-v0.14.0.zh-CN.md)
+
 ## v0.9.1
 
 Release date: 2026-04-04
