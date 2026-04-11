@@ -158,6 +158,66 @@ func TestRenderJSONIncludesSnapshotIdentityWhenPresent(t *testing.T) {
 	}
 }
 
+func TestRenderJSONKeyFindingsShape(t *testing.T) {
+	// key_findings is always present, evidence_refs omitted when empty
+	result := CompareResult{
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+			CurrentTotalTransactions: 4, BaselineTotalTransactions: 2, TotalTransactionsDelta: 2,
+		},
+		KeyFindings: []CompareFinding{
+			{Kind: "volume_change", Title: "Volume", Summary: "grew", Evidence: map[string]any{"delta_rows": 5}},
+			{
+				Kind: "table_driver", Title: "Table", Summary: "drove",
+				Evidence: map[string]any{"table": "s.t"},
+				EvidenceRefs: []EvidenceRef{{Section: "table_changes", Key: "s.t", Label: "s.t", Anchor: "section-table-changes"}},
+			},
+		},
+	}
+
+	output, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Top-level key_findings must be present
+	if !strings.Contains(output, `"key_findings"`) {
+		t.Fatalf("expected key_findings in JSON output")
+	}
+
+	// Parse to verify evidence_refs behavior
+	var decoded CompareResult
+	if err := json.Unmarshal([]byte(output), &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(decoded.KeyFindings) != 2 {
+		t.Fatalf("expected 2 findings, got %d", len(decoded.KeyFindings))
+	}
+
+	// volume_change: no evidence_refs → omitempty → nil in decoded struct
+	if decoded.KeyFindings[0].EvidenceRefs != nil {
+		t.Fatalf("expected nil evidence_refs for volume_change, got %v", decoded.KeyFindings[0].EvidenceRefs)
+	}
+	// Raw JSON should not contain "evidence_refs" for the first finding
+	var raw []map[string]any
+	if err := json.Unmarshal([]byte(output), &struct {
+		KF *[]map[string]any `json:"key_findings"`
+	}{KF: &raw}); err != nil {
+		t.Fatalf("unmarshal raw: %v", err)
+	}
+	if _, ok := raw[0]["evidence_refs"]; ok {
+		t.Fatalf("expected evidence_refs omitted for finding without refs, got %v", raw[0]["evidence_refs"])
+	}
+
+	// table_driver: has evidence_refs → must be present
+	if _, ok := raw[1]["evidence_refs"]; !ok {
+		t.Fatalf("expected evidence_refs present for finding with refs")
+	}
+	if len(decoded.KeyFindings[1].EvidenceRefs) != 1 {
+		t.Fatalf("expected 1 evidence_ref, got %d", len(decoded.KeyFindings[1].EvidenceRefs))
+	}
+}
+
 func TestRenderJSONIncludesPatternChanges(t *testing.T) {
 	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
 	if err != nil {

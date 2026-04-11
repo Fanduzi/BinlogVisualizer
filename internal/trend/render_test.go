@@ -92,6 +92,54 @@ func TestRenderTextShowsNoneForLegacyPatternTrends(t *testing.T) {
 	}
 }
 
+func TestRenderJSONTrendSummaryShape(t *testing.T) {
+	// trend_summary is always present, evidence_refs omitted when empty
+	result := Result{
+		TrendSummary: []TrendFinding{
+			{Kind: "rising_pattern", Title: "Rising", Summary: "rose", Evidence: map[string]any{"pattern_key": "p0"}},
+			{
+				Kind: "table_trend", Title: "Table", Summary: "grew",
+				Evidence: map[string]any{"table": "s.t"},
+				EvidenceRefs: []EvidenceRef{{Section: "table_trends", Key: "s.t", Label: "s.t", Anchor: "table-0"}},
+			},
+		},
+		PatternTrends: []PatternTrend{{PatternKey: "p0", Label: "p0"}},
+		TableTrends:   []TableTrend{{Schema: "s", Table: "t", DeltaRows: 100}},
+		Points:        []Point{{Snapshot: SnapshotMeta{Name: "w1"}}},
+	}
+
+	raw, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("render json: %v", err)
+	}
+
+	// Top-level trend_summary must be present
+	if !strings.Contains(raw, `"trend_summary"`) {
+		t.Fatalf("expected trend_summary in JSON output")
+	}
+
+	// Parse to verify evidence_refs behavior
+	var payload struct {
+		TrendSummary []map[string]any `json:"trend_summary"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(payload.TrendSummary) != 2 {
+		t.Fatalf("expected 2 findings, got %d", len(payload.TrendSummary))
+	}
+
+	// rising_pattern: no evidence_refs → omitempty
+	if _, ok := payload.TrendSummary[0]["evidence_refs"]; ok {
+		t.Fatalf("expected evidence_refs omitted for finding without refs, got %v", payload.TrendSummary[0]["evidence_refs"])
+	}
+
+	// table_trend: has evidence_refs → must be present
+	if _, ok := payload.TrendSummary[1]["evidence_refs"]; !ok {
+		t.Fatalf("expected evidence_refs present for finding with refs")
+	}
+}
+
 func TestRenderJSONIncludesPatternTrendSeries(t *testing.T) {
 	result := mustBuildPatternTrendResult(t)
 
