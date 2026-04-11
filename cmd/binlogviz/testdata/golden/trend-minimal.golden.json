@@ -283,5 +283,43 @@
         }
       ]
     }
+  ],
+  "recommendations": [
+    {
+      "kind": "track_rising_pattern",
+      "priority": "medium",
+      "title": "Track rising pattern",
+      "summary": "payments.update_status grew by +700 rows across the series; capture or compare the next window to confirm whether this is becoming a persistent workload driver.",
+      "rationale": "A repeated write pattern is rising across the ordered snapshot series.",
+      "related_finding_kinds": [
+        "rising_pattern"
+      ],
+      "evidence_refs": [
+        {
+          "section": "pattern_trends",
+          "key": "orders.payments|UPDATE|medium",
+          "label": "payments.update_status (orders.payments|UPDATE|medium)",
+          "anchor": "pattern-0"
+        }
+      ]
+    },
+    {
+      "kind": "review_growing_table",
+      "priority": "medium",
+      "title": "Review growing table",
+      "summary": "shop.orders grew by +1000 rows; review table owners, scheduled jobs, and whether the table growth matches expectations.",
+      "rationale": "A table-level trend was large enough to be highlighted in the trend summary.",
+      "related_finding_kinds": [
+        "table_trend"
+      ],
+      "evidence_refs": [
+        {
+          "section": "table_trends",
+          "key": "shop.orders",
+          "label": "shop.orders",
+          "anchor": "table-0"
+        }
+      ]
+    }
   ]
 }

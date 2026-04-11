@@ -513,3 +513,57 @@ func TestRenderHTMLUsesDOMAPINotInnerHTMLForFindings(t *testing.T) {
 		t.Fatalf("expected findings JS to use textContent")
 	}
 }
+
+func TestRenderHTMLIncludesRecommendationSection(t *testing.T) {
+	result := mustBuildPatternTrendResult(t)
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	for _, token := range []string{
+		`id="trend-recommendations"`,
+		"Recommended Next Checks",
+		`id="trend-recommendations-list"`,
+		"window.trendRecommendations",
+	} {
+		if !strings.Contains(html, token) {
+			t.Fatalf("expected html output to contain %q", token)
+		}
+	}
+}
+
+func TestRenderHTMLUsesDOMAPINotInnerHTMLForRecommendations(t *testing.T) {
+	result := Result{
+		Recommendations: []Recommendation{{
+			Kind:      "track_rising_pattern",
+			Priority:  "high",
+			Title:     `<img src=x onerror=alert(1)>`,
+			Summary:   `<script>alert("xss")</script>`,
+			Rationale: "test",
+			EvidenceRefs: []EvidenceRef{{
+				Section: "pattern_trends",
+				Key:     `evil<img src=x onerror=alert(1)>`,
+				Label:   `evil<img src=x onerror=alert(1)>`,
+				Anchor:  "pattern-0",
+			}},
+		}},
+		PatternTrends: []PatternTrend{{PatternKey: "evil", Label: "evil"}},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	for _, forbidden := range []string{
+		`trendRecEl.innerHTML`,
+		`<script>alert("xss")</script>`,
+		`<img src=x onerror=alert(1)>`,
+	} {
+		if strings.Contains(html, forbidden) {
+			t.Fatalf("expected no innerHTML usage and no raw hostile content, found %q", forbidden)
+		}
+	}
+}

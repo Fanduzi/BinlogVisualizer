@@ -36,6 +36,21 @@ func RenderText(result Result) (string, error) {
 		}
 	}
 
+	if len(result.Recommendations) > 0 {
+		fmt.Fprintf(&b, "\nRecommended Next Checks\n")
+		for i, rec := range result.Recommendations {
+			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, rec.Priority, rec.Title)
+			fmt.Fprintf(&b, "   %s\n", rec.Summary)
+			if len(rec.EvidenceRefs) > 0 {
+				labels := make([]string, 0, len(rec.EvidenceRefs))
+				for _, ref := range rec.EvidenceRefs {
+					labels = append(labels, ref.Label)
+				}
+				fmt.Fprintf(&b, "   evidence: %s\n", strings.Join(labels, ", "))
+			}
+		}
+	}
+
 	fmt.Fprintf(&b, "\nOrdered Points\n")
 	for _, point := range result.Points {
 		fmt.Fprintf(&b, "- %s | %s | rows=%d txns=%d events=%d alerts=%d",
