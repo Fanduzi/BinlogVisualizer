@@ -159,6 +159,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 - 事务数
 - 每事务平均行数
 - 可选的代表性 query summary
+- 被选中的高信号模式的可选 drilldown 块（why、workload peak minutes、workload transactions）
 
 示例标题：
 
@@ -221,6 +222,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `minutes` | array | yes | 每分钟聚合结果；没有分钟桶时为空数组 |
 | `alerts` | array | yes | 检测到的告警；没有告警时为空数组 |
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
+| `pattern_drilldowns` | array | yes | 高信号模式的有界 drilldown 摘要；无模式达到阈值时为空数组 |
 | `snapshot` | object | no | 仅在 `analyze` 使用 `--snapshot-name` 时出现 |
 
 ### `summary`
@@ -294,6 +296,48 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `tables` | object | yes | 该模式的表到行数聚合映射 |
 | `operations` | object | yes | 该模式的操作到行数聚合映射 |
 | `sample_query_summary` | string | no | 有可用 query summary 时的代表性摘要 |
+
+### `pattern_drilldowns`
+
+`pattern_drilldowns` 始终以数组形式存在。它包含高信号模式的有界 drilldown 摘要。当没有模式达到选择阈值时为空数组。
+
+每个条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | 链回父 pattern 条目的标识 |
+| `label` | string | yes | 面向人的模式描述 |
+| `why_selected` | string | yes | 简短说明哪些信号触发了选择 |
+| `share_of_rows` | number | yes | 该模式占总行数的比例 |
+| `share_of_txns` | number | yes | 该模式占总事务数的比例 |
+| `avg_rows_per_txn` | number | yes | 该模式内每事务平均行数 |
+| `signal_flags` | object | yes | 表示 dominance 和/或 anomaly 的信号标志 |
+| `busiest_minutes` | array | yes | 最多 2 个工作负载峰值分钟摘要（窗口级上下文，不保证完全属于该模式本身） |
+| `representative_transactions` | array | yes | 最多 2 个工作负载事务摘要（窗口级上下文，不保证完全属于该模式本身） |
+
+#### `signal_flags`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `dominance` | boolean | yes | 该模式是否主导工作负载体量 |
+| `anomaly` | boolean | yes | 该模式是否与尖峰对齐或异常集中 |
+
+#### `busiest_minutes` 条目
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `minute` | string | yes | RFC3339 时间戳 |
+| `total_rows` | integer | yes | 该分钟的行数 |
+| `txn_count` | integer | yes | 该分钟的事务数 |
+
+#### `representative_transactions` 条目
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `txn_key` | string | yes | 事务标识 |
+| `total_rows` | integer | yes | 事务中的总行数 |
+| `duration` | string | yes | Go duration 字符串 |
+| `query_summary` | string | no | 可选的 query summary |
 
 ### `minutes`
 
@@ -391,6 +435,7 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 - 交互式条形图：行数最多的热点表
 - 交互式环形图：INSERT / UPDATE / DELETE 操作分布
 - 热点表详情表格
+- 被选中的高信号模式的 Pattern Drilldowns 分区（可折叠卡片，包含信号标志和指标帮助）
 
 ## Trend 输出
 

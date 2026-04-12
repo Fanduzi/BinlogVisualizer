@@ -38,7 +38,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	renderTopTransactions(&buf, result.Transactions, opts.SQLContextMode)
 
 	// Section 4: Top Patterns
-	renderTopPatterns(&buf, result.Patterns)
+	renderTopPatterns(&buf, result.Patterns, result.PatternDrilldowns)
 
 	// Section 5: Minute Activity
 	renderMinuteActivity(&buf, result.Minutes)
@@ -110,20 +110,56 @@ func renderTopTransactions(buf *strings.Builder, transactions []model.Transactio
 	buf.WriteString("\n")
 }
 
-func renderTopPatterns(buf *strings.Builder, patterns []model.PatternStats) {
+func renderTopPatterns(buf *strings.Builder, patterns []model.PatternStats, drilldowns []model.PatternDrilldown) {
 	buf.WriteString("=== " + i18n.T("report.section.patterns") + " ===\n")
 	if len(patterns) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noPatterns") + "\n")
 		buf.WriteString("\n")
 		return
 	}
+
+	// Build drilldown lookup by pattern_key
+	ddMap := make(map[string]model.PatternDrilldown, len(drilldowns))
+	for _, d := range drilldowns {
+		ddMap[d.PatternKey] = d
+	}
+
 	for _, p := range patterns {
 		buf.WriteString(fmt.Sprintf("  %s: rows=%d txns=%d avg_rows_per_txn=%.1f\n", p.Label, p.TotalRows, p.TxnCount, p.AvgRowsPerTxn))
 		if strings.TrimSpace(p.SampleQuerySummary) != "" {
 			buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), p.SampleQuerySummary))
 		}
+
+		// Render drilldown block if this pattern was selected
+		if dd, ok := ddMap[p.PatternKey]; ok {
+			renderDrilldownBlock(buf, dd)
+		}
 	}
 	buf.WriteString("\n")
+}
+
+func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown) {
+	buf.WriteString("    drilldown:\n")
+	buf.WriteString(fmt.Sprintf("      why: %s\n", dd.WhySelected))
+
+	for i, m := range dd.BusiestMinutes {
+		if i >= 2 {
+			break
+		}
+		buf.WriteString(fmt.Sprintf("      workload minute: %s rows=%d txns=%d\n",
+			m.Minute.Format("2006-01-02 15:04"), m.TotalRows, m.TxnCount))
+	}
+
+	for i, txn := range dd.RepresentativeTransactions {
+		if i >= 2 {
+			break
+		}
+		line := fmt.Sprintf("workload txn: %s rows=%d", txn.TxnKey, txn.TotalRows)
+		if txn.Duration > 0 {
+			line += fmt.Sprintf(" dur=%s", formatDuration(txn.Duration))
+		}
+		buf.WriteString("      " + line + "\n")
+	}
 }
 
 func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
