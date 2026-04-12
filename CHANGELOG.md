@@ -2,6 +2,24 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.16.0
+
+Release date: 2026-04-12
+
+Highlights:
+
+- Added selective pattern drilldowns: an optional explanatory layer that appears when one or more write patterns cross a high-signal threshold
+- New top-level JSON field `pattern_drilldowns` (always present as array, empty when no pattern qualifies)
+- Text output renders indented drilldown blocks under qualifying patterns; HTML output renders collapsible drilldown cards with signal flags and metric help
+- Bounded payloads: at most 2 drilldowns per analysis, 2 workload peak minutes per drilldown, 2 workload transactions per drilldown
+- Mixed signal model: dominance (share thresholds) + anomaly (table-aligned alerts, high rows-per-txn ratio)
+- Workload-scoped wording: busiest minutes and representative transactions are described as window-level context, not pattern-owned data
+
+Related notes:
+
+- [v0.16.0 release notes](docs/releases/release-notes-v0.16.0.md)
+- [v0.16.0 中文发行说明](docs/releases/release-notes-v0.16.0.zh-CN.md)
+
 ## v0.15.0
 
 Release date: 2026-04-11

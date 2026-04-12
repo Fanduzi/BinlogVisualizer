@@ -179,8 +179,8 @@ A candidate is expanded into a drilldown when:
 Each drilldown entry is strictly bounded:
 
 - at most 2 drilldowns per analysis
-- at most 2 peak minutes per drilldown
-- at most 2 representative transactions per drilldown
+- at most 2 workload peak minutes per drilldown
+- at most 2 workload transactions per drilldown
 
 Drilldown fields:
 
