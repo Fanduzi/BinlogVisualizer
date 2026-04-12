@@ -23,8 +23,9 @@ type htmlData struct {
 	UpdateJSON          template.JS
 	DeleteJSON          template.JS
 	TableSeriesJSON     template.JS
-	PatternSeriesJSON   template.JS
-	TrendSummaryJSON    template.JS
+	PatternSeriesJSON     template.JS
+	PatternDrilldownsJSON template.JS
+	TrendSummaryJSON      template.JS
 	RecommendationsJSON template.JS
 }
 
@@ -65,8 +66,9 @@ func RenderHTML(result Result) (string, error) {
 		UpdateJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Updates })),
 		DeleteJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
 		TableSeriesJSON:     mustHTMLJSON(buildTableSeries(result.TableTrends)),
-		PatternSeriesJSON:   mustHTMLJSON(buildPatternSeries(result.PatternTrends)),
-		TrendSummaryJSON:    mustHTMLJSON(result.TrendSummary),
+		PatternSeriesJSON:     mustHTMLJSON(buildPatternSeries(result.PatternTrends)),
+		PatternDrilldownsJSON: mustHTMLJSON(result.PatternDrilldowns),
+		TrendSummaryJSON:      mustHTMLJSON(result.TrendSummary),
 		RecommendationsJSON: mustHTMLJSON(result.Recommendations),
 	}
 
@@ -300,6 +302,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       {{else}}
       <div class="empty-state">No pattern trends available for the selected snapshots.</div>
       {{end}}
+      <div id="trend-pattern-drilldowns"></div>
     </div>
   </section>
 
@@ -345,6 +348,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   const deletes = {{.DeleteJSON}};
   const tableSeries = {{.TableSeriesJSON}};
   const patternSeries = {{.PatternSeriesJSON}};
+  const patternDrilldowns = {{.PatternDrilldownsJSON}};
   const trendSummary = {{.TrendSummaryJSON}};
   window.trendRecommendations = {{.RecommendationsJSON}};
 
@@ -503,6 +507,36 @@ const trendHTMLTemplate = `<!DOCTYPE html>
 
     applyPatternView('share');
     window.addEventListener('resize', () => patternChart.resize());
+  }
+
+  const trendDrilldownsEl = document.getElementById('trend-pattern-drilldowns');
+  if (trendDrilldownsEl && patternDrilldowns && patternDrilldowns.length > 0) {
+    patternDrilldowns.forEach(dd => {
+      const detail = document.createElement('div');
+      detail.className = 'drilldown-details';
+      detail.style.cssText = 'margin:12px 0;padding:12px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)';
+      const why = document.createElement('div');
+      why.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:8px';
+      why.appendChild(document.createTextNode('drilldown: '));
+      const whyStrong = document.createElement('strong');
+      whyStrong.textContent = dd.why_selected;
+      why.appendChild(whyStrong);
+      detail.appendChild(why);
+      if (dd.key_points && dd.key_points.length > 0) {
+        dd.key_points.forEach(kp => {
+          const kpRow = document.createElement('div');
+          kpRow.style.cssText = 'font-size:12px;margin-top:4px';
+          const kpLabel = document.createElement('span');
+          kpLabel.className = 'kp-label';
+          kpLabel.style.cssText = 'color:var(--accent);margin-right:6px';
+          kpLabel.textContent = kp.label + ':';
+          kpRow.appendChild(kpLabel);
+          kpRow.appendChild(document.createTextNode(kp.summary));
+          detail.appendChild(kpRow);
+        });
+      }
+      trendDrilldownsEl.appendChild(detail);
+    });
   }
 </script>
 </body>

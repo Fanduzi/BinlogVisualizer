@@ -259,6 +259,62 @@
       }
     ]
   },
+  "pattern_drilldowns": [
+    {
+      "pattern_key": "orders.payments|UPDATE|medium",
+      "label": "payments.update_status",
+      "why_selected": "dominant driver of the row delta between windows",
+      "baseline_rows": 600,
+      "current_rows": 1300,
+      "delta_rows": 700,
+      "baseline_txns": 9,
+      "current_txns": 18,
+      "delta_txns": 9,
+      "signal_flags": {
+        "dominant_delta": true,
+        "new_pattern": false,
+        "disappeared": false,
+        "txn_rows_diverged": false
+      },
+      "key_points": [
+        {
+          "label": "baseline context",
+          "summary": "rows 600→1300 (+700), txns 9→18 (+9)"
+        },
+        {
+          "label": "current context",
+          "summary": "rows 600→1300 (+700), txns 9→18 (+9)"
+        }
+      ]
+    },
+    {
+      "pattern_key": "orders.refunds|INSERT|small",
+      "label": "refunds.create",
+      "why_selected": "dominant new pattern driving most of the row delta",
+      "baseline_rows": 0,
+      "current_rows": 700,
+      "delta_rows": 700,
+      "baseline_txns": 0,
+      "current_txns": 40,
+      "delta_txns": 40,
+      "signal_flags": {
+        "dominant_delta": true,
+        "new_pattern": true,
+        "disappeared": false,
+        "txn_rows_diverged": false
+      },
+      "key_points": [
+        {
+          "label": "new in current window",
+          "summary": "rows 0→700 (+700), txns 0→40 (+40)"
+        },
+        {
+          "label": "current context",
+          "summary": "rows 0→700 (+700), txns 0→40 (+40)"
+        }
+      ]
+    }
+  ],
   "current_label": "current",
   "baseline_label": "baseline"
 }

@@ -321,5 +321,6 @@
         }
       ]
     }
-  ]
+  ],
+  "pattern_drilldowns": []
 }
