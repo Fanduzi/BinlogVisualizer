@@ -159,7 +159,7 @@ Useful fields shown in text output include:
 - transaction count
 - average rows per transaction
 - optional sample query summary
-- optional drilldown block for selected high-signal patterns (why, peak minutes, representative transactions)
+- optional drilldown block for selected high-signal patterns (why, workload peak minutes, workload transactions)
 
 Example heading:
 
@@ -312,8 +312,8 @@ Each entry contains:
 | `share_of_txns` | number | yes | Fraction of total transactions attributed to this pattern |
 | `avg_rows_per_txn` | number | yes | Average rows per transaction in this pattern |
 | `signal_flags` | object | yes | Signal flags indicating dominance and/or anomaly |
-| `busiest_minutes` | array | yes | At most 2 peak minute summaries |
-| `representative_transactions` | array | yes | At most 2 representative transaction summaries |
+| `busiest_minutes` | array | yes | At most 2 workload peak minute summaries (window-level context, not pattern-specific) |
+| `representative_transactions` | array | yes | At most 2 workload transaction summaries (window-level context, not pattern-specific) |
 
 #### `signal_flags`
 

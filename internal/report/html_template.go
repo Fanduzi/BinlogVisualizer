@@ -551,7 +551,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </div>
             {{if .BusiestMinutes}}
             <div class="drilldown-subsection">
-              <span class="drilldown-sublabel">Peak Minutes</span>
+              <span class="drilldown-sublabel" title="Top workload minutes by row volume — window-level context, not pattern-specific">Workload Peak Minutes</span>
               {{range .BusiestMinutes}}
               <div class="drilldown-minute">{{.Minute}} &mdash; {{fmtIntHTML .TotalRows}} rows, {{fmtIntHTML .TxnCount}} txns</div>
               {{end}}
@@ -559,7 +559,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             {{end}}
             {{if .RepTxns}}
             <div class="drilldown-subsection">
-              <span class="drilldown-sublabel">Representative Transactions</span>
+              <span class="drilldown-sublabel" title="Largest transactions in the window — provided as workload context, not pattern-specific">Workload Transactions</span>
               {{range .RepTxns}}
               <div class="drilldown-txn">{{.TxnKey}} &mdash; {{fmtIntHTML .TotalRows}} rows, {{.Duration}}</div>
               {{end}}

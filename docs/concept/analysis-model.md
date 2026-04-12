@@ -191,8 +191,8 @@ Drilldown fields:
 - `share_of_txns` — fraction of total transactions attributed to this pattern
 - `avg_rows_per_txn` — average rows per transaction in this pattern
 - `signal_flags` — which signals (dominance, anomaly) qualified this pattern
-- `busiest_minutes` — top activity minutes within the pattern
-- `representative_transactions` — example transactions from the pattern
+- `busiest_minutes` — top workload minutes by row volume in the analysis window (window-level context, not pattern-specific)
+- `representative_transactions` — largest transactions in the analysis window (window-level context, not pattern-specific)
 
 In JSON output, `pattern_drilldowns` is always present as a top-level array (empty when nothing qualifies).
 

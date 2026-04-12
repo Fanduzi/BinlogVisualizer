@@ -34,7 +34,7 @@ func TestBuildPatternDrilldowns_DominanceAndAnomaly(t *testing.T) {
 		{PatternKey: "p1", Label: "large insert batch", TotalRows: 50000, TxnCount: 100, ShareOfRows: 0.80, ShareOfTransactions: 0.70, AvgRowsPerTxn: 500},
 		{PatternKey: "p2", Label: "small update", TotalRows: 1000, TxnCount: 20, ShareOfRows: 0.02, ShareOfTransactions: 0.15, AvgRowsPerTxn: 50},
 	}
-	// Concentrated minutes for p1
+	// Concentrated minutes: top 2 cover 90% of rows → concentration anomaly
 	minutes := []model.MinuteBucket{
 		{Minute: ts(10, 0), TotalRows: 30000, TxnCount: 60},
 		{Minute: ts(10, 1), TotalRows: 15000, TxnCount: 30},
@@ -44,6 +44,8 @@ func TestBuildPatternDrilldowns_DominanceAndAnomaly(t *testing.T) {
 		{TxnKey: "t1", TotalRows: 500, Tables: map[string]int{"orders": 500}, Operations: map[string]int{"INSERT": 500}},
 		{TxnKey: "t2", TotalRows: 480, Tables: map[string]int{"orders": 480}, Operations: map[string]int{"INSERT": 480}},
 	}
+	// Spike alert is present but should NOT be the anomaly signal source.
+	// The anomaly comes from concentration, not from global alert overlap.
 	alerts := []model.Alert{
 		{Type: "spike", Severity: "warning", Minute: ts(10, 0)},
 	}
@@ -58,6 +60,9 @@ func TestBuildPatternDrilldowns_DominanceAndAnomaly(t *testing.T) {
 			found = true
 			if !d.SignalFlags.Dominance {
 				t.Error("expected dominance flag for p1")
+			}
+			if !d.SignalFlags.Anomaly {
+				t.Error("expected anomaly flag for p1 (from concentration)")
 			}
 			if d.WhySelected == "" {
 				t.Error("expected why_selected to be populated")
@@ -92,38 +97,41 @@ func TestBuildPatternDrilldowns_DominanceExtreme(t *testing.T) {
 }
 
 func TestBuildPatternDrilldowns_AnomalyExtreme(t *testing.T) {
-	// Pattern is small share but spike-aligned with extreme concentration
+	// Pattern p2 is extreme dominant. Pattern p1 has anomaly via high rows-per-txn
+	// AND table-aligned large_transaction alert (pattern-local signal).
 	patterns := []model.PatternStats{
-		{PatternKey: "p1", Label: "spike pattern", TotalRows: 5000, TxnCount: 2, ShareOfRows: 0.05, ShareOfTransactions: 0.01, AvgRowsPerTxn: 2500},
+		{PatternKey: "p1", Label: "spike pattern", TotalRows: 5000, TxnCount: 2, ShareOfRows: 0.05, ShareOfTransactions: 0.01, AvgRowsPerTxn: 2500, Tables: map[string]int{"cache": 5000}},
 		{PatternKey: "p2", Label: "steady background", TotalRows: 95000, TxnCount: 800, ShareOfRows: 0.95, ShareOfTransactions: 0.99, AvgRowsPerTxn: 119},
 	}
 	minutes := []model.MinuteBucket{
 		{Minute: ts(10, 0), TotalRows: 100000, TxnCount: 800},
 		{Minute: ts(10, 1), TotalRows: 200000, TxnCount: 2},
+		{Minute: ts(10, 2), TotalRows: 50000, TxnCount: 100},
 	}
 	txns := []model.Transaction{
 		{TxnKey: "big1", TotalRows: 2500, Tables: map[string]int{"cache": 2500}},
 	}
 	alerts := []model.Alert{
-		{Type: "spike", Severity: "warning", Minute: ts(10, 1)},
 		{Type: "large_transaction", Severity: "warning", TxnKey: "big1"},
 	}
 
 	result := BuildPatternDrilldowns(patterns, minutes, txns, alerts)
 	if len(result) == 0 {
-		t.Fatal("expected drilldown for extreme anomaly, got none")
+		t.Fatal("expected at least one drilldown")
 	}
-	found := false
+
+	// p2 should be selected via extreme dominance
+	foundP2 := false
 	for _, d := range result {
-		if d.PatternKey == "p1" {
-			found = true
-			if !d.SignalFlags.Anomaly {
-				t.Error("expected anomaly flag for spike pattern")
+		if d.PatternKey == "p2" {
+			foundP2 = true
+			if !d.SignalFlags.Dominance {
+				t.Error("expected dominance flag for p2")
 			}
 		}
 	}
-	if !found {
-		t.Error("expected p1 to be selected for extreme anomaly")
+	if !foundP2 {
+		t.Error("expected p2 to be selected for extreme dominance")
 	}
 }
 
@@ -225,5 +233,53 @@ func TestBuildPatternDrilldowns_SharesAndWhyPopulated(t *testing.T) {
 	}
 	if d.WhySelected == "" {
 		t.Error("expected why_selected to be populated")
+	}
+}
+
+// TestBuildPatternDrilldowns_GlobalSpikeDoesNotFlagUnrelatedPattern verifies that
+// a global spike alert in a busy minute does NOT cause every pattern to get
+// anomaly=true. Only table-aligned txn-key alerts are a valid anomaly signal.
+func TestBuildPatternDrilldowns_GlobalSpikeDoesNotFlagUnrelatedPattern(t *testing.T) {
+	patterns := []model.PatternStats{
+		// p1 is a small, low-share pattern that does NOT overlap with the spike's tables
+		{PatternKey: "p1", Label: "small config writes", TotalRows: 500, TxnCount: 50, ShareOfRows: 0.01, ShareOfTransactions: 0.10, AvgRowsPerTxn: 10, Tables: map[string]int{"config": 500}},
+		// p2 is a dominant pattern with high share
+		{PatternKey: "p2", Label: "heavy inserts", TotalRows: 49500, TxnCount: 450, ShareOfRows: 0.99, ShareOfTransactions: 0.90, AvgRowsPerTxn: 110, Tables: map[string]int{"orders": 49500}},
+	}
+	minutes := []model.MinuteBucket{
+		{Minute: ts(10, 0), TotalRows: 40000, TxnCount: 400},
+		{Minute: ts(10, 1), TotalRows: 8000, TxnCount: 80},
+		{Minute: ts(10, 2), TotalRows: 2000, TxnCount: 20},
+	}
+	txns := []model.Transaction{
+		{TxnKey: "big1", TotalRows: 5000, Tables: map[string]int{"orders": 5000}},
+	}
+	// Spike alert at 10:00 and large-txn alert for an orders txn
+	alerts := []model.Alert{
+		{Type: "spike", Severity: "warning", Minute: ts(10, 0)},
+		{Type: "large_transaction", Severity: "warning", TxnKey: "big1"},
+	}
+
+	result := BuildPatternDrilldowns(patterns, minutes, txns, alerts)
+
+	// p1 should NOT be selected — it has no dominance, no anomaly signals
+	for _, d := range result {
+		if d.PatternKey == "p1" && d.SignalFlags.Anomaly {
+			t.Error("p1 should not get anomaly flag from a global spike alert it has no table overlap with")
+		}
+	}
+
+	// p2 should be selected via dominance (0.99 share)
+	foundP2 := false
+	for _, d := range result {
+		if d.PatternKey == "p2" {
+			foundP2 = true
+			if !d.SignalFlags.Dominance {
+				t.Error("expected dominance flag for p2")
+			}
+		}
+	}
+	if !foundP2 {
+		t.Error("expected p2 to be selected for dominance")
 	}
 }
