@@ -19,15 +19,16 @@ const currentReportVersion = 2
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
 type jsonAnalysisResult struct {
-	ReportVersion int                `json:"report_version"`
-	Summary       jsonSummary        `json:"summary"`
-	Tables        []jsonTableStats   `json:"tables"`
-	Transactions  []jsonTransaction  `json:"transactions"`
-	Patterns      []jsonPatternStats `json:"patterns"`
-	Minutes       []jsonMinuteBucket `json:"minutes"`
-	Alerts        []jsonAlert        `json:"alerts"`
-	Warnings      int                `json:"warnings"`
-	Snapshot      *jsonSnapshot      `json:"snapshot,omitempty"`
+	ReportVersion     int                    `json:"report_version"`
+	Summary           jsonSummary            `json:"summary"`
+	Tables            []jsonTableStats       `json:"tables"`
+	Transactions      []jsonTransaction      `json:"transactions"`
+	Patterns          []jsonPatternStats     `json:"patterns"`
+	Minutes           []jsonMinuteBucket     `json:"minutes"`
+	Alerts            []jsonAlert            `json:"alerts"`
+	Warnings          int                    `json:"warnings"`
+	PatternDrilldowns []jsonPatternDrilldown `json:"pattern_drilldowns"`
+	Snapshot          *jsonSnapshot          `json:"snapshot,omitempty"`
 }
 
 type jsonSummary struct {
@@ -123,6 +124,36 @@ type jsonSnapshotFilters struct {
 	ExcludeTables  []string `json:"exclude_table"`
 }
 
+type jsonPatternDrilldown struct {
+	PatternKey               string                    `json:"pattern_key"`
+	Label                    string                    `json:"label"`
+	WhySelected              string                    `json:"why_selected"`
+	ShareOfRows              float64                   `json:"share_of_rows"`
+	ShareOfTxns              float64                   `json:"share_of_txns"`
+	AvgRowsPerTxn            float64                   `json:"avg_rows_per_txn"`
+	SignalFlags              jsonPatternSignalFlags     `json:"signal_flags"`
+	BusiestMinutes           []jsonPeakMinute          `json:"busiest_minutes"`
+	RepresentativeTransactions []jsonRepresentativeTxn `json:"representative_transactions"`
+}
+
+type jsonPatternSignalFlags struct {
+	Dominance bool `json:"dominance"`
+	Anomaly   bool `json:"anomaly"`
+}
+
+type jsonPeakMinute struct {
+	Minute    string `json:"minute"`
+	TotalRows int    `json:"total_rows"`
+	TxnCount  int    `json:"txn_count"`
+}
+
+type jsonRepresentativeTxn struct {
+	TxnKey       string `json:"txn_key"`
+	TotalRows    int    `json:"total_rows"`
+	Duration     string `json:"duration"`
+	QuerySummary string `json:"query_summary,omitempty"`
+}
+
 // RenderJSON serializes an AnalysisResult to JSON with stable, script-friendly field names.
 func RenderJSON(result model.AnalysisResult) (string, error) {
 	return RenderJSONWithOptions(result, DefaultOptions())
@@ -165,15 +196,16 @@ func RenderJSONToStdoutWithOptions(result model.AnalysisResult, opts Options) er
 
 func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult {
 	return jsonAnalysisResult{
-		ReportVersion: currentReportVersion,
-		Summary:       convertSummary(result.Summary),
-		Tables:        convertTables(result.Tables),
-		Transactions:  convertTransactions(result.Transactions, opts.SQLContextMode),
-		Patterns:      convertPatterns(result.Patterns),
-		Minutes:       convertMinutes(result.Minutes),
-		Alerts:        convertAlerts(result.Alerts),
-		Warnings:      result.Warnings,
-		Snapshot:      convertSnapshot(result.Snapshot),
+		ReportVersion:     currentReportVersion,
+		Summary:           convertSummary(result.Summary),
+		Tables:            convertTables(result.Tables),
+		Transactions:      convertTransactions(result.Transactions, opts.SQLContextMode),
+		Patterns:          convertPatterns(result.Patterns),
+		Minutes:           convertMinutes(result.Minutes),
+		Alerts:            convertAlerts(result.Alerts),
+		Warnings:          result.Warnings,
+		PatternDrilldowns: convertDrilldowns(result.PatternDrilldowns),
+		Snapshot:          convertSnapshot(result.Snapshot),
 	}
 }
 
@@ -342,6 +374,68 @@ func convertSnapshotFilters(filters model.SnapshotFilters) jsonSnapshotFilters {
 		IncludeTables:  copyStringSlice(filters.IncludeTables),
 		ExcludeTables:  copyStringSlice(filters.ExcludeTables),
 	}
+}
+
+func convertDrilldowns(drilldowns []model.PatternDrilldown) []jsonPatternDrilldown {
+	if drilldowns == nil {
+		return []jsonPatternDrilldown{}
+	}
+	result := make([]jsonPatternDrilldown, len(drilldowns))
+	for i, d := range drilldowns {
+		result[i] = jsonPatternDrilldown{
+			PatternKey:      d.PatternKey,
+			Label:           d.Label,
+			WhySelected:     d.WhySelected,
+			ShareOfRows:     d.ShareOfRows,
+			ShareOfTxns:     d.ShareOfTxns,
+			AvgRowsPerTxn:   d.AvgRowsPerTxn,
+			SignalFlags: jsonPatternSignalFlags{
+				Dominance: d.SignalFlags.Dominance,
+				Anomaly:   d.SignalFlags.Anomaly,
+			},
+			BusiestMinutes:             convertPeakMinutes(d.BusiestMinutes),
+			RepresentativeTransactions: convertRepresentativeTxns(d.RepresentativeTransactions),
+		}
+		// Enforce hard caps at render boundary as a safety net
+		if len(result[i].BusiestMinutes) > 2 {
+			result[i].BusiestMinutes = result[i].BusiestMinutes[:2]
+		}
+		if len(result[i].RepresentativeTransactions) > 2 {
+			result[i].RepresentativeTransactions = result[i].RepresentativeTransactions[:2]
+		}
+	}
+	return result
+}
+
+func convertPeakMinutes(minutes []model.PatternPeakMinute) []jsonPeakMinute {
+	if minutes == nil {
+		return []jsonPeakMinute{}
+	}
+	result := make([]jsonPeakMinute, len(minutes))
+	for i, m := range minutes {
+		result[i] = jsonPeakMinute{
+			Minute:    formatJSONTime(m.Minute),
+			TotalRows: m.TotalRows,
+			TxnCount:  m.TxnCount,
+		}
+	}
+	return result
+}
+
+func convertRepresentativeTxns(txns []model.PatternRepresentativeTxn) []jsonRepresentativeTxn {
+	if txns == nil {
+		return []jsonRepresentativeTxn{}
+	}
+	result := make([]jsonRepresentativeTxn, len(txns))
+	for i, t := range txns {
+		result[i] = jsonRepresentativeTxn{
+			TxnKey:       t.TxnKey,
+			TotalRows:    t.TotalRows,
+			Duration:     t.Duration.String(),
+			QuerySummary: t.QuerySummary,
+		}
+	}
+	return result
 }
 
 func copyStringSlice(values []string) []string {
