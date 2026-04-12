@@ -115,6 +115,22 @@ func TestBuildComparePatternDrilldownsCapsAtTwo(t *testing.T) {
 	}
 }
 
+func TestBuildComparePatternDrilldownsRejectsOffsettingDominantOnlyMovement(t *testing.T) {
+	result := CompareResult{
+		Summary: SummaryDelta{TotalRowsDelta: 100},
+		PatternChanges: []PatternChange{
+			{PatternKey: "growth", Label: "growth", CurrentRows: 1100, BaselineRows: 100, DeltaRows: 1000, CurrentTxnCount: 110, BaselineTxnCount: 10, DeltaTxnCount: 100},
+			{PatternKey: "shrink", Label: "shrink", CurrentRows: 100, BaselineRows: 1000, DeltaRows: -900, CurrentTxnCount: 10, BaselineTxnCount: 100, DeltaTxnCount: -90},
+			{PatternKey: "noise", Label: "noise", CurrentRows: 160, BaselineRows: 150, DeltaRows: 10, CurrentTxnCount: 16, BaselineTxnCount: 15, DeltaTxnCount: 1},
+		},
+	}
+
+	got := buildComparePatternDrilldowns(result)
+	if len(got) != 0 {
+		t.Fatalf("len(drilldowns) = %d, want 0 for offsetting dominant-only movement", len(got))
+	}
+}
+
 func TestBuildComparePatternDrilldownsCapsKeyPointsAtTwo(t *testing.T) {
 	result := CompareResult{
 		Summary: SummaryDelta{TotalRowsDelta: 2000},

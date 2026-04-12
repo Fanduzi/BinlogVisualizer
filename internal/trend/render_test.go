@@ -718,6 +718,12 @@ func TestRenderHTMLTrendDrilldownForSelectedPatterns(t *testing.T) {
 	if !strings.Contains(html, `id="trend-pattern-drilldowns"`) {
 		t.Error("expected trend-pattern-drilldowns container")
 	}
+	if !strings.Contains(html, `title.className = 'drilldown-label'`) {
+		t.Error("expected drilldown label rendering hook in HTML")
+	}
+	if !strings.Contains(html, "P1") {
+		t.Error("expected drilldown label text in HTML")
+	}
 	if !strings.Contains(html, "dominant share movement across the series") {
 		t.Error("expected drilldown why_selected text in HTML")
 	}

@@ -266,9 +266,8 @@ func TestRenderJSONIncludesEmptyComparePatternDrilldowns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RenderJSON: %v", err)
 	}
-	// With nil drilldowns, JSON outputs null — verify the field is at least present
-	if !strings.Contains(out, `"pattern_drilldowns"`) {
-		t.Fatalf("expected pattern_drilldowns key in JSON, got: %s", out)
+	if !strings.Contains(out, `"pattern_drilldowns": []`) {
+		t.Fatalf("expected empty pattern_drilldowns array in JSON, got: %s", out)
 	}
 }
 
