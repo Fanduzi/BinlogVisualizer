@@ -143,7 +143,7 @@ binlogviz analyze mysql-bin.000123 --format markdown > report.md
 binlogviz analyze mysql-bin.000123 --format html > report.html
 ```
 
-HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）和五主题切换器。
+HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）、高信号写入模式的可选模式钻取（Pattern Drilldowns），以及五主题切换器。
 
 ## BinlogViz 适合回答什么问题
 

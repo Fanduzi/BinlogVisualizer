@@ -159,9 +159,54 @@ The implementation deliberately bounds SQL context:
 
 This means SQL context is designed for operator orientation, not for lossless archival of original statements.
 
+## Pattern Drilldowns
+
+`Pattern Drilldowns` is an optional explanatory layer that appears only when one or more patterns cross a high-signal threshold.
+
+`Top Patterns` remains the primary summary. Drilldowns do not replace it and do not appear in low-signal windows.
+
+A pattern becomes a drilldown candidate when it satisfies a mixed signal model:
+
+- **dominance**: the pattern materially dominates workload volume or transaction count
+- **anomaly**: the pattern is unusually concentrated, spike-aligned, or otherwise operationally suspicious
+
+A candidate is expanded into a drilldown when:
+
+- both dominance and anomaly are present, or
+- dominance is extremely strong on its own, or
+- anomaly is extremely strong on its own
+
+Each drilldown entry is strictly bounded:
+
+- at most 2 drilldowns per analysis
+- at most 2 peak minutes per drilldown
+- at most 2 representative transactions per drilldown
+
+Drilldown fields:
+
+- `pattern_key` — links back to the parent Top Patterns entry
+- `label` — human-readable pattern description
+- `why_selected` — short explanation of which signals triggered selection
+- `share_of_rows` — fraction of total rows attributed to this pattern
+- `share_of_txns` — fraction of total transactions attributed to this pattern
+- `avg_rows_per_txn` — average rows per transaction in this pattern
+- `signal_flags` — which signals (dominance, anomaly) qualified this pattern
+- `busiest_minutes` — top activity minutes within the pattern
+- `representative_transactions` — example transactions from the pattern
+
+In JSON output, `pattern_drilldowns` is always present as a top-level array (empty when nothing qualifies).
+
+In text output, selected patterns receive a short indented `drilldown:` block under the pattern line.
+
+In HTML output, selected patterns show a collapsible drilldown card with inline metric help.
+
+In Markdown output, drilldowns are intentionally omitted (Top Patterns is not rendered in Markdown).
+
+Use this section to answer: "Why does this specific top pattern deserve extra operator attention?"
+
 ## Final Result Shape
 
-The final analysis result is assembled into six stable report areas plus a warning count:
+The final analysis result is assembled into six stable report areas, an optional pattern drilldown layer, and a warning count:
 
 - `summary`
 - `tables`
@@ -169,6 +214,7 @@ The final analysis result is assembled into six stable report areas plus a warni
 - `patterns`
 - `minutes`
 - `alerts`
+- `pattern_drilldowns`
 - `warnings`
 
 Text output always renders the six report sections in a fixed order, even when some sections are empty. JSON output always emits the top-level fields, using empty arrays where a result set is absent.
