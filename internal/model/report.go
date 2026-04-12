@@ -65,4 +65,8 @@ type AnalysisResult struct {
 	Alerts       []Alert
 	Warnings     int
 	Snapshot     *Snapshot
+
+	// PatternDrilldowns holds optional bounded explanations for high-signal patterns.
+	// Empty in low-signal windows.
+	PatternDrilldowns []PatternDrilldown
 }
