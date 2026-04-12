@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.15.0</div>
+                  <div class="release-version">v0.16.0</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">release focus</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">Workflow trust boundary</div>
-                <div class="release-copy" data-i18n="releases.items.v0140">Workflow status and resume now trust only rooted `plan.yaml` copies inside the workflow root, blocking relative escapes, symlink escapes, and arbitrary external plan paths.</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.15.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">Pattern drilldowns</div>
+                <div class="release-copy" data-i18n="releases.items.v0160">Analyze reports now expand high-signal write patterns into bounded drilldown summaries that explain why a pattern deserves attention, with workload peak minutes and representative transactions as window-level context.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.16.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.15.0</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0150">Trust boundary</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0150">Workflow status and resume now trust only rooted plan files inside the workflow root, blocking symlink escapes and arbitrary external plan paths.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.15.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0150">Open v0.15.0 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.13.0</div>
@@ -1407,14 +1415,6 @@ It has published docs, explicit output contracts, release notes around HTML and 
                   </div>
                   <div class="release-card-copy" data-i18n="releases.items.v0120">Compare and trend began surfacing deterministic findings before detailed tables and charts, making the main change drivers visible first.</div>
                   <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.12.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0120">Open v0.12.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.11.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0110">Workflow v1</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0110">Workflow run, resume, validate, describe, status, and clean established the first full manifest-backed investigation lifecycle.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.11.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0110">Open v0.11.0 notes →</a>
                 </article>
                 <article class="release-card archive">
                   <div class="release-card-head">
@@ -1648,27 +1648,27 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
             currentFocus: 'release focus',
-            currentTitle: 'Workflow trust boundary',
+            currentTitle: 'Pattern drilldowns',
             currentLink: 'Read release notes →',
             labels: {
+              v0150: 'Trust boundary',
               v0130: 'Evidence',
-              v0120: 'Explanations',
-              v0110: 'Workflow v1'
+              v0120: 'Explanations'
             },
             links: {
+              v0150: 'Open v0.15.0 notes →',
               v0130: 'Open v0.13.0 notes →',
-              v0120: 'Open v0.12.0 notes →',
-              v0110: 'Open v0.11.0 notes →'
+              v0120: 'Open v0.12.0 notes →'
             },
             archiveTitle: 'Release archive',
             archiveLabel: 'All versions',
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
-              v0140: 'Workflow status and resume now trust only rooted `plan.yaml` copies inside the workflow root, blocking relative escapes, symlink escapes, and arbitrary external plan paths.',
+              v0160: 'Analyze reports now expand high-signal write patterns into bounded drilldown summaries that explain why a pattern deserves attention, with workload peak minutes and representative transactions as window-level context.',
+              v0150: 'Workflow status and resume now trust only rooted plan files inside the workflow root, blocking symlink escapes and arbitrary external plan paths.',
               v0130: 'Findings now link back to supporting compare and trend evidence, so report summaries are traceable instead of isolated.',
-              v0120: 'Compare and trend began surfacing deterministic findings before detailed tables and charts, making the main change drivers visible first.',
-              v0110: 'Workflow run, resume, validate, describe, status, and clean established the first full manifest-backed investigation lifecycle.'
+              v0120: 'Compare and trend began surfacing deterministic findings before detailed tables and charts, making the main change drivers visible first.'
             }
           },
           install: {
@@ -1834,27 +1834,27 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
             currentFocus: 'release focus',
-            currentTitle: 'Workflow 信任边界',
+            currentTitle: '模式钻取',
             currentLink: '查看发布说明 →',
             labels: {
+              v0150: '信任边界',
               v0130: '证据',
-              v0120: '解释',
-              v0110: 'Workflow v1'
+              v0120: '解释'
             },
             links: {
+              v0150: '打开 v0.15.0 说明 →',
               v0130: '打开 v0.13.0 说明 →',
-              v0120: '打开 v0.12.0 说明 →',
-              v0110: '打开 v0.11.0 说明 →'
+              v0120: '打开 v0.12.0 说明 →'
             },
             archiveTitle: '发布归档',
             archiveLabel: '全部版本',
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
-              v0140: 'workflow status 和 resume 现在只信任 workflow root 内的 rooted `plan.yaml`，可阻止相对路径逃逸、符号链接逃逸和任意外部 plan 路径。',
+              v0160: 'analyze 报告现在会将有界钻取摘要展开在高信号写入模式下，解释该模式为何值得关注，并以工作负载峰值分钟和代表性事务作为窗口级上下文。',
+              v0150: 'workflow status 和 resume 现在只信任 workflow root 内的 rooted plan 文件，可阻止符号链接逃逸和任意外部 plan 路径。',
               v0130: 'finding 现在可以链接回支撑它的 compare 和 trend 证据，让报告摘要可追溯，而不是孤立结论。',
-              v0120: 'compare 和 trend 开始在详细表格和图表之前先给出确定性的 findings，让主要变化驱动因素先被看见。',
-              v0110: 'workflow run、resume、validate、describe、status 和 clean 建立了第一版完整的 manifest-backed 调查生命周期。'
+              v0120: 'compare 和 trend 开始在详细表格和图表之前先给出确定性的 findings，让主要变化驱动因素先被看见。'
             }
           },
           install: {
