@@ -143,7 +143,7 @@ binlogviz analyze mysql-bin.000123 --format markdown > report.md
 binlogviz analyze mysql-bin.000123 --format html > report.html
 ```
 
-The HTML report includes interactive charts (rows/txns per minute, top tables, operation mix) and a five-theme switcher.
+The HTML report includes interactive charts (rows/txns per minute, top tables, operation mix), optional pattern drilldowns for high-signal write patterns, and a five-theme switcher.
 
 ## What BinlogViz Helps You See
 

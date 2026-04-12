@@ -48,6 +48,17 @@ type integrityReport struct {
 	Patterns     []integrityPattern `json:"patterns"`
 	Minutes      []integrityMinute  `json:"minutes"`
 	Warnings     int                `json:"warnings"`
+
+	// PatternDrilldowns are optional bounded summaries for high-signal patterns.
+	PatternDrilldowns []integrityDrilldown `json:"pattern_drilldowns"`
+}
+
+type integrityDrilldown struct {
+	PatternKey    string `json:"pattern_key"`
+	WhySelected   string `json:"why_selected"`
+	ShareOfRows   any    `json:"share_of_rows"`
+	ShareOfTxns   any    `json:"share_of_txns"`
+	AvgRowsPerTxn any    `json:"avg_rows_per_txn"`
 }
 
 func TestAnalyzeJSONResultIntegrityRealFixture(t *testing.T) {
@@ -71,6 +82,29 @@ func TestAnalyzeJSONResultIntegrityRealFixture(t *testing.T) {
 	requireValidPatterns(t, got.Patterns)
 	requireAtLeastOneMinuteTxnCount(t, got.Minutes)
 	requireWarningsRoundTripCompatible(t, got.Warnings)
+	requireValidDrilldowns(t, got.PatternDrilldowns, got.Patterns)
+}
+
+func requireValidDrilldowns(t *testing.T, drilldowns []integrityDrilldown, patterns []integrityPattern) {
+	t.Helper()
+
+	if len(drilldowns) > 2 {
+		t.Fatalf("expected at most 2 pattern drilldowns, got %d", len(drilldowns))
+	}
+
+	knownKeys := make(map[string]bool, len(patterns))
+	for _, p := range patterns {
+		knownKeys[p.PatternKey] = true
+	}
+
+	for _, d := range drilldowns {
+		if !knownKeys[d.PatternKey] {
+			t.Fatalf("drilldown references unknown pattern_key %q", d.PatternKey)
+		}
+		if d.WhySelected == "" {
+			t.Fatalf("drilldown for %q missing why_selected", d.PatternKey)
+		}
+	}
 }
 
 func requireNonEmptyForwardWindow(t *testing.T, start, end string) {

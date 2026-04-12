@@ -20,6 +20,11 @@ import (
 //go:embed static/echarts.min.js
 var echartsFS embed.FS
 
+const (
+	maxPeakMinutes        = 2
+	maxRepresentativeTxns = 2
+)
+
 // RenderHTML renders an AnalysisResult as a self-contained HTML report.
 func RenderHTML(result model.AnalysisResult) (string, error) {
 	return RenderHTMLWithOptions(result, DefaultOptions())
@@ -33,8 +38,10 @@ func RenderHTMLWithOptions(result model.AnalysisResult, opts Options) (string, e
 	}
 
 	tmpl, err := template.New("report").Funcs(template.FuncMap{
-		"safeJS": func(s string) template.JS { return template.JS(s) }, //nolint:gosec
-		"json":   jsonMarshal,
+		"safeJS":     func(s string) template.JS { return template.JS(s) }, //nolint:gosec
+		"json":       jsonMarshal,
+		"mulFloat":   func(f float64, m float64) float64 { return f * m },
+		"fmtIntHTML": fmtIntHTML,
 	}).Parse(htmlReportTemplate)
 	if err != nil {
 		return "", fmt.Errorf("parse html template: %w", err)
@@ -69,6 +76,8 @@ type htmlReportData struct {
 	Tables        []htmlTableRow
 	Alerts        []htmlAlert
 	HasAlerts     bool
+	Drilldowns    []htmlDrilldown
+	HasDrilldowns bool
 	MinuteLabels  template.JS
 	MinuteRows    template.JS
 	MinuteTxns    template.JS
@@ -76,6 +85,35 @@ type htmlReportData struct {
 	TableBarRows  template.JS
 	OpsPie        template.JS
 	EChartsJS     template.JS
+}
+
+type htmlDrilldown struct {
+	PatternKey    string
+	Label         string
+	WhySelected   string
+	ShareOfRows   float64
+	ShareOfTxns   float64
+	AvgRowsPerTxn float64
+	SignalFlags   htmlSignalFlags
+	BusiestMinutes []htmlPeakMinute
+	RepTxns       []htmlRepTxn
+}
+
+type htmlSignalFlags struct {
+	Dominance bool
+	Anomaly   bool
+}
+
+type htmlPeakMinute struct {
+	Minute    string
+	TotalRows int
+	TxnCount  int
+}
+
+type htmlRepTxn struct {
+	TxnKey    string
+	TotalRows int
+	Duration  string
 }
 
 type htmlTableRow struct {
@@ -179,6 +217,44 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 		{"name": "DELETE", "value": totalDeletes},
 	}
 	d.OpsPie = mustJSON(pie)
+
+	// Pattern Drilldowns
+	for _, dd := range result.PatternDrilldowns {
+		hd := htmlDrilldown{
+			PatternKey:    dd.PatternKey,
+			Label:         dd.Label,
+			WhySelected:   dd.WhySelected,
+			ShareOfRows:   dd.ShareOfRows,
+			ShareOfTxns:   dd.ShareOfTxns,
+			AvgRowsPerTxn: dd.AvgRowsPerTxn,
+			SignalFlags: htmlSignalFlags{
+				Dominance: dd.SignalFlags.Dominance,
+				Anomaly:   dd.SignalFlags.Anomaly,
+			},
+		}
+		for i, m := range dd.BusiestMinutes {
+			if i >= maxPeakMinutes {
+				break
+			}
+			hd.BusiestMinutes = append(hd.BusiestMinutes, htmlPeakMinute{
+				Minute:    m.Minute.Format("2006-01-02 15:04"),
+				TotalRows: m.TotalRows,
+				TxnCount:  m.TxnCount,
+			})
+		}
+		for i, txn := range dd.RepresentativeTransactions {
+			if i >= maxRepresentativeTxns {
+				break
+			}
+			hd.RepTxns = append(hd.RepTxns, htmlRepTxn{
+				TxnKey:    txn.TxnKey,
+				TotalRows: txn.TotalRows,
+				Duration:  txn.Duration.String(),
+			})
+		}
+		d.Drilldowns = append(d.Drilldowns, hd)
+	}
+	d.HasDrilldowns = len(d.Drilldowns) > 0
 
 	return d
 }
