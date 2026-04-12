@@ -22,10 +22,7 @@ func buildComparePatternDrilldowns(result CompareResult) []PatternDrilldown {
 		return []PatternDrilldown{}
 	}
 
-	totalDelta := result.Summary.TotalRowsDelta
-	if totalDelta == 0 {
-		totalDelta = 1 // avoid division by zero; no meaningful delta to rank against
-	}
+	totalMovement := totalCompareRowMovement(changes)
 
 	type candidate struct {
 		change   PatternChange
@@ -36,20 +33,24 @@ func buildComparePatternDrilldowns(result CompareResult) []PatternDrilldown {
 
 	var candidates []candidate
 	for _, ch := range changes {
-		score := compareDominanceScore(ch, totalDelta)
-		flags := compareSignalFlags(ch, totalDelta)
+		score := compareDominanceScore(ch, totalMovement)
+		flags := compareSignalFlags(ch, totalMovement)
 		kps := compareKeyPoints(ch, flags)
 
-		// Select only when both dominance and anomaly are present,
-		// or one of them is extremely strong.
 		dominant := flags.DominantDelta
 		anomaly := flags.NewPattern || flags.Disappeared || flags.TxnRowsDiverged
 
 		if !dominant && !anomaly {
 			continue
 		}
-		if !dominant && score < compareDominanceThreshold*2 {
-			// anomaly alone must be very strong
+		if dominant && !anomaly && score < compareDominanceThreshold*2 {
+			// Dominance alone must be extremely strong to avoid noisy drilldowns
+			// in mixed or low-signal compare windows.
+			continue
+		}
+		if anomaly && !dominant && score < compareDominanceThreshold/2 {
+			// Anomaly-only candidates still need a meaningful share of overall
+			// row movement before they deserve a compare drilldown.
 			continue
 		}
 
@@ -77,7 +78,7 @@ func buildComparePatternDrilldowns(result CompareResult) []PatternDrilldown {
 		out = append(out, PatternDrilldown{
 			PatternKey:   c.change.PatternKey,
 			Label:        c.change.Label,
-			WhySelected:  formatCompareWhySelected(c.change, totalDelta, c.flags),
+			WhySelected:  formatCompareWhySelected(c.change, c.flags),
 			BaselineRows: c.change.BaselineRows,
 			CurrentRows:  c.change.CurrentRows,
 			DeltaRows:    c.change.DeltaRows,
@@ -91,15 +92,26 @@ func buildComparePatternDrilldowns(result CompareResult) []PatternDrilldown {
 	return out
 }
 
-func compareDominanceScore(change PatternChange, totalDelta int) float64 {
-	if totalDelta == 0 {
-		return 0
+func totalCompareRowMovement(changes []PatternChange) int {
+	total := 0
+	for _, ch := range changes {
+		total += absInt(ch.DeltaRows)
 	}
-	return float64(absInt(change.DeltaRows)) / float64(absInt(totalDelta))
+	if total == 0 {
+		return 1
+	}
+	return total
 }
 
-func compareSignalFlags(change PatternChange, totalDelta int) CompareDrilldownSignals {
-	share := compareDominanceScore(change, totalDelta)
+func compareDominanceScore(change PatternChange, totalMovement int) float64 {
+	if totalMovement == 0 {
+		return 0
+	}
+	return float64(absInt(change.DeltaRows)) / float64(totalMovement)
+}
+
+func compareSignalFlags(change PatternChange, totalMovement int) CompareDrilldownSignals {
+	share := compareDominanceScore(change, totalMovement)
 
 	flags := CompareDrilldownSignals{
 		DominantDelta: share >= compareDominanceThreshold,
@@ -153,14 +165,14 @@ func compareKeyPoints(change PatternChange, flags CompareDrilldownSignals) []Com
 	return kps
 }
 
-func formatCompareWhySelected(change PatternChange, totalDelta int, flags CompareDrilldownSignals) string {
+func formatCompareWhySelected(change PatternChange, flags CompareDrilldownSignals) string {
 	switch {
 	case flags.DominantDelta && flags.NewPattern:
-		return "dominant new pattern driving most of the row delta"
+		return "dominant new pattern accounting for a large share of cross-window row movement"
 	case flags.DominantDelta && flags.Disappeared:
-		return "dominant pattern disappeared from the current window"
+		return "dominant disappeared pattern accounting for a large share of cross-window row movement"
 	case flags.DominantDelta:
-		return "dominant driver of the row delta between windows"
+		return "dominant share of cross-window row movement"
 	case flags.NewPattern:
 		return "new pattern appeared at meaningful scale"
 	case flags.Disappeared:

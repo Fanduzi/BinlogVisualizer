@@ -286,6 +286,43 @@ func TestRenderHTMLContainsCompareEvidenceRefAnchors(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLLabelsComparePatternDrilldowns(t *testing.T) {
+	result := CompareResult{
+		PatternChanges: []PatternChange{{
+			PatternKey:       "orders.insert_batch",
+			Label:            "orders.insert_batch",
+			CurrentRows:      900,
+			BaselineRows:     100,
+			DeltaRows:        800,
+			CurrentTxnCount:  90,
+			BaselineTxnCount: 10,
+			DeltaTxnCount:    80,
+		}},
+		PatternDrilldowns: []PatternDrilldown{{
+			PatternKey:  "orders.insert_batch",
+			Label:       "orders.insert_batch",
+			WhySelected: "dominant share of cross-window row movement",
+			KeyPoints:   []CompareKeyPoint{{Label: "baseline context", Summary: "rows 100→900 (+800), txns 10→90 (+80)"}},
+		}},
+	}
+
+	output, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, token := range []string{
+		`id="compare-pattern-drilldowns"`,
+		`title.className = 'drilldown-label'`,
+		"orders.insert_batch",
+		"dominant share of cross-window row movement",
+		"baseline context",
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected html to contain %q", token)
+		}
+	}
+}
+
 func TestRenderHTMLCompareFindingsEscapeMaliciousContent(t *testing.T) {
 	result := CompareResult{
 		CurrentLabel:  "current",

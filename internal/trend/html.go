@@ -515,6 +515,11 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       const detail = document.createElement('div');
       detail.className = 'drilldown-details';
       detail.style.cssText = 'margin:12px 0;padding:12px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)';
+      const title = document.createElement('div');
+      title.className = 'drilldown-label';
+      title.style.cssText = 'font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px';
+      title.textContent = dd.label || dd.pattern_key;
+      detail.appendChild(title);
       const why = document.createElement('div');
       why.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:8px';
       why.appendChild(document.createTextNode('drilldown: '));
