@@ -29,15 +29,16 @@ type BuildOptions struct {
 }
 
 type Result struct {
-	InputMode        string         `json:"input_mode"`
-	SnapshotDir      string         `json:"snapshot_dir"`
-	BaselineSnapshot *SnapshotMeta  `json:"baseline_snapshot,omitempty"`
-	Points           []Point        `json:"points"`
-	TableTrends      []TableTrend   `json:"table_trends"`
-	PatternTrends    []PatternTrend `json:"pattern_trends"`
-	Insights         Insights       `json:"insights"`
-	TrendSummary     []TrendFinding `json:"trend_summary"`
-	Recommendations  []Recommendation `json:"recommendations"`
+	InputMode         string            `json:"input_mode"`
+	SnapshotDir       string            `json:"snapshot_dir"`
+	BaselineSnapshot  *SnapshotMeta     `json:"baseline_snapshot,omitempty"`
+	Points            []Point           `json:"points"`
+	TableTrends       []TableTrend      `json:"table_trends"`
+	PatternTrends     []PatternTrend    `json:"pattern_trends"`
+	Insights          Insights          `json:"insights"`
+	TrendSummary      []TrendFinding    `json:"trend_summary"`
+	Recommendations   []Recommendation  `json:"recommendations"`
+	PatternDrilldowns []PatternDrilldown `json:"pattern_drilldowns"`
 }
 
 type Recommendation struct {
@@ -163,4 +164,30 @@ type Insights struct {
 	TxnsDelta       int    `json:"transactions_delta"`
 	EventsDelta     int    `json:"events_delta"`
 	AlertCountDelta int    `json:"alert_count_delta"`
+}
+
+type PatternDrilldown struct {
+	PatternKey  string                `json:"pattern_key"`
+	Label       string                `json:"label"`
+	WhySelected string                `json:"why_selected"`
+	StartShare  float64               `json:"start_share"`
+	EndShare    float64               `json:"end_share"`
+	ShareDelta  float64               `json:"share_delta"`
+	StartRows   int                   `json:"start_rows"`
+	EndRows     int                   `json:"end_rows"`
+	RowsDelta   int                   `json:"rows_delta"`
+	SignalFlags TrendDrilldownSignals `json:"signal_flags"`
+	KeyPoints   []TrendKeyPoint       `json:"key_points"`
+}
+
+type TrendDrilldownSignals struct {
+	DominantShareShift bool `json:"dominant_share_shift"`
+	SteadyRise         bool `json:"steady_rise"`
+	SteadyFall         bool `json:"steady_fall"`
+	ConcentratedJump   bool `json:"concentrated_jump"`
+}
+
+type TrendKeyPoint struct {
+	Label   string `json:"label"`
+	Summary string `json:"summary"`
 }
