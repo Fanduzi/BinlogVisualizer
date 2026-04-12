@@ -7,7 +7,6 @@ package analyzer
 import (
 	"fmt"
 	"sort"
-	"time"
 
 	"binlogviz/internal/model"
 )
@@ -105,20 +104,23 @@ func evaluateCandidate(
 	// Anomaly checks
 	anomaly := false
 
-	// High rows-per-txn ratio relative to peers
+	// High rows-per-txn ratio relative to peers (pattern-local signal)
 	if meanRowsPerTxn > 0 && p.AvgRowsPerTxn > meanRowsPerTxn*highRowsPerTxnRatio {
 		anomaly = true
 	}
 
-	// Strong minute concentration (only meaningful with enough minutes)
-	if totalRows > 0 && len(minutes) >= 3 {
+	// Strong minute concentration is only relevant for dominant patterns:
+	// a non-dominant pattern does not own enough of the workload to make
+	// workload-level concentration a meaningful anomaly signal for it.
+	if c.dominance && totalRows > 0 && len(minutes) >= 3 {
 		concentration := computeMinuteConcentration(minutes, totalRows)
 		if concentration >= concentrationShare {
 			anomaly = true
 		}
 	}
 
-	// Alert alignment (spike or large-transaction alerts)
+	// Table-aligned alert signal (only large-transaction alerts whose txn
+	// shares tables with this pattern)
 	if hasAlertAlignment(p, minutes, txns, alerts) {
 		anomaly = true
 	}
@@ -226,29 +228,23 @@ func totalRowsFromMinutes(minutes []model.MinuteBucket) int {
 	return total
 }
 
-// hasAlertAlignment checks if any spike or large-transaction alert is associated
-// with the pattern through overlapping minutes or transaction keys.
-func hasAlertAlignment(p model.PatternStats, minutes []model.MinuteBucket, txns []model.Transaction, alerts []model.Alert) bool {
+// hasAlertAlignment checks if any large-transaction alert references a txn whose
+// table set overlaps with this pattern's tables. This is a pattern-local signal:
+// the alert must touch the same tables to be relevant.
+//
+// Global alert-minute overlap was intentionally removed because it falsely flags
+// unrelated patterns in busy windows where spike alerts and high-activity minutes
+// always overlap.
+func hasAlertAlignment(p model.PatternStats, _ []model.MinuteBucket, txns []model.Transaction, alerts []model.Alert) bool {
 	if len(alerts) == 0 {
 		return false
 	}
 
-	// Build sets of alert minutes and alert txn keys
-	alertMinutes := make(map[time.Time]bool)
+	// Build set of alert txn keys (large-transaction alerts carry txn_key)
 	alertTxnKeys := make(map[string]bool)
 	for _, a := range alerts {
-		if !a.Minute.IsZero() {
-			alertMinutes[a.Minute] = true
-		}
 		if a.TxnKey != "" {
 			alertTxnKeys[a.TxnKey] = true
-		}
-	}
-
-	// Check if any spike alert minute overlaps with high-activity minutes
-	for _, m := range minutes {
-		if alertMinutes[m.Minute] && m.TotalRows > 0 {
-			return true
 		}
 	}
 

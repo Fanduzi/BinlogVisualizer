@@ -159,7 +159,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 - 事务数
 - 每事务平均行数
 - 可选的代表性 query summary
-- 被选中的高信号模式的可选 drilldown 块（why、peak minutes、representative transactions）
+- 被选中的高信号模式的可选 drilldown 块（why、workload peak minutes、workload transactions）
 
 示例标题：
 
@@ -312,8 +312,8 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `share_of_txns` | number | yes | 该模式占总事务数的比例 |
 | `avg_rows_per_txn` | number | yes | 该模式内每事务平均行数 |
 | `signal_flags` | object | yes | 表示 dominance 和/或 anomaly 的信号标志 |
-| `busiest_minutes` | array | yes | 最多 2 个峰值分钟摘要 |
-| `representative_transactions` | array | yes | 最多 2 个代表性事务摘要 |
+| `busiest_minutes` | array | yes | 最多 2 个工作负载峰值分钟摘要（窗口级上下文，不保证完全属于该模式本身） |
+| `representative_transactions` | array | yes | 最多 2 个工作负载事务摘要（窗口级上下文，不保证完全属于该模式本身） |
 
 #### `signal_flags`
 

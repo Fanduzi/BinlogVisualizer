@@ -146,7 +146,7 @@ func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown) {
 		if i >= 2 {
 			break
 		}
-		buf.WriteString(fmt.Sprintf("      peak minute: %s rows=%d txns=%d\n",
+		buf.WriteString(fmt.Sprintf("      workload minute: %s rows=%d txns=%d\n",
 			m.Minute.Format("2006-01-02 15:04"), m.TotalRows, m.TxnCount))
 	}
 
@@ -154,7 +154,7 @@ func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown) {
 		if i >= 2 {
 			break
 		}
-		line := fmt.Sprintf("rep txn: %s rows=%d", txn.TxnKey, txn.TotalRows)
+		line := fmt.Sprintf("workload txn: %s rows=%d", txn.TxnKey, txn.TotalRows)
 		if txn.Duration > 0 {
 			line += fmt.Sprintf(" dur=%s", formatDuration(txn.Duration))
 		}

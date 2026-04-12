@@ -88,10 +88,10 @@ func TestTextPatternDrilldown_PeakMinutesCappedAtTwo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Should only render at most 2 peak minute lines
-	count := strings.Count(out, "peak minute")
+	// Should only render at most 2 workload minute lines
+	count := strings.Count(out, "workload minute")
 	if count > 2 {
-		t.Fatalf("expected at most 2 peak minute lines, got %d", count)
+		t.Fatalf("expected at most 2 workload minute lines, got %d", count)
 	}
 }
 
@@ -118,8 +118,8 @@ func TestTextPatternDrilldown_RepresentativeTxnsCappedAtTwo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	count := strings.Count(out, "rep txn")
+	count := strings.Count(out, "workload txn")
 	if count > 2 {
-		t.Fatalf("expected at most 2 rep txn lines, got %d", count)
+		t.Fatalf("expected at most 2 workload txn lines, got %d", count)
 	}
 }
