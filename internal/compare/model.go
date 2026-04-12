@@ -85,17 +85,18 @@ type InputSnapshotFilters struct {
 }
 
 type CompareResult struct {
-	Summary          SummaryDelta     `json:"summary"`
-	KeyFindings      []CompareFinding `json:"key_findings"`
-	Recommendations  []Recommendation `json:"recommendations"`
-	TableChanges     []TableChange    `json:"table_changes"`
-	PatternChanges   []PatternChange  `json:"pattern_changes"`
-	OperationMix     []OperationDelta `json:"operation_mix"`
-	AlertChanges     AlertDelta       `json:"alert_changes"`
-	CurrentLabel     string           `json:"current_label"`
-	BaselineLabel    string           `json:"baseline_label"`
-	CurrentSnapshot  *InputSnapshot   `json:"current_snapshot,omitempty"`
-	BaselineSnapshot *InputSnapshot   `json:"baseline_snapshot,omitempty"`
+	Summary           SummaryDelta      `json:"summary"`
+	KeyFindings       []CompareFinding  `json:"key_findings"`
+	Recommendations   []Recommendation  `json:"recommendations"`
+	TableChanges      []TableChange     `json:"table_changes"`
+	PatternChanges    []PatternChange   `json:"pattern_changes"`
+	OperationMix      []OperationDelta  `json:"operation_mix"`
+	AlertChanges      AlertDelta        `json:"alert_changes"`
+	PatternDrilldowns []PatternDrilldown `json:"pattern_drilldowns"`
+	CurrentLabel      string            `json:"current_label"`
+	BaselineLabel     string            `json:"baseline_label"`
+	CurrentSnapshot   *InputSnapshot    `json:"current_snapshot,omitempty"`
+	BaselineSnapshot  *InputSnapshot    `json:"baseline_snapshot,omitempty"`
 }
 
 type Recommendation struct {
@@ -170,4 +171,30 @@ type OperationDelta struct {
 type AlertDelta struct {
 	Added   []InputAlert `json:"added"`
 	Removed []InputAlert `json:"removed"`
+}
+
+type PatternDrilldown struct {
+	PatternKey   string                  `json:"pattern_key"`
+	Label        string                  `json:"label"`
+	WhySelected  string                  `json:"why_selected"`
+	BaselineRows int                     `json:"baseline_rows"`
+	CurrentRows  int                     `json:"current_rows"`
+	DeltaRows    int                     `json:"delta_rows"`
+	BaselineTxns int                     `json:"baseline_txns"`
+	CurrentTxns  int                     `json:"current_txns"`
+	DeltaTxns    int                     `json:"delta_txns"`
+	SignalFlags  CompareDrilldownSignals `json:"signal_flags"`
+	KeyPoints    []CompareKeyPoint       `json:"key_points"`
+}
+
+type CompareDrilldownSignals struct {
+	DominantDelta   bool `json:"dominant_delta"`
+	NewPattern      bool `json:"new_pattern"`
+	Disappeared     bool `json:"disappeared"`
+	TxnRowsDiverged bool `json:"txn_rows_diverged"`
+}
+
+type CompareKeyPoint struct {
+	Label   string `json:"label"`
+	Summary string `json:"summary"`
 }
