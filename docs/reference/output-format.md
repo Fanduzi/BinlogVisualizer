@@ -159,6 +159,7 @@ Useful fields shown in text output include:
 - transaction count
 - average rows per transaction
 - optional sample query summary
+- optional drilldown block for selected high-signal patterns (why, peak minutes, representative transactions)
 
 Example heading:
 
@@ -221,6 +222,7 @@ The top-level JSON object always contains these fields:
 | `minutes` | array | yes | Per-minute aggregates; empty array when no minute buckets exist |
 | `alerts` | array | yes | Detected alerts; empty array when no alerts exist |
 | `warnings` | integer | yes | Count of analysis warnings recorded in the finalized result |
+| `pattern_drilldowns` | array | yes | Bounded drilldown summaries for high-signal patterns; empty array when nothing qualifies |
 | `snapshot` | object | no | Present only when `analyze` is invoked with `--snapshot-name` |
 
 ### `summary`
@@ -294,6 +296,48 @@ The top-level JSON object always contains these fields:
 | `tables` | object | yes | Aggregate table-to-row map for the pattern |
 | `operations` | object | yes | Aggregate operation-to-row map for the pattern |
 | `sample_query_summary` | string | no | Optional representative query summary when available |
+
+### `pattern_drilldowns`
+
+`pattern_drilldowns` is always present as an array. It contains bounded drilldown summaries for high-signal patterns. It is empty when no pattern crosses the selection threshold.
+
+Each entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | Links back to the parent pattern entry |
+| `label` | string | yes | Human-readable pattern description |
+| `why_selected` | string | yes | Short explanation of which signals triggered selection |
+| `share_of_rows` | number | yes | Fraction of total rows attributed to this pattern |
+| `share_of_txns` | number | yes | Fraction of total transactions attributed to this pattern |
+| `avg_rows_per_txn` | number | yes | Average rows per transaction in this pattern |
+| `signal_flags` | object | yes | Signal flags indicating dominance and/or anomaly |
+| `busiest_minutes` | array | yes | At most 2 peak minute summaries |
+| `representative_transactions` | array | yes | At most 2 representative transaction summaries |
+
+#### `signal_flags`
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `dominance` | boolean | yes | Whether the pattern dominates workload volume |
+| `anomaly` | boolean | yes | Whether the pattern is spike-aligned or unusually concentrated |
+
+#### `busiest_minutes` entries
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `minute` | string | yes | RFC3339 timestamp |
+| `total_rows` | integer | yes | Rows in that minute |
+| `txn_count` | integer | yes | Transactions in that minute |
+
+#### `representative_transactions` entries
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `txn_key` | string | yes | Transaction identifier |
+| `total_rows` | integer | yes | Total rows in the transaction |
+| `duration` | string | yes | Go duration string |
+| `query_summary` | string | no | Optional query summary |
 
 ### `minutes`
 
@@ -391,6 +435,7 @@ The report includes:
 - Interactive bar chart: top tables by rows
 - Interactive donut chart: INSERT / UPDATE / DELETE operation mix
 - Top tables detail table
+- Pattern Drilldowns section for selected high-signal patterns (collapsible cards with signal flags and metric help)
 
 ## Trend Output
 
