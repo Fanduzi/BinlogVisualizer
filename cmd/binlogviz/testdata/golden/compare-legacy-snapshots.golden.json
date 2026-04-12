@@ -139,6 +139,7 @@
       }
     ]
   },
+  "pattern_drilldowns": [],
   "current_label": "current",
   "baseline_label": "baseline"
 }

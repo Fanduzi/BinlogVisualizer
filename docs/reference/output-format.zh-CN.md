@@ -441,7 +441,27 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 
 `binlogviz trend` 会为两个或更多 snapshot 生成按时间顺序排列的报告，沿用和其他命令相同的 stdout / stderr 分离规则，并支持 `text`、`json` 和 `html`。
 
-文本输出会包含新的 `Top Pattern Trends` 章节和 `Key Findings` 章节（当存在趋势发现时），随后是 `Recommended Next Checks` 章节（当存在建议时）。JSON 输出会始终包含顶层 `pattern_trends` 数组（其中每个模式都带有 rows 和 share 序列）、`trend_summary` 数组（最多 5 条确定性发现对象）以及 `recommendations` 数组（基于发现的运维后续建议）。趋势建议类别：`track_rising_pattern`、`confirm_declining_pattern`、`review_growing_table`、`watch_workload_concentration` 或 `capture_followup_snapshot`。每条发现可能包含 `evidence_refs`，将其链接回相关报告章节（`pattern_trends`、`table_trends`、`ordered_points`）。HTML 输出会包含交互式 `Pattern Trends` 分区（默认展示 `share of rows`，可切换到绝对 `rows`）、`Key Findings` 分区（当存在发现时，带有可点击的证据引用链接）以及 `Recommended Next Checks` 分区（带有优先级标签和证据链接）。
+文本输出会包含新的 `Top Pattern Trends` 章节和 `Key Findings` 章节（当存在趋势发现时），随后是 `Recommended Next Checks` 章节（当存在建议时）。JSON 输出会始终包含顶层 `pattern_trends` 数组（其中每个模式都带有 rows 和 share 序列）、`trend_summary` 数组（最多 5 条确定性发现对象）、`recommendations` 数组（基于发现的运维后续建议）以及 `pattern_drilldowns` 数组（高信号跨窗口模式份额变化的边界钻取摘要，无符合条件时为空数组）。趋势建议类别：`track_rising_pattern`、`confirm_declining_pattern`、`review_growing_table`、`watch_workload_concentration` 或 `capture_followup_snapshot`。每条发现可能包含 `evidence_refs`，将其链接回相关报告章节（`pattern_trends`、`table_trends`、`ordered_points`）。HTML 输出会包含交互式 `Pattern Trends` 分区（默认展示 `share of rows`，可切换到绝对 `rows`）、`Key Findings` 分区（当存在发现时，带有可点击的证据引用链接）、`Recommended Next Checks` 分区（带有优先级标签和证据链接），以及当检测到高信号模式时在趋势图表下方显示的钻取详情分区。
+
+#### `pattern_drilldowns` 条目（trend）
+
+每个条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | 写入模式标识符 |
+| `label` | string | yes | 人类可读的模式标签 |
+| `why_selected` | string | yes | 一句话解释为何选中此模式进行钻取 |
+| `start_share` | float | yes | 第一个快照中的行份额 |
+| `end_share` | float | yes | 最后一个快照中的行份额 |
+| `share_delta` | float | yes | 序列间的份额差异 |
+| `start_rows` | integer | yes | 第一个快照中的行数 |
+| `end_rows` | integer | yes | 最后一个快照中的行数 |
+| `rows_delta` | integer | yes | 序列间的行数差异 |
+| `signal_flags` | object | yes | 检测信号：`dominant_share_shift`、`steady_rise`、`steady_fall`、`concentrated_jump` |
+| `key_points` | array | yes | 最多 2 条关键点摘要；每条包含 `label` 和 `summary` 字符串 |
+
+最多返回 2 条钻取，按主导度评分排序。
 
 ## Compare JSON 输出
 
@@ -464,8 +484,31 @@ compare JSON 契约始终包含：
 | `alert_changes` | object | yes | 新增和移除的告警 |
 | `current_label` | string | yes | 有快照元数据时使用快照感知标签，否则为 `current` |
 | `baseline_label` | string | yes | 有快照元数据时使用快照感知标签，否则为 `baseline` |
+| `pattern_drilldowns` | array | yes | 高信号跨窗口模式变化的边界钻取摘要；无符合条件时为空数组 |
 | `current_snapshot` | object | no | 当前输入报告包含 analyze 快照元数据时出现 |
 | `baseline_snapshot` | object | no | 基线输入报告包含 analyze 快照元数据时出现 |
+
+`current_snapshot` 和 `baseline_snapshot` 复用上方 analyze `snapshot` 对象的字段契约。
+
+#### `pattern_drilldowns` 条目（compare）
+
+每个条目包含：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | 写入模式标识符 |
+| `label` | string | yes | 人类可读的模式标签 |
+| `why_selected` | string | yes | 一句话解释为何选中此模式进行钻取 |
+| `baseline_rows` | integer | yes | 基线窗口的行数 |
+| `current_rows` | integer | yes | 当前窗口的行数 |
+| `delta_rows` | integer | yes | 窗口间的行数差异 |
+| `baseline_txns` | integer | yes | 基线窗口的事务数 |
+| `current_txns` | integer | yes | 当前窗口的事务数 |
+| `delta_txns` | integer | yes | 窗口间的事务数差异 |
+| `signal_flags` | object | yes | 检测信号：`dominant_delta`、`new_pattern`、`disappeared`、`txn_rows_diverged` |
+| `key_points` | array | yes | 最多 2 条关键点摘要；每条包含 `label` 和 `summary` 字符串 |
+
+最多返回 2 条钻取，按主导度评分排序。
 
 `current_snapshot` 和 `baseline_snapshot` 复用上文 analyze `snapshot` 的同一字段契约。
 

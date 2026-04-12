@@ -441,7 +441,27 @@ The report includes:
 
 `binlogviz trend` renders a chronological report for two or more snapshots. It uses the same stdout/stderr separation rules as the other commands and supports `text`, `json`, and `html`.
 
-Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present, followed by a `Recommended Next Checks` section when recommendations are available. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, a `trend_summary` array with deterministic finding objects capped at 5, and a `recommendations` array with operator follow-up suggestions derived from findings. Trend recommendation kinds: `track_rising_pattern`, `confirm_declining_pattern`, `review_growing_table`, `watch_workload_concentration`, or `capture_followup_snapshot`. Each finding may include `evidence_refs` linking it back to relevant report sections (`pattern_trends`, `table_trends`, `ordered_points`). HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, a `Key Findings` section with clickable evidence ref links when findings are present, and a `Recommended Next Checks` section with priority badges and evidence links.
+Text output includes the new `Top Pattern Trends` section and a `Key Findings` section when trend summary findings are present, followed by a `Recommended Next Checks` section when recommendations are available. JSON output always contains a top-level `pattern_trends` array with per-pattern rows and share series, a `trend_summary` array with deterministic finding objects capped at 5, a `recommendations` array with operator follow-up suggestions derived from findings, and a `pattern_drilldowns` array with bounded drilldown summaries for high-signal cross-window pattern share movements (empty when nothing qualifies). Trend recommendation kinds: `track_rising_pattern`, `confirm_declining_pattern`, `review_growing_table`, `watch_workload_concentration`, or `capture_followup_snapshot`. Each finding may include `evidence_refs` linking it back to relevant report sections (`pattern_trends`, `table_trends`, `ordered_points`). HTML output includes an interactive `Pattern Trends` section that defaults to `share of rows` and can switch to absolute `rows`, a `Key Findings` section with clickable evidence ref links when findings are present, a `Recommended Next Checks` section with priority badges and evidence links, and a drilldown details section beneath the pattern trends chart when high-signal patterns are detected.
+
+#### `pattern_drilldowns` entries (trend)
+
+Each entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | Write-pattern identifier |
+| `label` | string | yes | Human-readable pattern label |
+| `why_selected` | string | yes | One-sentence explanation of why this pattern was selected for drilldown |
+| `start_share` | float | yes | Share of rows in the first snapshot |
+| `end_share` | float | yes | Share of rows in the last snapshot |
+| `share_delta` | float | yes | Share delta across the series |
+| `start_rows` | integer | yes | Row count in the first snapshot |
+| `end_rows` | integer | yes | Row count in the last snapshot |
+| `rows_delta` | integer | yes | Row delta across the series |
+| `signal_flags` | object | yes | Detection signals: `dominant_share_shift`, `steady_rise`, `steady_fall`, `concentrated_jump` |
+| `key_points` | array | yes | Up to 2 key-point summaries; each has `label` and `summary` strings |
+
+At most 2 drilldowns are returned, sorted by dominance score.
 
 ## Compare JSON Output
 
@@ -464,10 +484,31 @@ The compare JSON contract always contains:
 | `alert_changes` | object | yes | Added and removed alerts |
 | `current_label` | string | yes | Snapshot-aware label when metadata exists; otherwise `current` |
 | `baseline_label` | string | yes | Snapshot-aware label when metadata exists; otherwise `baseline` |
+| `pattern_drilldowns` | array | yes | Bounded drilldown summaries for high-signal cross-window pattern movements; empty array when nothing qualifies |
 | `current_snapshot` | object | no | Present when the current input report contains analyze snapshot metadata |
 | `baseline_snapshot` | object | no | Present when the baseline input report contains analyze snapshot metadata |
 
 `current_snapshot` and `baseline_snapshot` reuse the same field contract as the analyze `snapshot` object above.
+
+#### `pattern_drilldowns` entries (compare)
+
+Each entry contains:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `pattern_key` | string | yes | Write-pattern identifier |
+| `label` | string | yes | Human-readable pattern label |
+| `why_selected` | string | yes | One-sentence explanation of why this pattern was selected for drilldown |
+| `baseline_rows` | integer | yes | Row count in the baseline window |
+| `current_rows` | integer | yes | Row count in the current window |
+| `delta_rows` | integer | yes | Row delta between windows |
+| `baseline_txns` | integer | yes | Transaction count in the baseline window |
+| `current_txns` | integer | yes | Transaction count in the current window |
+| `delta_txns` | integer | yes | Transaction delta between windows |
+| `signal_flags` | object | yes | Detection signals: `dominant_delta`, `new_pattern`, `disappeared`, `txn_rows_diverged` |
+| `key_points` | array | yes | Up to 2 key-point summaries; each has `label` and `summary` strings |
+
+At most 2 drilldowns are returned, sorted by dominance score.
 
 ### Compatibility with legacy file mode
 
@@ -559,6 +600,7 @@ The JSON report serializes the compare result in a stable snake_case shape.
 | `alert_changes` | object | yes | Added and removed alerts |
 | `current_label` | string | yes | Snapshot-aware label when current snapshot metadata is present; otherwise `current` |
 | `baseline_label` | string | yes | Snapshot-aware label when baseline snapshot metadata is present; otherwise `baseline` |
+| `pattern_drilldowns` | array | yes | Bounded drilldown summaries for high-signal cross-window pattern movements; empty array when nothing qualifies |
 
 #### `key_findings` entries
 
