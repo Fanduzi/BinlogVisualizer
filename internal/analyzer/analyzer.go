@@ -229,14 +229,17 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	// Calculate workload summary
 	summary := a.buildSummary(allTransactions)
 
+	patterns := BuildPatterns(allTransactions)
+
 	return &model.AnalysisResult{
-		Summary:      summary,
-		Tables:       limitTables(a.tableAgg.Snapshot(), a.opts.TopTables),
-		Transactions: topTransactions,
-		Patterns:     BuildPatterns(allTransactions),
-		Minutes:      minutes,
-		Alerts:       persistedAlerts,
-		Warnings:     countAnalysisWarnings(allTransactions),
+		Summary:           summary,
+		Tables:            limitTables(a.tableAgg.Snapshot(), a.opts.TopTables),
+		Transactions:      topTransactions,
+		Patterns:          patterns,
+		Minutes:           minutes,
+		Alerts:            persistedAlerts,
+		Warnings:          countAnalysisWarnings(allTransactions),
+		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, allTransactions, persistedAlerts),
 	}, nil
 }
 
