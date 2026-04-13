@@ -61,6 +61,7 @@ func BuildResult(opts BuildOptions) (Result, error) {
 	result.TrendSummary = buildTrendSummary(result)
 	buildTrendEvidenceRefs(&result)
 	result.Recommendations = buildTrendRecommendations(result)
+	result.PatternDrilldowns = buildTrendPatternDrilldowns(result)
 	return result, nil
 }
 

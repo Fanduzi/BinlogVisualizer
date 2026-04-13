@@ -259,6 +259,54 @@
       }
     ]
   },
+  "pattern_drilldowns": [
+    {
+      "pattern_key": "orders.refunds|INSERT|small",
+      "label": "refunds.create",
+      "why_selected": "new pattern appeared at meaningful scale",
+      "baseline_rows": 0,
+      "current_rows": 700,
+      "delta_rows": 700,
+      "baseline_txns": 0,
+      "current_txns": 40,
+      "delta_txns": 40,
+      "signal_flags": {
+        "dominant_delta": false,
+        "new_pattern": true,
+        "disappeared": false,
+        "txn_rows_diverged": false
+      },
+      "key_points": [
+        {
+          "label": "new in current window",
+          "summary": "rows 0→700 (+700), txns 0→40 (+40)"
+        }
+      ]
+    },
+    {
+      "pattern_key": "orders.chargebacks|INSERT|small",
+      "label": "chargebacks.create",
+      "why_selected": "pattern disappeared from the current window",
+      "baseline_rows": 500,
+      "current_rows": 0,
+      "delta_rows": -500,
+      "baseline_txns": 22,
+      "current_txns": 0,
+      "delta_txns": -22,
+      "signal_flags": {
+        "dominant_delta": false,
+        "new_pattern": false,
+        "disappeared": true,
+        "txn_rows_diverged": false
+      },
+      "key_points": [
+        {
+          "label": "absent in current window",
+          "summary": "rows 500→0 (-500), txns 22→0 (-22)"
+        }
+      ]
+    }
+  ],
   "current_label": "current",
   "baseline_label": "baseline"
 }

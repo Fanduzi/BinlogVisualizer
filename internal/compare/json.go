@@ -7,6 +7,9 @@ package compare
 import "encoding/json"
 
 func RenderJSON(result CompareResult) (string, error) {
+	if result.PatternDrilldowns == nil {
+		result.PatternDrilldowns = []PatternDrilldown{}
+	}
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
 		return "", err

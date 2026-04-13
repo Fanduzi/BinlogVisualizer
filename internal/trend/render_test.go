@@ -567,3 +567,181 @@ func TestRenderHTMLUsesDOMAPINotInnerHTMLForRecommendations(t *testing.T) {
 		}
 	}
 }
+
+func minimalTrendResult() Result {
+	return Result{
+		InputMode: "explicit",
+		Points: []Point{
+			{
+				Snapshot: SnapshotMeta{Name: "s1", Window: InputSnapshotWindow{StartTime: "2026-01-01T00:00:00Z"}},
+				Summary:  PointSummary{TotalRows: 100, TotalTransactions: 10, TotalEvents: 120},
+			},
+			{
+				Snapshot: SnapshotMeta{Name: "s2", Window: InputSnapshotWindow{StartTime: "2026-01-02T00:00:00Z"}},
+				Summary:  PointSummary{TotalRows: 200, TotalTransactions: 20, TotalEvents: 240},
+			},
+		},
+		Insights: Insights{
+			FirstSnapshot: "s1",
+			LastSnapshot:  "s2",
+			RowsDelta:     100,
+			TxnsDelta:     10,
+			EventsDelta:   120,
+		},
+	}
+}
+
+func TestRenderJSONIncludesTrendPatternDrilldowns(t *testing.T) {
+	result := minimalTrendResult()
+	result.PatternDrilldowns = []PatternDrilldown{{
+		PatternKey:  "p1",
+		Label:       "P1",
+		WhySelected: "dominant share movement across the series",
+		StartShare:  0.10,
+		EndShare:    0.55,
+		ShareDelta:  0.45,
+		StartRows:   100,
+		EndRows:     550,
+		RowsDelta:   450,
+		SignalFlags: TrendDrilldownSignals{DominantShareShift: true},
+		KeyPoints:   []TrendKeyPoint{{Label: "direction", Summary: "rising across series"}},
+	}}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("render json: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	drilldowns, ok := parsed["pattern_drilldowns"].([]any)
+	if !ok {
+		t.Fatal("pattern_drilldowns missing or not array")
+	}
+	if len(drilldowns) != 1 {
+		t.Fatalf("expected 1 drilldown, got %d", len(drilldowns))
+	}
+	dd := drilldowns[0].(map[string]any)
+	if dd["pattern_key"] != "p1" {
+		t.Errorf("expected pattern_key p1, got %v", dd["pattern_key"])
+	}
+	if dd["why_selected"] != "dominant share movement across the series" {
+		t.Errorf("unexpected why_selected: %v", dd["why_selected"])
+	}
+}
+
+func TestRenderTextNoDrilldownWhenTrendDrilldownsEmpty(t *testing.T) {
+	result := minimalTrendResult()
+	result.PatternDrilldowns = []PatternDrilldown{}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("render text: %v", err)
+	}
+	if strings.Contains(out, "drilldown:") {
+		t.Error("expected no drilldown output when PatternDrilldowns is empty")
+	}
+}
+
+func TestRenderTextTrendDrilldownBeneathSelectedPattern(t *testing.T) {
+	result := minimalTrendResult()
+	result.PatternTrends = []PatternTrend{{
+		PatternKey:       "bulk-insert",
+		Label:            "Bulk Insert",
+		FirstRows:        100,
+		LastRows:         500,
+		DeltaRows:        400,
+		FirstShareOfRows: 0.10,
+		LastShareOfRows:  0.55,
+		DeltaShareOfRows: 0.45,
+		RowsSeries: []PatternTrendRowsPoint{
+			{SnapshotName: "s1", Rows: 100},
+			{SnapshotName: "s2", Rows: 500},
+		},
+		ShareOfRowsSeries: []PatternTrendSharePoint{
+			{SnapshotName: "s1", ShareOfRows: 0.10},
+			{SnapshotName: "s2", ShareOfRows: 0.55},
+		},
+	}}
+	result.PatternDrilldowns = []PatternDrilldown{{
+		PatternKey:  "bulk-insert",
+		Label:       "Bulk Insert",
+		WhySelected: "dominant share movement across the series",
+		KeyPoints:   []TrendKeyPoint{{Label: "direction", Summary: "rising across series: share 0.10 -> 0.55"}},
+	}}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("render text: %v", err)
+	}
+
+	if !strings.Contains(out, "drilldown:") {
+		t.Error("expected drilldown output beneath pattern trend")
+	}
+	if !strings.Contains(out, "why: dominant share movement across the series") {
+		t.Error("expected why_selected text in drilldown")
+	}
+	if !strings.Contains(out, "direction: rising across series: share 0.10 -> 0.55") {
+		t.Error("expected key point text in drilldown")
+	}
+}
+
+func TestRenderHTMLTrendDrilldownForSelectedPatterns(t *testing.T) {
+	result := minimalTrendResult()
+	result.PatternTrends = []PatternTrend{{
+		PatternKey:        "p1",
+		Label:             "P1",
+		FirstShareOfRows:  0.10,
+		LastShareOfRows:   0.55,
+		DeltaShareOfRows:  0.45,
+		FirstRows:         100,
+		LastRows:          550,
+		DeltaRows:         450,
+		RowsSeries:        []PatternTrendRowsPoint{{SnapshotName: "s1", Rows: 100}, {SnapshotName: "s2", Rows: 550}},
+		ShareOfRowsSeries: []PatternTrendSharePoint{{SnapshotName: "s1", ShareOfRows: 0.10}, {SnapshotName: "s2", ShareOfRows: 0.55}},
+	}}
+	result.PatternDrilldowns = []PatternDrilldown{{
+		PatternKey:  "p1",
+		Label:       "P1",
+		WhySelected: "dominant share movement across the series",
+		KeyPoints:   []TrendKeyPoint{{Label: "direction", Summary: "rising across series"}},
+	}}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	if !strings.Contains(html, `id="trend-pattern-drilldowns"`) {
+		t.Error("expected trend-pattern-drilldowns container")
+	}
+	if !strings.Contains(html, `title.className = 'drilldown-label'`) {
+		t.Error("expected drilldown label rendering hook in HTML")
+	}
+	if !strings.Contains(html, "P1") {
+		t.Error("expected drilldown label text in HTML")
+	}
+	if !strings.Contains(html, "dominant share movement across the series") {
+		t.Error("expected drilldown why_selected text in HTML")
+	}
+	if !strings.Contains(html, "direction") || !strings.Contains(html, "rising across series") {
+		t.Error("expected key point label and summary in HTML")
+	}
+}
+
+func TestRenderHTMLTrendDrilldownAlwaysPresent(t *testing.T) {
+	result := minimalTrendResult()
+	result.PatternDrilldowns = []PatternDrilldown{}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	if !strings.Contains(html, `id="trend-pattern-drilldowns"`) {
+		t.Error("trend-pattern-drilldowns container should always be present")
+	}
+}

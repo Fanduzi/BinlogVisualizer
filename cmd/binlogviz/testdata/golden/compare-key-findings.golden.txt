@@ -33,10 +33,16 @@ Top Table Changes
 Top Pattern Changes
 - refunds.create: 0 -> 700 (+700, 0.0%), txns 0 -> 40 (+40)
   query: insert into refunds ...
+  drilldown:
+    why: new pattern appeared at meaningful scale
+    new in current window: rows 0→700 (+700), txns 0→40 (+40)
 - payments.update_status: 600 -> 1300 (+700, 116.7%), txns 9 -> 18 (+9)
   query: update payments set status = ?
 - chargebacks.create: 500 -> 0 (-500, -100.0%), txns 22 -> 0 (-22)
   query: insert into chargebacks ...
+  drilldown:
+    why: pattern disappeared from the current window
+    absent in current window: rows 500→0 (-500), txns 22→0 (-22)
 
 Operation Mix
 - INSERT: 600 -> 1000 (+400)

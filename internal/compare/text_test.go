@@ -166,3 +166,105 @@ func TestRenderTextRendersPatternEmptyState(t *testing.T) {
 		t.Fatalf("expected empty pattern section, got %s", output)
 	}
 }
+
+func TestRenderTextNoDrilldownWhenEmpty(t *testing.T) {
+	output, err := RenderText(CompareResult{
+		CurrentLabel:    "current",
+		BaselineLabel:   "baseline",
+		PatternChanges:  []PatternChange{},
+		PatternDrilldowns: []PatternDrilldown{},
+		TableChanges:    []TableChange{},
+		OperationMix:    []OperationDelta{},
+		AlertChanges:    AlertDelta{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(output, "drilldown:") {
+		t.Fatalf("expected no drilldown block for empty drilldowns, got:\n%s", output)
+	}
+}
+
+func TestRenderTextDrilldownBeneathSelectedPattern(t *testing.T) {
+	output, err := RenderText(CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary:       SummaryDelta{TotalRowsDelta: 1000},
+		PatternChanges: []PatternChange{
+			{PatternKey: "orders.insert", Label: "orders.insert", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: 500, CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
+		},
+		PatternDrilldowns: []PatternDrilldown{
+			{
+				PatternKey:  "orders.insert",
+				Label:       "orders.insert",
+				WhySelected: "dominant driver of the row delta between windows",
+				BaselineRows: 200,
+				CurrentRows:  1200,
+				DeltaRows:    1000,
+				BaselineTxns: 20,
+				CurrentTxns:  140,
+				DeltaTxns:    120,
+				SignalFlags:  CompareDrilldownSignals{DominantDelta: true},
+				KeyPoints: []CompareKeyPoint{
+					{Label: "baseline context", Summary: "rows 200→1200 (+1000), txns 20→140 (+120)"},
+					{Label: "current context", Summary: "rows 200→1200 (+1000), txns 20→140 (+120)"},
+				},
+			},
+		},
+		TableChanges: []TableChange{},
+		OperationMix: []OperationDelta{},
+		AlertChanges: AlertDelta{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "drilldown:") {
+		t.Fatalf("expected drilldown block, got:\n%s", output)
+	}
+	if !strings.Contains(output, "why: dominant driver") {
+		t.Fatalf("expected why_selected in drilldown, got:\n%s", output)
+	}
+	if !strings.Contains(output, "baseline context:") {
+		t.Fatalf("expected baseline context key point, got:\n%s", output)
+	}
+	// Drilldown should appear after the pattern entry line
+	idx := strings.Index(output, "orders.insert:")
+	if idx < 0 {
+		t.Fatal("expected orders.insert pattern entry")
+	}
+	didx := strings.Index(output, "drilldown:")
+	if didx < idx {
+		t.Fatal("drilldown should appear after the pattern entry")
+	}
+}
+
+func TestRenderTextDrilldownUsesCompareScopedWording(t *testing.T) {
+	output, err := RenderText(CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary:       SummaryDelta{TotalRowsDelta: 1000},
+		PatternChanges: []PatternChange{
+			{PatternKey: "p1", Label: "p1", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: 500, CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
+		},
+		PatternDrilldowns: []PatternDrilldown{
+			{
+				PatternKey:  "p1",
+				Label:       "p1",
+				WhySelected: "dominant driver of the row delta between windows",
+				KeyPoints: []CompareKeyPoint{
+					{Label: "baseline context", Summary: "rows 200→1200 (+1000), txns 20→140 (+120)"},
+				},
+			},
+		},
+		TableChanges: []TableChange{},
+		OperationMix: []OperationDelta{},
+		AlertChanges: AlertDelta{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should reference baseline/current, not raw pattern ownership
+	if !strings.Contains(output, "baseline context") || !strings.Contains(output, "current") {
+		t.Fatalf("expected compare-scoped wording (baseline/current), got:\n%s", output)
+	}
+}

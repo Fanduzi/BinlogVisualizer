@@ -99,6 +99,10 @@ func RenderText(result Result) (string, error) {
 	if len(result.PatternTrends) == 0 {
 		fmt.Fprintln(&b, "- none")
 	} else {
+		drilldownMap := make(map[string]PatternDrilldown, len(result.PatternDrilldowns))
+		for _, d := range result.PatternDrilldowns {
+			drilldownMap[d.PatternKey] = d
+		}
 		for _, trend := range result.PatternTrends {
 			fmt.Fprintf(&b, "- %s: share=%.1f%% -> %.1f%% (%+.1f%%) | rows=%d -> %d (%+d)\n",
 				formatPatternTrendDisplay(trend),
@@ -109,6 +113,13 @@ func RenderText(result Result) (string, error) {
 				trend.LastRows,
 				trend.DeltaRows,
 			)
+			if dd, ok := drilldownMap[trend.PatternKey]; ok {
+				fmt.Fprintf(&b, "  drilldown:\n")
+				fmt.Fprintf(&b, "    why: %s\n", dd.WhySelected)
+				for _, kp := range dd.KeyPoints {
+					fmt.Fprintf(&b, "    %s: %s\n", kp.Label, kp.Summary)
+				}
+			}
 		}
 	}
 

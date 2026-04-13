@@ -182,5 +182,6 @@
         }
       ]
     }
-  ]
+  ],
+  "pattern_drilldowns": []
 }

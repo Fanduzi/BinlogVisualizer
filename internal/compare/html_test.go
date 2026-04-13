@@ -286,6 +286,43 @@ func TestRenderHTMLContainsCompareEvidenceRefAnchors(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLLabelsComparePatternDrilldowns(t *testing.T) {
+	result := CompareResult{
+		PatternChanges: []PatternChange{{
+			PatternKey:       "orders.insert_batch",
+			Label:            "orders.insert_batch",
+			CurrentRows:      900,
+			BaselineRows:     100,
+			DeltaRows:        800,
+			CurrentTxnCount:  90,
+			BaselineTxnCount: 10,
+			DeltaTxnCount:    80,
+		}},
+		PatternDrilldowns: []PatternDrilldown{{
+			PatternKey:  "orders.insert_batch",
+			Label:       "orders.insert_batch",
+			WhySelected: "dominant share of cross-window row movement",
+			KeyPoints:   []CompareKeyPoint{{Label: "baseline context", Summary: "rows 100→900 (+800), txns 10→90 (+80)"}},
+		}},
+	}
+
+	output, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, token := range []string{
+		`id="compare-pattern-drilldowns"`,
+		`title.className = 'drilldown-label'`,
+		"orders.insert_batch",
+		"dominant share of cross-window row movement",
+		"baseline context",
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected html to contain %q", token)
+		}
+	}
+}
+
 func TestRenderHTMLCompareFindingsEscapeMaliciousContent(t *testing.T) {
 	result := CompareResult{
 		CurrentLabel:  "current",
@@ -432,35 +469,129 @@ func TestRenderHTMLIncludesRecommendationSection(t *testing.T) {
 }
 
 func TestRenderHTMLUsesDOMAPINotInnerHTMLForRecommendations(t *testing.T) {
+		result := CompareResult{
+			CurrentLabel:  "current",
+			BaselineLabel: "baseline",
+			Summary: SummaryDelta{
+				CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+			},
+			Recommendations: []Recommendation{{
+				Kind:     "check_pattern_driver",
+				Priority: "high",
+				Title:    `<img src=x onerror=alert(1)>`,
+				Summary:  `<script>alert(1)</script>`,
+				EvidenceRefs: []EvidenceRef{{
+					Label:  `<img src=x onerror=alert(1)>`,
+					Anchor: "section-pattern-changes",
+				}},
+			}},
+		}
+
+		html, err := RenderHTML(result)
+		if err != nil {
+			t.Fatalf("RenderHTML returned error: %v", err)
+		}
+		if strings.Contains(html, "recommendationsEl.innerHTML") {
+			t.Fatal("recommendation rendering should not use innerHTML")
+		}
+		if strings.Contains(html, `<script>alert(1)</script>`) {
+			t.Fatal("html contains raw malicious recommendation content")
+		}
+		if strings.Contains(html, `<img src=x onerror=alert(1)>`) {
+			t.Fatal("html contains raw malicious recommendation content")
+		}
+	}
+
+func TestRenderHTMLIncludesCompareDrilldownForSelectedPatterns(t *testing.T) {
 	result := CompareResult{
 		CurrentLabel:  "current",
 		BaselineLabel: "baseline",
-		Summary: SummaryDelta{
-			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+		Summary:       SummaryDelta{TotalRowsDelta: 1000},
+		PatternChanges: []PatternChange{
+			{PatternKey: "orders.insert", Label: "orders.insert", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: 500, CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
 		},
-		Recommendations: []Recommendation{{
-			Kind:     "check_pattern_driver",
-			Priority: "high",
-			Title:    `<img src=x onerror=alert(1)>`,
-			Summary:  `<script>alert(1)</script>`,
-			EvidenceRefs: []EvidenceRef{{
-				Label:  `<img src=x onerror=alert(1)>`,
-				Anchor: "section-pattern-changes",
-			}},
-		}},
+		PatternDrilldowns: []PatternDrilldown{
+			{
+				PatternKey:   "orders.insert",
+				Label:        "orders.insert",
+				WhySelected:  "dominant driver of the row delta between windows",
+				BaselineRows: 200, CurrentRows: 1200, DeltaRows: 1000,
+				BaselineTxns: 20, CurrentTxns: 140, DeltaTxns: 120,
+				SignalFlags: CompareDrilldownSignals{DominantDelta: true},
+				KeyPoints: []CompareKeyPoint{
+					{Label: "baseline context", Summary: "rows 200 to 1200"},
+				},
+			},
+		},
+		OperationMix: []OperationDelta{},
+		AlertChanges: AlertDelta{},
 	}
 
 	html, err := RenderHTML(result)
 	if err != nil {
-		t.Fatalf("RenderHTML returned error: %v", err)
+		t.Fatalf("RenderHTML: %v", err)
 	}
-	if strings.Contains(html, "recommendationsEl.innerHTML") {
-		t.Fatal("recommendation rendering should not use innerHTML")
+
+	if !strings.Contains(html, "window.comparePatternDrilldowns") {
+		t.Fatal("expected pattern_drilldowns data in HTML")
 	}
-	if strings.Contains(html, `<script>alert(1)</script>`) {
-		t.Fatal("html contains raw malicious recommendation content")
+	if !strings.Contains(html, "drilldown-details") {
+		t.Fatal("expected drilldown detail rendering in HTML")
 	}
-	if strings.Contains(html, `<img src=x onerror=alert(1)>`) {
-		t.Fatal("html contains raw malicious recommendation content")
+}
+
+func TestRenderHTMLNoDrilldownSectionWhenEmpty(t *testing.T) {
+	result := CompareResult{
+		CurrentLabel:     "current",
+		BaselineLabel:    "baseline",
+		Summary:          SummaryDelta{TotalRowsDelta: 0},
+		PatternDrilldowns: []PatternDrilldown{},
+		OperationMix:     []OperationDelta{},
+		AlertChanges:     AlertDelta{},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+
+	// The JS should still include the data but render nothing visible
+	if !strings.Contains(html, "window.comparePatternDrilldowns") {
+		t.Fatal("expected pattern_drilldowns data to always be present")
+	}
+}
+
+func TestRenderHTMLDrilldownBoundedKeyPoints(t *testing.T) {
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary:       SummaryDelta{TotalRowsDelta: 2000},
+		PatternChanges: []PatternChange{
+			{PatternKey: "p1", Label: "p1", CurrentRows: 2200, BaselineRows: 200, DeltaRows: 2000, DeltaPercent: 1000, CurrentTxnCount: 200, BaselineTxnCount: 20, DeltaTxnCount: 180},
+		},
+		PatternDrilldowns: []PatternDrilldown{
+			{
+				PatternKey:  "p1",
+				WhySelected: "dominant driver",
+				KeyPoints: []CompareKeyPoint{
+					{Label: "point 1", Summary: "first"},
+					{Label: "point 2", Summary: "second"},
+				},
+			},
+		},
+		OperationMix: []OperationDelta{},
+		AlertChanges: AlertDelta{},
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+
+	// Should have at most 2 key_points rendered
+	// Count occurrences of "kp-label" to verify bounding
+	count := strings.Count(html, "kp-label")
+	if count > 2 {
+		t.Fatalf("expected at most 2 key point labels, got %d", count)
 	}
 }
