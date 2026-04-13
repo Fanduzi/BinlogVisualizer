@@ -83,7 +83,7 @@ binlogviz compare \
 
 `snapshot list` 现在会输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode` 和 `window`。`snapshot list --format json` 和 `snapshot show --format json` 仍然为脚本和外部工具提供稳定的机器可读输出。`snapshot rename` 会在重命名文件的同时保持快照内部 identity 一致，`snapshot delete` 则用于删除单个快照而不影响其余历史。
 
-`compare` 既可以加载已保存的快照，也可以继续加载两份由 `binlogviz analyze --format json` 生成的 JSON 文件。输出格式支持 `text`、`json`、`html`。其中 text 和 HTML 输出会带出 input mode、来源摘要、过滤条件和请求时间窗口。除了 summary 差异、热点表变化、操作类型分布和告警新增/移除之外，compare 现在还会通过一等结果区 `pattern_changes` 直接展示写入模式漂移。`key_findings` 部分会以最多 5 条确定性、基于证据的发现来突出变化的主要驱动因素（体量变化、模式驱动、表趋势、操作漂移、新模式），并通过 `evidence_refs` 把发现链接回支撑它的报告章节。`recommendations` 数组提供基于关键发现的保守、有据可依的后续建议。
+`compare` 既可以加载已保存的快照，也可以继续加载两份由 `binlogviz analyze --format json` 生成的 JSON 文件。输出格式支持 `text`、`json`、`html`。其中 text 和 HTML 输出会带出 input mode、来源摘要、过滤条件和请求时间窗口。除了 summary 差异、热点表变化、操作类型分布和告警新增/移除之外，compare 现在还会通过一等结果区 `pattern_changes` 直接展示写入模式漂移。`key_findings` 部分会以最多 5 条确定性、基于证据的发现来突出变化的主要驱动因素（体量变化、模式驱动、表趋势、操作漂移、新模式），并通过 `evidence_refs` 把发现链接回支撑它的报告章节。`recommendations` 数组提供基于关键发现的保守、有据可依的后续建议。高信号跨窗口模式变化现在还会在 text、JSON 和 HTML 输出中携带有界 `pattern_drilldowns`。
 
 compare 生成的最终报告写到 `stdout`。如果 compare 命令失败，CLI 会通过 `stderr` 输出错误。
 
@@ -97,7 +97,7 @@ binlogviz trend --from-snapshots 'incident_week*' \
   --format html > trend.html
 ```
 
-`trend` 会加载已保存的 snapshots，按有效窗口开始时间排序，并输出 `text`、`json` 或 `html` 趋势报告。新快照优先使用 `snapshot.window.start_time`；较旧的快照则可以回退到 `summary.start_time`，不需要手工重写历史文件。除了总量和热点表变化之外，trend 现在还会输出 `pattern_trends` 用于跨多个窗口查看重复写入模式的演进，以及 `trend_summary` 部分以最多 5 条确定性发现突出上升/下降模式、表趋势、集中度偏移和体量尖峰。这些发现可以包含 `evidence_refs`，指回相关模式、表和 ordered point 证据。`recommendations` 数组提供基于发现的保守、有据可依的后续建议。HTML 报告中的 `Pattern Trends` 分区默认展示 `share of rows`，也可以切换到绝对 `rows`；`text` 和 `json` 则会以终端友好和机器可读的形式暴露同一组模式序列。
+`trend` 会加载已保存的 snapshots，按有效窗口开始时间排序，并输出 `text`、`json` 或 `html` 趋势报告。新快照优先使用 `snapshot.window.start_time`；较旧的快照则可以回退到 `summary.start_time`，不需要手工重写历史文件。除了总量和热点表变化之外，trend 现在还会输出 `pattern_trends` 用于跨多个窗口查看重复写入模式的演进，以及 `trend_summary` 部分以最多 5 条确定性发现突出上升/下降模式、表趋势、集中度偏移和体量尖峰。这些发现可以包含 `evidence_refs`，指回相关模式、表和 ordered point 证据。`recommendations` 数组提供基于发现的保守、有据可依的后续建议。高信号跨窗口模式趋势现在还会在 text、JSON 和 HTML 输出中携带有界 `pattern_drilldowns`。HTML 报告中的 `Pattern Trends` 分区默认展示 `share of rows`，也可以切换到绝对 `rows`；`text` 和 `json` 则会以终端友好和机器可读的形式暴露同一组模式序列。
 
 ### 用一份 plan 文件跑多步调查
 
@@ -173,27 +173,27 @@ brew install --cask binlogviz
 
 权威 release artifact 由 GitHub Actions release workflow 产出。macOS 产物在原生 runner 上构建，Linux 产物则在 manylinux2014 用户态中构建，以保持对 CentOS 7 / glibc 2.17 的兼容基线。本地 `goreleaser` 更适合做配置校验和当前宿主机的可选验证，不是主要发布路径。
 
-下面是 `darwin/arm64` 和当前版本 `v0.16.0` 的示例：
+下面是 `darwin/arm64` 和当前版本 `v0.17.0` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.16.0/binlogviz_0.16.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.16.0/binlogviz_0.16.0_checksums.txt
-shasum -a 256 -c binlogviz_0.16.0_checksums.txt 2>/dev/null | grep "binlogviz_0.16.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.16.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.17.0/binlogviz_0.17.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.17.0/binlogviz_0.17.0_checksums.txt
+shasum -a 256 -c binlogviz_0.17.0_checksums.txt 2>/dev/null | grep "binlogviz_0.17.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.17.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.16.0/install.sh
-sh ./install.sh --version v0.16.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.17.0/install.sh
+sh ./install.sh --version v0.17.0
 ```
 
 如果只想预览将要解析出的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.16.0 --dry-run
+./install.sh --version v0.17.0 --dry-run
 ```
 
 ### 备选：从源码构建

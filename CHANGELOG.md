@@ -2,6 +2,24 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.17.0
+
+Release date: 2026-04-13
+
+Highlights:
+
+- Added bounded cross-window pattern drilldowns for both `compare` and `trend`, so high-signal pattern changes now carry short explanatory context across windows
+- Added top-level `pattern_drilldowns` arrays to compare and trend JSON outputs; the field is always present and remains empty when nothing qualifies
+- Compare drilldowns now explain new patterns, disappeared patterns, and dominant row-movement shifts with bounded key points
+- Trend drilldowns now explain rising, falling, and concentrated cross-window share shifts with bounded key points
+- HTML compare and trend reports now render labeled drilldown detail cards beneath the pattern sections
+- Bounded payloads remain enforced: at most 2 drilldowns per report and at most 2 key points per drilldown
+
+Related notes:
+
+- [v0.17.0 release notes](docs/releases/release-notes-v0.17.0.md)
+- [v0.17.0 中文发行说明](docs/releases/release-notes-v0.17.0.zh-CN.md)
+
 ## v0.16.0
 
 Release date: 2026-04-12
