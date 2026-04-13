@@ -20,8 +20,9 @@ type htmlCompareData struct {
 	EChartsJS           template.JS
 	SummaryPairsJSON    template.JS
 	TopTablesJSON       template.JS
-	PatternChangesJSON  template.JS
-	OpsMixJSON          template.JS
+	PatternChangesJSON    template.JS
+	PatternDrilldownsJSON template.JS
+	OpsMixJSON            template.JS
 	AlertCountsJSON     template.JS
 	KeyFindingsJSON     template.JS
 	RecommendationsJSON template.JS
@@ -63,8 +64,9 @@ func RenderHTML(result CompareResult) (string, error) {
 		EChartsJS:          template.JS(echartsJS), //nolint:gosec
 		SummaryPairsJSON:   mustHTMLJSON(buildSummaryPairs(result)),
 		TopTablesJSON:      mustHTMLJSON(buildTopTableSeries(result.TableChanges)),
-		PatternChangesJSON: mustHTMLJSON(buildPatternSeries(result.PatternChanges)),
-		OpsMixJSON:         mustHTMLJSON(buildOperationSeries(result.OperationMix)),
+		PatternChangesJSON:    mustHTMLJSON(buildPatternSeries(result.PatternChanges)),
+		PatternDrilldownsJSON: mustHTMLJSON(result.PatternDrilldowns),
+		OpsMixJSON:            mustHTMLJSON(buildOperationSeries(result.OperationMix)),
 		AlertCountsJSON:    mustHTMLJSON(buildAlertCounts(result.AlertChanges)),
 		KeyFindingsJSON:     mustHTMLJSON(result.KeyFindings),
 		RecommendationsJSON: mustHTMLJSON(result.Recommendations),
@@ -506,6 +508,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
           </table>
         </div>
       </div>
+      <div id="compare-pattern-drilldowns"></div>
     </section>
 
     <section class="section" id="section-operation-mix">
@@ -578,6 +581,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     window.compareSummaryPairs = {{.SummaryPairsJSON}};
     window.compareTopTables = {{.TopTablesJSON}};
     window.comparePatternChanges = {{.PatternChangesJSON}};
+    window.comparePatternDrilldowns = {{.PatternDrilldownsJSON}};
     window.compareOpsMix = {{.OpsMixJSON}};
     window.compareAlertCounts = {{.AlertCountsJSON}};
     window.compareKeyFindings = {{.KeyFindingsJSON}};
@@ -724,6 +728,41 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         barWidth: 48,
       }],
     });
+
+    const drilldownsEl = document.getElementById('compare-pattern-drilldowns');
+    if (drilldownsEl && window.comparePatternDrilldowns && window.comparePatternDrilldowns.length > 0) {
+      window.comparePatternDrilldowns.forEach(dd => {
+        const detail = document.createElement('div');
+        detail.className = 'drilldown-details';
+        detail.style.cssText = 'margin:12px 18px;padding:12px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface2)';
+        const title = document.createElement('div');
+        title.className = 'drilldown-label';
+        title.style.cssText = 'font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px';
+        title.textContent = dd.label || dd.pattern_key;
+        detail.appendChild(title);
+        const why = document.createElement('div');
+        why.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:8px';
+        why.appendChild(document.createTextNode('drilldown: '));
+        const whyStrong = document.createElement('strong');
+        whyStrong.textContent = dd.why_selected;
+        why.appendChild(whyStrong);
+        detail.appendChild(why);
+        if (dd.key_points && dd.key_points.length > 0) {
+          dd.key_points.forEach(kp => {
+            const kpRow = document.createElement('div');
+            kpRow.style.cssText = 'font-size:12px;margin-top:4px';
+            const kpLabel = document.createElement('span');
+            kpLabel.className = 'kp-label';
+            kpLabel.style.cssText = 'color:var(--accent);margin-right:6px';
+            kpLabel.textContent = kp.label + ':';
+            kpRow.appendChild(kpLabel);
+            kpRow.appendChild(document.createTextNode(kp.summary));
+            detail.appendChild(kpRow);
+          });
+        }
+        drilldownsEl.appendChild(detail);
+      });
+    }
 
     window.addEventListener('resize', function () {
       summaryChart.resize();

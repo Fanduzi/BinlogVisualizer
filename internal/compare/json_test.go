@@ -131,8 +131,9 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 				},
 			},
 		},
-		CurrentLabel:  "current",
-		BaselineLabel: "baseline",
+		PatternDrilldowns: []PatternDrilldown{},
+		CurrentLabel:      "current",
+		BaselineLabel:     "baseline",
 	}
 
 	if !reflect.DeepEqual(decoded, expected) {
@@ -256,5 +257,59 @@ func TestRenderJSONIncludesPatternChanges(t *testing.T) {
 	}
 	if len(raw) != 3 {
 		t.Fatalf("expected 3 pattern changes, got %d", len(raw))
+	}
+}
+
+func TestRenderJSONIncludesEmptyComparePatternDrilldowns(t *testing.T) {
+	result := CompareResult{}
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	if !strings.Contains(out, `"pattern_drilldowns": []`) {
+		t.Fatalf("expected empty pattern_drilldowns array in JSON, got: %s", out)
+	}
+}
+
+func TestRenderJSONIncludesPopulatedComparePatternDrilldowns(t *testing.T) {
+	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("load current: %v", err)
+	}
+	baseline, err := LoadReport(filepath.Join("testdata", "baseline_patterns.json"))
+	if err != nil {
+		t.Fatalf("load baseline: %v", err)
+	}
+
+	output, err := RenderJSON(BuildCompareResult(current, baseline))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(output), &decoded); err != nil {
+		t.Fatalf("decode output: %v", err)
+	}
+	drilldowns, ok := decoded["pattern_drilldowns"]
+	if !ok {
+		t.Fatal("expected pattern_drilldowns key in output")
+	}
+
+	arr, ok := drilldowns.([]any)
+	if !ok {
+		t.Fatalf("expected pattern_drilldowns array, got %T", drilldowns)
+	}
+	if len(arr) > 2 {
+		t.Fatalf("pattern_drilldowns should be capped at 2, got %d", len(arr))
+	}
+	if len(arr) == 0 {
+		t.Fatal("expected at least one drilldown for the patterns testdata")
+	}
+
+	// Verify drilldown references a known pattern_key
+	first := arr[0].(map[string]any)
+	pk, _ := first["pattern_key"].(string)
+	if pk == "" {
+		t.Fatal("drilldown pattern_key must not be empty")
 	}
 }

@@ -88,6 +88,10 @@ func RenderText(result CompareResult) (string, error) {
 	if len(result.PatternChanges) == 0 {
 		fmt.Fprintf(&b, "- none\n")
 	} else {
+		drilldownMap := make(map[string]PatternDrilldown, len(result.PatternDrilldowns))
+		for _, d := range result.PatternDrilldowns {
+			drilldownMap[d.PatternKey] = d
+		}
 		for _, change := range result.PatternChanges {
 			fmt.Fprintf(
 				&b,
@@ -103,6 +107,13 @@ func RenderText(result CompareResult) (string, error) {
 			)
 			if strings.TrimSpace(change.SampleQuerySummary) != "" {
 				fmt.Fprintf(&b, "  query: %s\n", change.SampleQuerySummary)
+			}
+			if dd, ok := drilldownMap[change.PatternKey]; ok {
+				fmt.Fprintf(&b, "  drilldown:\n")
+				fmt.Fprintf(&b, "    why: %s\n", dd.WhySelected)
+				for _, kp := range dd.KeyPoints {
+					fmt.Fprintf(&b, "    %s: %s\n", kp.Label, kp.Summary)
+				}
 			}
 		}
 	}
