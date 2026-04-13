@@ -13,6 +13,9 @@ const (
 	trendKeyPointsCap = 2
 	// trendShareThreshold is the minimum |delta_share_of_rows| for dominant selection.
 	trendShareThreshold = 0.20
+	// trendConcentratedJumpThreshold is the minimum absolute share step required
+	// before a single interval jump is worth a drilldown on its own.
+	trendConcentratedJumpThreshold = 0.15
 )
 
 func buildTrendPatternDrilldowns(result Result) []PatternDrilldown {
@@ -39,7 +42,10 @@ func buildTrendPatternDrilldowns(result Result) []PatternDrilldown {
 		if !dominant && !anomaly {
 			continue
 		}
-		if !dominant && score < trendShareThreshold*2 {
+		if dominant && !anomaly && score < trendShareThreshold*2 {
+			continue
+		}
+		if anomaly && !dominant && score < trendShareThreshold/2 {
 			continue
 		}
 
@@ -104,8 +110,8 @@ func trendSignalFlags(pattern PatternTrend) TrendDrilldownSignals {
 				steadyFall = false
 			}
 		}
-		flags.SteadyRise = steadyRise && pattern.DeltaShareOfRows > 0
-		flags.SteadyFall = steadyFall && pattern.DeltaShareOfRows < 0
+		flags.SteadyRise = steadyRise && pattern.DeltaShareOfRows > 0 && pattern.DeltaRows > 0
+		flags.SteadyFall = steadyFall && pattern.DeltaShareOfRows < 0 && pattern.DeltaRows < 0
 
 		// Check for concentrated jump: one step accounts for most of the movement
 		maxStep := 0.0
@@ -116,7 +122,7 @@ func trendSignalFlags(pattern PatternTrend) TrendDrilldownSignals {
 			}
 		}
 		totalMove := math.Abs(pattern.DeltaShareOfRows)
-		if totalMove > 0 && maxStep/totalMove > 0.70 {
+		if totalMove > 0 && maxStep >= trendConcentratedJumpThreshold && maxStep/totalMove > 0.70 {
 			flags.ConcentratedJump = true
 		}
 	}
@@ -128,8 +134,12 @@ func trendKeyPoints(pattern PatternTrend, flags TrendDrilldownSignals) []TrendKe
 	var kps []TrendKeyPoint
 
 	direction := "rising"
-	if pattern.DeltaRows < 0 {
+	if pattern.DeltaRows < 0 && pattern.DeltaShareOfRows < 0 {
 		direction = "falling"
+	} else if pattern.DeltaRows > 0 && pattern.DeltaShareOfRows < 0 {
+		direction = "rows grew while share fell"
+	} else if pattern.DeltaRows < 0 && pattern.DeltaShareOfRows > 0 {
+		direction = "rows fell while share rose"
 	}
 
 	kps = append(kps, TrendKeyPoint{
