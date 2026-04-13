@@ -180,6 +180,42 @@ func TestBuildTrendPatternDrilldownsCapsAtTwo(t *testing.T) {
 	}
 }
 
+func TestBuildTrendPatternDrilldownsSelectsAnomalyOnlyWhenMovementIsMeaningful(t *testing.T) {
+	result := Result{
+		PatternTrends: []PatternTrend{
+			{
+				PatternKey:       "bursty",
+				Label:            "bursty",
+				FirstRows:        100,
+				LastRows:         260,
+				DeltaRows:        160,
+				FirstShareOfRows: 0.04,
+				LastShareOfRows:  0.20,
+				DeltaShareOfRows: 0.16,
+				ShareOfRowsSeries: []PatternTrendSharePoint{
+					{SnapshotName: "s1", ShareOfRows: 0.04},
+					{SnapshotName: "s2", ShareOfRows: 0.19},
+					{SnapshotName: "s3", ShareOfRows: 0.20},
+				},
+			},
+		},
+	}
+
+	got := buildTrendPatternDrilldowns(result)
+	if len(got) != 1 {
+		t.Fatalf("len(drilldowns) = %d, want 1", len(got))
+	}
+	if got[0].PatternKey != "bursty" {
+		t.Fatalf("pattern_key = %q, want bursty", got[0].PatternKey)
+	}
+	if !got[0].SignalFlags.ConcentratedJump {
+		t.Fatal("expected concentrated_jump signal")
+	}
+	if got[0].SignalFlags.DominantShareShift {
+		t.Fatal("expected anomaly-only selection without dominant_share_shift")
+	}
+}
+
 func TestBuildTrendPatternDrilldownsCapsKeyPointsAtTwo(t *testing.T) {
 	result := Result{
 		PatternTrends: []PatternTrend{
