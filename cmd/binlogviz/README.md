@@ -50,6 +50,6 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - Stage 8 adds named snapshot persistence under `~/.binlogviz/snapshots`, snapshot management commands, and snapshot-based compare input resolution while preserving legacy file-based compare.
 - The trend command adds a higher-level historical workflow on top of the snapshot store and orders selected snapshots by `snapshot.window.start_time` instead of CLI order.
 - The snapshot subtree now supports long-lived snapshot management with rename/delete and JSON output for list/show so external tooling can consume the snapshot store without parsing text output.
-- Discovery mode resolves ordered binlog files before entering the existing analysis pipeline and keeps the resolved list on `stderr` so report output on `stdout` stays machine-consumable.
+- Discovery mode resolves ordered binlog files before entering the existing analysis pipeline, narrows `--from-dir/--prefix` inputs with `--start/--end` using file modification times plus a trailing-file first-event check, and keeps the resolved list on `stderr` so report output on `stdout` stays machine-consumable.
 - Command temp-store cleanup remains directory-scoped and no longer depends on any SQL-context sidecar file; bounded SQL context now lives entirely inside the analyzer's DuckDB temp DB.
 - Top-N truncation is no longer applied in the command layer; it now happens during analyzer Finalize result assembly.

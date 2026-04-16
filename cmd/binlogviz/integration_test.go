@@ -117,7 +117,7 @@ func TestResolveAnalyzePathsRejectsMixedModes(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	opts := &analyzeOptions{fromDir: "/tmp/binlogs", prefix: "mysql-bin."}
 
-	_, _, err := resolveAnalyzePaths([]string{"mysql-bin.000123"}, opts)
+	_, _, _, err := resolveAnalyzePaths([]string{"mysql-bin.000123"}, opts)
 	if err == nil || !strings.Contains(err.Error(), "cannot combine") {
 		t.Fatalf("expected mixed-mode error, got %v", err)
 	}
@@ -134,7 +134,7 @@ func TestResolveAnalyzePathsRejectsIncompleteDiscoveryFlags(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, err := resolveAnalyzePaths(nil, tt.opts)
+			_, _, _, err := resolveAnalyzePaths(nil, tt.opts)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -146,7 +146,7 @@ func TestResolveAnalyzePathsExplicitArgsRemainUnchanged(t *testing.T) {
 	opts := &analyzeOptions{}
 	want := []string{"a", "b"}
 
-	got, discovered, err := resolveAnalyzePaths(want, opts)
+	got, discovered, _, err := resolveAnalyzePaths(want, opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -288,6 +288,81 @@ func TestAnalyzeCommandDiscoveryModePrintsResolvedFilesToStderr(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "mysql-bin.000123") || !strings.Contains(stderr, "mysql-bin.000124") {
 		t.Fatalf("stderr must list resolved files, got: %s", stderr)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("unmarshal stdout json: %v", err)
+	}
+	diagnostics, ok := parsed["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics object, got %v", parsed["diagnostics"])
+	}
+	fileCoverage, ok := diagnostics["file_coverage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics.file_coverage object, got %v", diagnostics["file_coverage"])
+	}
+	selected, ok := fileCoverage["selected"].([]any)
+	if !ok || len(selected) != 2 {
+		t.Fatalf("expected two selected file coverage entries, got %v", fileCoverage["selected"])
+	}
+}
+
+func TestResolveAnalyzePathsDiscoveryModeNarrowsFilesByTimeWindow(t *testing.T) {
+	dir := t.TempDir()
+	path44 := filepath.Join(dir, "mysql-bin.000044")
+	path45 := filepath.Join(dir, "mysql-bin.000045")
+	path46 := filepath.Join(dir, "mysql-bin.000046")
+	mustWriteFile(t, path44)
+	mustWriteFile(t, path45)
+	mustWriteFile(t, path46)
+
+	mustSetFileModTime(t, path44, time.Date(2026, 4, 5, 9, 30, 0, 0, time.UTC))
+	mustSetFileModTime(t, path45, time.Date(2026, 4, 5, 10, 30, 0, 0, time.UTC))
+	mustSetFileModTime(t, path46, time.Date(2026, 4, 5, 11, 30, 0, 0, time.UTC))
+
+	originalProbeAnalyzePaths := probeAnalyzePaths
+	probeAnalyzePaths = func(paths []string, workerCount int) ([]binlog.FileProbe, error) {
+		return []binlog.FileProbe{
+			{
+				BinlogPath:   path44,
+				FirstEventAt: time.Date(2026, 4, 5, 8, 45, 0, 0, time.UTC),
+				LastEventAt:  time.Date(2026, 4, 5, 9, 59, 59, 0, time.UTC),
+			},
+			{
+				BinlogPath:   path45,
+				FirstEventAt: time.Date(2026, 4, 5, 10, 30, 1, 0, time.UTC),
+				LastEventAt:  time.Date(2026, 4, 5, 11, 30, 0, 0, time.UTC),
+			},
+			{
+				BinlogPath:   path46,
+				FirstEventAt: time.Date(2026, 4, 5, 11, 30, 1, 0, time.UTC),
+				LastEventAt:  time.Date(2026, 4, 5, 12, 0, 0, 0, time.UTC),
+			},
+		}, nil
+	}
+	t.Cleanup(func() {
+		probeAnalyzePaths = originalProbeAnalyzePaths
+	})
+
+	opts := &analyzeOptions{
+		fromDir:   dir,
+		prefix:    "mysql-bin.",
+		startTime: "2026-04-05T09:00:00Z",
+		endTime:   "2026-04-05T10:00:00Z",
+	}
+
+	got, discovered, _, err := resolveAnalyzePaths(nil, opts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !discovered {
+		t.Fatal("expected discovery mode")
+	}
+
+	want := []string{path44}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected time-window paths: want=%v got=%v", want, got)
 	}
 }
 
@@ -948,6 +1023,7 @@ func TestRunAnalysisJSONWarningsPersistThroughSnapshotRoundTrip(t *testing.T) {
 			report.DefaultOptions(),
 			"json",
 			snapshotMeta,
+			model.FileCoverage{},
 			snapshotName,
 			snapshotDir,
 			mock,
@@ -1377,6 +1453,13 @@ func mustWriteFile(t *testing.T, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte("test"), 0o644); err != nil {
 		t.Fatalf("write file %s: %v", path, err)
+	}
+}
+
+func mustSetFileModTime(t *testing.T, path string, modTime time.Time) {
+	t.Helper()
+	if err := os.Chtimes(path, modTime, modTime); err != nil {
+		t.Fatalf("set mod time for %s: %v", path, err)
 	}
 }
 
