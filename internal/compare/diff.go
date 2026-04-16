@@ -2,6 +2,7 @@
 // input: two validated InputReport values representing current and baseline analyses.
 // output: deterministic CompareResult values for text, JSON, and HTML renderers.
 // pos: compare pipeline core between report loading and output rendering.
+// note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 import (
@@ -31,6 +32,7 @@ func BuildCompareResult(current, baseline InputReport) CompareResult {
 		BaselineLabel:    compareLabel(baseline.Snapshot, "baseline"),
 		CurrentSnapshot:  current.Snapshot,
 		BaselineSnapshot: baseline.Snapshot,
+		DiagnosticsDelta: buildDiagnosticsDelta(current, baseline),
 	}
 	result.KeyFindings = buildKeyFindings(result)
 	buildCompareEvidenceRefs(&result)
@@ -238,4 +240,188 @@ func buildAlertChanges(current, baseline []InputAlert) AlertDelta {
 
 func alertKey(alert InputAlert) string {
 	return fmt.Sprintf("%s|%s|%s|%s|%s", alert.Type, alert.Severity, alert.Message, alert.TxnKey, alert.Minute)
+}
+
+func buildDiagnosticsDelta(current, baseline InputReport) DiagnosticsDelta {
+	return DiagnosticsDelta{
+		DDLChanges:       buildDDLChangeDelta(current.Diagnostics.DDLEvents, baseline.Diagnostics.DDLEvents),
+		TxnDiagnostics:   buildTxnDiagnosticDelta(current.Diagnostics, baseline.Diagnostics),
+		HotIntervalDelta: buildHotIntervalDelta(current.Diagnostics.HotIntervals, baseline.Diagnostics.HotIntervals),
+		EventMixDelta:    buildEventMixDelta(current.Timeseries, baseline.Timeseries),
+	}
+}
+
+func buildDDLChangeDelta(current, baseline []InputDDLEvent) DDLChangeDelta {
+	delta := DDLChangeDelta{
+		BaselineCount: len(baseline),
+		CurrentCount:  len(current),
+		Delta:         len(current) - len(baseline),
+	}
+
+	baselineSet := make(map[string]bool, len(baseline))
+	for _, evt := range baseline {
+		baselineSet[ddlEventKey(evt)] = true
+	}
+	currentSet := make(map[string]bool, len(current))
+	for _, evt := range current {
+		currentSet[ddlEventKey(evt)] = true
+	}
+
+	for _, evt := range current {
+		if !baselineSet[ddlEventKey(evt)] {
+			delta.Added = append(delta.Added, DDLEventItem{
+				Timestamp: evt.Timestamp,
+				Schema:    evt.Schema,
+				Table:     evt.Table,
+				Operation: evt.Operation,
+				Statement: evt.Statement,
+			})
+		}
+	}
+	for _, evt := range baseline {
+		if !currentSet[ddlEventKey(evt)] {
+			delta.Removed = append(delta.Removed, DDLEventItem{
+				Timestamp: evt.Timestamp,
+				Schema:    evt.Schema,
+				Table:     evt.Table,
+				Operation: evt.Operation,
+				Statement: evt.Statement,
+			})
+		}
+	}
+
+	sort.Slice(delta.Added, func(i, j int) bool {
+		return delta.Added[i].Timestamp < delta.Added[j].Timestamp
+	})
+	sort.Slice(delta.Removed, func(i, j int) bool {
+		return delta.Removed[i].Timestamp < delta.Removed[j].Timestamp
+	})
+
+	return delta
+}
+
+func ddlEventKey(evt InputDDLEvent) string {
+	return fmt.Sprintf("%s|%s|%s|%s", evt.Timestamp, evt.Schema, evt.Table, evt.Operation)
+}
+
+func buildTxnDiagnosticDelta(current, baseline InputDiagnostics) TxnDiagnosticDelta {
+	return TxnDiagnosticDelta{
+		LargestTxnDelta: buildTxnSizeCompare(
+			firstTxnRows(baseline.LargestTransactions),
+			firstTxnKey(baseline.LargestTransactions),
+			firstTxnRows(current.LargestTransactions),
+			firstTxnKey(current.LargestTransactions),
+		),
+		LongestTxnDelta: buildTxnDurationCompare(
+			baseline.LongestTransactions,
+			current.LongestTransactions,
+		),
+	}
+}
+
+func buildTxnSizeCompare(baselineRows int, baselineKey string, currentRows int, currentKey string) TxnSizeCompare {
+	return TxnSizeCompare{
+		BaselineRows: baselineRows,
+		BaselineKey:  baselineKey,
+		CurrentRows:  currentRows,
+		CurrentKey:   currentKey,
+		DeltaRows:    currentRows - baselineRows,
+	}
+}
+
+func firstTxnRows(txns []InputTransaction) int {
+	if len(txns) == 0 {
+		return 0
+	}
+	return txns[0].TotalRows
+}
+
+func firstTxnKey(txns []InputTransaction) string {
+	if len(txns) == 0 {
+		return ""
+	}
+	return txns[0].TxnKey
+}
+
+func buildTxnDurationCompare(baseline, current []InputTransaction) TxnDurationCompare {
+	return TxnDurationCompare{
+		BaselineDuration: firstTxnDuration(baseline),
+		BaselineKey:      firstTxnKey(baseline),
+		CurrentDuration:  firstTxnDuration(current),
+		CurrentKey:       firstTxnKey(current),
+	}
+}
+
+func firstTxnDuration(txns []InputTransaction) string {
+	if len(txns) == 0 {
+		return ""
+	}
+	return txns[0].Duration
+}
+
+func buildHotIntervalDelta(current, baseline []InputHotInterval) HotIntervalDelta {
+	delta := HotIntervalDelta{
+		BaselineCount: len(baseline),
+		CurrentCount:  len(current),
+	}
+
+	if len(baseline) > 0 {
+		delta.BaselineTopRows = baseline[0].TotalRows
+	}
+	if len(current) > 0 {
+		delta.CurrentTopRows = current[0].TotalRows
+	}
+	delta.DeltaTopRows = delta.CurrentTopRows - delta.BaselineTopRows
+
+	limit := 5
+	for i, item := range current {
+		if i >= limit {
+			break
+		}
+		delta.TopItems = append(delta.TopItems, HotIntervalItem{
+			Minute:      item.Minute,
+			Source:      "current",
+			TotalRows:   item.TotalRows,
+			TxnCount:    item.TxnCount,
+			BinlogBytes: item.BinlogBytes,
+		})
+	}
+	for i, item := range baseline {
+		if i >= limit {
+			break
+		}
+		delta.TopItems = append(delta.TopItems, HotIntervalItem{
+			Minute:      item.Minute,
+			Source:      "baseline",
+			TotalRows:   item.TotalRows,
+			TxnCount:    item.TxnCount,
+			BinlogBytes: item.BinlogBytes,
+		})
+	}
+
+	sort.SliceStable(delta.TopItems, func(i, j int) bool {
+		if delta.TopItems[i].TotalRows != delta.TopItems[j].TotalRows {
+			return delta.TopItems[i].TotalRows > delta.TopItems[j].TotalRows
+		}
+		return delta.TopItems[i].Minute < delta.TopItems[j].Minute
+	})
+
+	return delta
+}
+
+func buildEventMixDelta(current, baseline InputTimeseries) EventMixDelta {
+	return EventMixDelta{
+		InsertDelta: sumSeriesValues(current.InsertEventSeries) - sumSeriesValues(baseline.InsertEventSeries),
+		UpdateDelta: sumSeriesValues(current.UpdateEventSeries) - sumSeriesValues(baseline.UpdateEventSeries),
+		DeleteDelta: sumSeriesValues(current.DeleteEventSeries) - sumSeriesValues(baseline.DeleteEventSeries),
+		DDLDelta:    sumSeriesValues(current.DDLEventSeries) - sumSeriesValues(baseline.DDLEventSeries),
+	}
+}
+
+func sumSeriesValues(points []InputTimeseriesPoint) int {
+	var total float64
+	for _, p := range points {
+		total += p.Value
+	}
+	return int(total)
 }

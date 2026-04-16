@@ -1,3 +1,8 @@
+// Package trend verifies text, JSON, and HTML trend rendering behavior.
+// input: synthetic multi-snapshot trend inputs and built Result values.
+// output: assertions for trend sections, baseline context, and regression-sensitive rendering.
+// pos: renderer regression coverage for the trend output path.
+// note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
 
 import (
@@ -99,7 +104,7 @@ func TestRenderJSONTrendSummaryShape(t *testing.T) {
 			{Kind: "rising_pattern", Title: "Rising", Summary: "rose", Evidence: map[string]any{"pattern_key": "p0"}},
 			{
 				Kind: "table_trend", Title: "Table", Summary: "grew",
-				Evidence: map[string]any{"table": "s.t"},
+				Evidence:     map[string]any{"table": "s.t"},
 				EvidenceRefs: []EvidenceRef{{Section: "table_trends", Key: "s.t", Label: "s.t", Anchor: "table-0"}},
 			},
 		},
@@ -218,6 +223,25 @@ func TestRenderHTMLIncludesPatternTrendsSectionAndToggle(t *testing.T) {
 	}
 	if !strings.Contains(html, "Default view shows share of rows") {
 		t.Fatalf("expected html output to explain default view, got %q", html)
+	}
+}
+
+func TestRenderHTMLPatternTrendLegendSitsBelowChart(t *testing.T) {
+	result := mustBuildPatternTrendResult(t)
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	for _, token := range []string{
+		".pattern-chart { width: 100%; height: 420px; min-height: 420px; }",
+		"legend: { type: 'scroll', bottom: 0, textStyle: { color: '#e5eefc' } }",
+		"grid: { left: 50, right: 24, top: 24, bottom: 72 }",
+	} {
+		if !strings.Contains(html, token) {
+			t.Fatalf("expected pattern trend layout token %q, got %q", token, html)
+		}
 	}
 }
 

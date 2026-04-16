@@ -1,3 +1,8 @@
+// Package trend renders self-contained HTML trend reports.
+// input: deterministic trend Result values plus localized labels and embedded chart assets.
+// output: trend HTML pages with summary cards, charts, and drilldown sections.
+// pos: HTML renderer used by the trend command output path.
+// note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
 
 import (
@@ -8,25 +13,31 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
 )
 
 type htmlData struct {
-	Result              Result
-	GeneratedAt         string
-	EChartsJS           template.JS
-	LabelsJSON          template.JS
-	RowsJSON            template.JS
-	TxnsJSON            template.JS
-	EventsJSON          template.JS
-	InsertJSON          template.JS
-	UpdateJSON          template.JS
-	DeleteJSON          template.JS
-	TableSeriesJSON     template.JS
+	Result                Result
+	GeneratedAt           string
+	EChartsJS             template.JS
+	LabelsJSON            template.JS
+	RowsJSON              template.JS
+	TxnsJSON              template.JS
+	EventsJSON            template.JS
+	InsertJSON            template.JS
+	UpdateJSON            template.JS
+	DeleteJSON            template.JS
+	TableSeriesJSON       template.JS
 	PatternSeriesJSON     template.JS
 	PatternDrilldownsJSON template.JS
 	TrendSummaryJSON      template.JS
-	RecommendationsJSON template.JS
+	RecommendationsJSON   template.JS
+	TPSSeriesJSON         template.JS
+	DDLSeriesJSON         template.JS
+	TxnSeriesJSON         template.JS
+	EventMixSeriesJSON    template.JS
+	HotIntervalJSON       template.JS
 }
 
 type htmlTableSeries struct {
@@ -49,27 +60,32 @@ func RenderHTML(result Result) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmpl, err := template.New("trend").Parse(trendHTMLTemplate)
+	tmpl, err := report.NewHTMLTemplate("trend", trendHTMLTemplate, nil)
 	if err != nil {
-		return "", fmt.Errorf("parse trend html template: %w", err)
+		return "", err
 	}
 
 	data := htmlData{
-		Result:              result,
-		GeneratedAt:         time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		EChartsJS:           template.JS(echartsJS), //nolint:gosec
-		LabelsJSON:          mustHTMLJSON(buildLabels(result.Points)),
-		RowsJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalRows })),
-		TxnsJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalTransactions })),
-		EventsJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalEvents })),
-		InsertJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Inserts })),
-		UpdateJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Updates })),
-		DeleteJSON:          mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
-		TableSeriesJSON:     mustHTMLJSON(buildTableSeries(result.TableTrends)),
+		Result:                result,
+		GeneratedAt:           time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		EChartsJS:             template.JS(echartsJS), //nolint:gosec
+		LabelsJSON:            mustHTMLJSON(buildLabels(result.Points)),
+		RowsJSON:              mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalRows })),
+		TxnsJSON:              mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalTransactions })),
+		EventsJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalEvents })),
+		InsertJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Inserts })),
+		UpdateJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Updates })),
+		DeleteJSON:            mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Operations.Deletes })),
+		TableSeriesJSON:       mustHTMLJSON(buildTableSeries(result.TableTrends)),
 		PatternSeriesJSON:     mustHTMLJSON(buildPatternSeries(result.PatternTrends)),
 		PatternDrilldownsJSON: mustHTMLJSON(result.PatternDrilldowns),
 		TrendSummaryJSON:      mustHTMLJSON(result.TrendSummary),
-		RecommendationsJSON: mustHTMLJSON(result.Recommendations),
+		RecommendationsJSON:   mustHTMLJSON(result.Recommendations),
+		TPSSeriesJSON:         mustHTMLJSON(result.DiagnosticsTrends.TPSTrends),
+		DDLSeriesJSON:         mustHTMLJSON(result.DiagnosticsTrends.DDLTrends),
+		TxnSeriesJSON:         mustHTMLJSON(buildTxnTrendData(result.DiagnosticsTrends)),
+		EventMixSeriesJSON:    mustHTMLJSON(result.DiagnosticsTrends.EventMixTrends.Snapshots),
+		HotIntervalJSON:       mustHTMLJSON(result.DiagnosticsTrends.HotIntervalSummary),
 	}
 
 	var buf bytes.Buffer
@@ -161,16 +177,38 @@ func patternTrendDisplayLabel(trend PatternTrend) string {
 	case key != "":
 		return key
 	default:
-		return "pattern"
+		return i18n.T("report.html.trend.patternFallback")
 	}
 }
 
+type htmlTxnTrendPoint struct {
+	SnapshotName string  `json:"snapshot_name"`
+	SizeValue    float64 `json:"size_value"`
+	DurValue     float64 `json:"dur_value"`
+}
+
+func buildTxnTrendData(dt DiagnosticsTrends) []htmlTxnTrendPoint {
+	result := make([]htmlTxnTrendPoint, 0, len(dt.TxnSizeTrends))
+	for i, point := range dt.TxnSizeTrends {
+		durValue := 0.0
+		if i < len(dt.TxnDurationTrends) {
+			durValue = dt.TxnDurationTrends[i].Value
+		}
+		result = append(result, htmlTxnTrendPoint{
+			SnapshotName: point.SnapshotName,
+			SizeValue:    point.Value,
+			DurValue:     durValue,
+		})
+	}
+	return result
+}
+
 const trendHTMLTemplate = `<!DOCTYPE html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BinlogViz Trend</title>
+<title>{{t "report.html.trend.title"}}</title>
 <style>
   :root {
     --bg: #050816;
@@ -200,7 +238,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   .segment-control { display: inline-flex; padding: 4px; background: #0b1020; border: 1px solid var(--border); border-radius: 999px; gap: 4px; }
   .segment-control button { appearance: none; border: 0; border-radius: 999px; background: transparent; color: var(--muted); padding: 8px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; }
   .segment-control button[aria-pressed="true"] { background: var(--primary); color: #04111c; }
-  .pattern-chart { width: 100%; height: 360px; min-height: 360px; }
+  .pattern-chart { width: 100%; height: 420px; min-height: 420px; }
   .empty-state { padding: 18px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); background: rgba(13, 19, 38, 0.65); }
 .evidence-refs { font-size: 12px; color: var(--muted); margin-left: 4px; }
   .evidence-refs a { color: var(--accent); text-decoration: none; }
@@ -222,33 +260,33 @@ const trendHTMLTemplate = `<!DOCTYPE html>
 <body>
 <div class="page">
   <section class="hero">
-    <h1>BinlogViz Trend</h1>
-    <p>Generated at {{.GeneratedAt}}</p>
-    {{if .Result.BaselineSnapshot}}<p>Baseline: {{.Result.BaselineSnapshot.Label}} ({{.Result.BaselineSnapshot.Name}})</p>{{end}}
+    <h1>{{t "report.html.trend.hero"}}</h1>
+    <p>{{t "report.html.common.generatedAt"}} {{.GeneratedAt}}</p>
+    {{if .Result.BaselineSnapshot}}<p>{{t "report.html.trend.baseline"}}: {{.Result.BaselineSnapshot.Label}} ({{.Result.BaselineSnapshot.Name}})</p>{{end}}
   </section>
 
   <div class="cards">
     <div class="card">
-      <div class="label">First Snapshot</div>
+      <div class="label">{{t "report.html.trend.firstSnapshot"}}</div>
       <div class="value">{{.Result.Insights.FirstSnapshot}}</div>
     </div>
     <div class="card">
-      <div class="label">Last Snapshot</div>
+      <div class="label">{{t "report.html.trend.lastSnapshot"}}</div>
       <div class="value">{{.Result.Insights.LastSnapshot}}</div>
     </div>
     <div class="card">
-      <div class="label">Rows Delta</div>
+      <div class="label">{{t "report.html.trend.rowsDelta"}}</div>
       <div class="value">{{.Result.Insights.RowsDelta}}</div>
     </div>
     <div class="card">
-      <div class="label">Txn Delta</div>
+      <div class="label">{{t "report.html.trend.txnDelta"}}</div>
       <div class="value">{{.Result.Insights.TxnsDelta}}</div>
     </div>
   </div>
 
   {{if .Result.TrendSummary}}
   <section class="section" id="trend-key-findings">
-    <div class="section-header">Key Findings</div>
+    <div class="section-header">{{t "report.html.compare.keyFindings"}}</div>
     <div class="section-body">
       <div id="trend-findings-list"></div>
     </div>
@@ -257,7 +295,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
 
   {{if .Result.Recommendations}}
   <section class="section" id="trend-recommendations">
-    <div class="section-header">Recommended Next Checks</div>
+    <div class="section-header">{{t "report.html.compare.recommendedNextChecks"}}</div>
     <div class="section-body">
       <div id="trend-recommendations-list"></div>
     </div>
@@ -265,21 +303,21 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   {{end}}
 
   <section class="section">
-    <div class="section-header">Overall Trend</div>
+    <div class="section-header">{{t "report.html.trend.overallTrend"}}</div>
     <div class="section-body">
       <div id="trend-overall-chart" class="chart-box"></div>
     </div>
   </section>
 
   <section class="section">
-    <div class="section-header">Operation Mix</div>
+    <div class="section-header">{{t "report.html.common.operationMix"}}</div>
     <div class="section-body">
       <div id="trend-ops-chart" class="chart-box"></div>
     </div>
   </section>
 
   <section class="section" id="section-table-trends">
-    <div class="section-header">Top Table Movement</div>
+    <div class="section-header">{{t "report.html.trend.topTableMovement"}}</div>
     <div class="section-body">
       {{range $idx, $trend := .Result.TableTrends}}<span id="table-{{$idx}}"></span>{{end}}
       <div id="trend-tables-chart" class="chart-box"></div>
@@ -287,37 +325,37 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   </section>
 
   <section class="section" id="section-pattern-trends">
-    <div class="section-header">Pattern Trends</div>
+    <div class="section-header">{{t "report.html.trend.patternTrends"}}</div>
     <div class="section-body">
       {{range $idx, $trend := .Result.PatternTrends}}<span id="pattern-{{$idx}}"></span>{{end}}
       {{if .Result.PatternTrends}}
       <div class="section-tools">
-        <div class="segment-control" role="tablist" aria-label="Pattern trend view mode">
-          <button type="button" id="pattern-view-share" data-pattern-view="share" aria-pressed="true">Share of Rows</button>
-          <button type="button" id="pattern-view-rows" data-pattern-view="rows" aria-pressed="false">Rows</button>
+        <div class="segment-control" role="tablist" aria-label="{{t "report.html.trend.patternViewMode"}}">
+          <button type="button" id="pattern-view-share" data-pattern-view="share" aria-pressed="true">{{t "report.html.trend.shareOfRows"}}</button>
+          <button type="button" id="pattern-view-rows" data-pattern-view="rows" aria-pressed="false">{{t "report.html.common.rows"}}</button>
         </div>
-        <div class="pattern-hint">Default view shows share of rows; switch to raw rows for absolute volume.</div>
+        <div class="pattern-hint">{{t "report.html.trend.patternHint"}}</div>
       </div>
       <div id="trend-pattern-chart" class="pattern-chart"></div>
       {{else}}
-      <div class="empty-state">No pattern trends available for the selected snapshots.</div>
+      <div class="empty-state">{{t "report.html.trend.noPatternTrends"}}</div>
       {{end}}
       <div id="trend-pattern-drilldowns"></div>
     </div>
   </section>
 
   <section class="section" id="section-ordered-points">
-    <div class="section-header">Ordered Points</div>
+    <div class="section-header">{{t "report.html.trend.orderedPoints"}}</div>
     <div class="section-body">
       <table>
         <thead>
           <tr>
-            <th>Snapshot</th>
-            <th>Start</th>
-            <th>Rows</th>
-            <th>Txns</th>
-            <th>Events</th>
-            <th>Alerts</th>
+            <th>{{t "report.html.trend.snapshot"}}</th>
+            <th>{{t "report.html.trend.start"}}</th>
+            <th>{{t "report.html.common.rows"}}</th>
+            <th>{{t "report.html.common.txns"}}</th>
+            <th>{{t "report.html.common.events"}}</th>
+            <th>{{t "report.html.common.alerts"}}</th>
           </tr>
         </thead>
         <tbody>
@@ -335,9 +373,42 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       </table>
     </div>
   </section>
-</div>
 
-<script>{{.EChartsJS}}</script>
+  <section class="section">
+    <div class="section-header">{{t "report.html.trend.tpsTrends"}}</div>
+    <div class="section-body">
+      <div id="trend-tps-chart" class="chart-box"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">{{t "report.html.trend.ddlTrends"}}</div>
+    <div class="section-body">
+      <div id="trend-ddl-chart" class="chart-box"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">{{t "report.html.trend.txnTrends"}}</div>
+    <div class="section-body">
+      <div id="trend-txn-chart" class="chart-box"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">{{t "report.html.trend.eventMixTrends"}}</div>
+    <div class="section-body">
+      <div id="trend-event-mix-chart" class="chart-box"></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-header">{{t "report.html.trend.hotIntervalTrends"}}</div>
+    <div class="section-body">
+      <div id="trend-hot-interval-chart" class="chart-box"></div>
+    </div>
+  </section>
+</div>
 <script>
   const labels = {{.LabelsJSON}};
   const rows = {{.RowsJSON}};
@@ -351,6 +422,23 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   const patternDrilldowns = {{.PatternDrilldownsJSON}};
   const trendSummary = {{.TrendSummaryJSON}};
   window.trendRecommendations = {{.RecommendationsJSON}};
+  window.trendTPSSeries = {{.TPSSeriesJSON}};
+  window.trendDDLSeries = {{.DDLSeriesJSON}};
+  window.trendTxnSeries = {{.TxnSeriesJSON}};
+  window.trendEventMixSeries = {{.EventMixSeriesJSON}};
+  window.trendHotIntervalSeries = {{.HotIntervalJSON}};
+
+  var _lMaxTPS = {{t "report.html.trend.chartMaxTPS"}};
+  var _lDDLEvents = {{t "report.html.trend.chartDDLEvents"}};
+  var _lLargestTxnRows = {{t "report.html.trend.chartLargestTxnRows"}};
+  var _lLongestTxnSec = {{t "report.html.trend.chartLongestTxnSec"}};
+  var _lInsert = {{t "report.html.common.inserts"}};
+  var _lUpdate = {{t "report.html.common.updates"}};
+  var _lDelete = {{t "report.html.common.deletes"}};
+  var _lDDL = {{t "report.html.common.ddl"}};
+  var _lMaxHotRows = {{t "report.html.trend.chartMaxHotRows"}};
+  var _lHotCount = {{t "report.html.trend.chartHotCount"}};
+  var _lDrilldown = {{t "report.html.common.drilldown"}};
 
   const trendFindingsEl = document.getElementById('trend-findings-list');
   if (trendFindingsEl && trendSummary && trendSummary.length > 0) {
@@ -427,9 +515,9 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
     yAxis: { type: 'value', axisLabel: { color: '#94a3b8' } },
     series: [
-      { name: 'Rows', type: 'line', smooth: true, data: rows },
-      { name: 'Transactions', type: 'line', smooth: true, data: txns },
-      { name: 'Events', type: 'line', smooth: true, data: events }
+      { name: '{{t "report.html.common.rows"}}', type: 'line', smooth: true, data: rows },
+      { name: '{{t "report.html.common.transactions"}}', type: 'line', smooth: true, data: txns },
+      { name: '{{t "report.html.common.events"}}', type: 'line', smooth: true, data: events }
     ]
   });
 
@@ -441,9 +529,9 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
     yAxis: { type: 'value', axisLabel: { color: '#94a3b8' } },
     series: [
-      { name: 'Insert', type: 'bar', stack: 'ops', data: inserts },
-      { name: 'Update', type: 'bar', stack: 'ops', data: updates },
-      { name: 'Delete', type: 'bar', stack: 'ops', data: deletes }
+      { name: '{{t "report.html.common.inserts"}}', type: 'bar', stack: 'ops', data: inserts },
+      { name: '{{t "report.html.common.updates"}}', type: 'bar', stack: 'ops', data: updates },
+      { name: '{{t "report.html.common.deletes"}}', type: 'bar', stack: 'ops', data: deletes }
     ]
   });
 
@@ -482,11 +570,11 @@ const trendHTMLTemplate = `<!DOCTYPE html>
         tooltip: {
           trigger: 'axis',
           valueFormatter: metricKey === 'rows'
-            ? (value) => String(value) + ' rows'
+            ? (value) => String(value) + ' {{t "report.html.common.rows"}}'
             : (value) => (Number(value) * 100).toFixed(1) + '%'
         },
-        legend: { textStyle: { color: '#e5eefc' } },
-        grid: { left: 50, right: 24, top: 40, bottom: 40 },
+        legend: { type: 'scroll', bottom: 0, textStyle: { color: '#e5eefc' } },
+        grid: { left: 50, right: 24, top: 24, bottom: 72 },
         xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
         yAxis: {
           type: 'value',
@@ -506,7 +594,6 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     });
 
     applyPatternView('share');
-    window.addEventListener('resize', () => patternChart.resize());
   }
 
   const trendDrilldownsEl = document.getElementById('trend-pattern-drilldowns');
@@ -522,7 +609,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       detail.appendChild(title);
       const why = document.createElement('div');
       why.style.cssText = 'font-size:12px;color:var(--muted);margin-bottom:8px';
-      why.appendChild(document.createTextNode('drilldown: '));
+      why.appendChild(document.createTextNode(_lDrilldown));
       const whyStrong = document.createElement('strong');
       whyStrong.textContent = dd.why_selected;
       why.appendChild(whyStrong);
@@ -543,6 +630,94 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       trendDrilldownsEl.appendChild(detail);
     });
   }
+
+  const tpsLabels = window.trendTPSSeries.map(p => p.snapshot_name);
+  const tpsValues = window.trendTPSSeries.map(p => p.value);
+  const tpsChart = echarts.init(document.getElementById('trend-tps-chart'));
+  tpsChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { color: '#e5eefc' } },
+    xAxis: { type: 'category', data: tpsLabels, axisLabel: { color: '#94a3b8' } },
+    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
+    series: [{ name: _lMaxTPS, type: 'line', smooth: true, data: tpsValues, itemStyle: { color: '#22d3ee' } }]
+  });
+
+  const ddlLabels = window.trendDDLSeries.map(p => p.snapshot_name);
+  const ddlValues = window.trendDDLSeries.map(p => p.value);
+  const ddlChart = echarts.init(document.getElementById('trend-ddl-chart'));
+  ddlChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { color: '#e5eefc' } },
+    xAxis: { type: 'category', data: ddlLabels, axisLabel: { color: '#94a3b8' } },
+    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
+    series: [{ name: _lDDLEvents, type: 'bar', data: ddlValues, itemStyle: { color: '#f59e0b' } }]
+  });
+
+  const txnLabels = window.trendTxnSeries.map(p => p.snapshot_name);
+  const txnSizeValues = window.trendTxnSeries.map(p => p.size_value);
+  const txnDurValues = window.trendTxnSeries.map(p => p.dur_value);
+  const txnChart = echarts.init(document.getElementById('trend-txn-chart'));
+  txnChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { color: '#e5eefc' } },
+    xAxis: { type: 'category', data: txnLabels, axisLabel: { color: '#94a3b8' } },
+    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
+    series: [
+      { name: _lLargestTxnRows, type: 'line', smooth: true, data: txnSizeValues, itemStyle: { color: '#22d3ee' } },
+      { name: _lLongestTxnSec, type: 'line', smooth: true, data: txnDurValues, itemStyle: { color: '#f59e0b' } }
+    ]
+  });
+
+  const emLabels = window.trendEventMixSeries.map(p => p.snapshot_name);
+  const emInserts = window.trendEventMixSeries.map(p => p.inserts);
+  const emUpdates = window.trendEventMixSeries.map(p => p.updates);
+  const emDeletes = window.trendEventMixSeries.map(p => p.deletes);
+  const emDDL = window.trendEventMixSeries.map(p => p.ddl);
+  const eventMixChart = echarts.init(document.getElementById('trend-event-mix-chart'));
+  eventMixChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { color: '#e5eefc' } },
+    xAxis: { type: 'category', data: emLabels, axisLabel: { color: '#94a3b8' } },
+    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
+    series: [
+      { name: _lInsert, type: 'bar', stack: 'events', data: emInserts, itemStyle: { color: '#34d399' } },
+      { name: _lUpdate, type: 'bar', stack: 'events', data: emUpdates, itemStyle: { color: '#22d3ee' } },
+      { name: _lDelete, type: 'bar', stack: 'events', data: emDeletes, itemStyle: { color: '#f87171' } },
+      { name: _lDDL, type: 'bar', stack: 'events', data: emDDL, itemStyle: { color: '#f59e0b' } }
+    ]
+  });
+
+  const hiLabels = (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.snapshot_name);
+  const hiMaxRows = (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.value);
+  const hiCounts = (window.trendHotIntervalSeries.hot_count_series || []).map(p => p.value);
+  const hotIntervalChart = echarts.init(document.getElementById('trend-hot-interval-chart'));
+  hotIntervalChart.setOption({
+    backgroundColor: 'transparent',
+    tooltip: { trigger: 'axis' },
+    legend: { textStyle: { color: '#e5eefc' } },
+    xAxis: { type: 'category', data: hiLabels, axisLabel: { color: '#94a3b8' } },
+    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
+    series: [
+      { name: _lMaxHotRows, type: 'line', smooth: true, data: hiMaxRows, itemStyle: { color: '#f87171' } },
+      { name: _lHotCount, type: 'bar', data: hiCounts, itemStyle: { color: '#f59e0b' } }
+    ]
+  });
+
+  window.addEventListener('resize', function () {
+    overallChart.resize();
+    opsChart.resize();
+    tablesChart.resize();
+    if (typeof patternChart !== 'undefined') patternChart.resize();
+    tpsChart.resize();
+    ddlChart.resize();
+    txnChart.resize();
+    eventMixChart.resize();
+    hotIntervalChart.resize();
+  });
 </script>
 </body>
 </html>`

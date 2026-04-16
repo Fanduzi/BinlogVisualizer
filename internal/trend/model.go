@@ -2,6 +2,7 @@
 // input: ordered snapshot-backed analyze JSON reports plus optional baseline metadata.
 // output: deterministic trend results for text, JSON, and HTML renderers.
 // pos: trend pipeline boundary between snapshot loading and renderer-specific output.
+// note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
 
 import comparepkg "binlogviz/internal/compare"
@@ -19,6 +20,11 @@ type InputSnapshot = comparepkg.InputSnapshot
 type InputSnapshotInput = comparepkg.InputSnapshotInput
 type InputSnapshotWindow = comparepkg.InputSnapshotWindow
 type InputSnapshotFilters = comparepkg.InputSnapshotFilters
+type InputTimeseries = comparepkg.InputTimeseries
+type InputTimeseriesPoint = comparepkg.InputTimeseriesPoint
+type InputDiagnostics = comparepkg.InputDiagnostics
+type InputDDLEvent = comparepkg.InputDDLEvent
+type InputHotInterval = comparepkg.InputHotInterval
 
 type BuildOptions struct {
 	InputMode   string
@@ -29,16 +35,53 @@ type BuildOptions struct {
 }
 
 type Result struct {
-	InputMode         string            `json:"input_mode"`
-	SnapshotDir       string            `json:"snapshot_dir"`
-	BaselineSnapshot  *SnapshotMeta     `json:"baseline_snapshot,omitempty"`
-	Points            []Point           `json:"points"`
-	TableTrends       []TableTrend      `json:"table_trends"`
-	PatternTrends     []PatternTrend    `json:"pattern_trends"`
-	Insights          Insights          `json:"insights"`
-	TrendSummary      []TrendFinding    `json:"trend_summary"`
-	Recommendations   []Recommendation  `json:"recommendations"`
-	PatternDrilldowns []PatternDrilldown `json:"pattern_drilldowns"`
+	InputMode            string               `json:"input_mode"`
+	SnapshotDir          string               `json:"snapshot_dir"`
+	BaselineSnapshot     *SnapshotMeta        `json:"baseline_snapshot,omitempty"`
+	Points               []Point              `json:"points"`
+	TableTrends          []TableTrend         `json:"table_trends"`
+	PatternTrends        []PatternTrend       `json:"pattern_trends"`
+	Insights             Insights             `json:"insights"`
+	TrendSummary         []TrendFinding       `json:"trend_summary"`
+	Recommendations      []Recommendation     `json:"recommendations"`
+	PatternDrilldowns    []PatternDrilldown   `json:"pattern_drilldowns"`
+	DiagnosticsTrends    DiagnosticsTrends    `json:"diagnostics_trends"`
+}
+
+// DiagnosticsTrends holds trend-series data for DBA diagnostics.
+type DiagnosticsTrends struct {
+	TPSTrends        []MetricTrendSeries `json:"tps_trends"`
+	DDLTrends        []MetricTrendSeries `json:"ddl_trends"`
+	TxnSizeTrends    []MetricTrendSeries `json:"txn_size_trends"`
+	TxnDurationTrends []MetricTrendSeries `json:"txn_duration_trends"`
+	EventMixTrends   EventMixTrendSeries  `json:"event_mix_trends"`
+	HotIntervalSummary HotIntervalTrendSummary `json:"hot_interval_summary"`
+}
+
+// MetricTrendSeries is a per-snapshot metric series for a single diagnostic dimension.
+type MetricTrendSeries struct {
+	SnapshotName string  `json:"snapshot_name"`
+	Value        float64 `json:"value"`
+}
+
+// EventMixTrendSeries holds per-snapshot event type breakdowns.
+type EventMixTrendSeries struct {
+	Snapshots []EventMixSnapshot `json:"snapshots"`
+}
+
+// EventMixSnapshot is the event mix at one snapshot point.
+type EventMixSnapshot struct {
+	SnapshotName string  `json:"snapshot_name"`
+	Inserts      float64 `json:"inserts"`
+	Updates      float64 `json:"updates"`
+	Deletes      float64 `json:"deletes"`
+	DDL          float64 `json:"ddl"`
+}
+
+// HotIntervalTrendSummary summarizes hot interval changes across snapshots.
+type HotIntervalTrendSummary struct {
+	MaxHotRows     []MetricTrendSeries `json:"max_hot_rows"`
+	HotCountSeries []MetricTrendSeries `json:"hot_count_series"`
 }
 
 type Recommendation struct {

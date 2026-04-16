@@ -1,3 +1,8 @@
+// Package compare verifies HTML compare output sections and localized context.
+// input: fixture-backed compare reports and built CompareResult values.
+// output: assertions for compare HTML sections, labels, and regression-sensitive content.
+// pos: renderer regression coverage for the compare HTML output path.
+// note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 import (
@@ -197,6 +202,33 @@ func TestRenderHTMLIncludesPatternChangeSection(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLPatternChangesUsesTallStackedLayout(t *testing.T) {
+	current, err := LoadReport(filepath.Join("testdata", "current_patterns.json"))
+	if err != nil {
+		t.Fatalf("load current report: %v", err)
+	}
+	baseline, err := LoadReport(filepath.Join("testdata", "baseline_patterns.json"))
+	if err != nil {
+		t.Fatalf("load baseline report: %v", err)
+	}
+
+	output, err := RenderHTML(BuildCompareResult(current, baseline))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		".chart-box-tall { height: 420px; }",
+		`<div class="section-body pattern-stack">`,
+		`id="compare-pattern-changes" class="chart-box chart-box-tall"`,
+		"legend: { data: ['Baseline', 'Current'], bottom: 0",
+	} {
+		if !strings.Contains(output, token) {
+			t.Fatalf("expected compare pattern layout token %q", token)
+		}
+	}
+}
+
 func TestRenderHTMLEscapesHostilePatternContent(t *testing.T) {
 	result := CompareResult{
 		PatternChanges: []PatternChange{{
@@ -390,8 +422,8 @@ func TestRenderHTMLUsesDOMAPINotInnerHTMLForFindings(t *testing.T) {
 			Schema: "evil", Table: `table<img src=x onerror=alert(1)>`,
 			CurrentRows: 10, BaselineRows: 5, DeltaRows: 5, DeltaPercent: 100,
 		}},
-		OperationMix:   []OperationDelta{},
-		AlertChanges:   AlertDelta{},
+		OperationMix: []OperationDelta{},
+		AlertChanges: AlertDelta{},
 	}
 
 	output, err := RenderHTML(result)
@@ -469,38 +501,38 @@ func TestRenderHTMLIncludesRecommendationSection(t *testing.T) {
 }
 
 func TestRenderHTMLUsesDOMAPINotInnerHTMLForRecommendations(t *testing.T) {
-		result := CompareResult{
-			CurrentLabel:  "current",
-			BaselineLabel: "baseline",
-			Summary: SummaryDelta{
-				CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
-			},
-			Recommendations: []Recommendation{{
-				Kind:     "check_pattern_driver",
-				Priority: "high",
-				Title:    `<img src=x onerror=alert(1)>`,
-				Summary:  `<script>alert(1)</script>`,
-				EvidenceRefs: []EvidenceRef{{
-					Label:  `<img src=x onerror=alert(1)>`,
-					Anchor: "section-pattern-changes",
-				}},
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+		},
+		Recommendations: []Recommendation{{
+			Kind:     "check_pattern_driver",
+			Priority: "high",
+			Title:    `<img src=x onerror=alert(1)>`,
+			Summary:  `<script>alert(1)</script>`,
+			EvidenceRefs: []EvidenceRef{{
+				Label:  `<img src=x onerror=alert(1)>`,
+				Anchor: "section-pattern-changes",
 			}},
-		}
-
-		html, err := RenderHTML(result)
-		if err != nil {
-			t.Fatalf("RenderHTML returned error: %v", err)
-		}
-		if strings.Contains(html, "recommendationsEl.innerHTML") {
-			t.Fatal("recommendation rendering should not use innerHTML")
-		}
-		if strings.Contains(html, `<script>alert(1)</script>`) {
-			t.Fatal("html contains raw malicious recommendation content")
-		}
-		if strings.Contains(html, `<img src=x onerror=alert(1)>`) {
-			t.Fatal("html contains raw malicious recommendation content")
-		}
+		}},
 	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+	if strings.Contains(html, "recommendationsEl.innerHTML") {
+		t.Fatal("recommendation rendering should not use innerHTML")
+	}
+	if strings.Contains(html, `<script>alert(1)</script>`) {
+		t.Fatal("html contains raw malicious recommendation content")
+	}
+	if strings.Contains(html, `<img src=x onerror=alert(1)>`) {
+		t.Fatal("html contains raw malicious recommendation content")
+	}
+}
 
 func TestRenderHTMLIncludesCompareDrilldownForSelectedPatterns(t *testing.T) {
 	result := CompareResult{
@@ -542,12 +574,12 @@ func TestRenderHTMLIncludesCompareDrilldownForSelectedPatterns(t *testing.T) {
 
 func TestRenderHTMLNoDrilldownSectionWhenEmpty(t *testing.T) {
 	result := CompareResult{
-		CurrentLabel:     "current",
-		BaselineLabel:    "baseline",
-		Summary:          SummaryDelta{TotalRowsDelta: 0},
+		CurrentLabel:      "current",
+		BaselineLabel:     "baseline",
+		Summary:           SummaryDelta{TotalRowsDelta: 0},
 		PatternDrilldowns: []PatternDrilldown{},
-		OperationMix:     []OperationDelta{},
-		AlertChanges:     AlertDelta{},
+		OperationMix:      []OperationDelta{},
+		AlertChanges:      AlertDelta{},
 	}
 
 	html, err := RenderHTML(result)

@@ -9,10 +9,14 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | `load.go` | Loads and validates analyze JSON reports from files or in-memory bytes. |
 | `model.go` | Defines compare input contracts, optional snapshot metadata, pattern-aware input shapes, and compare result structures. |
 | `diff.go` | Computes deterministic summary, table, pattern, operation, and alert deltas. |
+| `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
+| `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
+| `recommendations.go` | Derives prioritized follow-up recommendations from compare findings. |
+| `drilldown.go` | Selects bounded pattern drilldowns for high-signal compare changes. |
 | `text.go` | Renders human-readable compare output, including table drift, pattern drift, and snapshot-aware context such as window, input mode, source summary, and filters. |
 | `json.go` | Serializes compare results for downstream tools. |
 | `html.go` | Renders the self-contained HTML compare report with snapshot-aware context in the header and a dedicated pattern-drift section. |
-| `*_test.go` | Covers loading, diff behavior, renderer output, snapshot-aware labels/context, legacy compatibility, and contract stability. |
+| `*_test.go` | Covers loading, diff behavior, findings and drilldowns, renderer output, diagnostics/i18n sections, snapshot-aware context, and contract stability. |
 
 ## Exports
 
@@ -38,3 +42,4 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - `pattern_changes` is a first-class compare result area, separate from `table_changes`.
 - Legacy reports with no top-level `patterns` are treated as empty pattern sets rather than rejected.
 - Text and HTML outputs now expose snapshot context beyond the time window so incident reviews can see input mode, source shape, and active filters at a glance.
+- Key findings, bounded drilldowns, evidence refs, and follow-up recommendations are derived inside this module from the same deterministic compare result.
