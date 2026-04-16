@@ -19,10 +19,16 @@ type MinuteAggregator struct {
 }
 
 type minuteBucket struct {
-	minute    time.Time
-	totalRows int
-	txnSet    map[string]struct{} // distinct transactions
-	tableRows map[string]int      // "schema.table" -> row count
+	minute       time.Time
+	totalRows    int
+	eventCount   int
+	binlogBytes  int64
+	ddlCount     int
+	insertEvents int
+	updateEvents int
+	deleteEvents int
+	txnSet       map[string]struct{} // distinct transactions
+	tableRows    map[string]int      // "schema.table" -> row count
 }
 
 // NewMinuteAggregator creates a new MinuteAggregator.
@@ -37,8 +43,9 @@ func NewMinuteAggregator() *MinuteAggregator {
 // Non-row events (BEGIN, COMMIT, XID) don't have schema/table.
 // TABLE_MAP events have schema/table but RowCount is 0, so they're filtered out.
 func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
-	// Only process events that have schema, table, AND actual rows
-	if ev.Schema == "" || ev.Table == "" || ev.RowCount == 0 {
+	isDDL := ev.EventType == "DDL"
+	isRowEvent := ev.Schema != "" && ev.Table != "" && ev.RowCount > 0
+	if !isDDL && !isRowEvent {
 		return
 	}
 
@@ -53,8 +60,24 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 		a.buckets[minute] = bucket
 	}
 
+	bucket.eventCount++
+	bucket.binlogBytes += ev.BinlogBytes
+	if isDDL {
+		bucket.ddlCount++
+	}
+
 	// Accumulate row count
-	bucket.totalRows += ev.RowCount
+	if isRowEvent {
+		bucket.totalRows += ev.RowCount
+		switch ev.Operation {
+		case "INSERT":
+			bucket.insertEvents++
+		case "UPDATE":
+			bucket.updateEvents++
+		case "DELETE":
+			bucket.deleteEvents++
+		}
+	}
 
 	// Track distinct transaction
 	if ev.TxnKey != "" {
@@ -62,8 +85,10 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 	}
 
 	// Track per-table rows
-	tableKey := ev.Schema + "." + ev.Table
-	bucket.tableRows[tableKey] += ev.RowCount
+	if isRowEvent {
+		tableKey := ev.Schema + "." + ev.Table
+		bucket.tableRows[tableKey] += ev.RowCount
+	}
 }
 
 // Snapshot returns all minute buckets sorted by time ascending.
@@ -79,10 +104,13 @@ func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 		}
 
 		result = append(result, model.MinuteBucket{
-			Minute:    bucket.minute,
-			TotalRows: bucket.totalRows,
-			TxnCount:  len(bucket.txnSet),
-			TableRows: tableRowsCopy,
+			Minute:      bucket.minute,
+			TotalRows:   bucket.totalRows,
+			TxnCount:    len(bucket.txnSet),
+			EventCount:  bucket.eventCount,
+			BinlogBytes: bucket.binlogBytes,
+			DDLCount:    bucket.ddlCount,
+			TableRows:   tableRowsCopy,
 		})
 	}
 
@@ -99,17 +127,22 @@ func (a *MinuteAggregator) DrainBefore(cutoffMinute time.Time) []model.MinuteBuc
 	if len(a.buckets) == 0 {
 		return nil
 	}
-	result := make([]model.MinuteBucket, 0)
+	var result []model.MinuteBucket
 	for minute, bucket := range a.buckets {
 		if !minute.Before(cutoffMinute) {
 			continue
 		}
-		result = append(result, snapshotMinuteBucket(bucket))
+		if result == nil {
+			result = make([]model.MinuteBucket, 0, len(a.buckets))
+		}
+		result = append(result, drainMinuteBucket(bucket))
 		delete(a.buckets, minute)
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Minute.Before(result[j].Minute)
-	})
+	if len(result) > 1 {
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].Minute.Before(result[j].Minute)
+		})
+	}
 	return result
 }
 
@@ -120,7 +153,7 @@ func (a *MinuteAggregator) DrainAll() []model.MinuteBucket {
 	}
 	result := make([]model.MinuteBucket, 0, len(a.buckets))
 	for minute, bucket := range a.buckets {
-		result = append(result, snapshotMinuteBucket(bucket))
+		result = append(result, drainMinuteBucket(bucket))
 		delete(a.buckets, minute)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -140,10 +173,38 @@ func snapshotMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
 		tableRowsCopy[k] = v
 	}
 
+	return minuteBucketSnapshot(bucket, tableRowsCopy)
+}
+
+func drainMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
+	return minuteBucketSnapshot(bucket, bucket.tableRows)
+}
+
+func minuteBucketSnapshot(bucket *minuteBucket, tableRows map[string]int) model.MinuteBucket {
 	return model.MinuteBucket{
-		Minute:    bucket.minute,
-		TotalRows: bucket.totalRows,
-		TxnCount:  len(bucket.txnSet),
-		TableRows: tableRowsCopy,
+		Minute:      bucket.minute,
+		TotalRows:   bucket.totalRows,
+		TxnCount:    len(bucket.txnSet),
+		EventCount:  bucket.eventCount,
+		BinlogBytes: bucket.binlogBytes,
+		DDLCount:    bucket.ddlCount,
+		TableRows:   tableRows,
 	}
+}
+
+// OperationCounts returns per-minute operation event counts for timeseries projection.
+func (a *MinuteAggregator) OperationCounts() map[time.Time]operationMinuteStats {
+	if len(a.buckets) == 0 {
+		return nil
+	}
+	result := make(map[time.Time]operationMinuteStats, len(a.buckets))
+	for minute, bucket := range a.buckets {
+		result[minute] = operationMinuteStats{
+			insertEvents: bucket.insertEvents,
+			updateEvents: bucket.updateEvents,
+			deleteEvents: bucket.deleteEvents,
+			ddlEvents:    bucket.ddlCount,
+		}
+	}
+	return result
 }

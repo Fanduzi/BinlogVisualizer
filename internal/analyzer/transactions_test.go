@@ -1,3 +1,8 @@
+// Package analyzer verifies transaction reconstruction behavior from normalized events.
+// input: synthetic normalized events including begin, rows, and commit boundaries.
+// output: assertions for completed transaction metadata, row totals, and table maps.
+// pos: focused regression coverage for analyzer transaction assembly helpers.
+// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
@@ -278,5 +283,153 @@ func TestExplicitBeginAfterImplicitTransactionIsOk(t *testing.T) {
 	result := builder.Completed()
 	if len(result) != 2 {
 		t.Fatalf("expected 2 transactions, got %d", len(result))
+	}
+}
+
+func TestTransactionBuilderTracksBinlogCoverageAcrossTransaction(t *testing.T) {
+	builder := NewTransactionBuilder()
+	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{
+			Timestamp:     ts,
+			EventType:     "BEGIN",
+			BinlogPath:    "mysql-bin.000001",
+			PositionStart: 120,
+			PositionEnd:   140,
+			BinlogBytes:   20,
+		},
+		{
+			Timestamp:          ts.Add(time.Second),
+			EventType:          "ROWS_QUERY",
+			BinlogPath:         "mysql-bin.000001",
+			PositionStart:      140,
+			PositionEnd:        200,
+			BinlogBytes:        60,
+			QuerySQL:           "UPDATE orders SET status='done' WHERE id IN (1,2,3)",
+			QueryOriginalBytes: 48,
+		},
+		{
+			Timestamp:     ts.Add(2 * time.Second),
+			EventType:     "ROWS",
+			Schema:        "shop",
+			Table:         "orders",
+			Operation:     "UPDATE",
+			RowCount:      3,
+			BinlogPath:    "mysql-bin.000001",
+			PositionStart: 200,
+			PositionEnd:   260,
+			BinlogBytes:   60,
+		},
+		{
+			Timestamp:     ts.Add(3 * time.Second),
+			EventType:     "XID",
+			BinlogPath:    "mysql-bin.000002",
+			PositionStart: 4,
+			PositionEnd:   16,
+			BinlogBytes:   12,
+		},
+	}
+
+	for _, ev := range events {
+		if err := builder.Consume(ev); err != nil {
+			t.Fatalf("consume failed: %v", err)
+		}
+	}
+
+	result := builder.Completed()
+	if len(result) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(result))
+	}
+
+	txn := result[0]
+	if txn.BinlogBytes != 152 {
+		t.Fatalf("expected 152 binlog bytes, got %d", txn.BinlogBytes)
+	}
+	if txn.BinlogPathStart != "mysql-bin.000001" {
+		t.Fatalf("expected start binlog mysql-bin.000001, got %q", txn.BinlogPathStart)
+	}
+	if txn.BinlogPathEnd != "mysql-bin.000002" {
+		t.Fatalf("expected end binlog mysql-bin.000002, got %q", txn.BinlogPathEnd)
+	}
+	if txn.PositionStart != 120 {
+		t.Fatalf("expected start position 120, got %d", txn.PositionStart)
+	}
+	if txn.PositionEnd != 16 {
+		t.Fatalf("expected end position 16, got %d", txn.PositionEnd)
+	}
+}
+
+func TestTransactionBuilderUsesFirstAndLastAvailableBinlogMetadata(t *testing.T) {
+	builder := NewTransactionBuilder()
+	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "BEGIN"},
+		{
+			Timestamp:     ts.Add(time.Second),
+			EventType:     "ROWS",
+			Schema:        "shop",
+			Table:         "orders",
+			Operation:     "INSERT",
+			RowCount:      2,
+			BinlogPath:    "mysql-bin.000010",
+			PositionStart: 500,
+			PositionEnd:   580,
+			BinlogBytes:   80,
+		},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "COMMIT"},
+	}
+
+	for _, ev := range events {
+		if err := builder.Consume(ev); err != nil {
+			t.Fatalf("consume failed: %v", err)
+		}
+	}
+
+	result := builder.Completed()
+	if len(result) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(result))
+	}
+
+	txn := result[0]
+	if txn.BinlogPathStart != "mysql-bin.000010" {
+		t.Fatalf("expected start binlog mysql-bin.000010, got %q", txn.BinlogPathStart)
+	}
+	if txn.BinlogPathEnd != "mysql-bin.000010" {
+		t.Fatalf("expected end binlog mysql-bin.000010, got %q", txn.BinlogPathEnd)
+	}
+	if txn.PositionStart != 500 {
+		t.Fatalf("expected start position 500, got %d", txn.PositionStart)
+	}
+	if txn.PositionEnd != 580 {
+		t.Fatalf("expected end position 580, got %d", txn.PositionEnd)
+	}
+	if txn.BinlogBytes != 80 {
+		t.Fatalf("expected 80 binlog bytes, got %d", txn.BinlogBytes)
+	}
+}
+
+func BenchmarkTransactionBuilderConsumeRows(b *testing.B) {
+	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "BEGIN"},
+		{Timestamp: ts.Add(time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 2},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "UPDATE", RowCount: 1},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "ROWS", Schema: "shop", Table: "users", Operation: "DELETE", RowCount: 5},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "XID"},
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		builder := NewTransactionBuilder()
+		for _, ev := range events {
+			if err := builder.Consume(ev); err != nil {
+				b.Fatalf("consume failed: %v", err)
+			}
+		}
+		if len(builder.Completed()) != 1 {
+			b.Fatalf("expected completed transaction")
+		}
 	}
 }

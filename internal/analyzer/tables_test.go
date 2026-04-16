@@ -1,7 +1,13 @@
+// Package analyzer verifies per-table aggregation behavior for normalized events.
+// input: synthetic normalized events with schema, table, operation, and row-count metadata.
+// output: assertions for table totals, operation counters, and transaction attribution.
+// pos: focused regression coverage for analyzer table aggregation helpers.
+// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
 	"testing"
+	"time"
 
 	"binlogviz/internal/model"
 )
@@ -221,5 +227,151 @@ func TestTableAggregatorDoesNotCountTxnFromNonRowEvents(t *testing.T) {
 	// Only t1 and t4 should be counted (2 distinct transactions)
 	if stats[0].TxnCount != 2 {
 		t.Fatalf("expected 2 distinct transactions, got %d", stats[0].TxnCount)
+	}
+}
+
+func TestTableAggregatorTracksEventCountBinlogBytesAndLastChangedAt(t *testing.T) {
+	agg := NewTableAggregator()
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base,
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "INSERT",
+		RowCount:    2,
+		BinlogBytes: 30,
+		TxnKey:      "t1",
+	})
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base.Add(5 * time.Second),
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "UPDATE",
+		RowCount:    1,
+		BinlogBytes: 45,
+		TxnKey:      "t1",
+	})
+
+	stats := agg.Snapshot()
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 table, got %d", len(stats))
+	}
+
+	if stats[0].EventCount != 2 {
+		t.Fatalf("expected 2 events, got %d", stats[0].EventCount)
+	}
+	if stats[0].BinlogBytes != 75 {
+		t.Fatalf("expected 75 binlog bytes, got %d", stats[0].BinlogBytes)
+	}
+	if stats[0].DDLCount != 0 {
+		t.Fatalf("expected 0 ddl events, got %d", stats[0].DDLCount)
+	}
+	if stats[0].LastChangedAt != base.Add(5*time.Second) {
+		t.Fatalf("expected last changed at %v, got %v", base.Add(5*time.Second), stats[0].LastChangedAt)
+	}
+}
+
+func TestTableAggregatorCountsDDLEventsWithoutChangingRowTotals(t *testing.T) {
+	agg := NewTableAggregator()
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base,
+		EventType:   "DDL",
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "ALTER",
+		BinlogBytes: 25,
+	})
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base.Add(2 * time.Second),
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "INSERT",
+		RowCount:    3,
+		BinlogBytes: 60,
+		TxnKey:      "t1",
+	})
+
+	stats := agg.Snapshot()
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 table, got %d", len(stats))
+	}
+
+	if stats[0].TotalRows != 3 {
+		t.Fatalf("expected 3 total rows, got %d", stats[0].TotalRows)
+	}
+	if stats[0].EventCount != 2 {
+		t.Fatalf("expected 2 events, got %d", stats[0].EventCount)
+	}
+	if stats[0].DDLCount != 1 {
+		t.Fatalf("expected 1 ddl event, got %d", stats[0].DDLCount)
+	}
+	if stats[0].BinlogBytes != 85 {
+		t.Fatalf("expected 85 binlog bytes, got %d", stats[0].BinlogBytes)
+	}
+	if stats[0].LastChangedAt != base.Add(2*time.Second) {
+		t.Fatalf("expected last changed at %v, got %v", base.Add(2*time.Second), stats[0].LastChangedAt)
+	}
+}
+
+func TestTableAggregatorBuildsPerMinuteActivitySeries(t *testing.T) {
+	agg := NewTableAggregator()
+	base := time.Date(2026, 4, 15, 10, 0, 5, 0, time.UTC)
+
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base,
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "INSERT",
+		RowCount:    3,
+		BinlogBytes: 120,
+		TxnKey:      "t1",
+	})
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base.Add(20 * time.Second),
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "UPDATE",
+		RowCount:    2,
+		BinlogBytes: 80,
+		TxnKey:      "t1",
+	})
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base.Add(65 * time.Second),
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "DELETE",
+		RowCount:    1,
+		BinlogBytes: 50,
+		TxnKey:      "t2",
+	})
+
+	stats := agg.Snapshot()
+	if len(stats) != 1 {
+		t.Fatalf("expected 1 table, got %d", len(stats))
+	}
+
+	activity := stats[0].Activity
+	if len(activity) != 2 {
+		t.Fatalf("expected 2 activity points, got %#v", activity)
+	}
+
+	if !activity[0].Minute.Equal(time.Date(2026, 4, 15, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected first minute bucket at 10:00, got %v", activity[0].Minute)
+	}
+	if activity[0].Rows != 5 || activity[0].InsertRows != 3 || activity[0].UpdateRows != 2 || activity[0].DeleteRows != 0 {
+		t.Fatalf("unexpected first activity point: %#v", activity[0])
+	}
+	if activity[0].EventCount != 2 || activity[0].BinlogBytes != 200 {
+		t.Fatalf("unexpected first activity metadata: %#v", activity[0])
+	}
+
+	if !activity[1].Minute.Equal(time.Date(2026, 4, 15, 10, 1, 0, 0, time.UTC)) {
+		t.Fatalf("expected second minute bucket at 10:01, got %v", activity[1].Minute)
+	}
+	if activity[1].Rows != 1 || activity[1].DeleteRows != 1 {
+		t.Fatalf("unexpected second activity point: %#v", activity[1])
 	}
 }
