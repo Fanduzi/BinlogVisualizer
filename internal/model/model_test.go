@@ -1,11 +1,136 @@
+// Package model verifies shared analysis and result contracts plus derived helpers.
+// input: synthetic AnalysisResult, Transaction, and diagnostics values built by tests.
+// output: assertions for duration math, optional fields, and stable model invariants.
+// pos: regression coverage for shared result-model behavior reused across modules.
+// note: if this file changes, keep internal/model/README.md synchronized.
 package model
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestTransactionDurationUsesStartAndEnd(t *testing.T) {
 	trx := Transaction{}
 	if trx.Duration != 0 {
 		t.Fatalf("expected zero duration")
+	}
+}
+
+func TestAnalysisResultIncludesDiagnosticsDomains(t *testing.T) {
+	now := time.Unix(0, 0).UTC()
+
+	result := AnalysisResult{
+		Timeseries: Timeseries{
+			TPSSeries:         []TimeseriesPoint{{Minute: now, Value: 1}},
+			RowsSeries:        []TimeseriesPoint{{Minute: now, Value: 2}},
+			EventsSeries:      []TimeseriesPoint{{Minute: now, Value: 3}},
+			InsertEventSeries: []TimeseriesPoint{{Minute: now, Value: 4}},
+			UpdateEventSeries: []TimeseriesPoint{{Minute: now, Value: 5}},
+			DeleteEventSeries: []TimeseriesPoint{{Minute: now, Value: 6}},
+			DDLEventSeries:    []TimeseriesPoint{{Minute: now, Value: 7}},
+			BinlogBytesSeries: []TimeseriesPoint{{Minute: now, Value: 8}},
+		},
+		Diagnostics: Diagnostics{
+			FileCoverage: FileCoverage{
+				Selected: []FileCoverageItem{{BinlogPath: "binlog.000001", Reason: "covered"}},
+				Skipped:  []FileCoverageItem{{BinlogPath: "binlog.000002", Reason: "outside window"}},
+			},
+			DDLEvents: []DDLEvent{{
+				BinlogPath:    "binlog.000001",
+				PositionStart: 120,
+				PositionEnd:   240,
+				BinlogBytes:   4096,
+			}},
+			Findings: []Finding{{
+				Kind:    "ddl_hotspot",
+				Message: "DDL overlaps write spike",
+			}},
+		},
+	}
+
+	if got := len(result.Timeseries.TPSSeries); got != 1 {
+		t.Fatalf("expected 1 tps point, got %d", got)
+	}
+	if got := len(result.Diagnostics.FileCoverage.Selected); got != 1 {
+		t.Fatalf("expected 1 selected file, got %d", got)
+	}
+	if got := result.Diagnostics.DDLEvents[0].PositionStart; got != 120 {
+		t.Fatalf("expected ddl position start 120, got %d", got)
+	}
+	if got := result.Diagnostics.Findings[0].Kind; got != "ddl_hotspot" {
+		t.Fatalf("expected finding kind ddl_hotspot, got %q", got)
+	}
+}
+
+func TestTransactionCarriesPositionAndByteMetadata(t *testing.T) {
+	trx := Transaction{
+		BinlogPathStart: "mysql-bin.000001",
+		BinlogPathEnd:   "mysql-bin.000002",
+		PositionStart:   120,
+		PositionEnd:     260,
+		BinlogBytes:     4096,
+	}
+
+	if trx.BinlogPathStart != "mysql-bin.000001" {
+		t.Fatalf("expected start file mysql-bin.000001, got %q", trx.BinlogPathStart)
+	}
+	if trx.BinlogPathEnd != "mysql-bin.000002" {
+		t.Fatalf("expected end file mysql-bin.000002, got %q", trx.BinlogPathEnd)
+	}
+	if trx.PositionStart != 120 {
+		t.Fatalf("expected position start 120, got %d", trx.PositionStart)
+	}
+	if trx.PositionEnd != 260 {
+		t.Fatalf("expected position end 260, got %d", trx.PositionEnd)
+	}
+	if trx.BinlogBytes != 4096 {
+		t.Fatalf("expected binlog bytes 4096, got %d", trx.BinlogBytes)
+	}
+}
+
+func TestZeroValueModelMetadataRemainsEmpty(t *testing.T) {
+	var result AnalysisResult
+
+	if result.Timeseries.TxnSizeSeriesSummary.Buckets != nil {
+		t.Fatalf("expected zero-value txn size buckets to be nil, got %#v", result.Timeseries.TxnSizeSeriesSummary.Buckets)
+	}
+	if result.Diagnostics.FileCoverage.Selected != nil || result.Diagnostics.FileCoverage.Skipped != nil {
+		t.Fatalf("expected zero-value file coverage slices to be nil, got %#v", result.Diagnostics.FileCoverage)
+	}
+	if result.Diagnostics.DDLEvents != nil || result.Diagnostics.LargestTransactions != nil || result.Diagnostics.LongestTransactions != nil || result.Diagnostics.HotIntervals != nil || result.Diagnostics.Findings != nil {
+		t.Fatalf("expected zero-value diagnostics slices to be nil, got %#v", result.Diagnostics)
+	}
+	if len(result.Minutes) != 0 {
+		t.Fatalf("expected zero-value minutes to be empty, got %#v", result.Minutes)
+	}
+	if result.Timeseries.TPSSeries != nil || result.Timeseries.RowsSeries != nil || result.Timeseries.BinlogBytesSeries != nil {
+		t.Fatalf("expected zero-value timeseries slices to be nil, got %#v", result.Timeseries)
+	}
+
+	var coverage FileCoverageItem
+	if coverage.BinlogPath != "" || !coverage.FirstEventAt.IsZero() || !coverage.LastEventAt.IsZero() || coverage.Size != 0 {
+		t.Fatalf("expected zero-value file coverage item to be empty, got %#v", coverage)
+	}
+
+	var table TableStats
+	if table.Activity != nil {
+		t.Fatalf("expected zero-value table activity slice to be nil, got %#v", table.Activity)
+	}
+
+	var ddl DDLEvent
+	if ddl.BinlogPath != "" || !ddl.Timestamp.IsZero() || ddl.PositionStart != 0 || ddl.PositionEnd != 0 || ddl.BinlogBytes != 0 {
+		t.Fatalf("expected zero-value ddl event to be empty, got %#v", ddl)
+	}
+
+	var txn Transaction
+	if txn.BinlogPathStart != "" || txn.BinlogPathEnd != "" || txn.BinlogBytes != 0 || txn.PositionStart != 0 || txn.PositionEnd != 0 || !txn.StartTime.IsZero() || !txn.EndTime.IsZero() || txn.Duration != 0 {
+		t.Fatalf("expected zero-value transaction location metadata to be empty, got %#v", txn)
+	}
+
+	var event NormalizedEvent
+	if event.BinlogPath != "" || event.PositionStart != 0 || event.PositionEnd != 0 || event.BinlogBytes != 0 || !event.Timestamp.IsZero() {
+		t.Fatalf("expected zero-value normalized event metadata to be empty, got %#v", event)
 	}
 }
 
@@ -82,7 +207,7 @@ func TestNewQueryContextFromNormalizedNotTruncated(t *testing.T) {
 
 func TestNewQueryContextFromNormalizedTruncated(t *testing.T) {
 	// Simulate a scenario where SQL was truncated at normalize layer
-	originalBytes := 5000 // Original was 5000 bytes
+	originalBytes := 5000               // Original was 5000 bytes
 	truncatedSQL := "SELECT 'xxxxx...'" // Now only ~20 bytes after truncation
 	truncated := true
 
