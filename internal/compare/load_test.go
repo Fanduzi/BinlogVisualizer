@@ -1,3 +1,8 @@
+// Package compare verifies compare report loading and input validation behavior.
+// input: fixture JSON files, in-memory bytes, and invalid payloads.
+// output: assertions for compare-compatible report decoding and error handling.
+// pos: regression coverage for the compare input loading boundary.
+// note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 import (
@@ -283,5 +288,74 @@ func TestDecodeReportJSONAcceptsCurrentReportVersionTwo(t *testing.T) {
 	}
 	if report.Summary.TotalRows != 2 {
 		t.Fatalf("expected total rows 2, got %d", report.Summary.TotalRows)
+	}
+}
+
+func TestDecodeReportJSONPreservesTimeseriesAndDiagnostics(t *testing.T) {
+	data := []byte(`{
+  "report_version": 2,
+  "summary": {
+    "total_transactions": 1,
+    "total_rows": 2,
+    "total_events": 3,
+    "start_time": "2026-04-01T10:00:00Z",
+    "end_time": "2026-04-01T10:01:00Z",
+    "duration": "1m0s"
+  },
+  "timeseries": {
+    "tps_series": [{"minute":"2026-04-01T10:00:00Z","value":1}],
+    "rows_series": [],
+    "events_series": [],
+    "insert_event_series": [],
+    "update_event_series": [],
+    "delete_event_series": [],
+    "ddl_event_series": [],
+    "binlog_bytes_series": [],
+    "txn_size_series_summary": {"buckets":[{"label":"1k-10k","txn_count":1,"rows":2,"binlog_bytes":256}]}
+  },
+  "diagnostics": {
+    "file_coverage": {"selected":[],"skipped":[]},
+    "ddl_events": [{"timestamp":"2026-04-01T10:00:30Z","operation":"ALTER TABLE","schema":"shop","table":"orders"}],
+    "largest_transactions": [{"txn_key":"txn-1","total_rows":2,"event_count":1,"duration":"1s"}],
+    "longest_transactions": [],
+    "hot_intervals": [{"minute":"2026-04-01T10:00:00Z","total_rows":2,"txn_count":1,"event_count":1,"binlog_bytes":256,"ddl_count":0}],
+    "findings": [{"kind":"large_transaction","severity":"warning","message":"test"}]
+  },
+  "tables": [
+    {
+      "schema": "shop",
+      "table": "orders",
+      "total_rows": 2,
+      "insert_rows": 2,
+      "update_rows": 0,
+      "delete_rows": 0,
+      "txn_count": 1
+    }
+  ],
+  "transactions": [],
+  "patterns": [],
+  "minutes": [],
+  "alerts": [],
+  "warnings": 0
+}`)
+
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON returned error for expanded payload: %v", err)
+	}
+	if len(report.Timeseries.TPSSeries) != 1 {
+		t.Fatalf("expected one tps point, got %+v", report.Timeseries.TPSSeries)
+	}
+	if len(report.Diagnostics.DDLEvents) != 1 {
+		t.Fatalf("expected one ddl event, got %+v", report.Diagnostics.DDLEvents)
+	}
+	if len(report.Diagnostics.LargestTransactions) != 1 {
+		t.Fatalf("expected one largest transaction, got %+v", report.Diagnostics.LargestTransactions)
+	}
+	if len(report.Diagnostics.HotIntervals) != 1 {
+		t.Fatalf("expected one hot interval, got %+v", report.Diagnostics.HotIntervals)
+	}
+	if len(report.Diagnostics.Findings) != 1 {
+		t.Fatalf("expected one finding, got %+v", report.Diagnostics.Findings)
 	}
 }

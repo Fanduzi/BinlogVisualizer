@@ -8,10 +8,15 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 |------|----------------|
 | `model.go` | Defines trend build inputs, ordered point models, baseline deltas, table and pattern movement series, and renderer-facing result contracts. |
 | `build.go` | Validates snapshot metadata, orders trend points by `snapshot.window.start_time`, computes per-point operation totals, baseline deltas, table and pattern movement series, and aggregate insights. |
+| `patterns.go` | Builds per-pattern movement series across ordered trend points. |
+| `summary.go` | Selects capped trend findings from pattern, table, and concentration changes. |
+| `evidence.go` | Maps trend findings back to stable section anchors and evidence references. |
+| `recommendations.go` | Derives prioritized follow-up recommendations from trend findings. |
+| `drilldown.go` | Selects bounded pattern drilldowns for high-signal trend shifts. |
 | `text.go` | Renders human-readable trend output for terminal and file workflows, including pattern trend summaries. |
 | `json.go` | Serializes stable JSON trend output for automation, including `pattern_trends`. |
 | `html.go` | Renders the self-contained HTML trend report with embedded ECharts charts and a Pattern Trends section. |
-| `*_test.go` | Covers ordering, baseline delta behavior, pattern trend output, and renderer anchors/sections. |
+| `*_test.go` | Covers ordering, baseline delta behavior, findings and drilldowns, diagnostics/i18n sections, pattern trend output, and renderer anchors or sections. |
 
 ## Exports
 
@@ -34,3 +39,4 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 - Ordering is always derived from `snapshot.window.start_time`, not CLI order or snapshot creation time.
 - Baseline handling is additive: a baseline can be loaded for deltas without becoming a plotted trend point.
 - Pattern trends are first-class trend data and are available in text, JSON, and HTML output.
+- Trend summary findings, bounded drilldowns, evidence refs, and recommendations are derived inside this module from the same deterministic trend result.

@@ -1,3 +1,8 @@
+// Package trend builds ordered multi-snapshot trend results from analyze reports.
+// input: snapshot-backed compare.InputReport values plus optional baseline metadata.
+// output: deterministic Result values with rows, transactions, patterns, and insights across points.
+// pos: trend pipeline core between snapshot loading and text, JSON, or HTML rendering.
+// note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
 
 import (
@@ -62,6 +67,7 @@ func BuildResult(opts BuildOptions) (Result, error) {
 	buildTrendEvidenceRefs(&result)
 	result.Recommendations = buildTrendRecommendations(result)
 	result.PatternDrilldowns = buildTrendPatternDrilldowns(result)
+	result.DiagnosticsTrends = buildDiagnosticsTrends(sorted)
 	return result, nil
 }
 
@@ -268,4 +274,135 @@ func deltaPercent(current, baseline int) float64 {
 		return 0
 	}
 	return float64(current-baseline) / float64(baseline) * 100
+}
+
+func buildDiagnosticsTrends(points []resolvedPoint) DiagnosticsTrends {
+	return DiagnosticsTrends{
+		TPSTrends:         buildTPSTrendSeries(points),
+		DDLTrends:         buildDDLTrendSeries(points),
+		TxnSizeTrends:     buildTxnSizeTrendSeries(points),
+		TxnDurationTrends: buildTxnDurationTrendSeries(points),
+		EventMixTrends:    buildEventMixTrendSeries(points),
+		HotIntervalSummary: buildHotIntervalTrendSummary(points),
+	}
+}
+
+func buildTPSTrendSeries(points []resolvedPoint) []MetricTrendSeries {
+	series := make([]MetricTrendSeries, 0, len(points))
+	for _, point := range points {
+		var tps float64
+		if len(point.Report.Timeseries.TPSSeries) > 0 {
+			// Take the max TPS across all minutes as the representative value
+			for _, p := range point.Report.Timeseries.TPSSeries {
+				if p.Value > tps {
+					tps = p.Value
+				}
+			}
+		}
+		series = append(series, MetricTrendSeries{
+			SnapshotName: point.Meta.Name,
+			Value:        tps,
+		})
+	}
+	return series
+}
+
+func buildDDLTrendSeries(points []resolvedPoint) []MetricTrendSeries {
+	series := make([]MetricTrendSeries, 0, len(points))
+	for _, point := range points {
+		series = append(series, MetricTrendSeries{
+			SnapshotName: point.Meta.Name,
+			Value:        float64(len(point.Report.Diagnostics.DDLEvents)),
+		})
+	}
+	return series
+}
+
+func buildTxnSizeTrendSeries(points []resolvedPoint) []MetricTrendSeries {
+	series := make([]MetricTrendSeries, 0, len(points))
+	for _, point := range points {
+		var rows float64
+		if len(point.Report.Diagnostics.LargestTransactions) > 0 {
+			rows = float64(point.Report.Diagnostics.LargestTransactions[0].TotalRows)
+		}
+		series = append(series, MetricTrendSeries{
+			SnapshotName: point.Meta.Name,
+			Value:        rows,
+		})
+	}
+	return series
+}
+
+func buildTxnDurationTrendSeries(points []resolvedPoint) []MetricTrendSeries {
+	series := make([]MetricTrendSeries, 0, len(points))
+	for _, point := range points {
+		var seconds float64
+		if len(point.Report.Diagnostics.LongestTransactions) > 0 {
+			seconds = parseDurationSeconds(point.Report.Diagnostics.LongestTransactions[0].Duration)
+		}
+		series = append(series, MetricTrendSeries{
+			SnapshotName: point.Meta.Name,
+			Value:        seconds,
+		})
+	}
+	return series
+}
+
+// parseDurationSeconds parses a Go duration string (e.g. "30s", "1m0s") into seconds.
+func parseDurationSeconds(s string) float64 {
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0
+	}
+	return d.Seconds()
+}
+
+func buildEventMixTrendSeries(points []resolvedPoint) EventMixTrendSeries {
+	snapshots := make([]EventMixSnapshot, 0, len(points))
+	for _, point := range points {
+		snapshots = append(snapshots, EventMixSnapshot{
+			SnapshotName: point.Meta.Name,
+			Inserts:      sumInputSeries(point.Report.Timeseries.InsertEventSeries),
+			Updates:      sumInputSeries(point.Report.Timeseries.UpdateEventSeries),
+			Deletes:      sumInputSeries(point.Report.Timeseries.DeleteEventSeries),
+			DDL:          sumInputSeries(point.Report.Timeseries.DDLEventSeries),
+		})
+	}
+	return EventMixTrendSeries{Snapshots: snapshots}
+}
+
+func buildHotIntervalTrendSummary(points []resolvedPoint) HotIntervalTrendSummary {
+	maxHotRows := make([]MetricTrendSeries, 0, len(points))
+	hotCountSeries := make([]MetricTrendSeries, 0, len(points))
+	for _, point := range points {
+		var maxRows float64
+		for _, hi := range point.Report.Diagnostics.HotIntervals {
+			if float64(hi.TotalRows) > maxRows {
+				maxRows = float64(hi.TotalRows)
+			}
+		}
+		maxHotRows = append(maxHotRows, MetricTrendSeries{
+			SnapshotName: point.Meta.Name,
+			Value:        maxRows,
+		})
+		hotCountSeries = append(hotCountSeries, MetricTrendSeries{
+			SnapshotName: point.Meta.Name,
+			Value:        float64(len(point.Report.Diagnostics.HotIntervals)),
+		})
+	}
+	return HotIntervalTrendSummary{
+		MaxHotRows:     maxHotRows,
+		HotCountSeries: hotCountSeries,
+	}
+}
+
+func sumInputSeries(points []InputTimeseriesPoint) float64 {
+	var total float64
+	for _, p := range points {
+		total += p.Value
+	}
+	return total
 }

@@ -2,15 +2,18 @@
 // input: JSON reports emitted by `binlogviz analyze --format json`.
 // output: typed compare input structures and, later, compare result structures.
 // pos: compare pipeline boundary between JSON loading and diff/render stages.
+// note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 type InputReport struct {
-	Summary  InputSummary   `json:"summary"`
-	Tables   []InputTable   `json:"tables"`
-	Patterns []InputPattern `json:"patterns"`
-	Alerts   []InputAlert   `json:"alerts"`
-	Warnings int            `json:"warnings"`
-	Snapshot *InputSnapshot `json:"snapshot,omitempty"`
+	Summary     InputSummary     `json:"summary"`
+	Timeseries  InputTimeseries  `json:"timeseries"`
+	Diagnostics InputDiagnostics `json:"diagnostics"`
+	Tables      []InputTable     `json:"tables"`
+	Patterns    []InputPattern   `json:"patterns"`
+	Alerts      []InputAlert     `json:"alerts"`
+	Warnings    int              `json:"warnings"`
+	Snapshot    *InputSnapshot   `json:"snapshot,omitempty"`
 }
 
 type InputSummary struct {
@@ -20,6 +23,103 @@ type InputSummary struct {
 	StartTime         string `json:"start_time"`
 	EndTime           string `json:"end_time"`
 	Duration          string `json:"duration"`
+}
+
+type InputTimeseries struct {
+	TPSSeries            []InputTimeseriesPoint    `json:"tps_series"`
+	RowsSeries           []InputTimeseriesPoint    `json:"rows_series"`
+	EventsSeries         []InputTimeseriesPoint    `json:"events_series"`
+	InsertEventSeries    []InputTimeseriesPoint    `json:"insert_event_series"`
+	UpdateEventSeries    []InputTimeseriesPoint    `json:"update_event_series"`
+	DeleteEventSeries    []InputTimeseriesPoint    `json:"delete_event_series"`
+	DDLEventSeries       []InputTimeseriesPoint    `json:"ddl_event_series"`
+	BinlogBytesSeries    []InputTimeseriesPoint    `json:"binlog_bytes_series"`
+	TxnSizeSeriesSummary InputTxnSizeSeriesSummary `json:"txn_size_series_summary"`
+}
+
+type InputTimeseriesPoint struct {
+	Minute string  `json:"minute"`
+	Value  float64 `json:"value"`
+}
+
+type InputTxnSizeSeriesSummary struct {
+	Buckets []InputTxnSizeBucket `json:"buckets"`
+}
+
+type InputTxnSizeBucket struct {
+	Label       string `json:"label"`
+	TxnCount    int    `json:"txn_count"`
+	Rows        int    `json:"rows"`
+	BinlogBytes int64  `json:"binlog_bytes"`
+}
+
+type InputDiagnostics struct {
+	FileCoverage        InputFileCoverage  `json:"file_coverage"`
+	DDLEvents           []InputDDLEvent    `json:"ddl_events"`
+	LargestTransactions []InputTransaction `json:"largest_transactions"`
+	LongestTransactions []InputTransaction `json:"longest_transactions"`
+	HotIntervals        []InputHotInterval `json:"hot_intervals"`
+	Findings            []InputFinding     `json:"findings"`
+}
+
+type InputFileCoverage struct {
+	Selected []InputFileCoverageItem `json:"selected"`
+	Skipped  []InputFileCoverageItem `json:"skipped"`
+}
+
+type InputFileCoverageItem struct {
+	BinlogPath   string `json:"binlog_path"`
+	Reason       string `json:"reason,omitempty"`
+	Size         int64  `json:"size"`
+	FirstEventAt string `json:"first_event_at,omitempty"`
+	LastEventAt  string `json:"last_event_at,omitempty"`
+}
+
+type InputDDLEvent struct {
+	BinlogPath    string `json:"binlog_path,omitempty"`
+	Timestamp     string `json:"timestamp"`
+	Schema        string `json:"schema,omitempty"`
+	Table         string `json:"table,omitempty"`
+	Operation     string `json:"operation"`
+	Object        string `json:"object,omitempty"`
+	Statement     string `json:"statement,omitempty"`
+	PositionStart int64  `json:"position_start,omitempty"`
+	PositionEnd   int64  `json:"position_end,omitempty"`
+	BinlogBytes   int64  `json:"binlog_bytes,omitempty"`
+}
+
+type InputTransaction struct {
+	TxnKey             string         `json:"txn_key"`
+	StartTime          string         `json:"start_time"`
+	EndTime            string         `json:"end_time"`
+	Duration           string         `json:"duration"`
+	TotalRows          int            `json:"total_rows"`
+	EventCount         int            `json:"event_count"`
+	Tables             map[string]int `json:"tables,omitempty"`
+	Operations         map[string]int `json:"operations,omitempty"`
+	QuerySummary       string         `json:"query_summary,omitempty"`
+	QuerySQL           string         `json:"query_sql,omitempty"`
+	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
+	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
+}
+
+type InputHotInterval struct {
+	Minute      string         `json:"minute"`
+	TotalRows   int            `json:"total_rows"`
+	TxnCount    int            `json:"txn_count"`
+	EventCount  int            `json:"event_count"`
+	BinlogBytes int64          `json:"binlog_bytes"`
+	DDLCount    int            `json:"ddl_count"`
+	TableRows   map[string]int `json:"table_rows,omitempty"`
+}
+
+type InputFinding struct {
+	Kind         string   `json:"kind"`
+	Severity     string   `json:"severity"`
+	Message      string   `json:"message"`
+	TxnKey       string   `json:"txn_key,omitempty"`
+	Minute       string   `json:"minute,omitempty"`
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
 }
 
 type InputTable struct {
@@ -85,18 +185,95 @@ type InputSnapshotFilters struct {
 }
 
 type CompareResult struct {
-	Summary           SummaryDelta      `json:"summary"`
-	KeyFindings       []CompareFinding  `json:"key_findings"`
-	Recommendations   []Recommendation  `json:"recommendations"`
-	TableChanges      []TableChange     `json:"table_changes"`
-	PatternChanges    []PatternChange   `json:"pattern_changes"`
-	OperationMix      []OperationDelta  `json:"operation_mix"`
-	AlertChanges      AlertDelta        `json:"alert_changes"`
+	Summary           SummaryDelta       `json:"summary"`
+	KeyFindings       []CompareFinding   `json:"key_findings"`
+	Recommendations   []Recommendation   `json:"recommendations"`
+	TableChanges      []TableChange      `json:"table_changes"`
+	PatternChanges    []PatternChange    `json:"pattern_changes"`
+	OperationMix      []OperationDelta   `json:"operation_mix"`
+	AlertChanges      AlertDelta         `json:"alert_changes"`
 	PatternDrilldowns []PatternDrilldown `json:"pattern_drilldowns"`
-	CurrentLabel      string            `json:"current_label"`
-	BaselineLabel     string            `json:"baseline_label"`
-	CurrentSnapshot   *InputSnapshot    `json:"current_snapshot,omitempty"`
-	BaselineSnapshot  *InputSnapshot    `json:"baseline_snapshot,omitempty"`
+	DiagnosticsDelta  DiagnosticsDelta   `json:"diagnostics_delta"`
+	CurrentLabel      string             `json:"current_label"`
+	BaselineLabel     string             `json:"baseline_label"`
+	CurrentSnapshot   *InputSnapshot     `json:"current_snapshot,omitempty"`
+	BaselineSnapshot  *InputSnapshot     `json:"baseline_snapshot,omitempty"`
+}
+
+// DiagnosticsDelta holds DBA-oriented diagnostic comparison results.
+type DiagnosticsDelta struct {
+	DDLChanges      DDLChangeDelta      `json:"ddl_changes"`
+	TxnDiagnostics  TxnDiagnosticDelta  `json:"txn_diagnostics"`
+	HotIntervalDelta HotIntervalDelta   `json:"hot_interval_delta"`
+	EventMixDelta   EventMixDelta       `json:"event_mix_delta"`
+}
+
+// DDLChangeDelta compares DDL event counts and details between windows.
+type DDLChangeDelta struct {
+	BaselineCount int            `json:"baseline_count"`
+	CurrentCount  int            `json:"current_count"`
+	Delta         int            `json:"delta"`
+	Added         []DDLEventItem `json:"added"`
+	Removed       []DDLEventItem `json:"removed"`
+}
+
+// DDLEventItem is a flat DDL event summary for compare output.
+type DDLEventItem struct {
+	Timestamp string `json:"timestamp"`
+	Schema    string `json:"schema"`
+	Table     string `json:"table"`
+	Operation string `json:"operation"`
+	Statement string `json:"statement,omitempty"`
+}
+
+// TxnDiagnosticDelta compares largest/longest transaction stats between windows.
+type TxnDiagnosticDelta struct {
+	LargestTxnDelta  TxnSizeCompare     `json:"largest_txn_delta"`
+	LongestTxnDelta  TxnDurationCompare `json:"longest_txn_delta"`
+}
+
+// TxnSizeCompare holds baseline/current/delta for a single transaction metric (rows).
+type TxnSizeCompare struct {
+	BaselineRows  int    `json:"baseline_rows"`
+	CurrentRows   int    `json:"current_rows"`
+	DeltaRows     int    `json:"delta_rows"`
+	BaselineKey   string `json:"baseline_key,omitempty"`
+	CurrentKey    string `json:"current_key,omitempty"`
+}
+
+// TxnDurationCompare holds baseline/current/delta for transaction duration.
+type TxnDurationCompare struct {
+	BaselineDuration string `json:"baseline_duration"`
+	CurrentDuration  string `json:"current_duration"`
+	BaselineKey      string `json:"baseline_key,omitempty"`
+	CurrentKey       string `json:"current_key,omitempty"`
+}
+
+// HotIntervalDelta compares hot interval summaries between windows.
+type HotIntervalDelta struct {
+	BaselineTopRows int                `json:"baseline_top_rows"`
+	CurrentTopRows  int                `json:"current_top_rows"`
+	DeltaTopRows    int                `json:"delta_top_rows"`
+	BaselineCount   int                `json:"baseline_count"`
+	CurrentCount    int                `json:"current_count"`
+	TopItems        []HotIntervalItem  `json:"top_items"`
+}
+
+// HotIntervalItem is a flat hot interval summary for compare output.
+type HotIntervalItem struct {
+	Minute      string `json:"minute"`
+	Source      string `json:"source"` // "baseline" or "current"
+	TotalRows   int    `json:"total_rows"`
+	TxnCount    int    `json:"txn_count"`
+	BinlogBytes int64  `json:"binlog_bytes"`
+}
+
+// EventMixDelta compares the event type distribution between windows.
+type EventMixDelta struct {
+	InsertDelta int `json:"insert_delta"`
+	UpdateDelta int `json:"update_delta"`
+	DeleteDelta int `json:"delete_delta"`
+	DDLDelta    int `json:"ddl_delta"`
 }
 
 type Recommendation struct {
