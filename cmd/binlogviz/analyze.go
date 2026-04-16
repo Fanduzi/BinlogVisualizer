@@ -6,6 +6,7 @@
 package binlogviz
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -42,6 +43,11 @@ type aggregateProgress struct {
 	offsets      []int64
 	statusWriter io.Writer
 }
+
+var (
+	errStopFirstTimestampScan   = errors.New("stop after first binlog timestamp")
+	inspectFirstBinlogTimestamp = readFirstBinlogTimestamp
+)
 
 // analyzeOptions holds the parsed CLI flags for the analyze command.
 type analyzeOptions struct {
@@ -104,7 +110,7 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
-			paths, discovered, err := resolveAnalyzePaths(args, opts)
+			paths, discovered, fileCoverage, err := resolveAnalyzePaths(args, opts)
 			if err != nil {
 				return err
 			}
@@ -122,7 +128,7 @@ func newAnalyzeCommand() *cobra.Command {
 			snapshotMeta := buildSnapshotMetadata(paths, opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
-			return runAnalysisWithReportAndSnapshotOptions(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, opts.snapshotName, opts.snapshotDir)
+			return runAnalysisWithReportAndSnapshotOptions(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir)
 		},
 	}
 
@@ -152,28 +158,32 @@ func newAnalyzeCommand() *cobra.Command {
 	return cmd
 }
 
-func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, error) {
+func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, model.FileCoverage, error) {
 	hasArgs := len(args) > 0
 	hasFromDir := opts.fromDir != ""
 	hasPrefix := opts.prefix != ""
 
 	if hasArgs && (hasFromDir || hasPrefix) {
-		return nil, false, fmt.Errorf("%s", i18n.T("error.combineArgsWithDir"))
+		return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.combineArgsWithDir"))
 	}
 	if hasFromDir != hasPrefix {
-		return nil, false, fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
+		return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
 	}
 	if hasArgs {
-		return args, false, nil
+		return args, false, model.FileCoverage{}, nil
 	}
 	if hasFromDir {
-		paths, err := discoverBinlogPaths(opts.fromDir, opts.prefix)
+		startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
 		if err != nil {
-			return nil, false, err
+			return nil, false, model.FileCoverage{}, err
 		}
-		return paths, true, nil
+		plan, err := discoverBinlogPlanInWindow(opts.fromDir, opts.prefix, startTime, endTime)
+		if err != nil {
+			return nil, false, model.FileCoverage{}, err
+		}
+		return plan.Paths, true, plan.FileCoverage, nil
 	}
-	return nil, false, fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
+	return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
 }
 
 func discoverBinlogPaths(dir, prefix string) ([]string, error) {
@@ -205,6 +215,35 @@ func discoverBinlogPaths(dir, prefix string) ([]string, error) {
 	return candidates, nil
 }
 
+func discoverBinlogPathsInWindow(dir, prefix string, startTime, endTime time.Time) ([]string, error) {
+	plan, err := discoverBinlogPlanInWindow(dir, prefix, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	return plan.Paths, nil
+}
+
+func discoverBinlogPlanInWindow(dir, prefix string, startTime, endTime time.Time) (analyzePlan, error) {
+	paths, err := discoverBinlogPaths(dir, prefix)
+	if err != nil {
+		return analyzePlan{}, err
+	}
+	coarsePaths, err := coarseFilterPathsByModTime(paths, startTime, endTime)
+	if err != nil {
+		return analyzePlan{}, err
+	}
+	if len(coarsePaths) == 0 {
+		return analyzePlan{Paths: coarsePaths, WorkerCount: 1}, nil
+	}
+
+	workers := defaultAnalyzeProbeWorkers(len(coarsePaths))
+	probes, err := probeAnalyzePaths(coarsePaths, workers)
+	if err != nil {
+		return analyzePlan{}, err
+	}
+	return buildAnalyzePlan(probes, startTime, endTime, workers), nil
+}
+
 func sortBinlogPaths(paths []string, prefix string) {
 	sort.SliceStable(paths, func(i, j int) bool {
 		leftBase := filepath.Base(paths[i])
@@ -227,6 +266,27 @@ func isDigits(value string) bool {
 		}
 	}
 	return value != ""
+}
+
+func readFirstBinlogTimestamp(path string) (time.Time, error) {
+	parser := binlog.NewParser()
+	progressParser, ok := parser.(binlog.ProgressParser)
+	if !ok {
+		return time.Time{}, nil
+	}
+
+	var firstTimestamp time.Time
+	err := progressParser.ParseFilesWithProgress([]string{path}, nil, func(raw binlog.RawEvent) error {
+		if raw.Timestamp.IsZero() {
+			return nil
+		}
+		firstTimestamp = raw.Timestamp.UTC()
+		return errStopFirstTimestampScan
+	})
+	if err != nil && !errors.Is(err, errStopFirstTimestampScan) {
+		return time.Time{}, err
+	}
+	return firstTimestamp, nil
 }
 
 func printResolvedPaths(out io.Writer, paths []string) {
@@ -255,11 +315,11 @@ func runAnalysis(paths []string, opts analyzer.Options, format string) error {
 }
 
 func runAnalysisWithReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string) error {
-	return runAnalysisWithReportAndSnapshotOptions(paths, opts, reportOpts, format, nil, "", "")
+	return runAnalysisWithReportAndSnapshotOptions(paths, opts, reportOpts, format, nil, model.FileCoverage{}, "", "")
 }
 
-func runAnalysisWithReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, snapshotName, snapshotDir string) error {
-	return runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths, opts, reportOpts, format, snapshotMeta, snapshotName, snapshotDir, binlog.NewParser(), "", nil)
+func runAnalysisWithReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string) error {
+	return runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths, opts, reportOpts, format, snapshotMeta, fileCoverage, snapshotName, snapshotDir, binlog.NewParser(), "", nil)
 }
 
 // runAnalysisWithParser executes the analysis pipeline with an injected parser.
@@ -273,10 +333,10 @@ func runAnalysisWithParserAndTempDir(paths []string, opts analyzer.Options, form
 }
 
 func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	return runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths, opts, reportOpts, format, nil, "", "", parser, tempRoot, onStoreCreated)
+	return runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths, opts, reportOpts, format, nil, model.FileCoverage{}, "", "", parser, tempRoot, onStoreCreated)
 }
 
-func runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, snapshotName, snapshotDir string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
+func runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
 	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return analyzer.NewWithStore(opts, store)
 	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
@@ -285,7 +345,7 @@ func runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths []string, 
 			onStoreCreated(path)
 		}
 		return store, cleanup, path, err
-	}, tempRoot, snapshotMeta, snapshotName, snapshotDir)
+	}, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir)
 }
 
 func totalInputBytes(paths []string) (int64, []int64) {
@@ -384,7 +444,7 @@ func runAnalysisStreamingWithDeps(
 	newTempStore tempStoreFactory,
 	tempRoot string,
 ) error {
-	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, normalize, newAnalyzer, newTempStore, tempRoot, nil, "", "")
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, normalize, newAnalyzer, newTempStore, tempRoot, nil, model.FileCoverage{}, "", "")
 }
 
 func runAnalysisStreamingWithSnapshotDeps(
@@ -398,6 +458,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	newTempStore tempStoreFactory,
 	tempRoot string,
 	snapshotMeta *model.Snapshot,
+	fileCoverage model.FileCoverage,
 	snapshotName string,
 	snapshotDir string,
 ) error {
@@ -449,6 +510,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
+	if hasFileCoverage(fileCoverage) {
+		result.Diagnostics.FileCoverage = fileCoverage
+	}
 
 	switch format {
 	case "json":
@@ -466,6 +530,10 @@ func runAnalysisStreamingWithSnapshotDeps(
 	default:
 		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
+}
+
+func hasFileCoverage(fileCoverage model.FileCoverage) bool {
+	return len(fileCoverage.Selected) > 0 || len(fileCoverage.Skipped) > 0
 }
 
 func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {
