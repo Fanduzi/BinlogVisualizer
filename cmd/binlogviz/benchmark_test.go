@@ -6,6 +6,7 @@
 package binlogviz
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -38,6 +39,59 @@ func BenchmarkStreamingSpikeHeavy(b *testing.B) {
 	opts := analyzer.DefaultOptions()
 	opts.DetectSpikes = true
 	benchmarkStreamingPipeline(b, []string{"spike-heavy"}, &mockParser{events: events}, opts)
+}
+
+func BenchmarkAnalyzePlanNarrowWindowFewHits(b *testing.B) {
+	base := time.Date(2026, 4, 16, 8, 0, 0, 0, time.UTC)
+	probes := makeSyntheticFileProbes(base, 240, time.Hour)
+	start := base.Add(91 * time.Hour)
+	end := base.Add(93*time.Hour + 30*time.Minute)
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		plan := buildAnalyzePlan(probes, start, end, defaultAnalyzeProbeWorkers(len(probes)))
+		if len(plan.Paths) != 3 {
+			b.Fatalf("expected 3 paths in narrow plan, got %d", len(plan.Paths))
+		}
+	}
+}
+
+func BenchmarkAnalyzePlanWindowSpanningManyFiles(b *testing.B) {
+	base := time.Date(2026, 4, 16, 8, 0, 0, 0, time.UTC)
+	probes := makeSyntheticFileProbes(base, 240, time.Hour)
+	start := base.Add(40*time.Hour + 15*time.Minute)
+	end := base.Add(160*time.Hour + 45*time.Minute)
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		plan := buildAnalyzePlan(probes, start, end, defaultAnalyzeProbeWorkers(len(probes)))
+		if len(plan.Paths) != 121 {
+			b.Fatalf("expected 121 paths in spanning plan, got %d", len(plan.Paths))
+		}
+	}
+}
+
+func BenchmarkStreamingLargeTransactions(b *testing.B) {
+	base := time.Date(2026, 3, 17, 17, 0, 0, 0, time.UTC)
+	events := makeSyntheticTransactionEvents(base, 250, 1200)
+	opts := analyzer.DefaultOptions()
+	opts.LargeTxnRows = 500
+	benchmarkStreamingPipeline(b, []string{"large-transactions"}, &mockParser{events: events}, opts)
+}
+
+func BenchmarkStreamingDDLHeavy(b *testing.B) {
+	base := time.Date(2026, 3, 17, 18, 0, 0, 0, time.UTC)
+	events := makeDDLHeavyEvents(base, 5000)
+	benchmarkStreamingPipeline(b, []string{"ddl-heavy"}, &mockParser{events: events}, analyzer.DefaultOptions())
+}
+
+func BenchmarkStreamingSyntheticLargeInputMix(b *testing.B) {
+	base := time.Date(2026, 3, 17, 19, 0, 0, 0, time.UTC)
+	events := makeSyntheticTransactionEvents(base, 5000, 120)
+	events = append(events, makeDDLHeavyEvents(base.Add(24*time.Hour), 1000)...)
+	opts := analyzer.DefaultOptions()
+	opts.DetectSpikes = true
+	benchmarkStreamingPipeline(b, []string{"synthetic-large-input-mix"}, &mockParser{events: events}, opts)
 }
 
 func benchmarkStreamingPipeline(b *testing.B, paths []string, parser binlog.Parser, opts analyzer.Options) {
@@ -116,6 +170,32 @@ func makeSpikeHeavyEvents(base time.Time, minuteCount int) []binlog.RawEvent {
 				RowCount:  1,
 			})
 		}
+	}
+	return events
+}
+
+func makeSyntheticFileProbes(base time.Time, fileCount int, fileSpan time.Duration) []binlog.FileProbe {
+	probes := make([]binlog.FileProbe, 0, fileCount)
+	for i := 0; i < fileCount; i++ {
+		first := base.Add(time.Duration(i) * fileSpan)
+		probes = append(probes, binlog.FileProbe{
+			BinlogPath:   filepath.Join("/synthetic", fmt.Sprintf("mysql-bin.%06d", i+1)),
+			FirstEventAt: first,
+			LastEventAt:  first.Add(fileSpan - time.Nanosecond),
+		})
+	}
+	return probes
+}
+
+func makeDDLHeavyEvents(base time.Time, ddlCount int) []binlog.RawEvent {
+	events := make([]binlog.RawEvent, 0, ddlCount)
+	for i := 0; i < ddlCount; i++ {
+		events = append(events, binlog.RawEvent{
+			Timestamp: base.Add(time.Duration(i) * time.Second),
+			EventType: "QUERY_EVENT",
+			Schema:    "bench",
+			Query:     "ALTER TABLE bench.orders ADD COLUMN marker INT",
+		})
 	}
 	return events
 }
