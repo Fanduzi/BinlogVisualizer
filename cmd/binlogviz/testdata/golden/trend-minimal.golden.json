@@ -322,5 +322,118 @@
       ]
     }
   ],
-  "pattern_drilldowns": []
+  "pattern_drilldowns": [],
+  "diagnostics_trends": {
+    "tps_trends": [
+      {
+        "snapshot_name": "earlier",
+        "value": 0
+      },
+      {
+        "snapshot_name": "middle",
+        "value": 0
+      },
+      {
+        "snapshot_name": "later",
+        "value": 0
+      }
+    ],
+    "ddl_trends": [
+      {
+        "snapshot_name": "earlier",
+        "value": 0
+      },
+      {
+        "snapshot_name": "middle",
+        "value": 0
+      },
+      {
+        "snapshot_name": "later",
+        "value": 0
+      }
+    ],
+    "txn_size_trends": [
+      {
+        "snapshot_name": "earlier",
+        "value": 0
+      },
+      {
+        "snapshot_name": "middle",
+        "value": 0
+      },
+      {
+        "snapshot_name": "later",
+        "value": 0
+      }
+    ],
+    "txn_duration_trends": [
+      {
+        "snapshot_name": "earlier",
+        "value": 0
+      },
+      {
+        "snapshot_name": "middle",
+        "value": 0
+      },
+      {
+        "snapshot_name": "later",
+        "value": 0
+      }
+    ],
+    "event_mix_trends": {
+      "snapshots": [
+        {
+          "snapshot_name": "earlier",
+          "inserts": 0,
+          "updates": 0,
+          "deletes": 0,
+          "ddl": 0
+        },
+        {
+          "snapshot_name": "middle",
+          "inserts": 0,
+          "updates": 0,
+          "deletes": 0,
+          "ddl": 0
+        },
+        {
+          "snapshot_name": "later",
+          "inserts": 0,
+          "updates": 0,
+          "deletes": 0,
+          "ddl": 0
+        }
+      ]
+    },
+    "hot_interval_summary": {
+      "max_hot_rows": [
+        {
+          "snapshot_name": "earlier",
+          "value": 0
+        },
+        {
+          "snapshot_name": "middle",
+          "value": 0
+        },
+        {
+          "snapshot_name": "later",
+          "value": 0
+        }
+      ],
+      "hot_count_series": [
+        {
+          "snapshot_name": "earlier",
+          "value": 0
+        },
+        {
+          "snapshot_name": "middle",
+          "value": 0
+        },
+        {
+          "snapshot_name": "later",
+          "value": 0
+        }
+      ]
+    }
+  }
 }

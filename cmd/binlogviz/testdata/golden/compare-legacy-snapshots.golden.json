@@ -140,6 +140,40 @@
     ]
   },
   "pattern_drilldowns": [],
+  "diagnostics_delta": {
+    "ddl_changes": {
+      "baseline_count": 0,
+      "current_count": 0,
+      "delta": 0,
+      "added": null,
+      "removed": null
+    },
+    "txn_diagnostics": {
+      "largest_txn_delta": {
+        "baseline_rows": 0,
+        "current_rows": 0,
+        "delta_rows": 0
+      },
+      "longest_txn_delta": {
+        "baseline_duration": "",
+        "current_duration": ""
+      }
+    },
+    "hot_interval_delta": {
+      "baseline_top_rows": 0,
+      "current_top_rows": 0,
+      "delta_top_rows": 0,
+      "baseline_count": 0,
+      "current_count": 0,
+      "top_items": null
+    },
+    "event_mix_delta": {
+      "insert_delta": 0,
+      "update_delta": 0,
+      "delete_delta": 0,
+      "ddl_delta": 0
+    }
+  },
   "current_label": "current",
   "baseline_label": "baseline"
 }

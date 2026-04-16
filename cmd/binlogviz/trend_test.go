@@ -1,3 +1,8 @@
+// Package binlogviz verifies trend command registration and output behavior.
+// input: Cobra root and trend commands plus fixture-backed analyze reports built by tests.
+// output: assertions for trend CLI wiring, snapshot handling, and user-facing output.
+// pos: command-level regression coverage for the trend workflow.
+// note: if this file changes, keep cmd/binlogviz/README.md synchronized.
 package binlogviz
 
 import (
@@ -414,7 +419,7 @@ func TestTrendCommandHTMLOutputContainsTrendCharts(t *testing.T) {
 	}))
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"trend", "alpha", "beta", "--snapshot-dir", dir, "--format", "html"})
+	cmd.SetArgs([]string{"--lang", "en", "trend", "alpha", "beta", "--snapshot-dir", dir, "--format", "html"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 	output := &bytes.Buffer{}
