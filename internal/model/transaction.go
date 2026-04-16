@@ -1,3 +1,8 @@
+// Package model defines reconstructed transaction contracts and bounded SQL context.
+// input: transaction-boundary events plus optional normalized SQL metadata from binlog parsing.
+// output: Transaction and QueryContext types reused by analyzer, report, and diagnostics code.
+// pos: shared transaction model layer between analyzer reconstruction and renderer output.
+// note: if this file changes, keep internal/model/README.md synchronized.
 package model
 
 import "time"
@@ -22,14 +27,19 @@ type QueryContext struct {
 
 // Transaction represents a reconstructed database transaction.
 type Transaction struct {
-	TxnKey       string
-	StartTime    time.Time
-	EndTime      time.Time
-	Duration     time.Duration
-	TotalRows    int
-	EventCount   int
-	Tables       map[string]int
-	Operations   map[string]int
-	QuerySummary string       // Bounded summary of triggering SQL (max 160 chars)
-	QueryContext *QueryContext // Full context if available, nil otherwise
+	TxnKey          string
+	StartTime       time.Time
+	EndTime         time.Time
+	Duration        time.Duration
+	TotalRows       int
+	EventCount      int
+	BinlogBytes     int64
+	BinlogPathStart string
+	BinlogPathEnd   string
+	PositionStart   int64
+	PositionEnd     int64
+	Tables          map[string]int
+	Operations      map[string]int
+	QuerySummary    string        // Bounded summary of triggering SQL (max 160 chars)
+	QueryContext    *QueryContext // Full context if available, nil otherwise
 }
