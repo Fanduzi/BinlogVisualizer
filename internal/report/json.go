@@ -21,6 +21,8 @@ const currentReportVersion = 2
 type jsonAnalysisResult struct {
 	ReportVersion     int                    `json:"report_version"`
 	Summary           jsonSummary            `json:"summary"`
+	Timeseries        jsonTimeseries         `json:"timeseries"`
+	Diagnostics       jsonDiagnostics        `json:"diagnostics"`
 	Tables            []jsonTableStats       `json:"tables"`
 	Transactions      []jsonTransaction      `json:"transactions"`
 	Patterns          []jsonPatternStats     `json:"patterns"`
@@ -40,6 +42,98 @@ type jsonSummary struct {
 	Duration          string `json:"duration"`
 }
 
+type jsonTimeseries struct {
+	TPSSeries            []jsonTimeseriesPoint    `json:"tps_series"`
+	RowsSeries           []jsonTimeseriesPoint    `json:"rows_series"`
+	EventsSeries         []jsonTimeseriesPoint    `json:"events_series"`
+	InsertEventSeries    []jsonTimeseriesPoint    `json:"insert_event_series"`
+	UpdateEventSeries    []jsonTimeseriesPoint    `json:"update_event_series"`
+	DeleteEventSeries    []jsonTimeseriesPoint    `json:"delete_event_series"`
+	DDLEventSeries       []jsonTimeseriesPoint    `json:"ddl_event_series"`
+	BinlogBytesSeries    []jsonTimeseriesPoint    `json:"binlog_bytes_series"`
+	TxnSizeSeriesSummary jsonTxnSizeSeriesSummary `json:"txn_size_series_summary"`
+}
+
+type jsonTimeseriesPoint struct {
+	Minute string  `json:"minute"`
+	Value  float64 `json:"value"`
+}
+
+type jsonTxnSizeSeriesSummary struct {
+	Buckets []jsonTxnSizeBucket `json:"buckets"`
+}
+
+type jsonTxnSizeBucket struct {
+	Label       string `json:"label"`
+	TxnCount    int    `json:"txn_count"`
+	Rows        int    `json:"rows"`
+	BinlogBytes int64  `json:"binlog_bytes"`
+}
+
+type jsonDiagnostics struct {
+	FileCoverage        jsonFileCoverage  `json:"file_coverage"`
+	DDLEvents           []jsonDDLEvent    `json:"ddl_events"`
+	LargestTransactions []jsonTransaction `json:"largest_transactions"`
+	LongestTransactions []jsonTransaction `json:"longest_transactions"`
+	WidestTransactions  []jsonTransaction `json:"widest_transactions"`
+	FileSegments        []jsonFileSegment `json:"file_segments"`
+	HotIntervals        []jsonHotInterval `json:"hot_intervals"`
+	Findings            []jsonFinding     `json:"findings"`
+}
+
+type jsonFileCoverage struct {
+	Selected []jsonFileCoverageItem `json:"selected"`
+	Skipped  []jsonFileCoverageItem `json:"skipped"`
+}
+
+type jsonFileCoverageItem struct {
+	BinlogPath   string `json:"binlog_path"`
+	Reason       string `json:"reason,omitempty"`
+	Size         int64  `json:"size"`
+	FirstEventAt string `json:"first_event_at,omitempty"`
+	LastEventAt  string `json:"last_event_at,omitempty"`
+}
+
+type jsonDDLEvent struct {
+	BinlogPath    string `json:"binlog_path,omitempty"`
+	Timestamp     string `json:"timestamp"`
+	Schema        string `json:"schema,omitempty"`
+	Table         string `json:"table,omitempty"`
+	Operation     string `json:"operation"`
+	Object        string `json:"object,omitempty"`
+	Statement     string `json:"statement,omitempty"`
+	PositionStart int64  `json:"position_start,omitempty"`
+	PositionEnd   int64  `json:"position_end,omitempty"`
+	BinlogBytes   int64  `json:"binlog_bytes,omitempty"`
+}
+
+type jsonHotInterval struct {
+	Minute      string         `json:"minute"`
+	TotalRows   int            `json:"total_rows"`
+	TxnCount    int            `json:"txn_count"`
+	EventCount  int            `json:"event_count"`
+	BinlogBytes int64          `json:"binlog_bytes"`
+	DDLCount    int            `json:"ddl_count"`
+	TableRows   map[string]int `json:"table_rows,omitempty"`
+}
+
+type jsonFinding struct {
+	Kind         string   `json:"kind"`
+	Severity     string   `json:"severity"`
+	Message      string   `json:"message"`
+	TxnKey       string   `json:"txn_key,omitempty"`
+	Minute       string   `json:"minute,omitempty"`
+	EvidenceRefs []string `json:"evidence_refs,omitempty"`
+}
+
+type jsonFileSegment struct {
+	StartTime   string `json:"start_time"`
+	EndTime     string `json:"end_time"`
+	BinlogBytes int64  `json:"binlog_bytes"`
+	Rows        int    `json:"rows"`
+	Events      int    `json:"events"`
+}
+
 type jsonTableStats struct {
 	Schema     string `json:"schema"`
 	Table      string `json:"table"`
@@ -57,6 +151,11 @@ type jsonTransaction struct {
 	Duration           string         `json:"duration"`
 	TotalRows          int            `json:"total_rows"`
 	EventCount         int            `json:"event_count"`
+	BinlogBytes        int64          `json:"binlog_bytes"`
+	BinlogFileStart    string         `json:"binlog_file_start,omitempty"`
+	BinlogFileEnd      string         `json:"binlog_file_end,omitempty"`
+	PosStart           int64          `json:"pos_start,omitempty"`
+	PosEnd             int64          `json:"pos_end,omitempty"`
 	Tables             map[string]int `json:"tables,omitempty"`
 	Operations         map[string]int `json:"operations,omitempty"`
 	QuerySummary       string         `json:"query_summary,omitempty"`
@@ -125,14 +224,14 @@ type jsonSnapshotFilters struct {
 }
 
 type jsonPatternDrilldown struct {
-	PatternKey               string                    `json:"pattern_key"`
-	Label                    string                    `json:"label"`
-	WhySelected              string                    `json:"why_selected"`
-	ShareOfRows              float64                   `json:"share_of_rows"`
-	ShareOfTxns              float64                   `json:"share_of_txns"`
-	AvgRowsPerTxn            float64                   `json:"avg_rows_per_txn"`
-	SignalFlags              jsonPatternSignalFlags     `json:"signal_flags"`
-	BusiestMinutes           []jsonPeakMinute          `json:"busiest_minutes"`
+	PatternKey                 string                  `json:"pattern_key"`
+	Label                      string                  `json:"label"`
+	WhySelected                string                  `json:"why_selected"`
+	ShareOfRows                float64                 `json:"share_of_rows"`
+	ShareOfTxns                float64                 `json:"share_of_txns"`
+	AvgRowsPerTxn              float64                 `json:"avg_rows_per_txn"`
+	SignalFlags                jsonPatternSignalFlags  `json:"signal_flags"`
+	BusiestMinutes             []jsonPeakMinute        `json:"busiest_minutes"`
 	RepresentativeTransactions []jsonRepresentativeTxn `json:"representative_transactions"`
 }
 
@@ -198,6 +297,8 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 	return jsonAnalysisResult{
 		ReportVersion:     currentReportVersion,
 		Summary:           convertSummary(result.Summary),
+		Timeseries:        convertTimeseries(result.Timeseries),
+		Diagnostics:       convertDiagnostics(result.Diagnostics, opts.SQLContextMode),
 		Tables:            convertTables(result.Tables),
 		Transactions:      convertTransactions(result.Transactions, opts.SQLContextMode),
 		Patterns:          convertPatterns(result.Patterns),
@@ -207,6 +308,169 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		PatternDrilldowns: convertDrilldowns(result.PatternDrilldowns),
 		Snapshot:          convertSnapshot(result.Snapshot),
 	}
+}
+
+func convertTimeseries(ts model.Timeseries) jsonTimeseries {
+	return jsonTimeseries{
+		TPSSeries:            convertTimeseriesPoints(ts.TPSSeries),
+		RowsSeries:           convertTimeseriesPoints(ts.RowsSeries),
+		EventsSeries:         convertTimeseriesPoints(ts.EventsSeries),
+		InsertEventSeries:    convertTimeseriesPoints(ts.InsertEventSeries),
+		UpdateEventSeries:    convertTimeseriesPoints(ts.UpdateEventSeries),
+		DeleteEventSeries:    convertTimeseriesPoints(ts.DeleteEventSeries),
+		DDLEventSeries:       convertTimeseriesPoints(ts.DDLEventSeries),
+		BinlogBytesSeries:    convertTimeseriesPoints(ts.BinlogBytesSeries),
+		TxnSizeSeriesSummary: convertTxnSizeSeriesSummary(ts.TxnSizeSeriesSummary),
+	}
+}
+
+func convertTimeseriesPoints(points []model.TimeseriesPoint) []jsonTimeseriesPoint {
+	if points == nil {
+		return []jsonTimeseriesPoint{}
+	}
+	result := make([]jsonTimeseriesPoint, len(points))
+	for i, point := range points {
+		result[i] = jsonTimeseriesPoint{
+			Minute: formatJSONTime(point.Minute),
+			Value:  point.Value,
+		}
+	}
+	return result
+}
+
+func convertTxnSizeSeriesSummary(summary model.TxnSizeSeriesSummary) jsonTxnSizeSeriesSummary {
+	return jsonTxnSizeSeriesSummary{
+		Buckets: convertTxnSizeBuckets(summary.Buckets),
+	}
+}
+
+func convertTxnSizeBuckets(buckets []model.TxnSizeBucket) []jsonTxnSizeBucket {
+	if buckets == nil {
+		return []jsonTxnSizeBucket{}
+	}
+	result := make([]jsonTxnSizeBucket, len(buckets))
+	for i, bucket := range buckets {
+		result[i] = jsonTxnSizeBucket{
+			Label:       bucket.Label,
+			TxnCount:    bucket.TxnCount,
+			Rows:        bucket.Rows,
+			BinlogBytes: bucket.BinlogBytes,
+		}
+	}
+	return result
+}
+
+func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) jsonDiagnostics {
+	return jsonDiagnostics{
+		FileCoverage:        convertFileCoverage(diagnostics.FileCoverage),
+		DDLEvents:           convertDDLEvents(diagnostics.DDLEvents),
+		LargestTransactions: convertTransactions(diagnostics.LargestTransactions, mode),
+		LongestTransactions: convertTransactions(diagnostics.LongestTransactions, mode),
+		WidestTransactions:  convertTransactions(diagnostics.WidestTransactions, mode),
+		FileSegments:        convertFileSegments(diagnostics.FileSegments),
+		HotIntervals:        convertHotIntervals(diagnostics.HotIntervals),
+		Findings:            convertFindings(diagnostics.Findings),
+	}
+}
+
+func convertFileCoverage(coverage model.FileCoverage) jsonFileCoverage {
+	return jsonFileCoverage{
+		Selected: convertFileCoverageItems(coverage.Selected),
+		Skipped:  convertFileCoverageItems(coverage.Skipped),
+	}
+}
+
+func convertFileCoverageItems(items []model.FileCoverageItem) []jsonFileCoverageItem {
+	if items == nil {
+		return []jsonFileCoverageItem{}
+	}
+	result := make([]jsonFileCoverageItem, len(items))
+	for i, item := range items {
+		result[i] = jsonFileCoverageItem{
+			BinlogPath:   item.BinlogPath,
+			Reason:       item.Reason,
+			Size:         item.Size,
+			FirstEventAt: formatJSONTime(item.FirstEventAt),
+			LastEventAt:  formatJSONTime(item.LastEventAt),
+		}
+	}
+	return result
+}
+
+func convertDDLEvents(events []model.DDLEvent) []jsonDDLEvent {
+	if events == nil {
+		return []jsonDDLEvent{}
+	}
+	result := make([]jsonDDLEvent, len(events))
+	for i, event := range events {
+		result[i] = jsonDDLEvent{
+			BinlogPath:    event.BinlogPath,
+			Timestamp:     formatJSONTime(event.Timestamp),
+			Schema:        event.Schema,
+			Table:         event.Table,
+			Operation:     event.Operation,
+			Object:        event.Object,
+			Statement:     event.Statement,
+			PositionStart: event.PositionStart,
+			PositionEnd:   event.PositionEnd,
+			BinlogBytes:   event.BinlogBytes,
+		}
+	}
+	return result
+}
+
+func convertHotIntervals(intervals []model.MinuteBucket) []jsonHotInterval {
+	if intervals == nil {
+		return []jsonHotInterval{}
+	}
+	result := make([]jsonHotInterval, len(intervals))
+	for i, interval := range intervals {
+		result[i] = jsonHotInterval{
+			Minute:      formatJSONTime(interval.Minute),
+			TotalRows:   interval.TotalRows,
+			TxnCount:    interval.TxnCount,
+			EventCount:  interval.EventCount,
+			BinlogBytes: interval.BinlogBytes,
+			DDLCount:    interval.DDLCount,
+			TableRows:   copyStringIntMap(interval.TableRows),
+		}
+	}
+	return result
+}
+
+func convertFindings(findings []model.Finding) []jsonFinding {
+	if findings == nil {
+		return []jsonFinding{}
+	}
+	result := make([]jsonFinding, len(findings))
+	for i, finding := range findings {
+		result[i] = jsonFinding{
+			Kind:         finding.Kind,
+			Severity:     finding.Severity,
+			Message:      finding.Message,
+			TxnKey:       finding.TxnKey,
+			Minute:       formatJSONTime(finding.Minute),
+			EvidenceRefs: copyStringSlice(finding.EvidenceRefs),
+		}
+	}
+	return result
+}
+
+func convertFileSegments(segments []model.FileSegment) []jsonFileSegment {
+	if segments == nil {
+		return []jsonFileSegment{}
+	}
+	result := make([]jsonFileSegment, len(segments))
+	for i, seg := range segments {
+		result[i] = jsonFileSegment{
+			StartTime:   formatJSONTime(seg.StartTime),
+			EndTime:     formatJSONTime(seg.EndTime),
+			BinlogBytes: seg.BinlogBytes,
+			Rows:        seg.Rows,
+			Events:      seg.Events,
+		}
+	}
+	return result
 }
 
 func convertSummary(s model.WorkloadSummary) jsonSummary {
@@ -246,14 +510,19 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode) []jsonTr
 	result := make([]jsonTransaction, len(txns))
 	for i, t := range txns {
 		jt := jsonTransaction{
-			TxnKey:     t.TxnKey,
-			StartTime:  formatJSONTime(t.StartTime),
-			EndTime:    formatJSONTime(t.EndTime),
-			Duration:   t.Duration.String(),
-			TotalRows:  t.TotalRows,
-			EventCount: t.EventCount,
-			Tables:     copyStringIntMap(t.Tables),
-			Operations: copyStringIntMap(t.Operations),
+			TxnKey:          t.TxnKey,
+			StartTime:       formatJSONTime(t.StartTime),
+			EndTime:         formatJSONTime(t.EndTime),
+			Duration:        t.Duration.String(),
+			TotalRows:       t.TotalRows,
+			EventCount:      t.EventCount,
+			BinlogBytes:     t.BinlogBytes,
+			BinlogFileStart: t.BinlogPathStart,
+			BinlogFileEnd:   t.BinlogPathEnd,
+			PosStart:        t.PositionStart,
+			PosEnd:          t.PositionEnd,
+			Tables:          copyStringIntMap(t.Tables),
+			Operations:      copyStringIntMap(t.Operations),
 		}
 		switch mode {
 		case SQLContextOff:
@@ -383,12 +652,12 @@ func convertDrilldowns(drilldowns []model.PatternDrilldown) []jsonPatternDrilldo
 	result := make([]jsonPatternDrilldown, len(drilldowns))
 	for i, d := range drilldowns {
 		result[i] = jsonPatternDrilldown{
-			PatternKey:      d.PatternKey,
-			Label:           d.Label,
-			WhySelected:     d.WhySelected,
-			ShareOfRows:     d.ShareOfRows,
-			ShareOfTxns:     d.ShareOfTxns,
-			AvgRowsPerTxn:   d.AvgRowsPerTxn,
+			PatternKey:    d.PatternKey,
+			Label:         d.Label,
+			WhySelected:   d.WhySelected,
+			ShareOfRows:   d.ShareOfRows,
+			ShareOfTxns:   d.ShareOfTxns,
+			AvgRowsPerTxn: d.AvgRowsPerTxn,
 			SignalFlags: jsonPatternSignalFlags{
 				Dominance: d.SignalFlags.Dominance,
 				Anomaly:   d.SignalFlags.Anomaly,

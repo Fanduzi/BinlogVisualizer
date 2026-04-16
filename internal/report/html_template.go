@@ -1,11 +1,16 @@
+// Package report defines the embedded HTML template for analyze reports.
+// input: localized labels plus chart-ready analyze report view data.
+// output: template source used by the analyze HTML renderer.
+// pos: static template layer behind internal/report HTML rendering.
+// note: if this file changes, keep internal/report/README.md synchronized.
 package report
 
 const htmlReportTemplate = `<!DOCTYPE html>
-<html lang="en">
+<html lang="{{lang}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BinlogViz Report</title>
+<title>{{t "report.html.analyze.title"}}</title>
 <style>
   /* ── Nebula (default) ── */
   :root, [data-theme="nebula"] {
@@ -232,14 +237,17 @@ const htmlReportTemplate = `<!DOCTYPE html>
   /* Charts grid */
   .charts-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr 320px;
-    gap: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    padding: 16px;
   }
   .chart-panel {
-    padding: 16px;
-    border-right: 1px solid var(--border);
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
   }
-  .chart-panel:last-child { border-right: none; }
+  .chart-panel-wide { grid-column: 1 / -1; }
   .chart-title {
     font-size: 11px;
     font-weight: 600;
@@ -248,7 +256,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     color: var(--muted);
     margin-bottom: 12px;
   }
-  .chart-box { width: 100%; height: 220px; }
+  .chart-box { width: 100%; height: 320px; }
 
   /* Table */
   table {
@@ -274,6 +282,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
   }
   tbody tr:last-child { border-bottom: none; }
   tbody tr:hover { background: var(--surface2); }
+  tbody tr.table-summary-row.has-activity { cursor: pointer; }
   tbody td {
     padding: 10px 16px;
     color: var(--text);
@@ -285,6 +294,18 @@ const htmlReportTemplate = `<!DOCTYPE html>
   .op-ins { color: var(--insert); }
   .op-upd { color: var(--update); }
   .op-del { color: var(--delete); }
+  .table-detail-row[hidden] { display: none; }
+  .table-detail-panel {
+    padding: 16px;
+    background: var(--surface2);
+    border-top: 1px solid var(--border);
+  }
+  .table-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+  .table-detail-panel .chart-box { height: 260px; }
 
   /* Alerts */
   .alert-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
@@ -323,6 +344,55 @@ const htmlReportTemplate = `<!DOCTYPE html>
     gap: 8px;
   }
   .no-alerts-icon { color: var(--success); font-size: 16px; }
+  .diagnostic-list {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .diagnostic-item {
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+  }
+  .diagnostic-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .diagnostic-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .diagnostic-meta {
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .diagnostic-body {
+    font-size: 12px;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .diagnostic-tables {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .diagnostic-chip {
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(129,140,248,0.15);
+    color: var(--primary);
+  }
 
   /* Drilldown */
   .drilldown-card {
@@ -390,8 +460,9 @@ const htmlReportTemplate = `<!DOCTYPE html>
 
   @media (max-width: 900px) {
     .charts-grid { grid-template-columns: 1fr; }
-    .chart-panel { border-right: none; border-bottom: 1px solid var(--border); }
-    .chart-panel:last-child { border-bottom: none; }
+    .chart-panel-wide { grid-column: auto; }
+    .chart-box { height: 280px; }
+    .table-detail-grid { grid-template-columns: 1fr; }
   }
   @media (max-width: 600px) {
     .cards { grid-template-columns: 1fr 1fr; }
@@ -408,8 +479,8 @@ const htmlReportTemplate = `<!DOCTYPE html>
     <div class="header-logo">Binlog<span>Viz</span></div>
     <div style="display:flex;align-items:center;gap:20px;">
       <div class="header-meta">
-        <strong>Analysis Report</strong>
-        Generated: {{.GeneratedAt}}
+        <strong>{{t "report.html.analyze.header"}}</strong>
+        {{t "report.html.common.generatedAt"}}: {{.GeneratedAt}}
       </div>
       <div class="theme-switcher">
         <button class="theme-btn" data-t="nebula" title="Nebula"></button>
@@ -424,44 +495,44 @@ const htmlReportTemplate = `<!DOCTYPE html>
   <!-- Summary Cards -->
   <div class="cards">
     <div class="card">
-      <div class="card-label">Transactions</div>
+      <div class="card-label">{{t "report.html.common.transactions"}}</div>
       <div class="card-value">{{.TotalTxns}}</div>
     </div>
     <div class="card accent">
-      <div class="card-label">Affected Rows</div>
+      <div class="card-label">{{t "report.html.common.affectedRows"}}</div>
       <div class="card-value">{{.TotalRows}}</div>
     </div>
     <div class="card success">
-      <div class="card-label">Events</div>
+      <div class="card-label">{{t "report.html.common.events"}}</div>
       <div class="card-value">{{.TotalEvents}}</div>
     </div>
     <div class="card warn">
-      <div class="card-label">Time Range</div>
+      <div class="card-label">{{t "report.html.common.timeRange"}}</div>
       {{if .StartTime}}
       <div class="card-value" style="font-size:13px;margin-top:4px">{{.StartTime}}</div>
       <div class="card-sub">→ {{.EndTime}}</div>
-      <div class="card-sub">Duration: {{.Duration}}</div>
+      <div class="card-sub">{{t "report.html.common.duration"}}: {{.Duration}}</div>
       {{else}}
-      <div class="card-value" style="font-size:16px;color:var(--muted)">N/A</div>
+      <div class="card-value" style="font-size:16px;color:var(--muted)">{{t "report.html.common.notAvailable"}}</div>
       {{end}}
     </div>
   </div>
 
   <!-- Charts -->
   <div class="section">
-    <div class="section-header"><span class="dot"></span>Activity Charts</div>
+    <div class="section-header"><span class="dot"></span>{{t "report.html.analyze.activityCharts"}}</div>
     <div class="section-body">
       <div class="charts-grid">
-        <div class="chart-panel">
-          <div class="chart-title">Rows per Minute</div>
+        <div class="chart-panel chart-panel-wide">
+          <div class="chart-title">{{t "report.html.analyze.rowsPerMinute"}}</div>
           <div class="chart-box" id="chart-timeline"></div>
         </div>
         <div class="chart-panel">
-          <div class="chart-title">Top Tables by Rows</div>
+          <div class="chart-title">{{t "report.html.analyze.topTablesByRows"}}</div>
           <div class="chart-box" id="chart-tables"></div>
         </div>
         <div class="chart-panel">
-          <div class="chart-title">Operation Mix</div>
+          <div class="chart-title">{{t "report.html.common.operationMix"}}</div>
           <div class="chart-box" id="chart-ops"></div>
         </div>
       </div>
@@ -470,24 +541,24 @@ const htmlReportTemplate = `<!DOCTYPE html>
 
   <!-- Top Tables -->
   <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>Top Tables</div>
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.topTables"}}</div>
     <div class="section-body">
       {{if .Tables}}
       <table>
         <thead>
           <tr>
-            <th>Schema</th>
-            <th>Table</th>
-            <th class="num">Total Rows</th>
-            <th class="num">Inserts</th>
-            <th class="num">Updates</th>
-            <th class="num">Deletes</th>
-            <th class="num">Txns</th>
+            <th>{{t "report.html.common.schema"}}</th>
+            <th>{{t "report.html.common.table"}}</th>
+            <th class="num">{{t "report.html.common.totalRows"}}</th>
+            <th class="num">{{t "report.html.common.inserts"}}</th>
+            <th class="num">{{t "report.html.common.updates"}}</th>
+            <th class="num">{{t "report.html.common.deletes"}}</th>
+            <th class="num">{{t "report.html.common.txns"}}</th>
           </tr>
         </thead>
         <tbody>
           {{range .Tables}}
-          <tr>
+          <tr class="table-summary-row{{if .HasActivity}} has-activity{{end}}" data-table-key="{{.Key}}" {{if .HasActivity}}data-table-dom-id="{{.DOMID}}"{{end}}>
             <td class="name">{{.Schema}}</td>
             <td class="name">{{.Table}}</td>
             <td class="num">{{.Total}}</td>
@@ -496,18 +567,36 @@ const htmlReportTemplate = `<!DOCTYPE html>
             <td class="num op-del">{{.Deletes}}</td>
             <td class="num">{{.Txns}}</td>
           </tr>
+          {{if .HasActivity}}
+          <tr class="table-detail-row" data-table-key="{{.Key}}" hidden>
+            <td colspan="7">
+              <div class="table-detail-panel">
+                <div class="table-detail-grid">
+                  <div class="chart-panel">
+                    <div class="chart-title">{{t "report.html.analyze.tableActivityChart"}}</div>
+                    <div class="chart-box" id="chart-table-activity-{{.DOMID}}"></div>
+                  </div>
+                  <div class="chart-panel">
+                    <div class="chart-title">{{t "report.html.analyze.tableOpsChart"}}</div>
+                    <div class="chart-box" id="chart-table-ops-{{.DOMID}}"></div>
+                  </div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {{end}}
           {{end}}
         </tbody>
       </table>
       {{else}}
-      <div class="no-alerts"><span>No table data available.</span></div>
+      <div class="no-alerts"><span>{{t "report.html.analyze.noTableData"}}</span></div>
       {{end}}
     </div>
   </div>
 
   <!-- Alerts -->
   <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--danger)"></span>Alerts</div>
+    <div class="section-header"><span class="dot" style="background:var(--danger)"></span>{{t "report.html.common.alerts"}}</div>
     <div class="section-body">
       {{if .HasAlerts}}
       <div class="alert-list">
@@ -521,16 +610,270 @@ const htmlReportTemplate = `<!DOCTYPE html>
       {{else}}
       <div class="no-alerts">
         <span class="no-alerts-icon">✓</span>
-        <span>No alerts detected.</span>
+        <span>{{t "report.html.analyze.noAlertsDetected"}}</span>
       </div>
       {{end}}
     </div>
   </div>
 
+  {{if .HasDDLEvents}}
+  <div class="section">
+    <div class="section-header"><span class="dot" style="background:var(--warn)"></span>{{t "report.html.analyze.ddlTimeline"}}</div>
+    <div class="section-body">
+      <div class="diagnostic-list">
+        {{range .DDLEvents}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.Operation}} {{.Object}}</div>
+            <div class="diagnostic-meta">{{.Timestamp}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <div>{{.Statement}}</div>
+            {{if .Location}}<div class="diagnostic-meta">{{.Location}}</div>{{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if .HasLargestTxns}}
+  <div class="section">
+    <div class="section-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.largestTransactions"}}</div>
+    <div class="section-body">
+      <div class="diagnostic-list">
+        {{range .LargestTransactions}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.TxnKey}}</div>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+            {{if .Location}}<div class="diagnostic-meta">{{.Location}}</div>{{end}}
+            {{if .Tables}}
+            <div class="diagnostic-tables">
+              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if .HasLongestTxns}}
+  <div class="section">
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.longestTransactions"}}</div>
+    <div class="section-body">
+      <div class="diagnostic-list">
+        {{range .LongestTransactions}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.TxnKey}}</div>
+            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+            {{if .Location}}<div class="diagnostic-meta">{{.Location}}</div>{{end}}
+            {{if .Tables}}
+            <div class="diagnostic-tables">
+              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  {{if .HasHotIntervals}}
+  <div class="section">
+    <div class="section-header"><span class="dot" style="background:var(--danger)"></span>{{t "report.html.analyze.hotIntervals"}}</div>
+    <div class="section-body">
+      <div class="diagnostic-list">
+        {{range .HotIntervals}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.Timestamp}}</div>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+            {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  <!-- File Coverage -->
+  <div class="section">
+    <div class="section-header"><span class="dot" style="background:var(--success)"></span>{{t "report.html.analyze.fileCoverage"}}</div>
+    <div class="section-body">
+      <div class="diagnostic-list" id="file-coverage">
+        {{if .FileCoverage.Selected}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{t "report.html.analyze.selectedFiles"}}</div>
+            <div class="diagnostic-meta">{{len .FileCoverage.Selected}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{t "report.html.analyze.binlogFile"}}</th>
+                  <th class="num">{{t "report.html.analyze.fileSize"}}</th>
+                  <th>{{t "report.html.analyze.timeRange"}}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{range .FileCoverage.Selected}}
+                <tr>
+                  <td class="name">{{.BinlogPath}}</td>
+                  <td class="num">{{.Size}}</td>
+                  <td class="name">{{if .FirstEventAt}}{{.FirstEventAt}} → {{.LastEventAt}}{{end}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {{end}}
+        {{if .FileCoverage.Skipped}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{t "report.html.analyze.skippedFiles"}}</div>
+            <div class="diagnostic-meta">{{len .FileCoverage.Skipped}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{t "report.html.analyze.binlogFile"}}</th>
+                  <th class="num">{{t "report.html.analyze.fileSize"}}</th>
+                  <th>{{t "report.html.analyze.skipReason"}}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{range .FileCoverage.Skipped}}
+                <tr>
+                  <td class="name">{{.BinlogPath}}</td>
+                  <td class="num">{{.Size}}</td>
+                  <td class="name">{{.Reason}}</td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {{end}}
+        {{if not .FileCoverage.Selected}}{{if not .FileCoverage.Skipped}}
+        <div class="no-alerts"><span>{{t "report.html.analyze.noFileCoverage"}}</span></div>
+        {{end}}{{end}}
+      </div>
+    </div>
+  </div>
+
+  {{if .HasFileSegments}}
+  <!-- Binlog Throughput -->
+  <div class="section" id="binlog-throughput">
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.binlogThroughput"}}</div>
+    <div class="section-body">
+      <div class="charts-grid">
+        <div class="chart-panel chart-panel-wide">
+          <div class="chart-title">{{t "report.html.analyze.throughputChart"}}</div>
+          <div class="chart-box" id="chart-throughput" style="height:380px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {{end}}
+
+  <!-- Transaction Evidence -->
+  {{if or .HasLargestTxns .HasLongestTxns .HasWidestTxns}}
+  <div class="section" id="transaction-evidence">
+    <div class="section-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.transactionEvidence"}}</div>
+    <div class="section-body">
+      <div class="diagnostic-list">
+        {{if .HasLargestTxns}}
+        {{range .LargestTransactions}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.largestTag"}}</span></div>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
+          </div>
+          <div class="diagnostic-body">
+            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+            {{if .Tables}}
+            <div class="diagnostic-tables">
+              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+        {{end}}
+        {{if .HasLongestTxns}}
+        {{range .LongestTransactions}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-anomaly" style="font-size:10px">{{t "report.html.analyze.longestTag"}}</span></div>
+            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+          </div>
+          <div class="diagnostic-body">
+            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+            {{if .Tables}}
+            <div class="diagnostic-tables">
+              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+        {{end}}
+        {{if .HasWidestTxns}}
+        {{range .WidestTransactions}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.widestTag"}}</span></div>
+            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+          </div>
+          <div class="diagnostic-body">
+            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+            {{if .Tables}}
+            <div class="diagnostic-tables">
+              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{end}}
+
   <!-- Pattern Drilldowns -->
   {{if .HasDrilldowns}}
   <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>Pattern Drilldowns</div>
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.patternDrilldowns"}}</div>
     <div class="section-body">
       <div class="alert-list">
         {{range .Drilldowns}}
@@ -538,30 +881,30 @@ const htmlReportTemplate = `<!DOCTYPE html>
           <summary class="drilldown-summary">
             <strong>{{.Label}}</strong>
             <span class="drilldown-flags">
-              {{if .SignalFlags.Dominance}}<span class="drilldown-flag drilldown-flag-dominance">dominance</span>{{end}}
-              {{if .SignalFlags.Anomaly}}<span class="drilldown-flag drilldown-flag-anomaly">anomaly</span>{{end}}
+              {{if .SignalFlags.Dominance}}<span class="drilldown-flag drilldown-flag-dominance">{{t "report.html.common.dominance"}}</span>{{end}}
+              {{if .SignalFlags.Anomaly}}<span class="drilldown-flag drilldown-flag-anomaly">{{t "report.html.common.anomaly"}}</span>{{end}}
             </span>
           </summary>
           <div class="drilldown-body">
             <p class="drilldown-why">{{.WhySelected}}</p>
             <div class="drilldown-metrics">
-              <span class="drilldown-metric" title="Fraction of all binlog rows attributed to this pattern">share of rows: {{printf "%.0f" (mulFloat .ShareOfRows 100)}}%</span>
-              <span class="drilldown-metric" title="Fraction of all transactions attributed to this pattern">share of txns: {{printf "%.0f" (mulFloat .ShareOfTxns 100)}}%</span>
-              <span class="drilldown-metric">avg rows/txn: {{printf "%.0f" .AvgRowsPerTxn}}</span>
+              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfRowsTitle"}}">{{t "report.html.analyze.shareOfRowsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfRows 100)}}%</span>
+              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfTxnsTitle"}}">{{t "report.html.analyze.shareOfTxnsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfTxns 100)}}%</span>
+              <span class="drilldown-metric">{{t "report.html.analyze.avgRowsPerTxn"}}: {{printf "%.0f" .AvgRowsPerTxn}}</span>
             </div>
             {{if .BusiestMinutes}}
             <div class="drilldown-subsection">
-              <span class="drilldown-sublabel" title="Top workload minutes by row volume — window-level context, not pattern-specific">Workload Peak Minutes</span>
+              <span class="drilldown-sublabel" title="{{t "report.html.analyze.workloadPeakMinutesTitle"}}">{{t "report.html.analyze.workloadPeakMinutes"}}</span>
               {{range .BusiestMinutes}}
-              <div class="drilldown-minute">{{.Minute}} &mdash; {{fmtIntHTML .TotalRows}} rows, {{fmtIntHTML .TxnCount}} txns</div>
+              <div class="drilldown-minute">{{.Minute}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{fmtIntHTML .TxnCount}} {{t "report.html.common.txns"}}</div>
               {{end}}
             </div>
             {{end}}
             {{if .RepTxns}}
             <div class="drilldown-subsection">
-              <span class="drilldown-sublabel" title="Largest transactions in the window — provided as workload context, not pattern-specific">Workload Transactions</span>
+              <span class="drilldown-sublabel" title="{{t "report.html.analyze.workloadTransactionsTitle"}}">{{t "report.html.analyze.workloadTransactions"}}</span>
               {{range .RepTxns}}
-              <div class="drilldown-txn">{{.TxnKey}} &mdash; {{fmtIntHTML .TotalRows}} rows, {{.Duration}}</div>
+              <div class="drilldown-txn">{{.TxnKey}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{.Duration}}</div>
               {{end}}
             </div>
             {{end}}
@@ -573,7 +916,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
   </div>
   {{end}}
 
-  <div class="footer">Generated by BinlogViz &middot; {{.GeneratedAt}}</div>
+  <div class="footer">{{t "report.html.common.generatedBy"}} &middot; {{.GeneratedAt}}</div>
 </div>
 
 <script>{{.EChartsJS}}</script>
@@ -585,8 +928,10 @@ const htmlReportTemplate = `<!DOCTYPE html>
   var tableNames   = {{.TableBarNames}};
   var tableRows    = {{.TableBarRows}};
   var opsPie       = {{.OpsPie}};
+  window.tableActivitySeries = {{.TableActivitySeries}};
 
   var c1, c2, c3;
+  var tableCharts = {};
 
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -642,7 +987,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       },
       tooltip: { ...t.tooltip, trigger: 'axis' },
       series: [{
-        name: 'Rows',
+        name: '{{t "report.html.common.rows"}}',
         type: 'line',
         data: minuteRows,
         smooth: 0.3,
@@ -656,6 +1001,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     c2 = echarts.init(document.getElementById('chart-tables'), null, {renderer: 'svg'});
     c2.setOption({
       ...t,
+      legend: { show: false },
       grid: { top: 10, bottom: 30, left: 16, right: 16, containLabel: true },
       xAxis: {
         type: 'value',
@@ -673,7 +1019,6 @@ const htmlReportTemplate = `<!DOCTYPE html>
       },
       tooltip: { ...t.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
       series: [{
-        name: 'Rows',
         type: 'bar',
         data: tableRows,
         barMaxWidth: 20,
@@ -687,7 +1032,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       tooltip: { ...t.tooltip, trigger: 'item', formatter: '{b}: {c} ({d}%)' },
       legend: { bottom: 0, textStyle: { color: muted, fontSize: 10 } },
       series: [{
-        name: 'Operations',
+        name: '{{t "report.html.common.operations"}}',
         type: 'pie',
         radius: ['40%', '70%'],
         center: ['50%', '44%'],
@@ -698,6 +1043,80 @@ const htmlReportTemplate = `<!DOCTYPE html>
         color: [insert, update, del]
       }]
     });
+  }
+
+  function renderTableCharts(tableKey, domID) {
+    var data = window.tableActivitySeries[tableKey];
+    if (!data) {
+      return;
+    }
+    if (tableCharts[tableKey]) {
+      tableCharts[tableKey].activity.resize();
+      tableCharts[tableKey].ops.resize();
+      return;
+    }
+
+    var t = makeTheme();
+    var primary = cssVar('--primary');
+    var insert  = cssVar('--insert');
+    var update  = cssVar('--update');
+    var del     = cssVar('--delete');
+    var border  = cssVar('--border');
+    var muted   = cssVar('--muted');
+
+    var activity = echarts.init(document.getElementById('chart-table-activity-' + domID), null, {renderer: 'svg'});
+    activity.setOption({
+      ...t,
+      legend: { textStyle: { color: muted, fontSize: 10 } },
+      grid: { top: 28, bottom: 30, left: 48, right: 16 },
+      xAxis: {
+        type: 'category',
+        data: data.labels,
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: { color: muted, fontSize: 10 },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: muted, fontSize: 10 },
+        splitLine: { lineStyle: { color: border, type: 'dashed' } }
+      },
+      tooltip: { ...t.tooltip, trigger: 'axis' },
+      series: [{
+        name: '{{t "report.html.common.rows"}}',
+        type: 'line',
+        smooth: 0.25,
+        symbol: 'circle',
+        symbolSize: 6,
+        data: data.rows,
+        lineStyle: { color: primary, width: 2 }
+      }]
+    });
+
+    var ops = echarts.init(document.getElementById('chart-table-ops-' + domID), null, {renderer: 'svg'});
+    ops.setOption({
+      ...t,
+      legend: { textStyle: { color: muted, fontSize: 10 } },
+      grid: { top: 28, bottom: 30, left: 48, right: 16 },
+      xAxis: {
+        type: 'category',
+        data: data.labels,
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: { color: muted, fontSize: 10 },
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: { color: muted, fontSize: 10 },
+        splitLine: { lineStyle: { color: border, type: 'dashed' } }
+      },
+      tooltip: { ...t.tooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
+      series: [
+        { name: '{{t "report.html.common.inserts"}}', type: 'bar', stack: 'ops', data: data.insert_rows, itemStyle: { color: insert } },
+        { name: '{{t "report.html.common.updates"}}', type: 'bar', stack: 'ops', data: data.update_rows, itemStyle: { color: update } },
+        { name: '{{t "report.html.common.deletes"}}', type: 'bar', stack: 'ops', data: data.delete_rows, itemStyle: { color: del } }
+      ]
+    });
+
+    tableCharts[tableKey] = { activity: activity, ops: ops };
   }
 
   // Theme switching
@@ -714,6 +1133,94 @@ const htmlReportTemplate = `<!DOCTYPE html>
     btn.addEventListener('click', function() { setTheme(btn.getAttribute('data-t')); });
   });
 
+  document.querySelectorAll('tr.table-summary-row.has-activity').forEach(function(row) {
+    row.addEventListener('click', function() {
+      var tableKey = row.getAttribute('data-table-key');
+      var domID = row.getAttribute('data-table-dom-id');
+      var detail = document.querySelector('tr.table-detail-row[data-table-key="' + tableKey + '"]');
+      if (!detail) {
+        return;
+      }
+      var isHidden = detail.hasAttribute('hidden');
+      document.querySelectorAll('tr.table-detail-row').forEach(function(other) {
+        other.setAttribute('hidden', '');
+      });
+      if (!isHidden) {
+        detail.setAttribute('hidden', '');
+        return;
+      }
+      detail.removeAttribute('hidden');
+      renderTableCharts(tableKey, domID);
+    });
+  });
+
+  // Throughput chart
+  var throughputLabels = {{.ThroughputLabels}};
+  var throughputBytes = {{.ThroughputBytes}};
+  var throughputRows = {{.ThroughputRows}};
+
+  function renderThroughputChart() {
+    var el = document.getElementById('chart-throughput');
+    if (!el || throughputLabels.length === 0) return;
+    var t = makeTheme();
+    var primary = cssVar('--primary');
+    var accent = cssVar('--accent');
+    var border = cssVar('--border');
+    var muted = cssVar('--muted');
+
+    var c = echarts.init(el, null, {renderer: 'svg'});
+    c.setOption({
+      ...t,
+      legend: { textStyle: { color: muted, fontSize: 10 } },
+      grid: { top: 30, bottom: 30, left: 60, right: 60 },
+      xAxis: {
+        type: 'category',
+        data: throughputLabels,
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: { color: muted, fontSize: 10 }
+      },
+      yAxis: [
+        {
+          type: 'value',
+          name: '{{t "report.html.analyze.binlogBytesShort"}}',
+          nameTextStyle: { color: muted, fontSize: 10 },
+          axisLabel: { color: muted, fontSize: 10 },
+          splitLine: { lineStyle: { color: border, type: 'dashed' } }
+        },
+        {
+          type: 'value',
+          name: '{{t "report.html.common.rows"}}',
+          nameTextStyle: { color: muted, fontSize: 10 },
+          axisLabel: { color: muted, fontSize: 10 },
+          splitLine: { show: false }
+        }
+      ],
+      tooltip: { ...t.tooltip, trigger: 'axis' },
+      series: [
+        {
+          name: '{{t "report.html.analyze.binlogBytesShort"}}',
+          type: 'bar',
+          data: throughputBytes,
+          itemStyle: { color: primary, borderRadius: [3, 3, 0, 0] },
+          barMaxWidth: 40
+        },
+        {
+          name: '{{t "report.html.common.rows"}}',
+          type: 'line',
+          yAxisIndex: 1,
+          data: throughputRows,
+          smooth: 0.3,
+          symbol: 'circle',
+          symbolSize: 6,
+          lineStyle: { color: accent, width: 2 }
+        }
+      ]
+    });
+
+    window.addEventListener('resize', function() { c.resize(); });
+  }
+  renderThroughputChart();
+
   // Init
   var saved = localStorage.getItem('bvtheme') || 'nebula';
   setTheme(saved);
@@ -722,6 +1229,10 @@ const htmlReportTemplate = `<!DOCTYPE html>
     c1 && c1.resize();
     c2 && c2.resize();
     c3 && c3.resize();
+    Object.keys(tableCharts).forEach(function(key) {
+      tableCharts[key].activity.resize();
+      tableCharts[key].ops.resize();
+    });
   });
 })();
 </script>

@@ -10,7 +10,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `text.go` | Renders the fixed five-section text report and applies SQL context visibility rules for transactions. |
 | `json.go` | Serializes the stable analyze JSON report shape, including optional top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
-| `html.go` | Renders the self-contained HTML report. |
+| `html.go` | Renders the self-contained HTML report, including responsive activity-chart layout and ECharts data preparation. |
 | `*_test.go` | Verifies section ordering, JSON field stability, snapshot behavior, and SQL context mode behavior. |
 
 ## Interfaces
@@ -37,3 +37,4 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - `off` omits query lines in text and omits all query-related JSON fields.
 - `full` only exposes bounded SQL from `QueryContext.SQL`; it never reconstructs or emits unbounded original SQL.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
+- The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.

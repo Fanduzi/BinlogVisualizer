@@ -272,6 +272,116 @@ func TestRenderJSONIncludesMinutes(t *testing.T) {
 	}
 }
 
+func TestRenderJSONIncludesTimeseriesAndDiagnostics(t *testing.T) {
+	result := model.AnalysisResult{
+		Timeseries: model.Timeseries{
+			TPSSeries: []model.TimeseriesPoint{{
+				Minute: time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC),
+				Value:  12,
+			}},
+			BinlogBytesSeries: []model.TimeseriesPoint{{
+				Minute: time.Date(2026, 3, 9, 10, 1, 0, 0, time.UTC),
+				Value:  2048,
+			}},
+			TxnSizeSeriesSummary: model.TxnSizeSeriesSummary{
+				Buckets: []model.TxnSizeBucket{{
+					Label:       "1k-10k",
+					TxnCount:    3,
+					Rows:        1200,
+					BinlogBytes: 8192,
+				}},
+			},
+		},
+		Diagnostics: model.Diagnostics{
+			DDLEvents: []model.DDLEvent{{
+				Timestamp:     time.Date(2026, 3, 9, 10, 5, 0, 0, time.UTC),
+				Operation:     "ALTER TABLE",
+				Schema:        "shop",
+				Table:         "orders",
+				Statement:     "ALTER TABLE shop.orders ADD COLUMN note TEXT",
+				BinlogPath:    "mysql-bin.000123",
+				PositionStart: 100,
+				PositionEnd:   200,
+				BinlogBytes:   256,
+			}},
+			LargestTransactions: []model.Transaction{{
+				TxnKey:          "txn-largest",
+				TotalRows:       500,
+				EventCount:      20,
+				Duration:        4 * time.Second,
+				BinlogBytes:     4096,
+				BinlogPathStart: "mysql-bin.000123",
+				BinlogPathEnd:   "mysql-bin.000123",
+				PositionStart:   300,
+				PositionEnd:     420,
+				Tables:          map[string]int{"shop.orders": 500},
+			}},
+			HotIntervals: []model.MinuteBucket{{
+				Minute:      time.Date(2026, 3, 9, 10, 6, 0, 0, time.UTC),
+				TotalRows:   900,
+				TxnCount:    12,
+				EventCount:  18,
+				BinlogBytes: 16384,
+				DDLCount:    1,
+				TableRows:   map[string]int{"shop.orders": 900},
+			}},
+			Findings: []model.Finding{{
+				Kind:         "large_transaction",
+				Severity:     "warning",
+				Message:      "largest transaction exceeded threshold",
+				TxnKey:       "txn-largest",
+				Minute:       time.Date(2026, 3, 9, 10, 6, 0, 0, time.UTC),
+				EvidenceRefs: []string{"transactions:txn-largest"},
+			}},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+
+	timeseries, ok := parsed["timeseries"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level timeseries object, got %v", parsed["timeseries"])
+	}
+	tpsSeries, ok := timeseries["tps_series"].([]any)
+	if !ok || len(tpsSeries) != 1 {
+		t.Fatalf("expected tps_series with one point, got %v", timeseries["tps_series"])
+	}
+	txnSizeSummary, ok := timeseries["txn_size_series_summary"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected txn_size_series_summary object, got %v", timeseries["txn_size_series_summary"])
+	}
+	buckets, ok := txnSizeSummary["buckets"].([]any)
+	if !ok || len(buckets) != 1 {
+		t.Fatalf("expected one txn size bucket, got %v", txnSizeSummary["buckets"])
+	}
+
+	diagnostics, ok := parsed["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level diagnostics object, got %v", parsed["diagnostics"])
+	}
+	ddlEvents, ok := diagnostics["ddl_events"].([]any)
+	if !ok || len(ddlEvents) != 1 {
+		t.Fatalf("expected ddl_events with one item, got %v", diagnostics["ddl_events"])
+	}
+	largestTxns, ok := diagnostics["largest_transactions"].([]any)
+	if !ok || len(largestTxns) != 1 {
+		t.Fatalf("expected largest_transactions with one item, got %v", diagnostics["largest_transactions"])
+	}
+	hotIntervals, ok := diagnostics["hot_intervals"].([]any)
+	if !ok || len(hotIntervals) != 1 {
+		t.Fatalf("expected hot_intervals with one item, got %v", diagnostics["hot_intervals"])
+	}
+	findings, ok := diagnostics["findings"].([]any)
+	if !ok || len(findings) != 1 {
+		t.Fatalf("expected findings with one item, got %v", diagnostics["findings"])
+	}
+}
+
 func TestRenderJSONIncludesAlerts(t *testing.T) {
 	result := model.AnalysisResult{
 		Alerts: []model.Alert{
@@ -562,5 +672,200 @@ func TestRenderJSONSQLContextFullModeUsesBoundedSQL(t *testing.T) {
 	}
 	if querySQL == longSQL {
 		t.Fatal("full mode should not output unbounded original SQL")
+	}
+}
+
+func TestRenderJSONIncludesFileSegments(t *testing.T) {
+	result := model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			FileSegments: []model.FileSegment{
+				{
+					StartTime:   time.Date(2026, 4, 15, 10, 0, 0, 0, time.UTC),
+					EndTime:     time.Date(2026, 4, 15, 10, 5, 0, 0, time.UTC),
+					BinlogBytes: 20480,
+					Rows:        500,
+					Events:      75,
+				},
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	diagnostics, ok := parsed["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics object, got %v", parsed["diagnostics"])
+	}
+	segments, ok := diagnostics["file_segments"].([]any)
+	if !ok || len(segments) != 1 {
+		t.Fatalf("expected file_segments with 1 item, got %v", diagnostics["file_segments"])
+	}
+	seg := segments[0].(map[string]any)
+	if seg["rows"].(float64) != 500 {
+		t.Fatalf("expected rows=500, got %v", seg["rows"])
+	}
+	if seg["binlog_bytes"].(float64) != 20480 {
+		t.Fatalf("expected binlog_bytes=20480, got %v", seg["binlog_bytes"])
+	}
+	if seg["events"].(float64) != 75 {
+		t.Fatalf("expected events=75, got %v", seg["events"])
+	}
+}
+
+func TestRenderJSONIncludesWidestTransactions(t *testing.T) {
+	result := model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			WidestTransactions: []model.Transaction{
+				{
+					TxnKey:          "txn-wide",
+					TotalRows:       100,
+					EventCount:      10,
+					Duration:        2 * time.Second,
+					BinlogBytes:     4096,
+					BinlogPathStart: "mysql-bin.000001",
+					BinlogPathEnd:   "mysql-bin.000001",
+					PositionStart:   100,
+					PositionEnd:     200,
+					Tables:          map[string]int{"shop.orders": 60, "shop.users": 40},
+					Operations:      map[string]int{"INSERT": 100},
+				},
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	diagnostics, ok := parsed["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics object, got %v", parsed["diagnostics"])
+	}
+	widest, ok := diagnostics["widest_transactions"].([]any)
+	if !ok || len(widest) != 1 {
+		t.Fatalf("expected widest_transactions with 1 item, got %v", diagnostics["widest_transactions"])
+	}
+}
+
+func TestRenderJSONTransactionEvidenceFields(t *testing.T) {
+	result := model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			LargestTransactions: []model.Transaction{
+				{
+					TxnKey:          "txn-evidence",
+					StartTime:       time.Date(2026, 4, 15, 10, 0, 0, 0, time.UTC),
+					EndTime:         time.Date(2026, 4, 15, 10, 0, 5, 0, time.UTC),
+					Duration:        5 * time.Second,
+					TotalRows:       2000,
+					EventCount:      25,
+					BinlogBytes:     16384,
+					BinlogPathStart: "mysql-bin.000044",
+					BinlogPathEnd:   "mysql-bin.000045",
+					PositionStart:   300,
+					PositionEnd:     520,
+					Tables:          map[string]int{"shop.orders": 1800, "shop.payments": 200},
+					Operations:      map[string]int{"UPDATE": 2000},
+					QuerySummary:    "UPDATE shop.orders SET status='done'",
+				},
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	diagnostics, ok := parsed["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics object, got %v", parsed["diagnostics"])
+	}
+	largest, ok := diagnostics["largest_transactions"].([]any)
+	if !ok || len(largest) != 1 {
+		t.Fatalf("expected largest_transactions with 1 item, got %v", diagnostics["largest_transactions"])
+	}
+	txn := largest[0].(map[string]any)
+
+	// Verify evidence fields
+	if txn["binlog_bytes"].(float64) != 16384 {
+		t.Fatalf("expected binlog_bytes=16384, got %v", txn["binlog_bytes"])
+	}
+	if txn["binlog_file_start"] != "mysql-bin.000044" {
+		t.Fatalf("expected binlog_file_start, got %v", txn["binlog_file_start"])
+	}
+	if txn["binlog_file_end"] != "mysql-bin.000045" {
+		t.Fatalf("expected binlog_file_end, got %v", txn["binlog_file_end"])
+	}
+	if txn["pos_start"].(float64) != 300 {
+		t.Fatalf("expected pos_start=300, got %v", txn["pos_start"])
+	}
+	if txn["pos_end"].(float64) != 520 {
+		t.Fatalf("expected pos_end=520, got %v", txn["pos_end"])
+	}
+}
+
+func TestRenderJSONFileCoverageIncludesTimeRange(t *testing.T) {
+	result := model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			FileCoverage: model.FileCoverage{
+				Selected: []model.FileCoverageItem{
+					{
+						BinlogPath:   "mysql-bin.000001",
+						Reason:       "selected",
+						Size:         1024,
+						FirstEventAt: time.Date(2026, 4, 15, 10, 0, 0, 0, time.UTC),
+						LastEventAt:  time.Date(2026, 4, 15, 10, 30, 0, 0, time.UTC),
+					},
+				},
+				Skipped: []model.FileCoverageItem{
+					{
+						BinlogPath: "mysql-bin.000003",
+						Reason:     "outside window",
+						Size:       2048,
+					},
+				},
+			},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	diagnostics, ok := parsed["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics object, got %v", parsed["diagnostics"])
+	}
+	coverage, ok := diagnostics["file_coverage"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected file_coverage object, got %v", diagnostics["file_coverage"])
+	}
+	selected, ok := coverage["selected"].([]any)
+	if !ok || len(selected) != 1 {
+		t.Fatalf("expected 1 selected file, got %v", coverage["selected"])
+	}
+	item := selected[0].(map[string]any)
+	if item["binlog_path"] != "mysql-bin.000001" {
+		t.Fatalf("expected binlog_path, got %v", item["binlog_path"])
+	}
+	if item["first_event_at"] != "2026-04-15T10:00:00Z" {
+		t.Fatalf("expected first_event_at, got %v", item["first_event_at"])
+	}
+	if item["last_event_at"] != "2026-04-15T10:30:00Z" {
+		t.Fatalf("expected last_event_at, got %v", item["last_event_at"])
+	}
+
+	skipped, ok := coverage["skipped"].([]any)
+	if !ok || len(skipped) != 1 {
+		t.Fatalf("expected 1 skipped file, got %v", coverage["skipped"])
 	}
 }
