@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -27,6 +28,11 @@ type inFlightTxn struct {
 	endTime            time.Time
 	totalRows          int
 	eventCount         int
+	binlogBytes        int64
+	binlogPathStart    string
+	binlogPathEnd      string
+	positionStart      int64
+	positionEnd        int64
 	tables             map[string]int
 	operations         map[string]int
 	querySQL           string // Bounded SQL from ROWS_QUERY event
@@ -45,9 +51,9 @@ func NewTransactionBuilder() *TransactionBuilder {
 func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 	switch ev.EventType {
 	case "BEGIN":
-		return b.handleBegin(ev.Timestamp)
+		return b.handleBegin(ev)
 	case "XID", "COMMIT":
-		b.handleCommit(ev.Timestamp)
+		b.handleCommit(ev)
 	case "ROWS_QUERY":
 		// Capture SQL context for next ROWS events in this transaction
 		b.handleRowsQuery(ev)
@@ -89,7 +95,7 @@ func (b *TransactionBuilder) CurrentTxnKey() string {
 	return b.current.txnKey
 }
 
-func (b *TransactionBuilder) handleBegin(ts time.Time) error {
+func (b *TransactionBuilder) handleBegin(ev model.NormalizedEvent) error {
 	if b.current != nil && b.current.isExplicit {
 		// Explicit transaction already in-flight - this is a boundary error
 		// Do NOT mutate state - return error and let caller decide what to do
@@ -100,19 +106,21 @@ func (b *TransactionBuilder) handleBegin(ts time.Time) error {
 		b.finalizeTransaction()
 	}
 	// Start a new explicit transaction
-	b.startTransaction(ts, true)
+	b.startTransaction(ev.Timestamp, true)
+	b.updateBinlogCoverage(ev)
 	return nil
 }
 
-func (b *TransactionBuilder) handleCommit(ts time.Time) {
+func (b *TransactionBuilder) handleCommit(ev model.NormalizedEvent) {
 	if b.current == nil {
 		return
 	}
 	// For explicit transactions, use COMMIT/XID timestamp as end time
 	// For implicit transactions (shouldn't normally get here), use current end time
 	if b.current.isExplicit {
-		b.current.endTime = ts
+		b.current.endTime = ev.Timestamp
 	}
+	b.updateBinlogCoverage(ev)
 	b.finalizeTransaction()
 }
 
@@ -123,6 +131,7 @@ func (b *TransactionBuilder) handleRowsQuery(ev model.NormalizedEvent) {
 	if b.current == nil {
 		b.startTransaction(ev.Timestamp, false)
 	}
+	b.updateBinlogCoverage(ev)
 
 	// Capture the SQL context (already bounded at normalize layer)
 	b.current.querySQL = ev.QuerySQL
@@ -136,8 +145,8 @@ func (b *TransactionBuilder) startTransaction(ts time.Time, isExplicit bool) {
 		isExplicit: isExplicit,
 		startTime:  ts,
 		endTime:    ts,
-		tables:     make(map[string]int),
-		operations: make(map[string]int),
+		tables:     make(map[string]int, 1),
+		operations: make(map[string]int, 1),
 	}
 }
 
@@ -150,10 +159,11 @@ func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent) {
 	b.current.totalRows += ev.RowCount
 	b.current.eventCount++
 	b.current.endTime = ev.Timestamp
+	b.updateBinlogCoverage(ev)
 
 	// Track table: "schema.table"
 	if ev.Schema != "" && ev.Table != "" {
-		key := fmt.Sprintf("%s.%s", ev.Schema, ev.Table)
+		key := ev.Schema + "." + ev.Table
 		b.current.tables[key] += ev.RowCount
 	}
 
@@ -169,15 +179,20 @@ func (b *TransactionBuilder) finalizeTransaction() {
 	}
 
 	txn := model.Transaction{
-		TxnKey:       b.current.txnKey,
-		StartTime:    b.current.startTime,
-		EndTime:      b.current.endTime,
-		Duration:     b.current.endTime.Sub(b.current.startTime),
-		TotalRows:    b.current.totalRows,
-		EventCount:   b.current.eventCount,
-		Tables:       b.current.tables,
-		Operations:   b.current.operations,
-		QuerySummary: model.MakeQuerySummary(b.current.querySQL),
+		TxnKey:          b.current.txnKey,
+		StartTime:       b.current.startTime,
+		EndTime:         b.current.endTime,
+		Duration:        b.current.endTime.Sub(b.current.startTime),
+		TotalRows:       b.current.totalRows,
+		EventCount:      b.current.eventCount,
+		BinlogBytes:     b.current.binlogBytes,
+		BinlogPathStart: b.current.binlogPathStart,
+		BinlogPathEnd:   b.current.binlogPathEnd,
+		PositionStart:   b.current.positionStart,
+		PositionEnd:     b.current.positionEnd,
+		Tables:          b.current.tables,
+		Operations:      b.current.operations,
+		QuerySummary:    model.MakeQuerySummary(b.current.querySQL),
 		QueryContext: model.NewQueryContextFromNormalized(
 			b.current.querySQL,
 			b.current.queryTruncated,
@@ -191,5 +206,25 @@ func (b *TransactionBuilder) finalizeTransaction() {
 
 func (b *TransactionBuilder) generateTxnKey() string {
 	id := atomic.AddUint64(&b.txnCounter, 1)
-	return fmt.Sprintf("txn-%d", id)
+	return "txn-" + strconv.FormatUint(id, 10)
+}
+
+func (b *TransactionBuilder) updateBinlogCoverage(ev model.NormalizedEvent) {
+	if b.current == nil {
+		return
+	}
+	b.current.binlogBytes += ev.BinlogBytes
+
+	if b.current.binlogPathStart == "" && ev.BinlogPath != "" {
+		b.current.binlogPathStart = ev.BinlogPath
+	}
+	if b.current.positionStart == 0 && ev.PositionStart != 0 {
+		b.current.positionStart = ev.PositionStart
+	}
+	if ev.BinlogPath != "" {
+		b.current.binlogPathEnd = ev.BinlogPath
+	}
+	if ev.PositionEnd != 0 {
+		b.current.positionEnd = ev.PositionEnd
+	}
 }

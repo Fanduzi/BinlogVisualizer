@@ -52,6 +52,11 @@ type persistedTransaction struct {
 	DurationMS         int64
 	TotalRows          int64
 	EventCount         int64
+	BinlogBytes        int64
+	BinlogPathStart    string
+	BinlogPathEnd      string
+	PositionStart      int64
+	PositionEnd        int64
 	QuerySummary       string
 	QuerySQL           string
 	QueryTruncated     bool
@@ -67,6 +72,11 @@ type transactionRow struct {
 	DurationMS         int64
 	TotalRows          int64
 	EventCount         int64
+	BinlogBytes        int64
+	BinlogPathStart    string
+	BinlogPathEnd      string
+	PositionStart      int64
+	PositionEnd        int64
 	QuerySummary       string
 	QueryTruncated     bool
 	QueryOriginalBytes int64
@@ -92,9 +102,12 @@ type transactionSQLContextRow struct {
 }
 
 type minuteBucketRow struct {
-	Minute    time.Time
-	TotalRows int64
-	TxnCount  int64
+	Minute      time.Time
+	TotalRows   int64
+	TxnCount    int64
+	EventCount  int64
+	BinlogBytes int64
+	DDLCount    int64
 }
 
 type minuteTableRow struct {
@@ -190,6 +203,25 @@ func (s *DuckDBStore) Close() error {
 }
 
 func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) error {
+	if len(transactions) == 0 {
+		return nil
+	}
+
+	additionalTxnSQL := 0
+	additionalTxnTables := 0
+	additionalTxnOps := 0
+	for _, txn := range transactions {
+		if txn.QuerySQL != "" {
+			additionalTxnSQL++
+		}
+		additionalTxnTables += len(txn.TableRows)
+		additionalTxnOps += len(txn.Operations)
+	}
+	s.transactionsBatch = growSlice(s.transactionsBatch, len(transactions))
+	s.txnSQLBatch = growSlice(s.txnSQLBatch, additionalTxnSQL)
+	s.txnTablesBatch = growSlice(s.txnTablesBatch, additionalTxnTables)
+	s.txnOpsBatch = growSlice(s.txnOpsBatch, additionalTxnOps)
+
 	for _, txn := range transactions {
 		s.transactionsBatch = append(s.transactionsBatch, transactionRow{
 			TxnKey:             txn.TxnKey,
@@ -198,11 +230,16 @@ func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) er
 			DurationMS:         txn.DurationMS,
 			TotalRows:          txn.TotalRows,
 			EventCount:         txn.EventCount,
+			BinlogBytes:        txn.BinlogBytes,
+			BinlogPathStart:    txn.BinlogPathStart,
+			BinlogPathEnd:      txn.BinlogPathEnd,
+			PositionStart:      txn.PositionStart,
+			PositionEnd:        txn.PositionEnd,
 			QuerySummary:       txn.QuerySummary,
 			QueryTruncated:     txn.QueryTruncated,
 			QueryOriginalBytes: txn.QueryOriginalBytes,
 		})
-		s.bufferTopLevelRow(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.QuerySummary) + 48)
+		s.bufferTopLevelRow(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.QuerySummary) + estimateStringBytes(txn.BinlogPathStart) + estimateStringBytes(txn.BinlogPathEnd) + 80)
 		if txn.QuerySQL != "" {
 			s.txnSQLBatch = append(s.txnSQLBatch, transactionSQLContextRow{
 				TxnKey:             txn.TxnKey,
@@ -236,11 +273,14 @@ func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) er
 func (s *DuckDBStore) RecordMinuteBuckets(buckets []model.MinuteBucket) error {
 	for _, bucket := range buckets {
 		s.minutesBatch = append(s.minutesBatch, minuteBucketRow{
-			Minute:    bucket.Minute,
-			TotalRows: int64(bucket.TotalRows),
-			TxnCount:  int64(bucket.TxnCount),
+			Minute:      bucket.Minute,
+			TotalRows:   int64(bucket.TotalRows),
+			TxnCount:    int64(bucket.TxnCount),
+			EventCount:  int64(bucket.EventCount),
+			BinlogBytes: bucket.BinlogBytes,
+			DDLCount:    int64(bucket.DDLCount),
 		})
-		s.bufferTopLevelRow(24)
+		s.bufferTopLevelRow(48)
 
 		tableNames := make([]string, 0, len(bucket.TableRows))
 		for tableKey := range bucket.TableRows {
@@ -282,7 +322,7 @@ func (s *DuckDBStore) Flush() error {
 	if len(s.transactionsBatch) > 0 {
 		if err := s.appendRows("transactions", func(app *duckdb.Appender) error {
 			for _, row := range s.transactionsBatch {
-				if err := app.AppendRow(row.TxnKey, row.StartTime, row.EndTime, row.DurationMS, row.TotalRows, row.EventCount, row.QuerySummary, row.QueryTruncated, row.QueryOriginalBytes); err != nil {
+				if err := app.AppendRow(row.TxnKey, row.StartTime, row.EndTime, row.DurationMS, row.TotalRows, row.EventCount, row.BinlogBytes, row.BinlogPathStart, row.BinlogPathEnd, row.PositionStart, row.PositionEnd, row.QuerySummary, row.QueryTruncated, row.QueryOriginalBytes); err != nil {
 					return err
 				}
 			}
@@ -334,7 +374,7 @@ func (s *DuckDBStore) Flush() error {
 	if len(s.minutesBatch) > 0 {
 		if err := s.appendRows("minute_buckets", func(app *duckdb.Appender) error {
 			for _, row := range s.minutesBatch {
-				if err := app.AppendRow(row.Minute, row.TotalRows, row.TxnCount); err != nil {
+				if err := app.AppendRow(row.Minute, row.TotalRows, row.TxnCount, row.EventCount, row.BinlogBytes, row.DDLCount); err != nil {
 					return err
 				}
 			}
@@ -378,18 +418,18 @@ func (s *DuckDBStore) Flush() error {
 
 func (s *DuckDBStore) QueryAllTransactions() ([]model.Transaction, error) {
 	baseRows, err := s.queryTransactions(`
-SELECT txn_key, start_time, end_time, duration_ms, total_rows, event_count, query_summary, query_truncated, query_original_bytes
+SELECT txn_key, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, query_summary, query_truncated, query_original_bytes
 FROM transactions
 ORDER BY start_time ASC, txn_key ASC`)
 	if err != nil {
 		return nil, err
 	}
-	return s.hydrateTransactions(baseRows)
+	return s.hydrateTransactions(baseRows, false)
 }
 
 func (s *DuckDBStore) QueryTopTransactions(limit int) ([]model.Transaction, error) {
 	query := `
-SELECT txn_key, start_time, end_time, duration_ms, total_rows, event_count, query_summary, query_truncated, query_original_bytes
+SELECT txn_key, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, query_summary, query_truncated, query_original_bytes
 FROM transactions
 ORDER BY total_rows DESC, txn_key ASC`
 	if limit > 0 {
@@ -399,7 +439,7 @@ ORDER BY total_rows DESC, txn_key ASC`
 	if err != nil {
 		return nil, err
 	}
-	return s.hydrateTransactions(baseRows)
+	return s.hydrateTransactions(baseRows, true)
 }
 
 func (s *DuckDBStore) ResolveTransactionQuerySQL(txnKeys []string) (map[string]string, error) {
@@ -449,7 +489,7 @@ WHERE txn_key IN (`+placeholders+`)`, args...)
 
 func (s *DuckDBStore) QueryMinuteBuckets() ([]model.MinuteBucket, error) {
 	rows, err := s.db.Query(`
-SELECT minute, total_rows, txn_count
+SELECT minute, total_rows, txn_count, event_count, binlog_bytes, ddl_count
 FROM minute_buckets
 ORDER BY minute ASC`)
 	if err != nil {
@@ -461,16 +501,19 @@ ORDER BY minute ASC`)
 	indexByMinute := make(map[time.Time]int)
 	for rows.Next() {
 		var minute time.Time
-		var totalRows, txnCount int64
-		if err := rows.Scan(&minute, &totalRows, &txnCount); err != nil {
+		var totalRows, txnCount, eventCount, binlogBytes, ddlCount int64
+		if err := rows.Scan(&minute, &totalRows, &txnCount, &eventCount, &binlogBytes, &ddlCount); err != nil {
 			return nil, err
 		}
 		indexByMinute[minute] = len(buckets)
 		buckets = append(buckets, model.MinuteBucket{
-			Minute:    minute,
-			TotalRows: int(totalRows),
-			TxnCount:  int(txnCount),
-			TableRows: make(map[string]int),
+			Minute:      minute,
+			TotalRows:   int(totalRows),
+			TxnCount:    int(txnCount),
+			EventCount:  int(eventCount),
+			BinlogBytes: binlogBytes,
+			DDLCount:    int(ddlCount),
+			TableRows:   make(map[string]int),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -597,6 +640,11 @@ func (s *DuckDBStore) initSchema() error {
 			duration_ms BIGINT,
 			total_rows BIGINT,
 			event_count BIGINT,
+			binlog_bytes BIGINT,
+			binlog_path_start VARCHAR,
+			binlog_path_end VARCHAR,
+			position_start BIGINT,
+			position_end BIGINT,
 			query_summary VARCHAR,
 			query_truncated BOOLEAN,
 			query_original_bytes BIGINT
@@ -620,7 +668,10 @@ func (s *DuckDBStore) initSchema() error {
 		`CREATE TABLE IF NOT EXISTS minute_buckets (
 			minute TIMESTAMP,
 			total_rows BIGINT,
-			txn_count BIGINT
+			txn_count BIGINT,
+			event_count BIGINT,
+			binlog_bytes BIGINT,
+			ddl_count BIGINT
 		)`,
 		`CREATE TABLE IF NOT EXISTS minute_table_rows (
 			minute TIMESTAMP,
@@ -660,6 +711,11 @@ func (s *DuckDBStore) queryTransactions(query string) ([]transactionRow, error) 
 			&row.DurationMS,
 			&row.TotalRows,
 			&row.EventCount,
+			&row.BinlogBytes,
+			&row.BinlogPathStart,
+			&row.BinlogPathEnd,
+			&row.PositionStart,
+			&row.PositionEnd,
 			&row.QuerySummary,
 			&row.QueryTruncated,
 			&row.QueryOriginalBytes,
@@ -674,24 +730,30 @@ func (s *DuckDBStore) queryTransactions(query string) ([]transactionRow, error) 
 	return result, nil
 }
 
-func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow) ([]model.Transaction, error) {
+func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow, restrictToKeys bool) ([]model.Transaction, error) {
 	if len(baseRows) == 0 {
 		return nil, nil
 	}
 
 	txns := make([]model.Transaction, len(baseRows))
 	indexByTxnKey := make(map[string]int, len(baseRows))
+	keys := make([]string, 0, len(baseRows))
 	for i, row := range baseRows {
 		txns[i] = model.Transaction{
-			TxnKey:       row.TxnKey,
-			StartTime:    row.StartTime,
-			EndTime:      row.EndTime,
-			Duration:     time.Duration(row.DurationMS) * time.Millisecond,
-			TotalRows:    int(row.TotalRows),
-			EventCount:   int(row.EventCount),
-			QuerySummary: row.QuerySummary,
-			Tables:       make(map[string]int),
-			Operations:   make(map[string]int),
+			TxnKey:          row.TxnKey,
+			StartTime:       row.StartTime,
+			EndTime:         row.EndTime,
+			Duration:        time.Duration(row.DurationMS) * time.Millisecond,
+			TotalRows:       int(row.TotalRows),
+			EventCount:      int(row.EventCount),
+			BinlogBytes:     row.BinlogBytes,
+			BinlogPathStart: row.BinlogPathStart,
+			BinlogPathEnd:   row.BinlogPathEnd,
+			PositionStart:   row.PositionStart,
+			PositionEnd:     row.PositionEnd,
+			QuerySummary:    row.QuerySummary,
+			Tables:          make(map[string]int),
+			Operations:      make(map[string]int),
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 			txns[i].QueryContext = &model.QueryContext{
@@ -701,19 +763,29 @@ func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow) ([]model.Tr
 			}
 		}
 		indexByTxnKey[row.TxnKey] = i
+		keys = append(keys, row.TxnKey)
 	}
 
-	if err := s.fillTransactionMaps(indexByTxnKey, txns); err != nil {
+	if err := s.fillTransactionMaps(indexByTxnKey, txns, keys, restrictToKeys); err != nil {
 		return nil, err
 	}
 	return txns, nil
 }
 
-func (s *DuckDBStore) fillTransactionMaps(indexByTxnKey map[string]int, txns []model.Transaction) error {
-	tableRows, err := s.db.Query(`
+func (s *DuckDBStore) fillTransactionMaps(indexByTxnKey map[string]int, txns []model.Transaction, keys []string, restrictToKeys bool) error {
+	tableQuery := `
 SELECT txn_key, table_key, rows
-FROM transaction_tables
-ORDER BY txn_key ASC, table_key ASC`)
+FROM transaction_tables`
+	tableArgs := make([]any, 0, len(keys))
+	if restrictToKeys {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
+		tableQuery += "\nWHERE txn_key IN (" + placeholders + ")"
+		for _, key := range keys {
+			tableArgs = append(tableArgs, key)
+		}
+	}
+	tableQuery += "\nORDER BY txn_key ASC, table_key ASC"
+	tableRows, err := s.db.Query(tableQuery, tableArgs...)
 	if err != nil {
 		return err
 	}
@@ -733,10 +805,19 @@ ORDER BY txn_key ASC, table_key ASC`)
 		return err
 	}
 
-	opRows, err := s.db.Query(`
+	opQuery := `
 SELECT txn_key, operation, rows
-FROM transaction_operations
-ORDER BY txn_key ASC, operation ASC`)
+FROM transaction_operations`
+	opArgs := make([]any, 0, len(keys))
+	if restrictToKeys {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
+		opQuery += "\nWHERE txn_key IN (" + placeholders + ")"
+		for _, key := range keys {
+			opArgs = append(opArgs, key)
+		}
+	}
+	opQuery += "\nORDER BY txn_key ASC, operation ASC"
+	opRows, err := s.db.Query(opQuery, opArgs...)
 	if err != nil {
 		return err
 	}
@@ -800,6 +881,26 @@ func estimateStringBytes(v string) int {
 	return len(v)
 }
 
+func growSlice[T any](items []T, additional int) []T {
+	if additional <= 0 {
+		return items
+	}
+	needed := len(items) + additional
+	if cap(items) >= needed {
+		return items
+	}
+	newCap := cap(items) * 2
+	if newCap < needed {
+		newCap = needed
+	}
+	if newCap == 0 {
+		newCap = additional
+	}
+	grown := make([]T, len(items), newCap)
+	copy(grown, items)
+	return grown
+}
+
 func zeroTimeToNil(ts time.Time) any {
 	if ts.IsZero() {
 		return nil
@@ -811,15 +912,20 @@ func toPersistedTransactions(transactions []model.Transaction) []persistedTransa
 	result := make([]persistedTransaction, 0, len(transactions))
 	for _, txn := range transactions {
 		pt := persistedTransaction{
-			TxnKey:       txn.TxnKey,
-			StartTime:    txn.StartTime,
-			EndTime:      txn.EndTime,
-			DurationMS:   txn.Duration.Milliseconds(),
-			TotalRows:    int64(txn.TotalRows),
-			EventCount:   int64(txn.EventCount),
-			QuerySummary: txn.QuerySummary,
-			TableRows:    cloneStringIntMap(txn.Tables),
-			Operations:   cloneStringIntMap(txn.Operations),
+			TxnKey:          txn.TxnKey,
+			StartTime:       txn.StartTime,
+			EndTime:         txn.EndTime,
+			DurationMS:      txn.Duration.Milliseconds(),
+			TotalRows:       int64(txn.TotalRows),
+			EventCount:      int64(txn.EventCount),
+			BinlogBytes:     txn.BinlogBytes,
+			BinlogPathStart: txn.BinlogPathStart,
+			BinlogPathEnd:   txn.BinlogPathEnd,
+			PositionStart:   txn.PositionStart,
+			PositionEnd:     txn.PositionEnd,
+			QuerySummary:    txn.QuerySummary,
+			TableRows:       txn.Tables,
+			Operations:      txn.Operations,
 		}
 		if txn.QueryContext != nil {
 			pt.QuerySQL = txn.QueryContext.SQL
@@ -988,15 +1094,20 @@ func (s *inMemoryStore) Close() error {
 
 func clonePersistedTransaction(txn persistedTransaction) persistedTransaction {
 	return persistedTransaction{
-		TxnKey:             txn.TxnKey,
-		StartTime:          txn.StartTime,
-		EndTime:            txn.EndTime,
-		DurationMS:         txn.DurationMS,
-		TotalRows:          txn.TotalRows,
-		EventCount:         txn.EventCount,
-		QuerySummary:       txn.QuerySummary,
-		QuerySQL:           txn.QuerySQL,
-		QueryTruncated:     txn.QueryTruncated,
+			TxnKey:             txn.TxnKey,
+			StartTime:          txn.StartTime,
+			EndTime:            txn.EndTime,
+			DurationMS:         txn.DurationMS,
+			TotalRows:          txn.TotalRows,
+			EventCount:         txn.EventCount,
+			BinlogBytes:        txn.BinlogBytes,
+			BinlogPathStart:    txn.BinlogPathStart,
+			BinlogPathEnd:      txn.BinlogPathEnd,
+			PositionStart:      txn.PositionStart,
+			PositionEnd:        txn.PositionEnd,
+			QuerySummary:       txn.QuerySummary,
+			QuerySQL:           txn.QuerySQL,
+			QueryTruncated:     txn.QueryTruncated,
 		QueryOriginalBytes: txn.QueryOriginalBytes,
 		TableRows:          cloneStringIntMap(txn.TableRows),
 		Operations:         cloneStringIntMap(txn.Operations),
@@ -1005,10 +1116,13 @@ func clonePersistedTransaction(txn persistedTransaction) persistedTransaction {
 
 func cloneMinuteBucket(bucket model.MinuteBucket) model.MinuteBucket {
 	return model.MinuteBucket{
-		Minute:    bucket.Minute,
-		TotalRows: bucket.TotalRows,
-		TxnCount:  bucket.TxnCount,
-		TableRows: cloneStringIntMap(bucket.TableRows),
+		Minute:      bucket.Minute,
+		TotalRows:   bucket.TotalRows,
+		TxnCount:    bucket.TxnCount,
+		EventCount:  bucket.EventCount,
+		BinlogBytes: bucket.BinlogBytes,
+		DDLCount:    bucket.DDLCount,
+		TableRows:   cloneStringIntMap(bucket.TableRows),
 	}
 }
 
@@ -1041,15 +1155,20 @@ func buildTransactionsFromPersisted(src []persistedTransaction, includeSQL bool)
 	txns := make([]model.Transaction, len(src))
 	for i, row := range src {
 		txns[i] = model.Transaction{
-			TxnKey:       row.TxnKey,
-			StartTime:    row.StartTime,
-			EndTime:      row.EndTime,
-			Duration:     time.Duration(row.DurationMS) * time.Millisecond,
-			TotalRows:    int(row.TotalRows),
-			EventCount:   int(row.EventCount),
-			QuerySummary: row.QuerySummary,
-			Tables:       cloneStringIntMap(row.TableRows),
-			Operations:   cloneStringIntMap(row.Operations),
+			TxnKey:          row.TxnKey,
+			StartTime:       row.StartTime,
+			EndTime:         row.EndTime,
+			Duration:        time.Duration(row.DurationMS) * time.Millisecond,
+			TotalRows:       int(row.TotalRows),
+			EventCount:      int(row.EventCount),
+			BinlogBytes:     row.BinlogBytes,
+			BinlogPathStart: row.BinlogPathStart,
+			BinlogPathEnd:   row.BinlogPathEnd,
+			PositionStart:   row.PositionStart,
+			PositionEnd:     row.PositionEnd,
+			QuerySummary:    row.QuerySummary,
+			Tables:          cloneStringIntMap(row.TableRows),
+			Operations:      cloneStringIntMap(row.Operations),
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 			sql := ""

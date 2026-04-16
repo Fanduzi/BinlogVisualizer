@@ -20,9 +20,11 @@ type Analyzer struct {
 	filter *EventFilter
 
 	// Sub-aggregators
-	txnBuilder *TransactionBuilder
-	tableAgg   *TableAggregator
-	minuteAgg  *MinuteAggregator
+	txnBuilder    *TransactionBuilder
+	tableAgg      *TableAggregator
+	minuteAgg     *MinuteAggregator
+	ddlAgg        *DDLAggregator
+	timeseriesAgg *TimeseriesAggregator
 
 	// Event tracking
 	eventCount int
@@ -160,6 +162,8 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 	if a.filter.Allow(ev.Schema, ev.Table) {
 		a.tableAgg.Consume(ev)
 		a.minuteAgg.Consume(ev)
+		a.ddlAgg.ConsumeEvent(ev)
+		a.timeseriesAgg.Consume(ev)
 	}
 
 	if err := a.persistCompletedTransactions(); err != nil {
@@ -183,16 +187,19 @@ func (a *Analyzer) withCurrentTxnKey(ev model.NormalizedEvent) model.NormalizedE
 
 // reset clears all internal state for a fresh analysis run.
 func (a *Analyzer) reset() {
+	a.err = nil
 	a.txnBuilder = NewTransactionBuilder()
 	a.tableAgg = NewTableAggregator()
 	a.minuteAgg = NewMinuteAggregator()
+	a.ddlAgg = NewDDLAggregator()
+	a.timeseriesAgg = NewTimeseriesAggregator()
 	a.filter = newEventFilter(a.opts)
 	a.eventCount = 0
 	a.startTime = time.Time{}
 	a.endTime = time.Time{}
 	a.finalized = false
 	a.result = nil
-	if a.store != nil && a.err == nil {
+	if a.store != nil {
 		a.err = a.store.Reset()
 	}
 }
@@ -230,13 +237,27 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	summary := a.buildSummary(allTransactions)
 
 	patterns := BuildPatterns(allTransactions)
+	ddlTimeline := a.ddlAgg.Snapshot()
+	timeseries := a.timeseriesAgg.Snapshot(minutes, allTransactions)
+	largestTransactions, longestTransactions := SelectDiagnosticTransactions(allTransactions, 5)
+	diagnostics := model.Diagnostics{
+		DDLEvents:           ddlTimeline,
+		LargestTransactions: largestTransactions,
+		LongestTransactions: longestTransactions,
+		WidestTransactions:  SelectWidestTransactions(allTransactions, 5),
+		FileSegments:        BuildFileSegments(minutes, 5),
+		HotIntervals:        SelectHotIntervals(minutes, 5),
+		Findings:            BuildFindingsFromAlerts(persistedAlerts, minutes, allTransactions, ddlTimeline),
+	}
 
 	return &model.AnalysisResult{
 		Summary:           summary,
+		Timeseries:        timeseries,
 		Tables:            limitTables(a.tableAgg.Snapshot(), a.opts.TopTables),
 		Transactions:      topTransactions,
 		Patterns:          patterns,
 		Minutes:           minutes,
+		Diagnostics:       diagnostics,
 		Alerts:            persistedAlerts,
 		Warnings:          countAnalysisWarnings(allTransactions),
 		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, allTransactions, persistedAlerts),

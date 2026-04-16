@@ -1,3 +1,8 @@
+// Package analyzer verifies minute bucket aggregation and table activity snapshots.
+// input: synthetic normalized events with timestamps, table names, and row counts.
+// output: assertions for minute bucket grouping and per-table activity rollups.
+// pos: focused regression coverage for analyzer minute aggregation helpers.
+// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
@@ -208,5 +213,175 @@ func TestMinuteAggregatorReturnsDefensiveCopyOfTableRows(t *testing.T) {
 	// Should be 5 + 2 = 7, not affected by the 999 we set earlier
 	if snapshot3[0].TableRows["shop.orders"] != 7 {
 		t.Fatalf("expected shop.orders 7 rows after additional event, got %d", snapshot3[0].TableRows["shop.orders"])
+	}
+}
+
+func TestMinuteAggregatorTracksEventCountAndBinlogBytes(t *testing.T) {
+	agg := NewMinuteAggregator()
+	base := time.Date(2026, 3, 9, 10, 0, 10, 0, time.UTC)
+
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base,
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "INSERT",
+		RowCount:    2,
+		BinlogBytes: 10,
+		TxnKey:      "t1",
+	})
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base.Add(15 * time.Second),
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "UPDATE",
+		RowCount:    3,
+		BinlogBytes: 15,
+		TxnKey:      "t2",
+	})
+
+	buckets := agg.Snapshot()
+	if len(buckets) != 1 {
+		t.Fatalf("expected 1 bucket, got %d", len(buckets))
+	}
+
+	if buckets[0].EventCount != 2 {
+		t.Fatalf("expected 2 events, got %d", buckets[0].EventCount)
+	}
+	if buckets[0].BinlogBytes != 25 {
+		t.Fatalf("expected 25 binlog bytes, got %d", buckets[0].BinlogBytes)
+	}
+	if buckets[0].DDLCount != 0 {
+		t.Fatalf("expected 0 ddl events, got %d", buckets[0].DDLCount)
+	}
+}
+
+func TestMinuteAggregatorCountsDDLEventsWithoutChangingRowTotals(t *testing.T) {
+	agg := NewMinuteAggregator()
+	base := time.Date(2026, 3, 9, 10, 0, 10, 0, time.UTC)
+
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base,
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "INSERT",
+		RowCount:    5,
+		BinlogBytes: 50,
+		TxnKey:      "t1",
+	})
+	agg.Consume(model.NormalizedEvent{
+		Timestamp:   base.Add(20 * time.Second),
+		EventType:   "DDL",
+		Schema:      "shop",
+		Table:       "orders",
+		Operation:   "ALTER",
+		BinlogBytes: 25,
+	})
+
+	buckets := agg.Snapshot()
+	if len(buckets) != 1 {
+		t.Fatalf("expected 1 bucket, got %d", len(buckets))
+	}
+
+	if buckets[0].TotalRows != 5 {
+		t.Fatalf("expected 5 total rows, got %d", buckets[0].TotalRows)
+	}
+	if buckets[0].TableRows["shop.orders"] != 5 {
+		t.Fatalf("expected shop.orders 5 rows, got %d", buckets[0].TableRows["shop.orders"])
+	}
+	if buckets[0].EventCount != 2 {
+		t.Fatalf("expected 2 events, got %d", buckets[0].EventCount)
+	}
+	if buckets[0].BinlogBytes != 75 {
+		t.Fatalf("expected 75 binlog bytes, got %d", buckets[0].BinlogBytes)
+	}
+	if buckets[0].DDLCount != 1 {
+		t.Fatalf("expected 1 ddl event, got %d", buckets[0].DDLCount)
+	}
+}
+
+func TestMinuteAggregatorDrainBeforeReturnsSortedBucketsAndKeepsFutureBuckets(t *testing.T) {
+	agg := NewMinuteAggregator()
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	agg.Consume(model.NormalizedEvent{Timestamp: base.Add(2 * time.Minute), Schema: "shop", Table: "orders", RowCount: 2, TxnKey: "t3"})
+	agg.Consume(model.NormalizedEvent{Timestamp: base, Schema: "shop", Table: "orders", RowCount: 5, TxnKey: "t1"})
+	agg.Consume(model.NormalizedEvent{Timestamp: base.Add(time.Minute), Schema: "shop", Table: "users", RowCount: 3, TxnKey: "t2"})
+
+	drained := agg.DrainBefore(base.Add(2 * time.Minute))
+	if len(drained) != 2 {
+		t.Fatalf("expected 2 drained buckets, got %d", len(drained))
+	}
+	if drained[0].Minute != base {
+		t.Fatalf("expected first drained minute %v, got %v", base, drained[0].Minute)
+	}
+	if drained[1].Minute != base.Add(time.Minute) {
+		t.Fatalf("expected second drained minute %v, got %v", base.Add(time.Minute), drained[1].Minute)
+	}
+	if drained[0].TableRows["shop.orders"] != 5 {
+		t.Fatalf("expected shop.orders rows in first drained bucket, got %d", drained[0].TableRows["shop.orders"])
+	}
+	if drained[1].TableRows["shop.users"] != 3 {
+		t.Fatalf("expected shop.users rows in second drained bucket, got %d", drained[1].TableRows["shop.users"])
+	}
+
+	remaining := agg.Snapshot()
+	if len(remaining) != 1 {
+		t.Fatalf("expected 1 remaining bucket, got %d", len(remaining))
+	}
+	if remaining[0].Minute != base.Add(2*time.Minute) {
+		t.Fatalf("expected remaining minute %v, got %v", base.Add(2*time.Minute), remaining[0].Minute)
+	}
+	if remaining[0].TableRows["shop.orders"] != 2 {
+		t.Fatalf("expected remaining shop.orders rows 2, got %d", remaining[0].TableRows["shop.orders"])
+	}
+}
+
+func BenchmarkMinuteAggregatorDrainBefore(b *testing.B) {
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		agg := NewMinuteAggregator()
+		for minute := 0; minute < 120; minute++ {
+			agg.Consume(model.NormalizedEvent{
+				Timestamp: base.Add(time.Duration(minute) * time.Minute),
+				Schema:    "shop",
+				Table:     "orders",
+				RowCount:  1,
+				TxnKey:    "txn",
+			})
+		}
+		cutoff := base.Add(90 * time.Minute)
+		b.StartTimer()
+
+		drained := agg.DrainBefore(cutoff)
+		if len(drained) != 90 {
+			b.Fatalf("expected 90 drained buckets, got %d", len(drained))
+		}
+	}
+}
+
+func BenchmarkMinuteAggregatorDrainBeforeNoReadyBuckets(b *testing.B) {
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+	b.ReportAllocs()
+
+	agg := NewMinuteAggregator()
+	for offset := 0; offset < 5; offset++ {
+		agg.Consume(model.NormalizedEvent{
+			Timestamp: base.Add(time.Duration(offset) * time.Minute),
+			Schema:    "shop",
+			Table:     "orders",
+			RowCount:  1,
+			TxnKey:    "txn",
+		})
+	}
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		drained := agg.DrainBefore(base)
+		if len(drained) != 0 {
+			b.Fatalf("expected no drained buckets, got %d", len(drained))
+		}
 	}
 }

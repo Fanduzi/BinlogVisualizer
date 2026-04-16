@@ -6,6 +6,7 @@
 package analyzer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -196,7 +197,12 @@ func TestDuckDBStoreQueryAllTransactionsDoesNotHydrateFullSQL(t *testing.T) {
 	}
 }
 
-func newTestDuckDBStore(t *testing.T, batchRows int) *DuckDBStore {
+func newTestDuckDBStore(t interface {
+		Helper()
+		TempDir() string
+		Cleanup(func())
+		Fatalf(string, ...any)
+	}, batchRows int) *DuckDBStore {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "analysis.duckdb")
@@ -231,6 +237,87 @@ func newPersistedTransaction(txnKey string, start time.Time, totalRows int) pers
 		QueryOriginalBytes: 0,
 		TableRows:          map[string]int{"shop.orders": totalRows},
 		Operations:         map[string]int{"INSERT": totalRows},
+	}
+}
+
+func BenchmarkDuckDBStoreQueryTopTransactionsLargeDataset(b *testing.B) {
+	store := newTestDuckDBStore(b, DefaultBatchFlushRows)
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	fixtures := make([]persistedTransaction, 0, 4000)
+	for i := 0; i < 4000; i++ {
+		fixtures = append(fixtures, persistedTransaction{
+			TxnKey:             fmt.Sprintf("txn-%06d", i),
+			StartTime:          base.Add(time.Duration(i) * time.Second),
+			EndTime:            base.Add(time.Duration(i)*time.Second + 2*time.Second),
+			DurationMS:         2000,
+			TotalRows:          int64(4000 - i),
+			EventCount:         3,
+			QuerySummary:       "UPDATE shop.orders SET status = ? WHERE id = ?",
+			QuerySQL:           "UPDATE shop.orders SET status = 'done' WHERE id = 7",
+			QueryTruncated:     false,
+			QueryOriginalBytes: 48,
+			TableRows: map[string]int{
+				"shop.orders": 5,
+				fmt.Sprintf("shop.orders_archive_%02d", i%16): 3,
+			},
+			Operations: map[string]int{
+				"UPDATE": 6,
+				"INSERT": 2,
+			},
+		})
+	}
+	if err := store.RecordTransactions(fixtures); err != nil {
+		b.Fatalf("RecordTransactions returned error: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		b.Fatalf("Flush returned error: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		txns, err := store.QueryTopTransactions(10)
+		if err != nil {
+			b.Fatalf("QueryTopTransactions returned error: %v", err)
+		}
+		if len(txns) != 10 {
+			b.Fatalf("expected 10 transactions, got %d", len(txns))
+		}
+	}
+}
+
+func BenchmarkDuckDBStoreRecordTransactions(b *testing.B) {
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	fixtures := make([]persistedTransaction, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		fixtures = append(fixtures, persistedTransaction{
+			TxnKey:             fmt.Sprintf("txn-%06d", i),
+			StartTime:          base.Add(time.Duration(i) * time.Second),
+			EndTime:            base.Add(time.Duration(i)*time.Second + 2*time.Second),
+			DurationMS:         2000,
+			TotalRows:          int64(1000 - i),
+			EventCount:         3,
+			QuerySummary:       "UPDATE shop.orders SET status = ? WHERE id = ?",
+			QuerySQL:           "UPDATE shop.orders SET status = 'done' WHERE id = 7",
+			QueryTruncated:     false,
+			QueryOriginalBytes: 48,
+			TableRows: map[string]int{
+				"shop.orders": 5,
+				fmt.Sprintf("shop.orders_archive_%02d", i%16): 3,
+			},
+			Operations: map[string]int{
+				"UPDATE": 6,
+				"INSERT": 2,
+			},
+		})
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		store := newTestDuckDBStore(b, len(fixtures)+1)
+		if err := store.RecordTransactions(fixtures); err != nil {
+			b.Fatalf("RecordTransactions returned error: %v", err)
+		}
 	}
 }
 
