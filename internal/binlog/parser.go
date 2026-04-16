@@ -48,10 +48,12 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 			}
 
 			raw := RawEvent{
-				Timestamp: time.Unix(int64(ev.Header.Timestamp), 0),
-				EventType: ev.Header.EventType.String(),
-				Position:  ev.Header.LogPos,
+				Timestamp:  time.Unix(int64(ev.Header.Timestamp), 0),
+				EventType:  ev.Header.EventType.String(),
+				Position:   ev.Header.LogPos,
+				BinlogPath: path,
 			}
+			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = deriveEventPositionRange(ev.Header)
 
 			// Extract event-specific information
 			switch e := ev.Event.(type) {
@@ -87,6 +89,24 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 		}
 	}
 	return nil
+}
+
+func deriveEventPositionRange(header *replication.EventHeader) (int64, int64, int64) {
+	if header == nil {
+		return 0, 0, 0
+	}
+
+	end := int64(header.LogPos)
+	size := int64(header.EventSize)
+	start := end - size
+	if start < 0 {
+		start = 0
+	}
+	if end < start {
+		end = start
+	}
+
+	return start, end, end - start
 }
 
 func clampProgressOffset(offset, fileSize int64) int64 {

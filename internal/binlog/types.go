@@ -10,18 +10,22 @@ import "time"
 // RawEvent represents a raw binlog event before normalization.
 // This type isolates the analyzer from parser-specific types.
 type RawEvent struct {
-	Timestamp time.Time
-	EventType string
-	Schema    string
-	Table     string
-	Query     string // SQL query for QUERY_EVENT (e.g., BEGIN, COMMIT)
-	QuerySQL  string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
-	RowCount  int
-	Position  uint32
+	Timestamp     time.Time
+	BinlogPath    string
+	PositionStart int64
+	PositionEnd   int64
+	BinlogBytes   int64
+	EventType     string
+	Schema        string
+	Table         string
+	Query         string // SQL query for QUERY_EVENT (e.g., BEGIN, COMMIT)
+	QuerySQL      string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
+	RowCount      int
+	Position      uint32 // Legacy next-event position retained for existing callers and error messages.
 }
 
 // Parser defines the interface for parsing binlog files.
-// Implementations should wrap parser libraries and emit normalized RawEvents.
+// Implementations should wrap parser libraries and emit RawEvents with source metadata populated.
 type Parser interface {
 	// ParseFiles reads one or more binlog files and calls handler for each event.
 	ParseFiles(paths []string, handler func(RawEvent) error) error

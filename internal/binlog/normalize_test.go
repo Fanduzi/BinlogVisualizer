@@ -1,8 +1,17 @@
+// Package binlog verifies raw binlog normalization into analyzer-facing events.
+// input: synthetic RawEvent values covering query, rows, and rows_query variants.
+// output: assertions for normalized event shape, SQL truncation, and skip behavior.
+// pos: regression coverage for the normalize layer between parser output and analyzer input.
+// note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"binlogviz/internal/model"
 )
 
 func TestNormalizeWriteRowsEvent(t *testing.T) {
@@ -120,6 +129,39 @@ func TestNormalizeSkipUnsupportedEvent(t *testing.T) {
 	}
 	if ev != nil {
 		t.Fatalf("expected nil for unsupported event, got: %+v", ev)
+	}
+}
+
+func TestNormalizeRawEventPreservesBinlogMetadata(t *testing.T) {
+	ts := time.Date(2026, 3, 15, 14, 10, 26, 0, time.UTC)
+	ev, err := NormalizeRawEvent(RawEvent{
+		Timestamp:     ts,
+		EventType:     "WRITE_ROWS_EVENTv2",
+		Schema:        "shop",
+		Table:         "orders",
+		RowCount:      3,
+		BinlogPath:    "mysql-bin.000123",
+		PositionStart: 553,
+		PositionEnd:   599,
+		BinlogBytes:   46,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev == nil {
+		t.Fatal("expected normalized event")
+	}
+	if ev.BinlogPath != "mysql-bin.000123" {
+		t.Fatalf("expected BinlogPath to be preserved, got %q", ev.BinlogPath)
+	}
+	if ev.PositionStart != 553 {
+		t.Fatalf("expected PositionStart=553, got %d", ev.PositionStart)
+	}
+	if ev.PositionEnd != 599 {
+		t.Fatalf("expected PositionEnd=599, got %d", ev.PositionEnd)
+	}
+	if ev.BinlogBytes != 46 {
+		t.Fatalf("expected BinlogBytes=46, got %d", ev.BinlogBytes)
 	}
 }
 
@@ -327,12 +369,8 @@ func TestNormalizeRowsQueryEventTruncation(t *testing.T) {
 }
 
 func TestNormalizeRowsQueryEventTruncationUTF8Boundary(t *testing.T) {
-	// Create a string with multi-byte UTF-8 characters that exceeds 4096 bytes
-	base := "SELECT '日本語テスト' " // Each Japanese char is 3 bytes
-	var longSQL string
-	for len(longSQL) < 4100 {
-		longSQL += base
-	}
+	prefix := strings.Repeat("a", model.MaxStoredSQLBytes-1)
+	longSQL := prefix + "界suffix"
 
 	ev, err := NormalizeRawEvent(RawEvent{
 		EventType: "RowsQueryEvent",
@@ -341,11 +379,37 @@ func TestNormalizeRowsQueryEventTruncationUTF8Boundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(ev.QuerySQL) > 4096 {
-		t.Fatalf("expected QuerySQL to be truncated to <=4096 bytes, got: %d", len(ev.QuerySQL))
+	if len(ev.QuerySQL) > model.MaxStoredSQLBytes {
+		t.Fatalf("expected QuerySQL to be truncated to <=%d bytes, got: %d", model.MaxStoredSQLBytes, len(ev.QuerySQL))
 	}
-	// Verify it's valid UTF-8 (should not panic if we check)
-	_ = []rune(ev.QuerySQL)
+	if !utf8.ValidString(ev.QuerySQL) {
+		t.Fatalf("expected truncated QuerySQL to remain valid UTF-8, got %q", ev.QuerySQL)
+	}
+	if strings.Contains(ev.QuerySQL, "界") {
+		t.Fatalf("expected partial rune to be removed from truncated QuerySQL, got %q", ev.QuerySQL)
+	}
+}
+
+func TestNormalizeSkipsNonTransactionalQueryWithoutAllocation(t *testing.T) {
+	raw := RawEvent{
+		EventType: "QUERY_EVENT",
+		Schema:    "shop",
+		Query:     "ALTER TABLE orders ADD COLUMN note TEXT",
+	}
+
+	allocs := testing.AllocsPerRun(1000, func() {
+		ev, err := NormalizeRawEvent(raw)
+		if err != nil {
+			panic(err)
+		}
+		if ev != nil {
+			panic("expected skipped query event to return nil")
+		}
+	})
+
+	if allocs != 0 {
+		t.Fatalf("expected zero allocations for skipped non-transactional query, got %.2f", allocs)
+	}
 }
 
 // makeLongString creates a string of the specified byte length (approximate)
