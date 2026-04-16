@@ -1,7 +1,13 @@
+// Package binlog normalizes raw parser events into analyzer-facing events.
+// input: RawEvent values emitted by the binlog parser layer.
+// output: model.NormalizedEvent values with bounded SQL context and stable event kinds.
+// pos: normalization boundary between parser extraction and analyzer consumption.
+// note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"binlogviz/internal/model"
 )
@@ -9,34 +15,32 @@ import (
 // NormalizeRawEvent converts a RawEvent into a NormalizedEvent for analysis.
 // Returns nil for events that should be skipped (e.g., FORMAT_DESCRIPTION).
 func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
-	ev := &model.NormalizedEvent{
-		Timestamp: raw.Timestamp,
-		Schema:    raw.Schema,
-		Table:     raw.Table,
-		RowCount:  raw.RowCount,
-	}
-
 	switch {
 	case raw.EventType == "QUERY_EVENT" || raw.EventType == "QueryEvent":
-		return normalizeQueryEvent(raw, ev)
+		return normalizeQueryEvent(raw)
 	case raw.EventType == "RowsQueryEvent" || raw.EventType == "ROWS_QUERY_EVENT":
-		return normalizeRowsQueryEvent(raw, ev)
+		return normalizeRowsQueryEvent(raw)
 	case strings.HasPrefix(raw.EventType, "WriteRows") || strings.HasPrefix(raw.EventType, "WRITE_ROWS"):
+		ev := newNormalizedEvent(raw)
 		ev.EventType = "ROWS"
 		ev.Operation = "INSERT"
 		return ev, nil
 	case strings.HasPrefix(raw.EventType, "UpdateRows") || strings.HasPrefix(raw.EventType, "UPDATE_ROWS"):
+		ev := newNormalizedEvent(raw)
 		ev.EventType = "ROWS"
 		ev.Operation = "UPDATE"
 		return ev, nil
 	case strings.HasPrefix(raw.EventType, "DeleteRows") || strings.HasPrefix(raw.EventType, "DELETE_ROWS"):
+		ev := newNormalizedEvent(raw)
 		ev.EventType = "ROWS"
 		ev.Operation = "DELETE"
 		return ev, nil
 	case raw.EventType == "XID_EVENT" || raw.EventType == "XIDEvent":
+		ev := newNormalizedEvent(raw)
 		ev.EventType = "XID"
 		return ev, nil
 	case raw.EventType == "TABLE_MAP_EVENT" || raw.EventType == "TableMapEvent":
+		ev := newNormalizedEvent(raw)
 		ev.EventType = "TABLE_MAP"
 		return ev, nil
 	default:
@@ -45,13 +49,28 @@ func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	}
 }
 
-func normalizeQueryEvent(raw RawEvent, ev *model.NormalizedEvent) (*model.NormalizedEvent, error) {
-	query := strings.ToUpper(strings.TrimSpace(raw.Query))
+func newNormalizedEvent(raw RawEvent) *model.NormalizedEvent {
+	return &model.NormalizedEvent{
+		Timestamp:     raw.Timestamp,
+		BinlogPath:    raw.BinlogPath,
+		PositionStart: raw.PositionStart,
+		PositionEnd:   raw.PositionEnd,
+		BinlogBytes:   raw.BinlogBytes,
+		Schema:        raw.Schema,
+		Table:         raw.Table,
+		RowCount:      raw.RowCount,
+	}
+}
+
+func normalizeQueryEvent(raw RawEvent) (*model.NormalizedEvent, error) {
+	query := strings.TrimSpace(raw.Query)
 	switch {
-	case query == "BEGIN":
+	case strings.EqualFold(query, "BEGIN"):
+		ev := newNormalizedEvent(raw)
 		ev.EventType = "BEGIN"
 		return ev, nil
-	case query == "COMMIT":
+	case strings.EqualFold(query, "COMMIT"):
+		ev := newNormalizedEvent(raw)
 		ev.EventType = "COMMIT"
 		return ev, nil
 	default:
@@ -63,7 +82,8 @@ func normalizeQueryEvent(raw RawEvent, ev *model.NormalizedEvent) (*model.Normal
 // normalizeRowsQueryEvent handles Rows_query_log_event which contains the original SQL.
 // The SQL is bounded at model.MaxStoredSQLBytes to prevent memory issues with huge queries.
 // OriginalBytes is preserved for accurate reporting even when SQL is truncated.
-func normalizeRowsQueryEvent(raw RawEvent, ev *model.NormalizedEvent) (*model.NormalizedEvent, error) {
+func normalizeRowsQueryEvent(raw RawEvent) (*model.NormalizedEvent, error) {
+	ev := newNormalizedEvent(raw)
 	ev.EventType = "ROWS_QUERY"
 
 	sql := raw.QuerySQL
@@ -90,18 +110,17 @@ func safeTruncateBytes(s string, maxBytes int) string {
 	if len(s) <= maxBytes {
 		return s
 	}
-
-	// Find the last valid UTF-8 boundary at or before maxBytes
-	for maxBytes > 0 {
-		if s[maxBytes-1] < 0x80 || (s[maxBytes-1] >= 0xC0) {
-			// Valid boundary: ASCII byte or start of multi-byte sequence
-			break
-		}
-		maxBytes--
-	}
-
 	if maxBytes <= 0 {
 		return ""
 	}
-	return s[:maxBytes]
+
+	truncated := s[:maxBytes]
+	for len(truncated) > 0 && !utf8.ValidString(truncated) {
+		_, size := utf8.DecodeLastRuneInString(truncated)
+		if size <= 0 {
+			return ""
+		}
+		truncated = truncated[:len(truncated)-size]
+	}
+	return truncated
 }
