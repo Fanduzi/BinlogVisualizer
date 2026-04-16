@@ -290,5 +290,613 @@
   "cmd.analyze.flag.format": {
     "description": "Output format flag description",
     "other": "输出格式: text, json, markdown, html"
+  },
+  "report.html.common.generatedAt": {
+    "description": "HTML 报告生成时间标签",
+    "other": "生成时间"
+  },
+  "report.html.common.generatedBy": {
+    "description": "HTML 报告页脚文本",
+    "other": "由 BinlogViz 生成"
+  },
+  "report.html.common.transactions": {
+    "description": "HTML 报告事务标签",
+    "other": "事务数"
+  },
+  "report.html.common.affectedRows": {
+    "description": "HTML 报告影响行数标签",
+    "other": "影响行数"
+  },
+  "report.html.common.events": {
+    "description": "HTML 报告事件数标签",
+    "other": "事件数"
+  },
+  "report.html.common.timeRange": {
+    "description": "HTML 报告时间范围标签",
+    "other": "时间范围"
+  },
+  "report.html.common.duration": {
+    "description": "HTML 报告持续时间标签",
+    "other": "持续时间"
+  },
+  "report.html.common.notAvailable": {
+    "description": "HTML 报告不可用占位符",
+    "other": "不可用"
+  },
+  "report.html.common.operationMix": {
+    "description": "操作类型占比章节标题",
+    "other": "操作类型分布"
+  },
+  "report.html.common.schema": {
+    "description": "Schema 列标题",
+    "other": "Schema"
+  },
+  "report.html.common.table": {
+    "description": "表列标题",
+    "other": "表"
+  },
+  "report.html.common.totalRows": {
+    "description": "总行数列标题",
+    "other": "总行数"
+  },
+  "report.html.common.inserts": {
+    "description": "插入列标题",
+    "other": "插入"
+  },
+  "report.html.common.updates": {
+    "description": "更新列标题",
+    "other": "更新"
+  },
+  "report.html.common.deletes": {
+    "description": "删除列标题",
+    "other": "删除"
+  },
+  "report.html.common.txns": {
+    "description": "事务简称标签",
+    "other": "事务"
+  },
+  "report.html.common.alerts": {
+    "description": "告警章节标题",
+    "other": "告警"
+  },
+  "report.html.common.rows": {
+    "description": "行数标签",
+    "other": "行"
+  },
+  "report.html.common.operations": {
+    "description": "操作标签",
+    "other": "操作"
+  },
+  "report.html.common.dominance": {
+    "description": "主导模式标记",
+    "other": "主导"
+  },
+  "report.html.common.anomaly": {
+    "description": "异常模式标记",
+    "other": "异常"
+  },
+  "report.html.common.drilldown": {
+    "description": "模式钻取原因标签",
+    "other": "钻取："
+  },
+  "report.html.analyze.title": {
+    "description": "Analyze HTML 标题",
+    "other": "BinlogViz 分析报告"
+  },
+  "report.html.analyze.header": {
+    "description": "Analyze HTML 页头标题",
+    "other": "分析报告"
+  },
+  "report.html.analyze.activityCharts": {
+    "description": "Analyze 活动图表章节标题",
+    "other": "活动图表"
+  },
+  "report.html.analyze.rowsPerMinute": {
+    "description": "Analyze 每分钟行数图标题",
+    "other": "每分钟行数"
+  },
+  "report.html.analyze.topTablesByRows": {
+    "description": "Analyze 热点表图标题",
+    "other": "按行数的热点表"
+  },
+  "report.html.analyze.topTables": {
+    "description": "Analyze 热点表章节标题",
+    "other": "热点表"
+  },
+  "report.html.analyze.noTableData": {
+    "description": "Analyze 无表数据提示",
+    "other": "没有表级数据。"
+  },
+  "report.html.analyze.noAlertsDetected": {
+    "description": "Analyze 无告警提示",
+    "other": "未检测到告警。"
+  },
+  "report.html.analyze.patternDrilldowns": {
+    "description": "Analyze 模式钻取章节标题",
+    "other": "模式钻取"
+  },
+  "report.html.analyze.shareOfRowsTitle": {
+    "description": "Analyze 模式行占比提示",
+    "other": "该模式在全部 binlog 行数中的占比"
+  },
+  "report.html.analyze.shareOfRowsLabel": {
+    "description": "Analyze 模式行占比标签",
+    "other": "行占比"
+  },
+  "report.html.analyze.shareOfTxnsTitle": {
+    "description": "Analyze 模式事务占比提示",
+    "other": "该模式在全部事务中的占比"
+  },
+  "report.html.analyze.shareOfTxnsLabel": {
+    "description": "Analyze 模式事务占比标签",
+    "other": "事务占比"
+  },
+  "report.html.analyze.avgRowsPerTxn": {
+    "description": "Analyze 平均每事务行数标签",
+    "other": "平均每事务行数"
+  },
+  "report.html.analyze.workloadPeakMinutesTitle": {
+    "description": "Analyze 峰值分钟提示",
+    "other": "所选时间窗内按行数排序的高峰分钟"
+  },
+  "report.html.analyze.workloadPeakMinutes": {
+    "description": "Analyze 峰值分钟标签",
+    "other": "工作负载峰值分钟"
+  },
+  "report.html.analyze.workloadTransactionsTitle": {
+    "description": "Analyze 代表性事务提示",
+    "other": "所选时间窗内最大的事务"
+  },
+  "report.html.analyze.workloadTransactions": {
+    "description": "Analyze 代表性事务标签",
+    "other": "工作负载事务"
+  },
+  "report.html.analyze.tableActivityChart": {
+    "description": "Analyze 表级活动图标题",
+    "other": "表级活动图"
+  },
+  "report.html.analyze.tableOpsChart": {
+    "description": "Analyze 表级操作分布图标题",
+    "other": "表级操作分布"
+  },
+  "report.html.analyze.ddlTimeline": {
+    "description": "Analyze DDL 时间线章节标题",
+    "other": "DDL 时间线"
+  },
+  "report.html.analyze.largestTransactions": {
+    "description": "Analyze 最大事务章节标题",
+    "other": "最大事务"
+  },
+  "report.html.analyze.longestTransactions": {
+    "description": "Analyze 长事务章节标题",
+    "other": "长事务"
+  },
+  "report.html.analyze.hotIntervals": {
+    "description": "Analyze 热点时段章节标题",
+    "other": "热点时段"
+  },
+  "report.html.analyze.binlogBytes": {
+    "description": "Analyze binlog 字节标签",
+    "other": "Binlog 字节数"
+  },
+  "report.html.analyze.ddlEvents": {
+    "description": "Analyze DDL 事件数标签",
+    "other": "DDL 事件数"
+  },
+  "report.html.compare.title": {
+    "description": "Compare HTML 标题",
+    "other": "BinlogViz 对比报告"
+  },
+  "report.html.compare.logoSuffix": {
+    "description": "Compare 页头后缀",
+    "other": "对比"
+  },
+  "report.html.compare.currentWindow": {
+    "description": "Compare 当前时间窗标签",
+    "other": "当前时间窗"
+  },
+  "report.html.compare.baselineWindow": {
+    "description": "Compare 基线时间窗标签",
+    "other": "基线时间窗"
+  },
+  "report.html.compare.currentInputMode": {
+    "description": "Compare 当前输入模式标签",
+    "other": "当前输入模式"
+  },
+  "report.html.compare.baselineInputMode": {
+    "description": "Compare 基线输入模式标签",
+    "other": "基线输入模式"
+  },
+  "report.html.compare.currentSource": {
+    "description": "Compare 当前来源标签",
+    "other": "当前来源"
+  },
+  "report.html.compare.baselineSource": {
+    "description": "Compare 基线来源标签",
+    "other": "基线来源"
+  },
+  "report.html.compare.currentFilters": {
+    "description": "Compare 当前过滤条件标签",
+    "other": "当前过滤条件"
+  },
+  "report.html.compare.baselineFilters": {
+    "description": "Compare 基线过滤条件标签",
+    "other": "基线过滤条件"
+  },
+  "report.html.compare.rowsDelta": {
+    "description": "Compare 行数变化卡片标签",
+    "other": "行数变化"
+  },
+  "report.html.compare.transactionsDelta": {
+    "description": "Compare 事务变化卡片标签",
+    "other": "事务变化"
+  },
+  "report.html.compare.addedAlerts": {
+    "description": "Compare 新增告警标签",
+    "other": "新增告警"
+  },
+  "report.html.compare.removedAlerts": {
+    "description": "Compare 消失告警标签",
+    "other": "消失告警"
+  },
+  "report.html.compare.newAlertsIn": {
+    "description": "Compare 新增告警说明",
+    "other": "新增告警出现在"
+  },
+  "report.html.compare.alertsOnlyIn": {
+    "description": "Compare 消失告警说明",
+    "other": "仅在以下快照出现告警"
+  },
+  "report.html.compare.keyFindings": {
+    "description": "Compare 关键发现章节标题",
+    "other": "关键发现"
+  },
+  "report.html.compare.recommendedNextChecks": {
+    "description": "Compare 建议后续检查章节标题",
+    "other": "建议后续检查"
+  },
+  "report.html.compare.summary": {
+    "description": "Compare 对比概览章节标题",
+    "other": "对比概览"
+  },
+  "report.html.compare.topTableChanges": {
+    "description": "Compare 热点表变化章节标题",
+    "other": "热点表变化"
+  },
+  "report.html.compare.patternChanges": {
+    "description": "Compare 模式变化章节标题",
+    "other": "模式变化"
+  },
+  "report.html.compare.pattern": {
+    "description": "模式列标题",
+    "other": "模式"
+  },
+  "report.html.compare.delta": {
+    "description": "变化列标题",
+    "other": "变化"
+  },
+  "report.html.compare.deltaRows": {
+    "description": "行数变化列标题",
+    "other": "行数变化"
+  },
+  "report.html.compare.deltaPercent": {
+    "description": "百分比变化列标题",
+    "other": "变化百分比"
+  },
+  "report.html.compare.baselineTxns": {
+    "description": "基线事务列标题",
+    "other": "基线事务数"
+  },
+  "report.html.compare.currentTxns": {
+    "description": "当前事务列标题",
+    "other": "当前事务数"
+  },
+  "report.html.compare.deltaTxns": {
+    "description": "事务变化列标题",
+    "other": "事务变化"
+  },
+  "report.html.compare.noPatternChanges": {
+    "description": "Compare 无模式变化提示",
+    "other": "没有模式变化。"
+  },
+  "report.html.compare.operation": {
+    "description": "操作列标题",
+    "other": "操作"
+  },
+  "report.html.compare.alertChanges": {
+    "description": "Compare 告警变化章节标题",
+    "other": "告警变化"
+  },
+  "report.html.compare.noAddedAlerts": {
+    "description": "Compare 无新增告警提示",
+    "other": "没有新增告警。"
+  },
+  "report.html.compare.noRemovedAlerts": {
+    "description": "Compare 无消失告警提示",
+    "other": "没有消失告警。"
+  },
+  "report.html.compare.baseline": {
+    "description": "Compare 基线图例标签",
+    "other": "基线"
+  },
+  "report.html.compare.current": {
+    "description": "Compare 当前图例标签",
+    "other": "当前"
+  },
+  "report.html.compare.warnings": {
+    "description": "Compare 警告指标标签",
+    "other": "警告"
+  },
+  "report.html.trend.title": {
+    "description": "Trend HTML 标题",
+    "other": "BinlogViz 趋势报告"
+  },
+  "report.html.trend.hero": {
+    "description": "Trend 页头标题",
+    "other": "BinlogViz 趋势报告"
+  },
+  "report.html.trend.baseline": {
+    "description": "Trend 基线标签",
+    "other": "基线"
+  },
+  "report.html.trend.firstSnapshot": {
+    "description": "Trend 首个快照标签",
+    "other": "首个快照"
+  },
+  "report.html.trend.lastSnapshot": {
+    "description": "Trend 最后快照标签",
+    "other": "最后快照"
+  },
+  "report.html.trend.rowsDelta": {
+    "description": "Trend 行数变化标签",
+    "other": "行数变化"
+  },
+  "report.html.trend.txnDelta": {
+    "description": "Trend 事务变化标签",
+    "other": "事务变化"
+  },
+  "report.html.trend.overallTrend": {
+    "description": "Trend 总体趋势章节标题",
+    "other": "趋势概览"
+  },
+  "report.html.trend.topTableMovement": {
+    "description": "Trend 热点表趋势章节标题",
+    "other": "热点表趋势"
+  },
+  "report.html.trend.patternTrends": {
+    "description": "Trend 模式趋势章节标题",
+    "other": "模式趋势"
+  },
+  "report.html.trend.patternViewMode": {
+    "description": "Pattern 趋势切换 aria 标签",
+    "other": "模式趋势视图切换"
+  },
+  "report.html.trend.shareOfRows": {
+    "description": "Pattern 趋势按钮标签",
+    "other": "行占比"
+  },
+  "report.html.trend.patternHint": {
+    "description": "Pattern 趋势提示文本",
+    "other": "默认显示行占比；切换到原始行数可观察绝对体量。"
+  },
+  "report.html.trend.noPatternTrends": {
+    "description": "Trend 无模式趋势提示",
+    "other": "所选快照没有可用的模式趋势。"
+  },
+  "report.html.trend.orderedPoints": {
+    "description": "Trend 有序点章节标题",
+    "other": "按时间排序的快照点"
+  },
+  "report.html.trend.snapshot": {
+    "description": "快照列标题",
+    "other": "快照"
+  },
+  "report.html.trend.start": {
+    "description": "开始时间列标题",
+    "other": "开始时间"
+  },
+  "report.html.trend.patternFallback": {
+    "description": "无名模式兜底标签",
+    "other": "模式"
+  },
+  "report.html.compare.ddlChanges": {
+    "description": "Compare DDL 变化章节标题",
+    "other": "DDL 变化"
+  },
+  "report.html.compare.txnDiagnostics": {
+    "description": "Compare 事务诊断章节标题",
+    "other": "事务诊断"
+  },
+  "report.html.compare.hotIntervalChanges": {
+    "description": "Compare 热点时段变化章节标题",
+    "other": "热点时段变化"
+  },
+  "report.html.compare.eventMixDelta": {
+    "description": "Compare 事件类型变化章节标题",
+    "other": "事件类型变化"
+  },
+  "report.html.compare.largestTxnDelta": {
+    "description": "Compare 最大事务变化标签",
+    "other": "最大事务变化"
+  },
+  "report.html.compare.longestTxnDelta": {
+    "description": "Compare 长事务变化标签",
+    "other": "长事务变化"
+  },
+  "report.html.compare.ddlAdded": {
+    "description": "Compare 新增 DDL 事件标签",
+    "other": "新增 DDL 事件"
+  },
+  "report.html.compare.ddlRemoved": {
+    "description": "Compare 消失 DDL 事件标签",
+    "other": "消失 DDL 事件"
+  },
+  "report.html.compare.noDDLChanges": {
+    "description": "Compare 无 DDL 变化提示",
+    "other": "两个时间窗之间没有 DDL 变化。"
+  },
+  "report.html.compare.noAddedDDLEvents": {
+    "description": "Compare 无新增 DDL 事件提示",
+    "other": "没有新增 DDL 事件。"
+  },
+  "report.html.compare.noRemovedDDLEvents": {
+    "description": "Compare 无消失 DDL 事件提示",
+    "other": "没有消失 DDL 事件。"
+  },
+  "report.html.compare.noHotIntervalChanges": {
+    "description": "Compare 无热点时段变化提示",
+    "other": "两个时间窗之间没有热点时段变化。"
+  },
+  "report.html.compare.sourceBaseline": {
+    "description": "Compare 基线来源标签",
+    "other": "基线"
+  },
+  "report.html.compare.sourceCurrent": {
+    "description": "Compare 当前来源标签",
+    "other": "当前"
+  },
+  "report.html.trend.tpsTrends": {
+    "description": "Trend TPS 趋势章节标题",
+    "other": "TPS 趋势"
+  },
+  "report.html.trend.ddlTrends": {
+    "description": "Trend DDL 趋势章节标题",
+    "other": "DDL 趋势"
+  },
+  "report.html.trend.txnTrends": {
+    "description": "Trend 事务趋势章节标题",
+    "other": "事务趋势"
+  },
+  "report.html.trend.eventMixTrends": {
+    "description": "Trend 事件类型趋势章节标题",
+    "other": "事件类型趋势"
+  },
+  "report.html.trend.hotIntervalTrends": {
+    "description": "Trend 热点时段趋势章节标题",
+    "other": "热点时段趋势"
+  },
+  "report.html.trend.noDiagnosticData": {
+    "description": "Trend 无诊断数据提示",
+    "other": "没有可用于趋势分析的诊断数据。"
+  },
+  "report.html.compare.metric": {
+    "description": "Compare 指标列表头",
+    "other": "指标"
+  },
+  "report.html.compare.largestTxnRows": {
+    "description": "Compare 最大事务（行数）标签",
+    "other": "最大事务 (行数)"
+  },
+  "report.html.compare.longestTxnDuration": {
+    "description": "Compare 长事务（时长）标签",
+    "other": "长事务 (时长)"
+  },
+  "report.html.compare.longestTxnSec": {
+    "description": "Compare 长事务图表轴标签",
+    "other": "长事务 (秒)"
+  },
+  "report.html.compare.minute": {
+    "description": "Compare 分钟列标题",
+    "other": "分钟"
+  },
+  "report.html.compare.source": {
+    "description": "Compare 来源列标题",
+    "other": "来源"
+  },
+  "report.html.compare.txnCount": {
+    "description": "Compare 事务数列标题",
+    "other": "事务数"
+  },
+  "report.html.common.ddl": {
+    "description": "DDL 操作短标签（图表用）",
+    "other": "DDL"
+  },
+  "report.html.trend.chartMaxTPS": {
+    "description": "Trend 图表最大 TPS 系列名",
+    "other": "最大 TPS"
+  },
+  "report.html.trend.chartDDLEvents": {
+    "description": "Trend 图表 DDL 事件系列名",
+    "other": "DDL 事件"
+  },
+  "report.html.trend.chartLargestTxnRows": {
+    "description": "Trend 图表最大事务系列名",
+    "other": "最大事务 (行数)"
+  },
+  "report.html.trend.chartLongestTxnSec": {
+    "description": "Trend 图表长事务系列名",
+    "other": "长事务 (秒)"
+  },
+  "report.html.trend.chartMaxHotRows": {
+    "description": "Trend 图表热点峰值行数系列名",
+    "other": "热点峰值行数"
+  },
+  "report.html.trend.chartHotCount": {
+    "description": "Trend 图表热点次数系列名",
+    "other": "热点次数"
+  },
+  "report.html.analyze.fileCoverage": {
+    "description": "文件覆盖范围章节标题",
+    "other": "文件覆盖范围"
+  },
+  "report.html.analyze.selectedFiles": {
+    "description": "已选文件标签",
+    "other": "已选文件"
+  },
+  "report.html.analyze.skippedFiles": {
+    "description": "已跳过文件标签",
+    "other": "已跳过文件"
+  },
+  "report.html.analyze.binlogFile": {
+    "description": "Binlog 文件列标题",
+    "other": "Binlog 文件"
+  },
+  "report.html.analyze.fileSize": {
+    "description": "文件大小列标题",
+    "other": "大小"
+  },
+  "report.html.analyze.timeRange": {
+    "description": "文件覆盖范围中的时间范围列标题",
+    "other": "时间范围"
+  },
+  "report.html.analyze.skipReason": {
+    "description": "跳过原因列标题",
+    "other": "原因"
+  },
+  "report.html.analyze.noFileCoverage": {
+    "description": "无文件覆盖数据提示",
+    "other": "没有可用的文件覆盖数据。"
+  },
+  "report.html.analyze.binlogThroughput": {
+    "description": "Binlog 吞吐量章节标题",
+    "other": "Binlog 吞吐量"
+  },
+  "report.html.analyze.throughputChart": {
+    "description": "吞吐量图表标题",
+    "other": "Binlog 生成速率"
+  },
+  "report.html.analyze.binlogBytesShort": {
+    "description": "图表轴上的 Binlog 字节短标签",
+    "other": "Binlog 字节数"
+  },
+  "report.html.analyze.transactionEvidence": {
+    "description": "事务证据章节标题",
+    "other": "事务证据"
+  },
+  "report.html.analyze.binlogSpan": {
+    "description": "Binlog 跨度标签",
+    "other": "Binlog 跨度"
+  },
+  "report.html.analyze.widestTag": {
+    "description": "最宽事务标签",
+    "other": "最宽"
+  },
+  "report.html.analyze.largestTag": {
+    "description": "最大事务标签",
+    "other": "最大"
+  },
+  "report.html.analyze.longestTag": {
+    "description": "最长事务标签",
+    "other": "最长"
   }
 }

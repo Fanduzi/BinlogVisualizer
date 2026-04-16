@@ -7,18 +7,15 @@ package report
 
 import (
 	"bytes"
-	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"sort"
 	"strings"
 	"time"
 
 	"binlogviz/internal/model"
 )
-
-//go:embed static/echarts.min.js
-var echartsFS embed.FS
 
 const (
 	maxPeakMinutes        = 2
@@ -32,22 +29,22 @@ func RenderHTML(result model.AnalysisResult) (string, error) {
 
 // RenderHTMLWithOptions renders an AnalysisResult as HTML with explicit presentation controls.
 func RenderHTMLWithOptions(result model.AnalysisResult, opts Options) (string, error) {
-	echartJS, err := echartsFS.ReadFile("static/echarts.min.js")
+	echartJS, err := ReadEmbeddedECharts()
 	if err != nil {
-		return "", fmt.Errorf("read echarts: %w", err)
+		return "", err
 	}
 
-	tmpl, err := template.New("report").Funcs(template.FuncMap{
+	tmpl, err := NewHTMLTemplate("report", htmlReportTemplate, template.FuncMap{
 		"safeJS":     func(s string) template.JS { return template.JS(s) }, //nolint:gosec
 		"json":       jsonMarshal,
 		"mulFloat":   func(f float64, m float64) float64 { return f * m },
 		"fmtIntHTML": fmtIntHTML,
-	}).Parse(htmlReportTemplate)
+	})
 	if err != nil {
-		return "", fmt.Errorf("parse html template: %w", err)
+		return "", err
 	}
 
-	data := buildHTMLData(result, opts, string(echartJS))
+	data := buildHTMLData(result, opts, echartJS)
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -65,38 +62,55 @@ func jsonMarshal(v any) (template.JS, error) {
 }
 
 type htmlReportData struct {
-	GeneratedAt   string
-	SourceFiles   string
-	StartTime     string
-	EndTime       string
-	Duration      string
-	TotalTxns     int
-	TotalRows     int
-	TotalEvents   int
-	Tables        []htmlTableRow
-	Alerts        []htmlAlert
-	HasAlerts     bool
-	Drilldowns    []htmlDrilldown
-	HasDrilldowns bool
-	MinuteLabels  template.JS
-	MinuteRows    template.JS
-	MinuteTxns    template.JS
-	TableBarNames template.JS
-	TableBarRows  template.JS
-	OpsPie        template.JS
-	EChartsJS     template.JS
+	GeneratedAt         string
+	SourceFiles         string
+	StartTime           string
+	EndTime             string
+	Duration            string
+	TotalTxns           int
+	TotalRows           int
+	TotalEvents         int
+	Tables              []htmlTableRow
+	TableActivitySeries template.JS
+	DDLEvents           []htmlDDLEvent
+	HasDDLEvents        bool
+	LargestTransactions []htmlTxnDiagnostic
+	HasLargestTxns      bool
+	LongestTransactions []htmlTxnDiagnostic
+	HasLongestTxns      bool
+	WidestTransactions  []htmlTxnDiagnostic
+	HasWidestTxns       bool
+	HotIntervals        []htmlHotInterval
+	HasHotIntervals     bool
+	FileCoverage        htmlFileCoverageData
+	FileSegments        []htmlFileSegment
+	HasFileSegments     bool
+	ThroughputLabels    template.JS
+	ThroughputBytes     template.JS
+	ThroughputRows      template.JS
+	Alerts              []htmlAlert
+	HasAlerts           bool
+	Drilldowns          []htmlDrilldown
+	HasDrilldowns       bool
+	MinuteLabels        template.JS
+	MinuteRows          template.JS
+	MinuteTxns          template.JS
+	TableBarNames       template.JS
+	TableBarRows        template.JS
+	OpsPie              template.JS
+	EChartsJS           template.JS
 }
 
 type htmlDrilldown struct {
-	PatternKey    string
-	Label         string
-	WhySelected   string
-	ShareOfRows   float64
-	ShareOfTxns   float64
-	AvgRowsPerTxn float64
-	SignalFlags   htmlSignalFlags
+	PatternKey     string
+	Label          string
+	WhySelected    string
+	ShareOfRows    float64
+	ShareOfTxns    float64
+	AvgRowsPerTxn  float64
+	SignalFlags    htmlSignalFlags
 	BusiestMinutes []htmlPeakMinute
-	RepTxns       []htmlRepTxn
+	RepTxns        []htmlRepTxn
 }
 
 type htmlSignalFlags struct {
@@ -117,19 +131,84 @@ type htmlRepTxn struct {
 }
 
 type htmlTableRow struct {
-	Schema  string
-	Table   string
-	Total   int
-	Inserts int
-	Updates int
-	Deletes int
-	Txns    int
+	Key         string
+	DOMID       string
+	Schema      string
+	Table       string
+	Total       int
+	Inserts     int
+	Updates     int
+	Deletes     int
+	Txns        int
+	HasActivity bool
 }
 
 type htmlAlert struct {
 	Severity string
 	Message  string
 	Badge    string
+}
+
+type htmlDDLEvent struct {
+	Timestamp string
+	Operation string
+	Object    string
+	Statement string
+	Location  string
+}
+
+type htmlTxnDiagnostic struct {
+	TxnKey       string
+	Rows         int
+	Events       int
+	Duration     string
+	BinlogBytes  int
+	Tables       []htmlTxnTable
+	Location     string
+	QuerySummary string
+}
+
+type htmlTxnTable struct {
+	Name string
+	Rows int
+}
+
+type htmlHotInterval struct {
+	Timestamp   string
+	Rows        int
+	Txns        int
+	Events      int
+	BinlogBytes int
+	DDLCount    int
+}
+
+type htmlFileCoverageData struct {
+	Selected []htmlFileCoverageItem
+	Skipped  []htmlFileCoverageItem
+}
+
+type htmlFileCoverageItem struct {
+	BinlogPath   string
+	Reason       string
+	Size         string
+	FirstEventAt string
+	LastEventAt  string
+}
+
+type htmlFileSegment struct {
+	StartTime   string
+	EndTime     string
+	BinlogBytes int64
+	Rows        int
+	Events      int
+}
+
+type htmlTableActivitySeries struct {
+	Labels     []string `json:"labels"`
+	Rows       []int    `json:"rows"`
+	InsertRows []int    `json:"insert_rows"`
+	UpdateRows []int    `json:"update_rows"`
+	DeleteRows []int    `json:"delete_rows"`
 }
 
 func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htmlReportData {
@@ -147,18 +226,29 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 		d.Duration = result.Summary.Duration.String()
 	}
 
+	tableActivitySeries := make(map[string]htmlTableActivitySeries, len(result.Tables))
+
 	// Tables
 	for _, t := range result.Tables {
+		key := t.Schema + "." + t.Table
+		domID := sanitizeDOMID(key)
+		if len(t.Activity) > 0 {
+			tableActivitySeries[key] = buildHTMLTableActivitySeries(t.Activity)
+		}
 		d.Tables = append(d.Tables, htmlTableRow{
-			Schema:  t.Schema,
-			Table:   t.Table,
-			Total:   t.TotalRows,
-			Inserts: t.InsertRows,
-			Updates: t.UpdateRows,
-			Deletes: t.DeleteRows,
-			Txns:    t.TxnCount,
+			Key:         key,
+			DOMID:       domID,
+			Schema:      t.Schema,
+			Table:       t.Table,
+			Total:       t.TotalRows,
+			Inserts:     t.InsertRows,
+			Updates:     t.UpdateRows,
+			Deletes:     t.DeleteRows,
+			Txns:        t.TxnCount,
+			HasActivity: len(t.Activity) > 0,
 		})
 	}
+	d.TableActivitySeries = mustJSON(tableActivitySeries)
 
 	// Alerts
 	for _, a := range result.Alerts {
@@ -176,6 +266,92 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 		})
 	}
 	d.HasAlerts = len(d.Alerts) > 0
+
+	for _, ddl := range result.Diagnostics.DDLEvents {
+		object := strings.Trim(strings.TrimSpace(ddl.Schema+"."+ddl.Table), ".")
+		if object == "" {
+			object = ddl.Object
+		}
+		d.DDLEvents = append(d.DDLEvents, htmlDDLEvent{
+			Timestamp: ddl.Timestamp.Format("2006-01-02 15:04:05"),
+			Operation: ddl.Operation,
+			Object:    object,
+			Statement: ddl.Statement,
+			Location:  formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd),
+		})
+	}
+	d.HasDDLEvents = len(d.DDLEvents) > 0
+
+	for _, txn := range result.Diagnostics.LargestTransactions {
+		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn))
+	}
+	d.HasLargestTxns = len(d.LargestTransactions) > 0
+
+	for _, txn := range result.Diagnostics.LongestTransactions {
+		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn))
+	}
+	d.HasLongestTxns = len(d.LongestTransactions) > 0
+
+	for _, interval := range result.Diagnostics.HotIntervals {
+		d.HotIntervals = append(d.HotIntervals, htmlHotInterval{
+			Timestamp:   interval.Minute.Format("2006-01-02 15:04:05"),
+			Rows:        interval.TotalRows,
+			Txns:        interval.TxnCount,
+			Events:      interval.EventCount,
+			BinlogBytes: int(interval.BinlogBytes),
+			DDLCount:    interval.DDLCount,
+		})
+	}
+	d.HasHotIntervals = len(d.HotIntervals) > 0
+
+	// Widest transactions
+	for _, txn := range result.Diagnostics.WidestTransactions {
+		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn))
+	}
+	d.HasWidestTxns = len(d.WidestTransactions) > 0
+
+	// File coverage
+	for _, item := range result.Diagnostics.FileCoverage.Selected {
+		d.FileCoverage.Selected = append(d.FileCoverage.Selected, htmlFileCoverageItem{
+			BinlogPath:   item.BinlogPath,
+			Reason:       item.Reason,
+			Size:         formatFileSize(item.Size),
+			FirstEventAt: item.FirstEventAt.Format("2006-01-02 15:04:05"),
+			LastEventAt:  item.LastEventAt.Format("2006-01-02 15:04:05"),
+		})
+	}
+	for _, item := range result.Diagnostics.FileCoverage.Skipped {
+		d.FileCoverage.Skipped = append(d.FileCoverage.Skipped, htmlFileCoverageItem{
+			BinlogPath: item.BinlogPath,
+			Reason:     item.Reason,
+			Size:       formatFileSize(item.Size),
+		})
+	}
+
+	// File segments and throughput chart data
+	for _, seg := range result.Diagnostics.FileSegments {
+		d.FileSegments = append(d.FileSegments, htmlFileSegment{
+			StartTime:   seg.StartTime.Format("2006-01-02 15:04"),
+			EndTime:     seg.EndTime.Format("2006-01-02 15:04"),
+			BinlogBytes: seg.BinlogBytes,
+			Rows:        seg.Rows,
+			Events:      seg.Events,
+		})
+	}
+	d.HasFileSegments = len(d.FileSegments) > 0
+
+	// Throughput chart series
+	throughputLabels := make([]string, 0, len(d.FileSegments))
+	throughputBytes := make([]int64, 0, len(d.FileSegments))
+	throughputRows := make([]int, 0, len(d.FileSegments))
+	for _, seg := range d.FileSegments {
+		throughputLabels = append(throughputLabels, seg.StartTime)
+		throughputBytes = append(throughputBytes, seg.BinlogBytes)
+		throughputRows = append(throughputRows, seg.Rows)
+	}
+	d.ThroughputLabels = mustJSON(throughputLabels)
+	d.ThroughputBytes = mustJSON(throughputBytes)
+	d.ThroughputRows = mustJSON(throughputRows)
 
 	// Chart data — minute timeline
 	labels := make([]string, 0, len(result.Minutes))
@@ -265,6 +441,100 @@ func mustJSON(v any) template.JS {
 		return template.JS("[]") //nolint:gosec
 	}
 	return template.JS(b) //nolint:gosec
+}
+
+func buildHTMLTableActivitySeries(points []model.TableActivityPoint) htmlTableActivitySeries {
+	series := htmlTableActivitySeries{
+		Labels:     make([]string, 0, len(points)),
+		Rows:       make([]int, 0, len(points)),
+		InsertRows: make([]int, 0, len(points)),
+		UpdateRows: make([]int, 0, len(points)),
+		DeleteRows: make([]int, 0, len(points)),
+	}
+	for _, point := range points {
+		series.Labels = append(series.Labels, point.Minute.Format("15:04"))
+		series.Rows = append(series.Rows, point.Rows)
+		series.InsertRows = append(series.InsertRows, point.InsertRows)
+		series.UpdateRows = append(series.UpdateRows, point.UpdateRows)
+		series.DeleteRows = append(series.DeleteRows, point.DeleteRows)
+	}
+	return series
+}
+
+func sanitizeDOMID(raw string) string {
+	replacer := strings.NewReplacer(".", "-", "_", "-", "/", "-", " ", "-")
+	return replacer.Replace(strings.ToLower(raw))
+}
+
+func formatFileSize(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
+}
+
+func buildHTMLTxnDiagnostic(txn model.Transaction) htmlTxnDiagnostic {
+	return htmlTxnDiagnostic{
+		TxnKey:       txn.TxnKey,
+		Rows:         txn.TotalRows,
+		Events:       txn.EventCount,
+		Duration:     txn.Duration.String(),
+		BinlogBytes:  int(txn.BinlogBytes),
+		Tables:       sortedTxnTables(txn.Tables),
+		Location:     formatBinlogSpan(txn),
+		QuerySummary: txn.QuerySummary,
+	}
+}
+
+func sortedTxnTables(tables map[string]int) []htmlTxnTable {
+	if len(tables) == 0 {
+		return nil
+	}
+	items := make([]htmlTxnTable, 0, len(tables))
+	for key, rows := range tables {
+		items = append(items, htmlTxnTable{Name: key, Rows: rows})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Rows == items[j].Rows {
+			return items[i].Name < items[j].Name
+		}
+		return items[i].Rows > items[j].Rows
+	})
+	return items
+}
+
+func formatBinlogSpan(txn model.Transaction) string {
+	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
+}
+
+func formatBinlogLocation(path string, start, end int64) string {
+	return formatBinlogLocationWithEnd(path, start, path, end)
+}
+
+func formatBinlogLocationWithEnd(startPath string, start int64, endPath string, end int64) string {
+	switch {
+	case startPath != "" && endPath != "" && startPath == endPath && start != 0 && end != 0:
+		return fmt.Sprintf("%s:%d-%d", startPath, start, end)
+	case startPath != "" && endPath != "" && start != 0 && end != 0:
+		return fmt.Sprintf("%s:%d-%s:%d", startPath, start, endPath, end)
+	case startPath != "" && start != 0:
+		return fmt.Sprintf("%s:%d", startPath, start)
+	case startPath != "":
+		return startPath
+	default:
+		return ""
+	}
 }
 
 // RenderHTMLToStdout writes the HTML report to stdout.
