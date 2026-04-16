@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.17.0 — cross-window pattern drilldown</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.18.0 — DBA diagnostics and multi-file discovery</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,12 +1383,12 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.17.0</div>
+                  <div class="release-version">v0.18.0</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">release focus</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">Cross-window drilldowns</div>
-                <div class="release-copy" data-i18n="releases.items.v0170">Compare and trend reports now expand high-signal pattern changes into bounded cross-window drilldown summaries, so operators can see why a pattern moved without flooding the report.</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.17.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">DBA diagnostics and multi-file discovery</div>
+                <div class="release-copy" data-i18n="releases.items.v0180">Analyze, compare, and trend now share richer DBA diagnostics: file coverage, DDL timelines, TPS and event-mix charts, transaction evidence, and localized HTML reports that make incident windows easier to explain.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.18.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
@@ -1544,7 +1544,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.17.0 — cross-window pattern drilldown',
+            badge: 'v0.18.0 — DBA diagnostics and multi-file discovery',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, then save named baselines, compare current versus baseline, and hand the result to your team in a format they can actually use.',
             primary: 'Install BinlogViz',
@@ -1648,7 +1648,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
             currentFocus: 'release focus',
-            currentTitle: 'Cross-window drilldowns',
+            currentTitle: 'DBA diagnostics and multi-file discovery',
             currentLink: 'Read release notes →',
             labels: {
               v0160: 'Analyze drilldowns',
@@ -1665,6 +1665,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v0180: 'Analyze, compare, and trend now share richer DBA diagnostics: file coverage, DDL timelines, TPS and event-mix charts, transaction evidence, and localized HTML reports that make incident windows easier to explain.',
               v0170: 'Compare and trend reports now expand high-signal pattern changes into bounded cross-window drilldown summaries, so operators can see why a pattern moved without flooding the report.',
               v0160: 'Analyze reports now expand high-signal write patterns into bounded drilldown summaries with window-level context.',
               v0150: 'Workflow status and resume now trust only rooted plan files inside the workflow root, blocking symlink escapes and arbitrary external plan paths.',
@@ -1730,7 +1731,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.17.0 —— 跨窗口模式钻取',
+            badge: 'v0.18.0 —— DBA 诊断与多文件发现',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，保存命名基线，然后对比 current 与 baseline，并以团队真正能消费的形式交付出去。',
             primary: '安装 BinlogViz',
@@ -1834,7 +1835,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
             currentFocus: 'release focus',
-            currentTitle: '跨窗口模式钻取',
+            currentTitle: 'DBA 诊断与多文件发现',
             currentLink: '查看发布说明 →',
             labels: {
               v0160: 'Analyze 钻取',
@@ -1851,6 +1852,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v0180: 'analyze、compare 和 trend 现在共享更完整的 DBA 诊断层：file coverage、DDL timeline、TPS 与 event mix 图、事务证据，以及更适合事故复盘的中英文本地化 HTML 报告。',
               v0170: 'compare 和 trend 报告现在会把高信号模式变化展开成有界的跨窗口 drilldown 摘要，让操作者看清模式为什么变化，而不会被大量细节淹没。',
               v0160: 'analyze 报告现在会把高信号写入模式展开成带窗口级上下文的有界 drilldown 摘要。',
               v0150: 'workflow status 和 resume 现在只信任 workflow root 内的 rooted plan 文件，可阻止符号链接逃逸和任意外部 plan 路径。',
