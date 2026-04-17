@@ -34,11 +34,12 @@ func NewDDLAggregator() *DDLAggregator {
 
 // ParseDDLStatement normalizes a supported DDL statement and extracts object metadata.
 func ParseDDLStatement(sql string) (DDLStatement, bool) {
-	normalized := strings.Join(strings.Fields(strings.TrimSpace(sql)), " ")
-	if normalized == "" {
+	trimmed := strings.TrimSpace(sql)
+	if trimmed == "" || !hasSupportedDDLPrefix(trimmed) {
 		return DDLStatement{}, false
 	}
 
+	normalized := strings.Join(strings.Fields(trimmed), " ")
 	tokens := strings.Fields(normalized)
 	if len(tokens) < 3 {
 		return DDLStatement{}, false
@@ -59,6 +60,24 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 		Table:     table,
 		Statement: normalized,
 	}, true
+}
+
+func hasSupportedDDLPrefix(sql string) bool {
+	return hasWordPrefixFold(sql, "ALTER") ||
+		hasWordPrefixFold(sql, "CREATE") ||
+		hasWordPrefixFold(sql, "DROP") ||
+		hasWordPrefixFold(sql, "TRUNCATE")
+}
+
+func hasWordPrefixFold(sql, word string) bool {
+	if len(sql) < len(word) || !strings.EqualFold(sql[:len(word)], word) {
+		return false
+	}
+	if len(sql) == len(word) {
+		return true
+	}
+	next := sql[len(word)]
+	return next == ' ' || next == '\t' || next == '\n' || next == '\r'
 }
 
 // ConsumeEvent extracts a DDL event from a normalized event when possible.
