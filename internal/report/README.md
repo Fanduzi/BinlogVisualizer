@@ -41,3 +41,4 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - The default text report is diagnostic-first: summary, top findings, top tables, and next actions. Minute activity and write-shape patterns require explicit detail options.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
+- The HTML renderer now follows a DBA reading path: executive summary, timeline, hotspots, DDL timeline, transaction evidence, analyzed files, then write-shape patterns.
