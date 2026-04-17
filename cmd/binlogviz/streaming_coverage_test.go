@@ -195,7 +195,7 @@ func TestRunAnalysisTextModeWritesProgressToStderr(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(stdout, "=== Workload Summary ===") {
+	if !strings.Contains(stdout, "=== Summary ===") {
 		t.Fatalf("expected text report on stdout, got: %s", stdout)
 	}
 	if !strings.Contains(stderr, "Finalizing analysis") {

@@ -53,3 +53,4 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - Discovery mode resolves ordered binlog files before entering the existing analysis pipeline, narrows `--from-dir/--prefix` inputs with `--start/--end` using file modification times plus a trailing-file first-event check, and keeps the resolved list on `stderr` so report output on `stdout` stays machine-consumable.
 - Command temp-store cleanup remains directory-scoped and no longer depends on any SQL-context sidecar file; bounded SQL context now lives entirely inside the analyzer's DuckDB temp DB.
 - Top-N truncation is no longer applied in the command layer; it now happens during analyzer Finalize result assembly.
+- Analyze text output is now diagnostic-first by default: summary, top findings, top tables, and next actions are shown on stdout, while minute-level and write-shape detail are reserved for explicit detail controls in the report layer.

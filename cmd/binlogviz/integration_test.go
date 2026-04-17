@@ -733,8 +733,8 @@ func TestRunAnalysisHappyPath(t *testing.T) {
 	}
 
 	// Verify output contains expected sections
-	if !bytes.Contains([]byte(output), []byte("=== Workload Summary ===")) {
-		t.Error("expected output to contain Workload Summary section")
+	if !bytes.Contains([]byte(output), []byte("=== Summary ===")) {
+		t.Error("expected output to contain Summary section")
 	}
 	if !bytes.Contains([]byte(output), []byte("=== Top Tables ===")) {
 		t.Error("expected output to contain Top Tables section")
@@ -744,6 +744,9 @@ func TestRunAnalysisHappyPath(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte("Total Transactions: 1")) {
 		t.Error("expected output to show 1 transaction")
+	}
+	if !bytes.Contains([]byte(output), []byte("=== Next Actions ===")) {
+		t.Error("expected output to contain Next Actions section")
 	}
 }
 
@@ -859,14 +862,12 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 		},
 	}
 	tests := []struct {
-		name        string
-		mode        report.SQLContextMode
-		want        string
-		notContains string
+		name string
+		mode report.SQLContextMode
 	}{
-		{name: "summary", mode: report.SQLContextSummary, want: "Query: UPDATE users SET name = ? WHERE id = ?", notContains: "name = 'alice'"},
-		{name: "off", mode: report.SQLContextOff, want: "", notContains: "Query:"},
-		{name: "full", mode: report.SQLContextFull, want: "Query: UPDATE users SET name = 'alice' WHERE id = 7", notContains: ""},
+		{name: "summary", mode: report.SQLContextSummary},
+		{name: "off", mode: report.SQLContextOff},
+		{name: "full", mode: report.SQLContextFull},
 	}
 
 	for _, tt := range tests {
@@ -889,11 +890,11 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if tt.want != "" && !strings.Contains(out, tt.want) {
-				t.Fatalf("expected output to contain %q, got: %s", tt.want, out)
+			if !strings.Contains(out, "=== Summary ===") {
+				t.Fatalf("expected diagnostic summary output, got: %s", out)
 			}
-			if tt.notContains != "" && strings.Contains(out, tt.notContains) {
-				t.Fatalf("expected output to omit %q, got: %s", tt.notContains, out)
+			if strings.Contains(out, "Query:") {
+				t.Fatalf("default diagnostic text output should omit query lines regardless of SQL context mode, got: %s", out)
 			}
 		})
 	}
@@ -1299,8 +1300,8 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	}
 
 	// Verify output contains expected sections
-	if !bytes.Contains([]byte(output), []byte("=== Workload Summary ===")) {
-		t.Error("expected output to contain Workload Summary section")
+	if !bytes.Contains([]byte(output), []byte("=== Summary ===")) {
+		t.Error("expected output to contain Summary section")
 	}
 	if !bytes.Contains([]byte(output), []byte("=== Top Tables ===")) {
 		t.Error("expected output to contain Top Tables section")
@@ -1309,9 +1310,9 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("testdb.users")) {
 		t.Error("expected output to contain testdb.users table")
 	}
-	// Verify we have row activity (the fixture has 5 total rows)
-	if !bytes.Contains([]byte(output), []byte("5 rows")) {
-		t.Error("expected output to contain '5 rows'")
+	// Verify we have total row activity in the summary (the fixture has 5 total rows)
+	if !bytes.Contains([]byte(output), []byte("Total Rows: 5")) {
+		t.Error("expected output to contain 'Total Rows: 5'")
 	}
 }
 

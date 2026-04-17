@@ -1,3 +1,8 @@
+// Package report verifies opt-in text rendering for write-shape pattern drilldowns.
+// input: synthetic AnalysisResult values with selected pattern drilldown evidence.
+// output: regression coverage for hidden-by-default and explicit pattern detail rendering.
+// pos: text report detail-mode tests for pattern drilldown evidence.
+// note: if this file changes, keep internal/report/README.md synchronized.
 package report
 
 import (
@@ -15,7 +20,7 @@ func TestTextPatternDrilldown_NoneWhenEmpty(t *testing.T) {
 		},
 	}
 
-	out, err := RenderText(result)
+	out, err := RenderTextWithOptions(result, Options{ShowPatterns: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -28,24 +33,24 @@ func TestTextPatternDrilldown_SelectedPatternGetsBlock(t *testing.T) {
 	result := model.AnalysisResult{
 		Patterns: []model.PatternStats{
 			{
-				PatternKey:     "p1",
-				Label:          "big insert batch",
-				TotalRows:      50000,
-				TxnCount:       100,
-				AvgRowsPerTxn:  500,
-				ShareOfRows:    0.80,
+				PatternKey:          "p1",
+				Label:               "big insert batch",
+				TotalRows:           50000,
+				TxnCount:            100,
+				AvgRowsPerTxn:       500,
+				ShareOfRows:         0.80,
 				ShareOfTransactions: 0.70,
 			},
 		},
 		PatternDrilldowns: []model.PatternDrilldown{
 			{
-				PatternKey:   "p1",
-				Label:        "big insert batch",
-				WhySelected:  "high signal: dominates workload (80% rows, 70% txns)",
-				ShareOfRows:  0.80,
-				ShareOfTxns:  0.70,
+				PatternKey:    "p1",
+				Label:         "big insert batch",
+				WhySelected:   "high signal: dominates workload (80% rows, 70% txns)",
+				ShareOfRows:   0.80,
+				ShareOfTxns:   0.70,
 				AvgRowsPerTxn: 500,
-				SignalFlags: model.PatternSignalFlags{Dominance: true},
+				SignalFlags:   model.PatternSignalFlags{Dominance: true},
 				BusiestMinutes: []model.PatternPeakMinute{
 					{Minute: time.Date(2026, 4, 12, 10, 0, 0, 0, time.UTC), TotalRows: 30000, TxnCount: 60},
 				},
@@ -53,7 +58,7 @@ func TestTextPatternDrilldown_SelectedPatternGetsBlock(t *testing.T) {
 		},
 	}
 
-	out, err := RenderText(result)
+	out, err := RenderTextWithOptions(result, Options{ShowPatterns: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,7 +89,7 @@ func TestTextPatternDrilldown_PeakMinutesCappedAtTwo(t *testing.T) {
 		},
 	}
 
-	out, err := RenderText(result)
+	out, err := RenderTextWithOptions(result, Options{ShowPatterns: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
