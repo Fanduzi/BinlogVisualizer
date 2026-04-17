@@ -54,3 +54,5 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - Command temp-store cleanup remains directory-scoped and no longer depends on any SQL-context sidecar file; bounded SQL context now lives entirely inside the analyzer's DuckDB temp DB.
 - Top-N truncation is no longer applied in the command layer; it now happens during analyzer Finalize result assembly.
 - Analyze text output is now diagnostic-first by default: summary, top findings, top tables, and next actions are shown on stdout, while minute-level and write-shape detail are reserved for explicit detail controls in the report layer.
+- `--top N` sets the default ranked output size for productized text and HTML report sections.
+- `--details`, `--show-minutes`, and `--show-patterns` expand the default concise text report without changing analyzer semantics.

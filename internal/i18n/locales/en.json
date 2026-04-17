@@ -39,6 +39,10 @@
     "description": "SQL context flag description",
     "other": "SQL context mode: summary, off, or full"
   },
+  "cmd.analyze.flag.top": {
+    "description": "Default ranked items flag description",
+    "other": "Default number of ranked items to show"
+  },
   "cmd.analyze.flag.topTables": {
     "description": "Top tables flag description",
     "other": "Number of top tables to show"
@@ -46,6 +50,18 @@
   "cmd.analyze.flag.topTransactions": {
     "description": "Top transactions flag description",
     "other": "Number of top transactions to show"
+  },
+  "cmd.analyze.flag.details": {
+    "description": "Detailed text sections flag description",
+    "other": "Show detailed text sections"
+  },
+  "cmd.analyze.flag.showMinutes": {
+    "description": "Show minute-level activity in text output flag description",
+    "other": "Show minute-level activity in text output"
+  },
+  "cmd.analyze.flag.showPatterns": {
+    "description": "Show write shape patterns in text output flag description",
+    "other": "Show write shape patterns in text output"
   },
   "cmd.analyze.flag.detectSpikes": {
     "description": "Detect spikes flag description",

@@ -285,8 +285,12 @@ func TestAnalyzeCommandDefinesFlags(t *testing.T) {
 		"snapshot-name",
 		"snapshot-dir",
 		"sql-context",
+		"top",
 		"top-tables",
 		"top-transactions",
+		"show-minutes",
+		"show-patterns",
+		"details",
 		"detect-spikes",
 		"large-trx-rows",
 		"large-trx-duration",
@@ -339,5 +343,73 @@ func TestAnalyzeCommandRejectsSnapshotNameWithoutJSONFormat(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--snapshot-name requires --format json") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBuildReportOptionsMapsPresentationFlags(t *testing.T) {
+	opts := &analyzeOptions{
+		sqlContext:   string(report.SQLContextFull),
+		top:          7,
+		details:      true,
+		showMinutes:  true,
+		showPatterns: true,
+	}
+
+	got, err := buildReportOptions(opts)
+	if err != nil {
+		t.Fatalf("buildReportOptions returned error: %v", err)
+	}
+	if got.SQLContextMode != report.SQLContextFull {
+		t.Fatalf("expected sql context %q, got %q", report.SQLContextFull, got.SQLContextMode)
+	}
+	if got.TopN != 7 {
+		t.Fatalf("expected TopN 7, got %d", got.TopN)
+	}
+	if !got.Details {
+		t.Fatal("expected Details to be true")
+	}
+	if !got.ShowMinutes {
+		t.Fatal("expected ShowMinutes to be true")
+	}
+	if !got.ShowPatterns {
+		t.Fatal("expected ShowPatterns to be true")
+	}
+}
+
+func TestBuildAnalyzerOptionsUsesTopForLegacyDefaultsWhenUntouched(t *testing.T) {
+	cliOpts := &analyzeOptions{
+		top:              6,
+		largeTrxRows:     1000,
+		largeTrxDuration: 30 * time.Second,
+	}
+
+	result := buildAnalyzerOptions(cliOpts, time.Time{}, time.Time{})
+
+	if result.TopTables != 6 {
+		t.Fatalf("expected TopTables to inherit --top=6, got %d", result.TopTables)
+	}
+	if result.TopTransactions != 6 {
+		t.Fatalf("expected TopTransactions to inherit --top=6, got %d", result.TopTransactions)
+	}
+}
+
+func TestBuildAnalyzerOptionsPreservesExplicitLegacyTopFlags(t *testing.T) {
+	cliOpts := &analyzeOptions{
+		top:                    6,
+		topTables:              3,
+		topTransactions:        4,
+		topTablesChanged:       true,
+		topTransactionsChanged: true,
+		largeTrxRows:           1000,
+		largeTrxDuration:       30 * time.Second,
+	}
+
+	result := buildAnalyzerOptions(cliOpts, time.Time{}, time.Time{})
+
+	if result.TopTables != 3 {
+		t.Fatalf("expected explicit TopTables=3, got %d", result.TopTables)
+	}
+	if result.TopTransactions != 4 {
+		t.Fatalf("expected explicit TopTransactions=4, got %d", result.TopTransactions)
 	}
 }
