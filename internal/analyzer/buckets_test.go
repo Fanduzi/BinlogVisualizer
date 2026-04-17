@@ -38,6 +38,20 @@ func TestMinuteAggregatorBucketsRowsByMinute(t *testing.T) {
 	}
 }
 
+func TestTruncateToMinutePreservesLocationAndDropsSubMinuteFields(t *testing.T) {
+	location := time.FixedZone("CST", 8*60*60)
+	input := time.Date(2026, 4, 17, 22, 9, 58, 123456789, location)
+
+	got := truncateToMinute(input)
+	want := time.Date(2026, 4, 17, 22, 9, 0, 0, location)
+	if !got.Equal(want) {
+		t.Fatalf("expected %s, got %s", want, got)
+	}
+	if got.Location() != location {
+		t.Fatalf("expected location pointer to be preserved")
+	}
+}
+
 func TestMinuteAggregatorSeparatesDifferentMinutes(t *testing.T) {
 	agg := NewMinuteAggregator()
 	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
@@ -384,4 +398,16 @@ func BenchmarkMinuteAggregatorDrainBeforeNoReadyBuckets(b *testing.B) {
 			b.Fatalf("expected no drained buckets, got %d", len(drained))
 		}
 	}
+}
+
+func BenchmarkTruncateToMinute(b *testing.B) {
+	location := time.FixedZone("CST", 8*60*60)
+	timestamp := time.Date(2026, 4, 17, 22, 9, 58, 123456789, location)
+
+	b.ReportAllocs()
+	var minute time.Time
+	for i := 0; i < b.N; i++ {
+		minute = truncateToMinute(timestamp)
+	}
+	_ = minute
 }
