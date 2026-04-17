@@ -42,6 +42,7 @@
 
 - Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `1000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
 - DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is stored in the `transaction_sql_contexts` subtable and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
+- Finalize computes alerts after transaction/minute queries and feeds them directly into findings/drilldowns, avoiding an extra DuckDB alert round-trip on the hot path.
 - Live state remains bounded to the in-flight transaction builder, live table aggregates, current minute buckets pending flush, and summary counters.
 - `MinuteAggregator.Snapshot()` returns defensive table-row copies, while `DrainBefore()` and `DrainAll()` transfer ownership of removed bucket maps to avoid copy churn in the streaming persistence path.
 - Hot-path minute/table/transaction aggregation keeps table keys as structured internal identities and only materializes `schema.table` strings during final result projection.
