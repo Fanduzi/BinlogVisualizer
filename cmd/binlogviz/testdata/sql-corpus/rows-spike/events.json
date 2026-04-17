@@ -1,0 +1,40 @@
+[
+  {
+    "timestamp": "2026-04-17T09:20:00Z",
+    "binlog_path": "mysql-bin.000050",
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T09:20:01Z",
+    "binlog_path": "mysql-bin.000050",
+    "event_type": "WRITE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "audit_logs",
+    "row_count": 100000
+  },
+  {
+    "timestamp": "2026-04-17T09:20:02Z",
+    "binlog_path": "mysql-bin.000050",
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T09:21:00Z",
+    "binlog_path": "mysql-bin.000050",
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T09:21:01Z",
+    "binlog_path": "mysql-bin.000050",
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "orders",
+    "row_count": 10
+  },
+  {
+    "timestamp": "2026-04-17T09:21:02Z",
+    "binlog_path": "mysql-bin.000050",
+    "event_type": "XID_EVENT"
+  }
+]

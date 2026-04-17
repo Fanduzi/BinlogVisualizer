@@ -1,0 +1,26 @@
+[
+  {
+    "timestamp": "2026-04-17T09:30:00Z",
+    "binlog_path": "mysql-bin.000060",
+    "event_type": "ROWS_QUERY_EVENT",
+    "query_sql": "ALTER TABLE shop.orders ADD COLUMN marker INT"
+  },
+  {
+    "timestamp": "2026-04-17T09:31:00Z",
+    "binlog_path": "mysql-bin.000060",
+    "event_type": "ROWS_QUERY_EVENT",
+    "query_sql": "CREATE TABLE shop.ddl_tmp (id BIGINT PRIMARY KEY)"
+  },
+  {
+    "timestamp": "2026-04-17T09:32:00Z",
+    "binlog_path": "mysql-bin.000060",
+    "event_type": "ROWS_QUERY_EVENT",
+    "query_sql": "DROP TABLE shop.ddl_tmp"
+  },
+  {
+    "timestamp": "2026-04-17T09:33:00Z",
+    "binlog_path": "mysql-bin.000060",
+    "event_type": "ROWS_QUERY_EVENT",
+    "query_sql": "TRUNCATE TABLE shop.audit_logs"
+  }
+]
