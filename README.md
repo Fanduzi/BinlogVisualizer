@@ -145,6 +145,19 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 
 The HTML report includes interactive charts (rows/txns per minute, top tables, operation mix), optional pattern drilldowns for high-signal write patterns, and a five-theme switcher.
 
+## Analyze Performance Gate
+
+For incident triage, the target for a 1 GB single-binlog `analyze` run is 10 seconds on the target DBA environment. Runs above 15 seconds should be treated as performance failures and profiled with `pprof`.
+
+Recommended manual check:
+
+```bash
+time binlogviz analyze /path/to/mysql-bin.000044 --format text > /tmp/binlogviz-text.txt
+time binlogviz analyze /path/to/mysql-bin.000044 --format html > /tmp/binlogviz.html
+```
+
+Text output is intended to stay on a fast diagnostic path. HTML output builds the full visual evidence report.
+
 ## What BinlogViz Helps You See
 
 BinlogViz is optimized for these common DBA questions:

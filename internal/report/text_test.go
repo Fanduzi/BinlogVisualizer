@@ -83,6 +83,30 @@ func TestRenderTextDetailsCanShowMinuteAndPatternSections(t *testing.T) {
 	}
 }
 
+func TestRenderTextDefaultDoesNotRenderPatternDrilldowns(t *testing.T) {
+	result := productTextFixture()
+	result.Patterns = []model.PatternStats{{
+		PatternKey:    "shop.orders|UPDATE|medium",
+		Label:         "shop.orders / UPDATE / medium batch",
+		TotalRows:     9000,
+		TxnCount:      100,
+		AvgRowsPerTxn: 90,
+	}}
+	result.PatternDrilldowns = []model.PatternDrilldown{{
+		PatternKey:  "shop.orders|UPDATE|medium",
+		Label:       "shop.orders / UPDATE / medium batch",
+		WhySelected: "high row share",
+	}}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "high row share") || strings.Contains(out, "drilldown:") {
+		t.Fatalf("default text path rendered pattern drilldown\n%s", out)
+	}
+}
+
 func TestRenderTextAndHTMLShareTopNDefault(t *testing.T) {
 	if DefaultOptions().TopN != DefaultTopN {
 		t.Fatalf("default options top N drifted from product default")

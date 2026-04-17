@@ -56,3 +56,4 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - Analyze text output is now diagnostic-first by default: summary, top findings, top tables, and next actions are shown on stdout, while minute-level and write-shape detail are reserved for explicit detail controls in the report layer.
 - `--top N` sets the default ranked output size for productized text and HTML report sections.
 - `--details`, `--show-minutes`, and `--show-patterns` expand the default concise text report without changing analyzer semantics.
+- Analyze performance coverage includes a text-vs-HTML render benchmark and a CI-safe near-1GB synthetic mix benchmark; real 1GB binlog validation remains a manual DBA-environment gate.
