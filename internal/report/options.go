@@ -41,11 +41,15 @@ func ParseFormat(raw string) (Format, error) {
 type Options struct {
 	SQLContextMode SQLContextMode
 	Format         Format
+	TopN           int
+	Details        bool
+	ShowMinutes    bool
+	ShowPatterns   bool
 }
 
 // DefaultOptions returns the backwards-compatible report presentation defaults.
 func DefaultOptions() Options {
-	return Options{SQLContextMode: SQLContextSummary}
+	return Options{SQLContextMode: SQLContextSummary, TopN: DefaultTopN}
 }
 
 // ParseSQLContextMode validates a CLI-provided sql-context mode.
@@ -66,7 +70,16 @@ func ParseSQLContextMode(raw string) (SQLContextMode, error) {
 func normalizeOptions(opts Options) Options {
 	mode, err := ParseSQLContextMode(string(opts.SQLContextMode))
 	if err != nil {
-		return DefaultOptions()
+		opts.SQLContextMode = SQLContextSummary
+	} else {
+		opts.SQLContextMode = mode
 	}
-	return Options{SQLContextMode: mode}
+	if opts.TopN <= 0 {
+		opts.TopN = DefaultTopN
+	}
+	if opts.Details {
+		opts.ShowMinutes = true
+		opts.ShowPatterns = true
+	}
+	return opts
 }

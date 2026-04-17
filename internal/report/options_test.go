@@ -50,3 +50,36 @@ func TestNormalizeOptionsPreservesValidSQLContextAndFallsBackOnInvalid(t *testin
 		t.Fatalf("expected invalid mode to fall back to summary, got %q", got.SQLContextMode)
 	}
 }
+
+func TestNormalizeOptionsAppliesProductDefaults(t *testing.T) {
+	opts := normalizeOptions(Options{})
+
+	if opts.TopN != DefaultTopN {
+		t.Fatalf("expected default top N %d, got %d", DefaultTopN, opts.TopN)
+	}
+	if opts.ShowMinutes {
+		t.Fatal("default text output must not show minute details")
+	}
+	if opts.ShowPatterns {
+		t.Fatal("default text output must not show write pattern details")
+	}
+}
+
+func TestNormalizeOptionsDetailsEnablesDetailedTextSections(t *testing.T) {
+	opts := normalizeOptions(Options{Details: true})
+
+	if !opts.ShowMinutes {
+		t.Fatal("--details should enable minute details")
+	}
+	if !opts.ShowPatterns {
+		t.Fatal("--details should enable write pattern details")
+	}
+}
+
+func TestNormalizeOptionsRejectsInvalidTopN(t *testing.T) {
+	opts := normalizeOptions(Options{TopN: -5})
+
+	if opts.TopN != DefaultTopN {
+		t.Fatalf("expected invalid top N to fall back to %d, got %d", DefaultTopN, opts.TopN)
+	}
+}

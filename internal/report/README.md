@@ -36,5 +36,6 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - `summary` preserves the current default behavior.
 - `off` omits query lines in text and omits all query-related JSON fields.
 - `full` only exposes bounded SQL from `QueryContext.SQL`; it never reconstructs or emits unbounded original SQL.
+- `product.go` owns presentation defaults such as `DefaultTopN` so text, HTML, and command flags share one report contract.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
