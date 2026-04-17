@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -29,6 +30,15 @@ func TestDuckDBStoreInitializesSchema(t *testing.T) {
 	} {
 		if !store.tableExists(table) {
 			t.Fatalf("expected table %q to exist", table)
+		}
+	}
+}
+
+func TestDuckDBStoreDoesNotDefineUnboundedMirrors(t *testing.T) {
+	storeType := reflect.TypeOf(DuckDBStore{})
+	for _, fieldName := range []string{"persistedTxns", "persistedTxnIndex", "persistedMinutes"} {
+		if _, ok := storeType.FieldByName(fieldName); ok {
+			t.Fatalf("DuckDBStore must not retain unbounded in-memory mirror field %q", fieldName)
 		}
 	}
 }
@@ -198,11 +208,11 @@ func TestDuckDBStoreQueryAllTransactionsDoesNotHydrateFullSQL(t *testing.T) {
 }
 
 func newTestDuckDBStore(t interface {
-		Helper()
-		TempDir() string
-		Cleanup(func())
-		Fatalf(string, ...any)
-	}, batchRows int) *DuckDBStore {
+	Helper()
+	TempDir() string
+	Cleanup(func())
+	Fatalf(string, ...any)
+}, batchRows int) *DuckDBStore {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "analysis.duckdb")

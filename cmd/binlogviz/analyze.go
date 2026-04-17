@@ -503,7 +503,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	}
 
 	if progressParser, ok := parser.(binlog.ProgressParser); ok {
-		if err := progressParser.ParseFilesWithProgress(paths, func(progressEvent binlog.ParseProgress) {
+		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
 			progress.Advance(progressEvent)
 		}, handler); err != nil {
 			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
@@ -588,7 +588,7 @@ func runAnalysisStreamingFastWithSnapshot(
 	}
 
 	if progressParser, ok := parser.(binlog.ProgressParser); ok {
-		if err := progressParser.ParseFilesWithProgress(paths, func(progressEvent binlog.ParseProgress) {
+		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
 			progress.Advance(progressEvent)
 		}, handler); err != nil {
 			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
