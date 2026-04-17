@@ -11,6 +11,7 @@
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
 | `alerts.go` | Builds large transaction alerts from completed transactions. |
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
+| `diagnostics.go` | Builds DBA-oriented findings, transaction rankings, hot intervals, and file throughput segments with indexed evidence lookups during final finding assembly. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window filtering, and benchmark coverage. |
 
 ## Interfaces

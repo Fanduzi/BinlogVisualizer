@@ -2,9 +2,11 @@
 // input: alerts, minute buckets, completed transactions, and DDL timeline events.
 // output: regression coverage for finding mapping, evidence enrichment, and deterministic hot-interval summaries.
 // pos: focused diagnostics contract tests ahead of Analyzer integration wiring.
+// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -104,6 +106,57 @@ func TestBuildFindingsFromAlertsEnrichesTransactionAndMinuteAlerts(t *testing.T)
 	}
 	if len(got[1].EvidenceRefs) == 0 || got[1].EvidenceRefs[len(got[1].EvidenceRefs)-1] != "ddl=ALTER TABLE app.orders @ mysql-bin.000010" {
 		t.Fatalf("expected DDL evidence on spike finding, got %v", got[1].EvidenceRefs)
+	}
+}
+
+func BenchmarkBuildFindingsFromAlertsIncidentScale(b *testing.B) {
+	base := time.Date(2026, 4, 17, 12, 0, 0, 0, time.UTC)
+	txns := make([]model.Transaction, 0, 5000)
+	minutes := make([]model.MinuteBucket, 0, 5000)
+	alerts := make([]model.Alert, 0, 10000)
+	ddlEvents := make([]model.DDLEvent, 0, 5000)
+
+	for index := 0; index < 5000; index++ {
+		minute := base.Add(time.Duration(index) * time.Minute)
+		txnKey := "txn-" + strconv.Itoa(index)
+		txns = append(txns, model.Transaction{
+			TxnKey:          txnKey,
+			TotalRows:       1000 + index%100,
+			EventCount:      10 + index%5,
+			Duration:        time.Duration(index%120) * time.Second,
+			BinlogBytes:     int64(4096 + index),
+			BinlogPathStart: "mysql-bin.000100",
+			BinlogPathEnd:   "mysql-bin.000101",
+			PositionStart:   int64(index * 100),
+			PositionEnd:     int64(index*100 + 99),
+		})
+		minutes = append(minutes, model.MinuteBucket{
+			Minute:      minute,
+			TotalRows:   500 + index%250,
+			TxnCount:    3 + index%10,
+			EventCount:  8 + index%4,
+			BinlogBytes: int64(2048 + index),
+			DDLCount:    1,
+		})
+		ddlEvents = append(ddlEvents, model.DDLEvent{
+			Timestamp:  minute.Add(30 * time.Second),
+			Operation:  "ALTER TABLE",
+			Schema:     "shop",
+			Table:      "orders",
+			BinlogPath: "mysql-bin.000100",
+		})
+		alerts = append(alerts,
+			model.Alert{Type: "large_transaction", Severity: "warning", Message: "large txn", TxnKey: txnKey},
+			model.Alert{Type: "spike", Severity: "critical", Message: "write spike", Minute: minute},
+		)
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		findings := BuildFindingsFromAlerts(alerts, minutes, txns, ddlEvents)
+		if len(findings) != len(alerts) {
+			b.Fatalf("expected %d findings, got %d", len(alerts), len(findings))
+		}
 	}
 }
 
