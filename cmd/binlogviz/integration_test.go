@@ -12,8 +12,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -155,6 +157,95 @@ func TestResolveAnalyzePathsExplicitArgsRemainUnchanged(t *testing.T) {
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("unexpected paths: %#v", got)
+	}
+}
+
+func TestRunAnalysisParsesMultipleFilesConcurrentlyAndConsumesInOrder(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	paths := []string{"mysql-bin.000044", "mysql-bin.000045", "mysql-bin.000046"}
+	delays := map[string]time.Duration{
+		paths[0]: 60 * time.Millisecond,
+		paths[1]: 5 * time.Millisecond,
+		paths[2]: 5 * time.Millisecond,
+	}
+
+	var mu sync.Mutex
+	activeParses := 0
+	peakParses := 0
+	parser := &mockParser{
+		parseFilesWithProgress: func(parsePaths []string, onProgress func(binlog.ParseProgress), handler func(binlog.RawEvent) error) error {
+			for _, path := range parsePaths {
+				index := slices.Index(paths, path)
+				if index < 0 {
+					t.Fatalf("unexpected path %q", path)
+				}
+				mu.Lock()
+				activeParses++
+				if activeParses > peakParses {
+					peakParses = activeParses
+				}
+				mu.Unlock()
+
+				time.Sleep(delays[path])
+				if onProgress != nil {
+					onProgress(binlog.ParseProgress{Path: path, Index: index, Offset: 1})
+				}
+				if err := handler(binlog.RawEvent{
+					Timestamp:  time.Date(2026, 4, 18, 10, index, 0, 0, time.UTC),
+					BinlogPath: path,
+					EventType:  "WRITE_ROWS_EVENT",
+					Schema:     "shop",
+					Table:      path,
+					RowCount:   1,
+				}); err != nil {
+					return err
+				}
+
+				mu.Lock()
+				activeParses--
+				mu.Unlock()
+			}
+			return nil
+		},
+	}
+
+	fakeAnalyzer := &fakeStreamingAnalyzer{finalResult: &model.AnalysisResult{}}
+	_, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisStreamingFastWithSnapshot(
+			paths,
+			analyzer.DefaultOptions(),
+			report.DefaultOptions(),
+			"json",
+			parser,
+			func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+				return fakeAnalyzer
+			},
+			createDuckDBTempStore,
+			t.TempDir(),
+			nil,
+			model.FileCoverage{},
+			"",
+			"",
+		)
+	})
+	if err != nil {
+		t.Fatalf("runAnalysisStreamingFastWithSnapshot returned error: %v", err)
+	}
+
+	mu.Lock()
+	gotPeak := peakParses
+	mu.Unlock()
+	if gotPeak < 2 {
+		t.Fatalf("expected multiple files to be parsed concurrently, peak concurrency was %d", gotPeak)
+	}
+
+	if len(fakeAnalyzer.consumed) != len(paths) {
+		t.Fatalf("expected %d consumed events, got %d", len(paths), len(fakeAnalyzer.consumed))
+	}
+	for index, path := range paths {
+		if fakeAnalyzer.consumed[index].BinlogPath != path {
+			t.Fatalf("expected analyzer consumption to preserve file order at %d: want %s got %s", index, path, fakeAnalyzer.consumed[index].BinlogPath)
+		}
 	}
 }
 

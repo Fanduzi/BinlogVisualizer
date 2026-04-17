@@ -8,6 +8,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 |------|----------------|
 | `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, `version`, and `workflow`. |
 | `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, aggregate parse progress on `stderr`, optional snapshot persistence, and command-owned DuckDB temp-store lifecycle. |
+| `analyze_parallel.go` | Runs bounded parallel per-file parsing while preserving ordered analyzer consumption for cross-file transaction safety. |
 | `compare.go` | Resolves compare inputs from explicit JSON files or named snapshots and renders text/JSON/HTML compare output. |
 | `trend.go` | Resolves explicit or pattern-selected snapshot inputs, optional baseline snapshots, and renders text/JSON/HTML multi-snapshot trend output. |
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
@@ -58,3 +59,4 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - `--details`, `--show-minutes`, and `--show-patterns` expand the default concise text report without changing analyzer semantics.
 - Analyze performance coverage includes text-vs-HTML rendering, corpus-backed DBA incident workloads, and a CI-safe near-1GB synthetic mix benchmark; real 1GB binlog validation remains a manual DBA-environment gate.
 - The production analyze command uses a destination-reuse normalization fast path in its streaming handler so the main CLI path no longer allocates one `*NormalizedEvent` per kept event.
+- Multi-file analyze now overlaps parser work across files with bounded per-file buffers, but still feeds normalized events to the analyzer in input order so cross-file transactions remain valid.
