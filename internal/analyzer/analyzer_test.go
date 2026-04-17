@@ -289,8 +289,8 @@ func TestAnalyzerFinalizesTimeseriesAndDDLDiagnostics(t *testing.T) {
 	if result.Diagnostics.DDLEvents[0].Operation != "ALTER TABLE" {
 		t.Fatalf("expected ALTER TABLE ddl event, got %+v", result.Diagnostics.DDLEvents[0])
 	}
-	if len(result.Timeseries.TPSSeries) != 1 || result.Timeseries.TPSSeries[0].Value != 1 {
-		t.Fatalf("expected tps series with one point=1, got %+v", result.Timeseries.TPSSeries)
+	if len(result.Timeseries.TPSSeries) != 1 || result.Timeseries.TPSSeries[0].Value != 1.0/60.0 {
+		t.Fatalf("expected tps series with one point=1/60, got %+v", result.Timeseries.TPSSeries)
 	}
 	if len(result.Timeseries.InsertEventSeries) != 1 || result.Timeseries.InsertEventSeries[0].Value != 1 {
 		t.Fatalf("expected insert-event series with one point=1, got %+v", result.Timeseries.InsertEventSeries)
