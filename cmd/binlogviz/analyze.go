@@ -635,20 +635,18 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	// Start with defaults to get spike detection defaults
 	result := analyzer.DefaultOptions()
 
-	if opts.top > 0 {
-		if !opts.topTablesChanged {
-			result.TopTables = opts.top
-		}
-		if !opts.topTransactionsChanged {
-			result.TopTransactions = opts.top
-		}
+	if opts.top > 0 && !opts.topTablesChanged {
+		result.TopTables = opts.top
+	}
+	if opts.top > 0 && !opts.topTransactionsChanged {
+		result.TopTransactions = opts.top
 	}
 
 	// Override with CLI-specific values (only when non-zero, to preserve DefaultOptions fallback)
-	if opts.topTablesChanged && opts.topTables != 0 {
+	if opts.topTablesChanged || (opts.top == 0 && opts.topTables != 0) {
 		result.TopTables = opts.topTables
 	}
-	if opts.topTransactionsChanged && opts.topTransactions != 0 {
+	if opts.topTransactionsChanged || (opts.top == 0 && opts.topTransactions != 0) {
 		result.TopTransactions = opts.topTransactions
 	}
 	if opts.topMinutes != 0 {
