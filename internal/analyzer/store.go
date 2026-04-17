@@ -271,6 +271,17 @@ func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) er
 }
 
 func (s *DuckDBStore) RecordMinuteBuckets(buckets []model.MinuteBucket) error {
+	if len(buckets) == 0 {
+		return nil
+	}
+
+	additionalMinuteTables := 0
+	for _, bucket := range buckets {
+		additionalMinuteTables += len(bucket.TableRows)
+	}
+	s.minutesBatch = growSlice(s.minutesBatch, len(buckets))
+	s.minuteTablesBatch = growSlice(s.minuteTablesBatch, additionalMinuteTables)
+
 	for _, bucket := range buckets {
 		s.minutesBatch = append(s.minutesBatch, minuteBucketRow{
 			Minute:      bucket.Minute,
@@ -282,16 +293,11 @@ func (s *DuckDBStore) RecordMinuteBuckets(buckets []model.MinuteBucket) error {
 		})
 		s.bufferTopLevelRow(48)
 
-		tableNames := make([]string, 0, len(bucket.TableRows))
-		for tableKey := range bucket.TableRows {
-			tableNames = append(tableNames, tableKey)
-		}
-		sort.Strings(tableNames)
-		for _, tableKey := range tableNames {
+		for tableKey, rows := range bucket.TableRows {
 			s.minuteTablesBatch = append(s.minuteTablesBatch, minuteTableRow{
 				Minute:   bucket.Minute,
 				TableKey: tableKey,
-				Rows:     int64(bucket.TableRows[tableKey]),
+				Rows:     int64(rows),
 			})
 			s.bufferBytes(estimateStringBytes(tableKey) + 16)
 		}
