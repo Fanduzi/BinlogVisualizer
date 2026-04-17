@@ -286,6 +286,52 @@ func BenchmarkDuckDBStoreQueryTopTransactionsLargeDataset(b *testing.B) {
 	}
 }
 
+func BenchmarkDuckDBStoreQueryAllTransactionsLargeDataset(b *testing.B) {
+	store := newTestDuckDBStore(b, DefaultBatchFlushRows)
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	fixtures := make([]persistedTransaction, 0, 4000)
+	for i := 0; i < 4000; i++ {
+		fixtures = append(fixtures, persistedTransaction{
+			TxnKey:             fmt.Sprintf("txn-%06d", i),
+			StartTime:          base.Add(time.Duration(i) * time.Second),
+			EndTime:            base.Add(time.Duration(i)*time.Second + 2*time.Second),
+			DurationMS:         2000,
+			TotalRows:          int64(4000 - i),
+			EventCount:         3,
+			QuerySummary:       "UPDATE shop.orders SET status = ? WHERE id = ?",
+			QuerySQL:           "UPDATE shop.orders SET status = 'done' WHERE id = 7",
+			QueryTruncated:     false,
+			QueryOriginalBytes: 48,
+			TableRows: map[string]int{
+				"shop.orders": 5,
+				fmt.Sprintf("shop.orders_archive_%02d", i%16): 3,
+			},
+			Operations: map[string]int{
+				"UPDATE": 6,
+				"INSERT": 2,
+			},
+		})
+	}
+	if err := store.RecordTransactions(fixtures); err != nil {
+		b.Fatalf("RecordTransactions returned error: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		b.Fatalf("Flush returned error: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		txns, err := store.QueryAllTransactions()
+		if err != nil {
+			b.Fatalf("QueryAllTransactions returned error: %v", err)
+		}
+		if len(txns) != len(fixtures) {
+			b.Fatalf("expected %d transactions, got %d", len(fixtures), len(txns))
+		}
+	}
+}
+
 func BenchmarkDuckDBStoreRecordTransactions(b *testing.B) {
 	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
 	fixtures := make([]persistedTransaction, 0, 1000)
@@ -345,6 +391,45 @@ func BenchmarkDuckDBStoreRecordMinuteBuckets(b *testing.B) {
 		store := newTestDuckDBStore(b, len(fixtures)+1)
 		if err := store.RecordMinuteBuckets(fixtures); err != nil {
 			b.Fatalf("RecordMinuteBuckets returned error: %v", err)
+		}
+	}
+}
+
+func BenchmarkDuckDBStoreQueryMinuteBuckets(b *testing.B) {
+	store := newTestDuckDBStore(b, DefaultBatchFlushRows)
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	fixtures := make([]model.MinuteBucket, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		tableRows := make(map[string]int, 32)
+		for tableIndex := 0; tableIndex < 32; tableIndex++ {
+			tableRows[fmt.Sprintf("shop.orders_%02d", tableIndex)] = i + tableIndex + 1
+		}
+		fixtures = append(fixtures, model.MinuteBucket{
+			Minute:      base.Add(time.Duration(i) * time.Minute),
+			TotalRows:   1000 + i,
+			TxnCount:    10 + i%7,
+			EventCount:  20 + i%11,
+			BinlogBytes: int64(4096 + i),
+			DDLCount:    i % 3,
+			TableRows:   tableRows,
+		})
+	}
+	if err := store.RecordMinuteBuckets(fixtures); err != nil {
+		b.Fatalf("RecordMinuteBuckets returned error: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		b.Fatalf("Flush returned error: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		buckets, err := store.QueryMinuteBuckets()
+		if err != nil {
+			b.Fatalf("QueryMinuteBuckets returned error: %v", err)
+		}
+		if len(buckets) != len(fixtures) {
+			b.Fatalf("expected %d minute buckets, got %d", len(fixtures), len(buckets))
 		}
 	}
 }

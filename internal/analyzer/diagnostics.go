@@ -7,7 +7,6 @@ package analyzer
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	"binlogviz/internal/model"
@@ -122,34 +121,25 @@ func SelectDiagnosticTransactions(txns []model.Transaction, limit int) ([]model.
 		return nil, nil
 	}
 
-	byRows := append([]model.Transaction(nil), txns...)
-	sort.Slice(byRows, func(i, j int) bool {
-		if byRows[i].TotalRows != byRows[j].TotalRows {
-			return byRows[i].TotalRows > byRows[j].TotalRows
+	byRows := topTransactions(txns, limit, func(left, right model.Transaction) bool {
+		if left.TotalRows != right.TotalRows {
+			return left.TotalRows > right.TotalRows
 		}
-		if byRows[i].BinlogBytes != byRows[j].BinlogBytes {
-			return byRows[i].BinlogBytes > byRows[j].BinlogBytes
+		if left.BinlogBytes != right.BinlogBytes {
+			return left.BinlogBytes > right.BinlogBytes
 		}
-		return byRows[i].TxnKey < byRows[j].TxnKey
+		return left.TxnKey < right.TxnKey
 	})
 
-	byDuration := append([]model.Transaction(nil), txns...)
-	sort.Slice(byDuration, func(i, j int) bool {
-		if byDuration[i].Duration != byDuration[j].Duration {
-			return byDuration[i].Duration > byDuration[j].Duration
+	byDuration := topTransactions(txns, limit, func(left, right model.Transaction) bool {
+		if left.Duration != right.Duration {
+			return left.Duration > right.Duration
 		}
-		if byDuration[i].TotalRows != byDuration[j].TotalRows {
-			return byDuration[i].TotalRows > byDuration[j].TotalRows
+		if left.TotalRows != right.TotalRows {
+			return left.TotalRows > right.TotalRows
 		}
-		return byDuration[i].TxnKey < byDuration[j].TxnKey
+		return left.TxnKey < right.TxnKey
 	})
-
-	if len(byRows) > limit {
-		byRows = byRows[:limit]
-	}
-	if len(byDuration) > limit {
-		byDuration = byDuration[:limit]
-	}
 	return byRows, byDuration
 }
 
@@ -159,20 +149,15 @@ func SelectHotIntervals(minutes []model.MinuteBucket, limit int) []model.MinuteB
 		return nil
 	}
 
-	out := append([]model.MinuteBucket(nil), minutes...)
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].TotalRows != out[j].TotalRows {
-			return out[i].TotalRows > out[j].TotalRows
+	return topMinutes(minutes, limit, func(left, right model.MinuteBucket) bool {
+		if left.TotalRows != right.TotalRows {
+			return left.TotalRows > right.TotalRows
 		}
-		if out[i].EventCount != out[j].EventCount {
-			return out[i].EventCount > out[j].EventCount
+		if left.EventCount != right.EventCount {
+			return left.EventCount > right.EventCount
 		}
-		return out[i].Minute.Before(out[j].Minute)
+		return left.Minute.Before(right.Minute)
 	})
-	if len(out) > limit {
-		out = out[:limit]
-	}
-	return out
 }
 
 // SelectWidestTransactions returns the top N transactions ranked by number of distinct tables touched.
@@ -181,20 +166,77 @@ func SelectWidestTransactions(txns []model.Transaction, limit int) []model.Trans
 		return nil
 	}
 
-	out := append([]model.Transaction(nil), txns...)
-	sort.Slice(out, func(i, j int) bool {
-		wi := len(out[i].Tables)
-		wj := len(out[j].Tables)
+	return topTransactions(txns, limit, func(left, right model.Transaction) bool {
+		wi := len(left.Tables)
+		wj := len(right.Tables)
 		if wi != wj {
 			return wi > wj
 		}
-		if out[i].TotalRows != out[j].TotalRows {
-			return out[i].TotalRows > out[j].TotalRows
+		if left.TotalRows != right.TotalRows {
+			return left.TotalRows > right.TotalRows
 		}
-		return out[i].TxnKey < out[j].TxnKey
+		return left.TxnKey < right.TxnKey
 	})
-	if len(out) > limit {
-		out = out[:limit]
+}
+
+func topTransactions(txns []model.Transaction, limit int, better func(left, right model.Transaction) bool) []model.Transaction {
+	if limit > len(txns) {
+		limit = len(txns)
+	}
+	out := make([]model.Transaction, 0, limit)
+	for _, txn := range txns {
+		insertAt := len(out)
+		for index := range out {
+			if better(txn, out[index]) {
+				insertAt = index
+				break
+			}
+		}
+		if insertAt == len(out) {
+			if len(out) < limit {
+				out = append(out, txn)
+			}
+			continue
+		}
+		if len(out) < limit {
+			out = append(out, model.Transaction{})
+		}
+		copy(out[insertAt+1:], out[insertAt:])
+		out[insertAt] = txn
+		if len(out) > limit {
+			out = out[:limit]
+		}
+	}
+	return out
+}
+
+func topMinutes(minutes []model.MinuteBucket, limit int, better func(left, right model.MinuteBucket) bool) []model.MinuteBucket {
+	if limit > len(minutes) {
+		limit = len(minutes)
+	}
+	out := make([]model.MinuteBucket, 0, limit)
+	for _, minute := range minutes {
+		insertAt := len(out)
+		for index := range out {
+			if better(minute, out[index]) {
+				insertAt = index
+				break
+			}
+		}
+		if insertAt == len(out) {
+			if len(out) < limit {
+				out = append(out, minute)
+			}
+			continue
+		}
+		if len(out) < limit {
+			out = append(out, model.MinuteBucket{})
+		}
+		copy(out[insertAt+1:], out[insertAt:])
+		out[insertAt] = minute
+		if len(out) > limit {
+			out = out[:limit]
+		}
 	}
 	return out
 }
