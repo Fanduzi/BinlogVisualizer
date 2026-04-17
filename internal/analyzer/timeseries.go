@@ -55,14 +55,14 @@ func BuildTimeseries(input TimeseriesBuildInput) model.Timeseries {
 	}
 
 	series := model.Timeseries{
-		TPSSeries:         make([]model.TimeseriesPoint, 0, len(minutes)),
-		RowsSeries:        make([]model.TimeseriesPoint, 0, len(minutes)),
-		EventsSeries:      make([]model.TimeseriesPoint, 0, len(minutes)),
-		InsertEventSeries: make([]model.TimeseriesPoint, 0, len(minutes)),
-		UpdateEventSeries: make([]model.TimeseriesPoint, 0, len(minutes)),
-		DeleteEventSeries: make([]model.TimeseriesPoint, 0, len(minutes)),
-		DDLEventSeries:    make([]model.TimeseriesPoint, 0, len(minutes)),
-		BinlogBytesSeries: make([]model.TimeseriesPoint, 0, len(minutes)),
+		TPSSeries:            make([]model.TimeseriesPoint, 0, len(minutes)),
+		RowsSeries:           make([]model.TimeseriesPoint, 0, len(minutes)),
+		EventsSeries:         make([]model.TimeseriesPoint, 0, len(minutes)),
+		InsertEventSeries:    make([]model.TimeseriesPoint, 0, len(minutes)),
+		UpdateEventSeries:    make([]model.TimeseriesPoint, 0, len(minutes)),
+		DeleteEventSeries:    make([]model.TimeseriesPoint, 0, len(minutes)),
+		DDLEventSeries:       make([]model.TimeseriesPoint, 0, len(minutes)),
+		BinlogBytesSeries:    make([]model.TimeseriesPoint, 0, len(minutes)),
 		TxnSizeSeriesSummary: buildTxnSizeSeriesSummary(input.Transactions),
 	}
 
@@ -75,7 +75,8 @@ func BuildTimeseries(input TimeseriesBuildInput) model.Timeseries {
 			ddlCount = op.ddlEvents
 		}
 
-		series.TPSSeries = append(series.TPSSeries, model.TimeseriesPoint{Minute: minute, Value: float64(bucket.TxnCount)})
+		avgTPS := float64(bucket.TxnCount) / 60.0
+		series.TPSSeries = append(series.TPSSeries, model.TimeseriesPoint{Minute: minute, Value: avgTPS})
 		series.RowsSeries = append(series.RowsSeries, model.TimeseriesPoint{Minute: minute, Value: float64(bucket.TotalRows)})
 		series.EventsSeries = append(series.EventsSeries, model.TimeseriesPoint{Minute: minute, Value: float64(bucket.EventCount)})
 		series.InsertEventSeries = append(series.InsertEventSeries, model.TimeseriesPoint{Minute: minute, Value: float64(op.insertEvents)})

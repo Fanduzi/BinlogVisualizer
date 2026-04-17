@@ -30,8 +30,8 @@ func TestBuildTimeseriesProjectsMinuteAndOperationSeries(t *testing.T) {
 	})
 
 	assertPointSeries(t, got.TPSSeries, []model.TimeseriesPoint{
-		{Minute: minuteA, Value: 1},
-		{Minute: minuteB, Value: 2},
+		{Minute: minuteA, Value: 1.0 / 60.0},
+		{Minute: minuteB, Value: 2.0 / 60.0},
 	})
 	assertPointSeries(t, got.RowsSeries, []model.TimeseriesPoint{
 		{Minute: minuteA, Value: 5},
@@ -86,6 +86,23 @@ func TestBuildTimeseriesBuildsTransactionSizeSummary(t *testing.T) {
 		if got.TxnSizeSeriesSummary.Buckets[index] != want[index] {
 			t.Fatalf("bucket %d: expected %+v, got %+v", index, want[index], got.TxnSizeSeriesSummary.Buckets[index])
 		}
+	}
+}
+
+func TestBuildTimeseriesUsesAverageTPSPerMinute(t *testing.T) {
+	minute := time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC)
+	series := BuildTimeseries(TimeseriesBuildInput{
+		Minutes: []model.MinuteBucket{{
+			Minute:   minute,
+			TxnCount: 120,
+		}},
+	})
+
+	if len(series.TPSSeries) != 1 {
+		t.Fatalf("expected one TPS point, got %d", len(series.TPSSeries))
+	}
+	if got := series.TPSSeries[0].Value; got != 2 {
+		t.Fatalf("expected avg TPS/min 2.0, got %.2f", got)
 	}
 }
 
