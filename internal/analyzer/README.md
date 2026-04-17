@@ -8,7 +8,7 @@
 | `store.go` | DuckDB-backed internal result store with batch flush and Finalize-time query assembly. |
 | `transactions.go` | Reconstructs completed transactions from normalized event boundaries. |
 | `tables.go` | Aggregates per-table row and operation totals. |
-| `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows. |
+| `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
 | `alerts.go` | Builds large transaction alerts from completed transactions. |
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window filtering, and benchmark coverage. |

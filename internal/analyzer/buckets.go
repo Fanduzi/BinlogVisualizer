@@ -157,7 +157,7 @@ func (a *MinuteAggregator) DrainAll() []model.MinuteBucket {
 
 // truncateToMinute truncates a timestamp to the start of its minute.
 func truncateToMinute(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, t.Location())
+	return t.Truncate(time.Minute)
 }
 
 func snapshotMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
