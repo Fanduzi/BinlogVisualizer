@@ -83,6 +83,12 @@ func TestRenderTextDetailsCanShowMinuteAndPatternSections(t *testing.T) {
 	}
 }
 
+func TestRenderTextAndHTMLShareTopNDefault(t *testing.T) {
+	if DefaultOptions().TopN != DefaultTopN {
+		t.Fatalf("default options top N drifted from product default")
+	}
+}
+
 func productTextFixture() model.AnalysisResult {
 	start := time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC)
 	return model.AnalysisResult{

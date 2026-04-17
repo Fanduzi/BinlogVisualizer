@@ -573,7 +573,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
         </thead>
         <tbody>
           {{range .Tables}}
-          <tr class="table-summary-row{{if .HasActivity}} has-activity{{end}}" data-table-key="{{.Key}}" {{if .HasActivity}}data-table-dom-id="{{.DOMID}}"{{end}}>
+          <tr class="table-summary-row{{if .HasActivity}} has-activity{{end}}" data-table-row="{{.Key}}" data-table-key="{{.Key}}" {{if .HasActivity}}data-table-dom-id="{{.DOMID}}"{{end}}>
             <td class="name">{{.Schema}}</td>
             <td class="name">{{.Table}}</td>
             <td class="num">{{.Total}}</td>

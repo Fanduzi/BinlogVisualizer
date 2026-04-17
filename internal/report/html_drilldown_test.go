@@ -6,6 +6,7 @@
 package report
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -466,6 +467,26 @@ func TestAnalyzeHTMLExplainsAnalyzedFilesAndPatternMetrics(t *testing.T) {
 		if !strings.Contains(out, token) {
 			t.Fatalf("expected explanatory token %q\n%s", token, out)
 		}
+	}
+}
+
+func TestAnalyzeHTMLUsesReportTopNForTopTables(t *testing.T) {
+	result := productHTMLFixture()
+	result.Tables = nil
+	for i := 0; i < 12; i++ {
+		result.Tables = append(result.Tables, model.TableStats{
+			Schema:    "shop",
+			Table:     fmt.Sprintf("table_%02d", i),
+			TotalRows: 1000 - i,
+		})
+	}
+
+	out, err := RenderHTMLWithOptions(result, Options{TopN: 3})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Count(out, `data-table-row="`) > 3 {
+		t.Fatalf("expected top 3 table rows in HTML\n%s", out)
 	}
 }
 
