@@ -160,6 +160,54 @@ func BenchmarkBuildFindingsFromAlertsIncidentScale(b *testing.B) {
 	}
 }
 
+func BenchmarkDiagnosticTopSelectorsIncidentScale(b *testing.B) {
+	txns := make([]model.Transaction, 0, 5000)
+	minutes := make([]model.MinuteBucket, 0, 5000)
+	base := time.Date(2026, 4, 17, 12, 0, 0, 0, time.UTC)
+
+	for index := 0; index < 5000; index++ {
+		txns = append(txns, model.Transaction{
+			TxnKey:      "txn-" + strconv.Itoa(index),
+			TotalRows:   1000 + index%1000,
+			EventCount:  8 + index%7,
+			Duration:    time.Duration(index%300) * time.Second,
+			BinlogBytes: int64(4096 + index*3),
+			Tables: map[string]int{
+				"shop.orders":                     100 + index%50,
+				"shop.orders_archive_" + strconv.Itoa(index%32): 10 + index%9,
+			},
+			Operations: map[string]int{
+				"UPDATE": 50 + index%11,
+				"INSERT": 10 + index%5,
+			},
+		})
+		minutes = append(minutes, model.MinuteBucket{
+			Minute:      base.Add(time.Duration(index) * time.Minute),
+			TotalRows:   500 + index%250,
+			TxnCount:    3 + index%10,
+			EventCount:  8 + index%4,
+			BinlogBytes: int64(2048 + index),
+			DDLCount:    index % 2,
+		})
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		largest, longest := SelectDiagnosticTransactions(txns, 5)
+		if len(largest) != 5 || len(longest) != 5 {
+			b.Fatalf("expected 5 diagnostic transactions, got largest=%d longest=%d", len(largest), len(longest))
+		}
+		hot := SelectHotIntervals(minutes, 5)
+		if len(hot) != 5 {
+			b.Fatalf("expected 5 hot intervals, got %d", len(hot))
+		}
+		wide := SelectWidestTransactions(txns, 5)
+		if len(wide) != 5 {
+			b.Fatalf("expected 5 widest transactions, got %d", len(wide))
+		}
+	}
+}
+
 func TestSelectDiagnosticTransactionsRanksLargestAndLongestSeparately(t *testing.T) {
 	txns := []model.Transaction{
 		{
