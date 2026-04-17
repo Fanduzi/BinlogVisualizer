@@ -350,7 +350,7 @@ func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyz
 }
 
 func runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	return runAnalysisStreamingFastWithSnapshot(paths, opts, reportOpts, format, parser, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return analyzer.NewWithStore(opts, store)
 	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
 		store, cleanup, path, err := createDuckDBTempStore(root)
@@ -497,6 +497,91 @@ func runAnalysisStreamingWithSnapshotDeps(
 			return nil
 		}
 		if err := streamAnalyzer.Consume(*normalized); err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
+		}
+		return nil
+	}
+
+	if progressParser, ok := parser.(binlog.ProgressParser); ok {
+		if err := progressParser.ParseFilesWithProgress(paths, func(progressEvent binlog.ParseProgress) {
+			progress.Advance(progressEvent)
+		}, handler); err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+		}
+		for index := range paths {
+			progress.FinishFile(index)
+		}
+	} else {
+		if err := parser.ParseFiles(paths, handler); err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+		}
+	}
+	progress.FinishParse()
+	progress.Finalizing()
+
+	result, err := streamAnalyzer.Finalize()
+	if err != nil {
+		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
+	}
+	if hasFileCoverage(fileCoverage) {
+		result.Diagnostics.FileCoverage = fileCoverage
+	}
+
+	switch format {
+	case "json":
+		if snapshotMeta != nil {
+			result.Snapshot = snapshotMeta
+		}
+		if snapshotName != "" {
+			return saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+		}
+		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
+	case "markdown", "md":
+		return report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
+	case "html":
+		return report.RenderHTMLToStdout(*result, reportOpts)
+	default:
+		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
+	}
+}
+
+func runAnalysisStreamingFastWithSnapshot(
+	paths []string,
+	opts analyzer.Options,
+	reportOpts report.Options,
+	format string,
+	parser binlog.Parser,
+	newAnalyzer commandAnalyzerFactory,
+	newTempStore tempStoreFactory,
+	tempRoot string,
+	snapshotMeta *model.Snapshot,
+	fileCoverage model.FileCoverage,
+	snapshotName string,
+	snapshotDir string,
+) error {
+	progress, err := newAggregateProgress(paths, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
+	}
+
+	store, cleanup, _, err := newTempStore(tempRoot)
+	if err != nil {
+		return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
+	}
+	defer cleanup()
+
+	streamAnalyzer := newAnalyzer(opts, store)
+
+	handler := func(raw binlog.RawEvent) error {
+		var normalized model.NormalizedEvent
+		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
+		if err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
+		}
+		if !ok {
+			return nil
+		}
+		if err := streamAnalyzer.Consume(normalized); err != nil {
 			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
 		}
 		return nil

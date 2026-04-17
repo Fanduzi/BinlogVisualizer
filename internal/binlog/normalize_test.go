@@ -132,6 +132,34 @@ func TestNormalizeSkipUnsupportedEvent(t *testing.T) {
 	}
 }
 
+func TestNormalizeRawEventIntoResetsReusableDestination(t *testing.T) {
+	dst := model.NormalizedEvent{
+		EventType:      "ROWS_QUERY",
+		Operation:      "INSERT",
+		QuerySQL:       "stale",
+		QueryTruncated: true,
+	}
+
+	ok, err := NormalizeRawEventInto(RawEvent{
+		EventType: "WRITE_ROWS_EVENTv2",
+		Schema:    "shop",
+		Table:     "orders",
+		RowCount:  3,
+	}, &dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected event to be kept")
+	}
+	if dst.EventType != "ROWS" || dst.Operation != "INSERT" {
+		t.Fatalf("unexpected normalized event: %+v", dst)
+	}
+	if dst.QuerySQL != "" || dst.QueryTruncated {
+		t.Fatalf("expected reusable destination to be reset, got %+v", dst)
+	}
+}
+
 func TestNormalizeRawEventPreservesBinlogMetadata(t *testing.T) {
 	ts := time.Date(2026, 3, 15, 14, 10, 26, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{

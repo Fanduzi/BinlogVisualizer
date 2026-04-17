@@ -33,7 +33,7 @@ type inFlightTxn struct {
 	binlogPathEnd      string
 	positionStart      int64
 	positionEnd        int64
-	tables             map[string]int
+	tables             map[tableIdentity]int
 	operations         map[string]int
 	querySQL           string // Bounded SQL from ROWS_QUERY event
 	queryTruncated     bool
@@ -145,7 +145,7 @@ func (b *TransactionBuilder) startTransaction(ts time.Time, isExplicit bool) {
 		isExplicit: isExplicit,
 		startTime:  ts,
 		endTime:    ts,
-		tables:     make(map[string]int, 1),
+		tables:     make(map[tableIdentity]int, 1),
 		operations: make(map[string]int, 1),
 	}
 }
@@ -163,8 +163,7 @@ func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent) {
 
 	// Track table: "schema.table"
 	if ev.Schema != "" && ev.Table != "" {
-		key := ev.Schema + "." + ev.Table
-		b.current.tables[key] += ev.RowCount
+		b.current.tables[newTableIdentity(ev.Schema, ev.Table)] += ev.RowCount
 	}
 
 	// Track operation
@@ -190,7 +189,7 @@ func (b *TransactionBuilder) finalizeTransaction() {
 		BinlogPathEnd:   b.current.binlogPathEnd,
 		PositionStart:   b.current.positionStart,
 		PositionEnd:     b.current.positionEnd,
-		Tables:          b.current.tables,
+		Tables:          exportTxnTables(b.current.tables),
 		Operations:      b.current.operations,
 		QuerySummary:    model.MakeQuerySummary(b.current.querySQL),
 		QueryContext: model.NewQueryContextFromNormalized(
@@ -202,6 +201,17 @@ func (b *TransactionBuilder) finalizeTransaction() {
 
 	b.completed = append(b.completed, txn)
 	b.current = nil
+}
+
+func exportTxnTables(src map[tableIdentity]int) map[string]int {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]int, len(src))
+	for key, rows := range src {
+		dst[key.String()] = rows
+	}
+	return dst
 }
 
 func (b *TransactionBuilder) generateTxnKey() string {

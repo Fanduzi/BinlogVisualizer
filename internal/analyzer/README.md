@@ -42,5 +42,6 @@
 - DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is stored in the `transaction_sql_contexts` subtable and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
 - Live state remains bounded to the in-flight transaction builder, live table aggregates, current minute buckets pending flush, and summary counters.
 - `MinuteAggregator.Snapshot()` returns defensive table-row copies, while `DrainBefore()` and `DrainAll()` transfer ownership of removed bucket maps to avoid copy churn in the streaming persistence path.
+- Hot-path minute/table/transaction aggregation keeps table keys as structured internal identities and only materializes `schema.table` strings during final result projection.
 - `New(opts)` is now the explicit no-external-resource path; only `NewWithStore` participates in command-managed DuckDB lifecycle.
 - Command-layer streaming, CLI flag changes, renderer changes, benchmarks, and release tasks remain out of scope for this module revision.

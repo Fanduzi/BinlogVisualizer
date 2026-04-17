@@ -28,7 +28,7 @@ type minuteBucket struct {
 	updateEvents int
 	deleteEvents int
 	txnSet       map[string]struct{} // distinct transactions
-	tableRows    map[string]int      // "schema.table" -> row count
+	tableRows    map[tableIdentity]int
 }
 
 // NewMinuteAggregator creates a new MinuteAggregator.
@@ -55,7 +55,7 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 		bucket = &minuteBucket{
 			minute:    minute,
 			txnSet:    make(map[string]struct{}),
-			tableRows: make(map[string]int),
+			tableRows: make(map[tableIdentity]int),
 		}
 		a.buckets[minute] = bucket
 	}
@@ -86,8 +86,7 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 
 	// Track per-table rows
 	if isRowEvent {
-		tableKey := ev.Schema + "." + ev.Table
-		bucket.tableRows[tableKey] += ev.RowCount
+		bucket.tableRows[newTableIdentity(ev.Schema, ev.Table)] += ev.RowCount
 	}
 }
 
@@ -97,12 +96,6 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 	result := make([]model.MinuteBucket, 0, len(a.buckets))
 	for _, bucket := range a.buckets {
-		// Create defensive copy of tableRows to prevent external mutation
-		tableRowsCopy := make(map[string]int, len(bucket.tableRows))
-		for k, v := range bucket.tableRows {
-			tableRowsCopy[k] = v
-		}
-
 		result = append(result, model.MinuteBucket{
 			Minute:      bucket.minute,
 			TotalRows:   bucket.totalRows,
@@ -110,7 +103,7 @@ func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 			EventCount:  bucket.eventCount,
 			BinlogBytes: bucket.binlogBytes,
 			DDLCount:    bucket.ddlCount,
-			TableRows:   tableRowsCopy,
+			TableRows:   exportTableRows(bucket.tableRows),
 		})
 	}
 
@@ -168,16 +161,11 @@ func truncateToMinute(t time.Time) time.Time {
 }
 
 func snapshotMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
-	tableRowsCopy := make(map[string]int, len(bucket.tableRows))
-	for k, v := range bucket.tableRows {
-		tableRowsCopy[k] = v
-	}
-
-	return minuteBucketSnapshot(bucket, tableRowsCopy)
+	return minuteBucketSnapshot(bucket, exportTableRows(bucket.tableRows))
 }
 
 func drainMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
-	return minuteBucketSnapshot(bucket, bucket.tableRows)
+	return minuteBucketSnapshot(bucket, exportTableRows(bucket.tableRows))
 }
 
 func minuteBucketSnapshot(bucket *minuteBucket, tableRows map[string]int) model.MinuteBucket {
@@ -190,6 +178,17 @@ func minuteBucketSnapshot(bucket *minuteBucket, tableRows map[string]int) model.
 		DDLCount:    bucket.ddlCount,
 		TableRows:   tableRows,
 	}
+}
+
+func exportTableRows(src map[tableIdentity]int) map[string]int {
+	if len(src) == 0 {
+		return nil
+	}
+	dst := make(map[string]int, len(src))
+	for key, rows := range src {
+		dst[key.String()] = rows
+	}
+	return dst
 }
 
 // OperationCounts returns per-minute operation event counts for timeseries projection.

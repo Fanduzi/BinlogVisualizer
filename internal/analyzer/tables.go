@@ -14,7 +14,7 @@ import (
 
 // TableAggregator tracks per-table write statistics.
 type TableAggregator struct {
-	tables map[string]*tableStats // key: "schema.table"
+	tables map[tableIdentity]*tableStats
 }
 
 type tableStats struct {
@@ -46,7 +46,7 @@ type tableActivityPoint struct {
 // NewTableAggregator creates a new TableAggregator.
 func NewTableAggregator() *TableAggregator {
 	return &TableAggregator{
-		tables: make(map[string]*tableStats),
+		tables: make(map[tableIdentity]*tableStats),
 	}
 }
 
@@ -62,7 +62,7 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 		return
 	}
 
-	key := ev.Schema + "." + ev.Table
+	key := newTableIdentity(ev.Schema, ev.Table)
 	ts, exists := a.tables[key]
 	if !exists {
 		ts = &tableStats{

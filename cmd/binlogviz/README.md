@@ -57,3 +57,4 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - `--top N` sets the default ranked output size for productized text and HTML report sections.
 - `--details`, `--show-minutes`, and `--show-patterns` expand the default concise text report without changing analyzer semantics.
 - Analyze performance coverage includes a text-vs-HTML render benchmark and a CI-safe near-1GB synthetic mix benchmark; real 1GB binlog validation remains a manual DBA-environment gate.
+- The production analyze command uses a destination-reuse normalization fast path in its streaming handler so the main CLI path no longer allocates one `*NormalizedEvent` per kept event.

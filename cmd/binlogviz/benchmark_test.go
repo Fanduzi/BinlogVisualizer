@@ -26,12 +26,14 @@ func BenchmarkStreamingRealFixtureEndToEnd(b *testing.B) {
 func BenchmarkStreamingSynthetic100k(b *testing.B) {
 	base := time.Date(2026, 3, 17, 14, 0, 0, 0, time.UTC)
 	events := makeSyntheticTransactionEvents(base, 1000, 100)
+	b.ResetTimer()
 	benchmarkStreamingPipeline(b, []string{"synthetic-100k"}, &mockParser{events: events}, analyzer.DefaultOptions())
 }
 
 func BenchmarkStreamingManyTransactions(b *testing.B) {
 	base := time.Date(2026, 3, 17, 15, 0, 0, 0, time.UTC)
 	events := makeSyntheticTransactionEvents(base, 10000, 3)
+	b.ResetTimer()
 	benchmarkStreamingPipeline(b, []string{"many-transactions"}, &mockParser{events: events}, analyzer.DefaultOptions())
 }
 
@@ -40,6 +42,7 @@ func BenchmarkStreamingSpikeHeavy(b *testing.B) {
 	events := makeSpikeHeavyEvents(base, 180)
 	opts := analyzer.DefaultOptions()
 	opts.DetectSpikes = true
+	b.ResetTimer()
 	benchmarkStreamingPipeline(b, []string{"spike-heavy"}, &mockParser{events: events}, opts)
 }
 
@@ -50,6 +53,7 @@ func BenchmarkAnalyzePlanNarrowWindowFewHits(b *testing.B) {
 	end := base.Add(93*time.Hour + 30*time.Minute)
 
 	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		plan := buildAnalyzePlan(probes, start, end, defaultAnalyzeProbeWorkers(len(probes)))
 		if len(plan.Paths) != 3 {
@@ -65,6 +69,7 @@ func BenchmarkAnalyzePlanWindowSpanningManyFiles(b *testing.B) {
 	end := base.Add(160*time.Hour + 45*time.Minute)
 
 	b.ReportAllocs()
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		plan := buildAnalyzePlan(probes, start, end, defaultAnalyzeProbeWorkers(len(probes)))
 		if len(plan.Paths) != 121 {
@@ -78,12 +83,14 @@ func BenchmarkStreamingLargeTransactions(b *testing.B) {
 	events := makeSyntheticTransactionEvents(base, 250, 1200)
 	opts := analyzer.DefaultOptions()
 	opts.LargeTxnRows = 500
+	b.ResetTimer()
 	benchmarkStreamingPipeline(b, []string{"large-transactions"}, &mockParser{events: events}, opts)
 }
 
 func BenchmarkStreamingDDLHeavy(b *testing.B) {
 	base := time.Date(2026, 3, 17, 18, 0, 0, 0, time.UTC)
 	events := makeDDLHeavyEvents(base, 5000)
+	b.ResetTimer()
 	benchmarkStreamingPipeline(b, []string{"ddl-heavy"}, &mockParser{events: events}, analyzer.DefaultOptions())
 }
 
@@ -93,6 +100,7 @@ func BenchmarkStreamingSyntheticLargeInputMix(b *testing.B) {
 	events = append(events, makeDDLHeavyEvents(base.Add(24*time.Hour), 1000)...)
 	opts := analyzer.DefaultOptions()
 	opts.DetectSpikes = true
+	b.ResetTimer()
 	benchmarkStreamingPipeline(b, []string{"synthetic-large-input-mix"}, &mockParser{events: events}, opts)
 }
 
@@ -126,6 +134,7 @@ func BenchmarkAnalyzeNearOneGBSyntheticMix(b *testing.B) {
 	events = append(events, makeDDLHeavyEvents(base.Add(24*time.Hour), 2000)...)
 	opts := analyzer.DefaultOptions()
 	opts.DetectSpikes = true
+	b.ResetTimer()
 	benchmarkStreamingPipeline(b, []string{"near-1gb-synthetic-mix"}, &mockParser{events: events}, opts)
 }
 
@@ -140,14 +149,15 @@ func benchmarkStreamingPipeline(b *testing.B, paths []string, parser binlog.Pars
 
 		a := analyzer.NewWithStore(opts, store)
 		if err := parser.ParseFiles(paths, func(raw binlog.RawEvent) error {
-			normalized, err := binlog.NormalizeRawEvent(raw)
+			var normalized model.NormalizedEvent
+			ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
 			if err != nil {
 				return err
 			}
-			if normalized == nil {
+			if !ok {
 				return nil
 			}
-			return a.Consume(*normalized)
+			return a.Consume(normalized)
 		}); err != nil {
 			_ = cleanup()
 			b.Fatalf("ParseFiles: %v", err)
@@ -168,14 +178,15 @@ func benchmarkAnalysisResult(b *testing.B, raw []binlog.RawEvent) model.Analysis
 
 	a := analyzer.New(analyzer.DefaultOptions())
 	for _, ev := range raw {
-		normalized, err := binlog.NormalizeRawEvent(ev)
+		var normalized model.NormalizedEvent
+		ok, err := binlog.NormalizeRawEventInto(ev, &normalized)
 		if err != nil {
-			b.Fatalf("NormalizeRawEvent: %v", err)
+			b.Fatalf("NormalizeRawEventInto: %v", err)
 		}
-		if normalized == nil {
+		if !ok {
 			continue
 		}
-		if err := a.Consume(*normalized); err != nil {
+		if err := a.Consume(normalized); err != nil {
 			b.Fatalf("Consume: %v", err)
 		}
 	}
