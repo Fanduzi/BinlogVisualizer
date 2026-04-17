@@ -1,0 +1,59 @@
+[
+  {
+    "timestamp": "2026-04-17T09:00:00Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T09:00:01Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "WRITE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "orders",
+    "row_count": 12
+  },
+  {
+    "timestamp": "2026-04-17T09:00:02Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T09:01:00Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T09:01:01Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "users",
+    "row_count": 5
+  },
+  {
+    "timestamp": "2026-04-17T09:01:02Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T09:02:00Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T09:02:01Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "DELETE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "sessions",
+    "row_count": 3
+  },
+  {
+    "timestamp": "2026-04-17T09:02:02Z",
+    "binlog_path": "mysql-bin.000001",
+    "event_type": "XID_EVENT"
+  }
+]
