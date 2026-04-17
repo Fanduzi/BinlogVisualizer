@@ -15,6 +15,10 @@ import (
 
 // HotIntervalEvidence formats bucket and DDL context for one hot minute.
 func HotIntervalEvidence(bucket model.MinuteBucket, ddlEvents []model.DDLEvent) []string {
+	return hotIntervalEvidenceWithDDLs(bucket, matchingDDLEventsForMinute(bucket.Minute, ddlEvents))
+}
+
+func hotIntervalEvidenceWithDDLs(bucket model.MinuteBucket, ddlEvents []model.DDLEvent) []string {
 	evidence := []string{
 		fmt.Sprintf("rows=%d", bucket.TotalRows),
 		fmt.Sprintf("txns=%d", bucket.TxnCount),
@@ -22,12 +26,23 @@ func HotIntervalEvidence(bucket model.MinuteBucket, ddlEvents []model.DDLEvent) 
 		fmt.Sprintf("binlog_bytes=%d", bucket.BinlogBytes),
 	}
 	for _, ddl := range ddlEvents {
-		if truncateToMinute(ddl.Timestamp) != bucket.Minute {
-			continue
-		}
 		evidence = append(evidence, fmt.Sprintf("ddl=%s %s.%s @ %s", ddl.Operation, ddl.Schema, ddl.Table, ddl.BinlogPath))
 	}
 	return evidence
+}
+
+func matchingDDLEventsForMinute(minute time.Time, ddlEvents []model.DDLEvent) []model.DDLEvent {
+	if len(ddlEvents) == 0 {
+		return nil
+	}
+	minute = truncateToMinute(minute)
+	var out []model.DDLEvent
+	for _, ddl := range ddlEvents {
+		if truncateToMinute(ddl.Timestamp) == minute {
+			out = append(out, ddl)
+		}
+	}
+	return out
 }
 
 // BuildFindingsFromAlerts converts persisted alerts into richer finding payloads.
@@ -35,6 +50,10 @@ func BuildFindingsFromAlerts(alerts []model.Alert, minutes []model.MinuteBucket,
 	if len(alerts) == 0 {
 		return nil
 	}
+
+	txnByKey := indexTransactionsByKey(txns)
+	minuteByTime := indexMinutesByTime(minutes)
+	ddlByMinute := indexDDLEventsByMinute(ddlEvents)
 
 	findings := make([]model.Finding, 0, len(alerts))
 	for _, alert := range alerts {
@@ -46,18 +65,55 @@ func BuildFindingsFromAlerts(alerts []model.Alert, minutes []model.MinuteBucket,
 			Minute:   alert.Minute,
 		}
 		if alert.TxnKey != "" {
-			if txn, ok := transactionByKey(txns, alert.TxnKey); ok {
+			if txn, ok := txnByKey[alert.TxnKey]; ok {
 				finding.EvidenceRefs = transactionEvidence(txn)
 			}
 		} else if !alert.Minute.IsZero() {
-			if bucket, ok := minuteByTimestamp(minutes, alert.Minute); ok {
-				finding.EvidenceRefs = HotIntervalEvidence(bucket, ddlEvents)
+			minute := truncateToMinute(alert.Minute)
+			if bucket, ok := minuteByTime[minute]; ok {
+				finding.EvidenceRefs = hotIntervalEvidenceWithDDLs(bucket, ddlByMinute[minute])
 			}
 		}
 		findings = append(findings, finding)
 	}
 
 	return findings
+}
+
+func indexTransactionsByKey(transactions []model.Transaction) map[string]model.Transaction {
+	if len(transactions) == 0 {
+		return nil
+	}
+	out := make(map[string]model.Transaction, len(transactions))
+	for _, txn := range transactions {
+		if txn.TxnKey != "" {
+			out[txn.TxnKey] = txn
+		}
+	}
+	return out
+}
+
+func indexMinutesByTime(minutes []model.MinuteBucket) map[time.Time]model.MinuteBucket {
+	if len(minutes) == 0 {
+		return nil
+	}
+	out := make(map[time.Time]model.MinuteBucket, len(minutes))
+	for _, bucket := range minutes {
+		out[truncateToMinute(bucket.Minute)] = bucket
+	}
+	return out
+}
+
+func indexDDLEventsByMinute(ddlEvents []model.DDLEvent) map[time.Time][]model.DDLEvent {
+	if len(ddlEvents) == 0 {
+		return nil
+	}
+	out := make(map[time.Time][]model.DDLEvent)
+	for _, ddl := range ddlEvents {
+		minute := truncateToMinute(ddl.Timestamp)
+		out[minute] = append(out[minute], ddl)
+	}
+	return out
 }
 
 // SelectDiagnosticTransactions returns the top N transactions ranked by rows and duration.
