@@ -1448,6 +1448,46 @@ func TestAnalyzeGeneratedSnapshotsWorkWithTrendWithoutExplicitWindow(t *testing.
 	}
 }
 
+func TestAnalyzeTextOutputHidesMinutesUntilRequested(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture := mustFixturePath(t, "minimal.binlog")
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"analyze", fixture, "--format", "text"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("analyze text failed: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
+	}
+	if strings.Contains(stdout, "Minute Details") {
+		t.Fatalf("default output should hide minute details\nstdout=%s\nstderr=%s", stdout, stderr)
+	}
+}
+
+func TestAnalyzeShowMinutesFlagEnablesMinuteDetails(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture := mustFixturePath(t, "minimal.binlog")
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"analyze", fixture, "--format", "text", "--show-minutes"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("analyze text failed: %v\nstdout=%s\nstderr=%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Minute Details") {
+		t.Fatalf("expected minute details with --show-minutes\nstdout=%s\nstderr=%s", stdout, stderr)
+	}
+}
+
 // Helper functions to create test data
 
 func mustWriteFile(t *testing.T, path string) {

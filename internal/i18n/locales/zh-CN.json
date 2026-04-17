@@ -39,6 +39,10 @@
     "description": "SQL 上下文标志描述",
     "other": "SQL 上下文模式：summary、off 或 full"
   },
+  "cmd.analyze.flag.top": {
+    "description": "默认排序项数量标志描述",
+    "other": "默认显示的排行项数量"
+  },
   "cmd.analyze.flag.topTables": {
     "description": "top tables 标志描述",
     "other": "显示的表数量"
@@ -46,6 +50,18 @@
   "cmd.analyze.flag.topTransactions": {
     "description": "top transactions 标志描述",
     "other": "显示的事务数量"
+  },
+  "cmd.analyze.flag.details": {
+    "description": "详细文本段落标志描述",
+    "other": "显示详细文本段落"
+  },
+  "cmd.analyze.flag.showMinutes": {
+    "description": "在文本输出中显示分钟级活动标志描述",
+    "other": "在文本输出中显示分钟级活动"
+  },
+  "cmd.analyze.flag.showPatterns": {
+    "description": "在文本输出中显示写入模式标志描述",
+    "other": "在文本输出中显示写入模式"
   },
   "cmd.analyze.flag.detectSpikes": {
     "description": "spike 检测标志描述",

@@ -51,27 +51,33 @@ var (
 
 // analyzeOptions holds the parsed CLI flags for the analyze command.
 type analyzeOptions struct {
-	startTime        string
-	endTime          string
-	fromDir          string
-	prefix           string
-	format           string
-	snapshotName     string
-	snapshotDir      string
-	sqlContext       string
-	topTables        int
-	topTransactions  int
-	detectSpikes     bool
-	largeTrxRows     int
-	largeTrxDuration time.Duration
-	topMinutes       int
-	spikeWindow      int
-	spikeFactor      float64
-	spikeMinRows     int
-	includeSchemas   []string
-	excludeSchemas   []string
-	includeTables    []string
-	excludeTables    []string
+	startTime              string
+	endTime                string
+	fromDir                string
+	prefix                 string
+	format                 string
+	snapshotName           string
+	snapshotDir            string
+	sqlContext             string
+	top                    int
+	topTables              int
+	topTransactions        int
+	details                bool
+	showMinutes            bool
+	showPatterns           bool
+	detectSpikes           bool
+	largeTrxRows           int
+	largeTrxDuration       time.Duration
+	topMinutes             int
+	spikeWindow            int
+	spikeFactor            float64
+	spikeMinRows           int
+	includeSchemas         []string
+	excludeSchemas         []string
+	includeTables          []string
+	excludeTables          []string
+	topTablesChanged       bool
+	topTransactionsChanged bool
 }
 
 func newAnalyzeCommand() *cobra.Command {
@@ -101,6 +107,9 @@ func newAnalyzeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			opts.topTablesChanged = cmd.Flags().Changed("top-tables")
+			opts.topTransactionsChanged = cmd.Flags().Changed("top-transactions")
 
 			reportOpts, err := buildReportOptions(opts)
 			if err != nil {
@@ -141,8 +150,12 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.snapshotName, "snapshot-name", "", "Save JSON analyze output as a named snapshot")
 	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to save analyze snapshots")
 	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
+	cmd.Flags().IntVar(&opts.top, "top", report.DefaultTopN, i18n.T("cmd.analyze.flag.top"))
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
 	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, i18n.T("cmd.analyze.flag.topTransactions"))
+	cmd.Flags().BoolVar(&opts.details, "details", false, i18n.T("cmd.analyze.flag.details"))
+	cmd.Flags().BoolVar(&opts.showMinutes, "show-minutes", false, i18n.T("cmd.analyze.flag.showMinutes"))
+	cmd.Flags().BoolVar(&opts.showPatterns, "show-patterns", false, i18n.T("cmd.analyze.flag.showPatterns"))
 	cmd.Flags().BoolVar(&opts.detectSpikes, "detect-spikes", false, i18n.T("cmd.analyze.flag.detectSpikes"))
 	cmd.Flags().IntVar(&opts.largeTrxRows, "large-trx-rows", 1000, i18n.T("cmd.analyze.flag.largeTrxRows"))
 	cmd.Flags().DurationVar(&opts.largeTrxDuration, "large-trx-duration", 30*time.Second, i18n.T("cmd.analyze.flag.largeTrxDuration"))
@@ -622,11 +635,20 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	// Start with defaults to get spike detection defaults
 	result := analyzer.DefaultOptions()
 
+	if opts.top > 0 {
+		if !opts.topTablesChanged {
+			result.TopTables = opts.top
+		}
+		if !opts.topTransactionsChanged {
+			result.TopTransactions = opts.top
+		}
+	}
+
 	// Override with CLI-specific values (only when non-zero, to preserve DefaultOptions fallback)
-	if opts.topTables != 0 {
+	if opts.topTablesChanged && opts.topTables != 0 {
 		result.TopTables = opts.topTables
 	}
-	if opts.topTransactions != 0 {
+	if opts.topTransactionsChanged && opts.topTransactions != 0 {
 		result.TopTransactions = opts.topTransactions
 	}
 	if opts.topMinutes != 0 {
@@ -669,7 +691,13 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 	if err != nil {
 		return report.Options{}, err
 	}
-	return report.Options{SQLContextMode: mode}, nil
+	return report.Options{
+		SQLContextMode: mode,
+		TopN:           opts.top,
+		Details:        opts.details,
+		ShowMinutes:    opts.showMinutes,
+		ShowPatterns:   opts.showPatterns,
+	}, nil
 }
 
 func validateAnalyzeOptions(opts *analyzeOptions) error {
