@@ -6,6 +6,7 @@
 package analyzer
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +14,8 @@ import (
 
 	"binlogviz/internal/model"
 )
+
+var errAlertsRoundtripUnexpected = errors.New("alerts roundtrip should not be required")
 
 func TestAnalyzerProducesSummaryAndStats(t *testing.T) {
 	a := New(Options{})
@@ -138,6 +141,42 @@ func TestAnalyzerTracksMinuteBuckets(t *testing.T) {
 	}
 }
 
+func TestAnalyzerFinalizeDoesNotDependOnAlertStoreRoundtrip(t *testing.T) {
+	baseStore := newInMemoryStore().(*inMemoryStore)
+	a := &Analyzer{
+		opts: Options{
+			LargeTxnRows: 1,
+		},
+		store: &alertsRoundtripFailStore{inMemoryStore: baseStore},
+	}
+	a.reset()
+
+	events := []model.NormalizedEvent{
+		{Timestamp: time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC), EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: time.Date(2026, 3, 9, 10, 0, 1, 0, time.UTC), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: time.Date(2026, 3, 9, 10, 0, 2, 0, time.UTC), EventType: "XID", TxnKey: "t1"},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume returned error: %v", err)
+		}
+	}
+
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize returned error: %v", err)
+	}
+	if len(result.Alerts) != 1 {
+		t.Fatalf("expected 1 alert, got %d", len(result.Alerts))
+	}
+	if result.Alerts[0].Type != "large_transaction" {
+		t.Fatalf("expected large_transaction alert, got %s", result.Alerts[0].Type)
+	}
+	if len(result.Diagnostics.Findings) == 0 {
+		t.Fatal("expected findings built from in-memory alerts")
+	}
+}
+
 func TestAnalyzerCountsTruncatedQueryContextsAsWarnings(t *testing.T) {
 	a := New(Options{})
 	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
@@ -167,6 +206,18 @@ func TestAnalyzerCountsTruncatedQueryContextsAsWarnings(t *testing.T) {
 	if result.Warnings != 1 {
 		t.Fatalf("expected 1 warning for truncated query context, got %d", result.Warnings)
 	}
+}
+
+type alertsRoundtripFailStore struct {
+	*inMemoryStore
+}
+
+func (s *alertsRoundtripFailStore) RecordAlerts([]model.Alert) error {
+	return errAlertsRoundtripUnexpected
+}
+
+func (s *alertsRoundtripFailStore) QueryAlerts() ([]model.Alert, error) {
+	return nil, errAlertsRoundtripUnexpected
 }
 
 func TestAnalyzerCalculatesWorkloadSummary(t *testing.T) {

@@ -96,8 +96,8 @@ func TestAnalyzerFinalizeReadsBackPersistedResultsAndAppliesTopN(t *testing.T) {
 	if result.Alerts[0].Type != "large_transaction" {
 		t.Fatalf("expected first alert to be large_transaction, got %s", result.Alerts[0].Type)
 	}
-	if got := store.mustCountRows(t, "alerts"); got != len(result.Alerts) {
-		t.Fatalf("expected alerts table row count %d, got %d", len(result.Alerts), got)
+	if got := store.mustCountRows(t, "alerts"); got != 0 {
+		t.Fatalf("expected finalize to avoid persisting alerts, got %d stored rows", got)
 	}
 	if got := store.mustCountRows(t, "minute_table_rows"); got == 0 {
 		t.Fatal("expected minute_table_rows to be persisted")

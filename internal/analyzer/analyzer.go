@@ -222,16 +222,6 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		return nil, err
 	}
 	alerts := append(DetectLargeTransactionAlerts(allTransactions, a.opts), DetectSpikeAlerts(minutes, a.opts)...)
-	if err := a.store.RecordAlerts(alerts); err != nil {
-		return nil, err
-	}
-	if err := a.store.Flush(); err != nil {
-		return nil, err
-	}
-	persistedAlerts, err := a.store.QueryAlerts()
-	if err != nil {
-		return nil, err
-	}
 
 	// Calculate workload summary
 	summary := a.buildSummary(allTransactions)
@@ -247,7 +237,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		WidestTransactions:  SelectWidestTransactions(allTransactions, 5),
 		FileSegments:        BuildFileSegments(minutes, 5),
 		HotIntervals:        SelectHotIntervals(minutes, 5),
-		Findings:            BuildFindingsFromAlerts(persistedAlerts, minutes, allTransactions, ddlTimeline),
+		Findings:            BuildFindingsFromAlerts(alerts, minutes, allTransactions, ddlTimeline),
 	}
 
 	return &model.AnalysisResult{
@@ -258,9 +248,9 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		Patterns:          patterns,
 		Minutes:           minutes,
 		Diagnostics:       diagnostics,
-		Alerts:            persistedAlerts,
+		Alerts:            alerts,
 		Warnings:          countAnalysisWarnings(allTransactions),
-		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, allTransactions, persistedAlerts),
+		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, allTransactions, alerts),
 	}, nil
 }
 
