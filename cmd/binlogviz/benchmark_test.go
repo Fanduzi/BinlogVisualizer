@@ -13,6 +13,8 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/model"
+	"binlogviz/internal/report"
 )
 
 func BenchmarkStreamingRealFixtureEndToEnd(b *testing.B) {
@@ -94,6 +96,39 @@ func BenchmarkStreamingSyntheticLargeInputMix(b *testing.B) {
 	benchmarkStreamingPipeline(b, []string{"synthetic-large-input-mix"}, &mockParser{events: events}, opts)
 }
 
+func BenchmarkAnalyzeRenderTextVsHTML(b *testing.B) {
+	base := time.Date(2026, 4, 17, 10, 0, 0, 0, time.UTC)
+	events := makeSyntheticTransactionEvents(base, 5000, 120)
+	result := benchmarkAnalysisResult(b, events)
+
+	b.Run("text", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if _, err := report.RenderText(result); err != nil {
+				b.Fatalf("RenderText: %v", err)
+			}
+		}
+	})
+
+	b.Run("html", func(b *testing.B) {
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			if _, err := report.RenderHTML(result); err != nil {
+				b.Fatalf("RenderHTML: %v", err)
+			}
+		}
+	})
+}
+
+func BenchmarkAnalyzeNearOneGBSyntheticMix(b *testing.B) {
+	base := time.Date(2026, 4, 17, 11, 0, 0, 0, time.UTC)
+	events := makeSyntheticTransactionEvents(base, 20000, 120)
+	events = append(events, makeDDLHeavyEvents(base.Add(24*time.Hour), 2000)...)
+	opts := analyzer.DefaultOptions()
+	opts.DetectSpikes = true
+	benchmarkStreamingPipeline(b, []string{"near-1gb-synthetic-mix"}, &mockParser{events: events}, opts)
+}
+
 func benchmarkStreamingPipeline(b *testing.B, paths []string, parser binlog.Parser, opts analyzer.Options) {
 	b.Helper()
 	b.ReportAllocs()
@@ -126,6 +161,30 @@ func benchmarkStreamingPipeline(b *testing.B, paths []string, parser binlog.Pars
 			b.Fatalf("cleanup: %v", err)
 		}
 	}
+}
+
+func benchmarkAnalysisResult(b *testing.B, raw []binlog.RawEvent) model.AnalysisResult {
+	b.Helper()
+
+	a := analyzer.New(analyzer.DefaultOptions())
+	for _, ev := range raw {
+		normalized, err := binlog.NormalizeRawEvent(ev)
+		if err != nil {
+			b.Fatalf("NormalizeRawEvent: %v", err)
+		}
+		if normalized == nil {
+			continue
+		}
+		if err := a.Consume(*normalized); err != nil {
+			b.Fatalf("Consume: %v", err)
+		}
+	}
+
+	result, err := a.Finalize()
+	if err != nil {
+		b.Fatalf("Finalize: %v", err)
+	}
+	return *result
 }
 
 func makeSyntheticTransactionEvents(base time.Time, txnCount, rowsPerTxn int) []binlog.RawEvent {

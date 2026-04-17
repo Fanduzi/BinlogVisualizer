@@ -145,6 +145,19 @@ binlogviz analyze mysql-bin.000123 --format html > report.html
 
 HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）、高信号写入模式的可选模式钻取（Pattern Drilldowns），以及五主题切换器。
 
+## Analyze 性能门槛
+
+面向故障排查时，单个 1 GB binlog 的 `analyze` 目标耗时是目标 DBA 环境上的 10 秒。超过 15 秒应视为性能失败，并用 `pprof` 做剖析。
+
+建议的人工检查命令：
+
+```bash
+time binlogviz analyze /path/to/mysql-bin.000044 --format text > /tmp/binlogviz-text.txt
+time binlogviz analyze /path/to/mysql-bin.000044 --format html > /tmp/binlogviz.html
+```
+
+文本输出应保持在快速诊断路径上；HTML 输出则构建完整的可视化证据报告。
+
 ## BinlogViz 适合回答什么问题
 
 BinlogViz 重点服务这些 DBA 常见问题：

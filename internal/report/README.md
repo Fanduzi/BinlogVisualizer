@@ -39,6 +39,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - `full` only exposes bounded SQL from `QueryContext.SQL`; it never reconstructs or emits unbounded original SQL.
 - `product.go` owns presentation defaults such as `DefaultTopN` so text, HTML, and command flags share one report contract.
 - The default text report is diagnostic-first: summary, top findings, top tables, and next actions. Minute activity and write-shape patterns require explicit detail options.
+- Text rendering is intentionally kept on a fast path: it must not build HTML chart data, read embedded ECharts assets, or render pattern drilldowns unless detail options request them.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
 - The HTML renderer now follows a DBA reading path: executive summary, timeline, hotspots, DDL timeline, transaction evidence, analyzed files, then write-shape patterns.
