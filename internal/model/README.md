@@ -42,4 +42,5 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 ## Notes
 
 - This module is contract-only: it should describe stable shared data shapes, not command or renderer policy.
+- `Timeseries.TPSSeries` is a semantic contract for transactions-per-second rates computed from minute buckets as `TxnCount / 60`; older snapshots that stored raw transactions-per-minute counts must not be compared directly to newer avg-TPS values.
 - Keep this README synchronized when shared model files, exported contracts, or cross-module boundaries change.

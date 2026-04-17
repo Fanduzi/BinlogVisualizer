@@ -24,7 +24,7 @@ type TxnSizeSeriesSummary struct {
 // Timeseries groups the chart-ready metric series used by analysis outputs.
 // Minutes in AnalysisResult remains the authoritative aggregated bucket source.
 type Timeseries struct {
-	// TPSSeries stores average TPS per minute, calculated as minute transaction count divided by 60.
+	// TPSSeries stores transactions-per-second rates for minute buckets, computed as TxnCount / 60.
 	TPSSeries            []TimeseriesPoint
 	RowsSeries           []TimeseriesPoint
 	EventsSeries         []TimeseriesPoint
