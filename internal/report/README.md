@@ -7,6 +7,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | File | Responsibility |
 |------|----------------|
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes. |
+| `product.go` | Owns shared report presentation defaults and metric labels used by all renderers. |
 | `text.go` | Renders the fixed five-section text report and applies SQL context visibility rules for transactions. |
 | `json.go` | Serializes the stable analyze JSON report shape, including optional top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
