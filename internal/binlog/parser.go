@@ -16,6 +16,11 @@ import (
 // parser implements Parser using go-mysql-org/go-mysql/replication.
 type parser struct{}
 
+type cachedTableName struct {
+	schema string
+	table  string
+}
+
 // NewParser creates a new binlog parser.
 func NewParser() Parser {
 	return &parser{}
@@ -31,6 +36,7 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 	bp := replication.NewBinlogParser()
 
 	for index, path := range paths {
+		tableNames := make(map[uint64]cachedTableName)
 		fileSize := int64(0)
 		if info, err := os.Stat(path); err == nil {
 			fileSize = info.Size()
@@ -55,30 +61,7 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 			}
 			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = deriveEventPositionRange(ev.Header)
 
-			// Extract event-specific information
-			switch e := ev.Event.(type) {
-			case *replication.QueryEvent:
-				raw.Query = string(e.Query)
-				raw.Schema = string(e.Schema)
-			case *replication.RowsQueryEvent:
-				// This event contains the original SQL when binlog_rows_query_log_events=ON
-				raw.QuerySQL = string(e.Query)
-			case *replication.TableMapEvent:
-				raw.Schema = string(e.Schema)
-				raw.Table = string(e.Table)
-			case *replication.RowsEvent:
-				if e.Table != nil {
-					raw.Schema = string(e.Table.Schema)
-					raw.Table = string(e.Table.Table)
-				}
-				// For UPDATE events, rows come in pairs (before/after image)
-				// so affected rows = len(rows) / 2
-				if strings.Contains(raw.EventType, "UPDATE") {
-					raw.RowCount = len(e.Rows) / 2
-				} else {
-					raw.RowCount = len(e.Rows)
-				}
-			}
+			applyBinlogEventMetadata(&raw, raw.EventType, ev.Event, tableNames)
 
 			return handler(raw)
 		}); err != nil {
@@ -89,6 +72,54 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 		}
 	}
 	return nil
+}
+
+func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, tableNames map[uint64]cachedTableName) {
+	switch e := event.(type) {
+	case *replication.QueryEvent:
+		raw.Query = string(e.Query)
+		raw.Schema = string(e.Schema)
+	case *replication.RowsQueryEvent:
+		raw.QuerySQL = string(e.Query)
+	case *replication.TableMapEvent:
+		name := cachedTableName{schema: string(e.Schema), table: string(e.Table)}
+		raw.Schema = name.schema
+		raw.Table = name.table
+		if tableNames != nil {
+			tableNames[e.TableID] = name
+		}
+	case *replication.RowsEvent:
+		applyRowsEventTableName(raw, e, tableNames)
+		if strings.Contains(eventTypeName, "UPDATE") {
+			raw.RowCount = len(e.Rows) / 2
+		} else {
+			raw.RowCount = len(e.Rows)
+		}
+	}
+}
+
+func applyRowsEventTableName(raw *RawEvent, event *replication.RowsEvent, tableNames map[uint64]cachedTableName) {
+	tableID := event.TableID
+	if tableID == 0 && event.Table != nil {
+		tableID = event.Table.TableID
+	}
+	if tableID != 0 {
+		if name, ok := tableNames[tableID]; ok {
+			raw.Schema = name.schema
+			raw.Table = name.table
+			return
+		}
+	}
+	if event.Table == nil {
+		return
+	}
+
+	name := cachedTableName{schema: string(event.Table.Schema), table: string(event.Table.Table)}
+	raw.Schema = name.schema
+	raw.Table = name.table
+	if tableNames != nil && tableID != 0 {
+		tableNames[tableID] = name
+	}
 }
 
 func deriveEventPositionRange(header *replication.EventHeader) (int64, int64, int64) {
