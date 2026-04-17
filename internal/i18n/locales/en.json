@@ -243,6 +243,66 @@
     "description": "Placeholder when no alerts",
     "other": "(no alerts)"
   },
+  "report.text.summary": {
+    "description": "Diagnostic text summary section header",
+    "other": "Summary"
+  },
+  "report.text.topFindings": {
+    "description": "Diagnostic text top findings section header",
+    "other": "Top Findings"
+  },
+  "report.text.topTables": {
+    "description": "Diagnostic text top tables section header",
+    "other": "Top Tables"
+  },
+  "report.text.nextActions": {
+    "description": "Diagnostic text next actions section header",
+    "other": "Next Actions"
+  },
+  "report.text.minuteDetails": {
+    "description": "Detailed minute section header in text report",
+    "other": "Minute Details"
+  },
+  "report.text.writeShapePatterns": {
+    "description": "Detailed write shape patterns section header in text report",
+    "other": "Write Shape Patterns"
+  },
+  "report.text.peakAvgTPS": {
+    "description": "Peak average TPS label in text report",
+    "other": "Peak avg TPS/min"
+  },
+  "report.text.peakRowsPerMinute": {
+    "description": "Peak rows per minute label in text report",
+    "other": "Peak Rows/min"
+  },
+  "report.text.openHTML": {
+    "description": "Next action telling users to open the HTML report",
+    "other": "Open HTML for minute charts and transaction evidence."
+  },
+  "report.text.noFindings": {
+    "description": "Placeholder when no high-signal findings exist",
+    "other": "No high-signal findings detected."
+  },
+  "report.text.noTableActivity": {
+    "description": "Placeholder when no table activity should appear in text report",
+    "other": "No table activity detected."
+  },
+  "report.text.writeSpike": {
+    "description": "Short finding label for a write spike",
+    "other": "Write spike"
+  },
+  "report.text.longestTransaction": {
+    "description": "Short finding label for longest transaction",
+    "other": "Longest transaction"
+  },
+  "report.text.ddlDetected": {
+    "description": "Short finding label for detected DDL",
+    "other": "DDL detected"
+  },
+  "report.text.firstSuspiciousPosition": {
+    "description": "Next action label for the first suspicious binlog location",
+    "other": "First suspicious position"
+  },
   "report.format.rowsSummary": {
     "description": "Rows summary format: table, rows, insert, update, delete, txn",
     "other": "{{.Schema}}.{{.Table}}: {{.TotalRows}} rows ({{.InsertRows}} insert, {{.UpdateRows}} update, {{.DeleteRows}} delete, {{.TxnCount}} txn)"

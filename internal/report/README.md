@@ -8,20 +8,20 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 |------|----------------|
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes. |
 | `product.go` | Owns shared report presentation defaults and metric labels used by all renderers. |
-| `text.go` | Renders the fixed five-section text report and applies SQL context visibility rules for transactions. |
+| `text.go` | Renders the concise diagnostic text report plus opt-in minute and write-shape detail sections. |
 | `json.go` | Serializes the stable analyze JSON report shape, including optional top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
 | `html.go` | Renders the self-contained HTML report, including responsive activity-chart layout and ECharts data preparation. |
-| `*_test.go` | Verifies section ordering, JSON field stability, snapshot behavior, and SQL context mode behavior. |
+| `*_test.go` | Verifies diagnostic text defaults, opt-in detail sections, JSON field stability, snapshot behavior, and SQL context mode behavior. |
 
 ## Interfaces
 
 | API | Contract |
 |-----|----------|
-| `DefaultOptions() Options` | Returns the backward-compatible renderer defaults with `SQLContextMode=summary`. |
+| `DefaultOptions() Options` | Returns renderer defaults with `SQLContextMode=summary` and shared product limits. |
 | `ParseSQLContextMode(raw string) (SQLContextMode, error)` | Validates CLI-provided SQL context modes: `summary`, `off`, `full`. |
-| `RenderText(result model.AnalysisResult) (string, error)` | Renders the default backward-compatible text report. |
-| `RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, error)` | Renders the text report with explicit SQL context presentation controls. |
+| `RenderText(result model.AnalysisResult) (string, error)` | Renders the default concise diagnostic text report. |
+| `RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, error)` | Renders text output with explicit detail and SQL context presentation controls. |
 | `RenderJSON(result model.AnalysisResult) (string, error)` | Renders the default backward-compatible JSON report, including `snapshot` when present. |
 | `RenderJSONWithOptions(result model.AnalysisResult, opts Options) (string, error)` | Renders the JSON report with explicit presentation controls. |
 
@@ -38,5 +38,6 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - `off` omits query lines in text and omits all query-related JSON fields.
 - `full` only exposes bounded SQL from `QueryContext.SQL`; it never reconstructs or emits unbounded original SQL.
 - `product.go` owns presentation defaults such as `DefaultTopN` so text, HTML, and command flags share one report contract.
+- The default text report is diagnostic-first: summary, top findings, top tables, and next actions. Minute activity and write-shape patterns require explicit detail options.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.

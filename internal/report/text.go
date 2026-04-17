@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: stable six-section text reports with configurable transaction SQL display.
+// output: concise diagnostic-first text reports with opt-in minute and write-pattern detail sections.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,7 +17,6 @@ import (
 )
 
 // RenderText renders an AnalysisResult as human-readable text.
-// Sections are always rendered in a fixed order, even if empty.
 func RenderText(result model.AnalysisResult) (string, error) {
 	return RenderTextWithOptions(result, DefaultOptions())
 }
@@ -28,111 +26,163 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	opts = normalizeOptions(opts)
 	var buf strings.Builder
 
-	// Section 1: Workload Summary
-	renderWorkloadSummary(&buf, result.Summary, result.Warnings)
+	renderDiagnosticSummary(&buf, result)
+	renderTopFindings(&buf, result, opts)
+	renderTopTablesTable(&buf, result.Tables, opts.TopN)
+	renderNextActions(&buf, result)
 
-	// Section 2: Top Tables
-	renderTopTables(&buf, result.Tables)
-
-	// Section 3: Top Transactions
-	renderTopTransactions(&buf, result.Transactions, opts.SQLContextMode)
-
-	// Section 4: Top Patterns
-	renderTopPatterns(&buf, result.Patterns, result.PatternDrilldowns)
-
-	// Section 5: Minute Activity
-	renderMinuteActivity(&buf, result.Minutes)
-
-	// Section 6: Alerts
-	renderAlerts(&buf, result.Alerts)
+	if opts.ShowMinutes {
+		renderMinuteDetails(&buf, result.Minutes, opts.TopN)
+	}
+	if opts.ShowPatterns {
+		renderWriteShapePatterns(&buf, result.Patterns, result.PatternDrilldowns, opts.TopN)
+	}
 
 	return buf.String(), nil
 }
 
-func renderWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary, warnings int) {
-	buf.WriteString("=== " + i18n.T("report.section.workload") + " ===\n")
+func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) {
+	summary := result.Summary
+	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
+	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
-	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.warnings"), warnings))
-	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.duration"), formatDuration(summary.Duration)))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.peakAvgTPS"), formatPeakSeries(result.Timeseries.TPSSeries)))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.peakRowsPerMinute"), formatPeakSeries(result.Timeseries.RowsSeries)))
+	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.html.analyze.ddlTimeline"), len(result.Diagnostics.DDLEvents)))
 	buf.WriteString("\n")
 }
 
-func renderTopTables(buf *strings.Builder, tables []model.TableStats) {
-	buf.WriteString("=== " + i18n.T("report.section.tables") + " ===\n")
+func renderTopFindings(buf *strings.Builder, result model.AnalysisResult, opts Options) {
+	buf.WriteString("=== " + i18n.T("report.text.topFindings") + " ===\n")
+
+	lines := make([]string, 0, opts.TopN)
+	for _, finding := range result.Diagnostics.Findings {
+		lines = append(lines, fmt.Sprintf("  [%s] %s", finding.Severity, finding.Message))
+		if len(lines) >= opts.TopN {
+			break
+		}
+	}
+
+	if len(lines) < opts.TopN && len(result.Diagnostics.HotIntervals) > 0 {
+		hot := result.Diagnostics.HotIntervals[0]
+		lines = append(lines, fmt.Sprintf("  [critical] %s at %s: rows=%d, txns=%d",
+			i18n.T("report.text.writeSpike"), hot.Minute.Format("2006-01-02 15:04"), hot.TotalRows, hot.TxnCount))
+	}
+
+	if len(lines) < opts.TopN && len(result.Diagnostics.LongestTransactions) > 0 {
+		txn := result.Diagnostics.LongestTransactions[0]
+		lines = append(lines, fmt.Sprintf("  [warning] %s: %s, rows=%d, tables=%d, file=%s",
+			i18n.T("report.text.longestTransaction"),
+			formatDuration(txn.Duration),
+			txn.TotalRows,
+			len(txn.Tables),
+			formatSuspiciousLocation(txn),
+		))
+	}
+
+	if len(lines) < opts.TopN && len(result.Diagnostics.DDLEvents) > 0 {
+		ddl := result.Diagnostics.DDLEvents[0]
+		target := strings.Trim(strings.TrimSpace(ddl.Schema+"."+ddl.Table), ".")
+		if target == "" {
+			target = ddl.Object
+		}
+		lines = append(lines, fmt.Sprintf("  [warning] %s: %s %s at %s",
+			i18n.T("report.text.ddlDetected"),
+			ddl.Operation,
+			target,
+			ddl.Timestamp.Format("2006-01-02 15:04"),
+		))
+	}
+
+	if len(lines) == 0 {
+		buf.WriteString("  " + i18n.T("report.text.noFindings") + "\n\n")
+		return
+	}
+	for _, line := range lines {
+		buf.WriteString(line + "\n")
+	}
+	buf.WriteString("\n")
+}
+
+func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN int) {
+	buf.WriteString("=== " + i18n.T("report.text.topTables") + " ===\n")
 	if len(tables) == 0 {
-		buf.WriteString("  " + i18n.T("report.placeholder.noTableActivity") + "\n")
-	} else {
-		for _, t := range tables {
-			buf.WriteString("  " + i18n.Tf("report.format.rowsSummary", map[string]any{
-				"Schema":      t.Schema,
-				"Table":       t.Table,
-				"TotalRows":   t.TotalRows,
-				"InsertRows":  t.InsertRows,
-				"UpdateRows":  t.UpdateRows,
-				"DeleteRows":  t.DeleteRows,
-				"TxnCount":    t.TxnCount,
-			}) + "\n")
-		}
-	}
-	buf.WriteString("\n")
-}
-
-func renderTopTransactions(buf *strings.Builder, transactions []model.Transaction, mode SQLContextMode) {
-	buf.WriteString("=== " + i18n.T("report.section.transactions") + " ===\n")
-	if len(transactions) == 0 {
-		buf.WriteString("  " + i18n.T("report.placeholder.noTransactions") + "\n")
-	} else {
-		// Sort by TotalRows descending, with TxnKey ascending as tie-breaker for determinism
-		sorted := make([]model.Transaction, len(transactions))
-		copy(sorted, transactions)
-		sort.Slice(sorted, func(i, j int) bool {
-			if sorted[i].TotalRows != sorted[j].TotalRows {
-				return sorted[i].TotalRows > sorted[j].TotalRows
-			}
-			return sorted[i].TxnKey < sorted[j].TxnKey
-		})
-
-		for _, txn := range sorted {
-			buf.WriteString("  " + i18n.Tf("report.format.transactionSummary", map[string]any{
-				"TxnKey":     txn.TxnKey,
-				"TotalRows":  txn.TotalRows,
-				"Duration":   formatDuration(txn.Duration),
-				"EventCount": txn.EventCount,
-			}) + "\n")
-			if queryLine := transactionTextQuery(txn, mode); queryLine != "" {
-				buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), queryLine))
-			}
-		}
-	}
-	buf.WriteString("\n")
-}
-
-func renderTopPatterns(buf *strings.Builder, patterns []model.PatternStats, drilldowns []model.PatternDrilldown) {
-	buf.WriteString("=== " + i18n.T("report.section.patterns") + " ===\n")
-	if len(patterns) == 0 {
-		buf.WriteString("  " + i18n.T("report.placeholder.noPatterns") + "\n")
-		buf.WriteString("\n")
+		buf.WriteString("  " + i18n.T("report.text.noTableActivity") + "\n\n")
 		return
 	}
 
-	// Build drilldown lookup by pattern_key
-	ddMap := make(map[string]model.PatternDrilldown, len(drilldowns))
-	for _, d := range drilldowns {
-		ddMap[d.PatternKey] = d
+	limit := minInt(topN, len(tables))
+	totalRows := 0
+	for _, table := range tables {
+		totalRows += table.TotalRows
 	}
 
-	for _, p := range patterns {
-		buf.WriteString(fmt.Sprintf("  %s: rows=%d txns=%d avg_rows_per_txn=%.1f\n", p.Label, p.TotalRows, p.TxnCount, p.AvgRowsPerTxn))
-		if strings.TrimSpace(p.SampleQuerySummary) != "" {
-			buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), p.SampleQuerySummary))
+	buf.WriteString("  #  Table                         Rows       Txns     Events    Share\n")
+	for i := 0; i < limit; i++ {
+		table := tables[i]
+		name := table.Schema + "." + table.Table
+		share := 0.0
+		if totalRows > 0 {
+			share = float64(table.TotalRows) * 100 / float64(totalRows)
 		}
+		buf.WriteString(fmt.Sprintf("  %-2d %-28s %10d %8d %8d %6.1f%%\n",
+			i+1, name, table.TotalRows, table.TxnCount, table.EventCount, share))
+	}
+	buf.WriteString("\n")
+}
 
-		// Render drilldown block if this pattern was selected
-		if dd, ok := ddMap[p.PatternKey]; ok {
-			renderDrilldownBlock(buf, dd)
+func renderNextActions(buf *strings.Builder, result model.AnalysisResult) {
+	buf.WriteString("=== " + i18n.T("report.text.nextActions") + " ===\n")
+	buf.WriteString("  " + i18n.T("report.text.openHTML") + "\n")
+	if location := firstSuspiciousLocation(result); location != "" {
+		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.firstSuspiciousPosition"), location))
+	}
+	buf.WriteString("\n")
+}
+
+func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+	buf.WriteString("=== " + i18n.T("report.text.minuteDetails") + " ===\n")
+	if len(minutes) == 0 {
+		buf.WriteString("  " + i18n.T("report.placeholder.noMinuteActivity") + "\n\n")
+		return
+	}
+	for i, minute := range minutes {
+		if i >= topN {
+			break
+		}
+		buf.WriteString("  " + i18n.Tf("report.format.minuteActivity", map[string]any{
+			"Minute":    minute.Minute.Format("2006-01-02 15:04"),
+			"TotalRows": minute.TotalRows,
+			"TxnCount":  minute.TxnCount,
+		}) + "\n")
+	}
+	buf.WriteString("\n")
+}
+
+func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStats, drilldowns []model.PatternDrilldown, topN int) {
+	buf.WriteString("=== " + i18n.T("report.text.writeShapePatterns") + " ===\n")
+	if len(patterns) == 0 {
+		buf.WriteString("  " + i18n.T("report.placeholder.noPatterns") + "\n\n")
+		return
+	}
+
+	ddMap := make(map[string]model.PatternDrilldown, len(drilldowns))
+	for _, drilldown := range drilldowns {
+		ddMap[drilldown.PatternKey] = drilldown
+	}
+
+	limit := minInt(topN, len(patterns))
+	for i := 0; i < limit; i++ {
+		pattern := patterns[i]
+		buf.WriteString(fmt.Sprintf("  %s: rows=%d txns=%d avg_rows_per_txn=%.1f\n",
+			pattern.Label, pattern.TotalRows, pattern.TxnCount, pattern.AvgRowsPerTxn))
+		if strings.TrimSpace(pattern.SampleQuerySummary) != "" {
+			buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), pattern.SampleQuerySummary))
+		}
+		if drilldown, ok := ddMap[pattern.PatternKey]; ok {
+			renderDrilldownBlock(buf, drilldown)
 		}
 	}
 	buf.WriteString("\n")
@@ -142,12 +192,12 @@ func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown) {
 	buf.WriteString("    drilldown:\n")
 	buf.WriteString(fmt.Sprintf("      why: %s\n", dd.WhySelected))
 
-	for i, m := range dd.BusiestMinutes {
+	for i, minute := range dd.BusiestMinutes {
 		if i >= 2 {
 			break
 		}
 		buf.WriteString(fmt.Sprintf("      workload minute: %s rows=%d txns=%d\n",
-			m.Minute.Format("2006-01-02 15:04"), m.TotalRows, m.TxnCount))
+			minute.Minute.Format("2006-01-02 15:04"), minute.TotalRows, minute.TxnCount))
 	}
 
 	for i, txn := range dd.RepresentativeTransactions {
@@ -178,36 +228,48 @@ func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
 	}
 }
 
-func renderMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket) {
-	buf.WriteString("=== " + i18n.T("report.section.minutes") + " ===\n")
-	if len(minutes) == 0 {
-		buf.WriteString("  " + i18n.T("report.placeholder.noMinuteActivity") + "\n")
-	} else {
-		for _, m := range minutes {
-			buf.WriteString("  " + i18n.Tf("report.format.minuteActivity", map[string]any{
-				"Minute":    m.Minute.Format("2006-01-02 15:04"),
-				"TotalRows": m.TotalRows,
-				"TxnCount":  m.TxnCount,
-			}) + "\n")
+func formatPeakSeries(points []model.TimeseriesPoint) string {
+	if len(points) == 0 {
+		return i18n.T("time.notAvailable")
+	}
+	peak := points[0]
+	for _, point := range points[1:] {
+		if point.Value > peak.Value || (point.Value == peak.Value && point.Minute.Before(peak.Minute)) {
+			peak = point
 		}
 	}
-	buf.WriteString("\n")
+	return fmt.Sprintf("%.1f at %s", peak.Value, peak.Minute.Format("2006-01-02 15:04"))
 }
 
-func renderAlerts(buf *strings.Builder, alerts []model.Alert) {
-	buf.WriteString("=== " + i18n.T("report.section.alerts") + " ===\n")
-	if len(alerts) == 0 {
-		buf.WriteString("  " + i18n.T("report.placeholder.noAlerts") + "\n")
-	} else {
-		for _, a := range alerts {
-			buf.WriteString("  " + i18n.Tf("report.format.alertLine", map[string]any{
-				"Severity": strings.ToUpper(a.Severity),
-				"Type":     a.Type,
-				"Message":  a.Message,
-			}) + "\n")
-		}
+func firstSuspiciousLocation(result model.AnalysisResult) string {
+	if len(result.Diagnostics.LongestTransactions) > 0 {
+		return formatSuspiciousLocation(result.Diagnostics.LongestTransactions[0])
 	}
-	buf.WriteString("\n")
+	if len(result.Diagnostics.LargestTransactions) > 0 {
+		return formatSuspiciousLocation(result.Diagnostics.LargestTransactions[0])
+	}
+	if len(result.Diagnostics.WidestTransactions) > 0 {
+		return formatSuspiciousLocation(result.Diagnostics.WidestTransactions[0])
+	}
+	if len(result.Diagnostics.DDLEvents) > 0 {
+		ddl := result.Diagnostics.DDLEvents[0]
+		return formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd)
+	}
+	return ""
+}
+
+func formatSuspiciousLocation(txn model.Transaction) string {
+	if txn.BinlogPathStart == "" && txn.PositionStart == 0 && txn.PositionEnd == 0 {
+		return i18n.T("time.notAvailable")
+	}
+	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func formatTime(t time.Time) string {
