@@ -1,0 +1,203 @@
+[
+  {
+    "timestamp": "2026-04-17T11:00:00Z",
+    "binlog_path": "mysql-bin.000090",
+    "position_start": 100,
+    "position_end": 160,
+    "binlog_bytes": 60,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T11:00:01Z",
+    "binlog_path": "mysql-bin.000090",
+    "position_start": 161,
+    "position_end": 260,
+    "binlog_bytes": 99,
+    "event_type": "WRITE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "orders",
+    "row_count": 120
+  },
+  {
+    "timestamp": "2026-04-17T11:00:02Z",
+    "binlog_path": "mysql-bin.000090",
+    "position_start": 261,
+    "position_end": 360,
+    "binlog_bytes": 99,
+    "event_type": "WRITE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "order_items",
+    "row_count": 80
+  },
+  {
+    "timestamp": "2026-04-17T11:00:03Z",
+    "binlog_path": "mysql-bin.000090",
+    "position_start": 361,
+    "position_end": 420,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T11:00:10Z",
+    "binlog_path": "mysql-bin.000090",
+    "position_start": 421,
+    "position_end": 480,
+    "binlog_bytes": 59,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T11:00:11Z",
+    "binlog_path": "mysql-bin.000090",
+    "position_start": 481,
+    "position_end": 590,
+    "binlog_bytes": 109,
+    "event_type": "WRITE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "orders",
+    "row_count": 150
+  },
+  {
+    "timestamp": "2026-04-17T11:00:12Z",
+    "binlog_path": "mysql-bin.000090",
+    "position_start": 591,
+    "position_end": 650,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T11:01:00Z",
+    "binlog_path": "mysql-bin.000091",
+    "position_start": 100,
+    "position_end": 160,
+    "binlog_bytes": 60,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T11:01:01Z",
+    "binlog_path": "mysql-bin.000091",
+    "position_start": 161,
+    "position_end": 260,
+    "binlog_bytes": 99,
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "inventory",
+    "row_count": 90
+  },
+  {
+    "timestamp": "2026-04-17T11:01:02Z",
+    "binlog_path": "mysql-bin.000091",
+    "position_start": 261,
+    "position_end": 360,
+    "binlog_bytes": 99,
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "users",
+    "row_count": 70
+  },
+  {
+    "timestamp": "2026-04-17T11:01:03Z",
+    "binlog_path": "mysql-bin.000091",
+    "position_start": 361,
+    "position_end": 420,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T11:01:10Z",
+    "binlog_path": "mysql-bin.000091",
+    "position_start": 421,
+    "position_end": 480,
+    "binlog_bytes": 59,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T11:01:11Z",
+    "binlog_path": "mysql-bin.000091",
+    "position_start": 481,
+    "position_end": 580,
+    "binlog_bytes": 99,
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "orders",
+    "row_count": 40
+  },
+  {
+    "timestamp": "2026-04-17T11:01:12Z",
+    "binlog_path": "mysql-bin.000091",
+    "position_start": 581,
+    "position_end": 640,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T11:02:00Z",
+    "binlog_path": "mysql-bin.000092",
+    "position_start": 100,
+    "position_end": 160,
+    "binlog_bytes": 60,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T11:02:01Z",
+    "binlog_path": "mysql-bin.000092",
+    "position_start": 161,
+    "position_end": 280,
+    "binlog_bytes": 119,
+    "event_type": "DELETE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "audit_logs",
+    "row_count": 600
+  },
+  {
+    "timestamp": "2026-04-17T11:02:02Z",
+    "binlog_path": "mysql-bin.000092",
+    "position_start": 281,
+    "position_end": 380,
+    "binlog_bytes": 99,
+    "event_type": "DELETE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "sessions",
+    "row_count": 200
+  },
+  {
+    "timestamp": "2026-04-17T11:02:03Z",
+    "binlog_path": "mysql-bin.000092",
+    "position_start": 381,
+    "position_end": 440,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T11:02:10Z",
+    "binlog_path": "mysql-bin.000092",
+    "position_start": 441,
+    "position_end": 500,
+    "binlog_bytes": 59,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T11:02:11Z",
+    "binlog_path": "mysql-bin.000092",
+    "position_start": 501,
+    "position_end": 620,
+    "binlog_bytes": 119,
+    "event_type": "DELETE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "audit_logs",
+    "row_count": 250
+  },
+  {
+    "timestamp": "2026-04-17T11:02:12Z",
+    "binlog_path": "mysql-bin.000092",
+    "position_start": 621,
+    "position_end": 680,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  }
+]
