@@ -2,9 +2,11 @@
 // input: normalized events and SQL statements with binlog metadata.
 // output: regression coverage for DDL parsing, filtering, metadata carry-through, and timeline ordering.
 // pos: focused contract tests for future Analyzer diagnostics integration without wiring Analyzer yet.
+// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -91,5 +93,18 @@ func TestDDLEventFromNormalizedEventIgnoresNonDDLQueries(t *testing.T) {
 	})
 	if ok {
 		t.Fatal("expected non-DDL query to be ignored")
+	}
+}
+
+func BenchmarkParseDDLStatementNonDDLRowsQuery(b *testing.B) {
+	sql := "UPDATE shop.orders SET status = 'paid', updated_at = NOW() WHERE id IN (" + strings.Repeat("?,", 200) + "?)"
+
+	b.ReportAllocs()
+	var ok bool
+	for i := 0; i < b.N; i++ {
+		_, ok = ParseDDLStatement(sql)
+	}
+	if ok {
+		b.Fatal("expected non-DDL statement to be ignored")
 	}
 }
