@@ -5,7 +5,7 @@
 | File | Responsibility |
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, streaming lifecycle, final result assembly. |
-| `store.go` | DuckDB-backed internal result store with batch flush, pre-sized hot-path buffers, and Finalize-time query assembly. |
+| `store.go` | DuckDB-backed internal result store with batch flush, pre-sized hot-path buffers, in-memory minute/result mirrors for hot reads, and Finalize-time query assembly. |
 | `transactions.go` | Reconstructs completed transactions from normalized event boundaries. |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
@@ -42,6 +42,9 @@
 
 - Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `1000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
 - DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is stored in the `transaction_sql_contexts` subtable and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
+- Completed transactions keep a store-owned in-memory mirror so `QueryAllTransactions()` avoids a DuckDB round-trip while preserving stable start-time ordering.
+- Top-transaction reads now ask DuckDB only for ordered transaction keys; full transaction hydration comes from the in-memory persisted mirror.
+- Minute buckets keep a store-owned in-memory mirror as they are drained so `QueryMinuteBuckets()` avoids a DuckDB round-trip on the hot Finalize path while still persisting rows for diagnostics/debugging.
 - Finalize computes alerts after transaction/minute queries and feeds them directly into findings/drilldowns, avoiding an extra DuckDB alert round-trip on the hot path.
 - Live state remains bounded to the in-flight transaction builder, live table aggregates, current minute buckets pending flush, and summary counters.
 - `MinuteAggregator.Snapshot()` returns defensive table-row copies, while `DrainBefore()` and `DrainAll()` transfer ownership of removed bucket maps to avoid copy churn in the streaming persistence path.
