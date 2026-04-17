@@ -321,6 +321,34 @@ func BenchmarkDuckDBStoreRecordTransactions(b *testing.B) {
 	}
 }
 
+func BenchmarkDuckDBStoreRecordMinuteBuckets(b *testing.B) {
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	fixtures := make([]model.MinuteBucket, 0, 1000)
+	for i := 0; i < 1000; i++ {
+		tableRows := make(map[string]int, 32)
+		for tableIndex := 0; tableIndex < 32; tableIndex++ {
+			tableRows[fmt.Sprintf("shop.orders_%02d", tableIndex)] = i + tableIndex + 1
+		}
+		fixtures = append(fixtures, model.MinuteBucket{
+			Minute:      base.Add(time.Duration(i) * time.Minute),
+			TotalRows:   1000 + i,
+			TxnCount:    10 + i%7,
+			EventCount:  20 + i%11,
+			BinlogBytes: int64(4096 + i),
+			DDLCount:    i % 3,
+			TableRows:   tableRows,
+		})
+	}
+
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		store := newTestDuckDBStore(b, len(fixtures)+1)
+		if err := store.RecordMinuteBuckets(fixtures); err != nil {
+			b.Fatalf("RecordMinuteBuckets returned error: %v", err)
+		}
+	}
+}
+
 func analyzerPersistenceFixture(base time.Time) []model.NormalizedEvent {
 	return []model.NormalizedEvent{
 		{Timestamp: base, EventType: "BEGIN"},
