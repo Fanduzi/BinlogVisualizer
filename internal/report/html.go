@@ -29,6 +29,8 @@ func RenderHTML(result model.AnalysisResult) (string, error) {
 
 // RenderHTMLWithOptions renders an AnalysisResult as HTML with explicit presentation controls.
 func RenderHTMLWithOptions(result model.AnalysisResult, opts Options) (string, error) {
+	opts = normalizeOptions(opts)
+
 	echartJS, err := ReadEmbeddedECharts()
 	if err != nil {
 		return "", err
@@ -88,6 +90,8 @@ type htmlReportData struct {
 	ThroughputLabels    template.JS
 	ThroughputBytes     template.JS
 	ThroughputRows      template.JS
+	TPSLabels           template.JS
+	TPSValues           template.JS
 	Alerts              []htmlAlert
 	HasAlerts           bool
 	Drilldowns          []htmlDrilldown
@@ -99,6 +103,7 @@ type htmlReportData struct {
 	TableBarRows        template.JS
 	OpsPie              template.JS
 	EChartsJS           template.JS
+	TopN                int
 }
 
 type htmlDrilldown struct {
@@ -211,13 +216,15 @@ type htmlTableActivitySeries struct {
 	DeleteRows []int    `json:"delete_rows"`
 }
 
-func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htmlReportData {
+func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) htmlReportData {
+	opts = normalizeOptions(opts)
 	d := htmlReportData{
 		GeneratedAt: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		TotalTxns:   result.Summary.TotalTransactions,
 		TotalRows:   result.Summary.TotalRows,
 		TotalEvents: result.Summary.TotalEvents,
 		EChartsJS:   template.JS(echartsJS), //nolint:gosec
+		TopN:        opts.TopN,
 	}
 
 	if !result.Summary.StartTime.IsZero() {
@@ -229,7 +236,11 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 	tableActivitySeries := make(map[string]htmlTableActivitySeries, len(result.Tables))
 
 	// Tables
-	for _, t := range result.Tables {
+	tables := result.Tables
+	if len(tables) > opts.TopN {
+		tables = tables[:opts.TopN]
+	}
+	for _, t := range tables {
 		key := t.Schema + "." + t.Table
 		domID := sanitizeDOMID(key)
 		if len(t.Activity) > 0 {
@@ -282,12 +293,12 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 	}
 	d.HasDDLEvents = len(d.DDLEvents) > 0
 
-	for _, txn := range result.Diagnostics.LargestTransactions {
+	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, opts.TopN) {
 		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn))
 	}
 	d.HasLargestTxns = len(d.LargestTransactions) > 0
 
-	for _, txn := range result.Diagnostics.LongestTransactions {
+	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, opts.TopN) {
 		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn))
 	}
 	d.HasLongestTxns = len(d.LongestTransactions) > 0
@@ -305,7 +316,7 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 	d.HasHotIntervals = len(d.HotIntervals) > 0
 
 	// Widest transactions
-	for _, txn := range result.Diagnostics.WidestTransactions {
+	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, opts.TopN) {
 		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn))
 	}
 	d.HasWidestTxns = len(d.WidestTransactions) > 0
@@ -366,10 +377,25 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 	d.MinuteRows = mustJSON(rows)
 	d.MinuteTxns = mustJSON(txns)
 
-	// Chart data — top 10 tables bar
+	tpsLabels := make([]string, 0, len(result.Timeseries.TPSSeries))
+	tpsValues := make([]float64, 0, len(result.Timeseries.TPSSeries))
+	for _, point := range result.Timeseries.TPSSeries {
+		tpsLabels = append(tpsLabels, point.Minute.Format("15:04"))
+		tpsValues = append(tpsValues, point.Value)
+	}
+	if len(tpsLabels) == 0 {
+		for _, m := range result.Minutes {
+			tpsLabels = append(tpsLabels, m.Minute.Format("15:04"))
+			tpsValues = append(tpsValues, float64(m.TxnCount)/60.0)
+		}
+	}
+	d.TPSLabels = mustJSON(tpsLabels)
+	d.TPSValues = mustJSON(tpsValues)
+
+	// Chart data — top tables bar
 	top := result.Tables
-	if len(top) > 10 {
-		top = top[:10]
+	if len(top) > opts.TopN {
+		top = top[:opts.TopN]
 	}
 	barNames := make([]string, 0, len(top))
 	barRows := make([]int, 0, len(top))
@@ -433,6 +459,13 @@ func buildHTMLData(result model.AnalysisResult, _ Options, echartsJS string) htm
 	d.HasDrilldowns = len(d.Drilldowns) > 0
 
 	return d
+}
+
+func limitTransactions(txns []model.Transaction, limit int) []model.Transaction {
+	if limit <= 0 || len(txns) <= limit {
+		return txns
+	}
+	return txns[:limit]
 }
 
 func mustJSON(v any) template.JS {

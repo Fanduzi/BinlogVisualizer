@@ -13,6 +13,82 @@ import (
 	"binlogviz/internal/model"
 )
 
+func productHTMLFixture() model.AnalysisResult {
+	result := productTextFixture()
+	start := time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC)
+
+	result.PatternDrilldowns = []model.PatternDrilldown{{
+		PatternKey:    "shop.orders|UPDATE|medium",
+		Label:         "shop.orders / UPDATE / medium batch",
+		WhySelected:   "dominant updater during the incident window",
+		ShareOfRows:   0.90,
+		ShareOfTxns:   0.80,
+		AvgRowsPerTxn: 90,
+		SignalFlags:   model.PatternSignalFlags{Dominance: true},
+		BusiestMinutes: []model.PatternPeakMinute{
+			{Minute: start.Add(time.Minute), TotalRows: 9000, TxnCount: 100},
+		},
+	}}
+	result.Diagnostics.FileCoverage = model.FileCoverage{
+		Selected: []model.FileCoverageItem{{
+			BinlogPath:   "mysql-bin.000044",
+			Reason:       "selected: overlaps requested time window",
+			Size:         1073746389,
+			FirstEventAt: start,
+			LastEventAt:  start.Add(10 * time.Minute),
+		}},
+		Skipped: []model.FileCoverageItem{{
+			BinlogPath: "mysql-bin.000045",
+			Reason:     "skipped: mtime coarse filter",
+			Size:       1073747711,
+		}},
+	}
+	result.Diagnostics.FileSegments = []model.FileSegment{{
+		StartTime:   start,
+		EndTime:     start.Add(5 * time.Minute),
+		BinlogBytes: 20480,
+		Rows:        500,
+		Events:      75,
+	}}
+	result.Diagnostics.LargestTransactions = []model.Transaction{{
+		TxnKey:          "txn-largest",
+		TotalRows:       12000,
+		Duration:        20 * time.Second,
+		BinlogBytes:     20480,
+		EventCount:      80,
+		Tables:          map[string]int{"shop.orders": 11000, "shop.order_items": 1000},
+		QuerySummary:    "UPDATE shop.orders SET status = 'paid' WHERE id BETWEEN ? AND ?",
+		BinlogPathStart: "mysql-bin.000044",
+		PositionStart:   12345,
+		PositionEnd:     23456,
+	}}
+	result.Diagnostics.LongestTransactions = []model.Transaction{{
+		TxnKey:          "txn-longest",
+		TotalRows:       8000,
+		Duration:        48 * time.Second,
+		BinlogBytes:     18432,
+		EventCount:      60,
+		Tables:          map[string]int{"shop.orders": 5000, "shop.users": 3000},
+		QuerySummary:    "UPDATE shop.users SET state = 'locked' WHERE tenant_id = ?",
+		BinlogPathStart: "mysql-bin.000044",
+		PositionStart:   34567,
+		PositionEnd:     45678,
+	}}
+	result.Diagnostics.WidestTransactions = []model.Transaction{{
+		TxnKey:          "txn-widest",
+		TotalRows:       6000,
+		Duration:        12 * time.Second,
+		BinlogBytes:     12288,
+		EventCount:      45,
+		Tables:          map[string]int{"shop.orders": 2000, "shop.order_items": 1500, "shop.users": 1200, "shop.payments": 900, "shop.audit_logs": 400},
+		QuerySummary:    "UPDATE multiple shop tables in one logical settlement txn",
+		BinlogPathStart: "mysql-bin.000044",
+		PositionStart:   56789,
+		PositionEnd:     67890,
+	}}
+	return result
+}
+
 func TestHTMLPatternDrilldown_SelectedPatternsGetCard(t *testing.T) {
 	result := model.AnalysisResult{
 		Summary: model.WorkloadSummary{TotalTransactions: 1, TotalRows: 100},
@@ -288,10 +364,10 @@ func TestRenderHTMLTransactionEvidenceCards(t *testing.T) {
 				Tables:          map[string]int{"shop.accounts": 50},
 			}},
 			WidestTransactions: []model.Transaction{{
-				TxnKey:     "txn-wide",
-				TotalRows:  100,
-				Duration:   2 * time.Second,
-				Tables:     map[string]int{"shop.orders": 60, "shop.users": 40},
+				TxnKey:    "txn-wide",
+				TotalRows: 100,
+				Duration:  2 * time.Second,
+				Tables:    map[string]int{"shop.orders": 60, "shop.users": 40},
 			}},
 		},
 	}
@@ -304,12 +380,91 @@ func TestRenderHTMLTransactionEvidenceCards(t *testing.T) {
 	for _, token := range []string{
 		`id="transaction-evidence"`,
 		"mysql-bin.000044:300-mysql-bin.000045:520",
-		"txn-evidence",  // largest
-		"txn-long",      // longest
-		"txn-wide",      // widest
+		"txn-evidence", // largest
+		"txn-long",     // longest
+		"txn-wide",     // widest
 	} {
 		if !strings.Contains(out, token) {
 			t.Fatalf("expected transaction evidence token %q in HTML output", token)
+		}
+	}
+}
+
+func TestAnalyzeHTMLUsesDBAReadingPath(t *testing.T) {
+	out, err := RenderHTML(productHTMLFixture())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expectedOrder := []string{
+		`id="executive-summary"`,
+		`id="timeline"`,
+		`id="hotspots"`,
+		`id="ddl-timeline"`,
+		`id="transaction-evidence"`,
+		`id="analyzed-files"`,
+		`id="write-shape-patterns"`,
+	}
+	last := -1
+	for _, token := range expectedOrder {
+		idx := strings.Index(out, token)
+		if idx < 0 {
+			t.Fatalf("expected HTML to contain %s", token)
+		}
+		if idx < last {
+			t.Fatalf("expected %s after previous section", token)
+		}
+		last = idx
+	}
+}
+
+func TestAnalyzeHTMLIncludesReadableTPSChart(t *testing.T) {
+	out, err := RenderHTML(productHTMLFixture())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{`id="chart-tps"`, `avg TPS/min`, `min-height: 420px`} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected TPS chart token %q\n%s", token, out)
+		}
+	}
+}
+
+func TestAnalyzeHTMLTransactionEvidenceLabelsRankingMetric(t *testing.T) {
+	out, err := RenderHTMLWithOptions(productHTMLFixture(), Options{TopN: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		"Top 5 Largest Transactions by Rows",
+		"Top 5 Longest Transactions by Duration",
+		"Top 5 Widest Transactions by Touched Tables",
+		"touched tables",
+	} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected transaction evidence label %q\n%s", token, out)
+		}
+	}
+}
+
+func TestAnalyzeHTMLExplainsAnalyzedFilesAndPatternMetrics(t *testing.T) {
+	out, err := RenderHTML(productHTMLFixture())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{
+		"Analyzed Files",
+		"selected: overlaps requested time window",
+		"filesystem mtime",
+		"Row share",
+		"Transaction share",
+		"Avg rows per transaction",
+	} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected explanatory token %q\n%s", token, out)
 		}
 	}
 }

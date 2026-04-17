@@ -463,9 +463,25 @@
     "description": "Analyze HTML header",
     "other": "Analysis Report"
   },
+  "report.html.analyze.executiveSummary": {
+    "description": "Analyze executive summary section header",
+    "other": "Executive Summary"
+  },
   "report.html.analyze.activityCharts": {
     "description": "Analyze activity charts section header",
     "other": "Activity Charts"
+  },
+  "report.html.analyze.timeline": {
+    "description": "Analyze timeline section header",
+    "other": "Timeline"
+  },
+  "report.html.analyze.hotspots": {
+    "description": "Analyze hotspots section header",
+    "other": "Hotspots"
+  },
+  "report.html.analyze.avgTPSPerMinute": {
+    "description": "Analyze avg TPS per minute chart title",
+    "other": "avg TPS/min"
   },
   "report.html.analyze.rowsPerMinute": {
     "description": "Analyze rows per minute chart title",
@@ -491,25 +507,33 @@
     "description": "Analyze pattern drilldowns section header",
     "other": "Pattern Drilldowns"
   },
+  "report.html.analyze.writeShapePatterns": {
+    "description": "Analyze write shape patterns section header",
+    "other": "Write Shape Patterns"
+  },
   "report.html.analyze.shareOfRowsTitle": {
     "description": "Analyze share of rows tooltip",
-    "other": "Fraction of all binlog rows attributed to this pattern"
+    "other": "share of rows across the analyzed window"
   },
   "report.html.analyze.shareOfRowsLabel": {
     "description": "Analyze share of rows label",
-    "other": "share of rows"
+    "other": "Row share"
   },
   "report.html.analyze.shareOfTxnsTitle": {
     "description": "Analyze share of transactions tooltip",
-    "other": "Fraction of all transactions attributed to this pattern"
+    "other": "transaction share across the analyzed window"
   },
   "report.html.analyze.shareOfTxnsLabel": {
     "description": "Analyze share of transactions label",
-    "other": "share of txns"
+    "other": "Transaction share"
   },
   "report.html.analyze.avgRowsPerTxn": {
     "description": "Analyze average rows per transaction label",
-    "other": "avg rows/txn"
+    "other": "Avg rows per transaction"
+  },
+  "report.html.analyze.avgRowsPerTxnTitle": {
+    "description": "Analyze average rows per transaction tooltip",
+    "other": "Average rows per transaction for this pattern"
   },
   "report.html.analyze.workloadPeakMinutesTitle": {
     "description": "Analyze workload peak minutes tooltip",
@@ -915,6 +939,14 @@
     "description": "File coverage section header",
     "other": "File Coverage"
   },
+  "report.html.analyze.analyzedFiles": {
+    "description": "Analyzed files section header",
+    "other": "Analyzed Files"
+  },
+  "report.html.analyze.analyzedFilesNote": {
+    "description": "Analyzed files note",
+    "other": "Uses filesystem mtime as a coarse pre-filter before probing event timestamps."
+  },
   "report.html.analyze.selectedFiles": {
     "description": "Selected files label",
     "other": "Selected Files"
@@ -939,6 +971,10 @@
     "description": "Skip reason column header",
     "other": "Reason"
   },
+  "report.html.analyze.selectionReason": {
+    "description": "Selection reason column header",
+    "other": "Selection Reason"
+  },
   "report.html.analyze.noFileCoverage": {
     "description": "No file coverage data available",
     "other": "No file coverage data available."
@@ -958,6 +994,22 @@
   "report.html.analyze.transactionEvidence": {
     "description": "Transaction evidence section header",
     "other": "Transaction Evidence"
+  },
+  "report.html.analyze.largestTransactionsByRows": {
+    "description": "Ranked label for largest transactions",
+    "other": "Largest Transactions by Rows"
+  },
+  "report.html.analyze.longestTransactionsByDuration": {
+    "description": "Ranked label for longest transactions",
+    "other": "Longest Transactions by Duration"
+  },
+  "report.html.analyze.widestTransactionsByTouchedTables": {
+    "description": "Ranked label for widest transactions",
+    "other": "Widest Transactions by Touched Tables"
+  },
+  "report.html.analyze.touchedTables": {
+    "description": "Touched tables metric label",
+    "other": "touched tables"
   },
   "report.html.analyze.binlogSpan": {
     "description": "Binlog span label",

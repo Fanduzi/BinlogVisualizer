@@ -248,6 +248,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     background: var(--surface2);
   }
   .chart-panel-wide { grid-column: 1 / -1; }
+  .chart-panel-large { grid-column: 1 / -1; }
   .chart-title {
     font-size: 11px;
     font-weight: 600;
@@ -257,6 +258,9 @@ const htmlReportTemplate = `<!DOCTYPE html>
     margin-bottom: 12px;
   }
   .chart-box { width: 100%; height: 320px; }
+  .chart-large { min-height: 420px; }
+  .chart-controls,
+  .chart-legend-note { position: static; }
 
   /* Table */
   table {
@@ -490,39 +494,49 @@ const htmlReportTemplate = `<!DOCTYPE html>
         <button class="theme-btn" data-t="light"  title="Light"></button>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- Summary Cards -->
-  <div class="cards">
-    <div class="card">
-      <div class="card-label">{{t "report.html.common.transactions"}}</div>
-      <div class="card-value">{{.TotalTxns}}</div>
+  <!-- Executive Summary -->
+  <section class="section" id="executive-summary">
+    <div class="section-header"><span class="dot"></span>{{t "report.html.analyze.executiveSummary"}}</div>
+    <div class="section-body" style="padding:16px">
+      <div class="cards" style="margin-bottom:0">
+        <div class="card">
+          <div class="card-label">{{t "report.html.common.transactions"}}</div>
+          <div class="card-value">{{.TotalTxns}}</div>
+        </div>
+        <div class="card accent">
+          <div class="card-label">{{t "report.html.common.affectedRows"}}</div>
+          <div class="card-value">{{.TotalRows}}</div>
+        </div>
+        <div class="card success">
+          <div class="card-label">{{t "report.html.common.events"}}</div>
+          <div class="card-value">{{.TotalEvents}}</div>
+        </div>
+        <div class="card warn">
+          <div class="card-label">{{t "report.html.common.timeRange"}}</div>
+          {{if .StartTime}}
+          <div class="card-value" style="font-size:13px;margin-top:4px">{{.StartTime}}</div>
+          <div class="card-sub">→ {{.EndTime}}</div>
+          <div class="card-sub">{{t "report.html.common.duration"}}: {{.Duration}}</div>
+          {{else}}
+          <div class="card-value" style="font-size:16px;color:var(--muted)">{{t "report.html.common.notAvailable"}}</div>
+          {{end}}
+        </div>
+      </div>
     </div>
-    <div class="card accent">
-      <div class="card-label">{{t "report.html.common.affectedRows"}}</div>
-      <div class="card-value">{{.TotalRows}}</div>
-    </div>
-    <div class="card success">
-      <div class="card-label">{{t "report.html.common.events"}}</div>
-      <div class="card-value">{{.TotalEvents}}</div>
-    </div>
-    <div class="card warn">
-      <div class="card-label">{{t "report.html.common.timeRange"}}</div>
-      {{if .StartTime}}
-      <div class="card-value" style="font-size:13px;margin-top:4px">{{.StartTime}}</div>
-      <div class="card-sub">→ {{.EndTime}}</div>
-      <div class="card-sub">{{t "report.html.common.duration"}}: {{.Duration}}</div>
-      {{else}}
-      <div class="card-value" style="font-size:16px;color:var(--muted)">{{t "report.html.common.notAvailable"}}</div>
-      {{end}}
-    </div>
-  </div>
+  </section>
 
-  <!-- Charts -->
-  <div class="section">
-    <div class="section-header"><span class="dot"></span>{{t "report.html.analyze.activityCharts"}}</div>
+  <!-- Timeline -->
+  <section class="section" id="timeline">
+    <div class="section-header"><span class="dot"></span>{{t "report.html.analyze.timeline"}}</div>
     <div class="section-body">
+      <div class="chart-legend-note" style="padding:16px 16px 0;color:var(--muted);font-size:12px">{{t "report.html.analyze.activityCharts"}}</div>
       <div class="charts-grid">
+        <div class="chart-panel chart-panel-large">
+          <div class="chart-title">{{t "report.html.analyze.avgTPSPerMinute"}}</div>
+          <div class="chart-box chart-large" id="chart-tps"></div>
+        </div>
         <div class="chart-panel chart-panel-wide">
           <div class="chart-title">{{t "report.html.analyze.rowsPerMinute"}}</div>
           <div class="chart-box" id="chart-timeline"></div>
@@ -537,12 +551,13 @@ const htmlReportTemplate = `<!DOCTYPE html>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 
   <!-- Top Tables -->
-  <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.topTables"}}</div>
+  <section class="section" id="hotspots">
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.hotspots"}}</div>
     <div class="section-body">
+      <div class="diagnostic-title" style="padding:16px 16px 0">{{t "report.html.analyze.topTables"}}</div>
       {{if .Tables}}
       <table>
         <thead>
@@ -591,8 +606,25 @@ const htmlReportTemplate = `<!DOCTYPE html>
       {{else}}
       <div class="no-alerts"><span>{{t "report.html.analyze.noTableData"}}</span></div>
       {{end}}
+      {{if .HasHotIntervals}}
+      <div class="diagnostic-list">
+        <div class="diagnostic-title">{{t "report.html.analyze.hotIntervals"}}</div>
+        {{range .HotIntervals}}
+        <div class="diagnostic-item">
+          <div class="diagnostic-head">
+            <div class="diagnostic-title">{{.Timestamp}}</div>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+            {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
     </div>
-  </div>
+  </section>
 
   <!-- Alerts -->
   <div class="section">
@@ -614,10 +646,10 @@ const htmlReportTemplate = `<!DOCTYPE html>
       </div>
       {{end}}
     </div>
-  </div>
+  </section>
 
   {{if .HasDDLEvents}}
-  <div class="section">
+  <section class="section" id="ddl-timeline">
     <div class="section-header"><span class="dot" style="background:var(--warn)"></span>{{t "report.html.analyze.ddlTimeline"}}</div>
     <div class="section-body">
       <div class="diagnostic-list">
@@ -635,24 +667,27 @@ const htmlReportTemplate = `<!DOCTYPE html>
         {{end}}
       </div>
     </div>
-  </div>
+  </section>
   {{end}}
 
-  {{if .HasLargestTxns}}
-  <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.largestTransactions"}}</div>
+  <!-- Transaction Evidence -->
+  {{if or .HasLargestTxns .HasLongestTxns .HasWidestTxns}}
+  <section class="section" id="transaction-evidence">
+    <div class="section-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.transactionEvidence"}}</div>
     <div class="section-body">
       <div class="diagnostic-list">
+        {{if .HasLargestTxns}}
+        <div class="diagnostic-title">Top {{.TopN}} {{t "report.html.analyze.largestTransactionsByRows"}}</div>
         {{range .LargestTransactions}}
         <div class="diagnostic-item">
           <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}}</div>
-            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
+            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.largestTag"}}</span></div>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
           </div>
           <div class="diagnostic-body">
+            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
             <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
             {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Location}}<div class="diagnostic-meta">{{.Location}}</div>{{end}}
             {{if .Tables}}
             <div class="diagnostic-tables">
               {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
@@ -661,26 +696,19 @@ const htmlReportTemplate = `<!DOCTYPE html>
           </div>
         </div>
         {{end}}
-      </div>
-    </div>
-  </div>
-  {{end}}
-
-  {{if .HasLongestTxns}}
-  <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.longestTransactions"}}</div>
-    <div class="section-body">
-      <div class="diagnostic-list">
+        {{end}}
+        {{if .HasLongestTxns}}
+        <div class="diagnostic-title">Top {{.TopN}} {{t "report.html.analyze.longestTransactionsByDuration"}}</div>
         {{range .LongestTransactions}}
         <div class="diagnostic-item">
           <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}}</div>
-            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-anomaly" style="font-size:10px">{{t "report.html.analyze.longestTag"}}</span></div>
+            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
           </div>
           <div class="diagnostic-body">
+            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
             <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
             {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Location}}<div class="diagnostic-meta">{{.Location}}</div>{{end}}
             {{if .Tables}}
             <div class="diagnostic-tables">
               {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
@@ -689,37 +717,38 @@ const htmlReportTemplate = `<!DOCTYPE html>
           </div>
         </div>
         {{end}}
-      </div>
-    </div>
-  </div>
-  {{end}}
-
-  {{if .HasHotIntervals}}
-  <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--danger)"></span>{{t "report.html.analyze.hotIntervals"}}</div>
-    <div class="section-body">
-      <div class="diagnostic-list">
-        {{range .HotIntervals}}
+        {{end}}
+        {{if .HasWidestTxns}}
+        <div class="diagnostic-title">Top {{.TopN}} {{t "report.html.analyze.widestTransactionsByTouchedTables"}}</div>
+        {{range .WidestTransactions}}
         <div class="diagnostic-item">
           <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.Timestamp}}</div>
-            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.widestTag"}}</span></div>
+            <div class="diagnostic-meta">{{len .Tables}} {{t "report.html.analyze.touchedTables"}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
           </div>
           <div class="diagnostic-body">
+            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
             <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
+            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+            {{if .Tables}}
+            <div class="diagnostic-tables">
+              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+            </div>
+            {{end}}
           </div>
         </div>
         {{end}}
+        {{end}}
       </div>
     </div>
-  </div>
+  </section>
   {{end}}
 
-  <!-- File Coverage -->
-  <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--success)"></span>{{t "report.html.analyze.fileCoverage"}}</div>
+  <!-- Analyzed Files -->
+  <section class="section" id="analyzed-files">
+    <div class="section-header"><span class="dot" style="background:var(--success)"></span>{{t "report.html.analyze.analyzedFiles"}}</div>
     <div class="section-body">
+      <div class="no-alerts"><span>{{t "report.html.analyze.analyzedFilesNote"}}</span></div>
       <div class="diagnostic-list" id="file-coverage">
         {{if .FileCoverage.Selected}}
         <div class="diagnostic-item">
@@ -733,6 +762,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
                 <tr>
                   <th>{{t "report.html.analyze.binlogFile"}}</th>
                   <th class="num">{{t "report.html.analyze.fileSize"}}</th>
+                  <th>{{t "report.html.analyze.selectionReason"}}</th>
                   <th>{{t "report.html.analyze.timeRange"}}</th>
                 </tr>
               </thead>
@@ -741,6 +771,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
                 <tr>
                   <td class="name">{{.BinlogPath}}</td>
                   <td class="num">{{.Size}}</td>
+                  <td class="name">{{.Reason}}</td>
                   <td class="name">{{if .FirstEventAt}}{{.FirstEventAt}} → {{.LastEventAt}}{{end}}</td>
                 </tr>
                 {{end}}
@@ -782,7 +813,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
         {{end}}{{end}}
       </div>
     </div>
-  </div>
+  </section>
 
   {{if .HasFileSegments}}
   <!-- Binlog Throughput -->
@@ -799,81 +830,10 @@ const htmlReportTemplate = `<!DOCTYPE html>
   </div>
   {{end}}
 
-  <!-- Transaction Evidence -->
-  {{if or .HasLargestTxns .HasLongestTxns .HasWidestTxns}}
-  <div class="section" id="transaction-evidence">
-    <div class="section-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.transactionEvidence"}}</div>
-    <div class="section-body">
-      <div class="diagnostic-list">
-        {{if .HasLargestTxns}}
-        {{range .LargestTransactions}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.largestTag"}}</span></div>
-            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
-          </div>
-          <div class="diagnostic-body">
-            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
-            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Tables}}
-            <div class="diagnostic-tables">
-              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
-            </div>
-            {{end}}
-          </div>
-        </div>
-        {{end}}
-        {{end}}
-        {{if .HasLongestTxns}}
-        {{range .LongestTransactions}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-anomaly" style="font-size:10px">{{t "report.html.analyze.longestTag"}}</span></div>
-            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
-          </div>
-          <div class="diagnostic-body">
-            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
-            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Tables}}
-            <div class="diagnostic-tables">
-              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
-            </div>
-            {{end}}
-          </div>
-        </div>
-        {{end}}
-        {{end}}
-        {{if .HasWidestTxns}}
-        {{range .WidestTransactions}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.widestTag"}}</span></div>
-            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
-          </div>
-          <div class="diagnostic-body">
-            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
-            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Tables}}
-            <div class="diagnostic-tables">
-              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
-            </div>
-            {{end}}
-          </div>
-        </div>
-        {{end}}
-        {{end}}
-      </div>
-    </div>
-  </div>
-  {{end}}
-
   <!-- Pattern Drilldowns -->
   {{if .HasDrilldowns}}
-  <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.patternDrilldowns"}}</div>
+  <section class="section" id="write-shape-patterns">
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.writeShapePatterns"}}</div>
     <div class="section-body">
       <div class="alert-list">
         {{range .Drilldowns}}
@@ -888,9 +848,9 @@ const htmlReportTemplate = `<!DOCTYPE html>
           <div class="drilldown-body">
             <p class="drilldown-why">{{.WhySelected}}</p>
             <div class="drilldown-metrics">
-              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfRowsTitle"}}">{{t "report.html.analyze.shareOfRowsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfRows 100)}}%</span>
-              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfTxnsTitle"}}">{{t "report.html.analyze.shareOfTxnsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfTxns 100)}}%</span>
-              <span class="drilldown-metric">{{t "report.html.analyze.avgRowsPerTxn"}}: {{printf "%.0f" .AvgRowsPerTxn}}</span>
+              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfRowsTitle"}}" aria-label="{{t "report.html.analyze.shareOfRowsTitle"}}">{{t "report.html.analyze.shareOfRowsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfRows 100)}}%</span>
+              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfTxnsTitle"}}" aria-label="{{t "report.html.analyze.shareOfTxnsTitle"}}">{{t "report.html.analyze.shareOfTxnsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfTxns 100)}}%</span>
+              <span class="drilldown-metric" title="{{t "report.html.analyze.avgRowsPerTxnTitle"}}" aria-label="{{t "report.html.analyze.avgRowsPerTxnTitle"}}">{{t "report.html.analyze.avgRowsPerTxn"}}: {{printf "%.0f" .AvgRowsPerTxn}}</span>
             </div>
             {{if .BusiestMinutes}}
             <div class="drilldown-subsection">
@@ -913,7 +873,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
         {{end}}
       </div>
     </div>
-  </div>
+  </section>
   {{end}}
 
   <div class="footer">{{t "report.html.common.generatedBy"}} &middot; {{.GeneratedAt}}</div>
@@ -922,6 +882,8 @@ const htmlReportTemplate = `<!DOCTYPE html>
 <script>{{.EChartsJS}}</script>
 <script>
 (function() {
+  var tpsLabels   = {{.TPSLabels}};
+  var tpsValues   = {{.TPSValues}};
   var minuteLabels = {{.MinuteLabels}};
   var minuteRows   = {{.MinuteRows}};
   var minuteTxns   = {{.MinuteTxns}};
@@ -930,7 +892,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
   var opsPie       = {{.OpsPie}};
   window.tableActivitySeries = {{.TableActivitySeries}};
 
-  var c1, c2, c3;
+  var c0, c1, c2, c3;
   var tableCharts = {};
 
   function cssVar(name) {
@@ -964,9 +926,39 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var text    = cssVar('--text');
     var bg      = cssVar('--bg');
 
+    if (c0) c0.dispose();
     if (c1) c1.dispose();
     if (c2) c2.dispose();
     if (c3) c3.dispose();
+
+    c0 = echarts.init(document.getElementById('chart-tps'), null, {renderer: 'svg'});
+    c0.setOption({
+      ...t,
+      legend: { top: 0, textStyle: { color: muted, fontSize: 10 } },
+      grid: { top: 30, bottom: 30, left: 50, right: 16 },
+      xAxis: {
+        type: 'category',
+        data: tpsLabels,
+        axisLine: { lineStyle: { color: border } },
+        axisLabel: { color: muted, fontSize: 10 },
+        splitLine: { show: false }
+      },
+      yAxis: {
+        type: 'value',
+        axisLine: { show: false },
+        axisLabel: { color: muted, fontSize: 10 },
+        splitLine: { lineStyle: { color: border, type: 'dashed' } }
+      },
+      tooltip: { ...t.tooltip, trigger: 'axis' },
+      series: [{
+        name: '{{t "report.html.analyze.avgTPSPerMinute"}}',
+        type: 'line',
+        data: tpsValues,
+        smooth: 0.25,
+        symbol: 'none',
+        lineStyle: { color: accent, width: 2 }
+      }]
+    });
 
     c1 = echarts.init(document.getElementById('chart-timeline'), null, {renderer: 'svg'});
     c1.setOption({
@@ -1222,13 +1214,14 @@ const htmlReportTemplate = `<!DOCTYPE html>
   renderThroughputChart();
 
   // Init
-  var saved = localStorage.getItem('bvtheme') || 'nebula';
-  setTheme(saved);
+          var saved = localStorage.getItem('bvtheme') || 'nebula';
+          setTheme(saved);
 
-  window.addEventListener('resize', function() {
-    c1 && c1.resize();
-    c2 && c2.resize();
-    c3 && c3.resize();
+          window.addEventListener('resize', function() {
+            c0 && c0.resize();
+            c1 && c1.resize();
+            c2 && c2.resize();
+            c3 && c3.resize();
     Object.keys(tableCharts).forEach(function(key) {
       tableCharts[key].activity.resize();
       tableCharts[key].ops.resize();

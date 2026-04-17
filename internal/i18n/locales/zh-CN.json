@@ -463,9 +463,25 @@
     "description": "Analyze HTML 页头标题",
     "other": "分析报告"
   },
+  "report.html.analyze.executiveSummary": {
+    "description": "Analyze 执行摘要章节标题",
+    "other": "执行摘要"
+  },
   "report.html.analyze.activityCharts": {
     "description": "Analyze 活动图表章节标题",
     "other": "活动图表"
+  },
+  "report.html.analyze.timeline": {
+    "description": "Analyze 时间线章节标题",
+    "other": "时间线"
+  },
+  "report.html.analyze.hotspots": {
+    "description": "Analyze 热点章节标题",
+    "other": "热点"
+  },
+  "report.html.analyze.avgTPSPerMinute": {
+    "description": "Analyze 平均 TPS/分钟 图标题",
+    "other": "平均 TPS/分钟"
   },
   "report.html.analyze.rowsPerMinute": {
     "description": "Analyze 每分钟行数图标题",
@@ -491,9 +507,13 @@
     "description": "Analyze 模式钻取章节标题",
     "other": "模式钻取"
   },
+  "report.html.analyze.writeShapePatterns": {
+    "description": "Analyze 写入模式章节标题",
+    "other": "写入模式"
+  },
   "report.html.analyze.shareOfRowsTitle": {
     "description": "Analyze 模式行占比提示",
-    "other": "该模式在全部 binlog 行数中的占比"
+    "other": "该模式在分析窗口总行数中的占比"
   },
   "report.html.analyze.shareOfRowsLabel": {
     "description": "Analyze 模式行占比标签",
@@ -501,7 +521,7 @@
   },
   "report.html.analyze.shareOfTxnsTitle": {
     "description": "Analyze 模式事务占比提示",
-    "other": "该模式在全部事务中的占比"
+    "other": "该模式在分析窗口总事务数中的占比"
   },
   "report.html.analyze.shareOfTxnsLabel": {
     "description": "Analyze 模式事务占比标签",
@@ -510,6 +530,10 @@
   "report.html.analyze.avgRowsPerTxn": {
     "description": "Analyze 平均每事务行数标签",
     "other": "平均每事务行数"
+  },
+  "report.html.analyze.avgRowsPerTxnTitle": {
+    "description": "Analyze 平均每事务行数提示",
+    "other": "该模式的平均每事务行数"
   },
   "report.html.analyze.workloadPeakMinutesTitle": {
     "description": "Analyze 峰值分钟提示",
@@ -915,6 +939,14 @@
     "description": "文件覆盖范围章节标题",
     "other": "文件覆盖范围"
   },
+  "report.html.analyze.analyzedFiles": {
+    "description": "已分析文件章节标题",
+    "other": "已分析文件"
+  },
+  "report.html.analyze.analyzedFilesNote": {
+    "description": "已分析文件说明",
+    "other": "文件系统 mtime 仅用于粗筛，之后仍会探测事件时间戳。"
+  },
   "report.html.analyze.selectedFiles": {
     "description": "已选文件标签",
     "other": "已选文件"
@@ -939,6 +971,10 @@
     "description": "跳过原因列标题",
     "other": "原因"
   },
+  "report.html.analyze.selectionReason": {
+    "description": "选择原因列标题",
+    "other": "选择原因"
+  },
   "report.html.analyze.noFileCoverage": {
     "description": "无文件覆盖数据提示",
     "other": "没有可用的文件覆盖数据。"
@@ -958,6 +994,22 @@
   "report.html.analyze.transactionEvidence": {
     "description": "事务证据章节标题",
     "other": "事务证据"
+  },
+  "report.html.analyze.largestTransactionsByRows": {
+    "description": "按行数的最大事务排行标题",
+    "other": "按行数最大的事务"
+  },
+  "report.html.analyze.longestTransactionsByDuration": {
+    "description": "按时长的最长事务排行标题",
+    "other": "按时长最长的事务"
+  },
+  "report.html.analyze.widestTransactionsByTouchedTables": {
+    "description": "按触及表数量的最宽事务排行标题",
+    "other": "按触及表数量最宽的事务"
+  },
+  "report.html.analyze.touchedTables": {
+    "description": "触及表数量标签",
+    "other": "个触及表"
   },
   "report.html.analyze.binlogSpan": {
     "description": "Binlog 跨度标签",
