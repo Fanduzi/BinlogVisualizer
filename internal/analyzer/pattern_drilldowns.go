@@ -2,6 +2,7 @@
 // input: finalized Patterns, Minutes, Transactions, and Alerts from the analysis pipeline.
 // output: at most 2 PatternDrilldown entries with strictly bounded nested summaries.
 // pos: post-pattern selection layer used during analyze Finalize, downstream of BuildPatterns.
+// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
@@ -301,25 +302,19 @@ func selectPeakMinutes(minutes []model.MinuteBucket, n int) []model.PatternPeakM
 // selectRepresentativeTxns returns up to N transactions sorted by TotalRows descending.
 // patternKey is used for future pattern-txn matching; currently selects from all txns.
 func selectRepresentativeTxns(txns []model.Transaction, _ string, n int) []model.PatternRepresentativeTxn {
-	if len(txns) == 0 {
+	if len(txns) == 0 || n <= 0 {
 		return nil
 	}
 
-	sorted := make([]model.Transaction, len(txns))
-	copy(sorted, txns)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].TotalRows != sorted[j].TotalRows {
-			return sorted[i].TotalRows > sorted[j].TotalRows
+	top := topTransactions(txns, n, func(left, right model.Transaction) bool {
+		if left.TotalRows != right.TotalRows {
+			return left.TotalRows > right.TotalRows
 		}
-		return sorted[i].TxnKey < sorted[j].TxnKey
+		return left.TxnKey < right.TxnKey
 	})
 
-	if len(sorted) > n {
-		sorted = sorted[:n]
-	}
-
-	result := make([]model.PatternRepresentativeTxn, len(sorted))
-	for i, txn := range sorted {
+	result := make([]model.PatternRepresentativeTxn, len(top))
+	for i, txn := range top {
 		result[i] = model.PatternRepresentativeTxn{
 			TxnKey:       txn.TxnKey,
 			TotalRows:    txn.TotalRows,
