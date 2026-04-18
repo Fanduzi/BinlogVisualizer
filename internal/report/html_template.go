@@ -677,7 +677,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     <div class="section-body">
       <div class="diagnostic-list">
         {{if .HasLargestTxns}}
-        <div class="diagnostic-title">Top {{.TopN}} {{t "report.html.analyze.largestTransactionsByRows"}}</div>
+        <div class="diagnostic-title">{{t "report.html.analyze.largestTransactionsByRows"}}</div>
         {{range .LargestTransactions}}
         <div class="diagnostic-item">
           <div class="diagnostic-head">
@@ -698,7 +698,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
         {{end}}
         {{end}}
         {{if .HasLongestTxns}}
-        <div class="diagnostic-title">Top {{.TopN}} {{t "report.html.analyze.longestTransactionsByDuration"}}</div>
+        <div class="diagnostic-title">{{t "report.html.analyze.longestTransactionsByDuration"}}</div>
         {{range .LongestTransactions}}
         <div class="diagnostic-item">
           <div class="diagnostic-head">
@@ -719,7 +719,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
         {{end}}
         {{end}}
         {{if .HasWidestTxns}}
-        <div class="diagnostic-title">Top {{.TopN}} {{t "report.html.analyze.widestTransactionsByTouchedTables"}}</div>
+        <div class="diagnostic-title">{{t "report.html.analyze.widestTransactionsByTouchedTables"}}</div>
         {{range .WidestTransactions}}
         <div class="diagnostic-item">
           <div class="diagnostic-head">
@@ -745,6 +745,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
   {{end}}
 
   <!-- Analyzed Files -->
+  {{if .HasFileCoverage}}
   <section class="section" id="analyzed-files">
     <div class="section-header"><span class="dot" style="background:var(--success)"></span>{{t "report.html.analyze.analyzedFiles"}}</div>
     <div class="section-body">
@@ -814,6 +815,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       </div>
     </div>
   </section>
+  {{end}}
 
   {{if .HasFileSegments}}
   <!-- Binlog Throughput -->

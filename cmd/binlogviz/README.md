@@ -58,5 +58,6 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - `--top N` sets the default ranked output size for productized text and HTML report sections.
 - `--details`, `--show-minutes`, and `--show-patterns` expand the default concise text report without changing analyzer semantics.
 - Analyze performance coverage includes text-vs-HTML rendering, corpus-backed DBA incident workloads, and a CI-safe near-1GB synthetic mix benchmark; real 1GB binlog validation remains a manual DBA-environment gate.
+- `cmd/binlogviz/testdata/sql-corpus` now carries richer DBA-facing incident scenarios, including runner-up large/long/wide transactions so product tests can catch over-crowded transaction-evidence rendering instead of only toy single-winner cases.
 - The production analyze command uses a destination-reuse normalization fast path in its streaming handler so the main CLI path no longer allocates one `*NormalizedEvent` per kept event.
 - Multi-file analyze now overlaps parser work across files with bounded per-file buffers, but still feeds normalized events to the analyzer in input order so cross-file transactions remain valid.

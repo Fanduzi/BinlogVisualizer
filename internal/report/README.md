@@ -42,4 +42,5 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Text rendering is intentionally kept on a fast path: it must not build HTML chart data, read embedded ECharts assets, or render pattern drilldowns unless detail options request them.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
-- The HTML renderer now follows a DBA reading path: executive summary, timeline, hotspots, DDL timeline, transaction evidence, analyzed files, then write-shape patterns.
+- The HTML renderer now follows a DBA reading path: executive summary, timeline, hotspots, DDL timeline, transaction evidence, optional analyzed files/file coverage, then write-shape patterns.
+- Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions instead of rendering a crowded top-N list.

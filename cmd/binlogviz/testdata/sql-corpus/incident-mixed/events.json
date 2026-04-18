@@ -191,5 +191,140 @@
     "binlog_bytes": 159,
     "event_type": "ROWS_QUERY_EVENT",
     "query_sql": "DROP TABLE shop.orders_staging"
+  },
+  {
+    "timestamp": "2026-04-17T12:22:00Z",
+    "binlog_path": "mysql-bin.000104",
+    "position_start": 100,
+    "position_end": 160,
+    "binlog_bytes": 60,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T12:22:01Z",
+    "binlog_path": "mysql-bin.000104",
+    "position_start": 161,
+    "position_end": 340,
+    "binlog_bytes": 179,
+    "event_type": "ROWS_QUERY_EVENT",
+    "query_sql": "INSERT INTO shop.refunds SELECT * FROM shop.refunds_stage WHERE batch_id = 77"
+  },
+  {
+    "timestamp": "2026-04-17T12:22:02Z",
+    "binlog_path": "mysql-bin.000104",
+    "position_start": 341,
+    "position_end": 560,
+    "binlog_bytes": 219,
+    "event_type": "WRITE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "refunds",
+    "row_count": 4200
+  },
+  {
+    "timestamp": "2026-04-17T12:22:04Z",
+    "binlog_path": "mysql-bin.000104",
+    "position_start": 561,
+    "position_end": 620,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T12:23:00Z",
+    "binlog_path": "mysql-bin.000105",
+    "position_start": 100,
+    "position_end": 160,
+    "binlog_bytes": 60,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T12:23:05Z",
+    "binlog_path": "mysql-bin.000105",
+    "position_start": 161,
+    "position_end": 280,
+    "binlog_bytes": 119,
+    "event_type": "ROWS_QUERY_EVENT",
+    "query_sql": "UPDATE shop.settlements SET state = 'closing' WHERE tenant_id = 9"
+  },
+  {
+    "timestamp": "2026-04-17T12:23:10Z",
+    "binlog_path": "mysql-bin.000105",
+    "position_start": 281,
+    "position_end": 360,
+    "binlog_bytes": 79,
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "settlements",
+    "row_count": 18
+  },
+  {
+    "timestamp": "2026-04-17T12:23:42Z",
+    "binlog_path": "mysql-bin.000105",
+    "position_start": 361,
+    "position_end": 420,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
+  },
+  {
+    "timestamp": "2026-04-17T12:24:00Z",
+    "binlog_path": "mysql-bin.000106",
+    "position_start": 100,
+    "position_end": 160,
+    "binlog_bytes": 60,
+    "event_type": "QUERY_EVENT",
+    "query": "BEGIN"
+  },
+  {
+    "timestamp": "2026-04-17T12:24:01Z",
+    "binlog_path": "mysql-bin.000106",
+    "position_start": 161,
+    "position_end": 240,
+    "binlog_bytes": 79,
+    "event_type": "WRITE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "orders",
+    "row_count": 22
+  },
+  {
+    "timestamp": "2026-04-17T12:24:02Z",
+    "binlog_path": "mysql-bin.000106",
+    "position_start": 241,
+    "position_end": 320,
+    "binlog_bytes": 79,
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "shipments",
+    "row_count": 19
+  },
+  {
+    "timestamp": "2026-04-17T12:24:03Z",
+    "binlog_path": "mysql-bin.000107",
+    "position_start": 100,
+    "position_end": 180,
+    "binlog_bytes": 80,
+    "event_type": "UPDATE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "inventory",
+    "row_count": 12
+  },
+  {
+    "timestamp": "2026-04-17T12:24:04Z",
+    "binlog_path": "mysql-bin.000107",
+    "position_start": 181,
+    "position_end": 260,
+    "binlog_bytes": 79,
+    "event_type": "DELETE_ROWS_EVENT",
+    "schema": "shop",
+    "table": "audit_logs",
+    "row_count": 8
+  },
+  {
+    "timestamp": "2026-04-17T12:24:05Z",
+    "binlog_path": "mysql-bin.000107",
+    "position_start": 261,
+    "position_end": 320,
+    "binlog_bytes": 59,
+    "event_type": "XID_EVENT"
   }
 ]

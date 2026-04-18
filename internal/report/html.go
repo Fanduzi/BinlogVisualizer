@@ -85,6 +85,7 @@ type htmlReportData struct {
 	HotIntervals        []htmlHotInterval
 	HasHotIntervals     bool
 	FileCoverage        htmlFileCoverageData
+	HasFileCoverage     bool
 	FileSegments        []htmlFileSegment
 	HasFileSegments     bool
 	ThroughputLabels    template.JS
@@ -293,12 +294,12 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	}
 	d.HasDDLEvents = len(d.DDLEvents) > 0
 
-	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, opts.TopN) {
+	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, 1) {
 		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn))
 	}
 	d.HasLargestTxns = len(d.LargestTransactions) > 0
 
-	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, opts.TopN) {
+	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, 1) {
 		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn))
 	}
 	d.HasLongestTxns = len(d.LongestTransactions) > 0
@@ -316,7 +317,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasHotIntervals = len(d.HotIntervals) > 0
 
 	// Widest transactions
-	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, opts.TopN) {
+	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, 1) {
 		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn))
 	}
 	d.HasWidestTxns = len(d.WidestTransactions) > 0
@@ -338,6 +339,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			Size:       formatFileSize(item.Size),
 		})
 	}
+	d.HasFileCoverage = len(d.FileCoverage.Selected) > 0 || len(d.FileCoverage.Skipped) > 0
 
 	// File segments and throughput chart data
 	for _, seg := range result.Diagnostics.FileSegments {
