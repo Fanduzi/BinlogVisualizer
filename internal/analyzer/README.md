@@ -12,7 +12,8 @@
 | `ddl.go` | Extracts DDL timeline metadata and fast-filters non-DDL ROWS_QUERY SQL before full tokenization. |
 | `alerts.go` | Builds large transaction alerts from completed transactions. |
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
-| `diagnostics.go` | Builds DBA-oriented findings, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments with indexed evidence lookups during final finding assembly. |
+| `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments during final finding assembly. |
+| `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates with bounded top-N representative transaction selection using bounded insertion sort instead of full-slice copy. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window filtering, and benchmark coverage. |
 
 ## Interfaces

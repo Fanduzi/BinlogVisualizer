@@ -373,3 +373,94 @@ func TestSelectWidestTransactionsReturnsNilForEmpty(t *testing.T) {
 		t.Fatalf("expected nil for empty input, got %v", widest)
 	}
 }
+
+func TestBuildFindingsFromAlertsSparseAlertsOnlyIndexesReferencedTxns(t *testing.T) {
+	txns := make([]model.Transaction, 1000)
+	for i := range txns {
+		txns[i] = model.Transaction{
+			TxnKey:      "txn-" + strconv.Itoa(i),
+			TotalRows:   i + 1,
+			EventCount:  i + 1,
+			Duration:    time.Duration(i+1) * time.Millisecond,
+			BinlogBytes: int64((i + 1) * 100),
+			Tables:      map[string]int{"shop.orders": i + 1},
+		}
+	}
+	minute := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	minutes := []model.MinuteBucket{{Minute: minute, TotalRows: 500, TxnCount: 10, EventCount: 50, BinlogBytes: 4096}}
+
+	alerts := []model.Alert{
+		{Type: "large_transaction", Severity: "warning", Message: "large txn", TxnKey: "txn-999"},
+		{Type: "large_transaction", Severity: "warning", Message: "large txn", TxnKey: "txn-0"},
+		{Type: "spike", Severity: "critical", Message: "write spike", Minute: minute},
+	}
+
+	findings := BuildFindingsFromAlerts(alerts, minutes, txns, nil)
+	if len(findings) != 3 {
+		t.Fatalf("expected 3 findings, got %d", len(findings))
+	}
+
+	if findings[0].TxnKey != "txn-999" {
+		t.Fatalf("expected first finding txn-999, got %s", findings[0].TxnKey)
+	}
+	if len(findings[0].EvidenceRefs) == 0 {
+		t.Fatalf("expected evidence on txn-999 finding")
+	}
+	wantEvidence := []string{
+		"rows=1000",
+		"events=1000",
+		"duration_ms=1000",
+		"binlog_bytes=100000",
+	}
+	for i, w := range wantEvidence {
+		if findings[0].EvidenceRefs[i] != w {
+			t.Fatalf("evidence %d: expected %q, got %q", i, w, findings[0].EvidenceRefs[i])
+		}
+	}
+
+	if findings[1].TxnKey != "txn-0" {
+		t.Fatalf("expected second finding txn-0, got %s", findings[1].TxnKey)
+	}
+	wantEvidence0 := []string{
+		"rows=1",
+		"events=1",
+		"duration_ms=1",
+		"binlog_bytes=100",
+	}
+	for i, w := range wantEvidence0 {
+		if findings[1].EvidenceRefs[i] != w {
+			t.Fatalf("evidence %d: expected %q, got %q", i, w, findings[1].EvidenceRefs[i])
+		}
+	}
+
+	if findings[2].Kind != "spike" {
+		t.Fatalf("expected third finding to be spike, got %s", findings[2].Kind)
+	}
+	if len(findings[2].EvidenceRefs) == 0 {
+		t.Fatalf("expected evidence on spike finding")
+	}
+}
+
+func BenchmarkSelectRepresentativeTxnsLargeInput(b *testing.B) {
+	txns := make([]model.Transaction, 250000)
+	for i := range txns {
+		txns[i] = model.Transaction{
+			TxnKey:      "txn-" + strconv.Itoa(i),
+			TotalRows:   1000 + i%100,
+			EventCount:  10 + i%5,
+			Duration:    time.Duration(i%120) * time.Second,
+			BinlogBytes: int64(4096 + i),
+			Tables: map[string]int{
+				"shop.orders": 100 + i%50,
+				"shop.users":  10 + i%9,
+			},
+		}
+	}
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		result := selectRepresentativeTxns(txns, "", 2)
+		if len(result) != 2 {
+			b.Fatalf("expected 2 representative txns, got %d", len(result))
+		}
+	}
+}

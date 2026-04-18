@@ -50,7 +50,7 @@ func BuildFindingsFromAlerts(alerts []model.Alert, minutes []model.MinuteBucket,
 		return nil
 	}
 
-	txnByKey := indexTransactionsByKey(txns)
+	txnByKey := indexAlertReferencedTransactions(alerts, txns)
 	minuteByTime := indexMinutesByTime(minutes)
 	ddlByMinute := indexDDLEventsByMinute(ddlEvents)
 
@@ -79,14 +79,25 @@ func BuildFindingsFromAlerts(alerts []model.Alert, minutes []model.MinuteBucket,
 	return findings
 }
 
-func indexTransactionsByKey(transactions []model.Transaction) map[string]model.Transaction {
-	if len(transactions) == 0 {
+func indexAlertReferencedTransactions(alerts []model.Alert, txns []model.Transaction) map[string]model.Transaction {
+	wanted := make(map[string]struct{})
+	for _, a := range alerts {
+		if a.TxnKey != "" {
+			wanted[a.TxnKey] = struct{}{}
+		}
+	}
+	if len(wanted) == 0 || len(txns) == 0 {
 		return nil
 	}
-	out := make(map[string]model.Transaction, len(transactions))
-	for _, txn := range transactions {
+	out := make(map[string]model.Transaction, len(wanted))
+	for _, txn := range txns {
 		if txn.TxnKey != "" {
-			out[txn.TxnKey] = txn
+			if _, ok := wanted[txn.TxnKey]; ok {
+				out[txn.TxnKey] = txn
+				if len(out) == len(wanted) {
+					break
+				}
+			}
 		}
 	}
 	return out
