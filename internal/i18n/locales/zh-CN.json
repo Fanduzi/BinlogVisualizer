@@ -267,9 +267,17 @@
     "description": "诊断文本关键发现章节标题",
     "other": "关键发现"
   },
+  "report.text.activity": {
+    "description": "诊断文本活动概览迷你曲线章节标题",
+    "other": "活动概览"
+  },
   "report.text.topTables": {
     "description": "诊断文本热点表章节标题",
     "other": "热点表"
+  },
+  "report.text.topTransactions": {
+    "description": "诊断文本重点事务章节标题",
+    "other": "重点事务"
   },
   "report.text.nextActions": {
     "description": "诊断文本下一步建议章节标题",
@@ -291,6 +299,14 @@
     "description": "文本报告峰值每分钟行数标签",
     "other": "峰值每分钟行数"
   },
+  "report.text.tpsShort": {
+    "description": "文本报告活动概览中的 TPS 短标签",
+    "other": "TPS"
+  },
+  "report.text.rowsPerMinuteShort": {
+    "description": "文本报告活动概览中的每分钟行数短标签",
+    "other": "每分钟行数"
+  },
   "report.text.openHTML": {
     "description": "提示用户打开 HTML 报告的下一步建议",
     "other": "打开 HTML 报告查看分钟级图表和事务证据。"
@@ -307,9 +323,17 @@
     "description": "写入尖峰发现短标签",
     "other": "写入尖峰"
   },
+  "report.text.largestTransaction": {
+    "description": "最大事务发现短标签",
+    "other": "最大事务"
+  },
   "report.text.longestTransaction": {
     "description": "最长事务发现短标签",
     "other": "最长事务"
+  },
+  "report.text.widestTransaction": {
+    "description": "最宽事务发现短标签",
+    "other": "最宽事务"
   },
   "report.text.ddlDetected": {
     "description": "检测到 DDL 的发现短标签",

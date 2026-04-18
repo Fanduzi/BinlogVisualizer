@@ -165,3 +165,27 @@ func TestAnalyzeCorpusTextAndHTMLContracts(t *testing.T) {
 		}
 	}
 }
+
+func TestAnalyzeCorpusTextAndHTMLShareTopTableLimit(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	result := analyzeCorpus(t, "event-mix-burst")
+	textOut, err := report.RenderTextWithOptions(result, report.Options{TopN: 1})
+	if err != nil {
+		t.Fatalf("render text: %v", err)
+	}
+	htmlOut, err := report.RenderHTMLWithOptions(result, report.Options{TopN: 1})
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+
+	if strings.Count(textOut, "shop.") < 1 {
+		t.Fatalf("expected at least one rendered top table in text\n%s", textOut)
+	}
+	if strings.Contains(textOut, "shop.orders") && strings.Contains(textOut, "shop.audit_logs") {
+		t.Fatalf("expected text output top tables to respect TopN=1\n%s", textOut)
+	}
+	if strings.Count(htmlOut, `data-table-row="`) != 1 {
+		t.Fatalf("expected html top tables to respect TopN=1")
+	}
+}

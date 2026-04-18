@@ -267,9 +267,17 @@
     "description": "Diagnostic text top findings section header",
     "other": "Top Findings"
   },
+  "report.text.activity": {
+    "description": "Diagnostic text activity sparkline section header",
+    "other": "Activity"
+  },
   "report.text.topTables": {
     "description": "Diagnostic text top tables section header",
     "other": "Top Tables"
+  },
+  "report.text.topTransactions": {
+    "description": "Diagnostic text top transactions section header",
+    "other": "Top Transactions"
   },
   "report.text.nextActions": {
     "description": "Diagnostic text next actions section header",
@@ -291,6 +299,14 @@
     "description": "Peak rows per minute label in text report",
     "other": "Peak Rows/min"
   },
+  "report.text.tpsShort": {
+    "description": "Short TPS label in text report activity sparkline",
+    "other": "TPS"
+  },
+  "report.text.rowsPerMinuteShort": {
+    "description": "Short rows per minute label in text report activity sparkline",
+    "other": "Rows/min"
+  },
   "report.text.openHTML": {
     "description": "Next action telling users to open the HTML report",
     "other": "Open HTML for minute charts and transaction evidence."
@@ -307,9 +323,17 @@
     "description": "Short finding label for a write spike",
     "other": "Write spike"
   },
+  "report.text.largestTransaction": {
+    "description": "Short finding label for largest transaction",
+    "other": "Largest transaction"
+  },
   "report.text.longestTransaction": {
     "description": "Short finding label for longest transaction",
     "other": "Longest transaction"
+  },
+  "report.text.widestTransaction": {
+    "description": "Short finding label for widest transaction",
+    "other": "Widest transaction"
   },
   "report.text.ddlDetected": {
     "description": "Short finding label for detected DDL",
@@ -997,15 +1021,15 @@
   },
   "report.html.analyze.largestTransactionsByRows": {
     "description": "Ranked label for largest transactions",
-    "other": "Largest Transactions by Rows"
+    "other": "Largest Transaction by Rows"
   },
   "report.html.analyze.longestTransactionsByDuration": {
     "description": "Ranked label for longest transactions",
-    "other": "Longest Transactions by Duration"
+    "other": "Longest Transaction by Duration"
   },
   "report.html.analyze.widestTransactionsByTouchedTables": {
     "description": "Ranked label for widest transactions",
-    "other": "Widest Transactions by Touched Tables"
+    "other": "Widest Transaction by Touched Tables"
   },
   "report.html.analyze.touchedTables": {
     "description": "Touched tables metric label",

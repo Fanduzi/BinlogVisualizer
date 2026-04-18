@@ -28,7 +28,9 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 
 	renderDiagnosticSummary(&buf, result)
 	renderTopFindings(&buf, result, opts)
+	renderActivitySection(&buf, result)
 	renderTopTablesTable(&buf, result.Tables, opts.TopN)
+	renderTopTransactions(&buf, result, opts.TopN)
 	renderNextActions(&buf, result)
 
 	if opts.ShowMinutes {
@@ -48,9 +50,14 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.peakAvgTPS"), formatPeakSeries(result.Timeseries.TPSSeries)))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.peakRowsPerMinute"), formatPeakSeries(result.Timeseries.RowsSeries)))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.html.analyze.ddlTimeline"), len(result.Diagnostics.DDLEvents)))
+	buf.WriteString("\n")
+}
+
+func renderActivitySection(buf *strings.Builder, result model.AnalysisResult) {
+	buf.WriteString("=== " + i18n.T("report.text.activity") + " ===\n")
+	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.tpsShort")+":", formatSparkline(result.Timeseries.TPSSeries), formatPeakSeries(result.Timeseries.TPSSeries)))
+	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", formatSparkline(result.Timeseries.RowsSeries), formatPeakSeries(result.Timeseries.RowsSeries)))
 	buf.WriteString("\n")
 }
 
@@ -129,6 +136,34 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 		}
 		buf.WriteString(fmt.Sprintf("  %-2d %-28s %10d %8d %8d %6.1f%%\n",
 			i+1, name, table.TotalRows, table.TxnCount, table.EventCount, share))
+	}
+	buf.WriteString("\n")
+}
+
+func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, topN int) {
+	buf.WriteString("=== " + i18n.T("report.text.topTransactions") + " ===\n")
+
+	limit := minInt(1, topN)
+	lines := make([]string, 0, limit*3)
+	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, limit) {
+		lines = append(lines, fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
+			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatSuspiciousLocation(txn)))
+	}
+	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, limit) {
+		lines = append(lines, fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
+			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn)))
+	}
+	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, limit) {
+		lines = append(lines, fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
+			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn)))
+	}
+
+	if len(lines) == 0 {
+		buf.WriteString("  " + i18n.T("report.placeholder.noTransactions") + "\n\n")
+		return
+	}
+	for _, line := range lines {
+		buf.WriteString(line + "\n")
 	}
 	buf.WriteString("\n")
 }
@@ -239,6 +274,39 @@ func formatPeakSeries(points []model.TimeseriesPoint) string {
 		}
 	}
 	return fmt.Sprintf("%.1f at %s", peak.Value, peak.Minute.Format("2006-01-02 15:04"))
+}
+
+func formatSparkline(points []model.TimeseriesPoint) string {
+	if len(points) == 0 {
+		return i18n.T("time.notAvailable")
+	}
+	const blocks = "▁▂▃▄▅▆▇█"
+	minVal := points[0].Value
+	maxVal := points[0].Value
+	for _, point := range points[1:] {
+		if point.Value < minVal {
+			minVal = point.Value
+		}
+		if point.Value > maxVal {
+			maxVal = point.Value
+		}
+	}
+	if maxVal <= minVal {
+		return strings.Repeat("▁", len(points))
+	}
+	var b strings.Builder
+	for _, point := range points {
+		ratio := (point.Value - minVal) / (maxVal - minVal)
+		index := int(ratio * 7)
+		if index < 0 {
+			index = 0
+		}
+		if index > 7 {
+			index = 7
+		}
+		b.WriteRune([]rune(blocks)[index])
+	}
+	return b.String()
 }
 
 func firstSuspiciousLocation(result model.AnalysisResult) string {

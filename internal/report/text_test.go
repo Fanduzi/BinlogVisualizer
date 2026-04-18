@@ -32,12 +32,12 @@ func TestRenderTextDefaultIsConciseDiagnosticSummary(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, token := range []string{"Summary", "Top Findings", "Top Tables", "Next Actions", "Peak avg TPS/min"} {
+	for _, token := range []string{"Summary", "Top Findings", "Activity", "Top Tables", "Top Transactions", "Next Actions"} {
 		if !strings.Contains(out, token) {
 			t.Fatalf("expected default text report to contain %q\n%s", token, out)
 		}
 	}
-	for _, hidden := range []string{"Minute Activity", "Top Patterns", "2026-04-17 09:01: 9000 rows"} {
+	for _, hidden := range []string{"Minute Activity", "Top Patterns", "2026-04-17 09:01: 9000 rows", "Write Shape Patterns"} {
 		if strings.Contains(out, hidden) {
 			t.Fatalf("default text report should hide %q\n%s", hidden, out)
 		}
@@ -59,6 +59,53 @@ func TestRenderTextTopTablesUsesAlignedTableAndTopLimit(t *testing.T) {
 	}
 	if strings.Contains(out, "shop.users") {
 		t.Fatalf("expected top limit to hide second table\n%s", out)
+	}
+}
+
+func TestRenderTextTopTransactionsUsesTopLimit(t *testing.T) {
+	result := productTextFixture()
+	result.Diagnostics.LargestTransactions = []model.Transaction{
+		{TxnKey: "txn-largest-a", TotalRows: 5000, Duration: 5 * time.Second, Tables: map[string]int{"shop.orders": 5000}},
+		{TxnKey: "txn-largest-b", TotalRows: 4000, Duration: 4 * time.Second, Tables: map[string]int{"shop.users": 4000}},
+	}
+	result.Diagnostics.LongestTransactions = []model.Transaction{
+		{TxnKey: "txn-long-a", TotalRows: 20, Duration: 45 * time.Second, Tables: map[string]int{"shop.accounts": 20}},
+		{TxnKey: "txn-long-b", TotalRows: 18, Duration: 30 * time.Second, Tables: map[string]int{"shop.settlements": 18}},
+	}
+	result.Diagnostics.WidestTransactions = []model.Transaction{
+		{TxnKey: "txn-wide-a", TotalRows: 120, Duration: 8 * time.Second, Tables: map[string]int{"shop.orders": 1, "shop.users": 1, "shop.payments": 1, "shop.audit_logs": 1}},
+		{TxnKey: "txn-wide-b", TotalRows: 100, Duration: 7 * time.Second, Tables: map[string]int{"shop.orders": 1, "shop.users": 1, "shop.shipments": 1}},
+	}
+
+	out, err := RenderTextWithOptions(result, Options{TopN: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{"txn-largest-a", "txn-long-a", "txn-wide-a"} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected top transaction token %q\n%s", token, out)
+		}
+	}
+	for _, token := range []string{"txn-largest-b", "txn-long-b", "txn-wide-b"} {
+		if strings.Contains(out, token) {
+			t.Fatalf("expected top limit to hide token %q\n%s", token, out)
+		}
+	}
+}
+
+func TestRenderTextActivitySectionIncludesMiniSeries(t *testing.T) {
+	result := productTextFixture()
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{"TPS", "Rows/min", "▁"} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected activity token %q\n%s", token, out)
+		}
 	}
 }
 
@@ -152,6 +199,24 @@ func productTextFixture() model.AnalysisResult {
 				BinlogPathStart: "mysql-bin.000044",
 				PositionStart:   100,
 				PositionEnd:     200,
+			}},
+			LargestTransactions: []model.Transaction{{
+				TxnKey:          "txn-largest",
+				TotalRows:       5000,
+				Duration:        6 * time.Second,
+				BinlogPathStart: "mysql-bin.000044",
+				PositionStart:   210,
+				PositionEnd:     420,
+				Tables:          map[string]int{"shop.orders": 5000},
+			}},
+			WidestTransactions: []model.Transaction{{
+				TxnKey:          "txn-wide",
+				TotalRows:       600,
+				Duration:        8 * time.Second,
+				Tables:          map[string]int{"shop.orders": 200, "shop.users": 200, "shop.payments": 200},
+				BinlogPathStart: "mysql-bin.000045",
+				PositionStart:   500,
+				PositionEnd:     700,
 			}},
 		},
 	}

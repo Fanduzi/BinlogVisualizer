@@ -6,10 +6,12 @@
 package binlogviz
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/report"
 )
 
 func TestAnalyzeCorpusCoversExtendedScenarios(t *testing.T) {
@@ -88,6 +90,52 @@ func TestAnalyzeCorpusIncidentMixedSeparatesLargestLongestAndWidest(t *testing.T
 	}
 	if largest.TxnKey == longest.TxnKey || largest.TxnKey == widest.TxnKey || longest.TxnKey == widest.TxnKey {
 		t.Fatalf("expected distinct top transactions, got largest=%s longest=%s widest=%s", largest.TxnKey, longest.TxnKey, widest.TxnKey)
+	}
+	if len(result.Diagnostics.LargestTransactions) < 2 {
+		t.Fatalf("expected runner-up largest transaction candidates, got %d", len(result.Diagnostics.LargestTransactions))
+	}
+	if len(result.Diagnostics.LongestTransactions) < 2 {
+		t.Fatalf("expected runner-up longest transaction candidates, got %d", len(result.Diagnostics.LongestTransactions))
+	}
+	if len(result.Diagnostics.WidestTransactions) < 2 {
+		t.Fatalf("expected runner-up widest transaction candidates, got %d", len(result.Diagnostics.WidestTransactions))
+	}
+}
+
+func TestAnalyzeCorpusIncidentMixedHTMLStillShowsChampionOnlyTransactionEvidence(t *testing.T) {
+	result := analyzeCorpus(t, "incident-mixed")
+
+	out, err := report.RenderHTMLWithOptions(result, report.Options{TopN: 5})
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+	start := strings.Index(out, `id="transaction-evidence"`)
+	if start < 0 {
+		t.Fatal("expected transaction-evidence section")
+	}
+	end := strings.Index(out[start:], `id="write-shape-patterns"`)
+	section := out[start:]
+	if end > 0 {
+		section = out[start : start+end]
+	}
+
+	for _, token := range []string{
+		result.Diagnostics.LargestTransactions[0].TxnKey,
+		result.Diagnostics.LongestTransactions[0].TxnKey,
+		result.Diagnostics.WidestTransactions[0].TxnKey,
+	} {
+		if !strings.Contains(section, token) {
+			t.Fatalf("expected winning transaction %q in html output", token)
+		}
+	}
+	for _, token := range []string{
+		result.Diagnostics.LargestTransactions[1].TxnKey,
+		result.Diagnostics.LongestTransactions[1].TxnKey,
+		result.Diagnostics.WidestTransactions[1].TxnKey,
+	} {
+		if strings.Contains(section, token) {
+			t.Fatalf("expected runner-up transaction %q to stay out of html champion cards", token)
+		}
 	}
 }
 

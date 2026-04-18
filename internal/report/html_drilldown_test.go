@@ -296,6 +296,18 @@ func TestRenderHTMLFileCoverageSection(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLHidesFileCoverageSectionWhenEmpty(t *testing.T) {
+	out, err := RenderHTML(model.AnalysisResult{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, token := range []string{`id="analyzed-files"`, `id="file-coverage"`} {
+		if strings.Contains(out, token) {
+			t.Fatalf("expected no file coverage section token %q when coverage is empty", token)
+		}
+	}
+}
+
 func TestRenderHTMLBinlogThroughputSection(t *testing.T) {
 	result := model.AnalysisResult{
 		Diagnostics: model.Diagnostics{
@@ -432,20 +444,48 @@ func TestAnalyzeHTMLIncludesReadableTPSChart(t *testing.T) {
 	}
 }
 
-func TestAnalyzeHTMLTransactionEvidenceLabelsRankingMetric(t *testing.T) {
-	out, err := RenderHTMLWithOptions(productHTMLFixture(), Options{TopN: 5})
+func TestAnalyzeHTMLTransactionEvidenceShowsSingleChampionPerMetric(t *testing.T) {
+	result := productHTMLFixture()
+	result.Diagnostics.LargestTransactions = append(result.Diagnostics.LargestTransactions, model.Transaction{
+		TxnKey:    "txn-largest-runner-up",
+		TotalRows: 9000,
+		Tables:    map[string]int{"shop.orders": 9000},
+	})
+	result.Diagnostics.LongestTransactions = append(result.Diagnostics.LongestTransactions, model.Transaction{
+		TxnKey:   "txn-longest-runner-up",
+		Duration: 35 * time.Second,
+		Tables:   map[string]int{"shop.accounts": 10},
+	})
+	result.Diagnostics.WidestTransactions = append(result.Diagnostics.WidestTransactions, model.Transaction{
+		TxnKey: "txn-widest-runner-up",
+		Tables: map[string]int{"shop.orders": 1, "shop.users": 1, "shop.payments": 1},
+	})
+
+	out, err := RenderHTMLWithOptions(result, Options{TopN: 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	for _, token := range []string{
-		"Top 5 Largest Transactions by Rows",
-		"Top 5 Longest Transactions by Duration",
-		"Top 5 Widest Transactions by Touched Tables",
+		"txn-largest",
+		"txn-longest",
+		"txn-widest",
 		"touched tables",
 	} {
 		if !strings.Contains(out, token) {
 			t.Fatalf("expected transaction evidence label %q\n%s", token, out)
+		}
+	}
+	for _, token := range []string{
+		"Top 5 Largest Transactions by Rows",
+		"Top 5 Longest Transactions by Duration",
+		"Top 5 Widest Transactions by Touched Tables",
+		"txn-largest-runner-up",
+		"txn-longest-runner-up",
+		"txn-widest-runner-up",
+	} {
+		if strings.Contains(out, token) {
+			t.Fatalf("expected champion-only transaction evidence, but saw %q\n%s", token, out)
 		}
 	}
 }
@@ -498,9 +538,9 @@ func TestRenderHTMLNewSectionsEmptyState(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// File coverage and throughput sections should be present even when empty
-	if !strings.Contains(out, `id="file-coverage"`) {
-		t.Fatal("expected file-coverage section even when empty")
+	// File coverage should stay hidden when discovery metadata is absent.
+	if strings.Contains(out, `id="file-coverage"`) || strings.Contains(out, `id="analyzed-files"`) {
+		t.Fatal("expected file-coverage/analyzed-files sections to stay hidden when empty")
 	}
 }
 
@@ -562,8 +602,8 @@ func TestRenderHTMLIncludesDDLTimelineAndTransactionDiagnostics(t *testing.T) {
 		"DDL Timeline",
 		"ALTER TABLE shop.orders",
 		"mysql-bin.000044:120-240",
-		"Largest Transactions",
-		"Longest Transactions",
+		"Largest Transaction",
+		"Longest Transaction",
 		"Hot Intervals",
 		"txn-rows",
 		"txn-long",
