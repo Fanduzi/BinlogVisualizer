@@ -23,6 +23,76 @@ func BenchmarkStreamingRealFixtureEndToEnd(b *testing.B) {
 	benchmarkStreamingPipeline(b, []string{fixture}, parser, analyzer.DefaultOptions())
 }
 
+// --- Real parser benchmarks: isolated layers to identify per-stage throughput ---
+
+func BenchmarkParserRealFixtureParseOnly(b *testing.B) {
+	fixture := filepath.Join("..", "..", "internal", "binlog", "testdata", "minimal.binlog")
+	parser := binlog.NewParser()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		if err := parser.ParseFiles([]string{fixture}, func(raw binlog.RawEvent) error {
+			count++
+			return nil
+		}); err != nil {
+			b.Fatalf("ParseFiles: %v", err)
+		}
+		_ = count
+	}
+}
+
+func BenchmarkParserRealFixtureParseAndNormalize(b *testing.B) {
+	fixture := filepath.Join("..", "..", "internal", "binlog", "testdata", "minimal.binlog")
+	parser := binlog.NewParser()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		if err := parser.ParseFiles([]string{fixture}, func(raw binlog.RawEvent) error {
+			var normalized model.NormalizedEvent
+			ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
+			if err != nil {
+				return err
+			}
+			if ok {
+				count++
+			}
+			return nil
+		}); err != nil {
+			b.Fatalf("ParseFiles: %v", err)
+		}
+		_ = count
+	}
+}
+
+func BenchmarkParserRealFixtureParseWithProgress(b *testing.B) {
+	fixture := filepath.Join("..", "..", "internal", "binlog", "testdata", "minimal.binlog")
+	progressParser := binlog.NewParser().(binlog.ProgressParser)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		progressCount := 0
+		eventCount := 0
+		if err := progressParser.ParseFilesWithProgress([]string{fixture}, func(progress binlog.ParseProgress) {
+			progressCount++
+		}, func(raw binlog.RawEvent) error {
+			eventCount++
+			return nil
+		}); err != nil {
+			b.Fatalf("ParseFilesWithProgress: %v", err)
+		}
+		_ = progressCount
+		_ = eventCount
+	}
+}
+
+func BenchmarkParserRealFixtureEndToEnd(b *testing.B) {
+	fixture := filepath.Join("..", "..", "internal", "binlog", "testdata", "minimal.binlog")
+	parser := binlog.NewParser()
+	benchmarkStreamingPipeline(b, []string{fixture}, parser, analyzer.DefaultOptions())
+}
+
 func BenchmarkStreamingSynthetic100k(b *testing.B) {
 	base := time.Date(2026, 3, 17, 14, 0, 0, 0, time.UTC)
 	events := makeSyntheticTransactionEvents(base, 1000, 100)

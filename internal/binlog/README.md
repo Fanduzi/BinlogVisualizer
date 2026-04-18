@@ -10,7 +10,7 @@ Binlog parsing, raw event extraction, normalization, and parse-progress contract
 | `parser.go` | Wraps `go-mysql-org/go-mysql/replication`, extracts raw binlog events, reuses `TableID` table names in the rows-event hot path, and emits monotonic per-input progress offsets. |
 | `normalize.go` | Converts parser-emitted `RawEvent` values into stable analyzer-facing normalized events, including a destination-reuse fast path for streaming callers. Uses first-character dispatch to reduce string comparison overhead in the hot normalization path. |
 | `probe.go` | Scans binlog files for reusable file-level metadata such as size and chronological earliest/latest non-zero event timestamps, with internal parser-injectable helpers for reuse in tests and later planning work. |
-| `*_test.go` | Covers parser construction, helper behavior, and normalization semantics. |
+| `*_test.go` | Covers parser construction, helper behavior, normalization semantics, and real-fixture parser benchmarks isolating parse-only, parse+normalize, and parse+progress layers. |
 | `testdata/*` | Real binlog fixtures used by integration and regression tests. |
 
 ## Exports
