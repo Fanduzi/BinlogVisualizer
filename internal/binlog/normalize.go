@@ -55,38 +55,85 @@ func NormalizeRawEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, erro
 	if dst == nil {
 		return false, nil
 	}
-	switch {
-	case raw.EventType == "QUERY_EVENT" || raw.EventType == "QueryEvent":
-		return normalizeQueryEventInto(raw, dst)
-	case raw.EventType == "RowsQueryEvent" || raw.EventType == "ROWS_QUERY_EVENT":
-		return normalizeRowsQueryEventInto(raw, dst)
-	case strings.HasPrefix(raw.EventType, "WriteRows") || strings.HasPrefix(raw.EventType, "WRITE_ROWS"):
-		fillNormalizedEvent(dst, raw)
-		dst.EventType = "ROWS"
-		dst.Operation = "INSERT"
-		return true, nil
-	case strings.HasPrefix(raw.EventType, "UpdateRows") || strings.HasPrefix(raw.EventType, "UPDATE_ROWS"):
-		fillNormalizedEvent(dst, raw)
-		dst.EventType = "ROWS"
-		dst.Operation = "UPDATE"
-		return true, nil
-	case strings.HasPrefix(raw.EventType, "DeleteRows") || strings.HasPrefix(raw.EventType, "DELETE_ROWS"):
-		fillNormalizedEvent(dst, raw)
-		dst.EventType = "ROWS"
-		dst.Operation = "DELETE"
-		return true, nil
-	case raw.EventType == "XID_EVENT" || raw.EventType == "XIDEvent":
-		fillNormalizedEvent(dst, raw)
-		dst.EventType = "XID"
-		return true, nil
-	case raw.EventType == "TABLE_MAP_EVENT" || raw.EventType == "TableMapEvent":
-		fillNormalizedEvent(dst, raw)
-		dst.EventType = "TABLE_MAP"
-		return true, nil
-	default:
-		// Skip unsupported events
+	et := raw.EventType
+	if et == "" {
 		return false, nil
 	}
+	switch et[0] {
+	case 'Q':
+		if et == "QUERY_EVENT" || et == "QueryEvent" {
+			return normalizeQueryEventInto(raw, dst)
+		}
+	case 'R':
+		if et == "RowsQueryEvent" || et == "ROWS_QUERY_EVENT" {
+			return normalizeRowsQueryEventInto(raw, dst)
+		}
+		if hasRowsPrefix(et, 'W') {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "ROWS"
+			dst.Operation = "INSERT"
+			return true, nil
+		}
+		if hasRowsPrefix(et, 'U') {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "ROWS"
+			dst.Operation = "UPDATE"
+			return true, nil
+		}
+		if hasRowsPrefix(et, 'D') {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "ROWS"
+			dst.Operation = "DELETE"
+			return true, nil
+		}
+	case 'W':
+		if (len(et) >= 10 && et[:10] == "WRITE_ROWS") || (len(et) >= 9 && et[:9] == "WriteRows") {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "ROWS"
+			dst.Operation = "INSERT"
+			return true, nil
+		}
+	case 'U':
+		if (len(et) >= 11 && et[:11] == "UPDATE_ROWS") || (len(et) >= 10 && et[:10] == "UpdateRows") {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "ROWS"
+			dst.Operation = "UPDATE"
+			return true, nil
+		}
+	case 'D':
+		if (len(et) >= 11 && et[:11] == "DELETE_ROWS") || (len(et) >= 10 && et[:10] == "DeleteRows") {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "ROWS"
+			dst.Operation = "DELETE"
+			return true, nil
+		}
+	case 'X':
+		if et == "XID_EVENT" || et == "XIDEvent" {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "XID"
+			return true, nil
+		}
+	case 'T':
+		if et == "TABLE_MAP_EVENT" || et == "TableMapEvent" {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "TABLE_MAP"
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// hasRowsPrefix checks for WriteRows/UpdateRows/DeleteRows prefix patterns.
+func hasRowsPrefix(et string, op byte) bool {
+	switch op {
+	case 'W':
+		return len(et) >= 9 && et[:9] == "WriteRows"
+	case 'U':
+		return len(et) >= 10 && et[:10] == "UpdateRows"
+	case 'D':
+		return len(et) >= 10 && et[:10] == "DeleteRows"
+	}
+	return false
 }
 
 func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {

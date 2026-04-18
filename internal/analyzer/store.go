@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	DefaultBatchFlushRows  = 1000
+	DefaultBatchFlushRows  = 5000
 	defaultBatchFlushBytes = 4 * 1024 * 1024
 )
 
@@ -336,7 +336,7 @@ func (s *DuckDBStore) Flush() error {
 		}); err != nil {
 			return err
 		}
-		s.transactionsBatch = nil
+		s.transactionsBatch = s.transactionsBatch[:0]
 	}
 	if len(s.txnTablesBatch) > 0 {
 		if err := s.appendRows("transaction_tables", func(app *duckdb.Appender) error {
@@ -349,7 +349,7 @@ func (s *DuckDBStore) Flush() error {
 		}); err != nil {
 			return err
 		}
-		s.txnTablesBatch = nil
+		s.txnTablesBatch = s.txnTablesBatch[:0]
 	}
 	if len(s.txnSQLBatch) > 0 {
 		if err := s.appendRows("transaction_sql_contexts", func(app *duckdb.Appender) error {
@@ -362,7 +362,7 @@ func (s *DuckDBStore) Flush() error {
 		}); err != nil {
 			return err
 		}
-		s.txnSQLBatch = nil
+		s.txnSQLBatch = s.txnSQLBatch[:0]
 	}
 	if len(s.txnOpsBatch) > 0 {
 		if err := s.appendRows("transaction_operations", func(app *duckdb.Appender) error {
@@ -375,7 +375,7 @@ func (s *DuckDBStore) Flush() error {
 		}); err != nil {
 			return err
 		}
-		s.txnOpsBatch = nil
+		s.txnOpsBatch = s.txnOpsBatch[:0]
 	}
 	if len(s.minutesBatch) > 0 {
 		if err := s.appendRows("minute_buckets", func(app *duckdb.Appender) error {
@@ -388,7 +388,7 @@ func (s *DuckDBStore) Flush() error {
 		}); err != nil {
 			return err
 		}
-		s.minutesBatch = nil
+		s.minutesBatch = s.minutesBatch[:0]
 	}
 	if len(s.minuteTablesBatch) > 0 {
 		if err := s.appendRows("minute_table_rows", func(app *duckdb.Appender) error {
@@ -401,7 +401,7 @@ func (s *DuckDBStore) Flush() error {
 		}); err != nil {
 			return err
 		}
-		s.minuteTablesBatch = nil
+		s.minuteTablesBatch = s.minuteTablesBatch[:0]
 	}
 	if len(s.alertsBatch) > 0 {
 		if err := s.appendRows("alerts", func(app *duckdb.Appender) error {
@@ -414,7 +414,7 @@ func (s *DuckDBStore) Flush() error {
 		}); err != nil {
 			return err
 		}
-		s.alertsBatch = nil
+		s.alertsBatch = s.alertsBatch[:0]
 	}
 
 	s.bufferedRows = 0
