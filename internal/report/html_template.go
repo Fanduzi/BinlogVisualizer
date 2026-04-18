@@ -165,15 +165,14 @@ const htmlReportTemplate = `<!DOCTYPE html>
   /* Summary cards */
   .cards {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 14px;
   }
   .card {
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 20px 22px;
+    padding: 18px 20px;
     position: relative;
     overflow: hidden;
   }
@@ -186,18 +185,19 @@ const htmlReportTemplate = `<!DOCTYPE html>
   }
   .card.accent::before { background: var(--accent); }
   .card.success::before { background: var(--success); }
-  .card.warn::before   { background: var(--warn); }
+  .card.warn::before { background: var(--warn); }
+  .card.danger::before { background: var(--danger); }
   .card-label {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.8px;
     color: var(--muted);
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
   .card-value {
     font-family: 'Fira Code', monospace;
-    font-size: 28px;
+    font-size: 26px;
     font-weight: 700;
     color: var(--text);
     line-height: 1;
@@ -205,8 +205,45 @@ const htmlReportTemplate = `<!DOCTYPE html>
   .card-sub {
     font-size: 11px;
     color: var(--muted);
-    margin-top: 6px;
+    margin-top: 4px;
   }
+
+  /* Key findings strip inside summary */
+  .key-findings {
+    margin-top: 14px;
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .key-findings-title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .key-finding-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 3px 0;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .key-finding-badge {
+    font-family: 'Fira Code', monospace;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .key-finding-badge.critical { background: rgba(248,81,73,0.15); color: var(--danger); }
+  .key-finding-badge.warning  { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .key-finding-badge.info     { background: rgba(37,99,235,0.15); color: var(--primary); }
 
   /* Section */
   .section {
@@ -233,16 +270,21 @@ const htmlReportTemplate = `<!DOCTYPE html>
     display: inline-block;
   }
   .section-body { padding: 0; }
+  .section-desc {
+    padding: 12px 20px 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
 
   /* Charts grid */
   .charts-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
+    gap: 14px;
     padding: 16px;
   }
   .chart-panel {
-    padding: 18px;
+    padding: 16px;
     border: 1px solid var(--border);
     border-radius: 10px;
     background: var(--surface2);
@@ -255,12 +297,36 @@ const htmlReportTemplate = `<!DOCTYPE html>
     text-transform: uppercase;
     letter-spacing: 0.7px;
     color: var(--muted);
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
   .chart-box { width: 100%; height: 320px; }
   .chart-large { min-height: 420px; }
   .chart-controls,
   .chart-legend-note { position: static; }
+
+  /* Evidence sub-section styling */
+  .evidence-sub {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .evidence-sub-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .evidence-sub-header .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+  }
 
   /* Table */
   table {
@@ -311,7 +377,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
   }
   .table-detail-panel .chart-box { height: 260px; }
 
-  /* Alerts */
+  /* Alerts / Findings */
   .alert-list { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
   .alert-item {
     display: flex;
@@ -494,9 +560,9 @@ const htmlReportTemplate = `<!DOCTYPE html>
         <button class="theme-btn" data-t="light"  title="Light"></button>
       </div>
     </div>
-  </section>
+  </div>
 
-  <!-- Executive Summary -->
+  <!-- ═══ Section 1: Executive Summary ═══ -->
   <section class="section" id="executive-summary">
     <div class="section-header"><span class="dot"></span>{{t "report.html.analyze.executiveSummary"}}</div>
     <div class="section-body" style="padding:16px">
@@ -513,25 +579,67 @@ const htmlReportTemplate = `<!DOCTYPE html>
           <div class="card-label">{{t "report.html.common.events"}}</div>
           <div class="card-value">{{.TotalEvents}}</div>
         </div>
+        {{if .StartTime}}
         <div class="card warn">
           <div class="card-label">{{t "report.html.common.timeRange"}}</div>
-          {{if .StartTime}}
           <div class="card-value" style="font-size:13px;margin-top:4px">{{.StartTime}}</div>
           <div class="card-sub">→ {{.EndTime}}</div>
           <div class="card-sub">{{t "report.html.common.duration"}}: {{.Duration}}</div>
-          {{else}}
-          <div class="card-value" style="font-size:16px;color:var(--muted)">{{t "report.html.common.notAvailable"}}</div>
-          {{end}}
         </div>
+        {{else}}
+        <div class="card">
+          <div class="card-label">{{t "report.html.common.timeRange"}}</div>
+          <div class="card-value" style="font-size:16px;color:var(--muted)">{{t "report.html.common.notAvailable"}}</div>
+        </div>
+        {{end}}
+        {{if .HasDDLEvents}}
+        <div class="card danger">
+          <div class="card-label">{{t "report.html.analyze.ddlCount"}}</div>
+          <div class="card-value">{{.DDLCount}}</div>
+        </div>
+        {{end}}
       </div>
+      {{if .HasAlerts}}
+      <div class="key-findings" id="key-findings">
+        <div class="key-findings-title">{{t "report.html.analyze.keyFindings"}}</div>
+        {{range .TopAlerts}}
+        <div class="key-finding-item">
+          <span class="key-finding-badge {{.Severity}}">{{.Badge}}</span>
+          <span>{{.Message}}</span>
+        </div>
+        {{end}}
+      </div>
+      {{end}}
     </div>
   </section>
 
-  <!-- Timeline -->
-  <section class="section" id="timeline">
-    <div class="section-header"><span class="dot"></span>{{t "report.html.analyze.timeline"}}</div>
+  <!-- ═══ Section 2: Risks & Findings ═══ -->
+  <section class="section" id="section-findings">
+    <div class="section-header"><span class="dot" style="background:var(--danger)"></span>{{t "report.html.analyze.sectionFindings"}}</div>
     <div class="section-body">
-      <div class="chart-legend-note" style="padding:16px 16px 0;color:var(--muted);font-size:12px">{{t "report.html.analyze.activityCharts"}}</div>
+      {{if .HasAlerts}}
+      <div class="alert-list">
+        {{range .Alerts}}
+        <div class="alert-item {{.Severity}}">
+          <span class="alert-badge badge-{{.Badge}}">{{.Badge}}</span>
+          <span class="alert-msg">{{.Message}}</span>
+        </div>
+        {{end}}
+      </div>
+      {{else}}
+      <div class="no-alerts">
+        <span class="no-alerts-icon">✓</span>
+        <span>{{t "report.html.analyze.noAlerts"}}</span>
+      </div>
+      {{end}}
+    </div>
+  </section>
+
+  <!-- ═══ Section 3: Activity Overview ═══ -->
+  <section class="section" id="section-activity">
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.sectionActivity"}}</div>
+    <div class="section-body">
+      <div class="section-desc">{{t "report.html.analyze.activityCharts"}}</div>
       <div class="charts-grid">
         <div class="chart-panel chart-panel-large">
           <div class="chart-title">{{t "report.html.analyze.avgTPSPerMinute"}}</div>
@@ -542,21 +650,42 @@ const htmlReportTemplate = `<!DOCTYPE html>
           <div class="chart-box" id="chart-timeline"></div>
         </div>
         <div class="chart-panel">
-          <div class="chart-title">{{t "report.html.analyze.topTablesByRows"}}</div>
-          <div class="chart-box" id="chart-tables"></div>
-        </div>
-        <div class="chart-panel">
           <div class="chart-title">{{t "report.html.common.operationMix"}}</div>
           <div class="chart-box" id="chart-ops"></div>
         </div>
+        {{if .HasHotIntervals}}
+        <div class="chart-panel">
+          <div class="chart-title">{{t "report.html.analyze.hotIntervals"}}</div>
+          <div class="diagnostic-list" style="padding:0">
+            {{range .HotIntervals}}
+            <div class="diagnostic-item">
+              <div class="diagnostic-head">
+                <div class="diagnostic-title">{{.Timestamp}}</div>
+                <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+              </div>
+              <div class="diagnostic-body">
+                <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+                {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
+              </div>
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
       </div>
     </div>
   </section>
 
-  <!-- Top Tables -->
-  <section class="section" id="hotspots">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.hotspots"}}</div>
+  <!-- ═══ Section 4: Hot Objects ═══ -->
+  <section class="section" id="section-objects">
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.sectionObjects"}}</div>
     <div class="section-body">
+      <div class="charts-grid" style="padding-bottom:0">
+        <div class="chart-panel chart-panel-wide">
+          <div class="chart-title">{{t "report.html.analyze.topTablesByRows"}}</div>
+          <div class="chart-box" id="chart-tables"></div>
+        </div>
+      </div>
       <div class="diagnostic-title" style="padding:16px 16px 0">{{t "report.html.analyze.topTables"}}</div>
       {{if .Tables}}
       <table>
@@ -606,277 +735,242 @@ const htmlReportTemplate = `<!DOCTYPE html>
       {{else}}
       <div class="no-alerts"><span>{{t "report.html.analyze.noTableData"}}</span></div>
       {{end}}
-      {{if .HasHotIntervals}}
-      <div class="diagnostic-list">
-        <div class="diagnostic-title">{{t "report.html.analyze.hotIntervals"}}</div>
-        {{range .HotIntervals}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.Timestamp}}</div>
-            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
-          </div>
-          <div class="diagnostic-body">
-            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
-          </div>
-        </div>
-        {{end}}
-      </div>
-      {{end}}
     </div>
   </section>
 
-  <!-- Alerts -->
-  <div class="section">
-    <div class="section-header"><span class="dot" style="background:var(--danger)"></span>{{t "report.html.common.alerts"}}</div>
-    <div class="section-body">
-      {{if .HasAlerts}}
-      <div class="alert-list">
-        {{range .Alerts}}
-        <div class="alert-item {{.Severity}}">
-          <span class="alert-badge badge-{{.Badge}}">{{.Badge}}</span>
-          <span class="alert-msg">{{.Message}}</span>
-        </div>
-        {{end}}
-      </div>
-      {{else}}
-      <div class="no-alerts">
-        <span class="no-alerts-icon">✓</span>
-        <span>{{t "report.html.analyze.noAlertsDetected"}}</span>
-      </div>
-      {{end}}
-    </div>
-  </section>
+  <!-- ═══ Section 5: Diagnostic Evidence ═══ -->
+  <section class="section" id="section-evidence">
+    <div class="section-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.sectionEvidence"}}</div>
+    <div class="section-body" style="padding:16px 16px 0">
 
-  {{if .HasDDLEvents}}
-  <section class="section" id="ddl-timeline">
-    <div class="section-header"><span class="dot" style="background:var(--warn)"></span>{{t "report.html.analyze.ddlTimeline"}}</div>
-    <div class="section-body">
-      <div class="diagnostic-list">
-        {{range .DDLEvents}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.Operation}} {{.Object}}</div>
-            <div class="diagnostic-meta">{{.Timestamp}}</div>
-          </div>
-          <div class="diagnostic-body">
-            <div>{{.Statement}}</div>
-            {{if .Location}}<div class="diagnostic-meta">{{.Location}}</div>{{end}}
-          </div>
-        </div>
-        {{end}}
-      </div>
-    </div>
-  </section>
-  {{end}}
-
-  <!-- Transaction Evidence -->
-  {{if or .HasLargestTxns .HasLongestTxns .HasWidestTxns}}
-  <section class="section" id="transaction-evidence">
-    <div class="section-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.transactionEvidence"}}</div>
-    <div class="section-body">
-      <div class="diagnostic-list">
-        {{if .HasLargestTxns}}
-        <div class="diagnostic-title">{{t "report.html.analyze.largestTransactionsByRows"}}</div>
-        {{range .LargestTransactions}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.largestTag"}}</span></div>
-            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
-          </div>
-          <div class="diagnostic-body">
-            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
-            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Tables}}
-            <div class="diagnostic-tables">
-              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+    {{if or .HasLargestTxns .HasLongestTxns .HasWidestTxns}}
+    <section class="evidence-sub" id="transaction-evidence">
+      <div class="evidence-sub-header"><span class="dot" style="background:var(--primary)"></span>{{t "report.html.analyze.transactionEvidence"}}</div>
+      <div class="section-body">
+        <div class="diagnostic-list">
+          {{if .HasLargestTxns}}
+          <div class="diagnostic-title">{{t "report.html.analyze.largestTransactionsByRows"}}</div>
+          {{range .LargestTransactions}}
+          <div class="diagnostic-item">
+            <div class="diagnostic-head">
+              <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.largestTag"}}</span></div>
+              <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
             </div>
-            {{end}}
-          </div>
-        </div>
-        {{end}}
-        {{end}}
-        {{if .HasLongestTxns}}
-        <div class="diagnostic-title">{{t "report.html.analyze.longestTransactionsByDuration"}}</div>
-        {{range .LongestTransactions}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-anomaly" style="font-size:10px">{{t "report.html.analyze.longestTag"}}</span></div>
-            <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
-          </div>
-          <div class="diagnostic-body">
-            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
-            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Tables}}
-            <div class="diagnostic-tables">
-              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
-            </div>
-            {{end}}
-          </div>
-        </div>
-        {{end}}
-        {{end}}
-        {{if .HasWidestTxns}}
-        <div class="diagnostic-title">{{t "report.html.analyze.widestTransactionsByTouchedTables"}}</div>
-        {{range .WidestTransactions}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.widestTag"}}</span></div>
-            <div class="diagnostic-meta">{{len .Tables}} {{t "report.html.analyze.touchedTables"}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
-          </div>
-          <div class="diagnostic-body">
-            {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
-            <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-            {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
-            {{if .Tables}}
-            <div class="diagnostic-tables">
-              {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
-            </div>
-            {{end}}
-          </div>
-        </div>
-        {{end}}
-        {{end}}
-      </div>
-    </div>
-  </section>
-  {{end}}
-
-  <!-- Analyzed Files -->
-  {{if .HasFileCoverage}}
-  <section class="section" id="analyzed-files">
-    <div class="section-header"><span class="dot" style="background:var(--success)"></span>{{t "report.html.analyze.analyzedFiles"}}</div>
-    <div class="section-body">
-      <div class="no-alerts"><span>{{t "report.html.analyze.analyzedFilesNote"}}</span></div>
-      <div class="diagnostic-list" id="file-coverage">
-        {{if .FileCoverage.Selected}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{t "report.html.analyze.selectedFiles"}}</div>
-            <div class="diagnostic-meta">{{len .FileCoverage.Selected}}</div>
-          </div>
-          <div class="diagnostic-body">
-            <table>
-              <thead>
-                <tr>
-                  <th>{{t "report.html.analyze.binlogFile"}}</th>
-                  <th class="num">{{t "report.html.analyze.fileSize"}}</th>
-                  <th>{{t "report.html.analyze.selectionReason"}}</th>
-                  <th>{{t "report.html.analyze.timeRange"}}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{range .FileCoverage.Selected}}
-                <tr>
-                  <td class="name">{{.BinlogPath}}</td>
-                  <td class="num">{{.Size}}</td>
-                  <td class="name">{{.Reason}}</td>
-                  <td class="name">{{if .FirstEventAt}}{{.FirstEventAt}} → {{.LastEventAt}}{{end}}</td>
-                </tr>
-                {{end}}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {{end}}
-        {{if .FileCoverage.Skipped}}
-        <div class="diagnostic-item">
-          <div class="diagnostic-head">
-            <div class="diagnostic-title">{{t "report.html.analyze.skippedFiles"}}</div>
-            <div class="diagnostic-meta">{{len .FileCoverage.Skipped}}</div>
-          </div>
-          <div class="diagnostic-body">
-            <table>
-              <thead>
-                <tr>
-                  <th>{{t "report.html.analyze.binlogFile"}}</th>
-                  <th class="num">{{t "report.html.analyze.fileSize"}}</th>
-                  <th>{{t "report.html.analyze.skipReason"}}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{range .FileCoverage.Skipped}}
-                <tr>
-                  <td class="name">{{.BinlogPath}}</td>
-                  <td class="num">{{.Size}}</td>
-                  <td class="name">{{.Reason}}</td>
-                </tr>
-                {{end}}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        {{end}}
-        {{if not .FileCoverage.Selected}}{{if not .FileCoverage.Skipped}}
-        <div class="no-alerts"><span>{{t "report.html.analyze.noFileCoverage"}}</span></div>
-        {{end}}{{end}}
-      </div>
-    </div>
-  </section>
-  {{end}}
-
-  {{if .HasFileSegments}}
-  <!-- Binlog Throughput -->
-  <div class="section" id="binlog-throughput">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.binlogThroughput"}}</div>
-    <div class="section-body">
-      <div class="charts-grid">
-        <div class="chart-panel chart-panel-wide">
-          <div class="chart-title">{{t "report.html.analyze.throughputChart"}}</div>
-          <div class="chart-box" id="chart-throughput" style="height:380px"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  {{end}}
-
-  <!-- Pattern Drilldowns -->
-  {{if .HasDrilldowns}}
-  <section class="section" id="write-shape-patterns">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.writeShapePatterns"}}</div>
-    <div class="section-body">
-      <div class="alert-list">
-        {{range .Drilldowns}}
-        <details class="drilldown-card">
-          <summary class="drilldown-summary">
-            <strong>{{.Label}}</strong>
-            <span class="drilldown-flags">
-              {{if .SignalFlags.Dominance}}<span class="drilldown-flag drilldown-flag-dominance">{{t "report.html.common.dominance"}}</span>{{end}}
-              {{if .SignalFlags.Anomaly}}<span class="drilldown-flag drilldown-flag-anomaly">{{t "report.html.common.anomaly"}}</span>{{end}}
-            </span>
-          </summary>
-          <div class="drilldown-body">
-            <p class="drilldown-why">{{.WhySelected}}</p>
-            <div class="drilldown-metrics">
-              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfRowsTitle"}}" aria-label="{{t "report.html.analyze.shareOfRowsTitle"}}">{{t "report.html.analyze.shareOfRowsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfRows 100)}}%</span>
-              <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfTxnsTitle"}}" aria-label="{{t "report.html.analyze.shareOfTxnsTitle"}}">{{t "report.html.analyze.shareOfTxnsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfTxns 100)}}%</span>
-              <span class="drilldown-metric" title="{{t "report.html.analyze.avgRowsPerTxnTitle"}}" aria-label="{{t "report.html.analyze.avgRowsPerTxnTitle"}}">{{t "report.html.analyze.avgRowsPerTxn"}}: {{printf "%.0f" .AvgRowsPerTxn}}</span>
-            </div>
-            {{if .BusiestMinutes}}
-            <div class="drilldown-subsection">
-              <span class="drilldown-sublabel" title="{{t "report.html.analyze.workloadPeakMinutesTitle"}}">{{t "report.html.analyze.workloadPeakMinutes"}}</span>
-              {{range .BusiestMinutes}}
-              <div class="drilldown-minute">{{.Minute}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{fmtIntHTML .TxnCount}} {{t "report.html.common.txns"}}</div>
+            <div class="diagnostic-body">
+              {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+              <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+              {{if .Tables}}
+              <div class="diagnostic-tables">
+                {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+              </div>
               {{end}}
             </div>
-            {{end}}
-            {{if .RepTxns}}
-            <div class="drilldown-subsection">
-              <span class="drilldown-sublabel" title="{{t "report.html.analyze.workloadTransactionsTitle"}}">{{t "report.html.analyze.workloadTransactions"}}</span>
-              {{range .RepTxns}}
-              <div class="drilldown-txn">{{.TxnKey}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{.Duration}}</div>
+          </div>
+          {{end}}
+          {{end}}
+          {{if .HasLongestTxns}}
+          <div class="diagnostic-title">{{t "report.html.analyze.longestTransactionsByDuration"}}</div>
+          {{range .LongestTransactions}}
+          <div class="diagnostic-item">
+            <div class="diagnostic-head">
+              <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-anomaly" style="font-size:10px">{{t "report.html.analyze.longestTag"}}</span></div>
+              <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
+            </div>
+            <div class="diagnostic-body">
+              {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+              <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+              {{if .Tables}}
+              <div class="diagnostic-tables">
+                {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+              </div>
               {{end}}
             </div>
-            {{end}}
           </div>
-        </details>
-        {{end}}
+          {{end}}
+          {{end}}
+          {{if .HasWidestTxns}}
+          <div class="diagnostic-title">{{t "report.html.analyze.widestTransactionsByTouchedTables"}}</div>
+          {{range .WidestTransactions}}
+          <div class="diagnostic-item">
+            <div class="diagnostic-head">
+              <div class="diagnostic-title">{{.TxnKey}} <span class="drilldown-flag drilldown-flag-dominance" style="font-size:10px">{{t "report.html.analyze.widestTag"}}</span></div>
+              <div class="diagnostic-meta">{{len .Tables}} {{t "report.html.analyze.touchedTables"}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
+            </div>
+            <div class="diagnostic-body">
+              {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+              <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
+              {{if .Tables}}
+              <div class="diagnostic-tables">
+                {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}}</span>{{end}}
+              </div>
+              {{end}}
+            </div>
+          </div>
+          {{end}}
+          {{end}}
+        </div>
       </div>
+    </section>
+    {{end}}
+
+    {{if .HasDDLEvents}}
+    <section class="evidence-sub" id="ddl-timeline">
+      <div class="evidence-sub-header"><span class="dot" style="background:var(--warn)"></span>{{t "report.html.analyze.ddlTimeline"}}</div>
+      <div class="section-body">
+        <div class="diagnostic-list">
+          {{range .DDLEvents}}
+          <div class="diagnostic-item">
+            <div class="diagnostic-head">
+              <div class="diagnostic-title">{{.Operation}} {{.Object}}</div>
+              <div class="diagnostic-meta">{{.Timestamp}}</div>
+            </div>
+            <div class="diagnostic-body">
+              <div>{{.Statement}}</div>
+              {{if .Location}}<div class="diagnostic-meta">{{.Location}}</div>{{end}}
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </div>
+    </section>
+    {{end}}
+
+    {{if .HasDrilldowns}}
+    <section class="evidence-sub" id="write-shape-patterns">
+      <div class="evidence-sub-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.writeShapePatterns"}}</div>
+      <div class="section-body">
+        <div class="alert-list">
+          {{range .Drilldowns}}
+          <details class="drilldown-card">
+            <summary class="drilldown-summary">
+              <strong>{{.Label}}</strong>
+              <span class="drilldown-flags">
+                {{if .SignalFlags.Dominance}}<span class="drilldown-flag drilldown-flag-dominance">{{t "report.html.common.dominance"}}</span>{{end}}
+                {{if .SignalFlags.Anomaly}}<span class="drilldown-flag drilldown-flag-anomaly">{{t "report.html.common.anomaly"}}</span>{{end}}
+              </span>
+            </summary>
+            <div class="drilldown-body">
+              <p class="drilldown-why">{{.WhySelected}}</p>
+              <div class="drilldown-metrics">
+                <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfRowsTitle"}}" aria-label="{{t "report.html.analyze.shareOfRowsTitle"}}">{{t "report.html.analyze.shareOfRowsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfRows 100)}}%</span>
+                <span class="drilldown-metric" title="{{t "report.html.analyze.shareOfTxnsTitle"}}" aria-label="{{t "report.html.analyze.shareOfTxnsTitle"}}">{{t "report.html.analyze.shareOfTxnsLabel"}}: {{printf "%.0f" (mulFloat .ShareOfTxns 100)}}%</span>
+                <span class="drilldown-metric" title="{{t "report.html.analyze.avgRowsPerTxnTitle"}}" aria-label="{{t "report.html.analyze.avgRowsPerTxnTitle"}}">{{t "report.html.analyze.avgRowsPerTxn"}}: {{printf "%.0f" .AvgRowsPerTxn}}</span>
+              </div>
+              {{if .BusiestMinutes}}
+              <div class="drilldown-subsection">
+                <span class="drilldown-sublabel" title="{{t "report.html.analyze.workloadPeakMinutesTitle"}}">{{t "report.html.analyze.workloadPeakMinutes"}}</span>
+                {{range .BusiestMinutes}}
+                <div class="drilldown-minute">{{.Minute}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{fmtIntHTML .TxnCount}} {{t "report.html.common.txns"}}</div>
+                {{end}}
+              </div>
+              {{end}}
+              {{if .RepTxns}}
+              <div class="drilldown-subsection">
+                <span class="drilldown-sublabel" title="{{t "report.html.analyze.workloadTransactionsTitle"}}">{{t "report.html.analyze.workloadTransactions"}}</span>
+                {{range .RepTxns}}
+                <div class="drilldown-txn">{{.TxnKey}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{.Duration}}</div>
+                {{end}}
+              </div>
+              {{end}}
+            </div>
+          </details>
+          {{end}}
+        </div>
+      </div>
+    </section>
+    {{end}}
+
+    {{if .HasFileCoverage}}
+    <section class="evidence-sub" id="analyzed-files">
+      <div class="evidence-sub-header"><span class="dot" style="background:var(--success)"></span>{{t "report.html.analyze.analyzedFiles"}}</div>
+      <div class="section-body">
+        <div class="section-desc">{{t "report.html.analyze.analyzedFilesNote"}}</div>
+        <div class="diagnostic-list" id="file-coverage">
+          {{if .FileCoverage.Selected}}
+          <div class="diagnostic-item">
+            <div class="diagnostic-head">
+              <div class="diagnostic-title">{{t "report.html.analyze.selectedFiles"}}</div>
+              <div class="diagnostic-meta">{{len .FileCoverage.Selected}}</div>
+            </div>
+            <div class="diagnostic-body">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{{t "report.html.analyze.binlogFile"}}</th>
+                    <th class="num">{{t "report.html.analyze.fileSize"}}</th>
+                    <th>{{t "report.html.analyze.selectionReason"}}</th>
+                    <th>{{t "report.html.analyze.timeRange"}}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{range .FileCoverage.Selected}}
+                  <tr>
+                    <td class="name">{{.BinlogPath}}</td>
+                    <td class="num">{{.Size}}</td>
+                    <td class="name">{{.Reason}}</td>
+                    <td class="name">{{if .FirstEventAt}}{{.FirstEventAt}} → {{.LastEventAt}}{{end}}</td>
+                  </tr>
+                  {{end}}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {{end}}
+          {{if .FileCoverage.Skipped}}
+          <div class="diagnostic-item">
+            <div class="diagnostic-head">
+              <div class="diagnostic-title">{{t "report.html.analyze.skippedFiles"}}</div>
+              <div class="diagnostic-meta">{{len .FileCoverage.Skipped}}</div>
+            </div>
+            <div class="diagnostic-body">
+              <table>
+                <thead>
+                  <tr>
+                    <th>{{t "report.html.analyze.binlogFile"}}</th>
+                    <th class="num">{{t "report.html.analyze.fileSize"}}</th>
+                    <th>{{t "report.html.analyze.skipReason"}}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{range .FileCoverage.Skipped}}
+                  <tr>
+                    <td class="name">{{.BinlogPath}}</td>
+                    <td class="num">{{.Size}}</td>
+                    <td class="name">{{.Reason}}</td>
+                  </tr>
+                  {{end}}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {{end}}
+          {{if not .FileCoverage.Selected}}{{if not .FileCoverage.Skipped}}
+          <div class="no-alerts"><span>{{t "report.html.analyze.noFileCoverage"}}</span></div>
+          {{end}}{{end}}
+        </div>
+      </div>
+    </section>
+    {{end}}
+
+    {{if .HasFileSegments}}
+    <section class="evidence-sub" id="binlog-throughput">
+      <div class="evidence-sub-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.binlogThroughput"}}</div>
+      <div class="section-body">
+        <div class="charts-grid">
+          <div class="chart-panel chart-panel-wide">
+            <div class="chart-title">{{t "report.html.analyze.throughputChart"}}</div>
+            <div class="chart-box" id="chart-throughput" style="height:360px"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+    {{end}}
+
     </div>
-  </section>
-  {{end}}
+  </section><!-- /section-evidence -->
 
   <div class="footer">{{t "report.html.common.generatedBy"}} &middot; {{.GeneratedAt}}</div>
 </div>

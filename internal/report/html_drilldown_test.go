@@ -409,14 +409,13 @@ func TestAnalyzeHTMLUsesDBAReadingPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	// Five-section reading path: Summary → Findings → Activity → Objects → Evidence.
 	expectedOrder := []string{
 		`id="executive-summary"`,
-		`id="timeline"`,
-		`id="hotspots"`,
-		`id="ddl-timeline"`,
-		`id="transaction-evidence"`,
-		`id="analyzed-files"`,
-		`id="write-shape-patterns"`,
+		`id="section-findings"`,
+		`id="section-activity"`,
+		`id="section-objects"`,
+		`id="section-evidence"`,
 	}
 	last := -1
 	for _, token := range expectedOrder {
@@ -530,17 +529,198 @@ func TestAnalyzeHTMLUsesReportTopNForTopTables(t *testing.T) {
 	}
 }
 
-func TestRenderHTMLNewSectionsEmptyState(t *testing.T) {
-	result := model.AnalysisResult{}
+func TestAnalyzeHTMLSummarySectionHasKeyFindingsArea(t *testing.T) {
+	result := productHTMLFixture()
+	result.Alerts = []model.Alert{
+		{Severity: "warning", Message: "high row volume detected"},
+		{Severity: "critical", Message: "long-running transaction found"},
+	}
 
 	out, err := RenderHTML(result)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// File coverage should stay hidden when discovery metadata is absent.
-	if strings.Contains(out, `id="file-coverage"`) || strings.Contains(out, `id="analyzed-files"`) {
-		t.Fatal("expected file-coverage/analyzed-files sections to stay hidden when empty")
+	summaryIdx := strings.Index(out, `id="executive-summary"`)
+	findingsIdx := strings.Index(out, `id="section-findings"`)
+	if summaryIdx < 0 || findingsIdx < 0 {
+		t.Fatal("expected summary and findings sections")
+	}
+	// Key findings must appear inside the summary section, before the standalone findings section.
+	keyFindingsIdx := strings.Index(out, "key-findings")
+	if keyFindingsIdx < 0 {
+		t.Fatal("expected key-findings area in summary section")
+	}
+	if keyFindingsIdx > findingsIdx {
+		t.Fatal("expected key-findings inside summary, before standalone findings section")
+	}
+}
+
+func TestAnalyzeHTMLFindingsSectionShowsAlertsWithSeverity(t *testing.T) {
+	result := model.AnalysisResult{
+		Alerts: []model.Alert{
+			{Severity: "critical", Message: "critical issue"},
+			{Severity: "warning", Message: "warning issue"},
+			{Severity: "info", Message: "info notice"},
+		},
+	}
+
+	out, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	findingsIdx := strings.Index(out, `id="section-findings"`)
+	if findingsIdx < 0 {
+		t.Fatal("expected section-findings")
+	}
+
+	for _, token := range []string{"critical issue", "warning issue", "info notice"} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected alert message %q in findings section", token)
+		}
+	}
+}
+
+func TestAnalyzeHTMLActivitySectionContainsChartsInOrder(t *testing.T) {
+	out, err := RenderHTML(productHTMLFixture())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Activity section must contain charts in logical reading order: total activity → composition → anomaly peaks.
+	activityIdx := strings.Index(out, `id="section-activity"`)
+	objectsIdx := strings.Index(out, `id="section-objects"`)
+	if activityIdx < 0 || objectsIdx < 0 {
+		t.Fatal("expected section-activity and section-objects")
+	}
+
+	activitySection := out[activityIdx:objectsIdx]
+
+	for _, token := range []string{
+		`id="chart-tps"`,
+		`id="chart-timeline"`,
+		`id="chart-ops"`,
+	} {
+		if !strings.Contains(activitySection, token) {
+			t.Fatalf("expected chart token %q in activity section", token)
+		}
+	}
+}
+
+func TestAnalyzeHTMLObjectsSectionContainsTopTablesAndChart(t *testing.T) {
+	result := model.AnalysisResult{
+		Tables: []model.TableStats{
+			{Schema: "shop", Table: "orders", TotalRows: 5000, InsertRows: 3000, UpdateRows: 2000},
+			{Schema: "shop", Table: "users", TotalRows: 1000, DeleteRows: 1000},
+		},
+	}
+
+	out, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	objectsIdx := strings.Index(out, `id="section-objects"`)
+	evidenceIdx := strings.Index(out, `id="section-evidence"`)
+	if objectsIdx < 0 || evidenceIdx < 0 {
+		t.Fatal("expected section-objects and section-evidence")
+	}
+
+	objectsSection := out[objectsIdx:evidenceIdx]
+
+	for _, token := range []string{
+		`id="chart-tables"`,
+		`data-table-row="shop.orders"`,
+		`data-table-row="shop.users"`,
+	} {
+		if !strings.Contains(objectsSection, token) {
+			t.Fatalf("expected objects section token %q", token)
+		}
+	}
+}
+
+func TestAnalyzeHTMLEvidenceSectionGroupAllDiagnosticContent(t *testing.T) {
+	out, err := RenderHTML(productHTMLFixture())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	evidenceShell := `<section class="section" id="section-evidence">`
+	evidenceIdx := strings.Index(out, evidenceShell)
+	if evidenceIdx < 0 {
+		t.Fatalf("expected evidence to use the same section shell as the other top-level sections")
+	}
+
+	// All evidence sub-sections must appear after the evidence wrapper.
+	for _, token := range []string{
+		`id="transaction-evidence"`,
+		`id="ddl-timeline"`,
+		`id="write-shape-patterns"`,
+		`id="analyzed-files"`,
+		`id="binlog-throughput"`,
+	} {
+		idx := strings.Index(out, token)
+		if idx < 0 {
+			continue // conditional sections may not render
+		}
+		if idx < evidenceIdx {
+			t.Fatalf("expected %s to appear after section-evidence wrapper", token)
+		}
+	}
+}
+
+func TestAnalyzeHTMLEvidenceEmptyFileCoverageHidden(t *testing.T) {
+	out, err := RenderHTML(model.AnalysisResult{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, token := range []string{`id="analyzed-files"`, `id="file-coverage"`, `id="binlog-throughput"`} {
+		if strings.Contains(out, token) {
+			t.Fatalf("expected %s hidden when no file coverage data", token)
+		}
+	}
+}
+
+func TestAnalyzeHTMLObjectsTopTablesRespectsTopN(t *testing.T) {
+	result := productHTMLFixture()
+	result.Tables = nil
+	for i := 0; i < 12; i++ {
+		result.Tables = append(result.Tables, model.TableStats{
+			Schema:    "shop",
+			Table:     fmt.Sprintf("table_%02d", i),
+			TotalRows: 1000 - i,
+		})
+	}
+
+	out, err := RenderHTMLWithOptions(result, Options{TopN: 3})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Count(out, `data-table-row="`) > 3 {
+		t.Fatalf("expected top 3 table rows in objects section")
+	}
+}
+
+func TestAnalyzeHTMLTransactionEvidenceChampionOnly(t *testing.T) {
+	result := productHTMLFixture()
+	result.Diagnostics.LargestTransactions = append(result.Diagnostics.LargestTransactions, model.Transaction{
+		TxnKey:    "txn-largest-runner-up",
+		TotalRows: 9000,
+		Tables:    map[string]int{"shop.orders": 9000},
+	})
+
+	out, err := RenderHTMLWithOptions(result, Options{TopN: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "txn-largest") {
+		t.Fatal("expected champion txn-largest")
+	}
+	if strings.Contains(out, "txn-largest-runner-up") {
+		t.Fatal("expected only champion, not runner-up")
 	}
 }
 

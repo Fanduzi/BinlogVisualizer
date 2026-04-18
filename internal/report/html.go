@@ -72,6 +72,7 @@ type htmlReportData struct {
 	TotalTxns           int
 	TotalRows           int
 	TotalEvents         int
+	DDLCount            int
 	Tables              []htmlTableRow
 	TableActivitySeries template.JS
 	DDLEvents           []htmlDDLEvent
@@ -95,6 +96,7 @@ type htmlReportData struct {
 	TPSValues           template.JS
 	Alerts              []htmlAlert
 	HasAlerts           bool
+	TopAlerts           []htmlAlert
 	Drilldowns          []htmlDrilldown
 	HasDrilldowns       bool
 	MinuteLabels        template.JS
@@ -278,6 +280,12 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		})
 	}
 	d.HasAlerts = len(d.Alerts) > 0
+	// Top 4 alerts for executive summary display.
+	topLimit := len(d.Alerts)
+	if topLimit > 4 {
+		topLimit = 4
+	}
+	d.TopAlerts = d.Alerts[:topLimit]
 
 	for _, ddl := range result.Diagnostics.DDLEvents {
 		object := strings.Trim(strings.TrimSpace(ddl.Schema+"."+ddl.Table), ".")
@@ -293,6 +301,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		})
 	}
 	d.HasDDLEvents = len(d.DDLEvents) > 0
+	d.DDLCount = len(d.DDLEvents)
 
 	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, 1) {
 		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn))

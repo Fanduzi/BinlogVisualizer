@@ -1050,5 +1050,33 @@
   "report.html.analyze.longestTag": {
     "description": "最长事务标签",
     "other": "最长"
+  },
+  "report.html.analyze.sectionFindings": {
+    "description": "风险与发现章节标题",
+    "other": "风险与发现"
+  },
+  "report.html.analyze.sectionActivity": {
+    "description": "活动概览章节标题",
+    "other": "活动概览"
+  },
+  "report.html.analyze.sectionObjects": {
+    "description": "热点对象章节标题",
+    "other": "热点对象"
+  },
+  "report.html.analyze.sectionEvidence": {
+    "description": "诊断证据章节标题",
+    "other": "诊断证据"
+  },
+  "report.html.analyze.keyFindings": {
+    "description": "执行摘要中的关键发现标签",
+    "other": "关键发现"
+  },
+  "report.html.analyze.ddlCount": {
+    "description": "DDL 事件计数标签",
+    "other": "DDL 事件"
+  },
+  "report.html.analyze.noAlerts": {
+    "description": "无告警空状态",
+    "other": "未发现问题 — 负载看起来健康"
   }
 }
