@@ -132,6 +132,27 @@ func TestNormalizeSkipUnsupportedEvent(t *testing.T) {
 	}
 }
 
+func TestNormalizeSkipEmptyEventType(t *testing.T) {
+	ev, err := NormalizeRawEvent(RawEvent{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev != nil {
+		t.Fatalf("expected nil for empty event type, got: %+v", ev)
+	}
+}
+
+func TestNormalizeRawEventIntoSkipsEmptyEventType(t *testing.T) {
+	var dst model.NormalizedEvent
+	ok, err := NormalizeRawEventInto(RawEvent{}, &dst)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected empty event type to be skipped")
+	}
+}
+
 func TestNormalizeRawEventIntoResetsReusableDestination(t *testing.T) {
 	dst := model.NormalizedEvent{
 		EventType:      "ROWS_QUERY",
