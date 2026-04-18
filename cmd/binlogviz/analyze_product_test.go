@@ -159,7 +159,7 @@ func TestAnalyzeCorpusTextAndHTMLContracts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("render html: %v", err)
 	}
-	for _, token := range []string{`id="chart-tps"`, `id="timeline"`, `id="hotspots"`} {
+	for _, token := range []string{`id="chart-tps"`, `id="section-activity"`, `id="section-objects"`} {
 		if !strings.Contains(htmlOut, token) {
 			t.Fatalf("expected HTML token %q", token)
 		}

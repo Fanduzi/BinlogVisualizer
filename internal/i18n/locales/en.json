@@ -1050,5 +1050,33 @@
   "report.html.analyze.longestTag": {
     "description": "Longest transaction tag",
     "other": "longest"
+  },
+  "report.html.analyze.sectionFindings": {
+    "description": "Findings and risks section header",
+    "other": "Risks & Findings"
+  },
+  "report.html.analyze.sectionActivity": {
+    "description": "Activity overview section header",
+    "other": "Activity Overview"
+  },
+  "report.html.analyze.sectionObjects": {
+    "description": "Hot objects section header",
+    "other": "Hot Objects"
+  },
+  "report.html.analyze.sectionEvidence": {
+    "description": "Diagnostic evidence section header",
+    "other": "Diagnostic Evidence"
+  },
+  "report.html.analyze.keyFindings": {
+    "description": "Key findings label in executive summary",
+    "other": "Key Findings"
+  },
+  "report.html.analyze.ddlCount": {
+    "description": "DDL event count label",
+    "other": "DDL Events"
+  },
+  "report.html.analyze.noAlerts": {
+    "description": "No alerts empty state",
+    "other": "No issues detected — workload looks healthy"
   }
 }
