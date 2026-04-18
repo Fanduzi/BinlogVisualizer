@@ -7,6 +7,7 @@ package binlogviz
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -325,6 +326,18 @@ func makeSyntheticFileProbes(base time.Time, fileCount int, fileSpan time.Durati
 		})
 	}
 	return probes
+}
+
+func BenchmarkAnalyzeExternalRealBinlog(b *testing.B) {
+	path := os.Getenv("BINLOGVIZ_REAL_BINLOG")
+	if path == "" {
+		b.Skip("set BINLOGVIZ_REAL_BINLOG to run external real-binlog benchmark")
+	}
+	if _, err := os.Stat(path); err != nil {
+		b.Fatalf("BINLOGVIZ_REAL_BINLOG file not accessible: %v", err)
+	}
+	parser := binlog.NewParser()
+	benchmarkStreamingPipeline(b, []string{path}, parser, analyzer.DefaultOptions())
 }
 
 func makeDDLHeavyEvents(base time.Time, ddlCount int) []binlog.RawEvent {
