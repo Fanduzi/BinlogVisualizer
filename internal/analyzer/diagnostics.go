@@ -280,25 +280,6 @@ func BuildFileSegments(minutes []model.MinuteBucket, segmentSize int) []model.Fi
 	return segments
 }
 
-func transactionByKey(transactions []model.Transaction, txnKey string) (model.Transaction, bool) {
-	for _, txn := range transactions {
-		if txn.TxnKey == txnKey {
-			return txn, true
-		}
-	}
-	return model.Transaction{}, false
-}
-
-func minuteByTimestamp(minutes []model.MinuteBucket, ts time.Time) (model.MinuteBucket, bool) {
-	minute := truncateToMinute(ts)
-	for _, bucket := range minutes {
-		if bucket.Minute.Equal(minute) {
-			return bucket, true
-		}
-	}
-	return model.MinuteBucket{}, false
-}
-
 func transactionEvidence(txn model.Transaction) []string {
 	evidence := []string{
 		fmt.Sprintf("rows=%d", txn.TotalRows),
