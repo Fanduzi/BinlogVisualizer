@@ -8,6 +8,8 @@ package binlog
 import (
 	"testing"
 
+	"binlogviz/internal/model"
+
 	"github.com/go-mysql-org/go-mysql/replication"
 )
 
@@ -109,4 +111,99 @@ func BenchmarkApplyBinlogEventMetadataCachedRowsEvent(b *testing.B) {
 		applyBinlogEventMetadata(&raw, replication.WRITE_ROWS_EVENTv2.String(), rows, tableNames)
 	}
 	_ = raw
+}
+
+// --- Real parser benchmarks in the binlog package for pure parser-layer measurement ---
+
+func BenchmarkRealFixtureParseOnly(b *testing.B) {
+	fixture := "testdata/minimal.binlog"
+	p := NewParser()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		if err := p.ParseFiles([]string{fixture}, func(raw RawEvent) error {
+			count++
+			return nil
+		}); err != nil {
+			b.Fatalf("ParseFiles: %v", err)
+		}
+		_ = count
+	}
+}
+
+func BenchmarkRealFixtureParseAndNormalize(b *testing.B) {
+	fixture := "testdata/minimal.binlog"
+	p := NewParser()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		count := 0
+		if err := p.ParseFiles([]string{fixture}, func(raw RawEvent) error {
+			var ev model.NormalizedEvent
+			ok, err := NormalizeRawEventInto(raw, &ev)
+			if err != nil {
+				return err
+			}
+			if ok {
+				count++
+			}
+			return nil
+		}); err != nil {
+			b.Fatalf("ParseFiles: %v", err)
+		}
+		_ = count
+	}
+}
+
+func BenchmarkRealFixtureParseWithProgress(b *testing.B) {
+	fixture := "testdata/minimal.binlog"
+	pp := NewParser().(ProgressParser)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		progressCalls := 0
+		eventCount := 0
+		if err := pp.ParseFilesWithProgress([]string{fixture}, func(progress ParseProgress) {
+			progressCalls++
+		}, func(raw RawEvent) error {
+			eventCount++
+			return nil
+		}); err != nil {
+			b.Fatalf("ParseFilesWithProgress: %v", err)
+		}
+		_ = progressCalls
+		_ = eventCount
+	}
+}
+
+func TestRealFixtureContainsExpectedEvents(t *testing.T) {
+	fixture := "testdata/minimal.binlog"
+	p := NewParser()
+
+	eventTypes := map[string]int{}
+	if err := p.ParseFiles([]string{fixture}, func(raw RawEvent) error {
+		eventTypes[raw.EventType]++
+		return nil
+	}); err != nil {
+		t.Fatalf("ParseFiles: %v", err)
+	}
+
+	t.Logf("Event types in fixture: %v", eventTypes)
+
+	// The minimal.binlog should contain at least some row events
+	hasRows := false
+	for et := range eventTypes {
+		if isRowsEventTypeForTest(et) {
+			hasRows = true
+		}
+	}
+	if !hasRows {
+		t.Fatal("expected fixture to contain at least one rows event, got:", eventTypes)
+	}
+}
+
+func isRowsEventTypeForTest(eventType string) bool {
+	return len(eventType) >= 9 && eventType[:9] == "WriteRows" ||
+		len(eventType) >= 10 && (eventType[:10] == "UpdateRows" || eventType[:10] == "DeleteRows")
 }
