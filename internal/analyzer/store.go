@@ -423,10 +423,14 @@ func (s *DuckDBStore) Flush() error {
 }
 
 func (s *DuckDBStore) QueryAllTransactions() ([]model.Transaction, error) {
+	count, err := s.countTransactions()
+	if err != nil {
+		return nil, err
+	}
 	baseRows, err := s.queryTransactions(`
 SELECT txn_key, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, query_summary, query_truncated, query_original_bytes
 FROM transactions
-ORDER BY start_time ASC, txn_key ASC`)
+ORDER BY start_time ASC, txn_key ASC`, count)
 	if err != nil {
 		return nil, err
 	}
@@ -441,7 +445,7 @@ ORDER BY total_rows DESC, txn_key ASC`
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
-	baseRows, err := s.queryTransactions(query)
+	baseRows, err := s.queryTransactions(query, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -700,31 +704,37 @@ func (s *DuckDBStore) initSchema() error {
 	return nil
 }
 
-func (s *DuckDBStore) queryTransactions(query string) ([]transactionRow, error) {
+func (s *DuckDBStore) countTransactions() (int, error) {
+	var count int64
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM transactions`).Scan(&count); err != nil {
+		return 0, err
+	}
+	if count <= 0 {
+		return 0, nil
+	}
+	if count > int64(^uint(0)>>1) {
+		return 0, fmt.Errorf("transaction count %d exceeds int capacity", count)
+	}
+	return int(count), nil
+}
+
+func (s *DuckDBStore) queryTransactions(query string, capacityHint int) ([]transactionRow, error) {
+	if capacityHint < 0 {
+		capacityHint = 0
+	}
 	rows, err := s.db.Query(query)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	result := make([]transactionRow, 0)
+	result := make([]transactionRow, 0, capacityHint)
 	for rows.Next() {
 		var row transactionRow
 		if err := rows.Scan(
-			&row.TxnKey,
-			&row.StartTime,
-			&row.EndTime,
-			&row.DurationMS,
-			&row.TotalRows,
-			&row.EventCount,
-			&row.BinlogBytes,
-			&row.BinlogPathStart,
-			&row.BinlogPathEnd,
-			&row.PositionStart,
-			&row.PositionEnd,
-			&row.QuerySummary,
-			&row.QueryTruncated,
-			&row.QueryOriginalBytes,
+			&row.TxnKey, &row.StartTime, &row.EndTime, &row.DurationMS, &row.TotalRows, &row.EventCount, &row.BinlogBytes,
+			&row.BinlogPathStart, &row.BinlogPathEnd, &row.PositionStart, &row.PositionEnd,
+			&row.QuerySummary, &row.QueryTruncated, &row.QueryOriginalBytes,
 		); err != nil {
 			return nil, err
 		}
@@ -758,12 +768,9 @@ func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow, restrictToK
 			PositionStart:   row.PositionStart,
 			PositionEnd:     row.PositionEnd,
 			QuerySummary:    row.QuerySummary,
-			Tables:          make(map[string]int),
-			Operations:      make(map[string]int),
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 			txns[i].QueryContext = &model.QueryContext{
-				SQL:           "",
 				Truncated:     row.QueryTruncated,
 				OriginalBytes: int(row.QueryOriginalBytes),
 			}
@@ -804,6 +811,9 @@ FROM transaction_tables`
 			return err
 		}
 		if idx, ok := indexByTxnKey[txnKey]; ok {
+			if txns[idx].Tables == nil {
+				txns[idx].Tables = make(map[string]int)
+			}
 			txns[idx].Tables[tableKey] = int(rowsCount)
 		}
 	}
@@ -836,6 +846,9 @@ FROM transaction_operations`
 			return err
 		}
 		if idx, ok := indexByTxnKey[txnKey]; ok {
+			if txns[idx].Operations == nil {
+				txns[idx].Operations = make(map[string]int)
+			}
 			txns[idx].Operations[operation] = int(rowsCount)
 		}
 	}

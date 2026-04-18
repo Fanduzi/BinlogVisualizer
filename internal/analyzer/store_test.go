@@ -207,6 +207,23 @@ func TestDuckDBStoreQueryAllTransactionsDoesNotHydrateFullSQL(t *testing.T) {
 	}
 }
 
+func TestDuckDBStoreQueryAllTransactionsReturnsCountError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "analysis.duckdb")
+	store, err := NewDuckDBStore(path, DefaultBatchFlushRows)
+	if err != nil {
+		t.Fatalf("NewDuckDBStore returned error: %v", err)
+	}
+	// Close the store so subsequent queries fail
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close returned error: %v", err)
+	}
+	_, err = store.QueryAllTransactions()
+	if err == nil {
+		t.Fatal("expected QueryAllTransactions to return error on closed store, got nil")
+	}
+}
+
 func newTestDuckDBStore(t interface {
 	Helper()
 	TempDir() string
@@ -442,6 +459,143 @@ func BenchmarkDuckDBStoreQueryMinuteBuckets(b *testing.B) {
 			b.Fatalf("expected %d minute buckets, got %d", len(fixtures), len(buckets))
 		}
 	}
+}
+
+func TestDuckDBStoreQueryAllTransactionsHydratesMapsLazily(t *testing.T) {
+	store := newTestDuckDBStore(t, DefaultBatchFlushRows)
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+
+	if err := store.RecordTransactions([]persistedTransaction{
+		{
+			TxnKey:     "txn-with-maps",
+			StartTime:  base,
+			EndTime:    base.Add(time.Second),
+			DurationMS: 1000,
+			TotalRows:  10,
+			EventCount: 2,
+			TableRows:  map[string]int{"shop.orders": 7, "shop.users": 3},
+			Operations: map[string]int{"INSERT": 7, "UPDATE": 3},
+		},
+		{
+			TxnKey:     "txn-no-maps",
+			StartTime:  base.Add(2 * time.Second),
+			EndTime:    base.Add(3 * time.Second),
+			DurationMS: 1000,
+			TotalRows:  0,
+			EventCount: 1,
+			TableRows:  nil,
+			Operations: nil,
+		},
+	}); err != nil {
+		t.Fatalf("RecordTransactions returned error: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+
+	txns, err := store.QueryAllTransactions()
+	if err != nil {
+		t.Fatalf("QueryAllTransactions returned error: %v", err)
+	}
+	if len(txns) != 2 {
+		t.Fatalf("expected 2 transactions, got %d", len(txns))
+	}
+
+	withMaps := txns[0]
+	if withMaps.TxnKey != "txn-with-maps" {
+		t.Fatalf("unexpected first txn: %s", withMaps.TxnKey)
+	}
+	if len(withMaps.Tables) != 2 || withMaps.Tables["shop.orders"] != 7 {
+		t.Fatalf("expected Tables map with shop.orders=7, got %v", withMaps.Tables)
+	}
+	if len(withMaps.Operations) != 2 || withMaps.Operations["INSERT"] != 7 {
+		t.Fatalf("expected Operations map with INSERT=7, got %v", withMaps.Operations)
+	}
+
+	noMaps := txns[1]
+	if noMaps.TxnKey != "txn-no-maps" {
+		t.Fatalf("unexpected second txn: %s", noMaps.TxnKey)
+	}
+	// nil or empty map both acceptable; must not panic on range/len
+	_ = len(noMaps.Tables)
+	_ = len(noMaps.Operations)
+	for k, v := range noMaps.Tables {
+		t.Fatalf("expected no table entries, got %s=%d", k, v)
+	}
+	for k, v := range noMaps.Operations {
+		t.Fatalf("expected no operation entries, got %s=%d", k, v)
+	}
+}
+
+func TestDuckDBStoreQueryTopTransactionsStillHydratesOnlySelectedKeys(t *testing.T) {
+	store := newTestDuckDBStore(t, DefaultBatchFlushRows)
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+
+	fixtures := []persistedTransaction{
+		{TxnKey: "txn-1", StartTime: base, EndTime: base.Add(time.Second), DurationMS: 1000, TotalRows: 50, EventCount: 3,
+			TableRows: map[string]int{"shop.orders": 50}, Operations: map[string]int{"INSERT": 50}},
+		{TxnKey: "txn-2", StartTime: base.Add(2 * time.Second), EndTime: base.Add(3 * time.Second), DurationMS: 1000, TotalRows: 30, EventCount: 2,
+			TableRows: map[string]int{"shop.users": 30}, Operations: map[string]int{"UPDATE": 30}},
+		{TxnKey: "txn-3", StartTime: base.Add(4 * time.Second), EndTime: base.Add(5 * time.Second), DurationMS: 1000, TotalRows: 10, EventCount: 1,
+			TableRows: map[string]int{"shop.products": 10}, Operations: map[string]int{"DELETE": 10}},
+	}
+	if err := store.RecordTransactions(fixtures); err != nil {
+		t.Fatalf("RecordTransactions returned error: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("Flush returned error: %v", err)
+	}
+
+	txns, err := store.QueryTopTransactions(2)
+	if err != nil {
+		t.Fatalf("QueryTopTransactions returned error: %v", err)
+	}
+	if len(txns) != 2 {
+		t.Fatalf("expected 2 top transactions, got %d", len(txns))
+	}
+	// Top 2 by rows: txn-1 (50), txn-2 (30)
+	if txns[0].TxnKey != "txn-1" {
+		t.Fatalf("expected first top txn to be txn-1, got %s", txns[0].TxnKey)
+	}
+	if txns[0].Tables["shop.orders"] != 50 {
+		t.Fatalf("expected txn-1 Tables[shop.orders]=50, got %d", txns[0].Tables["shop.orders"])
+	}
+	if txns[1].TxnKey != "txn-2" {
+		t.Fatalf("expected second top txn to be txn-2, got %s", txns[1].TxnKey)
+	}
+	if txns[1].Tables["shop.users"] != 30 {
+		t.Fatalf("expected txn-2 Tables[shop.users]=30, got %d", txns[1].Tables["shop.users"])
+	}
+}
+
+func TestNilMapTransactionIsConsumerSafe(t *testing.T) {
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	txns := []model.Transaction{
+		{TxnKey: "empty-txn", StartTime: base, Tables: nil, Operations: nil},
+		{TxnKey: "with-txn", StartTime: base, Tables: map[string]int{"a": 1}, Operations: map[string]int{"INSERT": 1}},
+	}
+
+	// These consumers must not panic on nil maps
+	t.Run("BuildPatterns", func(t *testing.T) {
+		patterns := BuildPatterns(txns)
+		if len(patterns) == 0 {
+			t.Fatal("expected at least one pattern")
+		}
+	})
+
+	t.Run("SelectWidestTransactions", func(t *testing.T) {
+		wide := SelectWidestTransactions(txns, 5)
+		if len(wide) == 0 {
+			t.Fatal("expected at least one widest transaction")
+		}
+	})
+
+	t.Run("SelectDiagnosticTransactions", func(t *testing.T) {
+		byRows, byDur := SelectDiagnosticTransactions(txns, 5)
+		if len(byRows) == 0 || len(byDur) == 0 {
+			t.Fatal("expected diagnostic transactions")
+		}
+	})
 }
 
 func analyzerPersistenceFixture(base time.Time) []model.NormalizedEvent {
