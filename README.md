@@ -149,6 +149,8 @@ The HTML report includes interactive charts (rows/txns per minute, top tables, o
 
 For incident triage, the target for a 1 GB single-binlog `analyze` run is 10 seconds on the target DBA environment. Runs above 15 seconds should be treated as performance failures and profiled with `pprof`.
 
+Default `--detail-store none` produces JSON equivalent to `--detail-store duckdb` while reducing peak RSS by roughly 38% (measured on a 988 MB MySQL 8.0 ROW binlog). Wall time remains parser/streaming-bound.
+
 Recommended manual check:
 
 ```bash

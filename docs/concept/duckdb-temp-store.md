@@ -1,6 +1,6 @@
 # DuckDB Temp Store
 
-BinlogViz uses a command-owned temporary DuckDB database during each `binlogviz analyze` run. It exists to support analysis work that should not live entirely in memory and is removed when the command cleans up.
+BinlogViz can use a command-owned temporary DuckDB database during `binlogviz analyze` when the `--detail-store duckdb` flag is passed. As of v0.19.0, the default is `--detail-store none`, which skips DuckDB entirely.
 
 ## What It Stores
 
@@ -13,6 +13,8 @@ At a high level, the DuckDB temp store holds temporary analysis data that is use
 This store is internal implementation detail for one command execution, not a user-facing database.
 
 ## Why It Exists
+
+Starting with v0.19.0, the DuckDB detail store is opt-in via `--detail-store duckdb`. The default `--detail-store none` produces equivalent JSON output without creating a DuckDB database.
 
 BinlogViz follows a streaming command path: parse, normalize, consume, then finalize. That design is a good fit for large local binlog ranges, but some report sections still need a place to assemble or persist intermediate result data until the full input has been seen.
 

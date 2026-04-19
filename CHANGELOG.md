@@ -2,6 +2,51 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.19.0
+
+Release date: 2026-04-19
+
+Highlights:
+
+- Changed default `--detail-store` from `duckdb` to `none`; `binlogviz analyze` no longer creates a DuckDB temp store by default
+- `none` mode does not create a DuckDB database, does not call `ResolveTransactionQuerySQL`, and does not write to disk
+- `--detail-store duckdb` remains available for workflows that need the detail store
+- Default `none` reduces max RSS by about 38% on the 988 MB real binlog sample (199–203 MB vs 320–323 MB); JSON output is identical to `duckdb` mode across all 10 top-level report fields
+
+Related notes:
+
+- [v0.19.0 release notes](docs/releases/release-notes-v0.19.0.md)
+- [v0.19.0 中文发行说明](docs/releases/release-notes-v0.19.0.zh-CN.md)
+
+## v0.18.1
+
+Release date: 2026-04-19
+
+Highlights:
+
+- Added an external real-binlog benchmark gated by `BINLOGVIZ_REAL_BINLOG`
+- Reduced finalize allocation hotspots and store transaction scan memory
+- Tuned DuckDB transaction batch flushes from 5,000 to 10,000 rows
+
+Related notes:
+
+- [v0.18.1 release notes](docs/releases/release-notes-v0.18.1.md)
+- [v0.18.1 中文发行说明](docs/releases/release-notes-v0.18.1.zh-CN.md)
+
+## v0.18.0
+
+Release date: 2026-04-16
+
+Highlights:
+
+- Added directory-based analyze discovery with `--from-dir`, `--prefix`, `--start`, and `--end`
+- Added richer analyzer diagnostics, redesigned HTML reports, and compare/trend diagnostic deltas
+- Complete English/Chinese localization across HTML surfaces
+
+Related notes:
+
+- [v0.18.0 release notes](docs/releases/release-notes-v0.18.0.md)
+
 ## v0.17.0
 
 Release date: 2026-04-13
