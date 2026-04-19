@@ -1,6 +1,6 @@
 # DuckDB 临时存储
 
-在每一次 `binlogviz analyze` 运行中，BinlogViz 都会使用一个由命令拥有的临时 DuckDB 数据库。它用于承载不适合完全驻留内存的分析数据，并会在命令清理阶段被移除。
+BinlogViz 可以在 `binlogviz analyze` 运行中使用由命令拥有的临时 DuckDB 数据库，但需要传入 `--detail-store duckdb` 标志。从 v0.19.0 起，默认为 `--detail-store none`，即完全不使用 DuckDB。
 
 ## 它存什么
 
@@ -13,6 +13,8 @@
 这个存储只是一次命令执行的内部实现细节，不是用户需要管理的数据库。
 
 ## 为什么需要它
+
+从 v0.19.0 起，DuckDB 明细存储需要通过 `--detail-store duckdb` 显式启用。默认的 `--detail-store none` 可以生成等价的 JSON 输出，无需创建 DuckDB 数据库。
 
 BinlogViz 采用的是流式命令路径：parse、normalize、consume，然后 finalize。这种设计很适合分析较大的本地 binlog 范围，但某些报告章节仍然需要一个地方，在完整输入窗口结束前保存或组装中间结果。
 

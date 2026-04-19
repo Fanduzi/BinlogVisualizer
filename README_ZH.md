@@ -149,6 +149,8 @@ HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操�
 
 面向故障排查时，单个 1 GB binlog 的 `analyze` 目标耗时是目标 DBA 环境上的 10 秒。超过 15 秒应视为性能失败，并用 `pprof` 做剖析。
 
+默认 `--detail-store none` 与 `--detail-store duckdb` 生成的 JSON 等价，同时峰值 RSS 降低约 38%（在 988 MB MySQL 8.0 ROW binlog 上测量）。总耗时仍主要受 parser/流式聚合限制。
+
 建议的人工检查命令：
 
 ```bash
