@@ -44,7 +44,7 @@ The command path is intentionally streaming:
 
 1. Resolve input files.
 2. Validate files exist.
-3. Create a command-owned temporary DuckDB store.
+3. Create an optional detail store (default: none, skipped in default mode).
 4. Parse events.
 5. Normalize each event immediately.
 6. Forward each normalized event directly to `analyzer.Consume`.
@@ -74,8 +74,8 @@ In discovery mode, the command prints the resolved ordered binlog file list to `
 
 ## DuckDB in the Pipeline
 
-DuckDB is the temporary store that supports finalize-time result assembly and bounded SQL-context storage without breaking the streaming shape of the main command path.
+The default and recommended analyze path is `--detail-store none`, which produces the user-facing JSON/HTML/text reports without creating a DuckDB temporary store. `--detail-store duckdb` is retained as an experimental/debug compatibility backend for development comparisons and future detail-query features; current user-facing reports do not require it.
 
-From the architecture point of view, the important point is simple: `binlogviz analyze` creates one command-owned temporary DuckDB store for the run, passes it into the analyzer, and cleans it up when the command exits.
+When `--detail-store duckdb` is used, `binlogviz analyze` creates one command-owned temporary DuckDB store for the run, passes it into the analyzer, and cleans it up when the command exits.
 
 For lifecycle details, operational implications, and what users may notice during large analyses, see [DuckDB Temp Store](./duckdb-temp-store.md).

@@ -10,7 +10,7 @@ Highlights:
 
 - Changed default `--detail-store` from `duckdb` to `none`; `binlogviz analyze` no longer creates a DuckDB temp store by default
 - `none` mode does not create a DuckDB database, does not call `ResolveTransactionQuerySQL`, and does not write to disk
-- `--detail-store duckdb` remains available for workflows that need the detail store
+- `--detail-store duckdb` remains available as an experimental/debug compatibility backend
 - Default `none` reduces max RSS by about 38% on the 988 MB real binlog sample (199–203 MB vs 320–323 MB); JSON output is identical to `duckdb` mode across all 10 top-level report fields
 
 Related notes:

@@ -44,7 +44,7 @@ Analyzer 会在事件到达时立刻消费标准化事件。它会重建事务�
 
 1. 解析输入文件。
 2. 校验文件存在。
-3. 创建命令拥有的临时 DuckDB 存储。
+3. 创建可选的明细存储（默认：none，默认模式下跳过）。
 4. 解析事件。
 5. 立刻标准化每个事件。
 6. 直接把标准化事件传给 `analyzer.Consume`。
@@ -74,8 +74,8 @@ BinlogViz 把报告数据保留在 `stdout`，把面向人的状态输出放在 
 
 ## 管线中的 DuckDB
 
-DuckDB 是一个临时存储，用来支撑 finalize 阶段的结果组装和受限 SQL 上下文存储，同时又不破坏主命令路径的流式形态。
+默认且推荐的 analyze 路径是 `--detail-store none`，它无需创建 DuckDB 临时存储即可生成用户可见的 JSON/HTML/text 报告。`--detail-store duckdb` 目前保留为实验性/调试/兼容后端，用于开发对照和未来明细查询能力；当前用户可见报告不依赖它。
 
-从架构角度看，核心点很简单：`binlogviz analyze` 每次运行都会创建一个命令拥有的临时 DuckDB 存储，把它传给分析器，并在命令退出时清理掉。
+当使用 `--detail-store duckdb` 时，`binlogviz analyze` 会创建一个命令拥有的临时 DuckDB 存储，把它传给分析器，并在命令退出时清理掉。
 
 如果你想看生命周期细节、运维侧影响，以及大规模分析时用户可能观察到的现象，请继续阅读 [DuckDB 临时存储](./duckdb-temp-store.zh-CN.md)。

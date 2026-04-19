@@ -37,7 +37,7 @@ Important runtime implications:
 
 - parsing is streaming
 - final report assembly still happens after parsing completes
-- a temporary DuckDB store is created per command
+- a temporary DuckDB store is created per command when `--detail-store duckdb` is used (default: none)
 - larger inputs may show noticeable finalization time and temporary disk usage
 
 So the product is optimized for bounded streaming analysis, not for zero-disk or fully incremental interactive exploration.
