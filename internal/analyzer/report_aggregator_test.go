@@ -133,22 +133,22 @@ func TestReportAggregatorPatternParity(t *testing.T) {
 			QuerySummary: "single insert",
 		},
 		{
-			TxnKey:      "txn-3",
-			StartTime:   base.Add(2 * time.Minute),
-			EndTime:     base.Add(2 * time.Minute),
-			TotalRows:   100,
-			EventCount:  4,
-			Tables:      map[string]int{"shop.items": 100},
-			Operations:  map[string]int{"UPDATE": 100},
+			TxnKey:     "txn-3",
+			StartTime:  base.Add(2 * time.Minute),
+			EndTime:    base.Add(2 * time.Minute),
+			TotalRows:  100,
+			EventCount: 4,
+			Tables:     map[string]int{"shop.items": 100},
+			Operations: map[string]int{"UPDATE": 100},
 		},
 		{
-			TxnKey:      "txn-4",
-			StartTime:   base.Add(3 * time.Minute),
-			EndTime:     base.Add(3 * time.Minute),
-			TotalRows:   80,
-			EventCount:  3,
-			Tables:      map[string]int{"shop.orders": 80},
-			Operations:  map[string]int{"UPDATE": 80},
+			TxnKey:     "txn-4",
+			StartTime:  base.Add(3 * time.Minute),
+			EndTime:    base.Add(3 * time.Minute),
+			TotalRows:  80,
+			EventCount: 3,
+			Tables:     map[string]int{"shop.orders": 80},
+			Operations: map[string]int{"UPDATE": 80},
 		},
 	}
 
@@ -240,30 +240,30 @@ func TestReportAggregatorWarningsCount(t *testing.T) {
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	txns := []model.Transaction{
 		{
-			TxnKey:    "txn-1", StartTime: base, EndTime: base,
+			TxnKey: "txn-1", StartTime: base, EndTime: base,
 			TotalRows: 10, EventCount: 1,
-			Tables:    map[string]int{"t1": 10},
+			Tables:     map[string]int{"t1": 10},
 			Operations: map[string]int{"INSERT": 10},
 		},
 		{
 			TxnKey: "txn-2", StartTime: base, EndTime: base,
 			TotalRows: 20, EventCount: 1,
-			Tables:    map[string]int{"t1": 20},
-			Operations: map[string]int{"INSERT": 20},
+			Tables:       map[string]int{"t1": 20},
+			Operations:   map[string]int{"INSERT": 20},
 			QueryContext: &model.QueryContext{SQL: "long query...", Truncated: true},
 		},
 		{
 			TxnKey: "txn-3", StartTime: base, EndTime: base,
 			TotalRows: 30, EventCount: 1,
-			Tables:    map[string]int{"t1": 30},
-			Operations: map[string]int{"INSERT": 30},
+			Tables:       map[string]int{"t1": 30},
+			Operations:   map[string]int{"INSERT": 30},
 			QueryContext: &model.QueryContext{SQL: "another long query...", Truncated: true},
 		},
 		{
 			TxnKey: "txn-4", StartTime: base, EndTime: base,
 			TotalRows: 40, EventCount: 1,
-			Tables:    map[string]int{"t1": 40},
-			Operations: map[string]int{"INSERT": 40},
+			Tables:       map[string]int{"t1": 40},
+			Operations:   map[string]int{"INSERT": 40},
 			QueryContext: &model.QueryContext{SQL: "short query", Truncated: false},
 		},
 	}
@@ -277,5 +277,103 @@ func TestReportAggregatorWarningsCount(t *testing.T) {
 	wantWarnings := 2 // txn-2 and txn-3 have Truncated=true
 	if snapshot.Warnings != wantWarnings {
 		t.Fatalf("warnings = %d, want %d", snapshot.Warnings, wantWarnings)
+	}
+}
+
+func TestReportAggregatorOperationTimeseries(t *testing.T) {
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	agg := NewReportAggregator(DefaultOptions())
+
+	agg.ConsumeEvent(model.NormalizedEvent{Timestamp: base, Operation: "INSERT"})
+	agg.ConsumeOperationEvent(model.NormalizedEvent{Timestamp: base, Operation: "INSERT"})
+	agg.ConsumeOperationEvent(model.NormalizedEvent{Timestamp: base.Add(time.Second), Operation: "INSERT"})
+	agg.ConsumeOperationEvent(model.NormalizedEvent{Timestamp: base.Add(2 * time.Second), Operation: "UPDATE"})
+	agg.ConsumeOperationEvent(model.NormalizedEvent{Timestamp: base.Add(time.Minute), Operation: "DELETE"})
+
+	agg.ConsumeMinuteBucket(model.MinuteBucket{Minute: base, TotalRows: 10, TxnCount: 1})
+	agg.ConsumeMinuteBucket(model.MinuteBucket{Minute: base.Add(time.Minute), TotalRows: 5, TxnCount: 1})
+
+	snapshot := agg.Snapshot()
+	if len(snapshot.Timeseries.InsertEventSeries) == 0 {
+		t.Fatal("expected insert event series points")
+	}
+	if snapshot.Timeseries.InsertEventSeries[0].Value != 2 {
+		t.Fatalf("first minute inserts = %v, want 2", snapshot.Timeseries.InsertEventSeries[0].Value)
+	}
+	if snapshot.Timeseries.UpdateEventSeries[0].Value != 1 {
+		t.Fatalf("first minute updates = %v, want 1", snapshot.Timeseries.UpdateEventSeries[0].Value)
+	}
+	if len(snapshot.Timeseries.DeleteEventSeries) < 2 {
+		t.Fatalf("expected 2 minute points, got %d", len(snapshot.Timeseries.DeleteEventSeries))
+	}
+	if snapshot.Timeseries.DeleteEventSeries[1].Value != 1 {
+		t.Fatalf("second minute deletes = %v, want 1", snapshot.Timeseries.DeleteEventSeries[1].Value)
+	}
+}
+
+func TestReportAggregatorAlertReferencedEvidence(t *testing.T) {
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	opts := DefaultOptions()
+	opts.LargeTxnRows = 50
+
+	// txn-small: 10 rows, won't trigger large alert, but is in largest-5
+	smallTxn := model.Transaction{
+		TxnKey: "txn-small", StartTime: base, EndTime: base,
+		TotalRows: 10, EventCount: 1,
+		Tables: map[string]int{"t1": 10}, Operations: map[string]int{"INSERT": 10},
+	}
+	// txn-big: 100 rows, triggers large alert
+	bigTxn := model.Transaction{
+		TxnKey: "txn-big", StartTime: base, EndTime: base,
+		TotalRows: 100, EventCount: 1,
+		Tables: map[string]int{"t1": 100}, Operations: map[string]int{"UPDATE": 100},
+	}
+
+	agg := NewReportAggregator(opts)
+	agg.ConsumeTransaction(smallTxn)
+	agg.ConsumeTransaction(bigTxn)
+	snapshot := agg.Snapshot()
+
+	// Should have a large_transaction alert for txn-big
+	var foundAlert bool
+	for _, a := range snapshot.Alerts {
+		if a.TxnKey == "txn-big" && a.Type == "large_transaction" {
+			foundAlert = true
+		}
+	}
+	if !foundAlert {
+		t.Fatalf("expected large_transaction alert for txn-big, got %v", snapshot.Alerts)
+	}
+
+	// Findings should have evidence for txn-big even though it may not be first in largest
+	var foundEvidence bool
+	for _, f := range snapshot.Diagnostics.Findings {
+		if f.TxnKey == "txn-big" && len(f.EvidenceRefs) > 0 {
+			foundEvidence = true
+		}
+	}
+	if !foundEvidence {
+		t.Fatalf("expected evidence refs for txn-big in findings, got %v", snapshot.Diagnostics.Findings)
+	}
+}
+
+func TestReportAggregatorSnapshotPatternsNonNilMaps(t *testing.T) {
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	agg := NewReportAggregator(DefaultOptions())
+	agg.ConsumeTransaction(model.Transaction{
+		TxnKey: "txn-1", StartTime: base, EndTime: base,
+		TotalRows: 5, EventCount: 1,
+		Tables:     map[string]int{"shop.orders": 5},
+		Operations: map[string]int{"INSERT": 5},
+	})
+	snapshot := agg.Snapshot()
+	if len(snapshot.Patterns) == 0 {
+		t.Fatal("expected at least one pattern")
+	}
+	if snapshot.Patterns[0].Tables == nil {
+		t.Fatal("pattern Tables map should not be nil")
+	}
+	if snapshot.Patterns[0].Operations == nil {
+		t.Fatal("pattern Operations map should not be nil")
 	}
 }

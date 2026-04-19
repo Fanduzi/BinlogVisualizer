@@ -14,7 +14,7 @@
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates with bounded top-N representative transaction selection using bounded insertion sort instead of full-slice copy. |
-| `report_aggregator.go` | Maintains bounded streaming state for report assembly so default analyze output does not require full transaction rehydration. |
+| `report_aggregator.go` | Maintains bounded streaming state for report assembly so default analyze output does not require full transaction rehydration. Tracks operation counts for timeseries, alert-referenced transactions for evidence, and txn-size histograms. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window filtering, and benchmark coverage. |
 
 ## Interfaces
@@ -44,8 +44,11 @@
 
 - Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `10000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
 - DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is stored in the `transaction_sql_contexts` subtable and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
-- Completed transactions and minute buckets are not mirrored indefinitely in Go heap; Finalize reads persisted rows back from DuckDB so large multi-file workloads stay bounded.
-- Top-transaction reads query the bounded top-N transaction rows and hydrate only those requested keys from DuckDB side tables.
+- `assembleResult()` reads from `ReportAggregator.Snapshot()` instead of `QueryAllTransactions()`, eliminating the full-transaction rehydration path for default report output. `QueryAllTransactions` is no longer called during Finalize.
+- ReportAggregator receives events, transactions, and minute buckets during streaming, and DDL events at Finalize time. It maintains bounded top-N transaction lists, operation counts for timeseries, alert-referenced transaction evidence, and txn-size histograms.
+- Alert-referenced transactions are tracked in a bounded map so `BuildFindingsFromAlerts` and `BuildPatternDrilldowns` can resolve evidence even when the referenced transaction is not in the top-5 largest.
+- Pattern maps in snapshot use non-nil empty maps (`make(map[string]int)`) to match `BuildPatterns` semantics for `reflect.DeepEqual` parity.
+- Top-transaction reads hydrate SQL on demand via `attachTopTransactionSQL` using the store's `ResolveTransactionQuerySQL`.
 - Minute bucket reads query DuckDB at Finalize time instead of retaining all drained bucket snapshots in memory.
 - Finalize computes alerts after transaction/minute queries and feeds them directly into findings/drilldowns, avoiding an extra DuckDB alert round-trip on the hot path.
 - Live state remains bounded to the in-flight transaction builder, live table aggregates, current minute buckets pending flush, and summary counters.

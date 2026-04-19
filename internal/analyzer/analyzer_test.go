@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -808,5 +809,199 @@ func TestAnalyzerNewUsesInMemoryStoreByDefault(t *testing.T) {
 	}
 	if _, ok := a.store.(*DuckDBStore); ok {
 		t.Fatal("expected New to avoid implicit DuckDB temp store ownership")
+	}
+}
+
+type queryAllPanicStore struct {
+	*inMemoryStore
+}
+
+func (s *queryAllPanicStore) QueryAllTransactions() ([]model.Transaction, error) {
+	panic("QueryAllTransactions should not be called")
+}
+
+func TestAnalyzerFinalizeDoesNotRequireQueryAllTransactions(t *testing.T) {
+	baseStore := newInMemoryStore().(*inMemoryStore)
+	a := &Analyzer{
+		opts:  Options{TopTransactions: 10},
+		store: &queryAllPanicStore{inMemoryStore: baseStore},
+	}
+	a.reset()
+
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", TxnKey: "t1"},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume: %v", err)
+		}
+	}
+
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	if result.Summary.TotalTransactions != 1 {
+		t.Fatalf("total transactions = %d, want 1", result.Summary.TotalTransactions)
+	}
+	if result.Summary.TotalRows != 5 {
+		t.Fatalf("total rows = %d, want 5", result.Summary.TotalRows)
+	}
+}
+
+func TestAnalyzerStreamingReportPreservesOperationTimeseries(t *testing.T) {
+	opts := DefaultOptions()
+	a := New(opts)
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Minute), EventType: "BEGIN", TxnKey: "t2"},
+		{Timestamp: base.Add(time.Minute + time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "orders", Operation: "UPDATE", RowCount: 3},
+		{Timestamp: base.Add(time.Minute + 2*time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "orders", Operation: "DELETE", RowCount: 1},
+		{Timestamp: base.Add(time.Minute + 3*time.Second), EventType: "XID", TxnKey: "t2"},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume: %v", err)
+		}
+	}
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+
+	if len(result.Timeseries.InsertEventSeries) == 0 || result.Timeseries.InsertEventSeries[0].Value != 1 {
+		t.Fatalf("expected insert-event series with point=1 in first minute, got %v", result.Timeseries.InsertEventSeries)
+	}
+	if len(result.Timeseries.UpdateEventSeries) < 2 || result.Timeseries.UpdateEventSeries[1].Value != 1 {
+		t.Fatalf("expected update-event series with point=1 in second minute, got %v", result.Timeseries.UpdateEventSeries)
+	}
+	if len(result.Timeseries.DeleteEventSeries) < 2 || result.Timeseries.DeleteEventSeries[1].Value != 1 {
+		t.Fatalf("expected delete-event series with point=1 in second minute, got %v", result.Timeseries.DeleteEventSeries)
+	}
+}
+
+func TestAnalyzerStreamingReportOperationTimeseriesRespectsFilters(t *testing.T) {
+	opts := DefaultOptions()
+	opts.IncludeSchemas = []string{"shop"}
+	a := New(opts)
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "audit", Table: "noise", Operation: "UPDATE", RowCount: 99},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", TxnKey: "t1"},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume: %v", err)
+		}
+	}
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+
+	if len(result.Timeseries.InsertEventSeries) == 0 || result.Timeseries.InsertEventSeries[0].Value != 1 {
+		t.Fatalf("expected one included insert event, got %v", result.Timeseries.InsertEventSeries)
+	}
+	if len(result.Timeseries.UpdateEventSeries) == 0 || result.Timeseries.UpdateEventSeries[0].Value != 0 {
+		t.Fatalf("expected filtered update event to be excluded, got %v", result.Timeseries.UpdateEventSeries)
+	}
+	if result.Summary.TotalEvents != 4 {
+		t.Fatalf("summary total events = %d, want 4 to preserve existing event-count semantics", result.Summary.TotalEvents)
+	}
+}
+
+func TestAnalyzerStreamingReportKeepsAlertReferencedEvidence(t *testing.T) {
+	opts := DefaultOptions()
+	opts.LargeTxnRows = 5
+	a := New(opts)
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		// small txn: won't trigger large alert
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 2},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", TxnKey: "t1"},
+		// big txn: triggers large alert
+		{Timestamp: base.Add(time.Minute), EventType: "BEGIN", TxnKey: "t2"},
+		{Timestamp: base.Add(time.Minute + time.Second), EventType: "ROWS", TxnKey: "t2", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 100},
+		{Timestamp: base.Add(time.Minute + 2*time.Second), EventType: "XID", TxnKey: "t2"},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume: %v", err)
+		}
+	}
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+
+	// txn-2 has 100 rows and should trigger a large_transaction alert
+	var bigAlertFound bool
+	var bigAlertTxnKey string
+	for _, alert := range result.Alerts {
+		if alert.Type == "large_transaction" && alert.TxnKey == "txn-2" {
+			bigAlertFound = true
+			bigAlertTxnKey = alert.TxnKey
+		}
+	}
+	if !bigAlertFound {
+		t.Fatalf("expected large_transaction alert for txn-2, got %v", result.Alerts)
+	}
+
+	var bigFindingHasEvidence bool
+	for _, f := range result.Diagnostics.Findings {
+		if f.TxnKey == bigAlertTxnKey && len(f.EvidenceRefs) > 0 {
+			bigFindingHasEvidence = true
+		}
+	}
+	if !bigFindingHasEvidence {
+		t.Fatalf("expected evidence for %q in findings, got %v", bigAlertTxnKey, result.Diagnostics.Findings)
+	}
+}
+
+func TestAnalyzerStreamingReportPatternDrilldownsBoundedDeterministic(t *testing.T) {
+	opts := DefaultOptions()
+	opts.LargeTxnRows = 2
+	a := New(opts)
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+
+	// Build enough transactions to exercise pattern drilldown selection.
+	for i := 0; i < 10; i++ {
+		txnKey := fmt.Sprintf("txn-%d", i)
+		events := []model.NormalizedEvent{
+			{Timestamp: base.Add(time.Duration(i) * time.Minute), EventType: "BEGIN", TxnKey: txnKey},
+			{Timestamp: base.Add(time.Duration(i)*time.Minute + time.Second), EventType: "ROWS", TxnKey: txnKey, Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 50 + i},
+			{Timestamp: base.Add(time.Duration(i)*time.Minute + 2*time.Second), EventType: "XID", TxnKey: txnKey},
+		}
+		for _, ev := range events {
+			if err := a.Consume(ev); err != nil {
+				t.Fatalf("Consume: %v", err)
+			}
+		}
+	}
+
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+
+	if len(result.PatternDrilldowns) > 2 {
+		t.Fatalf("pattern drilldowns = %d, want <= 2", len(result.PatternDrilldowns))
+	}
+	for _, d := range result.PatternDrilldowns {
+		if len(d.RepresentativeTransactions) > 2 {
+			t.Fatalf("representative txns = %d, want <= 2", len(d.RepresentativeTransactions))
+		}
 	}
 }
