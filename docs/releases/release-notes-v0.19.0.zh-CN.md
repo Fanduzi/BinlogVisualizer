@@ -6,13 +6,13 @@
 
 `v0.19.0` 将 DuckDB 明细存储改为可选，并将默认 analyze 行为改为不使用它。
 
-默认 `binlogviz analyze` 现在走有界流式报告路径，不再创建 DuckDB 明细存储。这去除了默认情况下的临时存储创建、写入和清理开销，同时保留 `--detail-store duckdb` 供需要明细存储的工作流使用。
+默认 `binlogviz analyze` 现在走有界流式报告路径，不再创建 DuckDB 明细存储。这去除了默认情况下的临时存储创建、写入和清理开销，同时保留 `--detail-store duckdb` 作为实验性/调试/兼容后端。
 
 ## 主要内容
 
 - 默认 `--detail-store` 从 `duckdb` 改为 `none`
 - `none` 模式不创建 DuckDB 数据库，不调用 `ResolveTransactionQuerySQL`，不写入磁盘
-- `--detail-store duckdb` 仍可供需要明细存储的工作流使用
+- `--detail-store duckdb` 保留为实验性/调试/兼容后端
 - `none` 与 `duckdb` 模式的 JSON 输出完全一致：10 个顶层报告字段全部匹配（summary、tables、transactions、patterns、minutes、timeseries、diagnostics、alerts、warnings、pattern_drilldowns）
 
 ## 性能说明

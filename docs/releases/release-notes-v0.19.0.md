@@ -6,13 +6,13 @@ Release date: 2026-04-19
 
 `v0.19.0` makes the DuckDB detail store optional and changes the default analyze behavior to skip it.
 
-The default `binlogviz analyze` now uses the bounded streaming report path without creating a DuckDB detail store. This removes the temp-store creation, write, and cleanup overhead from the default case while keeping `--detail-store duckdb` available for workflows that need it.
+The default `binlogviz analyze` now uses the bounded streaming report path without creating a DuckDB detail store. This removes the temp-store creation, write, and cleanup overhead from the default case while keeping `--detail-store duckdb` available as an experimental/debug compatibility backend.
 
 ## Highlights
 
 - changed the default `--detail-store` from `duckdb` to `none`
 - `none` mode does not create a DuckDB database, does not call `ResolveTransactionQuerySQL`, and does not write to disk
-- `--detail-store duckdb` remains available for workflows that need the detail store
+- `--detail-store duckdb` remains available as an experimental/debug compatibility backend
 - JSON output is identical between `none` and `duckdb` modes: all 10 top-level report fields match (summary, tables, transactions, patterns, minutes, timeseries, diagnostics, alerts, warnings, pattern_drilldowns)
 
 ## Performance Notes

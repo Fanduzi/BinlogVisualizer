@@ -37,7 +37,7 @@ parse -> normalize -> consume -> finalize -> render
 
 - 解析阶段是流式的
 - 最终报告组装仍然发生在解析完成之后
-- 每次命令都会创建一个临时 DuckDB 存储
+- 使用 `--detail-store duckdb` 时每次命令都会创建一个临时 DuckDB 存储（默认：none）
 - 输入越大，finalize 阶段越可能表现出明显耗时和临时磁盘占用
 
 因此，这个产品优化的是有界流式分析，而不是零磁盘、也不是完全增量式的交互探索。
