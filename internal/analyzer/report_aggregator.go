@@ -38,17 +38,19 @@ type ReportAggregator struct {
 	endTime           time.Time
 	warnings          int
 
-	topTransactions []model.Transaction
-	largest         []model.Transaction
-	longest         []model.Transaction
-	widest          []model.Transaction
-	minutes         []model.MinuteBucket
-	alerts          []model.Alert
-	ddlEvents       []model.DDLEvent
-	fileCoverage    model.FileCoverage
-	patterns        map[string]*model.PatternStats
-	patternOrder    []string
-	txnSize         txnSizeTracker
+	topTransactions     []model.Transaction
+	largest             []model.Transaction
+	longest             []model.Transaction
+	widest              []model.Transaction
+	alertReferencedTxns map[string]model.Transaction
+	minutes             []model.MinuteBucket
+	alerts              []model.Alert
+	ddlEvents           []model.DDLEvent
+	fileCoverage        model.FileCoverage
+	patterns            map[string]*model.PatternStats
+	patternOrder        []string
+	txnSize             txnSizeTracker
+	operationCounts     map[time.Time]operationMinuteStats
 }
 
 type txnSizeTracker struct {
@@ -95,9 +97,11 @@ func (t *txnSizeTracker) snapshot() model.TxnSizeSeriesSummary {
 // NewReportAggregator creates a streaming report aggregator with the given options.
 func NewReportAggregator(opts Options) *ReportAggregator {
 	return &ReportAggregator{
-		opts:     opts,
-		patterns: make(map[string]*model.PatternStats),
-		txnSize:  newTxnSizeTracker(),
+		opts:                opts,
+		patterns:            make(map[string]*model.PatternStats),
+		txnSize:             newTxnSizeTracker(),
+		operationCounts:     make(map[time.Time]operationMinuteStats),
+		alertReferencedTxns: make(map[string]model.Transaction),
 	}
 }
 
@@ -113,6 +117,27 @@ func (a *ReportAggregator) ConsumeEvent(ev model.NormalizedEvent) {
 	if a.endTime.IsZero() || ev.Timestamp.After(a.endTime) {
 		a.endTime = ev.Timestamp
 	}
+}
+
+// ConsumeOperationEvent records operation-level counts for chart series.
+func (a *ReportAggregator) ConsumeOperationEvent(ev model.NormalizedEvent) {
+	if a == nil {
+		return
+	}
+	minute := truncateToMinute(ev.Timestamp)
+	stats := a.operationCounts[minute]
+	switch ev.Operation {
+	case "INSERT":
+		stats.insertEvents++
+	case "UPDATE":
+		stats.updateEvents++
+	case "DELETE":
+		stats.deleteEvents++
+	}
+	if ddlEvent, ok := DDLEventFromNormalizedEvent(ev); ok && ddlEvent.Operation != "" {
+		stats.ddlEvents++
+	}
+	a.operationCounts[minute] = stats
 }
 
 // ConsumeTransaction ingests a completed transaction into bounded report state.
@@ -131,7 +156,15 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 	}
 	a.consumePattern(txn)
 	a.txnSize.add(txn)
-	a.alerts = append(a.alerts, DetectLargeTransactionAlerts([]model.Transaction{txn}, a.opts)...)
+	newAlerts := DetectLargeTransactionAlerts([]model.Transaction{txn}, a.opts)
+	a.alerts = append(a.alerts, newAlerts...)
+	for _, alert := range newAlerts {
+		if alert.TxnKey != "" {
+			if _, exists := a.alertReferencedTxns[alert.TxnKey]; !exists {
+				a.alertReferencedTxns[alert.TxnKey] = txn
+			}
+		}
+	}
 }
 
 // ConsumeMinuteBucket appends a minute bucket to the aggregation state.
@@ -180,19 +213,24 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		summary.Duration = summary.EndTime.Sub(summary.StartTime)
 	}
 
-	largestCopy := append([]model.Transaction(nil), a.largest...)
+	// Merge largest + alert-referenced transactions into a single evidence pool.
+	evidenceTxns := mergeEvidenceTransactions(a.largest, a.alertReferencedTxns)
+
 	diagnostics := model.Diagnostics{
 		FileCoverage:        a.fileCoverage,
 		DDLEvents:           append([]model.DDLEvent(nil), a.ddlEvents...),
-		LargestTransactions: largestCopy,
+		LargestTransactions: append([]model.Transaction(nil), a.largest...),
 		LongestTransactions: append([]model.Transaction(nil), a.longest...),
 		WidestTransactions:  append([]model.Transaction(nil), a.widest...),
 		FileSegments:        BuildFileSegments(minutes, 5),
 		HotIntervals:        SelectHotIntervals(minutes, 5),
-		Findings:            BuildFindingsFromAlerts(alerts, minutes, largestCopy, a.ddlEvents),
+		Findings:            BuildFindingsFromAlerts(alerts, minutes, evidenceTxns, a.ddlEvents),
 	}
 
-	series := BuildTimeseries(TimeseriesBuildInput{Minutes: minutes})
+	series := BuildTimeseries(TimeseriesBuildInput{
+		Minutes:         minutes,
+		OperationCounts: a.operationCounts,
+	})
 	series.TxnSizeSeriesSummary = a.txnSize.snapshot()
 
 	return ReportSnapshot{
@@ -204,13 +242,13 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		Diagnostics:       diagnostics,
 		Alerts:            alerts,
 		Warnings:          a.warnings,
-		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, largestCopy, alerts),
+		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, evidenceTxns, alerts),
 	}
 }
 
 func insertTopTransaction(current []model.Transaction, txn model.Transaction, limit int, better func(left, right model.Transaction) bool) []model.Transaction {
-	if limit <= 0 {
-		return nil
+	if limit == 0 {
+		limit = len(current) + 1
 	}
 	insertAt := len(current)
 	for index := range current {
@@ -234,6 +272,37 @@ func insertTopTransaction(current []model.Transaction, txn model.Transaction, li
 		current = current[:limit]
 	}
 	return current
+}
+
+func mergeEvidenceTransactions(largest []model.Transaction, alertReferenced map[string]model.Transaction) []model.Transaction {
+	if len(alertReferenced) == 0 {
+		return append([]model.Transaction(nil), largest...)
+	}
+	seen := make(map[string]struct{}, len(largest)+len(alertReferenced))
+	out := make([]model.Transaction, 0, len(largest)+len(alertReferenced))
+	for _, txn := range largest {
+		if txn.TxnKey != "" {
+			seen[txn.TxnKey] = struct{}{}
+		}
+		out = append(out, txn)
+	}
+	for _, txn := range alertReferenced {
+		if _, exists := seen[txn.TxnKey]; !exists {
+			out = append(out, txn)
+		}
+	}
+	return out
+}
+
+func cloneMapEnsureNonNil(src map[string]int) map[string]int {
+	if len(src) == 0 {
+		return make(map[string]int)
+	}
+	dst := make(map[string]int, len(src))
+	for k, v := range src {
+		dst[k] = v
+	}
+	return dst
 }
 
 func transactionRowsBetter(left, right model.Transaction) bool {
@@ -304,8 +373,8 @@ func (a *ReportAggregator) snapshotPatterns() []model.PatternStats {
 			continue
 		}
 		cp := *p
-		cp.Tables = cloneStringIntMap(p.Tables)
-		cp.Operations = cloneStringIntMap(p.Operations)
+		cp.Tables = cloneMapEnsureNonNil(p.Tables)
+		cp.Operations = cloneMapEnsureNonNil(p.Operations)
 		cp.AvgRowsPerTxn = float64(cp.TotalRows) / float64(cp.TxnCount)
 		if a.totalTransactions > 0 {
 			cp.ShareOfTransactions = float64(cp.TxnCount) / float64(a.totalTransactions)
@@ -326,4 +395,3 @@ func (a *ReportAggregator) snapshotPatterns() []model.PatternStats {
 	})
 	return out
 }
-

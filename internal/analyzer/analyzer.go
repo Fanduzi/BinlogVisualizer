@@ -25,6 +25,7 @@ type Analyzer struct {
 	minuteAgg     *MinuteAggregator
 	ddlAgg        *DDLAggregator
 	timeseriesAgg *TimeseriesAggregator
+	reportAgg     *ReportAggregator
 
 	// Event tracking
 	eventCount int
@@ -115,6 +116,8 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 		return nil, err
 	}
 
+	a.reportAgg.ConsumeDDLEvents(a.ddlAgg.Snapshot())
+
 	a.result, a.err = a.assembleResult()
 	if a.err != nil {
 		return nil, a.err
@@ -160,11 +163,13 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 
 	// Only fan out to other aggregators if transaction processing succeeded.
 	if a.filter.Allow(ev.Schema, ev.Table) {
+		a.reportAgg.ConsumeOperationEvent(ev)
 		a.tableAgg.Consume(ev)
 		a.minuteAgg.Consume(ev)
 		a.ddlAgg.ConsumeEvent(ev)
 		a.timeseriesAgg.Consume(ev)
 	}
+	a.reportAgg.ConsumeEvent(ev)
 
 	if err := a.persistCompletedTransactions(); err != nil {
 		return err
@@ -193,6 +198,7 @@ func (a *Analyzer) reset() {
 	a.minuteAgg = NewMinuteAggregator()
 	a.ddlAgg = NewDDLAggregator()
 	a.timeseriesAgg = NewTimeseriesAggregator()
+	a.reportAgg = NewReportAggregator(a.opts)
 	a.filter = newEventFilter(a.opts)
 	a.eventCount = 0
 	a.startTime = time.Time{}
@@ -204,64 +210,27 @@ func (a *Analyzer) reset() {
 	}
 }
 
-// assembleResult builds the final AnalysisResult from all sub-aggregator snapshots.
+// assembleResult builds the final AnalysisResult from the streaming report aggregator snapshot.
 func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
-	allTransactions, err := a.store.QueryAllTransactions()
-	if err != nil {
-		return nil, err
-	}
-	topTransactions, err := a.store.QueryTopTransactions(a.opts.TopTransactions)
-	if err != nil {
-		return nil, err
-	}
+	snap := a.reportAgg.Snapshot()
+
+	topTransactions := snap.Transactions
 	if err := a.attachTopTransactionSQL(topTransactions); err != nil {
 		return nil, err
 	}
-	minutes, err := a.store.QueryMinuteBuckets()
-	if err != nil {
-		return nil, err
-	}
-	alerts := append(DetectLargeTransactionAlerts(allTransactions, a.opts), DetectSpikeAlerts(minutes, a.opts)...)
-
-	// Calculate workload summary
-	summary := a.buildSummary(allTransactions)
-
-	patterns := BuildPatterns(allTransactions)
-	ddlTimeline := a.ddlAgg.Snapshot()
-	timeseries := a.timeseriesAgg.Snapshot(minutes, allTransactions)
-	largestTransactions, longestTransactions := SelectDiagnosticTransactions(allTransactions, 5)
-	diagnostics := model.Diagnostics{
-		DDLEvents:           ddlTimeline,
-		LargestTransactions: largestTransactions,
-		LongestTransactions: longestTransactions,
-		WidestTransactions:  SelectWidestTransactions(allTransactions, 5),
-		FileSegments:        BuildFileSegments(minutes, 5),
-		HotIntervals:        SelectHotIntervals(minutes, 5),
-		Findings:            BuildFindingsFromAlerts(alerts, minutes, allTransactions, ddlTimeline),
-	}
 
 	return &model.AnalysisResult{
-		Summary:           summary,
-		Timeseries:        timeseries,
+		Summary:           snap.Summary,
+		Timeseries:        snap.Timeseries,
 		Tables:            limitTables(a.tableAgg.Snapshot(), a.opts.TopTables),
 		Transactions:      topTransactions,
-		Patterns:          patterns,
-		Minutes:           minutes,
-		Diagnostics:       diagnostics,
-		Alerts:            alerts,
-		Warnings:          countAnalysisWarnings(allTransactions),
-		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, allTransactions, alerts),
+		Patterns:          snap.Patterns,
+		Minutes:           snap.Minutes,
+		Diagnostics:       snap.Diagnostics,
+		Alerts:            snap.Alerts,
+		Warnings:          snap.Warnings,
+		PatternDrilldowns: snap.PatternDrilldowns,
 	}, nil
-}
-
-func countAnalysisWarnings(transactions []model.Transaction) int {
-	warnings := 0
-	for _, txn := range transactions {
-		if txn.QueryContext != nil && txn.QueryContext.Truncated {
-			warnings++
-		}
-	}
-	return warnings
 }
 
 func (a *Analyzer) attachTopTransactionSQL(transactions []model.Transaction) error {
@@ -290,32 +259,13 @@ func (a *Analyzer) attachTopTransactionSQL(transactions []model.Transaction) err
 	return nil
 }
 
-// buildSummary creates the WorkloadSummary from transaction data.
-func (a *Analyzer) buildSummary(transactions []model.Transaction) model.WorkloadSummary {
-	totalRows := 0
-	for _, txn := range transactions {
-		totalRows += txn.TotalRows
-	}
-
-	var duration time.Duration
-	if !a.startTime.IsZero() && !a.endTime.IsZero() {
-		duration = a.endTime.Sub(a.startTime)
-	}
-
-	return model.WorkloadSummary{
-		TotalTransactions: len(transactions),
-		TotalRows:         totalRows,
-		TotalEvents:       a.eventCount,
-		StartTime:         a.startTime,
-		EndTime:           a.endTime,
-		Duration:          duration,
-	}
-}
-
 func (a *Analyzer) persistCompletedTransactions() error {
 	drained := a.txnBuilder.DrainCompleted()
 	if len(drained) == 0 {
 		return nil
+	}
+	for _, txn := range drained {
+		a.reportAgg.ConsumeTransaction(txn)
 	}
 	return a.store.RecordTransactions(toPersistedTransactions(drained))
 }
@@ -323,6 +273,9 @@ func (a *Analyzer) persistCompletedTransactions() error {
 func (a *Analyzer) persistMinuteBuckets(buckets []model.MinuteBucket) error {
 	if len(buckets) == 0 {
 		return nil
+	}
+	for _, bucket := range buckets {
+		a.reportAgg.ConsumeMinuteBucket(bucket)
 	}
 	return a.store.RecordMinuteBuckets(buckets)
 }
