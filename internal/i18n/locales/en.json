@@ -107,6 +107,10 @@
     "description": "Large transaction duration threshold flag description",
     "other": "Duration threshold for large transaction alert"
   },
+  "cmd.analyze.flag.detailStore": {
+    "description": "Detail store backend flag description",
+    "other": "Detail store backend for optional transaction lookup: none or duckdb"
+  },
   "cmd.version.short": {
     "description": "Version command short description",
     "other": "Print the binlogviz version"

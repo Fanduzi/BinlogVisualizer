@@ -1186,8 +1186,10 @@ func TestCreateDuckDBTempStoreCreatesAndCleansFiles(t *testing.T) {
 func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 	root := t.TempDir()
 	var createdPath string
+	opts := analyzer.DefaultOptions()
+	opts.DetailStoreMode = analyzer.DetailStoreDuckDB
 
-	err := runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, analyzer.Options{}, "text", &mockParser{
+	err := runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, opts, "text", &mockParser{
 		events: []binlog.RawEvent{
 			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
 			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
@@ -1627,4 +1629,90 @@ func createTestTransactions(count int) []model.Transaction {
 		}
 	}
 	return txns
+}
+
+func TestAnalyzeAcceptsDetailStoreFlag(t *testing.T) {
+	cmd := newAnalyzeCommand()
+	flags := cmd.Flags()
+	if flags.Lookup("detail-store") == nil {
+		t.Fatal("expected --detail-store flag")
+	}
+}
+
+func TestBuildAnalyzerOptionsMapsDetailStoreMode(t *testing.T) {
+	cliOpts := &analyzeOptions{detailStore: "duckdb"}
+	got := buildAnalyzerOptions(cliOpts, time.Time{}, time.Time{})
+	if got.DetailStoreMode != analyzer.DetailStoreDuckDB {
+		t.Fatalf("DetailStoreMode = %q, want %q", got.DetailStoreMode, analyzer.DetailStoreDuckDB)
+	}
+}
+
+func TestBuildAnalyzerOptionsDefaultsToNoDetailStore(t *testing.T) {
+	cliOpts := &analyzeOptions{}
+	got := buildAnalyzerOptions(cliOpts, time.Time{}, time.Time{})
+	if got.DetailStoreMode != analyzer.DetailStoreNone {
+		t.Fatalf("DetailStoreMode = %q, want %q", got.DetailStoreMode, analyzer.DetailStoreNone)
+	}
+}
+
+func TestValidateAnalyzeOptionsRejectsInvalidDetailStore(t *testing.T) {
+	err := validateAnalyzeOptions(&analyzeOptions{detailStore: "invalid"})
+	if err == nil {
+		t.Fatal("expected error for invalid detail-store mode")
+	}
+	if !strings.Contains(err.Error(), "invalid --detail-store") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestRunAnalysisDetailStoreNoneDoesNotCreateDuckDBTempStore(t *testing.T) {
+	opts := analyzer.DefaultOptions()
+	var createdPath string
+	mock := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+		},
+	}
+
+	stdout, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, opts, "json", mock, t.TempDir(), func(path string) {
+			createdPath = path
+		})
+	})
+	if err != nil {
+		t.Fatalf("runAnalysisWithParserAndTempDir returned error: %v", err)
+	}
+	if createdPath != "" {
+		t.Fatalf("detail-store=none created DuckDB temp store at %s", createdPath)
+	}
+	if !json.Valid([]byte(stdout)) {
+		t.Fatalf("stdout must be valid json, got %s", stdout)
+	}
+}
+
+func TestRunAnalysisDetailStoreDuckDBCreatesTempStore(t *testing.T) {
+	opts := analyzer.DefaultOptions()
+	opts.DetailStoreMode = analyzer.DetailStoreDuckDB
+	var createdPath string
+	mock := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+		},
+	}
+
+	_, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, opts, "json", mock, t.TempDir(), func(path string) {
+			createdPath = path
+		})
+	})
+	if err != nil {
+		t.Fatalf("runAnalysisWithParserAndTempDir returned error: %v", err)
+	}
+	if createdPath == "" {
+		t.Fatal("detail-store=duckdb did not create DuckDB temp store")
+	}
 }

@@ -107,6 +107,10 @@
     "description": "大事务时长阈值标志描述",
     "other": "大事务告警的时长阈值"
   },
+  "cmd.analyze.flag.detailStore": {
+    "description": "可选明细存储后端标志描述",
+    "other": "可选事务明细存储后端：none 或 duckdb"
+  },
   "cmd.version.short": {
     "description": "version 命令简短描述",
     "other": "打印 binlogviz 版本"

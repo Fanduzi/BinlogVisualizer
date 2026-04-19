@@ -16,7 +16,7 @@ import (
 // It consumes normalized events and produces a complete analysis result.
 type Analyzer struct {
 	opts   Options
-	store  analysisStore
+	store  detailStore
 	filter *EventFilter
 
 	// Sub-aggregators
@@ -40,9 +40,11 @@ type Analyzer struct {
 
 // New creates a new Analyzer with the given options.
 func New(opts Options) *Analyzer {
-	a := &Analyzer{
-		opts:  opts,
-		store: newInMemoryStore(),
+	a := &Analyzer{opts: opts}
+	if opts.DetailStoreMode == DetailStoreDuckDB {
+		a.store = newInMemoryStore()
+	} else {
+		a.store = noopDetailStore{}
 	}
 	a.reset()
 	return a
@@ -50,6 +52,7 @@ func New(opts Options) *Analyzer {
 
 // NewWithStore creates a new Analyzer backed by a caller-managed store.
 func NewWithStore(opts Options, store *DuckDBStore) *Analyzer {
+	opts.DetailStoreMode = DetailStoreDuckDB
 	a := &Analyzer{
 		opts:  opts,
 		store: store,
@@ -237,9 +240,12 @@ func (a *Analyzer) attachTopTransactionSQL(transactions []model.Transaction) err
 	if len(transactions) == 0 {
 		return nil
 	}
+	if a.opts.DetailStoreMode == DetailStoreNone {
+		return nil
+	}
 	keys := make([]string, 0, len(transactions))
 	for _, txn := range transactions {
-		if txn.QueryContext != nil {
+		if txn.QueryContext != nil && txn.QueryContext.SQL == "" {
 			keys = append(keys, txn.TxnKey)
 		}
 	}

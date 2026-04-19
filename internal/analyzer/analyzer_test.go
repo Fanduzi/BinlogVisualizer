@@ -801,14 +801,89 @@ func TestAnalyzerAnalyzeRecoversAfterPreviousError(t *testing.T) {
 	}
 }
 
-func TestAnalyzerNewUsesInMemoryStoreByDefault(t *testing.T) {
+func TestAnalyzerNewUsesNoopDetailStoreByDefault(t *testing.T) {
 	a := New(Options{})
 
 	if a.store == nil {
 		t.Fatal("expected default analyzer store to be initialized")
 	}
-	if _, ok := a.store.(*DuckDBStore); ok {
-		t.Fatal("expected New to avoid implicit DuckDB temp store ownership")
+	if _, ok := a.store.(noopDetailStore); !ok {
+		t.Fatalf("expected default store to be noopDetailStore, got %T", a.store)
+	}
+}
+
+func TestAnalyzerDefaultOptionsProducesFullReportWithoutDuckDB(t *testing.T) {
+	a := New(DefaultOptions())
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5, BinlogBytes: 500},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", TxnKey: "t1"},
+	}
+	result, err := a.Analyze(events)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if result.Summary.TotalTransactions != 1 {
+		t.Fatalf("transactions = %d, want 1", result.Summary.TotalTransactions)
+	}
+	if result.Summary.TotalRows != 5 {
+		t.Fatalf("rows = %d, want 5", result.Summary.TotalRows)
+	}
+	if len(result.Transactions) != 1 {
+		t.Fatalf("top transactions = %d, want 1", len(result.Transactions))
+	}
+	if len(result.Patterns) == 0 {
+		t.Fatal("expected at least one pattern")
+	}
+}
+
+func TestAnalyzerDuckDBModeUsesInMemoryStore(t *testing.T) {
+	opts := DefaultOptions()
+	opts.DetailStoreMode = DetailStoreDuckDB
+	a := New(opts)
+
+	if _, ok := a.store.(noopDetailStore); ok {
+		t.Fatal("duckdb mode should not use noopDetailStore")
+	}
+}
+
+type resolveSQLPanicStore struct {
+	noopDetailStore
+}
+
+func (resolveSQLPanicStore) ResolveTransactionQuerySQL([]string) (map[string]string, error) {
+	panic("ResolveTransactionQuerySQL should not be called in detail-store=none mode")
+}
+
+func TestAnalyzerNoneDetailStoreDoesNotResolveTransactionSQL(t *testing.T) {
+	opts := DefaultOptions()
+	a := &Analyzer{opts: opts, store: resolveSQLPanicStore{}}
+	a.reset()
+
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS_QUERY", QuerySQL: "UPDATE shop.orders SET status='done' WHERE id=1"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "UPDATE", RowCount: 1},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID"},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume: %v", err)
+		}
+	}
+
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].QueryContext == nil {
+		t.Fatalf("expected top transaction with query context, got %+v", result.Transactions)
+	}
+	if result.Transactions[0].QueryContext.SQL == "" {
+		t.Fatalf("expected streaming SQL context to be preserved, got %+v", result.Transactions[0].QueryContext)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -79,7 +80,13 @@ func loadCorpusEvents(t *testing.T, scenario string) []model.NormalizedEvent {
 func analyzeCorpus(t *testing.T, scenario string) model.AnalysisResult {
 	t.Helper()
 
-	a := analyzer.New(analyzer.DefaultOptions())
+	return analyzeCorpusWithOptions(t, scenario, analyzer.DefaultOptions())
+}
+
+func analyzeCorpusWithOptions(t *testing.T, scenario string, opts analyzer.Options) model.AnalysisResult {
+	t.Helper()
+
+	a := analyzer.New(opts)
 	result, err := a.Analyze(loadCorpusEvents(t, scenario))
 	if err != nil {
 		t.Fatalf("analyze corpus %s: %v", scenario, err)
@@ -103,6 +110,31 @@ func TestAnalyzeCorpusCoversRequiredScenarios(t *testing.T) {
 				t.Fatalf("scenario %s has no normalized events", scenario)
 			}
 		})
+	}
+}
+
+func TestAnalyzeCorpusDetailStoreNoneAndDuckDBProduceEquivalentReports(t *testing.T) {
+	none := analyzeCorpusWithOptions(t, "incident-mixed", analyzer.DefaultOptions())
+	duckDBOpts := analyzer.DefaultOptions()
+	duckDBOpts.DetailStoreMode = analyzer.DetailStoreDuckDB
+	duckDB := analyzeCorpusWithOptions(t, "incident-mixed", duckDBOpts)
+
+	assertEquivalentAnalyzeField(t, "summary", none.Summary, duckDB.Summary)
+	assertEquivalentAnalyzeField(t, "timeseries", none.Timeseries, duckDB.Timeseries)
+	assertEquivalentAnalyzeField(t, "tables", none.Tables, duckDB.Tables)
+	assertEquivalentAnalyzeField(t, "transactions", none.Transactions, duckDB.Transactions)
+	assertEquivalentAnalyzeField(t, "patterns", none.Patterns, duckDB.Patterns)
+	assertEquivalentAnalyzeField(t, "minutes", none.Minutes, duckDB.Minutes)
+	assertEquivalentAnalyzeField(t, "diagnostics", none.Diagnostics, duckDB.Diagnostics)
+	assertEquivalentAnalyzeField(t, "alerts", none.Alerts, duckDB.Alerts)
+	assertEquivalentAnalyzeField(t, "warnings", none.Warnings, duckDB.Warnings)
+	assertEquivalentAnalyzeField(t, "pattern_drilldowns", none.PatternDrilldowns, duckDB.PatternDrilldowns)
+}
+
+func assertEquivalentAnalyzeField(t *testing.T, name string, left, right any) {
+	t.Helper()
+	if !reflect.DeepEqual(left, right) {
+		t.Fatalf("%s differs between detail-store modes\nnone: %#v\nduckdb: %#v", name, left, right)
 	}
 }
 
