@@ -15,14 +15,15 @@
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates with bounded top-N representative transaction selection using bounded insertion sort instead of full-slice copy. |
 | `report_aggregator.go` | Maintains bounded streaming state for report assembly so default analyze output does not require full transaction rehydration. Tracks operation counts for timeseries, alert-referenced transactions for evidence, and txn-size histograms. |
+| `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window filtering, and benchmark coverage. |
 
 ## Interfaces
 
 | API | Contract |
 |-----|----------|
-| `New(opts Options) *Analyzer` | Creates a fresh analyzer with bounded in-memory live state and an internal in-memory result store. It does not create DuckDB temp resources. |
-| `NewWithStore(opts Options, store *DuckDBStore) *Analyzer` | Creates an analyzer that uses a caller-managed DuckDB temp store. |
+| `New(opts Options) *Analyzer` | Creates a fresh analyzer with bounded in-memory live state. When `DetailStoreMode` is `none` (default), uses a no-op detail store and generates reports from streaming aggregates without DuckDB. When `duckdb`, uses an in-memory store for detail persistence. |
+| `NewWithStore(opts Options, store *DuckDBStore) *Analyzer` | Creates an analyzer that uses a caller-managed DuckDB temp store. Forces `DetailStoreMode` to `duckdb`. |
 | `NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error)` | Opens and initializes the internal DuckDB result store schema. |
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event, applying time-window filtering and failing atomically on transaction-boundary errors. |
 | `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the final analysis result. Successful calls are idempotent. |

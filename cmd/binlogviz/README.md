@@ -56,6 +56,7 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - Top-N truncation is no longer applied in the command layer; it now happens during analyzer Finalize result assembly.
 - Analyze text output is now diagnostic-first by default: summary, top findings, top tables, and next actions are shown on stdout, while minute-level and write-shape detail are reserved for explicit detail controls in the report layer.
 - `--top N` sets the default ranked output size for productized text and HTML report sections.
+- `--detail-store none|duckdb` controls optional transaction detail persistence. The default `none` generates reports from streaming aggregates without DuckDB; `duckdb` keeps the detail backend enabled for future lookup workflows.
 - `--details`, `--show-minutes`, and `--show-patterns` expand the default concise text report without changing analyzer semantics.
 - Analyze performance coverage includes text-vs-HTML rendering, corpus-backed DBA incident workloads, a CI-safe near-1GB synthetic mix benchmark, and an external real-binlog benchmark (`BenchmarkAnalyzeExternalRealBinlog`) gated behind `BINLOGVIZ_REAL_BINLOG` env var; real-fixture parser benchmarks isolate parse-only, parse+normalize, and end-to-end layers to identify per-stage bottlenecks.
 - HTML report section IDs were consolidated from 7 flat sections to 5 semantic groups: `executive-summary`, `section-findings`, `section-activity`, `section-objects`, `section-evidence`. Product tests assert these IDs directly.

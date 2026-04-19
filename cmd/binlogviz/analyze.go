@@ -78,6 +78,7 @@ type analyzeOptions struct {
 	excludeTables          []string
 	topTablesChanged       bool
 	topTransactionsChanged bool
+	detailStore            string
 }
 
 func newAnalyzeCommand() *cobra.Command {
@@ -167,6 +168,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.analyze.flag.excludeSchema"))
 	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.analyze.flag.includeTable"))
 	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.analyze.flag.excludeTable"))
+	cmd.Flags().StringVar(&opts.detailStore, "detail-store", string(analyzer.DetailStoreNone), i18n.T("cmd.analyze.flag.detailStore"))
 
 	return cmd
 }
@@ -351,7 +353,10 @@ func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyz
 
 func runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
 	return runAnalysisStreamingFastWithSnapshot(paths, opts, reportOpts, format, parser, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
-		return analyzer.NewWithStore(opts, store)
+		if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+			return analyzer.NewWithStore(opts, store)
+		}
+		return analyzer.New(opts)
 	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
 		store, cleanup, path, err := createDuckDBTempStore(root)
 		if err == nil && onStoreCreated != nil {
@@ -480,11 +485,15 @@ func runAnalysisStreamingWithSnapshotDeps(
 		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
 	}
 
-	store, cleanup, _, err := newTempStore(tempRoot)
-	if err != nil {
-		return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
+	var store *analyzer.DuckDBStore
+	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+		var cleanup func() error
+		store, cleanup, _, err = newTempStore(tempRoot)
+		if err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
+		}
+		defer cleanup()
 	}
-	defer cleanup()
 
 	streamAnalyzer := newAnalyzer(opts, store)
 
@@ -564,11 +573,15 @@ func runAnalysisStreamingFastWithSnapshot(
 		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
 	}
 
-	store, cleanup, _, err := newTempStore(tempRoot)
-	if err != nil {
-		return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
+	var store *analyzer.DuckDBStore
+	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+		var cleanup func() error
+		store, cleanup, _, err = newTempStore(tempRoot)
+		if err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
+		}
+		defer cleanup()
 	}
-	defer cleanup()
 
 	streamAnalyzer := newAnalyzer(opts, store)
 
@@ -757,6 +770,9 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	result.ExcludeSchemas = opts.excludeSchemas
 	result.IncludeTables = opts.includeTables
 	result.ExcludeTables = opts.excludeTables
+	if mode := analyzer.DetailStoreMode(opts.detailStore); mode != "" {
+		result.DetailStoreMode = mode
+	}
 
 	// Set time window if specified
 	if !startTime.IsZero() {
@@ -784,6 +800,11 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 }
 
 func validateAnalyzeOptions(opts *analyzeOptions) error {
+	switch analyzer.DetailStoreMode(opts.detailStore) {
+	case analyzer.DetailStoreNone, analyzer.DetailStoreDuckDB:
+	default:
+		return fmt.Errorf("invalid --detail-store %q: expected none or duckdb", opts.detailStore)
+	}
 	if opts.snapshotName != "" && opts.format != "json" {
 		return fmt.Errorf("--snapshot-name requires --format json")
 	}
