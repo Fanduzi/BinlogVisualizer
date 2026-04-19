@@ -41,7 +41,7 @@
 
 ## Notes
 
-- Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `5000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
+- Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `10000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
 - DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is stored in the `transaction_sql_contexts` subtable and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
 - Completed transactions and minute buckets are not mirrored indefinitely in Go heap; Finalize reads persisted rows back from DuckDB so large multi-file workloads stay bounded.
 - Top-transaction reads query the bounded top-N transaction rows and hydrate only those requested keys from DuckDB side tables.

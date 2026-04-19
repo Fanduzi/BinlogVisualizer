@@ -394,6 +394,48 @@ func BenchmarkDuckDBStoreRecordTransactions(b *testing.B) {
 	}
 }
 
+func BenchmarkDuckDBStoreRecordTransactionsBatchSizing(b *testing.B) {
+	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
+	fixtures := make([]persistedTransaction, 0, 10000)
+	for i := 0; i < 10000; i++ {
+		fixtures = append(fixtures, persistedTransaction{
+			TxnKey:             fmt.Sprintf("txn-%06d", i),
+			StartTime:          base.Add(time.Duration(i) * time.Second),
+			EndTime:            base.Add(time.Duration(i)*time.Second + 2*time.Second),
+			DurationMS:         2000,
+			TotalRows:          int64(10000 - i),
+			EventCount:         3,
+			QuerySummary:       "UPDATE shop.orders SET status = ? WHERE id = ?",
+			QuerySQL:           "UPDATE shop.orders SET status = 'done' WHERE id = 7",
+			QueryTruncated:     false,
+			QueryOriginalBytes: 48,
+			TableRows: map[string]int{
+				"shop.orders": 5,
+				fmt.Sprintf("shop.lineitems_%02d", i%16): 3,
+			},
+			Operations: map[string]int{
+				"UPDATE": 6,
+				"INSERT": 2,
+			},
+		})
+	}
+
+	for _, batchSize := range []int{1000, 5000, 10000, 20000} {
+		b.Run(fmt.Sprintf("batch_%d", batchSize), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				store := newTestDuckDBStore(b, batchSize)
+				if err := store.RecordTransactions(fixtures); err != nil {
+					b.Fatalf("RecordTransactions returned error: %v", err)
+				}
+				if err := store.Flush(); err != nil {
+					b.Fatalf("Flush returned error: %v", err)
+				}
+			}
+		})
+	}
+}
+
 func BenchmarkDuckDBStoreRecordMinuteBuckets(b *testing.B) {
 	base := time.Date(2026, 3, 16, 12, 0, 0, 0, time.UTC)
 	fixtures := make([]model.MinuteBucket, 0, 1000)

@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	DefaultBatchFlushRows  = 5000
+	DefaultBatchFlushRows  = 10000
 	defaultBatchFlushBytes = 4 * 1024 * 1024
 )
 
