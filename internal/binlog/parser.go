@@ -31,6 +31,41 @@ func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error 
 	return p.ParseFilesWithProgress(paths, nil, handler)
 }
 
+// ParseFilesFromOffset reads binlog files starting from the given byte offset.
+// Note: TableMapEvents before the offset are lost, so RowsEvents may have empty schema/table fields.
+// For timestamp-only probes this is harmless; for full event parsing, start from offset 0.
+func (p *parser) ParseFilesFromOffset(paths []string, offset int64, handler func(RawEvent) error) error {
+	bp := replication.NewBinlogParser()
+
+	for _, path := range paths {
+		tableNames := make(map[uint64]cachedTableName)
+		startOffset := offset
+		if startOffset < 0 {
+			startOffset = 0
+		}
+		if err := bp.ParseFile(path, startOffset, func(ev *replication.BinlogEvent) error {
+			if ev == nil {
+				return nil
+			}
+
+			raw := RawEvent{
+				Timestamp:  time.Unix(int64(ev.Header.Timestamp), 0),
+				EventType:  ev.Header.EventType.String(),
+				Position:   ev.Header.LogPos,
+				BinlogPath: path,
+			}
+			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = deriveEventPositionRange(ev.Header)
+
+			applyBinlogEventMetadata(&raw, raw.EventType, ev.Event, tableNames)
+
+			return handler(raw)
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ParseFilesWithProgress reads binlog files and optionally reports file-relative offsets.
 func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParseProgress), handler func(RawEvent) error) error {
 	bp := replication.NewBinlogParser()

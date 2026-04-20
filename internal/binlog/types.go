@@ -42,3 +42,8 @@ type ParseProgress struct {
 type ProgressParser interface {
 	ParseFilesWithProgress(paths []string, onProgress func(ParseProgress), handler func(RawEvent) error) error
 }
+
+// OffsetParser parses binlog files starting from a byte offset.
+type OffsetParser interface {
+	ParseFilesFromOffset(paths []string, offset int64, handler func(RawEvent) error) error
+}
