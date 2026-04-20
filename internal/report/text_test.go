@@ -221,3 +221,49 @@ func productTextFixture() model.AnalysisResult {
 		},
 	}
 }
+
+func TestDownsampleSeriesReturnsOriginalWhenUnderMax(t *testing.T) {
+	points := []model.TimeseriesPoint{
+		{Minute: time.Now(), Value: 1},
+		{Minute: time.Now().Add(time.Minute), Value: 2},
+		{Minute: time.Now().Add(2 * time.Minute), Value: 3},
+	}
+	result := downsampleSeries(points, 10)
+	if len(result) != 3 {
+		t.Fatalf("expected 3 points, got %d", len(result))
+	}
+}
+
+func TestDownsampleSeriesAveragesBuckets(t *testing.T) {
+	points := make([]model.TimeseriesPoint, 100)
+	base := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
+	for i := range points {
+		points[i] = model.TimeseriesPoint{
+			Minute: base.Add(time.Duration(i) * time.Minute),
+			Value:  float64(i),
+		}
+	}
+	result := downsampleSeries(points, 5)
+	if len(result) != 5 {
+		t.Fatalf("expected 5 points, got %d", len(result))
+	}
+	// First bucket averages indices 0-19: avg = 9.5
+	if result[0].Value < 9.0 || result[0].Value > 10.0 {
+		t.Fatalf("expected first bucket avg ~9.5, got %.1f", result[0].Value)
+	}
+}
+
+func TestDownsampleSeriesPreservesFirstBucketMinute(t *testing.T) {
+	points := make([]model.TimeseriesPoint, 100)
+	base := time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC)
+	for i := range points {
+		points[i] = model.TimeseriesPoint{
+			Minute: base.Add(time.Duration(i) * time.Minute),
+			Value:  float64(i),
+		}
+	}
+	result := downsampleSeries(points, 5)
+	if !result[0].Minute.Equal(base) {
+		t.Fatalf("expected first bucket minute %s, got %s", base, result[0].Minute)
+	}
+}

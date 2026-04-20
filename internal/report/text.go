@@ -56,9 +56,20 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 
 func renderActivitySection(buf *strings.Builder, result model.AnalysisResult) {
 	buf.WriteString("=== " + i18n.T("report.text.activity") + " ===\n")
-	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.tpsShort")+":", formatSparkline(result.Timeseries.TPSSeries), formatPeakSeries(result.Timeseries.TPSSeries)))
-	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", formatSparkline(result.Timeseries.RowsSeries), formatPeakSeries(result.Timeseries.RowsSeries)))
+	tpsSpark := formatSparkline(result.Timeseries.TPSSeries)
+	rowsSpark := formatSparkline(result.Timeseries.RowsSeries)
+	resolution := formatSparklineResolution(len(result.Timeseries.TPSSeries))
+	buf.WriteString(fmt.Sprintf("  %-8s %s  %s  %s\n", i18n.T("report.text.tpsShort")+":", tpsSpark, formatPeakSeries(result.Timeseries.TPSSeries), resolution))
+	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", rowsSpark, formatPeakSeries(result.Timeseries.RowsSeries)))
 	buf.WriteString("\n")
+}
+
+func formatSparklineResolution(pointCount int) string {
+	if pointCount <= 50 {
+		return ""
+	}
+	minPerBin := (pointCount + 49) / 50
+	return fmt.Sprintf("(%d min/bar)", minPerBin)
 }
 
 func renderTopFindings(buf *strings.Builder, result model.AnalysisResult, opts Options) {
@@ -280,10 +291,12 @@ func formatSparkline(points []model.TimeseriesPoint) string {
 	if len(points) == 0 {
 		return i18n.T("time.notAvailable")
 	}
+	const maxBins = 50
+	downsampled := downsampleSeries(points, maxBins)
 	const blocks = "▁▂▃▄▅▆▇█"
-	minVal := points[0].Value
-	maxVal := points[0].Value
-	for _, point := range points[1:] {
+	minVal := downsampled[0].Value
+	maxVal := downsampled[0].Value
+	for _, point := range downsampled[1:] {
 		if point.Value < minVal {
 			minVal = point.Value
 		}
@@ -292,10 +305,10 @@ func formatSparkline(points []model.TimeseriesPoint) string {
 		}
 	}
 	if maxVal <= minVal {
-		return strings.Repeat("▁", len(points))
+		return strings.Repeat("▁", len(downsampled))
 	}
 	var b strings.Builder
-	for _, point := range points {
+	for _, point := range downsampled {
 		ratio := (point.Value - minVal) / (maxVal - minVal)
 		index := int(ratio * 7)
 		if index < 0 {
@@ -307,6 +320,30 @@ func formatSparkline(points []model.TimeseriesPoint) string {
 		b.WriteRune([]rune(blocks)[index])
 	}
 	return b.String()
+}
+
+// downsampleSeries reduces the number of data points to maxBins by averaging adjacent points.
+func downsampleSeries(points []model.TimeseriesPoint, maxBins int) []model.TimeseriesPoint {
+	if len(points) <= maxBins || maxBins <= 0 {
+		return points
+	}
+
+	result := make([]model.TimeseriesPoint, maxBins)
+
+	for i := 0; i < maxBins; i++ {
+		start := i * len(points) / maxBins
+		end := (i + 1) * len(points) / maxBins
+
+		var sum float64
+		for _, p := range points[start:end] {
+			sum += p.Value
+		}
+		result[i] = model.TimeseriesPoint{
+			Minute: points[start].Minute,
+			Value:  sum / float64(end-start),
+		}
+	}
+	return result
 }
 
 func firstSuspiciousLocation(result model.AnalysisResult) string {

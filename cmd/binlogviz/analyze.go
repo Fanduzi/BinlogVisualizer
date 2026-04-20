@@ -6,7 +6,6 @@
 package binlogviz
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -44,10 +43,7 @@ type aggregateProgress struct {
 	statusWriter io.Writer
 }
 
-var (
-	errStopFirstTimestampScan   = errors.New("stop after first binlog timestamp")
-	inspectFirstBinlogTimestamp = readFirstBinlogTimestamp
-)
+var inspectFirstBinlogTimestamp = readFirstBinlogTimestamp
 
 // analyzeOptions holds the parsed CLI flags for the analyze command.
 type analyzeOptions struct {
@@ -284,24 +280,11 @@ func isDigits(value string) bool {
 }
 
 func readFirstBinlogTimestamp(path string) (time.Time, error) {
-	parser := binlog.NewParser()
-	progressParser, ok := parser.(binlog.ProgressParser)
-	if !ok {
-		return time.Time{}, nil
-	}
-
-	var firstTimestamp time.Time
-	err := progressParser.ParseFilesWithProgress([]string{path}, nil, func(raw binlog.RawEvent) error {
-		if raw.Timestamp.IsZero() {
-			return nil
-		}
-		firstTimestamp = raw.Timestamp.UTC()
-		return errStopFirstTimestampScan
-	})
-	if err != nil && !errors.Is(err, errStopFirstTimestampScan) {
+	probe, err := binlog.ProbeFile(path)
+	if err != nil {
 		return time.Time{}, err
 	}
-	return firstTimestamp, nil
+	return probe.FirstEventAt, nil
 }
 
 func printResolvedPaths(out io.Writer, paths []string) {
