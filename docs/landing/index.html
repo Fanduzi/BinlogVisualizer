@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.18.1 — real-binlog performance validation</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.20.0 — fast discovery probing</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.18.1</div>
+                  <div class="release-version">v0.20.0</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">release focus</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">Real-binlog performance validation</div>
-                <div class="release-copy" data-i18n="releases.items.v0181">Analyze reports keep the v0.18 DBA workflow while tightening memory and batching behavior against a real 988 MB MySQL ROW binlog smoke workload.</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.18.1.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">Fast discovery probing</div>
+                <div class="release-copy" data-i18n="releases.items.v0200">Discovery-mode probing now uses two-phase timestamp extraction instead of full file scans, and text report sparklines are downsampled to stay readable for multi-hour windows.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.20.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.18.1</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0181">Performance validation</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0181">Analyze reports keep the v0.18 DBA workflow while tightening memory and batching behavior against a real 988 MB MySQL ROW binlog smoke workload.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.18.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0181">Open v0.18.1 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.16.0</div>
@@ -1407,14 +1415,6 @@ It has published docs, explicit output contracts, release notes around HTML and 
                   </div>
                   <div class="release-card-copy" data-i18n="releases.items.v0150">Workflow status and resume now trust only rooted plan files inside the workflow root, blocking symlink escapes and arbitrary external plan paths.</div>
                   <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.15.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0150">Open v0.15.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.13.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0130">Evidence</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0130">Findings now link back to supporting compare and trend evidence, so report summaries are traceable instead of isolated.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.13.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0130">Open v0.13.0 notes →</a>
                 </article>
                 <article class="release-card archive">
                   <div class="release-card-head">
@@ -1544,7 +1544,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.18.1 — real-binlog performance validation',
+            badge: 'v0.20.0 — fast discovery probing',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, then save named baselines, compare current versus baseline, and hand the result to your team in a format they can actually use.',
             primary: 'Install BinlogViz',
@@ -1648,23 +1648,24 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
             currentFocus: 'release focus',
-            currentTitle: 'Real-binlog performance validation',
+            currentTitle: 'Fast discovery probing',
             currentLink: 'Read release notes →',
             labels: {
+              v0181: 'Performance validation',
               v0160: 'Analyze drilldowns',
-              v0150: 'Trust boundary',
-              v0130: 'Evidence'
+              v0150: 'Trust boundary'
             },
             links: {
+              v0181: 'Open v0.18.1 notes →',
               v0160: 'Open v0.16.0 notes →',
-              v0150: 'Open v0.15.0 notes →',
-              v0130: 'Open v0.13.0 notes →'
+              v0150: 'Open v0.15.0 notes →'
             },
             archiveTitle: 'Release archive',
             archiveLabel: 'All versions',
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v0200: 'Discovery-mode probing now uses two-phase timestamp extraction instead of full file scans, and text report sparklines are downsampled to stay readable for multi-hour windows.',
               v0181: 'Analyze reports keep the v0.18 DBA workflow while tightening memory and batching behavior against a real 988 MB MySQL ROW binlog smoke workload.',
               v0180: 'Analyze, compare, and trend now share richer DBA diagnostics: file coverage, DDL timelines, TPS and event-mix charts, transaction evidence, and localized HTML reports that make incident windows easier to explain.',
               v0170: 'Compare and trend reports now expand high-signal pattern changes into bounded cross-window drilldown summaries, so operators can see why a pattern moved without flooding the report.',
@@ -1732,7 +1733,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.18.1 —— 真实 binlog 性能验证',
+            badge: 'v0.20.0 —— 快速发现探测',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，保存命名基线，然后对比 current 与 baseline，并以团队真正能消费的形式交付出去。',
             primary: '安装 BinlogViz',
@@ -1836,23 +1837,24 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
             currentFocus: 'release focus',
-            currentTitle: '真实 binlog 性能验证',
+            currentTitle: '快速发现探测',
             currentLink: '查看发布说明 →',
             labels: {
+              v0181: '性能验证',
               v0160: 'Analyze 钻取',
-              v0150: '信任边界',
-              v0130: '证据'
+              v0150: '信任边界'
             },
             links: {
+              v0181: '打开 v0.18.1 说明 →',
               v0160: '打开 v0.16.0 说明 →',
-              v0150: '打开 v0.15.0 说明 →',
-              v0130: '打开 v0.13.0 说明 →'
+              v0150: '打开 v0.15.0 说明 →'
             },
             archiveTitle: '发布归档',
             archiveLabel: '全部版本',
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v0200: '发现模式探测改为两阶段时间戳提取，替代全文件扫描；文本报告 sparkline 降采样后保持多小时间隔下的可读性。',
               v0181: 'analyze 报告保留 v0.18 的 DBA 工作流，同时用真实 988 MB MySQL ROW binlog 冒烟样本收紧内存与批处理表现。',
               v0180: 'analyze、compare 和 trend 现在共享更完整的 DBA 诊断层：file coverage、DDL timeline、TPS 与 event mix 图、事务证据，以及更适合事故复盘的中英文本地化 HTML 报告。',
               v0170: 'compare 和 trend 报告现在会把高信号模式变化展开成有界的跨窗口 drilldown 摘要，让操作者看清模式为什么变化，而不会被大量细节淹没。',
