@@ -326,7 +326,7 @@ func TestProbeFilesWithOffsetParserUsesOffsetForLastTimestamp(t *testing.T) {
 	}
 }
 
-func TestProbeFilesWithOffsetParserFallsBackToFirstWhenOffsetErrors(t *testing.T) {
+func TestProbeFilesWithOffsetParserLeavesLastZeroWhenOffsetErrors(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mysql-bin.000001")
 	if err := os.WriteFile(path, make([]byte, 300), 0o644); err != nil {
@@ -347,7 +347,7 @@ func TestProbeFilesWithOffsetParserFallsBackToFirstWhenOffsetErrors(t *testing.T
 
 	probes, err := probeFilesWithParser([]string{path}, parser)
 	if err != nil {
-		t.Fatalf("expected graceful fallback, got error: %v", err)
+		t.Fatalf("expected graceful handling, got error: %v", err)
 	}
 	if len(probes) != 1 {
 		t.Fatalf("expected 1 probe, got %d", len(probes))
@@ -358,9 +358,10 @@ func TestProbeFilesWithOffsetParserFallsBackToFirstWhenOffsetErrors(t *testing.T
 		t.Fatalf("expected FirstEventAt=%s, got %s", wantFirst, probes[0].FirstEventAt)
 	}
 
-	// When offset probe fails, last should fall back to first.
-	if !probes[0].LastEventAt.Equal(wantFirst) {
-		t.Fatalf("expected LastEventAt to fall back to FirstEventAt=%s, got %s", wantFirst, probes[0].LastEventAt)
+	// When offset probe errors, LastEventAt must stay zero so the planner
+	// treats the file's end time as unknown and includes it conservatively.
+	if !probes[0].LastEventAt.IsZero() {
+		t.Fatalf("expected zero LastEventAt when offset probe errors, got %s", probes[0].LastEventAt)
 	}
 }
 

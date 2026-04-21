@@ -6,6 +6,8 @@
 package binlogviz
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/analyzer"
+	"binlogviz/internal/binlog"
 	"binlogviz/internal/report"
 )
 
@@ -412,4 +415,50 @@ func TestBuildAnalyzerOptionsPreservesExplicitLegacyTopFlags(t *testing.T) {
 	if result.TopTransactions != 4 {
 		t.Fatalf("expected explicit TopTransactions=4, got %d", result.TopTransactions)
 	}
+}
+
+func TestValidateFilesAllowsEmptyPaths(t *testing.T) {
+	// Empty paths should not error in validateFiles itself,
+	// but the caller (RunE) must check len(paths)==0 separately.
+	if err := validateFiles(nil); err != nil {
+		t.Fatalf("expected no error for empty paths, got %v", err)
+	}
+}
+
+func TestDiscoverBinlogPlanInWindowReturnsEmptyPathsForNoMatch(t *testing.T) {
+	dir := t.TempDir()
+	// Create one binlog file
+	path := createTestBinlogPath(t, dir, "mysql-bin.000001")
+
+	// Stub probe to return a file that starts after the requested window.
+	origProbe := probeAnalyzePaths
+	probeAnalyzePaths = func(paths []string, workerCount int) ([]binlog.FileProbe, error) {
+		return []binlog.FileProbe{
+			{
+				BinlogPath:   path,
+				FirstEventAt: time.Date(2026, 4, 5, 16, 0, 0, 0, time.UTC),
+				LastEventAt:  time.Date(2026, 4, 5, 17, 0, 0, 0, time.UTC),
+			},
+		}, nil
+	}
+	defer func() { probeAnalyzePaths = origProbe }()
+
+	start := time.Date(2026, 4, 5, 14, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 4, 5, 15, 0, 0, 0, time.UTC)
+	plan, err := discoverBinlogPlanInWindow(dir, "mysql-bin.", start, end)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plan.Paths) != 0 {
+		t.Fatalf("expected 0 paths for non-overlapping window, got %d", len(plan.Paths))
+	}
+}
+
+func createTestBinlogPath(t *testing.T, dir, name string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, make([]byte, 100), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	return path
 }
