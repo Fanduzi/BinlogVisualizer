@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.20.1 — robust probe & chart labels</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.20.2 — fix probe regression, add empty-path guard</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,12 +1383,12 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.20.1</div>
+                  <div class="release-version">v0.20.2</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">release focus</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">Robust probe & chart labels</div>
-                <div class="release-copy" data-i18n="releases.items.v0201">Offset-based timestamp probing now tolerates corrupted or truncated events gracefully, and HTML drill-down charts display Y-axis labels for clarity.</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.20.1.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">Fix probe regression, add empty-path guard</div>
+                <div class="release-copy" data-i18n="releases.items.v0202">Fixes a regression that excluded all binlog files from time-windowed analysis on large files, and adds an explicit error when discovery resolves zero files.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.20.2.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
@@ -1552,7 +1552,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.20.1 — robust probe & chart labels',
+            badge: 'v0.20.2 — fix probe regression, add empty-path guard',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, then save named baselines, compare current versus baseline, and hand the result to your team in a format they can actually use.',
             primary: 'Install BinlogViz',
@@ -1675,6 +1675,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v0202: 'Fixes a regression that excluded all binlog files from time-windowed analysis on large files, and adds an explicit error when discovery resolves zero files.',
               v0201: 'Offset-based timestamp probing now tolerates corrupted or truncated events gracefully, and HTML drill-down charts display Y-axis labels for clarity.',
               v0200: 'Discovery-mode probing now uses two-phase timestamp extraction instead of full file scans, and text report sparklines are downsampled to stay readable for multi-hour windows.',
               v0181: 'Analyze reports keep the v0.18 DBA workflow while tightening memory and batching behavior against a real 988 MB MySQL ROW binlog smoke workload.',
@@ -1744,7 +1745,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.20.1 —— 稳健探测与图表标签',
+            badge: 'v0.20.2 —— 修复 probe 回归，增加空路径守卫',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，保存命名基线，然后对比 current 与 baseline，并以团队真正能消费的形式交付出去。',
             primary: '安装 BinlogViz',
@@ -1867,6 +1868,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v0202: '修复了在大文件上将全部 binlog 文件排除在时间窗口分析之外的回归问题，并在发现阶段解析到零文件时给出明确报错。',
               v0201: '偏移量探测现在能优雅地容忍损坏或截断的事件，HTML 下钻图表显示 Y 轴标签提升可读性。',
               v0200: '发现模式探测改为两阶段时间戳提取，替代全文件扫描；文本报告 sparkline 降采样后保持多小时间隔下的可读性。',
               v0181: 'analyze 报告保留 v0.18 的 DBA 工作流，同时用真实 988 MB MySQL ROW binlog 冒烟样本收紧内存与批处理表现。',
