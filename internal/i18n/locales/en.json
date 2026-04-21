@@ -155,6 +155,10 @@
     "description": "End time before start time error",
     "other": "end time must be after start time"
   },
+  "error.noResolvedFiles": {
+    "description": "Discovery resolved zero binlog files for the requested window",
+    "other": "discovery resolved 0 binlog files for the requested time window — check file availability or widen the window"
+  },
   "error.buildParseProgress": {
     "description": "Build parse progress error",
     "other": "build parse progress: {{.Error}}"

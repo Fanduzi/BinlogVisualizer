@@ -155,6 +155,10 @@
     "description": "结束时间早于开始时间错误",
     "other": "结束时间必须晚于开始时间"
   },
+  "error.noResolvedFiles": {
+    "description": "Discovery resolved zero binlog files for the requested window",
+    "other": "发现阶段解析到 0 个 binlog 文件——请检查文件可用性或扩大时间窗口"
+  },
   "error.buildParseProgress": {
     "description": "构建解析进度错误",
     "other": "构建解析进度：{{.Error}}"

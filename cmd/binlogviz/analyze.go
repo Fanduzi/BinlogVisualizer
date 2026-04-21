@@ -123,6 +123,9 @@ func newAnalyzeCommand() *cobra.Command {
 			if discovered {
 				printResolvedPaths(os.Stderr, paths)
 			}
+			if len(paths) == 0 {
+				return fmt.Errorf("%s", i18n.T("error.noResolvedFiles"))
+			}
 
 			// Validate input files exist
 			if err := validateFiles(paths); err != nil {
