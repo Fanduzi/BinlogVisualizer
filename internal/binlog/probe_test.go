@@ -40,6 +40,27 @@ func (s *stubProbeParser) ParseFiles(paths []string, handler func(RawEvent) erro
 	return nil
 }
 
+// stubOffsetProbeParser extends stubProbeParser with OffsetParser support.
+type stubOffsetProbeParser struct {
+	stubProbeParser
+	offsetEvents map[string][]RawEvent
+	offsetErr    error
+}
+
+func (s *stubOffsetProbeParser) ParseFilesFromOffset(paths []string, offset int64, handler func(RawEvent) error) error {
+	if s.offsetErr != nil {
+		return s.offsetErr
+	}
+	for _, path := range paths {
+		for _, event := range s.offsetEvents[path] {
+			if err := handler(event); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func TestParseFilesWithProgressCapturesRawEventMetadata(t *testing.T) {
 	path := filepath.Join("testdata", "minimal.binlog")
 
@@ -258,5 +279,119 @@ func TestDeriveEventPositionRange(t *testing.T) {
 				t.Fatalf("expected (%d,%d,%d), got (%d,%d,%d)", tt.wantStart, tt.wantEnd, tt.wantBytes, gotStart, gotEnd, gotBytes)
 			}
 		})
+	}
+}
+
+func TestProbeFilesWithOffsetParserUsesOffsetForLastTimestamp(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mysql-bin.000001")
+	if err := os.WriteFile(path, make([]byte, 300), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+
+	parser := &stubOffsetProbeParser{
+		stubProbeParser: stubProbeParser{
+			events: map[string][]RawEvent{
+				path: {
+					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)},
+					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 5, 0, 0, time.UTC)},
+				},
+			},
+		},
+		offsetEvents: map[string][]RawEvent{
+			path: {
+				{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 5, 0, 0, time.UTC)},
+				{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)},
+			},
+		},
+	}
+
+	probes, err := probeFilesWithParser([]string{path}, parser)
+	if err != nil {
+		t.Fatalf("probe files: %v", err)
+	}
+	if len(probes) != 1 {
+		t.Fatalf("expected 1 probe, got %d", len(probes))
+	}
+
+	wantFirst := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	if !probes[0].FirstEventAt.Equal(wantFirst) {
+		t.Fatalf("expected FirstEventAt=%s, got %s", wantFirst, probes[0].FirstEventAt)
+	}
+
+	// Last timestamp should come from offset parse (10:30), not full parse (10:05).
+	wantLast := time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)
+	if !probes[0].LastEventAt.Equal(wantLast) {
+		t.Fatalf("expected LastEventAt=%s (from offset), got %s", wantLast, probes[0].LastEventAt)
+	}
+}
+
+func TestProbeFilesWithOffsetParserFallsBackToFirstWhenOffsetErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mysql-bin.000001")
+	if err := os.WriteFile(path, make([]byte, 300), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+
+	parser := &stubOffsetProbeParser{
+		stubProbeParser: stubProbeParser{
+			events: map[string][]RawEvent{
+				path: {
+					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)},
+					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 5, 0, 0, time.UTC)},
+				},
+			},
+		},
+		offsetErr: errors.New("get event err EOF, need 1967665253 but got 262125"),
+	}
+
+	probes, err := probeFilesWithParser([]string{path}, parser)
+	if err != nil {
+		t.Fatalf("expected graceful fallback, got error: %v", err)
+	}
+	if len(probes) != 1 {
+		t.Fatalf("expected 1 probe, got %d", len(probes))
+	}
+
+	wantFirst := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	if !probes[0].FirstEventAt.Equal(wantFirst) {
+		t.Fatalf("expected FirstEventAt=%s, got %s", wantFirst, probes[0].FirstEventAt)
+	}
+
+	// When offset probe fails, last should fall back to first.
+	if !probes[0].LastEventAt.Equal(wantFirst) {
+		t.Fatalf("expected LastEventAt to fall back to FirstEventAt=%s, got %s", wantFirst, probes[0].LastEventAt)
+	}
+}
+
+func TestProbeFilesWithOffsetParserReturnsZeroWhenNoTimestamps(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mysql-bin.000001")
+	if err := os.WriteFile(path, make([]byte, 300), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+
+	parser := &stubOffsetProbeParser{
+		stubProbeParser: stubProbeParser{
+			events: map[string][]RawEvent{
+				path: {{BinlogPath: path}}, // zero timestamp
+			},
+		},
+		offsetErr: errors.New("corrupt event"),
+	}
+
+	probes, err := probeFilesWithParser([]string{path}, parser)
+	if err != nil {
+		t.Fatalf("probe files: %v", err)
+	}
+	if len(probes) != 1 {
+		t.Fatalf("expected 1 probe, got %d", len(probes))
+	}
+
+	if !probes[0].FirstEventAt.IsZero() {
+		t.Fatalf("expected zero FirstEventAt, got %s", probes[0].FirstEventAt)
+	}
+	if !probes[0].LastEventAt.IsZero() {
+		t.Fatalf("expected zero LastEventAt, got %s", probes[0].LastEventAt)
 	}
 }

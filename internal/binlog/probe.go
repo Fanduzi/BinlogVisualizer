@@ -108,11 +108,8 @@ func probeFilesWithParser(paths []string, parser Parser) ([]FileProbe, error) {
 			probes[index].FirstEventAt = first
 
 			if probes[index].SizeBytes > 0 {
-				last, err := probeLastTimestamp(offsetParser, path, probes[index].SizeBytes)
-				if err != nil {
-					return nil, fmt.Errorf("probe last timestamp %s: %w", path, err)
-				}
-				// If offset-based probe returned zero (e.g. seek landed mid-event with no valid events after),
+				last, _ := probeLastTimestamp(offsetParser, path, probes[index].SizeBytes)
+				// If offset-based probe returned zero (e.g. seek landed mid-event with parse error),
 				// fall back to getting last timestamp from the first-timestamp scan result.
 				if last.IsZero() && !first.IsZero() {
 					last = first
