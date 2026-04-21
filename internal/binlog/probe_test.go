@@ -155,9 +155,9 @@ func TestProbeFilesReportsFixtureMetadata(t *testing.T) {
 		t.Fatalf("expected FirstEventAt=%s, got %s", wantFirst, probe.FirstEventAt)
 	}
 
-	wantLast := time.Date(2026, 3, 15, 14, 10, 26, 0, time.UTC)
-	if !probe.LastEventAt.Equal(wantLast) {
-		t.Fatalf("expected LastEventAt=%s, got %s", wantLast, probe.LastEventAt)
+	// Single file: no successor to infer LastEventAt from, stays zero.
+	if !probe.LastEventAt.IsZero() {
+		t.Fatalf("expected zero LastEventAt for single-file probe, got %s", probe.LastEventAt)
 	}
 }
 
@@ -282,7 +282,57 @@ func TestDeriveEventPositionRange(t *testing.T) {
 	}
 }
 
-func TestProbeFilesWithOffsetParserUsesOffsetForLastTimestamp(t *testing.T) {
+func TestProbeFilesFastPathInfersLastFromNextFile(t *testing.T) {
+	dir := t.TempDir()
+	pathA := filepath.Join(dir, "mysql-bin.000001")
+	pathB := filepath.Join(dir, "mysql-bin.000002")
+	if err := os.WriteFile(pathA, make([]byte, 300), 0o644); err != nil {
+		t.Fatalf("write %s: %v", pathA, err)
+	}
+	if err := os.WriteFile(pathB, make([]byte, 300), 0o644); err != nil {
+		t.Fatalf("write %s: %v", pathB, err)
+	}
+
+	parser := &stubOffsetProbeParser{
+		stubProbeParser: stubProbeParser{
+			events: map[string][]RawEvent{
+				pathA: {
+					{BinlogPath: pathA, Timestamp: time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)},
+					{BinlogPath: pathA, Timestamp: time.Date(2026, 3, 15, 10, 5, 0, 0, time.UTC)},
+				},
+				pathB: {
+					{BinlogPath: pathB, Timestamp: time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)},
+				},
+			},
+		},
+	}
+
+	probes, err := probeFilesWithParser([]string{pathA, pathB}, parser)
+	if err != nil {
+		t.Fatalf("probe files: %v", err)
+	}
+	if len(probes) != 2 {
+		t.Fatalf("expected 2 probes, got %d", len(probes))
+	}
+
+	wantFirstA := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
+	if !probes[0].FirstEventAt.Equal(wantFirstA) {
+		t.Fatalf("expected FirstEventAt[0]=%s, got %s", wantFirstA, probes[0].FirstEventAt)
+	}
+
+	// LastEventAt[0] should be inferred from FirstEventAt[1].
+	wantLastA := time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)
+	if !probes[0].LastEventAt.Equal(wantLastA) {
+		t.Fatalf("expected LastEventAt[0]=%s (inferred from next file), got %s", wantLastA, probes[0].LastEventAt)
+	}
+
+	// Last file has no successor, LastEventAt stays zero.
+	if !probes[1].LastEventAt.IsZero() {
+		t.Fatalf("expected zero LastEventAt[1] (last file), got %s", probes[1].LastEventAt)
+	}
+}
+
+func TestProbeFilesFastPathLeavesLastZeroForSingleFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mysql-bin.000001")
 	if err := os.WriteFile(path, make([]byte, 300), 0o644); err != nil {
@@ -296,12 +346,6 @@ func TestProbeFilesWithOffsetParserUsesOffsetForLastTimestamp(t *testing.T) {
 					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)},
 					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 5, 0, 0, time.UTC)},
 				},
-			},
-		},
-		offsetEvents: map[string][]RawEvent{
-			path: {
-				{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 5, 0, 0, time.UTC)},
-				{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)},
 			},
 		},
 	}
@@ -319,53 +363,99 @@ func TestProbeFilesWithOffsetParserUsesOffsetForLastTimestamp(t *testing.T) {
 		t.Fatalf("expected FirstEventAt=%s, got %s", wantFirst, probes[0].FirstEventAt)
 	}
 
-	// Last timestamp should come from offset parse (10:30), not full parse (10:05).
-	wantLast := time.Date(2026, 3, 15, 10, 30, 0, 0, time.UTC)
-	if !probes[0].LastEventAt.Equal(wantLast) {
-		t.Fatalf("expected LastEventAt=%s (from offset), got %s", wantLast, probes[0].LastEventAt)
+	// Single file has no successor, so LastEventAt stays zero.
+	if !probes[0].LastEventAt.IsZero() {
+		t.Fatalf("expected zero LastEventAt for single file (no successor), got %s", probes[0].LastEventAt)
 	}
 }
 
-func TestProbeFilesWithOffsetParserLeavesLastZeroWhenOffsetErrors(t *testing.T) {
+func TestProbeFilesFastPathSkipsInferenceWhenNextFileHasZeroFirst(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "mysql-bin.000001")
-	if err := os.WriteFile(path, make([]byte, 300), 0o644); err != nil {
-		t.Fatalf("write %s: %v", path, err)
+	pathA := filepath.Join(dir, "mysql-bin.000001")
+	pathB := filepath.Join(dir, "mysql-bin.000002")
+	if err := os.WriteFile(pathA, make([]byte, 300), 0o644); err != nil {
+		t.Fatalf("write %s: %v", pathA, err)
+	}
+	if err := os.WriteFile(pathB, make([]byte, 100), 0o644); err != nil {
+		t.Fatalf("write %s: %v", pathB, err)
 	}
 
 	parser := &stubOffsetProbeParser{
 		stubProbeParser: stubProbeParser{
 			events: map[string][]RawEvent{
-				path: {
-					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)},
-					{BinlogPath: path, Timestamp: time.Date(2026, 3, 15, 10, 5, 0, 0, time.UTC)},
+				pathA: {
+					{BinlogPath: pathA, Timestamp: time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)},
+				},
+				pathB: {
+					{BinlogPath: pathB}, // zero timestamp — freshly rotated binlog
 				},
 			},
 		},
-		offsetErr: errors.New("get event err EOF, need 1967665253 but got 262125"),
 	}
 
-	probes, err := probeFilesWithParser([]string{path}, parser)
+	probes, err := probeFilesWithParser([]string{pathA, pathB}, parser)
 	if err != nil {
-		t.Fatalf("expected graceful handling, got error: %v", err)
+		t.Fatalf("probe files: %v", err)
 	}
-	if len(probes) != 1 {
-		t.Fatalf("expected 1 probe, got %d", len(probes))
-	}
-
-	wantFirst := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
-	if !probes[0].FirstEventAt.Equal(wantFirst) {
-		t.Fatalf("expected FirstEventAt=%s, got %s", wantFirst, probes[0].FirstEventAt)
+	if len(probes) != 2 {
+		t.Fatalf("expected 2 probes, got %d", len(probes))
 	}
 
-	// When offset probe errors, LastEventAt must stay zero so the planner
-	// treats the file's end time as unknown and includes it conservatively.
+	// File A should NOT infer LastEventAt from file B (zero FirstEventAt).
 	if !probes[0].LastEventAt.IsZero() {
-		t.Fatalf("expected zero LastEventAt when offset probe errors, got %s", probes[0].LastEventAt)
+		t.Fatalf("expected zero LastEventAt[0] (successor has zero FirstEventAt), got %s", probes[0].LastEventAt)
+	}
+	if !probes[0].FirstEventAt.Equal(time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected FirstEventAt[0]=10:00, got %s", probes[0].FirstEventAt)
 	}
 }
 
-func TestProbeFilesWithOffsetParserReturnsZeroWhenNoTimestamps(t *testing.T) {
+func TestProbeFilesFastPathInferenceWithThreeFiles(t *testing.T) {
+	dir := t.TempDir()
+	pathA := filepath.Join(dir, "mysql-bin.000001")
+	pathB := filepath.Join(dir, "mysql-bin.000002")
+	pathC := filepath.Join(dir, "mysql-bin.000003")
+	for _, p := range []string{pathA, pathB, pathC} {
+		if err := os.WriteFile(p, make([]byte, 300), 0o644); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+	}
+
+	parser := &stubOffsetProbeParser{
+		stubProbeParser: stubProbeParser{
+			events: map[string][]RawEvent{
+				pathA: {{BinlogPath: pathA, Timestamp: time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)}},
+				pathB: {{BinlogPath: pathB, Timestamp: time.Date(2026, 3, 15, 11, 0, 0, 0, time.UTC)}},
+				pathC: {{BinlogPath: pathC, Timestamp: time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)}},
+			},
+		},
+	}
+
+	probes, err := probeFilesWithParser([]string{pathA, pathB, pathC}, parser)
+	if err != nil {
+		t.Fatalf("probe files: %v", err)
+	}
+	if len(probes) != 3 {
+		t.Fatalf("expected 3 probes, got %d", len(probes))
+	}
+
+	wantLastA := time.Date(2026, 3, 15, 11, 0, 0, 0, time.UTC)
+	if !probes[0].LastEventAt.Equal(wantLastA) {
+		t.Fatalf("expected LastEventAt[0]=%s (from file B), got %s", wantLastA, probes[0].LastEventAt)
+	}
+
+	wantLastB := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
+	if !probes[1].LastEventAt.Equal(wantLastB) {
+		t.Fatalf("expected LastEventAt[1]=%s (from file C), got %s", wantLastB, probes[1].LastEventAt)
+	}
+
+	// Last file: no successor, LastEventAt stays zero.
+	if !probes[2].LastEventAt.IsZero() {
+		t.Fatalf("expected zero LastEventAt[2] (last file), got %s", probes[2].LastEventAt)
+	}
+}
+
+func TestProbeFilesFastPathReturnsZeroWhenNoTimestamps(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "mysql-bin.000001")
 	if err := os.WriteFile(path, make([]byte, 300), 0o644); err != nil {
