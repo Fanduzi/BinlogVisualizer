@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.20.2 — fix probe regression, add empty-path guard</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.20.3 — replace offset probing with sequential inference</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.20.2</div>
+                  <div class="release-version">v0.20.3</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">release focus</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">Fix probe regression, add empty-path guard</div>
-                <div class="release-copy" data-i18n="releases.items.v0202">Fixes a regression that excluded all binlog files from time-windowed analysis on large files, and adds an explicit error when discovery resolves zero files.</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.20.2.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">Replace offset probing with sequential inference</div>
+                <div class="release-copy" data-i18n="releases.items.v0203">Replaces unreliable offset-based last-timestamp probing with sequential inference from next file's first timestamp, making time-window filtering reliable on files of any size.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.20.3.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.20.2</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0202">Probe regression fix</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0202">Fixes a regression that excluded all binlog files from time-windowed analysis on large files, and adds an explicit error when discovery resolves zero files.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/releases/release-notes-v0.20.2.md" target="_blank" rel="noopener" data-i18n="releases.links.v0202">Open v0.20.2 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.20.0</div>
@@ -1552,7 +1560,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.20.2 — fix probe regression, add empty-path guard',
+            badge: 'v0.20.3 — replace offset probing with sequential inference',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, then save named baselines, compare current versus baseline, and hand the result to your team in a format they can actually use.',
             primary: 'Install BinlogViz',
@@ -1656,15 +1664,17 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
             currentFocus: 'release focus',
-            currentTitle: 'Robust probe & chart labels',
+            currentTitle: 'Replace offset probing with sequential inference',
             currentLink: 'Read release notes →',
             labels: {
+              v0202: 'Probe regression fix',
               v0200: 'Fast discovery probing',
               v0181: 'Performance validation',
               v0160: 'Analyze drilldowns',
               v0150: 'Trust boundary'
             },
             links: {
+              v0202: 'Open v0.20.2 notes →',
               v0200: 'Open v0.20.0 notes →',
               v0181: 'Open v0.18.1 notes →',
               v0160: 'Open v0.16.0 notes →',
@@ -1745,7 +1755,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.20.2 —— 修复 probe 回归，增加空路径守卫',
+            badge: 'v0.20.3 —— 用顺序推断替换 offset 末尾探测',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，保存命名基线，然后对比 current 与 baseline，并以团队真正能消费的形式交付出去。',
             primary: '安装 BinlogViz',
@@ -1849,15 +1859,17 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
             currentFocus: 'release focus',
-            currentTitle: '稳健探测与图表标签',
+            currentTitle: '用顺序推断替换 offset 末尾探测',
             currentLink: '查看发布说明 →',
             labels: {
+              v0202: 'Probe 回归修复',
               v0200: '快速发现探测',
               v0181: '性能验证',
               v0160: 'Analyze 钻取',
               v0150: '信任边界'
             },
             links: {
+              v0202: '打开 v0.20.2 说明 →',
               v0200: '打开 v0.20.0 说明 →',
               v0181: '打开 v0.18.1 说明 →',
               v0160: '打开 v0.16.0 说明 →',
