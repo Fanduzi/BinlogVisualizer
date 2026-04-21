@@ -253,6 +253,16 @@ func TestRenderHTMLTopTablesExposeInlineActivityPanel(t *testing.T) {
 			t.Fatalf("expected inline top-table drilldown token %q in HTML output", token)
 		}
 	}
+
+	// Verify Y-axis labels are present in drill-down charts.
+	for _, label := range []string{
+		`name: 'Rows\/min'`,
+		`left: 58, right: 16`,
+	} {
+		if !strings.Contains(out, label) {
+			t.Fatalf("expected drill-down chart Y-axis config %q in HTML output", label)
+		}
+	}
 }
 
 func TestRenderHTMLFileCoverageSection(t *testing.T) {

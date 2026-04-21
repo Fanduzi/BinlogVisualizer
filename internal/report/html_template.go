@@ -1156,7 +1156,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     activity.setOption({
       ...t,
       legend: { textStyle: { color: muted, fontSize: 10 } },
-      grid: { top: 28, bottom: 30, left: 48, right: 16 },
+      grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
         data: data.labels,
@@ -1165,6 +1165,8 @@ const htmlReportTemplate = `<!DOCTYPE html>
       },
       yAxis: {
         type: 'value',
+        name: '{{t "report.text.rowsPerMinuteShort"}}',
+        nameTextStyle: { color: muted, fontSize: 10 },
         axisLabel: { color: muted, fontSize: 10 },
         splitLine: { lineStyle: { color: border, type: 'dashed' } }
       },
@@ -1184,7 +1186,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     ops.setOption({
       ...t,
       legend: { textStyle: { color: muted, fontSize: 10 } },
-      grid: { top: 28, bottom: 30, left: 48, right: 16 },
+      grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
         data: data.labels,
@@ -1193,6 +1195,8 @@ const htmlReportTemplate = `<!DOCTYPE html>
       },
       yAxis: {
         type: 'value',
+        name: '{{t "report.text.rowsPerMinuteShort"}}',
+        nameTextStyle: { color: muted, fontSize: 10 },
         axisLabel: { color: muted, fontSize: 10 },
         splitLine: { lineStyle: { color: border, type: 'dashed' } }
       },
