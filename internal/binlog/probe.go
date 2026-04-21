@@ -17,7 +17,7 @@ type FileProbe struct {
 	BinlogPath   string
 	SizeBytes    int64
 	FirstEventAt time.Time // Earliest non-zero event timestamp observed in the file.
-	LastEventAt  time.Time // Latest non-zero event timestamp observed in the file.
+	LastEventAt  time.Time // Upper bound on last event time; inferred from next file's FirstEventAt in fast path.
 }
 
 var errStopFirstTimestamp = errors.New("stop after first binlog timestamp")
@@ -55,27 +55,6 @@ func probeFirstTimestamp(parser Parser, path string) (time.Time, error) {
 	return first, nil
 }
 
-// probeLastTimestamp parses from near the end of the file to find the last event timestamp.
-func probeLastTimestamp(offsetParser OffsetParser, path string, fileSize int64) (time.Time, error) {
-	const seekBuffer = 256 * 1024 // 256KB from end
-	offset := fileSize - seekBuffer
-	if offset < 0 {
-		offset = 0
-	}
-
-	var last time.Time
-	err := offsetParser.ParseFilesFromOffset([]string{path}, offset, func(raw RawEvent) error {
-		if !raw.Timestamp.IsZero() {
-			last = raw.Timestamp.UTC()
-		}
-		return nil
-	})
-	if err != nil {
-		return time.Time{}, err
-	}
-	return last, nil
-}
-
 func probeFilesWithParser(paths []string, parser Parser) ([]FileProbe, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -84,7 +63,7 @@ func probeFilesWithParser(paths []string, parser Parser) ([]FileProbe, error) {
 		return nil, errors.New("nil probe parser")
 	}
 
-	offsetParser, hasOffset := parser.(OffsetParser)
+	_, hasOffset := parser.(OffsetParser)
 
 	probes := make([]FileProbe, len(paths))
 	for index, path := range paths {
@@ -98,7 +77,7 @@ func probeFilesWithParser(paths []string, parser Parser) ([]FileProbe, error) {
 		}
 	}
 
-	// Fast path: two-phase probe per file (first + last timestamp)
+	// Fast path: probe first timestamp per file, then infer last from sequence.
 	if hasOffset {
 		for index, path := range paths {
 			first, err := probeFirstTimestamp(parser, path)
@@ -106,10 +85,12 @@ func probeFilesWithParser(paths []string, parser Parser) ([]FileProbe, error) {
 				return nil, fmt.Errorf("probe first timestamp %s: %w", path, err)
 			}
 			probes[index].FirstEventAt = first
-
-			if probes[index].SizeBytes > 0 {
-				last, _ := probeLastTimestamp(offsetParser, path, probes[index].SizeBytes)
-				probes[index].LastEventAt = last
+		}
+		// Infer LastEventAt from next file's FirstEventAt.
+		// File N ends no later than file N+1 starts; last file stays zero.
+		for i := 0; i < len(probes)-1; i++ {
+			if probes[i].LastEventAt.IsZero() && !probes[i+1].FirstEventAt.IsZero() {
+				probes[i].LastEventAt = probes[i+1].FirstEventAt
 			}
 		}
 		return probes, nil
