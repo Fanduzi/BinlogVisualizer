@@ -89,6 +89,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
 | `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. |
 | `--format` | `text` | Report output format: `text`, `json`, `markdown` (alias `md`), or `html`. |
+| `--output`, `-o` | auto | HTML output file path. Only supported with `--format html`. Default: derived from input filename (e.g., `mysql-bin.000123.html`). Use `-` for stdout. |
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
 | `--sql-context` | `summary` | SQL context presentation mode: `summary`, `off`, or `full`. |
@@ -375,8 +376,10 @@ This allows safe shell redirection and scripting.
 ```bash
 binlogviz analyze mysql-bin.000123 --format json > report.json
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
-binlogviz analyze mysql-bin.000123 --format html > report.html
+binlogviz analyze mysql-bin.000123 --format html --output report.html
 ```
+
+**HTML output note:** Starting with v0.21.0, `--format html` writes to a file by default instead of stdout. The output filename is derived from the input file (e.g., `mysql-bin.000123.html`). Use `--output -` to restore the previous stdout behavior for piping.
 
 ### Standard error (`stderr`)
 

@@ -191,6 +191,10 @@
     "description": "Finalizing analysis message",
     "other": "Finalizing analysis..."
   },
+  "progress.htmlSaved": {
+    "description": "HTML report saved confirmation",
+    "other": "HTML report saved to {{.Path}}"
+  },
   "progress.resolvedFiles": {
     "description": "Resolved binlog files header",
     "other": "Resolved binlog files:"
@@ -327,6 +331,10 @@
     "description": "Placeholder when no table activity should appear in text report",
     "other": "No table activity detected."
   },
+  "report.text.topTablesFootnote": {
+    "description": "Footnote explaining DML and DDL percentage denominators",
+    "other": "DML shares are of affected rows; DDL share is of binlog events."
+  },
   "report.text.writeSpike": {
     "description": "Short finding label for a write spike",
     "other": "Write spike"
@@ -398,6 +406,10 @@
   "cmd.analyze.flag.format": {
     "description": "Output format flag description",
     "other": "Output format: text, json, markdown, html"
+  },
+  "cmd.analyze.flag.output": {
+    "description": "Output destination flag description",
+    "other": "Output file path (html only; use - for stdout)"
   },
   "report.html.common.generatedAt": {
     "description": "Generated-at label for HTML reports",
@@ -526,6 +538,26 @@
   "report.html.analyze.topTables": {
     "description": "Analyze top tables section header",
     "other": "Top Tables"
+  },
+  "report.html.analyze.insertPct": {
+    "description": "Analyze top tables INSERT column header with denominator",
+    "other": "INSERT (Rows %)"
+  },
+  "report.html.analyze.updatePct": {
+    "description": "Analyze top tables UPDATE column header with denominator",
+    "other": "UPDATE (Rows %)"
+  },
+  "report.html.analyze.deletePct": {
+    "description": "Analyze top tables DELETE column header with denominator",
+    "other": "DELETE (Rows %)"
+  },
+  "report.html.analyze.ddlPct": {
+    "description": "Analyze top tables DDL column header with event denominator",
+    "other": "DDL (Events %)"
+  },
+  "report.html.analyze.opsNote": {
+    "description": "Analyze top tables footnote explaining operation percentage denominators",
+    "other": "INSERT/UPDATE/DELETE shares are of affected rows; DDL share is of table events."
   },
   "report.html.analyze.noTableData": {
     "description": "Analyze empty top tables state",

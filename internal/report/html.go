@@ -148,6 +148,12 @@ type htmlTableRow struct {
 	Updates     int
 	Deletes     int
 	Txns        int
+	DDLCount    int
+	EventCount  int
+	InsertPct   string
+	UpdatePct   string
+	DeletePct   string
+	DDLPct      string
 	HasActivity bool
 }
 
@@ -259,6 +265,12 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			Updates:     t.UpdateRows,
 			Deletes:     t.DeleteRows,
 			Txns:        t.TxnCount,
+			DDLCount:    t.DDLCount,
+			EventCount:  t.EventCount,
+			InsertPct:   fmtOpCell(t.InsertRows, t.TotalRows),
+			UpdatePct:   fmtOpCell(t.UpdateRows, t.TotalRows),
+			DeletePct:   fmtOpCell(t.DeleteRows, t.TotalRows),
+			DDLPct:      fmtOpCell(t.DDLCount, t.EventCount),
 			HasActivity: len(t.Activity) > 0,
 		})
 	}
@@ -605,4 +617,14 @@ func fmtIntHTML(n int) string {
 		result.WriteRune(ch)
 	}
 	return result.String()
+}
+
+// fmtOpCell formats an operation count with inline percentage.
+// Returns "0 (\u2014)" when denominator is 0, "count (pct%)" otherwise.
+func fmtOpCell(count int, denominator int) string {
+	if denominator == 0 {
+		return fmtIntHTML(count) + " (\u2014)"
+	}
+	pct := float64(count) * 100 / float64(denominator)
+	return fmt.Sprintf("%s (%.1f%%)", fmtIntHTML(count), pct)
 }

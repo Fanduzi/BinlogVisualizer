@@ -16,6 +16,18 @@ import (
 	"binlogviz/internal/model"
 )
 
+type tableRow struct {
+	name   string
+	total  string
+	insert string
+	update string
+	delete string
+	ddl    string
+	txns   string
+	events string
+	share  string
+}
+
 // RenderText renders an AnalysisResult as human-readable text.
 func RenderText(result model.AnalysisResult) (string, error) {
 	return RenderTextWithOptions(result, DefaultOptions())
@@ -137,7 +149,8 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 		totalRows += table.TotalRows
 	}
 
-	buf.WriteString("  #  Table                         Rows       Txns     Events    Share\n")
+	rows := make([]tableRow, limit)
+	nameWidth := len("Table")
 	for i := 0; i < limit; i++ {
 		table := tables[i]
 		name := table.Schema + "." + table.Table
@@ -145,10 +158,64 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 		if totalRows > 0 {
 			share = float64(table.TotalRows) * 100 / float64(totalRows)
 		}
-		buf.WriteString(fmt.Sprintf("  %-2d %-28s %10d %8d %8d %6.1f%%\n",
-			i+1, name, table.TotalRows, table.TxnCount, table.EventCount, share))
+		rows[i] = tableRow{
+			name:   name,
+			total:  fmt.Sprintf("%d", table.TotalRows),
+			insert: fmtOpCellText(table.InsertRows, table.TotalRows),
+			update: fmtOpCellText(table.UpdateRows, table.TotalRows),
+			delete: fmtOpCellText(table.DeleteRows, table.TotalRows),
+			ddl:    fmtOpCellText(table.DDLCount, table.EventCount),
+			txns:   fmt.Sprintf("%d", table.TxnCount),
+			events: fmt.Sprintf("%d", table.EventCount),
+			share:  fmt.Sprintf("%.1f%%", share),
+		}
+		if len(name) > nameWidth {
+			nameWidth = len(name)
+		}
 	}
+
+	totalWidth := maxInt(len("Affected Rows"), maxWidth(rows, func(r tableRow) string { return r.total }))
+	insertWidth := maxInt(len("INSERT"), maxWidth(rows, func(r tableRow) string { return r.insert }))
+	updateWidth := maxInt(len("UPDATE"), maxWidth(rows, func(r tableRow) string { return r.update }))
+	deleteWidth := maxInt(len("DELETE"), maxWidth(rows, func(r tableRow) string { return r.delete }))
+	ddlWidth := maxInt(len("DDL Events"), maxWidth(rows, func(r tableRow) string { return r.ddl }))
+	txnsWidth := maxInt(len("Transactions"), maxWidth(rows, func(r tableRow) string { return r.txns }))
+	eventsWidth := maxInt(len("Binlog Events"), maxWidth(rows, func(r tableRow) string { return r.events }))
+	shareWidth := maxInt(len("Row Share"), maxWidth(rows, func(r tableRow) string { return r.share }))
+
+	buf.WriteString(fmt.Sprintf("  %-2s %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
+		"#", nameWidth, "Table",
+		totalWidth, "Affected Rows",
+		insertWidth, "INSERT", updateWidth, "UPDATE", deleteWidth, "DELETE",
+		ddlWidth, "DDL Events", txnsWidth, "Transactions",
+		eventsWidth, "Binlog Events", shareWidth, "Row Share"))
+	for i, row := range rows {
+		buf.WriteString(fmt.Sprintf("  %-2d %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
+			i+1, nameWidth, row.name,
+			totalWidth, row.total,
+			insertWidth, row.insert, updateWidth, row.update, deleteWidth, row.delete,
+			ddlWidth, row.ddl, txnsWidth, row.txns,
+			eventsWidth, row.events, shareWidth, row.share))
+	}
+	buf.WriteString("  " + i18n.T("report.text.topTablesFootnote") + "\n")
 	buf.WriteString("\n")
+}
+
+func maxWidth(rows []tableRow, extract func(tableRow) string) int {
+	max := 0
+	for _, row := range rows {
+		if w := len(extract(row)); w > max {
+			max = w
+		}
+	}
+	return max
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, topN int) {
@@ -395,6 +462,16 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1fs", d.Seconds())
 	}
 	return d.String()
+}
+
+// fmtOpCellText formats an operation count with inline percentage for text reports.
+// Returns "0 (—)" when denominator is 0, "count (pct%)" otherwise.
+func fmtOpCellText(count int, denominator int) string {
+	if denominator == 0 {
+		return fmt.Sprintf("%d (\u2014)", count)
+	}
+	pct := float64(count) * 100 / float64(denominator)
+	return fmt.Sprintf("%d (%.1f%%)", count, pct)
 }
 
 // RenderTextTo writes the text report to the specified writer.

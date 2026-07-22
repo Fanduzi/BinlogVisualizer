@@ -139,8 +139,14 @@ binlogviz workflow describe incident.yaml --format json
 # Markdown — 粘贴到 GitHub issue、wiki 或文档
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
 
-# HTML — 在任意浏览器打开，无需网络
-binlogviz analyze mysql-bin.000123 --format html > report.html
+# HTML — 默认写入文件（例如 mysql-bin.000123.html）
+binlogviz analyze mysql-bin.000123 --format html
+
+# HTML — 指定输出路径
+binlogviz analyze mysql-bin.000123 --format html --output report.html
+
+# HTML — 输出到 stdout 以供管道使用（旧行为）
+binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
 HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）、高信号写入模式的可选模式钻取（Pattern Drilldowns），以及五主题切换器。
@@ -155,7 +161,7 @@ HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操�
 
 ```bash
 time binlogviz analyze /path/to/mysql-bin.000044 --format text > /tmp/binlogviz-text.txt
-time binlogviz analyze /path/to/mysql-bin.000044 --format html > /tmp/binlogviz.html
+time binlogviz analyze /path/to/mysql-bin.000044 --format html --output /tmp/binlogviz.html
 ```
 
 文本输出应保持在快速诊断路径上；HTML 输出则构建完整的可视化证据报告。
@@ -188,27 +194,27 @@ brew install --cask binlogviz
 
 权威 release artifact 由 GitHub Actions release workflow 产出。macOS 产物在原生 runner 上构建，Linux 产物则在 manylinux2014 用户态中构建，以保持对 CentOS 7 / glibc 2.17 的兼容基线。本地 `goreleaser` 更适合做配置校验和当前宿主机的可选验证，不是主要发布路径。
 
-下面是 `darwin/arm64` 和当前版本 `v0.20.3` 的示例：
+下面是 `darwin/arm64` 和当前版本 `v0.21.0` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.20.3/binlogviz_0.20.3_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.20.3/binlogviz_0.20.3_checksums.txt
-shasum -a 256 -c binlogviz_0.20.3_checksums.txt 2>/dev/null | grep "binlogviz_0.20.3_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.20.3_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_checksums.txt
+shasum -a 256 -c binlogviz_0.21.0_checksums.txt 2>/dev/null | grep "binlogviz_0.21.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.21.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.20.3/install.sh
-sh ./install.sh --version v0.20.3
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.21.0/install.sh
+sh ./install.sh --version v0.21.0
 ```
 
 如果只想预览将要解析出的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.20.3 --dry-run
+./install.sh --version v0.21.0 --dry-run
 ```
 
 ### 备选：从源码构建

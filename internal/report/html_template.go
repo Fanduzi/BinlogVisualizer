@@ -694,9 +694,10 @@ const htmlReportTemplate = `<!DOCTYPE html>
             <th>{{t "report.html.common.schema"}}</th>
             <th>{{t "report.html.common.table"}}</th>
             <th class="num">{{t "report.html.common.totalRows"}}</th>
-            <th class="num">{{t "report.html.common.inserts"}}</th>
-            <th class="num">{{t "report.html.common.updates"}}</th>
-            <th class="num">{{t "report.html.common.deletes"}}</th>
+            <th class="num">{{t "report.html.analyze.insertPct"}}</th>
+            <th class="num">{{t "report.html.analyze.updatePct"}}</th>
+            <th class="num">{{t "report.html.analyze.deletePct"}}</th>
+            <th class="num">{{t "report.html.analyze.ddlPct"}}</th>
             <th class="num">{{t "report.html.common.txns"}}</th>
           </tr>
         </thead>
@@ -706,14 +707,15 @@ const htmlReportTemplate = `<!DOCTYPE html>
             <td class="name">{{.Schema}}</td>
             <td class="name">{{.Table}}</td>
             <td class="num">{{.Total}}</td>
-            <td class="num op-ins">{{.Inserts}}</td>
-            <td class="num op-upd">{{.Updates}}</td>
-            <td class="num op-del">{{.Deletes}}</td>
+            <td class="num op-ins">{{.InsertPct}}</td>
+            <td class="num op-upd">{{.UpdatePct}}</td>
+            <td class="num op-del">{{.DeletePct}}</td>
+            <td class="num">{{.DDLPct}}</td>
             <td class="num">{{.Txns}}</td>
           </tr>
           {{if .HasActivity}}
           <tr class="table-detail-row" data-table-key="{{.Key}}" hidden>
-            <td colspan="7">
+            <td colspan="8">
               <div class="table-detail-panel">
                 <div class="table-detail-grid">
                   <div class="chart-panel">
@@ -732,6 +734,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
           {{end}}
         </tbody>
       </table>
+      <div class="section-desc" style="padding:8px 0 0">{{t "report.html.analyze.opsNote"}}</div>
       {{else}}
       <div class="no-alerts"><span>{{t "report.html.analyze.noTableData"}}</span></div>
       {{end}}

@@ -139,8 +139,14 @@ binlogviz workflow describe incident.yaml --format json
 # Markdown — paste into GitHub issues, wikis, or docs
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
 
-# HTML — open in any browser, no internet required
-binlogviz analyze mysql-bin.000123 --format html > report.html
+# HTML — writes to a file by default (e.g., mysql-bin.000123.html)
+binlogviz analyze mysql-bin.000123 --format html
+
+# HTML — explicit output path
+binlogviz analyze mysql-bin.000123 --format html --output report.html
+
+# HTML — emit to stdout for piping (legacy behavior)
+binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
 The HTML report includes interactive charts (rows/txns per minute, top tables, operation mix), optional pattern drilldowns for high-signal write patterns, and a five-theme switcher.
@@ -155,7 +161,7 @@ Recommended manual check:
 
 ```bash
 time binlogviz analyze /path/to/mysql-bin.000044 --format text > /tmp/binlogviz-text.txt
-time binlogviz analyze /path/to/mysql-bin.000044 --format html > /tmp/binlogviz.html
+time binlogviz analyze /path/to/mysql-bin.000044 --format html --output /tmp/binlogviz.html
 ```
 
 Text output is intended to stay on a fast diagnostic path. HTML output builds the full visual evidence report.
@@ -188,27 +194,27 @@ Download the release archive for your platform from GitHub Releases, verify the 
 
 The authoritative release artifacts are produced by the GitHub Actions release workflow. macOS artifacts are built on native runners, while Linux artifacts are built inside a manylinux2014 userspace so the glibc baseline stays compatible with CentOS 7 / glibc 2.17. Local `goreleaser` is intended for config validation and optional current-host checks, not as the primary release path.
 
-Example for `darwin/arm64` and the current release `v0.20.3`:
+Example for `darwin/arm64` and the current release `v0.21.0`:
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.20.3/binlogviz_0.20.3_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.20.3/binlogviz_0.20.3_checksums.txt
-shasum -a 256 -c binlogviz_0.20.3_checksums.txt 2>/dev/null | grep "binlogviz_0.20.3_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.20.3_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_checksums.txt
+shasum -a 256 -c binlogviz_0.21.0_checksums.txt 2>/dev/null | grep "binlogviz_0.21.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.21.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 Or fetch the install helper from the same release tag before running it:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.20.3/install.sh
-sh ./install.sh --version v0.20.3
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.21.0/install.sh
+sh ./install.sh --version v0.21.0
 ```
 
 To preview the resolved artifact without downloading:
 
 ```bash
-./install.sh --version v0.20.3 --dry-run
+./install.sh --version v0.21.0 --dry-run
 ```
 
 ### Fallback: Build From Source
