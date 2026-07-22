@@ -191,6 +191,10 @@
     "description": "完成分析消息",
     "other": "正在完成分析..."
   },
+  "progress.htmlSaved": {
+    "description": "HTML 报告保存确认",
+    "other": "HTML 报告已保存至 {{.Path}}"
+  },
   "progress.resolvedFiles": {
     "description": "已解析的 binlog 文件标题",
     "other": "已解析的 binlog 文件："
@@ -327,6 +331,10 @@
     "description": "文本报告无表活动占位符",
     "other": "未检测到表活动。"
   },
+  "report.text.topTablesFootnote": {
+    "description": "脚注：说明 DML 和 DDL 百分比分母",
+    "other": "DML 占比基于影响行数；DDL 占比基于 binlog 事件数。"
+  },
   "report.text.writeSpike": {
     "description": "写入尖峰发现短标签",
     "other": "写入尖峰"
@@ -398,6 +406,10 @@
   "cmd.analyze.flag.format": {
     "description": "Output format flag description",
     "other": "输出格式: text, json, markdown, html"
+  },
+  "cmd.analyze.flag.output": {
+    "description": "Output destination flag description",
+    "other": "输出文件路径（仅限 html；使用 - 输出到标准输出）"
   },
   "report.html.common.generatedAt": {
     "description": "HTML 报告生成时间标签",
@@ -526,6 +538,26 @@
   "report.html.analyze.topTables": {
     "description": "Analyze 热点表章节标题",
     "other": "热点表"
+  },
+  "report.html.analyze.insertPct": {
+    "description": "Analyze 热点表 INSERT 列标题（含分母）",
+    "other": "INSERT (行 %)"
+  },
+  "report.html.analyze.updatePct": {
+    "description": "Analyze 热点表 UPDATE 列标题（含分母）",
+    "other": "UPDATE (行 %)"
+  },
+  "report.html.analyze.deletePct": {
+    "description": "Analyze 热点表 DELETE 列标题（含分母）",
+    "other": "DELETE (行 %)"
+  },
+  "report.html.analyze.ddlPct": {
+    "description": "Analyze 热点表 DDL 列标题（事件分母）",
+    "other": "DDL (事件 %)"
+  },
+  "report.html.analyze.opsNote": {
+    "description": "Analyze 热点表脚注：操作百分比分母说明",
+    "other": "INSERT/UPDATE/DELETE 占比基于影响行数；DDL 占比基于表事件数。"
   },
   "report.html.analyze.noTableData": {
     "description": "Analyze 无表数据提示",

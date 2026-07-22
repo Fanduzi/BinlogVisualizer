@@ -46,19 +46,218 @@ func TestRenderTextDefaultIsConciseDiagnosticSummary(t *testing.T) {
 
 func TestRenderTextTopTablesUsesAlignedTableAndTopLimit(t *testing.T) {
 	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{Schema: "epct", Table: "enter_dealer_contract_base_quarter", TotalRows: 2744948, TxnCount: 1486, EventCount: 128304},
+		{Schema: "shop", Table: "users", TotalRows: 1000, TxnCount: 20, EventCount: 80},
+	}
 	out, err := RenderTextWithOptions(result, Options{TopN: 1})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if !strings.Contains(out, "#  Table") || !strings.Contains(out, "Rows") || !strings.Contains(out, "Share") {
-		t.Fatalf("expected aligned top tables header\n%s", out)
+	if !strings.Contains(out, "#  Table") || !strings.Contains(out, "Affected Rows") || !strings.Contains(out, "Row Share") {
+		t.Fatalf("expected explicit top tables header\n%s", out)
 	}
-	if !strings.Contains(out, "shop.orders") {
+	if !strings.Contains(out, "DML shares are of affected rows; DDL share is of binlog events.") {
+		t.Fatalf("expected top tables metric explanation\n%s", out)
+	}
+	if !strings.Contains(out, "epct.enter_dealer_contract_base_quarter") {
 		t.Fatalf("expected top table\n%s", out)
 	}
 	if strings.Contains(out, "shop.users") {
 		t.Fatalf("expected top limit to hide second table\n%s", out)
+	}
+
+	var header, row string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "  #  Table") {
+			header = line
+		}
+		if strings.Contains(line, "epct.enter_dealer_contract_base_quarter") {
+			row = line
+		}
+	}
+	if header == "" || row == "" {
+		t.Fatalf("expected top tables header and row\n%s", out)
+	}
+	if got, want := strings.Index(row, "2744948")+len("2744948"), strings.Index(header, "Affected Rows")+len("Affected Rows"); got != want {
+		t.Fatalf("affected rows column is misaligned: row ends at %d, header ends at %d\n%s", got, want, out)
+	}
+}
+
+func TestRenderTextTopTablesOperationBreakdown(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{
+			Schema: "shop", Table: "orders",
+			TotalRows: 1000, InsertRows: 600, UpdateRows: 300, DeleteRows: 100,
+			TxnCount: 50, EventCount: 200, DDLCount: 2,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	for _, want := range []string{
+		"INSERT", "UPDATE", "DELETE", "DDL Events",
+		"600 (60.0%)", "300 (30.0%)", "100 (10.0%)", "2 (1.0%)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected text to contain %q\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderTextTopTablesInsertOnly(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{
+			Schema: "shop", Table: "orders",
+			TotalRows: 5000, InsertRows: 5000, UpdateRows: 0, DeleteRows: 0,
+			TxnCount: 100, EventCount: 100, DDLCount: 0,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "5000 (100.0%)") {
+		t.Fatalf("expected INSERT 100%%\n%s", out)
+	}
+	if !strings.Contains(out, "0 (0.0%)") {
+		t.Fatalf("expected zero operations to show 0%%\n%s", out)
+	}
+}
+
+func TestRenderTextTopTablesUpdateOnly(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{
+			Schema: "shop", Table: "orders",
+			TotalRows: 3000, InsertRows: 0, UpdateRows: 3000, DeleteRows: 0,
+			TxnCount: 50, EventCount: 150, DDLCount: 0,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "3000 (100.0%)") {
+		t.Fatalf("expected UPDATE 100%%\n%s", out)
+	}
+	if !strings.Contains(out, "0 (0.0%)") {
+		t.Fatalf("expected zero INSERT/DELETE to show 0%%\n%s", out)
+	}
+}
+
+func TestRenderTextTopTablesDeleteOnly(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{
+			Schema: "shop", Table: "orders",
+			TotalRows: 2000, InsertRows: 0, UpdateRows: 0, DeleteRows: 2000,
+			TxnCount: 30, EventCount: 100, DDLCount: 0,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "2000 (100.0%)") {
+		t.Fatalf("expected DELETE 100%%\n%s", out)
+	}
+	if !strings.Contains(out, "0 (0.0%)") {
+		t.Fatalf("expected zero INSERT/UPDATE to show 0%%\n%s", out)
+	}
+}
+
+func TestRenderTextTopTablesDDLZeroDenominator(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{
+			Schema: "shop", Table: "orders",
+			TotalRows: 100, InsertRows: 100, UpdateRows: 0, DeleteRows: 0,
+			TxnCount: 1, EventCount: 0, DDLCount: 0,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "0 (\u2014)") {
+		t.Fatalf("expected em dash for zero event denominator\n%s", out)
+	}
+}
+
+func TestRenderTextTopTablesDDLZeroAffectedRows(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{
+			Schema: "shop", Table: "orders",
+			TotalRows: 0, InsertRows: 0, UpdateRows: 0, DeleteRows: 0,
+			TxnCount: 1, EventCount: 50, DDLCount: 5,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "0 (\u2014)") {
+		t.Fatalf("expected em dash for zero affected rows denominator\n%s", out)
+	}
+	if !strings.Contains(out, "5 (10.0%)") {
+		t.Fatalf("expected DDL percentage when EventCount > 0\n%s", out)
+	}
+}
+
+func TestRenderTextTopTablesDDLOnly(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{
+			Schema: "shop", Table: "orders",
+			TotalRows: 0, InsertRows: 0, UpdateRows: 0, DeleteRows: 0,
+			TxnCount: 1, EventCount: 10, DDLCount: 10,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "10 (100.0%)") {
+		t.Fatalf("expected DDL 100%%\n%s", out)
+	}
+}
+
+func TestRenderTextTopTablesFootnote(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{Schema: "shop", Table: "orders", TotalRows: 100, InsertRows: 100, TxnCount: 1, EventCount: 10},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out, "DML shares are of affected rows") {
+		t.Fatalf("expected footnote about DML denominator\n%s", out)
+	}
+	if !strings.Contains(out, "DDL share is of binlog events") {
+		t.Fatalf("expected footnote about DDL denominator\n%s", out)
 	}
 }
 

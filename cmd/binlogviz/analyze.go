@@ -52,6 +52,7 @@ type analyzeOptions struct {
 	fromDir                string
 	prefix                 string
 	format                 string
+	output                 string
 	snapshotName           string
 	snapshotDir            string
 	sqlContext             string
@@ -132,12 +133,18 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
+			// Resolve output destination
+			dest, err := resolveOutputDestination(paths, discovered, opts.output, opts.format)
+			if err != nil {
+				return err
+			}
+
 			// Build analyzer options
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			snapshotMeta := buildSnapshotMetadata(paths, opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
-			return runAnalysisWithReportAndSnapshotOptions(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir)
+			return runAnalysisWithOutput(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir, dest)
 		},
 	}
 
@@ -147,6 +154,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
 	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.analyze.flag.format"))
+	cmd.Flags().StringVarP(&opts.output, "output", "o", "", i18n.T("cmd.analyze.flag.output"))
 	cmd.Flags().StringVar(&opts.snapshotName, "snapshot-name", "", "Save JSON analyze output as a named snapshot")
 	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to save analyze snapshots")
 	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
@@ -631,6 +639,117 @@ func runAnalysisStreamingFastWithSnapshot(
 
 func hasFileCoverage(fileCoverage model.FileCoverage) bool {
 	return len(fileCoverage.Selected) > 0 || len(fileCoverage.Skipped) > 0
+}
+
+func runAnalysisWithOutput(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, dest outputDestination) error {
+	return runAnalysisStreamingFastWithOutput(paths, opts, reportOpts, format, binlog.NewParser(), func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+			return analyzer.NewWithStore(opts, store)
+		}
+		return analyzer.New(opts)
+	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
+		return createDuckDBTempStore(root)
+	}, "", snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest)
+}
+
+func runAnalysisStreamingFastWithOutput(
+	paths []string,
+	opts analyzer.Options,
+	reportOpts report.Options,
+	format string,
+	parser binlog.Parser,
+	newAnalyzer commandAnalyzerFactory,
+	newTempStore tempStoreFactory,
+	tempRoot string,
+	snapshotMeta *model.Snapshot,
+	fileCoverage model.FileCoverage,
+	snapshotName string,
+	snapshotDir string,
+	dest outputDestination,
+) error {
+	progress, err := newAggregateProgress(paths, os.Stderr)
+	if err != nil {
+		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
+	}
+
+	var store *analyzer.DuckDBStore
+	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+		var cleanup func() error
+		store, cleanup, _, err = newTempStore(tempRoot)
+		if err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
+		}
+		defer cleanup()
+	}
+
+	streamAnalyzer := newAnalyzer(opts, store)
+
+	handler := func(raw binlog.RawEvent) error {
+		var normalized model.NormalizedEvent
+		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
+		if err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
+		}
+		if !ok {
+			return nil
+		}
+		if err := streamAnalyzer.Consume(normalized); err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
+		}
+		return nil
+	}
+
+	if progressParser, ok := parser.(binlog.ProgressParser); ok {
+		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
+			progress.Advance(progressEvent)
+		}, handler); err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+		}
+		for index := range paths {
+			progress.FinishFile(index)
+		}
+	} else {
+		if err := parser.ParseFiles(paths, handler); err != nil {
+			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+		}
+	}
+	progress.FinishParse()
+	progress.Finalizing()
+
+	result, err := streamAnalyzer.Finalize()
+	if err != nil {
+		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
+	}
+	if hasFileCoverage(fileCoverage) {
+		result.Diagnostics.FileCoverage = fileCoverage
+	}
+
+	switch format {
+	case "json":
+		if snapshotMeta != nil {
+			result.Snapshot = snapshotMeta
+		}
+		if snapshotName != "" {
+			return saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+		}
+		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
+	case "markdown", "md":
+		return report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
+	case "html":
+		htmlContent, err := report.RenderHTMLWithOptions(*result, reportOpts)
+		if err != nil {
+			return err
+		}
+		if err := writeHTMLAtomically(dest, htmlContent); err != nil {
+			return err
+		}
+		if dest.IsFile {
+			printHTMLSaveConfirmation(dest.Path)
+		}
+		return nil
+	default:
+		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
+	}
 }
 
 func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {

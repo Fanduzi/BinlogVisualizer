@@ -425,7 +425,14 @@ binlogviz analyze mysql-bin.000123 --format markdown > report.md
 HTML 模式输出自包含的单文件报告，所有样式、图表库（ECharts）和数据均内联嵌入，无需外部依赖或网络连接。
 
 ```bash
-binlogviz analyze mysql-bin.000123 --format html > report.html
+# 默认：写入 mysql-bin.000123.html
+binlogviz analyze mysql-bin.000123 --format html
+
+# 指定输出路径
+binlogviz analyze mysql-bin.000123 --format html --output report.html
+
+# 输出到 stdout（用于管道）
+binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
 报告包含：
@@ -1040,10 +1047,10 @@ binlogviz analyze mysql-bin.000123 --format markdown > report.md
 ### 生成自包含 HTML 报告
 
 ```bash
-binlogviz analyze mysql-bin.000123 --format html > report.html
+binlogviz analyze mysql-bin.000123 --format html
 ```
 
-HTML 文件完全自包含——所有图表和样式均已内联嵌入，无需互联网连接，在任意浏览器中打开即可。
+HTML 文件默认写入当前目录（例如 `mysql-bin.000123.html`）。使用 `--output report.html` 指定路径，或 `--output -` 输出到 stdout。文件完全自包含——所有图表和样式均已内联嵌入，无需互联网连接，在任意浏览器中打开即可。
 
 ### 分别捕获两个输出通道
 
