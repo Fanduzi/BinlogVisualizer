@@ -44,6 +44,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Text rendering is intentionally kept on a fast path: it must not build HTML chart data, read embedded ECharts assets, or render pattern drilldowns unless detail options request them.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
+- TPS/min and rows-per-minute keep a visible circle (size 10) when a series has fewer than 2 points so a Duration-0s / single-minute report does not render an empty polyline.
 - The HTML renderer follows an incident reading path: one-line verdict (same findings as text), peak minute with that minute's tables, hottest table and largest transaction, remaining findings, hot objects, diagnostic evidence, then demoted activity charts. Theme switchers sit in the footer.
 - HTML never treats an empty `alerts` slice as a healthy workload. It renders `collectDisplayFindings`, which matches the text Top Findings list (diagnostics findings, then a synthesized write spike / longest txn / DDL).
 - Rollback hints use `firstUsableRollbackLocation`. A recorded 31-byte XID interval (dogfood #18) is shown as an XID-only span and is not offered as `--start-position`. The renderer does not invent a real start pos.

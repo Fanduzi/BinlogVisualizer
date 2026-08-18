@@ -1097,6 +1097,17 @@ const htmlReportTemplate = `<!DOCTYPE html>
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
+  function visibleLineMark(data) {
+    var sparse = !data || data.length < 2;
+    return {
+      type: 'line',
+      data: data,
+      symbol: sparse ? 'circle' : 'none',
+      symbolSize: sparse ? 10 : 0,
+      showSymbol: sparse
+    };
+  }
+
   function makeTheme() {
     return {
       backgroundColor: 'transparent',
@@ -1150,14 +1161,11 @@ const htmlReportTemplate = `<!DOCTYPE html>
         splitLine: { lineStyle: { color: border, type: 'dashed' } }
       },
       tooltip: { ...t.tooltip, trigger: 'axis' },
-      series: [{
+      series: [Object.assign(visibleLineMark(tpsValues), {
         name: '{{t "report.html.analyze.avgTPSPerMinute"}}',
-        type: 'line',
-        data: tpsValues,
         smooth: 0.25,
-        symbol: 'none',
         lineStyle: { color: accent, width: 2 }
-      }]
+      })]
     });
 
     c1 = echarts.init(document.getElementById('chart-timeline'), null, {renderer: 'svg'});
@@ -1178,16 +1186,13 @@ const htmlReportTemplate = `<!DOCTYPE html>
         splitLine: { lineStyle: { color: border, type: 'dashed' } }
       },
       tooltip: { ...t.tooltip, trigger: 'axis' },
-      series: [{
+      series: [Object.assign(visibleLineMark(minuteRows), {
         name: '{{t "report.html.common.rows"}}',
-        type: 'line',
-        data: minuteRows,
         smooth: 0.3,
-        symbol: 'none',
         lineStyle: { color: primary, width: 2 },
         areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
           colorStops: [{offset: 0, color: primary + '4d'}, {offset: 1, color: primary + '00'}] } }
-      }]
+      })]
     });
 
     c2 = echarts.init(document.getElementById('chart-tables'), null, {renderer: 'svg'});
