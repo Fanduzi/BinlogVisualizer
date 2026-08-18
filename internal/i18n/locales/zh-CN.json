@@ -508,8 +508,44 @@
     "other": "分析报告"
   },
   "report.html.analyze.executiveSummary": {
-    "description": "Analyze 执行摘要章节标题",
-    "other": "执行摘要"
+    "description": "Analyze 故障摘要章节标题",
+    "other": "故障摘要"
+  },
+  "report.html.analyze.verdict": {
+    "description": "HTML 故障页一行结论标签",
+    "other": "结论"
+  },
+  "report.html.analyze.peakMinute": {
+    "description": "峰值写入分钟卡片标题",
+    "other": "峰值分钟"
+  },
+  "report.html.analyze.tablesInPeakMinute": {
+    "description": "峰值分钟内贡献行数的表",
+    "other": "该分钟的表"
+  },
+  "report.html.analyze.vsWindowMedian": {
+    "description": "峰值行数与其余分钟中位数对比",
+    "other": "对比窗口中位数"
+  },
+  "report.html.analyze.vsSpikeBaseline": {
+    "description": "峰值行数与尖峰检测基线对比",
+    "other": "对比尖峰基线"
+  },
+  "report.html.analyze.hottestTable": {
+    "description": "最热表卡片标题",
+    "other": "最热表"
+  },
+  "report.html.analyze.querySummary": {
+    "description": "有界 SQL 或 annotate 摘要标签",
+    "other": "SQL / annotate"
+  },
+  "report.html.analyze.theme": {
+    "description": "页脚主题切换标签",
+    "other": "主题"
+  },
+  "report.html.analyze.factor": {
+    "description": "峰值相对基线倍数标签",
+    "other": "倍数"
   },
   "report.html.analyze.activityCharts": {
     "description": "Analyze 活动图表章节标题",
@@ -1117,6 +1153,6 @@
   },
   "report.html.analyze.noAlerts": {
     "description": "无告警空状态",
-    "other": "未发现问题 — 负载看起来健康"
+    "other": "未检测到高信号发现。"
   }
 }

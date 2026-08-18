@@ -245,6 +245,74 @@ const htmlReportTemplate = `<!DOCTYPE html>
   .key-finding-badge.warning  { background: rgba(251,191,36,0.15); color: var(--warn); }
   .key-finding-badge.info     { background: rgba(37,99,235,0.15); color: var(--primary); }
 
+  .verdict {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    margin-bottom: 14px;
+  }
+  .verdict.critical { border-left: 4px solid var(--danger); }
+  .verdict.warning  { border-left: 4px solid var(--warn); }
+  .verdict.info     { border-left: 4px solid var(--primary); }
+  .verdict-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .verdict-text { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.45; }
+  .incident-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 20px;
+    padding: 0 2px 14px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .incident-meta strong { color: var(--text); font-family: 'Fira Code', monospace; font-weight: 600; }
+  .incident-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .incident-card {
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+  }
+  .incident-card.peak { border-color: var(--danger); }
+  .incident-card-wide { grid-column: 1 / -1; }
+  .peak-tables { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .peak-table-btn {
+    font-family: 'Fira Code', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--primary);
+    cursor: pointer;
+  }
+  .peak-table-btn:hover { border-color: var(--primary); }
+  tbody tr.table-summary-row.is-filtered { outline: 1px solid var(--accent); background: var(--surface2); }
+  .mono { font-family: 'Fira Code', monospace; }
+  .footer-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 32px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+
   /* Section */
   .section {
     background: var(--surface);
@@ -536,8 +604,10 @@ const htmlReportTemplate = `<!DOCTYPE html>
   }
   @media (max-width: 600px) {
     .cards { grid-template-columns: 1fr 1fr; }
+    .incident-grid { grid-template-columns: 1fr; }
     .header { flex-direction: column; gap: 12px; text-align: center; }
     .header-meta { text-align: center; }
+    .footer-row { flex-direction: column; }
   }
 </style>
 </head>
@@ -547,55 +617,83 @@ const htmlReportTemplate = `<!DOCTYPE html>
   <!-- Header -->
   <div class="header">
     <div class="header-logo">Binlog<span>Viz</span></div>
-    <div style="display:flex;align-items:center;gap:20px;">
-      <div class="header-meta">
-        <strong>{{t "report.html.analyze.header"}}</strong>
-        {{t "report.html.common.generatedAt"}}: {{.GeneratedAt}}
-      </div>
-      <div class="theme-switcher">
-        <button class="theme-btn" data-t="nebula" title="Nebula"></button>
-        <button class="theme-btn" data-t="forest" title="Forest"></button>
-        <button class="theme-btn" data-t="navy"   title="Navy"></button>
-        <button class="theme-btn" data-t="ember"  title="Ember"></button>
-        <button class="theme-btn" data-t="light"  title="Light"></button>
-      </div>
+    <div class="header-meta">
+      <strong>{{t "report.html.analyze.header"}}</strong>
+      {{t "report.html.common.generatedAt"}}: {{.GeneratedAt}}
     </div>
   </div>
 
-  <!-- ═══ Section 1: Executive Summary ═══ -->
+  <!-- ═══ Section 1: Incident ═══ -->
   <section class="section" id="executive-summary">
     <div class="section-header"><span class="dot"></span>{{t "report.html.analyze.executiveSummary"}}</div>
     <div class="section-body" style="padding:16px">
-      <div class="cards" style="margin-bottom:0">
-        <div class="card">
-          <div class="card-label">{{t "report.html.common.transactions"}}</div>
-          <div class="card-value">{{.TotalTxns}}</div>
+      <div class="verdict {{.Verdict.Severity}}" id="incident-verdict">
+        <span class="key-finding-badge {{.Verdict.Severity}}">{{.Verdict.Badge}}</span>
+        <div>
+          <div class="verdict-label">{{t "report.html.analyze.verdict"}}</div>
+          <div class="verdict-text">{{.Verdict.Message}}</div>
         </div>
-        <div class="card accent">
-          <div class="card-label">{{t "report.html.common.affectedRows"}}</div>
-          <div class="card-value">{{.TotalRows}}</div>
-        </div>
-        <div class="card success">
-          <div class="card-label">{{t "report.html.common.events"}}</div>
-          <div class="card-value">{{.TotalEvents}}</div>
-        </div>
+      </div>
+      <div class="incident-meta">
+        <span>{{t "report.html.common.affectedRows"}}: <strong>{{fmtIntHTML .TotalRows}}</strong></span>
+        <span>{{t "report.html.common.transactions"}}: <strong>{{fmtIntHTML .TotalTxns}}</strong></span>
+        <span>{{t "report.html.common.events"}}: <strong>{{fmtIntHTML .TotalEvents}}</strong></span>
         {{if .StartTime}}
-        <div class="card warn">
-          <div class="card-label">{{t "report.html.common.timeRange"}}</div>
-          <div class="card-value" style="font-size:13px;margin-top:4px">{{.StartTime}}</div>
-          <div class="card-sub">→ {{.EndTime}}</div>
-          <div class="card-sub">{{t "report.html.common.duration"}}: {{.Duration}}</div>
-        </div>
-        {{else}}
-        <div class="card">
-          <div class="card-label">{{t "report.html.common.timeRange"}}</div>
-          <div class="card-value" style="font-size:16px;color:var(--muted)">{{t "report.html.common.notAvailable"}}</div>
+        <span>{{t "report.html.common.timeRange"}}: <strong>{{.StartTime}}</strong> → {{.EndTime}} ({{.Duration}})</span>
+        {{end}}
+        {{if .HasDDLEvents}}<span>{{t "report.html.analyze.ddlCount"}}: <strong>{{.DDLCount}}</strong></span>{{end}}
+        {{if .HasRollbackHint}}<span>{{t "report.text.firstSuspiciousPosition"}}: <strong class="mono">{{.RollbackHint}}</strong></span>{{end}}
+      </div>
+      <div class="incident-grid">
+        {{if .HasPeakMinute}}
+        <div class="incident-card peak incident-card-wide" id="peak-minute">
+          <div class="diagnostic-title">{{t "report.html.analyze.peakMinute"}}</div>
+          <div class="diagnostic-head" style="margin-top:8px">
+            <div class="diagnostic-title">{{.PeakMinute.Timestamp}}</div>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .PeakMinute.Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .PeakMinute.Txns}}</div>
+          </div>
+          {{if .PeakMinute.HasBaseline}}
+          <div class="diagnostic-body">
+            {{if eq .PeakMinute.BaselineLabel "alert"}}{{t "report.html.analyze.vsSpikeBaseline"}}{{else}}{{t "report.html.analyze.vsWindowMedian"}}{{end}}:
+            <span class="mono">{{fmtIntHTML .PeakMinute.BaselineRows}}</span>
+            {{if .PeakMinute.BaselineFactor}} · {{t "report.html.analyze.factor"}} {{printf "%.1f" .PeakMinute.BaselineFactor}}×{{end}}
+          </div>
+          {{end}}
+          {{if .PeakMinute.Tables}}
+          <div class="key-findings-title" style="margin-top:10px">{{t "report.html.analyze.tablesInPeakMinute"}}</div>
+          <div class="peak-tables">
+            {{range .PeakMinute.Tables}}
+            <button type="button" class="peak-table-btn" data-filter-table="{{.Key}}">{{.Key}} · {{fmtIntHTML .Rows}}</button>
+            {{end}}
+          </div>
+          {{end}}
         </div>
         {{end}}
-        {{if .HasDDLEvents}}
-        <div class="card danger">
-          <div class="card-label">{{t "report.html.analyze.ddlCount"}}</div>
-          <div class="card-value">{{.DDLCount}}</div>
+        {{if .HasHottestTable}}
+        <div class="incident-card" id="hottest-table">
+          <div class="diagnostic-title">{{t "report.html.analyze.hottestTable"}}</div>
+          <div class="diagnostic-head" style="margin-top:8px">
+            <button type="button" class="peak-table-btn" data-filter-table="{{.HottestTable.Key}}">{{.HottestTable.Key}}</button>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .HottestTable.Total}} · {{t "report.html.common.txns"}}={{fmtIntHTML .HottestTable.Txns}}</div>
+          </div>
+          <div class="diagnostic-body">
+            <div><span class="op-ins">I {{.HottestTable.InsertPct}}</span> · <span class="op-upd">U {{.HottestTable.UpdatePct}}</span> · <span class="op-del">D {{.HottestTable.DeletePct}}</span></div>
+            {{if .HottestTable.QuerySummary}}<div>{{t "report.html.analyze.querySummary"}}: <span class="mono">{{.HottestTable.QuerySummary}}</span></div>{{end}}
+          </div>
+        </div>
+        {{end}}
+        {{if .HasIncidentTxn}}
+        <div class="incident-card" id="largest-txn">
+          <div class="diagnostic-title">{{t "report.html.analyze.largestTransactionsByRows"}}</div>
+          <div class="diagnostic-head" style="margin-top:8px">
+            <div class="diagnostic-title">{{.IncidentTxn.TxnKey}}</div>
+            <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .IncidentTxn.Rows}}</div>
+          </div>
+          <div class="diagnostic-body">
+            {{if .IncidentTxn.Location}}<div>{{t "report.html.analyze.binlogSpan"}}: <span class="mono">{{.IncidentTxn.Location}}</span></div>{{end}}
+            {{if .IncidentTxn.HasOps}}<div><span class="op-ins">I {{fmtIntHTML .IncidentTxn.Inserts}}</span> · <span class="op-upd">U {{fmtIntHTML .IncidentTxn.Updates}}</span> · <span class="op-del">D {{fmtIntHTML .IncidentTxn.Deletes}}</span></div>{{end}}
+            {{if .IncidentTxn.QuerySummary}}<div>{{t "report.html.analyze.querySummary"}}: <span class="mono">{{.IncidentTxn.QuerySummary}}</span></div>{{end}}
+          </div>
         </div>
         {{end}}
       </div>
@@ -628,55 +726,13 @@ const htmlReportTemplate = `<!DOCTYPE html>
       </div>
       {{else}}
       <div class="no-alerts">
-        <span class="no-alerts-icon">✓</span>
-        <span>{{t "report.html.analyze.noAlerts"}}</span>
+        <span>{{t "report.text.noFindings"}}</span>
       </div>
       {{end}}
     </div>
   </section>
 
-  <!-- ═══ Section 3: Activity Overview ═══ -->
-  <section class="section" id="section-activity">
-    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.sectionActivity"}}</div>
-    <div class="section-body">
-      <div class="section-desc">{{t "report.html.analyze.activityCharts"}}</div>
-      <div class="charts-grid">
-        <div class="chart-panel chart-panel-large">
-          <div class="chart-title">{{t "report.html.analyze.avgTPSPerMinute"}}</div>
-          <div class="chart-box chart-large" id="chart-tps"></div>
-        </div>
-        <div class="chart-panel chart-panel-wide">
-          <div class="chart-title">{{t "report.html.analyze.rowsPerMinute"}}</div>
-          <div class="chart-box" id="chart-timeline"></div>
-        </div>
-        <div class="chart-panel">
-          <div class="chart-title">{{t "report.html.common.operationMix"}}</div>
-          <div class="chart-box" id="chart-ops"></div>
-        </div>
-        {{if .HasHotIntervals}}
-        <div class="chart-panel">
-          <div class="chart-title">{{t "report.html.analyze.hotIntervals"}}</div>
-          <div class="diagnostic-list" style="padding:0">
-            {{range .HotIntervals}}
-            <div class="diagnostic-item">
-              <div class="diagnostic-head">
-                <div class="diagnostic-title">{{.Timestamp}}</div>
-                <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
-              </div>
-              <div class="diagnostic-body">
-                <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
-                {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
-              </div>
-            </div>
-            {{end}}
-          </div>
-        </div>
-        {{end}}
-      </div>
-    </div>
-  </section>
-
-  <!-- ═══ Section 4: Hot Objects ═══ -->
+  <!-- ═══ Section 3: Hot Objects ═══ -->
   <section class="section" id="section-objects">
     <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.sectionObjects"}}</div>
     <div class="section-body">
@@ -975,7 +1031,57 @@ const htmlReportTemplate = `<!DOCTYPE html>
     </div>
   </section><!-- /section-evidence -->
 
-  <div class="footer">{{t "report.html.common.generatedBy"}} &middot; {{.GeneratedAt}}</div>
+  <!-- ═══ Demoted charts ═══ -->
+  <section class="section" id="section-activity">
+    <div class="section-header"><span class="dot" style="background:var(--accent)"></span>{{t "report.html.analyze.sectionActivity"}}</div>
+    <div class="section-body">
+      <div class="section-desc">{{t "report.html.analyze.activityCharts"}}</div>
+      <div class="charts-grid">
+        <div class="chart-panel chart-panel-wide">
+          <div class="chart-title">{{t "report.html.analyze.rowsPerMinute"}}</div>
+          <div class="chart-box" id="chart-timeline"></div>
+        </div>
+        <div class="chart-panel">
+          <div class="chart-title">{{t "report.html.analyze.avgTPSPerMinute"}}</div>
+          <div class="chart-box" id="chart-tps"></div>
+        </div>
+        <div class="chart-panel">
+          <div class="chart-title">{{t "report.html.common.operationMix"}}</div>
+          <div class="chart-box" id="chart-ops"></div>
+        </div>
+        {{if .HasHotIntervals}}
+        <div class="chart-panel">
+          <div class="chart-title">{{t "report.html.analyze.hotIntervals"}}</div>
+          <div class="diagnostic-list" style="padding:0">
+            {{range .HotIntervals}}
+            <div class="diagnostic-item">
+              <div class="diagnostic-head">
+                <div class="diagnostic-title">{{.Timestamp}}</div>
+                <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
+              </div>
+              <div class="diagnostic-body">
+                <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+                {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
+              </div>
+            </div>
+            {{end}}
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+  </section>
+
+  <div class="footer footer-row">
+    <div>{{t "report.html.common.generatedBy"}} &middot; {{.GeneratedAt}}</div>
+    <div class="theme-switcher" title="{{t "report.html.analyze.theme"}}">
+      <button class="theme-btn" data-t="nebula" title="Nebula"></button>
+      <button class="theme-btn" data-t="forest" title="Forest"></button>
+      <button class="theme-btn" data-t="navy"   title="Navy"></button>
+      <button class="theme-btn" data-t="ember"  title="Ember"></button>
+      <button class="theme-btn" data-t="light"  title="Light"></button>
+    </div>
+  </div>
 </div>
 
 <script>{{.EChartsJS}}</script>
@@ -1030,7 +1136,9 @@ const htmlReportTemplate = `<!DOCTYPE html>
     if (c2) c2.dispose();
     if (c3) c3.dispose();
 
-    c0 = echarts.init(document.getElementById('chart-tps'), null, {renderer: 'svg'});
+    var tpsEl = document.getElementById('chart-tps');
+    if (!tpsEl) { return; }
+    c0 = echarts.init(tpsEl, null, {renderer: 'svg'});
     c0.setOption({
       ...t,
       legend: { top: 0, textStyle: { color: muted, fontSize: 10 } },
@@ -1228,24 +1336,45 @@ const htmlReportTemplate = `<!DOCTYPE html>
     btn.addEventListener('click', function() { setTheme(btn.getAttribute('data-t')); });
   });
 
+  function openTable(tableKey) {
+    var row = document.querySelector('tr.table-summary-row[data-table-key="' + tableKey + '"]');
+    if (!row) {
+      return;
+    }
+    document.querySelectorAll('tr.table-summary-row').forEach(function(other) {
+      other.classList.toggle('is-filtered', other.getAttribute('data-table-key') === tableKey);
+    });
+    row.scrollIntoView({block: 'center'});
+    var domID = row.getAttribute('data-table-dom-id');
+    var detail = document.querySelector('tr.table-detail-row[data-table-key="' + tableKey + '"]');
+    if (!detail) {
+      return;
+    }
+    document.querySelectorAll('tr.table-detail-row').forEach(function(other) {
+      other.setAttribute('hidden', '');
+    });
+    detail.removeAttribute('hidden');
+    if (domID) {
+      renderTableCharts(tableKey, domID);
+    }
+  }
+
   document.querySelectorAll('tr.table-summary-row.has-activity').forEach(function(row) {
     row.addEventListener('click', function() {
       var tableKey = row.getAttribute('data-table-key');
-      var domID = row.getAttribute('data-table-dom-id');
       var detail = document.querySelector('tr.table-detail-row[data-table-key="' + tableKey + '"]');
-      if (!detail) {
-        return;
-      }
-      var isHidden = detail.hasAttribute('hidden');
-      document.querySelectorAll('tr.table-detail-row').forEach(function(other) {
-        other.setAttribute('hidden', '');
-      });
-      if (!isHidden) {
+      if (detail && !detail.hasAttribute('hidden') && row.classList.contains('is-filtered')) {
         detail.setAttribute('hidden', '');
+        row.classList.remove('is-filtered');
         return;
       }
-      detail.removeAttribute('hidden');
-      renderTableCharts(tableKey, domID);
+      openTable(tableKey);
+    });
+  });
+
+  document.querySelectorAll('[data-filter-table]').forEach(function(el) {
+    el.addEventListener('click', function() {
+      openTable(el.getAttribute('data-filter-table'));
     });
   });
 

@@ -12,7 +12,34 @@
 [![变更记录](https://img.shields.io/badge/变更记录-informational)](CHANGELOG.md) [![安全策略](https://img.shields.io/badge/安全策略-important)](SECURITY.md) [![发行说明](https://img.shields.io/badge/发行说明-success)](docs/releases/)
 </div>
 
-BinlogViz 是一个面向 DBA 和运维人员的本地 MySQL `ROW` binlog 分析 CLI。它专门用于回答真实运维问题：哪些表写入最重、哪些事务异常大、尖峰发生在哪些分钟、某个故障窗口内的负载究竟发生了什么。
+BinlogViz 在本地读取 MySQL `ROW` binlog，并生成一份故障报告：最热的表、最大的事务、写入峰值分钟，以及可以带回 `mysqlbinlog` 的 `file:pos`。
+
+## 安装
+
+macOS：
+
+```bash
+brew tap Fanduzi/binlogviz
+brew install --cask binlogviz
+```
+
+Linux / 其他平台（示例：当前版本 `v0.21.0` 的 `darwin/arm64`；请从 [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases) 选择对应平台的归档）：
+
+```bash
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_darwin_arm64.tar.gz
+tar -xzf binlogviz_0.21.0_darwin_arm64.tar.gz
+install ./binlogviz /usr/local/bin/binlogviz
+```
+
+checksum 校验、`install.sh` 和源码构建见 [安装说明](#安装说明)。
+
+## 截图
+
+真实 `binlogviz analyze --format html` 运行的演示截图尚未入库。准备好后放在这里：
+
+1. `docs/assets/html-incident.png` — HTML 结论和峰值分钟
+2. `docs/assets/html-tables.png` — 最热表、最大事务和 `file:pos`
+3. `docs/assets/text-findings.png` — 同一输入下对应的文本发现
 
 ## 从这里开始
 
@@ -149,7 +176,7 @@ binlogviz analyze mysql-bin.000123 --format html --output report.html
 binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
-HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）、高信号写入模式的可选模式钻取（Pattern Drilldowns），以及五主题切换器。
+HTML 报告以故障页打开：一行结论与文本发现一致，接着是峰值分钟及其表、最热表和带 `file:pos` 的最大事务；图表和主题切换在更下方。
 
 ## Analyze 性能门槛
 
@@ -177,7 +204,7 @@ BinlogViz 重点服务这些 DBA 常见问题：
 - **当前窗口和可信基线相比，负载差异到底在哪里？**
 - **结果能否安全交给脚本、管道或其他工具？**
 
-## 安装
+## 安装说明
 
 ### macOS 首选：Homebrew Cask
 

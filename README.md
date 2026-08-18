@@ -12,7 +12,34 @@
 [![Changelog](https://img.shields.io/badge/Changelog-informational)](CHANGELOG.md) [![Security](https://img.shields.io/badge/Security-important)](SECURITY.md) [![Release Notes](https://img.shields.io/badge/Release_Notes-success)](docs/releases/)
 </div>
 
-BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs and operators who need to quickly answer practical questions from real binlog files: which tables are absorbing the most writes, which transactions are unusually large, where spikes happened, and how workload changed over a time window.
+BinlogViz reads a MySQL `ROW` binlog locally and turns it into an incident report: hottest tables, largest transactions, the peak write minute, and `file:pos` you can take back to `mysqlbinlog`.
+
+## Install
+
+macOS:
+
+```bash
+brew tap Fanduzi/binlogviz
+brew install --cask binlogviz
+```
+
+Linux / other (example: current release `v0.21.0` on `darwin/arm64`; pick the archive for your platform from [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases)):
+
+```bash
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_darwin_arm64.tar.gz
+tar -xzf binlogviz_0.21.0_darwin_arm64.tar.gz
+install ./binlogviz /usr/local/bin/binlogviz
+```
+
+Checksum verification, `install.sh`, and source builds are in [Installation](#installation).
+
+## Screenshots
+
+Demo captures from a real `binlogviz analyze --format html` run are not in this repository yet. Add them here as:
+
+1. `docs/assets/html-incident.png` — HTML verdict and peak minute
+2. `docs/assets/html-tables.png` — hottest table and largest transaction with `file:pos`
+3. `docs/assets/text-findings.png` — matching text findings for the same input
 
 ## Start Here
 
@@ -149,7 +176,7 @@ binlogviz analyze mysql-bin.000123 --format html --output report.html
 binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
-The HTML report includes interactive charts (rows/txns per minute, top tables, operation mix), optional pattern drilldowns for high-signal write patterns, and a five-theme switcher.
+The HTML report opens as an incident page: a one-line verdict that matches the text findings, the peak minute and its tables, hottest table and largest transaction with `file:pos`, then charts and theme controls further down.
 
 ## Analyze Performance Gate
 

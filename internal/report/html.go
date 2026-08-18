@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: single self-contained HTML file with embedded ECharts, dark OLED theme, inline CSS.
+// output: single self-contained HTML incident page with demoted charts and shared findings.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
 
@@ -97,6 +98,15 @@ type htmlReportData struct {
 	Alerts              []htmlAlert
 	HasAlerts           bool
 	TopAlerts           []htmlAlert
+	Verdict             htmlAlert
+	PeakMinute          htmlHotInterval
+	HasPeakMinute       bool
+	HottestTable        htmlTableRow
+	HasHottestTable     bool
+	IncidentTxn         htmlTxnDiagnostic
+	HasIncidentTxn      bool
+	RollbackHint        string
+	HasRollbackHint     bool
 	Drilldowns          []htmlDrilldown
 	HasDrilldowns       bool
 	MinuteLabels        template.JS
@@ -139,22 +149,23 @@ type htmlRepTxn struct {
 }
 
 type htmlTableRow struct {
-	Key         string
-	DOMID       string
-	Schema      string
-	Table       string
-	Total       int
-	Inserts     int
-	Updates     int
-	Deletes     int
-	Txns        int
-	DDLCount    int
-	EventCount  int
-	InsertPct   string
-	UpdatePct   string
-	DeletePct   string
-	DDLPct      string
-	HasActivity bool
+	Key          string
+	DOMID        string
+	Schema       string
+	Table        string
+	Total        int
+	Inserts      int
+	Updates      int
+	Deletes      int
+	Txns         int
+	DDLCount     int
+	EventCount   int
+	InsertPct    string
+	UpdatePct    string
+	DeletePct    string
+	DDLPct       string
+	HasActivity  bool
+	QuerySummary string
 }
 
 type htmlAlert struct {
@@ -180,6 +191,10 @@ type htmlTxnDiagnostic struct {
 	Tables       []htmlTxnTable
 	Location     string
 	QuerySummary string
+	Inserts      int
+	Updates      int
+	Deletes      int
+	HasOps       bool
 }
 
 type htmlTxnTable struct {
@@ -188,12 +203,22 @@ type htmlTxnTable struct {
 }
 
 type htmlHotInterval struct {
-	Timestamp   string
-	Rows        int
-	Txns        int
-	Events      int
-	BinlogBytes int
-	DDLCount    int
+	Timestamp      string
+	Rows           int
+	Txns           int
+	Events         int
+	BinlogBytes    int
+	DDLCount       int
+	Tables         []htmlHotTable
+	BaselineRows   int
+	BaselineFactor float64
+	HasBaseline    bool
+	BaselineLabel  string
+}
+
+type htmlHotTable struct {
+	Key  string
+	Rows int
 }
 
 type htmlFileCoverageData struct {
@@ -276,23 +301,25 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	}
 	d.TableActivitySeries = mustJSON(tableActivitySeries)
 
-	// Alerts
-	for _, a := range result.Alerts {
-		badge := "INFO"
-		switch a.Severity {
-		case "warning":
-			badge = "WARN"
-		case "critical":
-			badge = "CRIT"
-		}
+	// Findings: same list the text report prints. Never treat empty alerts as healthy.
+	findings := collectDisplayFindings(result, opts.TopN)
+	for _, finding := range findings {
 		d.Alerts = append(d.Alerts, htmlAlert{
-			Severity: a.Severity,
-			Message:  a.Message,
-			Badge:    badge,
+			Severity: finding.Severity,
+			Message:  finding.Message,
+			Badge:    findingBadge(finding.Severity),
 		})
 	}
 	d.HasAlerts = len(d.Alerts) > 0
-	// Top 4 alerts for executive summary display.
+	if len(findings) > 0 {
+		d.Verdict = d.Alerts[0]
+	} else {
+		d.Verdict = htmlAlert{
+			Severity: "info",
+			Message:  i18n.T("report.text.noFindings"),
+			Badge:    "INFO",
+		}
+	}
 	topLimit := len(d.Alerts)
 	if topLimit > 4 {
 		topLimit = 4
@@ -316,30 +343,32 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.DDLCount = len(d.DDLEvents)
 
 	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, 1) {
-		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn))
+		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn, opts.SQLContextMode))
 	}
 	d.HasLargestTxns = len(d.LargestTransactions) > 0
+	if d.HasLargestTxns {
+		d.IncidentTxn = d.LargestTransactions[0]
+		d.HasIncidentTxn = true
+	}
 
 	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, 1) {
-		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn))
+		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn, opts.SQLContextMode))
 	}
 	d.HasLongestTxns = len(d.LongestTransactions) > 0
 
-	for _, interval := range result.Diagnostics.HotIntervals {
-		d.HotIntervals = append(d.HotIntervals, htmlHotInterval{
-			Timestamp:   interval.Minute.Format("2006-01-02 15:04:05"),
-			Rows:        interval.TotalRows,
-			Txns:        interval.TxnCount,
-			Events:      interval.EventCount,
-			BinlogBytes: int(interval.BinlogBytes),
-			DDLCount:    interval.DDLCount,
-		})
+	for i, interval := range result.Diagnostics.HotIntervals {
+		item := buildHTMLHotInterval(interval, result.Minutes, result.Alerts)
+		d.HotIntervals = append(d.HotIntervals, item)
+		if i == 0 {
+			d.PeakMinute = item
+			d.HasPeakMinute = true
+		}
 	}
 	d.HasHotIntervals = len(d.HotIntervals) > 0
 
 	// Widest transactions
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, 1) {
-		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn))
+		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn, opts.SQLContextMode))
 	}
 	d.HasWidestTxns = len(d.WidestTransactions) > 0
 
@@ -481,6 +510,17 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	}
 	d.HasDrilldowns = len(d.Drilldowns) > 0
 
+	if len(d.Tables) > 0 {
+		d.HottestTable = d.Tables[0]
+		d.HottestTable.QuerySummary = sampleQueryForTable(result, d.HottestTable.Key)
+		d.HasHottestTable = true
+	}
+
+	if location := firstSuspiciousLocation(result); location != "" {
+		d.RollbackHint = location
+		d.HasRollbackHint = true
+	}
+
 	return d
 }
 
@@ -540,7 +580,10 @@ func formatFileSize(bytes int64) string {
 	}
 }
 
-func buildHTMLTxnDiagnostic(txn model.Transaction) htmlTxnDiagnostic {
+func buildHTMLTxnDiagnostic(txn model.Transaction, mode SQLContextMode) htmlTxnDiagnostic {
+	inserts := txn.Operations["INSERT"]
+	updates := txn.Operations["UPDATE"]
+	deletes := txn.Operations["DELETE"]
 	return htmlTxnDiagnostic{
 		TxnKey:       txn.TxnKey,
 		Rows:         txn.TotalRows,
@@ -549,7 +592,137 @@ func buildHTMLTxnDiagnostic(txn model.Transaction) htmlTxnDiagnostic {
 		BinlogBytes:  int(txn.BinlogBytes),
 		Tables:       sortedTxnTables(txn.Tables),
 		Location:     formatBinlogSpan(txn),
-		QuerySummary: txn.QuerySummary,
+		QuerySummary: transactionTextQuery(txn, mode),
+		Inserts:      inserts,
+		Updates:      updates,
+		Deletes:      deletes,
+		HasOps:       inserts+updates+deletes > 0,
+	}
+}
+
+func buildHTMLHotInterval(interval model.MinuteBucket, minutes []model.MinuteBucket, alerts []model.Alert) htmlHotInterval {
+	item := htmlHotInterval{
+		Timestamp:   interval.Minute.Format("2006-01-02 15:04:05"),
+		Rows:        interval.TotalRows,
+		Txns:        interval.TxnCount,
+		Events:      interval.EventCount,
+		BinlogBytes: int(interval.BinlogBytes),
+		DDLCount:    interval.DDLCount,
+		Tables:      sortedHotTables(interval.TableRows),
+	}
+	if baseline, factor, ok := spikeBaselineFromAlerts(alerts, interval.Minute); ok {
+		item.BaselineRows = baseline
+		item.BaselineFactor = factor
+		item.HasBaseline = true
+		item.BaselineLabel = "alert"
+		return item
+	}
+	if baseline, ok := windowRowMedian(minutes, interval.Minute); ok {
+		item.BaselineRows = baseline
+		item.HasBaseline = true
+		item.BaselineLabel = "window"
+		if baseline > 0 {
+			item.BaselineFactor = float64(interval.TotalRows) / float64(baseline)
+		}
+	}
+	return item
+}
+
+func sortedHotTables(tableRows map[string]int) []htmlHotTable {
+	if len(tableRows) == 0 {
+		return nil
+	}
+	items := make([]htmlHotTable, 0, len(tableRows))
+	for key, rows := range tableRows {
+		items = append(items, htmlHotTable{Key: key, Rows: rows})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Rows == items[j].Rows {
+			return items[i].Key < items[j].Key
+		}
+		return items[i].Rows > items[j].Rows
+	})
+	if len(items) > 8 {
+		items = items[:8]
+	}
+	return items
+}
+
+func sampleQueryForTable(result model.AnalysisResult, tableKey string) string {
+	for _, pattern := range result.Patterns {
+		if _, ok := pattern.Tables[tableKey]; ok && strings.TrimSpace(pattern.SampleQuerySummary) != "" {
+			return pattern.SampleQuerySummary
+		}
+	}
+	return ""
+}
+
+func spikeBaselineFromAlerts(alerts []model.Alert, peak time.Time) (int, float64, bool) {
+	peakMinute := peak.Truncate(time.Minute)
+	for _, alert := range alerts {
+		if alert.Type != "spike" || alert.Details == nil {
+			continue
+		}
+		if _, hasTable := alert.Details["table"]; hasTable {
+			continue
+		}
+		if !alert.Minute.IsZero() && alert.Minute.Truncate(time.Minute) != peakMinute {
+			continue
+		}
+		baseline, okBaseline := intFromAny(alert.Details["baseline"])
+		factor, okFactor := floatFromAny(alert.Details["factor"])
+		if okBaseline && okFactor {
+			return baseline, factor, true
+		}
+	}
+	return 0, 0, false
+}
+
+func windowRowMedian(minutes []model.MinuteBucket, peak time.Time) (int, bool) {
+	peakMinute := peak.Truncate(time.Minute)
+	values := make([]int, 0, len(minutes))
+	for _, minute := range minutes {
+		if minute.Minute.Truncate(time.Minute) == peakMinute {
+			continue
+		}
+		values = append(values, minute.TotalRows)
+	}
+	if len(values) == 0 {
+		return 0, false
+	}
+	sort.Ints(values)
+	n := len(values)
+	if n%2 == 1 {
+		return values[n/2], true
+	}
+	return (values[n/2-1] + values[n/2]) / 2, true
+}
+
+func intFromAny(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), true
+	default:
+		return 0, false
+	}
+}
+
+func floatFromAny(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	default:
+		return 0, false
 	}
 }
 

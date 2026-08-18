@@ -509,7 +509,43 @@
   },
   "report.html.analyze.executiveSummary": {
     "description": "Analyze executive summary section header",
-    "other": "Executive Summary"
+    "other": "Incident"
+  },
+  "report.html.analyze.verdict": {
+    "description": "One-line HTML incident verdict label",
+    "other": "Verdict"
+  },
+  "report.html.analyze.peakMinute": {
+    "description": "Peak write-minute card title",
+    "other": "Peak Minute"
+  },
+  "report.html.analyze.tablesInPeakMinute": {
+    "description": "Tables contributing rows in the peak minute",
+    "other": "Tables in this minute"
+  },
+  "report.html.analyze.vsWindowMedian": {
+    "description": "Peak rows compared with median of other minutes",
+    "other": "vs window median"
+  },
+  "report.html.analyze.vsSpikeBaseline": {
+    "description": "Peak rows compared with analyzer spike baseline",
+    "other": "vs spike baseline"
+  },
+  "report.html.analyze.hottestTable": {
+    "description": "Hottest table card title",
+    "other": "Hottest Table"
+  },
+  "report.html.analyze.querySummary": {
+    "description": "Bounded SQL or annotate summary label",
+    "other": "SQL / annotate"
+  },
+  "report.html.analyze.theme": {
+    "description": "Footer theme switcher label",
+    "other": "Theme"
+  },
+  "report.html.analyze.factor": {
+    "description": "Peak-to-baseline factor label",
+    "other": "factor"
   },
   "report.html.analyze.activityCharts": {
     "description": "Analyze activity charts section header",
@@ -1117,6 +1153,6 @@
   },
   "report.html.analyze.noAlerts": {
     "description": "No alerts empty state",
-    "other": "No issues detected — workload looks healthy"
+    "other": "No high-signal findings detected."
   }
 }

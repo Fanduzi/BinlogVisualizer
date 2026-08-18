@@ -87,51 +87,13 @@ func formatSparklineResolution(pointCount int) string {
 func renderTopFindings(buf *strings.Builder, result model.AnalysisResult, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.topFindings") + " ===\n")
 
-	lines := make([]string, 0, opts.TopN)
-	for _, finding := range result.Diagnostics.Findings {
-		lines = append(lines, fmt.Sprintf("  [%s] %s", finding.Severity, finding.Message))
-		if len(lines) >= opts.TopN {
-			break
-		}
-	}
-
-	if len(lines) < opts.TopN && len(result.Diagnostics.HotIntervals) > 0 {
-		hot := result.Diagnostics.HotIntervals[0]
-		lines = append(lines, fmt.Sprintf("  [critical] %s at %s: rows=%d, txns=%d",
-			i18n.T("report.text.writeSpike"), hot.Minute.Format("2006-01-02 15:04"), hot.TotalRows, hot.TxnCount))
-	}
-
-	if len(lines) < opts.TopN && len(result.Diagnostics.LongestTransactions) > 0 {
-		txn := result.Diagnostics.LongestTransactions[0]
-		lines = append(lines, fmt.Sprintf("  [warning] %s: %s, rows=%d, tables=%d, file=%s",
-			i18n.T("report.text.longestTransaction"),
-			formatDuration(txn.Duration),
-			txn.TotalRows,
-			len(txn.Tables),
-			formatSuspiciousLocation(txn),
-		))
-	}
-
-	if len(lines) < opts.TopN && len(result.Diagnostics.DDLEvents) > 0 {
-		ddl := result.Diagnostics.DDLEvents[0]
-		target := strings.Trim(strings.TrimSpace(ddl.Schema+"."+ddl.Table), ".")
-		if target == "" {
-			target = ddl.Object
-		}
-		lines = append(lines, fmt.Sprintf("  [warning] %s: %s %s at %s",
-			i18n.T("report.text.ddlDetected"),
-			ddl.Operation,
-			target,
-			ddl.Timestamp.Format("2006-01-02 15:04"),
-		))
-	}
-
-	if len(lines) == 0 {
+	findings := collectDisplayFindings(result, opts.TopN)
+	if len(findings) == 0 {
 		buf.WriteString("  " + i18n.T("report.text.noFindings") + "\n\n")
 		return
 	}
-	for _, line := range lines {
-		buf.WriteString(line + "\n")
+	for _, finding := range findings {
+		buf.WriteString(fmt.Sprintf("  [%s] %s\n", finding.Severity, finding.Message))
 	}
 	buf.WriteString("\n")
 }

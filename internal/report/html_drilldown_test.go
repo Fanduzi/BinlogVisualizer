@@ -51,6 +51,12 @@ func productHTMLFixture() model.AnalysisResult {
 		Rows:        500,
 		Events:      75,
 	}}
+	result.Diagnostics.HotIntervals = []model.MinuteBucket{{
+		Minute:    start.Add(time.Minute),
+		TotalRows: 9000,
+		TxnCount:  100,
+		TableRows: map[string]int{"shop.orders": 8000, "shop.users": 1000},
+	}}
 	result.Diagnostics.LargestTransactions = []model.Transaction{{
 		TxnKey:          "txn-largest",
 		TotalRows:       12000,
@@ -58,8 +64,10 @@ func productHTMLFixture() model.AnalysisResult {
 		BinlogBytes:     20480,
 		EventCount:      80,
 		Tables:          map[string]int{"shop.orders": 11000, "shop.order_items": 1000},
+		Operations:      map[string]int{"UPDATE": 11000, "INSERT": 1000},
 		QuerySummary:    "UPDATE shop.orders SET status = 'paid' WHERE id BETWEEN ? AND ?",
 		BinlogPathStart: "mysql-bin.000044",
+		BinlogPathEnd:   "mysql-bin.000044",
 		PositionStart:   12345,
 		PositionEnd:     23456,
 	}}
@@ -419,13 +427,13 @@ func TestAnalyzeHTMLUsesDBAReadingPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Five-section reading path: Summary → Findings → Activity → Objects → Evidence.
+	// Incident-first reading path: Summary → Findings → Objects → Evidence → Charts.
 	expectedOrder := []string{
 		`id="executive-summary"`,
 		`id="section-findings"`,
-		`id="section-activity"`,
 		`id="section-objects"`,
 		`id="section-evidence"`,
+		`id="section-activity"`,
 	}
 	last := -1
 	for _, token := range expectedOrder {
@@ -568,10 +576,12 @@ func TestAnalyzeHTMLSummarySectionHasKeyFindingsArea(t *testing.T) {
 
 func TestAnalyzeHTMLFindingsSectionShowsAlertsWithSeverity(t *testing.T) {
 	result := model.AnalysisResult{
-		Alerts: []model.Alert{
-			{Severity: "critical", Message: "critical issue"},
-			{Severity: "warning", Message: "warning issue"},
-			{Severity: "info", Message: "info notice"},
+		Diagnostics: model.Diagnostics{
+			Findings: []model.Finding{
+				{Severity: "critical", Message: "critical issue"},
+				{Severity: "warning", Message: "warning issue"},
+				{Severity: "info", Message: "info notice"},
+			},
 		},
 	}
 
@@ -598,14 +608,13 @@ func TestAnalyzeHTMLActivitySectionContainsChartsInOrder(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Activity section must contain charts in logical reading order: total activity → composition → anomaly peaks.
+	// Demoted activity section still keeps the existing chart IDs.
 	activityIdx := strings.Index(out, `id="section-activity"`)
-	objectsIdx := strings.Index(out, `id="section-objects"`)
-	if activityIdx < 0 || objectsIdx < 0 {
-		t.Fatal("expected section-activity and section-objects")
+	if activityIdx < 0 {
+		t.Fatal("expected section-activity")
 	}
 
-	activitySection := out[activityIdx:objectsIdx]
+	activitySection := out[activityIdx:]
 
 	for _, token := range []string{
 		`id="chart-tps"`,

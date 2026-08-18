@@ -8,11 +8,12 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 |------|----------------|
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes. |
 | `product.go` | Owns shared report presentation defaults and metric labels used by all renderers. |
+| `findings.go` | Builds the shared Top Findings list used by text and HTML so both stay in parity. |
 | `text.go` | Renders the concise diagnostic text report plus opt-in minute and write-shape detail sections. |
 | `json.go` | Serializes the stable analyze JSON report shape, including optional top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
-| `html.go` | Renders the self-contained HTML report, including responsive activity-chart layout and ECharts data preparation. |
-| `*_test.go` | Verifies diagnostic text defaults, opt-in detail sections, JSON field stability, snapshot behavior, and SQL context mode behavior. |
+| `html.go` | Renders the self-contained HTML incident page, including peak-minute evidence and demoted ECharts. |
+| `*_test.go` | Verifies diagnostic text defaults, findings parity, opt-in detail sections, JSON field stability, snapshot behavior, and SQL context mode behavior. |
 
 ## Interfaces
 
@@ -43,5 +44,6 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Text rendering is intentionally kept on a fast path: it must not build HTML chart data, read embedded ECharts assets, or render pattern drilldowns unless detail options request them.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
-- The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
+- The HTML renderer follows an incident reading path: one-line verdict (same findings as text), peak minute with that minute's tables, hottest table and largest transaction, remaining findings, hot objects, diagnostic evidence, then demoted activity charts. Theme switchers sit in the footer.
+- HTML never treats an empty `alerts` slice as a healthy workload. It renders `collectDisplayFindings`, which matches the text Top Findings list (diagnostics findings, then a synthesized write spike / longest txn / DDL).
 - Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions instead of rendering a crowded top-N list.
