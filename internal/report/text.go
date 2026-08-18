@@ -211,7 +211,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 func renderNextActions(buf *strings.Builder, result model.AnalysisResult) {
 	buf.WriteString("=== " + i18n.T("report.text.nextActions") + " ===\n")
 	buf.WriteString("  " + i18n.T("report.text.openHTML") + "\n")
-	if location := firstSuspiciousLocation(result); location != "" {
+	if location := firstUsableRollbackLocation(result); location != "" {
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.firstSuspiciousPosition"), location))
 	}
 	buf.WriteString("\n")
@@ -373,23 +373,6 @@ func downsampleSeries(points []model.TimeseriesPoint, maxBins int) []model.Times
 		}
 	}
 	return result
-}
-
-func firstSuspiciousLocation(result model.AnalysisResult) string {
-	if len(result.Diagnostics.LongestTransactions) > 0 {
-		return formatSuspiciousLocation(result.Diagnostics.LongestTransactions[0])
-	}
-	if len(result.Diagnostics.LargestTransactions) > 0 {
-		return formatSuspiciousLocation(result.Diagnostics.LargestTransactions[0])
-	}
-	if len(result.Diagnostics.WidestTransactions) > 0 {
-		return formatSuspiciousLocation(result.Diagnostics.WidestTransactions[0])
-	}
-	if len(result.Diagnostics.DDLEvents) > 0 {
-		ddl := result.Diagnostics.DDLEvents[0]
-		return formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd)
-	}
-	return ""
 }
 
 func formatSuspiciousLocation(txn model.Transaction) string {

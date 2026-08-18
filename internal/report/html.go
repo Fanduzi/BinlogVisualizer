@@ -189,6 +189,7 @@ type htmlTxnDiagnostic struct {
 	BinlogBytes  int
 	Tables       []htmlTxnTable
 	Location     string
+	LocationNote string
 	QuerySummary string
 	Inserts      int
 	Updates      int
@@ -506,11 +507,10 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 
 	if len(d.Tables) > 0 {
 		d.HottestTable = d.Tables[0]
-		d.HottestTable.QuerySummary = sampleQueryForTable(result, d.HottestTable.Key)
 		d.HasHottestTable = true
 	}
 
-	if location := firstSuspiciousLocation(result); location != "" {
+	if location := firstUsableRollbackLocation(result); location != "" {
 		d.RollbackHint = location
 		d.HasRollbackHint = true
 	}
@@ -585,7 +585,8 @@ func buildHTMLTxnDiagnostic(txn model.Transaction, mode SQLContextMode) htmlTxnD
 		Duration:     txn.Duration.String(),
 		BinlogBytes:  int(txn.BinlogBytes),
 		Tables:       sortedTxnTables(txn.Tables),
-		Location:     formatBinlogSpan(txn),
+		Location:     formatRecordedTxnLocation(txn),
+		LocationNote: xidOnlyLocationNote(txn),
 		QuerySummary: transactionTextQuery(txn, mode),
 		Inserts:      inserts,
 		Updates:      updates,
@@ -640,15 +641,6 @@ func sortedHotTables(tableRows map[string]int) []htmlHotTable {
 		items = items[:8]
 	}
 	return items
-}
-
-func sampleQueryForTable(result model.AnalysisResult, tableKey string) string {
-	for _, pattern := range result.Patterns {
-		if _, ok := pattern.Tables[tableKey]; ok && strings.TrimSpace(pattern.SampleQuerySummary) != "" {
-			return pattern.SampleQuerySummary
-		}
-	}
-	return ""
 }
 
 func spikeBaselineFromAlerts(alerts []model.Alert, peak time.Time) (int, float64, bool) {
@@ -735,10 +727,6 @@ func sortedTxnTables(tables map[string]int) []htmlTxnTable {
 		return items[i].Rows > items[j].Rows
 	})
 	return items
-}
-
-func formatBinlogSpan(txn model.Transaction) string {
-	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
 }
 
 func formatBinlogLocation(path string, start, end int64) string {

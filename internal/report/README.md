@@ -46,4 +46,6 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
 - The HTML renderer follows an incident reading path: one-line verdict (same findings as text), peak minute with that minute's tables, hottest table and largest transaction, remaining findings, hot objects, diagnostic evidence, then demoted activity charts. Theme switchers sit in the footer.
 - HTML never treats an empty `alerts` slice as a healthy workload. It renders `collectDisplayFindings`, which matches the text Top Findings list (diagnostics findings, then a synthesized write spike / longest txn / DDL).
+- Rollback hints use `firstUsableRollbackLocation`. A recorded 31-byte XID interval (dogfood #18) is shown as an XID-only span and is not offered as `--start-position`. The renderer does not invent a real start pos.
+- Pattern drilldown representative transactions stay a static list. The incident page does not add a click path onto those keys (dogfood #20).
 - Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions instead of rendering a crowded top-N list.

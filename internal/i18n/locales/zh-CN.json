@@ -1115,6 +1115,10 @@
     "description": "Binlog 跨度标签",
     "other": "Binlog 跨度"
   },
+  "report.html.analyze.xidOnlySpan": {
+    "description": "分析器只记下提交 XID 区间时的诚实说明",
+    "other": "记录到的跨度只是 XID（{{.Bytes}} 字节），不能当作 --start-position"
+  },
   "report.html.analyze.widestTag": {
     "description": "最宽事务标签",
     "other": "最宽"

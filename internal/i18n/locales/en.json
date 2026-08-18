@@ -1115,6 +1115,10 @@
     "description": "Binlog span label",
     "other": "Binlog Span"
   },
+  "report.html.analyze.xidOnlySpan": {
+    "description": "Honest note when the analyzer only recorded a commit XID interval",
+    "other": "Recorded span is XID-only ({{.Bytes}} B); not a usable --start-position"
+  },
   "report.html.analyze.widestTag": {
     "description": "Widest transaction tag",
     "other": "widest"

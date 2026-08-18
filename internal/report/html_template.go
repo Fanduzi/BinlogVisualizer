@@ -691,6 +691,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
           </div>
           <div class="diagnostic-body">
             {{if .IncidentTxn.Location}}<div>{{t "report.html.analyze.binlogSpan"}}: <span class="mono">{{.IncidentTxn.Location}}</span></div>{{end}}
+            {{if .IncidentTxn.LocationNote}}<div class="diagnostic-meta">{{.IncidentTxn.LocationNote}}</div>{{end}}
             {{if .IncidentTxn.HasOps}}<div><span class="op-ins">I {{fmtIntHTML .IncidentTxn.Inserts}}</span> · <span class="op-upd">U {{fmtIntHTML .IncidentTxn.Updates}}</span> · <span class="op-del">D {{fmtIntHTML .IncidentTxn.Deletes}}</span></div>{{end}}
             {{if .IncidentTxn.QuerySummary}}<div>{{t "report.html.analyze.querySummary"}}: <span class="mono">{{.IncidentTxn.QuerySummary}}</span></div>{{end}}
           </div>
@@ -806,6 +807,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </div>
             <div class="diagnostic-body">
               {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+              {{if .LocationNote}}<div class="diagnostic-meta">{{.LocationNote}}</div>{{end}}
               <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
               {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
               {{if .Tables}}
@@ -827,6 +829,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </div>
             <div class="diagnostic-body">
               {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+              {{if .LocationNote}}<div class="diagnostic-meta">{{.LocationNote}}</div>{{end}}
               <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
               {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
               {{if .Tables}}
@@ -848,6 +851,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </div>
             <div class="diagnostic-body">
               {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
+              {{if .LocationNote}}<div class="diagnostic-meta">{{.LocationNote}}</div>{{end}}
               <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
               {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
               {{if .Tables}}
