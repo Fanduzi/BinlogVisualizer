@@ -549,10 +549,6 @@ func TestAnalyzeHTMLUsesReportTopNForTopTables(t *testing.T) {
 
 func TestAnalyzeHTMLSummarySectionHasKeyFindingsArea(t *testing.T) {
 	result := productHTMLFixture()
-	result.Alerts = []model.Alert{
-		{Severity: "warning", Message: "high row volume detected"},
-		{Severity: "critical", Message: "long-running transaction found"},
-	}
 
 	out, err := RenderHTML(result)
 	if err != nil {
@@ -564,13 +560,13 @@ func TestAnalyzeHTMLSummarySectionHasKeyFindingsArea(t *testing.T) {
 	if summaryIdx < 0 || findingsIdx < 0 {
 		t.Fatal("expected summary and findings sections")
 	}
-	// Key findings must appear inside the summary section, before the standalone findings section.
-	keyFindingsIdx := strings.Index(out, "key-findings")
-	if keyFindingsIdx < 0 {
-		t.Fatal("expected key-findings area in summary section")
+	// The one-line verdict is the first-screen findings surface, before the list below.
+	verdictIdx := strings.Index(out, `id="incident-verdict"`)
+	if verdictIdx < 0 {
+		t.Fatal("expected incident verdict in summary section")
 	}
-	if keyFindingsIdx > findingsIdx {
-		t.Fatal("expected key-findings inside summary, before standalone findings section")
+	if verdictIdx > findingsIdx {
+		t.Fatal("expected incident verdict inside summary, before standalone findings section")
 	}
 }
 

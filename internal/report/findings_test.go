@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"binlogviz/internal/model"
 )
@@ -141,6 +142,62 @@ func TestRenderHTMLUsesAlertSpikeBaselineWhenPresent(t *testing.T) {
 	}
 	if !strings.Contains(out, "vs spike baseline") || !strings.Contains(out, "1,200") {
 		t.Fatalf("expected analyzer spike baseline to be surfaced\n%s", out)
+	}
+}
+
+func TestRenderHTMLScreenshotLikeTinyEmptyAlertsIsNotHealthy(t *testing.T) {
+	// Mirrors the v0.21.0 / live MariaDB first screens: tiny window, empty alerts.
+	start := time.Date(2026, 3, 15, 14, 10, 26, 0, time.UTC)
+	result := model.AnalysisResult{
+		Summary: model.WorkloadSummary{
+			TotalTransactions: 4,
+			TotalRows:         5,
+			TotalEvents:       16,
+			StartTime:         start,
+			EndTime:           start,
+		},
+		Tables: []model.TableStats{{
+			Schema: "shop", Table: "orders", TotalRows: 5, InsertRows: 3, UpdateRows: 2, TxnCount: 4,
+		}},
+		Diagnostics: model.Diagnostics{
+			HotIntervals: []model.MinuteBucket{{
+				Minute: start, TotalRows: 5, TxnCount: 4,
+				TableRows: map[string]int{"shop.orders": 5},
+			}},
+			LargestTransactions: []model.Transaction{{
+				TxnKey:          "txn-1",
+				TotalRows:       2,
+				BinlogPathStart: "mysql-bin.000123",
+				PositionStart:   240,
+				PositionEnd:     480,
+			}},
+		},
+	}
+
+	textOut, err := RenderText(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	htmlOut, err := RenderHTML(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(textOut, "[critical] Write spike at 2026-03-15 14:10: rows=5, txns=4") {
+		t.Fatalf("expected text critical spike\n%s", textOut)
+	}
+	if strings.Contains(htmlOut, "workload looks healthy") {
+		t.Fatal("screenshot-like tiny report still shows the old healthy first screen")
+	}
+	if !strings.Contains(htmlOut, "Write spike at 2026-03-15 14:10: rows=5, txns=4") {
+		t.Fatalf("HTML verdict missing the text spike\n%s", htmlOut)
+	}
+	for _, token := range []string{`id="incident-verdict"`, `id="peak-minute"`, `id="hottest-table"`, `id="largest-txn"`, "shop.orders"} {
+		if !strings.Contains(htmlOut, token) {
+			t.Fatalf("expected first-screen token %q", token)
+		}
+	}
+	if strings.Index(htmlOut, `id="incident-verdict"`) > strings.Index(htmlOut, `class="theme-switcher"`) {
+		t.Fatal("theme switcher still precedes the incident verdict")
 	}
 }
 

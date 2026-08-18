@@ -697,17 +697,6 @@ const htmlReportTemplate = `<!DOCTYPE html>
         </div>
         {{end}}
       </div>
-      {{if .HasAlerts}}
-      <div class="key-findings" id="key-findings">
-        <div class="key-findings-title">{{t "report.html.analyze.keyFindings"}}</div>
-        {{range .TopAlerts}}
-        <div class="key-finding-item">
-          <span class="key-finding-badge {{.Severity}}">{{.Badge}}</span>
-          <span>{{.Message}}</span>
-        </div>
-        {{end}}
-      </div>
-      {{end}}
     </div>
   </section>
 

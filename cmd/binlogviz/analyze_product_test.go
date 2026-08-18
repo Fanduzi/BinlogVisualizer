@@ -198,6 +198,160 @@ func TestAnalyzeCorpusTextAndHTMLContracts(t *testing.T) {
 	}
 }
 
+func TestWriteIncidentHTMLArtifacts(t *testing.T) {
+	if os.Getenv("WRITE_HTML_ARTIFACTS") == "" {
+		t.Skip("set WRITE_HTML_ARTIFACTS=1 to dump inspectable HTML reports")
+	}
+	forceEnglishRuntimeOutput(t)
+	dir := os.Getenv("WRITE_HTML_ARTIFACTS_DIR")
+	if dir == "" {
+		dir = t.TempDir()
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, scenario := range []string{"tps-spike", "rows-spike", "baseline-small"} {
+		htmlOut, err := report.RenderHTML(analyzeCorpus(t, scenario))
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(dir, scenario+".html")
+		if err := os.WriteFile(path, []byte(htmlOut), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("wrote %s", path)
+	}
+
+	tiny := screenshotLikeTinyResult()
+	htmlOut, err := report.RenderHTML(tiny)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "screenshot-like-tiny.html")
+	if err := os.WriteFile(path, []byte(htmlOut), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("wrote %s", path)
+}
+
+func screenshotLikeTinyResult() model.AnalysisResult {
+	start := time.Date(2026, 3, 15, 14, 10, 26, 0, time.UTC)
+	return model.AnalysisResult{
+		Summary: model.WorkloadSummary{
+			TotalTransactions: 4,
+			TotalRows:         5,
+			TotalEvents:       16,
+			StartTime:         start,
+			EndTime:           start,
+			Duration:          0,
+		},
+		Tables: []model.TableStats{{
+			Schema: "shop", Table: "orders", TotalRows: 5, InsertRows: 3, UpdateRows: 2, TxnCount: 4, EventCount: 8,
+		}},
+		Minutes: []model.MinuteBucket{{
+			Minute: start, TotalRows: 5, TxnCount: 4, EventCount: 16,
+			TableRows: map[string]int{"shop.orders": 5},
+		}},
+		Diagnostics: model.Diagnostics{
+			HotIntervals: []model.MinuteBucket{{
+				Minute: start, TotalRows: 5, TxnCount: 4, EventCount: 16,
+				TableRows: map[string]int{"shop.orders": 5},
+			}},
+			LargestTransactions: []model.Transaction{{
+				TxnKey:          "txn-1",
+				TotalRows:       2,
+				Operations:      map[string]int{"INSERT": 2},
+				Tables:          map[string]int{"shop.orders": 2},
+				QuerySummary:    "INSERT INTO shop.orders ...",
+				BinlogPathStart: "mysql-bin.000123",
+				BinlogPathEnd:   "mysql-bin.000123",
+				PositionStart:   240,
+				PositionEnd:     480,
+			}},
+		},
+	}
+}
+
+func TestAnalyzeCorpusHTMLIncidentFirstScreenMatchesText(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	for _, scenario := range []string{"tps-spike", "rows-spike", "baseline-small"} {
+		t.Run(scenario, func(t *testing.T) {
+			result := analyzeCorpus(t, scenario)
+			textOut, err := report.RenderText(result)
+			if err != nil {
+				t.Fatalf("render text: %v", err)
+			}
+			htmlOut, err := report.RenderHTML(result)
+			if err != nil {
+				t.Fatalf("render html: %v", err)
+			}
+
+			if strings.Contains(htmlOut, "workload looks healthy") {
+				t.Fatalf("HTML first screen still claims healthy\n%s", htmlOut)
+			}
+
+			assertIncidentHeaderBeforeChrome(t, htmlOut)
+
+			for _, line := range textFindingLines(textOut) {
+				if !strings.Contains(htmlOut, stripFindingPrefix(line)) {
+					t.Fatalf("HTML missing text finding %q", line)
+				}
+			}
+		})
+	}
+}
+
+func textFindingLines(textOut string) []string {
+	var lines []string
+	inFindings := false
+	for _, line := range strings.Split(textOut, "\n") {
+		if strings.HasPrefix(line, "=== ") {
+			inFindings = strings.Contains(line, "Top Findings")
+			continue
+		}
+		if !inFindings {
+			continue
+		}
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			break
+		}
+		lines = append(lines, trimmed)
+	}
+	return lines
+}
+
+func stripFindingPrefix(line string) string {
+	// "[critical] Write spike at ..." -> "Write spike at ..."
+	if i := strings.Index(line, "] "); i >= 0 {
+		return line[i+2:]
+	}
+	return line
+}
+
+func assertIncidentHeaderBeforeChrome(t *testing.T, htmlOut string) {
+	t.Helper()
+	verdictIdx := strings.Index(htmlOut, `id="incident-verdict"`)
+	themeIdx := strings.Index(htmlOut, `class="theme-switcher"`)
+	tpsIdx := strings.Index(htmlOut, `id="chart-tps"`)
+	if verdictIdx < 0 || themeIdx < 0 || tpsIdx < 0 {
+		t.Fatal("expected verdict, theme switcher, and TPS chart")
+	}
+	if verdictIdx > themeIdx || verdictIdx > tpsIdx {
+		t.Fatalf("verdict must appear before theme switcher and TPS chart")
+	}
+	for _, id := range []string{`id="peak-minute"`, `id="hottest-table"`, `id="largest-txn"`} {
+		idx := strings.Index(htmlOut, id)
+		if idx < 0 {
+			t.Fatalf("expected incident header %s", id)
+		}
+		if idx > themeIdx || idx > tpsIdx {
+			t.Fatalf("%s must appear before theme switcher and TPS chart", id)
+		}
+	}
+}
+
 func TestAnalyzeCorpusTextAndHTMLShareTopTableLimit(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 

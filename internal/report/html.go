@@ -97,7 +97,6 @@ type htmlReportData struct {
 	TPSValues           template.JS
 	Alerts              []htmlAlert
 	HasAlerts           bool
-	TopAlerts           []htmlAlert
 	Verdict             htmlAlert
 	PeakMinute          htmlHotInterval
 	HasPeakMinute       bool
@@ -320,11 +319,6 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			Badge:    "INFO",
 		}
 	}
-	topLimit := len(d.Alerts)
-	if topLimit > 4 {
-		topLimit = 4
-	}
-	d.TopAlerts = d.Alerts[:topLimit]
 
 	for _, ddl := range result.Diagnostics.DDLEvents {
 		object := strings.Trim(strings.TrimSpace(ddl.Schema+"."+ddl.Table), ".")
