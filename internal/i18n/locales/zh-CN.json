@@ -33,7 +33,7 @@
   },
   "cmd.analyze.flag.prefix": {
     "description": "prefix 标志描述",
-    "other": "配合 --from-dir 使用的文件名前缀"
+    "other": "配合 --from-dir 使用的文件名前缀（数字后缀前可省略 '.'）"
   },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL 上下文标志描述",
@@ -179,6 +179,26 @@
     "description": "解析错误",
     "other": "解析错误：{{.Error}}"
   },
+  "error.emptyBinlog": {
+    "description": "空 binlog 文件错误",
+    "other": "binlog 文件为空，或在 4 字节 magic 之前就结束了（EOF）"
+  },
+  "error.corruptBinlogMagic": {
+    "description": "损坏或非 binlog 文件头错误",
+    "other": "不是 MySQL binlog：文件头不是 4 字节 magic fe'bin'"
+  },
+  "error.truncatedBinlog": {
+    "description": "截断或损坏的 binlog 事件错误",
+    "other": "binlog 已截断或损坏：事件不完整（{{.Detail}}）"
+  },
+  "error.noFormatDescription": {
+    "description": "非空文件没有可解析事件 / Format Description",
+    "other": "binlog 没有 Format Description 事件（文件被截断或不完整）"
+  },
+  "error.prefixDotHint": {
+    "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
+    "other": "前缀后的后缀必须是数字；请尝试 --prefix {{.Prefix}}"
+  },
   "error.analysisFinalizeError": {
     "description": "分析完成错误",
     "other": "分析完成错误：{{.Error}}"
@@ -198,6 +218,10 @@
   "progress.resolvedFiles": {
     "description": "已解析的 binlog 文件标题",
     "other": "已解析的 binlog 文件："
+  },
+  "progress.windowMatchedZero": {
+    "description": "时间窗口未匹配到事件",
+    "other": "window matched 0 events"
   },
   "report.section.workload": {
     "description": "工作负载摘要章节标题",

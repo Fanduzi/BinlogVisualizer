@@ -2,6 +2,7 @@ package binlogviz
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,9 +106,13 @@ func writeHTMLAtomically(dest outputDestination, content string) error {
 }
 
 func printHTMLSaveConfirmation(path string) {
+	printHTMLSaveConfirmationTo(os.Stderr, path)
+}
+
+func printHTMLSaveConfirmationTo(out io.Writer, path string) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		abs = path
 	}
-	fmt.Println(i18n.Tf("progress.htmlSaved", map[string]any{"Path": abs}))
+	_, _ = fmt.Fprintln(out, i18n.Tf("progress.htmlSaved", map[string]any{"Path": abs}))
 }
