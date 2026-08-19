@@ -6,10 +6,10 @@
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, streaming lifecycle, final result assembly. |
 | `store.go` | DuckDB-backed internal result store with batch flush, reusable batch slices across flushes, pre-sized hot-path buffers, COUNT(*)-preallocated transaction row scans with lazy map hydration, and Finalize-time query assembly. |
-| `transactions.go` | Reconstructs completed transactions from normalized event boundaries. |
+| `transactions.go` | Reconstructs completed transactions from normalized event boundaries. Same-file `binlog_bytes` is `pos_end - pos_start` (first in-txn event through XID). |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
-| `ddl.go` | Extracts DDL timeline metadata and fast-filters non-DDL ROWS_QUERY SQL before full tokenization. |
+| `ddl.go` | Extracts DDL timeline metadata from Query and ROWS_QUERY SQL, including CREATE/ALTER/DROP DATABASE, RENAME, and TRUNCATE. |
 | `alerts.go` | Builds large transaction alerts from completed transactions. |
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |

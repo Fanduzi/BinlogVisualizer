@@ -43,6 +43,10 @@ func (p *parser) ParseFilesFromOffset(paths []string, offset int64, handler func
 		if startOffset < 0 {
 			startOffset = 0
 		}
+		cursor := startOffset
+		if cursor == 0 {
+			cursor = binlogMagicSize
+		}
 		if err := bp.ParseFile(path, startOffset, func(ev *replication.BinlogEvent) error {
 			if ev == nil {
 				return nil
@@ -51,10 +55,10 @@ func (p *parser) ParseFilesFromOffset(paths []string, offset int64, handler func
 			raw := RawEvent{
 				Timestamp:  time.Unix(int64(ev.Header.Timestamp), 0),
 				EventType:  ev.Header.EventType.String(),
-				Position:   ev.Header.LogPos,
 				BinlogPath: path,
 			}
-			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = deriveEventPositionRange(ev.Header)
+			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes, cursor = deriveEventPositionRange(ev.Header, cursor)
+			raw.Position = uint32(raw.PositionEnd)
 
 			applyBinlogEventMetadata(&raw, raw.EventType, ev.Event, tableNames)
 
@@ -77,24 +81,25 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 			fileSize = info.Size()
 		}
 		lastOffset := int64(0)
+		cursor := int64(binlogMagicSize)
 		if err := bp.ParseFile(path, 0, func(ev *replication.BinlogEvent) error {
 			if ev == nil {
 				return nil
 			}
 
-			offset := clampProgressOffset(int64(ev.Header.LogPos), fileSize)
+			raw := RawEvent{
+				Timestamp:  time.Unix(int64(ev.Header.Timestamp), 0),
+				EventType:  ev.Header.EventType.String(),
+				BinlogPath: path,
+			}
+			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes, cursor = deriveEventPositionRange(ev.Header, cursor)
+			raw.Position = uint32(raw.PositionEnd)
+
+			offset := clampProgressOffset(raw.PositionEnd, fileSize)
 			lastOffset = maxInt64(lastOffset, offset)
 			if onProgress != nil {
 				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
 			}
-
-			raw := RawEvent{
-				Timestamp:  time.Unix(int64(ev.Header.Timestamp), 0),
-				EventType:  ev.Header.EventType.String(),
-				Position:   ev.Header.LogPos,
-				BinlogPath: path,
-			}
-			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = deriveEventPositionRange(ev.Header)
 
 			applyBinlogEventMetadata(&raw, raw.EventType, ev.Event, tableNames)
 
@@ -167,22 +172,41 @@ func applyRowsEventTableName(raw *RawEvent, event *replication.RowsEvent, tableN
 	}
 }
 
-func deriveEventPositionRange(header *replication.EventHeader) (int64, int64, int64) {
+// binlogMagicSize is the 4-byte BINLOG magic at the start of every file.
+const binlogMagicSize = 4
+
+// deriveEventPositionRange returns file-relative [start, end) and byte length.
+// MariaDB 11.4+ leaves LogPos=0 on many events (BEGIN, TABLE_MAP, WriteRows);
+// only XID typically has a real LogPos. When LogPos is 0 we reconstruct from
+// the running cursor so large transactions are not recorded as a 31-byte XID.
+func deriveEventPositionRange(header *replication.EventHeader, cursor int64) (start, end, size, next int64) {
 	if header == nil {
-		return 0, 0, 0
+		return 0, 0, 0, cursor
 	}
 
-	end := int64(header.LogPos)
-	size := int64(header.EventSize)
-	start := end - size
-	if start < 0 {
-		start = 0
-	}
-	if end < start {
-		end = start
+	eventSize := int64(header.EventSize)
+	if header.LogPos > 0 {
+		end = int64(header.LogPos)
+		start = end - eventSize
+		if start < 0 {
+			start = 0
+		}
+		if end < start {
+			end = start
+		}
+		return start, end, end - start, end
 	}
 
-	return start, end, end - start
+	// LogPos=0: reconstruct from the running file cursor (MariaDB 11.4+).
+	if cursor <= 0 {
+		cursor = binlogMagicSize
+	}
+	if eventSize <= 0 {
+		return cursor, cursor, 0, cursor
+	}
+	start = cursor
+	end = cursor + eventSize
+	return start, end, eventSize, end
 }
 
 func clampProgressOffset(offset, fileSize int64) int64 {

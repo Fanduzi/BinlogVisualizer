@@ -165,6 +165,7 @@ type jsonTransaction struct {
 	QuerySQL           string         `json:"query_sql,omitempty"`
 	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
 	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
+	MysqlbinlogCmd     string         `json:"mysqlbinlog_cmd,omitempty"`
 }
 
 type jsonPatternStats struct {
@@ -549,6 +550,7 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode) []jsonTr
 				jt.QueryOriginalBytes = intPtr(t.QueryContext.OriginalBytes)
 			}
 		}
+		jt.MysqlbinlogCmd = mysqlbinlogCmd(t)
 		result[i] = jt
 	}
 	return result

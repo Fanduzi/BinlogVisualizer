@@ -410,6 +410,80 @@ func TestTransactionBuilderUsesFirstAndLastAvailableBinlogMetadata(t *testing.T)
 	}
 }
 
+func TestTransactionBuilderUsesTxnSpanForSameFileBinlogBytes(t *testing.T) {
+	builder := NewTransactionBuilder()
+	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "BEGIN", BinlogPath: "mysql-bin.000008", PositionStart: 385, PositionEnd: 500, BinlogBytes: 115},
+		{Timestamp: ts, EventType: "TABLE_MAP", BinlogPath: "mysql-bin.000008", PositionStart: 500, PositionEnd: 625, BinlogBytes: 125},
+		{
+			Timestamp:     ts.Add(time.Second),
+			EventType:     "ROWS",
+			Schema:        "dogfood_big",
+			Table:         "t",
+			Operation:     "INSERT",
+			RowCount:      400000,
+			BinlogPath:    "mysql-bin.000008",
+			PositionStart: 625,
+			PositionEnd:   77914917,
+			BinlogBytes:   77914292,
+		},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "XID", BinlogPath: "mysql-bin.000008", PositionStart: 77914917, PositionEnd: 77914948, BinlogBytes: 31},
+	}
+	for _, ev := range events {
+		if err := builder.Consume(ev); err != nil {
+			t.Fatalf("consume: %v", err)
+		}
+	}
+
+	txns := builder.Completed()
+	if len(txns) != 1 {
+		t.Fatalf("expected 1 txn, got %d", len(txns))
+	}
+	txn := txns[0]
+	if txn.PositionStart != 385 {
+		t.Fatalf("pos_start=%d, want first event 385", txn.PositionStart)
+	}
+	if txn.PositionEnd != 77914948 {
+		t.Fatalf("pos_end=%d, want XID end 77914948", txn.PositionEnd)
+	}
+	wantBytes := int64(77914948 - 385)
+	if txn.BinlogBytes != wantBytes {
+		t.Fatalf("binlog_bytes=%d, want pos_end-pos_start %d", txn.BinlogBytes, wantBytes)
+	}
+	if txn.TotalRows != 400000 {
+		t.Fatalf("rows=%d", txn.TotalRows)
+	}
+}
+
+func TestTransactionBuilderDoesNotInventStartWhenOnlyXIDIsKnown(t *testing.T) {
+	builder := NewTransactionBuilder()
+	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "BEGIN"},
+		{Timestamp: ts, EventType: "ROWS", Schema: "dogfood_big", Table: "t", Operation: "INSERT", RowCount: 400000},
+		{Timestamp: ts, EventType: "XID", BinlogPath: "mysql-bin.000008", PositionStart: 77914917, PositionEnd: 77914948, BinlogBytes: 31},
+	}
+	for _, ev := range events {
+		if err := builder.Consume(ev); err != nil {
+			t.Fatalf("consume: %v", err)
+		}
+	}
+
+	txn := builder.Completed()[0]
+	if txn.PositionStart != 77914917 || txn.PositionEnd != 77914948 {
+		t.Fatalf("XID-only span should stay honest, got %d-%d", txn.PositionStart, txn.PositionEnd)
+	}
+	if txn.PositionStart == 385 {
+		t.Fatal("must not invent start position 385")
+	}
+	if txn.BinlogBytes != 31 {
+		t.Fatalf("XID-only binlog_bytes=%d, want 31", txn.BinlogBytes)
+	}
+}
+
 func BenchmarkTransactionBuilderConsumeRows(b *testing.B) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	events := []model.NormalizedEvent{

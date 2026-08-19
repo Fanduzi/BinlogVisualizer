@@ -238,47 +238,90 @@ func TestDeriveEventPositionRange(t *testing.T) {
 	tests := []struct {
 		name      string
 		header    *replication.EventHeader
+		cursor    int64
 		wantStart int64
 		wantEnd   int64
 		wantBytes int64
+		wantNext  int64
 	}{
 		{
 			name:      "nil header",
 			header:    nil,
+			cursor:    4,
 			wantStart: 0,
 			wantEnd:   0,
 			wantBytes: 0,
+			wantNext:  4,
 		},
 		{
 			name:      "standard event",
 			header:    &replication.EventHeader{LogPos: 123, EventSize: 19},
+			cursor:    4,
 			wantStart: 104,
 			wantEnd:   123,
 			wantBytes: 19,
+			wantNext:  123,
 		},
 		{
 			name:      "underflow clamps start",
 			header:    &replication.EventHeader{LogPos: 10, EventSize: 40},
+			cursor:    4,
 			wantStart: 0,
 			wantEnd:   10,
 			wantBytes: 10,
+			wantNext:  10,
 		},
 		{
-			name:      "zero sized event",
+			name:      "zero sized event with LogPos",
 			header:    &replication.EventHeader{LogPos: 20, EventSize: 0},
+			cursor:    20,
 			wantStart: 20,
 			wantEnd:   20,
 			wantBytes: 0,
+			wantNext:  20,
+		},
+		{
+			name:      "MariaDB 11.4 zero LogPos reconstructs from cursor",
+			header:    &replication.EventHeader{LogPos: 0, EventSize: 8000},
+			cursor:    385,
+			wantStart: 385,
+			wantEnd:   8385,
+			wantBytes: 8000,
+			wantNext:  8385,
+		},
+		{
+			name:      "MariaDB 11.4 XID still uses real LogPos",
+			header:    &replication.EventHeader{LogPos: 77914948, EventSize: 31},
+			cursor:    77914917,
+			wantStart: 77914917,
+			wantEnd:   77914948,
+			wantBytes: 31,
+			wantNext:  77914948,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotStart, gotEnd, gotBytes := deriveEventPositionRange(tt.header)
-			if gotStart != tt.wantStart || gotEnd != tt.wantEnd || gotBytes != tt.wantBytes {
-				t.Fatalf("expected (%d,%d,%d), got (%d,%d,%d)", tt.wantStart, tt.wantEnd, tt.wantBytes, gotStart, gotEnd, gotBytes)
+			gotStart, gotEnd, gotBytes, gotNext := deriveEventPositionRange(tt.header, tt.cursor)
+			if gotStart != tt.wantStart || gotEnd != tt.wantEnd || gotBytes != tt.wantBytes || gotNext != tt.wantNext {
+				t.Fatalf("expected (%d,%d,%d,next=%d), got (%d,%d,%d,next=%d)",
+					tt.wantStart, tt.wantEnd, tt.wantBytes, tt.wantNext, gotStart, gotEnd, gotBytes, gotNext)
 			}
 		})
+	}
+}
+
+func TestMariaDBZeroLogPosRowEventsKeepNonZeroBytes(t *testing.T) {
+	// Dogfood #18: MariaDB 11.8 WRITE_ROWS often have LogPos=0 and EventSize>0.
+	// Reconstructing from the running cursor keeps minute binlog_bytes off zero.
+	cursor := int64(625)
+	start, end, bytes, next := deriveEventPositionRange(&replication.EventHeader{LogPos: 0, EventSize: 8192}, cursor)
+	if start != 625 || end != 8817 || bytes != 8192 || next != 8817 {
+		t.Fatalf("row event reconstruction = start=%d end=%d bytes=%d next=%d", start, end, bytes, next)
+	}
+	xidStart, xidEnd, xidBytes, _ := deriveEventPositionRange(&replication.EventHeader{LogPos: 77914948, EventSize: 31}, next)
+	if xidStart != 77914917 || xidEnd != 77914948 || xidBytes != 31 {
+		t.Fatalf("XID range = start=%d end=%d bytes=%d", xidStart, xidEnd, xidBytes)
 	}
 }
 

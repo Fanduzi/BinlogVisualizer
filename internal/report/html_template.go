@@ -244,6 +244,19 @@ const htmlReportTemplate = `<!DOCTYPE html>
   .key-finding-badge.critical { background: rgba(248,81,73,0.15); color: var(--danger); }
   .key-finding-badge.warning  { background: rgba(251,191,36,0.15); color: var(--warn); }
   .key-finding-badge.info     { background: rgba(37,99,235,0.15); color: var(--primary); }
+  .mysqlbinlog-row { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; }
+  .mysqlbinlog-cmd { font-family: 'Fira Code', monospace; font-size: 11px; color: var(--accent); word-break: break-all; }
+  .copy-btn {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { border-color: var(--primary); }
 
   /* Section */
   .section {
@@ -762,6 +775,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             <div class="diagnostic-body">
               {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
               <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              {{if .MysqlbinlogCmd}}<div class="mysqlbinlog-row"><code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code><button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">{{t "report.html.analyze.copy"}}</button></div>{{end}}
               {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
               {{if .Tables}}
               <div class="diagnostic-tables">
@@ -783,6 +797,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             <div class="diagnostic-body">
               {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
               <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              {{if .MysqlbinlogCmd}}<div class="mysqlbinlog-row"><code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code><button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">{{t "report.html.analyze.copy"}}</button></div>{{end}}
               {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
               {{if .Tables}}
               <div class="diagnostic-tables">
@@ -804,6 +819,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             <div class="diagnostic-body">
               {{if .Location}}<div>{{t "report.html.analyze.binlogSpan"}}: {{.Location}}</div>{{end}}
               <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              {{if .MysqlbinlogCmd}}<div class="mysqlbinlog-row"><code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code><button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">{{t "report.html.analyze.copy"}}</button></div>{{end}}
               {{if .QuerySummary}}<div>{{.QuerySummary}}</div>{{end}}
               {{if .Tables}}
               <div class="diagnostic-tables">
@@ -1315,6 +1331,18 @@ const htmlReportTemplate = `<!DOCTYPE html>
     window.addEventListener('resize', function() { c.resize(); });
   }
   renderThroughputChart();
+
+  document.querySelectorAll('button.copy-btn[data-copy]').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var text = btn.getAttribute('data-copy') || '';
+      if (!text || !navigator.clipboard) { return; }
+      navigator.clipboard.writeText(text).then(function() {
+        var prev = btn.textContent;
+        btn.textContent = '{{t "report.html.analyze.copied"}}';
+        setTimeout(function() { btn.textContent = prev; }, 1200);
+      });
+    });
+  });
 
   // Init
           var saved = localStorage.getItem('bvtheme') || 'nebula';
