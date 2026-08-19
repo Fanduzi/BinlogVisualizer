@@ -232,6 +232,45 @@ func TestRenderJSONIncludesTables(t *testing.T) {
 	}
 }
 
+func TestRenderJSONExposesUpdateEventsAndRows(t *testing.T) {
+	result := model.AnalysisResult{
+		Tables: []model.TableStats{{
+			Schema:       "testdb",
+			Table:        "users",
+			TotalRows:    4,
+			InsertRows:   2,
+			UpdateRows:   1,
+			UpdateEvents: 1,
+			DeleteRows:   1,
+		}},
+		Diagnostics: model.Diagnostics{
+			InputFormatGuess:      "STATEMENT",
+			IgnoredQueryDMLEvents: 5,
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	parsed := parseJSONMap(t, out)
+	tables := parsed["tables"].([]any)
+	table := tables[0].(map[string]any)
+	if table["update_rows"].(float64) != 1 {
+		t.Fatalf("update_rows=%v, want 1", table["update_rows"])
+	}
+	if table["update_events"].(float64) != 1 {
+		t.Fatalf("update_events=%v, want 1", table["update_events"])
+	}
+	diagnostics := parsed["diagnostics"].(map[string]any)
+	if diagnostics["input_format_guess"] != "STATEMENT" {
+		t.Fatalf("input_format_guess=%v", diagnostics["input_format_guess"])
+	}
+	if diagnostics["ignored_query_dml_events"].(float64) != 5 {
+		t.Fatalf("ignored_query_dml_events=%v", diagnostics["ignored_query_dml_events"])
+	}
+}
+
 func TestRenderJSONIncludesTransactions(t *testing.T) {
 	result := model.AnalysisResult{
 		Transactions: []model.Transaction{

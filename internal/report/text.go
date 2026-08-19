@@ -87,45 +87,7 @@ func formatSparklineResolution(pointCount int) string {
 func renderTopFindings(buf *strings.Builder, result model.AnalysisResult, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.topFindings") + " ===\n")
 
-	lines := make([]string, 0, opts.TopN)
-	for _, finding := range result.Diagnostics.Findings {
-		lines = append(lines, fmt.Sprintf("  [%s] %s", finding.Severity, finding.Message))
-		if len(lines) >= opts.TopN {
-			break
-		}
-	}
-
-	if len(lines) < opts.TopN && len(result.Diagnostics.HotIntervals) > 0 {
-		hot := result.Diagnostics.HotIntervals[0]
-		lines = append(lines, fmt.Sprintf("  [critical] %s at %s: rows=%d, txns=%d",
-			i18n.T("report.text.writeSpike"), hot.Minute.Format("2006-01-02 15:04"), hot.TotalRows, hot.TxnCount))
-	}
-
-	if len(lines) < opts.TopN && len(result.Diagnostics.LongestTransactions) > 0 {
-		txn := result.Diagnostics.LongestTransactions[0]
-		lines = append(lines, fmt.Sprintf("  [warning] %s: %s, rows=%d, tables=%d, file=%s",
-			i18n.T("report.text.longestTransaction"),
-			formatDuration(txn.Duration),
-			txn.TotalRows,
-			len(txn.Tables),
-			formatSuspiciousLocation(txn),
-		))
-	}
-
-	if len(lines) < opts.TopN && len(result.Diagnostics.DDLEvents) > 0 {
-		ddl := result.Diagnostics.DDLEvents[0]
-		target := strings.Trim(strings.TrimSpace(ddl.Schema+"."+ddl.Table), ".")
-		if target == "" {
-			target = ddl.Object
-		}
-		lines = append(lines, fmt.Sprintf("  [warning] %s: %s %s at %s",
-			i18n.T("report.text.ddlDetected"),
-			ddl.Operation,
-			target,
-			ddl.Timestamp.Format("2006-01-02 15:04"),
-		))
-	}
-
+	lines := collectTopFindingLines(result, opts.TopN)
 	if len(lines) == 0 {
 		buf.WriteString("  " + i18n.T("report.text.noFindings") + "\n\n")
 		return
@@ -134,6 +96,31 @@ func renderTopFindings(buf *strings.Builder, result model.AnalysisResult, opts O
 		buf.WriteString(line + "\n")
 	}
 	buf.WriteString("\n")
+}
+
+// collectTopFindingLines uses the same alerts/findings contract as JSON.
+// Hot intervals, longest transactions, and DDL timelines are evidence, not extra findings.
+func collectTopFindingLines(result model.AnalysisResult, topN int) []string {
+	if topN <= 0 {
+		return nil
+	}
+	lines := make([]string, 0, topN)
+	for _, finding := range result.Diagnostics.Findings {
+		lines = append(lines, fmt.Sprintf("  [%s] %s", finding.Severity, finding.Message))
+		if len(lines) >= topN {
+			return lines
+		}
+	}
+	if len(lines) > 0 {
+		return lines
+	}
+	for _, alert := range result.Alerts {
+		lines = append(lines, fmt.Sprintf("  [%s] %s", alert.Severity, alert.Message))
+		if len(lines) >= topN {
+			break
+		}
+	}
+	return lines
 }
 
 func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN int) {
@@ -248,11 +235,21 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 
 func renderNextActions(buf *strings.Builder, result model.AnalysisResult) {
 	buf.WriteString("=== " + i18n.T("report.text.nextActions") + " ===\n")
-	buf.WriteString("  " + i18n.T("report.text.openHTML") + "\n")
+	if shouldSuggestOpenHTML(result) {
+		buf.WriteString("  " + i18n.T("report.text.openHTML") + "\n")
+	}
 	if location := firstSuspiciousLocation(result); location != "" {
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.firstSuspiciousPosition"), location))
 	}
 	buf.WriteString("\n")
+}
+
+func shouldSuggestOpenHTML(result model.AnalysisResult) bool {
+	// Zero row images with ignored Query-DML is not a successful ROW analysis.
+	if result.Diagnostics.IgnoredQueryDMLEvents > 0 && result.Summary.TotalRows == 0 {
+		return false
+	}
+	return true
 }
 
 func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {

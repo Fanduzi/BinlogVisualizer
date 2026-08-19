@@ -23,6 +23,7 @@ type tableStats struct {
 	totalRows     int
 	insertRows    int
 	updateRows    int
+	updateEvents  int
 	deleteRows    int
 	eventCount    int
 	binlogBytes   int64
@@ -89,6 +90,7 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 			ts.insertRows += ev.RowCount
 		case "UPDATE":
 			ts.updateRows += ev.RowCount
+			ts.updateEvents++
 		case "DELETE":
 			ts.deleteRows += ev.RowCount
 		}
@@ -150,6 +152,7 @@ func (a *TableAggregator) Snapshot() []model.TableStats {
 			TotalRows:     ts.totalRows,
 			InsertRows:    ts.insertRows,
 			UpdateRows:    ts.updateRows,
+			UpdateEvents:  ts.updateEvents,
 			DeleteRows:    ts.deleteRows,
 			TxnCount:      len(ts.txnSet),
 			EventCount:    ts.eventCount,

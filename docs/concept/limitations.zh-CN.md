@@ -8,6 +8,8 @@ BinlogViz 面向本地 MySQL `ROW` 格式 binlog 文件。
 
 这个边界非常重要，因为分析器的设计前提是消费规范化后的行级事件，并从行级写入活动中推导负载统计。如果你的运维问题依赖 statement-based replay 语义，那么应该选择另一类工具链。
 
+MIXED 文件会少计：只统计 ROW image，没有行镜像的 Query-DML 会被忽略。不要把 MIXED / STATEMENT 报告当成全量写入。分析会在 stderr 警告 `binlog appears STATEMENT or MIXED; only ROW images are counted`；文件完全没有 row image 时以非 0 退出。
+
 换句话说，当你的输入是本地 `ROW` 格式 binlog 序列，并且目标是做负载分析而不是逻辑回放时，BinlogViz 才是合适的工具。
 
 ## 输入范围

@@ -24,6 +24,62 @@ func sampleTransactionWithQueryContext() model.Transaction {
 	}
 }
 
+func TestRenderTextTopFindingsComeFromAlertsNotHotIntervals(t *testing.T) {
+	result := productTextFixture()
+	result.Alerts = nil
+	result.Diagnostics.Findings = nil
+	result.Diagnostics.HotIntervals = []model.MinuteBucket{{
+		Minute:    time.Date(2026, 3, 15, 14, 10, 0, 0, time.UTC),
+		TotalRows: 5,
+		TxnCount:  4,
+	}}
+	result.Diagnostics.LongestTransactions = []model.Transaction{{
+		TxnKey:    "txn-tiny",
+		TotalRows: 2,
+		Duration:  0,
+		Tables:    map[string]int{"testdb.users": 2},
+	}}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "[critical] Write spike") {
+		t.Fatalf("text findings synthesized a critical spike from a 5-row hot interval:\n%s", out)
+	}
+	if strings.Contains(out, "[warning] Longest transaction") {
+		t.Fatalf("text findings synthesized a warning from a 0s/2-row transaction:\n%s", out)
+	}
+	if !strings.Contains(out, "No high-signal findings detected.") {
+		t.Fatalf("expected empty alerts/findings to render no findings:\n%s", out)
+	}
+}
+
+func TestRenderTextTopFindingsUseSameAlertsAsJSON(t *testing.T) {
+	result := productTextFixture()
+	result.Diagnostics.Findings = []model.Finding{{
+		Kind:     "spike",
+		Severity: "warning",
+		Message:  "Write spike detected",
+	}}
+	result.Alerts = []model.Alert{{
+		Type:     "spike",
+		Severity: "warning",
+		Message:  "Write spike detected",
+	}}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "[warning] Write spike detected") {
+		t.Fatalf("expected text findings to use the JSON alert/finding message:\n%s", out)
+	}
+	if strings.Contains(out, "[critical] Write spike") {
+		t.Fatalf("text findings should not invent a critical severity:\n%s", out)
+	}
+}
+
 func TestRenderTextDefaultIsConciseDiagnosticSummary(t *testing.T) {
 	result := productTextFixture()
 

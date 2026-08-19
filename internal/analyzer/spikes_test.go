@@ -154,6 +154,33 @@ func TestDetectSpikeAlertsIncludesDetails(t *testing.T) {
 	}
 }
 
+func TestDetectSpikeAlertsSingleMinuteNoBaselineIsNotCritical(t *testing.T) {
+	minute := time.Date(2026, time.March, 15, 14, 10, 0, 0, time.UTC)
+	alerts := DetectSpikeAlerts([]model.MinuteBucket{
+		{Minute: minute, TotalRows: 5, TxnCount: 4},
+	}, Options{
+		DetectSpikes: true,
+		SpikeWindow:  5,
+		SpikeFactor:  3.0,
+		SpikeMinRows: 100,
+	})
+	if len(alerts) != 0 {
+		t.Fatalf("single-minute / no-baseline 5-row sample should not spike, got %#v", alerts)
+	}
+
+	alerts = DetectSpikeAlerts([]model.MinuteBucket{
+		{Minute: minute, TotalRows: 1000, TxnCount: 4},
+	}, Options{
+		DetectSpikes: true,
+		SpikeWindow:  5,
+		SpikeFactor:  3.0,
+		SpikeMinRows: 100,
+	})
+	if len(alerts) != 0 {
+		t.Fatalf("single-minute file with no baseline should not be a critical spike, got %#v", alerts)
+	}
+}
+
 func TestDetectSpikeAlertsHandlesInsufficientHistory(t *testing.T) {
 	// Only 1 bucket of history, which is less than SpikeWindow
 	minute := time.Date(2026, time.March, 9, 10, 2, 0, 0, time.UTC)
@@ -196,9 +223,9 @@ func TestDetectSpikeAlertsMultipleSpikes(t *testing.T) {
 		SpikeFactor:  5.0,
 		SpikeMinRows: 50,
 	})
-    if len(alerts) != 2 {
+	if len(alerts) != 2 {
 		t.Fatalf("expected 2 spike alerts, got %d", len(alerts))
-    }
+	}
 }
 
 func TestAnalyzerIntegratesSpikeAlerts(t *testing.T) {
@@ -252,7 +279,7 @@ func TestDetectSpikeAlertsTableLevel(t *testing.T) {
 		},
 		{
 			Minute:    minute,
-			TotalRows: 110, // overall spike: 110/20 = 5.5x
+			TotalRows: 110,                                                  // overall spike: 110/20 = 5.5x
 			TableRows: map[string]int{"shop.orders": 100, "shop.users": 10}, // orders spike: 100/10 = 10x
 		},
 	}
@@ -313,7 +340,7 @@ func TestDetectSpikeAlertsTableLevelNoOverallSpike(t *testing.T) {
 		},
 		{
 			Minute:    minute,
-			TotalRows: 100, // no overall spike
+			TotalRows: 100,                                                 // no overall spike
 			TableRows: map[string]int{"shop.orders": 90, "shop.users": 10}, // orders spike: 90/10 = 9x
 		},
 	}

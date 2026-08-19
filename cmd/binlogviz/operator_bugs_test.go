@@ -1,0 +1,226 @@
+package binlogviz
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+	"time"
+
+	"binlogviz/internal/analyzer"
+	"binlogviz/internal/binlog"
+	"binlogviz/internal/report"
+)
+
+func TestAnalyzeFixtureTextFindingsMatchJSONNoCriticalSpike(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	fixture := mustFixturePath(t, "minimal.binlog")
+
+	textOut, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysis([]string{fixture}, analyzer.DefaultOptions(), "text")
+	})
+	if err != nil {
+		t.Fatalf("text analyze: %v", err)
+	}
+	if strings.Contains(textOut, "[critical] Write spike") {
+		t.Fatalf("5-row fixture text report invented a critical spike:\n%s", textOut)
+	}
+	if strings.Contains(textOut, "[warning] Longest transaction") {
+		t.Fatalf("0s fixture transaction should not be a warning finding:\n%s", textOut)
+	}
+	if !strings.Contains(textOut, "No high-signal findings detected.") {
+		t.Fatalf("expected text findings to stay empty when JSON has no alerts:\n%s", textOut)
+	}
+
+	jsonOut, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysis([]string{fixture}, analyzer.DefaultOptions(), "json")
+	})
+	if err != nil {
+		t.Fatalf("json analyze: %v", err)
+	}
+
+	var decoded struct {
+		Alerts      []any `json:"alerts"`
+		Warnings    int   `json:"warnings"`
+		Diagnostics struct {
+			Findings []any `json:"findings"`
+		} `json:"diagnostics"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, jsonOut)
+	}
+	if len(decoded.Alerts) != 0 || decoded.Warnings != 0 || len(decoded.Diagnostics.Findings) != 0 {
+		t.Fatalf("JSON should have empty alerts/findings, got alerts=%d warnings=%d findings=%d",
+			len(decoded.Alerts), decoded.Warnings, len(decoded.Diagnostics.Findings))
+	}
+}
+
+func TestAnalyzeFixtureCountsLogicalUpdateRows(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	fixture := mustFixturePath(t, "minimal.binlog")
+
+	out, err := captureStdoutRun(t, func() error {
+		return runAnalysisWithReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), "json")
+	})
+	if err != nil {
+		t.Fatalf("json analyze: %v", err)
+	}
+
+	var decoded struct {
+		Summary struct {
+			TotalRows         int `json:"total_rows"`
+			TotalTransactions int `json:"total_transactions"`
+		} `json:"summary"`
+		Tables []struct {
+			UpdateRows   int `json:"update_rows"`
+			UpdateEvents int `json:"update_events"`
+			InsertRows   int `json:"insert_rows"`
+			DeleteRows   int `json:"delete_rows"`
+			TotalRows    int `json:"total_rows"`
+		} `json:"tables"`
+		Transactions []struct {
+			Operations map[string]int `json:"operations"`
+		} `json:"transactions"`
+	}
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, out)
+	}
+	if decoded.Summary.TotalRows != 4 {
+		t.Fatalf("total_rows=%d, want 4 logical rows", decoded.Summary.TotalRows)
+	}
+	if decoded.Summary.TotalTransactions != 4 {
+		t.Fatalf("total_transactions=%d, want 4", decoded.Summary.TotalTransactions)
+	}
+	if len(decoded.Tables) != 1 {
+		t.Fatalf("tables=%d, want 1", len(decoded.Tables))
+	}
+	table := decoded.Tables[0]
+	if table.InsertRows != 2 || table.UpdateRows != 1 || table.DeleteRows != 1 || table.TotalRows != 4 {
+		t.Fatalf("table I/U/D/total = %d/%d/%d/%d, want 2/1/1/4", table.InsertRows, table.UpdateRows, table.DeleteRows, table.TotalRows)
+	}
+	if table.UpdateEvents != 1 {
+		t.Fatalf("update_events=%d, want 1", table.UpdateEvents)
+	}
+
+	var updateOps int
+	for _, txn := range decoded.Transactions {
+		updateOps += txn.Operations["UPDATE"]
+	}
+	if updateOps != 1 {
+		t.Fatalf("transaction operations.UPDATE sum=%d, want 1", updateOps)
+	}
+}
+
+func TestAnalyzeStatementBinlogWarnsAndExitsNonZero(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	parser := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: now, EventType: "QUERY_EVENT", Query: "INSERT INTO dogfood.users VALUES (1)"},
+			{Timestamp: now.Add(time.Second), EventType: "QUERY_EVENT", Query: "UPDATE dogfood.users SET name='x'"},
+			{Timestamp: now.Add(2 * time.Second), EventType: "QUERY_EVENT", Query: "DELETE FROM dogfood.users WHERE id=1"},
+			{Timestamp: now.Add(3 * time.Second), EventType: "QUERY_EVENT", Query: "INSERT INTO dogfood.users VALUES (2)"},
+			{Timestamp: now.Add(4 * time.Second), EventType: "QUERY_EVENT", Query: "UPDATE dogfood.users SET name='y'"},
+		},
+	}
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "text", parser)
+	})
+	if err == nil {
+		t.Fatal("expected non-zero exit for STATEMENT binlog with zero row images")
+	}
+	if !strings.Contains(err.Error(), binlog.StatementOrMixedWarning) {
+		t.Fatalf("error=%v, want %q", err, binlog.StatementOrMixedWarning)
+	}
+	if !strings.Contains(stderr, binlog.StatementOrMixedWarning) {
+		t.Fatalf("stderr missing format warning:\n%s", stderr)
+	}
+	if strings.Contains(stdout, "Open HTML") {
+		t.Fatalf("STATEMENT report should not suggest Open HTML as success:\n%s", stdout)
+	}
+
+	jsonOut, jsonErrStderr, jsonErr := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "json", parser)
+	})
+	if jsonErr == nil {
+		t.Fatal("expected non-zero exit for STATEMENT JSON analyze")
+	}
+	if !strings.Contains(jsonErrStderr, binlog.StatementOrMixedWarning) {
+		t.Fatalf("JSON stderr missing format warning:\n%s", jsonErrStderr)
+	}
+	var decoded struct {
+		Summary struct {
+			TotalRows         int `json:"total_rows"`
+			TotalTransactions int `json:"total_transactions"`
+		} `json:"summary"`
+		Diagnostics struct {
+			InputFormatGuess      string `json:"input_format_guess"`
+			IgnoredQueryDMLEvents int    `json:"ignored_query_dml_events"`
+		} `json:"diagnostics"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, jsonOut)
+	}
+	if decoded.Diagnostics.InputFormatGuess != binlog.InputFormatStatement {
+		t.Fatalf("input_format_guess=%q, want STATEMENT", decoded.Diagnostics.InputFormatGuess)
+	}
+	if decoded.Diagnostics.IgnoredQueryDMLEvents != 5 {
+		t.Fatalf("ignored_query_dml_events=%d, want 5", decoded.Diagnostics.IgnoredQueryDMLEvents)
+	}
+	if decoded.Summary.TotalRows != 0 || decoded.Summary.TotalTransactions != 0 {
+		t.Fatalf("STATEMENT should not invent ROW workload, got rows=%d txns=%d", decoded.Summary.TotalRows, decoded.Summary.TotalTransactions)
+	}
+}
+
+func TestAnalyzeMixedBinlogWarnsAndRecordsIgnoredQueryDML(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	parser := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: now, EventType: "QUERY_EVENT", Query: "INSERT INTO dogfood.users VALUES (1)"},
+			{Timestamp: now.Add(time.Second), EventType: "QUERY_EVENT", Query: "UPDATE dogfood.users SET name=UUID()"},
+			{Timestamp: now.Add(2 * time.Second), EventType: "UpdateRowsEventV2", Schema: "dogfood", Table: "users", RowCount: 1},
+			{Timestamp: now.Add(3 * time.Second), EventType: "XID_EVENT"},
+		},
+	}
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "json", parser)
+	})
+	if err != nil {
+		t.Fatalf("MIXED with row images should exit 0, got %v", err)
+	}
+	if !strings.Contains(stderr, binlog.StatementOrMixedWarning) {
+		t.Fatalf("stderr missing format warning:\n%s", stderr)
+	}
+
+	var decoded struct {
+		Summary struct {
+			TotalRows         int `json:"total_rows"`
+			TotalTransactions int `json:"total_transactions"`
+		} `json:"summary"`
+		Diagnostics struct {
+			InputFormatGuess      string `json:"input_format_guess"`
+			IgnoredQueryDMLEvents int    `json:"ignored_query_dml_events"`
+		} `json:"diagnostics"`
+		Tables []struct {
+			Schema string `json:"schema"`
+			Table  string `json:"table"`
+		} `json:"tables"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, stdout)
+	}
+	if decoded.Diagnostics.InputFormatGuess != binlog.InputFormatMixed {
+		t.Fatalf("input_format_guess=%q, want MIXED", decoded.Diagnostics.InputFormatGuess)
+	}
+	if decoded.Diagnostics.IgnoredQueryDMLEvents != 2 {
+		t.Fatalf("ignored_query_dml_events=%d, want 2", decoded.Diagnostics.IgnoredQueryDMLEvents)
+	}
+	if decoded.Summary.TotalRows != 1 || decoded.Summary.TotalTransactions != 1 {
+		t.Fatalf("MIXED should count only the ROW subset, got rows=%d txns=%d", decoded.Summary.TotalRows, decoded.Summary.TotalTransactions)
+	}
+	if len(decoded.Tables) != 1 || decoded.Tables[0].Schema+"."+decoded.Tables[0].Table != "dogfood.users" {
+		t.Fatalf("expected dogfood.users from the ROW image, got %#v", decoded.Tables)
+	}
+}

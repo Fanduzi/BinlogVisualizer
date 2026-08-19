@@ -26,6 +26,7 @@ type TableStats struct {
 	TotalRows     int
 	InsertRows    int
 	UpdateRows    int
+	UpdateEvents  int
 	DeleteRows    int
 	TxnCount      int
 	EventCount    int

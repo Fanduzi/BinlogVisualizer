@@ -4,14 +4,16 @@ import "time"
 
 // Diagnostics groups DBA-oriented evidence and coverage metadata.
 type Diagnostics struct {
-	FileCoverage        FileCoverage
-	DDLEvents           []DDLEvent
-	LargestTransactions []Transaction
-	LongestTransactions []Transaction
-	WidestTransactions  []Transaction
-	FileSegments        []FileSegment
-	HotIntervals        []MinuteBucket
-	Findings            []Finding
+	FileCoverage          FileCoverage
+	DDLEvents             []DDLEvent
+	LargestTransactions   []Transaction
+	LongestTransactions   []Transaction
+	WidestTransactions    []Transaction
+	FileSegments          []FileSegment
+	HotIntervals          []MinuteBucket
+	Findings              []Finding
+	InputFormatGuess      string
+	IgnoredQueryDMLEvents int
 }
 
 // FileCoverage summarizes which input files were selected or skipped.

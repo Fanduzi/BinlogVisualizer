@@ -490,8 +490,10 @@ func runAnalysisStreamingWithSnapshotDeps(
 	}
 
 	streamAnalyzer := newAnalyzer(opts, store)
+	var formatObserver binlog.FormatObserver
 
 	handler := func(raw binlog.RawEvent) error {
+		formatObserver.Observe(raw)
 		normalized, err := normalize(raw)
 		if err != nil {
 			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
@@ -529,23 +531,30 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
 	}
+	formatErr := noteInputFormat(result, formatObserver)
 
+	var renderErr error
 	switch format {
 	case "json":
 		if snapshotMeta != nil {
 			result.Snapshot = snapshotMeta
 		}
 		if snapshotName != "" {
-			return saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+			renderErr = saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+		} else {
+			renderErr = report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 		}
-		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 	case "markdown", "md":
-		return report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
+		renderErr = report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
 	case "html":
-		return report.RenderHTMLToStdout(*result, reportOpts)
+		renderErr = report.RenderHTMLToStdout(*result, reportOpts)
 	default:
-		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
+		renderErr = report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
+	if renderErr != nil {
+		return renderErr
+	}
+	return formatErr
 }
 
 func runAnalysisStreamingFastWithSnapshot(
@@ -578,8 +587,10 @@ func runAnalysisStreamingFastWithSnapshot(
 	}
 
 	streamAnalyzer := newAnalyzer(opts, store)
+	var formatObserver binlog.FormatObserver
 
 	handler := func(raw binlog.RawEvent) error {
+		formatObserver.Observe(raw)
 		var normalized model.NormalizedEvent
 		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
 		if err != nil {
@@ -618,27 +629,50 @@ func runAnalysisStreamingFastWithSnapshot(
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
 	}
+	formatErr := noteInputFormat(result, formatObserver)
 
+	var renderErr error
 	switch format {
 	case "json":
 		if snapshotMeta != nil {
 			result.Snapshot = snapshotMeta
 		}
 		if snapshotName != "" {
-			return saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+			renderErr = saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+		} else {
+			renderErr = report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 		}
-		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 	case "markdown", "md":
-		return report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
+		renderErr = report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
 	case "html":
-		return report.RenderHTMLToStdout(*result, reportOpts)
+		renderErr = report.RenderHTMLToStdout(*result, reportOpts)
 	default:
-		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
+		renderErr = report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
+	if renderErr != nil {
+		return renderErr
+	}
+	return formatErr
 }
 
 func hasFileCoverage(fileCoverage model.FileCoverage) bool {
 	return len(fileCoverage.Selected) > 0 || len(fileCoverage.Skipped) > 0
+}
+
+func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserver) error {
+	if result == nil {
+		return nil
+	}
+	result.Diagnostics.InputFormatGuess = observer.Guess()
+	result.Diagnostics.IgnoredQueryDMLEvents = observer.QueryDMLEvents
+	if observer.QueryDMLEvents == 0 {
+		return nil
+	}
+	_, _ = fmt.Fprintln(os.Stderr, binlog.StatementOrMixedWarning)
+	if observer.RowImageEvents == 0 {
+		return fmt.Errorf("%s", binlog.StatementOrMixedWarning)
+	}
+	return nil
 }
 
 func runAnalysisWithOutput(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, dest outputDestination) error {
@@ -683,8 +717,10 @@ func runAnalysisStreamingFastWithOutput(
 	}
 
 	streamAnalyzer := newAnalyzer(opts, store)
+	var formatObserver binlog.FormatObserver
 
 	handler := func(raw binlog.RawEvent) error {
+		formatObserver.Observe(raw)
 		var normalized model.NormalizedEvent
 		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
 		if err != nil {
@@ -723,18 +759,21 @@ func runAnalysisStreamingFastWithOutput(
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
 	}
+	formatErr := noteInputFormat(result, formatObserver)
 
+	var renderErr error
 	switch format {
 	case "json":
 		if snapshotMeta != nil {
 			result.Snapshot = snapshotMeta
 		}
 		if snapshotName != "" {
-			return saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+			renderErr = saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
+		} else {
+			renderErr = report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 		}
-		return report.RenderJSONToStdoutWithOptions(*result, reportOpts)
 	case "markdown", "md":
-		return report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
+		renderErr = report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
 	case "html":
 		htmlContent, err := report.RenderHTMLWithOptions(*result, reportOpts)
 		if err != nil {
@@ -746,10 +785,13 @@ func runAnalysisStreamingFastWithOutput(
 		if dest.IsFile {
 			printHTMLSaveConfirmation(dest.Path)
 		}
-		return nil
 	default:
-		return report.RenderTextToStdoutWithOptions(*result, reportOpts)
+		renderErr = report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
+	if renderErr != nil {
+		return renderErr
+	}
+	return formatErr
 }
 
 func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {
