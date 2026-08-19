@@ -138,7 +138,7 @@
       "current_rows": 900,
       "baseline_rows": 0,
       "delta_rows": 900,
-      "delta_percent": 0
+      "delta_percent": null
     },
     {
       "schema": "orders",
@@ -164,7 +164,7 @@
       "current_rows": 700,
       "baseline_rows": 0,
       "delta_rows": 700,
-      "delta_percent": 0,
+      "delta_percent": null,
       "current_txn_count": 40,
       "baseline_txn_count": 0,
       "delta_txn_count": 40,

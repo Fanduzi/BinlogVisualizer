@@ -27,7 +27,7 @@ func BuildCompareResult(current, baseline InputReport) CompareResult {
 		TableChanges:     buildTableChanges(current.Tables, baseline.Tables),
 		PatternChanges:   buildPatternChanges(current.Patterns, baseline.Patterns),
 		OperationMix:     buildOperationMix(current.Tables, baseline.Tables),
-		AlertChanges:     buildAlertChanges(current.Alerts, baseline.Alerts),
+		AlertChanges:     buildAlertChangesFromReports(current, baseline),
 		CurrentLabel:     compareLabel(current.Snapshot, "current"),
 		BaselineLabel:    compareLabel(baseline.Snapshot, "baseline"),
 		CurrentSnapshot:  current.Snapshot,
@@ -90,9 +90,7 @@ func buildTableChanges(current, baseline []InputTable) []TableChange {
 	result := make([]TableChange, 0, len(merged))
 	for _, item := range merged {
 		item.DeltaRows = item.CurrentRows - item.BaselineRows
-		if item.BaselineRows > 0 {
-			item.DeltaPercent = (float64(item.DeltaRows) / float64(item.BaselineRows)) * 100
-		}
+		item.DeltaPercent = deltaPercent(item.CurrentRows, item.BaselineRows)
 		result = append(result, item)
 	}
 
@@ -141,9 +139,7 @@ func buildPatternChanges(current, baseline []InputPattern) []PatternChange {
 	for _, item := range merged {
 		item.DeltaRows = item.CurrentRows - item.BaselineRows
 		item.DeltaTxnCount = item.CurrentTxnCount - item.BaselineTxnCount
-		if item.BaselineRows > 0 {
-			item.DeltaPercent = (float64(item.DeltaRows) / float64(item.BaselineRows)) * 100
-		}
+		item.DeltaPercent = deltaPercent(item.CurrentRows, item.BaselineRows)
 		result = append(result, item)
 	}
 
@@ -207,14 +203,22 @@ func preferredPatternLabel(current, fallback string) string {
 }
 
 func buildAlertChanges(current, baseline []InputAlert) AlertDelta {
+	return buildAlertChangesWithTxns(current, baseline, nil, nil)
+}
+
+func buildAlertChangesFromReports(current, baseline InputReport) AlertDelta {
+	return buildAlertChangesWithTxns(current.Alerts, baseline.Alerts, indexReportTransactions(current), indexReportTransactions(baseline))
+}
+
+func buildAlertChangesWithTxns(current, baseline []InputAlert, currentTxns, baselineTxns map[string]InputTransaction) AlertDelta {
 	baselineSet := make(map[string]InputAlert, len(baseline))
 	currentSet := make(map[string]InputAlert, len(current))
 
 	for _, alert := range baseline {
-		baselineSet[alertKey(alert)] = alert
+		baselineSet[alertIdentity(alert, baselineTxns)] = alert
 	}
 	for _, alert := range current {
-		currentSet[alertKey(alert)] = alert
+		currentSet[alertIdentity(alert, currentTxns)] = alert
 	}
 
 	result := AlertDelta{}
@@ -229,16 +233,19 @@ func buildAlertChanges(current, baseline []InputAlert) AlertDelta {
 	}
 
 	sort.Slice(result.Added, func(i, j int) bool {
-		return alertKey(result.Added[i]) < alertKey(result.Added[j])
+		return alertIdentity(result.Added[i], currentTxns) < alertIdentity(result.Added[j], currentTxns)
 	})
 	sort.Slice(result.Removed, func(i, j int) bool {
-		return alertKey(result.Removed[i]) < alertKey(result.Removed[j])
+		return alertIdentity(result.Removed[i], baselineTxns) < alertIdentity(result.Removed[j], baselineTxns)
 	})
 
 	return result
 }
 
-func alertKey(alert InputAlert) string {
+func alertIdentity(alert InputAlert, txns map[string]InputTransaction) string {
+	if alert.Type == "large_transaction" {
+		return "large_transaction|" + largeTxnContentID(alert, txns)
+	}
 	return fmt.Sprintf("%s|%s|%s|%s|%s", alert.Type, alert.Severity, alert.Message, alert.TxnKey, alert.Minute)
 }
 
@@ -307,10 +314,8 @@ func ddlEventKey(evt InputDDLEvent) string {
 func buildTxnDiagnosticDelta(current, baseline InputDiagnostics) TxnDiagnosticDelta {
 	return TxnDiagnosticDelta{
 		LargestTxnDelta: buildTxnSizeCompare(
-			firstTxnRows(baseline.LargestTransactions),
-			firstTxnKey(baseline.LargestTransactions),
-			firstTxnRows(current.LargestTransactions),
-			firstTxnKey(current.LargestTransactions),
+			firstTxn(baseline.LargestTransactions),
+			firstTxn(current.LargestTransactions),
 		),
 		LongestTxnDelta: buildTxnDurationCompare(
 			baseline.LongestTransactions,
@@ -319,21 +324,29 @@ func buildTxnDiagnosticDelta(current, baseline InputDiagnostics) TxnDiagnosticDe
 	}
 }
 
-func buildTxnSizeCompare(baselineRows int, baselineKey string, currentRows int, currentKey string) TxnSizeCompare {
-	return TxnSizeCompare{
-		BaselineRows: baselineRows,
-		BaselineKey:  baselineKey,
-		CurrentRows:  currentRows,
-		CurrentKey:   currentKey,
-		DeltaRows:    currentRows - baselineRows,
+func buildTxnSizeCompare(baseline, current InputTransaction) TxnSizeCompare {
+	cmp := TxnSizeCompare{
+		BaselineRows:  baseline.TotalRows,
+		BaselineKey:   baseline.TxnKey,
+		CurrentRows:   current.TotalRows,
+		CurrentKey:    current.TxnKey,
+		DeltaRows:     current.TotalRows - baseline.TotalRows,
+		BaselineTable: dominantMapKey(baseline.Tables),
+		CurrentTable:  dominantMapKey(current.Tables),
+		BaselineOp:    dominantMapKey(baseline.Operations),
+		CurrentOp:     dominantMapKey(current.Operations),
 	}
+	if !txnContentEqual(baseline, current) && !txnIsEmpty(current) {
+		cmp.IdentityNew = true
+	}
+	return cmp
 }
 
-func firstTxnRows(txns []InputTransaction) int {
+func firstTxn(txns []InputTransaction) InputTransaction {
 	if len(txns) == 0 {
-		return 0
+		return InputTransaction{}
 	}
-	return txns[0].TotalRows
+	return txns[0]
 }
 
 func firstTxnKey(txns []InputTransaction) string {

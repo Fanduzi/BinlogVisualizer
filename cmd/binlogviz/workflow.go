@@ -1320,6 +1320,7 @@ func runWorkflowTrendJob(
 		InputMode: "workflow",
 		Points:    points,
 		TopTables: 10,
+		Order:     "cli",
 	})
 	if err != nil {
 		rec.Status = "failed"

@@ -2,16 +2,95 @@ package trend
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	comparepkg "binlogviz/internal/compare"
 )
+
+func TestBuildResultKeepsCLIOrderByDefault(t *testing.T) {
+	result, err := BuildResult(BuildOptions{
+		InputMode:   "explicit",
+		SnapshotDir: "/tmp/snapshots",
+		TopTables:   5,
+		Points: []BuildInput{
+			{
+				Path:   "/tmp/snapshots/last_week.json",
+				Report: testInputReport("last_week", "Last Week", "2026-08-18T20:39:32Z", 252561, 50, 1200, 500, 350, 150, 0),
+			},
+			{
+				Path:   "/tmp/snapshots/tonight.json",
+				Report: testInputReport("tonight", "Tonight", "2026-08-18T05:42:37Z", 2740885, 150, 3600, 1600, 900, 500, 3),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build result: %v", err)
+	}
+	if result.Order != "cli" {
+		t.Fatalf("expected default order cli, got %q", result.Order)
+	}
+	if result.Reordered {
+		t.Fatal("cli order should not report a reorder")
+	}
+	if result.Points[0].Snapshot.Name != "last_week" || result.Points[1].Snapshot.Name != "tonight" {
+		t.Fatalf("expected CLI order last_week -> tonight, got %+v", []string{result.Points[0].Snapshot.Name, result.Points[1].Snapshot.Name})
+	}
+	if result.Insights.FirstSnapshot != "last_week" || result.Insights.LastSnapshot != "tonight" {
+		t.Fatalf("unexpected insights endpoints: %+v", result.Insights)
+	}
+	if result.Insights.RowsDelta != 2740885-252561 {
+		t.Fatalf("unexpected insights rows delta: %+v", result.Insights)
+	}
+}
+
+func TestBuildResultOrdersPointsByTimeWhenRequested(t *testing.T) {
+	result, err := BuildResult(BuildOptions{
+		InputMode:   "explicit",
+		SnapshotDir: "/tmp/snapshots",
+		TopTables:   5,
+		Order:       "time",
+		Points: []BuildInput{
+			{
+				Path:   "/tmp/snapshots/last_week.json",
+				Report: testInputReport("last_week", "Last Week", "2026-08-18T20:39:32Z", 252561, 50, 1200, 500, 350, 150, 0),
+			},
+			{
+				Path:   "/tmp/snapshots/tonight.json",
+				Report: testInputReport("tonight", "Tonight", "2026-08-18T05:42:37Z", 2740885, 150, 3600, 1600, 900, 500, 3),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build result: %v", err)
+	}
+	if result.Order != "time" || !result.Reordered {
+		t.Fatalf("expected time reorder, got order=%q reordered=%v", result.Order, result.Reordered)
+	}
+	if result.Points[0].Snapshot.Name != "tonight" || result.Points[1].Snapshot.Name != "last_week" {
+		t.Fatalf("unexpected time ordering: %+v", []string{result.Points[0].Snapshot.Name, result.Points[1].Snapshot.Name})
+	}
+}
+
+func TestBuildResultRejectsUnknownOrder(t *testing.T) {
+	_, err := BuildResult(BuildOptions{
+		Order: "name",
+		Points: []BuildInput{
+			{Path: "/tmp/a.json", Report: testInputReport("a", "A", "2026-03-19T10:00:00Z", 1000, 50, 1200, 500, 350, 150, 0)},
+			{Path: "/tmp/b.json", Report: testInputReport("b", "B", "2026-03-21T10:00:00Z", 3000, 150, 3600, 1600, 900, 500, 3)},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported trend order") {
+		t.Fatalf("expected unsupported order error, got %v", err)
+	}
+}
 
 func TestBuildResultOrdersPointsAndComputesBaselineDelta(t *testing.T) {
 	result, err := BuildResult(BuildOptions{
 		InputMode:   "explicit",
 		SnapshotDir: "/tmp/snapshots",
 		TopTables:   5,
+		Order:       "time",
 		Points: []BuildInput{
 			{
 				Path:   "/tmp/snapshots/later.json",

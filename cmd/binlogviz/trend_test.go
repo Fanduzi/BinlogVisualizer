@@ -53,7 +53,7 @@ func TestTrendCommandRequiresAtLeastTwoSnapshots(t *testing.T) {
 	}
 }
 
-func TestTrendCommandJSONOutputOrdersSnapshotsByWindowStartTime(t *testing.T) {
+func TestTrendCommandKeepsExplicitCLIOrderByDefault(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 
 	dir := t.TempDir()
@@ -133,11 +133,140 @@ func TestTrendCommandJSONOutputOrdersSnapshotsByWindowStartTime(t *testing.T) {
 		decoded.Points[1].Snapshot.Name,
 		decoded.Points[2].Snapshot.Name,
 	}
-	wantOrder := []string{"earlier", "middle", "later"}
+	wantOrder := []string{"later", "earlier", "middle"}
 	for i := range wantOrder {
 		if gotOrder[i] != wantOrder[i] {
 			t.Fatalf("unexpected point order: got %v want %v", gotOrder, wantOrder)
 		}
+	}
+}
+
+func TestTrendCommandTimeOrderReordersAndWarnsOnStderr(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	writeSnapshotFixture(t, dir, "tonight", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "tonight",
+		Label:     "Tonight",
+		StartTime: "2026-08-18T05:42:37Z",
+		EndTime:   "2026-08-18T06:30:00Z",
+		Rows:      2740885,
+		Txns:      150,
+		Events:    3600,
+		Inserts:   1600,
+		Updates:   900,
+		Deletes:   500,
+		Alerts:    3,
+	}))
+	writeSnapshotFixture(t, dir, "last_week", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "last_week",
+		Label:     "Last Week",
+		StartTime: "2026-08-18T20:39:32Z",
+		EndTime:   "2026-08-18T21:10:00Z",
+		Rows:      252561,
+		Txns:      50,
+		Events:    1200,
+		Inserts:   500,
+		Updates:   350,
+		Deletes:   150,
+		Alerts:    0,
+	}))
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"trend", "last_week", "tonight", "--snapshot-dir", dir, "--format", "json", "--order", "time"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(stderr, "reordered by window start_time") {
+		t.Fatalf("expected stderr reorder notice, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "tonight") || !strings.Contains(stderr, "last_week") {
+		t.Fatalf("expected reordered names on stderr, got %q", stderr)
+	}
+
+	var decoded struct {
+		Order     string `json:"order"`
+		Reordered bool   `json:"reordered"`
+		Insights  struct {
+			FirstSnapshot string `json:"first_snapshot"`
+			LastSnapshot  string `json:"last_snapshot"`
+		} `json:"insights"`
+		Points []struct {
+			Snapshot struct {
+				Name string `json:"name"`
+			} `json:"snapshot"`
+		} `json:"points"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode trend json: %v\n%s", err, stdout)
+	}
+	if decoded.Order != "time" || !decoded.Reordered {
+		t.Fatalf("expected time reorder in json, got order=%q reordered=%v", decoded.Order, decoded.Reordered)
+	}
+	if len(decoded.Points) != 2 || decoded.Points[0].Snapshot.Name != "tonight" || decoded.Points[1].Snapshot.Name != "last_week" {
+		t.Fatalf("expected time order tonight -> last_week, got %+v", decoded.Points)
+	}
+	if decoded.Insights.FirstSnapshot != "tonight" {
+		t.Fatalf("expected First=tonight after time reorder, got %q", decoded.Insights.FirstSnapshot)
+	}
+}
+
+func TestTrendCommandLastWeekTonightKeepsCLIStory(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	writeSnapshotFixture(t, dir, "tonight", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "tonight",
+		Label:     "Tonight",
+		StartTime: "2026-08-18T05:42:37Z",
+		EndTime:   "2026-08-18T06:30:00Z",
+		Rows:      2740885,
+		Txns:      150,
+		Events:    3600,
+		Inserts:   1600,
+		Updates:   900,
+		Deletes:   500,
+		Alerts:    3,
+	}))
+	writeSnapshotFixture(t, dir, "last_week", trendSnapshotFixtureJSON(trendSnapshotFixture{
+		Name:      "last_week",
+		Label:     "Last Week",
+		StartTime: "2026-08-18T20:39:32Z",
+		EndTime:   "2026-08-18T21:10:00Z",
+		Rows:      252561,
+		Txns:      50,
+		Events:    1200,
+		Inserts:   500,
+		Updates:   350,
+		Deletes:   150,
+		Alerts:    0,
+	}))
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"trend", "last_week", "tonight", "--snapshot-dir", dir, "--format", "text"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("default cli order must not silently reorder, stderr=%q", stderr)
+	}
+	if !strings.Contains(stdout, "Rows: 252561 -> 2740885 (+2488324)") {
+		t.Fatalf("expected last_week -> tonight growth story, got:\n%s", stdout)
+	}
+	if strings.Contains(stdout, "Rows: 2740885 -> 252561") {
+		t.Fatalf("trend inverted the operator story:\n%s", stdout)
 	}
 }
 

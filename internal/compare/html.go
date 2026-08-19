@@ -177,8 +177,8 @@ func formatHTMLDelta(v int) string {
 	return fmt.Sprintf("%+d", v)
 }
 
-func formatHTMLPercent(v float64) string {
-	return fmt.Sprintf("%.1f%%", v)
+func formatHTMLPercent(current, baseline int, v *float64) string {
+	return formatDeltaPercent(current, baseline, v)
 }
 
 type htmlDDLChangeData struct {
@@ -616,7 +616,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
                 <td class="num">{{.BaselineRows}}</td>
                 <td class="num">{{.CurrentRows}}</td>
                 <td class="num">{{formatDelta .DeltaRows}}</td>
-                <td class="num">{{formatPercent .DeltaPercent}}</td>
+                <td class="num">{{formatPercent .CurrentRows .BaselineRows .DeltaPercent}}</td>
               </tr>
               {{end}}
             </tbody>
@@ -654,7 +654,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
                   <td class="num">{{.BaselineRows}}</td>
                   <td class="num">{{.CurrentRows}}</td>
                   <td class="num">{{formatDelta .DeltaRows}}</td>
-                  <td class="num">{{formatPercent .DeltaPercent}}</td>
+                  <td class="num">{{formatPercent .CurrentRows .BaselineRows .DeltaPercent}}</td>
                   <td class="num">{{.BaselineTxnCount}}</td>
                   <td class="num">{{.CurrentTxnCount}}</td>
                   <td class="num">{{formatDelta .DeltaTxnCount}}</td>
