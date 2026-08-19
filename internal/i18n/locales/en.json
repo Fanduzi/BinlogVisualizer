@@ -231,6 +231,22 @@
     "description": "Total rows label",
     "other": "Total Rows"
   },
+  "report.label.logicalRows": {
+    "description": "Logical row-image count label",
+    "other": "Logical Rows"
+  },
+  "report.label.format": {
+    "description": "Input format label",
+    "other": "Format"
+  },
+  "report.text.rowImageSummary": {
+    "description": "Default text report format boundary",
+    "other": "ROW images / logical rows (STATEMENT/MIXED Query-DML is not counted)"
+  },
+  "report.label.largestTxnBytes": {
+    "description": "Largest transaction byte size label",
+    "other": "Largest txn"
+  },
   "report.label.totalEvents": {
     "description": "Total events label",
     "other": "Total Events"

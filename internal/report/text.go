@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: concise diagnostic-first text reports with opt-in minute and write-pattern detail sections.
+// output: incident-brief text reports (hot tables and largest txns first) with opt-in minute and write-pattern detail sections.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -39,10 +39,10 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	var buf strings.Builder
 
 	renderDiagnosticSummary(&buf, result)
-	renderTopFindings(&buf, result, opts)
-	renderActivitySection(&buf, result)
 	renderTopTablesTable(&buf, result.Tables, opts.TopN)
 	renderTopTransactions(&buf, result, opts.TopN)
+	renderTopFindings(&buf, result, opts)
+	renderActivitySection(&buf, result)
 	renderNextActions(&buf, result)
 
 	if opts.ShowMinutes {
@@ -59,10 +59,14 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 	summary := result.Summary
 	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
 	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary")))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.html.analyze.ddlTimeline"), formatDDLTimelineSummary(result.Diagnostics.DDLEvents)))
+	if bytes := largestTxnBytes(result); bytes > 0 {
+		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.largestTxnBytes"), formatByteSize(bytes)))
+	}
 	buf.WriteString("\n")
 }
 
@@ -208,23 +212,31 @@ func maxInt(a, b int) int {
 func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, topN int) {
 	buf.WriteString("=== " + i18n.T("report.text.topTransactions") + " ===\n")
 
-	limit := minInt(1, topN)
-	lines := make([]string, 0, limit*3)
-	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, limit) {
-		lines = append(lines, fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
-			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn)))
+	largestLimit := minInt(3, topN)
+	otherLimit := minInt(1, topN)
+	lines := make([]string, 0, largestLimit+otherLimit*2)
+	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, largestLimit) {
+		line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
+			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
+		if table := dominantTableName(txn.Tables); table != "" {
+			line += " table=" + table
+		}
+		if txn.BinlogBytes > 0 {
+			line += " bytes=" + formatByteSize(txn.BinlogBytes)
+		}
+		lines = append(lines, line)
 		if cmd := mysqlbinlogCmd(txn); cmd != "" {
 			lines = append(lines, "    "+cmd)
 		}
 	}
-	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, limit) {
+	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, otherLimit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
 			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn)))
 		if cmd := mysqlbinlogCmd(txn); cmd != "" {
 			lines = append(lines, "    "+cmd)
 		}
 	}
-	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, limit) {
+	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, otherLimit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
 			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn)))
 		if cmd := mysqlbinlogCmd(txn); cmd != "" {
@@ -434,6 +446,40 @@ func firstSuspiciousLocation(result model.AnalysisResult) string {
 		return formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd)
 	}
 	return ""
+}
+
+func largestTxnBytes(result model.AnalysisResult) int64 {
+	var maxBytes int64
+	for _, txn := range result.Diagnostics.LargestTransactions {
+		if txn.BinlogBytes > maxBytes {
+			maxBytes = txn.BinlogBytes
+		}
+	}
+	return maxBytes
+}
+
+func dominantTableName(tables map[string]int) string {
+	best := ""
+	bestRows := -1
+	for name, rows := range tables {
+		if rows > bestRows || (rows == bestRows && (best == "" || name < best)) {
+			best = name
+			bestRows = rows
+		}
+	}
+	return best
+}
+
+func formatByteSize(n int64) string {
+	const kb = 1024
+	switch {
+	case n < kb:
+		return fmt.Sprintf("%dB", n)
+	case n < kb*kb:
+		return fmt.Sprintf("%.1fKB", float64(n)/float64(kb))
+	default:
+		return fmt.Sprintf("%.1fMB", float64(n)/float64(kb*kb))
+	}
 }
 
 func formatSuspiciousLocation(txn model.Transaction) string {

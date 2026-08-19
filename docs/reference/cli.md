@@ -95,6 +95,11 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--sql-context` | `summary` | SQL context presentation mode: `summary`, `off`, or `full`. |
 | `--top-tables` | `10` | Number of top tables to include in the report. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report. |
+| `--top` | `10` | Default number of ranked items for text detail sections (minutes, patterns). |
+| `--details` | `false` | Show minute details and write-shape patterns in the text report. |
+| `--show-minutes` | `false` | Show minute-level activity in the text report. |
+| `--show-patterns` | `false` | Show write-shape patterns in the text report. |
+| `--detail-store` | `none` | Optional transaction detail backend: `none` or `duckdb`. |
 | `--detect-spikes` | `false` | Enable write spike detection. |
 | `--large-trx-rows` | `1000` | Row threshold for large transaction alerts. |
 | `--large-trx-duration` | `30s` | Duration threshold for large transaction alerts. |
@@ -126,6 +131,12 @@ Rules:
 - the save confirmation is written to `stderr`
 
 If `--snapshot-dir` is omitted, BinlogViz saves to `~/.binlogviz/snapshots/<name>.json`.
+
+Detail flags for the text report:
+
+```bash
+binlogviz analyze mysql-bin.000123 --details --show-minutes --show-patterns
+```
 
 ## `compare` Command Syntax
 
