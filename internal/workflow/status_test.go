@@ -49,6 +49,57 @@ func TestBuildStatusMarksMissingArtifactIncomplete(t *testing.T) {
 	}
 }
 
+func TestBuildStatusFailedDiscoveryIsNotComplete(t *testing.T) {
+	root := t.TempDir()
+	manifest := Manifest{
+		ManifestVersion:    2,
+		Mode:               "run",
+		Attempt:            1,
+		WorkflowName:       "failed-discovery",
+		Status:             "failed",
+		Error:              "discover binlog files: open PLACEHOLDER/binlog: no such file or directory",
+		ResolvedInputFiles: nil,
+		Steps:              []StepRecord{},
+	}
+
+	status, err := BuildStatus(root, manifest, nil)
+	if err != nil {
+		t.Fatalf("build status: %v", err)
+	}
+	if status.Status != "failed" {
+		t.Fatalf("expected status failed, got %q", status.Status)
+	}
+	if status.RuntimeState == "complete" {
+		t.Fatalf("runtime_state must not be complete with no successful step and no resolved_input_files, got %q", status.RuntimeState)
+	}
+	if status.RuntimeState != "incomplete" {
+		t.Fatalf("expected runtime_state incomplete, got %q", status.RuntimeState)
+	}
+}
+
+func TestBuildStatusFailedStepsWithoutSuccessAreNotComplete(t *testing.T) {
+	root := t.TempDir()
+	manifest := Manifest{
+		ManifestVersion:    2,
+		Mode:               "run",
+		Attempt:            1,
+		WorkflowName:       "failed-analyze",
+		Status:             "failed",
+		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
+		Steps: []StepRecord{
+			{Kind: "analyze", Name: "week1", Status: "failed", Error: "analyze failed"},
+		},
+	}
+
+	status, err := BuildStatus(root, manifest, nil)
+	if err != nil {
+		t.Fatalf("build status: %v", err)
+	}
+	if status.RuntimeState == "complete" {
+		t.Fatalf("runtime_state must not be complete with no successful step, got %q", status.RuntimeState)
+	}
+}
+
 func TestBuildStatusPreservesFailedManifestStatus(t *testing.T) {
 	root, plan, manifest := makeStatusFixture(t)
 	createTestArtifacts(t, root, manifest.SnapshotDir, manifest.Steps)

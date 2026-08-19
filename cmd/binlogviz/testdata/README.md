@@ -1,5 +1,11 @@
 # Test Fixtures
 
+## sample-binlog/
+
+Discovery-layout copy of `minimal.binlog` as `mysql-bin.000001`. The
+repository-root `incident.yaml` sample plan points `from_dir` here so
+`binlogviz workflow run incident.yaml` works without a local MySQL datadir.
+
 ## minimal.binlog
 
 A minimal MySQL 5.7 ROW-format binlog file used for end-to-end integration testing.

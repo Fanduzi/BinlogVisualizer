@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -407,8 +408,8 @@ func TestBuildResumePlanNothingToDoReturnsError(t *testing.T) {
 
 	// All steps succeeded, no missing artifacts, no explicit reruns
 	_, err := BuildResumePlan(plan, m, nil, dir, snapDir)
-	if err == nil {
-		t.Fatal("expected error when nothing needs to be done")
+	if !errors.Is(err, ErrNothingToResume) {
+		t.Fatalf("expected ErrNothingToResume, got %v", err)
 	}
 }
 

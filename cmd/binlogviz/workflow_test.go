@@ -988,12 +988,11 @@ func TestWorkflowResumeRefusesUnknownRerunSelector(t *testing.T) {
 	_ = binlogDir
 }
 
-// TestWorkflowResumeNothingToDo tests that resume fails with a clear message
-// when the workflow is already fully successful.
+// TestWorkflowResumeNothingToDo tests that resume after a fully successful
+// run exits 0 with one stderr line and no Usage dump.
 func TestWorkflowResumeNothingToDo(t *testing.T) {
 	binlogDir, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
-	// Run the full workflow successfully
 	cmd := NewRootCommand()
 	cmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir})
 	cmd.SilenceUsage = true
@@ -1002,18 +1001,21 @@ func TestWorkflowResumeNothingToDo(t *testing.T) {
 		t.Fatalf("initial run: %v", err)
 	}
 
-	// Resume without rerun should fail with "nothing to do"
 	cmd2 := NewRootCommand()
 	cmd2.SetArgs([]string{"workflow", "resume", outputDir, "--snapshot-dir", snapshotDir})
-	cmd2.SilenceUsage = true
-	cmd2.SilenceErrors = true
 
-	err := cmd2.Execute()
-	if err == nil {
-		t.Fatal("expected nothing-to-do error")
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd2.Execute() })
+	if err != nil {
+		t.Fatalf("expected nothing-to-resume to exit 0, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "nothing to resume") {
-		t.Fatalf("expected nothing-to-resume error, got: %v", err)
+	if strings.TrimSpace(stdout) != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if strings.TrimSpace(stderr) != "nothing to resume" {
+		t.Fatalf("expected one stderr line %q, got %q", "nothing to resume", stderr)
+	}
+	if strings.Contains(stderr, "Usage:") || strings.Contains(stdout, "Usage:") {
+		t.Fatalf("did not expect Usage dump, stdout=%q stderr=%q", stdout, stderr)
 	}
 
 	_ = binlogDir
@@ -1081,6 +1083,148 @@ func TestWorkflowResumeExplicitRerun(t *testing.T) {
 	}
 
 	_ = binlogDir
+}
+
+func TestWorkflowValidateWarnsOnPlaceholderAndMissingFromDir(t *testing.T) {
+	planDir := t.TempDir()
+	planPath := filepath.Join(planDir, "placeholder-plan.yaml")
+	plan := `
+version: 1
+workflow:
+  name: placeholder-sample
+  output_dir: ./artifacts
+defaults:
+  input:
+    from_dir: PLACEHOLDER/binlog
+    prefix: mysql-bin.
+windows:
+  - name: week1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "validate", planPath, "--format", "json"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("expected validate to stay valid with warnings, got: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		Valid    bool     `json:"valid"`
+		Warnings []string `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if !decoded.Valid {
+		t.Fatalf("expected valid=true, got %#v", decoded)
+	}
+	joined := strings.Join(decoded.Warnings, "\n")
+	if !strings.Contains(joined, "placeholder") || !strings.Contains(joined, "does not exist") {
+		t.Fatalf("expected placeholder and missing from_dir warnings, got %v", decoded.Warnings)
+	}
+}
+
+func TestWorkflowStatusFailedDiscoveryIsNotComplete(t *testing.T) {
+	planDir := t.TempDir()
+	outputDir := filepath.Join(t.TempDir(), "artifacts")
+	plan := strings.ReplaceAll(`
+version: 1
+workflow:
+  name: missing-input
+  output_dir: PLACEHOLDER
+defaults:
+  input:
+    from_dir: /nonexistent/path/mysql
+    prefix: mysql-bin.
+windows:
+  - name: week1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`, "PLACEHOLDER", outputDir)
+	planPath := filepath.Join(planDir, "plan.yaml")
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	runCmd := NewRootCommand()
+	runCmd.SetArgs([]string{"workflow", "run", planPath, "--output-dir", outputDir})
+	runCmd.SilenceUsage = true
+	runCmd.SilenceErrors = true
+	if err := runCmd.Execute(); err == nil {
+		t.Fatal("expected workflow run to fail when from_dir is missing")
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", outputDir, "--format", "json"})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	var decoded struct {
+		Status       string `json:"status"`
+		RuntimeState string `json:"runtime_state"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("decode json output: %v\n%s", err, stdout)
+	}
+	if decoded.Status != "failed" {
+		t.Fatalf("expected status failed, got %#v", decoded)
+	}
+	if decoded.RuntimeState == "complete" {
+		t.Fatalf("runtime_state must not be complete after failed discovery, got %#v\n%s", decoded, stdout)
+	}
+}
+
+func TestIncidentYAMLRunsFromRepoRoot(t *testing.T) {
+	repoRoot, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatalf("repo root: %v", err)
+	}
+	planPath := filepath.Join(repoRoot, "incident.yaml")
+	if _, err := os.Stat(planPath); err != nil {
+		t.Fatalf("expected shipped incident.yaml at repo root: %v", err)
+	}
+	t.Chdir(repoRoot)
+
+	outputDir := t.TempDir()
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "run", "incident.yaml", "--output-dir", outputDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("workflow run incident.yaml: %v", err)
+	}
+
+	for _, name := range []string{"week1", "week2"} {
+		if _, err := os.Stat(filepath.Join(outputDir, "analyze", name+".json")); err != nil {
+			t.Fatalf("expected analyze artifact %s: %v", name, err)
+		}
+	}
+
+	resumeCmd := NewRootCommand()
+	resumeCmd.SetArgs([]string{"workflow", "resume", outputDir})
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return resumeCmd.Execute() })
+	if err != nil {
+		t.Fatalf("resume after successful incident.yaml run: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "nothing to resume" {
+		t.Fatalf("expected nothing to resume, stdout=%q stderr=%q", stdout, stderr)
+	}
 }
 
 func TestWorkflowValidateTextOutputForValidPlan(t *testing.T) {

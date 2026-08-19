@@ -75,6 +75,14 @@ If you want to see what a successful run looks like before wiring it into your o
 - text report: `docs/examples/analyze-output.txt`
 - JSON report: `docs/examples/analyze-output.json`
 
+To try a multi-step workflow without a local MySQL datadir, run the shipped sample plan from the repository root:
+
+```bash
+binlogviz workflow run incident.yaml
+```
+
+`incident.yaml` points `from_dir` at `cmd/binlogviz/testdata/sample-binlog` (the same 1500-byte ROW fixture as `minimal.binlog`). After a successful run, `binlogviz workflow resume ./artifacts/incident` exits 0 and prints `nothing to resume`.
+
 ## Next Steps
 
 Once the first run works, continue with:

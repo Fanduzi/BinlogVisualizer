@@ -721,8 +721,8 @@ binlogviz compare current.json baseline.json --format html > compare.html
 
 代表性含义：
 
-- `Runtime State: complete` 表示所有已记录 artifact 都存在，且在保存的 plan 仍可加载时，resume 所需的可复用 snapshot 也仍然存在
-- `Runtime State: incomplete` 表示至少有一个已记录 artifact 缺失，或者某个成功的 analyze 步骤所需的可复用 snapshot 已缺失
+- `Runtime State: complete` 表示 manifest 有 `resolved_input_files`、至少有一个成功 step、所有已记录 artifact 都存在，且在保存的 plan 仍可加载时 resume 所需的可复用 snapshot 也仍然存在
+- `Runtime State: incomplete` 表示没有成功 step、`resolved_input_files` 为空、至少有一个已记录 artifact 缺失，或者某个成功的 analyze 步骤所需的可复用 snapshot 已缺失
 - `Resumable: yes` 表示该 root 通过了 resume 校验
 - `Resumable: no` 且带 `Reason:` 表示该 root 仍可检查，但当前不能 resume
 
