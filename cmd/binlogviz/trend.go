@@ -19,6 +19,7 @@ type trendOptions struct {
 	baselineSnapshot string
 	snapshotDir      string
 	topTables        int
+	order            string
 }
 
 func newTrendCommand() *cobra.Command {
@@ -38,7 +39,7 @@ func newTrendCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTrend(opts, args, cmd.OutOrStdout())
+			return runTrend(opts, args, cmd.OutOrStdout(), cmd.ErrOrStderr())
 		},
 	}
 
@@ -47,11 +48,12 @@ func newTrendCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.baselineSnapshot, "baseline-snapshot", "", "Optional snapshot name to use as baseline deltas")
 	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to load snapshots from")
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, "Number of top tables to include in trend output")
+	cmd.Flags().StringVar(&opts.order, "order", "cli", "Trend point order: cli (keep argument/selection order) or time (sort by window start_time)")
 
 	return cmd
 }
 
-func runTrend(opts *trendOptions, args []string, out io.Writer) error {
+func runTrend(opts *trendOptions, args []string, out, errOut io.Writer) error {
 	switch opts.format {
 	case "text", "json", "html":
 	default:
@@ -77,9 +79,17 @@ func runTrend(opts *trendOptions, args []string, out io.Writer) error {
 		Points:      points,
 		Baseline:    baseline,
 		TopTables:   opts.topTables,
+		Order:       opts.order,
 	})
 	if err != nil {
 		return err
+	}
+	if result.Reordered {
+		names := make([]string, 0, len(result.Points))
+		for _, point := range result.Points {
+			names = append(names, point.Snapshot.Name)
+		}
+		fmt.Fprintf(errOut, "trend: reordered by window start_time: %s\n", strings.Join(names, ", "))
 	}
 
 	var output string

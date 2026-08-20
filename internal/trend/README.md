@@ -7,7 +7,7 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 | File | Responsibility |
 |------|----------------|
 | `model.go` | Defines trend build inputs, ordered point models, baseline deltas, table and pattern movement series, and renderer-facing result contracts. |
-| `build.go` | Validates snapshot metadata, orders trend points by `snapshot.window.start_time`, computes per-point operation totals, baseline deltas, table and pattern movement series, and aggregate insights. |
+| `build.go` | Validates snapshot metadata, keeps explicit/workflow input order by default (`--order cli`), optionally sorts by `snapshot.window.start_time` (`--order time`), computes per-point operation totals, baseline deltas, table and pattern movement series, and aggregate insights. |
 | `patterns.go` | Builds per-pattern movement series across ordered trend points. |
 | `summary.go` | Selects capped trend findings from pattern, table, and concentration changes. |
 | `evidence.go` | Maps trend findings back to stable section anchors and evidence references. |
@@ -36,7 +36,7 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 ## Notes
 
 - Trend input is snapshot-oriented; it does not accept raw binlog files directly.
-- Ordering is always derived from `snapshot.window.start_time`, not CLI order or snapshot creation time.
+- Default ordering is the operator's input order (`cli`): explicit `trend A B` stays A→B, and workflow snapshot lists stay as written. `--order time` sorts by `snapshot.window.start_time` and records `reordered` when that changes the story.
 - Baseline handling is additive: a baseline can be loaded for deltas without becoming a plotted trend point.
 - Pattern trends are first-class trend data and are available in text, JSON, and HTML output.
 - Trend summary findings, bounded drilldowns, evidence refs, and recommendations are derived inside this module from the same deterministic trend result.

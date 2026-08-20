@@ -95,6 +95,11 @@ type InputTransaction struct {
 	Duration           string         `json:"duration"`
 	TotalRows          int            `json:"total_rows"`
 	EventCount         int            `json:"event_count"`
+	BinlogBytes        int64          `json:"binlog_bytes,omitempty"`
+	BinlogFileStart    string         `json:"binlog_file_start,omitempty"`
+	BinlogFileEnd      string         `json:"binlog_file_end,omitempty"`
+	PosStart           int64          `json:"pos_start,omitempty"`
+	PosEnd             int64          `json:"pos_end,omitempty"`
 	Tables             map[string]int `json:"tables,omitempty"`
 	Operations         map[string]int `json:"operations,omitempty"`
 	QuerySummary       string         `json:"query_summary,omitempty"`
@@ -239,6 +244,11 @@ type TxnSizeCompare struct {
 	DeltaRows     int    `json:"delta_rows"`
 	BaselineKey   string `json:"baseline_key,omitempty"`
 	CurrentKey    string `json:"current_key,omitempty"`
+	BaselineTable string `json:"baseline_table,omitempty"`
+	CurrentTable  string `json:"current_table,omitempty"`
+	BaselineOp    string `json:"baseline_op,omitempty"`
+	CurrentOp     string `json:"current_op,omitempty"`
+	IdentityNew   bool   `json:"identity_new,omitempty"`
 }
 
 // TxnDurationCompare holds baseline/current/delta for transaction duration.
@@ -317,10 +327,10 @@ type SummaryDelta struct {
 type TableChange struct {
 	Schema       string  `json:"schema"`
 	Table        string  `json:"table"`
-	CurrentRows  int     `json:"current_rows"`
-	BaselineRows int     `json:"baseline_rows"`
-	DeltaRows    int     `json:"delta_rows"`
-	DeltaPercent float64 `json:"delta_percent"`
+	CurrentRows  int      `json:"current_rows"`
+	BaselineRows int      `json:"baseline_rows"`
+	DeltaRows    int      `json:"delta_rows"`
+	DeltaPercent *float64 `json:"delta_percent"`
 }
 
 type PatternChange struct {
@@ -329,7 +339,7 @@ type PatternChange struct {
 	CurrentRows        int            `json:"current_rows"`
 	BaselineRows       int            `json:"baseline_rows"`
 	DeltaRows          int            `json:"delta_rows"`
-	DeltaPercent       float64        `json:"delta_percent"`
+	DeltaPercent       *float64       `json:"delta_percent"`
 	CurrentTxnCount    int            `json:"current_txn_count"`
 	BaselineTxnCount   int            `json:"baseline_txn_count"`
 	DeltaTxnCount      int            `json:"delta_txn_count"`
