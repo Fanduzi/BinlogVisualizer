@@ -8,6 +8,8 @@ BinlogViz is built around local MySQL `ROW`-format binlog files.
 
 That boundary matters because the analyzer is designed to consume normalized row-oriented events and derive workload statistics from row activity. If your operational question depends on statement-based replay semantics, a different tooling path is more appropriate.
 
+MIXED-format files are undercounted: only ROW images are included, so Query-DML statements without row images are ignored. Do not treat a MIXED or STATEMENT report as a complete write workload. Analyze warns on stderr (`binlog appears STATEMENT or MIXED; only ROW images are counted`) and exits non-zero when the file has zero row images.
+
 In practical terms, use BinlogViz when your input is a local ROW-format binlog sequence and your goal is workload inspection rather than logical replay.
 
 ## Input Scope

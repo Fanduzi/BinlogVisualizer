@@ -109,8 +109,8 @@ func TestRunAnalysisRealFixtureMultiFileOrderedInput(t *testing.T) {
 	if !strings.Contains(out, `"total_transactions": 8`) {
 		t.Fatalf("expected eight transactions from two ordered files, got: %s", out)
 	}
-	if !strings.Contains(out, `"total_rows": 10`) {
-		t.Fatalf("expected doubled row count from two ordered files, got: %s", out)
+	if !strings.Contains(out, `"total_rows": 8`) {
+		t.Fatalf("expected doubled logical row count from two ordered files, got: %s", out)
 	}
 }
 

@@ -40,6 +40,9 @@ func TestTableAggregatorTracksRowsAndOperations(t *testing.T) {
 	if s.UpdateRows != 1 {
 		t.Fatalf("expected 1 update row, got %d", s.UpdateRows)
 	}
+	if s.UpdateEvents != 1 {
+		t.Fatalf("expected 1 update event, got %d", s.UpdateEvents)
+	}
 	// Same transaction touched this table once
 	if s.TxnCount != 1 {
 		t.Fatalf("expected 1 distinct transaction, got %d", s.TxnCount)

@@ -232,7 +232,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `total_transactions` | integer | yes | 总分析事务数 |
-| `total_rows` | integer | yes | 总影响行数 |
+| `total_rows` | integer | yes | 逻辑影响行数（UPDATE before/after image 计 1 行） |
 | `total_events` | integer | yes | 纳入分析的标准化事件总数 |
 | `start_time` | string | yes | RFC3339 时间戳；如果没有可用时间戳则为空字符串 |
 | `end_time` | string | yes | RFC3339 时间戳；如果没有可用时间戳则为空字符串 |
@@ -248,9 +248,12 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `table` | string | yes |
 | `total_rows` | integer | yes |
 | `insert_rows` | integer | yes |
-| `update_rows` | integer | yes |
+| `update_rows` | integer | yes | 逻辑 UPDATE 行（before/after image 计 1 行） |
+| `update_events` | integer | yes | UPDATE 行事件数 |
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes |
+
+`diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。
 
 ### `transactions`
 

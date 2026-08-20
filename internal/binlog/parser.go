@@ -125,12 +125,22 @@ func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, ta
 		}
 	case *replication.RowsEvent:
 		applyRowsEventTableName(raw, e, tableNames)
-		if strings.Contains(eventTypeName, "UPDATE") {
-			raw.RowCount = len(e.Rows) / 2
-		} else {
-			raw.RowCount = len(e.Rows)
-		}
+		raw.RowCount = logicalRowCount(eventTypeName, len(e.Rows))
 	}
+}
+
+// logicalRowCount converts raw row-image counts into DBA-facing logical rows.
+// UPDATE events store before/after images as consecutive rows.
+func logicalRowCount(eventTypeName string, imageCount int) int {
+	if isUpdateRowsEventName(eventTypeName) {
+		return imageCount / 2
+	}
+	return imageCount
+}
+
+func isUpdateRowsEventName(eventTypeName string) bool {
+	et := strings.ToUpper(eventTypeName)
+	return strings.Contains(et, "UPDATE") && strings.Contains(et, "ROW")
 }
 
 func applyRowsEventTableName(raw *RawEvent, event *replication.RowsEvent, tableNames map[uint64]cachedTableName) {

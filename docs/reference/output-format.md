@@ -232,7 +232,7 @@ The top-level JSON object always contains these fields:
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `total_transactions` | integer | yes | Total analyzed transactions |
-| `total_rows` | integer | yes | Total affected rows |
+| `total_rows` | integer | yes | Total logical affected rows (UPDATE before/after images count as one row) |
 | `total_events` | integer | yes | Total normalized events included in analysis |
 | `start_time` | string | yes | RFC3339 timestamp, or empty string when no timestamp is available |
 | `end_time` | string | yes | RFC3339 timestamp, or empty string when no timestamp is available |
@@ -248,9 +248,12 @@ The top-level JSON object always contains these fields:
 | `table` | string | yes |
 | `total_rows` | integer | yes |
 | `insert_rows` | integer | yes |
-| `update_rows` | integer | yes |
+| `update_rows` | integer | yes | Logical UPDATE rows (before/after images count as one row) |
+| `update_events` | integer | yes | Number of UPDATE row events |
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes |
+
+`diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images.
 
 ### `transactions`
 
