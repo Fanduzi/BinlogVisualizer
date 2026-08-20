@@ -523,6 +523,8 @@ The plan file uses YAML with `version: 1`. The root sections are:
 - `compare` — optional compare jobs referencing named windows
 - `trend` — optional trend jobs referencing named windows
 
+A runnable sample plan ships at the repository root as `incident.yaml`. It points `from_dir` at `cmd/binlogviz/testdata/sample-binlog` so `binlogviz workflow run incident.yaml` works without a local MySQL datadir.
+
 Example plan:
 
 ```yaml
@@ -647,7 +649,7 @@ The command is read-only:
 `workflow status` reports these top-level runtime facts:
 
 - workflow name, output root, manifest version, mode, attempt, and manifest status
-- `runtime_state`, which is `complete` when all recorded artifacts are present and, if the saved plan can be loaded, reusable snapshots needed for resume are intact; otherwise `incomplete`
+- `runtime_state`, which is `complete` only when the manifest has `resolved_input_files`, at least one successful step, all recorded artifacts are present, and, if the saved plan can be loaded, reusable snapshots needed for resume are intact; otherwise `incomplete`. A failed discovery with empty steps is `incomplete`, not `complete`.
 - `resumable`, which is `true` only when the workflow root passes resume validation
 - `resume_error`, which explains why resume is unavailable for legacy manifests, missing plan files, plan hash mismatches, invalid plan loads, or other resume guard failures
 - persisted `workflow_summary`, with normalized `findings`, `recommendations`, and `warnings` arrays copied from the manifest without recomputation
@@ -799,6 +801,8 @@ binlogviz workflow validate <plan.yaml> --format json
 
 Validation covers workflow metadata, window definitions, named references, duplicate compare/trend job names, and duplicate format entries inside compare/trend jobs. The command does not inspect `output_dir`, `manifest.json`, `index.html`, or any existing runtime artifacts.
 
+A structurally valid plan still exits zero when `defaults.input.from_dir` looks like a placeholder (for example `PLACEHOLDER/binlog`) or does not exist. Those cases are reported as `warnings` in text and JSON output. They do not make the plan invalid.
+
 ### Flags
 
 | Flag | Default | Description |
@@ -809,7 +813,7 @@ Validation covers workflow metadata, window definitions, named references, dupli
 
 - exits zero when the plan is valid
 - writes a text or JSON summary to `stdout`
-- reports workflow name, window count, compare job count, trend job count, and output root
+- reports workflow name, window count, compare job count, trend job count, output root, and any `from_dir` warnings
 
 ### Failure contract
 
@@ -851,7 +855,7 @@ binlogviz workflow resume <output_dir> --snapshot-dir /tmp/snapshots
 binlogviz workflow resume <output_dir> --rerun analyze:week2 --rerun compare:incident_vs_baseline
 ```
 
-`workflow resume` continues a previously executed workflow from its output directory. It reads the existing `manifest.json`, reuses successful steps, and reruns failed or missing ones.
+`workflow resume` continues a previously executed workflow from its output directory. It reads the existing `manifest.json`, reuses successful steps, and reruns failed or missing ones. If every step already succeeded with intact artifacts and no `--rerun` selector is given, the command exits 0 and prints one `stderr` line: `nothing to resume`. Use `--rerun` to force work on a successful root.
 
 ### Flags
 

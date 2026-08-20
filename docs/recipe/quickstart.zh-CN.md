@@ -75,6 +75,14 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 - 文本报告：`docs/examples/analyze-output.txt`
 - JSON 报告：`docs/examples/analyze-output.json`
 
+如果要在没有本机 MySQL 数据目录的情况下试跑多步 workflow，从仓库根目录执行：
+
+```bash
+binlogviz workflow run incident.yaml
+```
+
+`incident.yaml` 的 `from_dir` 指向 `cmd/binlogviz/testdata/sample-binlog`（与 `minimal.binlog` 相同的 1500 字节 ROW 样本）。一次成功 run 之后，`binlogviz workflow resume ./artifacts/incident` 会以 0 退出，并打印 `nothing to resume`。
+
 ## 下一步
 
 当第一次运行已经成功后，继续阅读：

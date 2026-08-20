@@ -647,7 +647,7 @@ binlogviz workflow status <output_dir> --format json
 `workflow status` 会报告以下顶层运行时事实：
 
 - workflow 名称、输出根目录、manifest 版本、mode、attempt 和 manifest status
-- `runtime_state`：当所有已记录 artifact 都存在，且在保存的 plan 可以成功加载时，resume 所需的可复用 snapshot 也完整时为 `complete`；否则为 `incomplete`
+- `runtime_state`：仅当 manifest 有 `resolved_input_files`、至少有一个成功 step、所有已记录 artifact 都存在，且在保存的 plan 可以成功加载时 resume 所需的可复用 snapshot 也完整时为 `complete`；否则为 `incomplete`。输入发现失败、steps 为空时是 `incomplete`，不是 `complete`。
 - `resumable`：只有在该 workflow root 通过 resume 校验时才为 `true`
 - `resume_error`：当 legacy manifest、plan 文件缺失、plan 哈希不匹配、plan 加载失败或其他 resume guard 失败时，用于解释为什么不能 resume
 - 已持久化的 `workflow_summary`，其中 `findings`、`recommendations` 和 `warnings` 会以规范化数组形式直接从 manifest 透传，不会在 status 中重建
@@ -799,6 +799,8 @@ binlogviz workflow validate <plan.yaml> --format json
 
 校验覆盖 workflow 元数据、window 定义、命名引用、重复 compare / trend 作业名，以及 compare / trend 作业内重复的 format 条目。该命令不会检查 `output_dir`、`manifest.json`、`index.html` 或任何已有运行产物。
 
+如果 plan 结构合法，但 `defaults.input.from_dir` 看起来像占位符（例如 `PLACEHOLDER/binlog`）或不存在，命令仍以零状态退出，并在文本 / JSON 输出中给出 `warnings`。这些 warning 不会把 plan 判为 invalid。
+
 ### 参数
 
 | Flag | 默认值 | 说明 |
@@ -809,7 +811,7 @@ binlogviz workflow validate <plan.yaml> --format json
 
 - plan 合法时以零状态退出
 - 向 `stdout` 写出文本或 JSON 摘要
-- 输出 workflow 名称、window 数量、compare 作业数量、trend 作业数量和 output root
+- 输出 workflow 名称、window 数量、compare 作业数量、trend 作业数量、output root，以及任何 `from_dir` warning
 
 ### 失败契约
 
@@ -851,7 +853,7 @@ binlogviz workflow resume <output_dir> --snapshot-dir /tmp/snapshots
 binlogviz workflow resume <output_dir> --rerun analyze:week2 --rerun compare:incident_vs_baseline
 ```
 
-`workflow resume` 从已有的输出目录继续执行之前运行过的 workflow。它会读取已有的 `manifest.json`，复用成功步骤，并重跑失败或缺失的步骤。
+`workflow resume` 从已有的输出目录继续执行之前运行过的 workflow。它会读取已有的 `manifest.json`，复用成功步骤，并重跑失败或缺失的步骤。如果所有步骤都已成功、产物完整，且没有指定 `--rerun`，命令以 0 退出，并在 `stderr` 打一行 `nothing to resume`。需要强制重跑时加 `--rerun`。
 
 ### 参数
 

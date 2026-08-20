@@ -76,6 +76,7 @@ When `plan_path` is untrusted:
 
 - `LoadPlan(io.Reader) (Plan, error)` — Decodes and validates a YAML workflow plan.
 - `ValidatePlan(Plan) error` — Checks structural and cross-reference rules, including duplicate window, compare-job, and trend-job names.
+- `PlanInputWarnings(Plan) []string` — Non-fatal warnings for placeholder or missing `defaults.input.from_dir`.
 - `ArtifactPath(root, kind, name, format string) string` — Resolves deterministic artifact file paths.
 - `BuildDescription(plan Plan) Description` — Builds a static workflow preview from plan-only data using deterministic artifact naming.
 - `Description` / `WindowDescription` / `CompareDescription` / `TrendDescription` — Structured static preview model for text/json rendering.
@@ -103,7 +104,8 @@ Exported from `resume.go`:
 - `ParseRerunSelectors(plan Plan, raw []string) ([]RerunSelector, error)` — Parses `--rerun kind:name` flags and validates against plan.
 - `ValidateResumableManifest(m Manifest, outputDir string, planPath string, planSHA256 string) error` — Checks manifest is resumable (v2, trust-boundary validation, matching plan hash, has input files).
 - `ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error)` — Validates that `planPath` resolves to the trusted workflow-local rooted `plan.yaml`, rejects outside-root/symlink-escaped/nested/renamed paths, and returns the canonical absolute path for subsequent file operations.
-- `BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error)` — Builds dependency-aware step list with invalidation propagation.
+- `BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error)` — Builds dependency-aware step list with invalidation propagation. Returns `ErrNothingToResume` when every step already succeeded with intact artifacts and no `--rerun` selector was given.
+- `ErrNothingToResume` — Sentinel for a successful root with nothing left to execute.
 
 ## Update Rule
 

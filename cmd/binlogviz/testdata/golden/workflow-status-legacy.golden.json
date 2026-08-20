@@ -5,7 +5,7 @@
   "mode": "",
   "attempt": 0,
   "status": "failed",
-  "runtime_state": "complete",
+  "runtime_state": "incomplete",
   "resumable": false,
   "resume_error": "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead",
   "workflow_summary": {

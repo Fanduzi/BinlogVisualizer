@@ -1,11 +1,16 @@
 package workflow
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// ErrNothingToResume is returned when every planned step already succeeded
+// with intact artifacts and no --rerun selector was given.
+var ErrNothingToResume = errors.New("nothing to resume")
 
 // RerunSelector identifies a single step to rerun.
 type RerunSelector struct {
@@ -240,7 +245,7 @@ func BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string
 		return ResumePlan{}, err
 	}
 	if !hasWork {
-		return ResumePlan{}, fmt.Errorf("nothing to resume: all steps succeeded with intact artifacts and no explicit rerun requested")
+		return ResumePlan{}, ErrNothingToResume
 	}
 
 	updated := m

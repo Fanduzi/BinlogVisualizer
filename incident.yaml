@@ -1,0 +1,46 @@
+# Runnable sample plan for:
+#   binlogviz workflow run incident.yaml
+#
+# Run from the repository root. from_dir points at the shipped 1500-byte
+# MySQL 5.7 ROW fixture (no local /var/lib/mysql required).
+#
+# Raw fixture URL (same bytes as mysql-bin.000001 below):
+#   https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/sample-binlog/mysql-bin.000001
+#
+# The fixture carries a fixed historical timestamp, so both windows use a
+# wide range. This sample demonstrates run / status / resume --rerun /
+# clean / export, not time-boundary filtering.
+
+version: 1
+
+workflow:
+  name: incident
+  output_dir: ./artifacts/incident
+
+defaults:
+  input:
+    from_dir: cmd/binlogviz/testdata/sample-binlog
+    prefix: mysql-bin.
+  analyze:
+    format: json
+  snapshot:
+    save: false
+
+windows:
+  - name: week1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+  - name: week2
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+
+compare:
+  - name: week2_vs_week1
+    current: week2
+    baseline: week1
+    formats: [json, html]
+
+trend:
+  - name: weekly_series
+    snapshots: [week1, week2]
+    formats: [json, html]

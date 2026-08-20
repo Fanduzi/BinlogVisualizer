@@ -101,16 +101,23 @@ binlogviz trend --from-snapshots 'incident_week*' \
 
 ### 用一份 plan 文件跑多步调查
 
+仓库自带一份可运行的 `incident.yaml`，`from_dir` 指向 `cmd/binlogviz/testdata/sample-binlog` 里的 1500 字节 ROW 样本。在仓库根目录执行下面第一行命令，不需要本机 `/var/lib/mysql`：
+
 ```bash
 binlogviz workflow run incident.yaml
-tree artifacts/incident-investigation
+tree artifacts/incident
 ```
+
+同一份 plan 和样本也可以通过 raw URL 下载：
+
+- plan：https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/incident.yaml
+- 样本 binlog：https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/sample-binlog/mysql-bin.000001
 
 `workflow run` 执行一份声明式 YAML plan，定义分析窗口、可选 compare 作业和可选 trend 作业。它会产生一个确定性的 artifact 目录，包含 `analyze/`、`compare/`、`trend/`、一份 `manifest.json` 和一个 `index.html` 落地页。`manifest.json` 会始终持久化一个 `workflow_summary` 对象，其中包含 `findings`、`recommendations` 和 `warnings` 三个数组。BinlogViz 只会基于成功 compare/trend 步骤产出的 JSON artifact 以 best-effort 方式重建这份 summary；如果 summary 输入缺失或不可读，只会追加 warnings，不会改变 workflow 或步骤的状态语义。只要 summary 中存在内容，`index.html` 就会渲染 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings` 分区，并优先链接到 HTML 源报告，必要时回退到 JSON。v1 中 `stdout` 留空，所有状态走 `stderr`。plan schema 和参数请参见 [CLI 参考](docs/reference/cli.zh-CN.md)。
 
-如果 workflow 运行中途失败，`workflow resume` 可以从已有的输出目录继续执行：复用成功步骤，重跑失败或缺失的步骤，并支持通过 `--rerun` 选择器强制重跑指定步骤。Resume 会在 plan 文件变更或 manifest 是旧版 pre-v2 产物时拒绝执行。Resume 还会拒绝解析到 workflow root 之外或通过符号链接逃逸的 plan 路径（信任边界加固）。`workflow status` 会报告同样的信任检查：不可信的 plan 仍会产生完整状态输出，但会将 `resumable` 设为 `false`，并在 `resume_error` 中给出信任边界说明。
+如果 workflow 运行中途失败，`workflow resume` 可以从已有的输出目录继续执行：复用成功步骤，重跑失败或缺失的步骤，并支持通过 `--rerun` 选择器强制重跑指定步骤。一次已经全部成功的 run 之后再执行 `workflow resume` 会以 0 退出，并在 `stderr` 打一行 `nothing to resume`；需要强制重跑时加 `--rerun`。Resume 会在 plan 文件变更或 manifest 是旧版 pre-v2 产物时拒绝执行。Resume 还会拒绝解析到 workflow root 之外或通过符号链接逃逸的 plan 路径（信任边界加固）。`workflow status` 会报告同样的信任检查：不可信的 plan 仍会产生完整状态输出，但会将 `resumable` 设为 `false`，并在 `resume_error` 中给出信任边界说明。
 
-在真正执行之前，`workflow validate` 会只基于 `plan.yaml` 做静态可运行性检查，`workflow describe` 则会预览该 plan 将产生的 analyze / compare / trend artifact 布局。两个命令都支持 `--format text` 和 `--format json`，且只读取 plan 文件，不会检查 `output_dir`、`manifest.json` 或 `index.html`。
+在真正执行之前，`workflow validate` 会只基于 `plan.yaml` 做静态可运行性检查，`workflow describe` 则会预览该 plan 将产生的 analyze / compare / trend artifact 布局。两个命令都支持 `--format text` 和 `--format json`，且只读取 plan 文件，不会检查 `output_dir`、`manifest.json` 或 `index.html`。如果 `defaults.input.from_dir` 看起来像占位符，或不存在，`workflow validate` 仍会以 0 退出，但会给出 warning。
 
 `workflow status` 是针对已有 workflow root 的只读运行时检查命令。它会读取 `manifest.json`，检查 artifact presence，报告 `runtime_state`、`resumable` 和 `resume_error`，在 `--format json` 下直接带出已持久化的 `workflow_summary`，并在保存的 plan 仍可加载时给出 dry `resume_preview`。文本输出只会在这些已持久化数组非空时渲染 `Workflow Recommendations`、`Workflow Findings` 和 `Workflow Summary Warnings`。它不会执行步骤、不会重建 workflow summary，也不会重写任何 workflow 输出。
 
