@@ -101,16 +101,23 @@ binlogviz trend --from-snapshots 'incident_week*' \
 
 ### Run a multi-step investigation from one plan file
 
+The repository ships a runnable `incident.yaml` that points at the 1500-byte ROW sample in `cmd/binlogviz/testdata/sample-binlog`. From the repository root, this first command does not need a local `/var/lib/mysql`:
+
 ```bash
 binlogviz workflow run incident.yaml
-tree artifacts/incident-investigation
+tree artifacts/incident
 ```
+
+The same plan and fixture are also available as raw URLs:
+
+- plan: https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/incident.yaml
+- sample binlog: https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/sample-binlog/mysql-bin.000001
 
 `workflow run` executes a declarative YAML plan that defines analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact directory with `analyze/`, `compare/`, `trend/`, a `manifest.json` that records every step's status and output path, and an `index.html` landing page. `manifest.json` always persists a `workflow_summary` object with `findings`, `recommendations`, and `warnings` arrays. BinlogViz rebuilds that summary best-effort from successful compare/trend JSON artifacts only; missing or unreadable summary inputs become warnings and never change workflow or step status semantics. When summary items exist, `index.html` surfaces them as `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings`, linking to the preferred HTML source report and falling back to JSON when needed. `stdout` stays empty in v1; all status goes to `stderr`. See [CLI Reference](docs/reference/cli.md) for the plan schema and flags.
 
-If a workflow run fails partway through, `workflow resume` picks up from the existing output directory: it reuses successful steps, reruns failed or missing ones, and supports `--rerun` selectors to force specific steps. Resume refuses to proceed if the plan file changed or the manifest is from a legacy pre-v2 run. Resume also rejects plan paths that resolve outside the workflow root or escape via symlinks (trust-boundary hardening). `workflow status` reports the same trust check: an untrusted plan still produces full status output but sets `resumable` to `false` with a trust-boundary `resume_error`.
+If a workflow run fails partway through, `workflow resume` picks up from the existing output directory: it reuses successful steps, reruns failed or missing ones, and supports `--rerun` selectors to force specific steps. After a fully successful run, `workflow resume` exits 0 and prints `nothing to resume` on `stderr`; use `--rerun` to force work. Resume refuses to proceed if the plan file changed or the manifest is from a legacy pre-v2 run. Resume also rejects plan paths that resolve outside the workflow root or escape via symlinks (trust-boundary hardening). `workflow status` reports the same trust check: an untrusted plan still produces full status output but sets `resumable` to `false` with a trust-boundary `resume_error`.
 
-Before execution, `workflow validate` checks whether a plan is statically runnable from `plan.yaml` alone, and `workflow describe` previews the deterministic analyze / compare / trend artifact layout that the plan would produce. Both commands support `--format text` and `--format json`, read only the plan file, and do not inspect `output_dir`, `manifest.json`, or `index.html`.
+Before execution, `workflow validate` checks whether a plan is statically runnable from `plan.yaml` alone, and `workflow describe` previews the deterministic analyze / compare / trend artifact layout that the plan would produce. Both commands support `--format text` and `--format json`, read only the plan file, and do not inspect `output_dir`, `manifest.json`, or `index.html`. `workflow validate` still exits 0 for a structurally valid plan, but warns when `defaults.input.from_dir` looks like a placeholder or does not exist.
 
 `workflow status` is the read-only runtime inspection command for an existing workflow root. It reads `manifest.json`, checks artifact presence, reports `runtime_state`, `resumable`, and `resume_error`, carries the persisted `workflow_summary` through `--format json`, and includes a dry `resume_preview` when the saved plan can still be loaded. Text output renders `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings` only when those persisted arrays are non-empty. It never executes steps, never rebuilds workflow summary, and never rewrites workflow outputs.
 

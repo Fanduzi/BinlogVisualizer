@@ -1,5 +1,9 @@
 version: 1
 
+# Test-only plan template. Tests substitute PLACEHOLDER/{artifacts,binlog}
+# with real temp paths. Do not run this file as-is: validate warns, run fails.
+# For a runnable sample, use the repository-root incident.yaml.
+#
 # Multi-window workflow fixture.  Both windows use a wide time range because
 # the test binlog file carries a fixed historical timestamp; narrower ranges
 # would filter out all events.  This fixture validates multi-window

@@ -3,6 +3,7 @@ package binlogviz
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -268,7 +269,7 @@ func newWorkflowValidateCommand() *cobra.Command {
 				return err
 			}
 
-			return writeWorkflowValidateSuccess(cmd.OutOrStdout(), opts.format, plan)
+			return writeWorkflowValidateSuccess(cmd.OutOrStdout(), opts.format, plan, workflow.PlanInputWarnings(plan))
 		},
 	}
 
@@ -346,14 +347,18 @@ func newWorkflowResumeCommand() *cobra.Command {
 	return cmd
 }
 
-func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Plan) error {
+func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Plan, warnings []string) error {
+	if warnings == nil {
+		warnings = []string{}
+	}
 	payload := struct {
-		Valid        bool   `json:"valid"`
-		WorkflowName string `json:"workflow_name"`
-		Windows      int    `json:"windows"`
-		CompareJobs  int    `json:"compare_jobs"`
-		TrendJobs    int    `json:"trend_jobs"`
-		OutputDir    string `json:"output_dir"`
+		Valid        bool     `json:"valid"`
+		WorkflowName string   `json:"workflow_name"`
+		Windows      int      `json:"windows"`
+		CompareJobs  int      `json:"compare_jobs"`
+		TrendJobs    int      `json:"trend_jobs"`
+		OutputDir    string   `json:"output_dir"`
+		Warnings     []string `json:"warnings"`
 	}{
 		Valid:        true,
 		WorkflowName: plan.Workflow.Name,
@@ -361,6 +366,7 @@ func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Pl
 		CompareJobs:  len(plan.Compare),
 		TrendJobs:    len(plan.Trend),
 		OutputDir:    plan.Workflow.OutputDir,
+		Warnings:     warnings,
 	}
 
 	if format == "json" {
@@ -372,14 +378,27 @@ func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Pl
 		return err
 	}
 
-	_, err := fmt.Fprintf(out, "Workflow plan valid\n- workflow: %s\n- windows: %d\n- compare jobs: %d\n- trend jobs: %d\n- output root: %s\n",
+	if _, err := fmt.Fprintf(out, "Workflow plan valid\n- workflow: %s\n- windows: %d\n- compare jobs: %d\n- trend jobs: %d\n- output root: %s\n",
 		plan.Workflow.Name,
 		len(plan.Windows),
 		len(plan.Compare),
 		len(plan.Trend),
 		plan.Workflow.OutputDir,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	if len(warnings) == 0 {
+		return nil
+	}
+	if _, err := fmt.Fprintln(out, "Warnings"); err != nil {
+		return err
+	}
+	for _, warning := range warnings {
+		if _, err := fmt.Fprintf(out, "- %s\n", warning); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func writeWorkflowValidateFailure(out io.Writer, format string, err error) {
@@ -815,6 +834,10 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 
 	// Build the resume plan
 	resumePlan, err := workflow.BuildResumePlan(plan, mf, rerunSelectors, outputDir, effectiveSnapshotDir)
+	if errors.Is(err, workflow.ErrNothingToResume) {
+		fmt.Fprintln(stderr, "nothing to resume")
+		return nil
+	}
 	if err != nil {
 		return err
 	}

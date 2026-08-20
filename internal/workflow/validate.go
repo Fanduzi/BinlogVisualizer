@@ -2,6 +2,8 @@ package workflow
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -107,6 +109,44 @@ func ValidatePlan(plan Plan) error {
 	}
 
 	return nil
+}
+
+// PlanInputWarnings returns non-fatal operator warnings for defaults.input.from_dir.
+// Validate still succeeds; these catch plans that are structurally valid but
+// obviously not runnable (placeholders or a missing input directory).
+func PlanInputWarnings(plan Plan) []string {
+	fromDir := strings.TrimSpace(plan.Defaults.Input.FromDir)
+	if fromDir == "" {
+		return nil
+	}
+
+	var warnings []string
+	if looksLikeInputPlaceholder(fromDir) {
+		warnings = append(warnings, fmt.Sprintf("defaults.input.from_dir looks like a placeholder: %s", fromDir))
+	}
+	info, err := os.Stat(fromDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			warnings = append(warnings, fmt.Sprintf("defaults.input.from_dir does not exist: %s", fromDir))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("defaults.input.from_dir is not readable: %s (%v)", fromDir, err))
+		}
+		return warnings
+	}
+	if !info.IsDir() {
+		warnings = append(warnings, fmt.Sprintf("defaults.input.from_dir is not a directory: %s", fromDir))
+	}
+	return warnings
+}
+
+func looksLikeInputPlaceholder(path string) bool {
+	lower := strings.ToLower(path)
+	for _, token := range []string{"placeholder", "changeme", "your-binlog", "path/to", "<", "fixme", "todo", "xxx"} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateFormats(formats []string, kind, name string) error {

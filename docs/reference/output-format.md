@@ -720,8 +720,8 @@ It then renders:
 
 Representative meanings:
 
-- `Runtime State: complete` means all recorded artifacts exist and, when the saved plan can still be loaded, reusable snapshots needed for resume are still present
-- `Runtime State: incomplete` means at least one recorded artifact is missing, or a reusable snapshot needed by a successful analyze step is missing
+- `Runtime State: complete` means the manifest has `resolved_input_files`, at least one successful step, all recorded artifacts exist, and, when the saved plan can still be loaded, reusable snapshots needed for resume are still present
+- `Runtime State: incomplete` means there is no successful step, `resolved_input_files` is empty, at least one recorded artifact is missing, or a reusable snapshot needed by a successful analyze step is missing
 - `Resumable: yes` means the root passed resume validation
 - `Resumable: no` with `Reason:` means the root is inspectable but not resumable
 

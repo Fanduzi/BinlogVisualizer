@@ -4,5 +4,6 @@
   "windows": 2,
   "compare_jobs": 1,
   "trend_jobs": 1,
-  "output_dir": "<output-dir>"
+  "output_dir": "<output-dir>",
+  "warnings": []
 }

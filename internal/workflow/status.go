@@ -54,7 +54,7 @@ func BuildStatus(outputDir string, manifest Manifest, plan *Plan) (Status, error
 		Mode:            manifest.Mode,
 		Attempt:         manifest.Attempt,
 		Status:          manifest.Status,
-		RuntimeState:    "complete",
+		RuntimeState:    initialRuntimeState(manifest),
 		ResumeError:     "",
 		WorkflowSummary: normalizeWorkflowSummary(manifest.WorkflowSummary),
 		Steps:           make([]StepStatus, 0, len(manifest.Steps)),
@@ -105,6 +105,21 @@ func BuildStatus(outputDir string, manifest Manifest, plan *Plan) (Status, error
 		status.RuntimeState = "incomplete"
 	}
 	return status, nil
+}
+
+// initialRuntimeState is complete only when the run produced reusable work:
+// at least one successful step and a non-empty resolved input list.
+// An empty failed discovery (no steps, no files) must not look finished.
+func initialRuntimeState(manifest Manifest) string {
+	if len(manifest.ResolvedInputFiles) == 0 {
+		return "incomplete"
+	}
+	for _, step := range manifest.Steps {
+		if step.Status == "success" {
+			return "complete"
+		}
+	}
+	return "incomplete"
 }
 
 func hasMissingReusableSnapshot(outputDir string, plan Plan, manifest Manifest) bool {
