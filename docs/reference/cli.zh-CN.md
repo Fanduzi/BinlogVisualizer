@@ -95,6 +95,11 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--sql-context` | `summary` | SQL 上下文展示模式：`summary`、`off` 或 `full`。 |
 | `--top-tables` | `10` | 报告中包含的 Top 表数量。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量。 |
+| `--top` | `10` | 文本明细章节（分钟、写入形态）的默认 Top-N。 |
+| `--details` | `false` | 在文本报告中同时展开分钟明细和写入形态。 |
+| `--show-minutes` | `false` | 在文本报告中展示分钟级活动。 |
+| `--show-patterns` | `false` | 在文本报告中展示写入形态。 |
+| `--detail-store` | `none` | 可选事务明细后端：`none` 或 `duckdb`。 |
 | `--detect-spikes` | `false` | 启用写入尖峰检测。 |
 | `--large-trx-rows` | `1000` | 大事务告警的行数阈值。 |
 | `--large-trx-duration` | `30s` | 大事务告警的持续时间阈值。 |
@@ -126,6 +131,12 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 - 保存成功提示写到 `stderr`
 
 如果省略 `--snapshot-dir`，BinlogViz 会保存到 `~/.binlogviz/snapshots/<name>.json`。
+
+文本报告明细参数示例：
+
+```bash
+binlogviz analyze mysql-bin.000123 --details --show-minutes --show-patterns
+```
 
 ## `compare` 命令语法
 

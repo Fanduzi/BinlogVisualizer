@@ -1,4 +1,4 @@
-// Package report verifies concise diagnostic text rendering and opt-in detail sections.
+// Package report verifies incident-brief text rendering and opt-in detail sections.
 // input: synthetic AnalysisResult fixtures with summary, table, minute, pattern, and diagnostic evidence.
 // output: regression coverage for default diagnostic sections, table limits, and detail flags.
 // pos: text renderer regression suite guarding user-facing CLI report formatting.
@@ -77,6 +77,27 @@ func TestRenderTextTopFindingsUseSameAlertsAsJSON(t *testing.T) {
 	}
 	if strings.Contains(out, "[critical] Write spike") {
 		t.Fatalf("text findings should not invent a critical severity:\n%s", out)
+	}
+}
+
+func TestRenderTextIncidentBriefPutsTablesAndTxnsBeforeFindings(t *testing.T) {
+	result := productTextFixture()
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tables := strings.Index(out, "=== Top Tables ===")
+	txns := strings.Index(out, "=== Top Transactions ===")
+	findings := strings.Index(out, "=== Top Findings ===")
+	if tables < 0 || txns < 0 || findings < 0 {
+		t.Fatalf("missing incident-brief sections\n%s", out)
+	}
+	if !(tables < txns && txns < findings) {
+		t.Fatalf("expected tables then txns then findings, got tables=%d txns=%d findings=%d\n%s", tables, txns, findings, out)
+	}
+	if !strings.Contains(out, "ROW images / logical rows") {
+		t.Fatalf("expected ROW/logical-row capability line in summary\n%s", out)
 	}
 }
 
@@ -346,6 +367,29 @@ func TestRenderTextTopTransactionsUsesTopLimit(t *testing.T) {
 		if strings.Contains(out, token) {
 			t.Fatalf("expected top limit to hide token %q\n%s", token, out)
 		}
+	}
+}
+
+func TestRenderTextShowsUpToThreeLargestTransactions(t *testing.T) {
+	result := productTextFixture()
+	result.Diagnostics.LargestTransactions = []model.Transaction{
+		{TxnKey: "txn-largest-a", TotalRows: 5000, BinlogBytes: 4096, Tables: map[string]int{"shop.orders": 5000}},
+		{TxnKey: "txn-largest-b", TotalRows: 4000, Tables: map[string]int{"shop.users": 4000}},
+		{TxnKey: "txn-largest-c", TotalRows: 3000, Tables: map[string]int{"shop.payments": 3000}},
+		{TxnKey: "txn-largest-d", TotalRows: 2000, Tables: map[string]int{"shop.audit": 2000}},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, token := range []string{"txn-largest-a", "txn-largest-b", "txn-largest-c", "table=shop.orders", "Largest txn: 4.0KB"} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected token %q\n%s", token, out)
+		}
+	}
+	if strings.Contains(out, "txn-largest-d") {
+		t.Fatalf("expected fourth largest txn to stay hidden\n%s", out)
 	}
 }
 

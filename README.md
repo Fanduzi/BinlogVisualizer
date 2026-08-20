@@ -16,9 +16,20 @@ BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs a
 
 ## Start Here
 
-If you already have local binlog files, these are the fastest paths to useful output:
+BinlogViz is a **fast ROW-binlog summary**: hot tables, write shapes, and before/after compare. A 510 MB file is typically a few seconds.
 
-### Inspect one file quickly
+It is **not** a full STATEMENT/MIXED analyzer — those files come back empty or undercounted (only ROW images are counted). Printed positions are file evidence; use them as `mysqlbinlog --start-position` only when the reported span covers the transaction events, not an XID-only interval.
+
+### Verify install with the sample ROW binlog
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
+```
+
+The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in the repo. Future release archives also include `testdata/minimal.binlog`.
+
+### Inspect one of your own files
 
 ```bash
 binlogviz analyze mysql-bin.000123
@@ -188,12 +199,27 @@ BinlogViz is optimized for these common DBA questions:
 
 ### Preferred on macOS: Homebrew Cask
 
+Homebrew is **macOS-only**. Linux users should use the tarball or `install.sh` one-liner below.
+
 ```bash
 brew tap Fanduzi/binlogviz
 brew install --cask binlogviz
 ```
 
 This path installs the prebuilt release artifact and removes the macOS quarantine attribute during installation, so you do not need to install DuckDB separately.
+
+### Linux: tarball or install.sh
+
+```bash
+# install.sh (current release)
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.21.0/install.sh
+sh ./install.sh --version v0.21.0
+
+# or linux/amd64 tarball
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_linux_amd64.tar.gz
+tar -xzf binlogviz_0.21.0_linux_amd64.tar.gz
+install ./binlogviz /usr/local/bin/binlogviz
+```
 
 ### Preferred cross-platform fallback: Download a Release Artifact
 
@@ -265,7 +291,8 @@ The maintainer-facing smoke path verifies that one built archive can:
 ### 1. Validate one file before scaling up
 
 ```bash
-binlogviz analyze mysql-bin.000123
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
 ```
 
 Use this when you want the fastest check that:

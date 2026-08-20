@@ -35,6 +35,8 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
+      - src: cmd/binlogviz/testdata/minimal.binlog
+        dst: testdata/minimal.binlog
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"

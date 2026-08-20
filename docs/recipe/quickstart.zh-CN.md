@@ -2,6 +2,10 @@
 
 本指南提供从安装到第一次拿到有价值 `binlogviz analyze` 结果的最短路径。
 
+**适用：** ROW binlog 的热表摘要、写入形态、上线前后 compare。510 MB 级大约数秒。
+
+**不适用：** STATEMENT / 默认 MIXED（会空或只统计 ROW 子集）。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 `mysqlbinlog --start-position`。
+
 ## 1. 安装或验证 BinlogViz
 
 如果你需要带发布版本号的二进制，优先使用 release artifact；如果你是在本地开发或验证，也可以直接从源码构建。
@@ -20,11 +24,14 @@ binlogviz version
 
 ## 2. 先用一个文件验证分析链路
 
-从一个本地 `ROW` binlog 文件开始：
+先下载仓库里的样例 ROW binlog（1500 字节）：
 
 ```bash
-binlogviz analyze mysql-bin.000123
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
 ```
+
+如果已经 clone 了仓库，也可以直接 `binlogviz analyze cmd/binlogviz/testdata/minimal.binlog`。
 
 这是最快能确认以下几点的方式：
 

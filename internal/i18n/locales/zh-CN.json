@@ -231,6 +231,22 @@
     "description": "行数总数标签",
     "other": "行数总数"
   },
+  "report.label.logicalRows": {
+    "description": "逻辑行（ROW image）计数标签",
+    "other": "逻辑行"
+  },
+  "report.label.format": {
+    "description": "输入格式标签",
+    "other": "格式"
+  },
+  "report.text.rowImageSummary": {
+    "description": "默认文本报告格式边界",
+    "other": "ROW 镜像 / 逻辑行（STATEMENT/MIXED 的 Query-DML 不计入）"
+  },
+  "report.label.largestTxnBytes": {
+    "description": "最大事务字节标签",
+    "other": "最大事务"
+  },
   "report.label.totalEvents": {
     "description": "事件总数标签",
     "other": "事件总数"

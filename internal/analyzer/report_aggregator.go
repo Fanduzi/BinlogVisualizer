@@ -49,6 +49,7 @@ type ReportAggregator struct {
 	fileCoverage        model.FileCoverage
 	patterns            map[string]*model.PatternStats
 	patternOrder        []string
+	patternRepTxns      map[string][]model.Transaction
 	txnSize             txnSizeTracker
 	operationCounts     map[time.Time]operationMinuteStats
 }
@@ -99,6 +100,7 @@ func NewReportAggregator(opts Options) *ReportAggregator {
 	return &ReportAggregator{
 		opts:                opts,
 		patterns:            make(map[string]*model.PatternStats),
+		patternRepTxns:      make(map[string][]model.Transaction),
 		txnSize:             newTxnSizeTracker(),
 		operationCounts:     make(map[time.Time]operationMinuteStats),
 		alertReferencedTxns: make(map[string]model.Transaction),
@@ -215,6 +217,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 
 	// Merge largest + alert-referenced transactions into a single evidence pool.
 	evidenceTxns := mergeEvidenceTransactions(a.largest, a.alertReferencedTxns)
+	drilldownTxns := mergeEvidenceTransactions(evidenceTxns, flattenPatternRepTxns(a.patternRepTxns))
 
 	diagnostics := model.Diagnostics{
 		FileCoverage:        a.fileCoverage,
@@ -242,7 +245,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		Diagnostics:       diagnostics,
 		Alerts:            alerts,
 		Warnings:          a.warnings,
-		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, evidenceTxns, alerts),
+		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, drilldownTxns, alerts),
 	}
 }
 
@@ -272,6 +275,21 @@ func insertTopTransaction(current []model.Transaction, txn model.Transaction, li
 		current = current[:limit]
 	}
 	return current
+}
+
+func flattenPatternRepTxns(byPattern map[string][]model.Transaction) map[string]model.Transaction {
+	if len(byPattern) == 0 {
+		return nil
+	}
+	out := make(map[string]model.Transaction)
+	for _, txns := range byPattern {
+		for _, txn := range txns {
+			if txn.TxnKey != "" {
+				out[txn.TxnKey] = txn
+			}
+		}
+	}
+	return out
 }
 
 func mergeEvidenceTransactions(largest []model.Transaction, alertReferenced map[string]model.Transaction) []model.Transaction {
@@ -360,6 +378,7 @@ func (a *ReportAggregator) consumePattern(txn model.Transaction) {
 	if p.SampleQuerySummary == "" && strings.TrimSpace(txn.QuerySummary) != "" {
 		p.SampleQuerySummary = txn.QuerySummary
 	}
+	a.patternRepTxns[key] = insertTopTransaction(a.patternRepTxns[key], txn, maxRepresentativeTxns, transactionRowsBetter)
 }
 
 func (a *ReportAggregator) snapshotPatterns() []model.PatternStats {

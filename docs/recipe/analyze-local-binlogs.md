@@ -4,7 +4,14 @@ This guide focuses on practical DBA workflows for running `binlogviz analyze` ag
 
 ## Start with One File
 
-When you want the fastest confidence check, start with a single file:
+When you want the fastest confidence check, start with the sample ROW binlog:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
+```
+
+Then point the same command at one of your files:
 
 ```bash
 binlogviz analyze mysql-bin.000123

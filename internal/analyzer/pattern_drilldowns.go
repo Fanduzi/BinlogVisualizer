@@ -168,8 +168,8 @@ func buildDrilldown(c candidate, minutes []model.MinuteBucket, txns []model.Tran
 func formatWhySelected(c candidate) string {
 	parts := make([]string, 0, 2)
 	if c.dominance {
-		parts = append(parts, fmt.Sprintf("dominates workload (%.0f%% rows, %.0f%% txns)",
-			c.pattern.ShareOfRows*100, c.pattern.ShareOfTransactions*100))
+		parts = append(parts, fmt.Sprintf("dominates workload (%s rows, %s txns)",
+			formatSharePercent(c.pattern.ShareOfRows), formatSharePercent(c.pattern.ShareOfTransactions)))
 	}
 	if c.anomaly {
 		parts = append(parts, "anomalous concentration or spike alignment")
@@ -186,6 +186,18 @@ func joinWhy(parts []string) string {
 		result += " + " + parts[i]
 	}
 	return result
+}
+
+// formatSharePercent keeps sub-1% shares visible instead of rounding 0.3% to 0%.
+func formatSharePercent(share float64) string {
+	pct := share * 100
+	if pct <= 0 {
+		return "0%"
+	}
+	if pct < 1 {
+		return fmt.Sprintf("%.1f%%", pct)
+	}
+	return fmt.Sprintf("%.0f%%", pct)
 }
 
 // computeMeanRowsPerTxn calculates the average avg_rows_per_txn across all patterns.
@@ -299,14 +311,25 @@ func selectPeakMinutes(minutes []model.MinuteBucket, n int) []model.PatternPeakM
 	return result
 }
 
-// selectRepresentativeTxns returns up to N transactions sorted by TotalRows descending.
-// patternKey is used for future pattern-txn matching; currently selects from all txns.
-func selectRepresentativeTxns(txns []model.Transaction, _ string, n int) []model.PatternRepresentativeTxn {
-	if len(txns) == 0 || n <= 0 {
+// selectRepresentativeTxns returns up to N transactions that belong to patternKey
+// (same table set + ops + shape), sorted by TotalRows descending.
+func selectRepresentativeTxns(txns []model.Transaction, patternKey string, n int) []model.PatternRepresentativeTxn {
+	if len(txns) == 0 || n <= 0 || patternKey == "" {
 		return nil
 	}
 
-	top := topTransactions(txns, n, func(left, right model.Transaction) bool {
+	matched := make([]model.Transaction, 0, len(txns))
+	for _, txn := range txns {
+		key, _ := patternIdentity(txn)
+		if key == patternKey {
+			matched = append(matched, txn)
+		}
+	}
+	if len(matched) == 0 {
+		return nil
+	}
+
+	top := topTransactions(matched, n, func(left, right model.Transaction) bool {
 		if left.TotalRows != right.TotalRows {
 			return left.TotalRows > right.TotalRows
 		}

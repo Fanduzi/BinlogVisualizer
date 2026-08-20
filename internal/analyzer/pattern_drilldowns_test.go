@@ -166,11 +166,12 @@ func TestBuildPatternDrilldowns_NestedCaps(t *testing.T) {
 		{Minute: ts(10, 3), TotalRows: 5000, TxnCount: 5},
 	}
 	txns := []model.Transaction{
-		{TxnKey: "t1", TotalRows: 800, Tables: map[string]int{"a": 800}},
-		{TxnKey: "t2", TotalRows: 780, Tables: map[string]int{"a": 780}},
-		{TxnKey: "t3", TotalRows: 760, Tables: map[string]int{"a": 760}},
-		{TxnKey: "t4", TotalRows: 750, Tables: map[string]int{"a": 750}},
+		{TxnKey: "t1", TotalRows: 800, EventCount: 1, Tables: map[string]int{"a": 800}, Operations: map[string]int{"INSERT": 800}},
+		{TxnKey: "t2", TotalRows: 780, EventCount: 1, Tables: map[string]int{"a": 780}, Operations: map[string]int{"INSERT": 780}},
+		{TxnKey: "t3", TotalRows: 760, EventCount: 1, Tables: map[string]int{"a": 760}, Operations: map[string]int{"INSERT": 760}},
+		{TxnKey: "t4", TotalRows: 750, EventCount: 1, Tables: map[string]int{"a": 750}, Operations: map[string]int{"INSERT": 750}},
 	}
+	patterns[0].PatternKey, _ = patternIdentity(txns[0])
 	alerts := []model.Alert{}
 
 	result := BuildPatternDrilldowns(patterns, minutes, txns, alerts)
@@ -281,5 +282,70 @@ func TestBuildPatternDrilldowns_GlobalSpikeDoesNotFlagUnrelatedPattern(t *testin
 	}
 	if !foundP2 {
 		t.Error("expected p2 to be selected for dominance")
+	}
+}
+
+func TestSelectRepresentativeTxnsBelongToSamePattern(t *testing.T) {
+	insertLarge := model.Transaction{
+		TxnKey:     "txn-1",
+		TotalRows:  400000,
+		EventCount: 1,
+		Tables:     map[string]int{"dogfood_big.t": 400000},
+		Operations: map[string]int{"INSERT": 400000},
+	}
+	insertLarge2 := model.Transaction{
+		TxnKey:     "txn-2",
+		TotalRows:  400000,
+		EventCount: 1,
+		Tables:     map[string]int{"dogfood_big.t": 400000},
+		Operations: map[string]int{"INSERT": 400000},
+	}
+	deleteLarge := model.Transaction{
+		TxnKey:     "txn-del-1",
+		TotalRows:  80,
+		EventCount: 1,
+		Tables:     map[string]int{"dogfood_big.t": 80},
+		Operations: map[string]int{"DELETE": 80},
+	}
+	deleteLarge2 := model.Transaction{
+		TxnKey:     "txn-del-2",
+		TotalRows:  60,
+		EventCount: 1,
+		Tables:     map[string]int{"dogfood_big.t": 60},
+		Operations: map[string]int{"DELETE": 60},
+	}
+	deleteKey, _ := patternIdentity(deleteLarge)
+	insertKey, _ := patternIdentity(insertLarge)
+	if deleteKey == insertKey {
+		t.Fatal("expected INSERT and DELETE large-batch identities to differ")
+	}
+
+	got := selectRepresentativeTxns(
+		[]model.Transaction{insertLarge, insertLarge2, deleteLarge, deleteLarge2},
+		deleteKey,
+		2,
+	)
+	if len(got) != 2 {
+		t.Fatalf("expected 2 DELETE representatives, got %d", len(got))
+	}
+	for _, txn := range got {
+		if txn.TxnKey == "txn-1" || txn.TxnKey == "txn-2" {
+			t.Fatalf("DELETE pattern cited INSERT txn %s", txn.TxnKey)
+		}
+		if txn.TotalRows >= 400000 {
+			t.Fatalf("DELETE representative has INSERT-sized rows=%d", txn.TotalRows)
+		}
+	}
+}
+
+func TestFormatSharePercentKeepsSubOnePercent(t *testing.T) {
+	if got := formatSharePercent(0.003); got != "0.3%" {
+		t.Fatalf("0.3%% share formatted as %q, want 0.3%%", got)
+	}
+	if got := formatSharePercent(0.66); got != "66%" {
+		t.Fatalf("66%% share formatted as %q, want 66%%", got)
+	}
+	if got := formatSharePercent(0); got != "0%" {
+		t.Fatalf("zero share formatted as %q, want 0%%", got)
 	}
 }

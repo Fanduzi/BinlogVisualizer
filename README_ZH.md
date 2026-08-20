@@ -16,9 +16,20 @@ BinlogViz 是一个面向 DBA 和运维人员的本地 MySQL `ROW` binlog 分析
 
 ## 从这里开始
 
-如果你已经拿到了本地 binlog 文件，下面这些命令就是最快能看到有价值结果的路径：
+BinlogViz 做的是 **ROW binlog 的快速摘要**：热表、写入形态、上线前后 compare。510 MB 级文件通常只要数秒。
 
-### 快速检查单个文件
+它**不是** STATEMENT / MIXED 全量分析器——这类文件会空成功或只统计到 ROW 子集。报告里的位置是文件证据；只有当跨度覆盖事务事件、而不是只有 XID 区间时，才把它当作 `mysqlbinlog --start-position`。
+
+### 用样例 ROW binlog 验证安装
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
+```
+
+同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。后续 release 归档也会带上 `testdata/minimal.binlog`。
+
+### 检查你自己的文件
 
 ```bash
 binlogviz analyze mysql-bin.000123
@@ -188,12 +199,27 @@ BinlogViz 重点服务这些 DBA 常见问题：
 
 ### macOS 首选：Homebrew Cask
 
+Homebrew **仅适用于 macOS**。Linux 请用下面的 tarball 或 `install.sh`。
+
 ```bash
 brew tap Fanduzi/binlogviz
 brew install --cask binlogviz
 ```
 
 这条路径会安装预编译 release artifact，并在安装时移除 macOS quarantine 属性；用户不需要额外安装 DuckDB。
+
+### Linux：tarball 或 install.sh
+
+```bash
+# install.sh（当前版本）
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.21.0/install.sh
+sh ./install.sh --version v0.21.0
+
+# 或 linux/amd64 tarball
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.21.0/binlogviz_0.21.0_linux_amd64.tar.gz
+tar -xzf binlogviz_0.21.0_linux_amd64.tar.gz
+install ./binlogviz /usr/local/bin/binlogviz
+```
 
 ### 通用备选：下载 Release Artifact
 
@@ -252,7 +278,8 @@ binlogviz version
 ### 1. 先用一个文件验证分析链路
 
 ```bash
-binlogviz analyze mysql-bin.000123
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
 ```
 
 适用场景：
