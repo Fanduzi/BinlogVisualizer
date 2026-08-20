@@ -154,6 +154,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 		return err
 	}
 	ev = a.withCurrentTxnKey(ev)
+	ev = enrichDDLEvent(ev)
 
 	// Track event count and time bounds only after transaction state accepted the event.
 	a.eventCount++
@@ -189,6 +190,24 @@ func (a *Analyzer) withCurrentTxnKey(ev model.NormalizedEvent) model.NormalizedE
 	}
 	if txnKey := a.txnBuilder.CurrentTxnKey(); txnKey != "" {
 		ev.TxnKey = txnKey
+	}
+	return ev
+}
+
+func enrichDDLEvent(ev model.NormalizedEvent) model.NormalizedEvent {
+	if ev.EventType != "DDL" && ev.EventType != "QUERY" {
+		return ev
+	}
+	ddl, ok := DDLEventFromNormalizedEvent(ev)
+	if !ok {
+		return ev
+	}
+	ev.EventType = "DDL"
+	if ev.Schema == "" {
+		ev.Schema = ddl.Schema
+	}
+	if ev.Table == "" {
+		ev.Table = ddl.Table
 	}
 	return ev
 }

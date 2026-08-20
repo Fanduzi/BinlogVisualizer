@@ -41,7 +41,7 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 
 	normalized := strings.Join(strings.Fields(trimmed), " ")
 	tokens := strings.Fields(normalized)
-	if len(tokens) < 3 {
+	if len(tokens) < 2 {
 		return DDLStatement{}, false
 	}
 
@@ -52,6 +52,9 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 
 	identifier := findDDLIdentifier(tokens[startIndex:])
 	schema, table := splitQualifiedIdentifier(identifier)
+	if object == "database" && schema == "" && table != "" {
+		schema, table = table, ""
+	}
 
 	return DDLStatement{
 		Operation: operation,
@@ -66,7 +69,8 @@ func hasSupportedDDLPrefix(sql string) bool {
 	return hasWordPrefixFold(sql, "ALTER") ||
 		hasWordPrefixFold(sql, "CREATE") ||
 		hasWordPrefixFold(sql, "DROP") ||
-		hasWordPrefixFold(sql, "TRUNCATE")
+		hasWordPrefixFold(sql, "TRUNCATE") ||
+		hasWordPrefixFold(sql, "RENAME")
 }
 
 func hasWordPrefixFold(sql, word string) bool {
@@ -138,11 +142,20 @@ func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool
 		return model.DDLEvent{}, false
 	}
 
+	schema := stmt.Schema
+	if schema == "" {
+		schema = ev.Schema
+	}
+	table := stmt.Table
+	if table == "" && stmt.Object == "table" {
+		table = ev.Table
+	}
+
 	return model.DDLEvent{
 		BinlogPath:    ev.BinlogPath,
 		Timestamp:     ev.Timestamp.UTC(),
-		Schema:        stmt.Schema,
-		Table:         stmt.Table,
+		Schema:        schema,
+		Table:         table,
 		Operation:     stmt.Operation,
 		Object:        stmt.Object,
 		Statement:     stmt.Statement,
@@ -154,17 +167,34 @@ func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool
 
 func classifyDDL(tokens []string) (operation string, object string, identifierIndex int, ok bool) {
 	first := strings.ToUpper(tokens[0])
-	second := strings.ToUpper(tokens[1])
+	second := ""
+	if len(tokens) > 1 {
+		second = strings.ToUpper(tokens[1])
+	}
 
 	switch {
 	case first == "ALTER" && second == "TABLE":
 		return "ALTER TABLE", "table", 2, true
+	case first == "ALTER" && (second == "DATABASE" || second == "SCHEMA"):
+		return "ALTER DATABASE", "database", 2, true
 	case first == "CREATE" && second == "TABLE":
 		return "CREATE TABLE", "table", skipOptionalIfClause(tokens, 2), true
+	case first == "CREATE" && (second == "DATABASE" || second == "SCHEMA"):
+		return "CREATE DATABASE", "database", skipOptionalIfClause(tokens, 2), true
+	case first == "CREATE" && second == "INDEX":
+		return "CREATE INDEX", "index", 2, true
 	case first == "DROP" && second == "TABLE":
 		return "DROP TABLE", "table", skipOptionalIfClause(tokens, 2), true
+	case first == "DROP" && (second == "DATABASE" || second == "SCHEMA"):
+		return "DROP DATABASE", "database", skipOptionalIfClause(tokens, 2), true
+	case first == "DROP" && second == "INDEX":
+		return "DROP INDEX", "index", 2, true
 	case first == "TRUNCATE" && second == "TABLE":
 		return "TRUNCATE TABLE", "table", 2, true
+	case first == "TRUNCATE":
+		return "TRUNCATE TABLE", "table", 1, true
+	case first == "RENAME" && second == "TABLE":
+		return "RENAME TABLE", "table", 2, true
 	default:
 		return "", "", 0, false
 	}

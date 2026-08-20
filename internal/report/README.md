@@ -12,7 +12,8 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `json.go` | Serializes the stable analyze JSON report shape, including optional top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
 | `html.go` | Renders the self-contained HTML report, including responsive activity-chart layout and ECharts data preparation. |
-| `*_test.go` | Verifies diagnostic text defaults, opt-in detail sections, JSON field stability, snapshot behavior, and SQL context mode behavior. |
+| `mysqlbinlog.go` | Builds copy-paste `mysqlbinlog` commands from usable txn spans; omits `--start-position` when only an XID interval is known. |
+| `*_test.go` | Verifies diagnostic text defaults, opt-in detail sections, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
 
 ## Interfaces
 

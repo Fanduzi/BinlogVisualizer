@@ -172,14 +172,15 @@ type htmlDDLEvent struct {
 }
 
 type htmlTxnDiagnostic struct {
-	TxnKey       string
-	Rows         int
-	Events       int
-	Duration     string
-	BinlogBytes  int
-	Tables       []htmlTxnTable
-	Location     string
-	QuerySummary string
+	TxnKey         string
+	Rows           int
+	Events         int
+	Duration       string
+	BinlogBytes    int
+	Tables         []htmlTxnTable
+	Location       string
+	QuerySummary   string
+	MysqlbinlogCmd string
 }
 
 type htmlTxnTable struct {
@@ -542,14 +543,15 @@ func formatFileSize(bytes int64) string {
 
 func buildHTMLTxnDiagnostic(txn model.Transaction) htmlTxnDiagnostic {
 	return htmlTxnDiagnostic{
-		TxnKey:       txn.TxnKey,
-		Rows:         txn.TotalRows,
-		Events:       txn.EventCount,
-		Duration:     txn.Duration.String(),
-		BinlogBytes:  int(txn.BinlogBytes),
-		Tables:       sortedTxnTables(txn.Tables),
-		Location:     formatBinlogSpan(txn),
-		QuerySummary: txn.QuerySummary,
+		TxnKey:         txn.TxnKey,
+		Rows:           txn.TotalRows,
+		Events:         txn.EventCount,
+		Duration:       txn.Duration.String(),
+		BinlogBytes:    int(txn.BinlogBytes),
+		Tables:         sortedTxnTables(txn.Tables),
+		Location:       formatBinlogSpan(txn),
+		QuerySummary:   txn.QuerySummary,
+		MysqlbinlogCmd: mysqlbinlogCmd(txn),
 	}
 }
 

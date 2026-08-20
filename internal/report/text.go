@@ -62,7 +62,7 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
-	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.html.analyze.ddlTimeline"), len(result.Diagnostics.DDLEvents)))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.html.analyze.ddlTimeline"), formatDDLTimelineSummary(result.Diagnostics.DDLEvents)))
 	buf.WriteString("\n")
 }
 
@@ -212,15 +212,24 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 	lines := make([]string, 0, limit*3)
 	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, limit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
-			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatSuspiciousLocation(txn)))
+			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn)))
+		if cmd := mysqlbinlogCmd(txn); cmd != "" {
+			lines = append(lines, "    "+cmd)
+		}
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, limit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
 			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn)))
+		if cmd := mysqlbinlogCmd(txn); cmd != "" {
+			lines = append(lines, "    "+cmd)
+		}
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, limit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
 			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn)))
+		if cmd := mysqlbinlogCmd(txn); cmd != "" {
+			lines = append(lines, "    "+cmd)
+		}
 	}
 
 	if len(lines) == 0 {
@@ -432,6 +441,29 @@ func formatSuspiciousLocation(txn model.Transaction) string {
 		return i18n.T("time.notAvailable")
 	}
 	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
+}
+
+func formatDDLTimelineSummary(events []model.DDLEvent) string {
+	if len(events) == 0 {
+		return "0"
+	}
+	seen := make(map[string]struct{}, len(events))
+	ops := make([]string, 0, len(events))
+	for _, event := range events {
+		op := strings.TrimSpace(event.Operation)
+		if op == "" {
+			continue
+		}
+		if _, ok := seen[op]; ok {
+			continue
+		}
+		seen[op] = struct{}{}
+		ops = append(ops, op)
+	}
+	if len(ops) == 0 {
+		return fmt.Sprintf("%d", len(events))
+	}
+	return fmt.Sprintf("%d (%s)", len(events), strings.Join(ops, ", "))
 }
 
 func minInt(a, b int) int {

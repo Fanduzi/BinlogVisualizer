@@ -59,8 +59,11 @@ func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 		b.handleRowsQuery(ev)
 	case "ROWS":
 		b.accumulateRowEvent(ev)
+	case "TABLE_MAP":
+		b.accumulateInTxnEvent(ev)
 	default:
-		// Ignore other event types (TABLE_MAP, etc.)
+		// Still record file coverage for in-flight events (Annotate, GTID leftovers, etc.)
+		b.accumulateInTxnEvent(ev)
 	}
 	return nil
 }
@@ -150,6 +153,13 @@ func (b *TransactionBuilder) startTransaction(ts time.Time, isExplicit bool) {
 	}
 }
 
+func (b *TransactionBuilder) accumulateInTxnEvent(ev model.NormalizedEvent) {
+	if b.current == nil {
+		return
+	}
+	b.updateBinlogCoverage(ev)
+}
+
 func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent) {
 	// If no transaction in flight, start an implicit one
 	if b.current == nil {
@@ -177,6 +187,13 @@ func (b *TransactionBuilder) finalizeTransaction() {
 		return
 	}
 
+	binlogBytes := b.current.binlogBytes
+	if b.current.binlogPathStart != "" &&
+		b.current.binlogPathStart == b.current.binlogPathEnd &&
+		b.current.positionEnd > b.current.positionStart {
+		binlogBytes = b.current.positionEnd - b.current.positionStart
+	}
+
 	txn := model.Transaction{
 		TxnKey:          b.current.txnKey,
 		StartTime:       b.current.startTime,
@@ -184,7 +201,7 @@ func (b *TransactionBuilder) finalizeTransaction() {
 		Duration:        b.current.endTime.Sub(b.current.startTime),
 		TotalRows:       b.current.totalRows,
 		EventCount:      b.current.eventCount,
-		BinlogBytes:     b.current.binlogBytes,
+		BinlogBytes:     binlogBytes,
 		BinlogPathStart: b.current.binlogPathStart,
 		BinlogPathEnd:   b.current.binlogPathEnd,
 		PositionStart:   b.current.positionStart,

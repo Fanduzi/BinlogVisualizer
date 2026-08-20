@@ -86,6 +86,43 @@ func TestDDLAggregatorCollectsFromEventsAndStatements(t *testing.T) {
 	}
 }
 
+func TestParseDDLStatementCreateDatabaseAndRename(t *testing.T) {
+	createDB, ok := ParseDDLStatement("CREATE DATABASE IF NOT EXISTS dogfood")
+	if !ok {
+		t.Fatal("expected CREATE DATABASE to be recognized")
+	}
+	if createDB.Operation != "CREATE DATABASE" || createDB.Object != "database" || createDB.Schema != "dogfood" {
+		t.Fatalf("unexpected CREATE DATABASE parse: %+v", createDB)
+	}
+
+	rename, ok := ParseDDLStatement("RENAME TABLE shop.old_users TO shop.users")
+	if !ok {
+		t.Fatal("expected RENAME TABLE to be recognized")
+	}
+	if rename.Operation != "RENAME TABLE" || rename.Schema != "shop" || rename.Table != "old_users" {
+		t.Fatalf("unexpected RENAME parse: %+v", rename)
+	}
+
+	trunc, ok := ParseDDLStatement("TRUNCATE audit_logs")
+	if !ok || trunc.Operation != "TRUNCATE TABLE" || trunc.Table != "audit_logs" {
+		t.Fatalf("unexpected TRUNCATE parse: ok=%v %+v", ok, trunc)
+	}
+}
+
+func TestDDLEventFromNormalizedEventUsesQuerySchemaFallback(t *testing.T) {
+	got, ok := DDLEventFromNormalizedEvent(model.NormalizedEvent{
+		EventType: "DDL",
+		Schema:    "testdb",
+		QuerySQL:  "CREATE TABLE users (id INT PRIMARY KEY, name VARCHAR(100))",
+	})
+	if !ok {
+		t.Fatal("expected CREATE TABLE to be recognized")
+	}
+	if got.Operation != "CREATE TABLE" || got.Schema != "testdb" || got.Table != "users" {
+		t.Fatalf("expected testdb.users CREATE TABLE, got %+v", got)
+	}
+}
+
 func TestDDLEventFromNormalizedEventIgnoresNonDDLQueries(t *testing.T) {
 	_, ok := DDLEventFromNormalizedEvent(model.NormalizedEvent{
 		EventType: "QUERY",
