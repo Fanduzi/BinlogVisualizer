@@ -74,7 +74,7 @@ func TestApplyBinlogEventMetadataReusesCachedTableNameForRowsEvents(t *testing.T
 	}
 }
 
-func TestApplyBinlogEventMetadataPreservesParserUpdateRowCountSemantics(t *testing.T) {
+func TestApplyBinlogEventMetadataCountsUpdateLogicalRows(t *testing.T) {
 	var raw RawEvent
 	applyBinlogEventMetadata(&raw, replication.UPDATE_ROWS_EVENTv2.String(), &replication.RowsEvent{
 		Rows: [][]any{
@@ -85,8 +85,22 @@ func TestApplyBinlogEventMetadataPreservesParserUpdateRowCountSemantics(t *testi
 		},
 	}, nil)
 
-	if raw.RowCount != 4 {
-		t.Fatalf("expected parser row count to preserve raw row images, got %d", raw.RowCount)
+	if raw.RowCount != 2 {
+		t.Fatalf("expected parser to count 2 logical UPDATE rows from 4 images, got %d", raw.RowCount)
+	}
+}
+
+func TestApplyBinlogEventMetadataCountsSingleUpdateAsOneRow(t *testing.T) {
+	var raw RawEvent
+	applyBinlogEventMetadata(&raw, "UpdateRowsEventV2", &replication.RowsEvent{
+		Rows: [][]any{
+			{1, "before"},
+			{1, "after"},
+		},
+	}, nil)
+
+	if raw.RowCount != 1 {
+		t.Fatalf("expected single-row UPDATE to count as 1 logical row, got %d", raw.RowCount)
 	}
 }
 

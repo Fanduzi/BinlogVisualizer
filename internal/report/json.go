@@ -71,14 +71,16 @@ type jsonTxnSizeBucket struct {
 }
 
 type jsonDiagnostics struct {
-	FileCoverage        jsonFileCoverage  `json:"file_coverage"`
-	DDLEvents           []jsonDDLEvent    `json:"ddl_events"`
-	LargestTransactions []jsonTransaction `json:"largest_transactions"`
-	LongestTransactions []jsonTransaction `json:"longest_transactions"`
-	WidestTransactions  []jsonTransaction `json:"widest_transactions"`
-	FileSegments        []jsonFileSegment `json:"file_segments"`
-	HotIntervals        []jsonHotInterval `json:"hot_intervals"`
-	Findings            []jsonFinding     `json:"findings"`
+	FileCoverage          jsonFileCoverage  `json:"file_coverage"`
+	DDLEvents             []jsonDDLEvent    `json:"ddl_events"`
+	LargestTransactions   []jsonTransaction `json:"largest_transactions"`
+	LongestTransactions   []jsonTransaction `json:"longest_transactions"`
+	WidestTransactions    []jsonTransaction `json:"widest_transactions"`
+	FileSegments          []jsonFileSegment `json:"file_segments"`
+	HotIntervals          []jsonHotInterval `json:"hot_intervals"`
+	Findings              []jsonFinding     `json:"findings"`
+	InputFormatGuess      string            `json:"input_format_guess"`
+	IgnoredQueryDMLEvents int               `json:"ignored_query_dml_events"`
 }
 
 type jsonFileCoverage struct {
@@ -135,13 +137,14 @@ type jsonFileSegment struct {
 }
 
 type jsonTableStats struct {
-	Schema     string `json:"schema"`
-	Table      string `json:"table"`
-	TotalRows  int    `json:"total_rows"`
-	InsertRows int    `json:"insert_rows"`
-	UpdateRows int    `json:"update_rows"`
-	DeleteRows int    `json:"delete_rows"`
-	TxnCount   int    `json:"txn_count"`
+	Schema       string `json:"schema"`
+	Table        string `json:"table"`
+	TotalRows    int    `json:"total_rows"`
+	InsertRows   int    `json:"insert_rows"`
+	UpdateRows   int    `json:"update_rows"`
+	UpdateEvents int    `json:"update_events"`
+	DeleteRows   int    `json:"delete_rows"`
+	TxnCount     int    `json:"txn_count"`
 }
 
 type jsonTransaction struct {
@@ -362,14 +365,16 @@ func convertTxnSizeBuckets(buckets []model.TxnSizeBucket) []jsonTxnSizeBucket {
 
 func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) jsonDiagnostics {
 	return jsonDiagnostics{
-		FileCoverage:        convertFileCoverage(diagnostics.FileCoverage),
-		DDLEvents:           convertDDLEvents(diagnostics.DDLEvents),
-		LargestTransactions: convertTransactions(diagnostics.LargestTransactions, mode),
-		LongestTransactions: convertTransactions(diagnostics.LongestTransactions, mode),
-		WidestTransactions:  convertTransactions(diagnostics.WidestTransactions, mode),
-		FileSegments:        convertFileSegments(diagnostics.FileSegments),
-		HotIntervals:        convertHotIntervals(diagnostics.HotIntervals),
-		Findings:            convertFindings(diagnostics.Findings),
+		FileCoverage:          convertFileCoverage(diagnostics.FileCoverage),
+		DDLEvents:             convertDDLEvents(diagnostics.DDLEvents),
+		LargestTransactions:   convertTransactions(diagnostics.LargestTransactions, mode),
+		LongestTransactions:   convertTransactions(diagnostics.LongestTransactions, mode),
+		WidestTransactions:    convertTransactions(diagnostics.WidestTransactions, mode),
+		FileSegments:          convertFileSegments(diagnostics.FileSegments),
+		HotIntervals:          convertHotIntervals(diagnostics.HotIntervals),
+		Findings:              convertFindings(diagnostics.Findings),
+		InputFormatGuess:      diagnostics.InputFormatGuess,
+		IgnoredQueryDMLEvents: diagnostics.IgnoredQueryDMLEvents,
 	}
 }
 
@@ -491,13 +496,14 @@ func convertTables(tables []model.TableStats) []jsonTableStats {
 	result := make([]jsonTableStats, len(tables))
 	for i, t := range tables {
 		result[i] = jsonTableStats{
-			Schema:     t.Schema,
-			Table:      t.Table,
-			TotalRows:  t.TotalRows,
-			InsertRows: t.InsertRows,
-			UpdateRows: t.UpdateRows,
-			DeleteRows: t.DeleteRows,
-			TxnCount:   t.TxnCount,
+			Schema:       t.Schema,
+			Table:        t.Table,
+			TotalRows:    t.TotalRows,
+			InsertRows:   t.InsertRows,
+			UpdateRows:   t.UpdateRows,
+			UpdateEvents: t.UpdateEvents,
+			DeleteRows:   t.DeleteRows,
+			TxnCount:     t.TxnCount,
 		}
 	}
 	return result

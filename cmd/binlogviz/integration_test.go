@@ -1403,9 +1403,9 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	if !bytes.Contains([]byte(output), []byte("testdb.users")) {
 		t.Error("expected output to contain testdb.users table")
 	}
-	// Verify we have total row activity in the summary (the fixture has 5 total rows)
-	if !bytes.Contains([]byte(output), []byte("Total Rows: 5")) {
-		t.Error("expected output to contain 'Total Rows: 5'")
+	// Verify we have total row activity in the summary (2 INSERT + 1 UPDATE + 1 DELETE)
+	if !bytes.Contains([]byte(output), []byte("Total Rows: 4")) {
+		t.Error("expected output to contain 'Total Rows: 4'")
 	}
 }
 
