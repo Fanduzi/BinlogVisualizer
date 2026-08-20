@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -106,6 +107,70 @@ func TestReportAggregatorDoesNotRetainAllTransactions(t *testing.T) {
 	}
 	if len(snapshot.Diagnostics.LargestTransactions) > 5 {
 		t.Fatalf("largest transactions retained %d, want <= 5", len(snapshot.Diagnostics.LargestTransactions))
+	}
+	for _, reps := range agg.patternRepTxns {
+		if len(reps) > maxRepresentativeTxns {
+			t.Fatalf("pattern reps retained %d, want <= %d", len(reps), maxRepresentativeTxns)
+		}
+	}
+}
+
+func TestReportAggregatorDeletePatternDoesNotCiteInsertTxns(t *testing.T) {
+	agg := NewReportAggregator(DefaultOptions())
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 6; i++ {
+		agg.ConsumeTransaction(model.Transaction{
+			TxnKey:     fmt.Sprintf("txn-insert-%d", i+1),
+			StartTime:  base,
+			EndTime:    base,
+			TotalRows:  400000,
+			EventCount: 1,
+			Tables:     map[string]int{"dogfood_big.t": 400000},
+			Operations: map[string]int{"INSERT": 400000},
+		})
+	}
+	for i := 0; i < 20; i++ {
+		agg.ConsumeTransaction(model.Transaction{
+			TxnKey:     fmt.Sprintf("txn-del-%d", i+1),
+			StartTime:  base,
+			EndTime:    base,
+			TotalRows:  80 - i,
+			EventCount: 1,
+			Tables:     map[string]int{"dogfood_big.t": 80 - i},
+			Operations: map[string]int{"DELETE": 80 - i},
+		})
+	}
+
+	snapshot := agg.Snapshot()
+	var deleteKey string
+	for _, p := range snapshot.Patterns {
+		if _, ok := p.Operations["DELETE"]; ok && p.Operations["INSERT"] == 0 {
+			deleteKey = p.PatternKey
+			if got := formatSharePercent(p.ShareOfTransactions); got == "0%" && p.ShareOfTransactions > 0 {
+				t.Fatalf("DELETE txn share %f formatted as 0%%", p.ShareOfTransactions)
+			}
+		}
+	}
+	if deleteKey == "" {
+		t.Fatal("expected a DELETE-only pattern")
+	}
+	foundDelete := false
+	for _, d := range snapshot.PatternDrilldowns {
+		if d.PatternKey != deleteKey {
+			continue
+		}
+		foundDelete = true
+		if len(d.RepresentativeTransactions) == 0 {
+			t.Fatal("DELETE pattern had no representative transactions")
+		}
+		for _, txn := range d.RepresentativeTransactions {
+			if txn.TotalRows >= 400000 || strings.HasPrefix(txn.TxnKey, "txn-insert-") {
+				t.Fatalf("DELETE pattern cited INSERT txn %s rows=%d", txn.TxnKey, txn.TotalRows)
+			}
+		}
+	}
+	if !foundDelete {
+		t.Fatal("expected DELETE pattern to be selected for drilldown")
 	}
 }
 

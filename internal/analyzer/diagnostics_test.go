@@ -457,8 +457,9 @@ func BenchmarkSelectRepresentativeTxnsLargeInput(b *testing.B) {
 		}
 	}
 	b.ReportAllocs()
+	patternKey, _ := patternIdentity(txns[0])
 	for i := 0; i < b.N; i++ {
-		result := selectRepresentativeTxns(txns, "", 2)
+		result := selectRepresentativeTxns(txns, patternKey, 2)
 		if len(result) != 2 {
 			b.Fatalf("expected 2 representative txns, got %d", len(result))
 		}

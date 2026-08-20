@@ -4,7 +4,14 @@
 
 ## 先从一个文件开始
 
-如果你希望用最快路径建立信心，先从单个文件开始：
+如果你希望用最快路径建立信心，先用样例 ROW binlog：
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
+```
+
+然后再对你自己的文件跑同一条命令：
 
 ```bash
 binlogviz analyze mysql-bin.000123

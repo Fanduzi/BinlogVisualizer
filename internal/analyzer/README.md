@@ -13,7 +13,7 @@
 | `alerts.go` | Builds large transaction alerts from completed transactions. |
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |
-| `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates with bounded top-N representative transaction selection using bounded insertion sort instead of full-slice copy. |
+| `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
 | `report_aggregator.go` | Maintains bounded streaming state for report assembly so default analyze output does not require full transaction rehydration. Tracks operation counts for timeseries, alert-referenced transactions for evidence, and txn-size histograms. |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window filtering, and benchmark coverage. |

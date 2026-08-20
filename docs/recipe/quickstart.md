@@ -2,6 +2,10 @@
 
 This guide is the shortest path from installation to a useful `binlogviz analyze` run.
 
+**What it is:** a fast ROW-binlog summary — hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.
+
+**What it is not:** a STATEMENT/MIXED full-file analyzer (those runs come back empty or undercounted). Printed positions are file evidence; use them as `mysqlbinlog --start-position` only when the span covers the transaction events, not an XID-only interval.
+
 ## 1. Install or Verify BinlogViz
 
 Use a release artifact if you want a tagged binary, or build from source if you are working locally.
@@ -20,11 +24,14 @@ binlogviz version
 
 ## 2. Validate One File First
 
-Start with one local `ROW` binlog file:
+Start with the downloadable sample ROW binlog (1500 bytes, in-repo fixture):
 
 ```bash
-binlogviz analyze mysql-bin.000123
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
+binlogviz analyze minimal.binlog
 ```
+
+From a source checkout you can also run `binlogviz analyze cmd/binlogviz/testdata/minimal.binlog`.
 
 This is the fastest way to confirm:
 
