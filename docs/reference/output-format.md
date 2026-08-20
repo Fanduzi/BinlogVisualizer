@@ -678,6 +678,8 @@ The page also includes compare summary cards and detailed tables/lists so an ope
 - parse progress output
 - `Resolved binlog files:` listings when discovery mode is used
 - `Finalizing analysis...`
+- `HTML report saved to …` when `--format html` writes a file
+- `window matched 0 events` when `--start`/`--end` matches no events
 - command errors
 
 ### Compare errors on `stderr`

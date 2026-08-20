@@ -27,9 +27,11 @@ BinlogViz scans only the immediate entries under `DIR` and applies these rules t
 2. Symlinks are excluded.
 3. The filename must start with `PREFIX`.
 4. The suffix after `PREFIX` must be non-empty.
-5. The suffix after `PREFIX` must contain digits only.
+5. The suffix after `PREFIX` must be digits, optionally with a single `.` immediately after `PREFIX`.
 
-That means discovery accepts names such as:
+That means `--prefix mysql-bin` and `--prefix mysql-bin.` both match `mysql-bin.000008` (the form produced by `log_bin_basename`).
+
+Discovery accepts names such as:
 
 - `mysql-bin.000123`
 - `mysql-bin.000124`

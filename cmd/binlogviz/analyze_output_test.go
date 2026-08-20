@@ -3,6 +3,7 @@ package binlogviz
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -197,6 +198,20 @@ func TestWriteHTMLAtomically_OverwritesExisting(t *testing.T) {
 	}
 	if string(got) != newContent {
 		t.Fatalf("content mismatch: got %q, want %q", string(got), newContent)
+	}
+}
+
+func TestPrintHTMLSaveConfirmationGoesToProvidedWriter(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	var buf strings.Builder
+	printHTMLSaveConfirmationTo(&buf, "/tmp/io-check.html")
+	got := buf.String()
+	if !strings.Contains(got, "HTML report saved to") {
+		t.Fatalf("expected save confirmation, got %q", got)
+	}
+	if !strings.Contains(got, "io-check.html") {
+		t.Fatalf("expected path in confirmation, got %q", got)
 	}
 }
 

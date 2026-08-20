@@ -33,7 +33,7 @@
   },
   "cmd.analyze.flag.prefix": {
     "description": "Prefix flag description",
-    "other": "Filename prefix used with --from-dir"
+    "other": "Filename prefix used with --from-dir (optional '.' before the numeric suffix)"
   },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL context flag description",
@@ -179,6 +179,26 @@
     "description": "Parse error",
     "other": "parse error: {{.Error}}"
   },
+  "error.emptyBinlog": {
+    "description": "Empty binlog file error",
+    "other": "binlog file is empty or ended before the 4-byte magic (EOF)"
+  },
+  "error.corruptBinlogMagic": {
+    "description": "Corrupt or non-binlog header error",
+    "other": "not a MySQL binlog: header is not the 4-byte magic fe'bin'"
+  },
+  "error.truncatedBinlog": {
+    "description": "Truncated or corrupt binlog event error",
+    "other": "binlog is truncated or corrupt: incomplete event ({{.Detail}})"
+  },
+  "error.noFormatDescription": {
+    "description": "Non-empty file with no parseable events / Format Description",
+    "other": "binlog has no Format Description event (file is truncated or incomplete)"
+  },
+  "error.prefixDotHint": {
+    "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
+    "other": "suffix after prefix must be digits; try --prefix {{.Prefix}}"
+  },
   "error.analysisFinalizeError": {
     "description": "Analysis finalize error",
     "other": "analysis finalize error: {{.Error}}"
@@ -198,6 +218,10 @@
   "progress.resolvedFiles": {
     "description": "Resolved binlog files header",
     "other": "Resolved binlog files:"
+  },
+  "progress.windowMatchedZero": {
+    "description": "Time window matched no events",
+    "other": "window matched 0 events"
   },
   "report.section.workload": {
     "description": "Workload summary section header",

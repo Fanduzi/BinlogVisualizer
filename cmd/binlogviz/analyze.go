@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks, and command-owned temporary directory roots.
-// output: rendered text/JSON analysis reports plus command-level creation and cleanup of temporary DuckDB stores.
+// output: rendered text/JSON/HTML analysis reports, stderr-only operator status, and command-level creation and cleanup of temporary DuckDB stores.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -82,8 +82,10 @@ func newAnalyzeCommand() *cobra.Command {
 	opts := &analyzeOptions{}
 
 	cmd := &cobra.Command{
-		Use:   i18n.T("cmd.analyze.use"),
-		Short: i18n.T("cmd.analyze.short"),
+		Use:           i18n.T("cmd.analyze.use"),
+		Short:         i18n.T("cmd.analyze.short"),
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			hasArgs := len(args) > 0
 			hasFromDir := opts.fromDir != ""
@@ -97,7 +99,7 @@ func newAnalyzeCommand() *cobra.Command {
 			if hasArgs || hasFromDir {
 				return nil
 			}
-			return cobra.MinimumNArgs(1)(cmd, args)
+			return fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Parse time range
@@ -219,20 +221,15 @@ func discoverBinlogPaths(dir, prefix string) ([]string, error) {
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
-		name := entry.Name()
-		if !strings.HasPrefix(name, prefix) {
+		if _, ok := binlogNumericSuffix(entry.Name(), prefix); !ok {
 			continue
 		}
-		suffix := strings.TrimPrefix(name, prefix)
-		if suffix == "" || !isDigits(suffix) {
-			continue
-		}
-		candidates = append(candidates, filepath.Join(dir, name))
+		candidates = append(candidates, filepath.Join(dir, entry.Name()))
 	}
 
 	sortBinlogPaths(candidates, prefix)
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("%s", i18n.Tf("error.noMatchingFiles", map[string]any{"Dir": dir, "Prefix": prefix}))
+		return nil, fmt.Errorf("%s", noMatchingBinlogFilesError(dir, prefix))
 	}
 	return candidates, nil
 }
@@ -270,15 +267,37 @@ func sortBinlogPaths(paths []string, prefix string) {
 	sort.SliceStable(paths, func(i, j int) bool {
 		leftBase := filepath.Base(paths[i])
 		rightBase := filepath.Base(paths[j])
-		leftSuffix := strings.TrimPrefix(leftBase, prefix)
-		rightSuffix := strings.TrimPrefix(rightBase, prefix)
-		leftValue, leftErr := strconv.ParseInt(leftSuffix, 10, 64)
-		rightValue, rightErr := strconv.ParseInt(rightSuffix, 10, 64)
-		if leftErr == nil && rightErr == nil && leftValue != rightValue {
-			return leftValue < rightValue
+		leftSuffix, leftOK := binlogNumericSuffix(leftBase, prefix)
+		rightSuffix, rightOK := binlogNumericSuffix(rightBase, prefix)
+		if leftOK && rightOK {
+			leftValue, leftErr := strconv.ParseInt(leftSuffix, 10, 64)
+			rightValue, rightErr := strconv.ParseInt(rightSuffix, 10, 64)
+			if leftErr == nil && rightErr == nil && leftValue != rightValue {
+				return leftValue < rightValue
+			}
 		}
 		return leftBase < rightBase
 	})
+}
+
+// binlogNumericSuffix returns the numeric sequence after prefix.
+// An optional '.' between the prefix and the digits is accepted so
+// --prefix mysql-bin matches mysql-bin.000008 (log_bin_basename style).
+func binlogNumericSuffix(name, prefix string) (string, bool) {
+	if !strings.HasPrefix(name, prefix) {
+		return "", false
+	}
+	suffix := strings.TrimPrefix(name, prefix)
+	if suffix == "" {
+		return "", false
+	}
+	if suffix[0] == '.' {
+		suffix = suffix[1:]
+	}
+	if !isDigits(suffix) {
+		return "", false
+	}
+	return suffix, true
 }
 
 func isDigits(value string) bool {
@@ -288,6 +307,14 @@ func isDigits(value string) bool {
 		}
 	}
 	return value != ""
+}
+
+func noMatchingBinlogFilesError(dir, prefix string) string {
+	msg := i18n.Tf("error.noMatchingFiles", map[string]any{"Dir": dir, "Prefix": prefix})
+	if prefix != "" && !strings.HasSuffix(prefix, ".") {
+		msg += "; " + i18n.Tf("error.prefixDotHint", map[string]any{"Prefix": prefix + "."})
+	}
+	return msg
 }
 
 func readFirstBinlogTimestamp(path string) (time.Time, error) {
@@ -491,9 +518,11 @@ func runAnalysisStreamingWithSnapshotDeps(
 
 	streamAnalyzer := newAnalyzer(opts, store)
 	var formatObserver binlog.FormatObserver
+	rawEvents := 0
 
 	handler := func(raw binlog.RawEvent) error {
 		formatObserver.Observe(raw)
+		rawEvents++
 		normalized, err := normalize(raw)
 		if err != nil {
 			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
@@ -511,14 +540,14 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
 			progress.Advance(progressEvent)
 		}, handler); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+			return wrapParseError(err)
 		}
 		for index := range paths {
 			progress.FinishFile(index)
 		}
 	} else {
 		if err := parser.ParseFiles(paths, handler); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+			return wrapParseError(err)
 		}
 	}
 	progress.FinishParse()
@@ -527,6 +556,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 	result, err := streamAnalyzer.Finalize()
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
+	}
+	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, progress.statusWriter); err != nil {
+		return err
 	}
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
@@ -588,9 +620,11 @@ func runAnalysisStreamingFastWithSnapshot(
 
 	streamAnalyzer := newAnalyzer(opts, store)
 	var formatObserver binlog.FormatObserver
+	rawEvents := 0
 
 	handler := func(raw binlog.RawEvent) error {
 		formatObserver.Observe(raw)
+		rawEvents++
 		var normalized model.NormalizedEvent
 		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
 		if err != nil {
@@ -609,14 +643,14 @@ func runAnalysisStreamingFastWithSnapshot(
 		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
 			progress.Advance(progressEvent)
 		}, handler); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+			return wrapParseError(err)
 		}
 		for index := range paths {
 			progress.FinishFile(index)
 		}
 	} else {
 		if err := parser.ParseFiles(paths, handler); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+			return wrapParseError(err)
 		}
 	}
 	progress.FinishParse()
@@ -625,6 +659,9 @@ func runAnalysisStreamingFastWithSnapshot(
 	result, err := streamAnalyzer.Finalize()
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
+	}
+	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, progress.statusWriter); err != nil {
+		return err
 	}
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
@@ -718,9 +755,11 @@ func runAnalysisStreamingFastWithOutput(
 
 	streamAnalyzer := newAnalyzer(opts, store)
 	var formatObserver binlog.FormatObserver
+	rawEvents := 0
 
 	handler := func(raw binlog.RawEvent) error {
 		formatObserver.Observe(raw)
+		rawEvents++
 		var normalized model.NormalizedEvent
 		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
 		if err != nil {
@@ -739,14 +778,14 @@ func runAnalysisStreamingFastWithOutput(
 		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
 			progress.Advance(progressEvent)
 		}, handler); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+			return wrapParseError(err)
 		}
 		for index := range paths {
 			progress.FinishFile(index)
 		}
 	} else {
 		if err := parser.ParseFiles(paths, handler); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+			return wrapParseError(err)
 		}
 	}
 	progress.FinishParse()
@@ -755,6 +794,9 @@ func runAnalysisStreamingFastWithOutput(
 	result, err := streamAnalyzer.Finalize()
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
+	}
+	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, progress.statusWriter); err != nil {
+		return err
 	}
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
@@ -995,4 +1037,65 @@ func buildSnapshotMetadata(paths []string, opts *analyzeOptions, startTime, endT
 			ExcludeTables:  append([]string(nil), opts.excludeTables...),
 		},
 	}
+}
+
+func wrapParseError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if mapped := mapBinlogParseError(err.Error()); mapped != "" {
+		return fmt.Errorf("%s", mapped)
+	}
+	return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+}
+
+func mapBinlogParseError(msg string) string {
+	if msg == "" {
+		return ""
+	}
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "normalize error") || strings.Contains(lower, "analysis consume error"):
+		return ""
+	case strings.Contains(lower, "fe'bin"):
+		return i18n.T("error.corruptBinlogMagic")
+	case strings.Contains(lower, "get event"):
+		return i18n.Tf("error.truncatedBinlog", map[string]any{"Detail": msg})
+	case msg == "EOF" || strings.HasSuffix(msg, ": EOF") || lower == "eof":
+		return i18n.T("error.emptyBinlog")
+	default:
+		return ""
+	}
+}
+
+func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *model.AnalysisResult, rawEvents int, statusWriter io.Writer) error {
+	if err := rejectEmptyOrIncompleteBinlog(paths, rawEvents); err != nil {
+		return err
+	}
+	if result == nil {
+		return nil
+	}
+	if (opts.Start != nil || opts.End != nil) && result.Summary.TotalEvents == 0 {
+		if statusWriter != nil {
+			_, _ = fmt.Fprintln(statusWriter, i18n.T("progress.windowMatchedZero"))
+		}
+	}
+	return nil
+}
+
+func rejectEmptyOrIncompleteBinlog(paths []string, rawEvents int) error {
+	if rawEvents > 0 || !anyNonEmptyFile(paths) {
+		return nil
+	}
+	return fmt.Errorf("%s", i18n.T("error.noFormatDescription"))
+}
+
+func anyNonEmptyFile(paths []string) bool {
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err == nil && info.Size() > 0 {
+			return true
+		}
+	}
+	return false
 }
