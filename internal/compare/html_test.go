@@ -78,7 +78,7 @@ func TestRenderHTMLEscapesHostileCompareContent(t *testing.T) {
 			CurrentRows:  10,
 			BaselineRows: 5,
 			DeltaRows:    5,
-			DeltaPercent: 100,
+			DeltaPercent: percentValue(100),
 		}},
 		OperationMix: []OperationDelta{{Operation: "INSERT", Current: 10, Baseline: 5, Delta: 5}},
 		AlertChanges: AlertDelta{
@@ -302,7 +302,7 @@ func TestRenderHTMLContainsCompareEvidenceRefAnchors(t *testing.T) {
 			},
 		},
 		PatternChanges: []PatternChange{{PatternKey: "orders.insert_batch", Label: "orders.insert_batch"}},
-		TableChanges:   []TableChange{{Schema: "shop", Table: "orders", DeltaRows: 1000, CurrentRows: 1000, BaselineRows: 0, DeltaPercent: 0}},
+		TableChanges:   []TableChange{{Schema: "shop", Table: "orders", DeltaRows: 1000, CurrentRows: 1000, BaselineRows: 0, DeltaPercent: nil}},
 		OperationMix:   []OperationDelta{{Operation: "INSERT", Current: 1000, Baseline: 100, Delta: 900}},
 	}
 
@@ -420,7 +420,7 @@ func TestRenderHTMLUsesDOMAPINotInnerHTMLForFindings(t *testing.T) {
 		},
 		TableChanges: []TableChange{{
 			Schema: "evil", Table: `table<img src=x onerror=alert(1)>`,
-			CurrentRows: 10, BaselineRows: 5, DeltaRows: 5, DeltaPercent: 100,
+			CurrentRows: 10, BaselineRows: 5, DeltaRows: 5, DeltaPercent: percentValue(100),
 		}},
 		OperationMix: []OperationDelta{},
 		AlertChanges: AlertDelta{},
@@ -540,7 +540,7 @@ func TestRenderHTMLIncludesCompareDrilldownForSelectedPatterns(t *testing.T) {
 		BaselineLabel: "baseline",
 		Summary:       SummaryDelta{TotalRowsDelta: 1000},
 		PatternChanges: []PatternChange{
-			{PatternKey: "orders.insert", Label: "orders.insert", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: 500, CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
+			{PatternKey: "orders.insert", Label: "orders.insert", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: percentValue(500), CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
 		},
 		PatternDrilldowns: []PatternDrilldown{
 			{
@@ -599,7 +599,7 @@ func TestRenderHTMLDrilldownBoundedKeyPoints(t *testing.T) {
 		BaselineLabel: "baseline",
 		Summary:       SummaryDelta{TotalRowsDelta: 2000},
 		PatternChanges: []PatternChange{
-			{PatternKey: "p1", Label: "p1", CurrentRows: 2200, BaselineRows: 200, DeltaRows: 2000, DeltaPercent: 1000, CurrentTxnCount: 200, BaselineTxnCount: 20, DeltaTxnCount: 180},
+			{PatternKey: "p1", Label: "p1", CurrentRows: 2200, BaselineRows: 200, DeltaRows: 2000, DeltaPercent: percentValue(1000), CurrentTxnCount: 200, BaselineTxnCount: 20, DeltaTxnCount: 180},
 		},
 		PatternDrilldowns: []PatternDrilldown{
 			{

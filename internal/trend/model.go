@@ -32,11 +32,16 @@ type BuildOptions struct {
 	Points      []BuildInput
 	Baseline    *BuildInput
 	TopTables   int
+	// Order is "cli" (keep input order) or "time" (sort by window start_time).
+	// Empty defaults to "cli".
+	Order string
 }
 
 type Result struct {
 	InputMode            string               `json:"input_mode"`
 	SnapshotDir          string               `json:"snapshot_dir"`
+	Order                string               `json:"order"`
+	Reordered            bool                 `json:"reordered,omitempty"`
 	BaselineSnapshot     *SnapshotMeta        `json:"baseline_snapshot,omitempty"`
 	Points               []Point              `json:"points"`
 	TableTrends          []TableTrend         `json:"table_trends"`

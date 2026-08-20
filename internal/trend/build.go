@@ -22,17 +22,27 @@ func BuildResult(opts BuildOptions) (Result, error) {
 		topTables = 10
 	}
 
-	sorted := make([]resolvedPoint, 0, len(opts.Points))
+	order, err := normalizeTrendOrder(opts.Order)
+	if err != nil {
+		return Result{}, err
+	}
+
+	resolved := make([]resolvedPoint, 0, len(opts.Points))
 	for _, input := range opts.Points {
-		resolved, err := resolvePoint(input)
+		point, err := resolvePoint(input)
 		if err != nil {
 			return Result{}, err
 		}
-		sorted = append(sorted, resolved)
+		resolved = append(resolved, point)
 	}
-	sort.SliceStable(sorted, func(i, j int) bool {
-		return sorted[i].Start.Before(sorted[j].Start)
-	})
+	inputNames := pointNames(resolved)
+	if order == "time" {
+		sort.SliceStable(resolved, func(i, j int) bool {
+			return resolved[i].Start.Before(resolved[j].Start)
+		})
+	}
+	sorted := resolved
+	reordered := order == "time" && !samePointNames(inputNames, pointNames(sorted))
 
 	var baseline *resolvedPoint
 	if opts.Baseline != nil {
@@ -46,6 +56,8 @@ func BuildResult(opts BuildOptions) (Result, error) {
 	result := Result{
 		InputMode:     opts.InputMode,
 		SnapshotDir:   opts.SnapshotDir,
+		Order:         order,
+		Reordered:     reordered,
 		Points:        make([]Point, 0, len(sorted)),
 		TableTrends:   buildTableTrends(sorted, topTables),
 		PatternTrends: buildPatternTrends(sorted),
@@ -76,6 +88,37 @@ type resolvedPoint struct {
 	Meta   SnapshotMeta
 	Point  Point
 	Report InputReport
+}
+
+func normalizeTrendOrder(order string) (string, error) {
+	switch strings.TrimSpace(order) {
+	case "", "cli":
+		return "cli", nil
+	case "time":
+		return "time", nil
+	default:
+		return "", fmt.Errorf("unsupported trend order %q: want cli or time", order)
+	}
+}
+
+func pointNames(points []resolvedPoint) []string {
+	names := make([]string, 0, len(points))
+	for _, point := range points {
+		names = append(names, point.Meta.Name)
+	}
+	return names
+}
+
+func samePointNames(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for i := range left {
+		if left[i] != right[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func resolvePoint(input BuildInput) (resolvedPoint, error) {

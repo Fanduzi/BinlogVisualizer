@@ -42,7 +42,11 @@ func RenderText(result CompareResult) (string, error) {
 	}
 	fmt.Fprintf(&b, "Rows: %d -> %d (%+d)\n", result.Summary.BaselineTotalRows, result.Summary.CurrentTotalRows, result.Summary.TotalRowsDelta)
 	fmt.Fprintf(&b, "Transactions: %d -> %d (%+d)\n", result.Summary.BaselineTotalTransactions, result.Summary.CurrentTotalTransactions, result.Summary.TotalTransactionsDelta)
-	fmt.Fprintf(&b, "Warnings: %d -> %d (%+d)\n\n", result.Summary.BaselineWarnings, result.Summary.CurrentWarnings, result.Summary.CurrentWarnings-result.Summary.BaselineWarnings)
+	fmt.Fprintf(&b, "Warnings: %d -> %d (%+d)\n", result.Summary.BaselineWarnings, result.Summary.CurrentWarnings, result.Summary.CurrentWarnings-result.Summary.BaselineWarnings)
+	if line := formatLargestTxnLine(result.DiagnosticsDelta.TxnDiagnostics.LargestTxnDelta); line != "" {
+		fmt.Fprintf(&b, "%s\n", line)
+	}
+	fmt.Fprint(&b, "\n")
 
 	if len(result.KeyFindings) > 0 {
 		fmt.Fprintf(&b, "Key Findings\n")
@@ -80,7 +84,7 @@ func RenderText(result CompareResult) (string, error) {
 		fmt.Fprintf(&b, "- none\n")
 	} else {
 		for _, change := range result.TableChanges {
-			fmt.Fprintf(&b, "- %s.%s: %d -> %d (%+d, %.1f%%)\n", change.Schema, change.Table, change.BaselineRows, change.CurrentRows, change.DeltaRows, change.DeltaPercent)
+			fmt.Fprintf(&b, "- %s.%s: %d -> %d (%+d, %s)\n", change.Schema, change.Table, change.BaselineRows, change.CurrentRows, change.DeltaRows, formatDeltaPercent(change.CurrentRows, change.BaselineRows, change.DeltaPercent))
 		}
 	}
 
@@ -95,12 +99,12 @@ func RenderText(result CompareResult) (string, error) {
 		for _, change := range result.PatternChanges {
 			fmt.Fprintf(
 				&b,
-				"- %s: %d -> %d (%+d, %.1f%%), txns %d -> %d (%+d)\n",
+				"- %s: %d -> %d (%+d, %s), txns %d -> %d (%+d)\n",
 				change.Label,
 				change.BaselineRows,
 				change.CurrentRows,
 				change.DeltaRows,
-				change.DeltaPercent,
+				formatDeltaPercent(change.CurrentRows, change.BaselineRows, change.DeltaPercent),
 				change.BaselineTxnCount,
 				change.CurrentTxnCount,
 				change.DeltaTxnCount,
@@ -146,6 +150,38 @@ func RenderText(result CompareResult) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+func formatLargestTxnLine(delta TxnSizeCompare) string {
+	if txnSizeCompareEmpty(delta) {
+		return ""
+	}
+	line := fmt.Sprintf("Largest txn: %s -> %s",
+		formatTxnSide(delta.BaselineTable, delta.BaselineOp, delta.BaselineRows),
+		formatTxnSide(delta.CurrentTable, delta.CurrentOp, delta.CurrentRows),
+	)
+	if delta.IdentityNew {
+		line += " NEW"
+	}
+	return line
+}
+
+func txnSizeCompareEmpty(delta TxnSizeCompare) bool {
+	return delta.BaselineRows == 0 && delta.CurrentRows == 0 &&
+		delta.BaselineKey == "" && delta.CurrentKey == "" &&
+		delta.BaselineTable == "" && delta.CurrentTable == ""
+}
+
+func formatTxnSide(table, op string, rows int) string {
+	parts := make([]string, 0, 3)
+	if table != "" {
+		parts = append(parts, table)
+	}
+	if op != "" {
+		parts = append(parts, op)
+	}
+	parts = append(parts, fmt.Sprintf("%d", rows))
+	return strings.Join(parts, " ")
 }
 
 func formatSnapshotWindow(snapshot *InputSnapshot) string {

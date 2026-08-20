@@ -39,6 +39,9 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Snapshot metadata in analyze JSON is optional; compare must continue to work when it is absent.
 - Compare labels fall back to `current` / `baseline` when snapshot metadata is not present.
 - Legacy file-based compare and snapshot-based compare share the same validated `InputReport` contract.
+- `large_transaction` alerts and largest-txn compare identity use content (dominant table, op, rows, file+span), not the local `txn-N` sequence number.
+- Text compare prints a `Largest txn` line and marks `NEW` when the two sides do not share that content identity.
+- A new write shape (`baseline=0`, `current>0`) uses `delta_percent: null` and text/HTML `new` instead of `0.0%`.
 - `pattern_changes` is a first-class compare result area, separate from `table_changes`.
 - Legacy reports with no top-level `patterns` are treated as empty pattern sets rather than rejected.
 - Text and HTML outputs now expose snapshot context beyond the time window so incident reviews can see input mode, source shape, and active filters at a glance.

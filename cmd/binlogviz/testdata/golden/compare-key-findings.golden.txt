@@ -26,12 +26,12 @@ Recommended Next Checks
    evidence: orders.refunds
 
 Top Table Changes
-- orders.refunds: 0 -> 900 (+900, 0.0%)
+- orders.refunds: 0 -> 900 (+900, new)
 - orders.chargebacks: 400 -> 0 (-400, -100.0%)
 - orders.payments: 800 -> 1200 (+400, 50.0%)
 
 Top Pattern Changes
-- refunds.create: 0 -> 700 (+700, 0.0%), txns 0 -> 40 (+40)
+- refunds.create: 0 -> 700 (+700, new), txns 0 -> 40 (+40)
   query: insert into refunds ...
   drilldown:
     why: new pattern appeared at meaningful scale

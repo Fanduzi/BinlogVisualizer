@@ -88,9 +88,9 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 			},
 		},
 		TableChanges: []TableChange{
-			{Schema: "orders", Table: "refunds", CurrentRows: 900, BaselineRows: 0, DeltaRows: 900, DeltaPercent: 0},
-			{Schema: "orders", Table: "chargebacks", CurrentRows: 0, BaselineRows: 400, DeltaRows: -400, DeltaPercent: -100},
-			{Schema: "orders", Table: "payments", CurrentRows: 1200, BaselineRows: 800, DeltaRows: 400, DeltaPercent: 50},
+			{Schema: "orders", Table: "refunds", CurrentRows: 900, BaselineRows: 0, DeltaRows: 900, DeltaPercent: nil},
+			{Schema: "orders", Table: "chargebacks", CurrentRows: 0, BaselineRows: 400, DeltaRows: -400, DeltaPercent: percentValue(-100)},
+			{Schema: "orders", Table: "payments", CurrentRows: 1200, BaselineRows: 800, DeltaRows: 400, DeltaPercent: percentValue(50)},
 		},
 		PatternChanges: []PatternChange{},
 		OperationMix: []OperationDelta{

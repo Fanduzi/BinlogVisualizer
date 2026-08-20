@@ -39,7 +39,7 @@ Recommended Next Checks
    evidence: orders.refunds
 
 Top Table Changes
-- orders.refunds: 0 -> 900 (+900, 0.0%)
+- orders.refunds: 0 -> 900 (+900, new)
 - orders.chargebacks: 400 -> 0 (-400, -100.0%)
 - orders.payments: 800 -> 1200 (+400, 50.0%)
 
@@ -191,7 +191,7 @@ func TestRenderTextDrilldownBeneathSelectedPattern(t *testing.T) {
 		BaselineLabel: "baseline",
 		Summary:       SummaryDelta{TotalRowsDelta: 1000},
 		PatternChanges: []PatternChange{
-			{PatternKey: "orders.insert", Label: "orders.insert", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: 500, CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
+			{PatternKey: "orders.insert", Label: "orders.insert", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: percentValue(500), CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
 		},
 		PatternDrilldowns: []PatternDrilldown{
 			{
@@ -244,7 +244,7 @@ func TestRenderTextDrilldownUsesCompareScopedWording(t *testing.T) {
 		BaselineLabel: "baseline",
 		Summary:       SummaryDelta{TotalRowsDelta: 1000},
 		PatternChanges: []PatternChange{
-			{PatternKey: "p1", Label: "p1", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: 500, CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
+			{PatternKey: "p1", Label: "p1", CurrentRows: 1200, BaselineRows: 200, DeltaRows: 1000, DeltaPercent: percentValue(500), CurrentTxnCount: 140, BaselineTxnCount: 20, DeltaTxnCount: 120},
 		},
 		PatternDrilldowns: []PatternDrilldown{
 			{

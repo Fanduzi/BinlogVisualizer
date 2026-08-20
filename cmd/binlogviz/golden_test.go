@@ -267,7 +267,7 @@ func TestTrendJSONGoldenMinimalWorkflow(t *testing.T) {
 	}))
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"trend", "later", "earlier", "middle", "--snapshot-dir", dir, "--format", "json"})
+	cmd.SetArgs([]string{"trend", "earlier", "middle", "later", "--snapshot-dir", dir, "--format", "json"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
@@ -325,7 +325,7 @@ func TestTrendKeyFindingsGoldenText(t *testing.T) {
 	}))
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"trend", "later", "earlier", "middle", "--snapshot-dir", dir, "--format", "text"})
+	cmd.SetArgs([]string{"trend", "earlier", "middle", "later", "--snapshot-dir", dir, "--format", "text"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
@@ -383,7 +383,7 @@ func TestTrendKeyFindingsGoldenJSON(t *testing.T) {
 	}))
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"trend", "later", "earlier", "middle", "--snapshot-dir", dir, "--format", "json"})
+	cmd.SetArgs([]string{"trend", "earlier", "middle", "later", "--snapshot-dir", dir, "--format", "json"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
@@ -432,7 +432,7 @@ func TestTrendJSONGoldenLegacyFallbackWorkflow(t *testing.T) {
 	}, "", ""))
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"trend", "legacy-beta", "legacy-alpha", "--snapshot-dir", dir, "--format", "json"})
+	cmd.SetArgs([]string{"trend", "legacy-alpha", "legacy-beta", "--snapshot-dir", dir, "--format", "json"})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 

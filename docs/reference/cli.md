@@ -216,7 +216,8 @@ Rules:
 
 - explicit snapshot mode and pattern mode cannot be combined
 - the resolved trend set must contain at least two snapshots
-- trend points are always ordered by effective window start time ascending
+- explicit `trend A B` keeps A→B by default (`--order cli`); pattern mode keeps the snapshot-store selection order
+- `--order time` sorts by effective window start time ascending and prints `trend: reordered by window start_time: ...` on stderr when that changes the story
 - trend uses `snapshot.window.start_time` when present and falls back to `summary.start_time` for older snapshots
 - `--baseline-snapshot` is optional and does not automatically become a trend point unless it was selected separately
 - all trend formats include pattern trends; `text` and `json` expose `Top Pattern Trends` / `pattern_trends`, and `html` adds an interactive `Pattern Trends` section
@@ -231,6 +232,7 @@ Accepted flags:
 | `--baseline-snapshot` | none | Optional snapshot used for per-point delta calculations. |
 | `--snapshot-dir` | home-based default | Directory used when loading snapshots. Default: `~/.binlogviz/snapshots`. |
 | `--top-tables` | `10` | Number of top-table trend series to include in trend output. |
+| `--order` | `cli` | Trend point order: `cli` keeps argument or selection order; `time` sorts by window start time. |
 
 ## `snapshot` Command Syntax
 

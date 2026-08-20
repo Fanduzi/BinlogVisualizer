@@ -1,6 +1,7 @@
 {
   "input_mode": "explicit",
   "snapshot_dir": "<snapshot-dir>",
+  "order": "cli",
   "points": [
     {
       "snapshot": {

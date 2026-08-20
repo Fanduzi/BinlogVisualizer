@@ -216,7 +216,8 @@ binlogviz trend --from-snapshots 'incident-*' --baseline-snapshot baseline --for
 
 - 显式快照模式和模式匹配模式不能混用
 - 最终解析出的 trend 集合至少要有两个 snapshot
-- 趋势点永远按有效窗口开始时间升序排序
+- 显式 `trend A B` 默认保持 A→B（`--order cli`）；模式匹配保持 snapshot store 的选取顺序
+- `--order time` 按有效窗口开始时间升序排序；如果因此改写了故事，会在 stderr 打印 `trend: reordered by window start_time: ...`
 - trend 优先使用 `snapshot.window.start_time`；对于较旧的快照，会回退到 `summary.start_time`
 - `--baseline-snapshot` 是可选的；除非 baseline 本身也被单独选中，否则它不会自动成为 trend 点
 - 所有 trend 输出都会包含 pattern trends；`text` 和 `json` 会暴露 `Top Pattern Trends` / `pattern_trends`，`html` 会增加一个交互式 `Pattern Trends` 分区
@@ -231,6 +232,7 @@ binlogviz trend --from-snapshots 'incident-*' --baseline-snapshot baseline --for
 | `--baseline-snapshot` | none | 用于计算每个 trend 点 delta 的可选 baseline snapshot。 |
 | `--snapshot-dir` | home-based default | 读取 snapshot 时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--top-tables` | `10` | trend 输出中包含的热点表趋势序列数量。 |
+| `--order` | `cli` | 趋势点顺序：`cli` 保持参数或选取顺序；`time` 按窗口开始时间排序。 |
 
 ## `snapshot` 命令语法
 
