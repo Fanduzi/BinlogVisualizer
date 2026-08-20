@@ -1079,6 +1079,14 @@
     "description": "Binlog span label",
     "other": "Binlog Span"
   },
+  "report.html.analyze.copy": {
+    "description": "Copy mysqlbinlog command button",
+    "other": "Copy"
+  },
+  "report.html.analyze.copied": {
+    "description": "Copy button confirmation",
+    "other": "Copied"
+  },
   "report.html.analyze.widestTag": {
     "description": "Widest transaction tag",
     "other": "widest"

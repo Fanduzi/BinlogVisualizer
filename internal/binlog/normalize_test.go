@@ -439,11 +439,49 @@ func TestNormalizeRowsQueryEventTruncationUTF8Boundary(t *testing.T) {
 	}
 }
 
+func TestNormalizeQueryDDLCreateTableAndDatabase(t *testing.T) {
+	createTable, err := NormalizeRawEvent(RawEvent{
+		EventType:     "QueryEvent",
+		Schema:        "testdb",
+		Query:         "CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(100)\n)",
+		PositionStart: 219,
+		PositionEnd:   361,
+		BinlogBytes:   142,
+		BinlogPath:    "mysql-bin.000004",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createTable == nil {
+		t.Fatal("expected CREATE TABLE Query event to be kept")
+	}
+	if createTable.EventType != "DDL" {
+		t.Fatalf("expected EventType=DDL, got %q", createTable.EventType)
+	}
+	if !strings.Contains(createTable.QuerySQL, "CREATE TABLE users") {
+		t.Fatalf("expected QuerySQL to keep CREATE TABLE text, got %q", createTable.QuerySQL)
+	}
+	if createTable.Schema != "testdb" || createTable.PositionStart != 219 || createTable.BinlogBytes != 142 {
+		t.Fatalf("expected schema/positions preserved, got %+v", createTable)
+	}
+
+	createDB, err := NormalizeRawEvent(RawEvent{
+		EventType: "QUERY_EVENT",
+		Query:     "CREATE DATABASE IF NOT EXISTS dogfood",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createDB == nil || createDB.EventType != "DDL" {
+		t.Fatalf("expected CREATE DATABASE to be kept as DDL, got %+v", createDB)
+	}
+}
+
 func TestNormalizeSkipsNonTransactionalQueryWithoutAllocation(t *testing.T) {
 	raw := RawEvent{
 		EventType: "QUERY_EVENT",
 		Schema:    "shop",
-		Query:     "ALTER TABLE orders ADD COLUMN note TEXT",
+		Query:     "SET timestamp=1710000000",
 	}
 
 	allocs := testing.AllocsPerRun(1000, func() {

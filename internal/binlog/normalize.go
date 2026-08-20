@@ -17,7 +17,7 @@ import (
 func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	if raw.EventType == "QUERY_EVENT" || raw.EventType == "QueryEvent" {
 		query := strings.TrimSpace(raw.Query)
-		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") {
+		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) {
 			return nil, nil
 		}
 	} else if !isSupportedNormalizedEvent(raw.EventType) {
@@ -160,10 +160,34 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "COMMIT"
 		return true, nil
+	case hasQueryDDLPrefix(query):
+		fillNormalizedEvent(dst, raw)
+		dst.EventType = "DDL"
+		dst.QuerySQL = query
+		return true, nil
 	default:
-		// Skip other QUERY events (DDL, etc.)
+		// Skip non-transactional, non-DDL QUERY events (SET, INSERT as STATEMENT, etc.)
 		return false, nil
 	}
+}
+
+func hasQueryDDLPrefix(sql string) bool {
+	return hasWordPrefixFold(sql, "ALTER") ||
+		hasWordPrefixFold(sql, "CREATE") ||
+		hasWordPrefixFold(sql, "DROP") ||
+		hasWordPrefixFold(sql, "TRUNCATE") ||
+		hasWordPrefixFold(sql, "RENAME")
+}
+
+func hasWordPrefixFold(sql, word string) bool {
+	if len(sql) < len(word) || !strings.EqualFold(sql[:len(word)], word) {
+		return false
+	}
+	if len(sql) == len(word) {
+		return true
+	}
+	next := sql[len(word)]
+	return next == ' ' || next == '\t' || next == '\n' || next == '\r'
 }
 
 // normalizeRowsQueryEvent handles Rows_query_log_event which contains the original SQL.

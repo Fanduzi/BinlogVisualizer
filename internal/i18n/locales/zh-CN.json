@@ -1079,6 +1079,14 @@
     "description": "Binlog 跨度标签",
     "other": "Binlog 跨度"
   },
+  "report.html.analyze.copy": {
+    "description": "复制 mysqlbinlog 命令按钮",
+    "other": "复制"
+  },
+  "report.html.analyze.copied": {
+    "description": "复制按钮确认",
+    "other": "已复制"
+  },
   "report.html.analyze.widestTag": {
     "description": "最宽事务标签",
     "other": "最宽"
