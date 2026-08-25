@@ -507,6 +507,40 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   .rec-item { margin-bottom: 14px; }
   .rec-item:last-child { margin-bottom: 0; }
   .rec-summary { font-size: 13px; margin-top: 4px; }
+
+  /* ── Back to Top Floating Button ── */
+  .back-to-top {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    z-index: 999;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-heading);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--card-shadow);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(14px);
+    transition: opacity 0.25s ease, transform 0.25s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .back-to-top.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .back-to-top:hover {
+    background: var(--surface-hover);
+    border-color: rgba(var(--primary-rgb), 0.5);
+    color: var(--primary);
+    transform: translateY(-2px);
+  }
 </style>
 </head>
 <body>
@@ -672,6 +706,13 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     </div>
   </section>
 </div>
+
+<button id="btn-back-to-top" class="back-to-top" title="{{t "report.html.common.backToTop"}}" aria-label="{{t "report.html.common.backToTop"}}">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="18 15 12 9 6 15"></polyline>
+  </svg>
+</button>
+
 <script>
   const labels = {{.LabelsJSON}};
   const rows = {{.RowsJSON}};
@@ -795,6 +836,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     overallChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -808,6 +850,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     opsChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -821,6 +864,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     tablesChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -830,6 +874,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     tpsChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: window.trendTPSSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -839,6 +884,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     ddlChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: window.trendDDLSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -848,6 +894,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     txnChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: window.trendTxnSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -860,6 +907,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     eventMixChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: window.trendEventMixSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -874,6 +922,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     hotIntervalChart.setOption({
       backgroundColor: 'transparent',
       tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       legend: { textStyle: { color: text } },
       xAxis: { type: 'category', data: (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
@@ -913,6 +962,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
             ? (value) => String(value) + ' {{t "report.html.common.rows"}}'
             : (value) => (Number(value) * 100).toFixed(1) + '%'
         },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         legend: { type: 'scroll', bottom: 0, textStyle: { color: '#e5eefc' } },
         grid: { left: 50, right: 24, top: 24, bottom: 72 },
         xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
@@ -999,6 +1049,21 @@ const trendHTMLTemplate = `<!DOCTYPE html>
 
   var savedTheme = localStorage.getItem('bvtheme') || 'nebula';
   setTheme(savedTheme);
+
+  // Back to Top button listener
+  var backToTopBtn = document.getElementById('btn-back-to-top');
+  if (backToTopBtn) {
+    window.addEventListener('scroll', function() {
+      if (window.scrollY > 300) {
+        backToTopBtn.classList.add('visible');
+      } else {
+        backToTopBtn.classList.remove('visible');
+      }
+    });
+    backToTopBtn.addEventListener('click', function() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  }
 
   window.addEventListener('resize', function () {
     overallChart.resize();

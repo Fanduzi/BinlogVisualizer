@@ -539,6 +539,10 @@
     "description": "Pattern drilldown reason label",
     "other": "drilldown: "
   },
+  "report.html.common.backToTop": {
+    "description": "Back to top button label",
+    "other": "Back to Top"
+  },
   "report.html.analyze.title": {
     "description": "Analyze HTML title",
     "other": "BinlogViz Analysis Report"

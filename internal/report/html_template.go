@@ -921,10 +921,44 @@ const htmlReportTemplate = `<!DOCTYPE html>
     .header-meta { text-align: left; }
   }
 
+  /* ── Back to Top Floating Button ── */
+  .back-to-top {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    z-index: 999;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-heading);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--card-shadow);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(14px);
+    transition: opacity 0.25s ease, transform 0.25s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .back-to-top.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .back-to-top:hover {
+    background: var(--surface-hover);
+    border-color: rgba(var(--primary-rgb), 0.5);
+    color: var(--primary);
+    transform: translateY(-2px);
+  }
+
   /* ── Print Optimization ── */
   @media print {
     body { background: #ffffff !important; color: #000000 !important; }
-    .topbar, .theme-switcher, .nav-pills, .action-btn, .copy-btn { display: none !important; }
+    .topbar, .theme-switcher, .nav-pills, .action-btn, .copy-btn, .back-to-top { display: none !important; }
     .section, .card, .chart-panel { box-shadow: none !important; border: 1px solid #cccccc !important; break-inside: avoid; }
     .page { max-width: 100% !important; padding: 0 !important; }
   }
@@ -1511,6 +1545,12 @@ const htmlReportTemplate = `<!DOCTYPE html>
   </div>
 </div>
 
+<button id="btn-back-to-top" class="back-to-top" title="{{t "report.html.common.backToTop"}}" aria-label="{{t "report.html.common.backToTop"}}">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="18 15 12 9 6 15"></polyline>
+  </svg>
+</button>
+
 <div class="toast" id="toast-notify"></div>
 
 <script>{{.EChartsJS}}</script>
@@ -1581,6 +1621,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       c0.setOption({
         ...t,
         legend: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         grid: { top: 20, bottom: 35, left: 55, right: 20 },
         xAxis: {
           type: 'category',
@@ -1630,6 +1671,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       c1.setOption({
         ...t,
         legend: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         grid: { top: 20, bottom: 35, left: 55, right: 20 },
         xAxis: {
           type: 'category',
@@ -1679,6 +1721,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       c2.setOption({
         ...t,
         legend: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true, yAxisIndex: [0] }],
         grid: { top: 10, bottom: 25, left: 16, right: 24, containLabel: true },
         xAxis: {
           type: 'value',
@@ -1775,6 +1818,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     activity.setOption({
       ...t,
       legend: { show: false },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
@@ -1807,6 +1851,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     ops.setOption({
       ...t,
       legend: { top: 0, right: 16, textStyle: { color: muted, fontSize: 10 } },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
@@ -1962,6 +2007,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     c.setOption({
       ...t,
       legend: { textStyle: { color: muted, fontSize: 11 }, top: 2, left: 'center', itemGap: 24 },
+      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
       grid: { top: 38, bottom: 35, left: 65, right: 65 },
       xAxis: {
         type: 'category',
@@ -2041,6 +2087,21 @@ const htmlReportTemplate = `<!DOCTYPE html>
           showToast("Summary copied to clipboard!");
         });
       }
+    });
+  }
+
+  // Back to Top button listener
+  var backToTopBtn = document.getElementById('btn-back-to-top');
+  if (backToTopBtn) {
+    window.addEventListener('scroll', function() {
+      if (window.scrollY > 300) {
+        backToTopBtn.classList.add('visible');
+      } else {
+        backToTopBtn.classList.remove('visible');
+      }
+    });
+    backToTopBtn.addEventListener('click', function() {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }
 

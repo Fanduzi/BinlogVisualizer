@@ -539,6 +539,10 @@
     "description": "模式钻取原因标签",
     "other": "钻取："
   },
+  "report.html.common.backToTop": {
+    "description": "回到顶部按钮标签",
+    "other": "回到顶部"
+  },
   "report.html.analyze.title": {
     "description": "Analyze HTML 标题",
     "other": "BinlogViz 分析报告"
