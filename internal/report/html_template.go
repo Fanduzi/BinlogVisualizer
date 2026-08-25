@@ -1774,7 +1774,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var activity = echarts.init(actEl, null, {renderer: 'svg'});
     activity.setOption({
       ...t,
-      legend: { textStyle: { color: muted, fontSize: 10 } },
+      legend: { show: false },
       grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
@@ -1806,7 +1806,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var ops = echarts.init(opsEl, null, {renderer: 'svg'});
     ops.setOption({
       ...t,
-      legend: { textStyle: { color: muted, fontSize: 10 } },
+      legend: { top: 0, right: 16, textStyle: { color: muted, fontSize: 10 } },
       grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
@@ -1961,8 +1961,8 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var c = echarts.init(el, null, {renderer: 'svg'});
     c.setOption({
       ...t,
-      legend: { textStyle: { color: muted, fontSize: 11 }, top: 0, right: 20 },
-      grid: { top: 35, bottom: 35, left: 65, right: 65 },
+      legend: { textStyle: { color: muted, fontSize: 11 }, top: 2, left: 'center', itemGap: 24 },
+      grid: { top: 38, bottom: 35, left: 65, right: 65 },
       xAxis: {
         type: 'category',
         data: throughputLabels,
