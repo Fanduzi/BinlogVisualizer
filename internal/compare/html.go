@@ -330,61 +330,220 @@ const compareHTMLTemplate = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{t "report.html.compare.title"}}</title>
 <style>
-  :root {
-    --bg: #000000;
-    --surface: #0a0a12;
-    --surface2: #0f0f1a;
-    --border: #1c1c2e;
+  :root, [data-theme="nebula"] {
+    --bg: #07090e;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(129, 140, 248, 0.15), transparent 70%), radial-gradient(circle 40% at 90% 20%, rgba(34, 211, 238, 0.08), transparent 60%);
+    --surface: #0e121e;
+    --surface2: #141a2b;
+    --surface-hover: #1b233a;
+    --border: rgba(255, 255, 255, 0.08);
     --primary: #818cf8;
+    --primary-rgb: 129, 140, 248;
     --accent: #22d3ee;
+    --accent-rgb: 34, 211, 238;
     --text: #f1f5f9;
-    --muted: #64748b;
+    --text-heading: #ffffff;
+    --muted: #8899b0;
     --success: #34d399;
     --warn: #fbbf24;
     --danger: #f87171;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+    --header-bg: rgba(14, 18, 30, 0.85);
   }
-  * { box-sizing: border-box; }
+  [data-theme="forest"] {
+    --bg: #050c07;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(74, 222, 128, 0.15), transparent 70%);
+    --surface: #0a160e;
+    --surface2: #102016;
+    --surface-hover: #162c1e;
+    --border: rgba(74, 222, 128, 0.12);
+    --primary: #4ade80;
+    --primary-rgb: 74, 222, 128;
+    --accent: #fbbf24;
+    --accent-rgb: 251, 191, 36;
+    --text: #f0fdf4;
+    --text-heading: #ffffff;
+    --muted: #7d9884;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --header-bg: rgba(10, 22, 14, 0.85);
+  }
+  [data-theme="navy"] {
+    --bg: #040814;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(96, 165, 250, 0.15), transparent 70%);
+    --surface: #081024;
+    --surface2: #0e1a38;
+    --surface-hover: #14244d;
+    --border: rgba(96, 165, 250, 0.12);
+    --primary: #60a5fa;
+    --primary-rgb: 96, 165, 250;
+    --accent: #fcd34d;
+    --accent-rgb: 252, 211, 77;
+    --text: #e8f0ff;
+    --text-heading: #ffffff;
+    --muted: #7286a8;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --header-bg: rgba(8, 16, 36, 0.85);
+  }
+  [data-theme="ember"] {
+    --bg: #0a0604;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(251, 146, 60, 0.15), transparent 70%);
+    --surface: #150d09;
+    --surface2: #20140f;
+    --surface-hover: #2d1d16;
+    --border: rgba(251, 146, 60, 0.12);
+    --primary: #fb923c;
+    --primary-rgb: 251, 146, 60;
+    --accent: #f43f5e;
+    --accent-rgb: 244, 63, 94;
+    --text: #fef3ee;
+    --text-heading: #ffffff;
+    --muted: #9a7f72;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --header-bg: rgba(21, 13, 9, 0.85);
+  }
+  [data-theme="light"] {
+    --bg: #f8fafc;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(79, 70, 229, 0.08), transparent 70%);
+    --surface: #ffffff;
+    --surface2: #f1f5f9;
+    --surface-hover: #e2e8f0;
+    --border: #e2e8f0;
+    --primary: #4f46e5;
+    --primary-rgb: 79, 70, 229;
+    --accent: #0891b2;
+    --accent-rgb: 8, 145, 178;
+    --text: #1e293b;
+    --text-heading: #0f172a;
+    --muted: #64748b;
+    --card-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.06);
+    --header-bg: rgba(255, 255, 255, 0.9);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
   body {
     margin: 0;
     background: var(--bg);
+    background-image: var(--bg-mesh);
+    background-attachment: fixed;
     color: var(--text);
-    font-family: 'Fira Sans', 'Inter', system-ui, sans-serif;
-    line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
-  .page { max-width: 1280px; margin: 0 auto; padding: 24px 20px 56px; }
+  .page { max-width: 1320px; margin: 0 auto; padding: 16px 20px 60px; }
+  
+  .topbar {
+    position: sticky;
+    top: 12px;
+    z-index: 100;
+    margin-bottom: 20px;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: var(--header-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--card-shadow);
+  }
   .header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
+    align-items: center;
     gap: 16px;
-    margin-bottom: 24px;
-    padding: 20px 24px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
+    padding: 14px 20px;
+    flex-wrap: wrap;
+  }
+  .header-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   .header-logo {
-    font-family: 'Fira Code', monospace;
-    font-size: 22px;
-    font-weight: 700;
-    color: var(--primary);
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-heading);
   }
-  .header-logo span { color: var(--accent); }
-  .header-meta { color: var(--muted); font-size: 12px; text-align: right; }
-  .header-meta strong { display: block; color: var(--text); font-size: 13px; margin-bottom: 4px; }
+  .header-logo span {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .header-type-tag {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(var(--primary-rgb), 0.12);
+    color: var(--primary);
+    border: 1px solid rgba(var(--primary-rgb), 0.2);
+  }
+  .header-context {
+    font-size: 11.5px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .header-meta {
+    text-align: right;
+    color: var(--muted);
+    font-size: 11.5px;
+  }
+  .header-meta strong {
+    display: block;
+    color: var(--text-heading);
+    font-size: 12.5px;
+    margin-bottom: 2px;
+  }
+
+  .theme-switcher {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 3px 6px;
+    background: var(--surface2);
+    border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .theme-btn {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s;
+    padding: 0;
+  }
+  .theme-btn:hover { transform: scale(1.2); }
+  .theme-btn.active { border-color: var(--text-heading); }
+  .theme-btn[data-t="nebula"] { background: linear-gradient(135deg, #818cf8 50%, #22d3ee 50%); }
+  .theme-btn[data-t="forest"] { background: linear-gradient(135deg, #4ade80 50%, #fbbf24 50%); }
+  .theme-btn[data-t="navy"]   { background: linear-gradient(135deg, #60a5fa 50%, #fcd34d 50%); }
+  .theme-btn[data-t="ember"]  { background: linear-gradient(135deg, #fb923c 50%, #f43f5e 50%); }
+  .theme-btn[data-t="light"]  { background: linear-gradient(135deg, #f8fafc 50%, #4f46e5 50%); border-color: #cbd5e1; }
+
   .cards {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: 14px;
+    margin-bottom: 22px;
   }
   .card {
-    padding: 18px 20px;
+    padding: 16px 18px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
     position: relative;
     overflow: hidden;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(var(--primary-rgb), 0.35);
   }
   .card::before {
     content: "";
@@ -393,31 +552,35 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     top: 0;
     width: 100%;
     height: 3px;
-    background: var(--primary);
+    background: linear-gradient(90deg, var(--primary), var(--accent));
   }
-  .card.accent::before { background: var(--accent); }
-  .card.success::before { background: var(--success); }
-  .card.warn::before { background: var(--warn); }
+  .card.accent::before { background: linear-gradient(90deg, var(--accent), #38bdf8); }
+  .card.success::before { background: linear-gradient(90deg, var(--success), #a7f3d0); }
+  .card.warn::before { background: linear-gradient(90deg, var(--warn), #fde68a); }
   .card-label {
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.7px;
     text-transform: uppercase;
     color: var(--muted);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
   }
   .card-value {
-    font-family: 'Fira Code', monospace;
-    font-size: 28px;
-    font-weight: 700;
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 26px;
+    font-weight: 800;
+    color: var(--text-heading);
+    font-variant-numeric: tabular-nums;
   }
-  .card-sub { margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .card-sub { margin-top: 6px; color: var(--muted); font-size: 11.5px; }
+
   .section {
-    margin-bottom: 20px;
+    margin-bottom: 22px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 14px;
     overflow: hidden;
+    box-shadow: var(--card-shadow);
   }
   .section-header {
     display: flex;
@@ -425,14 +588,16 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     gap: 8px;
     padding: 14px 18px;
     border-bottom: 1px solid var(--border);
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-heading);
   }
   .section-header .dot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background: var(--primary);
+    box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.6);
   }
   .section-body { padding: 18px; }
   .chart-box { width: 100%; height: 300px; }
@@ -453,7 +618,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     font-size: 13px;
   }
   thead th {
-    padding: 10px 12px;
+    padding: 10px 14px;
     text-align: left;
     background: var(--surface2);
     color: var(--muted);
@@ -464,10 +629,14 @@ const compareHTMLTemplate = `<!DOCTYPE html>
   }
   thead th.num, tbody td.num { text-align: right; }
   tbody td {
-    padding: 10px 12px;
+    padding: 10px 14px;
     border-bottom: 1px solid var(--border);
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 12.5px;
   }
   tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: var(--surface-hover); }
+
   .alerts-layout {
     display: grid;
     grid-template-columns: 320px 1fr;
@@ -481,7 +650,8 @@ const compareHTMLTemplate = `<!DOCTYPE html>
   .alert-column h3 {
     margin: 0 0 10px;
     font-size: 13px;
-    color: var(--text);
+    font-weight: 700;
+    color: var(--text-heading);
   }
   .alert-item, .empty-state {
     padding: 12px 14px;
@@ -510,13 +680,13 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
-  .rec-badge.high { background: rgba(248,113,113,0.15); color: #f87171; }
-  .rec-badge.medium { background: rgba(251,191,36,0.15); color: #fbbf24; }
-  .rec-badge.low { background: rgba(52,211,153,0.15); color: #34d399; }
+  .rec-badge.high { background: rgba(248,113,113,0.18); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+  .rec-badge.medium { background: rgba(251,191,36,0.18); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+  .rec-badge.low { background: rgba(52,211,153,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
   .rec-item { margin-bottom: 14px; }
   .rec-item:last-child { margin-bottom: 0; }
   .rec-summary { font-size: 13px; margin-top: 4px; }
@@ -527,24 +697,38 @@ const compareHTMLTemplate = `<!DOCTYPE html>
 </head>
 <body>
   <div class="page">
-    <header class="header">
-      <div>
-        <div class="header-logo">Binlog<span>Viz</span> {{t "report.html.compare.logoSuffix"}}</div>
-        <div>{{.Result.CurrentLabel}} vs {{.Result.BaselineLabel}}</div>
-        {{if snapshotWindow .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentWindow"}}: {{snapshotWindow .Result.CurrentSnapshot}}</div>{{end}}
-        {{if snapshotWindow .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineWindow"}}: {{snapshotWindow .Result.BaselineSnapshot}}</div>{{end}}
-        {{if snapshotInputMode .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentInputMode"}}: {{snapshotInputMode .Result.CurrentSnapshot}}</div>{{end}}
-        {{if snapshotInputMode .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineInputMode"}}: {{snapshotInputMode .Result.BaselineSnapshot}}</div>{{end}}
-        {{if snapshotSource .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentSource"}}: {{snapshotSource .Result.CurrentSnapshot}}</div>{{end}}
-        {{if snapshotSource .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineSource"}}: {{snapshotSource .Result.BaselineSnapshot}}</div>{{end}}
-        {{if snapshotFilters .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentFilters"}}: {{snapshotFilters .Result.CurrentSnapshot}}</div>{{end}}
-        {{if snapshotFilters .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineFilters"}}: {{snapshotFilters .Result.BaselineSnapshot}}</div>{{end}}
-      </div>
-      <div class="header-meta">
-        <strong>{{t "report.html.common.generatedAt"}}</strong>
-        <span>{{.GeneratedAt}}</span>
-      </div>
-    </header>
+    <div class="topbar">
+      <header class="header">
+        <div>
+          <div class="header-brand">
+            <div class="header-logo"><span>Binlog</span>Viz</div>
+            <div class="header-type-tag">{{t "report.html.compare.logoSuffix"}}</div>
+          </div>
+          <div style="margin-top:4px;font-weight:600;font-size:13px">{{.Result.CurrentLabel}} vs {{.Result.BaselineLabel}}</div>
+          {{if snapshotWindow .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentWindow"}}: {{snapshotWindow .Result.CurrentSnapshot}}</div>{{end}}
+          {{if snapshotWindow .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineWindow"}}: {{snapshotWindow .Result.BaselineSnapshot}}</div>{{end}}
+          {{if snapshotInputMode .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentInputMode"}}: {{snapshotInputMode .Result.CurrentSnapshot}}</div>{{end}}
+          {{if snapshotInputMode .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineInputMode"}}: {{snapshotInputMode .Result.BaselineSnapshot}}</div>{{end}}
+          {{if snapshotSource .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentSource"}}: {{snapshotSource .Result.CurrentSnapshot}}</div>{{end}}
+          {{if snapshotSource .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineSource"}}: {{snapshotSource .Result.BaselineSnapshot}}</div>{{end}}
+          {{if snapshotFilters .Result.CurrentSnapshot}}<div class="header-context">{{t "report.html.compare.currentFilters"}}: {{snapshotFilters .Result.CurrentSnapshot}}</div>{{end}}
+          {{if snapshotFilters .Result.BaselineSnapshot}}<div class="header-context">{{t "report.html.compare.baselineFilters"}}: {{snapshotFilters .Result.BaselineSnapshot}}</div>{{end}}
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <div class="header-meta">
+            <strong>{{t "report.html.common.generatedAt"}}</strong>
+            <span>{{.GeneratedAt}}</span>
+          </div>
+          <div class="theme-switcher">
+            <button class="theme-btn" data-t="nebula" title="Nebula"></button>
+            <button class="theme-btn" data-t="forest" title="Forest"></button>
+            <button class="theme-btn" data-t="navy"   title="Navy"></button>
+            <button class="theme-btn" data-t="ember"  title="Ember"></button>
+            <button class="theme-btn" data-t="light"  title="Light"></button>
+          </div>
+        </div>
+      </header>
+    </div>
 
     <section class="cards" id="compare-summary-cards">
       <article class="card">
@@ -612,7 +796,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
             <tbody>
               {{range .Result.TableChanges}}
               <tr>
-                <td>{{.Schema}}.{{.Table}}</td>
+                <td style="font-family:inherit;font-weight:600">{{.Schema}}.{{.Table}}</td>
                 <td class="num">{{.BaselineRows}}</td>
                 <td class="num">{{.CurrentRows}}</td>
                 <td class="num">{{formatDelta .DeltaRows}}</td>
@@ -648,8 +832,8 @@ const compareHTMLTemplate = `<!DOCTYPE html>
                 {{range .Result.PatternChanges}}
                 <tr>
                   <td>
-                    <div><strong>{{if .Label}}{{.Label}}{{else}}{{.PatternKey}}{{end}}</strong></div>
-                    {{if .SampleQuerySummary}}<div>{{.SampleQuerySummary}}</div>{{end}}
+                    <div><strong style="color:var(--text-heading)">{{if .Label}}{{.Label}}{{else}}{{.PatternKey}}{{end}}</strong></div>
+                    {{if .SampleQuerySummary}}<div style="font-size:11.5px;color:var(--muted)">{{.SampleQuerySummary}}</div>{{end}}
                   </td>
                   <td class="num">{{.BaselineRows}}</td>
                   <td class="num">{{.CurrentRows}}</td>
@@ -689,7 +873,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
             <tbody>
               {{range .Result.OperationMix}}
               <tr>
-                <td>{{.Operation}}</td>
+                <td style="font-family:inherit;font-weight:600">{{.Operation}}</td>
                 <td class="num">{{.Baseline}}</td>
                 <td class="num">{{.Current}}</td>
                 <td class="num">{{formatDelta .Delta}}</td>
@@ -884,6 +1068,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
           });
           span.appendChild(document.createTextNode(']'));
           li.appendChild(document.createTextNode(' '));
+          span.classList.add('evidence-refs');
           li.appendChild(span);
         }
         ol.appendChild(li);
@@ -929,80 +1114,164 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       recommendationsEl.appendChild(recOl);
     }
 
-    const summaryChart = echarts.init(document.getElementById('compare-summary-chart'));
-    summaryChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: '#f1f5f9' } },
-      grid: { left: 70, right: 20, top: 16, bottom: 48 },
-      xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      yAxis: { type: 'category', data: window.compareSummaryPairs.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
-      series: [
-        { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.compareSummaryPairs.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
-        { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.compareSummaryPairs.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
-      ],
-    });
+    function cssVar(name) {
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
 
-    const topTablesChart = echarts.init(document.getElementById('compare-top-tables'));
-    topTablesChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: '#f1f5f9' } },
-      grid: { left: 110, right: 20, top: 16, bottom: 48 },
-      xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      yAxis: { type: 'category', data: window.compareTopTables.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
-      series: [
-        { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.compareTopTables.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
-        { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.compareTopTables.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
-      ],
-    });
+    var summaryChart = echarts.init(document.getElementById('compare-summary-chart'));
+    var topTablesChart = echarts.init(document.getElementById('compare-top-tables'));
+    var patternChangesChart = echarts.init(document.getElementById('compare-pattern-changes'));
+    var opsMixChart = echarts.init(document.getElementById('compare-ops-mix'));
+    var alertChart = echarts.init(document.getElementById('compare-alerts'));
+    var ddlChart = echarts.init(document.getElementById('compare-ddl-chart'));
+    var txnChart = echarts.init(document.getElementById('compare-txn-chart'));
+    var hotChart = echarts.init(document.getElementById('compare-hot-chart'));
+    var eventMixChart = echarts.init(document.getElementById('compare-event-mix-chart'));
 
-    const patternChangesChart = echarts.init(document.getElementById('compare-pattern-changes'));
-    patternChangesChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: '#f1f5f9' } },
-      grid: { left: 110, right: 20, top: 16, bottom: 56 },
-      xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      yAxis: { type: 'category', data: window.comparePatternChanges.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
-      series: [
-        { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.comparePatternChanges.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
-        { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.comparePatternChanges.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
-      ],
-    });
+    function renderAllCharts() {
+      var primary = cssVar('--primary') || '#818cf8';
+      var accent  = cssVar('--accent') || '#22d3ee';
+      var border  = cssVar('--border') || '#1c1c2e';
+      var muted   = cssVar('--muted') || '#64748b';
+      var text    = cssVar('--text') || '#f1f5f9';
 
-    const opsMixChart = echarts.init(document.getElementById('compare-ops-mix'));
-    opsMixChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: '#f1f5f9' } },
-      grid: { left: 70, right: 20, top: 16, bottom: 48 },
-      xAxis: { type: 'category', data: window.compareOpsMix.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
-      yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      series: [
-        { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.compareOpsMix.map((item) => item.baseline), itemStyle: { color: '#818cf8' } },
-        { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.compareOpsMix.map((item) => item.current), itemStyle: { color: '#22d3ee' } },
-      ],
-    });
+      summaryChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
+        grid: { left: 70, right: 20, top: 16, bottom: 48 },
+        xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        yAxis: { type: 'category', data: window.compareSummaryPairs.map((item) => item.name), axisLabel: { color: text } },
+        series: [
+          { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.compareSummaryPairs.map((item) => item.baseline), itemStyle: { color: primary, borderRadius: [0, 4, 4, 0] } },
+          { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.compareSummaryPairs.map((item) => item.current), itemStyle: { color: accent, borderRadius: [0, 4, 4, 0] } },
+        ],
+      });
 
-    const alertChart = echarts.init(document.getElementById('compare-alerts'));
-    alertChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      grid: { left: 50, right: 20, top: 20, bottom: 24 },
-      xAxis: { type: 'category', data: window.compareAlertCounts.map((item) => item.name), axisLabel: { color: '#f1f5f9' } },
-      yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      series: [{
-        type: 'bar',
-        data: window.compareAlertCounts.map((item, idx) => ({ value: item.value, itemStyle: { color: idx === 0 ? '#34d399' : '#f87171' } })),
-        barWidth: 48,
-      }],
-    });
+      topTablesChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
+        grid: { left: 110, right: 20, top: 16, bottom: 48 },
+        xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        yAxis: { type: 'category', data: window.compareTopTables.map((item) => item.name), axisLabel: { color: text } },
+        series: [
+          { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.compareTopTables.map((item) => item.baseline), itemStyle: { color: primary, borderRadius: [0, 4, 4, 0] } },
+          { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.compareTopTables.map((item) => item.current), itemStyle: { color: accent, borderRadius: [0, 4, 4, 0] } },
+        ],
+      });
+
+      patternChangesChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
+        grid: { left: 110, right: 20, top: 16, bottom: 56 },
+        xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        yAxis: { type: 'category', data: window.comparePatternChanges.map((item) => item.name), axisLabel: { color: text } },
+        series: [
+          { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.comparePatternChanges.map((item) => item.baseline), itemStyle: { color: primary, borderRadius: [0, 4, 4, 0] } },
+          { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.comparePatternChanges.map((item) => item.current), itemStyle: { color: accent, borderRadius: [0, 4, 4, 0] } },
+        ],
+      });
+
+      opsMixChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
+        grid: { left: 70, right: 20, top: 16, bottom: 48 },
+        xAxis: { type: 'category', data: window.compareOpsMix.map((item) => item.name), axisLabel: { color: text } },
+        yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        series: [
+          { name: '{{t "report.html.compare.baseline"}}', type: 'bar', data: window.compareOpsMix.map((item) => item.baseline), itemStyle: { color: primary, borderRadius: [4, 4, 0, 0] } },
+          { name: '{{t "report.html.compare.current"}}', type: 'bar', data: window.compareOpsMix.map((item) => item.current), itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] } },
+        ],
+      });
+
+      alertChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        grid: { left: 50, right: 20, top: 20, bottom: 24 },
+        xAxis: { type: 'category', data: window.compareAlertCounts.map((item) => item.name), axisLabel: { color: text } },
+        yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        series: [{
+          type: 'bar',
+          data: window.compareAlertCounts.map((item, idx) => ({ value: item.value, itemStyle: { color: idx === 0 ? '#34d399' : '#f87171', borderRadius: [4, 4, 0, 0] } })),
+          barWidth: 48,
+        }],
+      });
+
+      ddlChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        grid: { left: 50, right: 20, top: 20, bottom: 24 },
+        xAxis: { type: 'category', data: [_lBaseline, _lCurrent], axisLabel: { color: text } },
+        yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        series: [{
+          type: 'bar',
+          data: [
+            { value: window.compareDDLChanges.baseline_count, itemStyle: { color: primary, borderRadius: [4, 4, 0, 0] } },
+            { value: window.compareDDLChanges.current_count, itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] } }
+          ],
+          barWidth: 48,
+        }],
+      });
+
+      txnChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        legend: { data: [_lBaseline, _lCurrent], bottom: 0, textStyle: { color: text } },
+        grid: { left: 80, right: 20, top: 16, bottom: 48 },
+        xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        yAxis: { type: 'category', data: [_lLargestTxnRows, _lLongestTxnSec], axisLabel: { color: text } },
+        series: [
+          { name: _lBaseline, type: 'bar', data: [window.compareTxnDiagnostics.largest_txn.baseline_rows, parseDur(window.compareTxnDiagnostics.longest_txn.baseline_duration)], itemStyle: { color: primary, borderRadius: [0, 4, 4, 0] } },
+          { name: _lCurrent, type: 'bar', data: [window.compareTxnDiagnostics.largest_txn.current_rows, parseDur(window.compareTxnDiagnostics.longest_txn.current_duration)], itemStyle: { color: accent, borderRadius: [0, 4, 4, 0] } },
+        ],
+      });
+
+      hotChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        grid: { left: 50, right: 20, top: 20, bottom: 24 },
+        xAxis: { type: 'category', data: [_lBaseline, _lCurrent], axisLabel: { color: text } },
+        yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        series: [{
+          type: 'bar',
+          data: [
+            { value: window.compareHotIntervals.baseline_top_rows, itemStyle: { color: primary, borderRadius: [4, 4, 0, 0] } },
+            { value: window.compareHotIntervals.current_top_rows, itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] } }
+          ],
+          barWidth: 48,
+        }],
+      });
+
+      eventMixChart.setOption({
+        animation: false,
+        backgroundColor: 'transparent',
+        tooltip: { show: false },
+        grid: { left: 70, right: 20, top: 20, bottom: 24 },
+        xAxis: { type: 'category', data: [_lInsert, _lUpdate, _lDelete, _lDDL], axisLabel: { color: text } },
+        yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+        series: [{
+          type: 'bar',
+          data: [
+            { value: window.compareEventMixDelta.insert_delta, itemStyle: { color: window.compareEventMixDelta.insert_delta >= 0 ? '#34d399' : '#f87171', borderRadius: [4, 4, 0, 0] } },
+            { value: window.compareEventMixDelta.update_delta, itemStyle: { color: window.compareEventMixDelta.update_delta >= 0 ? '#34d399' : '#f87171', borderRadius: [4, 4, 0, 0] } },
+            { value: window.compareEventMixDelta.delete_delta, itemStyle: { color: window.compareEventMixDelta.delete_delta >= 0 ? '#34d399' : '#f87171', borderRadius: [4, 4, 0, 0] } },
+            { value: window.compareEventMixDelta.ddl_delta, itemStyle: { color: window.compareEventMixDelta.ddl_delta >= 0 ? '#34d399' : '#f87171', borderRadius: [4, 4, 0, 0] } },
+          ],
+          barWidth: 48,
+        }],
+      });
+    }
 
     const drilldownsEl = document.getElementById('compare-pattern-drilldowns');
     if (drilldownsEl && window.comparePatternDrilldowns && window.comparePatternDrilldowns.length > 0) {
@@ -1039,24 +1308,6 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       });
     }
 
-    const ddlChart = echarts.init(document.getElementById('compare-ddl-chart'));
-    ddlChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      grid: { left: 50, right: 20, top: 20, bottom: 24 },
-      xAxis: { type: 'category', data: [_lBaseline, _lCurrent], axisLabel: { color: '#f1f5f9' } },
-      yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      series: [{
-        type: 'bar',
-        data: [
-          { value: window.compareDDLChanges.baseline_count, itemStyle: { color: '#818cf8' } },
-          { value: window.compareDDLChanges.current_count, itemStyle: { color: '#22d3ee' } }
-        ],
-        barWidth: 48,
-      }],
-    });
-
     function parseDur(s) {
       if (!s) return 0;
       var total = 0;
@@ -1068,58 +1319,21 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       return total;
     }
 
-    const txnChart = echarts.init(document.getElementById('compare-txn-chart'));
-    txnChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      legend: { data: [_lBaseline, _lCurrent], bottom: 0, textStyle: { color: '#f1f5f9' } },
-      grid: { left: 80, right: 20, top: 16, bottom: 48 },
-      xAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      yAxis: { type: 'category', data: [_lLargestTxnRows, _lLongestTxnSec], axisLabel: { color: '#f1f5f9' } },
-      series: [
-        { name: _lBaseline, type: 'bar', data: [window.compareTxnDiagnostics.largest_txn.baseline_rows, parseDur(window.compareTxnDiagnostics.longest_txn.baseline_duration)], itemStyle: { color: '#818cf8' } },
-        { name: _lCurrent, type: 'bar', data: [window.compareTxnDiagnostics.largest_txn.current_rows, parseDur(window.compareTxnDiagnostics.longest_txn.current_duration)], itemStyle: { color: '#22d3ee' } },
-      ],
+    function setTheme(name) {
+      document.documentElement.setAttribute('data-theme', name);
+      localStorage.setItem('bvtheme', name);
+      document.querySelectorAll('.theme-btn').forEach(function(b) {
+        b.classList.toggle('active', b.getAttribute('data-t') === name);
+      });
+      renderAllCharts();
+    }
+
+    document.querySelectorAll('.theme-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { setTheme(btn.getAttribute('data-t')); });
     });
 
-    const hotChart = echarts.init(document.getElementById('compare-hot-chart'));
-    hotChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      grid: { left: 50, right: 20, top: 20, bottom: 24 },
-      xAxis: { type: 'category', data: [_lBaseline, _lCurrent], axisLabel: { color: '#f1f5f9' } },
-      yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      series: [{
-        type: 'bar',
-        data: [
-          { value: window.compareHotIntervals.baseline_top_rows, itemStyle: { color: '#818cf8' } },
-          { value: window.compareHotIntervals.current_top_rows, itemStyle: { color: '#22d3ee' } }
-        ],
-        barWidth: 48,
-      }],
-    });
-
-    const eventMixChart = echarts.init(document.getElementById('compare-event-mix-chart'));
-    eventMixChart.setOption({
-      animation: false,
-      backgroundColor: 'transparent',
-      tooltip: { show: false },
-      grid: { left: 70, right: 20, top: 20, bottom: 24 },
-      xAxis: { type: 'category', data: [_lInsert, _lUpdate, _lDelete, _lDDL], axisLabel: { color: '#f1f5f9' } },
-      yAxis: { type: 'value', axisLabel: { color: '#64748b' }, splitLine: { lineStyle: { color: '#1c1c2e' } } },
-      series: [{
-        type: 'bar',
-        data: [
-          { value: window.compareEventMixDelta.insert_delta, itemStyle: { color: window.compareEventMixDelta.insert_delta >= 0 ? '#34d399' : '#f87171' } },
-          { value: window.compareEventMixDelta.update_delta, itemStyle: { color: window.compareEventMixDelta.update_delta >= 0 ? '#34d399' : '#f87171' } },
-          { value: window.compareEventMixDelta.delete_delta, itemStyle: { color: window.compareEventMixDelta.delete_delta >= 0 ? '#34d399' : '#f87171' } },
-          { value: window.compareEventMixDelta.ddl_delta, itemStyle: { color: window.compareEventMixDelta.ddl_delta >= 0 ? '#34d399' : '#f87171' } },
-        ],
-        barWidth: 48,
-      }],
-    });
+    var savedTheme = localStorage.getItem('bvtheme') || 'nebula';
+    setTheme(savedTheme);
 
     window.addEventListener('resize', function () {
       summaryChart.resize();

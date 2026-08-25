@@ -210,48 +210,300 @@ const trendHTMLTemplate = `<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{t "report.html.trend.title"}}</title>
 <style>
-  :root {
-    --bg: #050816;
-    --surface: #0d1326;
-    --surface2: #111a34;
-    --border: #223053;
+  :root, [data-theme="nebula"] {
+    --bg: #07090e;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(34, 211, 238, 0.15), transparent 70%), radial-gradient(circle 40% at 90% 20%, rgba(129, 140, 248, 0.08), transparent 60%);
+    --surface: #0e121e;
+    --surface2: #141a2b;
+    --surface-hover: #1b233a;
+    --border: rgba(255, 255, 255, 0.08);
     --primary: #22d3ee;
-    --accent: #f59e0b;
-    --text: #e5eefc;
-    --muted: #94a3b8;
+    --primary-rgb: 34, 211, 238;
+    --accent: #fbbf24;
+    --accent-rgb: 251, 191, 36;
+    --text: #f1f5f9;
+    --text-heading: #ffffff;
+    --muted: #8899b0;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.05);
+    --header-bg: rgba(14, 18, 30, 0.85);
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Fira Sans', system-ui, sans-serif; }
-  .page { max-width: 1280px; margin: 0 auto; padding: 24px 20px 56px; }
-  .hero, .section { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
-  .hero { padding: 22px 24px; margin-bottom: 20px; }
-  .hero h1 { margin: 0 0 6px; font-size: 28px; }
-  .hero p { margin: 0; color: var(--muted); }
-  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 20px 0; }
-  .card { background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; }
-  .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.8px; }
-  .value { font-size: 28px; font-weight: 700; margin-top: 8px; }
-  .section { margin-bottom: 18px; overflow: hidden; }
-  .section-header { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  [data-theme="forest"] {
+    --bg: #050c07;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(74, 222, 128, 0.15), transparent 70%);
+    --surface: #0a160e;
+    --surface2: #102016;
+    --surface-hover: #162c1e;
+    --border: rgba(74, 222, 128, 0.12);
+    --primary: #4ade80;
+    --primary-rgb: 74, 222, 128;
+    --accent: #fbbf24;
+    --accent-rgb: 251, 191, 36;
+    --text: #f0fdf4;
+    --text-heading: #ffffff;
+    --muted: #7d9884;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --header-bg: rgba(10, 22, 14, 0.85);
+  }
+  [data-theme="navy"] {
+    --bg: #040814;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(96, 165, 250, 0.15), transparent 70%);
+    --surface: #081024;
+    --surface2: #0e1a38;
+    --surface-hover: #14244d;
+    --border: rgba(96, 165, 250, 0.12);
+    --primary: #60a5fa;
+    --primary-rgb: 96, 165, 250;
+    --accent: #fcd34d;
+    --accent-rgb: 252, 211, 77;
+    --text: #e8f0ff;
+    --text-heading: #ffffff;
+    --muted: #7286a8;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --header-bg: rgba(8, 16, 36, 0.85);
+  }
+  [data-theme="ember"] {
+    --bg: #0a0604;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(251, 146, 60, 0.15), transparent 70%);
+    --surface: #150d09;
+    --surface2: #20140f;
+    --surface-hover: #2d1d16;
+    --border: rgba(251, 146, 60, 0.12);
+    --primary: #fb923c;
+    --primary-rgb: 251, 146, 60;
+    --accent: #f43f5e;
+    --accent-rgb: 244, 63, 94;
+    --text: #fef3ee;
+    --text-heading: #ffffff;
+    --muted: #9a7f72;
+    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
+    --header-bg: rgba(21, 13, 9, 0.85);
+  }
+  [data-theme="light"] {
+    --bg: #f8fafc;
+    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(8, 145, 178, 0.08), transparent 70%);
+    --surface: #ffffff;
+    --surface2: #f1f5f9;
+    --surface-hover: #e2e8f0;
+    --border: #e2e8f0;
+    --primary: #0891b2;
+    --primary-rgb: 8, 145, 178;
+    --accent: #d97706;
+    --accent-rgb: 217, 119, 6;
+    --text: #1e293b;
+    --text-heading: #0f172a;
+    --muted: #64748b;
+    --card-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.06);
+    --header-bg: rgba(255, 255, 255, 0.9);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    background-image: var(--bg-mesh);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1320px; margin: 0 auto; padding: 16px 20px 60px; }
+
+  .hero {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--card-shadow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .hero-brand { display: flex; align-items: center; gap: 12px; }
+  .hero h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text-heading);
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+  }
+  .hero h1 span {
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .hero p { margin: 0; color: var(--muted); font-size: 12px; }
+  
+  .theme-switcher {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    padding: 3px 6px;
+    background: var(--surface2);
+    border-radius: 999px;
+    border: 1px solid var(--border);
+  }
+  .theme-btn {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: transform 0.15s;
+    padding: 0;
+  }
+  .theme-btn:hover { transform: scale(1.2); }
+  .theme-btn.active { border-color: var(--text-heading); }
+  .theme-btn[data-t="nebula"] { background: linear-gradient(135deg, #818cf8 50%, #22d3ee 50%); }
+  .theme-btn[data-t="forest"] { background: linear-gradient(135deg, #4ade80 50%, #fbbf24 50%); }
+  .theme-btn[data-t="navy"]   { background: linear-gradient(135deg, #60a5fa 50%, #fcd34d 50%); }
+  .theme-btn[data-t="ember"]  { background: linear-gradient(135deg, #fb923c 50%, #f43f5e 50%); }
+  .theme-btn[data-t="light"]  { background: linear-gradient(135deg, #f8fafc 50%, #4f46e5 50%); border-color: #cbd5e1; }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    box-shadow: var(--card-shadow);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.2s;
+  }
+  .card:hover { transform: translateY(-2px); border-color: rgba(var(--primary-rgb), 0.35); }
+  .card::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--primary), var(--accent));
+  }
+  .label {
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  .value {
+    font-size: 24px;
+    font-weight: 800;
+    margin-top: 8px;
+    color: var(--text-heading);
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 22px;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+  }
+  .section-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    font-weight: 700;
+    font-size: 13.5px;
+    color: var(--text-heading);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .section-body { padding: 18px; }
-  .section-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-  .segment-control { display: inline-flex; padding: 4px; background: #0b1020; border: 1px solid var(--border); border-radius: 999px; gap: 4px; }
-  .segment-control button { appearance: none; border: 0; border-radius: 999px; background: transparent; color: var(--muted); padding: 8px 14px; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; }
-  .segment-control button[aria-pressed="true"] { background: var(--primary); color: #04111c; }
+  .section-tools {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .segment-control {
+    display: inline-flex;
+    padding: 3px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    gap: 4px;
+  }
+  .segment-control button {
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .segment-control button[aria-pressed="true"] {
+    background: var(--primary);
+    color: #04111c;
+  }
   .pattern-chart { width: 100%; height: 420px; min-height: 420px; }
-  .empty-state { padding: 18px; border: 1px dashed var(--border); border-radius: 12px; color: var(--muted); background: rgba(13, 19, 38, 0.65); }
-.evidence-refs { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .empty-state {
+    padding: 18px;
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+    background: var(--surface2);
+  }
+  .evidence-refs { font-size: 12px; color: var(--muted); margin-left: 4px; }
   .evidence-refs a { color: var(--accent); text-decoration: none; }
   .evidence-refs a:hover { text-decoration: underline; }
-    .pattern-hint { color: var(--muted); font-size: 13px; }
+  .pattern-hint { color: var(--muted); font-size: 12px; }
   .chart-box { width: 100%; height: 320px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; }
-  th { color: var(--muted); text-transform: uppercase; font-size: 11px; letter-spacing: 0.6px; }
-  .rec-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
-  .rec-badge.high { background: rgba(248,113,113,0.15); color: #f87171; }
-  .rec-badge.medium { background: rgba(251,191,36,0.15); color: #fbbf24; }
-  .rec-badge.low { background: rgba(52,211,153,0.15); color: #34d399; }
+  
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  th {
+    color: var(--muted);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    background: var(--surface2);
+    font-weight: 700;
+  }
+  td {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    font-size: 12.5px;
+  }
+  tbody tr:hover { background: var(--surface-hover); }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .rec-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .rec-badge.high { background: rgba(248,113,113,0.18); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
+  .rec-badge.medium { background: rgba(251,191,36,0.18); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
+  .rec-badge.low { background: rgba(52,211,153,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
   .rec-item { margin-bottom: 14px; }
   .rec-item:last-child { margin-bottom: 0; }
   .rec-summary { font-size: 13px; margin-top: 4px; }
@@ -260,9 +512,20 @@ const trendHTMLTemplate = `<!DOCTYPE html>
 <body>
 <div class="page">
   <section class="hero">
-    <h1>{{t "report.html.trend.hero"}}</h1>
-    <p>{{t "report.html.common.generatedAt"}} {{.GeneratedAt}}</p>
-    {{if .Result.BaselineSnapshot}}<p>{{t "report.html.trend.baseline"}}: {{.Result.BaselineSnapshot.Label}} ({{.Result.BaselineSnapshot.Name}})</p>{{end}}
+    <div class="hero-brand">
+      <div>
+        <h1><span>Binlog</span>Viz {{t "report.html.trend.hero"}}</h1>
+        <p>{{t "report.html.common.generatedAt"}} {{.GeneratedAt}}</p>
+        {{if .Result.BaselineSnapshot}}<p style="margin-top:2px">{{t "report.html.trend.baseline"}}: {{.Result.BaselineSnapshot.Label}} ({{.Result.BaselineSnapshot.Name}})</p>{{end}}
+      </div>
+    </div>
+    <div class="theme-switcher">
+      <button class="theme-btn" data-t="nebula" title="Nebula"></button>
+      <button class="theme-btn" data-t="forest" title="Forest"></button>
+      <button class="theme-btn" data-t="navy"   title="Navy"></button>
+      <button class="theme-btn" data-t="ember"  title="Ember"></button>
+      <button class="theme-btn" data-t="light"  title="Light"></button>
+    </div>
   </section>
 
   <div class="cards">
@@ -507,53 +770,130 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     trendRecEl.appendChild(recOl);
   }
 
+  function cssVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
   const overallChart = echarts.init(document.getElementById('trend-overall-chart'));
-  overallChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' } },
-    series: [
-      { name: '{{t "report.html.common.rows"}}', type: 'line', smooth: true, data: rows },
-      { name: '{{t "report.html.common.transactions"}}', type: 'line', smooth: true, data: txns },
-      { name: '{{t "report.html.common.events"}}', type: 'line', smooth: true, data: events }
-    ]
-  });
-
   const opsChart = echarts.init(document.getElementById('trend-ops-chart'));
-  opsChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' } },
-    series: [
-      { name: '{{t "report.html.common.inserts"}}', type: 'bar', stack: 'ops', data: inserts },
-      { name: '{{t "report.html.common.updates"}}', type: 'bar', stack: 'ops', data: updates },
-      { name: '{{t "report.html.common.deletes"}}', type: 'bar', stack: 'ops', data: deletes }
-    ]
-  });
-
   const tablesChart = echarts.init(document.getElementById('trend-tables-chart'));
-  tablesChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' } },
-    series: tableSeries
-  });
-
   const patternChartEl = document.getElementById('trend-pattern-chart');
-  if (patternChartEl && patternSeries.length > 0) {
-    const patternChart = echarts.init(patternChartEl);
+  let patternChart = patternChartEl && patternSeries.length > 0 ? echarts.init(patternChartEl) : null;
+  const tpsChart = echarts.init(document.getElementById('trend-tps-chart'));
+  const ddlChart = echarts.init(document.getElementById('trend-ddl-chart'));
+  const txnChart = echarts.init(document.getElementById('trend-txn-chart'));
+  const eventMixChart = echarts.init(document.getElementById('trend-event-mix-chart'));
+  const hotIntervalChart = echarts.init(document.getElementById('trend-hot-interval-chart'));
+
+  function renderTrendCharts() {
+    var primary = cssVar('--primary') || '#22d3ee';
+    var accent  = cssVar('--accent') || '#fbbf24';
+    var border  = cssVar('--border') || '#223053';
+    var muted   = cssVar('--muted') || '#8899b0';
+    var text    = cssVar('--text') || '#f1f5f9';
+
+    overallChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: [
+        { name: '{{t "report.html.common.rows"}}', type: 'line', smooth: true, data: rows, itemStyle: { color: primary } },
+        { name: '{{t "report.html.common.transactions"}}', type: 'line', smooth: true, data: txns, itemStyle: { color: accent } },
+        { name: '{{t "report.html.common.events"}}', type: 'line', smooth: true, data: events, itemStyle: { color: '#818cf8' } }
+      ]
+    });
+
+    opsChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: [
+        { name: '{{t "report.html.common.inserts"}}', type: 'bar', stack: 'ops', data: inserts, itemStyle: { color: '#34d399' } },
+        { name: '{{t "report.html.common.updates"}}', type: 'bar', stack: 'ops', data: updates, itemStyle: { color: '#38bdf8' } },
+        { name: '{{t "report.html.common.deletes"}}', type: 'bar', stack: 'ops', data: deletes, itemStyle: { color: '#fb7185' } }
+      ]
+    });
+
+    tablesChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: tableSeries
+    });
+
+    tpsChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: window.trendTPSSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: [{ name: _lMaxTPS, type: 'line', smooth: true, data: window.trendTPSSeries.map(p => p.value), itemStyle: { color: primary } }]
+    });
+
+    ddlChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: window.trendDDLSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: [{ name: _lDDLEvents, type: 'bar', data: window.trendDDLSeries.map(p => p.value), itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] } }]
+    });
+
+    txnChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: window.trendTxnSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: [
+        { name: _lLargestTxnRows, type: 'line', smooth: true, data: window.trendTxnSeries.map(p => p.size_value), itemStyle: { color: primary } },
+        { name: _lLongestTxnSec, type: 'line', smooth: true, data: window.trendTxnSeries.map(p => p.dur_value), itemStyle: { color: accent } }
+      ]
+    });
+
+    eventMixChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: window.trendEventMixSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: [
+        { name: _lInsert, type: 'bar', stack: 'events', data: window.trendEventMixSeries.map(p => p.inserts), itemStyle: { color: '#34d399' } },
+        { name: _lUpdate, type: 'bar', stack: 'events', data: window.trendEventMixSeries.map(p => p.updates), itemStyle: { color: '#22d3ee' } },
+        { name: _lDelete, type: 'bar', stack: 'events', data: window.trendEventMixSeries.map(p => p.deletes), itemStyle: { color: '#f87171' } },
+        { name: _lDDL, type: 'bar', stack: 'events', data: window.trendEventMixSeries.map(p => p.ddl), itemStyle: { color: '#fbbf24' } }
+      ]
+    });
+
+    hotIntervalChart.setOption({
+      backgroundColor: 'transparent',
+      tooltip: { trigger: 'axis' },
+      legend: { textStyle: { color: text } },
+      xAxis: { type: 'category', data: (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.snapshot_name), axisLabel: { color: muted } },
+      yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
+      series: [
+        { name: _lMaxHotRows, type: 'line', smooth: true, data: (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.value), itemStyle: { color: '#f87171' } },
+        { name: _lHotCount, type: 'bar', data: (window.trendHotIntervalSeries.hot_count_series || []).map(p => p.value), itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] } }
+      ]
+    });
+  }
+
+  if (patternChart && patternSeries.length > 0) {
     const patternViewButtons = Array.from(document.querySelectorAll('[data-pattern-view]'));
     const applyPatternView = (view) => {
       const metricKey = view === 'rows' ? 'rows' : 'share_of_rows';
+      const muted = cssVar('--muted') || '#94a3b8';
+      const border = cssVar('--border') || '#1d2844';
+      const text = cssVar('--text') || '#e5eefc';
       const axisLabel = view === 'rows'
-        ? { color: '#94a3b8' }
-        : { color: '#94a3b8', formatter: (value) => (Number(value) * 100).toFixed(0) + '%' };
+        ? { color: muted }
+        : { color: muted, formatter: (value) => (Number(value) * 100).toFixed(0) + '%' };
       const series = patternSeries.map((pattern) => {
         const data = metricKey === 'rows' ? pattern.rows : pattern.share_of_rows;
         return {
@@ -575,11 +915,11 @@ const trendHTMLTemplate = `<!DOCTYPE html>
         },
         legend: { type: 'scroll', bottom: 0, textStyle: { color: '#e5eefc' } },
         grid: { left: 50, right: 24, top: 24, bottom: 72 },
-        xAxis: { type: 'category', data: labels, axisLabel: { color: '#94a3b8' } },
+        xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
         yAxis: {
           type: 'value',
           axisLabel,
-          splitLine: { lineStyle: { color: '#1d2844' } }
+          splitLine: { lineStyle: { color: border } }
         },
         series
       });
@@ -631,87 +971,40 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     });
   }
 
-  const tpsLabels = window.trendTPSSeries.map(p => p.snapshot_name);
-  const tpsValues = window.trendTPSSeries.map(p => p.value);
-  const tpsChart = echarts.init(document.getElementById('trend-tps-chart'));
-  tpsChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: tpsLabels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
-    series: [{ name: _lMaxTPS, type: 'line', smooth: true, data: tpsValues, itemStyle: { color: '#22d3ee' } }]
+  function setTheme(name) {
+    document.documentElement.setAttribute('data-theme', name);
+    localStorage.setItem('bvtheme', name);
+    document.querySelectorAll('.theme-btn').forEach(function(b) {
+      b.classList.toggle('active', b.getAttribute('data-t') === name);
+    });
+    renderTrendCharts();
+    if (patternChart) {
+      var activeViewBtn = document.querySelector('[data-pattern-view][aria-pressed="true"]');
+      var view = activeViewBtn ? activeViewBtn.dataset.patternView : 'share';
+      const metricKey = view === 'rows' ? 'rows' : 'share_of_rows';
+      const muted = cssVar('--muted') || '#94a3b8';
+      const border = cssVar('--border') || '#1d2844';
+      const text = cssVar('--text') || '#e5eefc';
+      patternChart.setOption({
+        legend: { textStyle: { color: text } },
+        xAxis: { axisLabel: { color: muted } },
+        yAxis: { splitLine: { lineStyle: { color: border } } }
+      });
+    }
+  }
+
+  document.querySelectorAll('.theme-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() { setTheme(btn.getAttribute('data-t')); });
   });
 
-  const ddlLabels = window.trendDDLSeries.map(p => p.snapshot_name);
-  const ddlValues = window.trendDDLSeries.map(p => p.value);
-  const ddlChart = echarts.init(document.getElementById('trend-ddl-chart'));
-  ddlChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: ddlLabels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
-    series: [{ name: _lDDLEvents, type: 'bar', data: ddlValues, itemStyle: { color: '#f59e0b' } }]
-  });
-
-  const txnLabels = window.trendTxnSeries.map(p => p.snapshot_name);
-  const txnSizeValues = window.trendTxnSeries.map(p => p.size_value);
-  const txnDurValues = window.trendTxnSeries.map(p => p.dur_value);
-  const txnChart = echarts.init(document.getElementById('trend-txn-chart'));
-  txnChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: txnLabels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
-    series: [
-      { name: _lLargestTxnRows, type: 'line', smooth: true, data: txnSizeValues, itemStyle: { color: '#22d3ee' } },
-      { name: _lLongestTxnSec, type: 'line', smooth: true, data: txnDurValues, itemStyle: { color: '#f59e0b' } }
-    ]
-  });
-
-  const emLabels = window.trendEventMixSeries.map(p => p.snapshot_name);
-  const emInserts = window.trendEventMixSeries.map(p => p.inserts);
-  const emUpdates = window.trendEventMixSeries.map(p => p.updates);
-  const emDeletes = window.trendEventMixSeries.map(p => p.deletes);
-  const emDDL = window.trendEventMixSeries.map(p => p.ddl);
-  const eventMixChart = echarts.init(document.getElementById('trend-event-mix-chart'));
-  eventMixChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: emLabels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
-    series: [
-      { name: _lInsert, type: 'bar', stack: 'events', data: emInserts, itemStyle: { color: '#34d399' } },
-      { name: _lUpdate, type: 'bar', stack: 'events', data: emUpdates, itemStyle: { color: '#22d3ee' } },
-      { name: _lDelete, type: 'bar', stack: 'events', data: emDeletes, itemStyle: { color: '#f87171' } },
-      { name: _lDDL, type: 'bar', stack: 'events', data: emDDL, itemStyle: { color: '#f59e0b' } }
-    ]
-  });
-
-  const hiLabels = (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.snapshot_name);
-  const hiMaxRows = (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.value);
-  const hiCounts = (window.trendHotIntervalSeries.hot_count_series || []).map(p => p.value);
-  const hotIntervalChart = echarts.init(document.getElementById('trend-hot-interval-chart'));
-  hotIntervalChart.setOption({
-    backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis' },
-    legend: { textStyle: { color: '#e5eefc' } },
-    xAxis: { type: 'category', data: hiLabels, axisLabel: { color: '#94a3b8' } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#1d2844' } } },
-    series: [
-      { name: _lMaxHotRows, type: 'line', smooth: true, data: hiMaxRows, itemStyle: { color: '#f87171' } },
-      { name: _lHotCount, type: 'bar', data: hiCounts, itemStyle: { color: '#f59e0b' } }
-    ]
-  });
+  var savedTheme = localStorage.getItem('bvtheme') || 'nebula';
+  setTheme(savedTheme);
 
   window.addEventListener('resize', function () {
     overallChart.resize();
     opsChart.resize();
     tablesChart.resize();
-    if (typeof patternChart !== 'undefined') patternChart.resize();
+    if (patternChart) patternChart.resize();
     tpsChart.resize();
     ddlChart.resize();
     txnChart.resize();
