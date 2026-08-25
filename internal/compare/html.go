@@ -693,6 +693,40 @@ const compareHTMLTemplate = `<!DOCTYPE html>
   @media (max-width: 900px) {
     .two-col, .alerts-layout, .alert-columns { grid-template-columns: 1fr; }
   }
+
+  /* ── Back to Top Floating Button ── */
+  .back-to-top {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
+    z-index: 999;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text-heading);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--card-shadow);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(14px);
+    transition: opacity 0.25s ease, transform 0.25s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+  .back-to-top.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .back-to-top:hover {
+    background: var(--surface-hover);
+    border-color: rgba(var(--primary-rgb), 0.5);
+    color: var(--primary);
+    transform: translateY(-2px);
+  }
 </style>
 </head>
 <body>
@@ -1021,6 +1055,12 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     </section>
   </div>
 
+  <button id="btn-back-to-top" class="back-to-top" title="{{t "report.html.common.backToTop"}}" aria-label="{{t "report.html.common.backToTop"}}">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="18 15 12 9 6 15"></polyline>
+    </svg>
+  </button>
+
   <script>{{.EChartsJS}}</script>
   <script>
     window.compareSummaryPairs = {{.SummaryPairsJSON}};
@@ -1139,8 +1179,9 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 70, right: 20, top: 16, bottom: 48 },
+        grid: { left: 16, right: 24, top: 16, bottom: 48, containLabel: true },
         xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         yAxis: { type: 'category', data: window.compareSummaryPairs.map((item) => item.name), axisLabel: { color: text } },
         series: [
@@ -1153,8 +1194,9 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 110, right: 20, top: 16, bottom: 48 },
+        grid: { left: 16, right: 24, top: 16, bottom: 48, containLabel: true },
         xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         yAxis: { type: 'category', data: window.compareTopTables.map((item) => item.name), axisLabel: { color: text } },
         series: [
@@ -1167,8 +1209,9 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 110, right: 20, top: 16, bottom: 56 },
+        grid: { left: 16, right: 24, top: 16, bottom: 56, containLabel: true },
         xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         yAxis: { type: 'category', data: window.comparePatternChanges.map((item) => item.name), axisLabel: { color: text } },
         series: [
@@ -1181,8 +1224,9 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 70, right: 20, top: 16, bottom: 48 },
+        grid: { left: 16, right: 24, top: 16, bottom: 48, containLabel: true },
         xAxis: { type: 'category', data: window.compareOpsMix.map((item) => item.name), axisLabel: { color: text } },
         yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         series: [
@@ -1195,7 +1239,8 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
-        grid: { left: 50, right: 20, top: 20, bottom: 24 },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+        grid: { left: 16, right: 24, top: 20, bottom: 24, containLabel: true },
         xAxis: { type: 'category', data: window.compareAlertCounts.map((item) => item.name), axisLabel: { color: text } },
         yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         series: [{
@@ -1209,7 +1254,8 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
-        grid: { left: 50, right: 20, top: 20, bottom: 24 },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+        grid: { left: 16, right: 24, top: 20, bottom: 24, containLabel: true },
         xAxis: { type: 'category', data: [_lBaseline, _lCurrent], axisLabel: { color: text } },
         yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         series: [{
@@ -1226,8 +1272,9 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         legend: { data: [_lBaseline, _lCurrent], bottom: 0, textStyle: { color: text } },
-        grid: { left: 80, right: 20, top: 16, bottom: 48 },
+        grid: { left: 16, right: 24, top: 16, bottom: 48, containLabel: true },
         xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         yAxis: { type: 'category', data: [_lLargestTxnRows, _lLongestTxnSec], axisLabel: { color: text } },
         series: [
@@ -1240,7 +1287,8 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
-        grid: { left: 50, right: 20, top: 20, bottom: 24 },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+        grid: { left: 16, right: 24, top: 20, bottom: 24, containLabel: true },
         xAxis: { type: 'category', data: [_lBaseline, _lCurrent], axisLabel: { color: text } },
         yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         series: [{
@@ -1257,7 +1305,8 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         animation: false,
         backgroundColor: 'transparent',
         tooltip: { show: false },
-        grid: { left: 70, right: 20, top: 20, bottom: 24 },
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+        grid: { left: 16, right: 24, top: 20, bottom: 24, containLabel: true },
         xAxis: { type: 'category', data: [_lInsert, _lUpdate, _lDelete, _lDDL], axisLabel: { color: text } },
         yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         series: [{
@@ -1334,6 +1383,21 @@ const compareHTMLTemplate = `<!DOCTYPE html>
 
     var savedTheme = localStorage.getItem('bvtheme') || 'nebula';
     setTheme(savedTheme);
+
+    // Back to Top button listener
+    var backToTopBtn = document.getElementById('btn-back-to-top');
+    if (backToTopBtn) {
+      window.addEventListener('scroll', function() {
+        if (window.scrollY > 300) {
+          backToTopBtn.classList.add('visible');
+        } else {
+          backToTopBtn.classList.remove('visible');
+        }
+      });
+      backToTopBtn.addEventListener('click', function() {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    }
 
     window.addEventListener('resize', function () {
       summaryChart.resize();
