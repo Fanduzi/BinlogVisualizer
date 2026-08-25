@@ -1092,7 +1092,6 @@ const htmlReportTemplate = `<!DOCTYPE html>
         <div class="chart-panel chart-panel-large">
           <div class="chart-title">
             <span>{{t "report.html.analyze.avgTPSPerMinute"}}</span>
-            <span style="font-size:10.5px;color:var(--muted);font-weight:400">{{t "report.text.tpsChartNote"}}</span>
           </div>
           <div class="chart-box chart-large" id="chart-tps"></div>
         </div>
