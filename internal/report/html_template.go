@@ -1546,7 +1546,6 @@ const htmlReportTemplate = `<!DOCTYPE html>
       backgroundColor: 'transparent',
       textStyle: { color: cssVar('--muted'), fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' },
       title: { textStyle: { color: cssVar('--text-heading') } },
-      legend: { textStyle: { color: cssVar('--muted') } },
       tooltip: {
         backgroundColor: cssVar('--surface2'),
         borderColor: cssVar('--border'),
@@ -1581,8 +1580,8 @@ const htmlReportTemplate = `<!DOCTYPE html>
       c0 = echarts.init(tpsEl, null, {renderer: 'svg'});
       c0.setOption({
         ...t,
-        legend: { top: 0, right: 16, textStyle: { color: muted, fontSize: 11 } },
-        grid: { top: 35, bottom: 35, left: 55, right: 20 },
+        legend: { show: false },
+        grid: { top: 20, bottom: 35, left: 55, right: 20 },
         xAxis: {
           type: 'category',
           data: tpsLabels,
@@ -1630,6 +1629,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       c1 = echarts.init(timelineEl, null, {renderer: 'svg'});
       c1.setOption({
         ...t,
+        legend: { show: false },
         grid: { top: 20, bottom: 35, left: 55, right: 20 },
         xAxis: {
           type: 'category',
