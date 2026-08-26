@@ -2,6 +2,23 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.22.0
+
+Release date: 2026-08-26
+
+Highlights:
+
+- Redesigned HTML report UI with dark-mode aesthetic, glowing status indicators, and responsive glassmorphism cards across Analyze, Compare, and Trend reports
+- Added sortable `BINLOG BYTES` physical volume metrics in Top Tables, transaction diagnostics cards, and hot interval summaries
+- Added synchronized multi-chart linkage (`echarts.connect`) across shared-dimension timelines
+- Added interactive mouse-selection range zoom (Toolbox Area Zoom & Restore, bottom DataZoom Slider, and wheel zoom)
+- Added floating back-to-top button, theme switcher, and one-click `mysqlbinlog` command copy buttons
+
+Related notes:
+
+- [v0.22.0 release notes](docs/releases/release-notes-v0.22.0.md)
+- [v0.22.0 中文发行说明](docs/releases/release-notes-v0.22.0.zh-CN.md)
+
 ## v0.19.0
 
 Release date: 2026-04-19
