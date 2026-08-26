@@ -139,22 +139,24 @@ type htmlRepTxn struct {
 }
 
 type htmlTableRow struct {
-	Key         string
-	DOMID       string
-	Schema      string
-	Table       string
-	Total       int
-	Inserts     int
-	Updates     int
-	Deletes     int
-	Txns        int
-	DDLCount    int
-	EventCount  int
-	InsertPct   string
-	UpdatePct   string
-	DeletePct   string
-	DDLPct      string
-	HasActivity bool
+	Key                  string
+	DOMID                string
+	Schema               string
+	Table                string
+	Total                int
+	BinlogBytes          int64
+	BinlogBytesFormatted string
+	Inserts              int
+	Updates              int
+	Deletes              int
+	Txns                 int
+	DDLCount             int
+	EventCount           int
+	InsertPct            string
+	UpdatePct            string
+	DeletePct            string
+	DDLPct               string
+	HasActivity          bool
 }
 
 type htmlAlert struct {
@@ -172,15 +174,16 @@ type htmlDDLEvent struct {
 }
 
 type htmlTxnDiagnostic struct {
-	TxnKey         string
-	Rows           int
-	Events         int
-	Duration       string
-	BinlogBytes    int
-	Tables         []htmlTxnTable
-	Location       string
-	QuerySummary   string
-	MysqlbinlogCmd string
+	TxnKey               string
+	Rows                 int
+	Events               int
+	Duration             string
+	BinlogBytes          int
+	BinlogBytesFormatted string
+	Tables               []htmlTxnTable
+	Location             string
+	QuerySummary         string
+	MysqlbinlogCmd       string
 }
 
 type htmlTxnTable struct {
@@ -189,12 +192,13 @@ type htmlTxnTable struct {
 }
 
 type htmlHotInterval struct {
-	Timestamp   string
-	Rows        int
-	Txns        int
-	Events      int
-	BinlogBytes int
-	DDLCount    int
+	Timestamp            string
+	Rows                 int
+	Txns                 int
+	Events               int
+	BinlogBytes          int
+	BinlogBytesFormatted string
+	DDLCount             int
 }
 
 type htmlFileCoverageData struct {
@@ -257,22 +261,24 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			tableActivitySeries[key] = buildHTMLTableActivitySeries(t.Activity)
 		}
 		d.Tables = append(d.Tables, htmlTableRow{
-			Key:         key,
-			DOMID:       domID,
-			Schema:      t.Schema,
-			Table:       t.Table,
-			Total:       t.TotalRows,
-			Inserts:     t.InsertRows,
-			Updates:     t.UpdateRows,
-			Deletes:     t.DeleteRows,
-			Txns:        t.TxnCount,
-			DDLCount:    t.DDLCount,
-			EventCount:  t.EventCount,
-			InsertPct:   fmtOpCell(t.InsertRows, t.TotalRows),
-			UpdatePct:   fmtOpCell(t.UpdateRows, t.TotalRows),
-			DeletePct:   fmtOpCell(t.DeleteRows, t.TotalRows),
-			DDLPct:      fmtOpCell(t.DDLCount, t.EventCount),
-			HasActivity: len(t.Activity) > 0,
+			Key:                  key,
+			DOMID:                domID,
+			Schema:               t.Schema,
+			Table:                t.Table,
+			Total:                t.TotalRows,
+			BinlogBytes:          t.BinlogBytes,
+			BinlogBytesFormatted: formatFileSize(t.BinlogBytes),
+			Inserts:              t.InsertRows,
+			Updates:              t.UpdateRows,
+			Deletes:              t.DeleteRows,
+			Txns:                 t.TxnCount,
+			DDLCount:             t.DDLCount,
+			EventCount:           t.EventCount,
+			InsertPct:            fmtOpCell(t.InsertRows, t.TotalRows),
+			UpdatePct:            fmtOpCell(t.UpdateRows, t.TotalRows),
+			DeletePct:            fmtOpCell(t.DeleteRows, t.TotalRows),
+			DDLPct:               fmtOpCell(t.DDLCount, t.EventCount),
+			HasActivity:          len(t.Activity) > 0,
 		})
 	}
 	d.TableActivitySeries = mustJSON(tableActivitySeries)
@@ -328,12 +334,13 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 
 	for _, interval := range result.Diagnostics.HotIntervals {
 		d.HotIntervals = append(d.HotIntervals, htmlHotInterval{
-			Timestamp:   interval.Minute.Format("2006-01-02 15:04:05"),
-			Rows:        interval.TotalRows,
-			Txns:        interval.TxnCount,
-			Events:      interval.EventCount,
-			BinlogBytes: int(interval.BinlogBytes),
-			DDLCount:    interval.DDLCount,
+			Timestamp:            interval.Minute.Format("2006-01-02 15:04:05"),
+			Rows:                 interval.TotalRows,
+			Txns:                 interval.TxnCount,
+			Events:               interval.EventCount,
+			BinlogBytes:          int(interval.BinlogBytes),
+			BinlogBytesFormatted: formatFileSize(interval.BinlogBytes),
+			DDLCount:             interval.DDLCount,
 		})
 	}
 	d.HasHotIntervals = len(d.HotIntervals) > 0
@@ -543,15 +550,16 @@ func formatFileSize(bytes int64) string {
 
 func buildHTMLTxnDiagnostic(txn model.Transaction) htmlTxnDiagnostic {
 	return htmlTxnDiagnostic{
-		TxnKey:         txn.TxnKey,
-		Rows:           txn.TotalRows,
-		Events:         txn.EventCount,
-		Duration:       txn.Duration.String(),
-		BinlogBytes:    int(txn.BinlogBytes),
-		Tables:         sortedTxnTables(txn.Tables),
-		Location:       formatBinlogSpan(txn),
-		QuerySummary:   txn.QuerySummary,
-		MysqlbinlogCmd: mysqlbinlogCmd(txn),
+		TxnKey:               txn.TxnKey,
+		Rows:                 txn.TotalRows,
+		Events:               txn.EventCount,
+		Duration:             txn.Duration.String(),
+		BinlogBytes:          int(txn.BinlogBytes),
+		BinlogBytesFormatted: formatFileSize(txn.BinlogBytes),
+		Tables:               sortedTxnTables(txn.Tables),
+		Location:             formatBinlogSpan(txn),
+		QuerySummary:         txn.QuerySummary,
+		MysqlbinlogCmd:       mysqlbinlogCmd(txn),
 	}
 }
 
