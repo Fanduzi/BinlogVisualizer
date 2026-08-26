@@ -56,6 +56,7 @@ func RenderHTML(result CompareResult) (string, error) {
 	tmpl, err := report.NewHTMLTemplate("compare", compareHTMLTemplate, template.FuncMap{
 		"formatDelta":       formatHTMLDelta,
 		"formatPercent":     formatHTMLPercent,
+		"formatBytes":       formatCompareFileSize,
 		"snapshotWindow":    formatSnapshotWindow,
 		"snapshotInputMode": formatSnapshotInputMode,
 		"snapshotSource":    formatSnapshotSource,
@@ -320,6 +321,24 @@ func localizedCompareSource(source string) string {
 		return i18n.T("report.html.compare.sourceBaseline")
 	default:
 		return source
+	}
+}
+
+func formatCompareFileSize(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.1f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.1f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.1f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", bytes)
 	}
 }
 
@@ -1118,6 +1137,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
               <th>{{t "report.html.compare.source"}}</th>
               <th class="num">{{t "report.html.common.totalRows"}}</th>
               <th class="num">{{t "report.html.compare.txnCount"}}</th>
+              <th class="num">{{t "report.html.analyze.binlogBytes"}}</th>
             </tr>
           </thead>
           <tbody>
@@ -1127,6 +1147,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
               <td>{{compareSource .Source}}</td>
               <td class="num">{{.TotalRows}}</td>
               <td class="num">{{.TxnCount}}</td>
+              <td class="num" style="font-family:'JetBrains Mono',monospace;color:var(--primary);font-weight:600">{{formatBytes .BinlogBytes}}</td>
             </tr>
             {{end}}
           </tbody>
@@ -1255,6 +1276,22 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     var hotChart = echarts.init(document.getElementById('compare-hot-chart'));
     var eventMixChart = echarts.init(document.getElementById('compare-event-mix-chart'));
 
+    function makeCompareToolbox() {
+      var primary = cssVar('--primary') || '#818cf8';
+      var muted   = cssVar('--muted') || '#64748b';
+      return {
+        right: 14,
+        top: 0,
+        itemSize: 13,
+        iconStyle: { borderColor: muted },
+        emphasis: { iconStyle: { borderColor: primary } },
+        feature: {
+          dataZoom: { yAxisIndex: 'none', title: { zoom: 'Select Zoom Range', back: 'Reset Zoom' } },
+          restore: { title: 'Restore' }
+        }
+      };
+    }
+
     function renderAllCharts() {
       var primary = cssVar('--primary') || '#818cf8';
       var accent  = cssVar('--accent') || '#22d3ee';
@@ -1265,10 +1302,11 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       summaryChart.setOption({
         animation: false,
         backgroundColor: 'transparent',
+        toolbox: makeCompareToolbox(),
         tooltip: { show: false },
-        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true, yAxisIndex: [0] }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 16, right: 24, top: 16, bottom: 48, containLabel: true },
+        grid: { left: 16, right: 24, top: 28, bottom: 48, containLabel: true },
         xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         yAxis: { type: 'category', data: window.compareSummaryPairs.map((item) => item.name), axisLabel: { color: text } },
         series: [
@@ -1280,10 +1318,11 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       topTablesChart.setOption({
         animation: false,
         backgroundColor: 'transparent',
+        toolbox: makeCompareToolbox(),
         tooltip: { show: false },
-        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true, yAxisIndex: [0] }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 16, right: 24, top: 16, bottom: 48, containLabel: true },
+        grid: { left: 16, right: 24, top: 28, bottom: 48, containLabel: true },
         xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         yAxis: { type: 'category', data: window.compareTopTables.map((item) => item.name), axisLabel: { color: text } },
         series: [
@@ -1295,10 +1334,11 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       patternChangesChart.setOption({
         animation: false,
         backgroundColor: 'transparent',
+        toolbox: makeCompareToolbox(),
         tooltip: { show: false },
-        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true, yAxisIndex: [0] }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 16, right: 24, top: 16, bottom: 56, containLabel: true },
+        grid: { left: 16, right: 24, top: 28, bottom: 56, containLabel: true },
         xAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         yAxis: { type: 'category', data: window.comparePatternChanges.map((item) => item.name), axisLabel: { color: text } },
         series: [
@@ -1310,10 +1350,11 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       opsMixChart.setOption({
         animation: false,
         backgroundColor: 'transparent',
+        toolbox: makeCompareToolbox(),
         tooltip: { show: false },
         dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
         legend: { data: ['{{t "report.html.compare.baseline"}}', '{{t "report.html.compare.current"}}'], bottom: 0, textStyle: { color: text } },
-        grid: { left: 16, right: 24, top: 16, bottom: 48, containLabel: true },
+        grid: { left: 16, right: 24, top: 28, bottom: 48, containLabel: true },
         xAxis: { type: 'category', data: window.compareOpsMix.map((item) => item.name), axisLabel: { color: text } },
         yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
         series: [

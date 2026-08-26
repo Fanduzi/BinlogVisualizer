@@ -1154,7 +1154,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
                 <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.txns"}}={{fmtIntHTML .Txns}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}}</div>
               </div>
               <div class="diagnostic-body">
-                <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+                <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
                 {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
               </div>
             </div>
@@ -1202,6 +1202,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
               <th class="sortable" data-sort="schema">{{t "report.html.common.schema"}}</th>
               <th class="sortable" data-sort="table">{{t "report.html.common.table"}}</th>
               <th class="num sortable" data-sort="total">{{t "report.html.common.totalRows"}}</th>
+              <th class="num sortable" data-sort="bytes">{{t "report.html.analyze.binlogBytes"}}</th>
               <th class="num sortable" data-sort="ins">{{t "report.html.analyze.insertPct"}}</th>
               <th class="num sortable" data-sort="upd">{{t "report.html.analyze.updatePct"}}</th>
               <th class="num sortable" data-sort="del">{{t "report.html.analyze.deletePct"}}</th>
@@ -1215,6 +1216,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
               <td class="name">{{if .HasActivity}}<span class="table-chevron">▶</span>{{end}}{{.Schema}}</td>
               <td class="name" style="font-weight:600">{{.Table}}</td>
               <td class="num">{{fmtIntHTML .Total}}</td>
+              <td class="num" data-raw="{{.BinlogBytes}}" style="font-family:'JetBrains Mono',monospace;color:var(--primary);font-weight:600">{{.BinlogBytesFormatted}}</td>
               <td class="num op-ins">{{.InsertPct}}</td>
               <td class="num op-upd">{{.UpdatePct}}</td>
               <td class="num op-del">{{.DeletePct}}</td>
@@ -1223,7 +1225,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </tr>
             {{if .HasActivity}}
             <tr class="table-detail-row" data-table-key="{{.Key}}" hidden>
-              <td colspan="8">
+              <td colspan="9">
                 <div class="table-detail-panel">
                   <div class="table-detail-grid">
                     <div class="chart-panel">
@@ -1281,11 +1283,11 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </div>
             <div class="diagnostic-body">
               {{if .Location}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code style="font-family:'JetBrains Mono',monospace;color:var(--accent)">{{.Location}}</code></div>{{end}}
-              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
               {{if .MysqlbinlogCmd}}
               <div class="mysqlbinlog-row">
                 <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
-                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">{{t "report.html.analyze.copy"}}</button>
+                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
               </div>
               {{end}}
               {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}
@@ -1312,11 +1314,11 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </div>
             <div class="diagnostic-body">
               {{if .Location}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code style="font-family:'JetBrains Mono',monospace;color:var(--accent)">{{.Location}}</code></div>{{end}}
-              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
               {{if .MysqlbinlogCmd}}
               <div class="mysqlbinlog-row">
                 <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
-                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">{{t "report.html.analyze.copy"}}</button>
+                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
               </div>
               {{end}}
               {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}
@@ -1343,11 +1345,11 @@ const htmlReportTemplate = `<!DOCTYPE html>
             </div>
             <div class="diagnostic-body">
               {{if .Location}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code style="font-family:'JetBrains Mono',monospace;color:var(--accent)">{{.Location}}</code></div>{{end}}
-              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}}</div>
+              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
               {{if .MysqlbinlogCmd}}
               <div class="mysqlbinlog-row">
                 <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
-                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">{{t "report.html.analyze.copy"}}</button>
+                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
               </div>
               {{end}}
               {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}
@@ -1598,6 +1600,40 @@ const htmlReportTemplate = `<!DOCTYPE html>
     };
   }
 
+  function makeToolbox() {
+    var primary = cssVar('--primary');
+    var muted = cssVar('--muted');
+    return {
+      right: 14,
+      top: 0,
+      itemSize: 13,
+      iconStyle: { borderColor: muted },
+      emphasis: { iconStyle: { borderColor: primary } },
+      feature: {
+        dataZoom: { yAxisIndex: 'none', title: { zoom: 'Select Zoom Range', back: 'Reset Zoom' } },
+        restore: { title: 'Restore' }
+      }
+    };
+  }
+
+  function makeDataZoom() {
+    var primary = cssVar('--primary');
+    var muted = cssVar('--muted');
+    return [
+      { type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true },
+      {
+        type: 'slider',
+        height: 14,
+        bottom: 2,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        fillerColor: 'rgba(56, 189, 248, 0.16)',
+        handleStyle: { color: primary, borderColor: primary },
+        textStyle: { color: muted, fontSize: 10 }
+      }
+    ];
+  }
+
   function renderCharts() {
     var t = makeTheme();
     var primary = cssVar('--primary');
@@ -1618,11 +1654,13 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var tpsEl = document.getElementById('chart-tps');
     if (tpsEl) {
       c0 = echarts.init(tpsEl, null, {renderer: 'svg'});
+      c0.group = 'analyze_activity';
       c0.setOption({
         ...t,
+        toolbox: makeToolbox(),
         legend: { show: false },
-        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
-        grid: { top: 20, bottom: 35, left: 55, right: 20 },
+        dataZoom: makeDataZoom(),
+        grid: { top: 28, bottom: 35, left: 55, right: 20 },
         xAxis: {
           type: 'category',
           data: tpsLabels,
@@ -1668,11 +1706,13 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var timelineEl = document.getElementById('chart-timeline');
     if (timelineEl) {
       c1 = echarts.init(timelineEl, null, {renderer: 'svg'});
+      c1.group = 'analyze_activity';
       c1.setOption({
         ...t,
+        toolbox: makeToolbox(),
         legend: { show: false },
-        dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
-        grid: { top: 20, bottom: 35, left: 55, right: 20 },
+        dataZoom: makeDataZoom(),
+        grid: { top: 28, bottom: 35, left: 55, right: 20 },
         xAxis: {
           type: 'category',
           data: minuteLabels,
@@ -1713,6 +1753,10 @@ const htmlReportTemplate = `<!DOCTYPE html>
           }
         }]
       });
+    }
+
+    if (c0 && c1) {
+      echarts.connect('analyze_activity');
     }
 
     var tablesEl = document.getElementById('chart-tables');
@@ -1812,13 +1856,17 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var border  = cssVar('--border');
     var muted   = cssVar('--muted');
 
+    var groupKey = 'table_' + domID;
+
     var actEl = document.getElementById('chart-table-activity-' + domID);
     if (!actEl) return;
     var activity = echarts.init(actEl, null, {renderer: 'svg'});
+    activity.group = groupKey;
     activity.setOption({
       ...t,
+      toolbox: makeToolbox(),
       legend: { show: false },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeDataZoom(),
       grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
@@ -1848,10 +1896,12 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var opsEl = document.getElementById('chart-table-ops-' + domID);
     if (!opsEl) return;
     var ops = echarts.init(opsEl, null, {renderer: 'svg'});
+    ops.group = groupKey;
     ops.setOption({
       ...t,
-      legend: { top: 0, right: 16, textStyle: { color: muted, fontSize: 10 } },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      toolbox: makeToolbox(),
+      legend: { top: 0, right: 48, textStyle: { color: muted, fontSize: 10 } },
+      dataZoom: makeDataZoom(),
       grid: { top: 28, bottom: 30, left: 58, right: 16 },
       xAxis: {
         type: 'category',
@@ -1874,6 +1924,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
       ]
     });
 
+    echarts.connect(groupKey);
     tableCharts[tableKey] = { activity: activity, ops: ops };
   }
 
@@ -1973,8 +2024,12 @@ const htmlReportTemplate = `<!DOCTYPE html>
           aVal = a.cells[1].textContent.trim();
           bVal = b.cells[1].textContent.trim();
           return currentSortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        } else if (sortKey === 'bytes') {
+          aVal = parseInt(a.cells[3].getAttribute('data-raw'), 10) || 0;
+          bVal = parseInt(b.cells[3].getAttribute('data-raw'), 10) || 0;
+          return currentSortAsc ? aVal - bVal : bVal - aVal;
         } else {
-          var colIdx = { total: 2, ins: 3, upd: 4, del: 5, ddl: 6, txns: 7 }[sortKey] || 2;
+          var colIdx = { total: 2, bytes: 3, ins: 4, upd: 5, del: 6, ddl: 7, txns: 8 }[sortKey] || 2;
           aVal = parseInt(a.cells[colIdx].textContent.replace(/[^0-9]/g, ''), 10) || 0;
           bVal = parseInt(b.cells[colIdx].textContent.replace(/[^0-9]/g, ''), 10) || 0;
           return currentSortAsc ? aVal - bVal : bVal - aVal;
@@ -2006,8 +2061,9 @@ const htmlReportTemplate = `<!DOCTYPE html>
     var c = echarts.init(el, null, {renderer: 'svg'});
     c.setOption({
       ...t,
+      toolbox: makeToolbox(),
       legend: { textStyle: { color: muted, fontSize: 11 }, top: 2, left: 'center', itemGap: 24 },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeDataZoom(),
       grid: { top: 38, bottom: 35, left: 65, right: 65 },
       xAxis: {
         type: 'category',
@@ -2020,7 +2076,16 @@ const htmlReportTemplate = `<!DOCTYPE html>
           type: 'value',
           name: '{{t "report.html.analyze.binlogBytesShort"}}',
           nameTextStyle: { color: muted, fontSize: 11 },
-          axisLabel: { color: muted, fontSize: 11 },
+          axisLabel: {
+            color: muted,
+            fontSize: 11,
+            formatter: function(v) {
+              if (v >= 1e9) return (v/1e9).toFixed(1) + ' GB';
+              if (v >= 1e6) return (v/1e6).toFixed(1) + ' MB';
+              if (v >= 1e3) return (v/1e3).toFixed(1) + ' KB';
+              return v + ' B';
+            }
+          },
           splitLine: { lineStyle: { color: border, type: 'dashed' } }
         },
         {

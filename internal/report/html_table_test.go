@@ -200,17 +200,18 @@ func TestBuildHTMLData_FootnotePresent(t *testing.T) {
 	}
 }
 
-func TestBuildHTMLData_Colspan8(t *testing.T) {
+func TestBuildHTMLData_Colspan9(t *testing.T) {
 	result := model.AnalysisResult{
 		Summary: model.WorkloadSummary{TotalTransactions: 1, TotalRows: 100},
 		Tables: []model.TableStats{
 			{
-				Schema:     "shop",
-				Table:      "orders",
-				TotalRows:  100,
-				InsertRows: 100,
-				TxnCount:   1,
-				Activity:   []model.TableActivityPoint{{Rows: 10}},
+				Schema:      "shop",
+				Table:       "orders",
+				TotalRows:   100,
+				InsertRows:  100,
+				BinlogBytes: 1048576,
+				TxnCount:    1,
+				Activity:    []model.TableActivityPoint{{Rows: 10}},
 			},
 		},
 	}
@@ -220,8 +221,11 @@ func TestBuildHTMLData_Colspan8(t *testing.T) {
 		t.Fatalf("RenderHTML() error: %v", err)
 	}
 
-	if !strings.Contains(html, `colspan="8"`) {
-		t.Error("expected colspan=8 for detail row")
+	if !strings.Contains(html, `colspan="9"`) {
+		t.Error("expected colspan=9 for detail row")
+	}
+	if !strings.Contains(html, "1.0 MB") {
+		t.Error("expected formatted binlog size 1.0 MB in table")
 	}
 }
 

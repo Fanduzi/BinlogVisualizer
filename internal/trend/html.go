@@ -914,6 +914,40 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   const eventMixChart = echarts.init(document.getElementById('trend-event-mix-chart'));
   const hotIntervalChart = echarts.init(document.getElementById('trend-hot-interval-chart'));
 
+  function makeTrendToolbox() {
+    var primary = cssVar('--primary') || '#22d3ee';
+    var muted   = cssVar('--muted') || '#8899b0';
+    return {
+      right: 14,
+      top: 0,
+      itemSize: 13,
+      iconStyle: { borderColor: muted },
+      emphasis: { iconStyle: { borderColor: primary } },
+      feature: {
+        dataZoom: { yAxisIndex: 'none', title: { zoom: 'Select Zoom Range', back: 'Reset Zoom' } },
+        restore: { title: 'Restore' }
+      }
+    };
+  }
+
+  function makeTrendDataZoom() {
+    var primary = cssVar('--primary') || '#22d3ee';
+    var muted   = cssVar('--muted') || '#8899b0';
+    return [
+      { type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true },
+      {
+        type: 'slider',
+        height: 14,
+        bottom: 2,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(255, 255, 255, 0.03)',
+        fillerColor: 'rgba(34, 211, 238, 0.16)',
+        handleStyle: { color: primary, borderColor: primary },
+        textStyle: { color: muted, fontSize: 10 }
+      }
+    ];
+  }
+
   function renderTrendCharts() {
     var primary = cssVar('--primary') || '#22d3ee';
     var accent  = cssVar('--accent') || '#fbbf24';
@@ -921,11 +955,14 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     var muted   = cssVar('--muted') || '#8899b0';
     var text    = cssVar('--text') || '#f1f5f9';
 
+    overallChart.group = 'trend_group';
     overallChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: [
@@ -935,11 +972,14 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       ]
     });
 
+    opsChart.group = 'trend_group';
     opsChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: [
@@ -949,41 +989,53 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       ]
     });
 
+    tablesChart.group = 'trend_group';
     tablesChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: labels, axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: tableSeries
     });
 
+    tpsChart.group = 'trend_group';
     tpsChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: window.trendTPSSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: [{ name: _lMaxTPS, type: 'line', smooth: true, data: window.trendTPSSeries.map(p => p.value), itemStyle: { color: primary } }]
     });
 
+    ddlChart.group = 'trend_group';
     ddlChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: window.trendDDLSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: [{ name: _lDDLEvents, type: 'bar', data: window.trendDDLSeries.map(p => p.value), itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] } }]
     });
 
+    txnChart.group = 'trend_group';
     txnChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: window.trendTxnSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: [
@@ -992,11 +1044,14 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       ]
     });
 
+    eventMixChart.group = 'trend_group';
     eventMixChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: window.trendEventMixSeries.map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: [
@@ -1007,11 +1062,14 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       ]
     });
 
+    hotIntervalChart.group = 'trend_group';
     hotIntervalChart.setOption({
       backgroundColor: 'transparent',
+      toolbox: makeTrendToolbox(),
       tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside', zoomOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: makeTrendDataZoom(),
       legend: { textStyle: { color: text } },
+      grid: { top: 32, bottom: 35, left: 55, right: 25 },
       xAxis: { type: 'category', data: (window.trendHotIntervalSeries.max_hot_rows || []).map(p => p.snapshot_name), axisLabel: { color: muted } },
       yAxis: { type: 'value', axisLabel: { color: muted }, splitLine: { lineStyle: { color: border } } },
       series: [
@@ -1019,6 +1077,10 @@ const trendHTMLTemplate = `<!DOCTYPE html>
         { name: _lHotCount, type: 'bar', data: (window.trendHotIntervalSeries.hot_count_series || []).map(p => p.value), itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] } }
       ]
     });
+
+    const allCharts = [overallChart, opsChart, tablesChart, patternChart, tpsChart, ddlChart, txnChart, eventMixChart, hotIntervalChart].filter(Boolean);
+    allCharts.forEach(c => { c.group = 'trend_group'; });
+    echarts.connect('trend_group');
   }
 
   if (patternChart && patternSeries.length > 0) {
