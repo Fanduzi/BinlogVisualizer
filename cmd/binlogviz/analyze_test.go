@@ -6,6 +6,8 @@
 package binlogviz
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
 
@@ -308,6 +311,16 @@ func TestAnalyzeCommandDefinesFlags(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCommandDocumentsUnlimitedTransactions(t *testing.T) {
+	flag := newAnalyzeCommand().Flags().Lookup("top-transactions")
+	if flag == nil {
+		t.Fatal("expected top-transactions flag")
+	}
+	if !strings.Contains(flag.Usage, "0") || !strings.Contains(strings.ToLower(flag.Usage), "unlimited") {
+		t.Fatalf("expected top-transactions help to document zero as unlimited, got %q", flag.Usage)
+	}
+}
+
 func TestAnalyzeCommandSQLContextDefaultIsSummary(t *testing.T) {
 	cmd := newAnalyzeCommand()
 	flag := cmd.Flags().Lookup("sql-context")
@@ -448,6 +461,85 @@ func TestBuildAnalyzerOptionsPreservesExplicitLegacyTopFlags(t *testing.T) {
 	}
 	if result.TopTransactions != 4 {
 		t.Fatalf("expected explicit TopTransactions=4, got %d", result.TopTransactions)
+	}
+}
+
+func TestBuildAnalyzerOptionsPreservesUnlimitedTransactions(t *testing.T) {
+	cliOpts := &analyzeOptions{
+		top:                    10,
+		topTransactions:        0,
+		topTransactionsChanged: true,
+		largeTrxRows:           1000,
+		largeTrxDuration:       30 * time.Second,
+	}
+
+	result := buildAnalyzerOptions(cliOpts, time.Time{}, time.Time{})
+	if result.TopTransactions != 0 {
+		t.Fatalf("expected explicit TopTransactions=0 to remain unlimited, got %d", result.TopTransactions)
+	}
+}
+
+func TestAnalyzeTransactionOutputReportsBoundedAndUnlimitedLists(t *testing.T) {
+	base := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	events := make([]model.NormalizedEvent, 0, 36)
+	for i := 1; i <= 12; i++ {
+		key := fmt.Sprintf("txn-%d", i)
+		start := base.Add(time.Duration(i) * time.Second)
+		events = append(events,
+			model.NormalizedEvent{Timestamp: start, EventType: "BEGIN", TxnKey: key},
+			model.NormalizedEvent{Timestamp: start.Add(time.Second), EventType: "ROWS", TxnKey: key, Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 10},
+			model.NormalizedEvent{Timestamp: start.Add(2 * time.Second), EventType: "XID", TxnKey: key},
+		)
+	}
+
+	for _, tc := range []struct {
+		name            string
+		top             int
+		listed, omitted int
+	}{
+		{name: "default bounded", top: 10, listed: 10, omitted: 2},
+		{name: "explicit unlimited", top: 0, listed: 12, omitted: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := analyzer.DefaultOptions()
+			opts.TopTransactions = tc.top
+			result, err := analyzer.New(opts).Analyze(events)
+			if err != nil {
+				t.Fatalf("Analyze returned error: %v", err)
+			}
+
+			out, err := report.RenderJSON(*result)
+			if err != nil {
+				t.Fatalf("RenderJSON returned error: %v", err)
+			}
+			var decoded struct {
+				Transactions []struct {
+					TxnKey string `json:"txn_key"`
+				} `json:"transactions"`
+				TransactionsListed  int `json:"transactions_listed"`
+				TransactionsOmitted int `json:"transactions_omitted"`
+			}
+			if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+				t.Fatalf("decode JSON: %v", err)
+			}
+			if len(decoded.Transactions) != tc.listed || decoded.TransactionsListed != tc.listed || decoded.TransactionsOmitted != tc.omitted {
+				t.Fatalf("transaction list = %d, listed=%d, omitted=%d; want %d, %d, %d", len(decoded.Transactions), decoded.TransactionsListed, decoded.TransactionsOmitted, tc.listed, tc.listed, tc.omitted)
+			}
+			for i, txn := range decoded.Transactions {
+				want := fmt.Sprintf("txn-%d", i+1)
+				if txn.TxnKey != want {
+					t.Fatalf("transaction %d = %q, want %q", i, txn.TxnKey, want)
+				}
+			}
+
+			html, err := report.RenderHTML(*result)
+			if err != nil {
+				t.Fatalf("RenderHTML returned error: %v", err)
+			}
+			if !strings.Contains(html, `data-transaction-key="txn-5"`) {
+				t.Fatal("expected present txn-5 to be available in the HTML transaction lookup")
+			}
+		})
 	}
 }
 

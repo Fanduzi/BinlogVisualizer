@@ -220,6 +220,8 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `summary` | object | yes | 总体汇总和时间边界 |
 | `tables` | array | yes | 按确定性顺序排列的完整表聚合结果；人类可读渲染器可以只显示配置的 Top 表；没有表结果时为空数组 |
 | `transactions` | array | yes | Top 事务聚合结果；没有事务结果时为空数组 |
+| `transactions_listed` | integer | yes | `transactions` 中实际列出的事务聚合数量 |
+| `transactions_omitted` | integer | yes | 从 `transactions` 中省略的分析事务数量；使用 `--top-transactions 0` 时为 `0` |
 | `patterns` | array | yes | Top 模式聚合结果；没有模式结果时为空数组 |
 | `minutes` | array | yes | 每分钟聚合结果；没有分钟桶时为空数组 |
 | `alerts` | array | yes | 检测到的告警；没有告警时为空数组 |

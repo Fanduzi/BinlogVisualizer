@@ -1289,8 +1289,35 @@ const htmlReportTemplate = `<!DOCTYPE html>
         <span class="dot" style="background:var(--primary);box-shadow:0 0 8px rgba(var(--primary-rgb),0.6)"></span>
         <span>{{t "report.html.analyze.sectionEvidence"}}</span>
       </div>
+      {{if or .HasTransactions .HasLargestTxns .HasLongestTxns .HasWidestTxns .HasDrilldowns}}
+      <div class="table-search-box">
+        <span>🔍</span>
+        <input type="text" id="transaction-filter-input" placeholder="Search transactions..." aria-label="Search transactions">
+      </div>
+      {{end}}
     </div>
     <div class="section-body" style="padding:16px 16px 0">
+
+    {{if .HasTransactions}}
+    <section class="evidence-sub" id="transaction-lookup">
+      <div class="evidence-sub-header">
+        <span class="dot" style="background:var(--primary)"></span>
+        <span>{{t "report.section.transactions"}}</span>
+      </div>
+      <div class="section-body">
+        <div class="diagnostic-list">
+          {{range .Transactions}}
+          <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
+            <div class="diagnostic-head">
+              <div class="diagnostic-title"><span>{{.TxnKey}}</span></div>
+              <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
+            </div>
+          </div>
+          {{end}}
+        </div>
+      </div>
+    </section>
+    {{end}}
 
     {{if or .HasLargestTxns .HasLongestTxns .HasWidestTxns}}
     <section class="evidence-sub" id="transaction-evidence">
@@ -1303,7 +1330,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
           {{if .HasLargestTxns}}
           <div class="diagnostic-title">🏆 {{t "report.html.analyze.largestTransactionsByRows"}}</div>
           {{range .LargestTransactions}}
-          <div class="diagnostic-item">
+          <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
             <div class="diagnostic-head">
               <div class="diagnostic-title">
                 <span>{{.TxnKey}}</span>
@@ -1334,7 +1361,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
           {{if .HasLongestTxns}}
           <div class="diagnostic-title" style="margin-top:8px">⏱️ {{t "report.html.analyze.longestTransactionsByDuration"}}</div>
           {{range .LongestTransactions}}
-          <div class="diagnostic-item">
+          <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
             <div class="diagnostic-head">
               <div class="diagnostic-title">
                 <span>{{.TxnKey}}</span>
@@ -1365,7 +1392,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
           {{if .HasWidestTxns}}
           <div class="diagnostic-title" style="margin-top:8px">🌐 {{t "report.html.analyze.widestTransactionsByTouchedTables"}}</div>
           {{range .WidestTransactions}}
-          <div class="diagnostic-item">
+          <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
             <div class="diagnostic-head">
               <div class="diagnostic-title">
                 <span>{{.TxnKey}}</span>
@@ -1461,7 +1488,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
               <div class="drilldown-subsection">
                 <span class="drilldown-sublabel" title="{{t "report.html.analyze.workloadTransactionsTitle"}}">{{t "report.html.analyze.workloadTransactions"}}</span>
                 {{range .RepTxns}}
-                <div class="drilldown-txn">{{.TxnKey}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{.Duration}}</div>
+                <div class="drilldown-txn" data-transaction-key="{{.TxnKey}}">{{.TxnKey}} &mdash; {{fmtIntHTML .TotalRows}} {{t "report.html.common.rows"}}, {{.Duration}}</div>
                 {{end}}
               </div>
               {{end}}
@@ -2025,6 +2052,18 @@ const htmlReportTemplate = `<!DOCTYPE html>
           detail.setAttribute('hidden', '');
           row.classList.remove('open');
         }
+      });
+    });
+  }
+
+  // Live transaction filtering
+  var transactionFilterInput = document.getElementById('transaction-filter-input');
+  if (transactionFilterInput) {
+    transactionFilterInput.addEventListener('input', function(e) {
+      var query = (e.target.value || '').toLowerCase().trim();
+      document.querySelectorAll('[data-transaction-key]').forEach(function(item) {
+        var key = (item.getAttribute('data-transaction-key') || '').toLowerCase();
+        item.style.display = key.indexOf(query) !== -1 ? '' : 'none';
       });
     });
   }

@@ -470,6 +470,38 @@ func TestRenderHTMLTransactionEvidenceCards(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLTransactionEvidenceIsSearchable(t *testing.T) {
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{{
+			TxnKey:    "txn-5",
+			TotalRows: 100,
+		}},
+		Diagnostics: model.Diagnostics{
+			LargestTransactions: []model.Transaction{{
+				TxnKey:    "txn-6",
+				TotalRows: 100,
+			}},
+		},
+	}
+
+	out, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, token := range []string{
+		`id="transaction-filter-input"`,
+		`id="transaction-lookup"`,
+		`data-transaction-key="txn-5"`,
+		`data-transaction-key="txn-6"`,
+		"transactionFilterInput.addEventListener",
+		"key.indexOf(query) !== -1",
+	} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected searchable transaction token %q", token)
+		}
+	}
+}
+
 func TestAnalyzeHTMLUsesDBAReadingPath(t *testing.T) {
 	out, err := RenderHTML(productHTMLFixture())
 	if err != nil {

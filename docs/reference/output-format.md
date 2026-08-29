@@ -220,6 +220,8 @@ The top-level JSON object always contains these fields:
 | `summary` | object | yes | Overall totals and time bounds |
 | `tables` | array | yes | Complete table aggregates in deterministic order; human renderers may display only the configured top tables; empty array when no table results exist |
 | `transactions` | array | yes | Top transaction aggregates; empty array when no transaction results exist |
+| `transactions_listed` | integer | yes | Number of transaction aggregates present in `transactions` |
+| `transactions_omitted` | integer | yes | Number of analyzed transactions omitted from `transactions`; `0` when `--top-transactions 0` is used |
 | `patterns` | array | yes | Top pattern aggregates; empty array when no pattern results exist |
 | `minutes` | array | yes | Per-minute aggregates; empty array when no minute buckets exist |
 | `alerts` | array | yes | Detected alerts; empty array when no alerts exist |

@@ -116,6 +116,36 @@ func TestReportAggregatorDoesNotRetainAllTransactions(t *testing.T) {
 	}
 }
 
+func TestReportAggregatorUsesNaturalNumericTxnKeyTieBreak(t *testing.T) {
+	agg := NewReportAggregator(Options{TopTransactions: 3})
+	for _, key := range []string{"txn-10", "txn-2", "txn-1"} {
+		agg.ConsumeTransaction(model.Transaction{
+			TxnKey:      key,
+			TotalRows:   100,
+			Duration:    time.Second,
+			BinlogBytes: 100,
+			Tables:      map[string]int{"shop.orders": 100},
+		})
+	}
+
+	snapshot := agg.Snapshot()
+	for name, txns := range map[string][]model.Transaction{
+		"top":     snapshot.Transactions,
+		"largest": snapshot.Diagnostics.LargestTransactions,
+		"longest": snapshot.Diagnostics.LongestTransactions,
+		"widest":  snapshot.Diagnostics.WidestTransactions,
+	} {
+		if len(txns) != 3 {
+			t.Fatalf("%s transaction count = %d, want 3", name, len(txns))
+		}
+		for i, want := range []string{"txn-1", "txn-2", "txn-10"} {
+			if txns[i].TxnKey != want {
+				t.Fatalf("%s transaction %d = %q, want %q", name, i, txns[i].TxnKey, want)
+			}
+		}
+	}
+}
+
 func TestReportAggregatorDeletePatternDoesNotCiteInsertTxns(t *testing.T) {
 	agg := NewReportAggregator(DefaultOptions())
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)

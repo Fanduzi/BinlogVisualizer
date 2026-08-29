@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -386,7 +387,7 @@ func transactionRowsBetter(left, right model.Transaction) bool {
 	if left.BinlogBytes != right.BinlogBytes {
 		return left.BinlogBytes > right.BinlogBytes
 	}
-	return left.TxnKey < right.TxnKey
+	return naturalTxnKeyLess(left.TxnKey, right.TxnKey)
 }
 
 func transactionDurationBetter(left, right model.Transaction) bool {
@@ -396,7 +397,7 @@ func transactionDurationBetter(left, right model.Transaction) bool {
 	if left.TotalRows != right.TotalRows {
 		return left.TotalRows > right.TotalRows
 	}
-	return left.TxnKey < right.TxnKey
+	return naturalTxnKeyLess(left.TxnKey, right.TxnKey)
 }
 
 func transactionWidthBetter(left, right model.Transaction) bool {
@@ -406,7 +407,19 @@ func transactionWidthBetter(left, right model.Transaction) bool {
 	if left.TotalRows != right.TotalRows {
 		return left.TotalRows > right.TotalRows
 	}
-	return left.TxnKey < right.TxnKey
+	return naturalTxnKeyLess(left.TxnKey, right.TxnKey)
+}
+
+func naturalTxnKeyLess(left, right string) bool {
+	const prefix = "txn-"
+	if strings.HasPrefix(left, prefix) && strings.HasPrefix(right, prefix) {
+		leftNumber, leftErr := strconv.ParseUint(left[len(prefix):], 10, 64)
+		rightNumber, rightErr := strconv.ParseUint(right[len(prefix):], 10, 64)
+		if leftErr == nil && rightErr == nil && leftNumber != rightNumber {
+			return leftNumber < rightNumber
+		}
+	}
+	return left < right
 }
 
 func (a *ReportAggregator) consumePattern(txn model.Transaction) {

@@ -9,9 +9,9 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
 | `text.go` | Renders the concise diagnostic text report with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes report v3 with counted event-byte diagnostics, optional producer/transaction provenance, required SQL mode/availability metadata, bounded query fields, XA identity, and snapshot metadata. |
+| `json.go` | Serializes report v3 with transaction list counts, counted event-byte diagnostics, optional producer/transaction provenance, required SQL mode/availability metadata, bounded query fields, XA identity, and snapshot metadata. |
 | `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction span/replay, DDL, input-format, and finding evidence. |
-| `html.go` | Renders the self-contained HTML report, including physical-file/count-event byte cards, responsive activity-chart layout, and ECharts data preparation. |
+| `html.go` | Renders the self-contained HTML report, including physical-file/count-event byte cards, transaction-key search, responsive activity-chart layout, and ECharts data preparation. |
 | `mysqlbinlog.go` | Formats usable transaction spans and builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands, preferring per-transaction server version for mixed producers and omitting unusable XID-only starts. |
 | `*_test.go` | Verifies diagnostic text defaults, Markdown incident evidence, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
 
@@ -56,4 +56,6 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Analyze HTML shows a neutral DDL activity notice in Risks & Findings when DDL events exist without alerts; the healthy empty state is reserved for reports without alerts or DDL.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
 - Analyze text and HTML label selected physical input-file bytes separately from counted filtered event bytes; missing selected-file size metadata renders as unavailable.
-- Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions instead of rendering a crowded top-N list.
+- Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions; a separate lookup lists the bounded transaction payload without changing those champion cards.
+- JSON always reports `transactions_listed` and `transactions_omitted` alongside the bounded `transactions` array.
+- Rendered transaction evidence and pattern representatives expose transaction keys to the HTML search control.

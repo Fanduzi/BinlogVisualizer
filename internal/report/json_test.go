@@ -378,6 +378,27 @@ func TestRenderJSONIncludesTransactions(t *testing.T) {
 	}
 }
 
+func TestRenderJSONReportsTransactionListCounts(t *testing.T) {
+	result := model.AnalysisResult{
+		Summary: model.WorkloadSummary{TotalTransactions: 12},
+		Transactions: []model.Transaction{
+			{TxnKey: "txn-1"},
+			{TxnKey: "txn-2"},
+		},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	parsed := parseJSONMap(t, out)
+	if parsed["transactions_listed"] != float64(2) {
+		t.Fatalf("transactions_listed = %v, want 2", parsed["transactions_listed"])
+	}
+	if parsed["transactions_omitted"] != float64(10) {
+		t.Fatalf("transactions_omitted = %v, want 10", parsed["transactions_omitted"])
+	}
+}
 func TestRenderJSONIncludesXAIdentifier(t *testing.T) {
 	result := model.AnalysisResult{
 		Transactions: []model.Transaction{{
