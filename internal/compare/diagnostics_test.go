@@ -8,6 +8,9 @@ package compare
 import (
 	"strings"
 	"testing"
+
+	"binlogviz/internal/model"
+	"binlogviz/internal/report"
 )
 
 func TestBuildCompareResultProducesDDLDelta(t *testing.T) {
@@ -103,6 +106,7 @@ func TestBuildCompareResultProducesTxnDiagnosticDelta(t *testing.T) {
 }
 
 func TestBuildCompareResultPreservesCurrentTxnReplayEvidence(t *testing.T) {
+	replayAvailable := true
 	current := InputReport{
 		Diagnostics: InputDiagnostics{
 			LargestTransactions: []InputTransaction{{
@@ -114,6 +118,9 @@ func TestBuildCompareResultPreservesCurrentTxnReplayEvidence(t *testing.T) {
 				BinlogFileEnd:   "minimal.binlog",
 				PosStart:        962,
 				PosEnd:          1186,
+				Completeness:    "partial_end",
+				ReplayAvailable: &replayAvailable,
+				ReplayScope:     "full_transaction",
 				MysqlbinlogCmd:  "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
 			}},
 			LongestTransactions: []InputTransaction{{
@@ -125,6 +132,9 @@ func TestBuildCompareResultPreservesCurrentTxnReplayEvidence(t *testing.T) {
 				BinlogFileEnd:   "mysql-bin.000045",
 				PosStart:        300,
 				PosEnd:          520,
+				Completeness:    "complete",
+				ReplayAvailable: &replayAvailable,
+				ReplayScope:     "full_transaction",
 				MysqlbinlogCmd:  "mariadb-binlog --base64-output=DECODE-ROWS -v --start-position=300 /tmp/mysql-bin.000044\nmariadb-binlog --base64-output=DECODE-ROWS -v --stop-position=520 /tmp/mysql-bin.000045",
 			}},
 		},
@@ -138,6 +148,9 @@ func TestBuildCompareResultPreservesCurrentTxnReplayEvidence(t *testing.T) {
 	if largest.MysqlbinlogCmd != current.Diagnostics.LargestTransactions[0].MysqlbinlogCmd {
 		t.Fatalf("expected current largest command to be preserved, got %q", largest.MysqlbinlogCmd)
 	}
+	if largest.Completeness != "partial_end" || largest.ReplayAvailable == nil || !*largest.ReplayAvailable || largest.ReplayScope != "full_transaction" {
+		t.Fatalf("expected current largest replay contract to be preserved, got %+v", largest)
+	}
 
 	longest := result.DiagnosticsDelta.TxnDiagnostics.LongestTxnDelta.CurrentEvidence
 	if longest == nil || longest.BinlogSpan != "mysql-bin.000044:300-mysql-bin.000045:520" {
@@ -148,7 +161,8 @@ func TestBuildCompareResultPreservesCurrentTxnReplayEvidence(t *testing.T) {
 	}
 }
 
-func TestTransactionEvidenceForOmitsCommandForUnusableSpan(t *testing.T) {
+func TestTransactionEvidenceForDoesNotTrustRetainedSpanWithoutFullReplayContract(t *testing.T) {
+	replayAvailable := false
 	evidence := TransactionEvidenceFor(InputTransaction{
 		TxnKey:          "txn-xid",
 		TotalRows:       2000,
@@ -158,13 +172,62 @@ func TestTransactionEvidenceForOmitsCommandForUnusableSpan(t *testing.T) {
 		BinlogFileEnd:   "minimal.binlog",
 		PosStart:        1155,
 		PosEnd:          1186,
+		Completeness:    "partial_start",
+		ReplayAvailable: &replayAvailable,
 		MysqlbinlogCmd:  "mysqlbinlog --start-position=1155 --stop-position=1186 /tmp/minimal.binlog",
 	})
 	if evidence == nil {
 		t.Fatal("expected unusable span to retain transaction evidence")
 	}
 	if evidence.MysqlbinlogCmd != "" {
-		t.Fatalf("unusable span must not retain a replay command, got %q", evidence.MysqlbinlogCmd)
+		t.Fatalf("retained span without full replay evidence must not retain a command, got %q", evidence.MysqlbinlogCmd)
+	}
+	if evidence.Completeness != "partial_start" || evidence.ReplayAvailable == nil || *evidence.ReplayAvailable {
+		t.Fatalf("evidence contract was not preserved: %+v", evidence)
+	}
+}
+
+func TestReportV3ReplayEvidencePreservesFullSpanCommandWithoutTrustingRetainedLegacySpan(t *testing.T) {
+	payload, err := report.RenderJSON(model.AnalysisResult{
+		Summary: model.WorkloadSummary{TotalTransactions: 1, PartialTransactions: 1},
+		Transactions: []model.Transaction{{
+			TxnKey:          "txn-53",
+			Completeness:    model.TransactionPartialEnd,
+			TotalRows:       1,
+			EventCount:      2,
+			BinlogPathStart: "mysql-bin.000008",
+			BinlogPathEnd:   "mysql-bin.000008",
+			PositionStart:   3200,
+			PositionEnd:     3234,
+			FullReplaySpan: &model.TransactionReplaySpan{
+				BinlogPathStart: "mysql-bin.000008",
+				BinlogPathEnd:   "mysql-bin.000008",
+				PositionStart:   3183,
+				PositionEnd:     3449,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	decoded, err := DecodeReportJSON([]byte(payload))
+	if err != nil {
+		t.Fatalf("DecodeReportJSON: %v", err)
+	}
+
+	evidence := TransactionEvidenceFor(decoded.Transactions[0])
+	if evidence == nil || evidence.BinlogSpan != "mysql-bin.000008:3200-3234" || evidence.Completeness != "partial_end" || evidence.ReplayAvailable == nil || !*evidence.ReplayAvailable || evidence.ReplayScope != "full_transaction" {
+		t.Fatalf("report-v3 evidence contract was not preserved: %+v", evidence)
+	}
+	if !strings.Contains(evidence.MysqlbinlogCmd, "--start-position=3183 --stop-position=3449") || strings.Contains(evidence.MysqlbinlogCmd, "--start-position=3200") {
+		t.Fatalf("replay command did not preserve the trusted full span: %q", evidence.MysqlbinlogCmd)
+	}
+
+	legacy := decoded.Transactions[0]
+	legacy.ReplayAvailable = nil
+	legacy.ReplayScope = ""
+	if got := TransactionEvidenceFor(legacy); got == nil || got.BinlogSpan == "" || got.MysqlbinlogCmd != "" {
+		t.Fatalf("legacy retained span should remain evidence without authorizing replay: %+v", got)
 	}
 }
 

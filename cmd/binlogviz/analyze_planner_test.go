@@ -2,6 +2,7 @@
 // input: probed binlog file metadata plus requested analyze time windows and worker limits.
 // output: regression coverage for file narrowing and worker-count selection semantics.
 // pos: focused test layer for Task 4 analyze planning before command-level integration wiring.
+// note: if this file changes, update this header and cmd/binlogviz/README.md.
 package binlogviz
 
 import (
@@ -29,11 +30,11 @@ func TestBuildAnalyzePlanNarrowsToCoveredFiles(t *testing.T) {
 	}
 
 	plan := buildAnalyzePlan(probes, start, end, 4)
-	if len(plan.Paths) != 1 || plan.Paths[0] != "mysql-bin.000044" {
+	if len(plan.Paths) != 2 || plan.Paths[0] != "mysql-bin.000044" || plan.Paths[1] != "mysql-bin.000045" {
 		t.Fatalf("unexpected plan: %+v", plan)
 	}
-	if plan.WorkerCount != 1 {
-		t.Fatalf("expected 1 worker for 1 covered file, got %d", plan.WorkerCount)
+	if plan.WorkerCount != 2 {
+		t.Fatalf("expected 2 workers for selected plus boundary-context files, got %d", plan.WorkerCount)
 	}
 }
 
@@ -101,7 +102,22 @@ func TestBuildAnalyzePlanIncludesFileWithZeroLastEventAt(t *testing.T) {
 	}
 
 	plan := buildAnalyzePlan(probes, start, end, 4)
-	if len(plan.Paths) != 1 || plan.Paths[0] != "mysql-bin.000044" {
-		t.Fatalf("expected only file with zero LastEventAt included, got %+v", plan.Paths)
+	if len(plan.Paths) != 2 || plan.Paths[0] != "mysql-bin.000044" || plan.Paths[1] != "mysql-bin.000045" {
+		t.Fatalf("expected selected file plus following boundary context, got %+v", plan.Paths)
+	}
+}
+
+func TestBuildAnalyzePlanIncludesAdjacentRotationContext(t *testing.T) {
+	start := time.Date(2026, 4, 5, 10, 0, 0, 0, time.UTC)
+	end := start.Add(time.Hour)
+	probes := []binlog.FileProbe{
+		{BinlogPath: "mysql-bin.000043", FirstEventAt: start.Add(-2 * time.Hour), LastEventAt: start.Add(-time.Hour)},
+		{BinlogPath: "mysql-bin.000044", FirstEventAt: start, LastEventAt: end},
+		{BinlogPath: "mysql-bin.000045", FirstEventAt: end.Add(time.Hour), LastEventAt: end.Add(2 * time.Hour)},
+	}
+
+	plan := buildAnalyzePlan(probes, start, end, 4)
+	if len(plan.Paths) != 3 {
+		t.Fatalf("paths=%v, want preceding and following transaction-boundary context", plan.Paths)
 	}
 }

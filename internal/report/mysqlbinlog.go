@@ -1,6 +1,6 @@
-// Package report builds copy-paste mysqlbinlog commands from recorded transaction spans.
-// input: analyzer-produced Transaction positions and per-transaction/report FormatDescription server-version evidence.
-// output: a provenance-correct mysqlbinlog or mariadb-binlog command with absolute paths, or empty for XID-only/unusable spans, plus shared span formatting for downstream reports.
+// Package report builds copy-paste mysqlbinlog commands from trusted full-transaction replay spans.
+// input: analyzer-produced Transaction replay metadata plus per-transaction/report Format Description server-version evidence.
+// output: a provenance-correct full-transaction mysqlbinlog or mariadb-binlog command, or empty when replay is untrusted/unusable, plus retained span formatting.
 // pos: shared helper for text, JSON, and HTML Copy so #23 never invents --start-position.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -13,10 +13,6 @@ import (
 	"binlogviz/internal/model"
 )
 
-// maxCommitXIDSpanBytes is the largest recorded span treated as a commit XID
-// rather than a usable --start-position. Dogfood #18 records a 31-byte XID.
-const maxCommitXIDSpanBytes = 64
-
 func txnRecordedSpanBytes(txn model.Transaction) int64 {
 	if txn.BinlogBytes > 0 {
 		return txn.BinlogBytes
@@ -27,49 +23,26 @@ func txnRecordedSpanBytes(txn model.Transaction) int64 {
 	return 0
 }
 
-func txnSpanIsXIDOnly(txn model.Transaction) bool {
-	span := txnRecordedSpanBytes(txn)
-	if span <= 0 || span > maxCommitXIDSpanBytes {
-		return false
-	}
-	return txn.EventCount > 1 || txn.TotalRows > 1
+func txnSpanUsableForMysqlbinlog(txn model.Transaction) bool {
+	return txn.FullReplayAvailable()
 }
 
-func txnSpanUsableForMysqlbinlog(txn model.Transaction) bool {
-	if txnSpanIsXIDOnly(txn) {
-		return false
-	}
-	if txn.PositionStart <= 0 || txn.PositionEnd <= txn.PositionStart {
-		return false
-	}
-	if txn.BinlogPathStart == "" {
-		return false
-	}
-	return true
+func txnReplayAvailable(txn model.Transaction) bool {
+	return txnSpanUsableForMysqlbinlog(txn)
 }
 
 func mysqlbinlogCmd(txn model.Transaction, serverVersion string) string {
 	if !txnSpanUsableForMysqlbinlog(txn) {
 		return ""
 	}
-	startFile := replayFileArg(txn.BinlogPathStart)
-	endFile := startFile
-	if txn.BinlogPathEnd != "" {
-		endFile = replayFileArg(txn.BinlogPathEnd)
-	}
+	span := txn.FullReplaySpan
 	if txn.ServerVersion != "" {
 		serverVersion = txn.ServerVersion
 	}
 	binary := replayBinlogBinary(serverVersion)
 	const flags = "--base64-output=DECODE-ROWS -v"
-	if startFile == endFile {
-		return fmt.Sprintf("%s %s --start-position=%d --stop-position=%d %s",
-			binary, flags, txn.PositionStart, txn.PositionEnd, startFile)
-	}
-	return strings.Join([]string{
-		fmt.Sprintf("%s %s --start-position=%d %s", binary, flags, txn.PositionStart, startFile),
-		fmt.Sprintf("%s %s --stop-position=%d %s", binary, flags, txn.PositionEnd, endFile),
-	}, "\n")
+	return fmt.Sprintf("%s %s --start-position=%d --stop-position=%d %s",
+		binary, flags, span.PositionStart, span.PositionEnd, replayFileArg(span.BinlogPathStart))
 }
 
 // FormatReplayCommand returns the analyze-compatible replay command for a transaction span.

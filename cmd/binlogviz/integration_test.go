@@ -451,7 +451,7 @@ func TestResolveAnalyzePathsDiscoveryModeNarrowsFilesByTimeWindow(t *testing.T) 
 		t.Fatal("expected discovery mode")
 	}
 
-	want := []string{path44}
+	want := []string{path44, path45}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("unexpected time-window paths: want=%v got=%v", want, got)
 	}

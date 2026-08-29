@@ -1,3 +1,8 @@
+// Package trend verifies multi-snapshot trend result construction.
+// input: synthetic snapshot reports with ordering, baseline, completeness, table, pattern, and diagnostic evidence.
+// output: assertions for deterministic point order, deltas, completeness preservation, and trend series.
+// pos: focused regression coverage for the trend build pipeline before renderer-specific output.
+// note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
 
 import (
@@ -41,6 +46,23 @@ func TestBuildResultKeepsCLIOrderByDefault(t *testing.T) {
 	}
 	if result.Insights.RowsDelta != 2740885-252561 {
 		t.Fatalf("unexpected insights rows delta: %+v", result.Insights)
+	}
+}
+
+func TestBuildResultPreservesCompletenessCounts(t *testing.T) {
+	first := testInputReport("first", "First", "2026-08-18T05:42:37Z", 10, 2, 3, 10, 0, 0, 1)
+	second := testInputReport("second", "Second", "2026-08-18T06:42:37Z", 20, 3, 4, 20, 0, 0, 1)
+	partial, unknown := 1, 2
+	second.Summary.PartialTransactions = &partial
+	second.Summary.UnknownTransactions = &unknown
+
+	result, err := BuildResult(BuildOptions{Points: []BuildInput{{Path: "first.json", Report: first}, {Path: "second.json", Report: second}}})
+	if err != nil {
+		t.Fatalf("BuildResult returned error: %v", err)
+	}
+	got := result.Points[1].Summary
+	if got.PartialTransactions == nil || *got.PartialTransactions != 1 || got.UnknownTransactions == nil || *got.UnknownTransactions != 2 {
+		t.Fatalf("trend dropped completeness counts: %+v", got)
 	}
 }
 

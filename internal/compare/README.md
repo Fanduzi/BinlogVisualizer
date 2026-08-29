@@ -6,9 +6,9 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 
 | File | Responsibility |
 |------|----------------|
-| `load.go` | Loads and validates analyze report versions 0 through 3 from files or bytes. |
-| `model.go` | Defines compare input contracts that preserve report-v3 provenance/SQL metadata, counted-event diagnostics, snapshot metadata, pattern shapes, and replay evidence without inventing legacy identity. |
-| `diff.go` | Computes deterministic summary, table, pattern, operation, alert, and baseline/current byte-coverage deltas. |
+| `load.go` | Loads and validates analyze report versions 0 through 3 from files or bytes, normalizing legacy missing completeness to unknown. |
+| `model.go` | Defines compare input contracts that preserve report-v3 provenance/SQL metadata, completeness, counted-event diagnostics, snapshot metadata, pattern shapes, and replay evidence without inventing legacy identity. |
+| `diff.go` | Computes deterministic summary, completeness, table, pattern, operation, alert, and baseline/current byte-coverage deltas. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
 | `replay.go` | Preserves analyze transaction spans and replay commands for compare and trend evidence. |
@@ -47,7 +47,8 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - A new write shape (`baseline=0`, `current>0`) uses `delta_percent: null` and text/HTML `new` instead of `0.0%`.
 - `pattern_changes` is a first-class compare result area, separate from `table_changes`.
 - Legacy reports with no top-level `patterns` are treated as empty pattern sets rather than rejected.
+- Report v3 requires completeness and replay availability for every top-level transaction. Legacy v0-v2 reports remain loadable and missing completeness is exposed as `unknown`, never inferred as complete.
 - Text and HTML outputs now expose snapshot context beyond the time window so incident reviews can see input mode, source shape, and active filters at a glance.
 - Key findings, bounded drilldowns, evidence refs, and follow-up recommendations are derived inside this module from the same deterministic compare result.
-- Current largest and longest transaction evidence carries the analyze-compatible `binlog_span` and `mysqlbinlog_cmd` when the source span is usable; invalid or legacy spans never produce a broken command.
+- Current largest and longest transaction evidence preserves completeness and replay fields; a supplied command is trusted only when report v3 explicitly marks full-transaction replay available, so retained legacy or incomplete spans never synthesize a command.
 - Compare HTML shows selected physical input-file bytes and counted event bytes in consistently labeled baseline/current columns; byte coverage is omitted from the stable compare JSON wire shape.

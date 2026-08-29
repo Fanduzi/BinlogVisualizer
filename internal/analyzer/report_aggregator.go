@@ -1,6 +1,6 @@
 // Package analyzer incrementally builds report-ready projections without retaining all transactions.
-// input: completed transactions with provenance, minute buckets, DDL events, normalized events, and file coverage.
-// output: bounded ReportSnapshot values with filtered event-byte coverage and deterministic producer sets used to assemble model.AnalysisResult.
+// input: complete or incomplete transactions with provenance, minute buckets, DDL events, normalized events, and file coverage.
+// output: bounded ReportSnapshot values with producer/byte evidence and incomplete transactions excluded from whole-transaction conclusions.
 // pos: streaming report aggregation layer that replaces QueryAllTransactions-dependent finalization.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -35,6 +35,8 @@ type ReportAggregator struct {
 	opts Options
 
 	totalTransactions   int
+	partialTransactions int
+	unknownTransactions int
 	totalRows           int
 	totalEvents         int
 	startTime           time.Time
@@ -46,6 +48,7 @@ type ReportAggregator struct {
 	serverFlavors       map[string]struct{}
 
 	topTransactions     []model.Transaction
+	incompleteEvidence  []model.Transaction
 	largest             []model.Transaction
 	longest             []model.Transaction
 	widest              []model.Transaction
@@ -164,13 +167,27 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 		a.sqlContextAvailable = true
 	}
 	a.consumeProvenance(txn.ServerID, txn.ServerVersion, txn.ServerFlavor)
+	if txn.QueryContext != nil && txn.QueryContext.Truncated {
+		a.warnings++
+	}
+	if txn.EffectiveCompleteness() != model.TransactionComplete {
+		if txn.IsPartial() {
+			a.partialTransactions++
+		} else {
+			a.unknownTransactions++
+		}
+		alert := incompleteTransactionAlert(txn)
+		a.alerts = append(a.alerts, alert)
+		a.alertReferencedTxns[txn.TxnKey] = txn
+		a.incompleteEvidence = insertTopTransaction(a.incompleteEvidence, txn, a.opts.TopTransactions, func(left, right model.Transaction) bool {
+			return naturalTxnKeyLess(left.TxnKey, right.TxnKey)
+		})
+		return
+	}
 	a.topTransactions = insertTopTransaction(a.topTransactions, txn, a.opts.TopTransactions, transactionRowsBetter)
 	a.largest = insertTopTransaction(a.largest, txn, 5, transactionRowsBetter)
 	a.longest = insertTopTransaction(a.longest, txn, 5, transactionDurationBetter)
 	a.widest = insertTopTransaction(a.widest, txn, 5, transactionWidthBetter)
-	if txn.QueryContext != nil && txn.QueryContext.Truncated {
-		a.warnings++
-	}
 	a.consumePattern(txn)
 	a.txnSize.add(txn)
 	newAlerts := DetectLargeTransactionAlerts([]model.Transaction{txn}, a.opts)
@@ -232,11 +249,13 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	alerts = append(alerts, DetectSpikeAlerts(minutes, a.opts)...)
 
 	summary := model.WorkloadSummary{
-		TotalTransactions: a.totalTransactions,
-		TotalRows:         a.totalRows,
-		TotalEvents:       a.totalEvents,
-		StartTime:         a.startTime,
-		EndTime:           a.endTime,
+		TotalTransactions:   a.totalTransactions,
+		PartialTransactions: a.partialTransactions,
+		UnknownTransactions: a.unknownTransactions,
+		TotalRows:           a.totalRows,
+		TotalEvents:         a.totalEvents,
+		StartTime:           a.startTime,
+		EndTime:             a.endTime,
 	}
 	if !summary.StartTime.IsZero() && !summary.EndTime.IsZero() {
 		summary.Duration = summary.EndTime.Sub(summary.StartTime)
@@ -269,11 +288,20 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	})
 	series.TxnSizeSeriesSummary = a.txnSize.snapshot()
 
+	transactions := append([]model.Transaction(nil), a.topTransactions...)
+	if a.opts.TopTransactions == 0 {
+		transactions = append(transactions, a.incompleteEvidence...)
+	} else if remaining := a.opts.TopTransactions - len(transactions); remaining > 0 {
+		if remaining > len(a.incompleteEvidence) {
+			remaining = len(a.incompleteEvidence)
+		}
+		transactions = append(transactions, a.incompleteEvidence[:remaining]...)
+	}
 	return ReportSnapshot{
 		Summary:             summary,
 		Provenance:          a.snapshotProvenance(),
 		SQLContextAvailable: a.sqlContextAvailable,
-		Transactions:        append([]model.Transaction(nil), a.topTransactions...),
+		Transactions:        transactions,
 		Patterns:            patterns,
 		Minutes:             minutes,
 		Timeseries:          series,
@@ -304,6 +332,30 @@ func (a *ReportAggregator) snapshotProvenance() model.ReportProvenance {
 	sort.Strings(provenance.ServerVersions)
 	sort.Strings(provenance.ServerFlavors)
 	return provenance
+}
+
+func incompleteTransactionAlert(txn model.Transaction) model.Alert {
+	status := txn.EffectiveCompleteness()
+	alertType := "unknown_transaction"
+	if txn.IsPartial() {
+		alertType = "partial_transaction"
+	}
+	return model.Alert{
+		Type:     alertType,
+		Severity: "warning",
+		Message:  "Transaction " + txn.TxnKey + " has " + string(status) + " evidence; whole-transaction conclusions are suppressed",
+		TxnKey:   txn.TxnKey,
+		Details: map[string]any{
+			"completeness": status,
+			"retained_span": map[string]any{
+				"binlog_file_start": txn.BinlogPathStart,
+				"binlog_file_end":   txn.BinlogPathEnd,
+				"pos_start":         txn.PositionStart,
+				"pos_end":           txn.PositionEnd,
+			},
+			"replay_available": txn.FullReplayAvailable(),
+		},
+	}
 }
 
 func insertTopTransaction(current []model.Transaction, txn model.Transaction, limit int, better func(left, right model.Transaction) bool) []model.Transaction {
@@ -361,7 +413,13 @@ func mergeEvidenceTransactions(largest []model.Transaction, alertReferenced map[
 		}
 		out = append(out, txn)
 	}
-	for _, txn := range alertReferenced {
+	keys := make([]string, 0, len(alertReferenced))
+	for key := range alertReferenced {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool { return naturalTxnKeyLess(keys[i], keys[j]) })
+	for _, key := range keys {
+		txn := alertReferenced[key]
 		if _, exists := seen[txn.TxnKey]; !exists {
 			out = append(out, txn)
 		}

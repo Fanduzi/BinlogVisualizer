@@ -259,6 +259,18 @@
     "description": "事务总数标签",
     "other": "事务总数"
   },
+  "report.label.partialTransactions": {
+    "description": "被选择窗口截断的事务标签",
+    "other": "部分事务"
+  },
+  "report.label.unknownTransactions": {
+    "description": "物理边界不可用的事务标签",
+    "other": "边界未知事务"
+  },
+  "report.label.fullTransactionReplay": {
+    "description": "覆盖已观测完整事务的回放命令标签",
+    "other": "完整事务回放"
+  },
   "report.label.totalRows": {
     "description": "行数总数标签",
     "other": "行数总数"

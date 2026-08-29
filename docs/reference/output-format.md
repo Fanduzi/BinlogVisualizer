@@ -100,6 +100,8 @@ Text mode is the default report format. It renders a fixed six-section report.
 The `Workload Summary` section provides top-level totals for the analyzed result set:
 
 - total transactions
+- partial transactions
+- unknown transactions
 - total rows
 - total events
 - time range
@@ -236,6 +238,8 @@ The top-level JSON object always contains these fields:
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `total_transactions` | integer | yes | Total analyzed transactions |
+| `partial_transactions` | integer | yes | Transactions with `partial_start`, `partial_end`, or `partial_both` retained evidence |
+| `unknown_transactions` | integer | yes | Transactions whose physical boundaries could not be established |
 | `total_rows` | integer | yes | Total logical affected rows (UPDATE before/after images count as one row) |
 | `total_events` | integer | yes | Total normalized events included in analysis |
 | `start_time` | string | yes | RFC3339 timestamp, or empty string when no timestamp is available |
@@ -285,12 +289,23 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 | `duration` | string | yes | Go duration string |
 | `total_rows` | integer | yes | Total rows touched by the transaction |
 | `event_count` | integer | yes | Number of events in the transaction |
+| `binlog_bytes` | integer | yes | Bytes covered by retained in-window transaction evidence |
+| `binlog_file_start` | string | no | First file containing retained in-window evidence |
+| `binlog_file_end` | string | no | Last file containing retained in-window evidence |
+| `pos_start` | integer | no | Start position of retained in-window evidence |
+| `pos_end` | integer | no | End position of retained in-window evidence |
+| `completeness` | string | yes | `complete`, `partial_start`, `partial_end`, `partial_both`, or `unknown` |
+| `replay_available` | boolean | yes | Whether a trusted full-transaction replay command can be emitted |
+| `replay_scope` | string | no | `full_transaction` when replay is available |
+| `mysqlbinlog_cmd` | string | no | Labelled full-transaction replay command; omitted without a trusted full span |
 | `tables` | object | no | JSON object whose keys are table names and whose values are integer counts; omitted when the map is nil or empty (`omitempty`) |
 | `operations` | object | no | JSON object whose keys are operation names (`INSERT`, `UPDATE`, `DELETE`, or `LOAD_DATA`) and whose values are affected-row counts; omitted when the map is nil or empty (`omitempty`) |
 | `query_summary` | string | no | Omitted when SQL-context mode suppresses it or when no summary exists |
 | `query_sql` | string | no | Present only in `--sql-context full` when bounded SQL context exists |
 | `query_truncated` | boolean | no | Omitted when no query context exists; when present, indicates whether stored SQL was truncated |
 | `query_original_bytes` | integer | no | Omitted when no query context exists; when present, reports original SQL byte length |
+
+Transaction rows, operations, event counts, and retained positions remain inclusive and event-window scoped. Adjacent parsed events can establish physical boundaries but do not add out-of-window workload. `partial_start` means the physical start is outside the selected window, `partial_end` means the physical end is outside it, and `partial_both` means both are outside it. Missing or legacy boundary metadata is `unknown`, never inferred as complete. Complete ranked entries appear first in `transactions`; bounded partial/unknown evidence fills remaining slots in natural numeric `txn-N` key order without participating in that whole-transaction ranking. Partial and unknown evidence is also excluded from size histograms, patterns, and ordinary large-transaction alerts.
 
 #### SQL-context mode behavior
 
@@ -381,12 +396,14 @@ Each entry contains:
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | Alert type such as `large_transaction`, `spike`, or `input_format` |
+| `type` | string | yes | `large_transaction`, `spike`, `input_format`, `partial_transaction`, or `unknown_transaction` |
 | `severity` | string | yes | Current alert severity string |
 | `message` | string | yes | Human-readable alert message |
 | `txn_key` | string | no | Present for transaction-scoped alerts |
 | `minute` | string | no | Present for minute-scoped alerts; RFC3339 when present |
 | `details` | object | no | JSON object containing structured alert details; omitted when no structured detail payload exists |
+
+`partial_transaction` and `unknown_transaction` details contain `completeness`, a retained event-window `retained_span`, and `replay_available`. Replay is unavailable for XID-only evidence and for cross-file endpoints because report v3 does not carry the full ordered intermediate-file list.
 
 ### `warnings`
 
@@ -437,7 +454,7 @@ Current implementation increments this count when transaction query context had 
 
 ## Markdown Output
 
-Markdown mode renders a GitHub-flavored incident report with workload summary (including input-format context), top tables, top transactions (including transaction keys, bytes, file spans, and replay commands when usable), per-minute activity, DDL Timeline, and Findings. Evidence tables escape pipe characters, missing spans render as `N/A`, and replay commands use fenced code blocks.
+Markdown mode renders a GitHub-flavored incident report with workload summary (including partial/unknown counts and input-format context), top tables, top transactions (including transaction keys, completeness, replay availability, bytes, file spans, and commands when trusted), per-minute activity, DDL Timeline, and Findings. Evidence tables escape pipe characters, missing spans render as `N/A`, and replay commands use fenced code blocks.
 
 ```bash
 binlogviz analyze mysql-bin.000123 --format markdown > report.md

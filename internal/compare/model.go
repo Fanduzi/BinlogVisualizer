@@ -1,12 +1,12 @@
 // Package compare defines compare-input contracts and comparison result models.
-// input: report-v0-v3 JSON emitted by `binlogviz analyze --format json`, with optional provenance on v3.
-// output: typed compare input and result structures that preserve known identity, replay evidence, and render-only byte coverage without inventing legacy evidence.
+// input: report-v0-v3 analyze JSON with optional v3 provenance, SQL mode, completeness, replay, and counted-byte evidence.
+// output: typed compare inputs/results preserving known identity, completeness, safe replay, counts, and render-only byte coverage.
 // pos: compare pipeline boundary between JSON loading and diff/render stages.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 type InputReport struct {
-	ReportVersion int                `json:"report_version,omitempty"`
+	ReportVersion *int               `json:"report_version,omitempty"`
 	Provenance    *InputProvenance   `json:"provenance,omitempty"`
 	SQLContext    *InputSQLContext   `json:"sql_context,omitempty"`
 	Summary       InputSummary       `json:"summary"`
@@ -33,12 +33,14 @@ type InputProvenance struct {
 }
 
 type InputSummary struct {
-	TotalTransactions int    `json:"total_transactions"`
-	TotalRows         int    `json:"total_rows"`
-	TotalEvents       int    `json:"total_events"`
-	StartTime         string `json:"start_time"`
-	EndTime           string `json:"end_time"`
-	Duration          string `json:"duration"`
+	TotalTransactions   int    `json:"total_transactions"`
+	PartialTransactions *int   `json:"partial_transactions,omitempty"`
+	UnknownTransactions *int   `json:"unknown_transactions,omitempty"`
+	TotalRows           int    `json:"total_rows"`
+	TotalEvents         int    `json:"total_events"`
+	StartTime           string `json:"start_time"`
+	EndTime             string `json:"end_time"`
+	Duration            string `json:"duration"`
 }
 
 type InputTimeseries struct {
@@ -108,6 +110,7 @@ type InputDDLEvent struct {
 
 type InputTransaction struct {
 	TxnKey             string         `json:"txn_key"`
+	XAXID              string         `json:"xa_xid,omitempty"`
 	ServerID           uint32         `json:"server_id,omitempty"`
 	ServerVersion      string         `json:"server_version,omitempty"`
 	ServerFlavor       string         `json:"server_flavor,omitempty"`
@@ -125,13 +128,16 @@ type InputTransaction struct {
 	BinlogFileEnd      string         `json:"binlog_file_end,omitempty"`
 	PosStart           int64          `json:"pos_start,omitempty"`
 	PosEnd             int64          `json:"pos_end,omitempty"`
+	Completeness       string         `json:"completeness"`
+	ReplayAvailable    *bool          `json:"replay_available,omitempty"`
+	ReplayScope        string         `json:"replay_scope,omitempty"`
+	MysqlbinlogCmd     string         `json:"mysqlbinlog_cmd,omitempty"`
 	Tables             map[string]int `json:"tables,omitempty"`
 	Operations         map[string]int `json:"operations,omitempty"`
 	QuerySummary       string         `json:"query_summary,omitempty"`
 	QuerySQL           string         `json:"query_sql,omitempty"`
 	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
 	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
-	MysqlbinlogCmd     string         `json:"mysqlbinlog_cmd,omitempty"`
 }
 
 type InputActor struct {
@@ -273,8 +279,8 @@ type TxnDiagnosticDelta struct {
 	LongestTxnDelta TxnDurationCompare `json:"longest_txn_delta"`
 }
 
-// TransactionEvidence preserves the current transaction's replay location and command.
-// The command is omitted when the source span is missing or unusable.
+// TransactionEvidence preserves the current transaction's retained location and
+// explicit report-v3 completeness/replay contract. Commands are never inferred.
 type TransactionEvidence struct {
 	TxnKey          string `json:"txn_key,omitempty"`
 	BinlogFileStart string `json:"binlog_file_start,omitempty"`
@@ -282,6 +288,9 @@ type TransactionEvidence struct {
 	PosStart        int64  `json:"pos_start,omitempty"`
 	PosEnd          int64  `json:"pos_end,omitempty"`
 	BinlogSpan      string `json:"binlog_span,omitempty"`
+	Completeness    string `json:"completeness,omitempty"`
+	ReplayAvailable *bool  `json:"replay_available,omitempty"`
+	ReplayScope     string `json:"replay_scope,omitempty"`
 	MysqlbinlogCmd  string `json:"mysqlbinlog_cmd,omitempty"`
 }
 
@@ -364,14 +373,18 @@ type EvidenceRef struct {
 }
 
 type SummaryDelta struct {
-	CurrentTotalRows          int `json:"current_total_rows"`
-	BaselineTotalRows         int `json:"baseline_total_rows"`
-	TotalRowsDelta            int `json:"total_rows_delta"`
-	CurrentTotalTransactions  int `json:"current_total_transactions"`
-	BaselineTotalTransactions int `json:"baseline_total_transactions"`
-	TotalTransactionsDelta    int `json:"total_transactions_delta"`
-	CurrentWarnings           int `json:"current_warnings"`
-	BaselineWarnings          int `json:"baseline_warnings"`
+	CurrentTotalRows            int  `json:"current_total_rows"`
+	BaselineTotalRows           int  `json:"baseline_total_rows"`
+	TotalRowsDelta              int  `json:"total_rows_delta"`
+	CurrentTotalTransactions    int  `json:"current_total_transactions"`
+	BaselineTotalTransactions   int  `json:"baseline_total_transactions"`
+	TotalTransactionsDelta      int  `json:"total_transactions_delta"`
+	CurrentPartialTransactions  *int `json:"current_partial_transactions,omitempty"`
+	BaselinePartialTransactions *int `json:"baseline_partial_transactions,omitempty"`
+	CurrentUnknownTransactions  *int `json:"current_unknown_transactions,omitempty"`
+	BaselineUnknownTransactions *int `json:"baseline_unknown_transactions,omitempty"`
+	CurrentWarnings             int  `json:"current_warnings"`
+	BaselineWarnings            int  `json:"baseline_warnings"`
 }
 
 type TableChange struct {

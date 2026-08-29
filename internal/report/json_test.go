@@ -1096,3 +1096,44 @@ func TestRenderJSONIncludesCountedEventBytes(t *testing.T) {
 		t.Fatalf("expected counted_event_bytes=250, got %v", got)
 	}
 }
+
+func TestRenderJSONV3LabelsSafeFullTransactionReplay(t *testing.T) {
+	result := model.AnalysisResult{
+		Summary: model.WorkloadSummary{TotalTransactions: 1, PartialTransactions: 1},
+		Transactions: []model.Transaction{{
+			TxnKey:          "txn-5",
+			Completeness:    model.TransactionPartialEnd,
+			BinlogPathStart: "/data/mysql/mysql-bin.000008",
+			BinlogPathEnd:   "/data/mysql/mysql-bin.000008",
+			PositionStart:   3200,
+			PositionEnd:     3234,
+			FullReplaySpan: &model.TransactionReplaySpan{
+				BinlogPathStart: "/data/mysql/mysql-bin.000008",
+				BinlogPathEnd:   "/data/mysql/mysql-bin.000008",
+				PositionStart:   3183,
+				PositionEnd:     3449,
+			},
+		}},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("RenderJSON returned error: %v", err)
+	}
+	parsed := parseJSONMap(t, out)
+	if parsed["report_version"] != float64(3) {
+		t.Fatalf("report_version=%v, want 3", parsed["report_version"])
+	}
+	summary := parsed["summary"].(map[string]any)
+	if summary["partial_transactions"] != float64(1) {
+		t.Fatalf("summary=%v, want partial_transactions=1", summary)
+	}
+	txn := parsed["transactions"].([]any)[0].(map[string]any)
+	if txn["completeness"] != "partial_end" || txn["replay_available"] != true || txn["replay_scope"] != "full_transaction" {
+		t.Fatalf("transaction replay contract missing: %v", txn)
+	}
+	cmd, _ := txn["mysqlbinlog_cmd"].(string)
+	if !strings.Contains(cmd, "--start-position=3183 --stop-position=3449") || strings.Contains(cmd, "--start-position=3200") {
+		t.Fatalf("mysqlbinlog_cmd did not use the full observed span: %q", cmd)
+	}
+}

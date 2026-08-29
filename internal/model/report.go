@@ -1,6 +1,6 @@
 // Package model defines top-level analyze report contracts and snapshot metadata.
-// input: aggregated analyzer output, producer provenance, diagnostics, tables, transactions, and filters.
-// output: AnalysisResult, ReportProvenance, and snapshot envelope types reused by report and compare modules.
+// input: aggregated analyzer output, producer provenance, completeness summaries, diagnostics, tables, transactions, and filters.
+// output: completeness-aware AnalysisResult, ReportProvenance, and snapshot envelopes reused by report and compare modules.
 // pos: shared result-model layer between analyzer finalization and renderer or loader pipelines.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -9,17 +9,19 @@ import "time"
 
 // WorkloadSummary provides high-level analysis statistics.
 type WorkloadSummary struct {
-	TotalTransactions int
-	TotalRows         int
-	TotalEvents       int
-	StartTime         time.Time
-	EndTime           time.Time
-	Duration          time.Duration
+	TotalTransactions   int
+	PartialTransactions int
+	UnknownTransactions int
+	TotalRows           int
+	TotalEvents         int
+	StartTime           time.Time
+	EndTime             time.Time
+	Duration            time.Duration
 }
 
 // Alert represents a detected anomaly or threshold breach.
 type Alert struct {
-	Type     string // "large_transaction", "spike", "input_format"
+	Type     string // "large_transaction", "spike", "input_format", "partial_transaction", "unknown_transaction"
 	Severity string // "info", "warning", "critical"
 	Message  string
 	TxnKey   string

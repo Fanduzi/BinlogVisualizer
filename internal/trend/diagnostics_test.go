@@ -111,6 +111,7 @@ func TestBuildResultProducesTxnSizeTrends(t *testing.T) {
 }
 
 func TestBuildResultPreservesTxnReplayEvidencePerSnapshot(t *testing.T) {
+	replayAvailable := true
 	makeReport := func(name, start, key, file string, startPos, endPos int64, cmd string) InputReport {
 		r := testInputReport(name, name, start, 1000, 50, 1200, 500, 350, 150, 0)
 		r.Diagnostics.LargestTransactions = []comparepkg.InputTransaction{{
@@ -121,6 +122,9 @@ func TestBuildResultPreservesTxnReplayEvidencePerSnapshot(t *testing.T) {
 			BinlogFileEnd:   file,
 			PosStart:        startPos,
 			PosEnd:          endPos,
+			Completeness:    "partial_end",
+			ReplayAvailable: &replayAvailable,
+			ReplayScope:     "full_transaction",
 			MysqlbinlogCmd:  cmd,
 		}}
 		return r
@@ -144,6 +148,9 @@ func TestBuildResultPreservesTxnReplayEvidencePerSnapshot(t *testing.T) {
 		}
 		if evidence.MysqlbinlogCmd == "" {
 			t.Fatalf("snapshot %d missing replay command", i)
+		}
+		if evidence.Completeness != "partial_end" || evidence.ReplayAvailable == nil || !*evidence.ReplayAvailable || evidence.ReplayScope != "full_transaction" {
+			t.Fatalf("snapshot %d replay contract = %+v", i, evidence)
 		}
 	}
 }

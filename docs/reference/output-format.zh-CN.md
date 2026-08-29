@@ -100,6 +100,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 `Workload Summary` 章节提供分析结果集的顶层汇总：
 
 - 总事务数
+- partial 事务数
+- unknown 事务数
 - 总影响行数
 - 总事件数
 - 时间范围
@@ -236,6 +238,8 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `total_transactions` | integer | yes | 总分析事务数 |
+| `partial_transactions` | integer | yes | 保留证据状态为 `partial_start`、`partial_end` 或 `partial_both` 的事务数 |
+| `unknown_transactions` | integer | yes | 无法确定物理边界的事务数 |
 | `total_rows` | integer | yes | 逻辑影响行数（UPDATE before/after image 计 1 行） |
 | `total_events` | integer | yes | 纳入分析的标准化事件总数 |
 | `start_time` | string | yes | RFC3339 时间戳；如果没有可用时间戳则为空字符串 |
@@ -285,12 +289,23 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `duration` | string | yes | 持续时间字符串 |
 | `total_rows` | integer | yes | 事务触及的总行数 |
 | `event_count` | integer | yes | 事务中的事件数量 |
+| `binlog_bytes` | integer | yes | 窗口内保留事务证据覆盖的字节数 |
+| `binlog_file_start` | string | no | 窗口内保留证据所在的首个文件 |
+| `binlog_file_end` | string | no | 窗口内保留证据所在的最后文件 |
+| `pos_start` | integer | no | 窗口内保留证据的起始位置 |
+| `pos_end` | integer | no | 窗口内保留证据的结束位置 |
+| `completeness` | string | yes | `complete`、`partial_start`、`partial_end`、`partial_both` 或 `unknown` |
+| `replay_available` | boolean | yes | 是否可以生成可信的完整事务回放命令 |
+| `replay_scope` | string | no | 可回放时为 `full_transaction` |
+| `mysqlbinlog_cmd` | string | no | 标记为完整事务的回放命令；没有可信完整跨度时省略 |
 | `tables` | object | no | JSON 对象，key 是表名，value 是整数计数；为空时省略 |
 | `operations` | object | no | JSON 对象，key 是操作名（`INSERT`、`UPDATE`、`DELETE` 或 `LOAD_DATA`），value 是受影响行数；为空时省略 |
 | `query_summary` | string | no | 当 SQL 上下文模式抑制该字段，或没有摘要时省略 |
 | `query_sql` | string | no | 仅在 `--sql-context full` 且存在受限 SQL 上下文时出现 |
 | `query_truncated` | boolean | no | 没有 query 上下文时省略；出现时表示存储的 SQL 是否被截断 |
 | `query_original_bytes` | integer | no | 没有 query 上下文时省略；出现时表示原始 SQL 的字节长度 |
+
+事务行数、操作数、事件数和保留位置继续采用 inclusive 的逐事件窗口语义。相邻解析事件只能帮助确定物理边界，不能增加窗口外 workload。`partial_start` 表示物理起点在所选窗口外，`partial_end` 表示物理终点在窗口外，`partial_both` 表示两端均在窗口外。缺失或旧版边界元数据一律为 `unknown`，不会推断为完整。`transactions` 先列出完整事务排行榜，再按 `txn-N` 的自然数字顺序用有界的 partial/unknown 证据填充剩余位置；后者不参与完整事务排名，也不会进入大小直方图、模式或普通大事务告警。
 
 #### SQL 上下文模式行为
 
@@ -381,12 +396,14 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | 告警类型，例如 `large_transaction`、`spike` 或 `input_format` |
+| `type` | string | yes | `large_transaction`、`spike`、`input_format`、`partial_transaction` 或 `unknown_transaction` |
 | `severity` | string | yes | 当前告警严重级别字符串 |
 | `message` | string | yes | 面向人的告警消息 |
 | `txn_key` | string | no | 事务级告警时出现 |
 | `minute` | string | no | 分钟级告警时出现；出现时为 RFC3339 |
 | `details` | object | no | 包含结构化告警细节的 JSON 对象；没有结构化细节时省略 |
+
+`partial_transaction` 和 `unknown_transaction` 的 details 包含 `completeness`、逐事件窗口内的 `retained_span` 以及 `replay_available`。仅有 XID 的证据不能回放；跨文件端点也不能回放，因为 report v3 不携带完整且有序的中间文件列表。
 
 ### `warnings`
 
@@ -437,7 +454,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 ## Markdown 输出
 
-Markdown 模式输出 GitHub Flavored Markdown 工单报告，包含工作负载摘要（包括输入格式上下文）、热点表、热点事务（包括事务键、字节数、文件跨度和可用时的回放命令）、分钟级活动、DDL 时间线和发现。证据表会转义管道符；缺失跨度显示为 `N/A`，回放命令使用围栏代码块。
+Markdown 模式输出 GitHub Flavored Markdown 工单报告，包含工作负载摘要（包括 partial/unknown 计数和输入格式上下文）、热点表、热点事务（包括事务键、完整性、回放可用性、字节数、文件跨度和可信回放命令）、分钟级活动、DDL 时间线和发现。证据表会转义管道符；缺失跨度显示为 `N/A`，回放命令使用围栏代码块。
 
 ```bash
 binlogviz analyze mysql-bin.000123 --format markdown > report.md

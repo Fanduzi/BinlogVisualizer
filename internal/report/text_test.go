@@ -767,3 +767,34 @@ func TestDownsampleSeriesPreservesFirstBucketMinute(t *testing.T) {
 		t.Fatalf("expected first bucket minute %s, got %s", base, result[0].Minute)
 	}
 }
+
+func TestRenderTextAndHTMLShowIncompleteTransactionSummary(t *testing.T) {
+	forceEnglishReportLocale(t)
+	result := model.AnalysisResult{
+		Summary: model.WorkloadSummary{
+			TotalTransactions:   3,
+			PartialTransactions: 2,
+			UnknownTransactions: 1,
+		},
+		Alerts: []model.Alert{{
+			Type: "partial_transaction", Severity: "warning", Message: "Transaction txn-5 has partial_end evidence",
+		}},
+	}
+
+	textOut, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("RenderText returned error: %v", err)
+	}
+	htmlOut, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML returned error: %v", err)
+	}
+	for name, out := range map[string]string{"text": textOut, "html": htmlOut} {
+		if !strings.Contains(out, "Partial Transactions") || !strings.Contains(out, "Unknown Transactions") {
+			t.Fatalf("%s output dropped completeness summary:\n%s", name, out)
+		}
+		if !strings.Contains(out, "partial_end") {
+			t.Fatalf("%s output dropped partial evidence:\n%s", name, out)
+		}
+	}
+}
