@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context and snapshot presentation controls.
-// output: stable JSON objects with mode-controlled transaction query fields, optional snapshot envelope data, and mysqlbinlog_cmd replay strings.
+// output: stable JSON objects with XA-aware transactions, mode-controlled query fields, optional snapshot envelope data, and mysqlbinlog_cmd replay strings.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -149,6 +149,7 @@ type jsonTableStats struct {
 
 type jsonTransaction struct {
 	TxnKey             string         `json:"txn_key"`
+	XAXID              string         `json:"xa_xid,omitempty"`
 	StartTime          string         `json:"start_time"`
 	EndTime            string         `json:"end_time"`
 	Duration           string         `json:"duration"`
@@ -518,6 +519,7 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 	for i, t := range txns {
 		jt := jsonTransaction{
 			TxnKey:          t.TxnKey,
+			XAXID:           t.XAXID,
 			StartTime:       formatJSONTime(t.StartTime),
 			EndTime:         formatJSONTime(t.EndTime),
 			Duration:        t.Duration.String(),

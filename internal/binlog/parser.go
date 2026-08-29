@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, and optional progress consumers.
-// output: Parser implementations that emit RawEvent values (including Format Description server version) plus monotonic per-input ParseProgress updates.
+// output: Parser implementations that emit RawEvent values (including MariaDB row annotations and Format Description server version) plus monotonic per-input ParseProgress updates.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -120,6 +120,8 @@ func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, ta
 		raw.Query = string(e.Query)
 		raw.Schema = string(e.Schema)
 	case *replication.RowsQueryEvent:
+		raw.QuerySQL = string(e.Query)
+	case *replication.MariadbAnnotateRowsEvent:
 		raw.QuerySQL = string(e.Query)
 	case *replication.TableMapEvent:
 		name := cachedTableName{schema: string(e.Schema), table: string(e.Table)}

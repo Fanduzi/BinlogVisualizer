@@ -1,6 +1,6 @@
 // Package binlogviz validates end-to-end analyze command behavior and DuckDB temp-store lifecycle.
-// input: mock parsers, fixture binlog files, CLI-derived analyzer options, and temporary directories for command resources.
-// output: regression coverage for rendered reports, temp DuckDB cleanup, and command/analyzer integration semantics.
+// input: mock parsers (including MariaDB XA/Annotate sequences), fixture binlogs, analyzer options, and temporary command resources.
+// output: regression coverage for XA/LOAD_DATA reports, rendered output, temp DuckDB cleanup, and command/analyzer integration semantics.
 // pos: command-layer integration test suite covering parse-normalize-analyze-render execution paths.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -934,6 +934,69 @@ func TestRunAnalysisJSONOutput(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(output), []byte(`"schema": "test"`)) {
 		t.Error("expected JSON to contain test schema")
+	}
+}
+
+func TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries(t *testing.T) {
+	ts := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
+	xid := "X'6276742d3537',X'',1"
+	mock := &mockParser{events: []binlog.RawEvent{
+		{Timestamp: ts, EventType: "MariadbGTIDEvent"},
+		{Timestamp: ts, EventType: "QueryEvent", Query: "XA START " + xid, PositionStart: 3802, PositionEnd: 3900, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "xa_a", RowCount: 2, PositionStart: 3900, PositionEnd: 4100, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "UpdateRowsEventV2", Schema: "dogfood_cut", Table: "xa_b", RowCount: 1, PositionStart: 4100, PositionEnd: 4300, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "QueryEvent", Query: "XA PREPARE " + xid, PositionStart: 4300, PositionEnd: 4444, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "MariadbGTIDEvent"},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "QueryEvent", Query: "XA COMMIT " + xid},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "MariadbGTIDEvent"},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "next_gtid", RowCount: 4},
+		{Timestamp: ts.Add(6 * time.Second), EventType: "XIDEvent"},
+		{Timestamp: ts.Add(7 * time.Second), EventType: "MariadbAnnotateRowsEvent", QuerySQL: "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"},
+		{Timestamp: ts.Add(8 * time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "slow", RowCount: 2},
+		{Timestamp: ts.Add(9 * time.Second), EventType: "XIDEvent"},
+	}}
+
+	stdout, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "json", mock)
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var parsed struct {
+		Transactions []struct {
+			XAXID      string         `json:"xa_xid"`
+			TotalRows  int            `json:"total_rows"`
+			PosStart   int64          `json:"pos_start"`
+			PosEnd     int64          `json:"pos_end"`
+			Tables     map[string]int `json:"tables"`
+			Operations map[string]int `json:"operations"`
+		} `json:"transactions"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
+		t.Fatalf("decode analyze JSON: %v\n%s", err, stdout)
+	}
+	if len(parsed.Transactions) != 3 {
+		t.Fatalf("expected XA, following GTID, and LOAD DATA transactions, got %+v", parsed.Transactions)
+	}
+	var xa, next, load = parsed.Transactions[0], parsed.Transactions[0], parsed.Transactions[0]
+	for _, txn := range parsed.Transactions {
+		switch {
+		case txn.XAXID != "":
+			xa = txn
+		case txn.Tables["dogfood_cut.next_gtid"] > 0:
+			next = txn
+		case txn.Tables["dogfood_cut.slow"] > 0:
+			load = txn
+		}
+	}
+	if xa.XAXID != xid || xa.TotalRows != 3 || xa.PosStart != 3802 || xa.PosEnd != 4444 || xa.Tables["dogfood_cut.next_gtid"] != 0 {
+		t.Fatalf("unexpected prepared XA transaction: %+v", xa)
+	}
+	if next.XAXID != "" || next.TotalRows != 4 || next.Operations["INSERT"] != 4 {
+		t.Fatalf("unexpected following GTID transaction: %+v", next)
+	}
+	if load.TotalRows != 2 || load.Operations["LOAD_DATA"] != 2 || load.Operations["INSERT"] != 0 {
+		t.Fatalf("unexpected LOAD DATA transaction: %+v", load)
 	}
 }
 

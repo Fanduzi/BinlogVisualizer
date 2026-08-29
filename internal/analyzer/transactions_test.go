@@ -1,6 +1,6 @@
 // Package analyzer verifies transaction reconstruction behavior from normalized events.
-// input: synthetic normalized events including begin, rows, and commit boundaries.
-// output: assertions for completed transaction metadata, row totals, and table maps.
+// input: synthetic normalized events including MySQL and MariaDB XA boundaries, row intent, and row counts.
+// output: assertions for XA identity, separated transaction boundaries, operation intent, row totals, and table maps.
 // pos: focused regression coverage for analyzer transaction assembly helpers.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -92,6 +92,29 @@ func TestTransactionBuilderTracksTablesAndOperations(t *testing.T) {
 	}
 }
 
+func TestTransactionBuilderReportsLoadDataRowsDistinctly(t *testing.T) {
+	builder := NewTransactionBuilder()
+	ts := time.Date(2026, 8, 29, 11, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "ROWS_QUERY", Operation: "LOAD_DATA", QuerySQL: "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"},
+		{Timestamp: ts.Add(time.Second), EventType: "ROWS", Schema: "dogfood_cut", Table: "slow", Operation: "INSERT", RowCount: 2},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "XID"},
+	}
+	for _, ev := range events {
+		if err := builder.Consume(ev); err != nil {
+			t.Fatalf("consume %s: %v", ev.EventType, err)
+		}
+	}
+
+	txn := builder.Completed()[0]
+	if txn.TotalRows != 2 || txn.Tables["dogfood_cut.slow"] != 2 {
+		t.Fatalf("expected LOAD DATA affected-row counts to survive, got %+v", txn)
+	}
+	if txn.Operations["LOAD_DATA"] != 2 || txn.Operations["INSERT"] != 0 {
+		t.Fatalf("expected LOAD_DATA rather than INSERT, got %+v", txn.Operations)
+	}
+}
+
 func TestTransactionBuilderCalculatesDuration(t *testing.T) {
 	builder := NewTransactionBuilder()
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
@@ -150,6 +173,41 @@ func TestTransactionBuilderHandlesMultipleTransactions(t *testing.T) {
 	}
 	if result[1].TotalRows != 3 {
 		t.Fatalf("expected second transaction with 3 rows, got %d", result[1].TotalRows)
+	}
+}
+
+func TestTransactionBuilderSeparatesPreparedMariaDBXAFromFollowingGTID(t *testing.T) {
+	builder := NewTransactionBuilder()
+	ts := time.Date(2026, 8, 29, 10, 0, 0, 0, time.UTC)
+	xid := "X'6276742d3537',X'',1"
+
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "XA_START", XAXID: xid, BinlogPath: "mariadb-bin.000001", PositionStart: 3802, PositionEnd: 3900},
+		{Timestamp: ts.Add(time.Second), EventType: "ROWS", Schema: "dogfood_cut", Table: "xa_a", Operation: "INSERT", RowCount: 2, BinlogPath: "mariadb-bin.000001", PositionStart: 3900, PositionEnd: 4100},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "ROWS", Schema: "dogfood_cut", Table: "xa_b", Operation: "UPDATE", RowCount: 1, BinlogPath: "mariadb-bin.000001", PositionStart: 4100, PositionEnd: 4300},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "XA_PREPARE", XAXID: xid, BinlogPath: "mariadb-bin.000001", PositionStart: 4300, PositionEnd: 4444},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "XA_COMMIT", XAXID: xid, BinlogPath: "mariadb-bin.000001", PositionStart: 4500, PositionEnd: 4560},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "ROWS", Schema: "dogfood_cut", Table: "next_gtid", Operation: "INSERT", RowCount: 4, BinlogPath: "mariadb-bin.000001", PositionStart: 4600, PositionEnd: 4700},
+		{Timestamp: ts.Add(6 * time.Second), EventType: "XID", BinlogPath: "mariadb-bin.000001", PositionStart: 4700, PositionEnd: 4731},
+	}
+	for _, ev := range events {
+		if err := builder.Consume(ev); err != nil {
+			t.Fatalf("consume %s: %v", ev.EventType, err)
+		}
+	}
+
+	txns := builder.Completed()
+	if len(txns) != 2 {
+		t.Fatalf("expected prepared XA and following GTID as separate transactions, got %+v", txns)
+	}
+	if txns[0].XAXID != xid || txns[0].TotalRows != 3 || txns[0].PositionStart != 3802 || txns[0].PositionEnd != 4444 {
+		t.Fatalf("unexpected prepared XA transaction: %+v", txns[0])
+	}
+	if txns[0].Tables["dogfood_cut.next_gtid"] != 0 {
+		t.Fatalf("prepared XA absorbed the following GTID: %+v", txns[0])
+	}
+	if txns[1].XAXID != "" || txns[1].TotalRows != 4 || txns[1].Tables["dogfood_cut.next_gtid"] != 4 {
+		t.Fatalf("unexpected following GTID transaction: %+v", txns[1])
 	}
 }
 

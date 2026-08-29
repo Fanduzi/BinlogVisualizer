@@ -6,7 +6,7 @@
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, streaming lifecycle, final result assembly. |
 | `store.go` | DuckDB-backed internal result store with batch flush, reusable batch slices across flushes, pre-sized hot-path buffers, COUNT(*)-preallocated transaction row scans with lazy map hydration, and Finalize-time query assembly. |
-| `transactions.go` | Reconstructs completed transactions from normalized event boundaries. Same-file `binlog_bytes` is `pos_end - pos_start` (first in-txn event through XID). |
+| `transactions.go` | Reconstructs completed transactions from MySQL and MariaDB XA boundaries, preserves XA XIDs and LOAD_DATA intent, and computes same-file `binlog_bytes` as `pos_end - pos_start`. |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
 | `ddl.go` | Extracts DDL timeline metadata from Query and ROWS_QUERY SQL, including CREATE/ALTER/DROP DATABASE, RENAME, and TRUNCATE. |
@@ -28,7 +28,7 @@
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event, applying time-window filtering and failing atomically on transaction-boundary errors. |
 | `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the final analysis result. Successful calls are idempotent. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
-| `NewTransactionBuilder() *TransactionBuilder` | Reconstructs transaction boundaries and completed transaction snapshots. |
+| `NewTransactionBuilder() *TransactionBuilder` | Reconstructs MySQL/MariaDB XA transaction boundaries and completed transaction snapshots. |
 | `NewTableAggregator() *TableAggregator` | Tracks table-level aggregates for reporting. |
 | `NewMinuteAggregator() *MinuteAggregator` | Tracks minute buckets for activity and spike detection. |
 

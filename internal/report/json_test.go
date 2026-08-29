@@ -1,6 +1,6 @@
 // Package report verifies JSON rendering stability and SQL context presentation modes.
-// input: synthetic AnalysisResult fixtures with bounded transaction query context variations.
-// output: regression coverage for stable field names and summary/off/full JSON query fields.
+// input: synthetic AnalysisResult fixtures with XA identity and bounded transaction query context variations.
+// output: regression coverage for stable XA/transaction field names and summary/off/full JSON query fields.
 // pos: JSON renderer regression suite guarding script-facing output contracts.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -291,6 +291,28 @@ func TestRenderJSONIncludesTransactions(t *testing.T) {
 	txn, ok := parsed["transactions"].([]any)
 	if !ok || len(txn) != 1 {
 		t.Fatalf("expected 'transactions' array with 1 element")
+	}
+}
+
+func TestRenderJSONIncludesXAIdentifier(t *testing.T) {
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{{
+			TxnKey: "txn-1",
+			XAXID:  "X'6276742d3537',X'',1",
+		}},
+	}
+
+	out, err := RenderJSON(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	txn := parsed["transactions"].([]any)[0].(map[string]any)
+	if txn["xa_xid"] != "X'6276742d3537',X'',1" {
+		t.Fatalf("xa_xid=%v, want preserved MariaDB XA identifier", txn["xa_xid"])
 	}
 }
 
