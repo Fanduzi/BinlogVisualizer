@@ -1,6 +1,6 @@
 // Package report defines the embedded HTML template for analyze reports.
 // input: localized labels plus chart-ready, completeness-aware analyze report view data.
-// output: template source used by the analyze HTML renderer, including separate physical-file and counted-event cards.
+// output: template source used by the analyze HTML renderer, including completeness-aware cards, deduplicated transaction evidence, bounded transaction lookup, and trusted replay labels.
 // pos: static template layer behind internal/report HTML rendering.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -1305,7 +1305,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
         <span class="dot" style="background:var(--primary);box-shadow:0 0 8px rgba(var(--primary-rgb),0.6)"></span>
         <span>{{t "report.html.analyze.sectionEvidence"}}</span>
       </div>
-      {{if or .HasTransactions .HasLargestTxns .HasLongestTxns .HasWidestTxns .HasDrilldowns}}
+      {{if or .HasTransactions .HasTransactionEvidence .HasDrilldowns}}
       <div class="table-search-box">
         <span>🔍</span>
         <input type="text" id="transaction-filter-input" placeholder="Search transactions..." aria-label="Search transactions">
@@ -1335,7 +1335,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
     </section>
     {{end}}
 
-    {{if or .HasLargestTxns .HasLongestTxns .HasWidestTxns}}
+    {{if .HasTransactionEvidence}}
     <section class="evidence-sub" id="transaction-evidence">
       <div class="evidence-sub-header">
         <span class="dot" style="background:var(--primary)"></span>
@@ -1343,14 +1343,12 @@ const htmlReportTemplate = `<!DOCTYPE html>
       </div>
       <div class="section-body">
         <div class="diagnostic-list">
-          {{if .HasLargestTxns}}
-          <div class="diagnostic-title">🏆 {{t "report.html.analyze.largestTransactionsByRows"}}</div>
-          {{range .LargestTransactions}}
+          {{range .TransactionEvidence}}
           <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
             <div class="diagnostic-head">
               <div class="diagnostic-title">
                 <span>{{.TxnKey}}</span>
-                <span class="drilldown-flag drilldown-flag-dominance">{{t "report.html.analyze.largestTag"}}</span>
+                {{range .Reasons}}<span class="drilldown-flag drilldown-flag-dominance">{{.}}</span>{{end}}
               </div>
               <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
             </div>
@@ -1372,71 +1370,6 @@ const htmlReportTemplate = `<!DOCTYPE html>
               {{end}}
             </div>
           </div>
-          {{end}}
-          {{end}}
-
-          {{if .HasLongestTxns}}
-          <div class="diagnostic-title" style="margin-top:8px">⏱️ {{t "report.html.analyze.longestTransactionsByDuration"}}</div>
-          {{range .LongestTransactions}}
-          <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
-            <div class="diagnostic-head">
-              <div class="diagnostic-title">
-                <span>{{.TxnKey}}</span>
-                <span class="drilldown-flag drilldown-flag-anomaly">{{t "report.html.analyze.longestTag"}}</span>
-              </div>
-              <div class="diagnostic-meta">{{t "report.html.common.duration"}}={{.Duration}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
-            </div>
-            <div class="diagnostic-body">
-              {{if .Location}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code style="font-family:'JetBrains Mono',monospace;color:var(--accent)">{{.Location}}</code></div>{{end}}
-              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
-              {{if .MysqlbinlogCmd}}
-              <div class="mysqlbinlog-row">
-				<span>{{t "report.label.fullTransactionReplay"}}:</span>
-                <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
-                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
-              </div>
-              {{end}}
-              {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}
-              {{if .Tables}}
-              <div class="diagnostic-tables">
-                {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}} rows</span>{{end}}
-              </div>
-              {{end}}
-            </div>
-          </div>
-          {{end}}
-          {{end}}
-
-          {{if .HasWidestTxns}}
-          <div class="diagnostic-title" style="margin-top:8px">🌐 {{t "report.html.analyze.widestTransactionsByTouchedTables"}}</div>
-          {{range .WidestTransactions}}
-          <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
-            <div class="diagnostic-head">
-              <div class="diagnostic-title">
-                <span>{{.TxnKey}}</span>
-                <span class="drilldown-flag drilldown-flag-dominance">{{t "report.html.analyze.widestTag"}}</span>
-              </div>
-              <div class="diagnostic-meta">{{len .Tables}} {{t "report.html.analyze.touchedTables"}} · {{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
-            </div>
-            <div class="diagnostic-body">
-              {{if .Location}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code style="font-family:'JetBrains Mono',monospace;color:var(--accent)">{{.Location}}</code></div>{{end}}
-              <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
-              {{if .MysqlbinlogCmd}}
-              <div class="mysqlbinlog-row">
-				<span>{{t "report.label.fullTransactionReplay"}}:</span>
-                <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
-                <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
-              </div>
-              {{end}}
-              {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}
-              {{if .Tables}}
-              <div class="diagnostic-tables">
-                {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}} rows</span>{{end}}
-              </div>
-              {{end}}
-            </div>
-          </div>
-          {{end}}
           {{end}}
         </div>
       </div>
