@@ -1,6 +1,12 @@
+// Package binlogviz verifies operator-facing analyze command behavior.
+// input: CLI analyze invocations, fixture binlogs, and discovery layouts.
+// output: regression coverage for HTML save I/O, DBA error language, and copy-paste mysqlbinlog_cmd paths.
+// pos: command-layer dogfood tests for analyze operator contracts.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -253,6 +259,61 @@ func TestMapBinlogParseErrorUsesDBALanguage(t *testing.T) {
 		}
 		if !strings.Contains(got, tc.want) {
 			t.Fatalf("mapBinlogParseError(%q) = %q, want substring %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestAnalyzeRelativeROWSampleMysqlbinlogCmdIsAbsolute(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	rel := filepath.Join("testdata", "sample-binlog", "mysql-bin.000001")
+	abs, err := filepath.Abs(rel)
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+
+	stdout, stderr, err := executeAnalyzeLikeMain(t, rel, "--format", "json")
+	if err != nil {
+		t.Fatalf("analyze relative ROW sample: %v\nstderr=%s\nstdout=%s", err, stderr, stdout)
+	}
+
+	var decoded struct {
+		Diagnostics struct {
+			LargestTransactions []struct {
+				MysqlbinlogCmd string `json:"mysqlbinlog_cmd"`
+			} `json:"largest_transactions"`
+		} `json:"diagnostics"`
+		Transactions []struct {
+			MysqlbinlogCmd string `json:"mysqlbinlog_cmd"`
+		} `json:"transactions"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, stdout)
+	}
+
+	var cmds []string
+	for _, txn := range decoded.Diagnostics.LargestTransactions {
+		if txn.MysqlbinlogCmd != "" {
+			cmds = append(cmds, txn.MysqlbinlogCmd)
+		}
+	}
+	for _, txn := range decoded.Transactions {
+		if txn.MysqlbinlogCmd != "" {
+			cmds = append(cmds, txn.MysqlbinlogCmd)
+		}
+	}
+	if len(cmds) == 0 {
+		t.Fatalf("expected at least one mysqlbinlog_cmd for the ROW sample\n%s", stdout)
+	}
+	for _, cmd := range cmds {
+		if !strings.HasPrefix(cmd, "mysqlbinlog ") {
+			t.Fatalf("MySQL Format Description must keep mysqlbinlog binary, got %q", cmd)
+		}
+		if !strings.Contains(cmd, abs) {
+			t.Fatalf("mysqlbinlog_cmd must contain absolute path %q, got %q", abs, cmd)
+		}
+		if strings.Contains(cmd, " mysql-bin.000001") && !strings.Contains(cmd, abs) {
+			t.Fatalf("basename-only file arg is not copy-pasteable from another cwd: %q", cmd)
 		}
 	}
 }

@@ -7,7 +7,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | File | Responsibility |
 |------|----------------|
 | `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, `version`, and `workflow`. |
-| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, aggregate parse progress on `stderr`, optional snapshot persistence, and command-owned DuckDB temp-store lifecycle. |
+| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, aggregate parse progress on `stderr`, Format Description server-version plumbing for replay commands, optional snapshot persistence, and command-owned DuckDB temp-store lifecycle. |
 | `analyze_parallel.go` | Runs bounded parallel per-file parsing while preserving ordered analyzer consumption for cross-file transaction safety. |
 | `compare.go` | Resolves compare inputs from explicit JSON files or named snapshots and renders text/JSON/HTML compare output. |
 | `trend.go` | Resolves explicit or pattern-selected snapshot inputs, optional baseline snapshots, and renders text/JSON/HTML multi-snapshot trend output. |

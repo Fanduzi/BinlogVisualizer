@@ -225,21 +225,21 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 			line += " bytes=" + formatByteSize(txn.BinlogBytes)
 		}
 		lines = append(lines, line)
-		if cmd := mysqlbinlogCmd(txn); cmd != "" {
+		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+cmd)
 		}
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, otherLimit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
 			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn)))
-		if cmd := mysqlbinlogCmd(txn); cmd != "" {
+		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+cmd)
 		}
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, otherLimit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
 			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn)))
-		if cmd := mysqlbinlogCmd(txn); cmd != "" {
+		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+cmd)
 		}
 	}
