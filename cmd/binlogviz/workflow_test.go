@@ -1,6 +1,6 @@
 // Package binlogviz verifies workflow command orchestration and operator-facing error output.
 // input: workflow CLI args, plan fixtures, and cobra command trees.
-// output: regression coverage for workflow run/resume/validate/describe/status/clean/export contracts.
+// output: regression coverage for workflow run/resume/validate/describe/status/clean/export contracts, including relative output-root resume resolution.
 // pos: command-layer tests for workflow I/O, including Error-once failure output without Usage dumps.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -1303,6 +1303,95 @@ func TestIncidentYAMLRunsFromRepoRoot(t *testing.T) {
 	}
 	if strings.TrimSpace(stderr) != "nothing to resume" {
 		t.Fatalf("expected nothing to resume, stdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestWorkflowRelativeOutputRootRemainsResumable(t *testing.T) {
+	_, originalOutputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
+	planContent, err := os.ReadFile(planPath)
+	if err != nil {
+		t.Fatalf("read plan: %v", err)
+	}
+
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+	relativeOutputDir := filepath.Join("artifacts", "relative")
+	// Replace the generated absolute output root while keeping the input fixture absolute.
+	updatedPlanContent := strings.Replace(string(planContent), originalOutputDir, relativeOutputDir, 1)
+	if updatedPlanContent == string(planContent) {
+		t.Fatal("relative-output plan did not replace the generated output root")
+	}
+	planContent = []byte(updatedPlanContent)
+	relativePlanPath := filepath.Join(workDir, "plan.yaml")
+	if err := os.WriteFile(relativePlanPath, planContent, 0o644); err != nil {
+		t.Fatalf("write relative-output plan: %v", err)
+	}
+
+	runCmd := NewRootCommand()
+	runCmd.SetArgs([]string{"workflow", "run", relativePlanPath, "--snapshot-dir", snapshotDir})
+	runCmd.SilenceUsage = true
+	runCmd.SilenceErrors = true
+	if err := runCmd.Execute(); err != nil {
+		t.Fatalf("workflow run with relative output root: %v", err)
+	}
+
+	outputDir := filepath.Join(workDir, relativeOutputDir)
+	manifest, err := workflowManifestFromJSON(filepath.Join(outputDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read manifest: %v", err)
+	}
+	if manifest.PlanPath != filepath.Join(outputDir, "plan.yaml") {
+		t.Fatalf("manifest plan_path = %q, want canonical %q", manifest.PlanPath, filepath.Join(outputDir, "plan.yaml"))
+	}
+
+	statusCmd := NewRootCommand()
+	statusCmd.SetArgs([]string{"workflow", "status", relativeOutputDir, "--format", "json"})
+	statusCmd.SilenceUsage = true
+	statusCmd.SilenceErrors = true
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return statusCmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow status with relative output root: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty status stderr, got %q", stderr)
+	}
+	var status struct {
+		Resumable   bool   `json:"resumable"`
+		ResumeError string `json:"resume_error"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &status); err != nil {
+		t.Fatalf("decode status: %v\n%s", err, stdout)
+	}
+	if !status.Resumable {
+		t.Fatalf("expected relative-output workflow to be resumable, got %q", status.ResumeError)
+	}
+
+	resumeCmd := NewRootCommand()
+	resumeCmd.SetArgs([]string{"workflow", "resume", relativeOutputDir, "--snapshot-dir", snapshotDir, "--rerun", "analyze:week2"})
+	resumeCmd.SilenceUsage = true
+	resumeCmd.SilenceErrors = true
+	if err := resumeCmd.Execute(); err != nil {
+		t.Fatalf("workflow resume with relative output root: %v", err)
+	}
+
+	manifest, err = workflowManifestFromJSON(filepath.Join(outputDir, "manifest.json"))
+	if err != nil {
+		t.Fatalf("read resumed manifest: %v", err)
+	}
+	if manifest.Attempt != 2 {
+		t.Fatalf("resumed manifest attempt = %d, want 2", manifest.Attempt)
+	}
+	foundWeek2 := false
+	for _, step := range manifest.Steps {
+		if step.Kind == "analyze" && step.Name == "week2" {
+			foundWeek2 = true
+			if step.Execution != "executed" {
+				t.Fatalf("week2 execution = %q, want executed", step.Execution)
+			}
+		}
+	}
+	if !foundWeek2 {
+		t.Fatal("resumed manifest did not include analyze:week2")
 	}
 }
 
