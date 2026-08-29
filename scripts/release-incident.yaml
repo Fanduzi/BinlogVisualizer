@@ -1,0 +1,44 @@
+# Bundled sample plan for a GitHub Release tar.gz extract:
+#   ./binlogviz workflow run incident.yaml
+#
+# from_dir is archive-relative (testdata/sample-binlog), not a git-clone path.
+# Run from the extract directory. The repository-root incident.yaml is unchanged
+# and still points at cmd/binlogviz/testdata/sample-binlog for in-repo use.
+#
+# The fixture carries a fixed historical timestamp, so both windows use a
+# wide range. This sample demonstrates run / status / resume --rerun /
+# clean / export, not time-boundary filtering.
+
+version: 1
+
+workflow:
+  name: incident
+  output_dir: ./artifacts/incident
+
+defaults:
+  input:
+    from_dir: testdata/sample-binlog
+    prefix: mysql-bin.
+  analyze:
+    format: json
+  snapshot:
+    save: false
+
+windows:
+  - name: week1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+  - name: week2
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+
+compare:
+  - name: week2_vs_week1
+    current: week2
+    baseline: week1
+    formats: [json, html]
+
+trend:
+  - name: weekly_series
+    snapshots: [week1, week2]
+    formats: [json, html]

@@ -4,7 +4,7 @@
 
 | File | Responsibility |
 |------|----------------|
-| `release.yml` | Runs tests, validates `.goreleaser.yml`, builds the darwin/linux release archives, computes checksums, and publishes GitHub Releases on version tags. |
+| `release.yml` | Runs tests, validates `.goreleaser.yml`, builds darwin/linux archives via `scripts/pack_release_archive.sh` (binary + sample ROW fixture + bundled plan), computes checksums, and publishes GitHub Releases on version tags. |
 
 ## Notes
 
@@ -32,6 +32,7 @@ Before pushing a new release tag:
   - the `github-release` job is skipped when running manually
 - Keep Linux release packaging aligned with the CentOS 7 / `glibc 2.17` compatibility target.
 - Do not remove `-buildvcs=false` from the manylinux `go build` step unless the containerized build has verified access to VCS metadata. The `v0.8.1` release failed because Go VCS stamping could not resolve repository status inside the containerized tag build.
+- Keep Linux and Darwin archives on the same extra-file set from `scripts/pack_release_archive.sh` (binary, `testdata/minimal.binlog`, `testdata/sample-binlog/mysql-bin.000001`, archive-relative `incident.yaml`).
 - Keep release artifact names in sync across:
   - `release.yml`
   - `.goreleaser.yml`

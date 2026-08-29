@@ -534,6 +534,8 @@ Plan 文件使用 YAML 格式，`version: 1`。根级段落包括：
 - `compare` — 可选 compare 作业，引用命名窗口
 - `trend` — 可选 trend 作业，引用命名窗口
 
+仓库根目录的 `incident.yaml` 指向 `cmd/binlogviz/testdata/sample-binlog`，因此 `binlogviz workflow run incident.yaml` 不需要本机 MySQL datadir。GitHub Release 归档会带上一份 `from_dir: testdata/sample-binlog` 的 `incident.yaml`，解压后可以跑同一条命令。
+
 示例 plan：
 
 ```yaml

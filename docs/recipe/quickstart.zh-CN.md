@@ -31,7 +31,7 @@ curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/
 binlogviz analyze minimal.binlog
 ```
 
-如果已经 clone 了仓库，也可以直接 `binlogviz analyze cmd/binlogviz/testdata/minimal.binlog`。
+如果已经 clone 了仓库，也可以直接 `binlogviz analyze cmd/binlogviz/testdata/minimal.binlog`。解压 GitHub Release tar.gz 之后，同一份样本就在二进制旁边的 `testdata/minimal.binlog`。
 
 这是最快能确认以下几点的方式：
 
@@ -88,7 +88,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 binlogviz workflow run incident.yaml
 ```
 
-`incident.yaml` 的 `from_dir` 指向 `cmd/binlogviz/testdata/sample-binlog`（与 `minimal.binlog` 相同的 1500 字节 ROW 样本）。一次成功 run 之后，`binlogviz workflow resume ./artifacts/incident` 会以 0 退出，并打印 `nothing to resume`。
+`incident.yaml` 的 `from_dir` 指向 `cmd/binlogviz/testdata/sample-binlog`（与 `minimal.binlog` 相同的 1500 字节 ROW 样本）。解压 release 归档后，在解压目录执行 `./binlogviz workflow run incident.yaml`：归档里的 plan 使用 `from_dir: testdata/sample-binlog`。一次成功 run 之后，`binlogviz workflow resume ./artifacts/incident` 会以 0 退出，并打印 `nothing to resume`。
 
 ## 下一步
 

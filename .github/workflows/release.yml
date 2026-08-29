@@ -1,7 +1,7 @@
 # input: version tags matching v*.
 # output: tested darwin/linux amd64/arm64 release archives, a checksum manifest, and a GitHub Release with bilingual release notes.
 # pos: the only trusted release pipeline, using native macOS runners plus manylinux2014-based Linux builds so artifact naming and Linux glibc compatibility stay aligned with install docs.
-# note: if this file changes, keep .goreleaser.yml, install.sh, and README.md artifact naming in sync.
+# note: if this file changes, keep scripts/pack_release_archive.sh, .goreleaser.yml, install.sh, and README.md artifact naming in sync.
 
 name: release
 
@@ -72,7 +72,7 @@ jobs:
           GOOS="${{ matrix.goos }}" GOARCH="${{ matrix.goarch }}" CGO_ENABLED=1 \
             go build -trimpath -ldflags "-s -w -X binlogviz/internal/version.Version=${VERSION}" -o dist/binlogviz .
           ARCHIVE="binlogviz_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
-          tar -C dist -czf "dist/${ARCHIVE}" binlogviz
+          bash scripts/pack_release_archive.sh dist/binlogviz "dist/${ARCHIVE}"
           bash scripts/release_smoke.sh "dist/${ARCHIVE}"
           rm -f dist/binlogviz
       - name: Build Linux archive in manylinux2014 userspace
@@ -108,12 +108,11 @@ jobs:
                   exit 1
                 fi
               fi
-              ARCHIVE="binlogviz_${VERSION}_linux_${TARGET_GOARCH}.tar.gz"
-              tar -C dist -czf "dist/${ARCHIVE}" binlogviz
-              rm -f dist/binlogviz
             '
           ARCHIVE="binlogviz_${VERSION}_linux_${{ matrix.goarch }}.tar.gz"
+          bash scripts/pack_release_archive.sh dist/binlogviz "dist/${ARCHIVE}"
           bash scripts/release_smoke.sh "dist/${ARCHIVE}"
+          rm -f dist/binlogviz
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:

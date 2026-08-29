@@ -14,7 +14,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
 | `workflow.go` | Implements `workflow run <plan.yaml>`, `workflow resume <output_dir>`, pre-run `workflow validate <plan.yaml>` checks, static `workflow describe <plan.yaml>` previews, read-only `workflow status <output_dir>` inspection, and dry-run-first `workflow clean <output_dir>` cleanup. |
-| `*_test.go` | Covers flag parsing, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, discovery-mode input resolution, workflow run/resume end-to-end tests, and workflow validate/describe/clean output contracts. |
+| `*_test.go` | Covers flag parsing, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, discovery-mode input resolution, workflow run/resume end-to-end tests, workflow validate/describe/clean output contracts, and the GitHub release archive packing contract (binary + sample + bundled plan). |
 
 ## Exports
 
