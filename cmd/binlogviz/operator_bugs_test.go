@@ -1,12 +1,14 @@
-// Package binlogviz covers operator-facing analyze regressions on real fixtures.
-// input: fixture binlogs, mock parsers, and rendered text/JSON analyze output.
-// output: regression coverage for findings, row counts, format warnings, and sub-second TPS copy.
-// pos: command-layer tests for DBA-visible analyze contracts.
+// Package binlogviz covers operator-facing analyze regressions: STATEMENT I/O, MIXED counting, sub-second TPS, and fixture product contracts.
+// input: mock STATEMENT/MIXED parser events and real binlog fixtures through runAnalysis seams.
+// output: exit-code and stdout/stderr contracts operators copy-paste: STATEMENT writes no report; MIXED still writes one; sub-second TPS is N/A.
+// pos: command-layer regression suite for analyze operator I/O bugs.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -224,53 +226,48 @@ func TestAnalyzeStatementBinlogWarnsAndExitsNonZero(t *testing.T) {
 		},
 	}
 
-	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
-		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "text", parser)
-	})
+	runLikeMain := func(format string) (string, string, error) {
+		return captureStdoutStderrRun(t, func() error {
+			err := runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), format, parser)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Error:", err)
+			}
+			return err
+		})
+	}
+
+	stdout, stderr, err := runLikeMain("text")
 	if err == nil {
 		t.Fatal("expected non-zero exit for STATEMENT binlog with zero row images")
+	}
+	if stdout != "" {
+		t.Fatalf("STATEMENT text analyze must leave stdout empty, got %q", stdout)
 	}
 	if !strings.Contains(err.Error(), binlog.StatementOrMixedWarning) {
 		t.Fatalf("error=%v, want %q", err, binlog.StatementOrMixedWarning)
 	}
-	if !strings.Contains(stderr, binlog.StatementOrMixedWarning) {
-		t.Fatalf("stderr missing format warning:\n%s", stderr)
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error: once, got %q", stderr)
 	}
-	if strings.Contains(stdout, "Open HTML") {
-		t.Fatalf("STATEMENT report should not suggest Open HTML as success:\n%s", stdout)
+	if strings.Count(stderr, binlog.StatementOrMixedWarning) != 1 {
+		t.Fatalf("expected STATEMENT sentence once, got %q", stderr)
 	}
+	assertNoUsageDump(t, stderr)
 
-	jsonOut, jsonErrStderr, jsonErr := captureStdoutStderrRun(t, func() error {
-		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "json", parser)
-	})
+	jsonOut, jsonErrStderr, jsonErr := runLikeMain("json")
 	if jsonErr == nil {
 		t.Fatal("expected non-zero exit for STATEMENT JSON analyze")
 	}
-	if !strings.Contains(jsonErrStderr, binlog.StatementOrMixedWarning) {
-		t.Fatalf("JSON stderr missing format warning:\n%s", jsonErrStderr)
+	if jsonOut != "" {
+		t.Fatalf("STATEMENT JSON analyze must not write a document, got %q", jsonOut)
 	}
-	var decoded struct {
-		Summary struct {
-			TotalRows         int `json:"total_rows"`
-			TotalTransactions int `json:"total_transactions"`
-		} `json:"summary"`
-		Diagnostics struct {
-			InputFormatGuess      string `json:"input_format_guess"`
-			IgnoredQueryDMLEvents int    `json:"ignored_query_dml_events"`
-		} `json:"diagnostics"`
+	if strings.Count(jsonErrStderr, "Error:") != 1 {
+		t.Fatalf("expected JSON Error: once, got %q", jsonErrStderr)
 	}
-	if err := json.Unmarshal([]byte(jsonOut), &decoded); err != nil {
-		t.Fatalf("json.Unmarshal: %v\n%s", err, jsonOut)
+	if strings.Count(jsonErrStderr, binlog.StatementOrMixedWarning) != 1 {
+		t.Fatalf("expected JSON STATEMENT sentence once, got %q", jsonErrStderr)
 	}
-	if decoded.Diagnostics.InputFormatGuess != binlog.InputFormatStatement {
-		t.Fatalf("input_format_guess=%q, want STATEMENT", decoded.Diagnostics.InputFormatGuess)
-	}
-	if decoded.Diagnostics.IgnoredQueryDMLEvents != 5 {
-		t.Fatalf("ignored_query_dml_events=%d, want 5", decoded.Diagnostics.IgnoredQueryDMLEvents)
-	}
-	if decoded.Summary.TotalRows != 0 || decoded.Summary.TotalTransactions != 0 {
-		t.Fatalf("STATEMENT should not invent ROW workload, got rows=%d txns=%d", decoded.Summary.TotalRows, decoded.Summary.TotalTransactions)
-	}
+	assertNoUsageDump(t, jsonErrStderr)
 }
 
 func TestAnalyzeMixedBinlogWarnsAndRecordsIgnoredQueryDML(t *testing.T) {

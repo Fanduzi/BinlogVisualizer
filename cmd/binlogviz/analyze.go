@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks (including Format Description server version), and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML analysis reports, stderr-only operator status, and command-level creation and cleanup of temporary DuckDB stores.
+// output: rendered text/JSON/HTML analysis reports on success; STATEMENT (Query-DML, zero ROW images) returns an error with no report; stderr-only operator status and DuckDB temp-store cleanup.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -563,7 +563,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
 	}
-	formatErr := noteInputFormat(result, formatObserver)
+	if err := noteInputFormat(result, formatObserver); err != nil {
+		return err
+	}
 
 	var renderErr error
 	switch format {
@@ -586,7 +588,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if renderErr != nil {
 		return renderErr
 	}
-	return formatErr
+	return nil
 }
 
 func runAnalysisStreamingFastWithSnapshot(
@@ -666,7 +668,9 @@ func runAnalysisStreamingFastWithSnapshot(
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
 	}
-	formatErr := noteInputFormat(result, formatObserver)
+	if err := noteInputFormat(result, formatObserver); err != nil {
+		return err
+	}
 
 	var renderErr error
 	switch format {
@@ -689,7 +693,7 @@ func runAnalysisStreamingFastWithSnapshot(
 	if renderErr != nil {
 		return renderErr
 	}
-	return formatErr
+	return nil
 }
 
 func hasFileCoverage(fileCoverage model.FileCoverage) bool {
@@ -706,10 +710,10 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 	if observer.QueryDMLEvents == 0 {
 		return nil
 	}
-	_, _ = fmt.Fprintln(os.Stderr, binlog.StatementOrMixedWarning)
 	if observer.RowImageEvents == 0 {
 		return fmt.Errorf("%s", binlog.StatementOrMixedWarning)
 	}
+	_, _ = fmt.Fprintln(os.Stderr, binlog.StatementOrMixedWarning)
 	return nil
 }
 
@@ -802,7 +806,9 @@ func runAnalysisStreamingFastWithOutput(
 	if hasFileCoverage(fileCoverage) {
 		result.Diagnostics.FileCoverage = fileCoverage
 	}
-	formatErr := noteInputFormat(result, formatObserver)
+	if err := noteInputFormat(result, formatObserver); err != nil {
+		return err
+	}
 
 	var renderErr error
 	switch format {
@@ -834,7 +840,7 @@ func runAnalysisStreamingFastWithOutput(
 	if renderErr != nil {
 		return renderErr
 	}
-	return formatErr
+	return nil
 }
 
 func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {
