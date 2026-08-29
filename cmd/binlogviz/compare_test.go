@@ -3,12 +3,47 @@ package binlogviz
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestCompareCommandRejectsRawBinlogsWithOneActionableError(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture := mustFixturePath(t, "minimal.binlog")
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		cmd := NewRootCommand()
+		cmd.SetArgs([]string{"compare", fixture, fixture})
+		err := cmd.Execute()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
+		}
+		return err
+	})
+
+	if err == nil {
+		t.Fatal("expected raw binlogs to be rejected")
+	}
+	if stdout != "" {
+		t.Fatalf("expected empty stdout, got %q", stdout)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected one Error line, got %q", stderr)
+	}
+	if strings.Contains(stderr, "Usage:") {
+		t.Fatalf("expected no Usage dump, got %q", stderr)
+	}
+	if strings.Contains(stderr, "invalid character") {
+		t.Fatalf("expected no raw decoder error, got %q", stderr)
+	}
+	if !strings.Contains(stderr, "compare wants two JSON reports or --current-snapshot/--baseline-snapshot") {
+		t.Fatalf("expected actionable input guidance, got %q", stderr)
+	}
+}
 
 func TestRootCommandRegistersCompareCommand(t *testing.T) {
 	cmd := NewRootCommand()
