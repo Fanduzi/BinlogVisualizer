@@ -71,4 +71,4 @@
 - Command-layer streaming, CLI flag changes, renderer changes, benchmarks, and release tasks remain out of scope for this module revision.
 - Position and time predicates intersect per event while the transaction builder continues observing adjacent evidence. Known physical boundaries may retain a trusted `FullReplaySpan`; unresolved cuts remain `unknown` with no replay span.
 - Active GTID selectors delay aggregate fan-out until each transaction group closes, reject unresolved group boundaries, preserve ordered cross-file groups without replaying cross-file spans, and produce identical in-memory/DuckDB results.
-- Active GTID selectors never retain anonymous groups, including when only exclude selectors are configured.
+- Active GTID selectors never fan out unattributable anonymous events and never retain anonymous groups, including when only exclude selectors are configured.

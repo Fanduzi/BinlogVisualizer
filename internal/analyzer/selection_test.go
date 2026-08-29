@@ -1,6 +1,6 @@
 // Package analyzer tests selector intersection at complete transaction-group boundaries.
 // input: normalized MySQL/MariaDB, anonymous, rotated, XA, and LOAD_DATA transaction sequences.
-// output: selected aggregate/report evidence without transaction fragments, including anonymous-group rejection, across storage modes.
+// output: selected aggregate/report evidence without transaction fragments, including anonymous-group and unkeyed-event rejection, across storage modes.
 // pos: public Analyzer selection integration coverage for issue #52.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -66,6 +66,57 @@ func TestAnalyzerGTIDSelectorExcludesAnonymousCompleteGroup(t *testing.T) {
 	}
 	if result.Summary.TotalRows != 0 || result.Summary.TotalTransactions != 0 || len(result.Transactions) != 0 {
 		t.Fatalf("anonymous group was retained: summary=%+v transactions=%+v", result.Summary, result.Transactions)
+	}
+}
+
+func TestAnalyzerGTIDExcludeOnlyDoesNotRetainAnonymousDDL(t *testing.T) {
+	selector, err := ParseGTIDSelector(nil, []string{"24bc7850-2c16-11e6-a073-0242ac110002:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := DefaultOptions()
+	opts.GTIDSelector = selector
+	result, err := New(opts).Analyze([]model.NormalizedEvent{
+		{
+			Timestamp:    time.Date(2026, 8, 30, 11, 20, 0, 0, time.UTC),
+			EventType:    "DDL",
+			Schema:       "shop",
+			Table:        "orders",
+			QuerySQL:     "ALTER TABLE shop.orders ADD COLUMN status TINYINT",
+			ServerFlavor: "mysql",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.TotalEvents != 0 || result.Summary.TotalRows != 0 || result.Summary.TotalTransactions != 0 || len(result.Transactions) != 0 || len(result.Diagnostics.DDLEvents) != 0 {
+		t.Fatalf("anonymous DDL was retained: summary=%+v transactions=%+v ddl=%+v", result.Summary, result.Transactions, result.Diagnostics.DDLEvents)
+	}
+}
+
+func TestAnalyzerGTIDExcludeOnlySkipsAnonymousContextAndKeepsLaterKeyedGroup(t *testing.T) {
+	selector, err := ParseGTIDSelector(nil, []string{"24bc7850-2c16-11e6-a073-0242ac110002:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := DefaultOptions()
+	opts.GTIDSelector = selector
+	base := time.Date(2026, 8, 30, 11, 21, 0, 0, time.UTC)
+	result, err := New(opts).Analyze([]model.NormalizedEvent{
+		{Timestamp: base, EventType: "TABLE_MAP", Schema: "shop", Table: "orders", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(time.Second), EventType: "BEGIN", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 3, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "GTID", GTID: "24bc7850-2c16-11e6-a073-0242ac110002:2", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(5 * time.Second), EventType: "BEGIN", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(6 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(7 * time.Second), EventType: "XID", ServerFlavor: "mysql"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.TotalEvents != 4 || result.Summary.TotalRows != 5 || result.Summary.TotalTransactions != 1 || len(result.Transactions) != 1 || result.Transactions[0].GTID != "24bc7850-2c16-11e6-a073-0242ac110002:2" || len(result.Minutes) != 1 {
+		t.Fatalf("anonymous context or group was retained incorrectly: summary=%+v transactions=%+v minutes=%+v", result.Summary, result.Transactions, result.Minutes)
 	}
 }
 
