@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: incident-brief text reports (hot tables and largest txns first) with opt-in minute and write-pattern detail sections; sub-second TPS peaks render as N/A.
+// output: incident-brief text reports (hot tables and largest txns first) with opt-in minute and write-pattern detail sections; sub-second TPS peaks render as N/A; suspicious positions require finding/alert-backed transaction evidence.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
