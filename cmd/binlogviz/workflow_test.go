@@ -1,9 +1,15 @@
+// Package binlogviz verifies workflow command orchestration and operator-facing error output.
+// input: workflow CLI args, plan fixtures, and cobra command trees.
+// output: regression coverage for workflow run/resume/validate/describe/status/clean/export contracts.
+// pos: command-layer tests for workflow I/O, including Error-once failure output without Usage dumps.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
 	"archive/zip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,6 +19,36 @@ import (
 
 	"binlogviz/internal/workflow"
 )
+
+func executeWorkflowLikeMain(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+	forceEnglishRuntimeOutput(t)
+	cmd := NewRootCommand()
+	cmd.SetArgs(append([]string{"workflow"}, args...))
+	return captureStdoutStderrRun(t, func() error {
+		err := cmd.Execute()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Error:", err)
+		}
+		return err
+	})
+}
+
+func assertErrorOnceWithoutUsage(t *testing.T, stdout, stderr string, err error, wantSub string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected non-zero workflow failure")
+	}
+	if strings.Contains(stdout, "Usage:") || strings.Contains(stderr, "Usage:") {
+		t.Fatalf("failure path dumped Usage:\nstdout=%q\nstderr=%q", stdout, stderr)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error printed once, got %q", stderr)
+	}
+	if !strings.Contains(stderr, wantSub) {
+		t.Fatalf("expected stderr to contain %q, got %q", wantSub, stderr)
+	}
+}
 
 // TestWorkflowRunWritesAnalyzeArtifacts tests that a multi-window plan produces analyze JSON files.
 func TestWorkflowRunWritesAnalyzeArtifacts(t *testing.T) {
@@ -106,6 +142,49 @@ func TestWorkflowRunCopiesPlanIntoWorkflowRoot(t *testing.T) {
 	}
 	if string(gotPlanBody) != string(wantPlanBody) {
 		t.Fatalf("copied plan body mismatch")
+	}
+}
+
+func TestWorkflowRunMissingPlanPrintsErrorOnceWithoutUsage(t *testing.T) {
+	stdout, stderr, err := executeWorkflowLikeMain(t, "run", filepath.Join(t.TempDir(), "missing.yaml"))
+	assertErrorOnceWithoutUsage(t, stdout, stderr, err, "Error: open workflow plan:")
+}
+
+func TestWorkflowRunMissingFromDirPrintsErrorOnceWithoutUsage(t *testing.T) {
+	outputDir := filepath.Join(t.TempDir(), "artifacts")
+	missingFromDir := filepath.Join(t.TempDir(), "does-not-exist")
+	planPath := filepath.Join(t.TempDir(), "plan.yaml")
+	plan := fmt.Sprintf(`version: 1
+workflow:
+  name: missing-from-dir
+  output_dir: %s
+defaults:
+  input:
+    from_dir: %s
+    prefix: mysql-bin.
+windows:
+  - name: week1
+    start: 2025-01-01T00:00:00Z
+    end: 2099-12-31T23:59:59Z
+`, outputDir, missingFromDir)
+	if err := os.WriteFile(planPath, []byte(plan), 0o644); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+
+	stdout, stderr, err := executeWorkflowLikeMain(t, "run", planPath)
+	assertErrorOnceWithoutUsage(t, stdout, stderr, err, "Error: discover binlog files:")
+}
+
+func TestWorkflowCommandTreeSilencesUsageAndErrors(t *testing.T) {
+	root := NewRootCommand()
+	for _, name := range []string{"run", "resume", "validate", "describe", "status", "clean", "export"} {
+		cmd, _, err := root.Find([]string{"workflow", name})
+		if err != nil {
+			t.Fatalf("find workflow %s: %v", name, err)
+		}
+		if !cmd.SilenceUsage || !cmd.SilenceErrors {
+			t.Fatalf("workflow %s must SilenceUsage and SilenceErrors so CheckErr prints Error once without Usage", name)
+		}
 	}
 }
 
@@ -1721,9 +1800,9 @@ func TestWorkflowStatusLegacyManifestRemainsInspectable(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
 	var decoded struct {
-		ManifestVersion int                     `json:"manifest_version"`
-		Resumable       bool                    `json:"resumable"`
-		ResumeError     string                  `json:"resume_error"`
+		ManifestVersion int                      `json:"manifest_version"`
+		Resumable       bool                     `json:"resumable"`
+		ResumeError     string                   `json:"resume_error"`
 		WorkflowSummary workflow.WorkflowSummary `json:"workflow_summary"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
@@ -2398,8 +2477,8 @@ func TestWorkflowExportFailsWhenArchiveWriteFails(t *testing.T) {
 
 func TestWorkflowExportFailsWhenManifestReadOrDecodeFails(t *testing.T) {
 	tests := []struct {
-		name         string
-		setup        func(t *testing.T, outputDir string)
+		name          string
+		setup         func(t *testing.T, outputDir string)
 		wantErrSubstr string
 	}{
 		{
@@ -2450,9 +2529,9 @@ func TestWorkflowExportFailsWhenManifestReadOrDecodeFails(t *testing.T) {
 
 func TestWorkflowExportJSONOutputIncludesWarningsForMissingOptionalInputs(t *testing.T) {
 	tests := []struct {
-		name       string
-		args       []string
-		mutate     func(t *testing.T, outputDir string, manifest workflow.Manifest)
+		name        string
+		args        []string
+		mutate      func(t *testing.T, outputDir string, manifest workflow.Manifest)
 		wantWarning string
 	}{
 		{
@@ -2754,10 +2833,10 @@ func TestWorkflowStatusOutsidePlanPathDegradesToNonResumable(t *testing.T) {
 		if strings.TrimSpace(stderr) != "" {
 			t.Fatalf("expected empty stderr, got %q", stderr)
 		}
-			var decoded struct {
-				Resumable   bool   `json:"resumable"`
-				ResumeError string `json:"resume_error"`
-			}
+		var decoded struct {
+			Resumable   bool   `json:"resumable"`
+			ResumeError string `json:"resume_error"`
+		}
 		if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
 			t.Fatalf("decode json: %v\n%s", err, stdout)
 		}
