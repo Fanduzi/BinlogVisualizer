@@ -1,4 +1,4 @@
-// Package report renders Markdown reports from bounded analysis results.
+// Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
 // output: GitHub-flavored Markdown with tables, sections, and alert callouts.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize.
@@ -28,7 +28,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	buf.WriteString("# BinlogViz Report\n\n")
 
 	mdWorkloadSummary(&buf, result.Summary)
-	mdTopTables(&buf, result.Tables)
+	mdTopTables(&buf, result.Tables, opts.TopTables)
 	mdTopTransactions(&buf, result.Transactions, opts.SQLContextMode)
 	mdMinuteActivity(&buf, result.Minutes)
 	mdAlerts(&buf, result.Alerts)
@@ -48,15 +48,16 @@ func mdWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary) {
 	buf.WriteString("\n")
 }
 
-func mdTopTables(buf *strings.Builder, tables []model.TableStats) {
+func mdTopTables(buf *strings.Builder, tables []model.TableStats, topN int) {
 	buf.WriteString("## " + i18n.T("report.section.tables") + "\n\n")
 	if len(tables) == 0 {
 		buf.WriteString("_" + i18n.T("report.placeholder.noTableActivity") + "_\n\n")
 		return
 	}
+	displayedTables, omittedTables := limitTablesForDisplay(tables, topN)
 	buf.WriteString("| Schema | Table | Total Rows | Inserts | Updates | Deletes | Transactions |\n")
 	buf.WriteString("|---|---|---:|---:|---:|---:|---:|\n")
-	for _, t := range tables {
+	for _, t := range displayedTables {
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s |\n",
 			escapeMD(t.Schema),
 			escapeMD(t.Table),
@@ -66,6 +67,9 @@ func mdTopTables(buf *strings.Builder, tables []model.TableStats) {
 			formatInt(t.DeleteRows),
 			formatInt(t.TxnCount),
 		))
+	}
+	if omittedTables > 0 {
+		buf.WriteString("_" + omittedTablesLabel(omittedTables) + "_\n")
 	}
 	buf.WriteString("\n")
 }

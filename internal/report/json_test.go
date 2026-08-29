@@ -232,6 +232,24 @@ func TestRenderJSONIncludesTables(t *testing.T) {
 	}
 }
 
+func TestRenderJSONPreservesAllTablesWithDisplayLimits(t *testing.T) {
+	result := model.AnalysisResult{
+		Tables: []model.TableStats{
+			{Schema: "shop", Table: "orders", TotalRows: 4},
+			{Schema: "shop", Table: "payments", TotalRows: 2},
+		},
+	}
+
+	out, err := RenderJSONWithOptions(result, Options{TopN: 1, TopTables: 1, TopTablesSet: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	tables := parseJSONMap(t, out)["tables"].([]any)
+	if len(tables) != 2 {
+		t.Fatalf("expected JSON to retain all tables, got %d", len(tables))
+	}
+}
+
 func TestRenderJSONExposesUpdateEventsAndRows(t *testing.T) {
 	result := model.AnalysisResult{
 		Tables: []model.TableStats{{

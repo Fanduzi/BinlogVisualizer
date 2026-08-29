@@ -711,6 +711,9 @@ func TestAnalyzeHTMLObjectsTopTablesRespectsTopN(t *testing.T) {
 	if strings.Count(out, `data-table-row="`) > 3 {
 		t.Fatalf("expected top 3 table rows in objects section")
 	}
+	if !strings.Contains(out, "and 9 more tables") {
+		t.Fatalf("expected omitted-table count in HTML")
+	}
 }
 
 func TestAnalyzeHTMLTransactionEvidenceChampionOnly(t *testing.T) {

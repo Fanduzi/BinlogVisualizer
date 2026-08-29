@@ -1,4 +1,4 @@
-// Package report renders self-contained HTML reports from bounded analysis results.
+// Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
 // output: single self-contained HTML file with embedded ECharts, dark OLED theme, inline CSS.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
@@ -74,6 +74,7 @@ type htmlReportData struct {
 	TotalEvents         int
 	DDLCount            int
 	Tables              []htmlTableRow
+	OmittedTables       string
 	TableActivitySeries template.JS
 	DDLEvents           []htmlDDLEvent
 	HasDDLEvents        bool
@@ -250,9 +251,9 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	tableActivitySeries := make(map[string]htmlTableActivitySeries, len(result.Tables))
 
 	// Tables
-	tables := result.Tables
-	if len(tables) > opts.TopN {
-		tables = tables[:opts.TopN]
+	tables, omittedTables := limitTablesForDisplay(result.Tables, opts.TopTables)
+	if omittedTables > 0 {
+		d.OmittedTables = omittedTablesLabel(omittedTables)
 	}
 	for _, t := range tables {
 		key := t.Schema + "." + t.Table
@@ -424,10 +425,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.TPSValues = mustJSON(tpsValues)
 
 	// Chart data — top tables bar
-	top := result.Tables
-	if len(top) > opts.TopN {
-		top = top[:opts.TopN]
-	}
+	top := tables
 	barNames := make([]string, 0, len(top))
 	barRows := make([]int, 0, len(top))
 	var totalInserts, totalUpdates, totalDeletes int

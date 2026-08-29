@@ -1,4 +1,4 @@
-// Package report renders human-readable text reports from bounded analysis results.
+// Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
 // output: incident-brief text reports (hot tables and largest txns first) with opt-in minute and write-pattern detail sections; sub-second TPS peaks render as N/A; suspicious positions require finding/alert-backed transaction evidence.
 // pos: text renderer for the CLI output path after analyzer Finalize.
@@ -39,7 +39,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	var buf strings.Builder
 
 	renderDiagnosticSummary(&buf, result)
-	renderTopTablesTable(&buf, result.Tables, opts.TopN)
+	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderTopTransactions(&buf, result, opts.TopN)
 	renderTopFindings(&buf, result, opts)
 	renderActivitySection(&buf, result)
@@ -134,16 +134,15 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 		return
 	}
 
-	limit := minInt(topN, len(tables))
+	displayedTables, omittedTables := limitTablesForDisplay(tables, topN)
 	totalRows := 0
 	for _, table := range tables {
 		totalRows += table.TotalRows
 	}
 
-	rows := make([]tableRow, limit)
+	rows := make([]tableRow, len(displayedTables))
 	nameWidth := len("Table")
-	for i := 0; i < limit; i++ {
-		table := tables[i]
+	for i, table := range displayedTables {
 		name := table.Schema + "." + table.Table
 		share := 0.0
 		if totalRows > 0 {
@@ -187,6 +186,9 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 			insertWidth, row.insert, updateWidth, row.update, deleteWidth, row.delete,
 			ddlWidth, row.ddl, txnsWidth, row.txns,
 			eventsWidth, row.events, shareWidth, row.share))
+	}
+	if omittedTables > 0 {
+		buf.WriteString("  " + omittedTablesLabel(omittedTables) + "\n")
 	}
 	buf.WriteString("  " + i18n.T("report.text.topTablesFootnote") + "\n")
 	buf.WriteString("\n")

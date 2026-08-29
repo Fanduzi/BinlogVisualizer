@@ -133,6 +133,27 @@ func TestRenderMarkdownIncludesStructuredSectionsAndEscaping(t *testing.T) {
 	}
 }
 
+func TestRenderMarkdownTopTablesReportsOmittedTables(t *testing.T) {
+	result := sampleMarkdownResult()
+	result.Tables = []model.TableStats{
+		{Schema: "shop", Table: "orders", TotalRows: 4},
+		{Schema: "shop", Table: "payments", TotalRows: 2},
+	}
+	result.Transactions = nil
+	result.Alerts = nil
+
+	out, err := RenderMarkdownWithOptions(result, Options{TopN: 1})
+	if err != nil {
+		t.Fatalf("RenderMarkdownWithOptions returned error: %v", err)
+	}
+	if !strings.Contains(out, "| shop | orders |") || strings.Contains(out, "| shop | payments |") {
+		t.Fatalf("expected only the top table to be displayed\n%s", out)
+	}
+	if !strings.Contains(out, "… and 1 more tables") {
+		t.Fatalf("expected omitted-table count\n%s", out)
+	}
+}
+
 func TestRenderMarkdownEmptySectionsUseStablePlaceholders(t *testing.T) {
 	forceEnglishReportLocale(t)
 
