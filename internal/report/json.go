@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context and snapshot presentation controls.
-// output: stable JSON objects with mode-controlled transaction query fields and optional snapshot envelope data.
+// output: stable JSON objects with mode-controlled transaction query fields, optional snapshot envelope data, and mysqlbinlog_cmd replay strings.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -304,7 +304,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		Timeseries:        convertTimeseries(result.Timeseries),
 		Diagnostics:       convertDiagnostics(result.Diagnostics, opts.SQLContextMode),
 		Tables:            convertTables(result.Tables),
-		Transactions:      convertTransactions(result.Transactions, opts.SQLContextMode),
+		Transactions:      convertTransactions(result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion),
 		Patterns:          convertPatterns(result.Patterns),
 		Minutes:           convertMinutes(result.Minutes),
 		Alerts:            convertAlerts(result.Alerts),
@@ -368,9 +368,9 @@ func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) json
 	return jsonDiagnostics{
 		FileCoverage:          convertFileCoverage(diagnostics.FileCoverage),
 		DDLEvents:             convertDDLEvents(diagnostics.DDLEvents),
-		LargestTransactions:   convertTransactions(diagnostics.LargestTransactions, mode),
-		LongestTransactions:   convertTransactions(diagnostics.LongestTransactions, mode),
-		WidestTransactions:    convertTransactions(diagnostics.WidestTransactions, mode),
+		LargestTransactions:   convertTransactions(diagnostics.LargestTransactions, mode, diagnostics.ServerVersion),
+		LongestTransactions:   convertTransactions(diagnostics.LongestTransactions, mode, diagnostics.ServerVersion),
+		WidestTransactions:    convertTransactions(diagnostics.WidestTransactions, mode, diagnostics.ServerVersion),
 		FileSegments:          convertFileSegments(diagnostics.FileSegments),
 		HotIntervals:          convertHotIntervals(diagnostics.HotIntervals),
 		Findings:              convertFindings(diagnostics.Findings),
@@ -510,7 +510,7 @@ func convertTables(tables []model.TableStats) []jsonTableStats {
 	return result
 }
 
-func convertTransactions(txns []model.Transaction, mode SQLContextMode) []jsonTransaction {
+func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVersion string) []jsonTransaction {
 	if txns == nil {
 		return []jsonTransaction{}
 	}
@@ -550,7 +550,7 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode) []jsonTr
 				jt.QueryOriginalBytes = intPtr(t.QueryContext.OriginalBytes)
 			}
 		}
-		jt.MysqlbinlogCmd = mysqlbinlogCmd(t)
+		jt.MysqlbinlogCmd = mysqlbinlogCmd(t, serverVersion)
 		result[i] = jt
 	}
 	return result

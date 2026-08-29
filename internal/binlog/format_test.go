@@ -1,3 +1,8 @@
+// Package binlog verifies Query-DML vs ROW-image format observation.
+// input: synthetic raw events including Format Description server version.
+// output: regression coverage for DML detection, format guess, and captured server version.
+// pos: unit tests for FormatObserver used by analyze before rendering replay commands.
+// note: if this file changes, update this header and README.md.
 package binlog
 
 import "testing"
@@ -63,5 +68,14 @@ func TestFormatObserverCountsQueryDMLAndRowImages(t *testing.T) {
 	}
 	if observer.Guess() != InputFormatMixed {
 		t.Fatalf("guess=%q, want MIXED", observer.Guess())
+	}
+}
+
+func TestFormatObserverCapturesFormatDescriptionServerVersion(t *testing.T) {
+	var observer FormatObserver
+	observer.Observe(RawEvent{EventType: "FormatDescriptionEvent", ServerVersion: "10.11.6-MariaDB-log"})
+	observer.Observe(RawEvent{EventType: "FormatDescriptionEvent", ServerVersion: "8.0.36"})
+	if observer.ServerVersion != "10.11.6-MariaDB-log" {
+		t.Fatalf("ServerVersion=%q, want first Format Description version", observer.ServerVersion)
 	}
 }

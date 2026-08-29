@@ -1,5 +1,5 @@
 // Package binlog verifies parser construction, progress helpers, and table-name reuse behavior.
-// input: parser constructors, progress helpers, and synthetic go-mysql replication events.
+// input: parser constructors, progress helpers, and synthetic go-mysql replication events including Format Description.
 // output: regression coverage for parser setup, progress math, event projection, and micro-benchmarks.
 // pos: focused unit-test layer for parser helpers that support command-level parsing and progress reporting.
 // note: if this file changes, update this header and README.md.
@@ -87,6 +87,16 @@ func TestApplyBinlogEventMetadataCountsUpdateLogicalRows(t *testing.T) {
 
 	if raw.RowCount != 2 {
 		t.Fatalf("expected parser to count 2 logical UPDATE rows from 4 images, got %d", raw.RowCount)
+	}
+}
+
+func TestApplyBinlogEventMetadataCapturesFormatDescriptionServerVersion(t *testing.T) {
+	var raw RawEvent
+	applyBinlogEventMetadata(&raw, replication.FORMAT_DESCRIPTION_EVENT.String(), &replication.FormatDescriptionEvent{
+		ServerVersion: "11.4.2-MariaDB-log",
+	}, nil)
+	if raw.ServerVersion != "11.4.2-MariaDB-log" {
+		t.Fatalf("ServerVersion=%q, want MariaDB Format Description version", raw.ServerVersion)
 	}
 }
 
