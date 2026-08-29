@@ -55,6 +55,42 @@ func TestRenderTextTopFindingsComeFromAlertsNotHotIntervals(t *testing.T) {
 	}
 }
 
+func TestRenderTextCleanReportOmitsFirstSuspiciousPosition(t *testing.T) {
+	forceEnglishReportLocale(t)
+	result := productTextFixture()
+	result.Alerts = nil
+	result.Diagnostics.Findings = nil
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "First suspicious position") {
+		t.Fatalf("clean report must not label transaction evidence as suspicious:\n%s", out)
+	}
+	if !strings.Contains(out, "Largest transaction: txn-largest") {
+		t.Fatalf("clean report must retain normal largest transaction evidence:\n%s", out)
+	}
+}
+
+func TestRenderTextUsesTransactionBackedFindingLocation(t *testing.T) {
+	forceEnglishReportLocale(t)
+	result := productTextFixture()
+	result.Alerts = nil
+	result.Diagnostics.Findings = []model.Finding{{
+		Kind:   "large_transaction",
+		TxnKey: "txn-largest",
+	}}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "First suspicious position: mysql-bin.000044:210") {
+		t.Fatalf("expected suspicious position from the finding's transaction:\n%s", out)
+	}
+}
+
 func TestRenderTextTopFindingsUseSameAlertsAsJSON(t *testing.T) {
 	result := productTextFixture()
 	result.Diagnostics.Findings = []model.Finding{{
