@@ -9,10 +9,10 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
 | `text.go` | Renders the concise diagnostic text report with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes the stable analyze JSON report shape, including counted event-byte diagnostics, optional transaction `xa_xid` and top-level snapshot metadata, and applies SQL context field visibility rules. |
+| `json.go` | Serializes report v3 with counted event-byte diagnostics, optional producer/transaction provenance, required SQL mode/availability metadata, bounded query fields, XA identity, and snapshot metadata. |
 | `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction span/replay, DDL, input-format, and finding evidence. |
 | `html.go` | Renders the self-contained HTML report, including physical-file/count-event byte cards, responsive activity-chart layout, and ECharts data preparation. |
-| `mysqlbinlog.go` | Formats transaction spans and builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands with absolute file paths from usable spans; omits `--start-position` when only an XID interval is known. |
+| `mysqlbinlog.go` | Formats usable transaction spans and builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands, preferring per-transaction server version for mixed producers and omitting unusable XID-only starts. |
 | `*_test.go` | Verifies diagnostic text defaults, Markdown incident evidence, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
 
 ## Interfaces
@@ -38,8 +38,10 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 ## Notes
 
 - `summary` preserves the current default behavior.
-- `off` omits query lines in text and omits all query-related JSON fields.
-- `full` only exposes bounded SQL from `QueryContext.SQL`; it never reconstructs or emits unbounded original SQL.
+- `off` omits query summaries, full SQL, and truncation metadata from transaction, pattern, and drilldown JSON projections while leaving provenance unchanged.
+- `summary` emits one whitespace-normalized line bounded to 160 characters.
+- `full` only exposes UTF-8-safe SQL bounded to 4096 bytes from `QueryContext.SQL`; it never reconstructs row values or unbounded original SQL.
+- JSON always records the selected SQL-context mode and report-wide source-SQL availability; `full` with `available=false` is valid.
 - `product.go` owns presentation defaults such as `DefaultTopN` so text, HTML, and command flags share one report contract.
 - `AnalysisResult.Tables` is complete; JSON preserves every table, while human renderers apply `TopTables` and report how many tables were omitted.
 - An explicit `TopTables=0` with `TopTablesSet=true` keeps human table sections unbounded; an omitted table limit inherits `TopN` for compatibility.

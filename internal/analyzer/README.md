@@ -5,8 +5,8 @@
 | File | Responsibility |
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, streaming lifecycle, final result assembly. |
-| `store.go` | DuckDB-backed internal result store with batch flush, reusable batch slices across flushes, pre-sized hot-path buffers, COUNT(*)-preallocated transaction row scans with lazy map hydration, and Finalize-time query assembly. |
-| `transactions.go` | Reconstructs completed transactions from MySQL and MariaDB XA boundaries, preserves XA XIDs and LOAD_DATA intent, clears query context and operation hints for filtered objects, and computes same-file `binlog_bytes` as `pos_end - pos_start`. |
+| `store.go` | Persists transaction provenance and bounded SQL through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
+| `transactions.go` | Reconstructs MySQL/MariaDB transactions, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects conflicting GTIDs, clears filtered query hints, and computes same-file `binlog_bytes` from spans. |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
 | `ddl.go` | Extracts DDL timeline metadata from Query and ROWS_QUERY SQL, including CREATE/ALTER/DROP DATABASE, RENAME, and TRUNCATE. |
@@ -14,7 +14,7 @@
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
-| `report_aggregator.go` | Maintains bounded streaming state for report assembly so default analyze output does not require full transaction rehydration. Tracks filtered event-byte coverage, operation counts for timeseries, alert-referenced transactions for evidence, and txn-size histograms. |
+| `report_aggregator.go` | Maintains bounded report state, filtered event-byte coverage, report-wide SQL availability, deterministic producer sets, ranked/evidence transactions, operation counts, and transaction-size histograms. |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window/object filtering, and benchmark coverage. |
 
@@ -29,7 +29,7 @@
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event, applying time-window and object filtering before workload aggregation while retaining boundaries needed for transaction reconstruction. |
 | `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the complete final analysis result. Successful calls are idempotent. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
-| `NewTransactionBuilder() *TransactionBuilder` | Reconstructs MySQL/MariaDB XA transaction boundaries and completed transaction snapshots. |
+| `NewTransactionBuilder() *TransactionBuilder` | Reconstructs GTID-aware MySQL/MariaDB XA transaction boundaries and fails on conflicting canonical GTIDs. |
 | `NewTableAggregator() *TableAggregator` | Tracks table-level aggregates for reporting. |
 | `NewMinuteAggregator() *MinuteAggregator` | Tracks minute buckets for activity and spike detection. |
 
@@ -45,7 +45,7 @@
 ## Notes
 
 - Stage 2 persists completed transactions, minute buckets, minute-level table rows, and alerts into DuckDB with a default `10000`-row batch flush threshold and a secondary approximate `4MB` byte threshold.
-- DuckDB keeps the fixed Stage 2 schema; bounded `query_sql` for `--sql-context=full` is stored in the `transaction_sql_contexts` subtable and only resolved for final top transactions on demand, so `QueryAllTransactions()` stays metadata-only.
+- DuckDB stores optional provenance in `transactions`; bounded `query_sql` remains in `transaction_sql_contexts` and is resolved only for selected transactions, so `QueryAllTransactions()` stays SQL-metadata-only.
 - `assembleResult()` reads from `ReportAggregator.Snapshot()` instead of `QueryAllTransactions()`, eliminating the full-transaction rehydration path for default report output. `QueryAllTransactions` is no longer called during Finalize.
 - Final table aggregates remain complete and deterministically ordered regardless of `Options.TopTables`; human report renderers apply that presentation limit after totals and shares are known.
 - ReportAggregator receives events, transactions, and minute buckets during streaming, and DDL events at Finalize time. It maintains bounded top-N transaction lists, operation counts for timeseries, alert-referenced transaction evidence, and txn-size histograms.

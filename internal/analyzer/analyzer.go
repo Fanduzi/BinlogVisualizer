@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
-// input: analyzer.Options plus ordered model.NormalizedEvent values from the binlog normalization pipeline, including optional object filters.
-// output: streaming Consume/Finalize analysis state and model.AnalysisResult snapshots with one filtered workload set for command/report layers.
+// input: analyzer.Options plus ordered model.NormalizedEvent values with optional provenance and object filters from the binlog normalization pipeline.
+// output: streaming Consume/Finalize state and provenance-aware model.AnalysisResult snapshots built from one filtered workload set.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -257,16 +257,18 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	}
 
 	return &model.AnalysisResult{
-		Summary:           snap.Summary,
-		Timeseries:        snap.Timeseries,
-		Tables:            a.tableAgg.Snapshot(),
-		Transactions:      topTransactions,
-		Patterns:          snap.Patterns,
-		Minutes:           snap.Minutes,
-		Diagnostics:       snap.Diagnostics,
-		Alerts:            snap.Alerts,
-		Warnings:          snap.Warnings,
-		PatternDrilldowns: snap.PatternDrilldowns,
+		Summary:             snap.Summary,
+		Provenance:          snap.Provenance,
+		SQLContextAvailable: snap.SQLContextAvailable,
+		Timeseries:          snap.Timeseries,
+		Tables:              a.tableAgg.Snapshot(),
+		Transactions:        topTransactions,
+		Patterns:            snap.Patterns,
+		Minutes:             snap.Minutes,
+		Diagnostics:         snap.Diagnostics,
+		Alerts:              snap.Alerts,
+		Warnings:            snap.Warnings,
+		PatternDrilldowns:   snap.PatternDrilldowns,
 	}, nil
 }
 

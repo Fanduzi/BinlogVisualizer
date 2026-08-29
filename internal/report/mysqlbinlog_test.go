@@ -1,6 +1,6 @@
 // Package report verifies copy-paste replay commands for usable transaction spans.
-// input: Transaction positions, Format Description server version, and renderer entry points.
-// output: regression coverage for absolute file paths, mysqlbinlog vs mariadb-binlog, and XID-only omission.
+// input: Transaction positions, per-transaction/report FormatDescription server versions, and renderer entry points.
+// output: regression coverage for absolute paths, mixed-producer binary selection, and XID-only omission.
 // pos: report-layer tests for the operator copy-paste replay contract.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -75,6 +75,23 @@ func TestMysqlbinlogCmdUsesMariadbBinlogForMariaDBServerVersion(t *testing.T) {
 	want := "mariadb-binlog --base64-output=DECODE-ROWS -v --start-position=385 --stop-position=77914948 /data/mysql/mysql-bin.000008"
 	if got != want {
 		t.Fatalf("mysqlbinlog_cmd=%q, want %q", got, want)
+	}
+}
+
+func TestMysqlbinlogCmdPrefersTransactionServerVersionForMixedProducers(t *testing.T) {
+	txn := model.Transaction{
+		ServerVersion:   "11.8.3-MariaDB-log",
+		TotalRows:       2,
+		EventCount:      1,
+		BinlogBytes:     200,
+		BinlogPathStart: "/data/mysql/mariadb-bin.000001",
+		BinlogPathEnd:   "/data/mysql/mariadb-bin.000001",
+		PositionStart:   100,
+		PositionEnd:     300,
+	}
+	got := mysqlbinlogCmd(txn, "8.4.6")
+	if !strings.HasPrefix(got, "mariadb-binlog ") {
+		t.Fatalf("mixed-producer replay must use transaction provenance, got %q", got)
 	}
 }
 

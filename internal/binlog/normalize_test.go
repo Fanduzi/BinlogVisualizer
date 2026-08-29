@@ -1,6 +1,6 @@
 // Package binlog verifies raw binlog normalization into analyzer-facing events.
-// input: synthetic RawEvent values covering MySQL/MariaDB query, XA, rows, and row-annotation variants.
-// output: assertions for normalized XA identity, LOAD_DATA intent, SQL truncation, and skip behavior.
+// input: synthetic RawEvent values covering MySQL/MariaDB provenance, query, XA, rows, and row-annotation variants.
+// output: assertions for normalized provenance, XA identity, LOAD_DATA SQL, UTF-8-safe truncation, and skip behavior.
 // pos: regression coverage for the normalize layer between parser output and analyzer input.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -240,6 +240,31 @@ func TestNormalizeRawEventPreservesBinlogMetadata(t *testing.T) {
 	}
 }
 
+func TestNormalizeRawEventPreservesTransactionProvenance(t *testing.T) {
+	ev, err := NormalizeRawEvent(RawEvent{
+		EventType:     "MariadbGTIDEvent",
+		ServerID:      7,
+		ServerVersion: "11.8.3-MariaDB-log",
+		ServerFlavor:  "mariadb",
+		GTID:          "0-7-1848",
+		ThreadID:      1875,
+		XID:           "3928",
+		ActorUser:     "alice",
+		ActorHost:     "db.local",
+	})
+	if err != nil {
+		t.Fatalf("NormalizeRawEvent: %v", err)
+	}
+	if ev == nil || ev.EventType != "GTID" {
+		t.Fatalf("expected normalized GTID event, got %+v", ev)
+	}
+	if ev.ServerID != 7 || ev.ServerVersion != "11.8.3-MariaDB-log" || ev.ServerFlavor != "mariadb" ||
+		ev.GTID != "0-7-1848" || ev.ThreadID != 1875 || ev.XID != "3928" ||
+		ev.ActorUser != "alice" || ev.ActorHost != "db.local" {
+		t.Fatalf("provenance was not preserved: %+v", ev)
+	}
+}
+
 // Tests for go-mysql CamelCase event types (real parser output)
 
 func TestNormalizeQueryEventBegin(t *testing.T) {
@@ -393,6 +418,24 @@ func TestNormalizeMariaDBLoadDataAnnotation(t *testing.T) {
 	}
 	if ev.QuerySQL != query || ev.QueryOriginalBytes != len(query) {
 		t.Fatalf("expected annotation SQL to survive normalization, got %+v", ev)
+	}
+}
+
+func TestNormalizeQueryEventLoadDataUsesRowsQueryPipeline(t *testing.T) {
+	query := "  LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow  "
+	ev, err := NormalizeRawEvent(RawEvent{
+		EventType: "QueryEvent",
+		Query:     query,
+		ThreadID:  1875,
+	})
+	if err != nil {
+		t.Fatalf("NormalizeRawEvent: %v", err)
+	}
+	if ev == nil || ev.EventType != "ROWS_QUERY" || ev.Operation != "LOAD_DATA" {
+		t.Fatalf("expected LOAD DATA query context, got %+v", ev)
+	}
+	if ev.QuerySQL != query || ev.QueryOriginalBytes != len(query) || ev.ThreadID != 1875 {
+		t.Fatalf("expected QueryEvent SQL and provenance to enter existing context pipeline, got %+v", ev)
 	}
 }
 

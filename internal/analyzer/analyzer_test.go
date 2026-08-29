@@ -1,6 +1,6 @@
 // Package analyzer validates analyzer orchestration and streaming result semantics.
-// input: analyzer test fixtures expressed as model.NormalizedEvent sequences and analyzer.Options values.
-// output: regression coverage for slice-wrapper compatibility, streaming finalization, window/filter byte accounting, and failure handling.
+// input: analyzer test fixtures expressed as provenance-aware model.NormalizedEvent sequences and analyzer.Options values.
+// output: regression coverage for slice-wrapper compatibility, streaming finalization, provenance/SQL availability, window/filter byte accounting, and failure handling.
 // pos: module-level behavioral test suite for the analyzer entrypoint and its external contracts.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -864,6 +864,59 @@ func TestAnalyzerDefaultOptionsProducesFullReportWithoutDuckDB(t *testing.T) {
 	}
 	if len(result.Patterns) == 0 {
 		t.Fatal("expected at least one pattern")
+	}
+}
+
+func TestAnalyzerAggregatesDeterministicReportProvenance(t *testing.T) {
+	base := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "GTID", ServerID: 9, ServerVersion: "8.4.6", ServerFlavor: "mysql", GTID: "24bc7852-9cb7-11ee-8089-0242ac120002:2"},
+		{Timestamp: base.Add(time.Second), EventType: "BEGIN", ThreadID: 22, ActorUser: "zoe", ActorHost: "db-b"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", XID: "4000"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "GTID", ServerID: 7, ServerVersion: "11.8.3-MariaDB-log", ServerFlavor: "mariadb", GTID: "0-7-1848"},
+		{Timestamp: base.Add(5 * time.Second), EventType: "BEGIN", ThreadID: 11, ActorUser: "alice", ActorHost: "db-a"},
+		{Timestamp: base.Add(6 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "UPDATE", RowCount: 1},
+		{Timestamp: base.Add(7 * time.Second), EventType: "XID", XID: "3928"},
+	}
+	result, err := New(DefaultOptions()).Analyze(events)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+
+	want := model.ReportProvenance{
+		ServerIDs:      []uint32{7, 9},
+		ServerVersions: []string{"11.8.3-MariaDB-log", "8.4.6"},
+		ServerFlavors:  []string{"mariadb", "mysql"},
+		MixedProducers: true,
+	}
+	if !reflect.DeepEqual(result.Provenance, want) {
+		t.Fatalf("unexpected report provenance\ngot:  %#v\nwant: %#v", result.Provenance, want)
+	}
+}
+
+func TestAnalyzerReportsSQLAvailabilityBeyondTopTransactions(t *testing.T) {
+	base := time.Date(2026, 8, 30, 11, 0, 0, 0, time.UTC)
+	opts := DefaultOptions()
+	opts.TopTransactions = 1
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", Schema: "shop", Table: "large", Operation: "INSERT", RowCount: 10},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "BEGIN"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "ROWS_QUERY", QuerySQL: "LOAD DATA INFILE '/tmp/small.csv' INTO TABLE shop.small", QueryOriginalBytes: 57},
+		{Timestamp: base.Add(5 * time.Second), EventType: "ROWS", Schema: "shop", Table: "small", Operation: "INSERT", RowCount: 1},
+		{Timestamp: base.Add(6 * time.Second), EventType: "XID"},
+	}
+	result, err := New(opts).Analyze(events)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].QueryContext != nil {
+		t.Fatalf("test requires SQL-bearing transaction outside top results, got %+v", result.Transactions)
+	}
+	if !result.SQLContextAvailable {
+		t.Fatal("report should declare source SQL available even when it is outside top transactions")
 	}
 }
 

@@ -1,6 +1,6 @@
 // Package binlogviz validates end-to-end analyze command behavior and DuckDB temp-store lifecycle.
-// input: mock parsers (including MariaDB XA/Annotate sequences), fixture binlogs, CLI-derived analyzer options, and temporary command resources.
-// output: regression coverage for XA/LOAD_DATA reports, selected-file/count-event byte coverage, rendered output, temp DuckDB cleanup, and command/analyzer integration semantics.
+// input: mock parsers with MySQL/MariaDB provenance, XA/Annotate sequences, and SQL context; fixture binlogs; CLI-derived analyzer options; and temporary command resources.
+// output: regression coverage for report-v3 provenance, XA/LOAD_DATA SQL modes, selected-file/count-event byte coverage, rendered output, temp DuckDB cleanup, and command/analyzer integration semantics.
 // pos: command-layer integration test suite covering parse-normalize-analyze-render execution paths.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -941,39 +941,69 @@ func TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries(t *testing.T) {
 	ts := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
 	xid := "X'6276742d3537',X'',1"
 	mock := &mockParser{events: []binlog.RawEvent{
-		{Timestamp: ts, EventType: "MariadbGTIDEvent"},
-		{Timestamp: ts, EventType: "QueryEvent", Query: "XA START " + xid, PositionStart: 3802, PositionEnd: 3900, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts, EventType: "MariadbGTIDEvent", GTID: "0-7-1859"},
+		{Timestamp: ts, EventType: "QueryEvent", Query: "XA START " + xid, ThreadID: 1878, ActorUser: "loader", ActorHost: "db.local", PositionStart: 3802, PositionEnd: 3900, BinlogPath: "mariadb-bin.000001"},
 		{Timestamp: ts.Add(time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "xa_a", RowCount: 2, PositionStart: 3900, PositionEnd: 4100, BinlogPath: "mariadb-bin.000001"},
 		{Timestamp: ts.Add(2 * time.Second), EventType: "UpdateRowsEventV2", Schema: "dogfood_cut", Table: "xa_b", RowCount: 1, PositionStart: 4100, PositionEnd: 4300, BinlogPath: "mariadb-bin.000001"},
 		{Timestamp: ts.Add(3 * time.Second), EventType: "QueryEvent", Query: "XA PREPARE " + xid, PositionStart: 4300, PositionEnd: 4444, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(4 * time.Second), EventType: "MariadbGTIDEvent"},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "MariadbGTIDEvent", GTID: "0-7-1860"},
 		{Timestamp: ts.Add(4 * time.Second), EventType: "QueryEvent", Query: "XA COMMIT " + xid},
-		{Timestamp: ts.Add(5 * time.Second), EventType: "MariadbGTIDEvent"},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "MariadbGTIDEvent", GTID: "0-7-1861"},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "QueryEvent", Query: "BEGIN", ThreadID: 1879},
 		{Timestamp: ts.Add(5 * time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "next_gtid", RowCount: 4},
-		{Timestamp: ts.Add(6 * time.Second), EventType: "XIDEvent"},
+		{Timestamp: ts.Add(6 * time.Second), EventType: "XIDEvent", XID: "3928"},
 		{Timestamp: ts.Add(7 * time.Second), EventType: "MariadbAnnotateRowsEvent", QuerySQL: "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"},
 		{Timestamp: ts.Add(8 * time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "slow", RowCount: 2},
 		{Timestamp: ts.Add(9 * time.Second), EventType: "XIDEvent"},
 	}}
+	for i := range mock.events {
+		mock.events[i].ServerID = 7
+		mock.events[i].ServerVersion = "11.8.3-MariaDB-log"
+		mock.events[i].ServerFlavor = "mariadb"
+	}
 
 	stdout, _, err := captureStdoutStderrRun(t, func() error {
-		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "json", mock)
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextFull}, "json", mock, "", nil)
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	var parsed struct {
+		ReportVersion int `json:"report_version"`
+		Provenance    struct {
+			ServerIDs      []uint32 `json:"server_ids"`
+			MixedProducers bool     `json:"mixed_producers"`
+		} `json:"provenance"`
+		SQLContext struct {
+			Mode      string `json:"mode"`
+			Available bool   `json:"available"`
+		} `json:"sql_context"`
 		Transactions []struct {
-			XAXID      string         `json:"xa_xid"`
+			XAXID    string `json:"xa_xid"`
+			ServerID uint32 `json:"server_id"`
+			GTID     string `json:"gtid"`
+			ThreadID uint32 `json:"thread_id"`
+			XID      string `json:"xid"`
+			Actor    *struct {
+				User string `json:"user"`
+				Host string `json:"host"`
+			} `json:"actor"`
 			TotalRows  int            `json:"total_rows"`
 			PosStart   int64          `json:"pos_start"`
 			PosEnd     int64          `json:"pos_end"`
 			Tables     map[string]int `json:"tables"`
 			Operations map[string]int `json:"operations"`
+			QuerySQL   string         `json:"query_sql"`
 		} `json:"transactions"`
 	}
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("decode analyze JSON: %v\n%s", err, stdout)
+	}
+	if parsed.ReportVersion != 3 || !slices.Equal(parsed.Provenance.ServerIDs, []uint32{7}) || parsed.Provenance.MixedProducers {
+		t.Fatalf("unexpected report provenance: %+v", parsed)
+	}
+	if parsed.SQLContext.Mode != "full" || !parsed.SQLContext.Available {
+		t.Fatalf("unexpected SQL context metadata: %+v", parsed.SQLContext)
 	}
 	if len(parsed.Transactions) != 3 {
 		t.Fatalf("expected XA, following GTID, and LOAD DATA transactions, got %+v", parsed.Transactions)
@@ -992,11 +1022,17 @@ func TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries(t *testing.T) {
 	if xa.XAXID != xid || xa.TotalRows != 3 || xa.PosStart != 3802 || xa.PosEnd != 4444 || xa.Tables["dogfood_cut.next_gtid"] != 0 {
 		t.Fatalf("unexpected prepared XA transaction: %+v", xa)
 	}
-	if next.XAXID != "" || next.TotalRows != 4 || next.Operations["INSERT"] != 4 {
+	if xa.ServerID != 7 || xa.GTID != "0-7-1859" || xa.ThreadID != 1878 || xa.Actor == nil || xa.Actor.User != "loader" {
+		t.Fatalf("unexpected XA provenance: %+v", xa)
+	}
+	if next.XAXID != "" || next.TotalRows != 4 || next.Operations["INSERT"] != 4 || next.GTID != "0-7-1861" || next.ThreadID != 1879 || next.XID != "3928" {
 		t.Fatalf("unexpected following GTID transaction: %+v", next)
 	}
 	if load.TotalRows != 2 || load.Operations["LOAD_DATA"] != 2 || load.Operations["INSERT"] != 0 {
 		t.Fatalf("unexpected LOAD DATA transaction: %+v", load)
+	}
+	if load.QuerySQL != "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow" {
+		t.Fatalf("full mode did not expose source LOAD DATA SQL: %+v", load)
 	}
 }
 
@@ -1004,6 +1040,7 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 
 	result := &model.AnalysisResult{
+		SQLContextAvailable: true,
 		Transactions: []model.Transaction{
 			{
 				TxnKey:       "txn-1",
@@ -1056,6 +1093,7 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 
 func TestRunAnalysisJSONSQLContextModes(t *testing.T) {
 	result := &model.AnalysisResult{
+		SQLContextAvailable: true,
 		Transactions: []model.Transaction{
 			{
 				TxnKey:       "txn-1",
@@ -1102,6 +1140,10 @@ func TestRunAnalysisJSONSQLContextModes(t *testing.T) {
 			var parsed map[string]any
 			if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
 				t.Fatalf("invalid JSON output: %v", err)
+			}
+			metadata := parsed["sql_context"].(map[string]any)
+			if metadata["mode"] != string(tt.mode) || metadata["available"] != true {
+				t.Fatalf("unexpected SQL context metadata: %+v", metadata)
 			}
 			txn := parsed["transactions"].([]any)[0].(map[string]any)
 			for _, field := range tt.wantFields {

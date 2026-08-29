@@ -1,12 +1,13 @@
 // Package report verifies JSON rendering stability and SQL context presentation modes.
-// input: synthetic AnalysisResult fixtures with XA identity and bounded transaction query context variations.
-// output: regression coverage for stable XA/transaction field names, counted event-byte diagnostics, and summary/off/full JSON query fields.
+// input: synthetic AnalysisResult fixtures with provenance, XA identity, and bounded transaction query context variations.
+// output: regression coverage for report-v3 identity fields, producer sets, counted event-byte diagnostics, and summary/off/full JSON SQL contracts.
 // pos: JSON renderer regression suite guarding script-facing output contracts.
 // note: if this file changes, update this header and module README.md.
 package report
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -141,8 +142,73 @@ func TestRenderJSONIncludesReportVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(out, `"report_version": 2`) {
+	if !strings.Contains(out, `"report_version": 3`) {
 		t.Fatalf("expected report_version in JSON, got: %s", out)
+	}
+}
+
+func TestRenderJSONV3PreservesProvenanceIndependentlyOfSQLContext(t *testing.T) {
+	result := model.AnalysisResult{
+		Provenance: model.ReportProvenance{
+			ServerIDs:      []uint32{7, 9},
+			ServerVersions: []string{"11.8.3-MariaDB-log", "8.4.6"},
+			ServerFlavors:  []string{"mariadb", "mysql"},
+			MixedProducers: true,
+		},
+		Transactions: []model.Transaction{
+			{
+				TxnKey:        "txn-51",
+				ServerID:      7,
+				ServerVersion: "11.8.3-MariaDB-log",
+				ServerFlavor:  "mariadb",
+				GTID:          "0-7-1848",
+				ThreadID:      1875,
+				XID:           "3928",
+				ActorUser:     "alice",
+				ActorHost:     "db.local",
+				QuerySummary:  "LOAD DATA INFILE '/tmp/orders.csv' INTO TABLE shop.orders",
+				QueryContext:  model.NewQueryContext("LOAD DATA INFILE '/tmp/orders.csv' INTO TABLE shop.orders"),
+			},
+		},
+	}
+
+	out, err := RenderJSONWithOptions(result, Options{SQLContextMode: SQLContextOff})
+	if err != nil {
+		t.Fatalf("RenderJSONWithOptions: %v", err)
+	}
+	parsed := parseJSONMap(t, out)
+	provenance := parsed["provenance"].(map[string]any)
+	if provenance["mixed_producers"] != true || !reflect.DeepEqual(provenance["server_ids"], []any{float64(7), float64(9)}) {
+		t.Fatalf("unexpected report provenance: %+v", provenance)
+	}
+	txn := parsed["transactions"].([]any)[0].(map[string]any)
+	if txn["server_id"] != float64(7) || txn["gtid"] != "0-7-1848" || txn["thread_id"] != float64(1875) || txn["xid"] != "3928" {
+		t.Fatalf("unexpected transaction provenance: %+v", txn)
+	}
+	if !reflect.DeepEqual(txn["actor"], map[string]any{"user": "alice", "host": "db.local"}) {
+		t.Fatalf("unexpected actor evidence: %+v", txn["actor"])
+	}
+	for _, field := range []string{"query_summary", "query_sql", "query_truncated", "query_original_bytes"} {
+		if _, ok := txn[field]; ok {
+			t.Fatalf("off mode should omit %s without hiding provenance", field)
+		}
+	}
+}
+
+func TestRenderJSONV3OmitsUnknownIdentity(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{Transactions: []model.Transaction{{TxnKey: "txn-unknown"}}})
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	parsed := parseJSONMap(t, out)
+	if _, ok := parsed["provenance"]; ok {
+		t.Fatal("unknown report provenance must be omitted")
+	}
+	txn := parsed["transactions"].([]any)[0].(map[string]any)
+	for _, field := range []string{"server_id", "server_version", "server_flavor", "gtid", "thread_id", "xid", "actor"} {
+		if _, ok := txn[field]; ok {
+			t.Fatalf("unknown identity field %s must be omitted", field)
+		}
 	}
 }
 
@@ -707,6 +773,17 @@ func TestRenderJSONSQLContextOffMode(t *testing.T) {
 				QueryContext: model.NewQueryContext("UPDATE orders SET status = 'paid' WHERE id = 42"),
 			},
 		},
+		Patterns: []model.PatternStats{
+			{PatternKey: "orders", SampleQuerySummary: "UPDATE orders SET status = ?"},
+		},
+		PatternDrilldowns: []model.PatternDrilldown{
+			{
+				PatternKey: "orders",
+				RepresentativeTransactions: []model.PatternRepresentativeTxn{
+					{TxnKey: "txn-1", QuerySummary: "UPDATE orders SET status = ?"},
+				},
+			},
+		},
 	}
 
 	out, err := RenderJSONWithOptions(result, Options{SQLContextMode: SQLContextOff})
@@ -720,6 +797,14 @@ func TestRenderJSONSQLContextOffMode(t *testing.T) {
 		if _, ok := txn[field]; ok {
 			t.Fatalf("off mode should omit %s", field)
 		}
+	}
+	pattern := parsed["patterns"].([]any)[0].(map[string]any)
+	if _, ok := pattern["sample_query_summary"]; ok {
+		t.Fatal("off mode should omit pattern sample_query_summary")
+	}
+	representative := parsed["pattern_drilldowns"].([]any)[0].(map[string]any)["representative_transactions"].([]any)[0].(map[string]any)
+	if _, ok := representative["query_summary"]; ok {
+		t.Fatal("off mode should omit drilldown query_summary")
 	}
 }
 
@@ -751,6 +836,30 @@ func TestRenderJSONSQLContextFullModeUsesBoundedSQL(t *testing.T) {
 	}
 	if querySQL == longSQL {
 		t.Fatal("full mode should not output unbounded original SQL")
+	}
+}
+
+func TestRenderJSONSerializesSQLContextModeAndAvailability(t *testing.T) {
+	for _, mode := range []SQLContextMode{SQLContextOff, SQLContextSummary, SQLContextFull} {
+		t.Run(string(mode), func(t *testing.T) {
+			out, err := RenderJSONWithOptions(model.AnalysisResult{SQLContextAvailable: true}, Options{SQLContextMode: mode})
+			if err != nil {
+				t.Fatalf("RenderJSONWithOptions: %v", err)
+			}
+			metadata := parseJSONMap(t, out)["sql_context"].(map[string]any)
+			if metadata["mode"] != string(mode) || metadata["available"] != true {
+				t.Fatalf("unexpected SQL context metadata: %+v", metadata)
+			}
+		})
+	}
+
+	out, err := RenderJSONWithOptions(model.AnalysisResult{}, Options{SQLContextMode: SQLContextFull})
+	if err != nil {
+		t.Fatalf("RenderJSONWithOptions: %v", err)
+	}
+	metadata := parseJSONMap(t, out)["sql_context"].(map[string]any)
+	if metadata["mode"] != "full" || metadata["available"] != false {
+		t.Fatalf("full mode without source SQL must be explicit and truthful: %+v", metadata)
 	}
 }
 

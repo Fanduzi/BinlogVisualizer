@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
-// input: RawEvent values emitted by the binlog parser layer.
-// output: model.NormalizedEvent values with bounded SQL context, XA identity, and stable event/operation kinds.
+// input: RawEvent values with optional producer/transaction provenance emitted by the binlog parser layer.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity, and stable event/operation kinds.
 // pos: normalization boundary between parser extraction and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -18,7 +18,7 @@ func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	if raw.EventType == "QUERY_EVENT" || raw.EventType == "QueryEvent" {
 		query := strings.TrimSpace(raw.Query)
 		_, _, isXA := parseXAQuery(query)
-		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) && !isXA {
+		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) && !hasLoadDataPrefix(query) && !isXA {
 			return nil, nil
 		}
 	} else if !isSupportedNormalizedEvent(raw.EventType) {
@@ -41,6 +41,12 @@ func isSupportedNormalizedEvent(eventType string) bool {
 		eventType == "ROWS_QUERY_EVENT" ||
 		eventType == "MariadbAnnotateRowsEvent" ||
 		eventType == "MARIADB_ANNOTATE_ROWS_EVENT" ||
+		eventType == "GTIDEvent" ||
+		eventType == "GTID_EVENT" ||
+		eventType == "GtidTaggedLogEvent" ||
+		eventType == "GTID_TAGGED_LOG_EVENT" ||
+		eventType == "MariadbGTIDEvent" ||
+		eventType == "MARIADB_GTID_EVENT" ||
 		eventType == "XID_EVENT" ||
 		eventType == "XIDEvent" ||
 		eventType == "TABLE_MAP_EVENT" ||
@@ -92,6 +98,17 @@ func NormalizeRawEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, erro
 	case 'M':
 		if et == "MariadbAnnotateRowsEvent" || et == "MARIADB_ANNOTATE_ROWS_EVENT" {
 			return normalizeRowsQueryEventInto(raw, dst)
+		}
+		if et == "MariadbGTIDEvent" || et == "MARIADB_GTID_EVENT" {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "GTID"
+			return true, nil
+		}
+	case 'G':
+		if et == "GTIDEvent" || et == "GTID_EVENT" || et == "GtidTaggedLogEvent" || et == "GTID_TAGGED_LOG_EVENT" {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "GTID"
+			return true, nil
 		}
 	case 'W':
 		if (len(et) >= 10 && et[:10] == "WRITE_ROWS") || (len(et) >= 9 && et[:9] == "WriteRows") {
@@ -150,6 +167,14 @@ func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 		PositionStart: raw.PositionStart,
 		PositionEnd:   raw.PositionEnd,
 		BinlogBytes:   raw.BinlogBytes,
+		ServerID:      raw.ServerID,
+		ServerVersion: raw.ServerVersion,
+		ServerFlavor:  raw.ServerFlavor,
+		GTID:          raw.GTID,
+		ThreadID:      raw.ThreadID,
+		XID:           raw.XID,
+		ActorUser:     raw.ActorUser,
+		ActorHost:     raw.ActorHost,
 		Schema:        raw.Schema,
 		Table:         raw.Table,
 		RowCount:      raw.RowCount,
@@ -173,6 +198,9 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 		dst.EventType = xaEventType
 		dst.XAXID = xaXID
 		return true, nil
+	case hasLoadDataPrefix(query):
+		raw.QuerySQL = raw.Query
+		return normalizeRowsQueryEventInto(raw, dst)
 	case hasQueryDDLPrefix(query):
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "DDL"

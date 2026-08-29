@@ -16,7 +16,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
 | `workflow.go` | Implements `workflow run <plan.yaml>`, `workflow resume <output_dir>`, canonical rooted plan references, pre-run `workflow validate <plan.yaml>` checks, static `workflow describe <plan.yaml>` previews, read-only `workflow status <output_dir>` inspection, and dry-run-first `workflow clean <output_dir>` cleanup. |
-| `*_test.go` | Covers flag parsing, MariaDB XA/LOAD_DATA analyze compatibility, snapshot workflow behavior, compare registration and input validation, analyze/compare integration, temp-store cleanup behavior, discovery-mode input resolution, analyze no-data exit 2, workflow run/resume end-to-end tests including relative output-root resolution, workflow validate/describe/clean output contracts, workflow failure output that prints `Error:` once without Usage, and the GitHub release archive packing contract (binary + sample + bundled plan). |
+| `*_test.go` | Covers flag parsing, report-v3 MySQL/MariaDB provenance and XA/LOAD_DATA SQL-context compatibility, snapshot workflows, analyze/compare integration, temp-store cleanup, discovery/no-data behavior, workflow commands, and release archive packing. |
 
 ## Exports
 
@@ -50,7 +50,7 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 ## Notes
 
 - Stage 3 keeps CLI semantics stable while moving the command execution path to true streaming consumption with command-owned DuckDB lifecycle.
-- Stage 4 adds `--sql-context summary|off|full`; CLI parses the mode and delegates presentation decisions to `internal/report`.
+- Stage 4 adds `--sql-context summary|off|full`; CLI parses the mode and delegates presentation decisions to `internal/report`. Report v3 records the selected mode and source-SQL availability without affecting provenance.
 - Stage 5 adds command-path benchmarks for real fixture parsing and synthetic high-volume streaming workloads, keeps fixture assets under `internal/binlog/testdata`, and adds aggregate parse progress based on ordered input file sizes.
 - Stage 8 adds named snapshot persistence under `~/.binlogviz/snapshots`, snapshot management commands, and snapshot-based compare input resolution while preserving legacy file-based compare.
 - The trend command adds a higher-level historical workflow on top of the snapshot store. Explicit snapshot lists and workflow jobs keep CLI/plan order by default (`--order cli`); `--order time` sorts by `snapshot.window.start_time` and writes a stderr notice when it reorders.

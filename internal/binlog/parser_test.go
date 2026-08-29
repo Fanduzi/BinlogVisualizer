@@ -1,6 +1,6 @@
 // Package binlog verifies parser construction, progress helpers, and table-name reuse behavior.
-// input: parser constructors, progress helpers, and synthetic go-mysql replication events including MariaDB annotations and Format Description.
-// output: regression coverage for parser setup, progress math, MariaDB query projection, event projection, and micro-benchmarks.
+// input: parser constructors, progress helpers, and synthetic go-mysql events carrying producer, GTID, Query actor, XID, and annotation evidence.
+// output: regression coverage for parser setup, provenance/SQL projection, progress math, event projection, and micro-benchmarks.
 // pos: focused unit-test layer for parser helpers that support command-level parsing and progress reporting.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -10,6 +10,7 @@ import (
 
 	"binlogviz/internal/model"
 
+	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 )
 
@@ -97,6 +98,48 @@ func TestApplyBinlogEventMetadataCapturesFormatDescriptionServerVersion(t *testi
 	}, nil)
 	if raw.ServerVersion != "11.4.2-MariaDB-log" {
 		t.Fatalf("ServerVersion=%q, want MariaDB Format Description version", raw.ServerVersion)
+	}
+	if raw.ServerFlavor != "mariadb" {
+		t.Fatalf("ServerFlavor=%q, want mariadb", raw.ServerFlavor)
+	}
+}
+
+func TestApplyBinlogEventMetadataCapturesTransactionProvenance(t *testing.T) {
+	var query RawEvent
+	applyBinlogEventMetadata(&query, replication.QUERY_EVENT.String(), &replication.QueryEvent{
+		SlaveProxyID: 1875,
+		StatusVars: []byte{
+			0, 1, 0, 0, 0,
+			11,
+			5, 'a', 'l', 'i', 'c', 'e',
+			8, 'd', 'b', '.', 'l', 'o', 'c', 'a', 'l',
+		},
+	}, nil)
+	if query.ThreadID != 1875 || query.ActorUser != "alice" || query.ActorHost != "db.local" {
+		t.Fatalf("unexpected Query provenance: %+v", query)
+	}
+
+	var mysqlGTID RawEvent
+	applyBinlogEventMetadata(&mysqlGTID, replication.GTID_EVENT.String(), &replication.GTIDEvent{
+		SID: []byte{0x24, 0xbc, 0x78, 0x52, 0x9c, 0xb7, 0x11, 0xee, 0x80, 0x89, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02},
+		GNO: 42,
+	}, nil)
+	if mysqlGTID.GTID != "24bc7852-9cb7-11ee-8089-0242ac120002:42" {
+		t.Fatalf("unexpected MySQL GTID %q", mysqlGTID.GTID)
+	}
+
+	var mariaGTID RawEvent
+	applyBinlogEventMetadata(&mariaGTID, replication.MARIADB_GTID_EVENT.String(), &replication.MariadbGTIDEvent{
+		GTID: mysql.MariadbGTID{DomainID: 0, ServerID: 7, SequenceNumber: 1848},
+	}, nil)
+	if mariaGTID.GTID != "0-7-1848" {
+		t.Fatalf("unexpected MariaDB GTID %q", mariaGTID.GTID)
+	}
+
+	var xid RawEvent
+	applyBinlogEventMetadata(&xid, replication.XID_EVENT.String(), &replication.XIDEvent{XID: 3928}, nil)
+	if xid.XID != "3928" {
+		t.Fatalf("unexpected XID %q", xid.XID)
 	}
 }
 
@@ -235,6 +278,28 @@ func TestRealFixtureContainsExpectedEvents(t *testing.T) {
 	}
 	if !hasRows {
 		t.Fatal("expected fixture to contain at least one rows event, got:", eventTypes)
+	}
+}
+
+func TestRealFixturePropagatesProducerMetadata(t *testing.T) {
+	fixture := "testdata/minimal.binlog"
+	p := NewParser()
+	seenRows := false
+
+	if err := p.ParseFiles([]string{fixture}, func(raw RawEvent) error {
+		if !isRowsEventTypeForTest(raw.EventType) {
+			return nil
+		}
+		seenRows = true
+		if raw.ServerID == 0 || raw.ServerVersion == "" || raw.ServerFlavor == "" {
+			t.Fatalf("row event missing producer metadata: %+v", raw)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("ParseFiles: %v", err)
+	}
+	if !seenRows {
+		t.Fatal("expected fixture row events")
 	}
 }
 

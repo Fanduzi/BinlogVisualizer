@@ -214,7 +214,9 @@ The top-level JSON object always contains these fields:
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `report_version` | integer | yes | Analyze report contract version; current version is `2` |
+| `report_version` | integer | yes | Analyze report contract version; current version is `3`; readers accept v0-v3 |
+| `provenance` | object | no | Deterministic producer sets plus `mixed_producers`; omitted when producer evidence is unavailable |
+| `sql_context` | object | yes | Selected `mode` and report-wide source-SQL `available` flag |
 | `summary` | object | yes | Overall totals and time bounds |
 | `tables` | array | yes | Complete table aggregates in deterministic order; human renderers may display only the configured top tables; empty array when no table results exist |
 | `transactions` | array | yes | Top transaction aggregates; empty array when no transaction results exist |
@@ -237,6 +239,10 @@ The top-level JSON object always contains these fields:
 | `start_time` | string | yes | RFC3339 timestamp, or empty string when no timestamp is available |
 | `end_time` | string | yes | RFC3339 timestamp, or empty string when no timestamp is available |
 | `duration` | string | yes | Duration string from the finalized result |
+
+### `provenance`
+
+When producer evidence exists, `provenance` contains sorted unique `server_ids`, `server_versions`, and `server_flavors`, plus an explicit `mixed_producers` boolean. Missing legacy evidence stays unknown and is not rendered as zero or an empty identity.
 
 ### `tables`
 
@@ -265,6 +271,13 @@ The top-level JSON object always contains these fields:
 |------|------|----------|------|
 | `txn_key` | string | yes | Transaction identifier used in reports |
 | `xa_xid` | string | no | MariaDB XA identifier; omitted for non-XA transactions |
+| `server_id` | integer | no | Event-header producer ID; omitted when unavailable |
+| `server_version` | string | no | FormatDescription server version; omitted when unavailable |
+| `server_flavor` | string | no | `mysql` or `mariadb`, derived from the server version |
+| `gtid` | string | no | Canonical MySQL or MariaDB GTID; omitted when unavailable |
+| `thread_id` | integer | no | QueryEvent thread ID; omitted when unavailable |
+| `xid` | string | no | Commit XID serialized as a decimal string |
+| `actor` | object | no | Best-effort `user` / `host` invoker evidence when present in the binlog |
 | `start_time` | string | yes | RFC3339 timestamp, or empty string when unset |
 | `end_time` | string | yes | RFC3339 timestamp, or empty string when unset |
 | `duration` | string | yes | Go duration string |
@@ -282,8 +295,12 @@ The top-level JSON object always contains these fields:
 `transactions` query fields depend on `--sql-context`:
 
 - `off`: omit all query-related fields
-- `summary`: include `query_summary`; include `query_truncated` and `query_original_bytes` only when query context exists
-- `full`: include `query_summary`; include `query_sql`, `query_truncated`, and `query_original_bytes` when query context exists
+- `summary`: include one whitespace-normalized `query_summary` bounded to 160 characters; include truncation metadata only when context exists
+- `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists
+
+`sql_context.available` reports whether any source SQL was observed across the full report, even when it falls outside the top transactions. `full` may therefore be selected with `available=false`. Provenance never depends on this mode, and no mode serializes row-image values.
+
+Named snapshots persist this complete report-v3 payload. Snapshot/compare readers continue to accept report versions 0 through 2 without inventing missing identity.
 
 ### `patterns`
 
