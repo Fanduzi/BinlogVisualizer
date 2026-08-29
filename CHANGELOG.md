@@ -2,6 +2,24 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.22.1
+
+Release date: 2026-08-29
+
+Highlights:
+
+- Release tar.gz includes the sample ROW binlog and an archive-relative `incident.yaml`
+- `analyze --format html > report.html` writes HTML to stdout when stdout is not a TTY
+- STATEMENT (zero ROW images) exits 1 with empty stdout; MIXED JSON adds an `input_format` alert
+- Parsed-but-zero-events exits 2; magic-only stays exit 1
+- Sub-second TPS prints `N/A (sub-second)`; workflow failures print `Error:` once
+- Replay commands use absolute paths and `mariadb-binlog` on MariaDB Format Description
+
+Related notes:
+
+- [v0.22.1 release notes](docs/releases/release-notes-v0.22.1.md)
+- [v0.22.1 中文发行说明](docs/releases/release-notes-v0.22.1.zh-CN.md)
+
 ## v0.22.0
 
 Release date: 2026-08-26
