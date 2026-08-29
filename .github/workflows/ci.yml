@@ -29,6 +29,6 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           go build -trimpath -o dist/binlogviz .
-          tar -C dist -czf dist/binlogviz_ci_linux_amd64.tar.gz binlogviz
+          bash scripts/pack_release_archive.sh dist/binlogviz dist/binlogviz_ci_linux_amd64.tar.gz
       - name: Smoke test packaged archive
         run: bash scripts/release_smoke.sh dist/binlogviz_ci_linux_amd64.tar.gz

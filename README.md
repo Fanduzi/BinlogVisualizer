@@ -27,7 +27,7 @@ curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/
 binlogviz analyze minimal.binlog
 ```
 
-The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in the repo. Future release archives also include `testdata/minimal.binlog`.
+The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in the repo. Each GitHub Release tar.gz also includes that file as `testdata/minimal.binlog`, a discovery-layout copy at `testdata/sample-binlog/mysql-bin.000001`, and an `incident.yaml` whose `from_dir` points at that directory. After extract, `./binlogviz analyze testdata/minimal.binlog` and `./binlogviz workflow run incident.yaml` do not need a clone.
 
 ### Inspect one of your own files
 
@@ -112,7 +112,7 @@ binlogviz trend --from-snapshots 'incident_week*' \
 
 ### Run a multi-step investigation from one plan file
 
-The repository ships a runnable `incident.yaml` that points at the 1500-byte ROW sample in `cmd/binlogviz/testdata/sample-binlog`. From the repository root, this first command does not need a local `/var/lib/mysql`:
+The repository ships a runnable `incident.yaml` that points at the 1500-byte ROW sample in `cmd/binlogviz/testdata/sample-binlog`. From the repository root, this first command does not need a local `/var/lib/mysql`. Release archives ship a separate `incident.yaml` whose `from_dir` is `testdata/sample-binlog` so the same command works after extract:
 
 ```bash
 binlogviz workflow run incident.yaml
@@ -280,11 +280,13 @@ Pull requests and release builds now validate packaged artifacts, not only sourc
 The maintainer-facing smoke path verifies that one built archive can:
 
 - extract successfully
+- include the binary, `testdata/minimal.binlog`, `testdata/sample-binlog/`, and `incident.yaml`
 - run `--version`
-- execute `analyze`
+- execute `analyze` on the bundled sample
 - save snapshots
 - run `compare`
 - run `trend`
+- run `workflow run incident.yaml` from the extract directory
 
 ## Common DBA Workflows
 
