@@ -1,3 +1,8 @@
+// Package binlogviz defines command-layer report comparison.
+// input: two analyze JSON paths or snapshot names, snapshot directory, and text/JSON/HTML format.
+// output: validated compare reports rendered to the command output stream with actionable load errors.
+// pos: CLI boundary between report/snapshot loading and the shared compare engine and renderers.
+// note: if this file changes, update this header and cmd/binlogviz/README.md.
 package binlogviz
 
 import (
