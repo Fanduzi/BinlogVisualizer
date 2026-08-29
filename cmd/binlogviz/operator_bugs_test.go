@@ -1,3 +1,8 @@
+// Package binlogviz covers operator-facing analyze bugs: findings vs alerts, ROW vs MIXED vs STATEMENT I/O.
+// input: fixture binlogs and mock parsers with Query-DML and ROW images.
+// output: regression coverage for JSON alerts, warnings (truncated-query int), and analyze exit behavior.
+// pos: command-layer tests for analyze stdout/stderr/exit contracts operators automate against.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -203,7 +208,13 @@ func TestAnalyzeMixedBinlogWarnsAndRecordsIgnoredQueryDML(t *testing.T) {
 			InputFormatGuess      string `json:"input_format_guess"`
 			IgnoredQueryDMLEvents int    `json:"ignored_query_dml_events"`
 		} `json:"diagnostics"`
-		Tables []struct {
+		Alerts []struct {
+			Type     string `json:"type"`
+			Severity string `json:"severity"`
+			Message  string `json:"message"`
+		} `json:"alerts"`
+		Warnings int `json:"warnings"`
+		Tables   []struct {
 			Schema string `json:"schema"`
 			Table  string `json:"table"`
 		} `json:"tables"`
@@ -222,5 +233,59 @@ func TestAnalyzeMixedBinlogWarnsAndRecordsIgnoredQueryDML(t *testing.T) {
 	}
 	if len(decoded.Tables) != 1 || decoded.Tables[0].Schema+"."+decoded.Tables[0].Table != "dogfood.users" {
 		t.Fatalf("expected dogfood.users from the ROW image, got %#v", decoded.Tables)
+	}
+	var formatAlert *struct {
+		Type     string `json:"type"`
+		Severity string `json:"severity"`
+		Message  string `json:"message"`
+	}
+	for i := range decoded.Alerts {
+		if decoded.Alerts[i].Type == "input_format" {
+			formatAlert = &decoded.Alerts[i]
+			break
+		}
+	}
+	if formatAlert == nil {
+		t.Fatalf("MIXED JSON must carry type=input_format so automation can see ignored Query-DML; alerts=%#v", decoded.Alerts)
+	}
+	if formatAlert.Severity != "warning" {
+		t.Fatalf("input_format severity=%q, want warning", formatAlert.Severity)
+	}
+	wantMsg := "MIXED: counted 1 ROW images, ignored 2 Query-DML events"
+	if formatAlert.Message != wantMsg {
+		t.Fatalf("input_format message=%q, want %q", formatAlert.Message, wantMsg)
+	}
+	if decoded.Warnings != 0 {
+		t.Fatalf("warnings is truncated-query count, want 0 when nothing was truncated, got %d", decoded.Warnings)
+	}
+}
+
+func TestAnalyzeRowFixtureJSONHasNoInputFormatAlert(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	fixture := mustFixturePath(t, "minimal.binlog")
+
+	out, err := captureStdoutRun(t, func() error {
+		return runAnalysisWithReportOptions([]string{fixture}, analyzer.DefaultOptions(), report.DefaultOptions(), "json")
+	})
+	if err != nil {
+		t.Fatalf("ROW fixture json analyze: %v", err)
+	}
+
+	var decoded struct {
+		Alerts []struct {
+			Type string `json:"type"`
+		} `json:"alerts"`
+		Warnings int `json:"warnings"`
+	}
+	if err := json.Unmarshal([]byte(out), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, out)
+	}
+	for _, alert := range decoded.Alerts {
+		if alert.Type == "input_format" {
+			t.Fatalf("ROW with no Query-DML must not emit input_format alert, got %#v", decoded.Alerts)
+		}
+	}
+	if decoded.Warnings != 0 {
+		t.Fatalf("ROW fixture warnings=%d, want 0", decoded.Warnings)
 	}
 }

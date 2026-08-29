@@ -359,7 +359,7 @@ Each entry contains:
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | Alert type such as `large_transaction` or `spike` |
+| `type` | string | yes | Alert type such as `large_transaction`, `spike`, or `input_format` |
 | `severity` | string | yes | Current alert severity string |
 | `message` | string | yes | Human-readable alert message |
 | `txn_key` | string | no | Present for transaction-scoped alerts |
@@ -372,7 +372,7 @@ Each entry contains:
 
 It counts analysis warnings accumulated in the finalized result object. This value is part of the machine-readable report on `stdout`; it is not a count of progress lines or `stderr` messages. A non-zero value indicates the analysis completed with warning conditions recorded in the result, not that JSON output is malformed.
 
-Current implementation increments this count when transaction query context had to be truncated to the bounded stored SQL size.
+Current implementation increments this count when transaction query context had to be truncated to the bounded stored SQL size. It is not a list, and MIXED undercount is reported in `alerts` (`type=input_format`) plus `diagnostics.ignored_query_dml_events`, not by inflating this integer.
 
 ### `snapshot`
 

@@ -91,8 +91,9 @@ BinlogViz 不会尝试重建完整的数据库历史。它消费规范化后的�
 
 - `large_transaction`
 - `spike`
+- `input_format`
 
-`large_transaction` 告警来自分析器选项里的大事务阈值。`spike` 告警只有在启用尖峰检测时才会评估。
+`large_transaction` 告警来自分析器选项里的大事务阈值。`spike` 告警只有在启用尖峰检测时才会评估。成功的 MIXED 分析（ROW image 与被忽略的 Query-DML 都大于 0）会追加 `input_format`，让 JSON 消费方知道只统计了 ROW image。
 
 每条告警包括：
 

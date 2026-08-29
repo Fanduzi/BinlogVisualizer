@@ -19,7 +19,7 @@ type WorkloadSummary struct {
 
 // Alert represents a detected anomaly or threshold breach.
 type Alert struct {
-	Type     string // "large_transaction", "spike"
+	Type     string // "large_transaction", "spike", "input_format"
 	Severity string // "info", "warning", "critical"
 	Message  string
 	TxnKey   string
