@@ -1,3 +1,8 @@
+// Package binlogviz resolves analyze HTML destinations for TTY files, redirects, and --output.
+// input: analyze input paths, discovery mode, --output flag, format, cwd, and whether stdout is a TTY.
+// output: file vs stdout destination, atomic HTML writes, and stderr save confirmation for files.
+// pos: CLI output-destination layer between analyze flag parsing and HTML report rendering.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -26,10 +31,18 @@ func resolveOutputDestination(paths []string, discovered bool, requested string,
 	if err != nil {
 		return outputDestination{}, fmt.Errorf("get working directory: %w", err)
 	}
-	return resolveOutputDestinationWithCwd(paths, discovered, requested, format, cwd)
+	return resolveOutputDestinationWithCwd(paths, discovered, requested, format, cwd, stdoutIsTerminal())
 }
 
-func resolveOutputDestinationWithCwd(paths []string, discovered bool, requested string, format string, cwd string) (outputDestination, error) {
+func stdoutIsTerminal() bool {
+	info, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
+
+func resolveOutputDestinationWithCwd(paths []string, discovered bool, requested string, format string, cwd string, stdoutIsTTY bool) (outputDestination, error) {
 	if format != "html" {
 		if requested != "" {
 			return outputDestination{}, fmt.Errorf("--output is only supported with --format html")
@@ -43,6 +56,10 @@ func resolveOutputDestinationWithCwd(paths []string, discovered bool, requested 
 
 	if requested != "" {
 		return outputDestination{Path: requested, IsFile: true}, nil
+	}
+
+	if !stdoutIsTTY {
+		return outputDestination{IsStdout: true}, nil
 	}
 
 	name := deriveHTMLFilename(paths, discovered)

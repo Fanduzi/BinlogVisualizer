@@ -1,6 +1,6 @@
 // Package binlogviz adds streaming-path regression coverage for fixtures, alerts, SQL context, and parser backpressure.
 // input: real binlog fixtures from internal/binlog/testdata plus synthetic parser workloads that exercise the command streaming path.
-// output: evidence that parser->normalize->analyzer.Consume->Finalize stays streaming and covers large transaction, spike, and Rows_query cases.
+// output: evidence that parser->normalize->analyzer.Consume->Finalize stays streaming and covers large transaction, spike, and Rows_query cases; stdout/stderr capture drains pipes concurrently so large HTML reports do not deadlock.
 // pos: Stage 5 command-layer regression suite focused on true streaming + DuckDB execution rather than slice-based wrappers.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,13 +50,18 @@ func captureStdoutRun(t *testing.T, fn func() error) (string, error) {
 	}
 	os.Stdout = w
 
+	var buf bytes.Buffer
+	done := make(chan struct{})
+	go func() {
+		_, _ = io.Copy(&buf, r)
+		close(done)
+	}()
+
 	runErr := fn()
 
 	_ = w.Close()
 	os.Stdout = old
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
+	<-done
 	return buf.String(), runErr
 }
 
@@ -75,17 +81,26 @@ func captureStdoutStderrRun(t *testing.T, fn func() error) (string, string, erro
 	os.Stdout = stdoutW
 	os.Stderr = stderrW
 
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(&stdoutBuf, stdoutR)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = io.Copy(&stderrBuf, stderrR)
+	}()
+
 	runErr := fn()
 
 	_ = stdoutW.Close()
 	_ = stderrW.Close()
 	os.Stdout = oldStdout
 	os.Stderr = oldStderr
-
-	var stdoutBuf bytes.Buffer
-	var stderrBuf bytes.Buffer
-	_, _ = io.Copy(&stdoutBuf, stdoutR)
-	_, _ = io.Copy(&stderrBuf, stderrR)
+	wg.Wait()
 	return stdoutBuf.String(), stderrBuf.String(), runErr
 }
 

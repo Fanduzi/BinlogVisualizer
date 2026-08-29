@@ -89,7 +89,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--from-dir` | none | 从该目录自动发现 binlog 文件。必须与 `--prefix` 一起使用。 |
 | `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。 |
 | `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
-| `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认值：从输入文件名推导（例如 `mysql-bin.000123.html`）。使用 `-` 输出到 stdout。 |
+| `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--sql-context` | `summary` | SQL 上下文展示模式：`summary`、`off` 或 `full`。 |
@@ -389,10 +389,10 @@ BinlogViz 会刻意把机器可消费的报告输出，与面向操作者的运�
 ```bash
 binlogviz analyze mysql-bin.000123 --format json > report.json
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
-binlogviz analyze mysql-bin.000123 --format html --output report.html
+binlogviz analyze mysql-bin.000123 --format html > report.html
 ```
 
-**HTML 输出说明：** 从 v0.21.0 开始，`--format html` 默认写入文件而非 stdout。输出文件名从输入文件名推导（例如 `mysql-bin.000123.html`）。使用 `--output -` 可恢复之前的 stdout 行为以供管道使用。
+**HTML 输出说明：** 交互式 TTY 下，`analyze --format html` 不带 `--output` 时写入推导出的 cwd 文件（例如 `mysql-bin.000123.html`，多文件或 `--from-dir` 时为 `binlogviz-report.html`）。stdout 为管道或重定向时，HTML 文档写入 stdout，因此 `analyze --format html > report.html` 会得到完整报告。`--output <path>` 写入该路径；`--output -` 强制 stdout。`compare` 和 `trend` 的 HTML 本来就写 stdout。
 
 ### 标准错误（`stderr`）
 

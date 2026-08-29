@@ -157,13 +157,13 @@ binlogviz workflow describe incident.yaml --format json
 # Markdown — paste into GitHub issues, wikis, or docs
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
 
-# HTML — writes to a file by default (e.g., mysql-bin.000123.html)
-binlogviz analyze mysql-bin.000123 --format html
+# HTML — redirected stdout receives the document
+binlogviz analyze mysql-bin.000123 --format html > report.html
 
 # HTML — explicit output path
 binlogviz analyze mysql-bin.000123 --format html --output report.html
 
-# HTML — emit to stdout for piping (legacy behavior)
+# HTML — force stdout (or omit --output when stdout is already redirected)
 binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
