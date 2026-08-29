@@ -1,6 +1,6 @@
 // Package compare verifies compare report loading and input validation behavior.
-// input: fixture JSON files, in-memory bytes, and invalid payloads.
-// output: assertions for compare-compatible report decoding and error handling.
+// input: report-v0-v3 fixture JSON, in-memory bytes with optional provenance, and invalid payloads.
+// output: assertions for compatible decoding without fabricated legacy identity plus explicit shape/version errors.
 // pos: regression coverage for the compare input loading boundary.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -322,6 +322,48 @@ func TestDecodeReportJSONAcceptsCurrentReportVersionTwo(t *testing.T) {
 	}
 	if report.Summary.TotalRows != 2 {
 		t.Fatalf("expected total rows 2, got %d", report.Summary.TotalRows)
+	}
+}
+
+func TestDecodeReportJSONAcceptsReportVersionOneWithoutFabricatingIdentity(t *testing.T) {
+	data := []byte(`{
+  "report_version": 1,
+  "summary": {"total_transactions":1,"total_rows":2,"total_events":3,"start_time":"2026-04-01T10:00:00Z","end_time":"2026-04-01T10:01:00Z","duration":"1m0s"},
+  "tables": [{"schema":"shop","table":"orders"}],
+  "transactions": [{"txn_key":"txn-1","total_rows":2,"event_count":1,"duration":"1s"}],
+  "alerts": [],
+  "warnings": 0
+}`)
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON returned error for report_version=1 payload: %v", err)
+	}
+	if report.Provenance != nil || len(report.Transactions) != 1 || report.Transactions[0].GTID != "" || report.Transactions[0].Actor != nil {
+		t.Fatalf("legacy report identity must remain unknown, got %+v", report)
+	}
+}
+
+func TestDecodeReportJSONAcceptsReportVersionThreeProvenance(t *testing.T) {
+	data := []byte(`{
+  "report_version": 3,
+  "provenance": {"server_ids":[7],"server_versions":["11.8.3-MariaDB-log"],"server_flavors":["mariadb"],"mixed_producers":false},
+  "sql_context": {"mode":"full","available":true},
+  "summary": {"total_transactions":1,"total_rows":2,"total_events":3,"start_time":"2026-04-01T10:00:00Z","end_time":"2026-04-01T10:01:00Z","duration":"1m0s"},
+  "tables": [{"schema":"shop","table":"orders"}],
+  "transactions": [{"txn_key":"txn-1","server_id":7,"server_version":"11.8.3-MariaDB-log","server_flavor":"mariadb","gtid":"0-7-1848","thread_id":1875,"xid":"3928","actor":{"user":"alice","host":"db.local"},"total_rows":2,"event_count":1,"duration":"1s"}],
+  "alerts": [],
+  "warnings": 0
+}`)
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON returned error for report_version=3 payload: %v", err)
+	}
+	if report.Provenance == nil || report.Provenance.MixedProducers || report.SQLContext == nil || report.SQLContext.Mode != "full" || !report.SQLContext.Available || len(report.Transactions) != 1 {
+		t.Fatalf("unexpected report-v3 provenance: %+v", report)
+	}
+	txn := report.Transactions[0]
+	if txn.GTID != "0-7-1848" || txn.XID != "3928" || txn.Actor == nil || txn.Actor.User != "alice" {
+		t.Fatalf("unexpected report-v3 transaction provenance: %+v", txn)
 	}
 }
 

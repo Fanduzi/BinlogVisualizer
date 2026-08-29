@@ -1,6 +1,6 @@
 // Package model defines top-level analyze report contracts and snapshot metadata.
-// input: aggregated analyzer output, diagnostics, tables, transactions, and filters.
-// output: AnalysisResult and snapshot envelope types reused by report and compare modules.
+// input: aggregated analyzer output, producer provenance, diagnostics, tables, transactions, and filters.
+// output: AnalysisResult, ReportProvenance, and snapshot envelope types reused by report and compare modules.
 // pos: shared result-model layer between analyzer finalization and renderer or loader pipelines.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -60,13 +60,23 @@ type SnapshotFilters struct {
 	ExcludeTables  []string
 }
 
+// ReportProvenance summarizes the distinct producers observed in a report.
+type ReportProvenance struct {
+	ServerIDs      []uint32
+	ServerVersions []string
+	ServerFlavors  []string
+	MixedProducers bool
+}
+
 // AnalysisResult is the complete output of binlog analysis.
 type AnalysisResult struct {
-	Summary      WorkloadSummary
-	Timeseries   Timeseries
-	Tables       []TableStats
-	Transactions []Transaction
-	Patterns     []PatternStats
+	Summary             WorkloadSummary
+	Provenance          ReportProvenance
+	SQLContextAvailable bool
+	Timeseries          Timeseries
+	Tables              []TableStats
+	Transactions        []Transaction
+	Patterns            []PatternStats
 	// Minutes is the source-of-truth aggregated minute series.
 	// Timeseries is the chart-ready projection derived from Minutes and may omit raw table context.
 	Minutes     []MinuteBucket

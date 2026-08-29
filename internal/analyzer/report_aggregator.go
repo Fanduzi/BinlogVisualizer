@@ -1,6 +1,6 @@
 // Package analyzer incrementally builds report-ready projections without retaining all transactions.
-// input: completed transactions, minute buckets, DDL events, normalized events, and file coverage.
-// output: bounded ReportSnapshot values used to assemble model.AnalysisResult, including filtered event-byte coverage.
+// input: completed transactions with provenance, minute buckets, DDL events, normalized events, and file coverage.
+// output: bounded ReportSnapshot values with filtered event-byte coverage and deterministic producer sets used to assemble model.AnalysisResult.
 // pos: streaming report aggregation layer that replaces QueryAllTransactions-dependent finalization.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -15,28 +15,34 @@ import (
 
 // ReportSnapshot holds a point-in-time view of aggregated report state.
 type ReportSnapshot struct {
-	Summary           model.WorkloadSummary
-	Tables            []model.TableStats
-	Transactions      []model.Transaction
-	Patterns          []model.PatternStats
-	Minutes           []model.MinuteBucket
-	Timeseries        model.Timeseries
-	Diagnostics       model.Diagnostics
-	Alerts            []model.Alert
-	Warnings          int
-	PatternDrilldowns []model.PatternDrilldown
+	Summary             model.WorkloadSummary
+	Provenance          model.ReportProvenance
+	SQLContextAvailable bool
+	Tables              []model.TableStats
+	Transactions        []model.Transaction
+	Patterns            []model.PatternStats
+	Minutes             []model.MinuteBucket
+	Timeseries          model.Timeseries
+	Diagnostics         model.Diagnostics
+	Alerts              []model.Alert
+	Warnings            int
+	PatternDrilldowns   []model.PatternDrilldown
 }
 
 // ReportAggregator maintains bounded streaming state for report assembly.
 type ReportAggregator struct {
 	opts Options
 
-	totalTransactions int
-	totalRows         int
-	totalEvents       int
-	startTime         time.Time
-	endTime           time.Time
-	warnings          int
+	totalTransactions   int
+	totalRows           int
+	totalEvents         int
+	startTime           time.Time
+	endTime             time.Time
+	warnings            int
+	sqlContextAvailable bool
+	serverIDs           map[uint32]struct{}
+	serverVersions      map[string]struct{}
+	serverFlavors       map[string]struct{}
 
 	topTransactions     []model.Transaction
 	largest             []model.Transaction
@@ -104,6 +110,9 @@ func NewReportAggregator(opts Options) *ReportAggregator {
 		txnSize:             newTxnSizeTracker(),
 		operationCounts:     make(map[time.Time]operationMinuteStats),
 		alertReferencedTxns: make(map[string]model.Transaction),
+		serverIDs:           make(map[uint32]struct{}),
+		serverVersions:      make(map[string]struct{}),
+		serverFlavors:       make(map[string]struct{}),
 	}
 }
 
@@ -119,6 +128,7 @@ func (a *ReportAggregator) ConsumeEvent(ev model.NormalizedEvent) {
 	if a.endTime.IsZero() || ev.Timestamp.After(a.endTime) {
 		a.endTime = ev.Timestamp
 	}
+	a.consumeProvenance(ev.ServerID, ev.ServerVersion, ev.ServerFlavor)
 }
 
 // ConsumeOperationEvent records operation-level counts for chart series.
@@ -149,6 +159,10 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 	}
 	a.totalTransactions++
 	a.totalRows += txn.TotalRows
+	if txn.QueryContext != nil && txn.QueryContext.SQL != "" {
+		a.sqlContextAvailable = true
+	}
+	a.consumeProvenance(txn.ServerID, txn.ServerVersion, txn.ServerFlavor)
 	a.topTransactions = insertTopTransaction(a.topTransactions, txn, a.opts.TopTransactions, transactionRowsBetter)
 	a.largest = insertTopTransaction(a.largest, txn, 5, transactionRowsBetter)
 	a.longest = insertTopTransaction(a.longest, txn, 5, transactionDurationBetter)
@@ -166,6 +180,18 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 				a.alertReferencedTxns[alert.TxnKey] = txn
 			}
 		}
+	}
+}
+
+func (a *ReportAggregator) consumeProvenance(serverID uint32, serverVersion, serverFlavor string) {
+	if serverID != 0 {
+		a.serverIDs[serverID] = struct{}{}
+	}
+	if serverVersion != "" {
+		a.serverVersions[serverVersion] = struct{}{}
+	}
+	if serverFlavor != "" {
+		a.serverFlavors[serverFlavor] = struct{}{}
 	}
 }
 
@@ -243,16 +269,40 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	series.TxnSizeSeriesSummary = a.txnSize.snapshot()
 
 	return ReportSnapshot{
-		Summary:           summary,
-		Transactions:      append([]model.Transaction(nil), a.topTransactions...),
-		Patterns:          patterns,
-		Minutes:           minutes,
-		Timeseries:        series,
-		Diagnostics:       diagnostics,
-		Alerts:            alerts,
-		Warnings:          a.warnings,
-		PatternDrilldowns: BuildPatternDrilldowns(patterns, minutes, drilldownTxns, alerts),
+		Summary:             summary,
+		Provenance:          a.snapshotProvenance(),
+		SQLContextAvailable: a.sqlContextAvailable,
+		Transactions:        append([]model.Transaction(nil), a.topTransactions...),
+		Patterns:            patterns,
+		Minutes:             minutes,
+		Timeseries:          series,
+		Diagnostics:         diagnostics,
+		Alerts:              alerts,
+		Warnings:            a.warnings,
+		PatternDrilldowns:   BuildPatternDrilldowns(patterns, minutes, drilldownTxns, alerts),
 	}
+}
+
+func (a *ReportAggregator) snapshotProvenance() model.ReportProvenance {
+	provenance := model.ReportProvenance{
+		ServerIDs:      make([]uint32, 0, len(a.serverIDs)),
+		ServerVersions: make([]string, 0, len(a.serverVersions)),
+		ServerFlavors:  make([]string, 0, len(a.serverFlavors)),
+		MixedProducers: len(a.serverIDs) > 1 || len(a.serverVersions) > 1 || len(a.serverFlavors) > 1,
+	}
+	for id := range a.serverIDs {
+		provenance.ServerIDs = append(provenance.ServerIDs, id)
+	}
+	for version := range a.serverVersions {
+		provenance.ServerVersions = append(provenance.ServerVersions, version)
+	}
+	for flavor := range a.serverFlavors {
+		provenance.ServerFlavors = append(provenance.ServerFlavors, flavor)
+	}
+	sort.Slice(provenance.ServerIDs, func(i, j int) bool { return provenance.ServerIDs[i] < provenance.ServerIDs[j] })
+	sort.Strings(provenance.ServerVersions)
+	sort.Strings(provenance.ServerFlavors)
+	return provenance
 }
 
 func insertTopTransaction(current []model.Transaction, txn model.Transaction, limit int, better func(left, right model.Transaction) bool) []model.Transaction {

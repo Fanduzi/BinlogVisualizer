@@ -1,11 +1,12 @@
 // Package analyzer verifies transaction reconstruction behavior from normalized events.
-// input: synthetic normalized events including MySQL and MariaDB XA boundaries, row intent, and row counts.
-// output: assertions for XA identity, separated transaction boundaries, operation intent, row totals, and table maps.
+// input: synthetic normalized events including MySQL/MariaDB provenance, XA boundaries, row intent, and row counts.
+// output: assertions for canonical GTID integrity, provenance, XA boundaries, operation intent, row totals, and table maps.
 // pos: focused regression coverage for analyzer transaction assembly helpers.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -208,6 +209,48 @@ func TestTransactionBuilderSeparatesPreparedMariaDBXAFromFollowingGTID(t *testin
 	}
 	if txns[1].XAXID != "" || txns[1].TotalRows != 4 || txns[1].Tables["dogfood_cut.next_gtid"] != 4 {
 		t.Fatalf("unexpected following GTID transaction: %+v", txns[1])
+	}
+}
+
+func TestTransactionBuilderPreservesCanonicalProvenance(t *testing.T) {
+	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	builder := NewTransactionBuilder()
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", ServerID: 7, ServerVersion: "11.8.3-MariaDB-log", ServerFlavor: "mariadb", GTID: "0-7-1848"},
+		{Timestamp: ts.Add(time.Second), EventType: "BEGIN", ServerID: 7, ThreadID: 1875, ActorUser: "alice", ActorHost: "db.local"},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "ROWS", ServerID: 7, Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 2},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "XID", ServerID: 7, XID: "3928"},
+	}
+	for _, event := range events {
+		if err := builder.Consume(event); err != nil {
+			t.Fatalf("Consume(%s): %v", event.EventType, err)
+		}
+	}
+
+	txns := builder.Completed()
+	if len(txns) != 1 {
+		t.Fatalf("expected one transaction, got %+v", txns)
+	}
+	txn := txns[0]
+	if txn.ServerID != 7 || txn.ServerVersion != "11.8.3-MariaDB-log" || txn.ServerFlavor != "mariadb" ||
+		txn.GTID != "0-7-1848" || txn.ThreadID != 1875 || txn.XID != "3928" ||
+		txn.ActorUser != "alice" || txn.ActorHost != "db.local" {
+		t.Fatalf("transaction provenance was not preserved: %+v", txn)
+	}
+}
+
+func TestTransactionBuilderRejectsConflictingGTIDs(t *testing.T) {
+	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	builder := NewTransactionBuilder()
+	if err := builder.Consume(model.NormalizedEvent{Timestamp: ts, EventType: "GTID", GTID: "0-7-1848"}); err != nil {
+		t.Fatalf("first GTID: %v", err)
+	}
+	if err := builder.Consume(model.NormalizedEvent{Timestamp: ts.Add(time.Second), EventType: "BEGIN"}); err != nil {
+		t.Fatalf("BEGIN: %v", err)
+	}
+	err := builder.Consume(model.NormalizedEvent{Timestamp: ts.Add(2 * time.Second), EventType: "GTID", GTID: "0-7-1849"})
+	if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("expected conflicting GTID integrity error, got %v", err)
 	}
 }
 

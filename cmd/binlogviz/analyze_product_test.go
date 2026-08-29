@@ -1,6 +1,6 @@
 // Package binlogviz validates DBA-oriented analyze report behavior using deterministic SQL corpus scenarios.
 // input: synthetic raw-event corpus files, analyzer defaults, and report renderers under test.
-// output: regression coverage for scenario presence, diagnostics rankings, and text/HTML product contracts.
+// output: regression coverage for detail-store report parity, scenario presence, diagnostics rankings, and text/HTML contracts.
 // pos: command-layer product test suite for analyze report semantics beyond single-fixture smoke tests.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -120,6 +120,8 @@ func TestAnalyzeCorpusDetailStoreNoneAndDuckDBProduceEquivalentReports(t *testin
 	duckDB := analyzeCorpusWithOptions(t, "incident-mixed", duckDBOpts)
 
 	assertEquivalentAnalyzeField(t, "summary", none.Summary, duckDB.Summary)
+	assertEquivalentAnalyzeField(t, "provenance", none.Provenance, duckDB.Provenance)
+	assertEquivalentAnalyzeField(t, "sql_context_available", none.SQLContextAvailable, duckDB.SQLContextAvailable)
 	assertEquivalentAnalyzeField(t, "timeseries", none.Timeseries, duckDB.Timeseries)
 	assertEquivalentAnalyzeField(t, "tables", none.Tables, duckDB.Tables)
 	assertEquivalentAnalyzeField(t, "transactions", none.Transactions, duckDB.Transactions)

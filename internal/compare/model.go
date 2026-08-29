@@ -1,20 +1,35 @@
 // Package compare defines compare-input contracts and comparison result models.
-// input: JSON reports emitted by `binlogviz analyze --format json`.
-// output: typed compare input and result structures, including replay-ready transaction evidence and render-only byte coverage deltas.
+// input: report-v0-v3 JSON emitted by `binlogviz analyze --format json`, with optional provenance on v3.
+// output: typed compare input and result structures that preserve known identity, replay evidence, and render-only byte coverage without inventing legacy evidence.
 // pos: compare pipeline boundary between JSON loading and diff/render stages.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 type InputReport struct {
-	Summary      InputSummary       `json:"summary"`
-	Timeseries   InputTimeseries    `json:"timeseries"`
-	Diagnostics  InputDiagnostics   `json:"diagnostics"`
-	Tables       []InputTable       `json:"tables"`
-	Transactions []InputTransaction `json:"transactions"`
-	Patterns     []InputPattern     `json:"patterns"`
-	Alerts       []InputAlert       `json:"alerts"`
-	Warnings     int                `json:"warnings"`
-	Snapshot     *InputSnapshot     `json:"snapshot,omitempty"`
+	ReportVersion int                `json:"report_version,omitempty"`
+	Provenance    *InputProvenance   `json:"provenance,omitempty"`
+	SQLContext    *InputSQLContext   `json:"sql_context,omitempty"`
+	Summary       InputSummary       `json:"summary"`
+	Timeseries    InputTimeseries    `json:"timeseries"`
+	Diagnostics   InputDiagnostics   `json:"diagnostics"`
+	Tables        []InputTable       `json:"tables"`
+	Transactions  []InputTransaction `json:"transactions"`
+	Patterns      []InputPattern     `json:"patterns"`
+	Alerts        []InputAlert       `json:"alerts"`
+	Warnings      int                `json:"warnings"`
+	Snapshot      *InputSnapshot     `json:"snapshot,omitempty"`
+}
+
+type InputSQLContext struct {
+	Mode      string `json:"mode"`
+	Available bool   `json:"available"`
+}
+
+type InputProvenance struct {
+	ServerIDs      []uint32 `json:"server_ids,omitempty"`
+	ServerVersions []string `json:"server_versions,omitempty"`
+	ServerFlavors  []string `json:"server_flavors,omitempty"`
+	MixedProducers bool     `json:"mixed_producers"`
 }
 
 type InputSummary struct {
@@ -93,6 +108,13 @@ type InputDDLEvent struct {
 
 type InputTransaction struct {
 	TxnKey             string         `json:"txn_key"`
+	ServerID           uint32         `json:"server_id,omitempty"`
+	ServerVersion      string         `json:"server_version,omitempty"`
+	ServerFlavor       string         `json:"server_flavor,omitempty"`
+	GTID               string         `json:"gtid,omitempty"`
+	ThreadID           uint32         `json:"thread_id,omitempty"`
+	XID                string         `json:"xid,omitempty"`
+	Actor              *InputActor    `json:"actor,omitempty"`
 	StartTime          string         `json:"start_time"`
 	EndTime            string         `json:"end_time"`
 	Duration           string         `json:"duration"`
@@ -110,6 +132,11 @@ type InputTransaction struct {
 	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
 	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
 	MysqlbinlogCmd     string         `json:"mysqlbinlog_cmd,omitempty"`
+}
+
+type InputActor struct {
+	User string `json:"user,omitempty"`
+	Host string `json:"host,omitempty"`
 }
 
 type InputHotInterval struct {

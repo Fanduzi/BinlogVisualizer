@@ -1,6 +1,6 @@
 // Package analyzer validates DuckDB-backed result persistence and finalize assembly.
-// input: temporary DuckDB paths, analyzer.Options, and normalized event sequences that exercise persistence thresholds.
-// output: regression coverage for schema initialization, batch flushing, query ordering, and DuckDB-backed Finalize semantics.
+// input: temporary DuckDB paths, provenance-bearing transactions, analyzer.Options, and events that exercise persistence thresholds.
+// output: regression coverage for schema initialization, provenance parity, batch flushing, query ordering, and DuckDB-backed Finalize semantics.
 // pos: module-level persistence test suite for the analyzer's internal result store layer.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -207,6 +207,56 @@ func TestDuckDBStoreQueryAllTransactionsDoesNotHydrateFullSQL(t *testing.T) {
 	}
 }
 
+func TestDetailStoresPreserveTransactionProvenance(t *testing.T) {
+	base := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	transaction := persistedTransaction{
+		TxnKey:        "txn-51",
+		ServerID:      7,
+		ServerVersion: "11.8.3-MariaDB-log",
+		ServerFlavor:  "mariadb",
+		GTID:          "0-7-1848",
+		ThreadID:      1875,
+		XID:           "3928",
+		ActorUser:     "alice",
+		ActorHost:     "db.local",
+		StartTime:     base,
+		EndTime:       base.Add(time.Second),
+		DurationMS:    1000,
+		TotalRows:     2,
+		EventCount:    1,
+		TableRows:     map[string]int{"shop.orders": 2},
+		Operations:    map[string]int{"INSERT": 2},
+	}
+
+	stores := map[string]analysisStore{
+		"in-memory": newInMemoryStore(),
+		"duckdb":    newTestDuckDBStore(t, DefaultBatchFlushRows),
+	}
+	for name, store := range stores {
+		t.Run(name, func(t *testing.T) {
+			if err := store.RecordTransactions([]persistedTransaction{transaction}); err != nil {
+				t.Fatalf("RecordTransactions: %v", err)
+			}
+			if err := store.Flush(); err != nil {
+				t.Fatalf("Flush: %v", err)
+			}
+			txns, err := store.QueryTopTransactions(1)
+			if err != nil {
+				t.Fatalf("QueryTopTransactions: %v", err)
+			}
+			if len(txns) != 1 {
+				t.Fatalf("expected one transaction, got %+v", txns)
+			}
+			txn := txns[0]
+			if txn.ServerID != 7 || txn.ServerVersion != "11.8.3-MariaDB-log" || txn.ServerFlavor != "mariadb" ||
+				txn.GTID != "0-7-1848" || txn.ThreadID != 1875 || txn.XID != "3928" ||
+				txn.ActorUser != "alice" || txn.ActorHost != "db.local" {
+				t.Fatalf("provenance was not preserved: %+v", txn)
+			}
+		})
+	}
+}
+
 func TestDuckDBStoreQueryAllTransactionsReturnsCountError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "analysis.duckdb")
@@ -410,7 +460,7 @@ func BenchmarkDuckDBStoreRecordTransactionsBatchSizing(b *testing.B) {
 			QueryTruncated:     false,
 			QueryOriginalBytes: 48,
 			TableRows: map[string]int{
-				"shop.orders": 5,
+				"shop.orders":                            5,
 				fmt.Sprintf("shop.lineitems_%02d", i%16): 3,
 			},
 			Operations: map[string]int{

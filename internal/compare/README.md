@@ -6,8 +6,8 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 
 | File | Responsibility |
 |------|----------------|
-| `load.go` | Loads and validates analyze JSON reports from files or in-memory bytes. |
-| `model.go` | Defines compare input contracts, counted-event diagnostics, optional snapshot metadata, pattern-aware input shapes, replay evidence, and compare result structures. |
+| `load.go` | Loads and validates analyze report versions 0 through 3 from files or bytes. |
+| `model.go` | Defines compare input contracts that preserve report-v3 provenance/SQL metadata, counted-event diagnostics, snapshot metadata, pattern shapes, and replay evidence without inventing legacy identity. |
 | `diff.go` | Computes deterministic summary, table, pattern, operation, alert, and baseline/current byte-coverage deltas. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
@@ -41,7 +41,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 
 - Snapshot metadata in analyze JSON is optional; compare must continue to work when it is absent.
 - Compare labels fall back to `current` / `baseline` when snapshot metadata is not present.
-- Legacy file-based compare and snapshot-based compare share the same validated `InputReport` contract.
+- Legacy file-based compare and snapshot-based compare share the same validated `InputReport` contract; v0-v2 absence never becomes fabricated identity.
 - `large_transaction` alerts and largest-txn compare identity use content (dominant table, op, rows, file+span), not the local `txn-N` sequence number.
 - Text compare prints a `Largest txn` line and marks `NEW` when the two sides do not share that content identity.
 - A new write shape (`baseline=0`, `current>0`) uses `delta_percent: null` and text/HTML `new` instead of `0.0%`.

@@ -1,6 +1,6 @@
-// Package report renders JSON reports from complete analysis results.
-// input: analyzer-produced AnalysisResult values plus optional SQL context and snapshot presentation controls.
-// output: stable JSON objects with XA-aware transactions, mode-controlled query fields, selected-file/count-event diagnostics, optional snapshot envelope data, and mysqlbinlog_cmd replay strings.
+// Package report renders JSON reports from bounded analysis results.
+// input: analyzer-produced AnalysisResult values with provenance plus optional SQL context and snapshot presentation controls.
+// output: report-v3 JSON with provenance-aware XA transactions, mode-controlled query fields, selected-file/count-event diagnostics, optional snapshot data, and mysqlbinlog_cmd replay strings.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -14,12 +14,14 @@ import (
 	"binlogviz/internal/model"
 )
 
-const currentReportVersion = 2
+const currentReportVersion = 3
 
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
 type jsonAnalysisResult struct {
 	ReportVersion     int                    `json:"report_version"`
+	Provenance        *jsonProvenance        `json:"provenance,omitempty"`
+	SQLContext        jsonSQLContext         `json:"sql_context"`
 	Summary           jsonSummary            `json:"summary"`
 	Timeseries        jsonTimeseries         `json:"timeseries"`
 	Diagnostics       jsonDiagnostics        `json:"diagnostics"`
@@ -31,6 +33,18 @@ type jsonAnalysisResult struct {
 	Warnings          int                    `json:"warnings"`
 	PatternDrilldowns []jsonPatternDrilldown `json:"pattern_drilldowns"`
 	Snapshot          *jsonSnapshot          `json:"snapshot,omitempty"`
+}
+
+type jsonSQLContext struct {
+	Mode      SQLContextMode `json:"mode"`
+	Available bool           `json:"available"`
+}
+
+type jsonProvenance struct {
+	ServerIDs      []uint32 `json:"server_ids,omitempty"`
+	ServerVersions []string `json:"server_versions,omitempty"`
+	ServerFlavors  []string `json:"server_flavors,omitempty"`
+	MixedProducers bool     `json:"mixed_producers"`
 }
 
 type jsonSummary struct {
@@ -151,6 +165,13 @@ type jsonTableStats struct {
 type jsonTransaction struct {
 	TxnKey             string         `json:"txn_key"`
 	XAXID              string         `json:"xa_xid,omitempty"`
+	ServerID           uint32         `json:"server_id,omitempty"`
+	ServerVersion      string         `json:"server_version,omitempty"`
+	ServerFlavor       string         `json:"server_flavor,omitempty"`
+	GTID               string         `json:"gtid,omitempty"`
+	ThreadID           uint32         `json:"thread_id,omitempty"`
+	XID                string         `json:"xid,omitempty"`
+	Actor              *jsonActor     `json:"actor,omitempty"`
 	StartTime          string         `json:"start_time"`
 	EndTime            string         `json:"end_time"`
 	Duration           string         `json:"duration"`
@@ -168,6 +189,11 @@ type jsonTransaction struct {
 	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
 	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
 	MysqlbinlogCmd     string         `json:"mysqlbinlog_cmd,omitempty"`
+}
+
+type jsonActor struct {
+	User string `json:"user,omitempty"`
+	Host string `json:"host,omitempty"`
 }
 
 type jsonPatternStats struct {
@@ -302,17 +328,31 @@ func RenderJSONToStdoutWithOptions(result model.AnalysisResult, opts Options) er
 func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult {
 	return jsonAnalysisResult{
 		ReportVersion:     currentReportVersion,
+		Provenance:        convertProvenance(result.Provenance),
+		SQLContext:        jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
 		Summary:           convertSummary(result.Summary),
 		Timeseries:        convertTimeseries(result.Timeseries),
 		Diagnostics:       convertDiagnostics(result.Diagnostics, opts.SQLContextMode),
 		Tables:            convertTables(result.Tables),
 		Transactions:      convertTransactions(result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion),
-		Patterns:          convertPatterns(result.Patterns),
+		Patterns:          convertPatterns(result.Patterns, opts.SQLContextMode),
 		Minutes:           convertMinutes(result.Minutes),
 		Alerts:            convertAlerts(result.Alerts),
 		Warnings:          result.Warnings,
-		PatternDrilldowns: convertDrilldowns(result.PatternDrilldowns),
+		PatternDrilldowns: convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode),
 		Snapshot:          convertSnapshot(result.Snapshot),
+	}
+}
+
+func convertProvenance(provenance model.ReportProvenance) *jsonProvenance {
+	if len(provenance.ServerIDs) == 0 && len(provenance.ServerVersions) == 0 && len(provenance.ServerFlavors) == 0 {
+		return nil
+	}
+	return &jsonProvenance{
+		ServerIDs:      append([]uint32(nil), provenance.ServerIDs...),
+		ServerVersions: copyStringSlice(provenance.ServerVersions),
+		ServerFlavors:  copyStringSlice(provenance.ServerFlavors),
+		MixedProducers: provenance.MixedProducers,
 	}
 }
 
@@ -522,6 +562,12 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 		jt := jsonTransaction{
 			TxnKey:          t.TxnKey,
 			XAXID:           t.XAXID,
+			ServerID:        t.ServerID,
+			ServerVersion:   t.ServerVersion,
+			ServerFlavor:    t.ServerFlavor,
+			GTID:            t.GTID,
+			ThreadID:        t.ThreadID,
+			XID:             t.XID,
 			StartTime:       formatJSONTime(t.StartTime),
 			EndTime:         formatJSONTime(t.EndTime),
 			Duration:        t.Duration.String(),
@@ -534,6 +580,9 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 			PosEnd:          t.PositionEnd,
 			Tables:          copyStringIntMap(t.Tables),
 			Operations:      copyStringIntMap(t.Operations),
+		}
+		if t.ActorUser != "" || t.ActorHost != "" {
+			jt.Actor = &jsonActor{User: t.ActorUser, Host: t.ActorHost}
 		}
 		switch mode {
 		case SQLContextOff:
@@ -560,7 +609,7 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 	return result
 }
 
-func convertPatterns(patterns []model.PatternStats) []jsonPatternStats {
+func convertPatterns(patterns []model.PatternStats, mode SQLContextMode) []jsonPatternStats {
 	if patterns == nil {
 		return []jsonPatternStats{}
 	}
@@ -577,7 +626,9 @@ func convertPatterns(patterns []model.PatternStats) []jsonPatternStats {
 			AvgRowsPerTxn:       p.AvgRowsPerTxn,
 			Tables:              copyStringIntMap(p.Tables),
 			Operations:          copyStringIntMap(p.Operations),
-			SampleQuerySummary:  p.SampleQuerySummary,
+		}
+		if mode != SQLContextOff {
+			result[i].SampleQuerySummary = p.SampleQuerySummary
 		}
 	}
 	return result
@@ -657,7 +708,7 @@ func convertSnapshotFilters(filters model.SnapshotFilters) jsonSnapshotFilters {
 	}
 }
 
-func convertDrilldowns(drilldowns []model.PatternDrilldown) []jsonPatternDrilldown {
+func convertDrilldowns(drilldowns []model.PatternDrilldown, mode SQLContextMode) []jsonPatternDrilldown {
 	if drilldowns == nil {
 		return []jsonPatternDrilldown{}
 	}
@@ -675,7 +726,7 @@ func convertDrilldowns(drilldowns []model.PatternDrilldown) []jsonPatternDrilldo
 				Anomaly:   d.SignalFlags.Anomaly,
 			},
 			BusiestMinutes:             convertPeakMinutes(d.BusiestMinutes),
-			RepresentativeTransactions: convertRepresentativeTxns(d.RepresentativeTransactions),
+			RepresentativeTransactions: convertRepresentativeTxns(d.RepresentativeTransactions, mode),
 		}
 		// Enforce hard caps at render boundary as a safety net
 		if len(result[i].BusiestMinutes) > 2 {
@@ -703,17 +754,15 @@ func convertPeakMinutes(minutes []model.PatternPeakMinute) []jsonPeakMinute {
 	return result
 }
 
-func convertRepresentativeTxns(txns []model.PatternRepresentativeTxn) []jsonRepresentativeTxn {
+func convertRepresentativeTxns(txns []model.PatternRepresentativeTxn, mode SQLContextMode) []jsonRepresentativeTxn {
 	if txns == nil {
 		return []jsonRepresentativeTxn{}
 	}
 	result := make([]jsonRepresentativeTxn, len(txns))
 	for i, t := range txns {
-		result[i] = jsonRepresentativeTxn{
-			TxnKey:       t.TxnKey,
-			TotalRows:    t.TotalRows,
-			Duration:     t.Duration.String(),
-			QuerySummary: t.QuerySummary,
+		result[i] = jsonRepresentativeTxn{TxnKey: t.TxnKey, TotalRows: t.TotalRows, Duration: t.Duration.String()}
+		if mode != SQLContextOff {
+			result[i].QuerySummary = t.QuerySummary
 		}
 	}
 	return result

@@ -1,6 +1,6 @@
 // Package model verifies shared analysis and result contracts plus derived helpers.
-// input: synthetic AnalysisResult, Transaction, and diagnostics values built by tests.
-// output: assertions for duration math, optional fields, and stable model invariants.
+// input: synthetic AnalysisResult, provenance-aware Transaction, query context, and diagnostics values built by tests.
+// output: assertions for duration math, exact SQL bounds, optional fields, and stable model invariants.
 // pos: regression coverage for shared result-model behavior reused across modules.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -261,8 +261,8 @@ func TestMakeQuerySummaryTruncation(t *testing.T) {
 	summary := MakeQuerySummary(longSQL)
 
 	// Should be truncated and end with "..."
-	if len(summary) > MaxQuerySummaryChars+3 { // +3 for "..."
-		t.Fatalf("expected summary <= %d chars, got %d", MaxQuerySummaryChars+3, len(summary))
+	if len([]rune(summary)) != MaxQuerySummaryChars {
+		t.Fatalf("expected summary to be exactly %d characters, got %d", MaxQuerySummaryChars, len([]rune(summary)))
 	}
 	if len(summary) < 3 || summary[len(summary)-3:] != "..." {
 		t.Fatalf("expected summary to end with '...', got %q", summary)
@@ -291,8 +291,8 @@ func TestMakeQuerySummaryUTF8(t *testing.T) {
 
 	// Should preserve UTF-8 characters
 	runes := []rune(summary)
-	if len(runes) > MaxQuerySummaryChars+3 {
-		t.Fatalf("expected summary <= %d runes, got %d", MaxQuerySummaryChars+3, len(runes))
+	if len(runes) > MaxQuerySummaryChars {
+		t.Fatalf("expected summary <= %d runes, got %d", MaxQuerySummaryChars, len(runes))
 	}
 }
 

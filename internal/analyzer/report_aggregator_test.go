@@ -7,6 +7,7 @@ package analyzer
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -373,6 +374,26 @@ func TestReportAggregatorOperationTimeseries(t *testing.T) {
 	}
 	if snapshot.Timeseries.DeleteEventSeries[1].Value != 1 {
 		t.Fatalf("second minute deletes = %v, want 1", snapshot.Timeseries.DeleteEventSeries[1].Value)
+	}
+}
+
+func TestReportAggregatorPreservesEventOnlyProvenance(t *testing.T) {
+	agg := NewReportAggregator(DefaultOptions())
+	agg.ConsumeEvent(model.NormalizedEvent{
+		Timestamp:     time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC),
+		EventType:     "DDL",
+		ServerID:      9,
+		ServerVersion: "8.4.6",
+		ServerFlavor:  "mysql",
+	})
+
+	want := model.ReportProvenance{
+		ServerIDs:      []uint32{9},
+		ServerVersions: []string{"8.4.6"},
+		ServerFlavors:  []string{"mysql"},
+	}
+	if got := agg.Snapshot().Provenance; !reflect.DeepEqual(got, want) {
+		t.Fatalf("event-only provenance\ngot:  %#v\nwant: %#v", got, want)
 	}
 }
 

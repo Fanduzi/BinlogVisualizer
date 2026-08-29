@@ -6,13 +6,13 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 
 | File | Responsibility |
 |------|----------------|
-| `event.go` | Defines normalized binlog event contracts, including XA identity and LOAD_DATA intent, emitted by `internal/binlog` and consumed by `internal/analyzer`. |
-| `transaction.go` | Defines reconstructed transaction (including optional XA XID) and bounded SQL context contracts. |
+| `event.go` | Defines normalized binlog events with optional producer/transaction provenance, XA identity, and LOAD_DATA intent. |
+| `transaction.go` | Defines reconstructed transactions with canonical GTID, server/thread/XID/actor evidence, optional XA XID, and bounded SQL context. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
 | `diagnostics.go` | Defines diagnostics, selected-file coverage, counted filtered event bytes, DDL, finding, and Format Description server-version contracts for operator review. |
-| `report.go` | Defines the top-level `AnalysisResult` envelope plus snapshot metadata contracts. |
+| `report.go` | Defines `AnalysisResult`, deterministic report-level producer provenance, report-wide SQL availability, and snapshot metadata. |
 | `timeseries.go` | Defines chart-ready timeseries and transaction-size histogram contracts. |
 | `query_context.go` | Provides bounded SQL context constructors and truncation helpers. |
 | `*_test.go` | Verifies shared model invariants and helper behavior. |
@@ -21,11 +21,11 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 
 | API | Contract |
 |-----|----------|
-| `NormalizedEvent` | Stable parser-to-analyzer event contract with bounded SQL context fields. |
-| `Transaction`, `QueryContext` | Stable reconstructed transaction contract with optional XA identity plus bounded SQL payload metadata. |
+| `NormalizedEvent` | Stable parser-to-analyzer event contract with optional provenance and bounded SQL context fields. |
+| `Transaction`, `QueryContext` | Stable reconstructed transaction contract with optional server/GTID/thread/XID/actor/XA evidence plus bounded SQL metadata. |
 | `WorkloadSummary`, `MinuteBucket`, `TableStats`, `Timeseries` | Stable aggregate workload contracts for analyze renderers. |
 | `PatternStats`, `PatternDrilldown`, `Diagnostics` | Stable higher-signal analysis contracts for findings, drilldowns, and operator review. |
-| `AnalysisResult`, `Snapshot` | Stable top-level analyze report envelope reused by renderers and snapshot-based follow-on commands. |
+| `AnalysisResult`, `ReportProvenance`, `Snapshot` | Stable report/snapshot contracts; producer sets are unique/sorted and SQL availability covers the whole report. |
 | `NewQueryContext(sql string) *QueryContext` | Creates bounded SQL context from raw SQL text with truncation. |
 | `NewQueryContextFromNormalized(sql string, truncated bool, originalBytes int) *QueryContext` | Rehydrates bounded SQL context from already-normalized values. |
 

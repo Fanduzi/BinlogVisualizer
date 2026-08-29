@@ -1,7 +1,8 @@
 // Package compare loads and validates compare input reports.
 // input: filesystem paths to BinlogViz JSON reports.
-// output: validated InputReport values or explicit read/decode/shape errors.
+// output: validated report-v0-v3 InputReport values or explicit read/decode/shape errors.
 // pos: compare command ingress before diff construction and rendering.
+// note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 import (
@@ -11,7 +12,7 @@ import (
 	"strings"
 )
 
-const currentSupportedReportVersion = 2
+const currentSupportedReportVersion = 3
 
 type rawInputReport struct {
 	ReportVersion *int               `json:"report_version"`

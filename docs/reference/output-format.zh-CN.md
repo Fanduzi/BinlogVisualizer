@@ -214,7 +214,9 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `2` |
+| `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `3`；读取端接受 v0-v3 |
+| `provenance` | object | no | 确定性的生产者集合和 `mixed_producers`；没有证据时省略 |
+| `sql_context` | object | yes | 所选 `mode` 和报告全局源 SQL `available` 标志 |
 | `summary` | object | yes | 总体汇总和时间边界 |
 | `tables` | array | yes | 按确定性顺序排列的完整表聚合结果；人类可读渲染器可以只显示配置的 Top 表；没有表结果时为空数组 |
 | `transactions` | array | yes | Top 事务聚合结果；没有事务结果时为空数组 |
@@ -237,6 +239,10 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `start_time` | string | yes | RFC3339 时间戳；如果没有可用时间戳则为空字符串 |
 | `end_time` | string | yes | RFC3339 时间戳；如果没有可用时间戳则为空字符串 |
 | `duration` | string | yes | 最终结果中的持续时间字符串 |
+
+### `provenance`
+
+存在生产者证据时，`provenance` 包含排序且去重的 `server_ids`、`server_versions`、`server_flavors`，以及显式的 `mixed_producers` 布尔值。旧报告缺失的证据保持 unknown，不会伪造成 0 或空身份。
 
 ### `tables`
 
@@ -265,6 +271,13 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 |------|------|----------|------|
 | `txn_key` | string | yes | 报告中使用的事务标识 |
 | `xa_xid` | string | no | MariaDB XA 标识；非 XA 事务省略 |
+| `server_id` | integer | no | 事件头中的生产者 ID；不可用时省略 |
+| `server_version` | string | no | FormatDescription server version；不可用时省略 |
+| `server_flavor` | string | no | 根据 server version 推导的 `mysql` 或 `mariadb` |
+| `gtid` | string | no | 事务唯一的 MySQL/MariaDB GTID；不可用时省略 |
+| `thread_id` | integer | no | QueryEvent thread ID；不可用时省略 |
+| `xid` | string | no | 以十进制字符串序列化的提交 XID |
+| `actor` | object | no | binlog 中存在时的 best-effort `user` / `host` 调用者证据 |
 | `start_time` | string | yes | RFC3339 时间戳；未设置时为空字符串 |
 | `end_time` | string | yes | RFC3339 时间戳；未设置时为空字符串 |
 | `duration` | string | yes | 持续时间字符串 |
@@ -282,8 +295,12 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 `transactions` 中的 query 字段取决于 `--sql-context`：
 
 - `off`：省略所有 query 相关字段
-- `summary`：包含 `query_summary`；只有在存在 query 上下文时才包含 `query_truncated` 和 `query_original_bytes`
-- `full`：包含 `query_summary`；在存在 query 上下文时包含 `query_sql`、`query_truncated` 和 `query_original_bytes`
+- `summary`：包含经空白归一化且最多 160 个字符的 `query_summary`；存在上下文时才包含截断元数据
+- `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数
+
+`sql_context.available` 表示整份报告中是否观察到源 SQL，即使该 SQL 不在 Top 事务中。因而 `full` 与 `available=false` 可以同时出现。provenance 不受该模式影响，任何模式都不会序列化 row-image 值。
+
+命名 snapshot 会保存完整的 report-v3 payload。snapshot/compare 读取端继续接受 v0-v2，并且不会伪造缺失身份。
 
 ### `patterns`
 

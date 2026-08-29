@@ -6,9 +6,9 @@ Binlog parsing, raw event extraction, normalization, and parse-progress contract
 
 | File | Responsibility |
 |------|----------------|
-| `types.go` | Defines `RawEvent` (including Format Description `ServerVersion`), `Parser`, `ParseProgress`, and the optional `ProgressParser` contract used by the command layer. |
-| `parser.go` | Wraps `go-mysql-org/go-mysql/replication`, extracts raw binlog events including MariaDB row annotations and Format Description server version, reuses `TableID` table names in the rows-event hot path, reconstructs MariaDB 11.4+ `LogPos=0` ranges from a running file cursor, and emits monotonic per-input progress offsets. |
-| `normalize.go` | Converts parser-emitted `RawEvent` values into stable analyzer-facing normalized events, including MariaDB XA boundaries/XID, LOAD DATA row intent, Query DDL (`CREATE`/`ALTER`/`DROP`/`TRUNCATE`/`RENAME`), and a destination-reuse fast path for streaming callers. Uses first-character dispatch to reduce string comparison overhead in the hot normalization path. |
+| `types.go` | Defines `RawEvent` with optional server/version/flavor, GTID, Query thread/actor, XID, SQL, and location evidence plus parser/progress contracts. |
+| `parser.go` | Wraps `go-mysql-org/go-mysql/replication`, extracts event-header server ID, propagated FormatDescription version/flavor, MySQL/MariaDB GTID, Query thread and best-effort invoker, decimal XID, row annotations, table names, positions, and progress. |
+| `normalize.go` | Preserves raw provenance while converting supported events into stable analyzer kinds, including GTID, XA, Query/AnnotateRows LOAD DATA context, bounded SQL, row intent, and Query DDL. |
 | `format.go` | Cheap Query-DML vs ROW-image observation used to guess STATEMENT/MIXED/ROW, capture Format Description server version, and warn when only row images are counted. |
 | `probe.go` | Scans binlog files for reusable file-level metadata such as size and chronological earliest/latest non-zero event timestamps, with internal parser-injectable helpers for reuse in tests and later planning work. |
 | `*_test.go` | Covers parser construction, helper behavior, normalization semantics, and real-fixture parser benchmarks isolating parse-only, parse+normalize, and parse+progress layers. |
@@ -16,14 +16,14 @@ Binlog parsing, raw event extraction, normalization, and parse-progress contract
 
 ## Exports
 
-- `type RawEvent`
+- `type RawEvent` — Raw parser event with optional producer/transaction provenance; zero/empty identity is unknown.
 - `type Parser`
 - `type ParseProgress`
 - `type ProgressParser`
 - `type FileProbe`
 - `type FormatObserver`
 - `func NewParser() Parser`
-- `func NormalizeRawEvent(RawEvent) (*model.NormalizedEvent, error)`
+- `func NormalizeRawEvent(RawEvent) (*model.NormalizedEvent, error)` — Preserves available provenance and bounds SQL to 4096 UTF-8-safe bytes.
 - `func NormalizeRawEventInto(RawEvent, *model.NormalizedEvent) (bool, error)`
 - `func ProbeFile(path string) (FileProbe, error)`
 - `func ProbeFiles(paths []string) ([]FileProbe, error)`
