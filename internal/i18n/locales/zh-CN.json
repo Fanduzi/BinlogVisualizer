@@ -1178,5 +1178,9 @@
   "report.html.analyze.noAlerts": {
     "description": "无告警空状态",
     "other": "未发现问题 — 负载看起来健康"
+  },
+  "report.html.analyze.ddlActivityNotice": {
+    "description": "存在 DDL 活动但无告警时的分析中性状态",
+    "other": "检测到 DDL 活动——请查看下方的 DDL 时间线"
   }
 }

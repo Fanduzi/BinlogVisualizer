@@ -1178,5 +1178,9 @@
   "report.html.analyze.noAlerts": {
     "description": "No alerts empty state",
     "other": "No issues detected — workload looks healthy"
+  },
+  "report.html.analyze.ddlActivityNotice": {
+    "description": "Analyze neutral state when DDL activity is present without alerts",
+    "other": "DDL activity detected — review the DDL Timeline below"
   }
 }
