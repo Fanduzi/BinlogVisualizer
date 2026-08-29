@@ -112,7 +112,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--spike-window` | `5` | Rolling baseline window in minutes for spike detection. |
 | `--spike-factor` | `3.0` | Multiplier over baseline to trigger a spike alert. |
 
-Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and RFC3339 predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups match no active selector, including exclude-only selectors, mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
+Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and RFC3339 predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups match no active selector, including exclude-only selectors. Standalone anonymous DDL and unkeyed context are discarded without preventing a later matching keyed group from being retained. Mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
 | `--spike-min-rows` | `100` | Minimum row count for a minute to be considered a spike candidate. |
 | `--include-schema` | none | Comma-separated list of schemas to analyze (all others excluded). |
 | `--exclude-schema` | none | Comma-separated list of schemas to skip. |

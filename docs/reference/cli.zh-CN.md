@@ -111,7 +111,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--spike-window` | `5` | 尖峰检测的滑动基线窗口（分钟）。 |
 | `--spike-factor` | `3.0` | 触发尖峰告警的基线倍数。 |
 
-position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与 RFC3339 条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector），混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
+position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与 RFC3339 条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 | `--spike-min-rows` | `100` | 纳入尖峰检测候选的最小行数。 |
 | `--include-schema` | none | 仅分析指定 schema（逗号分隔，其余均排除）。 |
 | `--exclude-schema` | none | 跳过指定 schema（逗号分隔）。 |
