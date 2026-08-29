@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks (including Format Description server version), and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML analysis reports on success (MIXED JSON includes an input_format alert); STATEMENT returns an error with no report; no-data is exit 2; stderr-only operator status and DuckDB temp-store cleanup.
+// output: rendered text/JSON/HTML analysis reports on success (MIXED JSON includes an input_format alert); STATEMENT and filtered zero-row workloads return errors with no report; no-data is exit 2; stderr-only operator status and DuckDB temp-store cleanup.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -1084,6 +1084,9 @@ func mapBinlogParseError(msg string) string {
 func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *model.AnalysisResult, rawEvents int, observer binlog.FormatObserver) error {
 	if err := rejectEmptyOrIncompleteBinlog(paths, rawEvents); err != nil {
 		return err
+	}
+	if result != nil && opts.HasObjectFilters() && result.Summary.TotalRows == 0 {
+		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
 	if result == nil || result.Summary.TotalEvents > 0 {
 		return nil

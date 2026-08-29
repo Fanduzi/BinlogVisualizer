@@ -1,6 +1,6 @@
 // Package binlogviz covers operator-facing analyze regressions: STATEMENT I/O, MIXED alerts, sub-second TPS, and fixture product contracts.
 // input: mock STATEMENT/MIXED parser events and real binlog fixtures through runAnalysis seams.
-// output: exit-code and stdout/stderr/JSON contracts: STATEMENT writes no report; MIXED writes a report plus input_format alert; sub-second TPS is N/A.
+// output: exit-code and stdout/stderr/JSON contracts: STATEMENT writes no report; MIXED writes a report plus input_format alert; object-filter no-data exits 2; sub-second TPS is N/A.
 // pos: command-layer regression suite for analyze operator I/O bugs.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -381,4 +381,27 @@ func TestAnalyzeRowFixtureJSONHasNoInputFormatAlert(t *testing.T) {
 	if decoded.Warnings != 0 {
 		t.Fatalf("ROW fixture warnings=%d, want 0", decoded.Warnings)
 	}
+}
+
+func TestAnalyzeObjectFilterNoRowsExitsTwoWithoutReport(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	parser := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: now, EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "dogfood", Table: "orders", RowCount: 5},
+			{Timestamp: now.Add(2 * time.Second), EventType: "XID_EVENT"},
+		},
+	}
+	opts := analyzer.DefaultOptions()
+	opts.ExcludeSchemas = []string{"dogfood"}
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		runErr := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", parser)
+		if runErr != nil {
+			fmt.Fprintln(os.Stderr, "Error:", runErr)
+		}
+		return runErr
+	})
+	assertAnalyzeNoDataExit(t, stdout, stderr, err, "no analyzable events")
 }
