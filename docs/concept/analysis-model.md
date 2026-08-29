@@ -126,8 +126,9 @@ Current alert types are centered on:
 
 - `large_transaction`
 - `spike`
+- `input_format`
 
-`large_transaction` alerts come from the large-transaction thresholds in analyzer options. `spike` alerts are only evaluated when spike detection is enabled.
+`large_transaction` alerts come from the large-transaction thresholds in analyzer options. `spike` alerts are only evaluated when spike detection is enabled. `input_format` is added on successful MIXED analyze (ROW images and ignored Query-DML both greater than zero) so JSON consumers see that only ROW images were counted.
 
 Each alert includes:
 

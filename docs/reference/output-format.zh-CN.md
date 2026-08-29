@@ -359,7 +359,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | 告警类型，例如 `large_transaction` 或 `spike` |
+| `type` | string | yes | 告警类型，例如 `large_transaction`、`spike` 或 `input_format` |
 | `severity` | string | yes | 当前告警严重级别字符串 |
 | `message` | string | yes | 面向人的告警消息 |
 | `txn_key` | string | no | 事务级告警时出现 |
@@ -372,7 +372,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 它表示最终结果对象中累计的分析警告数量。这个值属于 `stdout` 上机器可读报告的一部分；它不是进度行数，也不是 `stderr` 消息数量。非零值表示分析已完成，但结果中记录了警告条件；并不表示 JSON 输出本身有问题。
 
-当前实现中，当事务的 query context 因为达到 SQL 存储上限而被截断时，会增加这个计数。
+当前实现中，当事务的 query context 因为达到 SQL 存储上限而被截断时，会增加这个计数。它不是数组。MIXED 少计通过 `alerts`（`type=input_format`）和 `diagnostics.ignored_query_dml_events` 表达，不把这个整数改成格式警告。
 
 ### `snapshot`
 
