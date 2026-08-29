@@ -439,18 +439,34 @@ func downsampleSeries(points []model.TimeseriesPoint, maxBins int) []model.Times
 }
 
 func firstSuspiciousLocation(result model.AnalysisResult) string {
-	if len(result.Diagnostics.LongestTransactions) > 0 {
-		return formatSuspiciousLocation(result.Diagnostics.LongestTransactions[0])
+	for _, finding := range result.Diagnostics.Findings {
+		if location := suspiciousTransactionLocation(result, finding.TxnKey); location != "" {
+			return location
+		}
 	}
-	if len(result.Diagnostics.LargestTransactions) > 0 {
-		return formatSuspiciousLocation(result.Diagnostics.LargestTransactions[0])
+	for _, alert := range result.Alerts {
+		if location := suspiciousTransactionLocation(result, alert.TxnKey); location != "" {
+			return location
+		}
 	}
-	if len(result.Diagnostics.WidestTransactions) > 0 {
-		return formatSuspiciousLocation(result.Diagnostics.WidestTransactions[0])
+	return ""
+}
+
+func suspiciousTransactionLocation(result model.AnalysisResult, txnKey string) string {
+	if txnKey == "" {
+		return ""
 	}
-	if len(result.Diagnostics.DDLEvents) > 0 {
-		ddl := result.Diagnostics.DDLEvents[0]
-		return formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd)
+	for _, txns := range [][]model.Transaction{
+		result.Transactions,
+		result.Diagnostics.LargestTransactions,
+		result.Diagnostics.LongestTransactions,
+		result.Diagnostics.WidestTransactions,
+	} {
+		for _, txn := range txns {
+			if txn.TxnKey == txnKey {
+				return formatSuspiciousLocation(txn)
+			}
+		}
 	}
 	return ""
 }
