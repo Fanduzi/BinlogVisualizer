@@ -251,6 +251,10 @@
     "description": "告警章节标题",
     "other": "告警"
   },
+  "report.section.findings": {
+    "description": "Markdown 发现章节标题",
+    "other": "发现"
+  },
   "report.label.totalTransactions": {
     "description": "事务总数标签",
     "other": "事务总数"
@@ -266,6 +270,10 @@
   "report.label.format": {
     "description": "输入格式标签",
     "other": "格式"
+  },
+  "report.label.ignoredQueryDML": {
+    "description": "忽略的 Query-DML 事件标签",
+    "other": "忽略的 Query-DML 事件"
   },
   "report.text.rowImageSummary": {
     "description": "默认文本报告格式边界",

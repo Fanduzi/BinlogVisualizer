@@ -418,7 +418,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 ## Markdown 输出
 
-Markdown 模式输出 GitHub Flavored Markdown 报告，包含五个章节：工作负载摘要、热点表、热点事务、分钟级活动和告警，所有章节使用管道表格。
+Markdown 模式输出 GitHub Flavored Markdown 工单报告，包含工作负载摘要（包括输入格式上下文）、热点表、热点事务（包括事务键、字节数、文件跨度和可用时的回放命令）、分钟级活动、DDL 时间线和发现。证据表会转义管道符；缺失跨度显示为 `N/A`，回放命令使用围栏代码块。
 
 ```bash
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
