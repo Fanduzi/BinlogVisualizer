@@ -8,12 +8,12 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 |------|----------------|
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
-| `text.go` | Renders the concise diagnostic text report with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes report v3 with transaction list counts, counted event-byte diagnostics, optional producer/transaction provenance, required SQL mode/availability metadata, bounded query fields, XA identity, and snapshot metadata. |
-| `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction span/replay, DDL, input-format, and finding evidence. |
-| `html.go` | Renders the self-contained HTML report, including physical-file/count-event byte cards, transaction-key search, responsive activity-chart layout, and ECharts data preparation. |
-| `mysqlbinlog.go` | Formats usable transaction spans and builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands, preferring per-transaction server version for mixed producers and omitting unusable XID-only starts. |
-| `*_test.go` | Verifies diagnostic text defaults, Markdown incident evidence, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
+| `text.go` | Renders completeness-aware incident briefs with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
+| `json.go` | Serializes report v3 with transaction list and completeness counts, counted event-byte diagnostics, optional producer/transaction provenance, required SQL mode/availability metadata, bounded query fields, XA identity, and safe replay metadata. |
+| `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, and finding evidence. |
+| `html.go` | Renders the self-contained HTML report with completeness and byte cards, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
+| `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. |
+| `*_test.go` | Verifies text, complete JSON tables, Markdown evidence, HTML lookup, SQL modes, counted bytes, completeness, and safe replay behavior. |
 
 ## Interfaces
 
@@ -51,7 +51,8 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - The text Top Tables report sizes its table-name column to the widest displayed name; `Affected Rows` covers INSERT/UPDATE/DELETE rows and `Row Share` is that table's portion of all affected rows.
 - Text rendering is intentionally kept on a fast path: it must not build HTML chart data, read embedded ECharts assets, or render pattern drilldowns unless detail options request them.
 - When `summary.duration` is shorter than one second and there is at least one transaction, the text activity TPS peak is `N/A (sub-second)` (i18n) instead of `TxnCount/60`. Rows/min and JSON `timeseries.tps_series` stay numeric.
-- The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
+- Report v3 always emits transaction completeness and replay availability plus summary partial/unknown counts. Compare and snapshot loaders continue accepting legacy report versions and treat missing completeness as unknown.
+- The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving optional snapshot behavior.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
 - Analyze HTML shows a neutral DDL activity notice in Risks & Findings when DDL events exist without alerts; the healthy empty state is reserved for reports without alerts or DDL.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).

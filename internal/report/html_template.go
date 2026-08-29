@@ -1,6 +1,6 @@
 // Package report defines the embedded HTML template for analyze reports.
-// input: localized labels plus chart-ready analyze report view data.
-// output: template source used by the analyze HTML renderer, including separate physical-file and counted-event summary cards.
+// input: localized labels plus chart-ready, completeness-aware analyze report view data.
+// output: template source used by the analyze HTML renderer, including separate physical-file and counted-event cards.
 // pos: static template layer behind internal/report HTML rendering.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -1023,6 +1023,22 @@ const htmlReportTemplate = `<!DOCTYPE html>
           <div class="card-value">{{fmtIntHTML .TotalTxns}}</div>
           <div class="card-sub">{{t "report.html.common.txns"}}</div>
         </div>
+		<div class="card warn">
+		  <div class="card-head">
+			<div class="card-label">{{t "report.label.partialTransactions"}}</div>
+			<div class="card-icon">⚠️</div>
+		  </div>
+		  <div class="card-value">{{fmtIntHTML .PartialTxns}}</div>
+		  <div class="card-sub">{{t "report.html.common.txns"}}</div>
+		</div>
+		<div class="card">
+		  <div class="card-head">
+			<div class="card-label">{{t "report.label.unknownTransactions"}}</div>
+			<div class="card-icon">❓</div>
+		  </div>
+		  <div class="card-value">{{fmtIntHTML .UnknownTxns}}</div>
+		  <div class="card-sub">{{t "report.html.common.txns"}}</div>
+		</div>
         <div class="card accent">
           <div class="card-head">
             <div class="card-label">{{t "report.html.common.affectedRows"}}</div>
@@ -1343,6 +1359,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
               <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
               {{if .MysqlbinlogCmd}}
               <div class="mysqlbinlog-row">
+				<span>{{t "report.label.fullTransactionReplay"}}:</span>
                 <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
                 <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
               </div>
@@ -1374,6 +1391,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
               <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
               {{if .MysqlbinlogCmd}}
               <div class="mysqlbinlog-row">
+				<span>{{t "report.label.fullTransactionReplay"}}:</span>
                 <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
                 <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
               </div>
@@ -1405,6 +1423,7 @@ const htmlReportTemplate = `<!DOCTYPE html>
               <div>📦 {{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
               {{if .MysqlbinlogCmd}}
               <div class="mysqlbinlog-row">
+				<span>{{t "report.label.fullTransactionReplay"}}:</span>
                 <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
                 <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
               </div>

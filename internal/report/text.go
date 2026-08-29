@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: incident-brief text reports with separate selected input-file and counted event-byte metrics, hot tables and largest txns first, opt-in minute and write-pattern detail sections; sub-second TPS peaks render as N/A; suspicious positions require finding/alert-backed transaction evidence.
+// output: completeness-aware incident briefs with separate file/count-event bytes, ranked complete transactions, labelled trusted replay, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -61,6 +61,8 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary")))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
+	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.partialTransactions"), summary.PartialTransactions))
+	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.unknownTransactions"), summary.UnknownTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.html.analyze.ddlTimeline"), formatDDLTimelineSummary(result.Diagnostics.DDLEvents)))
@@ -234,21 +236,21 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		}
 		lines = append(lines, line)
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
-			lines = append(lines, "    "+cmd)
+			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, otherLimit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
 			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn)))
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
-			lines = append(lines, "    "+cmd)
+			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, otherLimit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
 			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn)))
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
-			lines = append(lines, "    "+cmd)
+			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
 	}
 

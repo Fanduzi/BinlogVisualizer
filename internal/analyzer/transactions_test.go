@@ -52,6 +52,9 @@ func TestTransactionBuilderHandlesImplicitTransactions(t *testing.T) {
 	if len(result) != 1 || result[0].TotalRows != 3 {
 		t.Fatalf("unexpected transactions: %+v", result)
 	}
+	if result[0].Completeness != model.TransactionUnknown || result[0].FullReplaySpan != nil {
+		t.Fatalf("implicit transaction without physical boundaries was guessed complete: %+v", result[0])
+	}
 }
 
 func TestTransactionBuilderTracksTablesAndOperations(t *testing.T) {

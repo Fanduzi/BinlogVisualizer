@@ -30,6 +30,21 @@ func TestBuildCompareResultCalculatesSummaryDeltas(t *testing.T) {
 	}
 }
 
+func TestBuildCompareResultPreservesCompletenessCounts(t *testing.T) {
+	currentPartial, currentUnknown := 2, 1
+	baselinePartial, baselineUnknown := 0, 3
+	current := InputReport{Summary: InputSummary{PartialTransactions: &currentPartial, UnknownTransactions: &currentUnknown}}
+	baseline := InputReport{Summary: InputSummary{PartialTransactions: &baselinePartial, UnknownTransactions: &baselineUnknown}}
+
+	result := BuildCompareResult(current, baseline)
+	if result.Summary.CurrentPartialTransactions == nil || *result.Summary.CurrentPartialTransactions != 2 ||
+		result.Summary.BaselinePartialTransactions == nil || *result.Summary.BaselinePartialTransactions != 0 ||
+		result.Summary.CurrentUnknownTransactions == nil || *result.Summary.CurrentUnknownTransactions != 1 ||
+		result.Summary.BaselineUnknownTransactions == nil || *result.Summary.BaselineUnknownTransactions != 3 {
+		t.Fatalf("compare dropped completeness counts: %+v", result.Summary)
+	}
+}
+
 func TestBuildCompareResultBuildsTopTableUnionSortedByAbsoluteDelta(t *testing.T) {
 	current, _ := LoadReport(filepath.Join("testdata", "current.json"))
 	baseline, _ := LoadReport(filepath.Join("testdata", "baseline.json"))

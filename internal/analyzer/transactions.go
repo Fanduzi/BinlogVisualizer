@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
-// input: ordered normalized events that carry producer/transaction provenance, MySQL and MariaDB XA boundaries, and ROWS/ROWS_QUERY semantics.
-// output: completed model.Transaction values with canonical provenance, optional XA identity, deterministic txn keys, and filter-safe query context.
+// input: ordered normalized events with provenance, before/inside/after window relation, MySQL/MariaDB XA boundaries, and ROWS/ROWS_QUERY semantics.
+// output: retained transaction evidence with canonical provenance, explicit completeness, trusted replay spans, XA identity, and safe query context.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -22,34 +22,54 @@ type TransactionBuilder struct {
 }
 
 type inFlightTxn struct {
-	txnKey             string
-	xaXID              string
-	serverID           uint32
-	serverVersion      string
-	serverFlavor       string
-	gtid               string
-	threadID           uint32
-	xid                string
-	actorUser          string
-	actorHost          string
-	startedByGTID      bool
-	isExplicit         bool // true if started with BEGIN, false if implicit
-	startTime          time.Time
-	endTime            time.Time
-	totalRows          int
-	eventCount         int
-	binlogBytes        int64
-	binlogPathStart    string
-	binlogPathEnd      string
-	positionStart      int64
-	positionEnd        int64
-	tables             map[tableIdentity]int
-	operations         map[string]int
-	rowOperation       string
-	querySQL           string // Bounded SQL from ROWS_QUERY event
-	queryTruncated     bool
-	queryOriginalBytes int // Original SQL byte count before truncation
+	txnKey                     string
+	xaXID                      string
+	serverID                   uint32
+	serverVersion              string
+	serverFlavor               string
+	gtid                       string
+	threadID                   uint32
+	xid                        string
+	actorUser                  string
+	actorHost                  string
+	startedByGTID              bool
+	isExplicit                 bool // true if started with BEGIN, false if implicit
+	hasStartBoundary           bool
+	hasEndBoundary             bool
+	hadBeforeWindow            bool
+	hadAfterWindow             bool
+	startTime                  time.Time
+	endTime                    time.Time
+	fullBinlogBytes            int64
+	fullBinlogPathStart        string
+	fullBinlogPathEnd          string
+	fullPositionStart          int64
+	fullPositionEnd            int64
+	totalRows                  int
+	eventCount                 int
+	binlogBytes                int64
+	binlogPathStart            string
+	binlogPathEnd              string
+	positionStart              int64
+	positionEnd                int64
+	tables                     map[tableIdentity]int
+	operations                 map[string]int
+	rowOperation               string
+	querySQL                   string // Bounded SQL from ROWS_QUERY event
+	queryTruncated             bool
+	queryOriginalBytes         int // Original SQL byte count before truncation
+	retainedQuerySQL           string
+	retainedQueryTruncated     bool
+	retainedQueryOriginalBytes int
 }
+
+type windowRelation uint8
+
+const (
+	beforeWindow windowRelation = iota
+	insideWindow
+	afterWindow
+)
 
 // NewTransactionBuilder creates a new TransactionBuilder.
 func NewTransactionBuilder() *TransactionBuilder {
@@ -60,16 +80,20 @@ func NewTransactionBuilder() *TransactionBuilder {
 
 // Consume processes a normalized event and updates transaction state.
 func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
+	return b.consumeWindowed(ev, insideWindow)
+}
+
+func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation windowRelation) error {
 	switch ev.EventType {
 	case "GTID":
-		return b.handleGTID(ev)
+		return b.handleGTID(ev, relation)
 	case "BEGIN":
-		if err := b.handleBegin(ev); err != nil {
+		if err := b.handleBegin(ev, relation); err != nil {
 			return err
 		}
 		return b.mergeProvenance(ev)
 	case "XA_START":
-		if err := b.handleBegin(ev); err != nil {
+		if err := b.handleBegin(ev, relation); err != nil {
 			return err
 		}
 		b.current.xaXID = ev.XAXID
@@ -78,20 +102,20 @@ func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 		if err := b.mergeProvenance(ev); err != nil {
 			return err
 		}
-		b.handleCommit(ev)
+		b.handleCommit(ev, relation)
 	case "ROWS_QUERY":
 		// Capture SQL context for next ROWS events in this transaction
-		b.handleRowsQuery(ev)
+		b.handleRowsQuery(ev, relation)
 		return b.mergeProvenance(ev)
 	case "ROWS":
-		b.accumulateRowEvent(ev)
+		b.accumulateRowEvent(ev, relation)
 		return b.mergeProvenance(ev)
 	case "TABLE_MAP":
-		b.accumulateInTxnEvent(ev)
+		b.accumulateInTxnEvent(ev, relation)
 		return b.mergeProvenance(ev)
 	default:
 		// Still record file coverage for in-flight events (Annotate, GTID leftovers, etc.)
-		b.accumulateInTxnEvent(ev)
+		b.accumulateInTxnEvent(ev, relation)
 		return b.mergeProvenance(ev)
 	}
 	return nil
@@ -137,10 +161,11 @@ func (b *TransactionBuilder) clearCurrentQueryContext() {
 	b.current.queryOriginalBytes = 0
 }
 
-func (b *TransactionBuilder) handleBegin(ev model.NormalizedEvent) error {
+func (b *TransactionBuilder) handleBegin(ev model.NormalizedEvent, relation windowRelation) error {
 	if b.current != nil && b.current.startedByGTID && !b.current.isExplicit {
 		b.current.isExplicit = true
-		b.updateBinlogCoverage(ev)
+		b.current.hasStartBoundary = true
+		b.observeEvent(ev, relation)
 		return nil
 	}
 	if b.current != nil && b.current.isExplicit {
@@ -153,18 +178,19 @@ func (b *TransactionBuilder) handleBegin(ev model.NormalizedEvent) error {
 		b.finalizeTransaction()
 	}
 	// Start a new explicit transaction
-	b.startTransaction(ev.Timestamp, true)
-	b.updateBinlogCoverage(ev)
+	b.startTransaction(true)
+	b.current.hasStartBoundary = true
+	b.observeEvent(ev, relation)
 	return nil
 }
 
-func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent) error {
+func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windowRelation) error {
 	if b.current != nil {
 		if b.current.gtid != "" {
 			if err := b.mergeProvenance(ev); err != nil {
 				return err
 			}
-			b.updateBinlogCoverage(ev)
+			b.observeEvent(ev, relation)
 			return nil
 		}
 		if b.current.isExplicit {
@@ -172,9 +198,10 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent) error {
 		}
 		b.finalizeTransaction()
 	}
-	b.startTransaction(ev.Timestamp, false)
+	b.startTransaction(false)
 	b.current.startedByGTID = true
-	b.updateBinlogCoverage(ev)
+	b.current.hasStartBoundary = true
+	b.observeEvent(ev, relation)
 	return b.mergeProvenance(ev)
 }
 
@@ -212,32 +239,28 @@ func (b *TransactionBuilder) mergeProvenance(ev model.NormalizedEvent) error {
 	return nil
 }
 
-func (b *TransactionBuilder) handleCommit(ev model.NormalizedEvent) {
+func (b *TransactionBuilder) handleCommit(ev model.NormalizedEvent, relation windowRelation) {
 	if b.current == nil {
 		return
 	}
 	if ev.EventType == "XA_COMMIT" && b.current.startedByGTID && b.current.totalRows == 0 {
-		b.updateBinlogCoverage(ev)
+		b.observeEvent(ev, relation)
 		b.current = nil
 		return
 	}
-	// For explicit transactions, use COMMIT/XID timestamp as end time
-	// For implicit transactions (shouldn't normally get here), use current end time
-	if b.current.isExplicit {
-		b.current.endTime = ev.Timestamp
-	}
-	b.updateBinlogCoverage(ev)
+	b.current.hasEndBoundary = true
+	b.observeEvent(ev, relation)
 	b.finalizeTransaction()
 }
 
 // handleRowsQuery captures SQL context from ROWS_QUERY event.
 // The SQL has already been bounded by the normalization layer.
-func (b *TransactionBuilder) handleRowsQuery(ev model.NormalizedEvent) {
+func (b *TransactionBuilder) handleRowsQuery(ev model.NormalizedEvent, relation windowRelation) {
 	// If no transaction in flight, start an implicit one
 	if b.current == nil {
-		b.startTransaction(ev.Timestamp, false)
+		b.startTransaction(false)
 	}
-	b.updateBinlogCoverage(ev)
+	b.observeEvent(ev, relation)
 
 	// Capture the SQL context (already bounded at normalize layer)
 	b.current.querySQL = ev.QuerySQL
@@ -246,34 +269,37 @@ func (b *TransactionBuilder) handleRowsQuery(ev model.NormalizedEvent) {
 	b.current.queryOriginalBytes = ev.QueryOriginalBytes
 }
 
-func (b *TransactionBuilder) startTransaction(ts time.Time, isExplicit bool) {
+func (b *TransactionBuilder) startTransaction(isExplicit bool) {
 	b.current = &inFlightTxn{
 		txnKey:     b.generateTxnKey(),
 		isExplicit: isExplicit,
-		startTime:  ts,
-		endTime:    ts,
 		tables:     make(map[tableIdentity]int, 1),
 		operations: make(map[string]int, 1),
 	}
 }
 
-func (b *TransactionBuilder) accumulateInTxnEvent(ev model.NormalizedEvent) {
+func (b *TransactionBuilder) accumulateInTxnEvent(ev model.NormalizedEvent, relation windowRelation) {
 	if b.current == nil {
 		return
 	}
-	b.updateBinlogCoverage(ev)
+	b.observeEvent(ev, relation)
 }
 
-func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent) {
+func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent, relation windowRelation) {
 	// If no transaction in flight, start an implicit one
 	if b.current == nil {
-		b.startTransaction(ev.Timestamp, false)
+		b.startTransaction(false)
+	}
+	b.observeEvent(ev, relation)
+	if relation != insideWindow {
+		return
 	}
 
 	b.current.totalRows += ev.RowCount
 	b.current.eventCount++
-	b.current.endTime = ev.Timestamp
-	b.updateBinlogCoverage(ev)
+	b.current.retainedQuerySQL = b.current.querySQL
+	b.current.retainedQueryTruncated = b.current.queryTruncated
+	b.current.retainedQueryOriginalBytes = b.current.queryOriginalBytes
 
 	// Track table: "schema.table"
 	if ev.Schema != "" && ev.Table != "" {
@@ -323,14 +349,26 @@ func (b *TransactionBuilder) finalizeTransaction() {
 		BinlogPathEnd:   b.current.binlogPathEnd,
 		PositionStart:   b.current.positionStart,
 		PositionEnd:     b.current.positionEnd,
+		Completeness:    b.current.completeness(),
 		Tables:          exportTxnTables(b.current.tables),
 		Operations:      b.current.operations,
-		QuerySummary:    model.MakeQuerySummary(b.current.querySQL),
+		QuerySummary:    model.MakeQuerySummary(b.current.retainedQuerySQL),
 		QueryContext: model.NewQueryContextFromNormalized(
-			b.current.querySQL,
-			b.current.queryTruncated,
-			b.current.queryOriginalBytes,
+			b.current.retainedQuerySQL,
+			b.current.retainedQueryTruncated,
+			b.current.retainedQueryOriginalBytes,
 		),
+	}
+	if txn.EffectiveCompleteness() != model.TransactionUnknown &&
+		b.current.fullPositionStart > 0 && b.current.fullPositionEnd > b.current.fullPositionStart &&
+		b.current.fullBinlogPathStart != "" {
+		txn.FullReplaySpan = &model.TransactionReplaySpan{
+			BinlogPathStart: b.current.fullBinlogPathStart,
+			BinlogPathEnd:   b.current.fullBinlogPathEnd,
+			PositionStart:   b.current.fullPositionStart,
+			PositionEnd:     b.current.fullPositionEnd,
+			BinlogBytes:     b.current.fullBinlogBytes,
+		}
 	}
 
 	b.completed = append(b.completed, txn)
@@ -370,5 +408,52 @@ func (b *TransactionBuilder) updateBinlogCoverage(ev model.NormalizedEvent) {
 	}
 	if ev.PositionEnd != 0 {
 		b.current.positionEnd = ev.PositionEnd
+	}
+}
+
+func (b *TransactionBuilder) observeEvent(ev model.NormalizedEvent, relation windowRelation) {
+	if b.current == nil {
+		return
+	}
+	switch relation {
+	case beforeWindow:
+		b.current.hadBeforeWindow = true
+	case afterWindow:
+		b.current.hadAfterWindow = true
+	case insideWindow:
+		if b.current.startTime.IsZero() {
+			b.current.startTime = ev.Timestamp
+		}
+		b.current.endTime = ev.Timestamp
+		b.updateBinlogCoverage(ev)
+	}
+	b.current.fullBinlogBytes += ev.BinlogBytes
+	if b.current.fullBinlogPathStart == "" && ev.BinlogPath != "" {
+		b.current.fullBinlogPathStart = ev.BinlogPath
+	}
+	if b.current.fullPositionStart == 0 && ev.PositionStart != 0 {
+		b.current.fullPositionStart = ev.PositionStart
+	}
+	if ev.BinlogPath != "" {
+		b.current.fullBinlogPathEnd = ev.BinlogPath
+	}
+	if ev.PositionEnd != 0 {
+		b.current.fullPositionEnd = ev.PositionEnd
+	}
+}
+
+func (t *inFlightTxn) completeness() model.TransactionCompleteness {
+	if !t.hasStartBoundary || !t.hasEndBoundary {
+		return model.TransactionUnknown
+	}
+	switch {
+	case t.hadBeforeWindow && t.hadAfterWindow:
+		return model.TransactionPartialBoth
+	case t.hadBeforeWindow:
+		return model.TransactionPartialStart
+	case t.hadAfterWindow:
+		return model.TransactionPartialEnd
+	default:
+		return model.TransactionComplete
 	}
 }

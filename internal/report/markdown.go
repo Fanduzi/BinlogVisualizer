@@ -1,6 +1,6 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with tables, replayable transaction evidence, DDL timeline, and findings.
+// output: GitHub-flavored Markdown with completeness-aware tables, trusted replay evidence, DDL timeline, and findings.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -42,6 +42,8 @@ func mdWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary, diag
 	buf.WriteString("| Field | Value |\n")
 	buf.WriteString("|---|---|\n")
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalTransactions"), formatInt(summary.TotalTransactions)))
+	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.partialTransactions"), formatInt(summary.PartialTransactions)))
+	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.unknownTransactions"), formatInt(summary.UnknownTransactions)))
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalRows"), formatInt(summary.TotalRows)))
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalEvents"), formatInt(summary.TotalEvents)))
 	buf.WriteString(fmt.Sprintf("| %s | %s — %s |\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
@@ -118,8 +120,8 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, m
 		buf.WriteString("_" + i18n.T("report.placeholder.noTransactions") + "_\n\n")
 		return
 	}
-	buf.WriteString("| # | Txn Key | Rows | Bytes | Duration | File:Position | Tables | Operations |\n")
-	buf.WriteString("|---|---|---:|---:|---|---|---|---|\n")
+	buf.WriteString("| # | Txn Key | Completeness | Full Replay | Rows | Bytes | Duration | File:Position | Tables | Operations |\n")
+	buf.WriteString("|---|---|---|---|---:|---:|---|---|---|---|\n")
 	for i, t := range transactions {
 		tables := joinMapKeys(t.Tables)
 		ops := joinMapKeys(t.Operations)
@@ -127,9 +129,15 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, m
 		if span == "" {
 			span = i18n.T("time.notAvailable")
 		}
-		buf.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %s | %s | %s | %s |\n",
+		replay := "no"
+		if txnReplayAvailable(t) {
+			replay = "yes"
+		}
+		buf.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
 			i+1,
 			mdCell(t.TxnKey),
+			t.EffectiveCompleteness(),
+			replay,
 			formatInt(t.TotalRows),
 			formatInt64(t.BinlogBytes),
 			formatDuration(t.Duration),

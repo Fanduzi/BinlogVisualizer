@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: single self-contained HTML file with executive selected-file/count-event byte metrics, embedded ECharts, dark OLED theme, inline CSS.
+// output: self-contained HTML with completeness, selected-file/count-event bytes, transaction lookup, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -71,6 +71,8 @@ type htmlReportData struct {
 	EndTime             string
 	Duration            string
 	TotalTxns           int
+	PartialTxns         int
+	UnknownTxns         int
 	TotalRows           int
 	TotalEvents         int
 	DDLCount            int
@@ -248,6 +250,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d := htmlReportData{
 		GeneratedAt:       time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		TotalTxns:         result.Summary.TotalTransactions,
+		PartialTxns:       result.Summary.PartialTransactions,
+		UnknownTxns:       result.Summary.UnknownTransactions,
 		TotalRows:         result.Summary.TotalRows,
 		TotalEvents:       result.Summary.TotalEvents,
 		CountedEventBytes: formatFileSize(countedEventBytes(result)),

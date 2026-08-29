@@ -1,6 +1,6 @@
 // Package trend builds ordered multi-snapshot trend results from analyze reports.
 // input: snapshot-backed compare.InputReport values plus optional baseline metadata.
-// output: deterministic Result values with rows, transactions, patterns, insights, and replay evidence across points.
+// output: deterministic Result values preserving partial/unknown counts, rows, transactions, patterns, insights, and trusted replay evidence across points.
 // pos: trend pipeline core between snapshot loading and text, JSON, or HTML rendering.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -152,10 +152,12 @@ func resolvePoint(input BuildInput) (resolvedPoint, error) {
 		Snapshot: meta,
 		Window:   window,
 		Summary: PointSummary{
-			TotalRows:         input.Report.Summary.TotalRows,
-			TotalTransactions: input.Report.Summary.TotalTransactions,
-			TotalEvents:       input.Report.Summary.TotalEvents,
-			Warnings:          input.Report.Warnings,
+			TotalRows:           input.Report.Summary.TotalRows,
+			TotalTransactions:   input.Report.Summary.TotalTransactions,
+			PartialTransactions: input.Report.Summary.PartialTransactions,
+			UnknownTransactions: input.Report.Summary.UnknownTransactions,
+			TotalEvents:         input.Report.Summary.TotalEvents,
+			Warnings:            input.Report.Warnings,
 		},
 		Operations: ops,
 		AlertCount: len(input.Report.Alerts),

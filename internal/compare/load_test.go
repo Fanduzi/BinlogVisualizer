@@ -348,9 +348,51 @@ func TestDecodeReportJSONAcceptsReportVersionThreeProvenance(t *testing.T) {
   "report_version": 3,
   "provenance": {"server_ids":[7],"server_versions":["11.8.3-MariaDB-log"],"server_flavors":["mariadb"],"mixed_producers":false},
   "sql_context": {"mode":"full","available":true},
-  "summary": {"total_transactions":1,"total_rows":2,"total_events":3,"start_time":"2026-04-01T10:00:00Z","end_time":"2026-04-01T10:01:00Z","duration":"1m0s"},
+  "summary": {"total_transactions":1,"partial_transactions":0,"unknown_transactions":0,"total_rows":2,"total_events":3,"start_time":"2026-04-01T10:00:00Z","end_time":"2026-04-01T10:01:00Z","duration":"1m0s"},
   "tables": [{"schema":"shop","table":"orders"}],
-  "transactions": [{"txn_key":"txn-1","server_id":7,"server_version":"11.8.3-MariaDB-log","server_flavor":"mariadb","gtid":"0-7-1848","thread_id":1875,"xid":"3928","actor":{"user":"alice","host":"db.local"},"total_rows":2,"event_count":1,"duration":"1s"}],
+  "transactions": [{"txn_key":"txn-1","server_id":7,"server_version":"11.8.3-MariaDB-log","server_flavor":"mariadb","gtid":"0-7-1848","thread_id":1875,"xid":"3928","actor":{"user":"alice","host":"db.local"},"total_rows":2,"event_count":1,"duration":"1s","completeness":"complete","replay_available":false}],
+  "alerts": [],
+  "warnings": 0
+}`)
+
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON returned error for report_version=3 payload: %v", err)
+	}
+	if report.ReportVersion == nil || *report.ReportVersion != 3 || report.Summary.PartialTransactions == nil || *report.Summary.PartialTransactions != 0 || report.Summary.UnknownTransactions == nil || *report.Summary.UnknownTransactions != 0 {
+		t.Fatalf("unexpected report-v3 completeness summary: %+v", report)
+	}
+	if report.Provenance == nil || report.Provenance.MixedProducers || report.SQLContext == nil || report.SQLContext.Mode != "full" || !report.SQLContext.Available || len(report.Transactions) != 1 {
+		t.Fatalf("unexpected report-v3 provenance: %+v", report)
+	}
+	txn := report.Transactions[0]
+	if txn.GTID != "0-7-1848" || txn.XID != "3928" || txn.Actor == nil || txn.Actor.User != "alice" || txn.Completeness != "complete" || txn.ReplayAvailable == nil || *txn.ReplayAvailable {
+		t.Fatalf("unexpected report-v3 transaction provenance: %+v", txn)
+	}
+}
+
+func TestDecodeReportJSONPreservesV3TransactionCompleteness(t *testing.T) {
+	data := []byte(`{
+  "report_version": 3,
+  "summary": {
+    "total_transactions": 1,
+    "partial_transactions": 1,
+    "unknown_transactions": 0,
+    "total_rows": 1,
+    "total_events": 2,
+    "start_time": "2026-08-29T11:59:13Z",
+    "end_time": "2026-08-29T11:59:14Z",
+    "duration": "1s"
+  },
+  "tables": [{"schema":"shop","table":"orders"}],
+  "transactions": [{
+    "txn_key":"txn-5",
+    "completeness":"partial_end",
+    "replay_available":true,
+    "replay_scope":"full_transaction",
+    "pos_start":3183,
+    "pos_end":3234
+  }],
   "alerts": [],
   "warnings": 0
 }`)
@@ -358,12 +400,30 @@ func TestDecodeReportJSONAcceptsReportVersionThreeProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeReportJSON returned error for report_version=3 payload: %v", err)
 	}
-	if report.Provenance == nil || report.Provenance.MixedProducers || report.SQLContext == nil || report.SQLContext.Mode != "full" || !report.SQLContext.Available || len(report.Transactions) != 1 {
-		t.Fatalf("unexpected report-v3 provenance: %+v", report)
+	if report.ReportVersion == nil || *report.ReportVersion != 3 || report.Summary.PartialTransactions == nil || *report.Summary.PartialTransactions != 1 {
+		t.Fatalf("v3 summary metadata was not preserved: %+v", report)
 	}
-	txn := report.Transactions[0]
-	if txn.GTID != "0-7-1848" || txn.XID != "3928" || txn.Actor == nil || txn.Actor.User != "alice" {
-		t.Fatalf("unexpected report-v3 transaction provenance: %+v", txn)
+	if len(report.Transactions) != 1 || report.Transactions[0].Completeness != "partial_end" || report.Transactions[0].ReplayAvailable == nil || !*report.Transactions[0].ReplayAvailable {
+		t.Fatalf("v3 transaction metadata was not preserved: %+v", report.Transactions)
+	}
+}
+
+func TestDecodeReportJSONMapsLegacyTransactionCompletenessToUnknown(t *testing.T) {
+	data := []byte(`{
+  "report_version": 2,
+  "summary": {"total_transactions":1,"total_rows":2,"total_events":1,"start_time":"","end_time":"","duration":"0s"},
+  "tables": [{"schema":"shop","table":"orders"}],
+  "transactions": [{"txn_key":"txn-1","total_rows":2}],
+  "alerts": [],
+  "warnings": 0
+}`)
+
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON returned error for legacy payload: %v", err)
+	}
+	if len(report.Transactions) != 1 || report.Transactions[0].Completeness != "unknown" {
+		t.Fatalf("legacy completeness=%+v, want unknown", report.Transactions)
 	}
 }
 

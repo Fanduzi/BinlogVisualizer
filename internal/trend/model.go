@@ -1,6 +1,6 @@
 // Package trend defines trend-input contracts and multi-snapshot result models.
 // input: ordered snapshot-backed analyze JSON reports plus optional baseline metadata.
-// output: deterministic trend results for text, JSON, and HTML renderers, including replay evidence.
+// output: deterministic trend results with completeness-aware point summaries, baseline deltas, and trusted replay evidence.
 // pos: trend pipeline boundary between snapshot loading and renderer-specific output.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -139,10 +139,12 @@ type Point struct {
 }
 
 type PointSummary struct {
-	TotalRows         int `json:"total_rows"`
-	TotalTransactions int `json:"total_transactions"`
-	TotalEvents       int `json:"total_events"`
-	Warnings          int `json:"warnings"`
+	TotalRows           int  `json:"total_rows"`
+	TotalTransactions   int  `json:"total_transactions"`
+	PartialTransactions *int `json:"partial_transactions,omitempty"`
+	UnknownTransactions *int `json:"unknown_transactions,omitempty"`
+	TotalEvents         int  `json:"total_events"`
+	Warnings            int  `json:"warnings"`
 }
 
 type OperationBreakdown struct {

@@ -1,6 +1,6 @@
 // Package analyzer persists high-cardinality analysis results in DuckDB batches for Finalize-time queries.
-// input: completed transaction snapshots with provenance, finalized minute buckets, generated alerts, and a DuckDB file path owned by internal callers.
-// output: provenance-preserving batched DuckDB/in-memory writes plus query-backed reconstruction of transactions, minutes, alerts, and on-demand SQL hydration.
+// input: completed transactions with provenance/completeness/replay metadata, finalized minute buckets, alerts, and an owned DuckDB path.
+// output: parity-preserving batched DuckDB/in-memory reconstruction of transaction evidence, minutes, alerts, and on-demand SQL.
 // pos: internal result-store layer that decouples hot in-memory state from persisted finalize-time query workloads.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -46,56 +46,70 @@ type inMemoryStore struct {
 }
 
 type persistedTransaction struct {
-	TxnKey             string
-	ServerID           uint32
-	ServerVersion      string
-	ServerFlavor       string
-	GTID               string
-	ThreadID           uint32
-	XID                string
-	ActorUser          string
-	ActorHost          string
-	StartTime          time.Time
-	EndTime            time.Time
-	DurationMS         int64
-	TotalRows          int64
-	EventCount         int64
-	BinlogBytes        int64
-	BinlogPathStart    string
-	BinlogPathEnd      string
-	PositionStart      int64
-	PositionEnd        int64
-	QuerySummary       string
-	QuerySQL           string
-	QueryTruncated     bool
-	QueryOriginalBytes int64
-	TableRows          map[string]int
-	Operations         map[string]int
+	TxnKey              string
+	ServerID            uint32
+	ServerVersion       string
+	ServerFlavor        string
+	GTID                string
+	ThreadID            uint32
+	XID                 string
+	ActorUser           string
+	ActorHost           string
+	XAXID               string
+	StartTime           time.Time
+	EndTime             time.Time
+	DurationMS          int64
+	TotalRows           int64
+	EventCount          int64
+	BinlogBytes         int64
+	BinlogPathStart     string
+	BinlogPathEnd       string
+	PositionStart       int64
+	PositionEnd         int64
+	Completeness        model.TransactionCompleteness
+	FullBinlogPathStart string
+	FullBinlogPathEnd   string
+	FullPositionStart   int64
+	FullPositionEnd     int64
+	FullBinlogBytes     int64
+	QuerySummary        string
+	QuerySQL            string
+	QueryTruncated      bool
+	QueryOriginalBytes  int64
+	TableRows           map[string]int
+	Operations          map[string]int
 }
 
 type transactionRow struct {
-	TxnKey             string
-	ServerID           uint32
-	ServerVersion      string
-	ServerFlavor       string
-	GTID               string
-	ThreadID           uint32
-	XID                string
-	ActorUser          string
-	ActorHost          string
-	StartTime          time.Time
-	EndTime            time.Time
-	DurationMS         int64
-	TotalRows          int64
-	EventCount         int64
-	BinlogBytes        int64
-	BinlogPathStart    string
-	BinlogPathEnd      string
-	PositionStart      int64
-	PositionEnd        int64
-	QuerySummary       string
-	QueryTruncated     bool
-	QueryOriginalBytes int64
+	TxnKey              string
+	ServerID            uint32
+	ServerVersion       string
+	ServerFlavor        string
+	GTID                string
+	ThreadID            uint32
+	XID                 string
+	ActorUser           string
+	ActorHost           string
+	XAXID               string
+	StartTime           time.Time
+	EndTime             time.Time
+	DurationMS          int64
+	TotalRows           int64
+	EventCount          int64
+	BinlogBytes         int64
+	BinlogPathStart     string
+	BinlogPathEnd       string
+	PositionStart       int64
+	PositionEnd         int64
+	Completeness        string
+	FullBinlogPathStart string
+	FullBinlogPathEnd   string
+	FullPositionStart   int64
+	FullPositionEnd     int64
+	FullBinlogBytes     int64
+	QuerySummary        string
+	QueryTruncated      bool
+	QueryOriginalBytes  int64
 }
 
 type transactionTableRow struct {
@@ -240,30 +254,37 @@ func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) er
 
 	for _, txn := range transactions {
 		s.transactionsBatch = append(s.transactionsBatch, transactionRow{
-			TxnKey:             txn.TxnKey,
-			ServerID:           txn.ServerID,
-			ServerVersion:      txn.ServerVersion,
-			ServerFlavor:       txn.ServerFlavor,
-			GTID:               txn.GTID,
-			ThreadID:           txn.ThreadID,
-			XID:                txn.XID,
-			ActorUser:          txn.ActorUser,
-			ActorHost:          txn.ActorHost,
-			StartTime:          txn.StartTime,
-			EndTime:            txn.EndTime,
-			DurationMS:         txn.DurationMS,
-			TotalRows:          txn.TotalRows,
-			EventCount:         txn.EventCount,
-			BinlogBytes:        txn.BinlogBytes,
-			BinlogPathStart:    txn.BinlogPathStart,
-			BinlogPathEnd:      txn.BinlogPathEnd,
-			PositionStart:      txn.PositionStart,
-			PositionEnd:        txn.PositionEnd,
-			QuerySummary:       txn.QuerySummary,
-			QueryTruncated:     txn.QueryTruncated,
-			QueryOriginalBytes: txn.QueryOriginalBytes,
+			TxnKey:              txn.TxnKey,
+			ServerID:            txn.ServerID,
+			ServerVersion:       txn.ServerVersion,
+			ServerFlavor:        txn.ServerFlavor,
+			GTID:                txn.GTID,
+			ThreadID:            txn.ThreadID,
+			XID:                 txn.XID,
+			ActorUser:           txn.ActorUser,
+			ActorHost:           txn.ActorHost,
+			XAXID:               txn.XAXID,
+			StartTime:           txn.StartTime,
+			EndTime:             txn.EndTime,
+			DurationMS:          txn.DurationMS,
+			TotalRows:           txn.TotalRows,
+			EventCount:          txn.EventCount,
+			BinlogBytes:         txn.BinlogBytes,
+			BinlogPathStart:     txn.BinlogPathStart,
+			BinlogPathEnd:       txn.BinlogPathEnd,
+			PositionStart:       txn.PositionStart,
+			PositionEnd:         txn.PositionEnd,
+			Completeness:        string(txn.Completeness),
+			FullBinlogPathStart: txn.FullBinlogPathStart,
+			FullBinlogPathEnd:   txn.FullBinlogPathEnd,
+			FullPositionStart:   txn.FullPositionStart,
+			FullPositionEnd:     txn.FullPositionEnd,
+			FullBinlogBytes:     txn.FullBinlogBytes,
+			QuerySummary:        txn.QuerySummary,
+			QueryTruncated:      txn.QueryTruncated,
+			QueryOriginalBytes:  txn.QueryOriginalBytes,
 		})
-		s.bufferTopLevelRow(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.ServerVersion) + estimateStringBytes(txn.ServerFlavor) + estimateStringBytes(txn.GTID) + estimateStringBytes(txn.XID) + estimateStringBytes(txn.ActorUser) + estimateStringBytes(txn.ActorHost) + estimateStringBytes(txn.QuerySummary) + estimateStringBytes(txn.BinlogPathStart) + estimateStringBytes(txn.BinlogPathEnd) + 88)
+		s.bufferTopLevelRow(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.ServerVersion) + estimateStringBytes(txn.ServerFlavor) + estimateStringBytes(txn.GTID) + estimateStringBytes(txn.XID) + estimateStringBytes(txn.ActorUser) + estimateStringBytes(txn.ActorHost) + estimateStringBytes(txn.XAXID) + estimateStringBytes(txn.QuerySummary) + estimateStringBytes(txn.BinlogPathStart) + estimateStringBytes(txn.BinlogPathEnd) + estimateStringBytes(txn.FullBinlogPathStart) + estimateStringBytes(txn.FullBinlogPathEnd) + 160)
 		if txn.QuerySQL != "" {
 			s.txnSQLBatch = append(s.txnSQLBatch, transactionSQLContextRow{
 				TxnKey:             txn.TxnKey,
@@ -352,7 +373,7 @@ func (s *DuckDBStore) Flush() error {
 	if len(s.transactionsBatch) > 0 {
 		if err := s.appendRows("transactions", func(app *duckdb.Appender) error {
 			for _, row := range s.transactionsBatch {
-				if err := app.AppendRow(row.TxnKey, row.ServerID, row.ServerVersion, row.ServerFlavor, row.GTID, row.ThreadID, row.XID, row.ActorUser, row.ActorHost, row.StartTime, row.EndTime, row.DurationMS, row.TotalRows, row.EventCount, row.BinlogBytes, row.BinlogPathStart, row.BinlogPathEnd, row.PositionStart, row.PositionEnd, row.QuerySummary, row.QueryTruncated, row.QueryOriginalBytes); err != nil {
+				if err := app.AppendRow(row.TxnKey, row.ServerID, row.ServerVersion, row.ServerFlavor, row.GTID, row.ThreadID, row.XID, row.ActorUser, row.ActorHost, row.XAXID, row.StartTime, row.EndTime, row.DurationMS, row.TotalRows, row.EventCount, row.BinlogBytes, row.BinlogPathStart, row.BinlogPathEnd, row.PositionStart, row.PositionEnd, row.Completeness, row.FullBinlogPathStart, row.FullBinlogPathEnd, row.FullPositionStart, row.FullPositionEnd, row.FullBinlogBytes, row.QuerySummary, row.QueryTruncated, row.QueryOriginalBytes); err != nil {
 					return err
 				}
 			}
@@ -452,7 +473,7 @@ func (s *DuckDBStore) QueryAllTransactions() ([]model.Transaction, error) {
 		return nil, err
 	}
 	baseRows, err := s.queryTransactions(`
-SELECT txn_key, server_id, server_version, server_flavor, gtid, thread_id, xid, actor_user, actor_host, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, query_summary, query_truncated, query_original_bytes
+SELECT txn_key, server_id, server_version, server_flavor, gtid, thread_id, xid, actor_user, actor_host, xa_xid, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, completeness, full_binlog_path_start, full_binlog_path_end, full_position_start, full_position_end, full_binlog_bytes, query_summary, query_truncated, query_original_bytes
 FROM transactions
 ORDER BY start_time ASC, txn_key ASC`, count)
 	if err != nil {
@@ -463,7 +484,7 @@ ORDER BY start_time ASC, txn_key ASC`, count)
 
 func (s *DuckDBStore) QueryTopTransactions(limit int) ([]model.Transaction, error) {
 	query := `
-SELECT txn_key, server_id, server_version, server_flavor, gtid, thread_id, xid, actor_user, actor_host, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, query_summary, query_truncated, query_original_bytes
+SELECT txn_key, server_id, server_version, server_flavor, gtid, thread_id, xid, actor_user, actor_host, xa_xid, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, completeness, full_binlog_path_start, full_binlog_path_end, full_position_start, full_position_end, full_binlog_bytes, query_summary, query_truncated, query_original_bytes
 FROM transactions
 ORDER BY total_rows DESC, txn_key ASC`
 	if limit > 0 {
@@ -677,6 +698,7 @@ func (s *DuckDBStore) initSchema() error {
 			xid VARCHAR,
 			actor_user VARCHAR,
 			actor_host VARCHAR,
+			xa_xid VARCHAR,
 			start_time TIMESTAMP,
 			end_time TIMESTAMP,
 			duration_ms BIGINT,
@@ -687,6 +709,12 @@ func (s *DuckDBStore) initSchema() error {
 			binlog_path_end VARCHAR,
 			position_start BIGINT,
 			position_end BIGINT,
+			completeness VARCHAR,
+			full_binlog_path_start VARCHAR,
+			full_binlog_path_end VARCHAR,
+			full_position_start BIGINT,
+			full_position_end BIGINT,
+			full_binlog_bytes BIGINT,
 			query_summary VARCHAR,
 			query_truncated BOOLEAN,
 			query_original_bytes BIGINT
@@ -765,8 +793,9 @@ func (s *DuckDBStore) queryTransactions(query string, capacityHint int) ([]trans
 		var row transactionRow
 		if err := rows.Scan(
 			&row.TxnKey, &row.ServerID, &row.ServerVersion, &row.ServerFlavor, &row.GTID, &row.ThreadID, &row.XID, &row.ActorUser, &row.ActorHost,
-			&row.StartTime, &row.EndTime, &row.DurationMS, &row.TotalRows, &row.EventCount, &row.BinlogBytes,
+			&row.XAXID, &row.StartTime, &row.EndTime, &row.DurationMS, &row.TotalRows, &row.EventCount, &row.BinlogBytes,
 			&row.BinlogPathStart, &row.BinlogPathEnd, &row.PositionStart, &row.PositionEnd,
+			&row.Completeness, &row.FullBinlogPathStart, &row.FullBinlogPathEnd, &row.FullPositionStart, &row.FullPositionEnd, &row.FullBinlogBytes,
 			&row.QuerySummary, &row.QueryTruncated, &row.QueryOriginalBytes,
 		); err != nil {
 			return nil, err
@@ -798,6 +827,7 @@ func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow, restrictToK
 			XID:             row.XID,
 			ActorUser:       row.ActorUser,
 			ActorHost:       row.ActorHost,
+			XAXID:           row.XAXID,
 			StartTime:       row.StartTime,
 			EndTime:         row.EndTime,
 			Duration:        time.Duration(row.DurationMS) * time.Millisecond,
@@ -808,7 +838,17 @@ func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow, restrictToK
 			BinlogPathEnd:   row.BinlogPathEnd,
 			PositionStart:   row.PositionStart,
 			PositionEnd:     row.PositionEnd,
+			Completeness:    model.TransactionCompleteness(row.Completeness),
 			QuerySummary:    row.QuerySummary,
+		}
+		if row.FullBinlogPathStart != "" {
+			txns[i].FullReplaySpan = &model.TransactionReplaySpan{
+				BinlogPathStart: row.FullBinlogPathStart,
+				BinlogPathEnd:   row.FullBinlogPathEnd,
+				PositionStart:   row.FullPositionStart,
+				PositionEnd:     row.FullPositionEnd,
+				BinlogBytes:     row.FullBinlogBytes,
+			}
 		}
 		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 			txns[i].QueryContext = &model.QueryContext{
@@ -981,6 +1021,7 @@ func toPersistedTransactions(transactions []model.Transaction) []persistedTransa
 			XID:             txn.XID,
 			ActorUser:       txn.ActorUser,
 			ActorHost:       txn.ActorHost,
+			XAXID:           txn.XAXID,
 			StartTime:       txn.StartTime,
 			EndTime:         txn.EndTime,
 			DurationMS:      txn.Duration.Milliseconds(),
@@ -991,9 +1032,17 @@ func toPersistedTransactions(transactions []model.Transaction) []persistedTransa
 			BinlogPathEnd:   txn.BinlogPathEnd,
 			PositionStart:   txn.PositionStart,
 			PositionEnd:     txn.PositionEnd,
+			Completeness:    txn.EffectiveCompleteness(),
 			QuerySummary:    txn.QuerySummary,
 			TableRows:       txn.Tables,
 			Operations:      txn.Operations,
+		}
+		if txn.FullReplaySpan != nil {
+			pt.FullBinlogPathStart = txn.FullReplaySpan.BinlogPathStart
+			pt.FullBinlogPathEnd = txn.FullReplaySpan.BinlogPathEnd
+			pt.FullPositionStart = txn.FullReplaySpan.PositionStart
+			pt.FullPositionEnd = txn.FullReplaySpan.PositionEnd
+			pt.FullBinlogBytes = txn.FullReplaySpan.BinlogBytes
 		}
 		if txn.QueryContext != nil {
 			pt.QuerySQL = txn.QueryContext.SQL
@@ -1153,31 +1202,38 @@ func (s *inMemoryStore) Close() error {
 
 func clonePersistedTransaction(txn persistedTransaction) persistedTransaction {
 	return persistedTransaction{
-		TxnKey:             txn.TxnKey,
-		ServerID:           txn.ServerID,
-		ServerVersion:      txn.ServerVersion,
-		ServerFlavor:       txn.ServerFlavor,
-		GTID:               txn.GTID,
-		ThreadID:           txn.ThreadID,
-		XID:                txn.XID,
-		ActorUser:          txn.ActorUser,
-		ActorHost:          txn.ActorHost,
-		StartTime:          txn.StartTime,
-		EndTime:            txn.EndTime,
-		DurationMS:         txn.DurationMS,
-		TotalRows:          txn.TotalRows,
-		EventCount:         txn.EventCount,
-		BinlogBytes:        txn.BinlogBytes,
-		BinlogPathStart:    txn.BinlogPathStart,
-		BinlogPathEnd:      txn.BinlogPathEnd,
-		PositionStart:      txn.PositionStart,
-		PositionEnd:        txn.PositionEnd,
-		QuerySummary:       txn.QuerySummary,
-		QuerySQL:           txn.QuerySQL,
-		QueryTruncated:     txn.QueryTruncated,
-		QueryOriginalBytes: txn.QueryOriginalBytes,
-		TableRows:          cloneStringIntMap(txn.TableRows),
-		Operations:         cloneStringIntMap(txn.Operations),
+		TxnKey:              txn.TxnKey,
+		ServerID:            txn.ServerID,
+		ServerVersion:       txn.ServerVersion,
+		ServerFlavor:        txn.ServerFlavor,
+		GTID:                txn.GTID,
+		ThreadID:            txn.ThreadID,
+		XID:                 txn.XID,
+		ActorUser:           txn.ActorUser,
+		ActorHost:           txn.ActorHost,
+		XAXID:               txn.XAXID,
+		StartTime:           txn.StartTime,
+		EndTime:             txn.EndTime,
+		DurationMS:          txn.DurationMS,
+		TotalRows:           txn.TotalRows,
+		EventCount:          txn.EventCount,
+		BinlogBytes:         txn.BinlogBytes,
+		BinlogPathStart:     txn.BinlogPathStart,
+		BinlogPathEnd:       txn.BinlogPathEnd,
+		PositionStart:       txn.PositionStart,
+		PositionEnd:         txn.PositionEnd,
+		Completeness:        txn.Completeness,
+		FullBinlogPathStart: txn.FullBinlogPathStart,
+		FullBinlogPathEnd:   txn.FullBinlogPathEnd,
+		FullPositionStart:   txn.FullPositionStart,
+		FullPositionEnd:     txn.FullPositionEnd,
+		FullBinlogBytes:     txn.FullBinlogBytes,
+		QuerySummary:        txn.QuerySummary,
+		QuerySQL:            txn.QuerySQL,
+		QueryTruncated:      txn.QueryTruncated,
+		QueryOriginalBytes:  txn.QueryOriginalBytes,
+		TableRows:           cloneStringIntMap(txn.TableRows),
+		Operations:          cloneStringIntMap(txn.Operations),
 	}
 }
 
@@ -1237,6 +1293,7 @@ func buildTransactionFromPersisted(row persistedTransaction, includeSQL bool) mo
 		XID:             row.XID,
 		ActorUser:       row.ActorUser,
 		ActorHost:       row.ActorHost,
+		XAXID:           row.XAXID,
 		StartTime:       row.StartTime,
 		EndTime:         row.EndTime,
 		Duration:        time.Duration(row.DurationMS) * time.Millisecond,
@@ -1247,9 +1304,19 @@ func buildTransactionFromPersisted(row persistedTransaction, includeSQL bool) mo
 		BinlogPathEnd:   row.BinlogPathEnd,
 		PositionStart:   row.PositionStart,
 		PositionEnd:     row.PositionEnd,
+		Completeness:    row.Completeness,
 		QuerySummary:    row.QuerySummary,
 		Tables:          cloneStringIntMap(row.TableRows),
 		Operations:      cloneStringIntMap(row.Operations),
+	}
+	if row.FullBinlogPathStart != "" {
+		txn.FullReplaySpan = &model.TransactionReplaySpan{
+			BinlogPathStart: row.FullBinlogPathStart,
+			BinlogPathEnd:   row.FullBinlogPathEnd,
+			PositionStart:   row.FullPositionStart,
+			PositionEnd:     row.FullPositionEnd,
+			BinlogBytes:     row.FullBinlogBytes,
+		}
 	}
 	if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
 		sql := ""

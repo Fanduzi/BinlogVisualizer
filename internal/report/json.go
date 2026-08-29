@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with provenance plus optional SQL context and snapshot presentation controls.
-// output: report-v3 JSON with provenance-aware XA transactions, mode-controlled query fields, selected-file/count-event diagnostics, optional snapshot data, and mysqlbinlog_cmd replay strings.
+// output: report-v3 JSON with completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, and snapshots.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -50,12 +50,14 @@ type jsonProvenance struct {
 }
 
 type jsonSummary struct {
-	TotalTransactions int    `json:"total_transactions"`
-	TotalRows         int    `json:"total_rows"`
-	TotalEvents       int    `json:"total_events"`
-	StartTime         string `json:"start_time"`
-	EndTime           string `json:"end_time"`
-	Duration          string `json:"duration"`
+	TotalTransactions   int    `json:"total_transactions"`
+	PartialTransactions int    `json:"partial_transactions"`
+	UnknownTransactions int    `json:"unknown_transactions"`
+	TotalRows           int    `json:"total_rows"`
+	TotalEvents         int    `json:"total_events"`
+	StartTime           string `json:"start_time"`
+	EndTime             string `json:"end_time"`
+	Duration            string `json:"duration"`
 }
 
 type jsonTimeseries struct {
@@ -184,6 +186,9 @@ type jsonTransaction struct {
 	BinlogFileEnd      string         `json:"binlog_file_end,omitempty"`
 	PosStart           int64          `json:"pos_start,omitempty"`
 	PosEnd             int64          `json:"pos_end,omitempty"`
+	Completeness       string         `json:"completeness"`
+	ReplayAvailable    bool           `json:"replay_available"`
+	ReplayScope        string         `json:"replay_scope,omitempty"`
 	Tables             map[string]int `json:"tables,omitempty"`
 	Operations         map[string]int `json:"operations,omitempty"`
 	QuerySummary       string         `json:"query_summary,omitempty"`
@@ -533,12 +538,14 @@ func convertFileSegments(segments []model.FileSegment) []jsonFileSegment {
 
 func convertSummary(s model.WorkloadSummary) jsonSummary {
 	return jsonSummary{
-		TotalTransactions: s.TotalTransactions,
-		TotalRows:         s.TotalRows,
-		TotalEvents:       s.TotalEvents,
-		StartTime:         formatJSONTime(s.StartTime),
-		EndTime:           formatJSONTime(s.EndTime),
-		Duration:          s.Duration.String(),
+		TotalTransactions:   s.TotalTransactions,
+		PartialTransactions: s.PartialTransactions,
+		UnknownTransactions: s.UnknownTransactions,
+		TotalRows:           s.TotalRows,
+		TotalEvents:         s.TotalEvents,
+		StartTime:           formatJSONTime(s.StartTime),
+		EndTime:             formatJSONTime(s.EndTime),
+		Duration:            s.Duration.String(),
 	}
 }
 
@@ -587,11 +594,16 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 			BinlogFileEnd:   t.BinlogPathEnd,
 			PosStart:        t.PositionStart,
 			PosEnd:          t.PositionEnd,
+			Completeness:    string(t.EffectiveCompleteness()),
+			ReplayAvailable: txnReplayAvailable(t),
 			Tables:          copyStringIntMap(t.Tables),
 			Operations:      copyStringIntMap(t.Operations),
 		}
 		if t.ActorUser != "" || t.ActorHost != "" {
 			jt.Actor = &jsonActor{User: t.ActorUser, Host: t.ActorHost}
+		}
+		if jt.ReplayAvailable {
+			jt.ReplayScope = "full_transaction"
 		}
 		switch mode {
 		case SQLContextOff:

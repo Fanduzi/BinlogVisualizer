@@ -1,6 +1,6 @@
 // Package compare computes stable comparison results from validated input reports.
 // input: two validated InputReport values representing current and baseline analyses.
-// output: deterministic CompareResult values for text, JSON, and HTML renderers, including current replay evidence and baseline/current byte coverage.
+// output: deterministic CompareResult values with completeness counts, trusted current replay evidence, and baseline/current byte coverage for text, JSON, and HTML renderers.
 // pos: compare pipeline core between report loading and output rendering.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -15,14 +15,18 @@ import (
 func BuildCompareResult(current, baseline InputReport) CompareResult {
 	result := CompareResult{
 		Summary: SummaryDelta{
-			CurrentTotalRows:          current.Summary.TotalRows,
-			BaselineTotalRows:         baseline.Summary.TotalRows,
-			TotalRowsDelta:            current.Summary.TotalRows - baseline.Summary.TotalRows,
-			CurrentTotalTransactions:  current.Summary.TotalTransactions,
-			BaselineTotalTransactions: baseline.Summary.TotalTransactions,
-			TotalTransactionsDelta:    current.Summary.TotalTransactions - baseline.Summary.TotalTransactions,
-			CurrentWarnings:           current.Warnings,
-			BaselineWarnings:          baseline.Warnings,
+			CurrentTotalRows:            current.Summary.TotalRows,
+			BaselineTotalRows:           baseline.Summary.TotalRows,
+			TotalRowsDelta:              current.Summary.TotalRows - baseline.Summary.TotalRows,
+			CurrentTotalTransactions:    current.Summary.TotalTransactions,
+			BaselineTotalTransactions:   baseline.Summary.TotalTransactions,
+			TotalTransactionsDelta:      current.Summary.TotalTransactions - baseline.Summary.TotalTransactions,
+			CurrentPartialTransactions:  current.Summary.PartialTransactions,
+			BaselinePartialTransactions: baseline.Summary.PartialTransactions,
+			CurrentUnknownTransactions:  current.Summary.UnknownTransactions,
+			BaselineUnknownTransactions: baseline.Summary.UnknownTransactions,
+			CurrentWarnings:             current.Warnings,
+			BaselineWarnings:            baseline.Warnings,
 		},
 		TableChanges:     buildTableChanges(current.Tables, baseline.Tables),
 		PatternChanges:   buildPatternChanges(current.Patterns, baseline.Patterns),

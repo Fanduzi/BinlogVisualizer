@@ -1,6 +1,6 @@
 // Package analyzer validates DuckDB-backed result persistence and finalize assembly.
-// input: temporary DuckDB paths, provenance-bearing transactions, analyzer.Options, and events that exercise persistence thresholds.
-// output: regression coverage for schema initialization, provenance parity, batch flushing, query ordering, and DuckDB-backed Finalize semantics.
+// input: temporary DuckDB paths, provenance/completeness/replay/SQL-bearing transactions, analyzer.Options, and persistence-threshold events.
+// output: regression coverage for schema initialization, transaction-evidence parity, batch flushing, query ordering, and DuckDB-backed Finalize semantics.
 // pos: module-level persistence test suite for the analyzer's internal result store layer.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -207,25 +207,41 @@ func TestDuckDBStoreQueryAllTransactionsDoesNotHydrateFullSQL(t *testing.T) {
 	}
 }
 
-func TestDetailStoresPreserveTransactionProvenance(t *testing.T) {
+func TestDetailStoresPreserveTransactionEvidence(t *testing.T) {
 	base := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
 	transaction := persistedTransaction{
-		TxnKey:        "txn-51",
-		ServerID:      7,
-		ServerVersion: "11.8.3-MariaDB-log",
-		ServerFlavor:  "mariadb",
-		GTID:          "0-7-1848",
-		ThreadID:      1875,
-		XID:           "3928",
-		ActorUser:     "alice",
-		ActorHost:     "db.local",
-		StartTime:     base,
-		EndTime:       base.Add(time.Second),
-		DurationMS:    1000,
-		TotalRows:     2,
-		EventCount:    1,
-		TableRows:     map[string]int{"shop.orders": 2},
-		Operations:    map[string]int{"INSERT": 2},
+		TxnKey:              "txn-51",
+		ServerID:            7,
+		ServerVersion:       "11.8.3-MariaDB-log",
+		ServerFlavor:        "mariadb",
+		GTID:                "0-7-1848",
+		ThreadID:            1875,
+		XID:                 "3928",
+		ActorUser:           "alice",
+		ActorHost:           "db.local",
+		XAXID:               "X'6276742d3537',X'',1",
+		StartTime:           base,
+		EndTime:             base.Add(time.Second),
+		DurationMS:          1000,
+		TotalRows:           2,
+		EventCount:          1,
+		BinlogBytes:         100,
+		BinlogPathStart:     "mariadb-bin.000001",
+		BinlogPathEnd:       "mariadb-bin.000001",
+		PositionStart:       120,
+		PositionEnd:         180,
+		Completeness:        model.TransactionPartialStart,
+		FullBinlogPathStart: "mariadb-bin.000001",
+		FullBinlogPathEnd:   "mariadb-bin.000001",
+		FullPositionStart:   100,
+		FullPositionEnd:     200,
+		FullBinlogBytes:     100,
+		QuerySummary:        "UPDATE shop.orders SET status = ?",
+		QuerySQL:            "UPDATE shop.orders SET status = 'done'",
+		QueryTruncated:      true,
+		QueryOriginalBytes:  5000,
+		TableRows:           map[string]int{"shop.orders": 2},
+		Operations:          map[string]int{"UPDATE": 2},
 	}
 
 	stores := map[string]analysisStore{
@@ -250,8 +266,24 @@ func TestDetailStoresPreserveTransactionProvenance(t *testing.T) {
 			txn := txns[0]
 			if txn.ServerID != 7 || txn.ServerVersion != "11.8.3-MariaDB-log" || txn.ServerFlavor != "mariadb" ||
 				txn.GTID != "0-7-1848" || txn.ThreadID != 1875 || txn.XID != "3928" ||
-				txn.ActorUser != "alice" || txn.ActorHost != "db.local" {
-				t.Fatalf("provenance was not preserved: %+v", txn)
+				txn.ActorUser != "alice" || txn.ActorHost != "db.local" || txn.XAXID != "X'6276742d3537',X'',1" {
+				t.Fatalf("provenance/XA evidence was not preserved: %+v", txn)
+			}
+			if txn.Completeness != model.TransactionPartialStart || txn.FullReplaySpan == nil || txn.FullReplaySpan.PositionStart != 100 || txn.FullReplaySpan.PositionEnd != 200 {
+				t.Fatalf("completeness/replay evidence was not preserved: %+v", txn)
+			}
+			if txn.BinlogPathStart != "mariadb-bin.000001" || txn.PositionStart != 120 || txn.PositionEnd != 180 || txn.BinlogBytes != 100 || txn.Tables["shop.orders"] != 2 || txn.Operations["UPDATE"] != 2 {
+				t.Fatalf("retained transaction evidence was not preserved: %+v", txn)
+			}
+			if txn.QuerySummary != "UPDATE shop.orders SET status = ?" || txn.QueryContext == nil || txn.QueryContext.SQL != "" || !txn.QueryContext.Truncated || txn.QueryContext.OriginalBytes != 5000 {
+				t.Fatalf("bounded SQL metadata was not preserved: %+v", txn)
+			}
+			sqlByTxn, err := store.ResolveTransactionQuerySQL([]string{"txn-51"})
+			if err != nil {
+				t.Fatalf("ResolveTransactionQuerySQL: %v", err)
+			}
+			if sqlByTxn["txn-51"] != "UPDATE shop.orders SET status = 'done'" {
+				t.Fatalf("bounded SQL body was not preserved: %+v", sqlByTxn)
 			}
 		})
 	}

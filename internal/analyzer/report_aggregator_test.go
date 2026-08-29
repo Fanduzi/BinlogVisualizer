@@ -15,6 +15,11 @@ import (
 	"binlogviz/internal/model"
 )
 
+func consumeCompleteTransaction(agg *ReportAggregator, txn model.Transaction) {
+	txn.Completeness = model.TransactionComplete
+	agg.ConsumeTransaction(txn)
+}
+
 func TestReportAggregatorMatchesExistingTransactionDerivedOutputs(t *testing.T) {
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	txns := []model.Transaction{
@@ -51,7 +56,7 @@ func TestReportAggregatorMatchesExistingTransactionDerivedOutputs(t *testing.T) 
 
 	agg := NewReportAggregator(DefaultOptions())
 	for _, txn := range txns {
-		agg.ConsumeTransaction(txn)
+		consumeCompleteTransaction(agg, txn)
 	}
 	for _, bucket := range minutes {
 		agg.ConsumeMinuteBucket(bucket)
@@ -91,7 +96,7 @@ func TestReportAggregatorDoesNotRetainAllTransactions(t *testing.T) {
 	agg := NewReportAggregator(DefaultOptions())
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	for i := 0; i < 1000; i++ {
-		agg.ConsumeTransaction(model.Transaction{
+		consumeCompleteTransaction(agg, model.Transaction{
 			TxnKey:     fmt.Sprintf("txn-%d", i+1),
 			StartTime:  base,
 			EndTime:    base,
@@ -119,7 +124,7 @@ func TestReportAggregatorDoesNotRetainAllTransactions(t *testing.T) {
 func TestReportAggregatorUsesNaturalNumericTxnKeyTieBreak(t *testing.T) {
 	agg := NewReportAggregator(Options{TopTransactions: 3})
 	for _, key := range []string{"txn-10", "txn-2", "txn-1"} {
-		agg.ConsumeTransaction(model.Transaction{
+		consumeCompleteTransaction(agg, model.Transaction{
 			TxnKey:      key,
 			TotalRows:   100,
 			Duration:    time.Second,
@@ -146,11 +151,77 @@ func TestReportAggregatorUsesNaturalNumericTxnKeyTieBreak(t *testing.T) {
 	}
 }
 
+func TestReportAggregatorKeepsIncompleteEvidenceOutOfRankings(t *testing.T) {
+	opts := DefaultOptions()
+	opts.TopTransactions = 1
+	agg := NewReportAggregator(opts)
+	agg.ConsumeTransaction(model.Transaction{
+		TxnKey:       "txn-partial",
+		Completeness: model.TransactionPartialEnd,
+		TotalRows:    400000,
+		EventCount:   10,
+		FullReplaySpan: &model.TransactionReplaySpan{
+			BinlogPathStart: "mysql-bin.000008",
+			BinlogPathEnd:   "mysql-bin.000008",
+			PositionStart:   100,
+			PositionEnd:     131,
+			BinlogBytes:     31,
+		},
+	})
+	consumeCompleteTransaction(agg, model.Transaction{TxnKey: "txn-complete", TotalRows: 10, EventCount: 1})
+
+	snapshot := agg.Snapshot()
+	if len(snapshot.Transactions) != 1 || snapshot.Transactions[0].TxnKey != "txn-complete" {
+		t.Fatalf("incomplete evidence entered top transaction ranking: %#v", snapshot.Transactions)
+	}
+	if len(snapshot.Alerts) != 1 || snapshot.Alerts[0].TxnKey != "txn-partial" {
+		t.Fatalf("partial evidence alert missing: %#v", snapshot.Alerts)
+	}
+	if available, _ := snapshot.Alerts[0].Details["replay_available"].(bool); available {
+		t.Fatalf("alert advertised unusable XID-only replay: %#v", snapshot.Alerts[0].Details)
+	}
+}
+
+func TestReportAggregatorOrdersBoundedIncompleteEvidenceByNumericKey(t *testing.T) {
+	agg := NewReportAggregator(Options{TopTransactions: 4})
+	for _, key := range []string{"txn-10", "txn-2", "txn-1"} {
+		agg.ConsumeTransaction(model.Transaction{TxnKey: key, Completeness: model.TransactionPartialEnd, TotalRows: 1})
+	}
+	consumeCompleteTransaction(agg, model.Transaction{TxnKey: "txn-20", TotalRows: 100})
+
+	got := agg.Snapshot().Transactions
+	for i, want := range []string{"txn-20", "txn-1", "txn-2", "txn-10"} {
+		if got[i].TxnKey != want {
+			t.Fatalf("transaction %d = %q, want %q; all=%+v", i, got[i].TxnKey, want, got)
+		}
+	}
+}
+
+func TestReportAggregatorPreservesIncompleteTransactionMetadata(t *testing.T) {
+	agg := NewReportAggregator(DefaultOptions())
+	agg.ConsumeTransaction(model.Transaction{
+		TxnKey:        "txn-51",
+		Completeness:  model.TransactionPartialStart,
+		ServerID:      7,
+		ServerVersion: "11.8.3-MariaDB-log",
+		ServerFlavor:  "mariadb",
+		QueryContext:  &model.QueryContext{SQL: "UPDATE shop.orders SET status = 'done'", Truncated: true, OriginalBytes: 5000},
+	})
+
+	snapshot := agg.Snapshot()
+	if !snapshot.SQLContextAvailable || snapshot.Warnings != 1 {
+		t.Fatalf("incomplete SQL metadata lost: available=%v warnings=%d", snapshot.SQLContextAvailable, snapshot.Warnings)
+	}
+	if !reflect.DeepEqual(snapshot.Provenance.ServerIDs, []uint32{7}) || !reflect.DeepEqual(snapshot.Provenance.ServerVersions, []string{"11.8.3-MariaDB-log"}) || !reflect.DeepEqual(snapshot.Provenance.ServerFlavors, []string{"mariadb"}) {
+		t.Fatalf("incomplete provenance lost: %+v", snapshot.Provenance)
+	}
+}
+
 func TestReportAggregatorDeletePatternDoesNotCiteInsertTxns(t *testing.T) {
 	agg := NewReportAggregator(DefaultOptions())
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	for i := 0; i < 6; i++ {
-		agg.ConsumeTransaction(model.Transaction{
+		consumeCompleteTransaction(agg, model.Transaction{
 			TxnKey:     fmt.Sprintf("txn-insert-%d", i+1),
 			StartTime:  base,
 			EndTime:    base,
@@ -161,7 +232,7 @@ func TestReportAggregatorDeletePatternDoesNotCiteInsertTxns(t *testing.T) {
 		})
 	}
 	for i := 0; i < 20; i++ {
-		agg.ConsumeTransaction(model.Transaction{
+		consumeCompleteTransaction(agg, model.Transaction{
 			TxnKey:     fmt.Sprintf("txn-del-%d", i+1),
 			StartTime:  base,
 			EndTime:    base,
@@ -250,7 +321,7 @@ func TestReportAggregatorPatternParity(t *testing.T) {
 
 	agg := NewReportAggregator(DefaultOptions())
 	for _, txn := range txns {
-		agg.ConsumeTransaction(txn)
+		consumeCompleteTransaction(agg, txn)
 	}
 	snapshot := agg.Snapshot()
 
@@ -309,7 +380,7 @@ func TestReportAggregatorTopSelectorParity(t *testing.T) {
 
 	agg := NewReportAggregator(DefaultOptions())
 	for _, txn := range txns {
-		agg.ConsumeTransaction(txn)
+		consumeCompleteTransaction(agg, txn)
 	}
 	snapshot := agg.Snapshot()
 
@@ -366,7 +437,7 @@ func TestReportAggregatorWarningsCount(t *testing.T) {
 
 	agg := NewReportAggregator(DefaultOptions())
 	for _, txn := range txns {
-		agg.ConsumeTransaction(txn)
+		consumeCompleteTransaction(agg, txn)
 	}
 	snapshot := agg.Snapshot()
 
@@ -446,8 +517,8 @@ func TestReportAggregatorAlertReferencedEvidence(t *testing.T) {
 	}
 
 	agg := NewReportAggregator(opts)
-	agg.ConsumeTransaction(smallTxn)
-	agg.ConsumeTransaction(bigTxn)
+	consumeCompleteTransaction(agg, smallTxn)
+	consumeCompleteTransaction(agg, bigTxn)
 	snapshot := agg.Snapshot()
 
 	// Should have a large_transaction alert for txn-big
@@ -476,7 +547,7 @@ func TestReportAggregatorAlertReferencedEvidence(t *testing.T) {
 func TestReportAggregatorSnapshotPatternsNonNilMaps(t *testing.T) {
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	agg := NewReportAggregator(DefaultOptions())
-	agg.ConsumeTransaction(model.Transaction{
+	consumeCompleteTransaction(agg, model.Transaction{
 		TxnKey: "txn-1", StartTime: base, EndTime: base,
 		TotalRows: 5, EventCount: 1,
 		Tables:     map[string]int{"shop.orders": 5},

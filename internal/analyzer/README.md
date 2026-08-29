@@ -5,8 +5,8 @@
 | File | Responsibility |
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, streaming lifecycle, final result assembly. |
-| `store.go` | Persists transaction provenance and bounded SQL through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
-| `transactions.go` | Reconstructs MySQL/MariaDB transactions, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects conflicting GTIDs, clears filtered query hints, and computes same-file `binlog_bytes` from spans. |
+| `store.go` | Persists transaction provenance, bounded SQL, completeness, and replay spans through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
+| `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects conflicting GTIDs, and separates retained evidence from trusted full replay spans. |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
 | `ddl.go` | Extracts DDL timeline metadata from Query and ROWS_QUERY SQL, including CREATE/ALTER/DROP DATABASE, RENAME, and TRUNCATE. |
@@ -14,9 +14,9 @@
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
-| `report_aggregator.go` | Maintains bounded report state, filtered event-byte coverage, report-wide SQL availability, deterministic producer sets, ranked/evidence transactions with natural numeric key tie-breaking, operation counts, and transaction-size histograms. |
+| `report_aggregator.go` | Maintains bounded report state, filtered event-byte coverage, SQL availability, producer sets, and numeric-key-ordered transaction evidence while excluding incomplete transactions from whole-transaction rankings, patterns, histograms, and ordinary large alerts. |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
-| `*_test.go` | Verifies analyzer behavior, boundary handling, window/object filtering, and benchmark coverage. |
+| `*_test.go` | Verifies analyzer behavior, inclusive-window completeness and replay, object filtering, detail-store parity, and benchmarks. |
 
 ## Interfaces
 
@@ -26,7 +26,7 @@
 | `NewWithStore(opts Options, store *DuckDBStore) *Analyzer` | Creates an analyzer that uses a caller-managed DuckDB temp store. Forces `DetailStoreMode` to `duckdb`. |
 | `NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error)` | Opens and initializes the internal DuckDB result store schema. |
 | `(Options).HasObjectFilters() bool` | Reports whether any schema or table include/exclude filter is configured. |
-| `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event, applying time-window and object filtering before workload aggregation while retaining boundaries needed for transaction reconstruction. |
+| `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event. Workload totals remain inclusive, filtered, and event-window scoped while adjacent physical events may supply transaction-boundary evidence only. |
 | `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the complete final analysis result. Successful calls are idempotent. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
 | `NewTransactionBuilder() *TransactionBuilder` | Reconstructs GTID-aware MySQL/MariaDB XA transaction boundaries and fails on conflicting canonical GTIDs. |
@@ -49,7 +49,9 @@
 - `assembleResult()` reads from `ReportAggregator.Snapshot()` instead of `QueryAllTransactions()`, eliminating the full-transaction rehydration path for default report output. `QueryAllTransactions` is no longer called during Finalize.
 - Final table aggregates remain complete and deterministically ordered regardless of `Options.TopTables`; human report renderers apply that presentation limit after totals and shares are known.
 - ReportAggregator receives events, transactions, and minute buckets during streaming, and DDL events at Finalize time. It maintains bounded top-N transaction lists, operation counts for timeseries, alert-referenced transaction evidence, and txn-size histograms.
-- ReportAggregator keeps the configured top transaction list bounded by default; `TopTransactions=0` is the explicit unlimited mode, and equal-ranked `txn-N` keys use numeric ordering.
+- ReportAggregator keeps the configured transaction list bounded by default; complete rankings come first, remaining slots contain incomplete evidence in natural numeric `txn-N` order, and `TopTransactions=0` is the explicit unlimited mode.
+- Detail-store parity covers provenance, XA identity, retained/full spans, completeness, maps, and bounded SQL metadata in both in-memory and DuckDB paths.
+- Time windows keep inclusive per-event workload totals. Adjacent parsed events may establish transaction completeness and a trusted full replay span, but never add out-of-window rows, events, table totals, operations, or minute buckets.
 - Active schema/table filters remove excluded row and DDL events before workload aggregation; control events remain available for transaction boundaries, and empty filtered transactions are omitted from reports.
 - ReportAggregator derives counted event bytes from filtered row/DDL minute buckets; physical selected-file bytes remain in command-supplied file coverage.
 - Alert-referenced transactions are tracked in a bounded map so `BuildFindingsFromAlerts` and `BuildPatternDrilldowns` can resolve evidence even when the referenced transaction is not in the top-5 largest.

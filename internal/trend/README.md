@@ -6,8 +6,8 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 
 | File | Responsibility |
 |------|----------------|
-| `model.go` | Defines trend build inputs, ordered point models, baseline deltas, table and pattern movement series, replay evidence, and renderer-facing result contracts. |
-| `build.go` | Validates snapshot metadata, keeps explicit/workflow input order by default (`--order cli`), optionally sorts by `snapshot.window.start_time` (`--order time`), computes per-point operation totals, baseline deltas, table and pattern movement series, transaction replay evidence, and aggregate insights. |
+| `model.go` | Defines trend build inputs, completeness-aware ordered points and baseline deltas, table/pattern movement series, replay evidence, and renderer-facing results. |
+| `build.go` | Validates snapshot metadata, orders inputs, preserves partial/unknown counts, and computes operation totals, deltas, movements, trusted transaction replay evidence, and aggregate insights. |
 | `patterns.go` | Builds per-pattern movement series across ordered trend points. |
 | `summary.go` | Selects capped trend findings from pattern, table, and concentration changes. |
 | `evidence.go` | Maps trend findings back to stable section anchors and evidence references. |
@@ -16,7 +16,7 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 | `text.go` | Renders human-readable trend output for terminal and file workflows, including pattern trend summaries. |
 | `json.go` | Serializes stable JSON trend output for automation, including `pattern_trends`. |
 | `html.go` | Renders the self-contained HTML trend report with embedded ECharts charts, a Pattern Trends section, and transaction replay evidence. |
-| `*_test.go` | Covers ordering, baseline delta behavior, findings and drilldowns, diagnostics/i18n sections, pattern trend output, and renderer anchors or sections. |
+| `*_test.go` | Covers ordering, completeness and baseline preservation, findings, drilldowns, trusted replay diagnostics, i18n, and renderer anchors. |
 
 ## Exports
 

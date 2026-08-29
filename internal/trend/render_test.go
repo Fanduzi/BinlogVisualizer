@@ -203,6 +203,7 @@ func TestRenderHTMLIncludesTrendChartAnchors(t *testing.T) {
 }
 
 func TestRenderHTMLIncludesTxnReplayEvidence(t *testing.T) {
+	replayAvailable := true
 	makeReport := func(name, start string) InputReport {
 		r := testInputReport(name, name, start, 1000, 50, 1200, 500, 350, 150, 0)
 		r.Diagnostics.LargestTransactions = []comparepkg.InputTransaction{{
@@ -213,6 +214,9 @@ func TestRenderHTMLIncludesTxnReplayEvidence(t *testing.T) {
 			BinlogFileEnd:   "minimal.binlog",
 			PosStart:        962,
 			PosEnd:          1186,
+			Completeness:    "complete",
+			ReplayAvailable: &replayAvailable,
+			ReplayScope:     "full_transaction",
 			MysqlbinlogCmd:  "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
 		}}
 		return r

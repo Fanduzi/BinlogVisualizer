@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
-// input: analyzer.Options plus ordered model.NormalizedEvent values with optional provenance and object filters from the binlog normalization pipeline.
-// output: streaming Consume/Finalize state and provenance-aware model.AnalysisResult snapshots built from one filtered workload set.
+// input: analyzer.Options plus ordered model.NormalizedEvent values with optional provenance, time windows, and object filters.
+// output: provenance-aware inclusive event-window aggregates plus retained transaction evidence with explicit completeness.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -76,7 +76,7 @@ func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResul
 }
 
 // Consume processes a single normalized event through the analyzer's streaming pipeline.
-// Events outside the configured time window are ignored.
+// Events outside the configured time window are observed only for transaction boundaries.
 // Once an error is returned, the analyzer remains failed and future Consume/Finalize calls return that error.
 func (a *Analyzer) Consume(ev model.NormalizedEvent) error {
 	if a.err != nil {
@@ -85,10 +85,7 @@ func (a *Analyzer) Consume(ev model.NormalizedEvent) error {
 	if a.finalized {
 		return errors.New("analyzer already finalized")
 	}
-	if !a.isInWindow(ev.Timestamp) {
-		return nil
-	}
-	if err := a.consume(ev); err != nil {
+	if err := a.consume(ev, a.windowRelation(ev.Timestamp)); err != nil {
 		a.err = err
 		return err
 	}
@@ -133,32 +130,39 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 // Both Start and End boundaries are inclusive. If Start or End is nil,
 // that boundary is not enforced.
 func (a *Analyzer) isInWindow(ts time.Time) bool {
+	return a.windowRelation(ts) == insideWindow
+}
+
+func (a *Analyzer) windowRelation(ts time.Time) windowRelation {
 	// Check start boundary (inclusive)
 	if a.opts.Start != nil && ts.Before(*a.opts.Start) {
-		return false
+		return beforeWindow
 	}
 	// Check end boundary (inclusive)
 	if a.opts.End != nil && ts.After(*a.opts.End) {
-		return false
+		return afterWindow
 	}
-	return true
+	return insideWindow
 }
 
 // consume passes a single event to all sub-aggregators.
 // If TransactionBuilder returns an error (e.g., boundary violation),
 // fan-out to other aggregators is stopped to prevent inconsistent state.
-func (a *Analyzer) consume(ev model.NormalizedEvent) error {
+func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) error {
 	ev = enrichDDLEvent(ev)
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
-	if a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
+	if relation == insideWindow && a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
 		a.txnBuilder.clearCurrentQueryContext()
 		return nil
 	}
 
 	// TransactionBuilder is the source of truth for transaction boundaries.
 	// If it returns an error, stop processing to avoid inconsistent state.
-	if err := a.txnBuilder.Consume(ev); err != nil {
+	if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
 		return err
+	}
+	if relation != insideWindow {
+		return a.persistCompletedTransactions()
 	}
 	ev = a.withCurrentTxnKey(ev)
 	if isWorkload {
@@ -306,13 +310,10 @@ func (a *Analyzer) persistCompletedTransactions() error {
 	if len(drained) == 0 {
 		return nil
 	}
-	persisted := drained
-	if a.opts.HasObjectFilters() {
-		persisted = make([]model.Transaction, 0, len(drained))
-		for _, txn := range drained {
-			if txn.TotalRows > 0 {
-				persisted = append(persisted, txn)
-			}
+	persisted := make([]model.Transaction, 0, len(drained))
+	for _, txn := range drained {
+		if txn.TotalRows > 0 {
+			persisted = append(persisted, txn)
 		}
 	}
 	if len(persisted) == 0 {

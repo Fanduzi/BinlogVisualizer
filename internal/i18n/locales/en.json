@@ -259,6 +259,18 @@
     "description": "Total transactions label",
     "other": "Total Transactions"
   },
+  "report.label.partialTransactions": {
+    "description": "Transactions clipped by the selected window label",
+    "other": "Partial Transactions"
+  },
+  "report.label.unknownTransactions": {
+    "description": "Transactions with unavailable physical boundaries label",
+    "other": "Unknown Transactions"
+  },
+  "report.label.fullTransactionReplay": {
+    "description": "Label for replay commands that cover a physically observed full transaction",
+    "other": "Full-transaction replay"
+  },
   "report.label.totalRows": {
     "description": "Total rows label",
     "other": "Total Rows"

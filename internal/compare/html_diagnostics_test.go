@@ -109,6 +109,7 @@ func TestRenderHTMLIncludesDiagnosticsDeltaSections(t *testing.T) {
 }
 
 func TestRenderHTMLIncludesCurrentTxnReplayEvidence(t *testing.T) {
+	replayAvailable := true
 	current := InputReport{
 		Diagnostics: InputDiagnostics{
 			LargestTransactions: []InputTransaction{{
@@ -119,6 +120,9 @@ func TestRenderHTMLIncludesCurrentTxnReplayEvidence(t *testing.T) {
 				BinlogFileEnd:   "minimal.binlog",
 				PosStart:        962,
 				PosEnd:          1186,
+				Completeness:    "complete",
+				ReplayAvailable: &replayAvailable,
+				ReplayScope:     "full_transaction",
 				MysqlbinlogCmd:  "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
 			}},
 		},
