@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks (including Format Description server version), and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML analysis reports on success; STATEMENT (Query-DML, zero ROW images) returns an error with no report; stderr-only operator status and DuckDB temp-store cleanup.
+// output: rendered text/JSON/HTML analysis reports on success (MIXED JSON includes an input_format alert); STATEMENT (Query-DML, zero ROW images) returns an error with no report; stderr-only operator status and DuckDB temp-store cleanup.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -714,6 +714,12 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 		return fmt.Errorf("%s", binlog.StatementOrMixedWarning)
 	}
 	_, _ = fmt.Fprintln(os.Stderr, binlog.StatementOrMixedWarning)
+	result.Alerts = append(result.Alerts, model.Alert{
+		Type:     "input_format",
+		Severity: "warning",
+		Message: fmt.Sprintf("%s: counted %d ROW images, ignored %d Query-DML events",
+			observer.Guess(), observer.RowImageEvents, observer.QueryDMLEvents),
+	})
 	return nil
 }
 
