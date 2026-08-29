@@ -534,7 +534,7 @@ The plan file uses YAML with `version: 1`. The root sections are:
 - `compare` — optional compare jobs referencing named windows
 - `trend` — optional trend jobs referencing named windows
 
-A runnable sample plan ships at the repository root as `incident.yaml`. It points `from_dir` at `cmd/binlogviz/testdata/sample-binlog` so `binlogviz workflow run incident.yaml` works without a local MySQL datadir.
+A runnable sample plan ships at the repository root as `incident.yaml`. It points `from_dir` at `cmd/binlogviz/testdata/sample-binlog` so `binlogviz workflow run incident.yaml` works without a local MySQL datadir. GitHub Release archives ship a bundled `incident.yaml` with `from_dir: testdata/sample-binlog` so the same command works after extract.
 
 Example plan:
 

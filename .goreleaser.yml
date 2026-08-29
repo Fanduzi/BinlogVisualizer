@@ -37,6 +37,10 @@ archives:
       - README.md
       - src: cmd/binlogviz/testdata/minimal.binlog
         dst: testdata/minimal.binlog
+      - src: cmd/binlogviz/testdata/sample-binlog/mysql-bin.000001
+        dst: testdata/sample-binlog/mysql-bin.000001
+      - src: scripts/release-incident.yaml
+        dst: incident.yaml
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"
