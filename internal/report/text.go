@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: incident-brief text reports (hot tables and largest txns first) with opt-in minute and write-pattern detail sections; sub-second TPS peaks render as N/A; suspicious positions require finding/alert-backed transaction evidence.
+// output: incident-brief text reports with separate selected input-file and counted event-byte metrics, hot tables and largest txns first, opt-in minute and write-pattern detail sections; sub-second TPS peaks render as N/A; suspicious positions require finding/alert-backed transaction evidence.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -64,6 +64,12 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.html.analyze.ddlTimeline"), formatDDLTimelineSummary(result.Diagnostics.DDLEvents)))
+	inputFileSize := i18n.T("time.notAvailable")
+	if bytes, ok := selectedInputFileBytes(result.Diagnostics.FileCoverage); ok {
+		inputFileSize = formatByteSize(bytes)
+	}
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.inputFileSize"), inputFileSize))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.countedEventBytes"), formatByteSize(countedEventBytes(result))))
 	if bytes := largestTxnBytes(result); bytes > 0 {
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.largestTxnBytes"), formatByteSize(bytes)))
 	}

@@ -1,6 +1,6 @@
 // Package report verifies JSON rendering stability and SQL context presentation modes.
 // input: synthetic AnalysisResult fixtures with XA identity and bounded transaction query context variations.
-// output: regression coverage for stable XA/transaction field names and summary/off/full JSON query fields.
+// output: regression coverage for stable XA/transaction field names, counted event-byte diagnostics, and summary/off/full JSON query fields.
 // pos: JSON renderer regression suite guarding script-facing output contracts.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -946,5 +946,23 @@ func TestRenderJSONFileCoverageIncludesTimeRange(t *testing.T) {
 	skipped, ok := coverage["skipped"].([]any)
 	if !ok || len(skipped) != 1 {
 		t.Fatalf("expected 1 skipped file, got %v", coverage["skipped"])
+	}
+}
+
+func TestRenderJSONIncludesCountedEventBytes(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{
+		Diagnostics: model.Diagnostics{CountedEventBytes: 250},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	parsed := parseJSONMap(t, out)
+	diagnostics, ok := parsed["diagnostics"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected diagnostics object, got %v", parsed["diagnostics"])
+	}
+	if got := diagnostics["counted_event_bytes"]; got != float64(250) {
+		t.Fatalf("expected counted_event_bytes=250, got %v", got)
 	}
 }

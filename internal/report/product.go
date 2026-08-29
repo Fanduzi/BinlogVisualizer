@@ -1,6 +1,6 @@
 // Package report defines user-facing report presentation contracts.
 // input: analyzer results and CLI-selected report presentation options.
-// output: stable defaults and labels shared by text, JSON, and HTML renderers.
+// output: stable defaults, labels, and byte-coverage formatting helpers shared by text, JSON, and HTML renderers.
 // pos: report product contract layer used by renderer view-model builders.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -31,4 +31,30 @@ func limitTablesForDisplay(tables []model.TableStats, limit int) ([]model.TableS
 
 func omittedTablesLabel(count int) string {
 	return i18n.Tf("report.text.omittedTables", map[string]any{"Count": count})
+}
+
+func selectedInputFileBytes(coverage model.FileCoverage) (int64, bool) {
+	if len(coverage.Selected) == 0 {
+		return 0, false
+	}
+
+	var total int64
+	for _, item := range coverage.Selected {
+		if item.Size <= 0 {
+			return 0, false
+		}
+		total += item.Size
+	}
+	return total, true
+}
+
+func countedEventBytes(result model.AnalysisResult) int64 {
+	if result.Diagnostics.CountedEventBytes != 0 {
+		return result.Diagnostics.CountedEventBytes
+	}
+	var total int64
+	for _, segment := range result.Diagnostics.FileSegments {
+		total += segment.BinlogBytes
+	}
+	return total
 }

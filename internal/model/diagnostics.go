@@ -1,6 +1,6 @@
 // Package model defines DBA-facing diagnostics contracts for analyze reports.
 // input: file coverage, DDL events, ranked transactions, findings, guessed input format, and Format Description server version.
-// output: Diagnostics and related evidence types reused by report renderers.
+// output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage.
 // pos: shared diagnostics model between analyzer Finalize and text/JSON/HTML replay commands.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -9,7 +9,9 @@ import "time"
 
 // Diagnostics groups DBA-oriented evidence and coverage metadata.
 type Diagnostics struct {
-	FileCoverage          FileCoverage
+	FileCoverage FileCoverage
+	// CountedEventBytes is the sum of row/DDL event bytes retained after object filtering.
+	CountedEventBytes     int64
 	DDLEvents             []DDLEvent
 	LargestTransactions   []Transaction
 	LongestTransactions   []Transaction

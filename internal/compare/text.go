@@ -1,7 +1,8 @@
 // Package compare renders human-readable text reports for compare results.
 // input: deterministic CompareResult values produced by the compare diff engine.
-// output: fixed-section text compare reports for terminal and file output.
+// output: fixed-section text compare reports with named baseline/current byte coverage for terminal and file output.
 // pos: compare renderer used by the compare command text output path.
+// note: if this file changes, update this header and module README.md.
 package compare
 
 import (
@@ -43,6 +44,8 @@ func RenderText(result CompareResult) (string, error) {
 	fmt.Fprintf(&b, "Rows: %d -> %d (%+d)\n", result.Summary.BaselineTotalRows, result.Summary.CurrentTotalRows, result.Summary.TotalRowsDelta)
 	fmt.Fprintf(&b, "Transactions: %d -> %d (%+d)\n", result.Summary.BaselineTotalTransactions, result.Summary.CurrentTotalTransactions, result.Summary.TotalTransactionsDelta)
 	fmt.Fprintf(&b, "Warnings: %d -> %d (%+d)\n", result.Summary.BaselineWarnings, result.Summary.CurrentWarnings, result.Summary.CurrentWarnings-result.Summary.BaselineWarnings)
+	fmt.Fprintf(&b, "Input File Size: %s=%s -> %s=%s\n", result.BaselineLabel, formatOptionalCompareFileSize(result.DiagnosticsDelta.BaselineInputFileBytes), result.CurrentLabel, formatOptionalCompareFileSize(result.DiagnosticsDelta.CurrentInputFileBytes))
+	fmt.Fprintf(&b, "Counted Event Bytes: %s=%s -> %s=%s\n", result.BaselineLabel, formatCompareFileSize(result.DiagnosticsDelta.BaselineCountedEventBytes), result.CurrentLabel, formatCompareFileSize(result.DiagnosticsDelta.CurrentCountedEventBytes))
 	if line := formatLargestTxnLine(result.DiagnosticsDelta.TxnDiagnostics.LargestTxnDelta); line != "" {
 		fmt.Fprintf(&b, "%s\n", line)
 	}

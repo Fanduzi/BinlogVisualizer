@@ -14,7 +14,7 @@
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
-| `report_aggregator.go` | Maintains bounded streaming state for report assembly so default analyze output does not require full transaction rehydration. Tracks operation counts for timeseries, alert-referenced transactions for evidence, and txn-size histograms. |
+| `report_aggregator.go` | Maintains bounded streaming state for report assembly so default analyze output does not require full transaction rehydration. Tracks filtered event-byte coverage, operation counts for timeseries, alert-referenced transactions for evidence, and txn-size histograms. |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
 | `*_test.go` | Verifies analyzer behavior, boundary handling, window/object filtering, and benchmark coverage. |
 
@@ -50,6 +50,7 @@
 - Final table aggregates remain complete and deterministically ordered regardless of `Options.TopTables`; human report renderers apply that presentation limit after totals and shares are known.
 - ReportAggregator receives events, transactions, and minute buckets during streaming, and DDL events at Finalize time. It maintains bounded top-N transaction lists, operation counts for timeseries, alert-referenced transaction evidence, and txn-size histograms.
 - Active schema/table filters remove excluded row and DDL events before workload aggregation; control events remain available for transaction boundaries, and empty filtered transactions are omitted from reports.
+- ReportAggregator derives counted event bytes from filtered row/DDL minute buckets; physical selected-file bytes remain in command-supplied file coverage.
 - Alert-referenced transactions are tracked in a bounded map so `BuildFindingsFromAlerts` and `BuildPatternDrilldowns` can resolve evidence even when the referenced transaction is not in the top-5 largest.
 - Pattern maps in snapshot use non-nil empty maps (`make(map[string]int)`) to match `BuildPatterns` semantics for `reflect.DeepEqual` parity.
 - Top-transaction reads hydrate SQL on demand via `attachTopTransactionSQL` using the store's `ResolveTransactionQuerySQL`.

@@ -279,6 +279,14 @@
     "description": "Total events label",
     "other": "Total Events"
   },
+  "report.label.inputFileSize": {
+    "description": "Selected input file size label",
+    "other": "Input File Size"
+  },
+  "report.label.countedEventBytes": {
+    "description": "Counted event byte coverage label",
+    "other": "Counted Event Bytes"
+  },
   "report.label.warnings": {
     "description": "Warnings label",
     "other": "Warnings"
@@ -699,6 +707,22 @@
     "description": "Analyze binlog bytes label",
     "other": "Binlog Bytes"
   },
+  "report.html.analyze.inputFileSize": {
+    "description": "Selected input file size summary label",
+    "other": "Input File Size"
+  },
+  "report.html.analyze.selectedInputBytes": {
+    "description": "Selected input file size summary note",
+    "other": "Selected input file bytes"
+  },
+  "report.html.analyze.countedEventBytes": {
+    "description": "Counted event bytes summary label",
+    "other": "Counted Event Bytes"
+  },
+  "report.html.analyze.countedEventBytesNote": {
+    "description": "Counted event bytes summary note",
+    "other": "Bytes represented by counted events"
+  },
   "report.html.analyze.ddlEvents": {
     "description": "Analyze DDL events label",
     "other": "DDL Events"
@@ -778,6 +802,14 @@
   "report.html.compare.summary": {
     "description": "Compare summary section header",
     "other": "Compare Summary"
+  },
+  "report.html.compare.byteCoverage": {
+    "description": "Compare byte coverage section header",
+    "other": "Byte Coverage"
+  },
+  "report.html.compare.metric": {
+    "description": "Compare metric column label",
+    "other": "Metric"
   },
   "report.html.compare.topTableChanges": {
     "description": "Compare top table changes section header",

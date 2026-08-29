@@ -7,11 +7,11 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | File | Responsibility |
 |------|----------------|
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
-| `product.go` | Owns shared report presentation defaults and metric labels used by all renderers. |
-| `text.go` | Renders the concise diagnostic text report plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes the stable analyze JSON report shape, including optional transaction `xa_xid` and top-level snapshot metadata, and applies SQL context field visibility rules. |
+| `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
+| `text.go` | Renders the concise diagnostic text report with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
+| `json.go` | Serializes the stable analyze JSON report shape, including counted event-byte diagnostics, optional transaction `xa_xid` and top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
-| `html.go` | Renders the self-contained HTML report, including responsive activity-chart layout and ECharts data preparation. |
+| `html.go` | Renders the self-contained HTML report, including physical-file/count-event byte cards, responsive activity-chart layout, and ECharts data preparation. |
 | `mysqlbinlog.go` | Formats transaction spans and builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands with absolute file paths from usable spans; omits `--start-position` when only an XID interval is known. |
 | `*_test.go` | Verifies diagnostic text defaults, opt-in detail sections, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
 
@@ -53,4 +53,5 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
 - Analyze HTML shows a neutral DDL activity notice in Risks & Findings when DDL events exist without alerts; the healthy empty state is reserved for reports without alerts or DDL.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
+- Analyze text and HTML label selected physical input-file bytes separately from counted filtered event bytes; missing selected-file size metadata renders as unavailable.
 - Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions instead of rendering a crowded top-N list.

@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: single self-contained HTML file with embedded ECharts, dark OLED theme, inline CSS.
+// output: single self-contained HTML file with executive selected-file/count-event byte metrics, embedded ECharts, dark OLED theme, inline CSS.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
 
@@ -73,6 +74,9 @@ type htmlReportData struct {
 	TotalRows           int
 	TotalEvents         int
 	DDLCount            int
+	InputFileSize       string
+	HasInputFileSize    bool
+	CountedEventBytes   string
 	Tables              []htmlTableRow
 	OmittedTables       string
 	TableActivitySeries template.JS
@@ -234,12 +238,17 @@ type htmlTableActivitySeries struct {
 func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) htmlReportData {
 	opts = normalizeOptions(opts)
 	d := htmlReportData{
-		GeneratedAt: time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		TotalTxns:   result.Summary.TotalTransactions,
-		TotalRows:   result.Summary.TotalRows,
-		TotalEvents: result.Summary.TotalEvents,
-		EChartsJS:   template.JS(echartsJS), //nolint:gosec
-		TopN:        opts.TopN,
+		GeneratedAt:       time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		TotalTxns:         result.Summary.TotalTransactions,
+		TotalRows:         result.Summary.TotalRows,
+		TotalEvents:       result.Summary.TotalEvents,
+		CountedEventBytes: formatFileSize(countedEventBytes(result)),
+		EChartsJS:         template.JS(echartsJS), //nolint:gosec
+		TopN:              opts.TopN,
+	}
+	if bytes, ok := selectedInputFileBytes(result.Diagnostics.FileCoverage); ok {
+		d.InputFileSize = formatFileSize(bytes)
+		d.HasInputFileSize = true
 	}
 
 	if !result.Summary.StartTime.IsZero() {
@@ -357,7 +366,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		d.FileCoverage.Selected = append(d.FileCoverage.Selected, htmlFileCoverageItem{
 			BinlogPath:   item.BinlogPath,
 			Reason:       item.Reason,
-			Size:         formatFileSize(item.Size),
+			Size:         formatCoverageSize(item.Size),
 			FirstEventAt: item.FirstEventAt.Format("2006-01-02 15:04:05"),
 			LastEventAt:  item.LastEventAt.Format("2006-01-02 15:04:05"),
 		})
@@ -366,7 +375,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		d.FileCoverage.Skipped = append(d.FileCoverage.Skipped, htmlFileCoverageItem{
 			BinlogPath: item.BinlogPath,
 			Reason:     item.Reason,
-			Size:       formatFileSize(item.Size),
+			Size:       formatCoverageSize(item.Size),
 		})
 	}
 	d.HasFileCoverage = len(d.FileCoverage.Selected) > 0 || len(d.FileCoverage.Skipped) > 0
@@ -544,6 +553,13 @@ func formatFileSize(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+func formatCoverageSize(bytes int64) string {
+	if bytes <= 0 {
+		return i18n.T("time.notAvailable")
+	}
+	return formatFileSize(bytes)
 }
 
 func buildHTMLTxnDiagnostic(txn model.Transaction, serverVersion string) htmlTxnDiagnostic {

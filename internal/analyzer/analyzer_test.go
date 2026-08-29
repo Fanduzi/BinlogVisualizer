@@ -1,6 +1,6 @@
 // Package analyzer validates analyzer orchestration and streaming result semantics.
 // input: analyzer test fixtures expressed as model.NormalizedEvent sequences and analyzer.Options values.
-// output: regression coverage for slice-wrapper compatibility, streaming finalization, window/object filtering, and failure handling.
+// output: regression coverage for slice-wrapper compatibility, streaming finalization, window/filter byte accounting, and failure handling.
 // pos: module-level behavioral test suite for the analyzer entrypoint and its external contracts.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -997,10 +997,10 @@ func TestAnalyzerStreamingReportOperationTimeseriesRespectsFilters(t *testing.T)
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 
 	events := []model.NormalizedEvent{
-		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
-		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5},
-		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "audit", Table: "noise", Operation: "UPDATE", RowCount: 99},
-		{Timestamp: base.Add(3 * time.Second), EventType: "XID", TxnKey: "t1"},
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1", BinlogBytes: 1},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5, BinlogBytes: 10},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "audit", Table: "noise", Operation: "UPDATE", RowCount: 99, BinlogBytes: 20},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", TxnKey: "t1", BinlogBytes: 4},
 	}
 	for _, ev := range events {
 		if err := a.Consume(ev); err != nil {
@@ -1020,6 +1020,9 @@ func TestAnalyzerStreamingReportOperationTimeseriesRespectsFilters(t *testing.T)
 	}
 	if result.Summary.TotalEvents != 1 {
 		t.Fatalf("summary total events = %d, want 1 filtered workload event", result.Summary.TotalEvents)
+	}
+	if result.Diagnostics.CountedEventBytes != 10 {
+		t.Fatalf("counted event bytes = %d, want 10 for the included row event", result.Diagnostics.CountedEventBytes)
 	}
 }
 

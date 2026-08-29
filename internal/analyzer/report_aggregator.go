@@ -1,6 +1,6 @@
 // Package analyzer incrementally builds report-ready projections without retaining all transactions.
 // input: completed transactions, minute buckets, DDL events, normalized events, and file coverage.
-// output: bounded ReportSnapshot values used to assemble model.AnalysisResult.
+// output: bounded ReportSnapshot values used to assemble model.AnalysisResult, including filtered event-byte coverage.
 // pos: streaming report aggregation layer that replaces QueryAllTransactions-dependent finalization.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -218,14 +218,20 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	// Merge largest + alert-referenced transactions into a single evidence pool.
 	evidenceTxns := mergeEvidenceTransactions(a.largest, a.alertReferencedTxns)
 	drilldownTxns := mergeEvidenceTransactions(evidenceTxns, flattenPatternRepTxns(a.patternRepTxns))
+	fileSegments := BuildFileSegments(minutes, 5)
+	var countedEventBytes int64
+	for _, minute := range minutes {
+		countedEventBytes += minute.BinlogBytes
+	}
 
 	diagnostics := model.Diagnostics{
 		FileCoverage:        a.fileCoverage,
+		CountedEventBytes:   countedEventBytes,
 		DDLEvents:           append([]model.DDLEvent(nil), a.ddlEvents...),
 		LargestTransactions: append([]model.Transaction(nil), a.largest...),
 		LongestTransactions: append([]model.Transaction(nil), a.longest...),
 		WidestTransactions:  append([]model.Transaction(nil), a.widest...),
-		FileSegments:        BuildFileSegments(minutes, 5),
+		FileSegments:        fileSegments,
 		HotIntervals:        SelectHotIntervals(minutes, 5),
 		Findings:            BuildFindingsFromAlerts(alerts, minutes, evidenceTxns, a.ddlEvents),
 	}

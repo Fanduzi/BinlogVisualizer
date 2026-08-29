@@ -1,6 +1,6 @@
 // Package binlogviz validates end-to-end analyze command behavior and DuckDB temp-store lifecycle.
-// input: mock parsers (including MariaDB XA/Annotate sequences), fixture binlogs, analyzer options, and temporary command resources.
-// output: regression coverage for XA/LOAD_DATA reports, rendered output, temp DuckDB cleanup, and command/analyzer integration semantics.
+// input: mock parsers (including MariaDB XA/Annotate sequences), fixture binlogs, CLI-derived analyzer options, and temporary command resources.
+// output: regression coverage for XA/LOAD_DATA reports, selected-file/count-event byte coverage, rendered output, temp DuckDB cleanup, and command/analyzer integration semantics.
 // pos: command-layer integration test suite covering parse-normalize-analyze-render execution paths.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -1469,6 +1469,12 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	// Verify we have total row activity in the summary (2 INSERT + 1 UPDATE + 1 DELETE)
 	if !bytes.Contains([]byte(output), []byte("Total Rows: 4")) {
 		t.Error("expected output to contain 'Total Rows: 4'")
+	}
+	if !bytes.Contains([]byte(output), []byte("Input File Size: 1.5KB")) {
+		t.Error("expected output to contain selected input file size")
+	}
+	if !bytes.Contains([]byte(output), []byte("Counted Event Bytes:")) {
+		t.Error("expected output to distinguish counted event bytes")
 	}
 }
 
