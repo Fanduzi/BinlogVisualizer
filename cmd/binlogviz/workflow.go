@@ -1,6 +1,6 @@
 // Package binlogviz defines the workflow CLI commands for run, resume, validate, describe, status, clean, and export.
 // input: workflow plan YAML, output directories, cobra flags, and workflow package contracts.
-// output: workflow artifacts, operator stderr status, and cobra command trees that print Error once without Usage on failure.
+// output: workflow artifacts, canonical rooted plan references, operator stderr status, and cobra command trees that print Error once without Usage on failure.
 // pos: CLI orchestration layer for multi-step investigation workflows.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -1485,5 +1485,5 @@ func copyWorkflowPlanIntoOutputDir(outputDir string, planPath string) (string, e
 	if err := os.WriteFile(copiedPlanPath, data, 0o644); err != nil {
 		return "", err
 	}
-	return copiedPlanPath, nil
+	return filepath.Abs(copiedPlanPath)
 }
