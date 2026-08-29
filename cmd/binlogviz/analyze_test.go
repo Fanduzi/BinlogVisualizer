@@ -1,6 +1,6 @@
 // Package binlogviz validates analyze command flag parsing and CLI option translation.
 // input: synthetic CLI args, parsed flag values, and analyzer/report option expectations.
-// output: regression coverage for stable flag defaults, explicit selected-file coverage, validation, and option builders.
+// output: regression coverage for UTC/explicit-offset help, stable flag defaults, explicit selected-file coverage, validation, and option builders.
 // pos: command-layer unit test suite for analyze command configuration behavior.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -18,9 +18,45 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
+
+func TestAnalyzeHelpDocumentsUTCTimestampSemantics(t *testing.T) {
+	t.Cleanup(func() {
+		i18n.ResetForTesting()
+		_ = i18n.Init("en")
+	})
+
+	for _, tc := range []struct {
+		lang  string
+		wants []string
+	}{
+		{lang: "en", wants: []string{"binlog timestamps are utc", "explicit offsets define the instant"}},
+		{lang: "zh-CN", wants: []string{"binlog 时间戳为 utc", "显式偏移量定义该时刻"}},
+	} {
+		t.Run(tc.lang, func(t *testing.T) {
+			i18n.ResetForTesting()
+			i18n.MustInit(tc.lang)
+
+			cmd := newAnalyzeCommand()
+			var out strings.Builder
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs([]string{"--help"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("execute analyze --help: %v", err)
+			}
+			help := strings.ToLower(out.String())
+			for _, want := range tc.wants {
+				if !strings.Contains(help, want) {
+					t.Fatalf("analyze --help missing %q:\n%s", want, out.String())
+				}
+			}
+		})
+	}
+}
 
 func TestParseTimeRange(t *testing.T) {
 	tests := []struct {
@@ -81,6 +117,19 @@ func TestParseTimeRange(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseTimeRangePreservesExplicitOffsetInstant(t *testing.T) {
+	start, end, err := parseTimeRange("2026-03-09T18:00:00+08:00", "2026-03-09T19:00:00+08:00")
+	if err != nil {
+		t.Fatalf("parse explicit-offset range: %v", err)
+	}
+	if !start.Equal(time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)) {
+		t.Fatalf("start instant = %s, want 2026-03-09T10:00:00Z", start)
+	}
+	if !end.Equal(time.Date(2026, 3, 9, 11, 0, 0, 0, time.UTC)) {
+		t.Fatalf("end instant = %s, want 2026-03-09T11:00:00Z", end)
 	}
 }
 

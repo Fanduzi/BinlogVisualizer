@@ -21,11 +21,11 @@
   },
   "cmd.analyze.flag.start": {
     "description": "Start time flag description",
-    "other": "Start time (inclusive, RFC3339 format)"
+    "other": "Start time (inclusive, RFC3339; explicit offsets define the instant; binlog timestamps are UTC)"
   },
   "cmd.analyze.flag.end": {
     "description": "End time flag description",
-    "other": "End time (inclusive, RFC3339 format)"
+    "other": "End time (inclusive, RFC3339; explicit offsets define the instant; binlog timestamps are UTC)"
   },
   "cmd.analyze.flag.fromDir": {
     "description": "From-dir flag description",
@@ -314,6 +314,14 @@
   "report.label.timeRange": {
     "description": "Time range label",
     "other": "Time Range"
+  },
+  "report.label.timestamps": {
+    "description": "Timestamp basis label",
+    "other": "Timestamps"
+  },
+  "report.value.binlogUTC": {
+    "description": "Binlog timestamp basis",
+    "other": "UTC (binlog)"
   },
   "report.label.duration": {
     "description": "Duration label",

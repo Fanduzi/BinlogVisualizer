@@ -14,6 +14,25 @@
 
 BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs and operators who need to quickly answer practical questions from real binlog files: which tables are absorbing the most writes, which transactions are unusually large, where spikes happened, and how workload changed over a time window.
 
+## Architecture
+
+The Cobra command layer streams normalized binlog events into the analyzer, then delegates stable machine and human presentation to report, compare, and trend modules.
+
+### Modules
+
+| Module | Responsibility | Documentation |
+|--------|----------------|---------------|
+| `cmd/binlogviz` | CLI commands and end-to-end orchestration | [README](cmd/binlogviz/README.md) |
+| `internal/binlog` | Binlog parsing, probing, and normalization | [README](internal/binlog/README.md) |
+| `internal/analyzer` | Streaming aggregation and diagnostics | [README](internal/analyzer/README.md) |
+| `internal/model` | Shared analysis and evidence types | [README](internal/model/README.md) |
+| `internal/report` | Analyze text, JSON, Markdown, and HTML renderers | [README](internal/report/README.md) |
+| `internal/i18n` | Embedded English and Simplified Chinese presentation messages | [README](internal/i18n/README.md) |
+| `internal/compare` | Two-report comparison and rendering | [README](internal/compare/README.md) |
+| `internal/trend` | Ordered multi-snapshot trend analysis and rendering | [README](internal/trend/README.md) |
+| `internal/snapshot` | Named analyze snapshot persistence | [README](internal/snapshot/README.md) |
+| `internal/workflow` | Multi-step investigation plans and manifests | [README](internal/workflow/README.md) |
+
 ## Start Here
 
 BinlogViz is a **fast ROW-binlog summary**: hot tables, write shapes, and before/after compare. A 510 MB file is typically a few seconds.

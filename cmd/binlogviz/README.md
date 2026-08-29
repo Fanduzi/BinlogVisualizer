@@ -7,7 +7,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | File | Responsibility |
 |------|----------------|
 | `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, `version`, and `workflow`. |
-| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, time/position/GTID selector flags, selected-file coverage, aggregate parse progress on `stderr`, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
+| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, time/position/GTID selector flags, documents UTC binlog timestamps and explicit-offset RFC3339 filters, selected-file coverage, aggregate parse progress on `stderr`, Format Description server-version plumbing for replay commands, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
 | `analyze_selection.go` | Validates single-file position selectors against exact parsed event boundaries and EOF before report rendering. |
 | `analyze_output.go` | Resolves analyze HTML destination: explicit `--output`, `--output -`, TTY default cwd file, and non-TTY stdout redirect. |
 | `exit.go` | Maps command errors onto process exit codes, including analyze no-data exit 2. |
@@ -17,7 +17,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
 | `workflow.go` | Implements `workflow run <plan.yaml>`, `workflow resume <output_dir>`, canonical rooted plan references, pre-run `workflow validate <plan.yaml>` checks, static `workflow describe <plan.yaml>` previews, read-only `workflow status <output_dir>` inspection, and dry-run-first `workflow clean <output_dir>` cleanup. |
-| `*_test.go` | Covers flag parsing, intersected time/position selection, GTID group filtering, report-v3 round trips, MySQL/MariaDB provenance and XA/LOAD_DATA compatibility, snapshots, cleanup, discovery/no-data behavior, workflows, and release packing. |
+| `*_test.go` | Covers UTC/explicit-offset analyze help, flag parsing, inclusive-window adjacent-file planning, intersected time/position selection, GTID group filtering, report-v3 round trips, MySQL/MariaDB provenance and XA/LOAD_DATA SQL-context compatibility, snapshots, analyze/compare integration, cleanup, discovery/no-data behavior, workflows, and release packing. |
 
 ## Exports
 
@@ -67,6 +67,7 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - `--top N` sets the default ranked output size for productized text and HTML report sections.
 - `--detail-store none|duckdb` controls optional transaction detail persistence. The default `none` generates reports from streaming aggregates without DuckDB; `duckdb` keeps the detail backend enabled for future lookup workflows.
 - `--details`, `--show-minutes`, and `--show-patterns` expand the default concise text report without changing analyzer semantics.
+- `analyze --help` states that binlog timestamps are UTC and that explicit RFC3339 offsets define the filter instant; parsing and inclusive-window comparison semantics are unchanged.
 - Analyze performance coverage includes text-vs-HTML rendering, corpus-backed DBA incident workloads, a CI-safe near-1GB synthetic mix benchmark, and an external real-binlog benchmark (`BenchmarkAnalyzeExternalRealBinlog`) gated behind `BINLOGVIZ_REAL_BINLOG` env var; real-fixture parser benchmarks isolate parse-only, parse+normalize, and end-to-end layers to identify per-stage bottlenecks.
 - HTML report section IDs were consolidated from 7 flat sections to 5 semantic groups: `executive-summary`, `section-findings`, `section-activity`, `section-objects`, `section-evidence`. Product tests assert these IDs directly.
 - `cmd/binlogviz/testdata/sql-corpus` now carries richer DBA-facing incident scenarios, including runner-up large/long/wide transactions so product tests can catch over-crowded transaction-evidence rendering instead of only toy single-winner cases.

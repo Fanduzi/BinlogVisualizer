@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with completeness, deduplicated transaction evidence, bounded transaction lookup, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with UTC-labelled timestamps, completeness, deduplicated transaction evidence, bounded transaction lookup, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -245,7 +245,7 @@ type htmlTableActivitySeries struct {
 func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) htmlReportData {
 	opts = normalizeOptions(opts)
 	d := htmlReportData{
-		GeneratedAt:       time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		GeneratedAt:       formatTime(time.Now()),
 		TotalTxns:         result.Summary.TotalTransactions,
 		PartialTxns:       result.Summary.PartialTransactions,
 		UnknownTxns:       result.Summary.UnknownTransactions,
@@ -269,8 +269,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasTransactions = len(d.Transactions) > 0
 
 	if !result.Summary.StartTime.IsZero() {
-		d.StartTime = result.Summary.StartTime.Format("2006-01-02 15:04:05")
-		d.EndTime = result.Summary.EndTime.Format("2006-01-02 15:04:05")
+		d.StartTime = formatTime(result.Summary.StartTime)
+		d.EndTime = formatTime(result.Summary.EndTime)
 		d.Duration = result.Summary.Duration.String()
 	}
 
@@ -339,7 +339,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			object = ddl.Object
 		}
 		d.DDLEvents = append(d.DDLEvents, htmlDDLEvent{
-			Timestamp: ddl.Timestamp.Format("2006-01-02 15:04:05"),
+			Timestamp: formatTime(ddl.Timestamp),
 			Operation: ddl.Operation,
 			Object:    object,
 			Statement: ddl.Statement,
@@ -354,7 +354,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 
 	for _, interval := range result.Diagnostics.HotIntervals {
 		d.HotIntervals = append(d.HotIntervals, htmlHotInterval{
-			Timestamp:            interval.Minute.Format("2006-01-02 15:04:05"),
+			Timestamp:            formatTime(interval.Minute),
 			Rows:                 interval.TotalRows,
 			Txns:                 interval.TxnCount,
 			Events:               interval.EventCount,
@@ -371,8 +371,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			BinlogPath:   item.BinlogPath,
 			Reason:       item.Reason,
 			Size:         formatCoverageSize(item.Size),
-			FirstEventAt: item.FirstEventAt.Format("2006-01-02 15:04:05"),
-			LastEventAt:  item.LastEventAt.Format("2006-01-02 15:04:05"),
+			FirstEventAt: formatTime(item.FirstEventAt),
+			LastEventAt:  formatTime(item.LastEventAt),
 		})
 	}
 	for _, item := range result.Diagnostics.FileCoverage.Skipped {
@@ -387,8 +387,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	// File segments and throughput chart data
 	for _, seg := range result.Diagnostics.FileSegments {
 		d.FileSegments = append(d.FileSegments, htmlFileSegment{
-			StartTime:   seg.StartTime.Format("2006-01-02 15:04"),
-			EndTime:     seg.EndTime.Format("2006-01-02 15:04"),
+			StartTime:   formatTimeWithLayout(seg.StartTime, "2006-01-02 15:04"),
+			EndTime:     formatTimeWithLayout(seg.EndTime, "2006-01-02 15:04"),
 			BinlogBytes: seg.BinlogBytes,
 			Rows:        seg.Rows,
 			Events:      seg.Events,
@@ -414,7 +414,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	rows := make([]int, 0, len(result.Minutes))
 	txns := make([]int, 0, len(result.Minutes))
 	for _, m := range result.Minutes {
-		labels = append(labels, m.Minute.Format("15:04"))
+		labels = append(labels, formatTimeWithLayout(m.Minute, "15:04"))
 		rows = append(rows, m.TotalRows)
 		txns = append(txns, m.TxnCount)
 	}
@@ -425,12 +425,12 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	tpsLabels := make([]string, 0, len(result.Timeseries.TPSSeries))
 	tpsValues := make([]float64, 0, len(result.Timeseries.TPSSeries))
 	for _, point := range result.Timeseries.TPSSeries {
-		tpsLabels = append(tpsLabels, point.Minute.Format("15:04"))
+		tpsLabels = append(tpsLabels, formatTimeWithLayout(point.Minute, "15:04"))
 		tpsValues = append(tpsValues, point.Value)
 	}
 	if len(tpsLabels) == 0 {
 		for _, m := range result.Minutes {
-			tpsLabels = append(tpsLabels, m.Minute.Format("15:04"))
+			tpsLabels = append(tpsLabels, formatTimeWithLayout(m.Minute, "15:04"))
 			tpsValues = append(tpsValues, float64(m.TxnCount)/60.0)
 		}
 	}
@@ -481,7 +481,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 				break
 			}
 			hd.BusiestMinutes = append(hd.BusiestMinutes, htmlPeakMinute{
-				Minute:    m.Minute.Format("2006-01-02 15:04"),
+				Minute:    formatTimeWithLayout(m.Minute, "2006-01-02 15:04"),
 				TotalRows: m.TotalRows,
 				TxnCount:  m.TxnCount,
 			})
@@ -554,7 +554,7 @@ func buildHTMLTableActivitySeries(points []model.TableActivityPoint) htmlTableAc
 		DeleteRows: make([]int, 0, len(points)),
 	}
 	for _, point := range points {
-		series.Labels = append(series.Labels, point.Minute.Format("15:04"))
+		series.Labels = append(series.Labels, formatTimeWithLayout(point.Minute, "15:04"))
 		series.Rows = append(series.Rows, point.Rows)
 		series.InsertRows = append(series.InsertRows, point.InsertRows)
 		series.UpdateRows = append(series.UpdateRows, point.UpdateRows)

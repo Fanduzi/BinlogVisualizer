@@ -1,6 +1,6 @@
 // Package report verifies Markdown rendering structure, placeholders, and writer behavior.
 // input: synthetic AnalysisResult fixtures plus explicit SQL context presentation modes.
-// output: regression coverage for Markdown incident evidence, section content, placeholder keys, and deadlock-free writer wrappers.
+// output: regression coverage for UTC-labelled Markdown incident evidence, section content, placeholder keys, and deadlock-free writer wrappers.
 // pos: Markdown renderer regression suite guarding user-facing GitHub-flavored report output.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -131,7 +131,7 @@ func TestRenderMarkdownIncludesStructuredSectionsAndEscaping(t *testing.T) {
 		"| shop\\|core | orders\\|archive | 1,200 | 700 | 400 | 100 | 4 |",
 		"| 1 | txn-1 | complete | no | 120 | 0 | 5.0s | N/A | orders, payments | INSERT, UPDATE |",
 		"> `UPDATE orders SET status = ? WHERE id = ?`",
-		"| 2026-03-09 10:05:00 | 500 | 3 |",
+		"| 2026-03-09 10:05:00 UTC | 500 | 3 |",
 		"| critical | N/A | table drift on shop\\|core.orders\\|archive | N/A | N/A | N/A |",
 	}
 	for _, snippet := range expectedSnippets {
@@ -278,9 +278,9 @@ func TestRenderMarkdownIncludesIncidentDiagnosticsAndDegradesMissingSpans(t *tes
 		"| Format | MIXED |",
 		"| Ignored Query-DML Events | 2 |",
 		"## DDL Timeline",
-		"| 2026-03-09 10:05:00 | ALTER TABLE | shop\\|core.orders | ALTER TABLE shop\\|core.orders ADD COLUMN note TEXT | mysql-bin.000123:100-200 |",
+		"| 2026-03-09 10:05:00 UTC | ALTER TABLE | shop\\|core.orders | ALTER TABLE shop\\|core.orders ADD COLUMN note TEXT | mysql-bin.000123:100-200 |",
 		"## Findings",
-		`| warning | large_transaction | large\\\|transaction detected | txn-missing | 2026-03-09 10:06:00 | transactions:txn-missing, rows\|2 |`,
+		`| warning | large_transaction | large\\\|transaction detected | txn-missing | 2026-03-09 10:06:00 UTC | transactions:txn-missing, rows\|2 |`,
 		"| warning | input_format | MIXED: counted 2 ROW images, ignored 2 Query-DML events | N/A | N/A | N/A |",
 		"| 1 | txn-missing | complete | no | 2 | 0 | 0s | N/A |  |  |",
 	} {

@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with provenance/selector evidence plus optional SQL context and snapshot presentation controls.
-// output: report-v3 JSON with selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, and snapshots.
+// output: report-v3 JSON with RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, and snapshots.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -699,7 +699,7 @@ func convertMinutes(minutes []model.MinuteBucket) []jsonMinuteBucket {
 	result := make([]jsonMinuteBucket, len(minutes))
 	for i, m := range minutes {
 		result[i] = jsonMinuteBucket{
-			Minute:    m.Minute.Format(time.RFC3339),
+			Minute:    formatJSONTime(m.Minute),
 			TotalRows: m.TotalRows,
 			TxnCount:  m.TxnCount,
 			TableRows: copyStringIntMap(m.TableRows),
@@ -852,16 +852,33 @@ func copyStringAnyMap(m map[string]any) map[string]any {
 	}
 	result := make(map[string]any, len(m))
 	for k, v := range m {
-		result[k] = v
+		result[k] = normalizeJSONTimeValue(v)
 	}
 	return result
+}
+
+func normalizeJSONTimeValue(value any) any {
+	switch value := value.(type) {
+	case time.Time:
+		return formatJSONTime(value)
+	case map[string]any:
+		return copyStringAnyMap(value)
+	case []any:
+		result := make([]any, len(value))
+		for i, item := range value {
+			result[i] = normalizeJSONTimeValue(item)
+		}
+		return result
+	default:
+		return value
+	}
 }
 
 func formatJSONTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.Format(time.RFC3339)
+	return t.UTC().Format(time.RFC3339)
 }
 
 func boolPtr(v bool) *bool {
