@@ -1,3 +1,8 @@
+// Package compare verifies localized compare HTML presentation.
+// input: compare results rendered under explicit English and Chinese runtime locales.
+// output: regression coverage for localized compare shell, fallback labels, and comparability guards.
+// pos: compare HTML localization tests at the renderer boundary.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -94,6 +99,31 @@ func TestRenderHTMLLocalizesFallbackSnapshotLabelsToChinese(t *testing.T) {
 	} {
 		if strings.Contains(out, token) {
 			t.Fatalf("expected fallback label not to leak English token %q", token)
+		}
+	}
+}
+
+func TestRenderHTMLLocalizesComparabilityGuardToChinese(t *testing.T) {
+	i18n.ResetForTesting()
+	i18n.MustInit("zh-CN")
+	t.Cleanup(i18n.ResetForTesting)
+
+	result := CompareResult{Comparability: Comparability{
+		Verdict:     VerdictNotComparable,
+		ReasonCodes: []string{ReasonWorkloadIdentityMismatch},
+	}}
+	out, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+	for _, token := range []string{"可比性保护", "由于输入不可比较，已抑制因果发现", "原因代码："} {
+		if !strings.Contains(out, token) {
+			t.Fatalf("expected localized comparability guard %q", token)
+		}
+	}
+	for _, token := range []string{"Comparability Guard", "Causal findings suppressed", "Reason Codes:"} {
+		if strings.Contains(out, token) {
+			t.Fatalf("comparability guard leaked English token %q", token)
 		}
 	}
 }

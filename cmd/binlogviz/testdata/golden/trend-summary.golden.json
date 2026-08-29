@@ -1,4 +1,94 @@
 {
+  "comparability": {
+    "verdict": "comparable",
+    "reason_codes": [],
+    "evidence": [
+      {
+        "role": "point",
+        "name": "earlier",
+        "report_version": 3,
+        "workload_id": "test-workload",
+        "server_ids": [
+          7
+        ],
+        "server_versions": [
+          "8.4.0"
+        ],
+        "server_flavors": [
+          "mysql"
+        ],
+        "mixed_producers": false,
+        "schemas": [
+          "shop"
+        ],
+        "scope": {
+          "include_schema": null,
+          "exclude_schema": null,
+          "include_table": null,
+          "exclude_table": null
+        },
+        "total_transactions": 50,
+        "partial_transactions": 0,
+        "unknown_transactions": 0
+      },
+      {
+        "role": "point",
+        "name": "middle",
+        "report_version": 3,
+        "workload_id": "test-workload",
+        "server_ids": [
+          7
+        ],
+        "server_versions": [
+          "8.4.0"
+        ],
+        "server_flavors": [
+          "mysql"
+        ],
+        "mixed_producers": false,
+        "schemas": [
+          "shop"
+        ],
+        "scope": {
+          "include_schema": null,
+          "exclude_schema": null,
+          "include_table": null,
+          "exclude_table": null
+        },
+        "total_transactions": 90,
+        "partial_transactions": 0,
+        "unknown_transactions": 0
+      },
+      {
+        "role": "point",
+        "name": "later",
+        "report_version": 3,
+        "workload_id": "test-workload",
+        "server_ids": [
+          7
+        ],
+        "server_versions": [
+          "8.4.0"
+        ],
+        "server_flavors": [
+          "mysql"
+        ],
+        "mixed_producers": false,
+        "schemas": [
+          "shop"
+        ],
+        "scope": {
+          "include_schema": null,
+          "exclude_schema": null,
+          "include_table": null,
+          "exclude_table": null
+        },
+        "total_transactions": 150,
+        "partial_transactions": 0,
+        "unknown_transactions": 0
+      }
+    ]
+  },
   "input_mode": "explicit",
   "snapshot_dir": "<snapshot-dir>",
   "order": "cli",
@@ -35,6 +125,8 @@
       "summary": {
         "total_rows": 1000,
         "total_transactions": 50,
+        "partial_transactions": 0,
+        "unknown_transactions": 0,
         "total_events": 1200,
         "warnings": 0
       },
@@ -80,6 +172,8 @@
       "summary": {
         "total_rows": 1800,
         "total_transactions": 90,
+        "partial_transactions": 0,
+        "unknown_transactions": 0,
         "total_events": 2200,
         "warnings": 0
       },
@@ -125,6 +219,8 @@
       "summary": {
         "total_rows": 3000,
         "total_transactions": 150,
+        "partial_transactions": 0,
+        "unknown_transactions": 0,
         "total_events": 3600,
         "warnings": 0
       },

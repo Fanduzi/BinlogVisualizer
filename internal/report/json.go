@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
-// input: analyzer-produced AnalysisResult values with provenance/selector evidence plus optional SQL context and snapshot presentation controls.
-// output: report-v3 JSON with RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, and snapshots.
+// input: analyzer-produced AnalysisResult values with explicit workload identity, canonical scope, provenance/selector evidence, SQL context, and snapshot presentation controls.
+// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, and snapshots.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -20,6 +20,8 @@ const currentReportVersion = 3
 // Field names use snake_case for script-friendly output.
 type jsonAnalysisResult struct {
 	ReportVersion       int                    `json:"report_version"`
+	WorkloadID          string                 `json:"workload_id,omitempty"`
+	Scope               *jsonSnapshotFilters   `json:"scope,omitempty"`
 	Provenance          *jsonProvenance        `json:"provenance,omitempty"`
 	Selection           *jsonSelection         `json:"selection,omitempty"`
 	SQLContext          jsonSQLContext         `json:"sql_context"`
@@ -352,6 +354,8 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 	}
 	return jsonAnalysisResult{
 		ReportVersion:       currentReportVersion,
+		WorkloadID:          result.WorkloadID,
+		Scope:               convertScope(result.Scope),
 		Provenance:          convertProvenance(result.Provenance),
 		Selection:           convertSelection(result.Selection),
 		SQLContext:          jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
@@ -393,6 +397,14 @@ func cloneJSONInt64(value *int64) *int64 {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func convertScope(scope *model.SnapshotFilters) *jsonSnapshotFilters {
+	if scope == nil {
+		return nil
+	}
+	converted := convertSnapshotFilters(*scope)
+	return &converted
 }
 
 func convertProvenance(provenance model.ReportProvenance) *jsonProvenance {

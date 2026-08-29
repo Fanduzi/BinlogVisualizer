@@ -14,7 +14,17 @@
   "run_finished_at": "<timestamp>",
   "status": "success",
   "workflow_summary": {
-    "findings": [],
+    "findings": [
+      {
+        "kind": "comparability_guard",
+        "title": "Comparability guard",
+        "summary": "Causal findings suppressed because input comparability is unknown; raw deltas remain available.",
+        "source_step_kind": "compare",
+        "source_step_name": "week2_vs_week1",
+        "source_report_path": "compare/week2_vs_week1.html",
+        "source_report_label": "week2_vs_week1"
+      }
+    ],
     "recommendations": [],
     "warnings": []
   },

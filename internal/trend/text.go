@@ -1,14 +1,31 @@
+// Package trend renders human-readable trend reports with raw series and gated narratives.
+// input: deterministic Result values with structured comparability evidence and ordered numeric point data.
+// output: text reports leading with any comparability guard before raw deltas, tables, patterns, and diagnostics.
+// pos: terminal renderer for the trend pipeline after series-wide comparability assessment.
+// note: if this file changes, update this header and internal/trend/README.md.
 package trend
 
 import (
 	"fmt"
 	"strings"
+
+	comparepkg "binlogviz/internal/compare"
 )
 
 func RenderText(result Result) (string, error) {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "Trend Summary\n")
+	guarded := hasTrendComparabilityGuard(result.Comparability)
+	if guarded {
+		fmt.Fprintf(&b, "%s [%s]\n", comparepkg.ComparabilityGuardTitle(), result.Comparability.Verdict)
+		fmt.Fprintf(&b, "%s\n", comparepkg.ComparabilityGuardSummary(result.Comparability.Verdict))
+		fmt.Fprintf(&b, "%s %s\n", comparepkg.ComparabilityReasonCodesLabel(), strings.Join(result.Comparability.ReasonCodes, ", "))
+		for _, evidence := range result.Comparability.Evidence {
+			fmt.Fprintf(&b, "- %s\n", comparepkg.FormatComparabilityEvidence(evidence))
+		}
+		fmt.Fprint(&b, "\n")
+	}
 	fmt.Fprintf(&b, "Input Mode: %s\n", result.InputMode)
 	if result.BaselineSnapshot != nil {
 		fmt.Fprintf(&b, "Baseline Snapshot: %s\n", formatSnapshotDisplay(*result.BaselineSnapshot))
@@ -22,7 +39,7 @@ func RenderText(result Result) (string, error) {
 		fmt.Fprintf(&b, "Alerts: %d -> %d (%+d)\n", first.AlertCount, last.AlertCount, result.Insights.AlertCountDelta)
 	}
 
-	if len(result.TrendSummary) > 0 {
+	if len(result.TrendSummary) > 0 && !guarded {
 		fmt.Fprintf(&b, "\nKey Findings\n")
 		for i, finding := range result.TrendSummary {
 			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, finding.Kind, finding.Summary)
@@ -132,6 +149,10 @@ func RenderText(result Result) (string, error) {
 	fmt.Fprintf(&b, "- Alert delta: %+d\n", result.Insights.AlertCountDelta)
 
 	return b.String(), nil
+}
+
+func hasTrendComparabilityGuard(comparability Comparability) bool {
+	return comparability.Verdict == comparepkg.VerdictNotComparable || comparability.Verdict == comparepkg.VerdictUnknown
 }
 
 func formatPatternTrendDisplay(trend PatternTrend) string {

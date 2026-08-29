@@ -1,24 +1,26 @@
 // Package compare defines compare-input contracts and comparison result models.
-// input: report-v0-v3 analyze JSON with optional v3 provenance, selector evidence, SQL mode, completeness, replay, and counted-byte evidence.
-// output: typed compare inputs/results preserving selectors, identity, completeness, safe replay, counts, and render-only byte coverage.
+// input: report-v0-v3 analyze JSON with optional workload identity/scope, v3 provenance, selector evidence, SQL mode, completeness, replay, and counted-byte evidence.
+// output: typed compare inputs/results preserving comparability and selector evidence, known identity, completeness, safe replay, counts, and render-only byte coverage.
 // pos: compare pipeline boundary between JSON loading and diff/render stages.
 // note: if this file changes, update this header and module README.md.
 package compare
 
 type InputReport struct {
-	ReportVersion *int               `json:"report_version,omitempty"`
-	Provenance    *InputProvenance   `json:"provenance,omitempty"`
-	Selection     *InputSelection    `json:"selection,omitempty"`
-	SQLContext    *InputSQLContext   `json:"sql_context,omitempty"`
-	Summary       InputSummary       `json:"summary"`
-	Timeseries    InputTimeseries    `json:"timeseries"`
-	Diagnostics   InputDiagnostics   `json:"diagnostics"`
-	Tables        []InputTable       `json:"tables"`
-	Transactions  []InputTransaction `json:"transactions"`
-	Patterns      []InputPattern     `json:"patterns"`
-	Alerts        []InputAlert       `json:"alerts"`
-	Warnings      int                `json:"warnings"`
-	Snapshot      *InputSnapshot     `json:"snapshot,omitempty"`
+	ReportVersion *int                  `json:"report_version,omitempty"`
+	WorkloadID    string                `json:"workload_id,omitempty"`
+	Scope         *InputSnapshotFilters `json:"scope,omitempty"`
+	Provenance    *InputProvenance      `json:"provenance,omitempty"`
+	Selection     *InputSelection       `json:"selection,omitempty"`
+	SQLContext    *InputSQLContext      `json:"sql_context,omitempty"`
+	Summary       InputSummary          `json:"summary"`
+	Timeseries    InputTimeseries       `json:"timeseries"`
+	Diagnostics   InputDiagnostics      `json:"diagnostics"`
+	Tables        []InputTable          `json:"tables"`
+	Transactions  []InputTransaction    `json:"transactions"`
+	Patterns      []InputPattern        `json:"patterns"`
+	Alerts        []InputAlert          `json:"alerts"`
+	Warnings      int                   `json:"warnings"`
+	Snapshot      *InputSnapshot        `json:"snapshot,omitempty"`
 }
 
 type InputSelection struct {
@@ -239,6 +241,7 @@ type InputSnapshotFilters struct {
 }
 
 type CompareResult struct {
+	Comparability     Comparability      `json:"comparability"`
 	Summary           SummaryDelta       `json:"summary"`
 	KeyFindings       []CompareFinding   `json:"key_findings"`
 	Recommendations   []Recommendation   `json:"recommendations"`
@@ -252,6 +255,57 @@ type CompareResult struct {
 	BaselineLabel     string             `json:"baseline_label"`
 	CurrentSnapshot   *InputSnapshot     `json:"current_snapshot,omitempty"`
 	BaselineSnapshot  *InputSnapshot     `json:"baseline_snapshot,omitempty"`
+}
+
+type ComparabilityVerdict string
+
+const (
+	VerdictComparable    ComparabilityVerdict = "comparable"
+	VerdictNotComparable ComparabilityVerdict = "not_comparable"
+	VerdictUnknown       ComparabilityVerdict = "unknown"
+)
+
+const (
+	ReasonWorkloadIdentityMismatch     = "workload_identity_mismatch"
+	ReasonMixedProducers               = "mixed_producers"
+	ReasonProducerFlavorConflict       = "producer_flavor_conflict"
+	ReasonIncompatibleScope            = "incompatible_scope"
+	ReasonMissingWorkloadIdentity      = "missing_workload_identity"
+	ReasonMissingProducerProvenance    = "missing_producer_provenance"
+	ReasonLegacyReportMetadata         = "legacy_report_metadata"
+	ReasonMissingScope                 = "missing_scope"
+	ReasonInsufficientCompleteness     = "insufficient_completeness_evidence"
+	ReasonPartialOrUnknownTransactions = "partial_or_unknown_transactions"
+)
+
+// Comparability is the structured safety verdict emitted by compare and trend.
+type Comparability struct {
+	Verdict     ComparabilityVerdict    `json:"verdict"`
+	ReasonCodes []string                `json:"reason_codes"`
+	Evidence    []ComparabilityEvidence `json:"evidence"`
+}
+
+// ComparabilityEvidence keeps operator-visible facts without treating them as workload identity.
+type ComparabilityEvidence struct {
+	Role                string                `json:"role"`
+	Name                string                `json:"name,omitempty"`
+	ReportVersion       *int                  `json:"report_version,omitempty"`
+	WorkloadID          string                `json:"workload_id,omitempty"`
+	ServerIDs           []uint32              `json:"server_ids,omitempty"`
+	ServerVersions      []string              `json:"server_versions,omitempty"`
+	ServerFlavors       []string              `json:"server_flavors,omitempty"`
+	MixedProducers      bool                  `json:"mixed_producers"`
+	Schemas             []string              `json:"schemas,omitempty"`
+	Scope               *InputSnapshotFilters `json:"scope,omitempty"`
+	TotalTransactions   int                   `json:"total_transactions"`
+	PartialTransactions *int                  `json:"partial_transactions,omitempty"`
+	UnknownTransactions *int                  `json:"unknown_transactions,omitempty"`
+}
+
+// ComparabilityInput names one report participating in a shared verdict.
+type ComparabilityInput struct {
+	Role   string
+	Report InputReport
 }
 
 // DiagnosticsDelta holds DBA-oriented diagnostic comparison results.

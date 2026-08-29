@@ -1,6 +1,6 @@
 // Package binlogviz verifies trend command registration and output behavior.
-// input: Cobra root and trend commands plus fixture-backed analyze reports built by tests.
-// output: assertions for trend CLI wiring, snapshot handling, and user-facing output.
+// input: Cobra root and trend commands plus comparable report-v3 and explicit legacy snapshot fixtures built by tests.
+// output: assertions for trend CLI wiring, snapshot handling, series-wide comparability, legacy fallback, and user-facing output.
 // pos: command-level regression coverage for the trend workflow.
 // note: if this file changes, keep cmd/binlogviz/README.md synchronized.
 package binlogviz
@@ -624,6 +624,7 @@ func TestTrendCommandFallsBackToSummaryStartTimeWhenSnapshotWindowMissing(t *tes
 		Alerts:    2,
 	}))
 	writeSnapshotFixture(t, dir, "legacy", trendSnapshotFixtureJSONWithWindowOverride(trendSnapshotFixture{
+		Legacy:    true,
 		Name:      "legacy",
 		Label:     "Legacy",
 		StartTime: "2026-03-21T10:00:00Z",
@@ -674,6 +675,7 @@ func TestTrendCommandFallsBackToSummaryStartTimeWhenSnapshotWindowMissing(t *tes
 }
 
 type trendSnapshotFixture struct {
+	Legacy    bool
 	Name      string
 	Label     string
 	StartTime string
@@ -707,9 +709,20 @@ func trendSnapshotFixtureJSON(f trendSnapshotFixture) string {
 }
 
 func trendSnapshotFixtureJSONWithWindowOverride(f trendSnapshotFixture, windowStart, windowEnd string) string {
-	return `{
+	reportMetadata := `"report_version": 3,
+  "workload_id": "test-workload",
+  "scope": {},
+  "provenance": {"server_ids": [7], "server_versions": ["8.4.0"], "server_flavors": ["mysql"], "mixed_producers": false},`
+	completenessMetadata := `"partial_transactions": 0,
+    "unknown_transactions": 0,`
+	if f.Legacy {
+		reportMetadata = ""
+		completenessMetadata = ""
+	}
+	return `{` + reportMetadata + `
   "summary": {
     "total_transactions": ` + intString(f.Txns) + `,
+    ` + completenessMetadata + `
     "total_rows": ` + intString(f.Rows) + `,
     "total_events": ` + intString(f.Events) + `,
     "start_time": "` + f.StartTime + `",

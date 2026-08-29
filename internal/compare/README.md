@@ -7,8 +7,9 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | File | Responsibility |
 |------|----------------|
 | `load.go` | Loads and validates analyze report versions 0 through 3 from files or bytes, normalizing legacy missing completeness to unknown. |
-| `model.go` | Defines compare input contracts that preserve report-v3 selection, provenance/SQL metadata, completeness, counted-event diagnostics, snapshot metadata, pattern shapes, and replay evidence without inventing legacy identity. |
-| `diff.go` | Computes deterministic summary, completeness, table, pattern, operation, alert, and baseline/current byte-coverage deltas. |
+| `model.go` | Defines compare input contracts that preserve report-v3 identity/scope, selection, provenance/SQL metadata, completeness, counted-event diagnostics, snapshot metadata, pattern shapes, and structured comparability evidence without inventing legacy identity. |
+| `comparability.go` | Assesses explicit workload identity, provenance/flavor, configured scope, report version, and transaction completeness across inputs. |
+| `diff.go` | Computes deterministic raw summary, completeness, table, pattern, operation, alert, and byte-coverage deltas, and gates causal findings, recommendations, and drilldowns on comparability. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
 | `replay.go` | Preserves analyze transaction spans and replay commands for compare and trend evidence. |
@@ -24,6 +25,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - `LoadReport(path string) (InputReport, error)` — Loads and validates a compare-compatible analyze JSON file.
 - `DecodeReportJSON(data []byte) (InputReport, error)` — Validates compare-compatible analyze JSON from bytes for reuse by snapshot commands.
 - `BuildCompareResult(current, baseline InputReport) CompareResult` — Produces a deterministic compare result from two validated inputs.
+- `AssessComparability(inputs []ComparabilityInput) Comparability` — Returns the shared structured verdict and visible evidence used by compare and trend.
 - `RenderText(result CompareResult) (string, error)` — Renders terminal-friendly compare output.
 - `RenderJSON(result CompareResult) (string, error)` — Serializes compare results with stable JSON fields.
 - `RenderHTML(result CompareResult) (string, error)` — Renders the chart-based compare HTML report.
@@ -53,3 +55,5 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Current largest and longest transaction evidence preserves completeness and replay fields; a supplied command is trusted only when report v3 explicitly marks full-transaction replay available, so retained legacy or incomplete spans never synthesize a command.
 - Compare HTML shows selected physical input-file bytes and counted event bytes in consistently labeled baseline/current columns; byte coverage is omitted from the stable compare JSON wire shape.
 - Optional report-v3 selector evidence survives `DecodeReportJSON` unchanged so snapshots and compare callers can round-trip requested/effective position and GTID provenance.
+- Raw deltas are always available. Ordinary causal findings, recommendations, and drilldowns require `comparable`; guarded results contain exactly one first `comparability_guard` finding, and renderers derive the localized guard directly from the verdict so public rendering remains safe even without a prebuilt finding slice.
+- Only matching non-empty workload IDs prove shared identity. Server IDs/versions, observed schemas, filenames, and flavors remain visible evidence; legacy v0-v2 or insufficient completeness is `unknown`, while explicit identity/flavor/scope conflicts are `not_comparable`.

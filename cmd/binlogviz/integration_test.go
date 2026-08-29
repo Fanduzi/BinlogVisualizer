@@ -1,6 +1,6 @@
 // Package binlogviz validates end-to-end analyze command behavior and DuckDB temp-store lifecycle.
-// input: mock parsers with MySQL/MariaDB provenance, XA/Annotate sequences, and SQL context; fixture binlogs; CLI-derived analyzer options; and temporary command resources.
-// output: regression coverage for report-v3 provenance/selection round trips, XA/LOAD_DATA SQL modes, byte coverage, deadlock-free rendered output capture, temp cleanup, and command/analyzer semantics.
+// input: mock parsers with MySQL/MariaDB provenance, XA/Annotate sequences, SQL context, workload identity/scope, fixture binlogs, CLI-derived analyzer options, and temporary command resources.
+// output: regression coverage for report-v3 workload identity/scope, provenance/selection round trips, XA/LOAD_DATA SQL modes, byte coverage, deadlock-free rendered output capture, temp cleanup, and command/analyzer semantics.
 // pos: command-layer integration test suite covering parse-normalize-analyze-render execution paths.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -471,6 +471,7 @@ func TestAnalyzeCommandJSONSnapshotFlowPersistsReportAndPrintsSavePath(t *testin
 		"--format", "json",
 		"--snapshot-name", snapshotName,
 		"--snapshot-dir", snapshotDir,
+		"--workload-id", "orders-production",
 		"--start", "2026-03-15T14:00:00Z",
 		"--end", "2026-03-15T15:00:00Z",
 		"--include-schema", "testdb",
@@ -503,6 +504,17 @@ func TestAnalyzeCommandJSONSnapshotFlowPersistsReportAndPrintsSavePath(t *testin
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("unmarshal stdout json: %v", err)
+	}
+	if parsed["workload_id"] != "orders-production" {
+		t.Fatalf("expected top-level workload_id, got %v", parsed["workload_id"])
+	}
+	scope, ok := parsed["scope"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected top-level scope object, got %v", parsed["scope"])
+	}
+	scopeSchemas, ok := scope["include_schema"].([]any)
+	if !ok || len(scopeSchemas) != 1 || scopeSchemas[0] != "testdb" {
+		t.Fatalf("expected scope.include_schema to contain testdb, got %v", scope["include_schema"])
 	}
 	snapshot, ok := parsed["snapshot"].(map[string]any)
 	if !ok {

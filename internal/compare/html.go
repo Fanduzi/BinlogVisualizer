@@ -1,6 +1,6 @@
 // Package compare renders self-contained HTML compare reports.
-// input: deterministic CompareResult values produced by the compare diff engine.
-// output: compare-specific HTML pages with summary cards, baseline/current byte coverage, charts, detail tables, and current replay evidence.
+// input: deterministic CompareResult values with structured comparability evidence produced by the compare diff engine.
+// output: compare-specific HTML pages leading with any narrative guard and visible evidence before summary cards, deltas, charts, and replay evidence.
 // pos: compare renderer used by the compare command HTML output path.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -19,6 +19,10 @@ import (
 
 type htmlCompareData struct {
 	Result                CompareResult
+	Guarded               bool
+	GuardTitle            string
+	GuardSummary          string
+	ReasonCodesLabel      string
 	GeneratedAt           string
 	EChartsJS             template.JS
 	SummaryPairsJSON      template.JS
@@ -54,16 +58,17 @@ func RenderHTML(result CompareResult) (string, error) {
 	}
 
 	tmpl, err := report.NewHTMLTemplate("compare", compareHTMLTemplate, template.FuncMap{
-		"formatDelta":         formatHTMLDelta,
-		"formatPercent":       formatHTMLPercent,
-		"formatBytes":         formatCompareFileSize,
-		"formatOptionalBytes": formatOptionalCompareFileSize,
-		"snapshotWindow":      formatSnapshotWindow,
-		"snapshotInputMode":   formatSnapshotInputMode,
-		"snapshotSource":      formatSnapshotSource,
-		"snapshotFilters":     formatSnapshotFilters,
-		"compareLabel":        localizedCompareLabel,
-		"compareSource":       localizedCompareSource,
+		"formatDelta":           formatHTMLDelta,
+		"formatPercent":         formatHTMLPercent,
+		"formatBytes":           formatCompareFileSize,
+		"formatOptionalBytes":   formatOptionalCompareFileSize,
+		"snapshotWindow":        formatSnapshotWindow,
+		"snapshotInputMode":     formatSnapshotInputMode,
+		"snapshotSource":        formatSnapshotSource,
+		"snapshotFilters":       formatSnapshotFilters,
+		"compareLabel":          localizedCompareLabel,
+		"compareSource":         localizedCompareSource,
+		"comparabilityEvidence": FormatComparabilityEvidence,
 	})
 	if err != nil {
 		return "", err
@@ -71,6 +76,10 @@ func RenderHTML(result CompareResult) (string, error) {
 
 	data := htmlCompareData{
 		Result:                result,
+		Guarded:               hasComparabilityGuard(result.Comparability),
+		GuardTitle:            ComparabilityGuardTitle(),
+		GuardSummary:          ComparabilityGuardSummary(result.Comparability.Verdict),
+		ReasonCodesLabel:      ComparabilityReasonCodesLabel(),
 		GeneratedAt:           time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		EChartsJS:             template.JS(echartsJS), //nolint:gosec
 		SummaryPairsJSON:      mustHTMLJSON(buildSummaryPairs(result)),
@@ -631,6 +640,16 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     box-shadow: 0 0 8px rgba(var(--primary-rgb), 0.6);
   }
   .section-body { padding: 18px; }
+  .comparability-guard {
+    margin: 18px 0;
+    padding: 16px 18px;
+    border: 2px solid #f87171;
+    border-radius: 10px;
+    background: rgba(248,113,113,0.12);
+  }
+  .comparability-guard h2 { margin: 0 0 8px; color: #f87171; font-size: 16px; }
+  .comparability-guard p { margin: 4px 0; }
+  .comparability-evidence { font-family: "JetBrains Mono", monospace; font-size: 12px; overflow-wrap: anywhere; }
   .chart-box { width: 100%; height: 300px; }
   .chart-box-tall { height: 420px; }
   .two-col {
@@ -921,6 +940,15 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       </header>
     </div>
 
+    {{if .Guarded}}
+    <section class="comparability-guard" id="comparability-guard">
+      <h2>{{.GuardTitle}} [{{.Result.Comparability.Verdict}}]</h2>
+      <p>{{.GuardSummary}}</p>
+      <p><strong>{{.ReasonCodesLabel}}</strong> {{range $index, $reason := .Result.Comparability.ReasonCodes}}{{if $index}}, {{end}}{{$reason}}{{end}}</p>
+      {{range .Result.Comparability.Evidence}}<p class="comparability-evidence">{{comparabilityEvidence .}}</p>{{end}}
+    </section>
+    {{end}}
+
     <section class="cards" id="compare-summary-cards">
       <article class="card">
         <div class="card-label">{{t "report.html.compare.rowsDelta"}}</div>
@@ -971,7 +999,7 @@ const compareHTMLTemplate = `<!DOCTYPE html>
       </div>
     </section>
 
-    {{if .Result.KeyFindings}}
+    {{if and .Result.KeyFindings (not .Guarded)}}
     <section class="section" id="compare-key-findings">
       <div class="section-header"><span class="dot"></span>{{t "report.html.compare.keyFindings"}}</div>
       <div class="section-body">

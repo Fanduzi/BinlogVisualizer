@@ -1,3 +1,8 @@
+// Package compare verifies deterministic causal finding selection for positively comparable inputs.
+// input: synthetic comparable report-v3 inputs with volume, table, pattern, and operation changes.
+// output: regression coverage for finding thresholds, ordering, caps, language, and evidence references after the safety gate.
+// pos: focused causal-finding suite behind BuildCompareResult's comparability assessment.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -29,7 +34,7 @@ func TestBuildKeyFindings_PatternDriverGrowth(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 	findings := result.KeyFindings
 
 	if len(findings) == 0 {
@@ -69,7 +74,7 @@ func TestBuildKeyFindings_NewPattern(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 	findings := result.KeyFindings
 
 	hasNewPattern := false
@@ -101,7 +106,7 @@ func TestBuildKeyFindings_LowSignalFindsFew(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 	findings := result.KeyFindings
 
 	// Delta is only 2 rows on 1000 — too small to be significant
@@ -149,7 +154,7 @@ func TestBuildKeyFindings_CappedAtFive(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 	if len(result.KeyFindings) > 5 {
 		t.Fatalf("findings capped at 5, got %d", len(result.KeyFindings))
 	}
@@ -179,8 +184,8 @@ func TestBuildKeyFindings_DeterministicOrdering(t *testing.T) {
 		},
 	}
 
-	result1 := BuildCompareResult(current, baseline)
-	result2 := BuildCompareResult(current, baseline)
+	result1 := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
+	result2 := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 
 	if len(result1.KeyFindings) != len(result2.KeyFindings) {
 		t.Fatalf("non-deterministic length: %d vs %d", len(result1.KeyFindings), len(result2.KeyFindings))
@@ -220,7 +225,7 @@ func TestBuildKeyFindings_VolumeDeclineUsesDeclineLanguage(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 	findings := result.KeyFindings
 
 	if len(findings) == 0 {
@@ -274,7 +279,7 @@ func TestBuildCompareEvidenceRefs_PatternDriverHasRef(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 
 	var patternDriver *CompareFinding
 	for i := range result.KeyFindings {
@@ -312,7 +317,7 @@ func TestBuildCompareEvidenceRefs_VolumeChangeNoRef(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 	if len(result.KeyFindings) == 0 {
 		t.Fatal("expected at least one finding")
 	}
@@ -426,7 +431,7 @@ func TestBuildCompareEvidenceRefs_TableDriverHasRef(t *testing.T) {
 		},
 	}
 
-	result := BuildCompareResult(current, baseline)
+	result := BuildCompareResult(withComparableMetadata(current), withComparableMetadata(baseline))
 	var tableDriver *CompareFinding
 	for i := range result.KeyFindings {
 		if result.KeyFindings[i].Kind == "table_driver" {

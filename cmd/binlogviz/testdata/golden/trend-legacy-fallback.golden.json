@@ -1,4 +1,34 @@
 {
+  "comparability": {
+    "verdict": "unknown",
+    "reason_codes": [
+      "missing_workload_identity",
+      "missing_producer_provenance",
+      "legacy_report_metadata",
+      "missing_scope",
+      "insufficient_completeness_evidence"
+    ],
+    "evidence": [
+      {
+        "role": "point",
+        "name": "legacy-alpha",
+        "mixed_producers": false,
+        "schemas": [
+          "shop"
+        ],
+        "total_transactions": 120
+      },
+      {
+        "role": "point",
+        "name": "legacy-beta",
+        "mixed_producers": false,
+        "schemas": [
+          "shop"
+        ],
+        "total_transactions": 160
+      }
+    ]
+  },
   "input_mode": "explicit",
   "snapshot_dir": "<snapshot-dir>",
   "order": "cli",
@@ -145,45 +175,22 @@
   },
   "trend_summary": [
     {
-      "kind": "table_trend",
-      "title": "Top table trend",
-      "summary": "shop.orders grew by +400 rows",
+      "kind": "comparability_guard",
+      "title": "Comparability guard",
+      "summary": "Causal findings suppressed because input comparability is unknown; raw deltas remain available.",
       "evidence": {
-        "delta_rows": 400,
-        "first_rows": 1200,
-        "last_rows": 1600,
-        "table": "shop.orders"
-      },
-      "evidence_refs": [
-        {
-          "section": "table_trends",
-          "key": "shop.orders",
-          "label": "shop.orders",
-          "anchor": "table-0"
-        }
-      ]
+        "reason_codes": [
+          "missing_workload_identity",
+          "missing_producer_provenance",
+          "legacy_report_metadata",
+          "missing_scope",
+          "insufficient_completeness_evidence"
+        ],
+        "verdict": "unknown"
+      }
     }
   ],
-  "recommendations": [
-    {
-      "kind": "review_growing_table",
-      "priority": "medium",
-      "title": "Review growing table",
-      "summary": "shop.orders grew by +400 rows; review table owners, scheduled jobs, and whether the table growth matches expectations.",
-      "rationale": "A table-level trend was large enough to be highlighted in the trend summary.",
-      "related_finding_kinds": [
-        "table_trend"
-      ],
-      "evidence_refs": [
-        {
-          "section": "table_trends",
-          "key": "shop.orders",
-          "label": "shop.orders",
-          "anchor": "table-0"
-        }
-      ]
-    }
-  ],
+  "recommendations": [],
   "pattern_drilldowns": [],
   "diagnostics_trends": {
     "tps_trends": [

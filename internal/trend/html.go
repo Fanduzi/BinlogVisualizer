@@ -1,6 +1,6 @@
 // Package trend renders self-contained HTML trend reports.
-// input: deterministic trend Result values plus localized labels and embedded chart assets.
-// output: trend HTML pages with summary cards, charts, drilldown sections, and replay evidence.
+// input: deterministic trend Result values with structured comparability evidence plus localized labels and embedded chart assets.
+// output: trend HTML pages leading with any narrative guard and visible evidence before raw summary cards, charts, drilldowns, and replay evidence.
 // pos: HTML renderer used by the trend command output path.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -13,12 +13,17 @@ import (
 	"strings"
 	"time"
 
+	comparepkg "binlogviz/internal/compare"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
 )
 
 type htmlData struct {
 	Result                Result
+	Guarded               bool
+	GuardTitle            string
+	GuardSummary          string
+	ReasonCodesLabel      string
 	GeneratedAt           string
 	EChartsJS             template.JS
 	LabelsJSON            template.JS
@@ -61,13 +66,19 @@ func RenderHTML(result Result) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmpl, err := report.NewHTMLTemplate("trend", trendHTMLTemplate, nil)
+	tmpl, err := report.NewHTMLTemplate("trend", trendHTMLTemplate, template.FuncMap{
+		"comparabilityEvidence": comparepkg.FormatComparabilityEvidence,
+	})
 	if err != nil {
 		return "", err
 	}
 
 	data := htmlData{
 		Result:                result,
+		Guarded:               hasTrendComparabilityGuard(result.Comparability),
+		GuardTitle:            comparepkg.ComparabilityGuardTitle(),
+		GuardSummary:          comparepkg.ComparabilityGuardSummary(result.Comparability.Verdict),
+		ReasonCodesLabel:      comparepkg.ComparabilityReasonCodesLabel(),
 		GeneratedAt:           time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		EChartsJS:             template.JS(echartsJS), //nolint:gosec
 		LabelsJSON:            mustHTMLJSON(buildLabels(result.Points)),
@@ -667,6 +678,16 @@ const trendHTMLTemplate = `<!DOCTYPE html>
   .rec-badge.medium { background: rgba(251,191,36,0.18); color: #fbbf24; border: 1px solid rgba(251,191,36,0.3); }
   .rec-badge.low { background: rgba(52,211,153,0.18); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
   .rec-summary { font-size: 13px; color: var(--text); line-height: 1.6; margin-top: 2px; }
+  .comparability-guard {
+    margin: 18px 0;
+    padding: 16px 18px;
+    border: 2px solid #f87171;
+    border-radius: 10px;
+    background: rgba(248,113,113,0.12);
+  }
+  .comparability-guard h2 { margin: 0 0 8px; color: #f87171; font-size: 16px; }
+  .comparability-guard p { margin: 4px 0; }
+  .comparability-evidence { font-family: "JetBrains Mono", monospace; font-size: 12px; overflow-wrap: anywhere; }
 
   /* ── Back to Top Floating Button ── */
   .back-to-top {
@@ -722,6 +743,15 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     </div>
   </section>
 
+  {{if .Guarded}}
+  <section class="comparability-guard" id="comparability-guard">
+    <h2>{{.GuardTitle}} [{{.Result.Comparability.Verdict}}]</h2>
+    <p>{{.GuardSummary}}</p>
+    <p><strong>{{.ReasonCodesLabel}}</strong> {{range $index, $reason := .Result.Comparability.ReasonCodes}}{{if $index}}, {{end}}{{$reason}}{{end}}</p>
+    {{range .Result.Comparability.Evidence}}<p class="comparability-evidence">{{comparabilityEvidence .}}</p>{{end}}
+  </section>
+  {{end}}
+
   <div class="cards">
     <div class="card">
       <div class="label">{{t "report.html.trend.firstSnapshot"}}</div>
@@ -741,7 +771,7 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     </div>
   </div>
 
-  {{if .Result.TrendSummary}}
+  {{if and .Result.TrendSummary (not .Guarded)}}
   <section class="section" id="trend-key-findings">
     <div class="section-header">{{t "report.html.compare.keyFindings"}}</div>
     <div class="section-body">

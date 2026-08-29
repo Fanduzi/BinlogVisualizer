@@ -12,7 +12,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
 | `diagnostics.go` | Defines diagnostics, selected-file coverage, counted filtered event bytes, DDL, finding, and Format Description server-version contracts for operator review. |
-| `report.go` | Defines `AnalysisResult`, requested/effective selector evidence, deterministic producer provenance, report-wide SQL availability, and snapshot metadata. |
+| `report.go` | Defines `AnalysisResult`, explicit workload identity and analyzed scope, requested/effective selector evidence, deterministic report-level producer provenance, report-wide SQL availability, and snapshot metadata. |
 | `timeseries.go` | Defines chart-ready timeseries and transaction-size histogram contracts. |
 | `query_context.go` | Provides bounded SQL context constructors and truncation helpers. |
 | `*_test.go` | Verifies shared model invariants and helper behavior. |
@@ -25,7 +25,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | `Transaction`, `TransactionCompleteness`, `TransactionReplaySpan`, `QueryContext` | Stable retained-evidence contract with provenance, complete/partial/unknown status, optional trusted full replay span, XA identity, and bounded SQL metadata. |
 | `WorkloadSummary`, `MinuteBucket`, `TableStats`, `Timeseries` | Stable aggregate workload contracts for analyze renderers, including partial and unknown transaction counts. |
 | `PatternStats`, `PatternDrilldown`, `Diagnostics` | Stable higher-signal analysis contracts for findings, drilldowns, and operator review. |
-| `AnalysisResult`, `AnalysisSelection`, `ReportProvenance`, `Snapshot` | Stable report/snapshot contracts; selection evidence and producer sets are canonical while SQL availability covers the whole report. |
+| `AnalysisResult`, `AnalysisSelection`, `ReportProvenance`, `Snapshot`, `SnapshotFilters` | Stable report/snapshot contracts; workload identity and exact scope remain explicit, selection evidence and producer sets stay canonical, and SQL availability covers the whole report. |
 | `NewQueryContext(sql string) *QueryContext` | Creates bounded SQL context from raw SQL text with truncation. |
 | `NewQueryContextFromNormalized(sql string, truncated bool, originalBytes int) *QueryContext` | Rehydrates bounded SQL context from already-normalized values. |
 | `(Transaction).FullReplayAvailable() bool` | Reports whether trusted full evidence is safe to expose as one bounded replay command; cross-file endpoints without an intermediate-file list are unavailable. |

@@ -1,7 +1,13 @@
+// Package binlogviz verifies stable command-level golden outputs.
+// input: comparable report-v3 and explicitly legacy compare/trend fixtures plus workflow, snapshot, clean, status, and export fixtures.
+// output: golden regression coverage for structured comparability, guarded legacy narratives, raw deltas, and existing command contracts.
+// pos: end-to-end serialized-output suite spanning CLI commands and committed golden artifacts.
+// note: if this file changes, update this header and cmd/binlogviz/README.md.
 package binlogviz
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,10 +17,10 @@ import (
 )
 
 var (
-	timestampPattern      = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"`)
-	manifestErrorPattern  = regexp.MustCompile(`"error": "discover binlog files: .*"`)
-	planSHA256Pattern     = regexp.MustCompile(`"plan_sha256": "[0-9a-f]+"`)
-	resolvedFilesPattern  = regexp.MustCompile(`(?s)"resolved_input_files": \[.*?\]`)
+	timestampPattern     = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"`)
+	manifestErrorPattern = regexp.MustCompile(`"error": "discover binlog files: .*"`)
+	planSHA256Pattern    = regexp.MustCompile(`"plan_sha256": "[0-9a-f]+"`)
+	resolvedFilesPattern = regexp.MustCompile(`(?s)"resolved_input_files": \[.*?\]`)
 )
 
 func TestSnapshotShowJSONGoldenMinimalWorkflow(t *testing.T) {
@@ -55,8 +61,8 @@ func TestCompareJSONGoldenLegacySnapshotWorkflow(t *testing.T) {
 		t.Fatalf("read baseline compare fixture: %v", err)
 	}
 
-	writeSnapshotFixture(t, dir, "current-snap", string(current))
-	writeSnapshotFixture(t, dir, "baseline-snap", string(baseline))
+	writeSnapshotFixture(t, dir, "current-snap", legacyAnalyzeReportJSON(t, current))
+	writeSnapshotFixture(t, dir, "baseline-snap", legacyAnalyzeReportJSON(t, baseline))
 
 	cmd := NewRootCommand()
 	cmd.SetArgs([]string{
@@ -82,6 +88,27 @@ func TestCompareJSONGoldenLegacySnapshotWorkflow(t *testing.T) {
 	if diff := diffGolden(want, got); diff != "" {
 		t.Fatalf("compare golden mismatch\n%s", diff)
 	}
+}
+
+func legacyAnalyzeReportJSON(t *testing.T, data []byte) string {
+	t.Helper()
+	var report map[string]any
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatalf("decode report fixture: %v", err)
+	}
+	delete(report, "report_version")
+	delete(report, "workload_id")
+	delete(report, "scope")
+	delete(report, "provenance")
+	if summary, ok := report["summary"].(map[string]any); ok {
+		delete(summary, "partial_transactions")
+		delete(summary, "unknown_transactions")
+	}
+	legacy, err := json.MarshalIndent(report, "", "  ")
+	if err != nil {
+		t.Fatalf("encode legacy report fixture: %v", err)
+	}
+	return string(legacy)
 }
 
 func TestCompareJSONGoldenPatternSnapshotWorkflow(t *testing.T) {
@@ -405,6 +432,7 @@ func TestTrendKeyFindingsGoldenJSON(t *testing.T) {
 func TestTrendJSONGoldenLegacyFallbackWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	writeSnapshotFixture(t, dir, "legacy-alpha", trendSnapshotFixtureJSONWithWindowOverride(trendSnapshotFixture{
+		Legacy:    true,
 		Name:      "legacy-alpha",
 		Label:     "Legacy Alpha",
 		StartTime: "2026-03-20T10:00:00Z",
@@ -418,6 +446,7 @@ func TestTrendJSONGoldenLegacyFallbackWorkflow(t *testing.T) {
 		Alerts:    2,
 	}, "", ""))
 	writeSnapshotFixture(t, dir, "legacy-beta", trendSnapshotFixtureJSONWithWindowOverride(trendSnapshotFixture{
+		Legacy:    true,
 		Name:      "legacy-beta",
 		Label:     "Legacy Beta",
 		StartTime: "2026-03-21T10:00:00Z",

@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
-// input: analyzer.Options plus ordered model.NormalizedEvent values with optional provenance, time/position selectors, and object filters.
-// output: provenance-aware intersected event-window aggregates, selector evidence, and retained transactions with explicit completeness.
+// input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, and retained transactions with explicit completeness.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -379,7 +379,15 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		return nil, err
 	}
 
+	scope := &model.SnapshotFilters{
+		IncludeSchemas: append([]string(nil), a.opts.IncludeSchemas...),
+		ExcludeSchemas: append([]string(nil), a.opts.ExcludeSchemas...),
+		IncludeTables:  append([]string(nil), a.opts.IncludeTables...),
+		ExcludeTables:  append([]string(nil), a.opts.ExcludeTables...),
+	}
 	result := &model.AnalysisResult{
+		WorkloadID:          a.opts.WorkloadID,
+		Scope:               scope,
 		Summary:             snap.Summary,
 		Provenance:          snap.Provenance,
 		SQLContextAvailable: snap.SQLContextAvailable,

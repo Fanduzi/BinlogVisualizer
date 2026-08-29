@@ -1,3 +1,8 @@
+// Package binlogviz verifies compare command modes and report rendering integration.
+// input: file and snapshot report-v3 fixtures with explicit workload identity/scope plus invalid and legacy command arguments.
+// output: regression coverage for compare CLI validation, loading, structured comparability output, and file/snapshot behavior.
+// pos: command-layer compare suite across Cobra parsing, snapshot storage, compare building, and render dispatch.
+// note: if this file changes, update this header and cmd/binlogviz/README.md.
 package binlogviz
 
 import (
@@ -405,8 +410,14 @@ func writeSnapshotFixture(t *testing.T, dir, name, content string) {
 
 func compareSnapshotFixtureJSON(name, label, createdAt string) string {
 	return `{
+  "report_version": 3,
+  "workload_id": "orders-production",
+  "scope": {"include_schema": ["orders"]},
+  "provenance": {"server_ids": [7], "server_versions": ["8.4.0"], "server_flavors": ["mysql"], "mixed_producers": false},
   "summary": {
     "total_transactions": 120,
+    "partial_transactions": 0,
+    "unknown_transactions": 0,
     "total_rows": 2400,
     "total_events": 3000,
     "start_time": "2026-03-20T10:00:00Z",

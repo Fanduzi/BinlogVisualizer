@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
-// input: CLI time/position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML reports with selector evidence and selected-file/count coverage; invalid selectors fail, valid no-data exits 2, and DuckDB temp state is cleaned.
+// input: CLI workload-identity, time/position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, and selected-file/count coverage; invalid selectors fail, valid no-data exits 2, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -61,6 +61,7 @@ type analyzeOptions struct {
 	output                 string
 	snapshotName           string
 	snapshotDir            string
+	workloadID             string
 	sqlContext             string
 	top                    int
 	topTables              int
@@ -179,6 +180,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringVarP(&opts.output, "output", "o", "", i18n.T("cmd.analyze.flag.output"))
 	cmd.Flags().StringVar(&opts.snapshotName, "snapshot-name", "", "Save JSON analyze output as a named snapshot")
 	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to save analyze snapshots")
+	cmd.Flags().StringVar(&opts.workloadID, "workload-id", "", i18n.T("cmd.analyze.flag.workloadID"))
 	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
 	cmd.Flags().IntVar(&opts.top, "top", report.DefaultTopN, i18n.T("cmd.analyze.flag.top"))
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
@@ -1064,6 +1066,7 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	result.ExcludeSchemas = opts.excludeSchemas
 	result.IncludeTables = opts.includeTables
 	result.ExcludeTables = opts.excludeTables
+	result.WorkloadID = strings.TrimSpace(opts.workloadID)
 	if mode := analyzer.DetailStoreMode(opts.detailStore); mode != "" {
 		result.DetailStoreMode = mode
 	}

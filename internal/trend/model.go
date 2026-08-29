@@ -1,6 +1,6 @@
 // Package trend defines trend-input contracts and multi-snapshot result models.
-// input: ordered snapshot-backed analyze JSON reports plus optional baseline metadata.
-// output: deterministic trend results with completeness-aware point summaries, baseline deltas, and trusted replay evidence.
+// input: ordered snapshot-backed analyze JSON reports with workload comparability metadata plus optional baseline.
+// output: deterministic trend results with a series-wide comparability verdict, completeness-aware point summaries, baseline deltas, and trusted replay evidence.
 // pos: trend pipeline boundary between snapshot loading and renderer-specific output.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -27,6 +27,7 @@ type InputDDLEvent = comparepkg.InputDDLEvent
 type InputHotInterval = comparepkg.InputHotInterval
 type InputTransaction = comparepkg.InputTransaction
 type TransactionEvidence = comparepkg.TransactionEvidence
+type Comparability = comparepkg.Comparability
 
 type BuildOptions struct {
 	InputMode   string
@@ -40,6 +41,7 @@ type BuildOptions struct {
 }
 
 type Result struct {
+	Comparability     Comparability      `json:"comparability"`
 	InputMode         string             `json:"input_mode"`
 	SnapshotDir       string             `json:"snapshot_dir"`
 	Order             string             `json:"order"`
