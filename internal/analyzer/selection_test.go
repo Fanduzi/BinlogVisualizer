@@ -1,6 +1,6 @@
 // Package analyzer tests selector intersection at complete transaction-group boundaries.
 // input: normalized MySQL/MariaDB, anonymous, rotated, XA, and LOAD_DATA transaction sequences.
-// output: selected aggregate/report evidence without transaction fragments across storage modes.
+// output: selected aggregate/report evidence without transaction fragments, including anonymous-group rejection, across storage modes.
 // pos: public Analyzer selection integration coverage for issue #52.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -45,6 +45,27 @@ func TestAnalyzerGTIDSelectorFiltersCompleteGroups(t *testing.T) {
 	}
 	if result.Selection == nil || result.Selection.ResolvedGTIDFlavor != "mysql" || len(result.Selection.MatchedGTIDs) != 1 || result.Selection.MatchedGTIDs[0] != sid+":1" {
 		t.Fatalf("selection evidence = %+v", result.Selection)
+	}
+}
+
+func TestAnalyzerGTIDSelectorExcludesAnonymousCompleteGroup(t *testing.T) {
+	selector, err := ParseGTIDSelector(nil, []string{"24bc7850-2c16-11e6-a073-0242ac110002:1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := DefaultOptions()
+	opts.GTIDSelector = selector
+	base := time.Date(2026, 8, 30, 11, 15, 0, 0, time.UTC)
+	result, err := New(opts).Analyze([]model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", ServerFlavor: "mysql"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary.TotalRows != 0 || result.Summary.TotalTransactions != 0 || len(result.Transactions) != 0 {
+		t.Fatalf("anonymous group was retained: summary=%+v transactions=%+v", result.Summary, result.Transactions)
 	}
 }
 
