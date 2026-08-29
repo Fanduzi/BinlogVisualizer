@@ -1,6 +1,8 @@
 package binlogviz
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -22,8 +24,10 @@ func newCompareCommand() *cobra.Command {
 	opts := &compareOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "compare [<current.json> <baseline.json>]",
-		Short: "Compare two BinlogViz JSON analysis reports",
+		Use:           "compare [<current.json> <baseline.json>]",
+		Short:         "Compare two BinlogViz JSON analysis reports",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			hasCurrentSnapshot := strings.TrimSpace(opts.currentSnapshot) != ""
 			hasBaselineSnapshot := strings.TrimSpace(opts.baselineSnapshot) != ""
@@ -99,15 +103,28 @@ func resolveCompareReports(args []string, opts *compareOptions) (comparepkg.Inpu
 		return current, baseline, nil
 	}
 
-	current, err := comparepkg.LoadReport(args[0])
+	current, err := loadCompareReport("current", args[0])
 	if err != nil {
-		return comparepkg.InputReport{}, comparepkg.InputReport{}, fmt.Errorf("load current report %s: %w", args[0], err)
+		return comparepkg.InputReport{}, comparepkg.InputReport{}, err
 	}
-	baseline, err := comparepkg.LoadReport(args[1])
+	baseline, err := loadCompareReport("baseline", args[1])
 	if err != nil {
-		return comparepkg.InputReport{}, comparepkg.InputReport{}, fmt.Errorf("load baseline report %s: %w", args[1], err)
+		return comparepkg.InputReport{}, comparepkg.InputReport{}, err
 	}
 	return current, baseline, nil
+}
+
+func loadCompareReport(side, path string) (comparepkg.InputReport, error) {
+	report, err := comparepkg.LoadReport(path)
+	if err == nil {
+		return report, nil
+	}
+
+	var syntaxErr *json.SyntaxError
+	if errors.As(err, &syntaxErr) {
+		return comparepkg.InputReport{}, errors.New("compare wants two JSON reports or --current-snapshot/--baseline-snapshot")
+	}
+	return comparepkg.InputReport{}, fmt.Errorf("load %s report %s: %w", side, path, err)
 }
 
 func loadSnapshotCompareReport(side, dir, name string) (comparepkg.InputReport, error) {
