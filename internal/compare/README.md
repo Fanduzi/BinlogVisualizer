@@ -7,16 +7,16 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | File | Responsibility |
 |------|----------------|
 | `load.go` | Loads and validates analyze JSON reports from files or in-memory bytes. |
-| `model.go` | Defines compare input contracts, optional snapshot metadata, pattern-aware input shapes, replay evidence, and compare result structures. |
-| `diff.go` | Computes deterministic summary, table, pattern, operation, and alert deltas. |
+| `model.go` | Defines compare input contracts, counted-event diagnostics, optional snapshot metadata, pattern-aware input shapes, replay evidence, and compare result structures. |
+| `diff.go` | Computes deterministic summary, table, pattern, operation, alert, and baseline/current byte-coverage deltas. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
 | `replay.go` | Preserves analyze transaction spans and replay commands for compare and trend evidence. |
 | `recommendations.go` | Derives prioritized follow-up recommendations from compare findings. |
 | `drilldown.go` | Selects bounded pattern drilldowns for high-signal compare changes. |
-| `text.go` | Renders human-readable compare output, including table drift, pattern drift, and snapshot-aware context such as window, input mode, source summary, and filters. |
+| `text.go` | Renders human-readable compare output, including named baseline/current input-file and counted-event byte metrics, table drift, pattern drift, and snapshot-aware context such as window, input mode, source summary, and filters. |
 | `json.go` | Serializes compare results for downstream tools. |
-| `html.go` | Renders the self-contained HTML compare report with snapshot-aware context, pattern drift, and current transaction replay evidence. |
+| `html.go` | Renders the self-contained HTML compare report with snapshot-aware context, byte coverage, pattern drift, and current transaction replay evidence. |
 | `*_test.go` | Covers loading, diff behavior, findings and drilldowns, renderer output, diagnostics/i18n sections, snapshot-aware context, and contract stability. |
 
 ## Exports
@@ -50,3 +50,4 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Text and HTML outputs now expose snapshot context beyond the time window so incident reviews can see input mode, source shape, and active filters at a glance.
 - Key findings, bounded drilldowns, evidence refs, and follow-up recommendations are derived inside this module from the same deterministic compare result.
 - Current largest and longest transaction evidence carries the analyze-compatible `binlog_span` and `mysqlbinlog_cmd` when the source span is usable; invalid or legacy spans never produce a broken command.
+- Compare HTML shows selected physical input-file bytes and counted event bytes in consistently labeled baseline/current columns; byte coverage is omitted from the stable compare JSON wire shape.

@@ -279,6 +279,14 @@
     "description": "事件总数标签",
     "other": "事件总数"
   },
+  "report.label.inputFileSize": {
+    "description": "已选输入文件大小标签",
+    "other": "输入文件大小"
+  },
+  "report.label.countedEventBytes": {
+    "description": "已计数事件字节覆盖标签",
+    "other": "已计数事件字节数"
+  },
   "report.label.warnings": {
     "description": "警告数标签",
     "other": "警告数"
@@ -699,6 +707,22 @@
     "description": "Analyze binlog 字节标签",
     "other": "Binlog 字节数"
   },
+  "report.html.analyze.inputFileSize": {
+    "description": "已选输入文件大小摘要标签",
+    "other": "输入文件大小"
+  },
+  "report.html.analyze.selectedInputBytes": {
+    "description": "已选输入文件大小摘要说明",
+    "other": "已选输入文件字节数"
+  },
+  "report.html.analyze.countedEventBytes": {
+    "description": "已计数事件字节摘要标签",
+    "other": "已计数事件字节数"
+  },
+  "report.html.analyze.countedEventBytesNote": {
+    "description": "已计数事件字节摘要说明",
+    "other": "已计数事件所代表的字节数"
+  },
   "report.html.analyze.ddlEvents": {
     "description": "Analyze DDL 事件数标签",
     "other": "DDL 事件数"
@@ -778,6 +802,14 @@
   "report.html.compare.summary": {
     "description": "Compare 对比概览章节标题",
     "other": "对比概览"
+  },
+  "report.html.compare.byteCoverage": {
+    "description": "Compare 字节覆盖章节标题",
+    "other": "字节覆盖"
+  },
+  "report.html.compare.metric": {
+    "description": "Compare 指标列标题",
+    "other": "指标"
   },
   "report.html.compare.topTableChanges": {
     "description": "Compare 热点表变化章节标题",

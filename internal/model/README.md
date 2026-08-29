@@ -11,7 +11,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
-| `diagnostics.go` | Defines diagnostics, file coverage, DDL, finding, and Format Description server-version contracts for operator review. |
+| `diagnostics.go` | Defines diagnostics, selected-file coverage, counted filtered event bytes, DDL, finding, and Format Description server-version contracts for operator review. |
 | `report.go` | Defines the top-level `AnalysisResult` envelope plus snapshot metadata contracts. |
 | `timeseries.go` | Defines chart-ready timeseries and transaction-size histogram contracts. |
 | `query_context.go` | Provides bounded SQL context constructors and truncation helpers. |
@@ -43,4 +43,5 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 
 - This module is contract-only: it should describe stable shared data shapes, not command or renderer policy. `Alert.Type` includes `large_transaction`, `spike`, and `input_format` (MIXED undercount on a successful analyze).
 - `Timeseries.TPSSeries` is a semantic contract for transactions-per-second rates computed from minute buckets as `TxnCount / 60`; older snapshots that stored raw transactions-per-minute counts must not be compared directly to newer avg-TPS values.
+- `Diagnostics.CountedEventBytes` is the filtered row/DDL event-byte coverage; `FileCoverageItem.Size` is physical input-file size and is unavailable when metadata is missing.
 - Keep this README synchronized when shared model files, exported contracts, or cross-module boundaries change.

@@ -4,6 +4,8 @@ Baseline Label: baseline
 Rows: 1500 -> 2400 (+900)
 Transactions: 90 -> 120 (+30)
 Warnings: 0 -> 0 (+0)
+Input File Size: baseline=N/A -> current=N/A
+Counted Event Bytes: baseline=0 B -> current=0 B
 
 Key Findings
 1. [volume_change] rows grew sharply

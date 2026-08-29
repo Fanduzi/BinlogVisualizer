@@ -1,3 +1,8 @@
+// Package compare verifies compare diff construction and legacy input compatibility.
+// input: fixture-backed InputReport values and synthetic diagnostics/timeseries data.
+// output: regression coverage for deterministic deltas and counted-byte fallbacks.
+// pos: compare diff contract test suite between report loading and renderers.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -255,5 +260,19 @@ func TestDecodeReportJSONTreatsMissingPatternsAsEmpty(t *testing.T) {
 	}
 	if len(report.Patterns) != 0 {
 		t.Fatalf("expected empty pattern slice for legacy report, got %+v", report.Patterns)
+	}
+}
+
+func TestBuildCompareResultFallsBackToLegacyTimeseriesCountedBytes(t *testing.T) {
+	result := BuildCompareResult(
+		InputReport{Timeseries: InputTimeseries{BinlogBytesSeries: []InputTimeseriesPoint{{Value: 250}}}},
+		InputReport{Timeseries: InputTimeseries{BinlogBytesSeries: []InputTimeseriesPoint{{Value: 500}}}},
+	)
+
+	if result.DiagnosticsDelta.CurrentCountedEventBytes != 250 {
+		t.Fatalf("current counted event bytes = %d, want 250", result.DiagnosticsDelta.CurrentCountedEventBytes)
+	}
+	if result.DiagnosticsDelta.BaselineCountedEventBytes != 500 {
+		t.Fatalf("baseline counted event bytes = %d, want 500", result.DiagnosticsDelta.BaselineCountedEventBytes)
 	}
 }

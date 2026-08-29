@@ -1,6 +1,6 @@
 // Package compare renders self-contained HTML compare reports.
 // input: deterministic CompareResult values produced by the compare diff engine.
-// output: compare-specific HTML pages with summary cards, charts, detail tables, and current replay evidence.
+// output: compare-specific HTML pages with summary cards, baseline/current byte coverage, charts, detail tables, and current replay evidence.
 // pos: compare renderer used by the compare command HTML output path.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -54,15 +54,16 @@ func RenderHTML(result CompareResult) (string, error) {
 	}
 
 	tmpl, err := report.NewHTMLTemplate("compare", compareHTMLTemplate, template.FuncMap{
-		"formatDelta":       formatHTMLDelta,
-		"formatPercent":     formatHTMLPercent,
-		"formatBytes":       formatCompareFileSize,
-		"snapshotWindow":    formatSnapshotWindow,
-		"snapshotInputMode": formatSnapshotInputMode,
-		"snapshotSource":    formatSnapshotSource,
-		"snapshotFilters":   formatSnapshotFilters,
-		"compareLabel":      localizedCompareLabel,
-		"compareSource":     localizedCompareSource,
+		"formatDelta":         formatHTMLDelta,
+		"formatPercent":       formatHTMLPercent,
+		"formatBytes":         formatCompareFileSize,
+		"formatOptionalBytes": formatOptionalCompareFileSize,
+		"snapshotWindow":      formatSnapshotWindow,
+		"snapshotInputMode":   formatSnapshotInputMode,
+		"snapshotSource":      formatSnapshotSource,
+		"snapshotFilters":     formatSnapshotFilters,
+		"compareLabel":        localizedCompareLabel,
+		"compareSource":       localizedCompareSource,
 	})
 	if err != nil {
 		return "", err
@@ -344,6 +345,13 @@ func formatCompareFileSize(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+func formatOptionalCompareFileSize(bytes *int64) string {
+	if bytes == nil {
+		return i18n.T("report.html.common.notAvailable")
+	}
+	return formatCompareFileSize(*bytes)
 }
 
 const compareHTMLTemplate = `<!DOCTYPE html>
@@ -934,6 +942,33 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         <div class="card-value">{{len .Result.AlertChanges.Removed}}</div>
         <div class="card-sub">{{t "report.html.compare.alertsOnlyIn"}} {{compareLabel .Result.BaselineLabel}}</div>
       </article>
+    </section>
+
+    <section class="section" id="compare-byte-coverage">
+      <div class="section-header"><span class="dot"></span>{{t "report.html.compare.byteCoverage"}}</div>
+      <div class="section-body">
+        <table>
+          <thead>
+            <tr>
+              <th>{{t "report.html.compare.metric"}}</th>
+              <th class="num">{{.Result.BaselineLabel}}</th>
+              <th class="num">{{.Result.CurrentLabel}}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>{{t "report.html.analyze.inputFileSize"}}</td>
+              <td class="num">{{formatOptionalBytes .Result.DiagnosticsDelta.BaselineInputFileBytes}}</td>
+              <td class="num">{{formatOptionalBytes .Result.DiagnosticsDelta.CurrentInputFileBytes}}</td>
+            </tr>
+            <tr>
+              <td>{{t "report.html.analyze.countedEventBytes"}}</td>
+              <td class="num">{{formatBytes .Result.DiagnosticsDelta.BaselineCountedEventBytes}}</td>
+              <td class="num">{{formatBytes .Result.DiagnosticsDelta.CurrentCountedEventBytes}}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     {{if .Result.KeyFindings}}

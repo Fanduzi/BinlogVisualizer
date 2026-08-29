@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks (including Format Description server version), and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML analysis reports on success (MIXED JSON includes an input_format alert); STATEMENT and filtered zero-row workloads return errors with no report; no-data is exit 2; stderr-only operator status and DuckDB temp-store cleanup.
+// output: rendered text/JSON/HTML analysis reports with selected-file coverage and counted event bytes on success (MIXED JSON includes an input_format alert); STATEMENT and filtered zero-row workloads return errors with no report; no-data is exit 2; stderr-only operator status and DuckDB temp-store cleanup.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -194,7 +194,7 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 		return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
 	}
 	if hasArgs {
-		return args, false, model.FileCoverage{}, nil
+		return args, false, fileCoverageForPaths(args), nil
 	}
 	if hasFromDir {
 		startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
@@ -208,6 +208,22 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 		return plan.Paths, true, plan.FileCoverage, nil
 	}
 	return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
+}
+
+func fileCoverageForPaths(paths []string) model.FileCoverage {
+	selected := make([]model.FileCoverageItem, 0, len(paths))
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		selected = append(selected, model.FileCoverageItem{
+			BinlogPath: path,
+			Reason:     "selected",
+			Size:       info.Size(),
+		})
+	}
+	return analyzer.BuildFileCoverage(selected, nil)
 }
 
 func discoverBinlogPaths(dir, prefix string) ([]string, error) {
@@ -560,9 +576,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
 		return err
 	}
-	if hasFileCoverage(fileCoverage) {
-		result.Diagnostics.FileCoverage = fileCoverage
-	}
+	applyFileCoverage(result, paths, fileCoverage)
 	if err := noteInputFormat(result, formatObserver); err != nil {
 		return err
 	}
@@ -665,9 +679,7 @@ func runAnalysisStreamingFastWithSnapshot(
 	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
 		return err
 	}
-	if hasFileCoverage(fileCoverage) {
-		result.Diagnostics.FileCoverage = fileCoverage
-	}
+	applyFileCoverage(result, paths, fileCoverage)
 	if err := noteInputFormat(result, formatObserver); err != nil {
 		return err
 	}
@@ -698,6 +710,18 @@ func runAnalysisStreamingFastWithSnapshot(
 
 func hasFileCoverage(fileCoverage model.FileCoverage) bool {
 	return len(fileCoverage.Selected) > 0 || len(fileCoverage.Skipped) > 0
+}
+
+func applyFileCoverage(result *model.AnalysisResult, paths []string, fileCoverage model.FileCoverage) {
+	if result == nil {
+		return
+	}
+	if !hasFileCoverage(fileCoverage) {
+		fileCoverage = fileCoverageForPaths(paths)
+	}
+	if hasFileCoverage(fileCoverage) {
+		result.Diagnostics.FileCoverage = fileCoverage
+	}
 }
 
 func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserver) error {
@@ -809,9 +833,7 @@ func runAnalysisStreamingFastWithOutput(
 	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
 		return err
 	}
-	if hasFileCoverage(fileCoverage) {
-		result.Diagnostics.FileCoverage = fileCoverage
-	}
+	applyFileCoverage(result, paths, fileCoverage)
 	if err := noteInputFormat(result, formatObserver); err != nil {
 		return err
 	}

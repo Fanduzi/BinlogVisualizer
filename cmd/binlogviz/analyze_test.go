@@ -1,6 +1,6 @@
 // Package binlogviz validates analyze command flag parsing and CLI option translation.
 // input: synthetic CLI args, parsed flag values, and analyzer/report option expectations.
-// output: regression coverage for stable flag defaults, validation, and option builders.
+// output: regression coverage for stable flag defaults, explicit selected-file coverage, validation, and option builders.
 // pos: command-layer unit test suite for analyze command configuration behavior.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -456,6 +456,28 @@ func TestValidateFilesAllowsEmptyPaths(t *testing.T) {
 	// but the caller (RunE) must check len(paths)==0 separately.
 	if err := validateFiles(nil); err != nil {
 		t.Fatalf("expected no error for empty paths, got %v", err)
+	}
+}
+
+func TestResolveAnalyzePathsExplicitFilesIncludesSelectedFileSizes(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "mysql-bin.000001")
+	if err := os.WriteFile(path, make([]byte, 3000), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+
+	paths, discovered, coverage, err := resolveAnalyzePaths([]string{path}, &analyzeOptions{})
+	if err != nil {
+		t.Fatalf("resolve explicit paths: %v", err)
+	}
+	if discovered {
+		t.Fatal("explicit paths must not be marked as discovery")
+	}
+	if len(paths) != 1 || paths[0] != path {
+		t.Fatalf("unexpected paths: %v", paths)
+	}
+	if len(coverage.Selected) != 1 || coverage.Selected[0].Size != 3000 {
+		t.Fatalf("expected selected file size 3000, got %+v", coverage)
 	}
 }
 

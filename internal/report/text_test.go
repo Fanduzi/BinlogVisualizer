@@ -1,6 +1,6 @@
 // Package report verifies incident-brief text rendering and opt-in detail sections.
 // input: synthetic AnalysisResult fixtures with summary, table, minute, pattern, and diagnostic evidence.
-// output: regression coverage for default diagnostic sections, table limits, detail flags, and finding/alert-backed suspicious positions.
+// output: regression coverage for default diagnostic sections, byte coverage, table limits, detail flags, and finding/alert-backed suspicious positions.
 // pos: text renderer regression suite guarding user-facing CLI report formatting.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -172,6 +172,55 @@ func TestRenderTextDefaultIsConciseDiagnosticSummary(t *testing.T) {
 		if strings.Contains(out, hidden) {
 			t.Fatalf("default text report should hide %q\n%s", hidden, out)
 		}
+	}
+}
+
+func TestRenderTextDistinguishesInputFileSizeFromCountedEventBytes(t *testing.T) {
+	result := model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			FileCoverage: model.FileCoverage{
+				Selected: []model.FileCoverageItem{
+					{BinlogPath: "mysql-bin.000001", Size: 1000},
+					{BinlogPath: "mysql-bin.000002", Size: 2000},
+				},
+			},
+			CountedEventBytes: 250,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Input File Size: 2.9KB",
+		"Counted Event Bytes: 250B",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected text output to contain %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderTextShowsUnavailableWhenSelectedFileSizeIsMissing(t *testing.T) {
+	result := model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			FileCoverage: model.FileCoverage{
+				Selected: []model.FileCoverageItem{{BinlogPath: "legacy.binlog"}},
+			},
+			CountedEventBytes: 250,
+		},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Input File Size: N/A") {
+		t.Fatalf("expected missing file size to be unavailable, got:\n%s", out)
+	}
+	if strings.Contains(out, "Input File Size: 0B") {
+		t.Fatalf("missing file size must not render as zero, got:\n%s", out)
 	}
 }
 

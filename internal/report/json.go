@@ -1,6 +1,6 @@
 // Package report renders JSON reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context and snapshot presentation controls.
-// output: stable JSON objects with XA-aware transactions, mode-controlled query fields, optional snapshot envelope data, and mysqlbinlog_cmd replay strings.
+// output: stable JSON objects with XA-aware transactions, mode-controlled query fields, selected-file/count-event diagnostics, optional snapshot envelope data, and mysqlbinlog_cmd replay strings.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -72,6 +72,7 @@ type jsonTxnSizeBucket struct {
 
 type jsonDiagnostics struct {
 	FileCoverage          jsonFileCoverage  `json:"file_coverage"`
+	CountedEventBytes     int64             `json:"counted_event_bytes"`
 	DDLEvents             []jsonDDLEvent    `json:"ddl_events"`
 	LargestTransactions   []jsonTransaction `json:"largest_transactions"`
 	LongestTransactions   []jsonTransaction `json:"longest_transactions"`
@@ -368,6 +369,7 @@ func convertTxnSizeBuckets(buckets []model.TxnSizeBucket) []jsonTxnSizeBucket {
 func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) jsonDiagnostics {
 	return jsonDiagnostics{
 		FileCoverage:          convertFileCoverage(diagnostics.FileCoverage),
+		CountedEventBytes:     diagnostics.CountedEventBytes,
 		DDLEvents:             convertDDLEvents(diagnostics.DDLEvents),
 		LargestTransactions:   convertTransactions(diagnostics.LargestTransactions, mode, diagnostics.ServerVersion),
 		LongestTransactions:   convertTransactions(diagnostics.LongestTransactions, mode, diagnostics.ServerVersion),

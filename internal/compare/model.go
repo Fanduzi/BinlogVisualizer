@@ -1,6 +1,6 @@
 // Package compare defines compare-input contracts and comparison result models.
 // input: JSON reports emitted by `binlogviz analyze --format json`.
-// output: typed compare input and result structures, including replay-ready transaction evidence.
+// output: typed compare input and result structures, including replay-ready transaction evidence and render-only byte coverage deltas.
 // pos: compare pipeline boundary between JSON loading and diff/render stages.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -56,6 +56,7 @@ type InputTxnSizeBucket struct {
 
 type InputDiagnostics struct {
 	FileCoverage        InputFileCoverage  `json:"file_coverage"`
+	CountedEventBytes   int64              `json:"counted_event_bytes"`
 	DDLEvents           []InputDDLEvent    `json:"ddl_events"`
 	LargestTransactions []InputTransaction `json:"largest_transactions"`
 	LongestTransactions []InputTransaction `json:"longest_transactions"`
@@ -214,6 +215,11 @@ type DiagnosticsDelta struct {
 	TxnDiagnostics   TxnDiagnosticDelta `json:"txn_diagnostics"`
 	HotIntervalDelta HotIntervalDelta   `json:"hot_interval_delta"`
 	EventMixDelta    EventMixDelta      `json:"event_mix_delta"`
+	// Byte coverage is consumed by the HTML renderer and omitted from compare JSON for compatibility.
+	BaselineInputFileBytes    *int64 `json:"-"`
+	CurrentInputFileBytes     *int64 `json:"-"`
+	BaselineCountedEventBytes int64  `json:"-"`
+	CurrentCountedEventBytes  int64  `json:"-"`
 }
 
 // DDLChangeDelta compares DDL event counts and details between windows.

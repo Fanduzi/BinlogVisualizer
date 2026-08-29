@@ -1,6 +1,6 @@
 // Package compare verifies HTML compare output sections and localized context.
 // input: fixture-backed compare reports and built CompareResult values.
-// output: assertions for compare HTML sections, labels, and regression-sensitive content.
+// output: assertions for compare HTML sections, byte-coverage labels, and regression-sensitive content.
 // pos: renderer regression coverage for the compare HTML output path.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -59,6 +59,62 @@ func TestRenderHTMLIncludesCompareSections(t *testing.T) {
 		if !strings.Contains(output, token) {
 			t.Fatalf("expected alert chart contract token %q", token)
 		}
+	}
+}
+
+func TestRenderHTMLShowsInputAndCountedBytesForBothSides(t *testing.T) {
+	current := InputReport{
+		Diagnostics: InputDiagnostics{
+			FileCoverage: InputFileCoverage{
+				Selected: []InputFileCoverageItem{{BinlogPath: "current.binlog", Size: 3000}},
+			},
+			CountedEventBytes: 250,
+		},
+	}
+	baseline := InputReport{
+		Diagnostics: InputDiagnostics{
+			FileCoverage: InputFileCoverage{
+				Selected: []InputFileCoverageItem{{BinlogPath: "baseline.binlog", Size: 6000}},
+			},
+			CountedEventBytes: 500,
+		},
+	}
+
+	out, err := RenderHTML(BuildCompareResult(current, baseline))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Input File Size",
+		"Counted Event Bytes",
+		"Baseline",
+		"Current",
+		"2.9 KB",
+		"5.9 KB",
+		"250 B",
+		"500 B",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected compare HTML to contain %q, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestRenderHTMLShowsUnavailableForMissingInputFileSize(t *testing.T) {
+	result := BuildCompareResult(
+		InputReport{Diagnostics: InputDiagnostics{
+			FileCoverage:      InputFileCoverage{Selected: []InputFileCoverageItem{{BinlogPath: "current.binlog"}}},
+			CountedEventBytes: 250,
+		}},
+		InputReport{},
+	)
+
+	out, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Input File Size") || !strings.Contains(out, "N/A") {
+		t.Fatalf("expected missing input file size to be unavailable, got:\n%s", out)
 	}
 }
 

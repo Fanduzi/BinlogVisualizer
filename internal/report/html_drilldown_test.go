@@ -1,6 +1,6 @@
 // Package report verifies analyze HTML pattern drilldown rendering behavior.
 // input: synthetic AnalysisResult values with selected and unselected pattern drilldowns.
-// output: assertions for drilldown cards, badges, and bounded detail content in HTML.
+// output: assertions for byte-coverage summary cards, drilldown cards, badges, and bounded detail content in HTML.
 // pos: regression coverage for analyze HTML drilldown presentation.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -302,6 +302,63 @@ func TestRenderHTMLFileCoverageSection(t *testing.T) {
 	} {
 		if !strings.Contains(out, token) {
 			t.Fatalf("expected file coverage token %q in HTML output", token)
+		}
+	}
+}
+
+func TestRenderHTMLDistinguishesInputFileSizeFromCountedEventBytes(t *testing.T) {
+	result := model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			FileCoverage: model.FileCoverage{
+				Selected: []model.FileCoverageItem{
+					{BinlogPath: "mysql-bin.000001", Size: 1000},
+					{BinlogPath: "mysql-bin.000002", Size: 2000},
+				},
+			},
+			CountedEventBytes: 250,
+		},
+	}
+
+	out, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Input File Size",
+		"2.9 KB",
+		"Counted Event Bytes",
+		"250 B",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected HTML output to contain %q, got:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "Input File Size") > strings.Index(out, `id="section-findings"`) {
+		t.Fatal("expected input file size near the executive summary")
+	}
+}
+
+func TestRenderHTMLShowsUnavailableWhenSelectedFileSizeIsMissing(t *testing.T) {
+	out, err := RenderHTML(model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			FileCoverage: model.FileCoverage{
+				Selected: []model.FileCoverageItem{{BinlogPath: "legacy.binlog"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "Input File Size") || !strings.Contains(out, "N/A") {
+		t.Fatalf("expected missing file size to be unavailable, got:\n%s", out)
+	}
+	if idx := strings.Index(out, "legacy.binlog"); idx >= 0 {
+		row := out[idx:]
+		if end := strings.Index(row, "</tr>"); end >= 0 {
+			row = row[:end]
+		}
+		if strings.Contains(row, "0 B") {
+			t.Fatalf("missing file size must not render as zero in the coverage row, got:\n%s", row)
 		}
 	}
 }

@@ -7,7 +7,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | File | Responsibility |
 |------|----------------|
 | `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, `version`, and `workflow`. |
-| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, aggregate parse progress on `stderr`, Format Description server-version plumbing for replay commands, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
+| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, selected-file coverage, aggregate parse progress on `stderr`, Format Description server-version plumbing for replay commands, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
 | `analyze_output.go` | Resolves analyze HTML destination: explicit `--output`, `--output -`, TTY default cwd file, and non-TTY stdout redirect. |
 | `exit.go` | Maps command errors onto process exit codes, including analyze no-data exit 2. |
 | `analyze_parallel.go` | Runs bounded parallel per-file parsing while preserving ordered analyzer consumption for cross-file transaction safety. |
@@ -71,3 +71,4 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - `cmd/binlogviz/testdata/sql-corpus` now carries richer DBA-facing incident scenarios, including runner-up large/long/wide transactions so product tests can catch over-crowded transaction-evidence rendering instead of only toy single-winner cases.
 - The production analyze command uses a destination-reuse normalization fast path in its streaming handler so the main CLI path no longer allocates one `*NormalizedEvent` per kept event.
 - Multi-file analyze now overlaps parser work across files with bounded per-file buffers, but still feeds normalized events to the analyzer in input order so cross-file transactions remain valid.
+- Analyze carries physical sizes for selected positional or discovered files into reports; counted event bytes remain a separate filtered row/DDL metric.

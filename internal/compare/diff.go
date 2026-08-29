@@ -1,6 +1,6 @@
 // Package compare computes stable comparison results from validated input reports.
 // input: two validated InputReport values representing current and baseline analyses.
-// output: deterministic CompareResult values for text, JSON, and HTML renderers, including current replay evidence.
+// output: deterministic CompareResult values for text, JSON, and HTML renderers, including current replay evidence and baseline/current byte coverage.
 // pos: compare pipeline core between report loading and output rendering.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -265,11 +265,43 @@ func buildDiagnosticsDelta(current, baseline InputReport) DiagnosticsDelta {
 		baselineDiagnostics.LongestTransactions = baseline.Transactions
 	}
 	return DiagnosticsDelta{
-		DDLChanges:       buildDDLChangeDelta(current.Diagnostics.DDLEvents, baseline.Diagnostics.DDLEvents),
-		TxnDiagnostics:   buildTxnDiagnosticDelta(currentDiagnostics, baselineDiagnostics),
-		HotIntervalDelta: buildHotIntervalDelta(current.Diagnostics.HotIntervals, baseline.Diagnostics.HotIntervals),
-		EventMixDelta:    buildEventMixDelta(current.Timeseries, baseline.Timeseries),
+		DDLChanges:                buildDDLChangeDelta(current.Diagnostics.DDLEvents, baseline.Diagnostics.DDLEvents),
+		TxnDiagnostics:            buildTxnDiagnosticDelta(currentDiagnostics, baselineDiagnostics),
+		HotIntervalDelta:          buildHotIntervalDelta(current.Diagnostics.HotIntervals, baseline.Diagnostics.HotIntervals),
+		EventMixDelta:             buildEventMixDelta(current.Timeseries, baseline.Timeseries),
+		BaselineInputFileBytes:    selectedInputFileBytes(baseline.Diagnostics.FileCoverage),
+		CurrentInputFileBytes:     selectedInputFileBytes(current.Diagnostics.FileCoverage),
+		BaselineCountedEventBytes: countedEventBytes(baseline),
+		CurrentCountedEventBytes:  countedEventBytes(current),
 	}
+}
+
+func countedEventBytes(report InputReport) int64 {
+	if report.Diagnostics.CountedEventBytes != 0 {
+		return report.Diagnostics.CountedEventBytes
+	}
+	var total int64
+	for _, point := range report.Timeseries.BinlogBytesSeries {
+		if point.Value > 0 {
+			total += int64(point.Value)
+		}
+	}
+	return total
+}
+
+func selectedInputFileBytes(coverage InputFileCoverage) *int64 {
+	if len(coverage.Selected) == 0 {
+		return nil
+	}
+
+	var total int64
+	for _, item := range coverage.Selected {
+		if item.Size <= 0 {
+			return nil
+		}
+		total += item.Size
+	}
+	return &total
 }
 
 func buildDDLChangeDelta(current, baseline []InputDDLEvent) DDLChangeDelta {

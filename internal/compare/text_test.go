@@ -1,3 +1,8 @@
+// Package compare verifies human-readable compare rendering and byte coverage labels.
+// input: fixture-backed compare reports and built CompareResult values.
+// output: regression coverage for compare text sections, byte metrics, and snapshot context.
+// pos: renderer regression suite for the compare text output path.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -27,6 +32,8 @@ Baseline Label: baseline
 Rows: 1500 -> 2400 (+900)
 Transactions: 90 -> 120 (+30)
 Warnings: 0 -> 0 (+0)
+Input File Size: baseline=N/A -> current=N/A
+Counted Event Bytes: baseline=0 B -> current=0 B
 
 Key Findings
 1. [volume_change] rows grew sharply
@@ -61,6 +68,32 @@ Removed Alerts (1)
 
 	if output != expected {
 		t.Fatalf("unexpected text output:\n%s", output)
+	}
+}
+
+func TestRenderTextIncludesInputAndCountedBytes(t *testing.T) {
+	result := BuildCompareResult(
+		InputReport{Diagnostics: InputDiagnostics{
+			FileCoverage:      InputFileCoverage{Selected: []InputFileCoverageItem{{Size: 3000}}},
+			CountedEventBytes: 250,
+		}},
+		InputReport{Diagnostics: InputDiagnostics{
+			FileCoverage:      InputFileCoverage{Selected: []InputFileCoverageItem{{Size: 6000}}},
+			CountedEventBytes: 500,
+		}},
+	)
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{
+		"Input File Size: baseline=5.9 KB -> current=2.9 KB",
+		"Counted Event Bytes: baseline=500 B -> current=250 B",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected compare text to contain %q, got:\n%s", want, out)
+		}
 	}
 }
 

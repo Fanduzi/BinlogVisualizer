@@ -1,6 +1,6 @@
 // Package report defines the embedded HTML template for analyze reports.
 // input: localized labels plus chart-ready analyze report view data.
-// output: template source used by the analyze HTML renderer.
+// output: template source used by the analyze HTML renderer, including separate physical-file and counted-event summary cards.
 // pos: static template layer behind internal/report HTML rendering.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -1038,6 +1038,26 @@ const htmlReportTemplate = `<!DOCTYPE html>
           </div>
           <div class="card-value">{{fmtIntHTML .TotalEvents}}</div>
           <div class="card-sub">{{t "report.html.common.events"}}</div>
+        </div>
+        <div class="card accent">
+          <div class="card-head">
+            <div class="card-label">{{t "report.html.analyze.inputFileSize"}}</div>
+            <div class="card-icon">💾</div>
+          </div>
+          {{if .HasInputFileSize}}
+          <div class="card-value">{{.InputFileSize}}</div>
+          {{else}}
+          <div class="card-value" style="font-size:16px;color:var(--muted)">{{t "report.html.common.notAvailable"}}</div>
+          {{end}}
+          <div class="card-sub">{{t "report.html.analyze.selectedInputBytes"}}</div>
+        </div>
+        <div class="card success">
+          <div class="card-head">
+            <div class="card-label">{{t "report.html.analyze.countedEventBytes"}}</div>
+            <div class="card-icon">📦</div>
+          </div>
+          <div class="card-value">{{.CountedEventBytes}}</div>
+          <div class="card-sub">{{t "report.html.analyze.countedEventBytesNote"}}</div>
         </div>
         {{if .StartTime}}
         <div class="card warn">

@@ -255,6 +255,8 @@ The top-level JSON object always contains these fields:
 
 `diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images.
 
+`diagnostics.counted_event_bytes` is the sum of retained row/DDL event bytes after schema/table filtering. `diagnostics.file_coverage.selected[].size` is physical input-file size; missing size metadata is unavailable rather than zero in human-readable reports.
+
 ### `transactions`
 
 `transactions` is always present as an array. Each entry always contains:
@@ -581,6 +583,7 @@ Text mode renders a fixed compare report for terminal review. It includes:
 
 - `Current Label` and `Baseline Label` lines derived from snapshot metadata when present, otherwise `current` and `baseline`
 - snapshot context lines for requested window, input mode, source summary, and active filters when snapshot metadata is present
+- named baseline/current input-file size and counted event-byte lines
 - top-level deltas for rows, transactions, and warnings
 - top table changes sorted by absolute row delta
 - `Key Findings` between warnings and `Top Table Changes` when findings are present, with `evidence:` labels linking findings to relevant report sections

@@ -255,6 +255,8 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。
 
+`diagnostics.counted_event_bytes` 是 schema/table 过滤后保留的 ROW/DDL 事件字节总数。`diagnostics.file_coverage.selected[].size` 是输入文件的物理大小；人类可读报告中缺少大小元数据时显示为不可用，而不是 0。
+
 ### `transactions`
 
 `transactions` 始终以数组形式存在。每个条目始终包含：
@@ -624,6 +626,7 @@ compare 命令只接受两份 BinlogViz analyze JSON 报告：
 
 - `Current Label` 和 `Baseline Label`；如果存在 snapshot 元数据则优先使用 snapshot-aware label，否则回退到 `current` 和 `baseline`
 - 当存在 snapshot 元数据时，还会带出请求时间窗口、input mode、来源摘要和过滤条件
+- 带有明确基线/当前标签的输入文件大小和已计数事件字节行
 - 行数、事务数、warnings 的顶层 delta
 - 按绝对行数变化排序的热点表变化
 - 位于 warnings 和 `Top Table Changes` 之间的 `Key Findings`（当发现存在时），带有 `evidence:` 标签将发现链接到相关报告章节
