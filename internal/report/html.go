@@ -323,12 +323,12 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.DDLCount = len(d.DDLEvents)
 
 	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, 1) {
-		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn))
+		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn, result.Diagnostics.ServerVersion))
 	}
 	d.HasLargestTxns = len(d.LargestTransactions) > 0
 
 	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, 1) {
-		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn))
+		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn, result.Diagnostics.ServerVersion))
 	}
 	d.HasLongestTxns = len(d.LongestTransactions) > 0
 
@@ -347,7 +347,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 
 	// Widest transactions
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, 1) {
-		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn))
+		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn, result.Diagnostics.ServerVersion))
 	}
 	d.HasWidestTxns = len(d.WidestTransactions) > 0
 
@@ -548,7 +548,7 @@ func formatFileSize(bytes int64) string {
 	}
 }
 
-func buildHTMLTxnDiagnostic(txn model.Transaction) htmlTxnDiagnostic {
+func buildHTMLTxnDiagnostic(txn model.Transaction, serverVersion string) htmlTxnDiagnostic {
 	return htmlTxnDiagnostic{
 		TxnKey:               txn.TxnKey,
 		Rows:                 txn.TotalRows,
@@ -559,7 +559,7 @@ func buildHTMLTxnDiagnostic(txn model.Transaction) htmlTxnDiagnostic {
 		Tables:               sortedTxnTables(txn.Tables),
 		Location:             formatBinlogSpan(txn),
 		QuerySummary:         txn.QuerySummary,
-		MysqlbinlogCmd:       mysqlbinlogCmd(txn),
+		MysqlbinlogCmd:       mysqlbinlogCmd(txn, serverVersion),
 	}
 }
 
