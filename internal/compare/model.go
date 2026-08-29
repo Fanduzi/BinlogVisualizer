@@ -297,6 +297,7 @@ type ComparabilityEvidence struct {
 	MixedProducers      bool                  `json:"mixed_producers"`
 	Schemas             []string              `json:"schemas,omitempty"`
 	Scope               *InputSnapshotFilters `json:"scope,omitempty"`
+	Selection           *InputSelection       `json:"selection,omitempty"`
 	TotalTransactions   int                   `json:"total_transactions"`
 	PartialTransactions *int                  `json:"partial_transactions,omitempty"`
 	UnknownTransactions *int                  `json:"unknown_transactions,omitempty"`

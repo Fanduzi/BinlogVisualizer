@@ -1,6 +1,6 @@
 // Package compare verifies positive workload comparability and narrative gating.
-// input: complete report-v3 inputs with explicit workload IDs, producer provenance, canonical scopes, and numeric workload changes.
-// output: regression coverage for structured verdicts, stable reasons, preserved raw deltas, and suppressed causal narrative surfaces.
+// input: report-v0-v3 inputs with explicit workload IDs, producer provenance, canonical object/selector scopes, and numeric workload changes.
+// output: regression coverage for structured verdicts, stable reasons, selector and legacy evidence, preserved raw deltas, and suppressed causal narrative surfaces.
 // pos: public compare-builder safety contract test suite between report loading and all renderers.
 // note: if this file changes, update this header and internal/compare/README.md.
 package compare
@@ -51,6 +51,106 @@ func TestBuildCompareResultGatesDifferentWorkloadsButKeepsRawDeltas(t *testing.T
 	}
 	if len(result.Recommendations) != 0 || len(result.PatternDrilldowns) != 0 {
 		t.Fatalf("ordinary narratives escaped gate: recommendations=%+v drilldowns=%+v", result.Recommendations, result.PatternDrilldowns)
+	}
+}
+
+func TestBuildCompareResultGatesIncompatiblePersistedSelections(t *testing.T) {
+	const sid = "24bc7850-2c16-11e6-a073-0242ac110002"
+	tests := []struct {
+		name     string
+		current  *InputSelection
+		baseline *InputSelection
+	}{
+		{
+			name:     "position",
+			current:  positionSelection(100, 200),
+			baseline: positionSelection(300, 400),
+		},
+		{
+			name: "gtid",
+			current: &InputSelection{
+				IncludeGTIDs:       []string{sid + ":1"},
+				ResolvedGTIDFlavor: "mysql",
+				MatchedGTIDs:       []string{sid + ":1"},
+			},
+			baseline: &InputSelection{
+				IncludeGTIDs:       []string{sid + ":2"},
+				ResolvedGTIDFlavor: "mysql",
+				MatchedGTIDs:       []string{sid + ":2"},
+			},
+		},
+		{
+			name:     "unselected full scope versus explicit selector",
+			current:  nil,
+			baseline: positionSelection(100, 200),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			current := comparableInputReport("payments-prod", "mysql", 7, "8.4.0", 1200)
+			baseline := comparableInputReport("payments-prod", "mysql", 19, "8.0.42", 200)
+			current.Selection = tt.current
+			baseline.Selection = tt.baseline
+
+			result := BuildCompareResult(current, baseline)
+			if result.Comparability.Verdict != VerdictNotComparable || !containsReason(result.Comparability.ReasonCodes, ReasonIncompatibleScope) {
+				t.Fatalf("comparability=%+v, want not_comparable with %q", result.Comparability, ReasonIncompatibleScope)
+			}
+			if result.Summary.TotalRowsDelta != 1000 {
+				t.Fatalf("raw delta=%d, want 1000", result.Summary.TotalRowsDelta)
+			}
+			if len(result.KeyFindings) != 1 || result.KeyFindings[0].Kind != "comparability_guard" || len(result.Recommendations) != 0 || len(result.PatternDrilldowns) != 0 {
+				t.Fatalf("ordinary narratives escaped selection gate: findings=%+v recommendations=%+v drilldowns=%+v", result.KeyFindings, result.Recommendations, result.PatternDrilldowns)
+			}
+		})
+	}
+}
+
+func TestBuildCompareResultKeepsSamePersistedSelectorsComparable(t *testing.T) {
+	const sid = "24bc7850-2c16-11e6-a073-0242ac110002"
+	current := comparableInputReport("payments-prod", "mysql", 7, "8.4.0", 1200)
+	baseline := comparableInputReport("payments-prod", "mysql", 19, "8.0.42", 200)
+	current.Selection = &InputSelection{
+		IncludeGTIDs:       []string{sid + ":2", sid + ":1"},
+		ResolvedGTIDFlavor: "MYSQL",
+		MatchedGTIDs:       []string{sid + ":1"},
+	}
+	baseline.Selection = &InputSelection{
+		IncludeGTIDs:       []string{sid + ":1", sid + ":2"},
+		ResolvedGTIDFlavor: "mysql",
+		MatchedGTIDs:       []string{sid + ":2"},
+	}
+
+	result := BuildCompareResult(current, baseline)
+	if result.Comparability.Verdict != VerdictComparable || len(result.Comparability.ReasonCodes) != 0 {
+		t.Fatalf("comparability=%+v, want comparable without reasons", result.Comparability)
+	}
+	if len(result.KeyFindings) == 0 || result.KeyFindings[0].Kind == "comparability_guard" {
+		t.Fatalf("ordinary findings were not emitted: %+v", result.KeyFindings)
+	}
+	if len(result.Comparability.Evidence) != 2 || result.Comparability.Evidence[0].Selection == nil || result.Comparability.Evidence[1].Selection == nil || len(result.Comparability.Evidence[0].Selection.MatchedGTIDs) != 1 || result.Comparability.Evidence[0].Selection.MatchedGTIDs[0] != sid+":1" || len(result.Comparability.Evidence[1].Selection.MatchedGTIDs) != 1 || result.Comparability.Evidence[1].Selection.MatchedGTIDs[0] != sid+":2" {
+		t.Fatalf("matched GTID evidence was not retained: %+v", result.Comparability.Evidence)
+	}
+}
+
+func TestAssessComparabilityTreatsLegacySelectionAbsenceAsUnknown(t *testing.T) {
+	legacy := comparableInputReport("payments-prod", "mysql", 7, "8.0.42", 1200)
+	baseline := comparableInputReport("payments-prod", "mysql", 19, "8.4.0", 200)
+	legacyVersion := 2
+	legacy.ReportVersion = &legacyVersion
+	legacy.WorkloadID = ""
+	legacy.Provenance = nil
+	legacy.Summary.PartialTransactions = nil
+	legacy.Summary.UnknownTransactions = nil
+	baseline.Selection = positionSelection(100, 200)
+
+	got := AssessComparability([]ComparabilityInput{
+		{Role: "current", Report: legacy},
+		{Role: "baseline", Report: baseline},
+	})
+	if got.Verdict != VerdictUnknown || !containsReason(got.ReasonCodes, ReasonLegacyReportMetadata) || containsReason(got.ReasonCodes, ReasonIncompatibleScope) {
+		t.Fatalf("comparability=%+v, want unknown without selector scope conflict", got)
 	}
 }
 
@@ -133,10 +233,11 @@ func TestAssessComparabilityClassifiesSafetyEvidence(t *testing.T) {
 }
 
 func TestGuardedCompareRenderersLeadWithEvidenceAndSuppressOrdinaryNarratives(t *testing.T) {
-	result := BuildCompareResult(
-		comparableInputReport("payments-prod", "mariadb", 7, "11.8.3-MariaDB", 1200),
-		comparableInputReport("payments-stage", "mysql", 19, "8.0.42", 200),
-	)
+	current := comparableInputReport("payments-prod", "mariadb", 7, "11.8.3-MariaDB", 1200)
+	baseline := comparableInputReport("payments-stage", "mysql", 19, "8.0.42", 200)
+	current.Selection = positionSelection(100, 200)
+	baseline.Selection = positionSelection(300, 400)
+	result := BuildCompareResult(current, baseline)
 
 	jsonOutput, err := RenderJSON(result)
 	if err != nil {
@@ -148,6 +249,11 @@ func TestGuardedCompareRenderersLeadWithEvidenceAndSuppressOrdinaryNarratives(t 
 	}
 	if payload.Comparability.Verdict != VerdictNotComparable || len(payload.KeyFindings) != 1 || payload.KeyFindings[0].Kind != "comparability_guard" {
 		t.Fatalf("JSON guard contract missing: %+v", payload)
+	}
+	if len(payload.Comparability.Evidence) != 2 || payload.Comparability.Evidence[0].Selection == nil || payload.Comparability.Evidence[1].Selection == nil ||
+		payload.Comparability.Evidence[0].Selection.RequestedStartPosition == nil || *payload.Comparability.Evidence[0].Selection.RequestedStartPosition != 100 ||
+		payload.Comparability.Evidence[1].Selection.RequestedStartPosition == nil || *payload.Comparability.Evidence[1].Selection.RequestedStartPosition != 300 {
+		t.Fatalf("JSON selector evidence missing: %+v", payload.Comparability.Evidence)
 	}
 	if len(payload.Recommendations) != 0 || len(payload.PatternDrilldowns) != 0 || payload.Summary.TotalRowsDelta != 1000 {
 		t.Fatalf("JSON narrative suppression/raw deltas wrong: %+v", payload)
@@ -175,7 +281,7 @@ func TestGuardedCompareRenderersLeadWithEvidenceAndSuppressOrdinaryNarratives(t 
 			if name == "html" && !strings.Contains(output, "window.comparePatternDrilldowns = [];") {
 				t.Fatalf("HTML drilldown data was not suppressed: %s", output)
 			}
-			for _, evidence := range []string{"payments-prod", "payments-stage", "mariadb", "mysql", "shop", "partial_transactions=0", "unknown_transactions=0"} {
+			for _, evidence := range []string{"payments-prod", "payments-stage", "mariadb", "mysql", "shop", "requested_start_position=100", "requested_start_position=300", "partial_transactions=0", "unknown_transactions=0"} {
 				if !strings.Contains(strings.ToLower(output), evidence) {
 					t.Fatalf("visible evidence %q missing: %s", evidence, output)
 				}
@@ -230,6 +336,15 @@ func comparableInputReport(workloadID, flavor string, serverID uint32, version s
 			TxnCount:    10,
 			ShareOfRows: 1,
 		}},
+	}
+}
+
+func positionSelection(start, stop int64) *InputSelection {
+	return &InputSelection{
+		RequestedStartPosition: &start,
+		RequestedStopPosition:  &stop,
+		EffectiveStartPosition: &start,
+		EffectiveStopPosition:  &stop,
 	}
 }
 

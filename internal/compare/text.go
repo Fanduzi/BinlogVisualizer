@@ -1,6 +1,6 @@
 // Package compare renders human-readable text reports for compare results.
 // input: deterministic CompareResult values with structured comparability evidence produced by the compare diff engine.
-// output: fixed-section text compare reports leading with any narrative guard, visible identity/provenance/scope evidence, and named byte coverage.
+// output: fixed-section text compare reports leading with any narrative guard, visible identity/provenance/object-selector evidence, and named byte coverage.
 // pos: compare renderer used by the compare command text output path.
 // note: if this file changes, update this header and module README.md.
 package compare
@@ -311,10 +311,45 @@ func FormatComparabilityEvidence(evidence ComparabilityEvidence) string {
 	} else {
 		parts = append(parts, "scope=unknown")
 	}
+	if evidence.Selection != nil {
+		parts = append(parts, "selection="+formatSelection(*evidence.Selection))
+	}
 	parts = append(parts, fmt.Sprintf("total_transactions=%d", evidence.TotalTransactions))
 	parts = append(parts, "partial_transactions="+formatComparabilityCount(evidence.PartialTransactions))
 	parts = append(parts, "unknown_transactions="+formatComparabilityCount(evidence.UnknownTransactions))
 	return strings.Join(parts, " ")
+}
+
+func formatSelection(selection InputSelection) string {
+	parts := make([]string, 0, 8)
+	if selection.RequestedStartPosition != nil {
+		parts = append(parts, fmt.Sprintf("requested_start_position=%d", *selection.RequestedStartPosition))
+	}
+	if selection.RequestedStopPosition != nil {
+		parts = append(parts, fmt.Sprintf("requested_stop_position=%d", *selection.RequestedStopPosition))
+	}
+	if selection.EffectiveStartPosition != nil {
+		parts = append(parts, fmt.Sprintf("effective_start_position=%d", *selection.EffectiveStartPosition))
+	}
+	if selection.EffectiveStopPosition != nil {
+		parts = append(parts, fmt.Sprintf("effective_stop_position=%d", *selection.EffectiveStopPosition))
+	}
+	if len(selection.IncludeGTIDs) > 0 {
+		parts = append(parts, "include_gtids="+strings.Join(selection.IncludeGTIDs, ","))
+	}
+	if len(selection.ExcludeGTIDs) > 0 {
+		parts = append(parts, "exclude_gtids="+strings.Join(selection.ExcludeGTIDs, ","))
+	}
+	if selection.ResolvedGTIDFlavor != "" {
+		parts = append(parts, "resolved_gtid_flavor="+selection.ResolvedGTIDFlavor)
+	}
+	if len(selection.MatchedGTIDs) > 0 {
+		parts = append(parts, "matched_gtids="+strings.Join(selection.MatchedGTIDs, ","))
+	}
+	if len(parts) == 0 {
+		return "explicit"
+	}
+	return strings.Join(parts, ",")
 }
 
 func formatComparabilityCount(value *int) string {
