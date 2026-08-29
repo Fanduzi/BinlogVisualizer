@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
-// input: ordered normalized events that carry BEGIN/COMMIT/XID/ROWS/ROWS_QUERY transaction semantics.
-// output: completed model.Transaction values plus deterministic txn keys for downstream aggregation and persistence.
+// input: ordered normalized events that carry MySQL and MariaDB XA transaction boundaries plus ROWS/ROWS_QUERY semantics.
+// output: completed model.Transaction values with optional XA identity plus deterministic txn keys for downstream aggregation and persistence.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -23,6 +23,7 @@ type TransactionBuilder struct {
 
 type inFlightTxn struct {
 	txnKey             string
+	xaXID              string
 	isExplicit         bool // true if started with BEGIN, false if implicit
 	startTime          time.Time
 	endTime            time.Time
@@ -35,6 +36,7 @@ type inFlightTxn struct {
 	positionEnd        int64
 	tables             map[tableIdentity]int
 	operations         map[string]int
+	rowOperation       string
 	querySQL           string // Bounded SQL from ROWS_QUERY event
 	queryTruncated     bool
 	queryOriginalBytes int // Original SQL byte count before truncation
@@ -52,7 +54,12 @@ func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 	switch ev.EventType {
 	case "BEGIN":
 		return b.handleBegin(ev)
-	case "XID", "COMMIT":
+	case "XA_START":
+		if err := b.handleBegin(ev); err != nil {
+			return err
+		}
+		b.current.xaXID = ev.XAXID
+	case "XID", "COMMIT", "XA_PREPARE", "XA_COMMIT":
 		b.handleCommit(ev)
 	case "ROWS_QUERY":
 		// Capture SQL context for next ROWS events in this transaction
@@ -138,6 +145,7 @@ func (b *TransactionBuilder) handleRowsQuery(ev model.NormalizedEvent) {
 
 	// Capture the SQL context (already bounded at normalize layer)
 	b.current.querySQL = ev.QuerySQL
+	b.current.rowOperation = ev.Operation
 	b.current.queryTruncated = ev.QueryTruncated
 	b.current.queryOriginalBytes = ev.QueryOriginalBytes
 }
@@ -177,8 +185,12 @@ func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent) {
 	}
 
 	// Track operation
-	if ev.Operation != "" {
-		b.current.operations[ev.Operation] += ev.RowCount
+	operation := ev.Operation
+	if b.current.rowOperation != "" {
+		operation = b.current.rowOperation
+	}
+	if operation != "" {
+		b.current.operations[operation] += ev.RowCount
 	}
 }
 
@@ -196,6 +208,7 @@ func (b *TransactionBuilder) finalizeTransaction() {
 
 	txn := model.Transaction{
 		TxnKey:          b.current.txnKey,
+		XAXID:           b.current.xaXID,
 		StartTime:       b.current.startTime,
 		EndTime:         b.current.endTime,
 		Duration:        b.current.endTime.Sub(b.current.startTime),

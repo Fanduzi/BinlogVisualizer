@@ -9,7 +9,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes. |
 | `product.go` | Owns shared report presentation defaults and metric labels used by all renderers. |
 | `text.go` | Renders the concise diagnostic text report plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes the stable analyze JSON report shape, including optional top-level snapshot metadata, and applies SQL context field visibility rules. |
+| `json.go` | Serializes the stable analyze JSON report shape, including optional transaction `xa_xid` and top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
 | `html.go` | Renders the self-contained HTML report, including responsive activity-chart layout and ECharts data preparation. |
 | `mysqlbinlog.go` | Builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands with absolute file paths from usable txn spans; omits `--start-position` when only an XID interval is known. |

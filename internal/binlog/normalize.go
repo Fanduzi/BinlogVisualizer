@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values emitted by the binlog parser layer.
-// output: model.NormalizedEvent values with bounded SQL context and stable event kinds.
+// output: model.NormalizedEvent values with bounded SQL context, XA identity, and stable event/operation kinds.
 // pos: normalization boundary between parser extraction and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -17,7 +17,8 @@ import (
 func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	if raw.EventType == "QUERY_EVENT" || raw.EventType == "QueryEvent" {
 		query := strings.TrimSpace(raw.Query)
-		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) {
+		_, _, isXA := parseXAQuery(query)
+		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) && !isXA {
 			return nil, nil
 		}
 	} else if !isSupportedNormalizedEvent(raw.EventType) {
@@ -38,6 +39,8 @@ func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 func isSupportedNormalizedEvent(eventType string) bool {
 	return eventType == "RowsQueryEvent" ||
 		eventType == "ROWS_QUERY_EVENT" ||
+		eventType == "MariadbAnnotateRowsEvent" ||
+		eventType == "MARIADB_ANNOTATE_ROWS_EVENT" ||
 		eventType == "XID_EVENT" ||
 		eventType == "XIDEvent" ||
 		eventType == "TABLE_MAP_EVENT" ||
@@ -85,6 +88,10 @@ func NormalizeRawEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, erro
 			dst.EventType = "ROWS"
 			dst.Operation = "DELETE"
 			return true, nil
+		}
+	case 'M':
+		if et == "MariadbAnnotateRowsEvent" || et == "MARIADB_ANNOTATE_ROWS_EVENT" {
+			return normalizeRowsQueryEventInto(raw, dst)
 		}
 	case 'W':
 		if (len(et) >= 10 && et[:10] == "WRITE_ROWS") || (len(et) >= 9 && et[:9] == "WriteRows") {
@@ -151,6 +158,7 @@ func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 
 func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, error) {
 	query := strings.TrimSpace(raw.Query)
+	xaEventType, xaXID, isXA := parseXAQuery(query)
 	switch {
 	case strings.EqualFold(query, "BEGIN"):
 		fillNormalizedEvent(dst, raw)
@@ -159,6 +167,11 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 	case strings.EqualFold(query, "COMMIT"):
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "COMMIT"
+		return true, nil
+	case isXA:
+		fillNormalizedEvent(dst, raw)
+		dst.EventType = xaEventType
+		dst.XAXID = xaXID
 		return true, nil
 	case hasQueryDDLPrefix(query):
 		fillNormalizedEvent(dst, raw)
@@ -169,6 +182,29 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 		// Skip non-transactional, non-DDL QUERY events (SET, INSERT as STATEMENT, etc.)
 		return false, nil
 	}
+}
+
+func parseXAQuery(query string) (eventType, xid string, ok bool) {
+	query = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(query), ";"))
+	if !hasWordPrefixFold(query, "XA") {
+		return "", "", false
+	}
+	remainder := strings.TrimSpace(query[len("XA"):])
+	for _, boundary := range []struct {
+		verb      string
+		eventType string
+	}{
+		{verb: "START", eventType: "XA_START"},
+		{verb: "PREPARE", eventType: "XA_PREPARE"},
+		{verb: "COMMIT", eventType: "XA_COMMIT"},
+	} {
+		if !hasWordPrefixFold(remainder, boundary.verb) {
+			continue
+		}
+		xid = strings.TrimSpace(remainder[len(boundary.verb):])
+		return boundary.eventType, xid, xid != ""
+	}
+	return "", "", false
 }
 
 func hasQueryDDLPrefix(sql string) bool {
@@ -212,8 +248,19 @@ func normalizeRowsQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool
 		dst.QueryTruncated = true
 	}
 	dst.QuerySQL = sql
+	if hasLoadDataPrefix(sql) {
+		dst.Operation = "LOAD_DATA"
+	}
 
 	return true, nil
+}
+
+func hasLoadDataPrefix(sql string) bool {
+	sql = strings.TrimSpace(sql)
+	if !hasWordPrefixFold(sql, "LOAD") {
+		return false
+	}
+	return hasWordPrefixFold(strings.TrimSpace(sql[len("LOAD"):]), "DATA")
 }
 
 // safeTruncateBytes truncates to maxBytes without cutting UTF-8 characters.

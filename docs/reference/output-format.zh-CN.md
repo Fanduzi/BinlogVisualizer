@@ -262,13 +262,14 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `txn_key` | string | yes | 报告中使用的事务标识 |
+| `xa_xid` | string | no | MariaDB XA 标识；非 XA 事务省略 |
 | `start_time` | string | yes | RFC3339 时间戳；未设置时为空字符串 |
 | `end_time` | string | yes | RFC3339 时间戳；未设置时为空字符串 |
 | `duration` | string | yes | 持续时间字符串 |
 | `total_rows` | integer | yes | 事务触及的总行数 |
 | `event_count` | integer | yes | 事务中的事件数量 |
 | `tables` | object | no | JSON 对象，key 是表名，value 是整数计数；为空时省略 |
-| `operations` | object | no | JSON 对象，key 是操作名，value 是整数计数；为空时省略 |
+| `operations` | object | no | JSON 对象，key 是操作名（`INSERT`、`UPDATE`、`DELETE` 或 `LOAD_DATA`），value 是受影响行数；为空时省略 |
 | `query_summary` | string | no | 当 SQL 上下文模式抑制该字段，或没有摘要时省略 |
 | `query_sql` | string | no | 仅在 `--sql-context full` 且存在受限 SQL 上下文时出现 |
 | `query_truncated` | boolean | no | 没有 query 上下文时省略；出现时表示存储的 SQL 是否被截断 |

@@ -1,6 +1,6 @@
 // Package binlog verifies raw binlog normalization into analyzer-facing events.
-// input: synthetic RawEvent values covering query, rows, and rows_query variants.
-// output: assertions for normalized event shape, SQL truncation, and skip behavior.
+// input: synthetic RawEvent values covering MySQL/MariaDB query, XA, rows, and row-annotation variants.
+// output: assertions for normalized XA identity, LOAD_DATA intent, SQL truncation, and skip behavior.
 // pos: regression coverage for the normalize layer between parser output and analyzer input.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -87,6 +87,32 @@ func TestNormalizeQueryCommitEvent(t *testing.T) {
 	}
 	if ev.EventType != "COMMIT" {
 		t.Fatalf("expected COMMIT event type, got: %s", ev.EventType)
+	}
+}
+
+func TestNormalizeMariaDBXAQueries(t *testing.T) {
+	tests := []struct {
+		query     string
+		eventType string
+	}{
+		{query: "XA START 'batch-57'", eventType: "XA_START"},
+		{query: "XA PREPARE 'batch-57'", eventType: "XA_PREPARE"},
+		{query: "XA COMMIT 'batch-57'", eventType: "XA_COMMIT"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.eventType, func(t *testing.T) {
+			ev, err := NormalizeRawEvent(RawEvent{EventType: "QueryEvent", Query: tt.query})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if ev == nil || ev.EventType != tt.eventType {
+				t.Fatalf("expected %s event, got %+v", tt.eventType, ev)
+			}
+			if ev.XAXID != "'batch-57'" {
+				t.Fatalf("expected XA identifier to survive normalization, got %q", ev.XAXID)
+			}
+		})
 	}
 }
 
@@ -350,6 +376,23 @@ func TestNormalizeRowsQueryEvent(t *testing.T) {
 	}
 	if ev.QueryOriginalBytes != len(sql) {
 		t.Fatalf("expected QueryOriginalBytes=%d, got %d", len(sql), ev.QueryOriginalBytes)
+	}
+}
+
+func TestNormalizeMariaDBLoadDataAnnotation(t *testing.T) {
+	query := "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"
+	ev, err := NormalizeRawEvent(RawEvent{
+		EventType: "MariadbAnnotateRowsEvent",
+		QuerySQL:  query,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev == nil || ev.EventType != "ROWS_QUERY" || ev.Operation != "LOAD_DATA" {
+		t.Fatalf("expected LOAD_DATA row context, got %+v", ev)
+	}
+	if ev.QuerySQL != query || ev.QueryOriginalBytes != len(query) {
+		t.Fatalf("expected annotation SQL to survive normalization, got %+v", ev)
 	}
 }
 

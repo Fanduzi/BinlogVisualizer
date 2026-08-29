@@ -262,13 +262,14 @@ The top-level JSON object always contains these fields:
 | Field | Type | Required | Notes |
 |------|------|----------|------|
 | `txn_key` | string | yes | Transaction identifier used in reports |
+| `xa_xid` | string | no | MariaDB XA identifier; omitted for non-XA transactions |
 | `start_time` | string | yes | RFC3339 timestamp, or empty string when unset |
 | `end_time` | string | yes | RFC3339 timestamp, or empty string when unset |
 | `duration` | string | yes | Go duration string |
 | `total_rows` | integer | yes | Total rows touched by the transaction |
 | `event_count` | integer | yes | Number of events in the transaction |
 | `tables` | object | no | JSON object whose keys are table names and whose values are integer counts; omitted when the map is nil or empty (`omitempty`) |
-| `operations` | object | no | JSON object whose keys are operation names and whose values are integer counts; omitted when the map is nil or empty (`omitempty`) |
+| `operations` | object | no | JSON object whose keys are operation names (`INSERT`, `UPDATE`, `DELETE`, or `LOAD_DATA`) and whose values are affected-row counts; omitted when the map is nil or empty (`omitempty`) |
 | `query_summary` | string | no | Omitted when SQL-context mode suppresses it or when no summary exists |
 | `query_sql` | string | no | Present only in `--sql-context full` when bounded SQL context exists |
 | `query_truncated` | boolean | no | Omitted when no query context exists; when present, indicates whether stored SQL was truncated |

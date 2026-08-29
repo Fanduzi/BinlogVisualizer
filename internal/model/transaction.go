@@ -1,6 +1,6 @@
 // Package model defines reconstructed transaction contracts and bounded SQL context.
-// input: transaction-boundary events plus optional normalized SQL metadata from binlog parsing.
-// output: Transaction and QueryContext types reused by analyzer, report, and diagnostics code.
+// input: transaction-boundary events plus optional XA identity and normalized SQL metadata from binlog parsing.
+// output: Transaction and QueryContext types, including XA identity, reused by analyzer, report, and diagnostics code.
 // pos: shared transaction model layer between analyzer reconstruction and renderer output.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -28,6 +28,7 @@ type QueryContext struct {
 // Transaction represents a reconstructed database transaction.
 type Transaction struct {
 	TxnKey          string
+	XAXID           string
 	StartTime       time.Time
 	EndTime         time.Time
 	Duration        time.Duration

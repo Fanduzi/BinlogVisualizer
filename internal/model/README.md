@@ -6,8 +6,8 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 
 | File | Responsibility |
 |------|----------------|
-| `event.go` | Defines normalized binlog event contracts emitted by `internal/binlog` and consumed by `internal/analyzer`. |
-| `transaction.go` | Defines reconstructed transaction and bounded SQL context contracts. |
+| `event.go` | Defines normalized binlog event contracts, including XA identity and LOAD_DATA intent, emitted by `internal/binlog` and consumed by `internal/analyzer`. |
+| `transaction.go` | Defines reconstructed transaction (including optional XA XID) and bounded SQL context contracts. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
@@ -22,7 +22,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | API | Contract |
 |-----|----------|
 | `NormalizedEvent` | Stable parser-to-analyzer event contract with bounded SQL context fields. |
-| `Transaction`, `QueryContext` | Stable reconstructed transaction contract plus bounded SQL payload metadata. |
+| `Transaction`, `QueryContext` | Stable reconstructed transaction contract with optional XA identity plus bounded SQL payload metadata. |
 | `WorkloadSummary`, `MinuteBucket`, `TableStats`, `Timeseries` | Stable aggregate workload contracts for analyze renderers. |
 | `PatternStats`, `PatternDrilldown`, `Diagnostics` | Stable higher-signal analysis contracts for findings, drilldowns, and operator review. |
 | `AnalysisResult`, `Snapshot` | Stable top-level analyze report envelope reused by renderers and snapshot-based follow-on commands. |
