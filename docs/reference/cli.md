@@ -93,7 +93,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
 | `--sql-context` | `summary` | SQL context presentation mode: `summary`, `off`, or `full`. |
-| `--top-tables` | `10` | Number of top tables to include in the report. |
+| `--top-tables` | `10` | Number of top tables to display in human-readable reports; JSON retains all table aggregates. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report. |
 | `--top` | `10` | Default number of ranked items for text detail sections (minutes, patterns). |
 | `--details` | `false` | Show minute details and write-shape patterns in the text report. |

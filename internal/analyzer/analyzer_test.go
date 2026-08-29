@@ -109,6 +109,34 @@ func TestAnalyzerTracksPerTableStats(t *testing.T) {
 	}
 }
 
+func TestAnalyzerRetainsAllTablesWhenTopTablesIsBounded(t *testing.T) {
+	opts := DefaultOptions()
+	opts.TopTables = 1
+	a := New(opts)
+	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
+
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", TxnKey: "t1"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 4},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", TxnKey: "t1", Schema: "shop", Table: "payments", Operation: "INSERT", RowCount: 2},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", TxnKey: "t1"},
+	}
+
+	result, err := a.Analyze(events)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Summary.TotalRows != 6 {
+		t.Fatalf("expected summary to retain 6 rows, got %d", result.Summary.TotalRows)
+	}
+	if len(result.Tables) != 2 {
+		t.Fatalf("expected complete table collection, got %d tables", len(result.Tables))
+	}
+	if result.Tables[0].Table != "orders" || result.Tables[1].Table != "payments" {
+		t.Fatalf("expected deterministic table ordering, got %#v", result.Tables)
+	}
+}
+
 func TestAnalyzerTracksMinuteBuckets(t *testing.T) {
 	a := New(Options{})
 	base := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)

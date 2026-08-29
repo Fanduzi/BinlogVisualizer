@@ -1252,6 +1252,9 @@ const htmlReportTemplate = `<!DOCTYPE html>
           </tbody>
         </table>
       </div>
+	      {{if .OmittedTables}}
+	      <div class="section-desc" style="padding:0 16px 8px">{{.OmittedTables}}</div>
+	      {{end}}
       <div class="section-desc" style="padding:10px 16px 14px">{{t "report.html.analyze.opsNote"}}</div>
       {{else}}
       <div class="no-alerts"><span>{{t "report.html.analyze.noTableData"}}</span></div>

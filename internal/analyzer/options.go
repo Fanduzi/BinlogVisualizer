@@ -16,8 +16,9 @@ type Options struct {
 	Start *time.Time
 	End   *time.Time
 
-	// Report limits (future - CLI flags)
-	TopTables       int // 0 = unlimited
+	// Report limits (future - CLI flags). TopTables is retained for option
+	// compatibility; table presentation limits are applied after aggregation.
+	TopTables       int // 0 = unlimited display
 	TopTransactions int // 0 = unlimited
 	TopMinutes      int // 0 = unlimited
 

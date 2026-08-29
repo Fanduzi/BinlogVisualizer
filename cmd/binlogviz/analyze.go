@@ -992,9 +992,15 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 	if err != nil {
 		return report.Options{}, err
 	}
+	topTables := opts.topTables
+	if !opts.topTablesChanged {
+		topTables = opts.top
+	}
 	return report.Options{
 		SQLContextMode: mode,
 		TopN:           opts.top,
+		TopTables:      topTables,
+		TopTablesSet:   opts.topTablesChanged,
 		Details:        opts.details,
 		ShowMinutes:    opts.showMinutes,
 		ShowPatterns:   opts.showPatterns,

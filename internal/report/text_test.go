@@ -392,6 +392,48 @@ func TestRenderTextTopTablesFootnote(t *testing.T) {
 	}
 }
 
+func TestRenderTextTopTablesReportsOmittedTables(t *testing.T) {
+	result := productTextFixture()
+	result.Summary.TotalRows = 6
+	result.Tables = []model.TableStats{
+		{Schema: "shop", Table: "orders", TotalRows: 4, InsertRows: 4, EventCount: 1},
+		{Schema: "shop", Table: "payments", TotalRows: 2, InsertRows: 2, EventCount: 1},
+	}
+
+	out, err := RenderTextWithOptions(result, Options{TopN: 1})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "shop.orders") || strings.Contains(out, "shop.payments") {
+		t.Fatalf("expected only the top table to be displayed\n%s", out)
+	}
+	if !strings.Contains(out, "66.7%") {
+		t.Fatalf("expected row share to use all table rows as the denominator\n%s", out)
+	}
+	if !strings.Contains(out, "… and 1 more tables") {
+		t.Fatalf("expected omitted-table count\n%s", out)
+	}
+}
+
+func TestRenderTextTopTablesSupportsExplicitUnlimitedLimit(t *testing.T) {
+	result := productTextFixture()
+	result.Tables = []model.TableStats{
+		{Schema: "shop", Table: "orders", TotalRows: 4},
+		{Schema: "shop", Table: "payments", TotalRows: 2},
+	}
+
+	out, err := RenderTextWithOptions(result, Options{TopN: 1, TopTablesSet: true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "shop.orders") || !strings.Contains(out, "shop.payments") {
+		t.Fatalf("expected explicit unlimited table output\n%s", out)
+	}
+	if strings.Contains(out, "more tables") {
+		t.Fatalf("did not expect omitted-table count for unlimited output\n%s", out)
+	}
+}
+
 func TestRenderTextTopTransactionsUsesTopLimit(t *testing.T) {
 	result := productTextFixture()
 	result.Diagnostics.LargestTransactions = []model.Transaction{

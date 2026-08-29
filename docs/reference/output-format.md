@@ -216,7 +216,7 @@ The top-level JSON object always contains these fields:
 |------|------|----------|------|
 | `report_version` | integer | yes | Analyze report contract version; current version is `2` |
 | `summary` | object | yes | Overall totals and time bounds |
-| `tables` | array | yes | Top table aggregates; empty array when no table results exist |
+| `tables` | array | yes | Complete table aggregates in deterministic order; human renderers may display only the configured top tables; empty array when no table results exist |
 | `transactions` | array | yes | Top transaction aggregates; empty array when no transaction results exist |
 | `patterns` | array | yes | Top pattern aggregates; empty array when no pattern results exist |
 | `minutes` | array | yes | Per-minute aggregates; empty array when no minute buckets exist |

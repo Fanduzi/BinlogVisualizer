@@ -216,7 +216,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 |------|------|----------|------|
 | `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `2` |
 | `summary` | object | yes | 总体汇总和时间边界 |
-| `tables` | array | yes | Top 表聚合结果；没有表结果时为空数组 |
+| `tables` | array | yes | 按确定性顺序排列的完整表聚合结果；人类可读渲染器可以只显示配置的 Top 表；没有表结果时为空数组 |
 | `transactions` | array | yes | Top 事务聚合结果；没有事务结果时为空数组 |
 | `patterns` | array | yes | Top 模式聚合结果；没有模式结果时为空数组 |
 | `minutes` | array | yes | 每分钟聚合结果；没有分钟桶时为空数组 |

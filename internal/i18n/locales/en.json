@@ -383,6 +383,10 @@
     "description": "Footnote explaining DML and DDL percentage denominators",
     "other": "DML shares are of affected rows; DDL share is of binlog events."
   },
+  "report.text.omittedTables": {
+    "description": "Count of tables omitted by the report table display limit",
+    "other": "… and {{.Count}} more tables"
+  },
   "report.text.writeSpike": {
     "description": "Short finding label for a write spike",
     "other": "Write spike"

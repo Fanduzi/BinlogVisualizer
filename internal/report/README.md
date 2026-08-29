@@ -6,7 +6,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 
 | File | Responsibility |
 |------|----------------|
-| `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes. |
+| `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults and metric labels used by all renderers. |
 | `text.go` | Renders the concise diagnostic text report plus opt-in minute and write-shape detail sections. |
 | `json.go` | Serializes the stable analyze JSON report shape, including optional transaction `xa_xid` and top-level snapshot metadata, and applies SQL context field visibility rules. |
@@ -29,7 +29,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 ## Dependencies
 
 - Upstream:
-  - `internal/model` provides `AnalysisResult`, `Transaction`, and bounded `QueryContext` data.
+  - `internal/model` provides complete `AnalysisResult`, `Transaction`, and bounded `QueryContext` data.
 - Downstream:
   - `cmd/binlogviz` passes CLI-selected SQL context mode into this module.
 
@@ -39,6 +39,8 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - `off` omits query lines in text and omits all query-related JSON fields.
 - `full` only exposes bounded SQL from `QueryContext.SQL`; it never reconstructs or emits unbounded original SQL.
 - `product.go` owns presentation defaults such as `DefaultTopN` so text, HTML, and command flags share one report contract.
+- `AnalysisResult.Tables` is complete; JSON preserves every table, while human renderers apply `TopTables` and report how many tables were omitted.
+- An explicit `TopTables=0` with `TopTablesSet=true` keeps human table sections unbounded; an omitted table limit inherits `TopN` for compatibility.
 - The default text report is an incident brief: summary, hot tables, and largest transactions first; findings and activity come after. Minute activity and write-shape patterns require explicit detail options.
 - Text Top Findings are the same `diagnostics.findings` / `alerts` as JSON. Hot intervals and longest transactions are evidence only; they are not synthesized into critical/warning findings.
 - Text Next Actions shows a suspicious position only when a finding or alert references a transaction with recorded location evidence; clean workload diagnostics do not promote ranked evidence to an alert.

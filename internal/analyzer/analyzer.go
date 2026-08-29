@@ -259,7 +259,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	return &model.AnalysisResult{
 		Summary:           snap.Summary,
 		Timeseries:        snap.Timeseries,
-		Tables:            limitTables(a.tableAgg.Snapshot(), a.opts.TopTables),
+		Tables:            a.tableAgg.Snapshot(),
 		Transactions:      topTransactions,
 		Patterns:          snap.Patterns,
 		Minutes:           snap.Minutes,

@@ -1,4 +1,4 @@
-// Package report renders JSON reports from bounded analysis results.
+// Package report renders JSON reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context and snapshot presentation controls.
 // output: stable JSON objects with XA-aware transactions, mode-controlled query fields, optional snapshot envelope data, and mysqlbinlog_cmd replay strings.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.

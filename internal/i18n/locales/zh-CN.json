@@ -383,6 +383,10 @@
     "description": "脚注：说明 DML 和 DDL 百分比分母",
     "other": "DML 占比基于影响行数；DDL 占比基于 binlog 事件数。"
   },
+  "report.text.omittedTables": {
+    "description": "报告表格显示限制省略的表数量",
+    "other": "… 还有 {{.Count}} 张表未显示"
+  },
   "report.text.writeSpike": {
     "description": "写入尖峰发现短标签",
     "other": "写入尖峰"

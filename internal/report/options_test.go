@@ -57,11 +57,32 @@ func TestNormalizeOptionsAppliesProductDefaults(t *testing.T) {
 	if opts.TopN != DefaultTopN {
 		t.Fatalf("expected default top N %d, got %d", DefaultTopN, opts.TopN)
 	}
+	if opts.TopTables != DefaultTopN {
+		t.Fatalf("expected default table limit %d, got %d", DefaultTopN, opts.TopTables)
+	}
 	if opts.ShowMinutes {
 		t.Fatal("default text output must not show minute details")
 	}
 	if opts.ShowPatterns {
 		t.Fatal("default text output must not show write pattern details")
+	}
+}
+
+func TestNormalizeOptionsUsesTopNForUnspecifiedTableLimit(t *testing.T) {
+	opts := normalizeOptions(Options{TopN: 3})
+
+	if opts.TopTables != 3 {
+		t.Fatalf("expected table limit to follow TopN, got %d", opts.TopTables)
+	}
+
+	opts = normalizeOptions(Options{TopN: 3, TopTables: 1})
+	if opts.TopTables != 1 {
+		t.Fatalf("expected explicit table limit to be preserved, got %d", opts.TopTables)
+	}
+
+	opts = normalizeOptions(Options{TopN: 3, TopTablesSet: true})
+	if opts.TopTables != 0 {
+		t.Fatalf("expected explicit zero table limit to remain unlimited, got %d", opts.TopTables)
 	}
 }
 

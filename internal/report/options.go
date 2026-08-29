@@ -1,5 +1,5 @@
 // Package report defines presentation controls for text, JSON, markdown, and HTML analysis output.
-// input: CLI-selected presentation options and analyzer-produced bounded analysis results.
+// input: CLI-selected presentation options and analyzer-produced complete analysis results.
 // output: normalized report rendering options with validated SQL context modes and output formats.
 // pos: renderer configuration layer between command flag parsing and text/JSON/markdown/HTML serializers.
 // note: if this file changes, update this header and module README.md.
@@ -42,14 +42,18 @@ type Options struct {
 	SQLContextMode SQLContextMode
 	Format         Format
 	TopN           int
-	Details        bool
-	ShowMinutes    bool
-	ShowPatterns   bool
+	// TopTables limits human-readable table sections; zero is unlimited when TopTablesSet is true.
+	TopTables int
+	// TopTablesSet distinguishes an explicit zero limit from an omitted value.
+	TopTablesSet bool
+	Details      bool
+	ShowMinutes  bool
+	ShowPatterns bool
 }
 
 // DefaultOptions returns the backwards-compatible report presentation defaults.
 func DefaultOptions() Options {
-	return Options{SQLContextMode: SQLContextSummary, TopN: DefaultTopN}
+	return Options{SQLContextMode: SQLContextSummary, TopN: DefaultTopN, TopTables: DefaultTopN}
 }
 
 // ParseSQLContextMode validates a CLI-provided sql-context mode.
@@ -76,6 +80,9 @@ func normalizeOptions(opts Options) Options {
 	}
 	if opts.TopN <= 0 {
 		opts.TopN = DefaultTopN
+	}
+	if !opts.TopTablesSet && opts.TopTables <= 0 {
+		opts.TopTables = opts.TopN
 	}
 	if opts.Details {
 		opts.ShowMinutes = true

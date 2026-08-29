@@ -967,15 +967,6 @@ func cloneStringIntMap(src map[string]int) map[string]int {
 	return dst
 }
 
-func limitTables(tables []model.TableStats, limit int) []model.TableStats {
-	if limit <= 0 || len(tables) <= limit {
-		return tables
-	}
-	limited := make([]model.TableStats, limit)
-	copy(limited, tables[:limit])
-	return limited
-}
-
 func newInMemoryStore() analysisStore {
 	return &inMemoryStore{}
 }

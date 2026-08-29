@@ -379,6 +379,40 @@ func TestBuildReportOptionsMapsPresentationFlags(t *testing.T) {
 	}
 }
 
+func TestBuildReportOptionsKeepsExplicitTopTablesIndependent(t *testing.T) {
+	opts := &analyzeOptions{
+		top:              7,
+		topTables:        2,
+		topTablesChanged: true,
+	}
+
+	got, err := buildReportOptions(opts)
+	if err != nil {
+		t.Fatalf("buildReportOptions returned error: %v", err)
+	}
+	if got.TopN != 7 {
+		t.Fatalf("expected TopN 7, got %d", got.TopN)
+	}
+	if got.TopTables != 2 {
+		t.Fatalf("expected TopTables 2, got %d", got.TopTables)
+	}
+	if !got.TopTablesSet {
+		t.Fatal("expected explicit TopTables setting to be preserved")
+	}
+}
+
+func TestBuildReportOptionsPreservesUnlimitedTopTables(t *testing.T) {
+	opts := &analyzeOptions{top: 10, topTablesChanged: true}
+
+	got, err := buildReportOptions(opts)
+	if err != nil {
+		t.Fatalf("buildReportOptions returned error: %v", err)
+	}
+	if got.TopTables != 0 || !got.TopTablesSet {
+		t.Fatalf("expected explicit TopTables=0 to remain unlimited, got %+v", got)
+	}
+}
+
 func TestBuildAnalyzerOptionsUsesTopForLegacyDefaultsWhenUntouched(t *testing.T) {
 	cliOpts := &analyzeOptions{
 		top:              6,

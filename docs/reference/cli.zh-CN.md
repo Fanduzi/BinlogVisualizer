@@ -93,7 +93,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--sql-context` | `summary` | SQL 上下文展示模式：`summary`、`off` 或 `full`。 |
-| `--top-tables` | `10` | 报告中包含的 Top 表数量。 |
+| `--top-tables` | `10` | 人类可读报告中显示的 Top 表数量；JSON 保留全部表聚合结果。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量。 |
 | `--top` | `10` | 文本明细章节（分钟、写入形态）的默认 Top-N。 |
 | `--details` | `false` | 在文本报告中同时展开分钟明细和写入形态。 |
