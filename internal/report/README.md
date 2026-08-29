@@ -43,6 +43,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Text Top Findings are the same `diagnostics.findings` / `alerts` as JSON. Hot intervals and longest transactions are evidence only; they are not synthesized into critical/warning findings.
 - The text Top Tables report sizes its table-name column to the widest displayed name; `Affected Rows` covers INSERT/UPDATE/DELETE rows and `Row Share` is that table's portion of all affected rows.
 - Text rendering is intentionally kept on a fast path: it must not build HTML chart data, read embedded ECharts assets, or render pattern drilldowns unless detail options request them.
+- When `summary.duration` is shorter than one second and there is at least one transaction, the text activity TPS peak is `N/A (sub-second)` (i18n) instead of `TxnCount/60`. Rows/min and JSON `timeseries.tps_series` stay numeric.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
