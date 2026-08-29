@@ -1,6 +1,6 @@
 // Package report verifies incident-brief text rendering and opt-in detail sections.
 // input: synthetic AnalysisResult fixtures with summary, table, minute, pattern, and diagnostic evidence.
-// output: regression coverage for default diagnostic sections, table limits, and detail flags.
+// output: regression coverage for default diagnostic sections, table limits, detail flags, and finding/alert-backed suspicious positions.
 // pos: text renderer regression suite guarding user-facing CLI report formatting.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -88,6 +88,24 @@ func TestRenderTextUsesTransactionBackedFindingLocation(t *testing.T) {
 	}
 	if !strings.Contains(out, "First suspicious position: mysql-bin.000044:210") {
 		t.Fatalf("expected suspicious position from the finding's transaction:\n%s", out)
+	}
+}
+
+func TestRenderTextUsesTransactionBackedAlertLocation(t *testing.T) {
+	forceEnglishReportLocale(t)
+	result := productTextFixture()
+	result.Diagnostics.Findings = nil
+	result.Alerts = []model.Alert{{
+		Type:   "large_transaction",
+		TxnKey: "txn-largest",
+	}}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "First suspicious position: mysql-bin.000044:210") {
+		t.Fatalf("expected suspicious position from the alert's transaction:\n%s", out)
 	}
 }
 
