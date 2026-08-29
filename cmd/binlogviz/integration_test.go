@@ -471,8 +471,8 @@ func TestAnalyzeCommandJSONSnapshotFlowPersistsReportAndPrintsSavePath(t *testin
 		"--format", "json",
 		"--snapshot-name", snapshotName,
 		"--snapshot-dir", snapshotDir,
-		"--start", "2026-03-09T10:00:00Z",
-		"--end", "2026-03-09T10:30:00Z",
+		"--start", "2026-03-15T14:00:00Z",
+		"--end", "2026-03-15T15:00:00Z",
 		"--include-schema", "testdb",
 	})
 	cmd.SilenceUsage = true
@@ -532,7 +532,7 @@ func TestAnalyzeCommandJSONSnapshotFlowPersistsReportAndPrintsSavePath(t *testin
 	if !ok {
 		t.Fatalf("expected snapshot.window object, got %v", snapshot["window"])
 	}
-	if window["start_time"] != "2026-03-09T10:00:00Z" || window["end_time"] != "2026-03-09T10:30:00Z" {
+	if window["start_time"] != "2026-03-15T14:00:00Z" || window["end_time"] != "2026-03-15T15:00:00Z" {
 		t.Fatalf("unexpected snapshot.window payload: %v", window)
 	}
 	filters, ok := snapshot["filters"].(map[string]any)

@@ -195,6 +195,10 @@
     "description": "非空文件没有可解析事件 / Format Description",
     "other": "binlog 没有 Format Description 事件（文件被截断或不完整）"
   },
+  "error.noAnalyzableEvents": {
+    "description": "已解析到 Format Description 但没有计入任何事件",
+    "other": "binlog 没有可分析的事件"
+  },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
     "other": "前缀后的后缀必须是数字；请尝试 --prefix {{.Prefix}}"
