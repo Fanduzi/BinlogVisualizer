@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
-// input: analyzer.Options plus ordered model.NormalizedEvent values from the binlog normalization pipeline.
-// output: streaming Consume/Finalize analysis state and model.AnalysisResult snapshots for command/report layers.
+// input: analyzer.Options plus ordered model.NormalizedEvent values from the binlog normalization pipeline, including optional object filters.
+// output: streaming Consume/Finalize analysis state and model.AnalysisResult snapshots with one filtered workload set for command/report layers.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -148,13 +148,26 @@ func (a *Analyzer) isInWindow(ts time.Time) bool {
 // If TransactionBuilder returns an error (e.g., boundary violation),
 // fan-out to other aggregators is stopped to prevent inconsistent state.
 func (a *Analyzer) consume(ev model.NormalizedEvent) error {
+	ev = enrichDDLEvent(ev)
+	workloadEv, isWorkload := filteredWorkloadEvent(ev)
+	if a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
+		a.txnBuilder.clearCurrentQueryContext()
+		return nil
+	}
+
 	// TransactionBuilder is the source of truth for transaction boundaries.
 	// If it returns an error, stop processing to avoid inconsistent state.
 	if err := a.txnBuilder.Consume(ev); err != nil {
 		return err
 	}
 	ev = a.withCurrentTxnKey(ev)
-	ev = enrichDDLEvent(ev)
+	if isWorkload {
+		workloadEv.TxnKey = ev.TxnKey
+	}
+	aggregationEv := ev
+	if a.opts.HasObjectFilters() && isWorkload {
+		aggregationEv = workloadEv
+	}
 
 	// Track event count and time bounds only after transaction state accepted the event.
 	a.eventCount++
@@ -166,14 +179,16 @@ func (a *Analyzer) consume(ev model.NormalizedEvent) error {
 	}
 
 	// Only fan out to other aggregators if transaction processing succeeded.
-	if a.filter.Allow(ev.Schema, ev.Table) {
-		a.reportAgg.ConsumeOperationEvent(ev)
-		a.tableAgg.Consume(ev)
-		a.minuteAgg.Consume(ev)
-		a.ddlAgg.ConsumeEvent(ev)
-		a.timeseriesAgg.Consume(ev)
+	if a.filter.Allow(aggregationEv.Schema, aggregationEv.Table) {
+		a.reportAgg.ConsumeOperationEvent(aggregationEv)
+		a.tableAgg.Consume(aggregationEv)
+		a.minuteAgg.Consume(aggregationEv)
+		a.ddlAgg.ConsumeEvent(aggregationEv)
+		a.timeseriesAgg.Consume(aggregationEv)
 	}
-	a.reportAgg.ConsumeEvent(ev)
+	if !a.opts.HasObjectFilters() || isWorkload {
+		a.reportAgg.ConsumeEvent(aggregationEv)
+	}
 
 	if err := a.persistCompletedTransactions(); err != nil {
 		return err
@@ -289,10 +304,43 @@ func (a *Analyzer) persistCompletedTransactions() error {
 	if len(drained) == 0 {
 		return nil
 	}
-	for _, txn := range drained {
+	persisted := drained
+	if a.opts.HasObjectFilters() {
+		persisted = make([]model.Transaction, 0, len(drained))
+		for _, txn := range drained {
+			if txn.TotalRows > 0 {
+				persisted = append(persisted, txn)
+			}
+		}
+	}
+	if len(persisted) == 0 {
+		return nil
+	}
+	for _, txn := range persisted {
 		a.reportAgg.ConsumeTransaction(txn)
 	}
-	return a.store.RecordTransactions(toPersistedTransactions(drained))
+	return a.store.RecordTransactions(toPersistedTransactions(persisted))
+}
+
+func filteredWorkloadEvent(ev model.NormalizedEvent) (model.NormalizedEvent, bool) {
+	if ev.EventType == "ROWS" || ev.EventType == "DDL" {
+		return ev, true
+	}
+	if ev.EventType != "QUERY" && ev.EventType != "ROWS_QUERY" {
+		return ev, false
+	}
+	ddl, ok := DDLEventFromNormalizedEvent(ev)
+	if !ok {
+		return ev, false
+	}
+	ev.EventType = "DDL"
+	if ev.Schema == "" {
+		ev.Schema = ddl.Schema
+	}
+	if ev.Table == "" {
+		ev.Table = ddl.Table
+	}
+	return ev, true
 }
 
 func (a *Analyzer) persistMinuteBuckets(buckets []model.MinuteBucket) error {

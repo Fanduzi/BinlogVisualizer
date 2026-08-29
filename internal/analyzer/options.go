@@ -1,6 +1,6 @@
 // Package analyzer defines configurable thresholds, filters, and detail-store behavior for binlog analysis.
 // input: CLI or caller-selected analyzer options for time windows, limits, alerts, filters, and detail storage.
-// output: Options and DefaultOptions values consumed by Analyzer construction and command mapping.
+// output: Options and DefaultOptions values consumed by Analyzer construction and command mapping, plus filter-presence checks.
 // pos: analyzer configuration boundary shared by CLI, tests, and streaming analysis setup.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -50,4 +50,12 @@ func DefaultOptions() Options {
 		SpikeFactor:      5.0,
 		SpikeMinRows:     100,
 	}
+}
+
+// HasObjectFilters reports whether schema or table filtering is configured.
+func (o Options) HasObjectFilters() bool {
+	return len(o.IncludeSchemas) > 0 ||
+		len(o.ExcludeSchemas) > 0 ||
+		len(o.IncludeTables) > 0 ||
+		len(o.ExcludeTables) > 0
 }

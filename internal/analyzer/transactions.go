@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events that carry MySQL and MariaDB XA transaction boundaries plus ROWS/ROWS_QUERY semantics.
-// output: completed model.Transaction values with optional XA identity plus deterministic txn keys for downstream aggregation and persistence.
+// output: completed model.Transaction values with optional XA identity, deterministic txn keys, and filter-safe query context.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -103,6 +103,16 @@ func (b *TransactionBuilder) CurrentTxnKey() string {
 		return ""
 	}
 	return b.current.txnKey
+}
+
+func (b *TransactionBuilder) clearCurrentQueryContext() {
+	if b.current == nil {
+		return
+	}
+	b.current.querySQL = ""
+	b.current.rowOperation = ""
+	b.current.queryTruncated = false
+	b.current.queryOriginalBytes = 0
 }
 
 func (b *TransactionBuilder) handleBegin(ev model.NormalizedEvent) error {

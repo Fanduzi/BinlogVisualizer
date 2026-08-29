@@ -1,6 +1,6 @@
 // Package analyzer validates analyzer orchestration and streaming result semantics.
 // input: analyzer test fixtures expressed as model.NormalizedEvent sequences and analyzer.Options values.
-// output: regression coverage for slice-wrapper compatibility, streaming finalization, window filtering, and failure handling.
+// output: regression coverage for slice-wrapper compatibility, streaming finalization, window/object filtering, and failure handling.
 // pos: module-level behavioral test suite for the analyzer entrypoint and its external contracts.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -990,8 +990,104 @@ func TestAnalyzerStreamingReportOperationTimeseriesRespectsFilters(t *testing.T)
 	if len(result.Timeseries.UpdateEventSeries) == 0 || result.Timeseries.UpdateEventSeries[0].Value != 0 {
 		t.Fatalf("expected filtered update event to be excluded, got %v", result.Timeseries.UpdateEventSeries)
 	}
-	if result.Summary.TotalEvents != 4 {
-		t.Fatalf("summary total events = %d, want 4 to preserve existing event-count semantics", result.Summary.TotalEvents)
+	if result.Summary.TotalEvents != 1 {
+		t.Fatalf("summary total events = %d, want 1 filtered workload event", result.Summary.TotalEvents)
+	}
+}
+
+func TestAnalyzerObjectFiltersShareFilteredWorkload(t *testing.T) {
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "DDL", Schema: "dogfood", Table: "audit_log", QuerySQL: "ALTER TABLE dogfood.audit_log ADD COLUMN note TEXT"},
+		{Timestamp: base.Add(time.Second), EventType: "DDL", Schema: "dogfood", Table: "payments", QuerySQL: "DROP TABLE dogfood.payments"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "BEGIN"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 8},
+		{Timestamp: base.Add(4 * time.Second), EventType: "XID"},
+		{Timestamp: base.Add(5 * time.Second), EventType: "BEGIN"},
+		{Timestamp: base.Add(5500 * time.Millisecond), EventType: "ROWS_QUERY", Operation: "LOAD_DATA", QuerySQL: "LOAD DATA INTO TABLE dogfood.payments"},
+		{Timestamp: base.Add(6 * time.Second), EventType: "ROWS", Schema: "dogfood", Table: "payments", Operation: "DELETE", RowCount: 7},
+		{Timestamp: base.Add(7 * time.Second), EventType: "ROWS", Schema: "dogfood", Table: "audit_log", Operation: "INSERT", RowCount: 2000},
+		{Timestamp: base.Add(8 * time.Second), EventType: "XID"},
+	}
+
+	opts := DefaultOptions()
+	opts.IncludeSchemas = []string{"dogfood"}
+	opts.IncludeTables = []string{"audit_log"}
+	opts.ExcludeTables = []string{"payments"}
+	result, err := New(opts).Analyze(events)
+	if err != nil {
+		t.Fatalf("filtered analyze: %v", err)
+	}
+
+	if result.Summary.TotalTransactions != 1 || result.Summary.TotalRows != 2000 || result.Summary.TotalEvents != 2 {
+		t.Fatalf("filtered summary = %+v, want one transaction, 2000 rows, 2 workload events", result.Summary)
+	}
+	if len(result.Tables) != 1 || result.Tables[0].Schema != "dogfood" || result.Tables[0].Table != "audit_log" || result.Tables[0].TotalRows != 2000 {
+		t.Fatalf("filtered tables = %+v, want only dogfood.audit_log with 2000 rows", result.Tables)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].TotalRows != 2000 {
+		t.Fatalf("filtered transactions = %+v, want only the included transaction", result.Transactions)
+	}
+	if got := result.Transactions[0].Tables; len(got) != 1 || got["dogfood.audit_log"] != 2000 {
+		t.Fatalf("filtered transaction tables = %+v, want only dogfood.audit_log", got)
+	}
+	if got := result.Transactions[0].Operations; got["INSERT"] != 2000 || got["LOAD_DATA"] != 0 {
+		t.Fatalf("filtered transaction operations = %+v, want excluded LOAD_DATA intent removed", got)
+	}
+	if result.Transactions[0].QuerySummary != "" || result.Transactions[0].QueryContext != nil {
+		t.Fatalf("filtered transaction query evidence = %+v, want excluded-row SQL removed", result.Transactions[0])
+	}
+	if len(result.Patterns) != 1 || len(result.Patterns[0].Tables) != 1 || result.Patterns[0].Tables["dogfood.audit_log"] != 2000 {
+		t.Fatalf("filtered patterns = %+v, want only dogfood.audit_log", result.Patterns)
+	}
+	if len(result.Minutes) != 1 || result.Minutes[0].TotalRows != 2000 || len(result.Minutes[0].TableRows) != 1 || result.Minutes[0].TableRows["dogfood.audit_log"] != 2000 {
+		t.Fatalf("filtered minutes = %+v, want only dogfood.audit_log activity", result.Minutes)
+	}
+	if len(result.Timeseries.RowsSeries) != 1 || result.Timeseries.RowsSeries[0].Value != 2000 || result.Timeseries.InsertEventSeries[0].Value != 1 || result.Timeseries.DDLEventSeries[0].Value != 1 {
+		t.Fatalf("filtered timeseries = %+v, want 2000 rows, one insert, one DDL", result.Timeseries)
+	}
+	if len(result.Diagnostics.DDLEvents) != 1 || result.Diagnostics.DDLEvents[0].Table != "audit_log" || len(result.Diagnostics.LargestTransactions) != 1 || len(result.Diagnostics.LongestTransactions) != 1 || len(result.Diagnostics.WidestTransactions) != 1 || len(result.Diagnostics.HotIntervals) != 1 {
+		t.Fatalf("filtered diagnostics = %+v, want only included workload evidence", result.Diagnostics)
+	}
+	if len(result.Alerts) != 1 || result.Alerts[0].TxnKey != result.Transactions[0].TxnKey {
+		t.Fatalf("filtered alerts = %+v, want one alert for the included transaction", result.Alerts)
+	}
+	if tables, ok := result.Alerts[0].Details["tables"].([]string); !ok || len(tables) != 1 || tables[0] != "dogfood.audit_log" {
+		t.Fatalf("filtered alert tables = %#v, want only dogfood.audit_log", result.Alerts[0].Details["tables"])
+	}
+	if len(result.Diagnostics.Findings) != 1 || result.Diagnostics.Findings[0].TxnKey != result.Transactions[0].TxnKey {
+		t.Fatalf("filtered findings = %+v, want one included transaction finding", result.Diagnostics.Findings)
+	}
+
+	unfiltered, err := New(DefaultOptions()).Analyze(events)
+	if err != nil {
+		t.Fatalf("unfiltered analyze: %v", err)
+	}
+	if unfiltered.Summary.TotalTransactions != 2 || unfiltered.Summary.TotalRows != 2015 {
+		t.Fatalf("unfiltered summary = %+v, want the original two transactions and 2015 rows", unfiltered.Summary)
+	}
+}
+
+func TestAnalyzerObjectFiltersDeriveRowsQueryDDLIdentity(t *testing.T) {
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "ROWS_QUERY", QuerySQL: "DROP TABLE dogfood.payments"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS_QUERY", QuerySQL: "ALTER TABLE dogfood.audit_log ADD COLUMN note TEXT"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", Schema: "dogfood", Table: "audit_log", Operation: "INSERT", RowCount: 3},
+	}
+	opts := DefaultOptions()
+	opts.IncludeSchemas = []string{"dogfood"}
+	opts.ExcludeTables = []string{"payments"}
+
+	result, err := New(opts).Analyze(events)
+	if err != nil {
+		t.Fatalf("filtered analyze: %v", err)
+	}
+	if len(result.Diagnostics.DDLEvents) != 1 || result.Diagnostics.DDLEvents[0].Table != "audit_log" {
+		t.Fatalf("filtered ROWS_QUERY DDL diagnostics = %+v, want only dogfood.audit_log", result.Diagnostics.DDLEvents)
+	}
+	if len(result.Tables) != 1 || result.Tables[0].Table != "audit_log" || result.Tables[0].DDLCount != 1 {
+		t.Fatalf("filtered ROWS_QUERY DDL tables = %+v, want only audit_log with one DDL", result.Tables)
 	}
 }
 
