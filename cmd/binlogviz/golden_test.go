@@ -50,6 +50,7 @@ func TestSnapshotShowJSONGoldenMinimalWorkflow(t *testing.T) {
 }
 
 func TestCompareJSONGoldenLegacySnapshotWorkflow(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	dir := t.TempDir()
 
 	current, err := os.ReadFile(filepath.Join("..", "..", "internal", "compare", "testdata", "current.json"))
@@ -430,6 +431,7 @@ func TestTrendKeyFindingsGoldenJSON(t *testing.T) {
 }
 
 func TestTrendJSONGoldenLegacyFallbackWorkflow(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	dir := t.TempDir()
 	writeSnapshotFixture(t, dir, "legacy-alpha", trendSnapshotFixtureJSONWithWindowOverride(trendSnapshotFixture{
 		Legacy:    true,
@@ -503,6 +505,7 @@ func normalizeGoldenOutput(out, snapshotDir string) string {
 }
 
 func TestWorkflowRunGoldenManifest(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
 	cmd := NewRootCommand()
@@ -819,6 +822,7 @@ func listArtifactTree(t *testing.T, root string) []string {
 }
 
 func TestWorkflowIndexGoldenSuccess(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
 	cmd := NewRootCommand()
@@ -888,6 +892,7 @@ windows:
 }
 
 func TestWorkflowStatusTextGoldenSuccess(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
 	runCmd := NewRootCommand()
@@ -919,6 +924,7 @@ func TestWorkflowStatusTextGoldenSuccess(t *testing.T) {
 }
 
 func TestWorkflowStatusJSONGoldenSuccess(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
 	runCmd := NewRootCommand()
@@ -950,6 +956,7 @@ func TestWorkflowStatusJSONGoldenSuccess(t *testing.T) {
 }
 
 func TestWorkflowStatusTextGoldenIncomplete(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 
 	runCmd := NewRootCommand()
