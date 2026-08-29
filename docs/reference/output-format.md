@@ -428,13 +428,16 @@ The output is safe to pipe into any Markdown renderer or paste directly into Git
 HTML mode renders a self-contained single-file report. All styles, chart library (ECharts), and data are embedded inline — no external dependencies or internet connection required.
 
 ```bash
-# Default: writes to mysql-bin.000123.html
+# Redirect: HTML document on stdout
+binlogviz analyze mysql-bin.000123 --format html > report.html
+
+# Interactive TTY: writes mysql-bin.000123.html in cwd
 binlogviz analyze mysql-bin.000123 --format html
 
 # Explicit output path
 binlogviz analyze mysql-bin.000123 --format html --output report.html
 
-# Stdout (for piping)
+# Force stdout
 binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
@@ -1054,7 +1057,7 @@ binlogviz analyze mysql-bin.000123 --format markdown > report.md
 binlogviz analyze mysql-bin.000123 --format html
 ```
 
-The HTML file is written to the current directory by default (e.g., `mysql-bin.000123.html`). Use `--output report.html` for an explicit path, or `--output -` to emit to stdout. The file is self-contained — all charts and styles are embedded inline. Open it in any browser without an internet connection.
+On a TTY this writes a derived cwd file (e.g., `mysql-bin.000123.html`). Redirected stdout receives the HTML document. Use `--output report.html` for an explicit path, or `--output -` to force stdout. The file is self-contained — all charts and styles are embedded inline. Open it in any browser without an internet connection.
 
 ### Capture channels separately
 
