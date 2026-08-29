@@ -8,7 +8,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 |------|----------------|
 | `load.go` | Loads and validates analyze report versions 0 through 3 from files or bytes, normalizing legacy missing completeness to unknown. |
 | `model.go` | Defines compare input contracts that preserve report-v3 identity/scope, selection, provenance/SQL metadata, completeness, counted-event diagnostics, snapshot metadata, pattern shapes, and structured comparability evidence without inventing legacy identity. |
-| `comparability.go` | Assesses explicit workload identity, provenance/flavor, configured scope, report version, and transaction completeness across inputs. |
+| `comparability.go` | Assesses explicit workload identity, provenance/flavor, configured object/position/GTID scope, report version, and transaction completeness across inputs. |
 | `diff.go` | Computes deterministic raw summary, completeness, table, pattern, operation, alert, and byte-coverage deltas, and gates causal findings, recommendations, and drilldowns on comparability. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
@@ -57,3 +57,4 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Optional report-v3 selector evidence survives `DecodeReportJSON` unchanged so snapshots and compare callers can round-trip requested/effective position and GTID provenance.
 - Raw deltas are always available. Ordinary causal findings, recommendations, and drilldowns require `comparable`; guarded results contain exactly one first `comparability_guard` finding, and renderers derive the localized guard directly from the verdict so public rendering remains safe even without a prebuilt finding slice.
 - Only matching non-empty workload IDs prove shared identity. Server IDs/versions, observed schemas, filenames, and flavors remain visible evidence; legacy v0-v2 or insufficient completeness is `unknown`, while explicit identity/flavor/scope conflicts are `not_comparable`.
+- Report-v3 `selection` is part of the canonical comparison scope: omitted selection means the full unselected input, while differing persisted position or GTID selectors produce `incompatible_scope`; matched GTIDs remain retained evidence rather than selector identity, and legacy absence is `unknown` unless known v3 inputs also conflict.

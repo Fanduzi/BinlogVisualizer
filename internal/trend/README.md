@@ -16,7 +16,7 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 | `text.go` | Renders human-readable trend output for terminal and file workflows, including pattern trend summaries. |
 | `json.go` | Serializes stable JSON trend output for automation, including `pattern_trends`. |
 | `html.go` | Renders the self-contained HTML trend report with embedded ECharts charts, a Pattern Trends section, and transaction replay evidence. |
-| `*_test.go` | Covers ordering, completeness and baseline preservation, findings, drilldowns, trusted replay diagnostics, i18n, and renderer anchors. |
+| `*_test.go` | Covers ordering, completeness and baseline preservation, selector-aware comparability, findings, drilldowns, trusted replay diagnostics, i18n, and renderer anchors. |
 
 ## Exports
 
@@ -41,4 +41,5 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 - Pattern trends are first-class trend data and are available in text, JSON, and HTML output.
 - Trend summary findings, bounded drilldowns, evidence refs, and recommendations are derived inside this module from the same deterministic trend result.
 - One `unknown` or `not_comparable` baseline/point gates causal findings, recommendations, and drilldowns for the whole series and emits one first guard finding; raw points, movements, insights, and diagnostics remain available, while renderers derive the localized guard safely from the verdict.
+- Persisted report-v3 position/GTID selection participates in the shared compare scope key, so one incompatible point gates causal narratives across the entire trend while retaining selector evidence; legacy selector absence stays unknown without hiding known v3 conflicts.
 - Transaction trend points preserve the analyze-compatible span and replay command for each representative largest/longest transaction; missing or unusable spans remain command-free.

@@ -1,6 +1,6 @@
 // Package compare evaluates explicit workload comparability for compare and trend narratives.
-// input: named report-v0-v3 inputs with workload IDs, scopes, producer provenance, schema evidence, and transaction completeness counts.
-// output: deterministic comparable/not_comparable/unknown verdicts, stable reason codes, visible evidence, and one guard finding for unsafe narratives.
+// input: named report-v0-v3 inputs with workload IDs, object/selector scopes, producer provenance, schema evidence, and transaction completeness counts.
+// output: deterministic comparable/not_comparable/unknown verdicts, stable reason codes, selector-visible evidence, and one guard finding for unsafe narratives.
 // pos: shared safety gate between report decoding and compare/trend causal finding construction.
 // note: if this file changes, update this header and internal/compare/README.md.
 package compare
@@ -31,7 +31,8 @@ func AssessComparability(inputs []ComparabilityInput) Comparability {
 	reasons := make(map[string]bool)
 	workloadIDs := make(map[string]bool)
 	flavors := make(map[string]bool)
-	scopes := make(map[string]bool)
+	objectScopes := make(map[string]bool)
+	selectorScopes := make(map[string]bool)
 	evidence := make([]ComparabilityEvidence, 0, len(inputs))
 
 	for _, input := range inputs {
@@ -65,7 +66,10 @@ func AssessComparability(inputs []ComparabilityInput) Comparability {
 		if report.Scope == nil {
 			reasons[ReasonMissingScope] = true
 		} else {
-			scopes[canonicalScopeKey(*report.Scope)] = true
+			objectScopes[canonicalScopeKey(*report.Scope, nil)] = true
+		}
+		if report.ReportVersion != nil && *report.ReportVersion >= currentSupportedReportVersion {
+			selectorScopes[canonicalScopeKey(InputSnapshotFilters{}, report.Selection)] = true
 		}
 
 		if report.Summary.PartialTransactions == nil || report.Summary.UnknownTransactions == nil {
@@ -81,7 +85,7 @@ func AssessComparability(inputs []ComparabilityInput) Comparability {
 	if len(flavors) > 1 {
 		reasons[ReasonProducerFlavorConflict] = true
 	}
-	if len(scopes) > 1 {
+	if len(objectScopes) > 1 || len(selectorScopes) > 1 {
 		reasons[ReasonIncompatibleScope] = true
 	}
 
@@ -101,6 +105,7 @@ func buildComparabilityEvidence(role string, report InputReport) ComparabilityEv
 		ReportVersion:       report.ReportVersion,
 		WorkloadID:          strings.TrimSpace(report.WorkloadID),
 		Scope:               cloneScope(report.Scope),
+		Selection:           cloneSelection(report.Selection),
 		Schemas:             reportSchemas(report),
 		TotalTransactions:   report.Summary.TotalTransactions,
 		PartialTransactions: report.Summary.PartialTransactions,
@@ -149,15 +154,36 @@ func normalizedStrings(values []string) []string {
 	return out
 }
 
-func canonicalScopeKey(scope InputSnapshotFilters) string {
-	canonical := InputSnapshotFilters{
-		IncludeSchemas: normalizedScopeValues(scope.IncludeSchemas),
-		ExcludeSchemas: normalizedScopeValues(scope.ExcludeSchemas),
-		IncludeTables:  normalizedScopeValues(scope.IncludeTables),
-		ExcludeTables:  normalizedScopeValues(scope.ExcludeTables),
+type canonicalComparabilityScope struct {
+	Filters   InputSnapshotFilters `json:"filters"`
+	Selection *InputSelection      `json:"selection,omitempty"`
+}
+
+func canonicalScopeKey(scope InputSnapshotFilters, selection *InputSelection) string {
+	canonical := canonicalComparabilityScope{
+		Filters: InputSnapshotFilters{
+			IncludeSchemas: normalizedScopeValues(scope.IncludeSchemas),
+			ExcludeSchemas: normalizedScopeValues(scope.ExcludeSchemas),
+			IncludeTables:  normalizedScopeValues(scope.IncludeTables),
+			ExcludeTables:  normalizedScopeValues(scope.ExcludeTables),
+		},
+		Selection: canonicalSelection(selection),
 	}
 	encoded, _ := json.Marshal(canonical)
 	return string(encoded)
+}
+
+func canonicalSelection(selection *InputSelection) *InputSelection {
+	if selection == nil {
+		return nil
+	}
+	canonical := cloneSelection(selection)
+	canonical.IncludeGTIDs = normalizedScopeValues(canonical.IncludeGTIDs)
+	canonical.ExcludeGTIDs = normalizedScopeValues(canonical.ExcludeGTIDs)
+	// MatchedGTIDs is retained result evidence, not a requested selector.
+	canonical.MatchedGTIDs = nil
+	canonical.ResolvedGTIDFlavor = strings.ToLower(strings.TrimSpace(canonical.ResolvedGTIDFlavor))
+	return canonical
 }
 
 func normalizedScopeValues(values []string) []string {
@@ -185,6 +211,30 @@ func cloneScope(scope *InputSnapshotFilters) *InputSnapshotFilters {
 		IncludeTables:  append([]string(nil), scope.IncludeTables...),
 		ExcludeTables:  append([]string(nil), scope.ExcludeTables...),
 	}
+}
+
+func cloneSelection(selection *InputSelection) *InputSelection {
+	if selection == nil {
+		return nil
+	}
+	return &InputSelection{
+		RequestedStartPosition: cloneInt64(selection.RequestedStartPosition),
+		RequestedStopPosition:  cloneInt64(selection.RequestedStopPosition),
+		EffectiveStartPosition: cloneInt64(selection.EffectiveStartPosition),
+		EffectiveStopPosition:  cloneInt64(selection.EffectiveStopPosition),
+		IncludeGTIDs:           append([]string(nil), selection.IncludeGTIDs...),
+		ExcludeGTIDs:           append([]string(nil), selection.ExcludeGTIDs...),
+		ResolvedGTIDFlavor:     selection.ResolvedGTIDFlavor,
+		MatchedGTIDs:           append([]string(nil), selection.MatchedGTIDs...),
+	}
+}
+
+func cloneInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func orderedReasonCodes(reasons map[string]bool) []string {
