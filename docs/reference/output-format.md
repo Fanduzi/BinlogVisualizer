@@ -682,8 +682,9 @@ The page also includes compare summary cards and detailed tables/lists so an ope
 - `Resolved binlog files:` listings when discovery mode is used
 - `Finalizing analysis...`
 - `HTML report saved to …` when `--format html` writes a file
-- `window matched 0 events` when `--start`/`--end` matches no events
-- command errors
+- `Error: window matched 0 events` when `--start`/`--end` matches no events (exit 2, empty stdout)
+- `Error: binlog has no analyzable events` for a complete Format Description-only (or rotate-only) file (exit 2, empty stdout)
+- command errors (exit 1 unless noted)
 
 ### Compare errors on `stderr`
 

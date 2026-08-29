@@ -35,6 +35,8 @@ The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in t
 binlogviz analyze mysql-bin.000123
 ```
 
+`analyze` exits **0** when at least one event was counted, **1** when the file could not be analyzed (corrupt, truncated, or no Format Description), and **2** when a complete binlog parsed but counted zero events (empty `--start`/`--end` window, or Format Description / rotate only). Exit 2 writes nothing to `stdout` and one `Error:` line to `stderr`.
+
 ### Analyze a whole directory in binlog order
 
 ```bash

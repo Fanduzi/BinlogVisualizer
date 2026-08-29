@@ -195,6 +195,10 @@
     "description": "Non-empty file with no parseable events / Format Description",
     "other": "binlog has no Format Description event (file is truncated or incomplete)"
   },
+  "error.noAnalyzableEvents": {
+    "description": "Complete binlog with Format Description but no counted events",
+    "other": "binlog has no analyzable events"
+  },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
     "other": "suffix after prefix must be digits; try --prefix {{.Prefix}}"

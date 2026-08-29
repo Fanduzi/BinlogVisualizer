@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks (including Format Description server version), and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML analysis reports on success (MIXED JSON includes an input_format alert); STATEMENT (Query-DML, zero ROW images) returns an error with no report; stderr-only operator status and DuckDB temp-store cleanup.
+// output: rendered text/JSON/HTML analysis reports on success (MIXED JSON includes an input_format alert); STATEMENT returns an error with no report; no-data is exit 2; stderr-only operator status and DuckDB temp-store cleanup.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -557,7 +557,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
-	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, progress.statusWriter); err != nil {
+	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
 		return err
 	}
 	if hasFileCoverage(fileCoverage) {
@@ -662,7 +662,7 @@ func runAnalysisStreamingFastWithSnapshot(
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
-	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, progress.statusWriter); err != nil {
+	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
 		return err
 	}
 	if hasFileCoverage(fileCoverage) {
@@ -806,7 +806,7 @@ func runAnalysisStreamingFastWithOutput(
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
-	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, progress.statusWriter); err != nil {
+	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
 		return err
 	}
 	if hasFileCoverage(fileCoverage) {
@@ -1081,17 +1081,18 @@ func mapBinlogParseError(msg string) string {
 	}
 }
 
-func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *model.AnalysisResult, rawEvents int, statusWriter io.Writer) error {
+func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *model.AnalysisResult, rawEvents int, observer binlog.FormatObserver) error {
 	if err := rejectEmptyOrIncompleteBinlog(paths, rawEvents); err != nil {
 		return err
 	}
-	if result == nil {
+	if result == nil || result.Summary.TotalEvents > 0 {
 		return nil
 	}
-	if (opts.Start != nil || opts.End != nil) && result.Summary.TotalEvents == 0 {
-		if statusWriter != nil {
-			_, _ = fmt.Fprintln(statusWriter, i18n.T("progress.windowMatchedZero"))
-		}
+	if opts.Start != nil || opts.End != nil {
+		return &ExitError{Code: 2, Msg: i18n.T("progress.windowMatchedZero")}
+	}
+	if rawEvents > 0 && observer.QueryDMLEvents == 0 && observer.RowImageEvents == 0 {
+		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
 	return nil
 }

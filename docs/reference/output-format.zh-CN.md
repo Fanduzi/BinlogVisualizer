@@ -590,8 +590,9 @@ BinlogViz 会把最终报告输出保留在 `stdout`。
 - discovery 模式下的 `Resolved binlog files:` 列表
 - `Finalizing analysis...`
 - `--format html` 写入文件时的 `HTML report saved to …`
-- `--start`/`--end` 匹配到 0 个事件时的 `window matched 0 events`
-- 命令错误
+- `--start`/`--end` 匹配到 0 个事件时的 `Error: window matched 0 events`（exit 2，stdout 为空）
+- 仅 Format Description（或再加 rotate）的完整 binlog：`Error: binlog has no analyzable events`（exit 2，stdout 为空）
+- 命令错误（未另行说明时为 exit 1）
 
 ### 为什么这很重要
 

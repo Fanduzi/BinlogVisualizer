@@ -35,6 +35,8 @@ binlogviz analyze minimal.binlog
 binlogviz analyze mysql-bin.000123
 ```
 
+`analyze` 在计入至少 1 个事件时退出 **0**；无法分析（损坏、截断、没有 Format Description）时退出 **1**；完整 binlog 解析成功但计入 0 个事件（空的 `--start`/`--end` 窗口，或仅 Format Description / rotate）时退出 **2**。exit 2 不写 `stdout`，只在 `stderr` 打一行 `Error:`。
+
 ### 按 binlog 顺序分析整个目录
 
 ```bash
