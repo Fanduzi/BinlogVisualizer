@@ -408,6 +408,62 @@ func TestRenderTextActivitySectionIncludesMiniSeries(t *testing.T) {
 	}
 }
 
+func TestRenderTextSubsecondTPSIsNAWhileRowsPerMinuteStayNumeric(t *testing.T) {
+	start := time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC)
+	result := productTextFixture()
+	result.Summary.Duration = 0
+	result.Summary.TotalTransactions = 4
+	result.Timeseries.TPSSeries = []model.TimeseriesPoint{{Minute: start, Value: 4.0 / 60.0}}
+	result.Timeseries.RowsSeries = []model.TimeseriesPoint{{Minute: start, Value: 4}}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tpsLine := activityLineContaining(out, "TPS:")
+	if !strings.Contains(tpsLine, "N/A (sub-second)") {
+		t.Fatalf("sub-second span with transactions must print N/A TPS, got %q", tpsLine)
+	}
+	if strings.Contains(tpsLine, "0.0") || strings.Contains(tpsLine, "0.1") {
+		t.Fatalf("sub-second TPS line still shows TxnCount/60 %q", tpsLine)
+	}
+
+	rowsLine := activityLineContaining(out, "Rows/min:")
+	if !strings.Contains(rowsLine, "4.0 at") {
+		t.Fatalf("Rows/min must still show the minute row count, got %q", rowsLine)
+	}
+	if strings.Contains(rowsLine, "N/A (sub-second)") {
+		t.Fatalf("Rows/min must not inherit the TPS N/A label, got %q", rowsLine)
+	}
+}
+
+func TestRenderTextDurationAtLeastOneSecondKeepsNumericTPSPeak(t *testing.T) {
+	result := productTextFixture()
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	tpsLine := activityLineContaining(out, "TPS:")
+	if strings.Contains(tpsLine, "N/A (sub-second)") {
+		t.Fatalf("duration ≥ 1s must keep numeric TPS peak, got %q", tpsLine)
+	}
+	if !strings.Contains(tpsLine, "22.5 at") {
+		t.Fatalf("expected fixture peak 22.5, got %q", tpsLine)
+	}
+}
+
+func activityLineContaining(out, token string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, token) {
+			return line
+		}
+	}
+	return ""
+}
+
 func TestRenderTextDetailsCanShowMinuteAndPatternSections(t *testing.T) {
 	result := productTextFixture()
 	result.Patterns = []model.PatternStats{{

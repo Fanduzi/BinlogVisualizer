@@ -355,6 +355,10 @@
     "description": "Short TPS label in text report activity sparkline",
     "other": "TPS"
   },
+  "report.text.tpsSubSecond": {
+    "description": "Operator-facing TPS when the analyzed span is shorter than one second",
+    "other": "N/A (sub-second)"
+  },
   "report.text.rowsPerMinuteShort": {
     "description": "Short rows per minute label in text report activity sparkline",
     "other": "Rows/min"

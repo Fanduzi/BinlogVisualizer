@@ -1,3 +1,8 @@
+// Package binlogviz covers operator-facing analyze regressions on real fixtures.
+// input: fixture binlogs, mock parsers, and rendered text/JSON analyze output.
+// output: regression coverage for findings, row counts, format warnings, and sub-second TPS copy.
+// pos: command-layer tests for DBA-visible analyze contracts.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -10,6 +15,102 @@ import (
 	"binlogviz/internal/binlog"
 	"binlogviz/internal/report"
 )
+
+func TestAnalyzeMinimalBinlogSubsecondTPSIsNotZero(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	fixture := mustFixturePath(t, "minimal.binlog")
+
+	textOut, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysis([]string{fixture}, analyzer.DefaultOptions(), "text")
+	})
+	if err != nil {
+		t.Fatalf("text analyze: %v", err)
+	}
+
+	tpsLine := activityLineContaining(textOut, "TPS:")
+	if tpsLine == "" {
+		t.Fatalf("expected a TPS activity line, got:\n%s", textOut)
+	}
+	if !strings.Contains(tpsLine, "N/A (sub-second)") {
+		t.Fatalf("same-second fixture must not look like a TPS parse failure; want N/A (sub-second), got %q", tpsLine)
+	}
+	if strings.Contains(tpsLine, "0.0") || strings.Contains(tpsLine, "0.1") {
+		t.Fatalf("sub-second TPS line still shows TxnCount/60 peak %q", tpsLine)
+	}
+
+	rowsLine := activityLineContaining(textOut, "Rows/min:")
+	if rowsLine == "" {
+		t.Fatalf("expected a Rows/min activity line, got:\n%s", textOut)
+	}
+	if strings.Contains(rowsLine, "N/A") {
+		t.Fatalf("Rows/min must stay a minute row count, got %q", rowsLine)
+	}
+
+	jsonOut, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysis([]string{fixture}, analyzer.DefaultOptions(), "json")
+	})
+	if err != nil {
+		t.Fatalf("json analyze: %v", err)
+	}
+	var decoded struct {
+		Timeseries struct {
+			TPSSeries []struct {
+				Value json.RawMessage `json:"value"`
+			} `json:"tps_series"`
+		} `json:"timeseries"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, jsonOut)
+	}
+	if len(decoded.Timeseries.TPSSeries) == 0 {
+		t.Fatal("expected numeric tps_series points")
+	}
+	for i, point := range decoded.Timeseries.TPSSeries {
+		raw := strings.TrimSpace(string(point.Value))
+		if raw == "" || raw[0] == '"' {
+			t.Fatalf("tps_series[%d].value must remain a JSON number, got %s", i, raw)
+		}
+	}
+}
+
+func TestAnalyzeSpanOfAtLeastOneSecondPrintsNumericTPSPeak(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	parser := &mockParser{
+		events: []binlog.RawEvent{
+			{Timestamp: now, EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 10},
+			{Timestamp: now.Add(time.Second), EventType: "XID_EVENT"},
+			{Timestamp: now.Add(2 * time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
+			{Timestamp: now.Add(3 * time.Second), EventType: "XID_EVENT"},
+		},
+	}
+
+	stdout, _, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "text", parser)
+	})
+	if err != nil {
+		t.Fatalf("text analyze: %v", err)
+	}
+	tpsLine := activityLineContaining(stdout, "TPS:")
+	if tpsLine == "" {
+		t.Fatalf("expected a TPS activity line, got:\n%s", stdout)
+	}
+	if strings.Contains(tpsLine, "N/A (sub-second)") {
+		t.Fatalf("duration ≥ 1s must keep a numeric TPS peak, got %q", tpsLine)
+	}
+	if !strings.Contains(tpsLine, " at ") {
+		t.Fatalf("expected numeric TPS peak with timestamp, got %q", tpsLine)
+	}
+}
+
+func activityLineContaining(out, token string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, token) {
+			return line
+		}
+	}
+	return ""
+}
 
 func TestAnalyzeFixtureTextFindingsMatchJSONNoCriticalSpike(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
