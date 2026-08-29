@@ -251,6 +251,10 @@
     "description": "Alerts section header",
     "other": "Alerts"
   },
+  "report.section.findings": {
+    "description": "Markdown findings section header",
+    "other": "Findings"
+  },
   "report.label.totalTransactions": {
     "description": "Total transactions label",
     "other": "Total Transactions"
@@ -266,6 +270,10 @@
   "report.label.format": {
     "description": "Input format label",
     "other": "Format"
+  },
+  "report.label.ignoredQueryDML": {
+    "description": "Ignored Query-DML events label",
+    "other": "Ignored Query-DML Events"
   },
   "report.text.rowImageSummary": {
     "description": "Default text report format boundary",

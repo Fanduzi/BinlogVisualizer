@@ -1,6 +1,6 @@
 // Package report verifies Markdown rendering structure, placeholders, and writer behavior.
 // input: synthetic AnalysisResult fixtures plus explicit SQL context presentation modes.
-// output: regression coverage for Markdown section content, placeholder keys, and writer wrappers.
+// output: regression coverage for Markdown incident evidence, section content, placeholder keys, and writer wrappers.
 // pos: Markdown renderer regression suite guarding user-facing GitHub-flavored report output.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -121,15 +121,164 @@ func TestRenderMarkdownIncludesStructuredSectionsAndEscaping(t *testing.T) {
 		"## Workload Summary",
 		"| Total Transactions | 12 |",
 		"| shop\\|core | orders\\|archive | 1,200 | 700 | 400 | 100 | 4 |",
-		"| 1 | 120 | 5.0s | orders, payments | INSERT, UPDATE |",
+		"| 1 | txn-1 | 120 | 0 | 5.0s | N/A | orders, payments | INSERT, UPDATE |",
 		"> `UPDATE orders SET status = ? WHERE id = ?`",
 		"| 2026-03-09 10:05:00 | 500 | 3 |",
-		"> **[CRITICAL]** table drift on shop\\|core.orders\\|archive",
+		"| critical | N/A | table drift on shop\\|core.orders\\|archive | N/A | N/A | N/A |",
 	}
 	for _, snippet := range expectedSnippets {
 		if !strings.Contains(out, snippet) {
 			t.Fatalf("expected snippet %q in markdown output:\n%s", snippet, out)
 		}
+	}
+}
+
+func TestRenderMarkdownIncludesReplayableTransactionEvidence(t *testing.T) {
+	forceEnglishReportLocale(t)
+
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{{
+			TxnKey:          "txn-real",
+			TotalRows:       400,
+			Duration:        5 * time.Second,
+			BinlogBytes:     77914563,
+			BinlogPathStart: "/data/mysql/mysql-bin.000008",
+			BinlogPathEnd:   "/data/mysql/mysql-bin.000008",
+			PositionStart:   385,
+			PositionEnd:     77914948,
+			Tables:          map[string]int{"orders": 400},
+			Operations:      map[string]int{"UPDATE": 400},
+		}},
+		Diagnostics: model.Diagnostics{ServerVersion: "11.4.2-MariaDB-log"},
+	}
+
+	out, err := RenderMarkdown(result)
+	if err != nil {
+		t.Fatalf("RenderMarkdown returned error: %v", err)
+	}
+
+	for _, snippet := range []string{
+		"| # | Txn Key | Rows | Bytes | Duration | File:Position | Tables | Operations |",
+		"| 1 | txn-real | 400 | 77,914,563 | 5.0s | /data/mysql/mysql-bin.000008:385-77914948 | orders | UPDATE |",
+		"`mysqlbinlog_cmd`",
+		"mariadb-binlog --base64-output=DECODE-ROWS -v --start-position=385 --stop-position=77914948 /data/mysql/mysql-bin.000008",
+	} {
+		if !strings.Contains(out, snippet) {
+			t.Fatalf("expected snippet %q in markdown output:\n%s", snippet, out)
+		}
+	}
+}
+
+func TestRenderMarkdownKeepsTransactionRowsTogether(t *testing.T) {
+	forceEnglishReportLocale(t)
+
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			{
+				TxnKey:          "txn-one",
+				TotalRows:       10,
+				BinlogBytes:     1000,
+				BinlogPathStart: "/data/mysql/mysql-bin.000008",
+				PositionStart:   100,
+				PositionEnd:     200,
+			},
+			{
+				TxnKey:          "txn-two",
+				TotalRows:       20,
+				BinlogBytes:     2000,
+				BinlogPathStart: "/data/mysql/mysql-bin.000008",
+				PositionStart:   300,
+				PositionEnd:     400,
+			},
+		},
+	}
+
+	out, err := RenderMarkdown(result)
+	if err != nil {
+		t.Fatalf("RenderMarkdown returned error: %v", err)
+	}
+	secondRow := strings.Index(out, "| 2 | txn-two |")
+	firstReplayCommand := strings.Index(out, "```text")
+	if secondRow < 0 || firstReplayCommand < 0 || secondRow > firstReplayCommand {
+		t.Fatalf("all transaction rows must precede replay command blocks:\n%s", out)
+	}
+	if strings.Count(out, "`mysqlbinlog_cmd`") != 2 {
+		t.Fatalf("expected one replay command per usable transaction:\n%s", out)
+	}
+}
+
+func TestRenderMarkdownPreservesLargeTransactionByteCounts(t *testing.T) {
+	forceEnglishReportLocale(t)
+
+	out, err := RenderMarkdown(model.AnalysisResult{
+		Transactions: []model.Transaction{{TxnKey: "txn-large", BinlogBytes: 3_000_000_000}},
+	})
+	if err != nil {
+		t.Fatalf("RenderMarkdown returned error: %v", err)
+	}
+	if !strings.Contains(out, "| 1 | txn-large | 0 | 3,000,000,000 | 0s | N/A |  |  |") {
+		t.Fatalf("expected the full int64 byte count in Markdown:\n%s", out)
+	}
+}
+
+func TestRenderMarkdownIncludesIncidentDiagnosticsAndDegradesMissingSpans(t *testing.T) {
+	forceEnglishReportLocale(t)
+
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{{
+			TxnKey:    "txn-missing",
+			TotalRows: 2,
+		}},
+		Diagnostics: model.Diagnostics{
+			InputFormatGuess:      "MIXED",
+			IgnoredQueryDMLEvents: 2,
+			DDLEvents: []model.DDLEvent{{
+				Timestamp:     time.Date(2026, 3, 9, 10, 5, 0, 0, time.UTC),
+				Operation:     "ALTER TABLE",
+				Schema:        "shop|core",
+				Table:         "orders",
+				Statement:     "ALTER TABLE shop|core.orders ADD COLUMN note TEXT",
+				BinlogPath:    "mysql-bin.000123",
+				PositionStart: 100,
+				PositionEnd:   200,
+			}},
+			Findings: []model.Finding{{
+				Kind:         "large_transaction",
+				Severity:     "warning",
+				Message:      `large\|transaction detected`,
+				TxnKey:       "txn-missing",
+				Minute:       time.Date(2026, 3, 9, 10, 6, 0, 0, time.UTC),
+				EvidenceRefs: []string{"transactions:txn-missing", "rows|2"},
+			}},
+		},
+		Alerts: []model.Alert{{
+			Type:     "input_format",
+			Severity: "warning",
+			Message:  "MIXED: counted 2 ROW images, ignored 2 Query-DML events",
+		}},
+	}
+
+	out, err := RenderMarkdown(result)
+	if err != nil {
+		t.Fatalf("RenderMarkdown returned error: %v", err)
+	}
+
+	for _, snippet := range []string{
+		"| Format | MIXED |",
+		"| Ignored Query-DML Events | 2 |",
+		"## DDL Timeline",
+		"| 2026-03-09 10:05:00 | ALTER TABLE | shop\\|core.orders | ALTER TABLE shop\\|core.orders ADD COLUMN note TEXT | mysql-bin.000123:100-200 |",
+		"## Findings",
+		`| warning | large_transaction | large\\\|transaction detected | txn-missing | 2026-03-09 10:06:00 | transactions:txn-missing, rows\|2 |`,
+		"| warning | input_format | MIXED: counted 2 ROW images, ignored 2 Query-DML events | N/A | N/A | N/A |",
+		"| 1 | txn-missing | 2 | 0 | 0s | N/A |  |  |",
+	} {
+		if !strings.Contains(out, snippet) {
+			t.Fatalf("expected snippet %q in markdown output:\n%s", snippet, out)
+		}
+	}
+	if strings.Contains(out, "mysqlbinlog_cmd") || strings.Contains(out, "--start-position") {
+		t.Fatalf("missing span must not emit a replay command:\n%s", out)
 	}
 }
 

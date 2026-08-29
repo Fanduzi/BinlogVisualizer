@@ -418,7 +418,7 @@ Current implementation increments this count when transaction query context had 
 
 ## Markdown Output
 
-Markdown mode renders a GitHub-flavored Markdown report with five sections: workload summary, top tables, top transactions, per-minute activity, and alerts. All sections use pipe tables.
+Markdown mode renders a GitHub-flavored incident report with workload summary (including input-format context), top tables, top transactions (including transaction keys, bytes, file spans, and replay commands when usable), per-minute activity, DDL Timeline, and Findings. Evidence tables escape pipe characters, missing spans render as `N/A`, and replay commands use fenced code blocks.
 
 ```bash
 binlogviz analyze mysql-bin.000123 --format markdown > report.md

@@ -10,10 +10,10 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
 | `text.go` | Renders the concise diagnostic text report with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
 | `json.go` | Serializes the stable analyze JSON report shape, including counted event-byte diagnostics, optional transaction `xa_xid` and top-level snapshot metadata, and applies SQL context field visibility rules. |
-| `markdown.go` | Renders GitHub-flavored Markdown output. |
+| `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction span/replay, DDL, input-format, and finding evidence. |
 | `html.go` | Renders the self-contained HTML report, including physical-file/count-event byte cards, responsive activity-chart layout, and ECharts data preparation. |
 | `mysqlbinlog.go` | Formats transaction spans and builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands with absolute file paths from usable spans; omits `--start-position` when only an XID interval is known. |
-| `*_test.go` | Verifies diagnostic text defaults, opt-in detail sections, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
+| `*_test.go` | Verifies diagnostic text defaults, Markdown incident evidence, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
 
 ## Interfaces
 
