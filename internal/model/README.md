@@ -11,7 +11,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
-| `diagnostics.go` | Defines diagnostics, file coverage, DDL, and finding contracts for operator review. |
+| `diagnostics.go` | Defines diagnostics, file coverage, DDL, finding, and Format Description server-version contracts for operator review. |
 | `report.go` | Defines the top-level `AnalysisResult` envelope plus snapshot metadata contracts. |
 | `timeseries.go` | Defines chart-ready timeseries and transaction-size histogram contracts. |
 | `query_context.go` | Provides bounded SQL context constructors and truncation helpers. |

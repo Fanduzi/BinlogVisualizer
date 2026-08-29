@@ -1,3 +1,8 @@
+// Package binlog guesses ROW/STATEMENT/MIXED from Query-DML versus ROW images.
+// input: raw parser events including Format Description server version.
+// output: FormatObserver counts, guessed input format, and captured server version for replay commands.
+// pos: cheap format-observation helper used by analyze before rendering.
+// note: if this file changes, update this header and README.md.
 package binlog
 
 import "strings"
@@ -17,12 +22,16 @@ const (
 type FormatObserver struct {
 	QueryDMLEvents int
 	RowImageEvents int
+	ServerVersion  string
 }
 
 // Observe records one raw parser event.
 func (o *FormatObserver) Observe(raw RawEvent) {
 	if o == nil {
 		return
+	}
+	if o.ServerVersion == "" && raw.ServerVersion != "" {
+		o.ServerVersion = raw.ServerVersion
 	}
 	if isQueryEventType(raw.EventType) && IsQueryDML(raw.Query) {
 		o.QueryDMLEvents++

@@ -1,6 +1,6 @@
 // Package report builds copy-paste mysqlbinlog commands from recorded transaction spans.
-// input: analyzer-produced Transaction positions after real start/end reconstruction.
-// output: a mysqlbinlog command string, or empty when the span is XID-only / unusable.
+// input: analyzer-produced Transaction positions after real start/end reconstruction, plus Format Description server version.
+// output: a mysqlbinlog or mariadb-binlog command with absolute file paths, or empty when the span is XID-only / unusable.
 // pos: shared helper for text, JSON, and HTML Copy so #23 never invents --start-position.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -48,24 +48,43 @@ func txnSpanUsableForMysqlbinlog(txn model.Transaction) bool {
 	return true
 }
 
-func mysqlbinlogCmd(txn model.Transaction) string {
+func mysqlbinlogCmd(txn model.Transaction, serverVersion string) string {
 	if !txnSpanUsableForMysqlbinlog(txn) {
 		return ""
 	}
-	startFile := filepath.Base(txn.BinlogPathStart)
+	startFile := replayFileArg(txn.BinlogPathStart)
 	endFile := startFile
 	if txn.BinlogPathEnd != "" {
-		endFile = filepath.Base(txn.BinlogPathEnd)
+		endFile = replayFileArg(txn.BinlogPathEnd)
 	}
+	binary := replayBinlogBinary(serverVersion)
 	const flags = "--base64-output=DECODE-ROWS -v"
 	if startFile == endFile {
-		return fmt.Sprintf("mysqlbinlog %s --start-position=%d --stop-position=%d %s",
-			flags, txn.PositionStart, txn.PositionEnd, startFile)
+		return fmt.Sprintf("%s %s --start-position=%d --stop-position=%d %s",
+			binary, flags, txn.PositionStart, txn.PositionEnd, startFile)
 	}
 	return strings.Join([]string{
-		fmt.Sprintf("mysqlbinlog %s --start-position=%d %s", flags, txn.PositionStart, startFile),
-		fmt.Sprintf("mysqlbinlog %s --stop-position=%d %s", flags, txn.PositionEnd, endFile),
+		fmt.Sprintf("%s %s --start-position=%d %s", binary, flags, txn.PositionStart, startFile),
+		fmt.Sprintf("%s %s --stop-position=%d %s", binary, flags, txn.PositionEnd, endFile),
 	}, "\n")
+}
+
+func replayBinlogBinary(serverVersion string) string {
+	if strings.Contains(strings.ToLower(serverVersion), "mariadb") {
+		return "mariadb-binlog"
+	}
+	return "mysqlbinlog"
+}
+
+func replayFileArg(path string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
 }
 
 func formatTxnEvidenceLocation(txn model.Transaction) string {
