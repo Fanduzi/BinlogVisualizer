@@ -1103,6 +1103,13 @@ const htmlReportTemplate = `<!DOCTYPE html>
         </div>
         {{end}}
       </div>
+      {{else if .HasDDLEvents}}
+      <div class="alert-list">
+        <div class="alert-item info">
+          <span class="alert-badge badge-INFO">INFO</span>
+          <span class="alert-msg">{{t "report.html.analyze.ddlActivityNotice"}}</span>
+        </div>
+      </div>
       {{else}}
       <div class="no-alerts">
         <span class="no-alerts-icon">✓</span>

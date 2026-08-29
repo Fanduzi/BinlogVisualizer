@@ -46,5 +46,6 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - When `summary.duration` is shorter than one second and there is at least one transaction, the text activity TPS peak is `N/A (sub-second)` (i18n) instead of `TxnCount/60`. Rows/min and JSON `timeseries.tps_series` stay numeric.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving legacy analyze JSON shape.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
+- Analyze HTML shows a neutral DDL activity notice in Risks & Findings when DDL events exist without alerts; the healthy empty state is reserved for reports without alerts or DDL.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
 - Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions instead of rendering a crowded top-N list.
