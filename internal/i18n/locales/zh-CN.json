@@ -21,11 +21,11 @@
   },
   "cmd.analyze.flag.start": {
     "description": "开始时间标志描述",
-    "other": "开始时间（包含，RFC3339 格式）"
+    "other": "开始时间（包含，RFC3339；显式偏移量定义该时刻；binlog 时间戳为 UTC）"
   },
   "cmd.analyze.flag.end": {
     "description": "结束时间标志描述",
-    "other": "结束时间（包含，RFC3339 格式）"
+    "other": "结束时间（包含，RFC3339；显式偏移量定义该时刻；binlog 时间戳为 UTC）"
   },
   "cmd.analyze.flag.fromDir": {
     "description": "from-dir 标志描述",
@@ -314,6 +314,14 @@
   "report.label.timeRange": {
     "description": "时间范围标签",
     "other": "时间范围"
+  },
+  "report.label.timestamps": {
+    "description": "时间戳基准标签",
+    "other": "时间戳"
+  },
+  "report.value.binlogUTC": {
+    "description": "binlog 时间戳基准",
+    "other": "UTC（binlog）"
   },
   "report.label.duration": {
     "description": "持续时间标签",

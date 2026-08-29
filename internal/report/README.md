@@ -8,12 +8,12 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 |------|----------------|
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
-| `text.go` | Renders completeness-aware incident briefs with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes report v3 with requested/effective position and GTID evidence, transaction completeness, counted bytes, producer provenance, SQL metadata, XA identity, and explicit safe replay metadata. |
-| `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, and finding evidence. |
-| `html.go` | Renders the self-contained HTML report with completeness and byte cards, deduplicated transaction evidence, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
+| `text.go` | Owns shared UTC human timestamp formatting and renders completeness-aware incident briefs with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
+| `json.go` | Serializes report v3 with RFC3339 `Z` timestamps, requested/effective position and GTID evidence, transaction completeness, counted bytes, producer provenance, SQL metadata, bounded query fields, XA identity, and explicit safe replay metadata. |
+| `markdown.go` | Renders UTC-labelled GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, and finding evidence. |
+| `html.go` | Renders the self-contained HTML report with UTC-labelled ranges/evidence/charts, completeness and byte cards, deduplicated transaction evidence, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
 | `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. |
-| `*_test.go` | Verifies text, complete JSON tables and selector round trips, Markdown/HTML evidence, deadlock-free stdout wrappers, SQL modes, counted bytes, completeness, and explicit full-span replay behavior. |
+| `*_test.go` | Verifies UTC timestamp presentation, RFC3339 JSON stability, complete JSON tables and selector round trips, Markdown/HTML evidence, deadlock-free stdout wrappers, SQL modes, counted bytes, completeness, and explicit full-span replay behavior. |
 
 ## Interfaces
 
@@ -43,6 +43,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - `full` only exposes UTF-8-safe SQL bounded to 4096 bytes from `QueryContext.SQL`; it never reconstructs row values or unbounded original SQL.
 - JSON always records the selected SQL-context mode and report-wide source-SQL availability; `full` with `available=false` is valid.
 - `product.go` owns presentation defaults such as `DefaultTopN` so text, HTML, and command flags share one report contract.
+- Human analyze timestamps are normalized to UTC and display a `UTC` suffix; each human summary also states `Timestamps: UTC (binlog)`. Report-v3 JSON keeps machine-readable RFC3339 timestamps normalized to `Z`.
 - `AnalysisResult.Tables` is complete; JSON preserves every table, while human renderers apply `TopTables` and report how many tables were omitted.
 - An explicit `TopTables=0` with `TopTablesSet=true` keeps human table sections unbounded; an omitted table limit inherits `TopN` for compatibility.
 - The default text report is an incident brief: summary, hot tables, and largest transactions first; findings and activity come after. Minute activity and write-shape patterns require explicit detail options.

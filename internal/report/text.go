@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware incident briefs with separate file/count-event bytes, ranked complete transactions, labelled trusted replay, and opt-in minute/pattern detail.
+// output: completeness-aware UTC-labelled incident briefs with separate file/count-event bytes, ranked complete transactions, labelled trusted replay, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -59,6 +59,7 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 	summary := result.Summary
 	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
 	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.timestamps"), i18n.T("report.value.binlogUTC")))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary")))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.partialTransactions"), summary.PartialTransactions))
@@ -294,7 +295,7 @@ func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, top
 			break
 		}
 		buf.WriteString("  " + i18n.Tf("report.format.minuteActivity", map[string]any{
-			"Minute":    minute.Minute.Format("2006-01-02 15:04"),
+			"Minute":    formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"),
 			"TotalRows": minute.TotalRows,
 			"TxnCount":  minute.TxnCount,
 		}) + "\n")
@@ -338,7 +339,7 @@ func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown) {
 			break
 		}
 		buf.WriteString(fmt.Sprintf("      workload minute: %s rows=%d txns=%d\n",
-			minute.Minute.Format("2006-01-02 15:04"), minute.TotalRows, minute.TxnCount))
+			formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"), minute.TotalRows, minute.TxnCount))
 	}
 
 	for i, txn := range dd.RepresentativeTransactions {
@@ -386,7 +387,7 @@ func formatPeakSeries(points []model.TimeseriesPoint) string {
 			peak = point
 		}
 	}
-	return fmt.Sprintf("%.1f at %s", peak.Value, peak.Minute.Format("2006-01-02 15:04"))
+	return fmt.Sprintf("%.1f at %s", peak.Value, formatTimeWithLayout(peak.Minute, "2006-01-02 15:04"))
 }
 
 func formatSparkline(points []model.TimeseriesPoint) string {
@@ -553,10 +554,14 @@ func minInt(a, b int) int {
 }
 
 func formatTime(t time.Time) string {
+	return formatTimeWithLayout(t, "2006-01-02 15:04:05")
+}
+
+func formatTimeWithLayout(t time.Time, layout string) string {
 	if t.IsZero() {
 		return i18n.T("time.notAvailable")
 	}
-	return t.Format("2006-01-02 15:04:05")
+	return t.UTC().Format(layout + " UTC")
 }
 
 func formatDuration(d time.Duration) string {
