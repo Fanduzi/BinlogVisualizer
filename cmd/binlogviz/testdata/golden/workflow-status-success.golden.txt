@@ -25,6 +25,10 @@ Steps
   execution: executed
   artifacts: trend/weekly_series.json, trend/weekly_series.html
 
+Workflow Findings
+- Comparability guard
+  Causal findings suppressed because input comparability is unknown; raw deltas remain available.
+
 Resume Preview
 - reuse analyze:week1 (reused: prior success with intact artifacts)
 - reuse analyze:week2 (reused: prior success with intact artifacts)

@@ -1,7 +1,12 @@
 {
-  "report_version": 2,
+  "report_version": 3,
+	"workload_id": "orders-production",
+	"scope": {"include_schema": ["orders"]},
+	"provenance": {"server_ids": [7], "server_versions": ["8.4.0"], "server_flavors": ["mysql"], "mixed_producers": false},
   "summary": {
     "total_transactions": 120,
+	"partial_transactions": 0,
+	"unknown_transactions": 0,
     "total_rows": 2400,
     "total_events": 3000,
     "start_time": "2026-03-20T10:00:00Z",

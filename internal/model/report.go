@@ -1,6 +1,6 @@
 // Package model defines top-level analyze report contracts and snapshot metadata.
-// input: aggregated analyzer output, producer provenance, selector evidence, completeness summaries, diagnostics, tables, transactions, and filters.
-// output: completeness-aware AnalysisResult, AnalysisSelection, ReportProvenance, and snapshot envelopes reused by report and compare modules.
+// input: aggregated analyzer output, explicit workload identity, canonical scope, producer provenance, selector evidence, completeness summaries, diagnostics, tables, transactions, and filters.
+// output: identity- and completeness-aware AnalysisResult, AnalysisSelection, ReportProvenance, and snapshot envelopes reused by report and compare modules.
 // pos: shared result-model layer between analyzer finalization and renderer or loader pipelines.
 // note: if this file changes, update this header and module README.md.
 package model
@@ -84,6 +84,8 @@ type ReportProvenance struct {
 
 // AnalysisResult is the complete output of binlog analysis.
 type AnalysisResult struct {
+	WorkloadID          string
+	Scope               *SnapshotFilters
 	Summary             WorkloadSummary
 	Provenance          ReportProvenance
 	Selection           *AnalysisSelection

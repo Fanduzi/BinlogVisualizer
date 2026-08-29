@@ -35,6 +35,10 @@
     "description": "prefix 标志描述",
     "other": "配合 --from-dir 使用的文件名前缀（数字后缀前可省略 '.'）"
   },
+  "cmd.analyze.flag.workloadID": {
+    "description": "显式工作负载身份标志描述",
+    "other": "用于控制对比和趋势叙述的显式工作负载身份"
+  },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL 上下文标志描述",
     "other": "SQL 上下文模式：summary、off 或 full"
@@ -1246,5 +1250,21 @@
   "report.html.analyze.ddlActivityNotice": {
     "description": "存在 DDL 活动但无告警时的分析中性状态",
     "other": "检测到 DDL 活动——请查看下方的 DDL 时间线"
+  },
+  "report.comparability.guardTitle": {
+    "description": "可比性安全保护标题",
+    "other": "可比性保护"
+  },
+  "report.comparability.reasonCodes": {
+    "description": "可比性原因代码标签",
+    "other": "原因代码："
+  },
+  "report.comparability.unknownSummary": {
+    "description": "可比性未知保护摘要",
+    "other": "由于输入可比性未知，已抑制因果发现；原始差值仍然可用。"
+  },
+  "report.comparability.notComparableSummary": {
+    "description": "输入不可比保护摘要",
+    "other": "由于输入不可比较，已抑制因果发现；原始差值仍然可用。"
   }
 }

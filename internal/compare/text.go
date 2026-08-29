@@ -1,6 +1,6 @@
 // Package compare renders human-readable text reports for compare results.
-// input: deterministic CompareResult values produced by the compare diff engine.
-// output: fixed-section text compare reports with named baseline/current byte coverage for terminal and file output.
+// input: deterministic CompareResult values with structured comparability evidence produced by the compare diff engine.
+// output: fixed-section text compare reports leading with any narrative guard, visible identity/provenance/scope evidence, and named byte coverage.
 // pos: compare renderer used by the compare command text output path.
 // note: if this file changes, update this header and module README.md.
 package compare
@@ -15,6 +15,16 @@ func RenderText(result CompareResult) (string, error) {
 	var b strings.Builder
 
 	fmt.Fprintf(&b, "Compare Summary\n")
+	guarded := hasComparabilityGuard(result.Comparability)
+	if guarded {
+		fmt.Fprintf(&b, "%s [%s]\n", ComparabilityGuardTitle(), result.Comparability.Verdict)
+		fmt.Fprintf(&b, "%s\n", ComparabilityGuardSummary(result.Comparability.Verdict))
+		fmt.Fprintf(&b, "%s %s\n", ComparabilityReasonCodesLabel(), strings.Join(result.Comparability.ReasonCodes, ", "))
+		for _, evidence := range result.Comparability.Evidence {
+			fmt.Fprintf(&b, "- %s\n", FormatComparabilityEvidence(evidence))
+		}
+		fmt.Fprint(&b, "\n")
+	}
 	fmt.Fprintf(&b, "Current Label: %s\n", result.CurrentLabel)
 	fmt.Fprintf(&b, "Baseline Label: %s\n", result.BaselineLabel)
 	if window := formatSnapshotWindow(result.CurrentSnapshot); window != "" {
@@ -51,7 +61,7 @@ func RenderText(result CompareResult) (string, error) {
 	}
 	fmt.Fprint(&b, "\n")
 
-	if len(result.KeyFindings) > 0 {
+	if len(result.KeyFindings) > 0 && !guarded {
 		fmt.Fprintf(&b, "Key Findings\n")
 		for i, finding := range result.KeyFindings {
 			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, finding.Kind, finding.Summary)
@@ -236,20 +246,80 @@ func formatSnapshotFilters(snapshot *InputSnapshot) string {
 	if snapshot == nil {
 		return ""
 	}
+	return formatScopeFilters(snapshot.Filters)
+}
 
+func formatScopeFilters(filters InputSnapshotFilters) string {
 	parts := make([]string, 0, 4)
-	if len(snapshot.Filters.IncludeSchemas) > 0 {
-		parts = append(parts, "include_schema="+strings.Join(snapshot.Filters.IncludeSchemas, ","))
+	if len(filters.IncludeSchemas) > 0 {
+		parts = append(parts, "include_schema="+strings.Join(filters.IncludeSchemas, ","))
 	}
-	if len(snapshot.Filters.ExcludeSchemas) > 0 {
-		parts = append(parts, "exclude_schema="+strings.Join(snapshot.Filters.ExcludeSchemas, ","))
+	if len(filters.ExcludeSchemas) > 0 {
+		parts = append(parts, "exclude_schema="+strings.Join(filters.ExcludeSchemas, ","))
 	}
-	if len(snapshot.Filters.IncludeTables) > 0 {
-		parts = append(parts, "include_table="+strings.Join(snapshot.Filters.IncludeTables, ","))
+	if len(filters.IncludeTables) > 0 {
+		parts = append(parts, "include_table="+strings.Join(filters.IncludeTables, ","))
 	}
-	if len(snapshot.Filters.ExcludeTables) > 0 {
-		parts = append(parts, "exclude_table="+strings.Join(snapshot.Filters.ExcludeTables, ","))
+	if len(filters.ExcludeTables) > 0 {
+		parts = append(parts, "exclude_table="+strings.Join(filters.ExcludeTables, ","))
 	}
 	slices.Sort(parts)
 	return strings.Join(parts, " ")
+}
+
+func hasComparabilityGuard(comparability Comparability) bool {
+	return comparability.Verdict == VerdictNotComparable || comparability.Verdict == VerdictUnknown
+}
+
+// FormatComparabilityEvidence renders one compact operator-visible evidence line.
+func FormatComparabilityEvidence(evidence ComparabilityEvidence) string {
+	parts := []string{evidence.Role}
+	if evidence.Name != "" {
+		parts = append(parts, "name="+evidence.Name)
+	}
+	if evidence.ReportVersion != nil {
+		parts = append(parts, fmt.Sprintf("report_version=%d", *evidence.ReportVersion))
+	} else {
+		parts = append(parts, "report_version=legacy")
+	}
+	if evidence.WorkloadID != "" {
+		parts = append(parts, "workload_id="+evidence.WorkloadID)
+	} else {
+		parts = append(parts, "workload_id=unknown")
+	}
+	if len(evidence.ServerIDs) > 0 {
+		parts = append(parts, fmt.Sprintf("server_ids=%v", evidence.ServerIDs))
+	}
+	if len(evidence.ServerVersions) > 0 {
+		parts = append(parts, "server_versions="+strings.Join(evidence.ServerVersions, ","))
+	}
+	if len(evidence.ServerFlavors) > 0 {
+		parts = append(parts, "server_flavors="+strings.Join(evidence.ServerFlavors, ","))
+	}
+	if evidence.MixedProducers {
+		parts = append(parts, "mixed_producers=true")
+	}
+	if len(evidence.Schemas) > 0 {
+		parts = append(parts, "schemas="+strings.Join(evidence.Schemas, ","))
+	}
+	if evidence.Scope != nil {
+		scope := formatScopeFilters(*evidence.Scope)
+		if scope == "" {
+			scope = "all"
+		}
+		parts = append(parts, "scope="+scope)
+	} else {
+		parts = append(parts, "scope=unknown")
+	}
+	parts = append(parts, fmt.Sprintf("total_transactions=%d", evidence.TotalTransactions))
+	parts = append(parts, "partial_transactions="+formatComparabilityCount(evidence.PartialTransactions))
+	parts = append(parts, "unknown_transactions="+formatComparabilityCount(evidence.UnknownTransactions))
+	return strings.Join(parts, " ")
+}
+
+func formatComparabilityCount(value *int) string {
+	if value == nil {
+		return "unknown"
+	}
+	return fmt.Sprintf("%d", *value)
 }

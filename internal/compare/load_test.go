@@ -1,6 +1,6 @@
 // Package compare verifies compare report loading and input validation behavior.
-// input: report-v0-v3 fixture JSON, in-memory bytes with optional provenance, and invalid payloads.
-// output: assertions for compatible decoding without fabricated legacy identity plus explicit shape/version errors.
+// input: report-v0-v3 fixture JSON with optional workload identity/scope/provenance plus invalid payloads.
+// output: assertions for identity/scope persistence, compatible decoding without fabricated legacy metadata, and explicit shape/version errors.
 // pos: regression coverage for the compare input loading boundary.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -22,6 +22,9 @@ func TestLoadReportLoadsValidBinlogVizJSON(t *testing.T) {
 	}
 	if len(report.Tables) != 2 {
 		t.Fatalf("expected 2 tables, got %d", len(report.Tables))
+	}
+	if report.WorkloadID != "orders-production" || report.Scope == nil || len(report.Scope.IncludeSchemas) != 1 || report.Scope.IncludeSchemas[0] != "orders" {
+		t.Fatalf("report-v3 workload identity/scope were not preserved: %+v", report)
 	}
 }
 

@@ -1,6 +1,6 @@
 // Package trend builds ordered multi-snapshot trend results from analyze reports.
-// input: snapshot-backed compare.InputReport values plus optional baseline metadata.
-// output: deterministic Result values preserving partial/unknown counts, rows, transactions, patterns, insights, and trusted replay evidence across points.
+// input: snapshot-backed compare.InputReport values with workload comparability metadata plus an optional baseline.
+// output: deterministic Result values preserving raw point/delta series and gating causal findings, recommendations, and drilldowns behind one shared verdict.
 // pos: trend pipeline core between snapshot loading and text, JSON, or HTML rendering.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -56,6 +56,7 @@ func BuildResult(opts BuildOptions) (Result, error) {
 	}
 
 	result := Result{
+		Comparability: assessTrendComparability(sorted, baseline),
 		InputMode:     opts.InputMode,
 		SnapshotDir:   opts.SnapshotDir,
 		Order:         order,
@@ -77,12 +78,41 @@ func BuildResult(opts BuildOptions) (Result, error) {
 		result.Points = append(result.Points, built)
 	}
 	result.Insights = buildInsights(result.Points)
-	result.TrendSummary = buildTrendSummary(result)
-	buildTrendEvidenceRefs(&result)
-	result.Recommendations = buildTrendRecommendations(result)
-	result.PatternDrilldowns = buildTrendPatternDrilldowns(result)
+	if result.Comparability.Verdict == comparepkg.VerdictComparable {
+		result.TrendSummary = buildTrendSummary(result)
+		buildTrendEvidenceRefs(&result)
+		result.Recommendations = buildTrendRecommendations(result)
+		result.PatternDrilldowns = buildTrendPatternDrilldowns(result)
+	} else {
+		result.TrendSummary = []TrendFinding{trendComparabilityGuard(result.Comparability)}
+		result.Recommendations = []Recommendation{}
+		result.PatternDrilldowns = []PatternDrilldown{}
+	}
 	result.DiagnosticsTrends = buildDiagnosticsTrends(sorted)
 	return result, nil
+}
+
+func assessTrendComparability(points []resolvedPoint, baseline *resolvedPoint) comparepkg.Comparability {
+	inputs := make([]comparepkg.ComparabilityInput, 0, len(points)+1)
+	if baseline != nil {
+		inputs = append(inputs, comparepkg.ComparabilityInput{Role: "baseline", Report: baseline.Report})
+	}
+	for _, point := range points {
+		inputs = append(inputs, comparepkg.ComparabilityInput{Role: "point", Report: point.Report})
+	}
+	return comparepkg.AssessComparability(inputs)
+}
+
+func trendComparabilityGuard(comparability Comparability) TrendFinding {
+	return TrendFinding{
+		Kind:    "comparability_guard",
+		Title:   comparepkg.ComparabilityGuardTitle(),
+		Summary: comparepkg.ComparabilityGuardSummary(comparability.Verdict),
+		Evidence: map[string]any{
+			"verdict":      comparability.Verdict,
+			"reason_codes": append([]string(nil), comparability.ReasonCodes...),
+		},
+	}
 }
 
 type resolvedPoint struct {

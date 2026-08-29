@@ -1,3 +1,8 @@
+// Package compare verifies stable machine-readable compare output.
+// input: comparable and guarded CompareResult values with raw deltas, snapshots, findings, recommendations, drilldowns, and comparability evidence.
+// output: regression coverage for deterministic JSON field shapes, structured verdicts, evidence references, and empty narrative arrays.
+// pos: JSON renderer contract suite after compare result construction and safety gating.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -38,15 +43,20 @@ func TestRenderJSONProducesStableCompareContract(t *testing.T) {
 	}
 
 	expected := CompareResult{
+		Comparability: result.Comparability,
 		Summary: SummaryDelta{
-			CurrentTotalRows:          2400,
-			BaselineTotalRows:         1500,
-			TotalRowsDelta:            900,
-			CurrentTotalTransactions:  120,
-			BaselineTotalTransactions: 90,
-			TotalTransactionsDelta:    30,
-			CurrentWarnings:           0,
-			BaselineWarnings:          0,
+			CurrentTotalRows:            2400,
+			BaselineTotalRows:           1500,
+			TotalRowsDelta:              900,
+			CurrentTotalTransactions:    120,
+			BaselineTotalTransactions:   90,
+			TotalTransactionsDelta:      30,
+			CurrentPartialTransactions:  result.Summary.CurrentPartialTransactions,
+			BaselinePartialTransactions: result.Summary.BaselinePartialTransactions,
+			CurrentUnknownTransactions:  result.Summary.CurrentUnknownTransactions,
+			BaselineUnknownTransactions: result.Summary.BaselineUnknownTransactions,
+			CurrentWarnings:             0,
+			BaselineWarnings:            0,
 		},
 		KeyFindings: []CompareFinding{
 			{
@@ -183,7 +193,7 @@ func TestRenderJSONKeyFindingsShape(t *testing.T) {
 			{Kind: "volume_change", Title: "Volume", Summary: "grew", Evidence: map[string]any{"delta_rows": 5}},
 			{
 				Kind: "table_driver", Title: "Table", Summary: "drove",
-				Evidence: map[string]any{"table": "s.t"},
+				Evidence:     map[string]any{"table": "s.t"},
 				EvidenceRefs: []EvidenceRef{{Section: "table_changes", Key: "s.t", Label: "s.t", Anchor: "section-table-changes"}},
 			},
 		},

@@ -1,6 +1,6 @@
 // Package trend verifies multi-snapshot trend result construction.
-// input: synthetic snapshot reports with ordering, baseline, completeness, table, pattern, and diagnostic evidence.
-// output: assertions for deterministic point order, deltas, completeness preservation, and trend series.
+// input: synthetic comparable report-v3 snapshots with ordering, baseline, completeness, table, pattern, provenance, scope, and diagnostic evidence.
+// output: assertions for deterministic point order, raw deltas, completeness preservation, trend series, and ordinary narratives behind a positive gate.
 // pos: focused regression coverage for the trend build pipeline before renderer-specific output.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -512,14 +512,26 @@ func testInputReport(name, label, start string, rows, txns, events, inserts, upd
 }
 
 func testInputReportWithPatterns(name, label, start string, rows, txns, events, inserts, updates, deletes, alerts int, patterns []comparepkg.InputPattern) InputReport {
+	reportVersion := 3
+	complete := 0
 	report := InputReport{
+		ReportVersion: &reportVersion,
+		WorkloadID:    "test-workload",
+		Scope:         &comparepkg.InputSnapshotFilters{},
+		Provenance: &comparepkg.InputProvenance{
+			ServerIDs:      []uint32{7},
+			ServerVersions: []string{"8.4.0"},
+			ServerFlavors:  []string{"mysql"},
+		},
 		Summary: InputSummary{
-			TotalTransactions: txns,
-			TotalRows:         rows,
-			TotalEvents:       events,
-			StartTime:         start,
-			EndTime:           "2026-03-20T10:30:00Z",
-			Duration:          "30m0s",
+			TotalTransactions:   txns,
+			PartialTransactions: &complete,
+			UnknownTransactions: &complete,
+			TotalRows:           rows,
+			TotalEvents:         events,
+			StartTime:           start,
+			EndTime:             "2026-03-20T10:30:00Z",
+			Duration:            "30m0s",
 		},
 		Tables: []InputTable{
 			{

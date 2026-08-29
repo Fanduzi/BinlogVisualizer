@@ -1,4 +1,32 @@
 {
+  "comparability": {
+    "verdict": "unknown",
+    "reason_codes": [
+      "missing_workload_identity",
+      "missing_producer_provenance",
+      "legacy_report_metadata",
+      "missing_scope",
+      "insufficient_completeness_evidence"
+    ],
+    "evidence": [
+      {
+        "role": "current",
+        "mixed_producers": false,
+        "schemas": [
+          "orders"
+        ],
+        "total_transactions": 120
+      },
+      {
+        "role": "baseline",
+        "mixed_producers": false,
+        "schemas": [
+          "orders"
+        ],
+        "total_transactions": 90
+      }
+    ]
+  },
   "summary": {
     "current_total_rows": 2400,
     "baseline_total_rows": 1500,
@@ -11,54 +39,22 @@
   },
   "key_findings": [
     {
-      "kind": "volume_change",
-      "title": "Total volume change",
-      "summary": "rows grew sharply",
+      "kind": "comparability_guard",
+      "title": "Comparability guard",
+      "summary": "Causal findings suppressed because input comparability is unknown; raw deltas remain available.",
       "evidence": {
-        "baseline_rows": 1500,
-        "current_rows": 2400,
-        "delta_rows": 900
+        "reason_codes": [
+          "missing_workload_identity",
+          "missing_producer_provenance",
+          "legacy_report_metadata",
+          "missing_scope",
+          "insufficient_completeness_evidence"
+        ],
+        "verdict": "unknown"
       }
-    },
-    {
-      "kind": "table_driver",
-      "title": "Top table driver",
-      "summary": "orders.refunds had the largest row change",
-      "evidence": {
-        "delta_rows": 900,
-        "share_of_total_delta": 1,
-        "table": "orders.refunds"
-      },
-      "evidence_refs": [
-        {
-          "section": "table_changes",
-          "key": "orders.refunds",
-          "label": "orders.refunds",
-          "anchor": "section-table-changes"
-        }
-      ]
     }
   ],
-  "recommendations": [
-    {
-      "kind": "check_table_hotspot",
-      "priority": "high",
-      "title": "Check table hotspot",
-      "summary": "orders.refunds had the largest row change; review the table owner, recent jobs, and whether this table-specific write movement is expected.",
-      "rationale": "A table-level delta is large enough to be an operator follow-up target.",
-      "related_finding_kinds": [
-        "table_driver"
-      ],
-      "evidence_refs": [
-        {
-          "section": "table_changes",
-          "key": "orders.refunds",
-          "label": "orders.refunds",
-          "anchor": "section-table-changes"
-        }
-      ]
-    }
-  ],
+  "recommendations": [],
   "table_changes": [
     {
       "schema": "orders",

@@ -6,8 +6,8 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 
 | File | Responsibility |
 |------|----------------|
-| `model.go` | Defines trend build inputs, completeness-aware ordered points and baseline deltas, table/pattern movement series, replay evidence, and renderer-facing results. |
-| `build.go` | Validates snapshot metadata, orders inputs, preserves partial/unknown counts, and computes operation totals, deltas, movements, trusted transaction replay evidence, and aggregate insights. |
+| `model.go` | Defines trend build inputs, structured comparability, completeness-aware ordered points and baseline deltas, table/pattern movement series, replay evidence, and renderer-facing results. |
+| `build.go` | Validates snapshot metadata, orders inputs, assesses the optional baseline and every point, preserves raw metrics, and gates causal narratives on series comparability. |
 | `patterns.go` | Builds per-pattern movement series across ordered trend points. |
 | `summary.go` | Selects capped trend findings from pattern, table, and concentration changes. |
 | `evidence.go` | Maps trend findings back to stable section anchors and evidence references. |
@@ -40,4 +40,5 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 - Baseline handling is additive: a baseline can be loaded for deltas without becoming a plotted trend point.
 - Pattern trends are first-class trend data and are available in text, JSON, and HTML output.
 - Trend summary findings, bounded drilldowns, evidence refs, and recommendations are derived inside this module from the same deterministic trend result.
+- One `unknown` or `not_comparable` baseline/point gates causal findings, recommendations, and drilldowns for the whole series and emits one first guard finding; raw points, movements, insights, and diagnostics remain available, while renderers derive the localized guard safely from the verdict.
 - Transaction trend points preserve the analyze-compatible span and replay command for each representative largest/longest transaction; missing or unusable spans remain command-free.

@@ -1,6 +1,6 @@
 // Package binlogviz verifies workflow command orchestration and operator-facing error output.
-// input: workflow CLI args, plan fixtures, and cobra command trees.
-// output: regression coverage for workflow run/resume/validate/describe/status/clean/export contracts, including relative output-root resume resolution.
+// input: workflow CLI args, plan fixtures, guarded compare/trend artifacts, and cobra command trees.
+// output: regression coverage for workflow run/resume/validate/describe/status/clean/export contracts, including comparability-guard summary propagation and relative output-root resolution.
 // pos: command-layer tests for workflow I/O, including Error-once failure output without Usage dumps.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -858,8 +858,11 @@ func TestWorkflowResumeRefreshesWorkflowSummary(t *testing.T) {
 	if after.Attempt != 2 {
 		t.Fatalf("expected attempt=2, got %d", after.Attempt)
 	}
-	if len(after.WorkflowSummary.Findings) != 0 {
-		t.Fatalf("expected refreshed workflow_summary.findings to be empty, got %#v", after.WorkflowSummary.Findings)
+	if len(after.WorkflowSummary.Findings) != 1 ||
+		after.WorkflowSummary.Findings[0].Kind != "comparability_guard" ||
+		after.WorkflowSummary.Findings[0].SourceStepKind != "compare" ||
+		after.WorkflowSummary.Findings[0].SourceStepName != "week2_vs_week1" {
+		t.Fatalf("expected refreshed workflow_summary to propagate one compare guard, got %#v", after.WorkflowSummary.Findings)
 	}
 	if len(after.WorkflowSummary.Recommendations) != 0 {
 		t.Fatalf("expected refreshed workflow_summary.recommendations to be empty, got %#v", after.WorkflowSummary.Recommendations)

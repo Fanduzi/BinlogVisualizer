@@ -9,7 +9,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
 | `text.go` | Owns shared UTC human timestamp formatting and renders completeness-aware incident briefs with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes report v3 with RFC3339 `Z` timestamps, requested/effective position and GTID evidence, transaction completeness, counted bytes, producer provenance, SQL metadata, bounded query fields, XA identity, and explicit safe replay metadata. |
+| `json.go` | Serializes report v3 with explicit workload identity/scope, RFC3339 `Z` timestamps, requested/effective position and GTID evidence, transaction list/completeness counts, counted bytes, producer provenance, SQL metadata, bounded query fields, XA identity, and explicit safe replay metadata. |
 | `markdown.go` | Renders UTC-labelled GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, and finding evidence. |
 | `html.go` | Renders the self-contained HTML report with UTC-labelled ranges/evidence/charts, completeness and byte cards, deduplicated transaction evidence, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
 | `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. |
@@ -53,6 +53,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Text rendering is intentionally kept on a fast path: it must not build HTML chart data, read embedded ECharts assets, or render pattern drilldowns unless detail options request them.
 - When `summary.duration` is shorter than one second and there is at least one transaction, the text activity TPS peak is `N/A (sub-second)` (i18n) instead of `TxnCount/60`. Rows/min and JSON `timeseries.tps_series` stay numeric.
 - Report v3 always emits transaction completeness and replay availability plus summary partial/unknown counts. Compare and snapshot loaders continue accepting legacy report versions and treat missing completeness as unknown.
+- Report v3 persists optional `workload_id` and exact configured `scope`; only the explicit non-empty workload token can positively identify the same workload across reports.
 - The JSON renderer omits `snapshot` entirely when `AnalysisResult.Snapshot` is nil, preserving optional snapshot behavior.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
 - Analyze HTML shows a neutral DDL activity notice in Risks & Findings when DDL events exist without alerts; the healthy empty state is reserved for reports without alerts or DDL.

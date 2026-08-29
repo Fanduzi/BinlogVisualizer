@@ -35,6 +35,10 @@
     "description": "Prefix flag description",
     "other": "Filename prefix used with --from-dir (optional '.' before the numeric suffix)"
   },
+  "cmd.analyze.flag.workloadID": {
+    "description": "Explicit workload identity flag description",
+    "other": "Explicit workload identity used to gate compare and trend narratives"
+  },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL context flag description",
     "other": "SQL context mode: summary, off, or full"
@@ -1246,5 +1250,21 @@
   "report.html.analyze.ddlActivityNotice": {
     "description": "Analyze neutral state when DDL activity is present without alerts",
     "other": "DDL activity detected — review the DDL Timeline below"
+  },
+  "report.comparability.guardTitle": {
+    "description": "Comparability safety guard title",
+    "other": "Comparability guard"
+  },
+  "report.comparability.reasonCodes": {
+    "description": "Comparability reason-code label",
+    "other": "Reason Codes:"
+  },
+  "report.comparability.unknownSummary": {
+    "description": "Comparability unknown guard summary",
+    "other": "Causal findings suppressed because input comparability is unknown; raw deltas remain available."
+  },
+  "report.comparability.notComparableSummary": {
+    "description": "Not-comparable guard summary",
+    "other": "Causal findings suppressed because inputs are not comparable; raw deltas remain available."
   }
 }

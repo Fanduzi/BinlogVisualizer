@@ -4,7 +4,7 @@
 
 | File | Responsibility |
 |------|----------------|
-| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, streaming lifecycle, selector evidence, and final result assembly. |
+| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, streaming lifecycle, selector evidence, and final result assembly with explicit workload identity and exact filter scope. |
 | `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, and applies exclude-wins matching. |
 | `store.go` | Persists transaction provenance, bounded SQL, completeness, and replay spans through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
 | `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects conflicting GTIDs, and separates retained evidence from trusted full replay spans. |
@@ -29,6 +29,7 @@
 | `(Options).HasObjectFilters() bool` | Reports whether any schema or table include/exclude filter is configured. |
 | `(Options).HasPositionSelectors() bool`, `(Options).HasGTIDSelectors() bool` | Report active exact-position or complete-group GTID selectors. |
 | `ParseGTIDSelector(include, exclude []string) (*GTIDSelector, error)` | Parses and canonicalizes one explicit MySQL or MariaDB selector flavor. |
+| `Options.WorkloadID` | Carries the optional operator-provided workload token into report v3 without inference. |
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event. Workload totals remain inclusive, filtered, and event-window scoped while adjacent physical events may supply transaction-boundary evidence only. |
 | `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the complete final analysis result. Successful calls are idempotent. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
@@ -56,6 +57,7 @@
 - Detail-store parity covers provenance, XA identity, retained/full spans, completeness, maps, and bounded SQL metadata in both in-memory and DuckDB paths.
 - Time windows keep inclusive per-event workload totals. Adjacent parsed events may establish transaction completeness and a trusted full replay span, but never add out-of-window rows, events, table totals, operations, or minute buckets.
 - Active schema/table filters remove excluded row and DDL events before workload aggregation; control events remain available for transaction boundaries, and empty filtered transactions are omitted from reports.
+- Final results preserve `Options.WorkloadID` and the canonical configured include/exclude filters as comparability evidence.
 - ReportAggregator derives counted event bytes from filtered row/DDL minute buckets; physical selected-file bytes remain in command-supplied file coverage.
 - Alert-referenced transactions are tracked in a bounded map so `BuildFindingsFromAlerts` and `BuildPatternDrilldowns` can resolve evidence even when the referenced transaction is not in the top-5 largest.
 - Pattern maps in snapshot use non-nil empty maps (`make(map[string]int)`) to match `BuildPatterns` semantics for `reflect.DeepEqual` parity.

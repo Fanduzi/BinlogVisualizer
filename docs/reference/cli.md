@@ -96,6 +96,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--output`, `-o` | auto | HTML output file path. Only supported with `--format html`. Default: derived cwd file on a TTY; stdout when stdout is redirected. Use `-` to force stdout. |
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
+| `--workload-id` | none | Explicit workload identity persisted in report v3. Use the same non-empty token only for snapshots of the same workload. |
 | `--sql-context` | `summary` | SQL context presentation mode: `summary`, `off`, or `full`. |
 | `--top-tables` | `10` | Number of top tables to display in human-readable reports; JSON retains all table aggregates. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report; `0` is unlimited. |
@@ -124,6 +125,7 @@ Position selectors reject discovery and multiple explicit files, reversed/out-of
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --workload-id orders-production \
   --format json \
   --snapshot-name incident_current
 ```
@@ -202,8 +204,8 @@ Accepted output formats:
 Representative usage:
 
 ```bash
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json --snapshot-name current > current.json
-binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json --snapshot-name baseline > baseline.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --workload-id orders-production --format json --snapshot-name current > current.json
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --workload-id orders-production --format json --snapshot-name baseline > baseline.json
 
 binlogviz compare --current-snapshot current --baseline-snapshot baseline
 binlogviz compare --current-snapshot current --baseline-snapshot baseline --format json > compare.json
@@ -214,6 +216,12 @@ binlogviz compare current.json baseline.json
 binlogviz compare current.json baseline.json --format json > compare.json
 binlogviz compare current.json baseline.json --format html > compare.html
 ```
+
+### Comparability contract
+
+Compare JSON exposes `comparability.verdict` as `comparable`, `not_comparable`, or `unknown`, with stable `reason_codes` and per-input `evidence`. Raw numeric deltas are always rendered. Ordinary causal findings, recommendations, and drilldowns appear only when non-empty workload IDs match, known producer flavor and configured scope are compatible, and report-v3 transaction completeness evidence is adequate.
+
+Different workload IDs, conflicting known flavors or mixed producers, and incompatible scopes are `not_comparable`. Missing identity/provenance/scope, legacy v0-v2 metadata, and missing or partial/unknown completeness evidence are `unknown`. Guarded output contains one prominent comparability finding first and suppresses every ordinary causal narrative. Server ID/version, observed schemas, filenames, and flavor remain evidence only; none can substitute for `--workload-id`.
 
 ## `trend` Command Syntax
 
@@ -238,6 +246,7 @@ Rules:
 - trend uses `snapshot.window.start_time` when present and falls back to `summary.start_time` for older snapshots
 - `--baseline-snapshot` is optional and does not automatically become a trend point unless it was selected separately
 - all trend formats include pattern trends; `text` and `json` expose `Top Pattern Trends` / `pattern_trends`, and `html` adds an interactive `Pattern Trends` section
+- the comparability check covers the optional baseline and every point; one guarded input suppresses causal trend findings, recommendations, and drilldowns while retaining raw points and movements
 - HTML trend output defaults to the `share of rows` view and lets you switch to absolute `rows`
 
 Accepted flags:

@@ -1,6 +1,6 @@
 // Package compare computes stable comparison results from validated input reports.
-// input: two validated InputReport values representing current and baseline analyses.
-// output: deterministic CompareResult values with completeness counts, trusted current replay evidence, and baseline/current byte coverage for text, JSON, and HTML renderers.
+// input: two validated InputReport values representing current and baseline analyses with optional comparability metadata.
+// output: deterministic CompareResult values with raw deltas, a structured comparability gate, completeness counts, trusted current replay evidence, and byte coverage for renderers.
 // pos: compare pipeline core between report loading and output rendering.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -14,6 +14,7 @@ import (
 
 func BuildCompareResult(current, baseline InputReport) CompareResult {
 	result := CompareResult{
+		Comparability: AssessComparability([]ComparabilityInput{{Role: "current", Report: current}, {Role: "baseline", Report: baseline}}),
 		Summary: SummaryDelta{
 			CurrentTotalRows:            current.Summary.TotalRows,
 			BaselineTotalRows:           baseline.Summary.TotalRows,
@@ -38,10 +39,16 @@ func BuildCompareResult(current, baseline InputReport) CompareResult {
 		BaselineSnapshot: baseline.Snapshot,
 		DiagnosticsDelta: buildDiagnosticsDelta(current, baseline),
 	}
-	result.KeyFindings = buildKeyFindings(result)
-	buildCompareEvidenceRefs(&result)
-	result.Recommendations = buildCompareRecommendations(result)
-	result.PatternDrilldowns = buildComparePatternDrilldowns(result)
+	if result.Comparability.Verdict == VerdictComparable {
+		result.KeyFindings = buildKeyFindings(result)
+		buildCompareEvidenceRefs(&result)
+		result.Recommendations = buildCompareRecommendations(result)
+		result.PatternDrilldowns = buildComparePatternDrilldowns(result)
+	} else {
+		result.KeyFindings = []CompareFinding{comparabilityGuardFinding(result.Comparability)}
+		result.Recommendations = []Recommendation{}
+		result.PatternDrilldowns = []PatternDrilldown{}
+	}
 	return result
 }
 

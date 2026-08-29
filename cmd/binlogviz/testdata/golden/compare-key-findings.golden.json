@@ -1,4 +1,68 @@
 {
+  "comparability": {
+    "verdict": "comparable",
+    "reason_codes": [],
+    "evidence": [
+      {
+        "role": "current",
+        "report_version": 3,
+        "workload_id": "orders-production",
+        "server_ids": [
+          7
+        ],
+        "server_versions": [
+          "8.4.0"
+        ],
+        "server_flavors": [
+          "mysql"
+        ],
+        "mixed_producers": false,
+        "schemas": [
+          "orders"
+        ],
+        "scope": {
+          "include_schema": [
+            "orders"
+          ],
+          "exclude_schema": null,
+          "include_table": null,
+          "exclude_table": null
+        },
+        "total_transactions": 120,
+        "partial_transactions": 0,
+        "unknown_transactions": 0
+      },
+      {
+        "role": "baseline",
+        "report_version": 3,
+        "workload_id": "orders-production",
+        "server_ids": [
+          19
+        ],
+        "server_versions": [
+          "8.0.42"
+        ],
+        "server_flavors": [
+          "mysql"
+        ],
+        "mixed_producers": false,
+        "schemas": [
+          "orders"
+        ],
+        "scope": {
+          "include_schema": [
+            "orders"
+          ],
+          "exclude_schema": null,
+          "include_table": null,
+          "exclude_table": null
+        },
+        "total_transactions": 90,
+        "partial_transactions": 0,
+        "unknown_transactions": 0
+      }
+    ]
+  },
   "summary": {
     "current_total_rows": 2400,
     "baseline_total_rows": 1500,
@@ -6,6 +70,10 @@
     "current_total_transactions": 120,
     "baseline_total_transactions": 90,
     "total_transactions_delta": 30,
+    "current_partial_transactions": 0,
+    "baseline_partial_transactions": 0,
+    "current_unknown_transactions": 0,
+    "baseline_unknown_transactions": 0,
     "current_warnings": 0,
     "baseline_warnings": 0
   },
