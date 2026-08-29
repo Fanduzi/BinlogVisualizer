@@ -11,9 +11,9 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `text.go` | Renders completeness-aware incident briefs with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
 | `json.go` | Serializes report v3 with transaction list and completeness counts, counted event-byte diagnostics, optional producer/transaction provenance, required SQL mode/availability metadata, bounded query fields, XA identity, and safe replay metadata. |
 | `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, and finding evidence. |
-| `html.go` | Renders the self-contained HTML report with completeness and byte cards, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
+| `html.go` | Renders the self-contained HTML report with completeness and byte cards, deduplicated transaction evidence, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
 | `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. |
-| `*_test.go` | Verifies text, complete JSON tables, Markdown evidence, HTML lookup, SQL modes, counted bytes, completeness, and safe replay behavior. |
+| `*_test.go` | Verifies text, complete JSON tables, Markdown evidence, deduplicated HTML evidence and lookup, SQL modes, counted bytes, completeness, and safe replay behavior. |
 
 ## Interfaces
 
@@ -57,6 +57,6 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Analyze HTML shows a neutral DDL activity notice in Risks & Findings when DDL events exist without alerts; the healthy empty state is reserved for reports without alerts or DDL.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
 - Analyze text and HTML label selected physical input-file bytes separately from counted filtered event bytes; missing selected-file size metadata renders as unavailable.
-- Transaction evidence in HTML highlights the single current champion for largest, longest, and widest transactions; a separate lookup lists the bounded transaction payload without changing those champion cards.
+- Transaction evidence in HTML renders each category champion once, annotates every category it wins, and keeps a separate lookup for the bounded transaction payload.
 - JSON always reports `transactions_listed` and `transactions_omitted` alongside the bounded `transactions` array.
 - Rendered transaction evidence and pattern representatives expose transaction keys to the HTML search control.

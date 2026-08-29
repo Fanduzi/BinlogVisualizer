@@ -470,6 +470,67 @@ func TestRenderHTMLTransactionEvidenceCards(t *testing.T) {
 	}
 }
 
+func transactionEvidenceSection(t *testing.T, out string) string {
+	t.Helper()
+	start := strings.Index(out, `id="transaction-evidence"`)
+	if start < 0 {
+		t.Fatal("expected transaction evidence section")
+	}
+	section := out[start:]
+	if end := strings.Index(section, `id="ddl-timeline"`); end >= 0 {
+		section = section[:end]
+	}
+	return section
+}
+
+func TestRenderHTMLTransactionEvidenceDeduplicatesUniformChampion(t *testing.T) {
+	txn := model.Transaction{
+		TxnKey:      "txn-uniform",
+		TotalRows:   100,
+		EventCount:  10,
+		Duration:    5 * time.Second,
+		BinlogBytes: 2048,
+		Tables:      map[string]int{"shop.orders": 100},
+	}
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{
+			txn,
+			{TxnKey: "txn-runner-up", TotalRows: 90, Duration: 4 * time.Second},
+		},
+		Diagnostics: model.Diagnostics{
+			LargestTransactions: []model.Transaction{txn},
+			LongestTransactions: []model.Transaction{txn},
+			WidestTransactions:  []model.Transaction{txn},
+		},
+	}
+
+	out, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	evidence := transactionEvidenceSection(t, out)
+	if got := strings.Count(evidence, `data-transaction-key="txn-uniform"`); got != 1 {
+		t.Fatalf("expected one uniform winner card, got %d", got)
+	}
+	for _, token := range []string{"Largest Transaction by Rows", "Longest Transaction by Duration", "Widest Transaction by Touched Tables"} {
+		if !strings.Contains(evidence, token) {
+			t.Fatalf("expected uniform winner annotation %q", token)
+		}
+	}
+	lookupStart := strings.Index(out, `id="transaction-lookup"`)
+	if lookupStart < 0 {
+		t.Fatal("expected bounded transaction lookup section")
+	}
+	lookupEnd := strings.Index(out[lookupStart:], `id="transaction-evidence"`)
+	if lookupEnd < 0 {
+		t.Fatal("expected transaction evidence section after lookup")
+	}
+	lookup := out[lookupStart : lookupStart+lookupEnd]
+	if !strings.Contains(lookup, `data-transaction-key="txn-runner-up"`) {
+		t.Fatal("expected bounded ranked list to expose the additional transaction")
+	}
+}
+
 func TestRenderHTMLTransactionEvidenceIsSearchable(t *testing.T) {
 	result := model.AnalysisResult{
 		Transactions: []model.Transaction{{
@@ -542,7 +603,7 @@ func TestAnalyzeHTMLIncludesReadableTPSChart(t *testing.T) {
 	}
 }
 
-func TestAnalyzeHTMLTransactionEvidenceShowsSingleChampionPerMetric(t *testing.T) {
+func TestAnalyzeHTMLTransactionEvidenceKeepsDistinctWinners(t *testing.T) {
 	result := productHTMLFixture()
 	result.Diagnostics.LargestTransactions = append(result.Diagnostics.LargestTransactions, model.Transaction{
 		TxnKey:    "txn-largest-runner-up",
@@ -564,26 +625,20 @@ func TestAnalyzeHTMLTransactionEvidenceShowsSingleChampionPerMetric(t *testing.T
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, token := range []string{
-		"txn-largest",
-		"txn-longest",
-		"txn-widest",
-		"touched tables",
-	} {
-		if !strings.Contains(out, token) {
+	evidence := transactionEvidenceSection(t, out)
+	for _, token := range []string{"txn-largest", "txn-longest", "txn-widest", "touched tables"} {
+		if !strings.Contains(evidence, token) {
 			t.Fatalf("expected transaction evidence label %q\n%s", token, out)
 		}
 	}
-	for _, token := range []string{
-		"Top 5 Largest Transactions by Rows",
-		"Top 5 Longest Transactions by Duration",
-		"Top 5 Widest Transactions by Touched Tables",
-		"txn-largest-runner-up",
-		"txn-longest-runner-up",
-		"txn-widest-runner-up",
-	} {
-		if strings.Contains(out, token) {
-			t.Fatalf("expected champion-only transaction evidence, but saw %q\n%s", token, out)
+	for _, token := range []string{"txn-largest", "txn-longest", "txn-widest"} {
+		if got := strings.Count(evidence, `data-transaction-key="`+token+`"`); got != 1 {
+			t.Fatalf("expected one card for distinct winner %q, got %d", token, got)
+		}
+	}
+	for _, token := range []string{"txn-largest-runner-up", "txn-longest-runner-up", "txn-widest-runner-up"} {
+		if strings.Contains(evidence, token) {
+			t.Fatalf("expected category runner-up %q to stay out of champion cards", token)
 		}
 	}
 }

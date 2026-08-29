@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with completeness, selected-file/count-event bytes, transaction lookup, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with completeness, deduplicated transaction evidence, bounded transaction lookup, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -65,57 +65,53 @@ func jsonMarshal(v any) (template.JS, error) {
 }
 
 type htmlReportData struct {
-	GeneratedAt         string
-	SourceFiles         string
-	StartTime           string
-	EndTime             string
-	Duration            string
-	TotalTxns           int
-	PartialTxns         int
-	UnknownTxns         int
-	TotalRows           int
-	TotalEvents         int
-	DDLCount            int
-	InputFileSize       string
-	HasInputFileSize    bool
-	CountedEventBytes   string
-	Transactions        []htmlTransactionLookup
-	HasTransactions     bool
-	Tables              []htmlTableRow
-	OmittedTables       string
-	TableActivitySeries template.JS
-	DDLEvents           []htmlDDLEvent
-	HasDDLEvents        bool
-	LargestTransactions []htmlTxnDiagnostic
-	HasLargestTxns      bool
-	LongestTransactions []htmlTxnDiagnostic
-	HasLongestTxns      bool
-	WidestTransactions  []htmlTxnDiagnostic
-	HasWidestTxns       bool
-	HotIntervals        []htmlHotInterval
-	HasHotIntervals     bool
-	FileCoverage        htmlFileCoverageData
-	HasFileCoverage     bool
-	FileSegments        []htmlFileSegment
-	HasFileSegments     bool
-	ThroughputLabels    template.JS
-	ThroughputBytes     template.JS
-	ThroughputRows      template.JS
-	TPSLabels           template.JS
-	TPSValues           template.JS
-	Alerts              []htmlAlert
-	HasAlerts           bool
-	TopAlerts           []htmlAlert
-	Drilldowns          []htmlDrilldown
-	HasDrilldowns       bool
-	MinuteLabels        template.JS
-	MinuteRows          template.JS
-	MinuteTxns          template.JS
-	TableBarNames       template.JS
-	TableBarRows        template.JS
-	OpsPie              template.JS
-	EChartsJS           template.JS
-	TopN                int
+	GeneratedAt            string
+	SourceFiles            string
+	StartTime              string
+	EndTime                string
+	Duration               string
+	TotalTxns              int
+	PartialTxns            int
+	UnknownTxns            int
+	TotalRows              int
+	TotalEvents            int
+	DDLCount               int
+	InputFileSize          string
+	HasInputFileSize       bool
+	CountedEventBytes      string
+	Transactions           []htmlTransactionLookup
+	HasTransactions        bool
+	TransactionEvidence    []htmlTxnDiagnostic
+	HasTransactionEvidence bool
+	Tables                 []htmlTableRow
+	OmittedTables          string
+	TableActivitySeries    template.JS
+	DDLEvents              []htmlDDLEvent
+	HasDDLEvents           bool
+	HotIntervals           []htmlHotInterval
+	HasHotIntervals        bool
+	FileCoverage           htmlFileCoverageData
+	HasFileCoverage        bool
+	FileSegments           []htmlFileSegment
+	HasFileSegments        bool
+	ThroughputLabels       template.JS
+	ThroughputBytes        template.JS
+	ThroughputRows         template.JS
+	TPSLabels              template.JS
+	TPSValues              template.JS
+	Alerts                 []htmlAlert
+	HasAlerts              bool
+	TopAlerts              []htmlAlert
+	Drilldowns             []htmlDrilldown
+	HasDrilldowns          bool
+	MinuteLabels           template.JS
+	MinuteRows             template.JS
+	MinuteTxns             template.JS
+	TableBarNames          template.JS
+	TableBarRows           template.JS
+	OpsPie                 template.JS
+	EChartsJS              template.JS
+	TopN                   int
 }
 
 type htmlDrilldown struct {
@@ -184,6 +180,7 @@ type htmlDDLEvent struct {
 
 type htmlTxnDiagnostic struct {
 	TxnKey               string
+	Reasons              []string
 	Rows                 int
 	Events               int
 	Duration             string
@@ -352,15 +349,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasDDLEvents = len(d.DDLEvents) > 0
 	d.DDLCount = len(d.DDLEvents)
 
-	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, 1) {
-		d.LargestTransactions = append(d.LargestTransactions, buildHTMLTxnDiagnostic(txn, result.Diagnostics.ServerVersion))
-	}
-	d.HasLargestTxns = len(d.LargestTransactions) > 0
-
-	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, 1) {
-		d.LongestTransactions = append(d.LongestTransactions, buildHTMLTxnDiagnostic(txn, result.Diagnostics.ServerVersion))
-	}
-	d.HasLongestTxns = len(d.LongestTransactions) > 0
+	d.TransactionEvidence = buildHTMLTransactionEvidence(result.Diagnostics, result.Diagnostics.ServerVersion)
+	d.HasTransactionEvidence = len(d.TransactionEvidence) > 0
 
 	for _, interval := range result.Diagnostics.HotIntervals {
 		d.HotIntervals = append(d.HotIntervals, htmlHotInterval{
@@ -374,12 +364,6 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		})
 	}
 	d.HasHotIntervals = len(d.HotIntervals) > 0
-
-	// Widest transactions
-	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, 1) {
-		d.WidestTransactions = append(d.WidestTransactions, buildHTMLTxnDiagnostic(txn, result.Diagnostics.ServerVersion))
-	}
-	d.HasWidestTxns = len(d.WidestTransactions) > 0
 
 	// File coverage
 	for _, item := range result.Diagnostics.FileCoverage.Selected {
@@ -517,6 +501,33 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasDrilldowns = len(d.Drilldowns) > 0
 
 	return d
+}
+
+func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion string) []htmlTxnDiagnostic {
+	evidence := make([]htmlTxnDiagnostic, 0, 3)
+	evidenceIndexByTxnKey := make(map[string]int, 3)
+	addChampion := func(txn model.Transaction, reason string) {
+		if txn.TxnKey != "" {
+			if index, ok := evidenceIndexByTxnKey[txn.TxnKey]; ok {
+				evidence[index].Reasons = append(evidence[index].Reasons, reason)
+				return
+			}
+			evidenceIndexByTxnKey[txn.TxnKey] = len(evidence)
+		}
+		diagnostic := buildHTMLTxnDiagnostic(txn, serverVersion)
+		diagnostic.Reasons = []string{reason}
+		evidence = append(evidence, diagnostic)
+	}
+	if len(diagnostics.LargestTransactions) > 0 {
+		addChampion(diagnostics.LargestTransactions[0], i18n.T("report.html.analyze.largestTransactionsByRows"))
+	}
+	if len(diagnostics.LongestTransactions) > 0 {
+		addChampion(diagnostics.LongestTransactions[0], i18n.T("report.html.analyze.longestTransactionsByDuration"))
+	}
+	if len(diagnostics.WidestTransactions) > 0 {
+		addChampion(diagnostics.WidestTransactions[0], i18n.T("report.html.analyze.widestTransactionsByTouchedTables"))
+	}
+	return evidence
 }
 
 func limitTransactions(txns []model.Transaction, limit int) []model.Transaction {
