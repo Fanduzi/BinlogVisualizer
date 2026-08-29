@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: incident-brief text reports (hot tables and largest txns first) with opt-in minute and write-pattern detail sections.
+// output: incident-brief text reports (hot tables and largest txns first) with opt-in minute and write-pattern detail sections; sub-second TPS peaks render as N/A.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -75,7 +75,7 @@ func renderActivitySection(buf *strings.Builder, result model.AnalysisResult) {
 	tpsSpark := formatSparkline(result.Timeseries.TPSSeries)
 	rowsSpark := formatSparkline(result.Timeseries.RowsSeries)
 	resolution := formatSparklineResolution(len(result.Timeseries.TPSSeries))
-	buf.WriteString(fmt.Sprintf("  %-8s %s  %s  %s\n", i18n.T("report.text.tpsShort")+":", tpsSpark, formatPeakSeries(result.Timeseries.TPSSeries), resolution))
+	buf.WriteString(fmt.Sprintf("  %-8s %s  %s  %s\n", i18n.T("report.text.tpsShort")+":", tpsSpark, formatTPSPeak(result.Summary, result.Timeseries.TPSSeries), resolution))
 	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", rowsSpark, formatPeakSeries(result.Timeseries.RowsSeries)))
 	buf.WriteString("\n")
 }
@@ -357,6 +357,13 @@ func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
 	default:
 		return txn.QuerySummary
 	}
+}
+
+func formatTPSPeak(summary model.WorkloadSummary, points []model.TimeseriesPoint) string {
+	if summary.Duration < time.Second && summary.TotalTransactions >= 1 {
+		return i18n.T("report.text.tpsSubSecond")
+	}
+	return formatPeakSeries(points)
 }
 
 func formatPeakSeries(points []model.TimeseriesPoint) string {

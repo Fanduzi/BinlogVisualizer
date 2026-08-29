@@ -355,6 +355,10 @@
     "description": "文本报告活动概览中的 TPS 短标签",
     "other": "TPS"
   },
+  "report.text.tpsSubSecond": {
+    "description": "分析时间跨度不足一秒时的操作员可见 TPS",
+    "other": "N/A（不足一秒）"
+  },
   "report.text.rowsPerMinuteShort": {
     "description": "文本报告活动概览中的每分钟行数短标签",
     "other": "每分钟行数"
