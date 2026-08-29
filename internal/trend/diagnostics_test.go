@@ -1,3 +1,8 @@
+// Package trend verifies trend diagnostic series construction and replay evidence.
+// input: synthetic ordered snapshot reports with diagnostic metrics and transaction spans.
+// output: assertions for trend metric values and preserved replay payloads.
+// pos: regression coverage for trend diagnostic build paths.
+// note: if this file changes, update this header and internal/trend/README.md.
 package trend
 
 import (
@@ -102,6 +107,44 @@ func TestBuildResultProducesTxnSizeTrends(t *testing.T) {
 	}
 	if got[1].Value != 800 {
 		t.Fatalf("expected second txn size 800, got %f", got[1].Value)
+	}
+}
+
+func TestBuildResultPreservesTxnReplayEvidencePerSnapshot(t *testing.T) {
+	makeReport := func(name, start, key, file string, startPos, endPos int64, cmd string) InputReport {
+		r := testInputReport(name, name, start, 1000, 50, 1200, 500, 350, 150, 0)
+		r.Diagnostics.LargestTransactions = []comparepkg.InputTransaction{{
+			TxnKey:          key,
+			TotalRows:       2000,
+			EventCount:      8,
+			BinlogFileStart: file,
+			BinlogFileEnd:   file,
+			PosStart:        startPos,
+			PosEnd:          endPos,
+			MysqlbinlogCmd:  cmd,
+		}}
+		return r
+	}
+
+	result, err := BuildResult(BuildOptions{
+		InputMode: "explicit",
+		Points: []BuildInput{
+			{Path: "/tmp/a.json", Report: makeReport("a", "2026-03-19T10:00:00Z", "txn-a", "minimal.binlog", 962, 1186, "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog")},
+			{Path: "/tmp/b.json", Report: makeReport("b", "2026-03-20T10:00:00Z", "txn-b", "mysql-bin.000008", 300, 520, "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=300 --stop-position=520 /tmp/mysql-bin.000008")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build result: %v", err)
+	}
+
+	for i, want := range []string{"minimal.binlog:962-1186", "mysql-bin.000008:300-520"} {
+		evidence := result.DiagnosticsTrends.TxnSizeTrends[i].Evidence
+		if evidence == nil || evidence.BinlogSpan != want {
+			t.Fatalf("snapshot %d evidence span = %+v, want %q", i, evidence, want)
+		}
+		if evidence.MysqlbinlogCmd == "" {
+			t.Fatalf("snapshot %d missing replay command", i)
+		}
 	}
 }
 

@@ -171,6 +171,40 @@ func TestDecodeReportJSONLoadsValidBinlogVizJSON(t *testing.T) {
 	}
 }
 
+func TestDecodeReportJSONPreservesTransactionReplayCommand(t *testing.T) {
+	data := []byte(`{
+  "summary": {
+    "total_transactions": 1,
+    "total_rows": 2,
+    "total_events": 3,
+    "start_time": "2026-04-01T10:00:00Z",
+    "end_time": "2026-04-01T10:01:00Z",
+    "duration": "1m0s"
+  },
+  "tables": [],
+  "transactions": [{
+    "txn_key": "txn-current",
+    "total_rows": 2,
+    "event_count": 3,
+    "binlog_file_start": "minimal.binlog",
+    "binlog_file_end": "minimal.binlog",
+    "pos_start": 962,
+    "pos_end": 1186,
+    "mysqlbinlog_cmd": "mysqlbinlog --start-position=962 --stop-position=1186 /tmp/minimal.binlog"
+  }],
+  "alerts": [],
+  "warnings": 0
+}`)
+
+	report, err := DecodeReportJSON(data)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON returned error: %v", err)
+	}
+	if len(report.Transactions) != 1 || report.Transactions[0].MysqlbinlogCmd == "" {
+		t.Fatalf("expected transaction replay command to survive decoding, got %+v", report.Transactions)
+	}
+}
+
 func TestDecodeReportJSONRejectsForeignJSON(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "foreign.json"))
 	if err != nil {

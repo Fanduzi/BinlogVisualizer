@@ -1,19 +1,20 @@
 // Package compare defines compare-input contracts and comparison result models.
 // input: JSON reports emitted by `binlogviz analyze --format json`.
-// output: typed compare input structures and, later, compare result structures.
+// output: typed compare input and result structures, including replay-ready transaction evidence.
 // pos: compare pipeline boundary between JSON loading and diff/render stages.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 type InputReport struct {
-	Summary     InputSummary     `json:"summary"`
-	Timeseries  InputTimeseries  `json:"timeseries"`
-	Diagnostics InputDiagnostics `json:"diagnostics"`
-	Tables      []InputTable     `json:"tables"`
-	Patterns    []InputPattern   `json:"patterns"`
-	Alerts      []InputAlert     `json:"alerts"`
-	Warnings    int              `json:"warnings"`
-	Snapshot    *InputSnapshot   `json:"snapshot,omitempty"`
+	Summary      InputSummary       `json:"summary"`
+	Timeseries   InputTimeseries    `json:"timeseries"`
+	Diagnostics  InputDiagnostics   `json:"diagnostics"`
+	Tables       []InputTable       `json:"tables"`
+	Transactions []InputTransaction `json:"transactions"`
+	Patterns     []InputPattern     `json:"patterns"`
+	Alerts       []InputAlert       `json:"alerts"`
+	Warnings     int                `json:"warnings"`
+	Snapshot     *InputSnapshot     `json:"snapshot,omitempty"`
 }
 
 type InputSummary struct {
@@ -58,6 +59,7 @@ type InputDiagnostics struct {
 	DDLEvents           []InputDDLEvent    `json:"ddl_events"`
 	LargestTransactions []InputTransaction `json:"largest_transactions"`
 	LongestTransactions []InputTransaction `json:"longest_transactions"`
+	WidestTransactions  []InputTransaction `json:"widest_transactions"`
 	HotIntervals        []InputHotInterval `json:"hot_intervals"`
 	Findings            []InputFinding     `json:"findings"`
 }
@@ -106,6 +108,7 @@ type InputTransaction struct {
 	QuerySQL           string         `json:"query_sql,omitempty"`
 	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
 	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
+	MysqlbinlogCmd     string         `json:"mysqlbinlog_cmd,omitempty"`
 }
 
 type InputHotInterval struct {
@@ -207,10 +210,10 @@ type CompareResult struct {
 
 // DiagnosticsDelta holds DBA-oriented diagnostic comparison results.
 type DiagnosticsDelta struct {
-	DDLChanges      DDLChangeDelta      `json:"ddl_changes"`
-	TxnDiagnostics  TxnDiagnosticDelta  `json:"txn_diagnostics"`
+	DDLChanges       DDLChangeDelta     `json:"ddl_changes"`
+	TxnDiagnostics   TxnDiagnosticDelta `json:"txn_diagnostics"`
 	HotIntervalDelta HotIntervalDelta   `json:"hot_interval_delta"`
-	EventMixDelta   EventMixDelta       `json:"event_mix_delta"`
+	EventMixDelta    EventMixDelta      `json:"event_mix_delta"`
 }
 
 // DDLChangeDelta compares DDL event counts and details between windows.
@@ -233,40 +236,54 @@ type DDLEventItem struct {
 
 // TxnDiagnosticDelta compares largest/longest transaction stats between windows.
 type TxnDiagnosticDelta struct {
-	LargestTxnDelta  TxnSizeCompare     `json:"largest_txn_delta"`
-	LongestTxnDelta  TxnDurationCompare `json:"longest_txn_delta"`
+	LargestTxnDelta TxnSizeCompare     `json:"largest_txn_delta"`
+	LongestTxnDelta TxnDurationCompare `json:"longest_txn_delta"`
+}
+
+// TransactionEvidence preserves the current transaction's replay location and command.
+// The command is omitted when the source span is missing or unusable.
+type TransactionEvidence struct {
+	TxnKey          string `json:"txn_key,omitempty"`
+	BinlogFileStart string `json:"binlog_file_start,omitempty"`
+	BinlogFileEnd   string `json:"binlog_file_end,omitempty"`
+	PosStart        int64  `json:"pos_start,omitempty"`
+	PosEnd          int64  `json:"pos_end,omitempty"`
+	BinlogSpan      string `json:"binlog_span,omitempty"`
+	MysqlbinlogCmd  string `json:"mysqlbinlog_cmd,omitempty"`
 }
 
 // TxnSizeCompare holds baseline/current/delta for a single transaction metric (rows).
 type TxnSizeCompare struct {
-	BaselineRows  int    `json:"baseline_rows"`
-	CurrentRows   int    `json:"current_rows"`
-	DeltaRows     int    `json:"delta_rows"`
-	BaselineKey   string `json:"baseline_key,omitempty"`
-	CurrentKey    string `json:"current_key,omitempty"`
-	BaselineTable string `json:"baseline_table,omitempty"`
-	CurrentTable  string `json:"current_table,omitempty"`
-	BaselineOp    string `json:"baseline_op,omitempty"`
-	CurrentOp     string `json:"current_op,omitempty"`
-	IdentityNew   bool   `json:"identity_new,omitempty"`
+	BaselineRows    int                  `json:"baseline_rows"`
+	CurrentRows     int                  `json:"current_rows"`
+	DeltaRows       int                  `json:"delta_rows"`
+	BaselineKey     string               `json:"baseline_key,omitempty"`
+	CurrentKey      string               `json:"current_key,omitempty"`
+	BaselineTable   string               `json:"baseline_table,omitempty"`
+	CurrentTable    string               `json:"current_table,omitempty"`
+	BaselineOp      string               `json:"baseline_op,omitempty"`
+	CurrentOp       string               `json:"current_op,omitempty"`
+	IdentityNew     bool                 `json:"identity_new,omitempty"`
+	CurrentEvidence *TransactionEvidence `json:"current_evidence,omitempty"`
 }
 
 // TxnDurationCompare holds baseline/current/delta for transaction duration.
 type TxnDurationCompare struct {
-	BaselineDuration string `json:"baseline_duration"`
-	CurrentDuration  string `json:"current_duration"`
-	BaselineKey      string `json:"baseline_key,omitempty"`
-	CurrentKey       string `json:"current_key,omitempty"`
+	BaselineDuration string               `json:"baseline_duration"`
+	CurrentDuration  string               `json:"current_duration"`
+	BaselineKey      string               `json:"baseline_key,omitempty"`
+	CurrentKey       string               `json:"current_key,omitempty"`
+	CurrentEvidence  *TransactionEvidence `json:"current_evidence,omitempty"`
 }
 
 // HotIntervalDelta compares hot interval summaries between windows.
 type HotIntervalDelta struct {
-	BaselineTopRows int                `json:"baseline_top_rows"`
-	CurrentTopRows  int                `json:"current_top_rows"`
-	DeltaTopRows    int                `json:"delta_top_rows"`
-	BaselineCount   int                `json:"baseline_count"`
-	CurrentCount    int                `json:"current_count"`
-	TopItems        []HotIntervalItem  `json:"top_items"`
+	BaselineTopRows int               `json:"baseline_top_rows"`
+	CurrentTopRows  int               `json:"current_top_rows"`
+	DeltaTopRows    int               `json:"delta_top_rows"`
+	BaselineCount   int               `json:"baseline_count"`
+	CurrentCount    int               `json:"current_count"`
+	TopItems        []HotIntervalItem `json:"top_items"`
 }
 
 // HotIntervalItem is a flat hot interval summary for compare output.
@@ -325,8 +342,8 @@ type SummaryDelta struct {
 }
 
 type TableChange struct {
-	Schema       string  `json:"schema"`
-	Table        string  `json:"table"`
+	Schema       string   `json:"schema"`
+	Table        string   `json:"table"`
 	CurrentRows  int      `json:"current_rows"`
 	BaselineRows int      `json:"baseline_rows"`
 	DeltaRows    int      `json:"delta_rows"`

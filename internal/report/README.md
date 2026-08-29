@@ -12,7 +12,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `json.go` | Serializes the stable analyze JSON report shape, including optional transaction `xa_xid` and top-level snapshot metadata, and applies SQL context field visibility rules. |
 | `markdown.go` | Renders GitHub-flavored Markdown output. |
 | `html.go` | Renders the self-contained HTML report, including responsive activity-chart layout and ECharts data preparation. |
-| `mysqlbinlog.go` | Builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands with absolute file paths from usable txn spans; omits `--start-position` when only an XID interval is known. |
+| `mysqlbinlog.go` | Formats transaction spans and builds copy-paste `mysqlbinlog` / `mariadb-binlog` commands with absolute file paths from usable spans; omits `--start-position` when only an XID interval is known. |
 | `*_test.go` | Verifies diagnostic text defaults, opt-in detail sections, JSON field stability, snapshot behavior, SQL context mode behavior, and mysqlbinlog command emission. |
 
 ## Interfaces
@@ -25,6 +25,8 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, error)` | Renders text output with explicit detail and SQL context presentation controls. |
 | `RenderJSON(result model.AnalysisResult) (string, error)` | Renders the default backward-compatible JSON report, including `snapshot` when present. |
 | `RenderJSONWithOptions(result model.AnalysisResult, opts Options) (string, error)` | Renders the JSON report with explicit presentation controls. |
+| `FormatBinlogSpan(txn model.Transaction)` | Formats a transaction file span using the same display rules as analyze HTML. |
+| `FormatReplayCommand(txn model.Transaction, serverVersion string)` | Builds the same safe replay command used by analyze JSON/HTML. |
 
 ## Dependencies
 

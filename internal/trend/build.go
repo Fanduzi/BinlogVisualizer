@@ -1,6 +1,6 @@
 // Package trend builds ordered multi-snapshot trend results from analyze reports.
 // input: snapshot-backed compare.InputReport values plus optional baseline metadata.
-// output: deterministic Result values with rows, transactions, patterns, and insights across points.
+// output: deterministic Result values with rows, transactions, patterns, insights, and replay evidence across points.
 // pos: trend pipeline core between snapshot loading and text, JSON, or HTML rendering.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	comparepkg "binlogviz/internal/compare"
 )
 
 func BuildResult(opts BuildOptions) (Result, error) {
@@ -321,11 +323,11 @@ func deltaPercent(current, baseline int) float64 {
 
 func buildDiagnosticsTrends(points []resolvedPoint) DiagnosticsTrends {
 	return DiagnosticsTrends{
-		TPSTrends:         buildTPSTrendSeries(points),
-		DDLTrends:         buildDDLTrendSeries(points),
-		TxnSizeTrends:     buildTxnSizeTrendSeries(points),
-		TxnDurationTrends: buildTxnDurationTrendSeries(points),
-		EventMixTrends:    buildEventMixTrendSeries(points),
+		TPSTrends:          buildTPSTrendSeries(points),
+		DDLTrends:          buildDDLTrendSeries(points),
+		TxnSizeTrends:      buildTxnSizeTrendSeries(points),
+		TxnDurationTrends:  buildTxnDurationTrendSeries(points),
+		EventMixTrends:     buildEventMixTrendSeries(points),
 		HotIntervalSummary: buildHotIntervalTrendSummary(points),
 	}
 }
@@ -364,13 +366,20 @@ func buildDDLTrendSeries(points []resolvedPoint) []MetricTrendSeries {
 func buildTxnSizeTrendSeries(points []resolvedPoint) []MetricTrendSeries {
 	series := make([]MetricTrendSeries, 0, len(points))
 	for _, point := range points {
+		var txn InputTransaction
 		var rows float64
-		if len(point.Report.Diagnostics.LargestTransactions) > 0 {
-			rows = float64(point.Report.Diagnostics.LargestTransactions[0].TotalRows)
+		transactions := point.Report.Diagnostics.LargestTransactions
+		if len(transactions) == 0 {
+			transactions = point.Report.Transactions
+		}
+		if len(transactions) > 0 {
+			txn = transactions[0]
+			rows = float64(txn.TotalRows)
 		}
 		series = append(series, MetricTrendSeries{
 			SnapshotName: point.Meta.Name,
 			Value:        rows,
+			Evidence:     comparepkg.TransactionEvidenceFor(txn),
 		})
 	}
 	return series
@@ -379,13 +388,20 @@ func buildTxnSizeTrendSeries(points []resolvedPoint) []MetricTrendSeries {
 func buildTxnDurationTrendSeries(points []resolvedPoint) []MetricTrendSeries {
 	series := make([]MetricTrendSeries, 0, len(points))
 	for _, point := range points {
+		var txn InputTransaction
 		var seconds float64
-		if len(point.Report.Diagnostics.LongestTransactions) > 0 {
-			seconds = parseDurationSeconds(point.Report.Diagnostics.LongestTransactions[0].Duration)
+		transactions := point.Report.Diagnostics.LongestTransactions
+		if len(transactions) == 0 {
+			transactions = point.Report.Transactions
+		}
+		if len(transactions) > 0 {
+			txn = transactions[0]
+			seconds = parseDurationSeconds(txn.Duration)
 		}
 		series = append(series, MetricTrendSeries{
 			SnapshotName: point.Meta.Name,
 			Value:        seconds,
+			Evidence:     comparepkg.TransactionEvidenceFor(txn),
 		})
 	}
 	return series

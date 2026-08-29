@@ -1,6 +1,6 @@
 // Package trend renders self-contained HTML trend reports.
 // input: deterministic trend Result values plus localized labels and embedded chart assets.
-// output: trend HTML pages with summary cards, charts, and drilldown sections.
+// output: trend HTML pages with summary cards, charts, drilldown sections, and replay evidence.
 // pos: HTML renderer used by the trend command output path.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -36,6 +36,7 @@ type htmlData struct {
 	TPSSeriesJSON         template.JS
 	DDLSeriesJSON         template.JS
 	TxnSeriesJSON         template.JS
+	TxnEvidence           []htmlTxnEvidence
 	EventMixSeriesJSON    template.JS
 	HotIntervalJSON       template.JS
 }
@@ -84,6 +85,7 @@ func RenderHTML(result Result) (string, error) {
 		TPSSeriesJSON:         mustHTMLJSON(result.DiagnosticsTrends.TPSTrends),
 		DDLSeriesJSON:         mustHTMLJSON(result.DiagnosticsTrends.DDLTrends),
 		TxnSeriesJSON:         mustHTMLJSON(buildTxnTrendData(result.DiagnosticsTrends)),
+		TxnEvidence:           buildTxnEvidence(result.DiagnosticsTrends),
 		EventMixSeriesJSON:    mustHTMLJSON(result.DiagnosticsTrends.EventMixTrends.Snapshots),
 		HotIntervalJSON:       mustHTMLJSON(result.DiagnosticsTrends.HotIntervalSummary),
 	}
@@ -187,6 +189,12 @@ type htmlTxnTrendPoint struct {
 	DurValue     float64 `json:"dur_value"`
 }
 
+type htmlTxnEvidence struct {
+	SnapshotName string
+	Metric       string
+	Evidence     *TransactionEvidence
+}
+
 func buildTxnTrendData(dt DiagnosticsTrends) []htmlTxnTrendPoint {
 	result := make([]htmlTxnTrendPoint, 0, len(dt.TxnSizeTrends))
 	for i, point := range dt.TxnSizeTrends {
@@ -199,6 +207,31 @@ func buildTxnTrendData(dt DiagnosticsTrends) []htmlTxnTrendPoint {
 			SizeValue:    point.Value,
 			DurValue:     durValue,
 		})
+	}
+	return result
+}
+
+func buildTxnEvidence(dt DiagnosticsTrends) []htmlTxnEvidence {
+	limit := len(dt.TxnSizeTrends)
+	if len(dt.TxnDurationTrends) > limit {
+		limit = len(dt.TxnDurationTrends)
+	}
+	result := make([]htmlTxnEvidence, 0, limit*2)
+	for i := 0; i < limit; i++ {
+		if i < len(dt.TxnSizeTrends) && dt.TxnSizeTrends[i].Evidence != nil {
+			result = append(result, htmlTxnEvidence{
+				SnapshotName: dt.TxnSizeTrends[i].SnapshotName,
+				Metric:       i18n.T("report.html.trend.chartLargestTxnRows"),
+				Evidence:     dt.TxnSizeTrends[i].Evidence,
+			})
+		}
+		if i < len(dt.TxnDurationTrends) && dt.TxnDurationTrends[i].Evidence != nil {
+			result = append(result, htmlTxnEvidence{
+				SnapshotName: dt.TxnDurationTrends[i].SnapshotName,
+				Metric:       i18n.T("report.html.trend.chartLongestTxnSec"),
+				Evidence:     dt.TxnDurationTrends[i].Evidence,
+			})
+		}
 	}
 	return result
 }
@@ -491,6 +524,45 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     border-color: rgba(var(--primary-rgb), 0.45);
     text-decoration: none;
   }
+  .replay-evidence {
+    display: grid;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .replay-evidence-card {
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+  }
+  .replay-evidence-card code,
+  .replay-command {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    word-break: break-all;
+  }
+  .replay-evidence-card code { color: var(--accent); }
+  .replay-command-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .replay-command { color: var(--accent); font-size: 11.5px; white-space: pre-wrap; }
+  .replay-copy {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    color: var(--primary);
+    cursor: pointer;
+  }
+  .replay-copy:hover { background: var(--primary); color: #ffffff; }
   .pattern-hint { color: var(--muted); font-size: 12px; }
   .chart-box { width: 100%; height: 320px; }
   
@@ -777,6 +849,23 @@ const trendHTMLTemplate = `<!DOCTYPE html>
     <div class="section-header">{{t "report.html.trend.txnTrends"}}</div>
     <div class="section-body">
       <div id="trend-txn-chart" class="chart-box"></div>
+      {{if .TxnEvidence}}
+      <div class="replay-evidence">
+        <div>{{t "report.html.analyze.transactionEvidence"}}</div>
+        {{range .TxnEvidence}}
+        <div class="replay-evidence-card">
+          <strong>{{.Metric}}</strong> — {{.SnapshotName}}{{if .Evidence.TxnKey}} — {{.Evidence.TxnKey}}{{end}}
+          {{if .Evidence.BinlogSpan}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code>{{.Evidence.BinlogSpan}}</code></div>{{end}}
+          {{if .Evidence.MysqlbinlogCmd}}
+          <div class="replay-command-row">
+            <code class="replay-command">{{.Evidence.MysqlbinlogCmd}}</code>
+            <button type="button" class="replay-copy" data-copy="{{.Evidence.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
+          </div>
+          {{end}}
+        </div>
+        {{end}}
+      </div>
+      {{end}}
     </div>
   </section>
 
@@ -1214,6 +1303,19 @@ const trendHTMLTemplate = `<!DOCTYPE html>
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   }
+
+  document.querySelectorAll('button.replay-copy[data-copy]').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var text = btn.getAttribute('data-copy') || '';
+      if (!text || !navigator.clipboard) return;
+      navigator.clipboard.writeText(text).then(function() {
+        var previous = btn.textContent;
+        btn.textContent = '{{t "report.html.analyze.copied"}}';
+        setTimeout(function() { btn.textContent = previous; }, 1500);
+      });
+    });
+  });
 
   window.addEventListener('resize', function () {
     overallChart.resize();

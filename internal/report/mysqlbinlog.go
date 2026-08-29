@@ -1,6 +1,6 @@
 // Package report builds copy-paste mysqlbinlog commands from recorded transaction spans.
 // input: analyzer-produced Transaction positions after real start/end reconstruction, plus Format Description server version.
-// output: a mysqlbinlog or mariadb-binlog command with absolute file paths, or empty when the span is XID-only / unusable.
+// output: a mysqlbinlog or mariadb-binlog command with absolute file paths, or empty when the span is XID-only / unusable; shared span formatting for downstream reports.
 // pos: shared helper for text, JSON, and HTML Copy so #23 never invents --start-position.
 // note: if this file changes, keep internal/report/README.md synchronized.
 package report
@@ -69,6 +69,11 @@ func mysqlbinlogCmd(txn model.Transaction, serverVersion string) string {
 	}, "\n")
 }
 
+// FormatReplayCommand returns the analyze-compatible replay command for a transaction span.
+func FormatReplayCommand(txn model.Transaction, serverVersion string) string {
+	return mysqlbinlogCmd(txn, serverVersion)
+}
+
 func replayBinlogBinary(serverVersion string) string {
 	if strings.Contains(strings.ToLower(serverVersion), "mariadb") {
 		return "mariadb-binlog"
@@ -85,6 +90,11 @@ func replayFileArg(path string) string {
 		return path
 	}
 	return abs
+}
+
+// FormatBinlogSpan returns the analyze-compatible display span for a transaction.
+func FormatBinlogSpan(txn model.Transaction) string {
+	return formatBinlogSpan(txn)
 }
 
 func formatTxnEvidenceLocation(txn model.Transaction) string {

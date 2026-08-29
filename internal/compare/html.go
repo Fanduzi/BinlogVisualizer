@@ -1,6 +1,6 @@
 // Package compare renders self-contained HTML compare reports.
 // input: deterministic CompareResult values produced by the compare diff engine.
-// output: compare-specific HTML pages with summary cards, charts, and detail tables.
+// output: compare-specific HTML pages with summary cards, charts, detail tables, and current replay evidence.
 // pos: compare renderer used by the compare command HTML output path.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -204,18 +204,20 @@ type htmlTxnDiagnosticData struct {
 }
 
 type htmlTxnCompare struct {
-	BaselineRows int    `json:"baseline_rows"`
-	BaselineKey  string `json:"baseline_key"`
-	CurrentRows  int    `json:"current_rows"`
-	CurrentKey   string `json:"current_key"`
-	DeltaRows    int    `json:"delta_rows"`
+	BaselineRows    int                  `json:"baseline_rows"`
+	BaselineKey     string               `json:"baseline_key"`
+	CurrentRows     int                  `json:"current_rows"`
+	CurrentKey      string               `json:"current_key"`
+	DeltaRows       int                  `json:"delta_rows"`
+	CurrentEvidence *TransactionEvidence `json:"current_evidence,omitempty"`
 }
 
 type htmlDurationCompare struct {
-	BaselineDuration string `json:"baseline_duration"`
-	BaselineKey      string `json:"baseline_key"`
-	CurrentDuration  string `json:"current_duration"`
-	CurrentKey       string `json:"current_key"`
+	BaselineDuration string               `json:"baseline_duration"`
+	BaselineKey      string               `json:"baseline_key"`
+	CurrentDuration  string               `json:"current_duration"`
+	CurrentKey       string               `json:"current_key"`
+	CurrentEvidence  *TransactionEvidence `json:"current_evidence,omitempty"`
 }
 
 type htmlHotIntervalData struct {
@@ -267,17 +269,19 @@ func buildDDLChangeData(delta DiagnosticsDelta) htmlDDLChangeData {
 func buildTxnDiagnosticData(delta DiagnosticsDelta) htmlTxnDiagnosticData {
 	return htmlTxnDiagnosticData{
 		LargestTxn: htmlTxnCompare{
-			BaselineRows: delta.TxnDiagnostics.LargestTxnDelta.BaselineRows,
-			BaselineKey:  delta.TxnDiagnostics.LargestTxnDelta.BaselineKey,
-			CurrentRows:  delta.TxnDiagnostics.LargestTxnDelta.CurrentRows,
-			CurrentKey:   delta.TxnDiagnostics.LargestTxnDelta.CurrentKey,
-			DeltaRows:    delta.TxnDiagnostics.LargestTxnDelta.DeltaRows,
+			BaselineRows:    delta.TxnDiagnostics.LargestTxnDelta.BaselineRows,
+			BaselineKey:     delta.TxnDiagnostics.LargestTxnDelta.BaselineKey,
+			CurrentRows:     delta.TxnDiagnostics.LargestTxnDelta.CurrentRows,
+			CurrentKey:      delta.TxnDiagnostics.LargestTxnDelta.CurrentKey,
+			DeltaRows:       delta.TxnDiagnostics.LargestTxnDelta.DeltaRows,
+			CurrentEvidence: delta.TxnDiagnostics.LargestTxnDelta.CurrentEvidence,
 		},
 		LongestTxn: htmlDurationCompare{
 			BaselineDuration: delta.TxnDiagnostics.LongestTxnDelta.BaselineDuration,
 			BaselineKey:      delta.TxnDiagnostics.LongestTxnDelta.BaselineKey,
 			CurrentDuration:  delta.TxnDiagnostics.LongestTxnDelta.CurrentDuration,
 			CurrentKey:       delta.TxnDiagnostics.LongestTxnDelta.CurrentKey,
+			CurrentEvidence:  delta.TxnDiagnostics.LongestTxnDelta.CurrentEvidence,
 		},
 	}
 }
@@ -716,6 +720,45 @@ const compareHTMLTemplate = `<!DOCTYPE html>
     border-color: rgba(var(--primary-rgb), 0.45);
     text-decoration: none;
   }
+  .replay-evidence {
+    display: grid;
+    gap: 10px;
+    margin-top: 18px;
+  }
+  .replay-evidence-card {
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface2);
+  }
+  .replay-evidence-card code,
+  .replay-command {
+    font-family: "JetBrains Mono", "Fira Code", monospace;
+    word-break: break-all;
+  }
+  .replay-evidence-card code { color: var(--accent); }
+  .replay-command-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+  }
+  .replay-command { color: var(--accent); font-size: 11.5px; white-space: pre-wrap; }
+  .replay-copy {
+    flex-shrink: 0;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    color: var(--primary);
+    cursor: pointer;
+  }
+  .replay-copy:hover { background: var(--primary); color: #ffffff; }
   #compare-findings-list ol,
   #compare-recommendations-list ol {
     list-style: none;
@@ -1123,6 +1166,34 @@ const compareHTMLTemplate = `<!DOCTYPE html>
             </tr>
           </tbody>
         </table>
+        {{if or .Result.DiagnosticsDelta.TxnDiagnostics.LargestTxnDelta.CurrentEvidence .Result.DiagnosticsDelta.TxnDiagnostics.LongestTxnDelta.CurrentEvidence}}
+        <div class="replay-evidence">
+          {{with .Result.DiagnosticsDelta.TxnDiagnostics.LargestTxnDelta.CurrentEvidence}}
+          <div class="replay-evidence-card">
+            <strong>{{t "report.html.analyze.largestTransactionsByRows"}}</strong>{{if .TxnKey}} — {{.TxnKey}}{{end}}
+            {{if .BinlogSpan}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code>{{.BinlogSpan}}</code></div>{{end}}
+            {{if .MysqlbinlogCmd}}
+            <div class="replay-command-row">
+              <code class="replay-command">{{.MysqlbinlogCmd}}</code>
+              <button type="button" class="replay-copy" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
+            </div>
+            {{end}}
+          </div>
+          {{end}}
+          {{with .Result.DiagnosticsDelta.TxnDiagnostics.LongestTxnDelta.CurrentEvidence}}
+          <div class="replay-evidence-card">
+            <strong>{{t "report.html.analyze.longestTransactionsByDuration"}}</strong>{{if .TxnKey}} — {{.TxnKey}}{{end}}
+            {{if .BinlogSpan}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code>{{.BinlogSpan}}</code></div>{{end}}
+            {{if .MysqlbinlogCmd}}
+            <div class="replay-command-row">
+              <code class="replay-command">{{.MysqlbinlogCmd}}</code>
+              <button type="button" class="replay-copy" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
+            </div>
+            {{end}}
+          </div>
+          {{end}}
+        </div>
+        {{end}}
       </div>
     </section>
 
@@ -1526,6 +1597,19 @@ const compareHTMLTemplate = `<!DOCTYPE html>
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     }
+
+    document.querySelectorAll('button.replay-copy[data-copy]').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var text = btn.getAttribute('data-copy') || '';
+        if (!text || !navigator.clipboard) return;
+        navigator.clipboard.writeText(text).then(function() {
+          var previous = btn.textContent;
+          btn.textContent = '{{t "report.html.analyze.copied"}}';
+          setTimeout(function() { btn.textContent = previous; }, 1500);
+        });
+      });
+    });
 
     window.addEventListener('resize', function () {
       summaryChart.resize();
