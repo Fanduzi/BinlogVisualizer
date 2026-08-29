@@ -1,6 +1,6 @@
 // Package analyzer tests canonical GTID selector parsing and precedence.
 // input: MySQL UUID ranges, MariaDB exact identities, anonymous IDs, and mixed-flavor selectors.
-// output: deterministic canonical sets, explicit flavor resolution, and include/exclude match decisions.
+// output: deterministic canonical sets, explicit flavor resolution, include/exclude match decisions, and anonymous-group rejection.
 // pos: public selector grammar contract ahead of transaction-group filtering.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -66,13 +66,13 @@ func TestParseGTIDSelectorRejectsMixedFlavor(t *testing.T) {
 	}
 }
 
-func TestGTIDExcludeOnlyDoesNotRejectAnonymousGroup(t *testing.T) {
+func TestGTIDExcludeOnlyRejectsAnonymousGroup(t *testing.T) {
 	selector, err := ParseGTIDSelector(nil, []string{"24bc7850-2c16-11e6-a073-0242ac110002:1"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	matched, err := selector.Match("")
-	if err != nil || !matched {
+	if err != nil || matched {
 		t.Fatalf("anonymous exclude-only match = %v, %v", matched, err)
 	}
 }

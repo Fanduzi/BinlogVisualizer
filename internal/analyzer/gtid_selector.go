@@ -1,6 +1,6 @@
 // Package analyzer parses and matches transaction-group GTID selectors.
 // input: MySQL UUID sequence/range sets or MariaDB domain-server-sequence identities.
-// output: canonical single-flavor include/exclude selectors with exclude-wins matching.
+// output: canonical single-flavor include/exclude selectors with exclude-wins matching; anonymous groups never match an active selector.
 // pos: selector grammar and identity boundary used by Analyzer before retaining complete transaction groups.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -81,13 +81,13 @@ func (s *GTIDSelector) Exclude() []string {
 	return append([]string(nil), s.exclude...)
 }
 
-// Match applies include first and exclude second; anonymous identities never match an include list.
+// Match applies include first and exclude second; anonymous identities never match an active selector.
 func (s *GTIDSelector) Match(gtid string) (bool, error) {
 	if s == nil {
 		return true, nil
 	}
 	if strings.TrimSpace(gtid) == "" {
-		return len(s.include) == 0, nil
+		return false, nil
 	}
 	switch s.flavor {
 	case "mysql":

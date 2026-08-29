@@ -5,7 +5,7 @@
 | File | Responsibility |
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, streaming lifecycle, selector evidence, and final result assembly with explicit workload identity and exact filter scope. |
-| `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, and applies exclude-wins matching. |
+| `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, applies exclude-wins matching, and rejects anonymous groups while a selector is active. |
 | `store.go` | Persists transaction provenance, bounded SQL, completeness, and replay spans through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
 | `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects conflicting GTIDs, and separates retained evidence from trusted full replay spans. |
 | `tables.go` | Aggregates per-table row and operation totals. |
@@ -71,3 +71,4 @@
 - Command-layer streaming, CLI flag changes, renderer changes, benchmarks, and release tasks remain out of scope for this module revision.
 - Position and time predicates intersect per event while the transaction builder continues observing adjacent evidence. Known physical boundaries may retain a trusted `FullReplaySpan`; unresolved cuts remain `unknown` with no replay span.
 - Active GTID selectors delay aggregate fan-out until each transaction group closes, reject unresolved group boundaries, preserve ordered cross-file groups without replaying cross-file spans, and produce identical in-memory/DuckDB results.
+- Active GTID selectors never retain anonymous groups, including when only exclude selectors are configured.
