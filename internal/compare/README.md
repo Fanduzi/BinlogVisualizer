@@ -7,7 +7,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | File | Responsibility |
 |------|----------------|
 | `load.go` | Loads and validates analyze report versions 0 through 3 from files or bytes, normalizing legacy missing completeness to unknown. |
-| `model.go` | Defines compare input contracts that preserve report-v3 provenance/SQL metadata, completeness, counted-event diagnostics, snapshot metadata, pattern shapes, and replay evidence without inventing legacy identity. |
+| `model.go` | Defines compare input contracts that preserve report-v3 selection, provenance/SQL metadata, completeness, counted-event diagnostics, snapshot metadata, pattern shapes, and replay evidence without inventing legacy identity. |
 | `diff.go` | Computes deterministic summary, completeness, table, pattern, operation, alert, and baseline/current byte-coverage deltas. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
@@ -52,3 +52,4 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Key findings, bounded drilldowns, evidence refs, and follow-up recommendations are derived inside this module from the same deterministic compare result.
 - Current largest and longest transaction evidence preserves completeness and replay fields; a supplied command is trusted only when report v3 explicitly marks full-transaction replay available, so retained legacy or incomplete spans never synthesize a command.
 - Compare HTML shows selected physical input-file bytes and counted event bytes in consistently labeled baseline/current columns; byte coverage is omitted from the stable compare JSON wire shape.
+- Optional report-v3 selector evidence survives `DecodeReportJSON` unchanged so snapshots and compare callers can round-trip requested/effective position and GTID provenance.

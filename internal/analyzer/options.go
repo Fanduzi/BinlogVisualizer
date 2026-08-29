@@ -1,8 +1,8 @@
 // Package analyzer defines configurable thresholds, filters, and detail-store behavior for binlog analysis.
-// input: CLI or caller-selected analyzer options for time windows, limits, alerts, filters, and detail storage.
-// output: Options and DefaultOptions values consumed by Analyzer construction and command mapping, plus filter-presence checks.
+// input: CLI or caller-selected analyzer options for time/position windows, GTID selectors, limits, alerts, filters, and detail storage.
+// output: Options and DefaultOptions values consumed by Analyzer construction and command mapping, plus selector/filter-presence checks.
 // pos: analyzer configuration boundary shared by CLI, tests, and streaming analysis setup.
-// note: if this file changes, keep internal/analyzer/README.md synchronized.
+// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import "time"
@@ -15,6 +15,10 @@ type Options struct {
 	// Time window filtering (future - Task 9)
 	Start *time.Time
 	End   *time.Time
+	// Position filtering is a half-open [StartPosition, StopPosition) window.
+	StartPosition *int64
+	StopPosition  *int64
+	GTIDSelector  *GTIDSelector
 
 	// Report limits (future - CLI flags). TopTables is retained for option
 	// compatibility; table presentation limits are applied after aggregation.
@@ -35,6 +39,21 @@ type Options struct {
 	ExcludeSchemas []string // skip these schemas
 	IncludeTables  []string // only analyze these tables (empty = all)
 	ExcludeTables  []string // skip these tables
+}
+
+// HasPositionSelectors reports whether an exact binlog position bound is active.
+func (o Options) HasPositionSelectors() bool {
+	return o.StartPosition != nil || o.StopPosition != nil
+}
+
+// HasGTIDSelectors reports whether transaction-group GTID filtering is active.
+func (o Options) HasGTIDSelectors() bool {
+	return o.GTIDSelector != nil
+}
+
+// HasSelectionFilters reports whether time or position selection is active.
+func (o Options) HasSelectionFilters() bool {
+	return o.Start != nil || o.End != nil || o.HasPositionSelectors() || o.HasGTIDSelectors()
 }
 
 // DefaultOptions returns Options with sensible defaults.

@@ -7,7 +7,8 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | File | Responsibility |
 |------|----------------|
 | `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, `version`, and `workflow`. |
-| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, selected-file coverage, aggregate parse progress on `stderr`, Format Description server-version plumbing for replay commands, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
+| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, time/position/GTID selector flags, selected-file coverage, aggregate parse progress on `stderr`, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
+| `analyze_selection.go` | Validates single-file position selectors against exact parsed event boundaries and EOF before report rendering. |
 | `analyze_output.go` | Resolves analyze HTML destination: explicit `--output`, `--output -`, TTY default cwd file, and non-TTY stdout redirect. |
 | `exit.go` | Maps command errors onto process exit codes, including analyze no-data exit 2. |
 | `analyze_parallel.go` | Runs bounded parallel per-file parsing while preserving ordered analyzer consumption for cross-file transaction safety. |
@@ -16,14 +17,14 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
 | `workflow.go` | Implements `workflow run <plan.yaml>`, `workflow resume <output_dir>`, canonical rooted plan references, pre-run `workflow validate <plan.yaml>` checks, static `workflow describe <plan.yaml>` previews, read-only `workflow status <output_dir>` inspection, and dry-run-first `workflow clean <output_dir>` cleanup. |
-| `*_test.go` | Covers flag parsing, inclusive-window adjacent-file planning, report-v3 MySQL/MariaDB provenance and XA/LOAD_DATA SQL-context compatibility, snapshots, analyze/compare integration, cleanup, discovery/no-data behavior, workflows, and release packing. |
+| `*_test.go` | Covers flag parsing, intersected time/position selection, GTID group filtering, report-v3 round trips, MySQL/MariaDB provenance and XA/LOAD_DATA compatibility, snapshots, cleanup, discovery/no-data behavior, workflows, and release packing. |
 
 ## Exports
 
 - `NewRootCommand() *cobra.Command` — Builds the full CLI root command tree.
 - `ExitCode(err error) int` — Returns the process exit code for a command error (`2` for parsed-but-zero-events, otherwise `1`).
 - `ExitError` — Command error carrying a non-default process exit code.
-- `newAnalyzeCommand() *cobra.Command` — Defines the analyze command and its CLI flags, including optional snapshot persistence flags.
+- `newAnalyzeCommand() *cobra.Command` — Defines analyze flags, including exact single-file positions, complete-group GTID selectors, and optional snapshot persistence.
 - `newCompareCommand() *cobra.Command` — Defines compare in both legacy file mode and snapshot mode.
 - `newTrendCommand() *cobra.Command` — Defines trend in both explicit snapshot-list mode and pattern-selected snapshot mode, with optional baseline deltas.
 - `newSnapshotCommand() *cobra.Command` — Defines the snapshot command subtree.
@@ -72,3 +73,5 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - The production analyze command uses a destination-reuse normalization fast path in its streaming handler so the main CLI path no longer allocates one `*NormalizedEvent` per kept event.
 - Multi-file analyze now overlaps parser work across files with bounded per-file buffers, but still feeds normalized events to the analyzer in input order so cross-file transactions remain valid.
 - Analyze carries physical sizes for selected positional or discovered files into reports; counted event bytes remain a separate filtered row/DDL metric.
+- `--start-position` / `--stop-position` use exact half-open event boundaries on one explicit file and intersect with `--start` / `--end`; mid-event, out-of-range, reversed, discovery, and multi-file position requests fail before rendering.
+- `--include-gtids` / `--exclude-gtids` select complete transaction groups across ordered rotations. MySQL UUID ranges and exact MariaDB identities are canonicalized, exclude wins, unresolved or conflicting flavors fail, and valid no-match selections exit 2 without a report.
