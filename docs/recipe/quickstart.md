@@ -31,7 +31,7 @@ curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/
 binlogviz analyze minimal.binlog
 ```
 
-From a source checkout you can also run `binlogviz analyze cmd/binlogviz/testdata/minimal.binlog`.
+From a source checkout you can also run `binlogviz analyze cmd/binlogviz/testdata/minimal.binlog`. After extracting a GitHub Release tar.gz, the same fixture is `testdata/minimal.binlog` next to the binary.
 
 This is the fastest way to confirm:
 
@@ -88,7 +88,7 @@ To try a multi-step workflow without a local MySQL datadir, run the shipped samp
 binlogviz workflow run incident.yaml
 ```
 
-`incident.yaml` points `from_dir` at `cmd/binlogviz/testdata/sample-binlog` (the same 1500-byte ROW fixture as `minimal.binlog`). After a successful run, `binlogviz workflow resume ./artifacts/incident` exits 0 and prints `nothing to resume`.
+`incident.yaml` points `from_dir` at `cmd/binlogviz/testdata/sample-binlog` (the same 1500-byte ROW fixture as `minimal.binlog`). After extracting a release archive, run `./binlogviz workflow run incident.yaml` from the extract directory instead — that bundled plan uses `from_dir: testdata/sample-binlog`. After a successful run, `binlogviz workflow resume ./artifacts/incident` exits 0 and prints `nothing to resume`.
 
 ## Next Steps
 

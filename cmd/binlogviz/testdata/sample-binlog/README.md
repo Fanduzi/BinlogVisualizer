@@ -5,4 +5,5 @@
 can resolve it.
 
 This directory is the `from_dir` used by the repository-root `incident.yaml`
-sample plan.
+sample plan. Release archives copy it to `testdata/sample-binlog/` next to a
+bundled `incident.yaml` whose `from_dir` is that archive-relative path.

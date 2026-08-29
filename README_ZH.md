@@ -27,7 +27,7 @@ curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/
 binlogviz analyze minimal.binlog
 ```
 
-同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。后续 release 归档也会带上 `testdata/minimal.binlog`。
+同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。GitHub Release 的每个 tar.gz 也会带上这份文件（`testdata/minimal.binlog`）、discovery 布局副本 `testdata/sample-binlog/mysql-bin.000001`，以及 `from_dir` 指向该目录的 `incident.yaml`。解压后执行 `./binlogviz analyze testdata/minimal.binlog` 和 `./binlogviz workflow run incident.yaml`，不需要再 clone 仓库。
 
 ### 检查你自己的文件
 
@@ -112,7 +112,7 @@ binlogviz trend --from-snapshots 'incident_week*' \
 
 ### 用一份 plan 文件跑多步调查
 
-仓库自带一份可运行的 `incident.yaml`，`from_dir` 指向 `cmd/binlogviz/testdata/sample-binlog` 里的 1500 字节 ROW 样本。在仓库根目录执行下面第一行命令，不需要本机 `/var/lib/mysql`：
+仓库自带一份可运行的 `incident.yaml`，`from_dir` 指向 `cmd/binlogviz/testdata/sample-binlog` 里的 1500 字节 ROW 样本。在仓库根目录执行下面第一行命令，不需要本机 `/var/lib/mysql`。Release 归档里另有一份 `incident.yaml`，`from_dir` 是 `testdata/sample-binlog`，解压后也可以跑同一条命令：
 
 ```bash
 binlogviz workflow run incident.yaml
