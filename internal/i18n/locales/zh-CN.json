@@ -49,7 +49,7 @@
   },
   "cmd.analyze.flag.topTransactions": {
     "description": "top transactions 标志描述",
-    "other": "显示的事务数量"
+    "other": "显示的事务数量（0 表示不限制）"
   },
   "cmd.analyze.flag.details": {
     "description": "详细文本段落标志描述",

@@ -19,20 +19,22 @@ const currentReportVersion = 3
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
 type jsonAnalysisResult struct {
-	ReportVersion     int                    `json:"report_version"`
-	Provenance        *jsonProvenance        `json:"provenance,omitempty"`
-	SQLContext        jsonSQLContext         `json:"sql_context"`
-	Summary           jsonSummary            `json:"summary"`
-	Timeseries        jsonTimeseries         `json:"timeseries"`
-	Diagnostics       jsonDiagnostics        `json:"diagnostics"`
-	Tables            []jsonTableStats       `json:"tables"`
-	Transactions      []jsonTransaction      `json:"transactions"`
-	Patterns          []jsonPatternStats     `json:"patterns"`
-	Minutes           []jsonMinuteBucket     `json:"minutes"`
-	Alerts            []jsonAlert            `json:"alerts"`
-	Warnings          int                    `json:"warnings"`
-	PatternDrilldowns []jsonPatternDrilldown `json:"pattern_drilldowns"`
-	Snapshot          *jsonSnapshot          `json:"snapshot,omitempty"`
+	ReportVersion       int                    `json:"report_version"`
+	Provenance          *jsonProvenance        `json:"provenance,omitempty"`
+	SQLContext          jsonSQLContext         `json:"sql_context"`
+	Summary             jsonSummary            `json:"summary"`
+	Timeseries          jsonTimeseries         `json:"timeseries"`
+	Diagnostics         jsonDiagnostics        `json:"diagnostics"`
+	Tables              []jsonTableStats       `json:"tables"`
+	Transactions        []jsonTransaction      `json:"transactions"`
+	TransactionsListed  int                    `json:"transactions_listed"`
+	TransactionsOmitted int                    `json:"transactions_omitted"`
+	Patterns            []jsonPatternStats     `json:"patterns"`
+	Minutes             []jsonMinuteBucket     `json:"minutes"`
+	Alerts              []jsonAlert            `json:"alerts"`
+	Warnings            int                    `json:"warnings"`
+	PatternDrilldowns   []jsonPatternDrilldown `json:"pattern_drilldowns"`
+	Snapshot            *jsonSnapshot          `json:"snapshot,omitempty"`
 }
 
 type jsonSQLContext struct {
@@ -326,21 +328,28 @@ func RenderJSONToStdoutWithOptions(result model.AnalysisResult, opts Options) er
 }
 
 func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult {
+	transactionsListed := len(result.Transactions)
+	transactionsOmitted := result.Summary.TotalTransactions - transactionsListed
+	if transactionsOmitted < 0 {
+		transactionsOmitted = 0
+	}
 	return jsonAnalysisResult{
-		ReportVersion:     currentReportVersion,
-		Provenance:        convertProvenance(result.Provenance),
-		SQLContext:        jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
-		Summary:           convertSummary(result.Summary),
-		Timeseries:        convertTimeseries(result.Timeseries),
-		Diagnostics:       convertDiagnostics(result.Diagnostics, opts.SQLContextMode),
-		Tables:            convertTables(result.Tables),
-		Transactions:      convertTransactions(result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion),
-		Patterns:          convertPatterns(result.Patterns, opts.SQLContextMode),
-		Minutes:           convertMinutes(result.Minutes),
-		Alerts:            convertAlerts(result.Alerts),
-		Warnings:          result.Warnings,
-		PatternDrilldowns: convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode),
-		Snapshot:          convertSnapshot(result.Snapshot),
+		ReportVersion:       currentReportVersion,
+		Provenance:          convertProvenance(result.Provenance),
+		SQLContext:          jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
+		Summary:             convertSummary(result.Summary),
+		Timeseries:          convertTimeseries(result.Timeseries),
+		Diagnostics:         convertDiagnostics(result.Diagnostics, opts.SQLContextMode),
+		Tables:              convertTables(result.Tables),
+		Transactions:        convertTransactions(result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion),
+		TransactionsListed:  transactionsListed,
+		TransactionsOmitted: transactionsOmitted,
+		Patterns:            convertPatterns(result.Patterns, opts.SQLContextMode),
+		Minutes:             convertMinutes(result.Minutes),
+		Alerts:              convertAlerts(result.Alerts),
+		Warnings:            result.Warnings,
+		PatternDrilldowns:   convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode),
+		Snapshot:            convertSnapshot(result.Snapshot),
 	}
 }
 

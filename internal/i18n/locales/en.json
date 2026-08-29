@@ -49,7 +49,7 @@
   },
   "cmd.analyze.flag.topTransactions": {
     "description": "Top transactions flag description",
-    "other": "Number of top transactions to show"
+    "other": "Number of top transactions to show (0 = unlimited)"
   },
   "cmd.analyze.flag.details": {
     "description": "Detailed text sections flag description",

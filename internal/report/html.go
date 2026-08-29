@@ -77,6 +77,8 @@ type htmlReportData struct {
 	InputFileSize       string
 	HasInputFileSize    bool
 	CountedEventBytes   string
+	Transactions        []htmlTransactionLookup
+	HasTransactions     bool
 	Tables              []htmlTableRow
 	OmittedTables       string
 	TableActivitySeries template.JS
@@ -191,6 +193,12 @@ type htmlTxnDiagnostic struct {
 	MysqlbinlogCmd       string
 }
 
+type htmlTransactionLookup struct {
+	TxnKey   string
+	Rows     int
+	Duration string
+}
+
 type htmlTxnTable struct {
 	Name string
 	Rows int
@@ -250,6 +258,14 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		d.InputFileSize = formatFileSize(bytes)
 		d.HasInputFileSize = true
 	}
+	for _, txn := range result.Transactions {
+		d.Transactions = append(d.Transactions, htmlTransactionLookup{
+			TxnKey:   txn.TxnKey,
+			Rows:     txn.TotalRows,
+			Duration: txn.Duration.String(),
+		})
+	}
+	d.HasTransactions = len(d.Transactions) > 0
 
 	if !result.Summary.StartTime.IsZero() {
 		d.StartTime = result.Summary.StartTime.Format("2006-01-02 15:04:05")
