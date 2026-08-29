@@ -202,6 +202,48 @@ func TestRenderHTMLIncludesTrendChartAnchors(t *testing.T) {
 	}
 }
 
+func TestRenderHTMLIncludesTxnReplayEvidence(t *testing.T) {
+	makeReport := func(name, start string) InputReport {
+		r := testInputReport(name, name, start, 1000, 50, 1200, 500, 350, 150, 0)
+		r.Diagnostics.LargestTransactions = []comparepkg.InputTransaction{{
+			TxnKey:          "txn-" + name,
+			TotalRows:       2000,
+			EventCount:      8,
+			BinlogFileStart: "minimal.binlog",
+			BinlogFileEnd:   "minimal.binlog",
+			PosStart:        962,
+			PosEnd:          1186,
+			MysqlbinlogCmd:  "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
+		}}
+		return r
+	}
+
+	result, err := BuildResult(BuildOptions{
+		InputMode: "explicit",
+		Points: []BuildInput{
+			{Path: "/tmp/a.json", Report: makeReport("a", "2026-03-19T10:00:00Z")},
+			{Path: "/tmp/b.json", Report: makeReport("b", "2026-03-20T10:00:00Z")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("build result: %v", err)
+	}
+
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("render html: %v", err)
+	}
+	for _, token := range []string{
+		"minimal.binlog:962-1186",
+		"mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
+		`data-copy="mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog"`,
+	} {
+		if !strings.Contains(html, token) {
+			t.Fatalf("expected trend transaction replay evidence %q", token)
+		}
+	}
+}
+
 func TestRenderHTMLIncludesPatternTrendsSectionAndToggle(t *testing.T) {
 	result := mustBuildPatternTrendResult(t)
 

@@ -1,6 +1,6 @@
 // Package compare computes stable comparison results from validated input reports.
 // input: two validated InputReport values representing current and baseline analyses.
-// output: deterministic CompareResult values for text, JSON, and HTML renderers.
+// output: deterministic CompareResult values for text, JSON, and HTML renderers, including current replay evidence.
 // pos: compare pipeline core between report loading and output rendering.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -250,9 +250,23 @@ func alertIdentity(alert InputAlert, txns map[string]InputTransaction) string {
 }
 
 func buildDiagnosticsDelta(current, baseline InputReport) DiagnosticsDelta {
+	currentDiagnostics := current.Diagnostics
+	baselineDiagnostics := baseline.Diagnostics
+	if len(currentDiagnostics.LargestTransactions) == 0 {
+		currentDiagnostics.LargestTransactions = current.Transactions
+	}
+	if len(currentDiagnostics.LongestTransactions) == 0 {
+		currentDiagnostics.LongestTransactions = current.Transactions
+	}
+	if len(baselineDiagnostics.LargestTransactions) == 0 {
+		baselineDiagnostics.LargestTransactions = baseline.Transactions
+	}
+	if len(baselineDiagnostics.LongestTransactions) == 0 {
+		baselineDiagnostics.LongestTransactions = baseline.Transactions
+	}
 	return DiagnosticsDelta{
 		DDLChanges:       buildDDLChangeDelta(current.Diagnostics.DDLEvents, baseline.Diagnostics.DDLEvents),
-		TxnDiagnostics:   buildTxnDiagnosticDelta(current.Diagnostics, baseline.Diagnostics),
+		TxnDiagnostics:   buildTxnDiagnosticDelta(currentDiagnostics, baselineDiagnostics),
 		HotIntervalDelta: buildHotIntervalDelta(current.Diagnostics.HotIntervals, baseline.Diagnostics.HotIntervals),
 		EventMixDelta:    buildEventMixDelta(current.Timeseries, baseline.Timeseries),
 	}
@@ -326,15 +340,16 @@ func buildTxnDiagnosticDelta(current, baseline InputDiagnostics) TxnDiagnosticDe
 
 func buildTxnSizeCompare(baseline, current InputTransaction) TxnSizeCompare {
 	cmp := TxnSizeCompare{
-		BaselineRows:  baseline.TotalRows,
-		BaselineKey:   baseline.TxnKey,
-		CurrentRows:   current.TotalRows,
-		CurrentKey:    current.TxnKey,
-		DeltaRows:     current.TotalRows - baseline.TotalRows,
-		BaselineTable: dominantMapKey(baseline.Tables),
-		CurrentTable:  dominantMapKey(current.Tables),
-		BaselineOp:    dominantMapKey(baseline.Operations),
-		CurrentOp:     dominantMapKey(current.Operations),
+		BaselineRows:    baseline.TotalRows,
+		BaselineKey:     baseline.TxnKey,
+		CurrentRows:     current.TotalRows,
+		CurrentKey:      current.TxnKey,
+		DeltaRows:       current.TotalRows - baseline.TotalRows,
+		BaselineTable:   dominantMapKey(baseline.Tables),
+		CurrentTable:    dominantMapKey(current.Tables),
+		BaselineOp:      dominantMapKey(baseline.Operations),
+		CurrentOp:       dominantMapKey(current.Operations),
+		CurrentEvidence: TransactionEvidenceFor(current),
 	}
 	if !txnContentEqual(baseline, current) && !txnIsEmpty(current) {
 		cmp.IdentityNew = true
@@ -357,11 +372,13 @@ func firstTxnKey(txns []InputTransaction) string {
 }
 
 func buildTxnDurationCompare(baseline, current []InputTransaction) TxnDurationCompare {
+	currentTxn := firstTxn(current)
 	return TxnDurationCompare{
 		BaselineDuration: firstTxnDuration(baseline),
 		BaselineKey:      firstTxnKey(baseline),
 		CurrentDuration:  firstTxnDuration(current),
 		CurrentKey:       firstTxnKey(current),
+		CurrentEvidence:  TransactionEvidenceFor(currentTxn),
 	}
 }
 

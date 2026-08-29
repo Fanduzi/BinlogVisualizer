@@ -1,3 +1,8 @@
+// Package compare verifies compare diagnostic deltas and replay evidence.
+// input: synthetic current and baseline diagnostic reports.
+// output: assertions for diagnostic metrics, spans, and command degradation.
+// pos: regression coverage for compare diagnostic result construction.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -97,6 +102,72 @@ func TestBuildCompareResultProducesTxnDiagnosticDelta(t *testing.T) {
 	}
 }
 
+func TestBuildCompareResultPreservesCurrentTxnReplayEvidence(t *testing.T) {
+	current := InputReport{
+		Diagnostics: InputDiagnostics{
+			LargestTransactions: []InputTransaction{{
+				TxnKey:          "txn-current",
+				TotalRows:       2000,
+				EventCount:      8,
+				BinlogBytes:     224,
+				BinlogFileStart: "minimal.binlog",
+				BinlogFileEnd:   "minimal.binlog",
+				PosStart:        962,
+				PosEnd:          1186,
+				MysqlbinlogCmd:  "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
+			}},
+			LongestTransactions: []InputTransaction{{
+				TxnKey:          "txn-long",
+				Duration:        "30s",
+				EventCount:      4,
+				BinlogBytes:     4096,
+				BinlogFileStart: "mysql-bin.000044",
+				BinlogFileEnd:   "mysql-bin.000045",
+				PosStart:        300,
+				PosEnd:          520,
+				MysqlbinlogCmd:  "mariadb-binlog --base64-output=DECODE-ROWS -v --start-position=300 /tmp/mysql-bin.000044\nmariadb-binlog --base64-output=DECODE-ROWS -v --stop-position=520 /tmp/mysql-bin.000045",
+			}},
+		},
+	}
+
+	result := BuildCompareResult(current, InputReport{})
+	largest := result.DiagnosticsDelta.TxnDiagnostics.LargestTxnDelta.CurrentEvidence
+	if largest == nil || largest.BinlogSpan != "minimal.binlog:962-1186" {
+		t.Fatalf("expected current largest span, got %+v", largest)
+	}
+	if largest.MysqlbinlogCmd != current.Diagnostics.LargestTransactions[0].MysqlbinlogCmd {
+		t.Fatalf("expected current largest command to be preserved, got %q", largest.MysqlbinlogCmd)
+	}
+
+	longest := result.DiagnosticsDelta.TxnDiagnostics.LongestTxnDelta.CurrentEvidence
+	if longest == nil || longest.BinlogSpan != "mysql-bin.000044:300-mysql-bin.000045:520" {
+		t.Fatalf("expected current longest cross-file span, got %+v", longest)
+	}
+	if longest.MysqlbinlogCmd != current.Diagnostics.LongestTransactions[0].MysqlbinlogCmd {
+		t.Fatalf("expected current longest command to be preserved, got %q", longest.MysqlbinlogCmd)
+	}
+}
+
+func TestTransactionEvidenceForOmitsCommandForUnusableSpan(t *testing.T) {
+	evidence := TransactionEvidenceFor(InputTransaction{
+		TxnKey:          "txn-xid",
+		TotalRows:       2000,
+		EventCount:      8,
+		BinlogBytes:     31,
+		BinlogFileStart: "minimal.binlog",
+		BinlogFileEnd:   "minimal.binlog",
+		PosStart:        1155,
+		PosEnd:          1186,
+		MysqlbinlogCmd:  "mysqlbinlog --start-position=1155 --stop-position=1186 /tmp/minimal.binlog",
+	})
+	if evidence == nil {
+		t.Fatal("expected unusable span to retain transaction evidence")
+	}
+	if evidence.MysqlbinlogCmd != "" {
+		t.Fatalf("unusable span must not retain a replay command, got %q", evidence.MysqlbinlogCmd)
+	}
+}
+
 func TestBuildCompareResultProducesHotIntervalDelta(t *testing.T) {
 	current := InputReport{
 		Summary: InputSummary{TotalRows: 1000, TotalTransactions: 50, TotalEvents: 1200},
@@ -140,19 +211,19 @@ func TestBuildCompareResultProducesEventMixDelta(t *testing.T) {
 	current := InputReport{
 		Summary: InputSummary{TotalRows: 1000, TotalTransactions: 50, TotalEvents: 1200},
 		Timeseries: InputTimeseries{
-			InsertEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 100}},
-			UpdateEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 200}},
-			DeleteEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 50}},
-			DDLEventSeries:       []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 5}},
+			InsertEventSeries: []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 100}},
+			UpdateEventSeries: []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 200}},
+			DeleteEventSeries: []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 50}},
+			DDLEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-20T10:00:00Z", Value: 5}},
 		},
 	}
 	baseline := InputReport{
 		Summary: InputSummary{TotalRows: 800, TotalTransactions: 40, TotalEvents: 1000},
 		Timeseries: InputTimeseries{
-			InsertEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 80}},
-			UpdateEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 150}},
-			DeleteEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 40}},
-			DDLEventSeries:       []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 2}},
+			InsertEventSeries: []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 80}},
+			UpdateEventSeries: []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 150}},
+			DeleteEventSeries: []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 40}},
+			DDLEventSeries:    []InputTimeseriesPoint{{Minute: "2026-03-13T10:00:00Z", Value: 2}},
 		},
 	}
 

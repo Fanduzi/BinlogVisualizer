@@ -1,3 +1,8 @@
+// Package compare indexes transaction content for stable alert and diagnostic identity.
+// input: compare input reports with top-level and diagnostic transaction evidence.
+// output: deterministic transaction content keys used to align compare alerts.
+// pos: identity helper between decoded reports and compare diff construction.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -8,13 +13,26 @@ import (
 )
 
 func indexReportTransactions(report InputReport) map[string]InputTransaction {
-	out := make(map[string]InputTransaction, len(report.Diagnostics.LargestTransactions)+len(report.Diagnostics.LongestTransactions))
+	out := make(map[string]InputTransaction, len(report.Transactions)+len(report.Diagnostics.LargestTransactions)+len(report.Diagnostics.LongestTransactions)+len(report.Diagnostics.WidestTransactions))
+	for _, txn := range report.Transactions {
+		if txn.TxnKey != "" {
+			out[txn.TxnKey] = txn
+		}
+	}
 	for _, txn := range report.Diagnostics.LargestTransactions {
 		if txn.TxnKey != "" {
 			out[txn.TxnKey] = txn
 		}
 	}
 	for _, txn := range report.Diagnostics.LongestTransactions {
+		if txn.TxnKey == "" {
+			continue
+		}
+		if _, exists := out[txn.TxnKey]; !exists {
+			out[txn.TxnKey] = txn
+		}
+	}
+	for _, txn := range report.Diagnostics.WidestTransactions {
 		if txn.TxnKey == "" {
 			continue
 		}

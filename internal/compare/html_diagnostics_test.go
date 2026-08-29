@@ -1,3 +1,8 @@
+// Package compare verifies compare diagnostic HTML rendering.
+// input: synthetic compare results with diagnostic deltas and replay evidence.
+// output: assertions for HTML sections, escaping, localization, and copyable replay commands.
+// pos: regression coverage for the compare HTML diagnostics path.
+// note: if this file changes, update this header and internal/compare/README.md.
 package compare
 
 import (
@@ -100,6 +105,38 @@ func TestRenderHTMLIncludesDiagnosticsDeltaSections(t *testing.T) {
 	// Verify event mix data contract
 	if !strings.Contains(html, "window.compareEventMixDelta =") {
 		t.Fatalf("expected event mix delta data contract")
+	}
+}
+
+func TestRenderHTMLIncludesCurrentTxnReplayEvidence(t *testing.T) {
+	current := InputReport{
+		Diagnostics: InputDiagnostics{
+			LargestTransactions: []InputTransaction{{
+				TxnKey:          "txn-current",
+				TotalRows:       2000,
+				EventCount:      8,
+				BinlogFileStart: "minimal.binlog",
+				BinlogFileEnd:   "minimal.binlog",
+				PosStart:        962,
+				PosEnd:          1186,
+				MysqlbinlogCmd:  "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
+			}},
+		},
+	}
+
+	result := BuildCompareResult(current, InputReport{})
+	html, err := RenderHTML(result)
+	if err != nil {
+		t.Fatalf("RenderHTML: %v", err)
+	}
+	for _, token := range []string{
+		"minimal.binlog:962-1186",
+		"mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog",
+		`data-copy="mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=962 --stop-position=1186 /tmp/minimal.binlog"`,
+	} {
+		if !strings.Contains(html, token) {
+			t.Fatalf("expected current transaction replay evidence %q", token)
+		}
 	}
 }
 

@@ -7,15 +7,16 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | File | Responsibility |
 |------|----------------|
 | `load.go` | Loads and validates analyze JSON reports from files or in-memory bytes. |
-| `model.go` | Defines compare input contracts, optional snapshot metadata, pattern-aware input shapes, and compare result structures. |
+| `model.go` | Defines compare input contracts, optional snapshot metadata, pattern-aware input shapes, replay evidence, and compare result structures. |
 | `diff.go` | Computes deterministic summary, table, pattern, operation, and alert deltas. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
+| `replay.go` | Preserves analyze transaction spans and replay commands for compare and trend evidence. |
 | `recommendations.go` | Derives prioritized follow-up recommendations from compare findings. |
 | `drilldown.go` | Selects bounded pattern drilldowns for high-signal compare changes. |
 | `text.go` | Renders human-readable compare output, including table drift, pattern drift, and snapshot-aware context such as window, input mode, source summary, and filters. |
 | `json.go` | Serializes compare results for downstream tools. |
-| `html.go` | Renders the self-contained HTML compare report with snapshot-aware context in the header and a dedicated pattern-drift section. |
+| `html.go` | Renders the self-contained HTML compare report with snapshot-aware context, pattern drift, and current transaction replay evidence. |
 | `*_test.go` | Covers loading, diff behavior, findings and drilldowns, renderer output, diagnostics/i18n sections, snapshot-aware context, and contract stability. |
 
 ## Exports
@@ -26,11 +27,13 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - `RenderText(result CompareResult) (string, error)` — Renders terminal-friendly compare output.
 - `RenderJSON(result CompareResult) (string, error)` — Serializes compare results with stable JSON fields.
 - `RenderHTML(result CompareResult) (string, error)` — Renders the chart-based compare HTML report.
+- `TransactionEvidenceFor(txn InputTransaction) *TransactionEvidence` — Converts analyze transaction fields into replay-ready evidence while omitting unusable commands.
 
 ## Dependencies
 
 - Upstream:
   - `cmd/binlogviz/compare.go` and `cmd/binlogviz/snapshot.go` call into this module.
+  - `internal/report` provides shared transaction span and replay-command formatting.
 - Downstream:
   - Compare outputs feed terminal, automation, and HTML review workflows.
 
@@ -46,3 +49,4 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Legacy reports with no top-level `patterns` are treated as empty pattern sets rather than rejected.
 - Text and HTML outputs now expose snapshot context beyond the time window so incident reviews can see input mode, source shape, and active filters at a glance.
 - Key findings, bounded drilldowns, evidence refs, and follow-up recommendations are derived inside this module from the same deterministic compare result.
+- Current largest and longest transaction evidence carries the analyze-compatible `binlog_span` and `mysqlbinlog_cmd` when the source span is usable; invalid or legacy spans never produce a broken command.
