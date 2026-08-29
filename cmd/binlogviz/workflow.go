@@ -1,3 +1,8 @@
+// Package binlogviz defines the workflow CLI commands for run, resume, validate, describe, status, clean, and export.
+// input: workflow plan YAML, output directories, cobra flags, and workflow package contracts.
+// output: workflow artifacts, operator stderr status, and cobra command trees that print Error once without Usage on failure.
+// pos: CLI orchestration layer for multi-step investigation workflows.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -26,8 +31,10 @@ import (
 
 func newWorkflowCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "workflow",
-		Short: "Run multi-step BinlogViz investigation workflows",
+		Use:           "workflow",
+		Short:         "Run multi-step BinlogViz investigation workflows",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -66,9 +73,11 @@ func newWorkflowStatusCommand() *cobra.Command {
 	opts := &workflowStatusOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "status <output_dir>",
-		Short: "Inspect workflow runtime state without modifying it",
-		Args:  cobra.ExactArgs(1),
+		Use:           "status <output_dir>",
+		Short:         "Inspect workflow runtime state without modifying it",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
 				return fmt.Errorf("unsupported workflow status format %q (allowed: text, json)", opts.format)
@@ -121,9 +130,11 @@ func newWorkflowCleanCommand() *cobra.Command {
 	opts := &workflowCleanOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "clean <output_dir>",
-		Short: "Preview or delete orphaned workflow artifacts safely",
-		Args:  cobra.ExactArgs(1),
+		Use:           "clean <output_dir>",
+		Short:         "Preview or delete orphaned workflow artifacts safely",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
 				return fmt.Errorf("unsupported workflow clean format %q (allowed: text, json)", opts.format)
@@ -164,9 +175,11 @@ func newWorkflowExportCommand() *cobra.Command {
 	opts := &workflowExportOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "export <output_dir>",
-		Short: "Bundle workflow artifacts into a read-only archive",
-		Args:  cobra.ExactArgs(1),
+		Use:           "export <output_dir>",
+		Short:         "Bundle workflow artifacts into a read-only archive",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
 				return fmt.Errorf("unsupported workflow export format %q (allowed: text, json)", opts.format)
@@ -207,9 +220,11 @@ func newWorkflowDescribeCommand() *cobra.Command {
 	opts := &workflowDescribeOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "describe <plan.yaml>",
-		Short: "Describe a workflow plan without executing it",
-		Args:  cobra.ExactArgs(1),
+		Use:           "describe <plan.yaml>",
+		Short:         "Describe a workflow plan without executing it",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
 				return fmt.Errorf("unsupported workflow describe format %q (allowed: text, json)", opts.format)
@@ -247,9 +262,11 @@ func newWorkflowValidateCommand() *cobra.Command {
 	opts := &workflowValidateOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "validate <plan.yaml>",
-		Short: "Validate a workflow plan without executing it",
-		Args:  cobra.ExactArgs(1),
+		Use:           "validate <plan.yaml>",
+		Short:         "Validate a workflow plan without executing it",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
 				return fmt.Errorf("unsupported workflow validate format %q (allowed: text, json)", opts.format)
@@ -287,9 +304,11 @@ func newWorkflowRunCommand() *cobra.Command {
 	opts := &workflowRunOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "run <plan.yaml>",
-		Short: "Execute a workflow plan",
-		Args:  cobra.ExactArgs(1),
+		Use:           "run <plan.yaml>",
+		Short:         "Execute a workflow plan",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			planPath := args[0]
 			stderr := cmd.OutOrStderr()
@@ -330,9 +349,11 @@ func newWorkflowResumeCommand() *cobra.Command {
 	opts := &workflowResumeOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "resume <output_dir>",
-		Short: "Resume a previously run workflow from its output directory",
-		Args:  cobra.ExactArgs(1),
+		Use:           "resume <output_dir>",
+		Short:         "Resume a previously run workflow from its output directory",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			outputDir := args[0]
 			stderr := cmd.OutOrStderr()
