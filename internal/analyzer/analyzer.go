@@ -1,12 +1,15 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
-// input: analyzer.Options plus ordered model.NormalizedEvent values with optional provenance, time windows, and object filters.
-// output: provenance-aware inclusive event-window aggregates plus retained transaction evidence with explicit completeness.
+// input: analyzer.Options plus ordered model.NormalizedEvent values with optional provenance, time/position selectors, and object filters.
+// output: provenance-aware intersected event-window aggregates, selector evidence, and retained transactions with explicit completeness.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
 	"errors"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"binlogviz/internal/model"
@@ -36,6 +39,11 @@ type Analyzer struct {
 	finalized bool
 	result    *model.AnalysisResult
 	err       error
+	selection model.AnalysisSelection
+
+	pendingGroupEvents map[string][]model.NormalizedEvent
+	inputGTIDFlavor    string
+	matchedGTIDs       map[string]struct{}
 }
 
 // New creates a new Analyzer with the given options.
@@ -85,7 +93,12 @@ func (a *Analyzer) Consume(ev model.NormalizedEvent) error {
 	if a.finalized {
 		return errors.New("analyzer already finalized")
 	}
-	if err := a.consume(ev, a.windowRelation(ev.Timestamp)); err != nil {
+	relation, err := a.eventWindowRelation(ev)
+	if err != nil {
+		a.err = err
+		return err
+	}
+	if err := a.consume(ev, relation); err != nil {
 		a.err = err
 		return err
 	}
@@ -106,6 +119,10 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 	if err := a.persistCompletedTransactions(); err != nil {
 		a.err = err
 		return nil, err
+	}
+	if a.opts.HasGTIDSelectors() && a.inputGTIDFlavor == "" {
+		a.err = fmt.Errorf("cannot resolve GTID flavor from input")
+		return nil, a.err
 	}
 	if err := a.persistMinuteBuckets(a.minuteAgg.DrainAll()); err != nil {
 		a.err = err
@@ -145,11 +162,81 @@ func (a *Analyzer) windowRelation(ts time.Time) windowRelation {
 	return insideWindow
 }
 
+func (a *Analyzer) eventWindowRelation(ev model.NormalizedEvent) (windowRelation, error) {
+	relation := a.windowRelation(ev.Timestamp)
+	before := relation == beforeWindow
+	after := relation == afterWindow
+	if a.opts.HasPositionSelectors() {
+		if a.opts.StartPosition != nil && *a.opts.StartPosition < 4 {
+			return insideWindow, fmt.Errorf("start position %d is before the first binlog event boundary", *a.opts.StartPosition)
+		}
+		if a.opts.StopPosition != nil && *a.opts.StopPosition < 4 {
+			return insideWindow, fmt.Errorf("stop position %d is before the first binlog event boundary", *a.opts.StopPosition)
+		}
+		if a.opts.StartPosition != nil && a.opts.StopPosition != nil && *a.opts.StopPosition <= *a.opts.StartPosition {
+			return insideWindow, fmt.Errorf("stop position %d must be greater than start position %d", *a.opts.StopPosition, *a.opts.StartPosition)
+		}
+		if ev.PositionStart <= 0 || ev.PositionEnd <= ev.PositionStart {
+			return insideWindow, fmt.Errorf("position selection requires exact event offsets, got [%d,%d)", ev.PositionStart, ev.PositionEnd)
+		}
+		if a.opts.StartPosition != nil && ev.PositionStart < *a.opts.StartPosition {
+			before = true
+		}
+		if a.opts.StopPosition != nil && ev.PositionStart >= *a.opts.StopPosition {
+			after = true
+		}
+	}
+	switch {
+	case before && after:
+		return outsideBoth, nil
+	case before:
+		return beforeWindow, nil
+	case after:
+		return afterWindow, nil
+	default:
+		return insideWindow, nil
+	}
+}
+
+func (a *Analyzer) observeGTIDFlavor(ev model.NormalizedEvent) error {
+	if !a.opts.HasGTIDSelectors() {
+		return nil
+	}
+	flavor := strings.ToLower(strings.TrimSpace(ev.ServerFlavor))
+	if flavor != "" && flavor != "mysql" && flavor != "mariadb" {
+		return fmt.Errorf("unsupported input GTID flavor %q", ev.ServerFlavor)
+	}
+	if ev.GTID != "" {
+		gtidFlavor, err := transactionGTIDFlavor(ev.GTID)
+		if err != nil {
+			return err
+		}
+		if flavor != "" && flavor != gtidFlavor {
+			return fmt.Errorf("input flavor %s conflicts with GTID %q", flavor, ev.GTID)
+		}
+		flavor = gtidFlavor
+	}
+	if flavor == "" {
+		return nil
+	}
+	if flavor != a.opts.GTIDSelector.Flavor() {
+		return fmt.Errorf("GTID selector flavor %s conflicts with input flavor %s", a.opts.GTIDSelector.Flavor(), flavor)
+	}
+	if a.inputGTIDFlavor != "" && a.inputGTIDFlavor != flavor {
+		return fmt.Errorf("mixed input GTID flavors: %s and %s", a.inputGTIDFlavor, flavor)
+	}
+	a.inputGTIDFlavor = flavor
+	return nil
+}
+
 // consume passes a single event to all sub-aggregators.
 // If TransactionBuilder returns an error (e.g., boundary violation),
 // fan-out to other aggregators is stopped to prevent inconsistent state.
 func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) error {
 	ev = enrichDDLEvent(ev)
+	if err := a.observeGTIDFlavor(ev); err != nil {
+		return err
+	}
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if relation == insideWindow && a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
 		a.txnBuilder.clearCurrentQueryContext()
@@ -161,10 +248,32 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 	if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
 		return err
 	}
+	ev = a.withCurrentTxnKey(ev)
+	if a.opts.HasGTIDSelectors() {
+		if relation == insideWindow {
+			if ev.TxnKey != "" {
+				// ponytail: buffer one in-flight group; spool if real transaction sizes make this a memory ceiling.
+				a.pendingGroupEvents[ev.TxnKey] = append(a.pendingGroupEvents[ev.TxnKey], ev)
+			} else if len(a.opts.GTIDSelector.Include()) == 0 {
+				if err := a.aggregateRetainedEvent(ev); err != nil {
+					return err
+				}
+			}
+		}
+		return a.persistCompletedTransactions()
+	}
 	if relation != insideWindow {
 		return a.persistCompletedTransactions()
 	}
-	ev = a.withCurrentTxnKey(ev)
+	if err := a.aggregateRetainedEvent(ev); err != nil {
+		return err
+	}
+	return a.persistCompletedTransactions()
+}
+
+func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
+	a.recordEffectivePosition(ev)
+	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if isWorkload {
 		workloadEv.TxnKey = ev.TxnKey
 	}
@@ -194,9 +303,6 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 		a.reportAgg.ConsumeEvent(aggregationEv)
 	}
 
-	if err := a.persistCompletedTransactions(); err != nil {
-		return err
-	}
 	if err := a.persistMinuteBuckets(a.minuteAgg.DrainBefore(truncateToMinute(ev.Timestamp))); err != nil {
 		return err
 	}
@@ -207,7 +313,9 @@ func (a *Analyzer) withCurrentTxnKey(ev model.NormalizedEvent) model.NormalizedE
 	if ev.TxnKey != "" {
 		return ev
 	}
-	if txnKey := a.txnBuilder.CurrentTxnKey(); txnKey != "" {
+	if txnKey := a.txnBuilder.LastEventTxnKey(); txnKey != "" {
+		ev.TxnKey = txnKey
+	} else if txnKey := a.txnBuilder.CurrentTxnKey(); txnKey != "" {
 		ev.TxnKey = txnKey
 	}
 	return ev
@@ -246,6 +354,17 @@ func (a *Analyzer) reset() {
 	a.endTime = time.Time{}
 	a.finalized = false
 	a.result = nil
+	a.selection = model.AnalysisSelection{
+		RequestedStartPosition: cloneInt64(a.opts.StartPosition),
+		RequestedStopPosition:  cloneInt64(a.opts.StopPosition),
+	}
+	if a.opts.HasGTIDSelectors() {
+		a.selection.IncludeGTIDs = a.opts.GTIDSelector.Include()
+		a.selection.ExcludeGTIDs = a.opts.GTIDSelector.Exclude()
+	}
+	a.pendingGroupEvents = make(map[string][]model.NormalizedEvent)
+	a.inputGTIDFlavor = ""
+	a.matchedGTIDs = make(map[string]struct{})
 	if a.store != nil {
 		a.err = a.store.Reset()
 	}
@@ -260,7 +379,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		return nil, err
 	}
 
-	return &model.AnalysisResult{
+	result := &model.AnalysisResult{
 		Summary:             snap.Summary,
 		Provenance:          snap.Provenance,
 		SQLContextAvailable: snap.SQLContextAvailable,
@@ -273,7 +392,46 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		Alerts:              snap.Alerts,
 		Warnings:            snap.Warnings,
 		PatternDrilldowns:   snap.PatternDrilldowns,
-	}, nil
+	}
+	if a.opts.HasPositionSelectors() || a.opts.HasGTIDSelectors() {
+		a.selection.ResolvedGTIDFlavor = a.inputGTIDFlavor
+		a.selection.MatchedGTIDs = sortedStringSet(a.matchedGTIDs)
+		selection := a.selection
+		result.Selection = &selection
+	}
+	return result, nil
+}
+
+func sortedStringSet(values map[string]struct{}) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func (a *Analyzer) recordEffectivePosition(ev model.NormalizedEvent) {
+	if !a.opts.HasPositionSelectors() || ev.PositionStart <= 0 || ev.PositionEnd <= ev.PositionStart {
+		return
+	}
+	if a.selection.EffectiveStartPosition == nil || ev.PositionStart < *a.selection.EffectiveStartPosition {
+		a.selection.EffectiveStartPosition = cloneInt64(&ev.PositionStart)
+	}
+	if a.selection.EffectiveStopPosition == nil || ev.PositionEnd > *a.selection.EffectiveStopPosition {
+		a.selection.EffectiveStopPosition = cloneInt64(&ev.PositionEnd)
+	}
+}
+
+func cloneInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func (a *Analyzer) attachTopTransactionSQL(transactions []model.Transaction) error {
@@ -312,6 +470,32 @@ func (a *Analyzer) persistCompletedTransactions() error {
 	}
 	persisted := make([]model.Transaction, 0, len(drained))
 	for _, txn := range drained {
+		if a.opts.HasGTIDSelectors() {
+			events := a.pendingGroupEvents[txn.TxnKey]
+			delete(a.pendingGroupEvents, txn.TxnKey)
+			if txn.EffectiveCompleteness() == model.TransactionUnknown {
+				return fmt.Errorf("cannot apply GTID selectors: transaction %s has unresolved boundaries", txn.TxnKey)
+			}
+			matched, err := a.opts.GTIDSelector.Match(txn.GTID)
+			if err != nil {
+				return err
+			}
+			if !matched {
+				continue
+			}
+			for _, ev := range events {
+				if err := a.aggregateRetainedEvent(ev); err != nil {
+					return err
+				}
+			}
+			if txn.GTID != "" && len(events) > 0 {
+				identity, err := a.opts.GTIDSelector.canonicalIdentity(txn.GTID)
+				if err != nil {
+					return err
+				}
+				a.matchedGTIDs[identity] = struct{}{}
+			}
+		}
 		if txn.TotalRows > 0 {
 			persisted = append(persisted, txn)
 		}

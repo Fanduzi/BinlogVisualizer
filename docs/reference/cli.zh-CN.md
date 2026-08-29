@@ -86,6 +86,10 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 |------|--------|------|
 | `--start` | none | 开始时间，包含边界，RFC3339 格式。 |
 | `--end` | none | 结束时间，包含边界，RFC3339 格式。 |
+| `--start-position` | none | 单个显式 binlog 文件上的精确事件起始边界（包含）。 |
+| `--stop-position` | none | 单个显式 binlog 文件上的精确事件结束边界（不包含），也可为 EOF。 |
+| `--include-gtids` | none | 包含匹配 MySQL UUID range set 或 MariaDB 精确身份的完整事务组。 |
+| `--exclude-gtids` | none | 在 include 之后排除匹配的完整事务组；exclude 优先。 |
 | `--from-dir` | none | 从该目录自动发现 binlog 文件。必须与 `--prefix` 一起使用。 |
 | `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。 |
 | `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
@@ -106,6 +110,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--top-minutes` | `60` | 报告中包含的最活跃分钟数。 |
 | `--spike-window` | `5` | 尖峰检测的滑动基线窗口（分钟）。 |
 | `--spike-factor` | `3.0` | 触发尖峰告警的基线倍数。 |
+
+position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与 RFC3339 条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配 include，混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 | `--spike-min-rows` | `100` | 纳入尖峰检测候选的最小行数。 |
 | `--include-schema` | none | 仅分析指定 schema（逗号分隔，其余均排除）。 |
 | `--exclude-schema` | none | 跳过指定 schema（逗号分隔）。 |

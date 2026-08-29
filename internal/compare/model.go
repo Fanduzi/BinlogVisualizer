@@ -1,13 +1,14 @@
 // Package compare defines compare-input contracts and comparison result models.
-// input: report-v0-v3 analyze JSON with optional v3 provenance, SQL mode, completeness, replay, and counted-byte evidence.
-// output: typed compare inputs/results preserving known identity, completeness, safe replay, counts, and render-only byte coverage.
+// input: report-v0-v3 analyze JSON with optional v3 provenance, selector evidence, SQL mode, completeness, replay, and counted-byte evidence.
+// output: typed compare inputs/results preserving selectors, identity, completeness, safe replay, counts, and render-only byte coverage.
 // pos: compare pipeline boundary between JSON loading and diff/render stages.
-// note: if this file changes, keep internal/compare/README.md synchronized.
+// note: if this file changes, update this header and module README.md.
 package compare
 
 type InputReport struct {
 	ReportVersion *int               `json:"report_version,omitempty"`
 	Provenance    *InputProvenance   `json:"provenance,omitempty"`
+	Selection     *InputSelection    `json:"selection,omitempty"`
 	SQLContext    *InputSQLContext   `json:"sql_context,omitempty"`
 	Summary       InputSummary       `json:"summary"`
 	Timeseries    InputTimeseries    `json:"timeseries"`
@@ -18,6 +19,17 @@ type InputReport struct {
 	Alerts        []InputAlert       `json:"alerts"`
 	Warnings      int                `json:"warnings"`
 	Snapshot      *InputSnapshot     `json:"snapshot,omitempty"`
+}
+
+type InputSelection struct {
+	RequestedStartPosition *int64   `json:"requested_start_position,omitempty"`
+	RequestedStopPosition  *int64   `json:"requested_stop_position,omitempty"`
+	EffectiveStartPosition *int64   `json:"effective_start_position,omitempty"`
+	EffectiveStopPosition  *int64   `json:"effective_stop_position,omitempty"`
+	IncludeGTIDs           []string `json:"include_gtids,omitempty"`
+	ExcludeGTIDs           []string `json:"exclude_gtids,omitempty"`
+	ResolvedGTIDFlavor     string   `json:"resolved_gtid_flavor,omitempty"`
+	MatchedGTIDs           []string `json:"matched_gtids,omitempty"`
 }
 
 type InputSQLContext struct {

@@ -218,6 +218,7 @@ The top-level JSON object always contains these fields:
 |------|------|----------|------|
 | `report_version` | integer | yes | Analyze report contract version; current version is `3`; readers accept v0-v3 |
 | `provenance` | object | no | Deterministic producer sets plus `mixed_producers`; omitted when producer evidence is unavailable |
+| `selection` | object | no | Requested selectors and effective position/GTID evidence; omitted when no position or GTID selector is active |
 | `sql_context` | object | yes | Selected `mode` and report-wide source-SQL `available` flag |
 | `summary` | object | yes | Overall totals and time bounds |
 | `tables` | array | yes | Complete table aggregates in deterministic order; human renderers may display only the configured top tables; empty array when no table results exist |
@@ -249,6 +250,21 @@ The top-level JSON object always contains these fields:
 ### `provenance`
 
 When producer evidence exists, `provenance` contains sorted unique `server_ids`, `server_versions`, and `server_flavors`, plus an explicit `mixed_producers` boolean. Missing legacy evidence stays unknown and is not rendered as zero or an empty identity.
+
+### `selection`
+
+`selection` preserves issue-time selectors separately from retained evidence. Position fields are byte offsets; GTID lists are canonical and sorted.
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `requested_start_position` | integer | no | Requested inclusive position |
+| `requested_stop_position` | integer | no | Requested exclusive position or EOF |
+| `effective_start_position` | integer | no | First retained normalized event boundary |
+| `effective_stop_position` | integer | no | End boundary of the last retained normalized event |
+| `include_gtids` | array | no | Canonical MySQL sets or exact MariaDB identities |
+| `exclude_gtids` | array | no | Canonical exclusions applied after include |
+| `resolved_gtid_flavor` | string | no | `mysql` or `mariadb` after selector/input agreement |
+| `matched_gtids` | array | no | Canonical selected transaction identities with retained evidence |
 
 ### `tables`
 

@@ -1,6 +1,6 @@
 // Package report verifies Markdown rendering structure, placeholders, and writer behavior.
 // input: synthetic AnalysisResult fixtures plus explicit SQL context presentation modes.
-// output: regression coverage for Markdown incident evidence, section content, placeholder keys, and writer wrappers.
+// output: regression coverage for Markdown incident evidence, section content, placeholder keys, and deadlock-free writer wrappers.
 // pos: Markdown renderer regression suite guarding user-facing GitHub-flavored report output.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -94,14 +94,21 @@ func captureStdoutMarkdown(t *testing.T, fn func() error) (string, error) {
 		os.Stdout = originalStdout
 	}()
 
-	runErr := fn()
-	if err := w.Close(); err != nil {
-		t.Fatalf("close writer pipe: %v", err)
-	}
-
 	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatalf("read stdout pipe: %v", err)
+	readDone := make(chan error, 1)
+	go func() {
+		_, readErr := buf.ReadFrom(r)
+		readDone <- readErr
+	}()
+
+	runErr := fn()
+	closeWriterErr := w.Close()
+	readErr := <-readDone
+	if closeWriterErr != nil {
+		t.Fatalf("close writer pipe: %v", closeWriterErr)
+	}
+	if readErr != nil {
+		t.Fatalf("read stdout pipe: %v", readErr)
 	}
 	if err := r.Close(); err != nil {
 		t.Fatalf("close reader pipe: %v", err)

@@ -51,6 +51,16 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
+### Start from `SHOW MASTER STATUS` position or GTID
+
+Positions are exact event boundaries on one explicit file and use a half-open `[start, stop)` range. Time flags may be supplied too; the predicates intersect.
+
+```bash
+binlogviz analyze mysql-bin.000015 --start-position 1651 --stop-position 4096
+binlogviz analyze mysql-bin.000015 --include-gtids '24bc7850-2c16-11e6-a073-0242ac110002:7-12'
+binlogviz analyze mariadb-bin.000015 --include-gtids '0-7-1857,0-7-1859' --exclude-gtids '0-7-1859'
+```
+
 ### Focus on one schema or table
 
 ```bash
@@ -441,6 +451,24 @@ Supported languages:
 - [Release Notes](docs/releases/)
 - [Changelog](CHANGELOG.md)
 - [Security Policy](SECURITY.md)
+
+## Architecture
+
+The Cobra command layer streams parser output through normalization and transaction-aware analysis, then hands the shared result model to report, snapshot, compare, trend, or workflow consumers.
+
+### Modules
+
+| Module | Responsibility | Doc |
+|--------|----------------|-----|
+| `cmd/binlogviz` | CLI commands and analyze orchestration | [README](cmd/binlogviz/README.md) |
+| `internal/binlog` | Binlog parsing, probing, and normalization | [README](internal/binlog/README.md) |
+| `internal/analyzer` | Transaction reconstruction and workload aggregation | [README](internal/analyzer/README.md) |
+| `internal/model` | Shared event, transaction, and report contracts | [README](internal/model/README.md) |
+| `internal/report` | Text, JSON, Markdown, and HTML renderers | [README](internal/report/README.md) |
+| `internal/compare` | Analyze-report loading and comparison | [README](internal/compare/README.md) |
+| `internal/snapshot` | Named report persistence | [README](internal/snapshot/README.md) |
+| `internal/trend` | Ordered multi-snapshot analysis | [README](internal/trend/README.md) |
+| `internal/workflow` | Repeatable investigation plans | [README](internal/workflow/README.md) |
 
 ## Requirements
 

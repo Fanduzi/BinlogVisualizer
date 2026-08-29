@@ -4,7 +4,8 @@
 
 | File | Responsibility |
 |------|----------------|
-| `analyzer.go` | Public analyzer entrypoint, streaming lifecycle, final result assembly. |
+| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, streaming lifecycle, selector evidence, and final result assembly. |
+| `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, and applies exclude-wins matching. |
 | `store.go` | Persists transaction provenance, bounded SQL, completeness, and replay spans through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
 | `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects conflicting GTIDs, and separates retained evidence from trusted full replay spans. |
 | `tables.go` | Aggregates per-table row and operation totals. |
@@ -16,7 +17,7 @@
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
 | `report_aggregator.go` | Maintains bounded report state, filtered event-byte coverage, SQL availability, producer sets, and numeric-key-ordered transaction evidence while excluding incomplete transactions from whole-transaction rankings, patterns, histograms, and ordinary large alerts. |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
-| `*_test.go` | Verifies analyzer behavior, inclusive-window completeness and replay, object filtering, detail-store parity, and benchmarks. |
+| `*_test.go` | Verifies intersected selection, complete/partial replay evidence, GTID flavor/precedence/rotation/XA/LOAD_DATA behavior, object filtering, detail-store parity, and benchmarks. |
 
 ## Interfaces
 
@@ -26,6 +27,8 @@
 | `NewWithStore(opts Options, store *DuckDBStore) *Analyzer` | Creates an analyzer that uses a caller-managed DuckDB temp store. Forces `DetailStoreMode` to `duckdb`. |
 | `NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error)` | Opens and initializes the internal DuckDB result store schema. |
 | `(Options).HasObjectFilters() bool` | Reports whether any schema or table include/exclude filter is configured. |
+| `(Options).HasPositionSelectors() bool`, `(Options).HasGTIDSelectors() bool` | Report active exact-position or complete-group GTID selectors. |
+| `ParseGTIDSelector(include, exclude []string) (*GTIDSelector, error)` | Parses and canonicalizes one explicit MySQL or MariaDB selector flavor. |
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event. Workload totals remain inclusive, filtered, and event-window scoped while adjacent physical events may supply transaction-boundary evidence only. |
 | `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the complete final analysis result. Successful calls are idempotent. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
@@ -64,3 +67,5 @@
 - Hot-path minute/table/transaction aggregation keeps table keys as structured internal identities and only materializes `schema.table` strings during final result projection.
 - `New(opts)` is now the explicit no-external-resource path; only `NewWithStore` participates in command-managed DuckDB lifecycle.
 - Command-layer streaming, CLI flag changes, renderer changes, benchmarks, and release tasks remain out of scope for this module revision.
+- Position and time predicates intersect per event while the transaction builder continues observing adjacent evidence. Known physical boundaries may retain a trusted `FullReplaySpan`; unresolved cuts remain `unknown` with no replay span.
+- Active GTID selectors delay aggregate fan-out until each transaction group closes, reject unresolved group boundaries, preserve ordered cross-file groups without replaying cross-file spans, and produce identical in-memory/DuckDB results.

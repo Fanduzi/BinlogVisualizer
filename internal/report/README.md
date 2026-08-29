@@ -9,11 +9,11 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
 | `text.go` | Renders completeness-aware incident briefs with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes report v3 with transaction list and completeness counts, counted event-byte diagnostics, optional producer/transaction provenance, required SQL mode/availability metadata, bounded query fields, XA identity, and safe replay metadata. |
+| `json.go` | Serializes report v3 with requested/effective position and GTID evidence, transaction completeness, counted bytes, producer provenance, SQL metadata, XA identity, and explicit safe replay metadata. |
 | `markdown.go` | Renders GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, and finding evidence. |
 | `html.go` | Renders the self-contained HTML report with completeness and byte cards, deduplicated transaction evidence, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
 | `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. |
-| `*_test.go` | Verifies text, complete JSON tables, Markdown evidence, deduplicated HTML evidence and lookup, SQL modes, counted bytes, completeness, and safe replay behavior. |
+| `*_test.go` | Verifies text, complete JSON tables and selector round trips, Markdown/HTML evidence, deadlock-free stdout wrappers, SQL modes, counted bytes, completeness, and explicit full-span replay behavior. |
 
 ## Interfaces
 
@@ -60,3 +60,4 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - Transaction evidence in HTML renders each category champion once, annotates every category it wins, and keeps a separate lookup for the bounded transaction payload.
 - JSON always reports `transactions_listed` and `transactions_omitted` alongside the bounded `transactions` array.
 - Rendered transaction evidence and pattern representatives expose transaction keys to the HTML search control.
+- Report v3 emits optional top-level `selection` evidence: requested/effective positions, canonical include/exclude GTIDs, resolved flavor, and matched identities. Existing provenance, SQL, completeness, and replay fields are unchanged.

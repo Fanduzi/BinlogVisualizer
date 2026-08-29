@@ -86,6 +86,10 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 |------|---------|-------------|
 | `--start` | none | Start time, inclusive, in RFC3339 format. |
 | `--end` | none | End time, inclusive, in RFC3339 format. |
+| `--start-position` | none | Exact inclusive event boundary on one explicit binlog file. |
+| `--stop-position` | none | Exact exclusive event boundary, or EOF, on one explicit binlog file. |
+| `--include-gtids` | none | Include complete groups matching a MySQL UUID range set or exact MariaDB identities. |
+| `--exclude-gtids` | none | Exclude matching complete groups after include; exclusion wins. |
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
 | `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. |
 | `--format` | `text` | Report output format: `text`, `json`, `markdown` (alias `md`), or `html`. |
@@ -106,6 +110,8 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--top-minutes` | `60` | Number of top active minutes to include in the report. |
 | `--spike-window` | `5` | Rolling baseline window in minutes for spike detection. |
 | `--spike-factor` | `3.0` | Multiplier over baseline to trigger a spike alert. |
+
+Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and RFC3339 predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups do not match an include list, mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
 | `--spike-min-rows` | `100` | Minimum row count for a minute to be considered a spike candidate. |
 | `--include-schema` | none | Comma-separated list of schemas to analyze (all others excluded). |
 | `--exclude-schema` | none | Comma-separated list of schemas to skip. |

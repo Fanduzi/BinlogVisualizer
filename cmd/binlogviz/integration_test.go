@@ -1,6 +1,6 @@
 // Package binlogviz validates end-to-end analyze command behavior and DuckDB temp-store lifecycle.
 // input: mock parsers with MySQL/MariaDB provenance, XA/Annotate sequences, and SQL context; fixture binlogs; CLI-derived analyzer options; and temporary command resources.
-// output: regression coverage for report-v3 provenance, XA/LOAD_DATA SQL modes, selected-file/count-event byte coverage, rendered output, temp DuckDB cleanup, and command/analyzer integration semantics.
+// output: regression coverage for report-v3 provenance/selection round trips, XA/LOAD_DATA SQL modes, byte coverage, deadlock-free rendered output capture, temp cleanup, and command/analyzer semantics.
 // pos: command-layer integration test suite covering parse-normalize-analyze-render execution paths.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -804,20 +804,9 @@ func TestRunAnalysisHappyPath(t *testing.T) {
 		TopTransactions: 10,
 	}
 
-	// Capture stdout
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "text", mock)
-
-	// Restore stdout
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
+	output, err := captureStdoutRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, opts, "text", mock)
+	})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -869,17 +858,11 @@ func TestRunAnalysisStreamsEventsDirectlyIntoAnalyzer(t *testing.T) {
 		return nil
 	}
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
-		return fakeAnalyzer
-	}, createDuckDBTempStore, "")
-
-	w.Close()
-	os.Stdout = old
-	_, _ = io.Copy(&bytes.Buffer{}, r)
+	_, err := captureStdoutRun(t, func() error {
+		return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+			return fakeAnalyzer
+		}, createDuckDBTempStore, "")
+	})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -906,20 +889,9 @@ func TestRunAnalysisJSONOutput(t *testing.T) {
 
 	opts := analyzer.Options{TopTables: 10, TopTransactions: 10}
 
-	// Capture stdout
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", mock)
-
-	// Restore stdout
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
+	output, err := captureStdoutRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", mock)
+	})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1063,20 +1035,11 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
-			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "text", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
-				return &fakeStreamingAnalyzer{finalResult: result}
-			}, createDuckDBTempStore, "")
-
-			w.Close()
-			os.Stdout = old
-
-			var buf bytes.Buffer
-			_, _ = io.Copy(&buf, r)
-			out := buf.String()
+			out, err := captureStdoutRun(t, func() error {
+				return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "text", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+					return &fakeStreamingAnalyzer{finalResult: result}
+				}, createDuckDBTempStore, "")
+			})
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -1119,26 +1082,18 @@ func TestRunAnalysisJSONSQLContextModes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			old := os.Stdout
-			r, w, _ := os.Pipe()
-			os.Stdout = w
-
-			err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "json", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
-				return &fakeStreamingAnalyzer{finalResult: result}
-			}, createDuckDBTempStore, "")
-
-			w.Close()
-			os.Stdout = old
-
-			var buf bytes.Buffer
-			_, _ = io.Copy(&buf, r)
+			stdout, err := captureStdoutRun(t, func() error {
+				return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "json", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+					return &fakeStreamingAnalyzer{finalResult: result}
+				}, createDuckDBTempStore, "")
+			})
 
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
 			var parsed map[string]any
-			if err := json.Unmarshal(buf.Bytes(), &parsed); err != nil {
+			if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 				t.Fatalf("invalid JSON output: %v", err)
 			}
 			metadata := parsed["sql_context"].(map[string]any)
@@ -1444,20 +1399,9 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 	opts := analyzer.DefaultOptions()
 	opts.DetectSpikes = true
 
-	// Capture stdout
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", mock)
-
-	// Restore stdout
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
+	output, err := captureStdoutRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", mock)
+	})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1480,18 +1424,9 @@ func TestRealBinlogFixtureEndToEnd(t *testing.T) {
 	// Run the full pipeline with real parser
 	opts := analyzer.DefaultOptions()
 
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	err := runAnalysis([]string{fixturePath}, opts, "text")
-
-	w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	io.Copy(&buf, r)
-	output := buf.String()
+	output, err := captureStdoutRun(t, func() error {
+		return runAnalysis([]string{fixturePath}, opts, "text")
+	})
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

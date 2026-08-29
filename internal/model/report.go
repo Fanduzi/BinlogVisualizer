@@ -1,8 +1,8 @@
 // Package model defines top-level analyze report contracts and snapshot metadata.
-// input: aggregated analyzer output, producer provenance, completeness summaries, diagnostics, tables, transactions, and filters.
-// output: completeness-aware AnalysisResult, ReportProvenance, and snapshot envelopes reused by report and compare modules.
+// input: aggregated analyzer output, producer provenance, selector evidence, completeness summaries, diagnostics, tables, transactions, and filters.
+// output: completeness-aware AnalysisResult, AnalysisSelection, ReportProvenance, and snapshot envelopes reused by report and compare modules.
 // pos: shared result-model layer between analyzer finalization and renderer or loader pipelines.
-// note: if this file changes, keep internal/model/README.md synchronized.
+// note: if this file changes, update this header and module README.md.
 package model
 
 import "time"
@@ -62,6 +62,18 @@ type SnapshotFilters struct {
 	ExcludeTables  []string
 }
 
+// AnalysisSelection records requested selectors and the retained event evidence they matched.
+type AnalysisSelection struct {
+	RequestedStartPosition *int64
+	RequestedStopPosition  *int64
+	EffectiveStartPosition *int64
+	EffectiveStopPosition  *int64
+	IncludeGTIDs           []string
+	ExcludeGTIDs           []string
+	ResolvedGTIDFlavor     string
+	MatchedGTIDs           []string
+}
+
 // ReportProvenance summarizes the distinct producers observed in a report.
 type ReportProvenance struct {
 	ServerIDs      []uint32
@@ -74,6 +86,7 @@ type ReportProvenance struct {
 type AnalysisResult struct {
 	Summary             WorkloadSummary
 	Provenance          ReportProvenance
+	Selection           *AnalysisSelection
 	SQLContextAvailable bool
 	Timeseries          Timeseries
 	Tables              []TableStats

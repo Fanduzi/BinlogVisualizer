@@ -1,5 +1,5 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
-// input: ordered normalized events with provenance, before/inside/after window relation, MySQL/MariaDB XA boundaries, and ROWS/ROWS_QUERY semantics.
+// input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA boundaries, and ROWS/ROWS_QUERY semantics.
 // output: retained transaction evidence with canonical provenance, explicit completeness, trusted replay spans, XA identity, and safe query context.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
@@ -16,9 +16,10 @@ import (
 
 // TransactionBuilder reconstructs transactions from normalized events.
 type TransactionBuilder struct {
-	current    *inFlightTxn
-	completed  []model.Transaction
-	txnCounter uint64
+	current         *inFlightTxn
+	completed       []model.Transaction
+	txnCounter      uint64
+	lastEventTxnKey string
 }
 
 type inFlightTxn struct {
@@ -66,9 +67,10 @@ type inFlightTxn struct {
 type windowRelation uint8
 
 const (
-	beforeWindow windowRelation = iota
-	insideWindow
+	insideWindow windowRelation = iota
+	beforeWindow
 	afterWindow
+	outsideBoth
 )
 
 // NewTransactionBuilder creates a new TransactionBuilder.
@@ -84,6 +86,7 @@ func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 }
 
 func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation windowRelation) error {
+	b.lastEventTxnKey = ""
 	switch ev.EventType {
 	case "GTID":
 		return b.handleGTID(ev, relation)
@@ -149,6 +152,12 @@ func (b *TransactionBuilder) CurrentTxnKey() string {
 		return ""
 	}
 	return b.current.txnKey
+}
+
+// LastEventTxnKey returns the transaction that consumed the most recent event,
+// including a commit event that finalized it.
+func (b *TransactionBuilder) LastEventTxnKey() string {
+	return b.lastEventTxnKey
 }
 
 func (b *TransactionBuilder) clearCurrentQueryContext() {
@@ -415,10 +424,14 @@ func (b *TransactionBuilder) observeEvent(ev model.NormalizedEvent, relation win
 	if b.current == nil {
 		return
 	}
+	b.lastEventTxnKey = b.current.txnKey
 	switch relation {
 	case beforeWindow:
 		b.current.hadBeforeWindow = true
 	case afterWindow:
+		b.current.hadAfterWindow = true
+	case outsideBoth:
+		b.current.hadBeforeWindow = true
 		b.current.hadAfterWindow = true
 	case insideWindow:
 		if b.current.startTime.IsZero() {

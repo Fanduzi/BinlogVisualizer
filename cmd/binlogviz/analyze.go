@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
-// input: CLI flags, explicit binlog file paths or discovery flags, parser callbacks (including Format Description server version), and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML analysis reports with selected-file coverage and counted event bytes on success (MIXED JSON includes an input_format alert); STATEMENT and filtered zero-row workloads return errors with no report; no-data is exit 2; stderr-only operator status and DuckDB temp-store cleanup.
+// input: CLI time/position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks, and command-owned temporary directory roots.
+// output: rendered text/JSON/HTML reports with selector evidence and selected-file/count coverage; invalid selectors fail, valid no-data exits 2, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -49,6 +49,12 @@ var inspectFirstBinlogTimestamp = readFirstBinlogTimestamp
 type analyzeOptions struct {
 	startTime              string
 	endTime                string
+	startPosition          int64
+	stopPosition           int64
+	startPositionSet       bool
+	stopPositionSet        bool
+	includeGTIDs           []string
+	excludeGTIDs           []string
 	fromDir                string
 	prefix                 string
 	format                 string
@@ -110,12 +116,21 @@ func newAnalyzeCommand() *cobra.Command {
 
 			opts.topTablesChanged = cmd.Flags().Changed("top-tables")
 			opts.topTransactionsChanged = cmd.Flags().Changed("top-transactions")
+			opts.startPositionSet = cmd.Flags().Changed("start-position")
+			opts.stopPositionSet = cmd.Flags().Changed("stop-position")
+			if err := validateAnalyzeSelectionInput(args, opts); err != nil {
+				return err
+			}
 
 			reportOpts, err := buildReportOptions(opts)
 			if err != nil {
 				return err
 			}
 			if err := validateAnalyzeOptions(opts); err != nil {
+				return err
+			}
+			gtidSelector, err := buildGTIDSelector(opts)
+			if err != nil {
 				return err
 			}
 
@@ -143,6 +158,7 @@ func newAnalyzeCommand() *cobra.Command {
 
 			// Build analyzer options
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
+			analyzerOpts.GTIDSelector = gtidSelector
 			snapshotMeta := buildSnapshotMetadata(paths, opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
@@ -153,6 +169,10 @@ func newAnalyzeCommand() *cobra.Command {
 	// Register flags
 	cmd.Flags().StringVar(&opts.startTime, "start", "", i18n.T("cmd.analyze.flag.start"))
 	cmd.Flags().StringVar(&opts.endTime, "end", "", i18n.T("cmd.analyze.flag.end"))
+	cmd.Flags().Int64Var(&opts.startPosition, "start-position", 0, "Start position (inclusive event boundary)")
+	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, "Stop position (exclusive event boundary or EOF)")
+	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, "Include complete transaction groups matching this GTID set")
+	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, "Exclude complete transaction groups matching this GTID set")
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
 	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.analyze.flag.format"))
@@ -180,6 +200,32 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.detailStore, "detail-store", string(analyzer.DetailStoreNone), i18n.T("cmd.analyze.flag.detailStore"))
 
 	return cmd
+}
+
+func buildGTIDSelector(opts *analyzeOptions) (*analyzer.GTIDSelector, error) {
+	if opts == nil || len(opts.includeGTIDs) == 0 && len(opts.excludeGTIDs) == 0 {
+		return nil, nil
+	}
+	return analyzer.ParseGTIDSelector(opts.includeGTIDs, opts.excludeGTIDs)
+}
+
+func validateAnalyzeSelectionInput(args []string, opts *analyzeOptions) error {
+	if opts == nil || (!opts.startPositionSet && !opts.stopPositionSet) {
+		return nil
+	}
+	if opts.fromDir != "" || opts.prefix != "" || len(args) != 1 {
+		return fmt.Errorf("position selectors require exactly one explicit binlog file")
+	}
+	if opts.startPositionSet && opts.startPosition < 0 {
+		return fmt.Errorf("--start-position must not be negative")
+	}
+	if opts.stopPositionSet && opts.stopPosition < 0 {
+		return fmt.Errorf("--stop-position must not be negative")
+	}
+	if opts.startPositionSet && opts.stopPositionSet && opts.stopPosition <= opts.startPosition {
+		return fmt.Errorf("--stop-position must be greater than --start-position")
+	}
+	return nil
 }
 
 func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, model.FileCoverage, error) {
@@ -517,6 +563,10 @@ func runAnalysisStreamingWithSnapshotDeps(
 	snapshotName string,
 	snapshotDir string,
 ) error {
+	positionValidator, err := newPositionBoundaryValidator(paths, opts)
+	if err != nil {
+		return err
+	}
 	progress, err := newAggregateProgress(paths, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
@@ -537,6 +587,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	rawEvents := 0
 
 	handler := func(raw binlog.RawEvent) error {
+		positionValidator.Observe(raw)
 		formatObserver.Observe(raw)
 		rawEvents++
 		normalized, err := normalize(raw)
@@ -565,6 +616,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if err := parser.ParseFiles(paths, handler); err != nil {
 			return wrapParseError(err)
 		}
+	}
+	if err := positionValidator.Validate(); err != nil {
+		return err
 	}
 	progress.FinishParse()
 	progress.Finalizing()
@@ -619,6 +673,10 @@ func runAnalysisStreamingFastWithSnapshot(
 	snapshotName string,
 	snapshotDir string,
 ) error {
+	positionValidator, err := newPositionBoundaryValidator(paths, opts)
+	if err != nil {
+		return err
+	}
 	progress, err := newAggregateProgress(paths, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
@@ -639,6 +697,7 @@ func runAnalysisStreamingFastWithSnapshot(
 	rawEvents := 0
 
 	handler := func(raw binlog.RawEvent) error {
+		positionValidator.Observe(raw)
 		formatObserver.Observe(raw)
 		rawEvents++
 		var normalized model.NormalizedEvent
@@ -668,6 +727,9 @@ func runAnalysisStreamingFastWithSnapshot(
 		if err := parser.ParseFiles(paths, handler); err != nil {
 			return wrapParseError(err)
 		}
+	}
+	if err := positionValidator.Validate(); err != nil {
+		return err
 	}
 	progress.FinishParse()
 	progress.Finalizing()
@@ -773,6 +835,10 @@ func runAnalysisStreamingFastWithOutput(
 	snapshotDir string,
 	dest outputDestination,
 ) error {
+	positionValidator, err := newPositionBoundaryValidator(paths, opts)
+	if err != nil {
+		return err
+	}
 	progress, err := newAggregateProgress(paths, os.Stderr)
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
@@ -793,6 +859,7 @@ func runAnalysisStreamingFastWithOutput(
 	rawEvents := 0
 
 	handler := func(raw binlog.RawEvent) error {
+		positionValidator.Observe(raw)
 		formatObserver.Observe(raw)
 		rawEvents++
 		var normalized model.NormalizedEvent
@@ -822,6 +889,9 @@ func runAnalysisStreamingFastWithOutput(
 		if err := parser.ParseFiles(paths, handler); err != nil {
 			return wrapParseError(err)
 		}
+	}
+	if err := positionValidator.Validate(); err != nil {
+		return err
 	}
 	progress.FinishParse()
 	progress.Finalizing()
@@ -1005,6 +1075,12 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	if !endTime.IsZero() {
 		result.End = &endTime
 	}
+	if opts.startPositionSet {
+		result.StartPosition = &opts.startPosition
+	}
+	if opts.stopPositionSet {
+		result.StopPosition = &opts.stopPosition
+	}
 
 	return result
 }
@@ -1119,7 +1195,7 @@ func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *mo
 	if result == nil || result.Summary.TotalEvents > 0 {
 		return nil
 	}
-	if opts.Start != nil || opts.End != nil {
+	if opts.HasSelectionFilters() {
 		return &ExitError{Code: 2, Msg: i18n.T("progress.windowMatchedZero")}
 	}
 	if rawEvents > 0 && observer.QueryDMLEvents == 0 && observer.RowImageEvents == 0 {

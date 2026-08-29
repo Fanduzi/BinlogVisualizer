@@ -218,6 +218,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 |------|------|----------|------|
 | `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `3`；读取端接受 v0-v3 |
 | `provenance` | object | no | 确定性的生产者集合和 `mixed_producers`；没有证据时省略 |
+| `selection` | object | no | 请求的 selector 与实际 position/GTID 证据；未启用 position 或 GTID selector 时省略 |
 | `sql_context` | object | yes | 所选 `mode` 和报告全局源 SQL `available` 标志 |
 | `summary` | object | yes | 总体汇总和时间边界 |
 | `tables` | array | yes | 按确定性顺序排列的完整表聚合结果；人类可读渲染器可以只显示配置的 Top 表；没有表结果时为空数组 |
@@ -249,6 +250,21 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 ### `provenance`
 
 存在生产者证据时，`provenance` 包含排序且去重的 `server_ids`、`server_versions`、`server_flavors`，以及显式的 `mixed_producers` 布尔值。旧报告缺失的证据保持 unknown，不会伪造成 0 或空身份。
+
+### `selection`
+
+`selection` 将请求的 selector 与实际保留证据分开记录。position 字段为字节偏移；GTID 列表为规范化且已排序的值。
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `requested_start_position` | integer | no | 请求的包含式起始 position |
+| `requested_stop_position` | integer | no | 请求的不包含式结束 position 或 EOF |
+| `effective_start_position` | integer | no | 首个保留的标准化事件边界 |
+| `effective_stop_position` | integer | no | 最后一个保留的标准化事件结束边界 |
+| `include_gtids` | array | no | 规范化的 MySQL set 或 MariaDB 精确身份 |
+| `exclude_gtids` | array | no | 在 include 之后应用的规范化排除项 |
+| `resolved_gtid_flavor` | string | no | selector 与输入一致后得到的 `mysql` 或 `mariadb` |
+| `matched_gtids` | array | no | 有保留证据的规范化已选事务身份 |
 
 ### `tables`
 

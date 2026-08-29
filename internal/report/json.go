@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
-// input: analyzer-produced AnalysisResult values with provenance plus optional SQL context and snapshot presentation controls.
-// output: report-v3 JSON with completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, and snapshots.
+// input: analyzer-produced AnalysisResult values with provenance/selector evidence plus optional SQL context and snapshot presentation controls.
+// output: report-v3 JSON with selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, and snapshots.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -21,6 +21,7 @@ const currentReportVersion = 3
 type jsonAnalysisResult struct {
 	ReportVersion       int                    `json:"report_version"`
 	Provenance          *jsonProvenance        `json:"provenance,omitempty"`
+	Selection           *jsonSelection         `json:"selection,omitempty"`
 	SQLContext          jsonSQLContext         `json:"sql_context"`
 	Summary             jsonSummary            `json:"summary"`
 	Timeseries          jsonTimeseries         `json:"timeseries"`
@@ -35,6 +36,17 @@ type jsonAnalysisResult struct {
 	Warnings            int                    `json:"warnings"`
 	PatternDrilldowns   []jsonPatternDrilldown `json:"pattern_drilldowns"`
 	Snapshot            *jsonSnapshot          `json:"snapshot,omitempty"`
+}
+
+type jsonSelection struct {
+	RequestedStartPosition *int64   `json:"requested_start_position,omitempty"`
+	RequestedStopPosition  *int64   `json:"requested_stop_position,omitempty"`
+	EffectiveStartPosition *int64   `json:"effective_start_position,omitempty"`
+	EffectiveStopPosition  *int64   `json:"effective_stop_position,omitempty"`
+	IncludeGTIDs           []string `json:"include_gtids,omitempty"`
+	ExcludeGTIDs           []string `json:"exclude_gtids,omitempty"`
+	ResolvedGTIDFlavor     string   `json:"resolved_gtid_flavor,omitempty"`
+	MatchedGTIDs           []string `json:"matched_gtids,omitempty"`
 }
 
 type jsonSQLContext struct {
@@ -341,6 +353,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 	return jsonAnalysisResult{
 		ReportVersion:       currentReportVersion,
 		Provenance:          convertProvenance(result.Provenance),
+		Selection:           convertSelection(result.Selection),
 		SQLContext:          jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
 		Summary:             convertSummary(result.Summary),
 		Timeseries:          convertTimeseries(result.Timeseries),
@@ -356,6 +369,30 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		PatternDrilldowns:   convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode),
 		Snapshot:            convertSnapshot(result.Snapshot),
 	}
+}
+
+func convertSelection(selection *model.AnalysisSelection) *jsonSelection {
+	if selection == nil {
+		return nil
+	}
+	return &jsonSelection{
+		RequestedStartPosition: cloneJSONInt64(selection.RequestedStartPosition),
+		RequestedStopPosition:  cloneJSONInt64(selection.RequestedStopPosition),
+		EffectiveStartPosition: cloneJSONInt64(selection.EffectiveStartPosition),
+		EffectiveStopPosition:  cloneJSONInt64(selection.EffectiveStopPosition),
+		IncludeGTIDs:           copyStringSlice(selection.IncludeGTIDs),
+		ExcludeGTIDs:           copyStringSlice(selection.ExcludeGTIDs),
+		ResolvedGTIDFlavor:     selection.ResolvedGTIDFlavor,
+		MatchedGTIDs:           copyStringSlice(selection.MatchedGTIDs),
+	}
+}
+
+func cloneJSONInt64(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func convertProvenance(provenance model.ReportProvenance) *jsonProvenance {
