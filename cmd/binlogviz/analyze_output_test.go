@@ -1,3 +1,8 @@
+// Package binlogviz verifies analyze HTML destination resolution for TTY, redirect, and --output.
+// input: destination resolver arguments, analyze CLI flags, and fixture binlogs.
+// output: evidence that omitted --output follows TTY vs redirected stdout and that explicit --output is unchanged.
+// pos: CLI output-destination tests for the analyze HTML operator I/O contract.
+// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -32,7 +37,7 @@ func TestResolveOutputDestination_NonHTML_RejectsOutput(t *testing.T) {
 }
 
 func TestResolveOutputDestination_HTML_Stdout(t *testing.T) {
-	dest, err := resolveOutputDestinationWithCwd([]string{"file.binlog"}, false, "-", "html", "/tmp")
+	dest, err := resolveOutputDestinationWithCwd([]string{"file.binlog"}, false, "-", "html", "/tmp", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -44,8 +49,44 @@ func TestResolveOutputDestination_HTML_Stdout(t *testing.T) {
 	}
 }
 
+func TestResolveOutputDestination_HTML_OmittedOutputOnNonTTYUsesStdout(t *testing.T) {
+	if stdoutIsTerminal() {
+		t.Skip("stdout is a TTY; this test encodes the redirect/non-TTY contract")
+	}
+	dest, err := resolveOutputDestination([]string{"file.binlog"}, false, "", "html")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dest.IsStdout || dest.IsFile {
+		t.Fatalf("omitted --output with non-TTY stdout must write HTML to stdout so `analyze --format html > report.html` is not empty, got %+v", dest)
+	}
+}
+
+func TestResolveOutputDestination_HTML_OmittedOutputOnTTYUsesCwdFile(t *testing.T) {
+	dir := t.TempDir()
+	dest, err := resolveOutputDestinationWithCwd([]string{"/data/mysql-bin.010958"}, false, "", "html", dir, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	expected := filepath.Join(dir, "mysql-bin.010958.html")
+	if dest.Path != expected || !dest.IsFile || dest.IsStdout {
+		t.Fatalf("interactive TTY without --output must write a derived cwd file, got %+v", dest)
+	}
+}
+
+func TestResolveOutputDestination_HTML_OmittedOutputNonTTYWithCwdUsesStdout(t *testing.T) {
+	dir := t.TempDir()
+	dest, err := resolveOutputDestinationWithCwd([]string{"/data/a.binlog", "/data/b.binlog"}, true, "", "html", dir, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !dest.IsStdout || dest.IsFile || dest.Path != "" {
+		t.Fatalf("non-TTY stdout without --output must not derive a cwd file, got %+v", dest)
+	}
+}
+
 func TestResolveOutputDestination_HTML_ExplicitPath(t *testing.T) {
-	dest, err := resolveOutputDestinationWithCwd([]string{"file.binlog"}, false, "/tmp/custom.html", "html", "/tmp")
+	dest, err := resolveOutputDestinationWithCwd([]string{"file.binlog"}, false, "/tmp/custom.html", "html", "/tmp", false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,7 +100,7 @@ func TestResolveOutputDestination_HTML_ExplicitPath(t *testing.T) {
 
 func TestResolveOutputDestination_HTML_SingleInput(t *testing.T) {
 	dir := t.TempDir()
-	dest, err := resolveOutputDestinationWithCwd([]string{"/data/mysql-bin.010958"}, false, "", "html", dir)
+	dest, err := resolveOutputDestinationWithCwd([]string{"/data/mysql-bin.010958"}, false, "", "html", dir, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,7 +115,7 @@ func TestResolveOutputDestination_HTML_SingleInput(t *testing.T) {
 
 func TestResolveOutputDestination_HTML_MultipleInputs(t *testing.T) {
 	dir := t.TempDir()
-	dest, err := resolveOutputDestinationWithCwd([]string{"/data/a.binlog", "/data/b.binlog"}, false, "", "html", dir)
+	dest, err := resolveOutputDestinationWithCwd([]string{"/data/a.binlog", "/data/b.binlog"}, false, "", "html", dir, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +127,7 @@ func TestResolveOutputDestination_HTML_MultipleInputs(t *testing.T) {
 
 func TestResolveOutputDestination_HTML_DiscoveryMode(t *testing.T) {
 	dir := t.TempDir()
-	dest, err := resolveOutputDestinationWithCwd([]string{"/data/a.binlog"}, true, "", "html", dir)
+	dest, err := resolveOutputDestinationWithCwd([]string{"/data/a.binlog"}, true, "", "html", dir, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -231,4 +272,127 @@ func TestWriteHTMLAtomically_NoTempLeak(t *testing.T) {
 			t.Fatalf("found leaked temp file: %s", e.Name())
 		}
 	}
+}
+
+func TestAnalyzeHTMLWithoutOutputOnRedirectedStdoutWritesDocumentNotCwdFile(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture, err := filepath.Abs(mustFixturePath(t, "minimal.binlog"))
+	if err != nil {
+		t.Fatalf("abs fixture: %v", err)
+	}
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	stdout, stderr, err := executeAnalyzeLikeMain(t, fixture, "--format", "html")
+	if err != nil {
+		t.Fatalf("analyze html redirect: %v\nstderr=%s", err, stderr)
+	}
+	if strings.Contains(stderr, "HTML report saved to") {
+		t.Fatalf("redirected stdout must not print a saved-to path, got %q", stderr)
+	}
+	assertHTMLDocument(t, stdout)
+	assertNoHTMLFiles(t, cwd)
+}
+
+func TestAnalyzeHTMLFromDirWithoutOutputOnRedirectedStdoutWritesDocumentNotCwdFile(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture, err := filepath.Abs(mustFixturePath(t, "minimal.binlog"))
+	if err != nil {
+		t.Fatalf("abs fixture: %v", err)
+	}
+	src, err := os.ReadFile(fixture)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	binlogDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(binlogDir, "mysql-bin.000001"), src, 0o644); err != nil {
+		t.Fatalf("copy binlog: %v", err)
+	}
+
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	stdout, stderr, err := executeAnalyzeLikeMain(t, "--from-dir", binlogDir, "--prefix", "mysql-bin.", "--format", "html")
+	if err != nil {
+		t.Fatalf("analyze html from-dir redirect: %v\nstderr=%s", err, stderr)
+	}
+	if strings.Contains(stderr, "HTML report saved to") {
+		t.Fatalf("redirected stdout must not print a saved-to path, got %q", stderr)
+	}
+	assertHTMLDocument(t, stdout)
+	assertNoHTMLFiles(t, cwd)
+}
+
+func TestAnalyzeHTMLOutputDashStillWritesStdout(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture := mustFixturePath(t, "minimal.binlog")
+	stdout, stderr, err := executeAnalyzeLikeMain(t, fixture, "--format", "html", "--output", "-")
+	if err != nil {
+		t.Fatalf("analyze html --output -: %v\nstderr=%s", err, stderr)
+	}
+	if strings.Contains(stderr, "HTML report saved to") {
+		t.Fatalf("--output - must not print a saved-to path, got %q", stderr)
+	}
+	assertHTMLDocument(t, stdout)
+}
+
+func TestAnalyzeHTMLExplicitOutputLeavesStdoutEmptyOfDocument(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	fixture := mustFixturePath(t, "minimal.binlog")
+	outPath := filepath.Join(t.TempDir(), "explicit.html")
+	stdout, stderr, err := executeAnalyzeLikeMain(t, fixture, "--format", "html", "--output", outPath)
+	if err != nil {
+		t.Fatalf("analyze html --output path: %v\nstderr=%s", err, stderr)
+	}
+	if strings.Contains(stdout, "<html") || strings.Contains(stdout, "<!DOCTYPE html") {
+		t.Fatalf("explicit --output must keep the HTML document off stdout, got %q", stdout)
+	}
+	if !strings.Contains(stderr, "HTML report saved to") || !strings.Contains(stderr, "explicit.html") {
+		t.Fatalf("expected save confirmation on stderr, got %q", stderr)
+	}
+	data, readErr := os.ReadFile(outPath)
+	if readErr != nil {
+		t.Fatalf("read explicit html: %v", readErr)
+	}
+	assertHTMLDocument(t, string(data))
+}
+
+func assertHTMLDocument(t *testing.T, body string) {
+	t.Helper()
+	trimmed := strings.TrimSpace(body)
+	if trimmed == "" {
+		t.Fatal("expected a non-empty HTML document")
+	}
+	if !strings.HasPrefix(trimmed, "<!DOCTYPE html") && !strings.HasPrefix(trimmed, "<html") {
+		t.Fatalf("expected HTML document starting with <!DOCTYPE html or <html, got %q", truncatedForTest(trimmed))
+	}
+}
+
+func assertNoHTMLFiles(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read cwd: %v", err)
+	}
+	var htmlFiles []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(strings.ToLower(e.Name()), ".html") {
+			htmlFiles = append(htmlFiles, e.Name())
+		}
+	}
+	if len(htmlFiles) > 0 {
+		t.Fatalf("redirected analyze html must not create a sibling cwd file, found %v", htmlFiles)
+	}
+}
+
+func truncatedForTest(s string) string {
+	if len(s) < 120 {
+		return s
+	}
+	return s[:120]
 }
