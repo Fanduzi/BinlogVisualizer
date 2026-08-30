@@ -4,9 +4,11 @@
 
 - Repository: `Fanduzi/BinlogVisualizer`
 - Base: `8cf5680fb5dc8ebfe092f7a1b46e5080973fbdbe`
-- Candidate and fast-forwarded `main`: `2679cae20f9af5d7c33f09f0fcd9ad6615d7b0e4`
+- Fix candidate: `2679cae20f9af5d7c33f09f0fcd9ad6615d7b0e4`
+- Release-preparation commit and immutable `v0.23.3` tag target: `ea1085de096cf0bfef32aa55be8cd25327662eae`
 - Merge type: direct fast-forward push to `main`
-- Push range: `8cf5680fb5dc8ebfe092f7a1b46e5080973fbdbe..2679cae20f9af5d7c33f09f0fcd9ad6615d7b0e4`
+- Delivered push range: `8cf5680fb5dc8ebfe092f7a1b46e5080973fbdbe..ea1085de096cf0bfef32aa55be8cd25327662eae`
+- Post-release state: `main` advances only for this documentation-only audit follow-up; the published tag remains on `ea1085d`.
 - Issue: https://github.com/Fanduzi/BinlogVisualizer/issues/63
 
 ## Root-cause evidence
@@ -51,12 +53,21 @@ Before the fix, default JSON omitted GTID `0-7-4` and all XA identity, while `--
 
 ## CI
 
-- Workflow/job: `ci` / `verify`
-- Run: https://github.com/Fanduzi/BinlogVisualizer/actions/runs/33301558063
-- Job: https://github.com/Fanduzi/BinlogVisualizer/actions/runs/33301558063/job/99230594442
-- Head SHA: `2679cae20f9af5d7c33f09f0fcd9ad6615d7b0e4`
-- Conclusion: `success`
-- Cloudflare Pages check: `success` for the same SHA.
+- Fix workflow/job: `ci` / `verify`, [run 33301558063](https://github.com/Fanduzi/BinlogVisualizer/actions/runs/33301558063), head `2679cae`, `success`.
+- Release-preparation workflow/job: `ci` / `verify`, [run 33301815895](https://github.com/Fanduzi/BinlogVisualizer/actions/runs/33301815895), head `ea1085d`, `success`.
+- Cloudflare Pages: `success` for `ea1085d`; https://binlogviz.pages.dev served the v0.23.3 badge, current-release copy, install commands, and tag-pinned release-note link.
+
+## Release verification
+
+- Annotated tag: `v0.23.3^{}` resolves locally and remotely to `ea1085de096cf0bfef32aa55be8cd25327662eae`.
+- Release workflow: [run 33301900790](https://github.com/Fanduzi/BinlogVisualizer/actions/runs/33301900790), `success`.
+- Successful jobs: `test`, `validate-homebrew`, Darwin amd64/arm64 builds, Linux amd64/arm64 manylinux2014 builds, and `github-release`.
+- Public release: https://github.com/Fanduzi/BinlogVisualizer/releases/tag/v0.23.3; not draft or prerelease.
+- Assets: four platform archives plus `binlogviz_0.23.3_checksums.txt`.
+- Downloaded Darwin arm64 archive checksum: `c6f464741ac9fb9615471f6390618f3b17a49b86a021ffd371f5cd80564ba187`; manifest, GitHub asset digest, and Homebrew cask match.
+- Downloaded archive reports `0.23.3` and passes `scripts/release_smoke.sh`.
+- `Fanduzi/homebrew-binlogviz/Casks/binlogviz.rb` is version `0.23.3`; all four cask checksums match the release manifest.
+- Issue #63 closed at `2026-08-30T08:37:38Z` with the v0.23.3 verification summary.
 
 ## Root worktree preservation and cleanup
 
@@ -65,4 +76,4 @@ The following user-owned untracked paths were preserved unchanged and excluded f
 - `AGENTS.md.bak-pre-gitnexus-uninstall`
 - `CLAUDE.md.bak-pre-gitnexus-uninstall`
 
-No stash, reset, clean, force-push, or destructive worktree operation was used. Disposable MariaDB and packaging artifacts are removed after release verification; the completed herdr review tab was closed.
+No stash, reset, clean, force-push, or destructive worktree operation was used. The disposable `binlogviz-xa63` container was removed. Its real-binlog fixture, coverage output, local package, and downloaded release-verification directory were moved to `/Users/fan/.Trash/` and remain recoverable until Trash is emptied. The completed herdr review tab was closed.
