@@ -116,6 +116,16 @@ func TestNormalizeMariaDBXAQueries(t *testing.T) {
 	}
 }
 
+func TestNormalizeMariaDBXAPrepareLogEvent(t *testing.T) {
+	ev, err := NormalizeRawEvent(RawEvent{EventType: "XAPrepareLogEvent"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev == nil || ev.EventType != "XA_PREPARE" {
+		t.Fatalf("expected XA_PREPARE boundary, got %+v", ev)
+	}
+}
+
 func TestNormalizeXIDEvent(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{

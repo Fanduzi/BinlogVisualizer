@@ -929,7 +929,7 @@ func TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries(t *testing.T) {
 		{Timestamp: ts, EventType: "QueryEvent", Query: "XA START " + xid, ThreadID: 1878, ActorUser: "loader", ActorHost: "db.local", PositionStart: 3802, PositionEnd: 3900, BinlogPath: "mariadb-bin.000001"},
 		{Timestamp: ts.Add(time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "xa_a", RowCount: 2, PositionStart: 3900, PositionEnd: 4100, BinlogPath: "mariadb-bin.000001"},
 		{Timestamp: ts.Add(2 * time.Second), EventType: "UpdateRowsEventV2", Schema: "dogfood_cut", Table: "xa_b", RowCount: 1, PositionStart: 4100, PositionEnd: 4300, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(3 * time.Second), EventType: "QueryEvent", Query: "XA PREPARE " + xid, PositionStart: 4300, PositionEnd: 4444, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "XAPrepareLogEvent", PositionStart: 4300, PositionEnd: 4444, BinlogPath: "mariadb-bin.000001"},
 		{Timestamp: ts.Add(4 * time.Second), EventType: "MariadbGTIDEvent", GTID: "0-7-1860"},
 		{Timestamp: ts.Add(4 * time.Second), EventType: "QueryEvent", Query: "XA COMMIT " + xid},
 		{Timestamp: ts.Add(5 * time.Second), EventType: "MariadbGTIDEvent", GTID: "0-7-1861"},
