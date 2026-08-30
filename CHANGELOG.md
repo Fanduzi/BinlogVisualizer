@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.1
+
+Release date: 2026-08-30
+
+Highlights:
+
+- Consecutive MariaDB DDL GTIDs no longer fail analysis with `conflicting GTID`
+- GTID-started DDL groups close at their implicit DDL boundary
+- Object-filtered DDL preserves the boundary without leaking into aggregates
+- Explicit in-transaction GTID conflicts remain rejected
+
+Related notes:
+
+- [v0.23.1 release notes](docs/releases/release-notes-v0.23.1.md)
+- [v0.23.1 中文发行说明](docs/releases/release-notes-v0.23.1.zh-CN.md)
+
 ## v0.23.0
 
 Release date: 2026-08-30
