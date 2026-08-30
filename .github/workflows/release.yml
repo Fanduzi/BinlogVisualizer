@@ -166,14 +166,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          TAP_REPO="Fanduzi/homebrew-binlogviz"
           if [[ -z "${GH_TOKEN:-}" ]]; then
             echo "HOMEBREW_TAP_TOKEN is not configured" >&2
             exit 1
           fi
-          if [[ "$(gh api repos/Fanduzi/homebrew-binlogviz --jq '.permissions.push')" != "true" ]]; then
-            echo "HOMEBREW_TAP_TOKEN cannot push to Fanduzi/homebrew-binlogviz" >&2
-            exit 1
-          fi
+          TAP_SHA="$(gh api "repos/${TAP_REPO}/git/ref/heads/main" --jq '.object.sha')"
+          CHECK_BRANCH="release-token-check-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            gh api --method DELETE "repos/${TAP_REPO}/git/refs/heads/${CHECK_BRANCH}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          gh api --method POST "repos/${TAP_REPO}/git/refs" \
+            -f ref="refs/heads/${CHECK_BRANCH}" \
+            -f sha="${TAP_SHA}" >/dev/null
+          cleanup
+          trap - EXIT
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
