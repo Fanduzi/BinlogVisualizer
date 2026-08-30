@@ -5,7 +5,7 @@
 | File | Responsibility |
 |------|----------------|
 | `ci.yml` | Verifies tests, GoReleaser configuration, archive packaging, and the packaged smoke path on pushes to `main` and pull requests. |
-| `release.yml` | Runs tests, validates `.goreleaser.yml`, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, validates Homebrew tap access, publishes GitHub Releases, and synchronizes the cask on version tags. |
+| `release.yml` | Runs tests, validates `.goreleaser.yml` and Homebrew tap write access, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, publishes GitHub Releases, and synchronizes the cask on version tags. |
 
 ## Notes
 
@@ -16,6 +16,7 @@
   - `linux/arm64` built in `quay.io/pypa/manylinux2014_aarch64`
 - The tag-triggered `release.yml` workflow is the only trusted release path. Local GoReleaser usage is limited to `goreleaser check` and optional single-target validation on the current host.
 - `workflow_dispatch` exists only for pre-release pipeline validation. It is for smoke-testing the GitHub Actions path before cutting a tag, not for publishing an official release.
+- Manual and tag runs both perform the real Homebrew token write check; only tag runs publish the Release and cask.
 - Official publishing only happens for tag refs matching `v*`.
 - Cloudflare Pages is an external GitHub integration, not a repository workflow. A successful deployment check on the release-preparation commit publishes `docs/landing/index.html` to `https://binlogviz.pages.dev`.
 - GitHub Release publishing and Homebrew tap synchronization cannot be atomic across repositories. Before publishing, the workflow validates the tap token's real write access by creating and deleting a temporary branch ref; if the later tap push still fails, rerun the failed job instead of moving or recreating the tag.
@@ -36,6 +37,7 @@ Before pushing a new release tag:
 - Push the release-preparation commit to `main`, then confirm both the `verify` and `Cloudflare Pages` checks pass and the live landing page shows the target version.
 - Run the `release.yml` workflow via `workflow_dispatch` after any workflow or packaging change, and verify:
   - `test` passes
+  - `validate-homebrew` passes
   - both darwin build jobs pass
   - both Linux manylinux2014 build jobs pass
   - the `github-release` job is skipped when running manually

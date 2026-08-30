@@ -29,6 +29,33 @@ jobs:
       - name: Validate GoReleaser config
         run: goreleaser check
 
+  validate-homebrew:
+    name: validate-homebrew
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Homebrew tap credentials
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAP_REPO="Fanduzi/homebrew-binlogviz"
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "HOMEBREW_TAP_TOKEN is not configured" >&2
+            exit 1
+          fi
+          TAP_SHA="$(gh api "repos/${TAP_REPO}/git/ref/heads/main" --jq '.object.sha')"
+          CHECK_BRANCH="release-token-check-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          cleanup() {
+            gh api --method DELETE "repos/${TAP_REPO}/git/refs/heads/${CHECK_BRANCH}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          gh api --method POST "repos/${TAP_REPO}/git/refs" \
+            -f ref="refs/heads/${CHECK_BRANCH}" \
+            -f sha="${TAP_SHA}" >/dev/null
+          cleanup
+          trap - EXIT
+
   build:
     name: build-${{ matrix.goos }}-${{ matrix.goarch }}
     needs: test
@@ -121,7 +148,7 @@ jobs:
 
   release:
     name: github-release
-    needs: build
+    needs: [build, validate-homebrew]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -160,28 +187,6 @@ jobs:
             cat "${CHINESE_NOTE}"
           } > "${BODY_FILE}"
           printf 'RELEASE_BODY_PATH=%s/%s\n' "$PWD" "${BODY_FILE}" >> "$GITHUB_ENV"
-      - name: Validate Homebrew tap credentials
-        env:
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          TAP_REPO="Fanduzi/homebrew-binlogviz"
-          if [[ -z "${GH_TOKEN:-}" ]]; then
-            echo "HOMEBREW_TAP_TOKEN is not configured" >&2
-            exit 1
-          fi
-          TAP_SHA="$(gh api "repos/${TAP_REPO}/git/ref/heads/main" --jq '.object.sha')"
-          CHECK_BRANCH="release-token-check-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          cleanup() {
-            gh api --method DELETE "repos/${TAP_REPO}/git/refs/heads/${CHECK_BRANCH}" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-          gh api --method POST "repos/${TAP_REPO}/git/refs" \
-            -f ref="refs/heads/${CHECK_BRANCH}" \
-            -f sha="${TAP_SHA}" >/dev/null
-          cleanup
-          trap - EXIT
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
