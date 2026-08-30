@@ -47,6 +47,8 @@ func isSupportedNormalizedEvent(eventType string) bool {
 		eventType == "GTID_TAGGED_LOG_EVENT" ||
 		eventType == "MariadbGTIDEvent" ||
 		eventType == "MARIADB_GTID_EVENT" ||
+		eventType == "XAPrepareLogEvent" ||
+		eventType == "XA_PREPARE_LOG_EVENT" ||
 		eventType == "XID_EVENT" ||
 		eventType == "XIDEvent" ||
 		eventType == "TABLE_MAP_EVENT" ||
@@ -132,6 +134,11 @@ func NormalizeRawEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, erro
 			return true, nil
 		}
 	case 'X':
+		if et == "XAPrepareLogEvent" || et == "XA_PREPARE_LOG_EVENT" {
+			fillNormalizedEvent(dst, raw)
+			dst.EventType = "XA_PREPARE"
+			return true, nil
+		}
 		if et == "XID_EVENT" || et == "XIDEvent" {
 			fillNormalizedEvent(dst, raw)
 			dst.EventType = "XID"
