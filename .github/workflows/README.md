@@ -18,7 +18,7 @@
 - `workflow_dispatch` exists only for pre-release pipeline validation. It is for smoke-testing the GitHub Actions path before cutting a tag, not for publishing an official release.
 - Official publishing only happens for tag refs matching `v*`.
 - Cloudflare Pages is an external GitHub integration, not a repository workflow. A successful deployment check on the release-preparation commit publishes `docs/landing/index.html` to `https://binlogviz.pages.dev`.
-- GitHub Release publishing and Homebrew tap synchronization cannot be atomic across repositories. The workflow validates tap write access before publishing; if the later tap push still fails, rerun the failed job instead of moving or recreating the tag.
+- GitHub Release publishing and Homebrew tap synchronization cannot be atomic across repositories. Before publishing, the workflow validates the tap token's real write access by creating and deleting a temporary branch ref; if the later tap push still fails, rerun the failed job instead of moving or recreating the tag.
 
 ## Release Checklist
 
