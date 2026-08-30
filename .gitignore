@@ -29,6 +29,11 @@ mempalace.yaml
 docs/plans/
 docs/superpowers/
 
+# Local indexes and scratch
+.codegraph/
+.omo/
+.scratch/
+
 # Build artifacts
 /binlogviz
 *.exe
