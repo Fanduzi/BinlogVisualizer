@@ -2,6 +2,38 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.3
+
+Release date: 2026-08-30
+
+Highlights:
+
+- Physical MariaDB XA PREPARE events retain their SQL-form `xa_xid`
+- Zero-row XA COMMIT remains visible under its own GTID
+- GTID and position selectors can target the XA COMMIT transaction
+- Ordinary zero-row GTID groups and out-of-window XA ghosts remain omitted
+
+Related notes:
+
+- [v0.23.3 release notes](docs/releases/release-notes-v0.23.3.md)
+- [v0.23.3 中文发行说明](docs/releases/release-notes-v0.23.3.zh-CN.md)
+
+## v0.23.2
+
+Release date: 2026-08-30
+
+Highlights:
+
+- Physical MariaDB XA PREPARE events close their GTID group
+- The next legal GTID no longer fails analysis as a conflict
+- Position and GTID selection work across prepared XA transactions
+- Real in-transaction GTID conflicts remain rejected
+
+Related notes:
+
+- [v0.23.2 release notes](docs/releases/release-notes-v0.23.2.md)
+- [v0.23.2 中文发行说明](docs/releases/release-notes-v0.23.2.zh-CN.md)
+
 ## v0.23.1
 
 Release date: 2026-08-30
