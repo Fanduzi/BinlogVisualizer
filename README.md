@@ -245,12 +245,12 @@ This path installs the prebuilt release artifact and removes the macOS quarantin
 
 ```bash
 # install.sh (current release)
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.22.1/install.sh
-sh ./install.sh --version v0.22.1
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.0/install.sh
+sh ./install.sh --version v0.23.0
 
 # or linux/amd64 tarball
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.22.1/binlogviz_0.22.1_linux_amd64.tar.gz
-tar -xzf binlogviz_0.22.1_linux_amd64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.0/binlogviz_0.23.0_linux_amd64.tar.gz
+tar -xzf binlogviz_0.23.0_linux_amd64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
@@ -260,27 +260,27 @@ Download the release archive for your platform from GitHub Releases, verify the 
 
 The authoritative release artifacts are produced by the GitHub Actions release workflow. macOS artifacts are built on native runners, while Linux artifacts are built inside a manylinux2014 userspace so the glibc baseline stays compatible with CentOS 7 / glibc 2.17. Local `goreleaser` is intended for config validation and optional current-host checks, not as the primary release path.
 
-Example for `darwin/arm64` and the current release `v0.22.1`:
+Example for `darwin/arm64` and the current release `v0.23.0`:
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.22.1/binlogviz_0.22.1_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.22.1/binlogviz_0.22.1_checksums.txt
-shasum -a 256 -c binlogviz_0.22.1_checksums.txt 2>/dev/null | grep "binlogviz_0.22.1_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.22.1_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.0/binlogviz_0.23.0_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.0/binlogviz_0.23.0_checksums.txt
+shasum -a 256 -c binlogviz_0.23.0_checksums.txt 2>/dev/null | grep "binlogviz_0.23.0_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.23.0_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 Or fetch the install helper from the same release tag before running it:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.22.1/install.sh
-sh ./install.sh --version v0.22.1
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.0/install.sh
+sh ./install.sh --version v0.23.0
 ```
 
 To preview the resolved artifact without downloading:
 
 ```bash
-./install.sh --version v0.22.1 --dry-run
+./install.sh --version v0.23.0 --dry-run
 ```
 
 ### Fallback: Build From Source
