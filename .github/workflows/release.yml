@@ -1,6 +1,6 @@
 # input: version tags matching v*.
-# output: tested darwin/linux amd64/arm64 release archives, a checksum manifest, and a GitHub Release with bilingual release notes.
-# pos: the only trusted release pipeline, using native macOS runners plus manylinux2014-based Linux builds so artifact naming and Linux glibc compatibility stay aligned with install docs.
+# output: tested darwin/linux amd64/arm64 release archives, checksums, a GitHub Release with bilingual notes, and a synchronized Homebrew cask.
+# pos: the only trusted release pipeline, validating downstream publishing access before creating a GitHub Release and using native macOS plus manylinux2014 builds.
 # note: if this file changes, keep scripts/pack_release_archive.sh, .goreleaser.yml, install.sh, and README.md artifact naming in sync.
 
 name: release
@@ -160,6 +160,20 @@ jobs:
             cat "${CHINESE_NOTE}"
           } > "${BODY_FILE}"
           printf 'RELEASE_BODY_PATH=%s/%s\n' "$PWD" "${BODY_FILE}" >> "$GITHUB_ENV"
+      - name: Validate Homebrew tap credentials
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "HOMEBREW_TAP_TOKEN is not configured" >&2
+            exit 1
+          fi
+          if [[ "$(gh api repos/Fanduzi/homebrew-binlogviz --jq '.permissions.push')" != "true" ]]; then
+            echo "HOMEBREW_TAP_TOKEN cannot push to Fanduzi/homebrew-binlogviz" >&2
+            exit 1
+          fi
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:

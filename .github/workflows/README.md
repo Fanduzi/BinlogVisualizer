@@ -4,7 +4,8 @@
 
 | File | Responsibility |
 |------|----------------|
-| `release.yml` | Runs tests, validates `.goreleaser.yml`, builds darwin/linux archives via `scripts/pack_release_archive.sh` (binary + sample ROW fixture + bundled plan), computes checksums, and publishes GitHub Releases on version tags. |
+| `ci.yml` | Verifies tests, GoReleaser configuration, archive packaging, and the packaged smoke path on pushes to `main` and pull requests. |
+| `release.yml` | Runs tests, validates `.goreleaser.yml`, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, validates Homebrew tap access, publishes GitHub Releases, and synchronizes the cask on version tags. |
 
 ## Notes
 
@@ -16,15 +17,23 @@
 - The tag-triggered `release.yml` workflow is the only trusted release path. Local GoReleaser usage is limited to `goreleaser check` and optional single-target validation on the current host.
 - `workflow_dispatch` exists only for pre-release pipeline validation. It is for smoke-testing the GitHub Actions path before cutting a tag, not for publishing an official release.
 - Official publishing only happens for tag refs matching `v*`.
+- Cloudflare Pages is an external GitHub integration, not a repository workflow. A successful deployment check on the release-preparation commit publishes `docs/landing/index.html` to `https://binlogviz.pages.dev`.
+- GitHub Release publishing and Homebrew tap synchronization cannot be atomic across repositories. The workflow validates tap write access before publishing; if the later tap push still fails, rerun the failed job instead of moving or recreating the tag.
 
 ## Release Checklist
 
 Before pushing a new release tag:
 
 - Confirm `go test ./...` passes locally.
-- Confirm the target version has both release note files:
-  - `docs/releases/release-notes-vX.Y.Z.md`
-  - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`
+- Update every versioned release surface in the same release-preparation commit:
+  - `CHANGELOG.md`
+  - install examples in `README.md` and `README_ZH.md`
+  - `install.sh`
+  - current release content and install commands in `docs/landing/index.html`
+  - both release note files:
+    - `docs/releases/release-notes-vX.Y.Z.md`
+    - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`
+- Push the release-preparation commit to `main`, then confirm both the `verify` and `Cloudflare Pages` checks pass and the live landing page shows the target version.
 - Run the `release.yml` workflow via `workflow_dispatch` after any workflow or packaging change, and verify:
   - `test` passes
   - both darwin build jobs pass
@@ -38,3 +47,11 @@ Before pushing a new release tag:
   - `.goreleaser.yml`
   - `install.sh`
   - install examples in `README.md` and `README_ZH.md`
+
+After pushing the version tag:
+
+- Confirm the tag-triggered `release.yml` run succeeds, including all four build jobs and `github-release`.
+- Confirm the GitHub Release is public and contains four platform archives plus the checksum manifest.
+- Download one archive for the current host, verify its checksum, and confirm `binlogviz --version` reports the tag version.
+- Confirm `Fanduzi/homebrew-binlogviz/Casks/binlogviz.rb` has the target version and the same four checksums.
+- Recheck the public landing page and its tag-pinned release-note links.
