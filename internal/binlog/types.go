@@ -1,6 +1,6 @@
 // Package binlog defines raw binlog event types and parser contracts used by the command layer.
 // input: timestamps, producer/transaction provenance, table/query metadata, row counts, file-relative offsets, and parser callback expectations.
-// output: stable RawEvent values with optional provenance plus Parser and ProgressParser interfaces shared across parsing and analysis code.
+// output: stable RawEvent values with optional provenance and XA identity plus Parser and ProgressParser interfaces shared across parsing and analysis code.
 // pos: contract boundary isolating analyzer and CLI orchestration from concrete binlog parser implementations.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -26,6 +26,7 @@ type RawEvent struct {
 	GTID          string
 	ThreadID      uint32
 	XID           string // Decimal transaction XID; empty means unavailable.
+	XAXID         string // SQL-form XA identifier; empty means unavailable.
 	ActorUser     string
 	ActorHost     string
 	RowCount      int

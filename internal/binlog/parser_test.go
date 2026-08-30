@@ -143,6 +143,27 @@ func TestApplyBinlogEventMetadataCapturesTransactionProvenance(t *testing.T) {
 	}
 }
 
+func TestMariaDBXAPrepareXID(t *testing.T) {
+	body := []byte{
+		0,
+		1, 0, 0, 0,
+		6, 0, 0, 0,
+		0, 0, 0, 0,
+		'x', 'i', 'd', '-', '6', '3',
+	}
+	if got := mariaDBXAPrepareXID(body); got != "X'7869642d3633',X'',1" {
+		t.Fatalf("XA XID = %q", got)
+	}
+	if got := mariaDBXAPrepareXID(body[:len(body)-1]); got != "" {
+		t.Fatalf("truncated XA XID = %q, want empty", got)
+	}
+	var raw RawEvent
+	applyBinlogEventMetadata(&raw, replication.XA_PREPARE_LOG_EVENT.String(), &replication.GenericEvent{Data: body}, nil)
+	if raw.XAXID != "X'7869642d3633',X'',1" {
+		t.Fatalf("physical XA_PREPARE XID = %q", raw.XAXID)
+	}
+}
+
 func TestApplyBinlogEventMetadataCapturesMariaDBAnnotateRowsQuery(t *testing.T) {
 	var raw RawEvent
 	query := "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"
