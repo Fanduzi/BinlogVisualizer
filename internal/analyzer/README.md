@@ -4,10 +4,10 @@
 
 | File | Responsibility |
 |------|----------------|
-| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly with explicit workload identity and exact filter scope. |
+| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly retaining row transactions plus physically located zero-row XA evidence. |
 | `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, applies exclude-wins matching, and rejects anonymous groups while a selector is active. |
 | `store.go` | Persists transaction provenance, bounded SQL, completeness, and replay spans through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
-| `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, closes GTID-started DDL groups at their implicit boundary, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects true in-transaction GTID conflicts, and separates retained evidence from trusted full replay spans. |
+| `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, closes GTID-started DDL groups at their implicit boundary, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence (including zero-row XA COMMIT groups) and LOAD_DATA intent, rejects true in-transaction GTID conflicts, and separates retained evidence from trusted full replay spans. |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
 | `ddl.go` | Extracts DDL timeline metadata from Query and ROWS_QUERY SQL, including CREATE/ALTER/DROP DATABASE, RENAME, and TRUNCATE. |

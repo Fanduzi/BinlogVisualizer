@@ -248,6 +248,9 @@ func (b *TransactionBuilder) mergeProvenance(ev model.NormalizedEvent) error {
 	if b.current.xid == "" {
 		b.current.xid = ev.XID
 	}
+	if b.current.xaXID == "" {
+		b.current.xaXID = ev.XAXID
+	}
 	if b.current.actorUser == "" {
 		b.current.actorUser = ev.ActorUser
 	}
@@ -259,11 +262,6 @@ func (b *TransactionBuilder) mergeProvenance(ev model.NormalizedEvent) error {
 
 func (b *TransactionBuilder) handleCommit(ev model.NormalizedEvent, relation windowRelation) {
 	if b.current == nil {
-		return
-	}
-	if ev.EventType == "XA_COMMIT" && b.current.startedByGTID && b.current.totalRows == 0 {
-		b.observeEvent(ev, relation)
-		b.current = nil
 		return
 	}
 	b.current.hasEndBoundary = true

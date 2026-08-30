@@ -1,11 +1,13 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, and optional progress consumers.
-// output: Parser implementations that emit RawEvent values with bounded SQL and producer/transaction provenance plus monotonic per-input ParseProgress updates.
+// output: Parser implementations that emit RawEvent values with bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
 
 import (
+	"encoding/binary"
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -146,6 +148,10 @@ func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, ta
 		}
 	case *replication.MariadbGTIDEvent:
 		raw.GTID = e.GTID.String()
+	case *replication.GenericEvent:
+		if eventTypeName == replication.XA_PREPARE_LOG_EVENT.String() {
+			raw.XAXID = mariaDBXAPrepareXID(e.Data)
+		}
 	case *replication.XIDEvent:
 		if e.XID != 0 {
 			raw.XID = strconv.FormatUint(e.XID, 10)
@@ -168,6 +174,23 @@ func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, ta
 		raw.ServerVersion = e.ServerVersion
 		raw.ServerFlavor = serverFlavor(e.ServerVersion)
 	}
+}
+
+func mariaDBXAPrepareXID(data []byte) string {
+	const headerSize = 13 // one-phase byte, format ID, gtrid length, bqual length
+	if len(data) < headerSize {
+		return ""
+	}
+	formatID := int32(binary.LittleEndian.Uint32(data[1:5]))
+	gtridLen := uint64(binary.LittleEndian.Uint32(data[5:9]))
+	bqualLen := uint64(binary.LittleEndian.Uint32(data[9:13]))
+	payloadLen := gtridLen + bqualLen
+	if payloadLen > uint64(len(data)-headerSize) {
+		return ""
+	}
+	gtridEnd := headerSize + int(gtridLen)
+	payloadEnd := headerSize + int(payloadLen)
+	return fmt.Sprintf("X'%x',X'%x',%d", data[headerSize:gtridEnd], data[gtridEnd:payloadEnd], formatID)
 }
 
 func serverFlavor(version string) string {

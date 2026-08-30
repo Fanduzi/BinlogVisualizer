@@ -17,7 +17,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | `snapshot.go` | Implements `snapshot save`, `snapshot list`, `snapshot show`, `snapshot rename`, and `snapshot delete`, including machine-readable list/show output. |
 | `version.go` | Prints version-only and logo+version output. |
 | `workflow.go` | Implements `workflow run <plan.yaml>`, `workflow resume <output_dir>`, canonical rooted plan references, pre-run `workflow validate <plan.yaml>` checks, static `workflow describe <plan.yaml>` previews, read-only `workflow status <output_dir>` inspection, and dry-run-first `workflow clean <output_dir>` cleanup. |
-| `*_test.go` | Covers UTC/explicit-offset analyze help, flag parsing, inclusive-window adjacent-file planning, intersected time/position selection, GTID group filtering, report-v3 round trips, MySQL/MariaDB provenance and real `XAPrepareLogEvent`/LOAD_DATA SQL-context compatibility, snapshots, analyze/compare integration, cleanup, discovery/no-data behavior, workflows, and release packing; English golden output is pinned independently of the shell locale. |
+| `*_test.go` | Covers UTC/explicit-offset analyze help, flag parsing, inclusive-window adjacent-file planning, intersected time/position selection, GTID group filtering including zero-row XA COMMIT selection, report-v3 round trips, MySQL/MariaDB provenance and real `XAPrepareLogEvent`/LOAD_DATA SQL-context compatibility, snapshots, analyze/compare integration, cleanup, discovery/no-data behavior, workflows, and release packing; English golden output is pinned independently of the shell locale. |
 
 ## Exports
 

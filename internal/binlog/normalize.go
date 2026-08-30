@@ -180,6 +180,7 @@ func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 		GTID:          raw.GTID,
 		ThreadID:      raw.ThreadID,
 		XID:           raw.XID,
+		XAXID:         raw.XAXID,
 		ActorUser:     raw.ActorUser,
 		ActorHost:     raw.ActorHost,
 		Schema:        raw.Schema,
