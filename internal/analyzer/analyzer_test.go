@@ -1,6 +1,6 @@
 // Package analyzer validates analyzer orchestration and streaming result semantics.
 // input: analyzer test fixtures expressed as provenance-aware model.NormalizedEvent sequences and analyzer.Options values.
-// output: regression coverage for slice-wrapper compatibility, streaming finalization, provenance/SQL availability, window/filter byte accounting, and failure handling.
+// output: regression coverage for slice-wrapper compatibility, streaming finalization, provenance/SQL availability, filtered DDL boundaries, byte accounting, and failure handling.
 // pos: module-level behavioral test suite for the analyzer entrypoint and its external contracts.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -1149,6 +1149,28 @@ func TestAnalyzerObjectFiltersShareFilteredWorkload(t *testing.T) {
 	}
 	if unfiltered.Summary.TotalTransactions != 2 || unfiltered.Summary.TotalRows != 2015 {
 		t.Fatalf("unfiltered summary = %+v, want the original two transactions and 2015 rows", unfiltered.Summary)
+	}
+}
+
+func TestAnalyzerObjectFiltersKeepExcludedDDLAsGTIDBoundary(t *testing.T) {
+	base := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	opts := DefaultOptions()
+	opts.IncludeSchemas = []string{"shop"}
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "GTID", ServerFlavor: "mariadb", GTID: "0-7-10"},
+		{Timestamp: base.Add(time.Second), EventType: "DDL", ServerFlavor: "mariadb", GTID: "0-7-10", Schema: "admin", QuerySQL: "CREATE DATABASE admin"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "GTID", ServerFlavor: "mariadb", GTID: "0-7-11"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "BEGIN", ServerFlavor: "mariadb", GTID: "0-7-11"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "ROWS", ServerFlavor: "mariadb", GTID: "0-7-11", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1},
+		{Timestamp: base.Add(5 * time.Second), EventType: "XID", ServerFlavor: "mariadb", GTID: "0-7-11"},
+	}
+
+	result, err := New(opts).Analyze(events)
+	if err != nil {
+		t.Fatalf("filtered analyze: %v", err)
+	}
+	if result.Summary.TotalTransactions != 1 || result.Summary.TotalRows != 1 || len(result.Diagnostics.DDLEvents) != 0 {
+		t.Fatalf("filtered result retained excluded DDL workload: %+v", result)
 	}
 }
 

@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, and retained transactions with explicit completeness; active selectors omit unattributable anonymous events.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, and retained transactions with filter-safe DDL boundaries and explicit completeness.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -240,6 +240,12 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if relation == insideWindow && a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
 		a.txnBuilder.clearCurrentQueryContext()
+		if ev.EventType == "DDL" {
+			if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
+				return err
+			}
+			return a.persistCompletedTransactions()
+		}
 		return nil
 	}
 

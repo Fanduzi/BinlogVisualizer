@@ -1,6 +1,6 @@
 // Package analyzer verifies transaction reconstruction behavior from normalized events.
-// input: synthetic normalized events including MySQL/MariaDB provenance, XA boundaries, row intent, and row counts.
-// output: assertions for canonical GTID integrity, provenance, XA boundaries, operation intent, row totals, and table maps.
+// input: synthetic normalized events including MySQL/MariaDB provenance, XA/DDL boundaries, row intent, and row counts.
+// output: assertions for canonical GTID integrity, consecutive DDL GTID isolation, provenance, XA boundaries, operation intent, row totals, and table maps.
 // pos: focused regression coverage for analyzer transaction assembly helpers.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -239,6 +239,28 @@ func TestTransactionBuilderPreservesCanonicalProvenance(t *testing.T) {
 		txn.GTID != "0-7-1848" || txn.ThreadID != 1875 || txn.XID != "3928" ||
 		txn.ActorUser != "alice" || txn.ActorHost != "db.local" {
 		t.Fatalf("transaction provenance was not preserved: %+v", txn)
+	}
+}
+
+func TestTransactionBuilderSeparatesConsecutiveMariaDBDDLGTIDs(t *testing.T) {
+	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	builder := NewTransactionBuilder()
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", ServerFlavor: "mariadb", GTID: "0-7-10"},
+		{Timestamp: ts.Add(time.Second), EventType: "DDL", ServerFlavor: "mariadb", GTID: "0-7-10", QuerySQL: "CREATE DATABASE incident"},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "GTID", ServerFlavor: "mariadb", GTID: "0-7-11"},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "DDL", ServerFlavor: "mariadb", GTID: "0-7-11", QuerySQL: "CREATE TABLE incident.events (id bigint)"},
+	}
+
+	for _, event := range events {
+		if err := builder.Consume(event); err != nil {
+			t.Fatalf("Consume(%s, %s): %v", event.EventType, event.GTID, err)
+		}
+	}
+
+	txns := builder.Completed()
+	if len(txns) != 2 || txns[0].GTID != "0-7-10" || txns[1].GTID != "0-7-11" {
+		t.Fatalf("expected two independent DDL GTID groups, got %+v", txns)
 	}
 }
 
