@@ -4,10 +4,10 @@
 
 | File | Responsibility |
 |------|----------------|
-| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, streaming lifecycle, selector evidence, and final result assembly with explicit workload identity and exact filter scope. |
+| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly with explicit workload identity and exact filter scope. |
 | `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, applies exclude-wins matching, and rejects anonymous groups while a selector is active. |
 | `store.go` | Persists transaction provenance, bounded SQL, completeness, and replay spans through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
-| `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects conflicting GTIDs, and separates retained evidence from trusted full replay spans. |
+| `transactions.go` | Reconstructs MySQL/MariaDB transaction evidence, closes GTID-started DDL groups at their implicit boundary, records complete/partial/unknown status, preserves canonical GTID/server/thread/XID/actor/XA evidence and LOAD_DATA intent, rejects true in-transaction GTID conflicts, and separates retained evidence from trusted full replay spans. |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |
 | `ddl.go` | Extracts DDL timeline metadata from Query and ROWS_QUERY SQL, including CREATE/ALTER/DROP DATABASE, RENAME, and TRUNCATE. |
@@ -17,7 +17,7 @@
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
 | `report_aggregator.go` | Maintains bounded report state, filtered event-byte coverage, SQL availability, producer sets, and numeric-key-ordered transaction evidence while excluding incomplete transactions from whole-transaction rankings, patterns, histograms, and ordinary large alerts. |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
-| `*_test.go` | Verifies intersected selection, complete/partial replay evidence, GTID flavor/precedence/rotation/XA/LOAD_DATA behavior, object filtering, detail-store parity, and benchmarks. |
+| `*_test.go` | Verifies intersected selection, complete/partial replay evidence, GTID flavor/precedence/rotation/DDL/XA/LOAD_DATA behavior, object filtering, detail-store parity, and benchmarks. |
 
 ## Interfaces
 

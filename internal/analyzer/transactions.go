@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
-// input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA boundaries, and ROWS/ROWS_QUERY semantics.
-// output: retained transaction evidence with canonical provenance, explicit completeness, trusted replay spans, XA identity, and safe query context.
+// input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA and DDL boundaries, and ROWS/ROWS_QUERY semantics.
+// output: retained transaction evidence with canonical provenance, explicit completeness, trusted replay spans, isolated DDL GTID groups, XA identity, and safe query context.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -116,6 +116,15 @@ func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation 
 	case "TABLE_MAP":
 		b.accumulateInTxnEvent(ev, relation)
 		return b.mergeProvenance(ev)
+	case "DDL":
+		if err := b.mergeProvenance(ev); err != nil {
+			return err
+		}
+		b.accumulateInTxnEvent(ev, relation)
+		if b.current != nil && b.current.startedByGTID && !b.current.isExplicit {
+			b.current.hasEndBoundary = true
+			b.finalizeTransaction()
+		}
 	default:
 		// Still record file coverage for in-flight events (Annotate, GTID leftovers, etc.)
 		b.accumulateInTxnEvent(ev, relation)
