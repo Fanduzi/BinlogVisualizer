@@ -431,6 +431,7 @@ LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.000123
 - [DuckDB 临时存储](docs/concept/duckdb-temp-store.zh-CN.md)
 - [分析模型](docs/concept/analysis-model.zh-CN.md)
 - [限制与边界](docs/concept/limitations.zh-CN.md)
+- [代码异味审计](docs/CODE_SMELLS.md)
 
 ### 发布与补充资料
 
