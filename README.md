@@ -467,6 +467,7 @@ Supported languages:
 - [DuckDB Temp Store](docs/concept/duckdb-temp-store.md)
 - [Analysis Model](docs/concept/analysis-model.md)
 - [Limitations](docs/concept/limitations.md)
+- [Code smells audit](docs/CODE_SMELLS.md)
 
 ### Release and supporting material
 
