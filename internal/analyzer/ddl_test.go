@@ -109,6 +109,23 @@ func TestParseDDLStatementCreateDatabaseAndRename(t *testing.T) {
 	}
 }
 
+func TestParseDDLStatementGrantAndCreateUser(t *testing.T) {
+	grant, ok := ParseDDLStatement("GRANT REPLICATION SLAVE ON *.* TO 'repl'@'127.0.0.1'")
+	if !ok || grant.Operation != "GRANT" || grant.Object != "privilege" {
+		t.Fatalf("unexpected GRANT parse: ok=%v %+v", ok, grant)
+	}
+
+	createUser, ok := ParseDDLStatement("CREATE USER 'repl'@'%'")
+	if !ok || createUser.Operation != "CREATE USER" || createUser.Object != "user" {
+		t.Fatalf("unexpected CREATE USER parse: ok=%v %+v", ok, createUser)
+	}
+
+	revoke, ok := ParseDDLStatement("REVOKE ALL PRIVILEGES ON *.* FROM 'repl'@'%'")
+	if !ok || revoke.Operation != "REVOKE" || revoke.Object != "privilege" {
+		t.Fatalf("unexpected REVOKE parse: ok=%v %+v", ok, revoke)
+	}
+}
+
 func TestDDLEventFromNormalizedEventUsesQuerySchemaFallback(t *testing.T) {
 	got, ok := DDLEventFromNormalizedEvent(model.NormalizedEvent{
 		EventType: "DDL",

@@ -305,6 +305,48 @@ func TestDiscoverBinlogPathsNoMatchHintsTrailingDot(t *testing.T) {
 	}
 }
 
+func TestDiscoverBinlogPathsAcceptsExactFilenamePrefix(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	want := filepath.Join(dir, "mysql-bin.000008")
+	mustWriteFile(t, want)
+	mustWriteFile(t, filepath.Join(dir, "mysql-bin.000009"))
+
+	got, err := discoverBinlogPaths(dir, "mysql-bin.000008")
+	if err != nil {
+		t.Fatalf("exact filename prefix: %v", err)
+	}
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("exact filename prefix: want [%s] got %v", want, got)
+	}
+}
+
+func TestDiscoverBinlogPathsNoMatchExactFilenameHint(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "mysql-bin.000009"))
+
+	_, err := discoverBinlogPaths(dir, "mysql-bin.000008")
+	if err == nil {
+		t.Fatal("expected no-match error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "no matching binlog files") {
+		t.Fatalf("expected no-match error, got %v", err)
+	}
+	if strings.Contains(msg, "try --prefix mysql-bin.000008") {
+		t.Fatalf("hint repeated the complete filename, got %v", err)
+	}
+	if !strings.Contains(msg, "try --prefix mysql-bin.") {
+		t.Fatalf("expected shared-prefix hint, got %v", err)
+	}
+	if !strings.Contains(msg, "binlogviz analyze "+filepath.Join(dir, "mysql-bin.000008")) {
+		t.Fatalf("expected direct analyze path hint, got %v", err)
+	}
+}
+
 func TestBinlogNumericSuffixOptionalDot(t *testing.T) {
 	cases := []struct {
 		name, prefix, want string
@@ -312,6 +354,7 @@ func TestBinlogNumericSuffixOptionalDot(t *testing.T) {
 	}{
 		{name: "mysql-bin.000008", prefix: "mysql-bin", want: "000008", ok: true},
 		{name: "mysql-bin.000008", prefix: "mysql-bin.", want: "000008", ok: true},
+		{name: "mysql-bin.000008", prefix: "mysql-bin.000008", want: "0", ok: true},
 		{name: "mysql-bin000008", prefix: "mysql-bin", want: "000008", ok: true},
 		{name: "mysql-bin.index", prefix: "mysql-bin", ok: false},
 		{name: "mysql-bin.", prefix: "mysql-bin", ok: false},

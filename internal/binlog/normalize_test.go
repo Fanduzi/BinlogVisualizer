@@ -573,6 +573,41 @@ func TestNormalizeQueryDDLCreateTableAndDatabase(t *testing.T) {
 	}
 }
 
+func TestNormalizeQueryDDLGrantAndCreateUser(t *testing.T) {
+	grant, err := NormalizeRawEvent(RawEvent{
+		EventType: "QUERY_EVENT",
+		Query:     "GRANT REPLICATION SLAVE ON *.* TO 'repl'@'127.0.0.1'",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if grant == nil || grant.EventType != "DDL" {
+		t.Fatalf("expected GRANT to be kept as DDL, got %+v", grant)
+	}
+
+	createUser, err := NormalizeRawEvent(RawEvent{
+		EventType: "QueryEvent",
+		Query:     "CREATE USER 'repl'@'%'",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if createUser == nil || createUser.EventType != "DDL" {
+		t.Fatalf("expected CREATE USER to be kept as DDL, got %+v", createUser)
+	}
+
+	revoke, err := NormalizeRawEvent(RawEvent{
+		EventType: "QUERY_EVENT",
+		Query:     "REVOKE ALL PRIVILEGES ON *.* FROM 'repl'@'%'",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if revoke == nil || revoke.EventType != "DDL" {
+		t.Fatalf("expected REVOKE to be kept as DDL, got %+v", revoke)
+	}
+}
+
 func TestNormalizeSkipsNonTransactionalQueryWithoutAllocation(t *testing.T) {
 	raw := RawEvent{
 		EventType: "QUERY_EVENT",

@@ -33,7 +33,7 @@
   },
   "cmd.analyze.flag.prefix": {
     "description": "Prefix flag description",
-    "other": "Filename prefix used with --from-dir (optional '.' before the numeric suffix)"
+    "other": "Filename prefix used with --from-dir (optional '.' before the numeric suffix; a complete filename selects that file; for one file, pass the path)"
   },
   "cmd.analyze.flag.workloadID": {
     "description": "Explicit workload identity flag description",
@@ -97,11 +97,11 @@
   },
   "cmd.analyze.flag.includeTable": {
     "description": "Include table filter flag description",
-    "other": "Only analyze these tables (comma-separated)"
+    "other": "Only analyze these tables (comma-separated TABLE or SCHEMA.TABLE)"
   },
   "cmd.analyze.flag.excludeTable": {
     "description": "Exclude table filter flag description",
-    "other": "Skip these tables (comma-separated)"
+    "other": "Skip these tables (comma-separated TABLE or SCHEMA.TABLE)"
   },
   "cmd.analyze.flag.largeTrxRows": {
     "description": "Large transaction rows threshold flag description",
@@ -206,6 +206,10 @@
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
     "other": "suffix after prefix must be digits; try --prefix {{.Prefix}}"
+  },
+  "error.prefixExactFileHint": {
+    "description": "Hint when prefix looks like a complete binlog filename",
+    "other": "prefix is the shared name before the numeric suffix; try --prefix {{.Prefix}}, or analyze the file: binlogviz analyze {{.Path}}"
   },
   "error.analysisFinalizeError": {
     "description": "Analysis finalize error",

@@ -1,6 +1,6 @@
 // Package analyzer validates analyzer orchestration and streaming result semantics.
 // input: analyzer test fixtures expressed as provenance-aware model.NormalizedEvent sequences and analyzer.Options values.
-// output: regression coverage for slice-wrapper compatibility, streaming finalization, provenance/SQL availability, filtered DDL boundaries, byte accounting, and failure handling.
+// output: regression coverage for slice-wrapper compatibility, streaming finalization, provenance/SQL availability, SCHEMA.TABLE filters, filtered DDL boundaries, byte accounting, and failure handling.
 // pos: module-level behavioral test suite for the analyzer entrypoint and its external contracts.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -1149,6 +1149,31 @@ func TestAnalyzerObjectFiltersShareFilteredWorkload(t *testing.T) {
 	}
 	if unfiltered.Summary.TotalTransactions != 2 || unfiltered.Summary.TotalRows != 2015 {
 		t.Fatalf("unfiltered summary = %+v, want the original two transactions and 2015 rows", unfiltered.Summary)
+	}
+}
+
+func TestAnalyzerIncludeTableAcceptsSchemaQualifiedName(t *testing.T) {
+	base := time.Date(2026, 9, 2, 16, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN"},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", Schema: "dogfood", Table: "orders", Operation: "INSERT", RowCount: 4},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "BEGIN"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "ROWS", Schema: "other", Table: "orders", Operation: "INSERT", RowCount: 2},
+		{Timestamp: base.Add(5 * time.Second), EventType: "XID"},
+	}
+
+	opts := DefaultOptions()
+	opts.IncludeTables = []string{"dogfood.orders"}
+	result, err := New(opts).Analyze(events)
+	if err != nil {
+		t.Fatalf("qualified include-table analyze: %v", err)
+	}
+	if result.Summary.TotalTransactions != 1 || result.Summary.TotalRows != 4 {
+		t.Fatalf("qualified include-table summary = %+v, want dogfood.orders only", result.Summary)
+	}
+	if len(result.Tables) != 1 || result.Tables[0].Schema != "dogfood" || result.Tables[0].Table != "orders" {
+		t.Fatalf("qualified include-table tables = %+v, want only dogfood.orders", result.Tables)
 	}
 }
 

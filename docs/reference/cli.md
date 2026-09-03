@@ -30,6 +30,7 @@ binlogviz workflow clean <output_dir> --format json
 binlogviz workflow clean <output_dir> --apply --include-snapshots
 binlogviz workflow export <output_dir>
 binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> -o ./incident.zip
 binlogviz workflow export <output_dir> --include-snapshots --format json
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
@@ -91,7 +92,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--include-gtids` | none | Include complete groups matching a MySQL UUID range set or exact MariaDB identities. |
 | `--exclude-gtids` | none | Exclude matching complete groups after include; exclusion wins. |
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
-| `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. |
+| `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. Optional `.` before the numeric suffix; a complete filename selects that file; for one file, pass the path. |
 | `--format` | `text` | Report output format: `text`, `json`, `markdown` (alias `md`), or `html`. |
 | `--output`, `-o` | auto | HTML output file path. Only supported with `--format html`. Default: derived cwd file on a TTY; stdout when stdout is redirected. Use `-` to force stdout. |
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
@@ -114,8 +115,8 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--spike-min-rows` | `100` | Minimum row count for a minute to be considered a spike candidate. |
 | `--include-schema` | none | Comma-separated list of schemas to analyze (all others excluded). |
 | `--exclude-schema` | none | Comma-separated list of schemas to skip. |
-| `--include-table` | none | Comma-separated list of tables to analyze (all others excluded). |
-| `--exclude-table` | none | Comma-separated list of tables to skip. |
+| `--include-table` | none | Comma-separated list of tables to analyze (all others excluded). `TABLE` or `SCHEMA.TABLE`. |
+| `--exclude-table` | none | Comma-separated list of tables to skip. `TABLE` or `SCHEMA.TABLE`. |
 
 Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and RFC3339 predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups match no active selector, including exclude-only selectors. Standalone anonymous DDL and unkeyed context are discarded without preventing a later matching keyed group from being retained. Mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
 
@@ -772,6 +773,7 @@ Additional rules:
 ```bash
 binlogviz workflow export <output_dir>
 binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> -o ./incident.zip
 binlogviz workflow export <output_dir> --include-snapshots
 binlogviz workflow export <output_dir> --format json
 ```
@@ -782,7 +784,7 @@ binlogviz workflow export <output_dir> --format json
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--output` | `<output_dir>.zip` | Archive output path. The default is derived from `filepath.Clean(output_dir) + ".zip"`. |
+| `--output`, `-o` | `<output_dir>.zip` | Archive output path. The default is derived from `filepath.Clean(output_dir) + ".zip"`. |
 | `--include-snapshots` | `false` | Include only snapshot JSON files referenced by the manifest. |
 | `--format` | `text` | Export command result format: `text` or `json`. |
 

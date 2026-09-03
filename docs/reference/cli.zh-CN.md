@@ -30,6 +30,7 @@ binlogviz workflow clean <output_dir> --format json
 binlogviz workflow clean <output_dir> --apply --include-snapshots
 binlogviz workflow export <output_dir>
 binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> -o ./incident.zip
 binlogviz workflow export <output_dir> --include-snapshots --format json
 binlogviz workflow validate <plan.yaml>
 binlogviz workflow validate <plan.yaml> --format json
@@ -91,7 +92,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--include-gtids` | none | 包含匹配 MySQL UUID range set 或 MariaDB 精确身份的完整事务组。 |
 | `--exclude-gtids` | none | 在 include 之后排除匹配的完整事务组；exclude 优先。 |
 | `--from-dir` | none | 从该目录自动发现 binlog 文件。必须与 `--prefix` 一起使用。 |
-| `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。 |
+| `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。数字后缀前可省略 `.`；完整文件名只匹配该文件；单文件请直接传路径。 |
 | `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
@@ -113,8 +114,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--spike-min-rows` | `100` | 纳入尖峰检测候选的最小行数。 |
 | `--include-schema` | none | 仅分析指定 schema（逗号分隔，其余均排除）。 |
 | `--exclude-schema` | none | 跳过指定 schema（逗号分隔）。 |
-| `--include-table` | none | 仅分析指定表（逗号分隔，其余均排除）。 |
-| `--exclude-table` | none | 跳过指定表（逗号分隔）。 |
+| `--include-table` | none | 仅分析指定表（逗号分隔，其余均排除）。`TABLE` 或 `SCHEMA.TABLE`。 |
+| `--exclude-table` | none | 跳过指定表（逗号分隔）。`TABLE` 或 `SCHEMA.TABLE`。 |
 
 position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与 RFC3339 条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 
@@ -763,6 +764,7 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 ```bash
 binlogviz workflow export <output_dir>
 binlogviz workflow export <output_dir> --output ./incident.zip
+binlogviz workflow export <output_dir> -o ./incident.zip
 binlogviz workflow export <output_dir> --include-snapshots
 binlogviz workflow export <output_dir> --format json
 ```
@@ -773,7 +775,7 @@ binlogviz workflow export <output_dir> --format json
 
 | Flag | 默认值 | 说明 |
 |------|--------|------|
-| `--output` | `<output_dir>.zip` | 输出 archive 路径。默认值来自 `filepath.Clean(output_dir) + ".zip"`。 |
+| `--output`, `-o` | `<output_dir>.zip` | 输出 archive 路径。默认值来自 `filepath.Clean(output_dir) + ".zip"`。 |
 | `--include-snapshots` | `false` | 仅把 manifest 引用到的 snapshot JSON 文件纳入归档。 |
 | `--format` | `text` | export 结果输出格式：`text` 或 `json`。 |
 
