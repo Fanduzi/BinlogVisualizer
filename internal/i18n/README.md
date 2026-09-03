@@ -7,7 +7,7 @@ Embedded English and Simplified Chinese messages for CLI and report presentation
 | File | Responsibility |
 |------|----------------|
 | `i18n.go` | Loads embedded locale files and exposes concurrency-safe translation and language-selection helpers. |
-| `locales/en.json` | Defines English CLI, error, and report messages, including UTC timestamp semantics. |
+| `locales/en.json` | Defines English CLI, error, and report messages, including UTC timestamp semantics and `--prefix` exact-filename hints. |
 | `locales/zh-CN.json` | Defines Simplified Chinese equivalents for the same message contract. |
 | `i18n_test.go` | Verifies initialization, locale detection, translation, and runtime language switching. |
 

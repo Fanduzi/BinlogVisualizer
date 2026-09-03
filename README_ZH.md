@@ -51,6 +51,16 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
+### 从 `SHOW MASTER STATUS` 位点或 GTID 起
+
+位点是单个显式文件上的精确事件边界，使用半开区间 `[start, stop)`。也可以同时给时间条件；各谓词取交集。
+
+```bash
+binlogviz analyze mysql-bin.000015 --start-position 1651 --stop-position 4096
+binlogviz analyze mysql-bin.000015 --include-gtids '24bc7850-2c16-11e6-a073-0242ac110002:7-12'
+binlogviz analyze mariadb-bin.000015 --include-gtids '0-7-1857,0-7-1859' --exclude-gtids '0-7-1859'
+```
+
 ### 只看某个 schema 或表
 
 ```bash
@@ -58,6 +68,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --include-schema orders \
   --include-table payments
 ```
+
+`--include-table` / `--exclude-table` 接受 `TABLE` 或 `SCHEMA.TABLE`。
 
 ### 把机器可读结果交给脚本或其他工具
 

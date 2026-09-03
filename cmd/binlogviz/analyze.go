@@ -347,7 +347,11 @@ func sortBinlogPaths(paths []string, prefix string) {
 // binlogNumericSuffix returns the numeric sequence after prefix.
 // An optional '.' between the prefix and the digits is accepted so
 // --prefix mysql-bin matches mysql-bin.000008 (log_bin_basename style).
+// A prefix that equals the filename selects that file only.
 func binlogNumericSuffix(name, prefix string) (string, bool) {
+	if name == prefix {
+		return "0", true
+	}
 	if !strings.HasPrefix(name, prefix) {
 		return "", false
 	}
@@ -375,10 +379,30 @@ func isDigits(value string) bool {
 
 func noMatchingBinlogFilesError(dir, prefix string) string {
 	msg := i18n.Tf("error.noMatchingFiles", map[string]any{"Dir": dir, "Prefix": prefix})
+	if shared := sharedBinlogPrefix(prefix); shared != "" {
+		msg += "; " + i18n.Tf("error.prefixExactFileHint", map[string]any{
+			"Prefix": shared,
+			"Path":   filepath.Join(dir, prefix),
+		})
+		return msg
+	}
 	if prefix != "" && !strings.HasSuffix(prefix, ".") {
 		msg += "; " + i18n.Tf("error.prefixDotHint", map[string]any{"Prefix": prefix + "."})
 	}
 	return msg
+}
+
+// sharedBinlogPrefix strips a trailing numeric sequence so mysql-bin.000008
+// yields mysql-bin. when the operator passed a complete filename as --prefix.
+func sharedBinlogPrefix(prefix string) string {
+	end := len(prefix)
+	for end > 0 && prefix[end-1] >= '0' && prefix[end-1] <= '9' {
+		end--
+	}
+	if end == 0 || end == len(prefix) {
+		return ""
+	}
+	return prefix[:end]
 }
 
 func readFirstBinlogTimestamp(path string) (time.Time, error) {

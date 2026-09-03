@@ -26,10 +26,10 @@ BinlogViz 只扫描 `DIR` 目录下的直接子项，并对每个条目应用以
 1. 目录会被排除。
 2. 符号链接会被排除。
 3. 文件名必须以 `PREFIX` 开头。
-4. `PREFIX` 之后的后缀不能为空。
-5. `PREFIX` 之后的后缀必须是数字；`PREFIX` 和数字之间允许有一个可选的 `.`。
+4. `PREFIX` 若等于完整文件名，则只选择该文件。
+5. 否则 `PREFIX` 之后的后缀必须是非空数字；`PREFIX` 和数字之间允许有一个可选的 `.`。
 
-因此 `--prefix mysql-bin` 和 `--prefix mysql-bin.` 都会匹配 `mysql-bin.000008`（`log_bin_basename` 的常见形式）。
+因此 `--prefix mysql-bin` 和 `--prefix mysql-bin.` 都会匹配 `mysql-bin.000008`（`log_bin_basename` 的常见形式）。`--prefix mysql-bin.000008` 只匹配 `mysql-bin.000008`。单文件请用位置参数传路径。
 
 discovery 会接受这样的文件名：
 

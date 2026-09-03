@@ -269,6 +269,28 @@ func TestTransactionBuilderSeparatesConsecutiveMariaDBDDLGTIDs(t *testing.T) {
 	}
 }
 
+func TestTransactionBuilderSeparatesConsecutiveMariaDBGrantGTIDs(t *testing.T) {
+	ts := time.Date(2026, 9, 2, 16, 0, 0, 0, time.UTC)
+	builder := NewTransactionBuilder()
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", ServerFlavor: "mariadb", GTID: "0-7-3"},
+		{Timestamp: ts.Add(time.Second), EventType: "DDL", ServerFlavor: "mariadb", GTID: "0-7-3", QuerySQL: "GRANT REPLICATION SLAVE ON *.* TO 'repl'@'127.0.0.1'"},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "GTID", ServerFlavor: "mariadb", GTID: "0-7-4"},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "DDL", ServerFlavor: "mariadb", GTID: "0-7-4", QuerySQL: "GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%'"},
+	}
+
+	for _, event := range events {
+		if err := builder.Consume(event); err != nil {
+			t.Fatalf("Consume(%s, %s): %v", event.EventType, event.GTID, err)
+		}
+	}
+
+	txns := builder.Completed()
+	if len(txns) != 2 || txns[0].GTID != "0-7-3" || txns[1].GTID != "0-7-4" {
+		t.Fatalf("expected two independent GRANT GTID groups, got %+v", txns)
+	}
+}
+
 func TestTransactionBuilderRejectsConflictingGTIDs(t *testing.T) {
 	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
 	builder := NewTransactionBuilder()

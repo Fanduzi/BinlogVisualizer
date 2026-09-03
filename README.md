@@ -88,6 +88,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --include-table payments
 ```
 
+`--include-table` / `--exclude-table` accept `TABLE` or `SCHEMA.TABLE`.
+
 ### Send machine-readable output to another tool
 
 ```bash

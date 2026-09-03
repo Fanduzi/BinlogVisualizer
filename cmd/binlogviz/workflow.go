@@ -209,7 +209,7 @@ func newWorkflowExportCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.output, "output", "", "Archive output path (default: <output_dir>.zip)")
+	cmd.Flags().StringVarP(&opts.output, "output", "o", "", "Archive output path (default: <output_dir>.zip)")
 	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Include referenced snapshot JSON files in the archive")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
 

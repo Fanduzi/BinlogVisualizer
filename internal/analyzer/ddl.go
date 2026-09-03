@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege statements.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -70,7 +70,9 @@ func hasSupportedDDLPrefix(sql string) bool {
 		hasWordPrefixFold(sql, "CREATE") ||
 		hasWordPrefixFold(sql, "DROP") ||
 		hasWordPrefixFold(sql, "TRUNCATE") ||
-		hasWordPrefixFold(sql, "RENAME")
+		hasWordPrefixFold(sql, "RENAME") ||
+		hasWordPrefixFold(sql, "GRANT") ||
+		hasWordPrefixFold(sql, "REVOKE")
 }
 
 func hasWordPrefixFold(sql, word string) bool {
@@ -183,12 +185,22 @@ func classifyDDL(tokens []string) (operation string, object string, identifierIn
 		return "CREATE DATABASE", "database", skipOptionalIfClause(tokens, 2), true
 	case first == "CREATE" && second == "INDEX":
 		return "CREATE INDEX", "index", 2, true
+	case first == "CREATE" && second == "USER":
+		return "CREATE USER", "user", skipOptionalIfClause(tokens, 2), true
 	case first == "DROP" && second == "TABLE":
 		return "DROP TABLE", "table", skipOptionalIfClause(tokens, 2), true
 	case first == "DROP" && (second == "DATABASE" || second == "SCHEMA"):
 		return "DROP DATABASE", "database", skipOptionalIfClause(tokens, 2), true
 	case first == "DROP" && second == "INDEX":
 		return "DROP INDEX", "index", 2, true
+	case first == "DROP" && second == "USER":
+		return "DROP USER", "user", skipOptionalIfClause(tokens, 2), true
+	case first == "ALTER" && second == "USER":
+		return "ALTER USER", "user", 2, true
+	case first == "GRANT":
+		return "GRANT", "privilege", 1, true
+	case first == "REVOKE":
+		return "REVOKE", "privilege", 1, true
 	case first == "TRUNCATE" && second == "TABLE":
 		return "TRUNCATE TABLE", "table", 2, true
 	case first == "TRUNCATE":

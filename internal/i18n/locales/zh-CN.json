@@ -33,7 +33,7 @@
   },
   "cmd.analyze.flag.prefix": {
     "description": "prefix 标志描述",
-    "other": "配合 --from-dir 使用的文件名前缀（数字后缀前可省略 '.'）"
+    "other": "配合 --from-dir 使用的文件名前缀（数字后缀前可省略 '.'；完整文件名只匹配该文件；单文件请直接传路径）"
   },
   "cmd.analyze.flag.workloadID": {
     "description": "显式工作负载身份标志描述",
@@ -97,11 +97,11 @@
   },
   "cmd.analyze.flag.includeTable": {
     "description": "仅分析指定表标志描述",
-    "other": "仅分析指定表（逗号分隔）"
+    "other": "仅分析指定表（逗号分隔，TABLE 或 SCHEMA.TABLE）"
   },
   "cmd.analyze.flag.excludeTable": {
     "description": "排除指定表标志描述",
-    "other": "跳过指定表（逗号分隔）"
+    "other": "跳过指定表（逗号分隔，TABLE 或 SCHEMA.TABLE）"
   },
   "cmd.analyze.flag.largeTrxRows": {
     "description": "大事务行数阈值标志描述",
@@ -206,6 +206,10 @@
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
     "other": "前缀后的后缀必须是数字；请尝试 --prefix {{.Prefix}}"
+  },
+  "error.prefixExactFileHint": {
+    "description": "prefix 看起来像完整 binlog 文件名时的提示",
+    "other": "prefix 是数字序号前的公共前缀；请尝试 --prefix {{.Prefix}}，或直接分析该文件：binlogviz analyze {{.Path}}"
   },
   "error.analysisFinalizeError": {
     "description": "分析完成错误",

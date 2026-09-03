@@ -40,8 +40,8 @@ type Options struct {
 	// Schema/table filtering
 	IncludeSchemas []string // only analyze these schemas (empty = all)
 	ExcludeSchemas []string // skip these schemas
-	IncludeTables  []string // only analyze these tables (empty = all)
-	ExcludeTables  []string // skip these tables
+	IncludeTables  []string // only analyze these tables (empty = all); TABLE or SCHEMA.TABLE
+	ExcludeTables  []string // skip these tables; TABLE or SCHEMA.TABLE
 }
 
 // HasPositionSelectors reports whether an exact binlog position bound is active.

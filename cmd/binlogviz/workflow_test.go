@@ -2381,6 +2381,41 @@ func TestWorkflowExportUsesExplicitOutputPath(t *testing.T) {
 	}
 }
 
+func TestWorkflowExportAcceptsOutputShorthand(t *testing.T) {
+	outputDir := setupWorkflowExportCommandFixture(t)
+	cwd := t.TempDir()
+	explicitPath := filepath.Join(cwd, "incident-short.zip")
+	oldwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(oldwd)
+	})
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"workflow", "export", outputDir, "-o", "./incident-short.zip"})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() })
+	if err != nil {
+		t.Fatalf("workflow export -o: %v", err)
+	}
+	if strings.TrimSpace(stderr) != "" {
+		t.Fatalf("expected empty stderr, got %q", stderr)
+	}
+	if _, err := os.Stat(explicitPath); err != nil {
+		t.Fatalf("expected archive at %s: %v", explicitPath, err)
+	}
+	if !strings.Contains(stdout, "Format: zip") {
+		t.Fatalf("expected zip format in stdout, got %q", stdout)
+	}
+}
+
 func TestWorkflowExportJSONOutputIncludesArchiveFormatCountsAndNormalizedWarnings(t *testing.T) {
 	outputDir := setupWorkflowExportCommandFixtureWithoutIndex(t)
 	archivePath := outputDir + ".zip"
