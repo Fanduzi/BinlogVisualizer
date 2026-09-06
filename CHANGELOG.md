@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.4
+
+Release date: 2026-09-06
+
+Highlights:
+
+- Consecutive MariaDB GRANT/REVOKE DDL GTIDs no longer fail analysis
+- `--include-table` accepts `SCHEMA.TABLE`
+- `--prefix` accepts a complete filename
+- `workflow export` accepts `-o`
+
+Related notes:
+
+- [v0.23.4 release notes](docs/releases/release-notes-v0.23.4.md)
+- [v0.23.4 中文发行说明](docs/releases/release-notes-v0.23.4.zh-CN.md)
+
 ## v0.23.3
 
 Release date: 2026-08-30
