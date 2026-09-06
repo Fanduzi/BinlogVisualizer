@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, and optional progress consumers.
-// output: Parser implementations that emit RawEvent values with bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates.
+// output: Parser implementations that emit RawEvent values with canonical kinds, bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -58,7 +58,7 @@ func (p *parser) ParseFilesFromOffset(paths []string, offset int64, handler func
 
 			raw := RawEvent{
 				Timestamp:     time.Unix(int64(ev.Header.Timestamp), 0),
-				EventType:     ev.Header.EventType.String(),
+				EventType:     canonicalEventType(ev.Header.EventType),
 				BinlogPath:    path,
 				ServerID:      ev.Header.ServerID,
 				ServerVersion: serverVersion,
@@ -67,7 +67,7 @@ func (p *parser) ParseFilesFromOffset(paths []string, offset int64, handler func
 			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes, cursor = deriveEventPositionRange(ev.Header, cursor)
 			raw.Position = uint32(raw.PositionEnd)
 
-			applyBinlogEventMetadata(&raw, raw.EventType, ev.Event, tableNames)
+			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames)
 			if raw.ServerVersion != "" {
 				serverVersion = raw.ServerVersion
 			}
@@ -100,7 +100,7 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 
 			raw := RawEvent{
 				Timestamp:     time.Unix(int64(ev.Header.Timestamp), 0),
-				EventType:     ev.Header.EventType.String(),
+				EventType:     canonicalEventType(ev.Header.EventType),
 				BinlogPath:    path,
 				ServerID:      ev.Header.ServerID,
 				ServerVersion: serverVersion,
@@ -115,7 +115,7 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
 			}
 
-			applyBinlogEventMetadata(&raw, raw.EventType, ev.Event, tableNames)
+			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames)
 			if raw.ServerVersion != "" {
 				serverVersion = raw.ServerVersion
 			}
@@ -131,7 +131,7 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 	return nil
 }
 
-func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, tableNames map[uint64]cachedTableName) {
+func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any, tableNames map[uint64]cachedTableName) {
 	switch e := event.(type) {
 	case *replication.QueryEvent:
 		raw.Query = string(e.Query)
@@ -149,7 +149,7 @@ func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, ta
 	case *replication.MariadbGTIDEvent:
 		raw.GTID = e.GTID.String()
 	case *replication.GenericEvent:
-		if eventTypeName == replication.XA_PREPARE_LOG_EVENT.String() {
+		if et == replication.XA_PREPARE_LOG_EVENT {
 			raw.XAXID = mariaDBXAPrepareXID(e.Data)
 		}
 	case *replication.XIDEvent:
@@ -169,7 +169,7 @@ func applyBinlogEventMetadata(raw *RawEvent, eventTypeName string, event any, ta
 		}
 	case *replication.RowsEvent:
 		applyRowsEventTableName(raw, e, tableNames)
-		raw.RowCount = logicalRowCount(eventTypeName, len(e.Rows))
+		raw.RowCount = logicalRowCount(et, len(e.Rows))
 	case *replication.FormatDescriptionEvent:
 		raw.ServerVersion = e.ServerVersion
 		raw.ServerFlavor = serverFlavor(e.ServerVersion)
@@ -271,16 +271,13 @@ func readLengthEncodedStatusString(data []byte, pos int) (string, int, bool) {
 
 // logicalRowCount converts raw row-image counts into DBA-facing logical rows.
 // UPDATE events store before/after images as consecutive rows.
-func logicalRowCount(eventTypeName string, imageCount int) int {
-	if isUpdateRowsEventName(eventTypeName) {
+func logicalRowCount(et replication.EventType, imageCount int) int {
+	switch et {
+	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
 		return imageCount / 2
+	default:
+		return imageCount
 	}
-	return imageCount
-}
-
-func isUpdateRowsEventName(eventTypeName string) bool {
-	et := strings.ToUpper(eventTypeName)
-	return strings.Contains(et, "UPDATE") && strings.Contains(et, "ROW")
 }
 
 func applyRowsEventTableName(raw *RawEvent, event *replication.RowsEvent, tableNames map[uint64]cachedTableName) {

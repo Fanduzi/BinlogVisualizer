@@ -54,11 +54,11 @@ func TestGuessInputFormat(t *testing.T) {
 
 func TestFormatObserverCountsQueryDMLAndRowImages(t *testing.T) {
 	var observer FormatObserver
-	observer.Observe(RawEvent{EventType: "QueryEvent", Query: "INSERT INTO users VALUES (1)"})
-	observer.Observe(RawEvent{EventType: "QUERY_EVENT", Query: "UPDATE users SET name='x'"})
-	observer.Observe(RawEvent{EventType: "QUERY_EVENT", Query: "BEGIN"})
-	observer.Observe(RawEvent{EventType: "UpdateRowsEventV2", RowCount: 1})
-	observer.Observe(RawEvent{EventType: "RowsQueryEvent", QuerySQL: "UPDATE users SET name='x'"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "INSERT INTO users VALUES (1)"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "UPDATE users SET name='x'"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "BEGIN"})
+	observer.Observe(RawEvent{EventType: "UPDATE_ROWS", RowCount: 1})
+	observer.Observe(RawEvent{EventType: "ROWS_QUERY", QuerySQL: "UPDATE users SET name='x'"})
 
 	if observer.QueryDMLEvents != 2 {
 		t.Fatalf("QueryDMLEvents=%d, want 2", observer.QueryDMLEvents)
@@ -73,8 +73,8 @@ func TestFormatObserverCountsQueryDMLAndRowImages(t *testing.T) {
 
 func TestFormatObserverCapturesFormatDescriptionServerVersion(t *testing.T) {
 	var observer FormatObserver
-	observer.Observe(RawEvent{EventType: "FormatDescriptionEvent", ServerVersion: "10.11.6-MariaDB-log"})
-	observer.Observe(RawEvent{EventType: "FormatDescriptionEvent", ServerVersion: "8.0.36"})
+	observer.Observe(RawEvent{EventType: "FORMAT_DESCRIPTION", ServerVersion: "10.11.6-MariaDB-log"})
+	observer.Observe(RawEvent{EventType: "FORMAT_DESCRIPTION", ServerVersion: "8.0.36"})
 	if observer.ServerVersion != "10.11.6-MariaDB-log" {
 		t.Fatalf("ServerVersion=%q, want first Format Description version", observer.ServerVersion)
 	}

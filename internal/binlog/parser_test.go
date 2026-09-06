@@ -45,7 +45,7 @@ func TestApplyBinlogEventMetadataReusesCachedTableNameForRowsEvents(t *testing.T
 	tableNames := map[uint64]cachedTableName{}
 
 	var tableMapRaw RawEvent
-	applyBinlogEventMetadata(&tableMapRaw, replication.TABLE_MAP_EVENT.String(), &replication.TableMapEvent{
+	applyBinlogEventMetadata(&tableMapRaw, replication.TABLE_MAP_EVENT, &replication.TableMapEvent{
 		TableID: 42,
 		Schema:  []byte("app"),
 		Table:   []byte("orders"),
@@ -59,7 +59,7 @@ func TestApplyBinlogEventMetadataReusesCachedTableNameForRowsEvents(t *testing.T
 	}
 
 	var rowsRaw RawEvent
-	applyBinlogEventMetadata(&rowsRaw, replication.WRITE_ROWS_EVENTv2.String(), &replication.RowsEvent{
+	applyBinlogEventMetadata(&rowsRaw, replication.WRITE_ROWS_EVENTv2, &replication.RowsEvent{
 		TableID: 42,
 		Rows: [][]any{
 			{1, "a"},
@@ -77,7 +77,7 @@ func TestApplyBinlogEventMetadataReusesCachedTableNameForRowsEvents(t *testing.T
 
 func TestApplyBinlogEventMetadataCountsUpdateLogicalRows(t *testing.T) {
 	var raw RawEvent
-	applyBinlogEventMetadata(&raw, replication.UPDATE_ROWS_EVENTv2.String(), &replication.RowsEvent{
+	applyBinlogEventMetadata(&raw, replication.UPDATE_ROWS_EVENTv2, &replication.RowsEvent{
 		Rows: [][]any{
 			{1, "before"},
 			{1, "after"},
@@ -93,7 +93,7 @@ func TestApplyBinlogEventMetadataCountsUpdateLogicalRows(t *testing.T) {
 
 func TestApplyBinlogEventMetadataCapturesFormatDescriptionServerVersion(t *testing.T) {
 	var raw RawEvent
-	applyBinlogEventMetadata(&raw, replication.FORMAT_DESCRIPTION_EVENT.String(), &replication.FormatDescriptionEvent{
+	applyBinlogEventMetadata(&raw, replication.FORMAT_DESCRIPTION_EVENT, &replication.FormatDescriptionEvent{
 		ServerVersion: "11.4.2-MariaDB-log",
 	}, nil)
 	if raw.ServerVersion != "11.4.2-MariaDB-log" {
@@ -106,7 +106,7 @@ func TestApplyBinlogEventMetadataCapturesFormatDescriptionServerVersion(t *testi
 
 func TestApplyBinlogEventMetadataCapturesTransactionProvenance(t *testing.T) {
 	var query RawEvent
-	applyBinlogEventMetadata(&query, replication.QUERY_EVENT.String(), &replication.QueryEvent{
+	applyBinlogEventMetadata(&query, replication.QUERY_EVENT, &replication.QueryEvent{
 		SlaveProxyID: 1875,
 		StatusVars: []byte{
 			0, 1, 0, 0, 0,
@@ -120,7 +120,7 @@ func TestApplyBinlogEventMetadataCapturesTransactionProvenance(t *testing.T) {
 	}
 
 	var mysqlGTID RawEvent
-	applyBinlogEventMetadata(&mysqlGTID, replication.GTID_EVENT.String(), &replication.GTIDEvent{
+	applyBinlogEventMetadata(&mysqlGTID, replication.GTID_EVENT, &replication.GTIDEvent{
 		SID: []byte{0x24, 0xbc, 0x78, 0x52, 0x9c, 0xb7, 0x11, 0xee, 0x80, 0x89, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02},
 		GNO: 42,
 	}, nil)
@@ -129,7 +129,7 @@ func TestApplyBinlogEventMetadataCapturesTransactionProvenance(t *testing.T) {
 	}
 
 	var mariaGTID RawEvent
-	applyBinlogEventMetadata(&mariaGTID, replication.MARIADB_GTID_EVENT.String(), &replication.MariadbGTIDEvent{
+	applyBinlogEventMetadata(&mariaGTID, replication.MARIADB_GTID_EVENT, &replication.MariadbGTIDEvent{
 		GTID: mysql.MariadbGTID{DomainID: 0, ServerID: 7, SequenceNumber: 1848},
 	}, nil)
 	if mariaGTID.GTID != "0-7-1848" {
@@ -137,7 +137,7 @@ func TestApplyBinlogEventMetadataCapturesTransactionProvenance(t *testing.T) {
 	}
 
 	var xid RawEvent
-	applyBinlogEventMetadata(&xid, replication.XID_EVENT.String(), &replication.XIDEvent{XID: 3928}, nil)
+	applyBinlogEventMetadata(&xid, replication.XID_EVENT, &replication.XIDEvent{XID: 3928}, nil)
 	if xid.XID != "3928" {
 		t.Fatalf("unexpected XID %q", xid.XID)
 	}
@@ -158,7 +158,7 @@ func TestMariaDBXAPrepareXID(t *testing.T) {
 		t.Fatalf("truncated XA XID = %q, want empty", got)
 	}
 	var raw RawEvent
-	applyBinlogEventMetadata(&raw, replication.XA_PREPARE_LOG_EVENT.String(), &replication.GenericEvent{Data: body}, nil)
+	applyBinlogEventMetadata(&raw, replication.XA_PREPARE_LOG_EVENT, &replication.GenericEvent{Data: body}, nil)
 	if raw.XAXID != "X'7869642d3633',X'',1" {
 		t.Fatalf("physical XA_PREPARE XID = %q", raw.XAXID)
 	}
@@ -167,7 +167,7 @@ func TestMariaDBXAPrepareXID(t *testing.T) {
 func TestApplyBinlogEventMetadataCapturesMariaDBAnnotateRowsQuery(t *testing.T) {
 	var raw RawEvent
 	query := "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"
-	applyBinlogEventMetadata(&raw, replication.MARIADB_ANNOTATE_ROWS_EVENT.String(), &replication.MariadbAnnotateRowsEvent{
+	applyBinlogEventMetadata(&raw, replication.MARIADB_ANNOTATE_ROWS_EVENT, &replication.MariadbAnnotateRowsEvent{
 		Query: []byte(query),
 	}, nil)
 	if raw.QuerySQL != query {
@@ -177,7 +177,7 @@ func TestApplyBinlogEventMetadataCapturesMariaDBAnnotateRowsQuery(t *testing.T) 
 
 func TestApplyBinlogEventMetadataCountsSingleUpdateAsOneRow(t *testing.T) {
 	var raw RawEvent
-	applyBinlogEventMetadata(&raw, "UpdateRowsEventV2", &replication.RowsEvent{
+	applyBinlogEventMetadata(&raw, replication.UPDATE_ROWS_EVENTv2, &replication.RowsEvent{
 		Rows: [][]any{
 			{1, "before"},
 			{1, "after"},
@@ -207,7 +207,7 @@ func BenchmarkApplyBinlogEventMetadataCachedRowsEvent(b *testing.B) {
 	var raw RawEvent
 	for i := 0; i < b.N; i++ {
 		raw = RawEvent{}
-		applyBinlogEventMetadata(&raw, replication.WRITE_ROWS_EVENTv2.String(), rows, tableNames)
+		applyBinlogEventMetadata(&raw, replication.WRITE_ROWS_EVENTv2, rows, tableNames)
 	}
 	_ = raw
 }
@@ -325,6 +325,5 @@ func TestRealFixturePropagatesProducerMetadata(t *testing.T) {
 }
 
 func isRowsEventTypeForTest(eventType string) bool {
-	return len(eventType) >= 9 && eventType[:9] == "WriteRows" ||
-		len(eventType) >= 10 && (eventType[:10] == "UpdateRows" || eventType[:10] == "DeleteRows")
+	return eventType == KindWriteRows || eventType == KindUpdateRows || eventType == KindDeleteRows
 }

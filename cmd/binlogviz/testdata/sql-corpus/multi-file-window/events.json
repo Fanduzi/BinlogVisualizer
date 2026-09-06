@@ -5,7 +5,7 @@
     "position_start": 120,
     "position_end": 180,
     "binlog_bytes": 60,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -14,7 +14,7 @@
     "position_start": 181,
     "position_end": 260,
     "binlog_bytes": 79,
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "orders",
     "row_count": 25
@@ -25,7 +25,7 @@
     "position_start": 261,
     "position_end": 320,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   },
   {
     "timestamp": "2026-04-17T10:11:00Z",
@@ -33,7 +33,7 @@
     "position_start": 500,
     "position_end": 560,
     "binlog_bytes": 60,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -42,7 +42,7 @@
     "position_start": 561,
     "position_end": 640,
     "binlog_bytes": 79,
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "users",
     "row_count": 12
@@ -53,6 +53,6 @@
     "position_start": 641,
     "position_end": 700,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   }
 ]

@@ -77,12 +77,12 @@ func TestAnalyzePositionWindowKeepsPartialTransactionContext(t *testing.T) {
 	}
 	base := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
 	parser := &mockParser{events: []binlog.RawEvent{
-		{Timestamp: base, EventType: "FormatDescriptionEvent", BinlogPath: path, PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36"},
-		{Timestamp: base.Add(time.Second), EventType: "GTIDEvent", BinlogPath: path, PositionStart: 100, PositionEnd: 120, Position: 120, GTID: "24bc7850-2c16-11e6-a073-0242ac110002:7", ServerFlavor: "mysql"},
-		{Timestamp: base.Add(2 * time.Second), EventType: "QueryEvent", Query: "BEGIN", BinlogPath: path, PositionStart: 120, PositionEnd: 140, Position: 140, ServerFlavor: "mysql"},
-		{Timestamp: base.Add(3 * time.Second), EventType: "TableMapEvent", Schema: "shop", Table: "orders", BinlogPath: path, PositionStart: 140, PositionEnd: 160, Position: 160, ServerFlavor: "mysql"},
-		{Timestamp: base.Add(4 * time.Second), EventType: "WriteRowsEventV2", Schema: "shop", Table: "orders", RowCount: 2, BinlogPath: path, PositionStart: 160, PositionEnd: 180, Position: 180, ServerFlavor: "mysql"},
-		{Timestamp: base.Add(5 * time.Second), EventType: "XIDEvent", XID: "9", BinlogPath: path, PositionStart: 180, PositionEnd: 200, Position: 200, ServerFlavor: "mysql"},
+		{Timestamp: base, EventType: "FORMAT_DESCRIPTION", BinlogPath: path, PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36"},
+		{Timestamp: base.Add(time.Second), EventType: "GTID", BinlogPath: path, PositionStart: 100, PositionEnd: 120, Position: 120, GTID: "24bc7850-2c16-11e6-a073-0242ac110002:7", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "QUERY", Query: "BEGIN", BinlogPath: path, PositionStart: 120, PositionEnd: 140, Position: 140, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "TABLE_MAP", Schema: "shop", Table: "orders", BinlogPath: path, PositionStart: 140, PositionEnd: 160, Position: 160, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 2, BinlogPath: path, PositionStart: 160, PositionEnd: 180, Position: 180, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(5 * time.Second), EventType: "XID", XID: "9", BinlogPath: path, PositionStart: 180, PositionEnd: 200, Position: 200, ServerFlavor: "mysql"},
 	}}
 	start, stop := int64(160), int64(200)
 	opts := analyzer.DefaultOptions()
@@ -127,7 +127,7 @@ func TestAnalyzeTimeOnlyReportOmitsSelection(t *testing.T) {
 	opts := analyzer.DefaultOptions()
 	opts.Start = &start
 	parser := &mockParser{events: []binlog.RawEvent{
-		{Timestamp: start, EventType: "QueryEvent", Query: "CREATE TABLE shop.orders (id INT)", PositionStart: 100, PositionEnd: 140, Position: 140},
+		{Timestamp: start, EventType: "QUERY", Query: "CREATE TABLE shop.orders (id INT)", PositionStart: 100, PositionEnd: 140, Position: 140},
 	}}
 	stdout, err := captureStdoutRun(t, func() error {
 		return runAnalysisWithParser([]string{"synthetic.bin"}, opts, "json", parser)
@@ -151,10 +151,10 @@ func TestAnalyzePositionBoundaryValidationAndNoMatch(t *testing.T) {
 	}
 	base := time.Date(2026, 8, 30, 10, 30, 0, 0, time.UTC)
 	events := []binlog.RawEvent{
-		{Timestamp: base, EventType: "FormatDescriptionEvent", BinlogPath: path, PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36"},
-		{Timestamp: base.Add(time.Second), EventType: "QueryEvent", Query: "BEGIN", BinlogPath: path, PositionStart: 100, PositionEnd: 120, Position: 120},
-		{Timestamp: base.Add(2 * time.Second), EventType: "WriteRowsEventV2", Schema: "shop", Table: "orders", RowCount: 1, BinlogPath: path, PositionStart: 120, PositionEnd: 180, Position: 180},
-		{Timestamp: base.Add(3 * time.Second), EventType: "XIDEvent", BinlogPath: path, PositionStart: 180, PositionEnd: 200, Position: 200},
+		{Timestamp: base, EventType: "FORMAT_DESCRIPTION", BinlogPath: path, PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36"},
+		{Timestamp: base.Add(time.Second), EventType: "QUERY", Query: "BEGIN", BinlogPath: path, PositionStart: 100, PositionEnd: 120, Position: 120},
+		{Timestamp: base.Add(2 * time.Second), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1, BinlogPath: path, PositionStart: 120, PositionEnd: 180, Position: 180},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", BinlogPath: path, PositionStart: 180, PositionEnd: 200, Position: 200},
 	}
 	tests := []struct {
 		name     string
@@ -191,11 +191,11 @@ func TestAnalyzeGTIDNoMatchExitsTwoWithoutReport(t *testing.T) {
 	}
 	base := time.Date(2026, 8, 30, 13, 0, 0, 0, time.UTC)
 	parser := &mockParser{events: []binlog.RawEvent{
-		{Timestamp: base, EventType: "FormatDescriptionEvent", PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36"},
-		{Timestamp: base.Add(time.Second), EventType: "GTIDEvent", PositionStart: 100, PositionEnd: 120, Position: 120, GTID: sid + ":2", ServerFlavor: "mysql"},
-		{Timestamp: base.Add(2 * time.Second), EventType: "QueryEvent", Query: "BEGIN", PositionStart: 120, PositionEnd: 140, Position: 140, ServerFlavor: "mysql"},
-		{Timestamp: base.Add(3 * time.Second), EventType: "WriteRowsEventV2", Schema: "shop", Table: "orders", RowCount: 1, PositionStart: 140, PositionEnd: 160, Position: 160, ServerFlavor: "mysql"},
-		{Timestamp: base.Add(4 * time.Second), EventType: "XIDEvent", PositionStart: 160, PositionEnd: 180, Position: 180, ServerFlavor: "mysql"},
+		{Timestamp: base, EventType: "FORMAT_DESCRIPTION", PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36"},
+		{Timestamp: base.Add(time.Second), EventType: "GTID", PositionStart: 100, PositionEnd: 120, Position: 120, GTID: sid + ":2", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "QUERY", Query: "BEGIN", PositionStart: 120, PositionEnd: 140, Position: 140, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1, PositionStart: 140, PositionEnd: 160, Position: 160, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "XID", PositionStart: 160, PositionEnd: 180, Position: 180, ServerFlavor: "mysql"},
 	}}
 	opts := analyzer.DefaultOptions()
 	opts.GTIDSelector = selector
@@ -215,12 +215,12 @@ func TestAnalyzeGTIDSelectionReportRoundTrips(t *testing.T) {
 	}
 	base := time.Date(2026, 8, 30, 13, 30, 0, 0, time.UTC)
 	parser := &mockParser{events: []binlog.RawEvent{
-		{Timestamp: base, EventType: "FormatDescriptionEvent", PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
-		{Timestamp: base.Add(time.Second), EventType: "GTIDEvent", PositionStart: 100, PositionEnd: 120, Position: 120, GTID: sid + ":1", ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
-		{Timestamp: base.Add(2 * time.Second), EventType: "QueryEvent", Query: "BEGIN", PositionStart: 120, PositionEnd: 140, Position: 140, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
-		{Timestamp: base.Add(3 * time.Second), EventType: "RowsQueryEvent", QuerySQL: "INSERT INTO shop.orders VALUES (1)", PositionStart: 140, PositionEnd: 160, Position: 160, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
-		{Timestamp: base.Add(4 * time.Second), EventType: "WriteRowsEventV2", Schema: "shop", Table: "orders", RowCount: 1, PositionStart: 160, PositionEnd: 180, Position: 180, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
-		{Timestamp: base.Add(5 * time.Second), EventType: "XIDEvent", XID: "9", PositionStart: 180, PositionEnd: 200, Position: 200, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
+		{Timestamp: base, EventType: "FORMAT_DESCRIPTION", PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(time.Second), EventType: "GTID", PositionStart: 100, PositionEnd: 120, Position: 120, GTID: sid + ":1", ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "QUERY", Query: "BEGIN", PositionStart: 120, PositionEnd: 140, Position: 140, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "ROWS_QUERY", QuerySQL: "INSERT INTO shop.orders VALUES (1)", PositionStart: 140, PositionEnd: 160, Position: 160, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1, PositionStart: 160, PositionEnd: 180, Position: 180, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
+		{Timestamp: base.Add(5 * time.Second), EventType: "XID", XID: "9", PositionStart: 180, PositionEnd: 200, Position: 200, ServerID: 7, ServerVersion: "8.0.36", ServerFlavor: "mysql"},
 	}}
 	opts := analyzer.DefaultOptions()
 	opts.GTIDSelector = selector

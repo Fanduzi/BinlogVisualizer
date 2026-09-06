@@ -5,7 +5,7 @@
     "position_start": 100,
     "position_end": 260,
     "binlog_bytes": 160,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "ALTER TABLE shop.orders ADD COLUMN risk_flag TINYINT DEFAULT 0"
   },
   {
@@ -14,7 +14,7 @@
     "position_start": 261,
     "position_end": 320,
     "binlog_bytes": 59,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -23,7 +23,7 @@
     "position_start": 321,
     "position_end": 520,
     "binlog_bytes": 199,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "INSERT INTO shop.orders SELECT * FROM shop.orders_staging WHERE batch_id = 4242"
   },
   {
@@ -32,7 +32,7 @@
     "position_start": 521,
     "position_end": 920,
     "binlog_bytes": 399,
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "orders",
     "row_count": 8200
@@ -43,7 +43,7 @@
     "position_start": 921,
     "position_end": 980,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   },
   {
     "timestamp": "2026-04-17T12:17:00Z",
@@ -51,7 +51,7 @@
     "position_start": 100,
     "position_end": 160,
     "binlog_bytes": 60,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -60,7 +60,7 @@
     "position_start": 161,
     "position_end": 340,
     "binlog_bytes": 179,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "UPDATE shop.accounts SET balance = balance - 1 WHERE tenant_id = 7"
   },
   {
@@ -69,7 +69,7 @@
     "position_start": 341,
     "position_end": 440,
     "binlog_bytes": 99,
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "accounts",
     "row_count": 10
@@ -80,7 +80,7 @@
     "position_start": 441,
     "position_end": 550,
     "binlog_bytes": 109,
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "accounts",
     "row_count": 12
@@ -91,7 +91,7 @@
     "position_start": 551,
     "position_end": 610,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   },
   {
     "timestamp": "2026-04-17T12:20:00Z",
@@ -99,7 +99,7 @@
     "position_start": 100,
     "position_end": 160,
     "binlog_bytes": 60,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -108,7 +108,7 @@
     "position_start": 161,
     "position_end": 300,
     "binlog_bytes": 139,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "UPDATE shop.orders SET status = 'paid' WHERE order_id IN (...)"
   },
   {
@@ -117,7 +117,7 @@
     "position_start": 301,
     "position_end": 380,
     "binlog_bytes": 79,
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "orders",
     "row_count": 40
@@ -128,7 +128,7 @@
     "position_start": 381,
     "position_end": 470,
     "binlog_bytes": 89,
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "order_items",
     "row_count": 35
@@ -139,7 +139,7 @@
     "position_start": 120,
     "position_end": 210,
     "binlog_bytes": 90,
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "inventory",
     "row_count": 20
@@ -150,7 +150,7 @@
     "position_start": 211,
     "position_end": 300,
     "binlog_bytes": 89,
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "payments",
     "row_count": 15
@@ -161,7 +161,7 @@
     "position_start": 301,
     "position_end": 380,
     "binlog_bytes": 79,
-    "event_type": "DELETE_ROWS_EVENT",
+    "event_type": "DELETE_ROWS",
     "schema": "shop",
     "table": "audit_logs",
     "row_count": 5
@@ -172,7 +172,7 @@
     "position_start": 381,
     "position_end": 440,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   },
   {
     "timestamp": "2026-04-17T12:21:00Z",
@@ -180,7 +180,7 @@
     "position_start": 441,
     "position_end": 620,
     "binlog_bytes": 179,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "CREATE INDEX idx_orders_created_at ON shop.orders(created_at)"
   },
   {
@@ -189,7 +189,7 @@
     "position_start": 621,
     "position_end": 780,
     "binlog_bytes": 159,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "DROP TABLE shop.orders_staging"
   },
   {
@@ -198,7 +198,7 @@
     "position_start": 100,
     "position_end": 160,
     "binlog_bytes": 60,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -207,7 +207,7 @@
     "position_start": 161,
     "position_end": 340,
     "binlog_bytes": 179,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "INSERT INTO shop.refunds SELECT * FROM shop.refunds_stage WHERE batch_id = 77"
   },
   {
@@ -216,7 +216,7 @@
     "position_start": 341,
     "position_end": 560,
     "binlog_bytes": 219,
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "refunds",
     "row_count": 4200
@@ -227,7 +227,7 @@
     "position_start": 561,
     "position_end": 620,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   },
   {
     "timestamp": "2026-04-17T12:23:00Z",
@@ -235,7 +235,7 @@
     "position_start": 100,
     "position_end": 160,
     "binlog_bytes": 60,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -244,7 +244,7 @@
     "position_start": 161,
     "position_end": 280,
     "binlog_bytes": 119,
-    "event_type": "ROWS_QUERY_EVENT",
+    "event_type": "ROWS_QUERY",
     "query_sql": "UPDATE shop.settlements SET state = 'closing' WHERE tenant_id = 9"
   },
   {
@@ -253,7 +253,7 @@
     "position_start": 281,
     "position_end": 360,
     "binlog_bytes": 79,
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "settlements",
     "row_count": 18
@@ -264,7 +264,7 @@
     "position_start": 361,
     "position_end": 420,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   },
   {
     "timestamp": "2026-04-17T12:24:00Z",
@@ -272,7 +272,7 @@
     "position_start": 100,
     "position_end": 160,
     "binlog_bytes": 60,
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
@@ -281,7 +281,7 @@
     "position_start": 161,
     "position_end": 240,
     "binlog_bytes": 79,
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "orders",
     "row_count": 22
@@ -292,7 +292,7 @@
     "position_start": 241,
     "position_end": 320,
     "binlog_bytes": 79,
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "shipments",
     "row_count": 19
@@ -303,7 +303,7 @@
     "position_start": 100,
     "position_end": 180,
     "binlog_bytes": 80,
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "inventory",
     "row_count": 12
@@ -314,7 +314,7 @@
     "position_start": 181,
     "position_end": 260,
     "binlog_bytes": 79,
-    "event_type": "DELETE_ROWS_EVENT",
+    "event_type": "DELETE_ROWS",
     "schema": "shop",
     "table": "audit_logs",
     "row_count": 8
@@ -325,6 +325,6 @@
     "position_start": 261,
     "position_end": 320,
     "binlog_bytes": 59,
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   }
 ]

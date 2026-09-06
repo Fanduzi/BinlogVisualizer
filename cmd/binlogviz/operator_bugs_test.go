@@ -80,10 +80,10 @@ func TestAnalyzeSpanOfAtLeastOneSecondPrintsNumericTPSPeak(t *testing.T) {
 	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
 	parser := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: now, EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 10},
-			{Timestamp: now.Add(time.Second), EventType: "XID_EVENT"},
-			{Timestamp: now.Add(2 * time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
-			{Timestamp: now.Add(3 * time.Second), EventType: "XID_EVENT"},
+			{Timestamp: now, EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 10},
+			{Timestamp: now.Add(time.Second), EventType: "XID"},
+			{Timestamp: now.Add(2 * time.Second), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 5},
+			{Timestamp: now.Add(3 * time.Second), EventType: "XID"},
 		},
 	}
 
@@ -218,11 +218,11 @@ func TestAnalyzeStatementBinlogWarnsAndExitsNonZero(t *testing.T) {
 	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
 	parser := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: now, EventType: "QUERY_EVENT", Query: "INSERT INTO dogfood.users VALUES (1)"},
-			{Timestamp: now.Add(time.Second), EventType: "QUERY_EVENT", Query: "UPDATE dogfood.users SET name='x'"},
-			{Timestamp: now.Add(2 * time.Second), EventType: "QUERY_EVENT", Query: "DELETE FROM dogfood.users WHERE id=1"},
-			{Timestamp: now.Add(3 * time.Second), EventType: "QUERY_EVENT", Query: "INSERT INTO dogfood.users VALUES (2)"},
-			{Timestamp: now.Add(4 * time.Second), EventType: "QUERY_EVENT", Query: "UPDATE dogfood.users SET name='y'"},
+			{Timestamp: now, EventType: "QUERY", Query: "INSERT INTO dogfood.users VALUES (1)"},
+			{Timestamp: now.Add(time.Second), EventType: "QUERY", Query: "UPDATE dogfood.users SET name='x'"},
+			{Timestamp: now.Add(2 * time.Second), EventType: "QUERY", Query: "DELETE FROM dogfood.users WHERE id=1"},
+			{Timestamp: now.Add(3 * time.Second), EventType: "QUERY", Query: "INSERT INTO dogfood.users VALUES (2)"},
+			{Timestamp: now.Add(4 * time.Second), EventType: "QUERY", Query: "UPDATE dogfood.users SET name='y'"},
 		},
 	}
 
@@ -275,10 +275,10 @@ func TestAnalyzeMixedBinlogWarnsAndRecordsIgnoredQueryDML(t *testing.T) {
 	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
 	parser := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: now, EventType: "QUERY_EVENT", Query: "INSERT INTO dogfood.users VALUES (1)"},
-			{Timestamp: now.Add(time.Second), EventType: "QUERY_EVENT", Query: "UPDATE dogfood.users SET name=UUID()"},
-			{Timestamp: now.Add(2 * time.Second), EventType: "UpdateRowsEventV2", Schema: "dogfood", Table: "users", RowCount: 1},
-			{Timestamp: now.Add(3 * time.Second), EventType: "XID_EVENT"},
+			{Timestamp: now, EventType: "QUERY", Query: "INSERT INTO dogfood.users VALUES (1)"},
+			{Timestamp: now.Add(time.Second), EventType: "QUERY", Query: "UPDATE dogfood.users SET name=UUID()"},
+			{Timestamp: now.Add(2 * time.Second), EventType: "UPDATE_ROWS", Schema: "dogfood", Table: "users", RowCount: 1},
+			{Timestamp: now.Add(3 * time.Second), EventType: "XID"},
 		},
 	}
 
@@ -388,9 +388,9 @@ func TestAnalyzeObjectFilterNoRowsExitsTwoWithoutReport(t *testing.T) {
 	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
 	parser := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: now, EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "dogfood", Table: "orders", RowCount: 5},
-			{Timestamp: now.Add(2 * time.Second), EventType: "XID_EVENT"},
+			{Timestamp: now, EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS", Schema: "dogfood", Table: "orders", RowCount: 5},
+			{Timestamp: now.Add(2 * time.Second), EventType: "XID"},
 		},
 	}
 	opts := analyzer.DefaultOptions()

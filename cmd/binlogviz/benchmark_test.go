@@ -275,13 +275,13 @@ func makeSyntheticTransactionEvents(base time.Time, txnCount, rowsPerTxn int) []
 		txnBase := base.Add(time.Duration(txn) * time.Second)
 		events = append(events, binlog.RawEvent{
 			Timestamp: txnBase,
-			EventType: "QUERY_EVENT",
+			EventType: "QUERY",
 			Query:     "BEGIN",
 		})
 		for row := 0; row < rowsPerTxn; row++ {
 			events = append(events, binlog.RawEvent{
 				Timestamp: txnBase.Add(time.Duration(row+1) * time.Millisecond),
-				EventType: "WRITE_ROWS_EVENT",
+				EventType: "WRITE_ROWS",
 				Schema:    "bench",
 				Table:     "orders",
 				RowCount:  1,
@@ -289,7 +289,7 @@ func makeSyntheticTransactionEvents(base time.Time, txnCount, rowsPerTxn int) []
 		}
 		events = append(events, binlog.RawEvent{
 			Timestamp: txnBase.Add(time.Duration(rowsPerTxn+1) * time.Millisecond),
-			EventType: "XID_EVENT",
+			EventType: "XID",
 		})
 	}
 	return events
@@ -305,7 +305,7 @@ func makeSpikeHeavyEvents(base time.Time, minuteCount int) []binlog.RawEvent {
 		for row := 0; row < rowsPerMinute; row++ {
 			events = append(events, binlog.RawEvent{
 				Timestamp: base.Add(time.Duration(minute)*time.Minute + time.Duration(row)*time.Millisecond),
-				EventType: "WRITE_ROWS_EVENT",
+				EventType: "WRITE_ROWS",
 				Schema:    "bench",
 				Table:     "orders",
 				RowCount:  1,
@@ -345,7 +345,7 @@ func makeDDLHeavyEvents(base time.Time, ddlCount int) []binlog.RawEvent {
 	for i := 0; i < ddlCount; i++ {
 		events = append(events, binlog.RawEvent{
 			Timestamp: base.Add(time.Duration(i) * time.Second),
-			EventType: "QUERY_EVENT",
+			EventType: "QUERY",
 			Schema:    "bench",
 			Query:     "ALTER TABLE bench.orders ADD COLUMN marker INT",
 		})

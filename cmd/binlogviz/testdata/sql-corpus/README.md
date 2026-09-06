@@ -15,4 +15,4 @@ This corpus validates DBA-facing analyze report behavior. Each scenario is deter
 | `wide-transaction` | Widest by Touched Tables ranking |
 | `multi-file-window` | file metadata coverage for discovery-mode-adjacent scenarios |
 
-Corpus scenarios intentionally model MySQL 5.7/8.0 ROW-style evidence: row events carry table and row counts, `ROWS_QUERY_EVENT` carries bounded SQL context and DDL text, and selected scenarios include file positions/bytes so transaction evidence has realistic location metadata.
+Corpus scenarios intentionally model MySQL 5.7/8.0 ROW-style evidence: row events carry table and row counts, `ROWS_QUERY` carries bounded SQL context and DDL text, and selected scenarios include file positions/bytes so transaction evidence has realistic location metadata. Event types use the parser's canonical kinds (`QUERY`, `WRITE_ROWS`, `UPDATE_ROWS`, `DELETE_ROWS`, `ROWS_QUERY`, `XID`).
