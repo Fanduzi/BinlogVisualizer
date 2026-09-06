@@ -7,7 +7,9 @@
 | `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly from ReportAggregator plus table totals. |
 | `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, applies exclude-wins matching, and rejects anonymous groups while a selector is active. |
 | `filter.go` | Applies schema/table include and exclude filters, including `SCHEMA.TABLE` tokens. |
-| `store.go` | Persists transaction provenance, bounded SQL, completeness, and replay spans through the DuckDB detail path, with batch flush, reusable hot-path buffers, and on-demand SQL hydration. |
+| `store.go` | Shared detail DTOs and the in-memory store used by default analyze. |
+| `store_duckdb.go` | CGO DuckDB adapter: `NewDuckDBStore`, batch append, and query helpers. |
+| `store_nocgo.go` | `!cgo` stub so `NewDuckDBStore` fails with `ErrDuckDBRequiresCGO` without importing go-duckdb. |
 | `transactions.go` | Reconstructs transaction groups, closes on COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK and GTID-started DDL, continues through XA END, rejects conflicting GTIDs, and names `retainCompletedTransaction` for report membership (ROW image rows, or XA identity with a file location). |
 | `tables.go` | Aggregates per-table row and operation totals. |
 | `buckets.go` | Aggregates per-minute workload buckets and per-table minute rows, using a fast minute-truncation helper on the hot path. |

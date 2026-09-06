@@ -6,6 +6,7 @@
 package analyzer
 
 import (
+	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -334,6 +335,9 @@ func TestAnalyzerWindowCompletenessMatchesDuckDBDetailStore(t *testing.T) {
 
 	store, err := NewDuckDBStore(filepath.Join(t.TempDir(), "analysis.duckdb"), 10)
 	if err != nil {
+		if errors.Is(err, ErrDuckDBRequiresCGO) {
+			t.Skip(err.Error())
+		}
 		t.Fatalf("NewDuckDBStore returned error: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })

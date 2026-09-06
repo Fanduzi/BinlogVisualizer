@@ -213,12 +213,18 @@ func benchmarkStreamingPipeline(b *testing.B, paths []string, parser binlog.Pars
 	b.Helper()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		store, cleanup, _, err := createDuckDBTempStore("")
-		if err != nil {
-			b.Fatalf("createDuckDBTempStore: %v", err)
+		var a *analyzer.Analyzer
+		var cleanup func() error
+		if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+			store, storeCleanup, _, err := createDuckDBTempStore("")
+			if err != nil {
+				b.Fatalf("createDuckDBTempStore: %v", err)
+			}
+			cleanup = storeCleanup
+			a = analyzer.NewWithStore(opts, store)
+		} else {
+			a = analyzer.New(opts)
 		}
-
-		a := analyzer.NewWithStore(opts, store)
 		if err := parser.ParseFiles(paths, func(raw binlog.RawEvent) error {
 			var normalized model.NormalizedEvent
 			ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
@@ -230,16 +236,22 @@ func benchmarkStreamingPipeline(b *testing.B, paths []string, parser binlog.Pars
 			}
 			return a.Consume(normalized)
 		}); err != nil {
-			_ = cleanup()
+			if cleanup != nil {
+				_ = cleanup()
+			}
 			b.Fatalf("ParseFiles: %v", err)
 		}
 
 		if _, err := a.Finalize(); err != nil {
-			_ = cleanup()
+			if cleanup != nil {
+				_ = cleanup()
+			}
 			b.Fatalf("Finalize: %v", err)
 		}
-		if err := cleanup(); err != nil {
-			b.Fatalf("cleanup: %v", err)
+		if cleanup != nil {
+			if err := cleanup(); err != nil {
+				b.Fatalf("cleanup: %v", err)
+			}
 		}
 	}
 }
