@@ -1,3 +1,5 @@
+//go:build cgo
+
 // Package analyzer validates DuckDB-backed result persistence and finalize assembly.
 // input: temporary DuckDB paths, provenance/completeness/replay/SQL-bearing transactions, analyzer.Options, and persistence-threshold events.
 // output: regression coverage for schema initialization, transaction-evidence parity, batch flushing, query ordering, and DuckDB-backed Finalize semantics.
@@ -6,6 +8,7 @@
 package analyzer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -294,6 +297,9 @@ func TestDuckDBStoreQueryAllTransactionsReturnsCountError(t *testing.T) {
 	path := filepath.Join(dir, "analysis.duckdb")
 	store, err := NewDuckDBStore(path, DefaultBatchFlushRows)
 	if err != nil {
+		if errors.Is(err, ErrDuckDBRequiresCGO) {
+			t.Skip(err.Error())
+		}
 		t.Fatalf("NewDuckDBStore returned error: %v", err)
 	}
 	// Close the store so subsequent queries fail
@@ -306,17 +312,15 @@ func TestDuckDBStoreQueryAllTransactionsReturnsCountError(t *testing.T) {
 	}
 }
 
-func newTestDuckDBStore(t interface {
-	Helper()
-	TempDir() string
-	Cleanup(func())
-	Fatalf(string, ...any)
-}, batchRows int) *DuckDBStore {
+func newTestDuckDBStore(t testing.TB, batchRows int) *DuckDBStore {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "analysis.duckdb")
 	store, err := NewDuckDBStore(path, batchRows)
 	if err != nil {
+		if errors.Is(err, ErrDuckDBRequiresCGO) {
+			t.Skip(err.Error())
+		}
 		t.Fatalf("NewDuckDBStore returned error: %v", err)
 	}
 	t.Cleanup(func() {

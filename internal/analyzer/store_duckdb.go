@@ -1,0 +1,845 @@
+//go:build cgo
+
+// Package analyzer persists high-cardinality analysis results in DuckDB batches.
+// input: completed transactions with provenance, minute buckets, alerts, and an owned DuckDB path.
+// output: batched DuckDB reconstruction of transaction evidence, minutes, alerts, and on-demand SQL.
+// pos: CGO-only DuckDB adapter behind NewDuckDBStore.
+// note: if this file changes, keep this header and module README.md synchronized.
+package analyzer
+
+import (
+	"context"
+	"database/sql"
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"binlogviz/internal/model"
+
+	duckdb "github.com/marcboeker/go-duckdb"
+)
+
+// DuckDBStore persists analysis results in a temporary DuckDB database.
+type DuckDBStore struct {
+	path string
+	db   *sql.DB
+
+	batchRowThreshold  int
+	batchByteThreshold int
+	bufferedRows       int
+	bufferedBytes      int
+
+	transactionsBatch []transactionRow
+	txnSQLBatch       []transactionSQLContextRow
+	txnTablesBatch    []transactionTableRow
+	txnOpsBatch       []transactionOperationRow
+	minutesBatch      []minuteBucketRow
+	minuteTablesBatch []minuteTableRow
+	alertsBatch       []alertRow
+}
+
+// Path returns the underlying DuckDB file path.
+func (s *DuckDBStore) Path() string {
+	return s.path
+}
+
+// NewDuckDBStore opens or creates a DuckDB result store at path.
+func NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error) {
+	if batchRows <= 0 {
+		batchRows = DefaultBatchFlushRows
+	}
+	db, err := sql.Open("duckdb", path)
+	if err != nil {
+		return nil, err
+	}
+
+	store := &DuckDBStore{
+		path:               path,
+		db:                 db,
+		batchRowThreshold:  batchRows,
+		batchByteThreshold: defaultBatchFlushBytes,
+	}
+	if err := store.initSchema(); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return store, nil
+}
+
+func (s *DuckDBStore) Reset() error {
+	for _, stmt := range []string{
+		"DELETE FROM alerts",
+		"DELETE FROM minute_table_rows",
+		"DELETE FROM minute_buckets",
+		"DELETE FROM transaction_sql_contexts",
+		"DELETE FROM transaction_operations",
+		"DELETE FROM transaction_tables",
+		"DELETE FROM transactions",
+	} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	s.transactionsBatch = nil
+	s.txnSQLBatch = nil
+	s.txnTablesBatch = nil
+	s.txnOpsBatch = nil
+	s.minutesBatch = nil
+	s.minuteTablesBatch = nil
+	s.alertsBatch = nil
+	s.bufferedRows = 0
+	s.bufferedBytes = 0
+	return nil
+}
+
+func (s *DuckDBStore) Close() error {
+	return s.db.Close()
+}
+
+func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) error {
+	if len(transactions) == 0 {
+		return nil
+	}
+
+	additionalTxnSQL := 0
+	additionalTxnTables := 0
+	additionalTxnOps := 0
+	for _, txn := range transactions {
+		if txn.QuerySQL != "" {
+			additionalTxnSQL++
+		}
+		additionalTxnTables += len(txn.TableRows)
+		additionalTxnOps += len(txn.Operations)
+	}
+	s.transactionsBatch = growSlice(s.transactionsBatch, len(transactions))
+	s.txnSQLBatch = growSlice(s.txnSQLBatch, additionalTxnSQL)
+	s.txnTablesBatch = growSlice(s.txnTablesBatch, additionalTxnTables)
+	s.txnOpsBatch = growSlice(s.txnOpsBatch, additionalTxnOps)
+
+	for _, txn := range transactions {
+		s.transactionsBatch = append(s.transactionsBatch, transactionRow{
+			TxnKey:              txn.TxnKey,
+			ServerID:            txn.ServerID,
+			ServerVersion:       txn.ServerVersion,
+			ServerFlavor:        txn.ServerFlavor,
+			GTID:                txn.GTID,
+			ThreadID:            txn.ThreadID,
+			XID:                 txn.XID,
+			ActorUser:           txn.ActorUser,
+			ActorHost:           txn.ActorHost,
+			XAXID:               txn.XAXID,
+			StartTime:           txn.StartTime,
+			EndTime:             txn.EndTime,
+			DurationMS:          txn.DurationMS,
+			TotalRows:           txn.TotalRows,
+			EventCount:          txn.EventCount,
+			BinlogBytes:         txn.BinlogBytes,
+			BinlogPathStart:     txn.BinlogPathStart,
+			BinlogPathEnd:       txn.BinlogPathEnd,
+			PositionStart:       txn.PositionStart,
+			PositionEnd:         txn.PositionEnd,
+			Completeness:        string(txn.Completeness),
+			FullBinlogPathStart: txn.FullBinlogPathStart,
+			FullBinlogPathEnd:   txn.FullBinlogPathEnd,
+			FullPositionStart:   txn.FullPositionStart,
+			FullPositionEnd:     txn.FullPositionEnd,
+			FullBinlogBytes:     txn.FullBinlogBytes,
+			QuerySummary:        txn.QuerySummary,
+			QueryTruncated:      txn.QueryTruncated,
+			QueryOriginalBytes:  txn.QueryOriginalBytes,
+		})
+		s.bufferTopLevelRow(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.ServerVersion) + estimateStringBytes(txn.ServerFlavor) + estimateStringBytes(txn.GTID) + estimateStringBytes(txn.XID) + estimateStringBytes(txn.ActorUser) + estimateStringBytes(txn.ActorHost) + estimateStringBytes(txn.XAXID) + estimateStringBytes(txn.QuerySummary) + estimateStringBytes(txn.BinlogPathStart) + estimateStringBytes(txn.BinlogPathEnd) + estimateStringBytes(txn.FullBinlogPathStart) + estimateStringBytes(txn.FullBinlogPathEnd) + 160)
+		if txn.QuerySQL != "" {
+			s.txnSQLBatch = append(s.txnSQLBatch, transactionSQLContextRow{
+				TxnKey:             txn.TxnKey,
+				QuerySQL:           txn.QuerySQL,
+				QueryTruncated:     txn.QueryTruncated,
+				QueryOriginalBytes: txn.QueryOriginalBytes,
+			})
+			s.bufferBytes(estimateStringBytes(txn.TxnKey) + estimateStringBytes(txn.QuerySQL) + 16)
+		}
+
+		for tableKey, rows := range txn.TableRows {
+			s.txnTablesBatch = append(s.txnTablesBatch, transactionTableRow{
+				TxnKey:   txn.TxnKey,
+				TableKey: tableKey,
+				Rows:     int64(rows),
+			})
+			s.bufferBytes(estimateStringBytes(txn.TxnKey) + estimateStringBytes(tableKey) + 8)
+		}
+		for operation, rows := range txn.Operations {
+			s.txnOpsBatch = append(s.txnOpsBatch, transactionOperationRow{
+				TxnKey:    txn.TxnKey,
+				Operation: operation,
+				Rows:      int64(rows),
+			})
+			s.bufferBytes(estimateStringBytes(txn.TxnKey) + estimateStringBytes(operation) + 8)
+		}
+	}
+	return s.flushIfNeeded()
+}
+
+func (s *DuckDBStore) RecordMinuteBuckets(buckets []model.MinuteBucket) error {
+	if len(buckets) == 0 {
+		return nil
+	}
+
+	additionalMinuteTables := 0
+	for _, bucket := range buckets {
+		additionalMinuteTables += len(bucket.TableRows)
+	}
+	s.minutesBatch = growSlice(s.minutesBatch, len(buckets))
+	s.minuteTablesBatch = growSlice(s.minuteTablesBatch, additionalMinuteTables)
+
+	for _, bucket := range buckets {
+		s.minutesBatch = append(s.minutesBatch, minuteBucketRow{
+			Minute:      bucket.Minute,
+			TotalRows:   int64(bucket.TotalRows),
+			TxnCount:    int64(bucket.TxnCount),
+			EventCount:  int64(bucket.EventCount),
+			BinlogBytes: bucket.BinlogBytes,
+			DDLCount:    int64(bucket.DDLCount),
+		})
+		s.bufferTopLevelRow(48)
+
+		for tableKey, rows := range bucket.TableRows {
+			s.minuteTablesBatch = append(s.minuteTablesBatch, minuteTableRow{
+				Minute:   bucket.Minute,
+				TableKey: tableKey,
+				Rows:     int64(rows),
+			})
+			s.bufferBytes(estimateStringBytes(tableKey) + 16)
+		}
+	}
+	return s.flushIfNeeded()
+}
+
+func (s *DuckDBStore) RecordAlerts(alerts []model.Alert) error {
+	for _, alert := range alerts {
+		detailsJSON, err := json.Marshal(alert.Details)
+		if err != nil {
+			return err
+		}
+		s.alertsBatch = append(s.alertsBatch, alertRow{
+			Type:        alert.Type,
+			Severity:    alert.Severity,
+			TxnKey:      alert.TxnKey,
+			Minute:      alert.Minute,
+			Message:     alert.Message,
+			DetailsJSON: string(detailsJSON),
+		})
+		s.bufferTopLevelRow(estimateStringBytes(alert.Type) + estimateStringBytes(alert.Severity) + estimateStringBytes(alert.TxnKey) + estimateStringBytes(alert.Message) + len(detailsJSON) + 16)
+	}
+	return s.flushIfNeeded()
+}
+
+func (s *DuckDBStore) Flush() error {
+	if len(s.transactionsBatch) > 0 {
+		if err := s.appendRows("transactions", func(app *duckdb.Appender) error {
+			for _, row := range s.transactionsBatch {
+				if err := app.AppendRow(row.TxnKey, row.ServerID, row.ServerVersion, row.ServerFlavor, row.GTID, row.ThreadID, row.XID, row.ActorUser, row.ActorHost, row.XAXID, row.StartTime, row.EndTime, row.DurationMS, row.TotalRows, row.EventCount, row.BinlogBytes, row.BinlogPathStart, row.BinlogPathEnd, row.PositionStart, row.PositionEnd, row.Completeness, row.FullBinlogPathStart, row.FullBinlogPathEnd, row.FullPositionStart, row.FullPositionEnd, row.FullBinlogBytes, row.QuerySummary, row.QueryTruncated, row.QueryOriginalBytes); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.transactionsBatch = s.transactionsBatch[:0]
+	}
+	if len(s.txnTablesBatch) > 0 {
+		if err := s.appendRows("transaction_tables", func(app *duckdb.Appender) error {
+			for _, row := range s.txnTablesBatch {
+				if err := app.AppendRow(row.TxnKey, row.TableKey, row.Rows); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.txnTablesBatch = s.txnTablesBatch[:0]
+	}
+	if len(s.txnSQLBatch) > 0 {
+		if err := s.appendRows("transaction_sql_contexts", func(app *duckdb.Appender) error {
+			for _, row := range s.txnSQLBatch {
+				if err := app.AppendRow(row.TxnKey, row.QuerySQL, row.QueryTruncated, row.QueryOriginalBytes); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.txnSQLBatch = s.txnSQLBatch[:0]
+	}
+	if len(s.txnOpsBatch) > 0 {
+		if err := s.appendRows("transaction_operations", func(app *duckdb.Appender) error {
+			for _, row := range s.txnOpsBatch {
+				if err := app.AppendRow(row.TxnKey, row.Operation, row.Rows); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.txnOpsBatch = s.txnOpsBatch[:0]
+	}
+	if len(s.minutesBatch) > 0 {
+		if err := s.appendRows("minute_buckets", func(app *duckdb.Appender) error {
+			for _, row := range s.minutesBatch {
+				if err := app.AppendRow(row.Minute, row.TotalRows, row.TxnCount, row.EventCount, row.BinlogBytes, row.DDLCount); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.minutesBatch = s.minutesBatch[:0]
+	}
+	if len(s.minuteTablesBatch) > 0 {
+		if err := s.appendRows("minute_table_rows", func(app *duckdb.Appender) error {
+			for _, row := range s.minuteTablesBatch {
+				if err := app.AppendRow(row.Minute, row.TableKey, row.Rows); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.minuteTablesBatch = s.minuteTablesBatch[:0]
+	}
+	if len(s.alertsBatch) > 0 {
+		if err := s.appendRows("alerts", func(app *duckdb.Appender) error {
+			for _, row := range s.alertsBatch {
+				if err := app.AppendRow(row.Type, row.Severity, row.TxnKey, zeroTimeToNil(row.Minute), row.Message, row.DetailsJSON); err != nil {
+					return err
+				}
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+		s.alertsBatch = s.alertsBatch[:0]
+	}
+
+	s.bufferedRows = 0
+	s.bufferedBytes = 0
+	return nil
+}
+
+func (s *DuckDBStore) QueryAllTransactions() ([]model.Transaction, error) {
+	count, err := s.countTransactions()
+	if err != nil {
+		return nil, err
+	}
+	baseRows, err := s.queryTransactions(`
+SELECT txn_key, server_id, server_version, server_flavor, gtid, thread_id, xid, actor_user, actor_host, xa_xid, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, completeness, full_binlog_path_start, full_binlog_path_end, full_position_start, full_position_end, full_binlog_bytes, query_summary, query_truncated, query_original_bytes
+FROM transactions
+ORDER BY start_time ASC, txn_key ASC`, count)
+	if err != nil {
+		return nil, err
+	}
+	return s.hydrateTransactions(baseRows, false)
+}
+
+func (s *DuckDBStore) QueryTopTransactions(limit int) ([]model.Transaction, error) {
+	query := `
+SELECT txn_key, server_id, server_version, server_flavor, gtid, thread_id, xid, actor_user, actor_host, xa_xid, start_time, end_time, duration_ms, total_rows, event_count, binlog_bytes, binlog_path_start, binlog_path_end, position_start, position_end, completeness, full_binlog_path_start, full_binlog_path_end, full_position_start, full_position_end, full_binlog_bytes, query_summary, query_truncated, query_original_bytes
+FROM transactions
+ORDER BY total_rows DESC, txn_key ASC`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT %d", limit)
+	}
+	baseRows, err := s.queryTransactions(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	return s.hydrateTransactions(baseRows, true)
+}
+
+func (s *DuckDBStore) ResolveTransactionQuerySQL(txnKeys []string) (map[string]string, error) {
+	if len(txnKeys) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(txnKeys))
+	wanted := make(map[string]struct{}, len(txnKeys))
+	for _, key := range txnKeys {
+		if key != "" {
+			if _, ok := wanted[key]; !ok {
+				wanted[key] = struct{}{}
+				keys = append(keys, key)
+			}
+		}
+	}
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
+	args := make([]any, 0, len(keys))
+	for _, key := range keys {
+		args = append(args, key)
+	}
+	rows, err := s.db.Query(`
+SELECT txn_key, query_sql
+FROM transaction_sql_contexts
+WHERE txn_key IN (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	resolved := make(map[string]string, len(wanted))
+	for rows.Next() {
+		var txnKey string
+		var sqlText string
+		if err := rows.Scan(&txnKey, &sqlText); err != nil {
+			return nil, err
+		}
+		resolved[txnKey] = sqlText
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return resolved, nil
+}
+
+func (s *DuckDBStore) QueryMinuteBuckets() ([]model.MinuteBucket, error) {
+	rows, err := s.db.Query(`
+SELECT minute, total_rows, txn_count, event_count, binlog_bytes, ddl_count
+FROM minute_buckets
+ORDER BY minute ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	buckets := make([]model.MinuteBucket, 0)
+	indexByMinute := make(map[time.Time]int)
+	for rows.Next() {
+		var minute time.Time
+		var totalRows, txnCount, eventCount, binlogBytes, ddlCount int64
+		if err := rows.Scan(&minute, &totalRows, &txnCount, &eventCount, &binlogBytes, &ddlCount); err != nil {
+			return nil, err
+		}
+		indexByMinute[minute] = len(buckets)
+		buckets = append(buckets, model.MinuteBucket{
+			Minute:      minute,
+			TotalRows:   int(totalRows),
+			TxnCount:    int(txnCount),
+			EventCount:  int(eventCount),
+			BinlogBytes: binlogBytes,
+			DDLCount:    int(ddlCount),
+			TableRows:   make(map[string]int),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	tableRows, err := s.db.Query(`
+SELECT minute, table_key, rows
+FROM minute_table_rows
+ORDER BY minute ASC, table_key ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer tableRows.Close()
+
+	for tableRows.Next() {
+		var minute time.Time
+		var tableKey string
+		var rowsCount int64
+		if err := tableRows.Scan(&minute, &tableKey, &rowsCount); err != nil {
+			return nil, err
+		}
+		idx, ok := indexByMinute[minute]
+		if !ok {
+			continue
+		}
+		buckets[idx].TableRows[tableKey] = int(rowsCount)
+	}
+	if err := tableRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return buckets, nil
+}
+
+func (s *DuckDBStore) QueryAlerts() ([]model.Alert, error) {
+	rows, err := s.db.Query(`
+SELECT type, severity, txn_key, minute, message, details_json
+FROM alerts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	alerts := make([]model.Alert, 0)
+	for rows.Next() {
+		var row alertRow
+		var minute sql.NullTime
+		if err := rows.Scan(&row.Type, &row.Severity, &row.TxnKey, &minute, &row.Message, &row.DetailsJSON); err != nil {
+			return nil, err
+		}
+		alert := model.Alert{
+			Type:     row.Type,
+			Severity: row.Severity,
+			TxnKey:   row.TxnKey,
+			Message:  row.Message,
+			Details:  map[string]any{},
+		}
+		if minute.Valid {
+			alert.Minute = minute.Time
+		}
+		if row.DetailsJSON != "" {
+			if err := json.Unmarshal([]byte(row.DetailsJSON), &alert.Details); err != nil {
+				return nil, err
+			}
+		}
+		alerts = append(alerts, alert)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(alerts, func(i, j int) bool {
+		rank := func(a model.Alert) int {
+			if a.Type == "large_transaction" {
+				return 0
+			}
+			return 1
+		}
+		if rank(alerts[i]) != rank(alerts[j]) {
+			return rank(alerts[i]) < rank(alerts[j])
+		}
+		if !alerts[i].Minute.Equal(alerts[j].Minute) {
+			if alerts[i].Minute.IsZero() {
+				return true
+			}
+			if alerts[j].Minute.IsZero() {
+				return false
+			}
+			return alerts[i].Minute.Before(alerts[j].Minute)
+		}
+		if alerts[i].TxnKey != alerts[j].TxnKey {
+			return alerts[i].TxnKey < alerts[j].TxnKey
+		}
+		if alerts[i].Type != alerts[j].Type {
+			return alerts[i].Type < alerts[j].Type
+		}
+		return alerts[i].Message < alerts[j].Message
+	})
+
+	return alerts, nil
+}
+
+func (s *DuckDBStore) tableExists(table string) bool {
+	var count int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?`, table).Scan(&count)
+	return err == nil && count == 1
+}
+
+func (s *DuckDBStore) mustCountRows(t interface{ Fatalf(string, ...any) }, table string) int {
+	var count int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {
+		t.Fatalf("count rows for %s: %v", table, err)
+	}
+	return count
+}
+
+func (s *DuckDBStore) initSchema() error {
+	for _, stmt := range []string{
+		`CREATE TABLE IF NOT EXISTS transactions (
+			txn_key VARCHAR,
+			server_id UINTEGER,
+			server_version VARCHAR,
+			server_flavor VARCHAR,
+			gtid VARCHAR,
+			thread_id UINTEGER,
+			xid VARCHAR,
+			actor_user VARCHAR,
+			actor_host VARCHAR,
+			xa_xid VARCHAR,
+			start_time TIMESTAMP,
+			end_time TIMESTAMP,
+			duration_ms BIGINT,
+			total_rows BIGINT,
+			event_count BIGINT,
+			binlog_bytes BIGINT,
+			binlog_path_start VARCHAR,
+			binlog_path_end VARCHAR,
+			position_start BIGINT,
+			position_end BIGINT,
+			completeness VARCHAR,
+			full_binlog_path_start VARCHAR,
+			full_binlog_path_end VARCHAR,
+			full_position_start BIGINT,
+			full_position_end BIGINT,
+			full_binlog_bytes BIGINT,
+			query_summary VARCHAR,
+			query_truncated BOOLEAN,
+			query_original_bytes BIGINT
+		)`,
+		`CREATE TABLE IF NOT EXISTS transaction_tables (
+			txn_key VARCHAR,
+			table_key VARCHAR,
+			rows BIGINT
+		)`,
+		`CREATE TABLE IF NOT EXISTS transaction_sql_contexts (
+			txn_key VARCHAR PRIMARY KEY,
+			query_sql VARCHAR,
+			query_truncated BOOLEAN,
+			query_original_bytes BIGINT
+		)`,
+		`CREATE TABLE IF NOT EXISTS transaction_operations (
+			txn_key VARCHAR,
+			operation VARCHAR,
+			rows BIGINT
+		)`,
+		`CREATE TABLE IF NOT EXISTS minute_buckets (
+			minute TIMESTAMP,
+			total_rows BIGINT,
+			txn_count BIGINT,
+			event_count BIGINT,
+			binlog_bytes BIGINT,
+			ddl_count BIGINT
+		)`,
+		`CREATE TABLE IF NOT EXISTS minute_table_rows (
+			minute TIMESTAMP,
+			table_key VARCHAR,
+			rows BIGINT
+		)`,
+		`CREATE TABLE IF NOT EXISTS alerts (
+			type VARCHAR,
+			severity VARCHAR,
+			txn_key VARCHAR,
+			minute TIMESTAMP,
+			message VARCHAR,
+			details_json VARCHAR
+		)`,
+	} {
+		if _, err := s.db.Exec(stmt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *DuckDBStore) countTransactions() (int, error) {
+	var count int64
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM transactions`).Scan(&count); err != nil {
+		return 0, err
+	}
+	if count <= 0 {
+		return 0, nil
+	}
+	if count > int64(^uint(0)>>1) {
+		return 0, fmt.Errorf("transaction count %d exceeds int capacity", count)
+	}
+	return int(count), nil
+}
+
+func (s *DuckDBStore) queryTransactions(query string, capacityHint int) ([]transactionRow, error) {
+	if capacityHint < 0 {
+		capacityHint = 0
+	}
+	rows, err := s.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]transactionRow, 0, capacityHint)
+	for rows.Next() {
+		var row transactionRow
+		if err := rows.Scan(
+			&row.TxnKey, &row.ServerID, &row.ServerVersion, &row.ServerFlavor, &row.GTID, &row.ThreadID, &row.XID, &row.ActorUser, &row.ActorHost,
+			&row.XAXID, &row.StartTime, &row.EndTime, &row.DurationMS, &row.TotalRows, &row.EventCount, &row.BinlogBytes,
+			&row.BinlogPathStart, &row.BinlogPathEnd, &row.PositionStart, &row.PositionEnd,
+			&row.Completeness, &row.FullBinlogPathStart, &row.FullBinlogPathEnd, &row.FullPositionStart, &row.FullPositionEnd, &row.FullBinlogBytes,
+			&row.QuerySummary, &row.QueryTruncated, &row.QueryOriginalBytes,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (s *DuckDBStore) hydrateTransactions(baseRows []transactionRow, restrictToKeys bool) ([]model.Transaction, error) {
+	if len(baseRows) == 0 {
+		return nil, nil
+	}
+
+	txns := make([]model.Transaction, len(baseRows))
+	indexByTxnKey := make(map[string]int, len(baseRows))
+	keys := make([]string, 0, len(baseRows))
+	for i, row := range baseRows {
+		txns[i] = model.Transaction{
+			TxnKey:          row.TxnKey,
+			ServerID:        row.ServerID,
+			ServerVersion:   row.ServerVersion,
+			ServerFlavor:    row.ServerFlavor,
+			GTID:            row.GTID,
+			ThreadID:        row.ThreadID,
+			XID:             row.XID,
+			ActorUser:       row.ActorUser,
+			ActorHost:       row.ActorHost,
+			XAXID:           row.XAXID,
+			StartTime:       row.StartTime,
+			EndTime:         row.EndTime,
+			Duration:        time.Duration(row.DurationMS) * time.Millisecond,
+			TotalRows:       int(row.TotalRows),
+			EventCount:      int(row.EventCount),
+			BinlogBytes:     row.BinlogBytes,
+			BinlogPathStart: row.BinlogPathStart,
+			BinlogPathEnd:   row.BinlogPathEnd,
+			PositionStart:   row.PositionStart,
+			PositionEnd:     row.PositionEnd,
+			Completeness:    model.TransactionCompleteness(row.Completeness),
+			QuerySummary:    row.QuerySummary,
+		}
+		if row.FullBinlogPathStart != "" {
+			txns[i].FullReplaySpan = &model.TransactionReplaySpan{
+				BinlogPathStart: row.FullBinlogPathStart,
+				BinlogPathEnd:   row.FullBinlogPathEnd,
+				PositionStart:   row.FullPositionStart,
+				PositionEnd:     row.FullPositionEnd,
+				BinlogBytes:     row.FullBinlogBytes,
+			}
+		}
+		if row.QuerySummary != "" || row.QueryTruncated || row.QueryOriginalBytes > 0 {
+			txns[i].QueryContext = &model.QueryContext{
+				Truncated:     row.QueryTruncated,
+				OriginalBytes: int(row.QueryOriginalBytes),
+			}
+		}
+		indexByTxnKey[row.TxnKey] = i
+		keys = append(keys, row.TxnKey)
+	}
+
+	if err := s.fillTransactionMaps(indexByTxnKey, txns, keys, restrictToKeys); err != nil {
+		return nil, err
+	}
+	return txns, nil
+}
+
+func (s *DuckDBStore) fillTransactionMaps(indexByTxnKey map[string]int, txns []model.Transaction, keys []string, restrictToKeys bool) error {
+	tableQuery := `
+SELECT txn_key, table_key, rows
+FROM transaction_tables`
+	tableArgs := make([]any, 0, len(keys))
+	if restrictToKeys {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
+		tableQuery += "\nWHERE txn_key IN (" + placeholders + ")"
+		for _, key := range keys {
+			tableArgs = append(tableArgs, key)
+		}
+	}
+	tableQuery += "\nORDER BY txn_key ASC, table_key ASC"
+	tableRows, err := s.db.Query(tableQuery, tableArgs...)
+	if err != nil {
+		return err
+	}
+	defer tableRows.Close()
+
+	for tableRows.Next() {
+		var txnKey, tableKey string
+		var rowsCount int64
+		if err := tableRows.Scan(&txnKey, &tableKey, &rowsCount); err != nil {
+			return err
+		}
+		if idx, ok := indexByTxnKey[txnKey]; ok {
+			if txns[idx].Tables == nil {
+				txns[idx].Tables = make(map[string]int)
+			}
+			txns[idx].Tables[tableKey] = int(rowsCount)
+		}
+	}
+	if err := tableRows.Err(); err != nil {
+		return err
+	}
+
+	opQuery := `
+SELECT txn_key, operation, rows
+FROM transaction_operations`
+	opArgs := make([]any, 0, len(keys))
+	if restrictToKeys {
+		placeholders := strings.TrimSuffix(strings.Repeat("?,", len(keys)), ",")
+		opQuery += "\nWHERE txn_key IN (" + placeholders + ")"
+		for _, key := range keys {
+			opArgs = append(opArgs, key)
+		}
+	}
+	opQuery += "\nORDER BY txn_key ASC, operation ASC"
+	opRows, err := s.db.Query(opQuery, opArgs...)
+	if err != nil {
+		return err
+	}
+	defer opRows.Close()
+
+	for opRows.Next() {
+		var txnKey, operation string
+		var rowsCount int64
+		if err := opRows.Scan(&txnKey, &operation, &rowsCount); err != nil {
+			return err
+		}
+		if idx, ok := indexByTxnKey[txnKey]; ok {
+			if txns[idx].Operations == nil {
+				txns[idx].Operations = make(map[string]int)
+			}
+			txns[idx].Operations[operation] = int(rowsCount)
+		}
+	}
+	return opRows.Err()
+}
+
+func (s *DuckDBStore) appendRows(table string, fill func(app *duckdb.Appender) error) error {
+	conn, err := s.db.Conn(context.Background())
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	return conn.Raw(func(raw any) error {
+		driverConn, ok := raw.(driver.Conn)
+		if !ok {
+			return fmt.Errorf("unexpected driver connection type %T", raw)
+		}
+		appender, err := duckdb.NewAppenderFromConn(driverConn, "", table)
+		if err != nil {
+			return err
+		}
+		defer appender.Close()
+
+		if err := fill(appender); err != nil {
+			return err
+		}
+		return appender.Flush()
+	})
+}
+
+func (s *DuckDBStore) flushIfNeeded() error {
+	if s.bufferedRows >= s.batchRowThreshold || s.bufferedBytes >= s.batchByteThreshold {
+		return s.Flush()
+	}
+	return nil
+}
+
+func (s *DuckDBStore) bufferTopLevelRow(bytes int) {
+	s.bufferedRows++
+	s.bufferedBytes += bytes
+}
+
+func (s *DuckDBStore) bufferBytes(bytes int) {
+	s.bufferedBytes += bytes
+}

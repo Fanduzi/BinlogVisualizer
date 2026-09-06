@@ -1230,13 +1230,17 @@ func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer)
 		return nil, fmt.Errorf("build parse progress: %w", err)
 	}
 
-	store, cleanup, _, err := createDuckDBTempStore("")
-	if err != nil {
-		return nil, fmt.Errorf("create temp store: %w", err)
+	var a *analyzer.Analyzer
+	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+		store, cleanup, _, err := createDuckDBTempStore("")
+		if err != nil {
+			return nil, fmt.Errorf("create temp store: %w", err)
+		}
+		defer cleanup()
+		a = analyzer.NewWithStore(opts, store)
+	} else {
+		a = analyzer.New(opts)
 	}
-	defer cleanup()
-
-	a := analyzer.NewWithStore(opts, store)
 
 	parser := binlog.NewParser()
 	handler := func(raw binlog.RawEvent) error {

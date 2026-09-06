@@ -1267,6 +1267,9 @@ func TestCreateDuckDBTempStoreCreatesAndCleansFiles(t *testing.T) {
 
 	store, cleanup, path, err := createDuckDBTempStore(root)
 	if err != nil {
+		if errors.Is(err, analyzer.ErrDuckDBRequiresCGO) {
+			t.Skip(err.Error())
+		}
 		t.Fatalf("createDuckDBTempStore returned error: %v", err)
 	}
 	if store == nil {
@@ -1302,6 +1305,9 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 	}, root, func(path string) {
 		createdPath = path
 	})
+	if err != nil && (errors.Is(err, analyzer.ErrDuckDBRequiresCGO) || strings.Contains(err.Error(), "requires cgo")) {
+		t.Skip(err.Error())
+	}
 	if err == nil {
 		t.Fatal("expected analysis error")
 	}
@@ -1800,6 +1806,9 @@ func TestRunAnalysisDetailStoreDuckDBCreatesTempStore(t *testing.T) {
 		})
 	})
 	if err != nil {
+		if errors.Is(err, analyzer.ErrDuckDBRequiresCGO) || strings.Contains(err.Error(), "requires cgo") {
+			t.Skip(err.Error())
+		}
 		t.Fatalf("runAnalysisWithParserAndTempDir returned error: %v", err)
 	}
 	if createdPath == "" {

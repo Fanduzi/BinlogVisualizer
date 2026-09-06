@@ -6,6 +6,7 @@
 package analyzer
 
 import (
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -216,6 +217,9 @@ func TestAnalyzerGTIDSelectionInMemoryAndDuckDBParity(t *testing.T) {
 	}
 	store, err := NewDuckDBStore(t.TempDir()+"/selection.duckdb", 1)
 	if err != nil {
+		if errors.Is(err, ErrDuckDBRequiresCGO) {
+			t.Skip(err.Error())
+		}
 		t.Fatal(err)
 	}
 	defer store.Close()
