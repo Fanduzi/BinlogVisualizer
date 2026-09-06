@@ -17,7 +17,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | `drilldown.go` | Selects bounded pattern drilldowns for high-signal compare changes. |
 | `text.go` | Renders human-readable compare output, including named baseline/current input-file and counted-event byte metrics, table drift, pattern drift, and snapshot-aware context such as window, input mode, source summary, and filters. |
 | `json.go` | Serializes compare results for downstream tools. |
-| `html.go` | Renders the self-contained HTML compare report with snapshot-aware context, byte coverage, pattern drift, and current transaction replay evidence. |
+| `html.go` | Renders the self-contained HTML compare report with snapshot-aware context, byte coverage, pattern drift, and current transaction replay evidence. Theme tokens come from `internal/report` SharedHTMLThemeCSS. |
 | `*_test.go` | Covers loading, diff behavior, findings and drilldowns, renderer output, diagnostics/i18n sections, snapshot-aware context, and contract stability. |
 
 ## Exports

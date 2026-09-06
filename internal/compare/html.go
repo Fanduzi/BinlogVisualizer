@@ -363,102 +363,18 @@ func formatOptionalCompareFileSize(bytes *int64) string {
 	return formatCompareFileSize(*bytes)
 }
 
-const compareHTMLTemplate = `<!DOCTYPE html>
+const compareHTMLTemplate = compareHTMLTemplateHead + report.SharedHTMLThemeCSS + compareHTMLTemplateTail
+
+const compareHTMLTemplateHead = `<!DOCTYPE html>
 <html lang="{{lang}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{t "report.html.compare.title"}}</title>
 <style>
-  :root, [data-theme="nebula"] {
-    --bg: #07090e;
-    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(129, 140, 248, 0.15), transparent 70%), radial-gradient(circle 40% at 90% 20%, rgba(34, 211, 238, 0.08), transparent 60%);
-    --surface: #0e121e;
-    --surface2: #141a2b;
-    --surface-hover: #1b233a;
-    --border: rgba(255, 255, 255, 0.08);
-    --primary: #818cf8;
-    --primary-rgb: 129, 140, 248;
-    --accent: #22d3ee;
-    --accent-rgb: 34, 211, 238;
-    --text: #f1f5f9;
-    --text-heading: #ffffff;
-    --muted: #8899b0;
-    --success: #34d399;
-    --warn: #fbbf24;
-    --danger: #f87171;
-    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.05);
-    --header-bg: rgba(14, 18, 30, 0.85);
-  }
-  [data-theme="forest"] {
-    --bg: #050c07;
-    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(74, 222, 128, 0.15), transparent 70%);
-    --surface: #0a160e;
-    --surface2: #102016;
-    --surface-hover: #162c1e;
-    --border: rgba(74, 222, 128, 0.12);
-    --primary: #4ade80;
-    --primary-rgb: 74, 222, 128;
-    --accent: #fbbf24;
-    --accent-rgb: 251, 191, 36;
-    --text: #f0fdf4;
-    --text-heading: #ffffff;
-    --muted: #7d9884;
-    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-    --header-bg: rgba(10, 22, 14, 0.85);
-  }
-  [data-theme="navy"] {
-    --bg: #040814;
-    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(96, 165, 250, 0.15), transparent 70%);
-    --surface: #081024;
-    --surface2: #0e1a38;
-    --surface-hover: #14244d;
-    --border: rgba(96, 165, 250, 0.12);
-    --primary: #60a5fa;
-    --primary-rgb: 96, 165, 250;
-    --accent: #fcd34d;
-    --accent-rgb: 252, 211, 77;
-    --text: #e8f0ff;
-    --text-heading: #ffffff;
-    --muted: #7286a8;
-    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-    --header-bg: rgba(8, 16, 36, 0.85);
-  }
-  [data-theme="ember"] {
-    --bg: #0a0604;
-    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(251, 146, 60, 0.15), transparent 70%);
-    --surface: #150d09;
-    --surface2: #20140f;
-    --surface-hover: #2d1d16;
-    --border: rgba(251, 146, 60, 0.12);
-    --primary: #fb923c;
-    --primary-rgb: 251, 146, 60;
-    --accent: #f43f5e;
-    --accent-rgb: 244, 63, 94;
-    --text: #fef3ee;
-    --text-heading: #ffffff;
-    --muted: #9a7f72;
-    --card-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
-    --header-bg: rgba(21, 13, 9, 0.85);
-  }
-  [data-theme="light"] {
-    --bg: #f8fafc;
-    --bg-mesh: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(79, 70, 229, 0.08), transparent 70%);
-    --surface: #ffffff;
-    --surface2: #f1f5f9;
-    --surface-hover: #e2e8f0;
-    --border: #e2e8f0;
-    --primary: #4f46e5;
-    --primary-rgb: 79, 70, 229;
-    --accent: #0891b2;
-    --accent-rgb: 8, 145, 178;
-    --text: #1e293b;
-    --text-heading: #0f172a;
-    --muted: #64748b;
-    --card-shadow: 0 4px 20px -4px rgba(0, 0, 0, 0.06);
-    --header-bg: rgba(255, 255, 255, 0.9);
-  }
+`
 
+const compareHTMLTemplateTail = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html { scroll-behavior: smooth; }
   body {
