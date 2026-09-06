@@ -164,7 +164,7 @@ func retainCompletedTransaction(txn model.Transaction) bool {
 	if txn.TotalRows > 0 {
 		return true
 	}
-	if txn.XAXID != "" && txn.PositionEnd > txn.PositionStart {
+	if txn.XAXID != "" && txn.BinlogPathStart != "" && txn.PositionEnd > txn.PositionStart {
 		return true
 	}
 	return false

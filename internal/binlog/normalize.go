@@ -15,7 +15,7 @@ import (
 // NormalizeRawEvent converts a RawEvent into a NormalizedEvent for analysis.
 // Returns nil for events that should be skipped (e.g., FORMAT_DESCRIPTION).
 func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
-	if raw.EventType == KindQuery {
+	if raw.EventType == kindQuery {
 		query := strings.TrimSpace(raw.Query)
 		_, _, isXA := parseXAQuery(query)
 		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) && !hasLoadDataPrefix(query) && !isXA {
@@ -40,38 +40,38 @@ func NormalizeRawEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, erro
 		return false, nil
 	}
 	switch raw.EventType {
-	case KindQuery:
+	case kindQuery:
 		return normalizeQueryEventInto(raw, dst)
-	case KindWriteRows:
+	case kindWriteRows:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "ROWS"
 		dst.Operation = "INSERT"
 		return true, nil
-	case KindUpdateRows:
+	case kindUpdateRows:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "ROWS"
 		dst.Operation = "UPDATE"
 		return true, nil
-	case KindDeleteRows:
+	case kindDeleteRows:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "ROWS"
 		dst.Operation = "DELETE"
 		return true, nil
-	case KindRowsQuery:
+	case kindRowsQuery:
 		return normalizeRowsQueryEventInto(raw, dst)
-	case KindGTID:
+	case kindGTID:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "GTID"
 		return true, nil
-	case KindXID:
+	case kindXID:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "XID"
 		return true, nil
-	case KindXAPrepare:
+	case kindXAPrepare:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "XA_PREPARE"
 		return true, nil
-	case KindTableMap:
+	case kindTableMap:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "TABLE_MAP"
 		return true, nil

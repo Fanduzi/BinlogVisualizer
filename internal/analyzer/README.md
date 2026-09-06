@@ -20,21 +20,21 @@
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
 | `report_aggregator.go` | Maintains bounded report state, filtered event-byte coverage, SQL availability, producer sets, and numeric-key-ordered transaction evidence while excluding incomplete transactions from whole-transaction rankings, patterns, histograms, and ordinary large alerts. |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |
-| `*_test.go` | Verifies intersected selection, complete/partial replay evidence, GTID flavor/precedence/rotation/DDL/XA/LOAD_DATA behavior, SCHEMA.TABLE object filtering, GRANT/CREATE USER DDL groups, report retain of zero-row XA versus DDL-only groups, XA END/ROLLBACK close rules, detail-store parity, and benchmarks. |
+| `*_test.go` | Verifies intersected selection, complete/partial replay evidence, GTID flavor/precedence/rotation/DDL/XA/LOAD_DATA behavior, SCHEMA.TABLE object filtering, GRANT/CREATE USER DDL groups, report retain of zero-row XA with a file location versus omit without one, XA END/ROLLBACK close rules, CGO DuckDB constructor contract, detail-store parity, and benchmarks. |
 
 ## Interfaces
 
 | API | Contract |
 |-----|----------|
-| `New(opts Options) *Analyzer` | Creates a fresh analyzer with bounded in-memory live state. When `DetailStoreMode` is `none` (default), uses a no-op detail store and generates reports from streaming aggregates without DuckDB. When `duckdb`, uses an in-memory store for detail persistence. |
-| `NewWithStore(opts Options, store *DuckDBStore) *Analyzer` | Creates an analyzer that uses a caller-managed DuckDB temp store. Forces `DetailStoreMode` to `duckdb`. |
-| `NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error)` | Opens and initializes the internal DuckDB result store schema. |
+| `New(opts Options) *Analyzer` | Creates a fresh analyzer with no DuckDB file. `DetailStoreMode none` uses a no-op detail store. `DetailStoreMode duckdb` without `NewWithStore` keeps an in-memory detail store for tests; it does not open DuckDB. Reports come from `ReportAggregator.Snapshot()`. |
+| `NewWithStore(opts Options, store *DuckDBStore) *Analyzer` | Attaches a caller-owned DuckDB store (CGO). Forces `DetailStoreMode` to `duckdb`. |
+| `NewDuckDBStore(path string, batchRows int) (*DuckDBStore, error)` | Opens DuckDB when built with CGO; returns `ErrDuckDBRequiresCGO` otherwise. |
 | `(Options).HasObjectFilters() bool` | Reports whether any schema or table include/exclude filter is configured. |
 | `(Options).HasPositionSelectors() bool`, `(Options).HasGTIDSelectors() bool` | Report active exact-position or complete-group GTID selectors. |
 | `ParseGTIDSelector(include, exclude []string) (*GTIDSelector, error)` | Parses and canonicalizes one explicit MySQL or MariaDB selector flavor. |
 | `Options.WorkloadID` | Carries the optional operator-provided workload token into report v3 without inference. |
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event. Workload totals remain inclusive, filtered, and event-window scoped while adjacent physical events may supply transaction-boundary evidence only. |
-| `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight state to DuckDB, queries persisted transactions/minutes/alerts, and assembles the complete final analysis result. Successful calls are idempotent. |
+| `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight grouping, writes optional detail-store batches, and assembles the report from `ReportAggregator.Snapshot()` plus table totals. Successful calls are idempotent. DuckDB is not queried on the default path. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
 | `NewTransactionBuilder() *TransactionBuilder` | Reconstructs GTID-aware MySQL/MariaDB XA transaction boundaries and fails on conflicting canonical GTIDs. |
 | `NewTableAggregator() *TableAggregator` | Tracks table-level aggregates for reporting. |
@@ -44,7 +44,7 @@
 
 - Upstream:
   - `internal/model` provides normalized event input plus result/report structures.
-  - `cmd/binlogviz/analyze.go` creates a command-owned DuckDB temp store and injects it into `NewWithStore`.
+  - `cmd/binlogviz/analyze.go` injects a DuckDB store via `NewWithStore` only when `--detail-store duckdb` is set and CGO is enabled.
 - Downstream:
   - `internal/report` renders `model.AnalysisResult` produced by this module.
   - Analyzer tests and benchmarks validate ordering, aggregation, and failure semantics.
@@ -65,8 +65,8 @@
 - Alert-referenced transactions are tracked in a bounded map so `BuildFindingsFromAlerts` and `BuildPatternDrilldowns` can resolve evidence even when the referenced transaction is not in the top-5 largest.
 - Pattern maps in snapshot use non-nil empty maps (`make(map[string]int)`) to match `BuildPatterns` semantics for `reflect.DeepEqual` parity.
 - Top-transaction reads hydrate SQL on demand via `attachTopTransactionSQL` using the store's `ResolveTransactionQuerySQL`.
-- Minute bucket reads query DuckDB at Finalize time instead of retaining all drained bucket snapshots in memory.
-- Finalize computes alerts after transaction/minute queries and feeds them directly into findings/drilldowns, avoiding an extra DuckDB alert round-trip on the hot path.
+- Minute buckets drain into `ReportAggregator` during streaming; Finalize does not query DuckDB for default report minutes.
+- Finalize computes alerts from the aggregator snapshot and feeds them into findings/drilldowns.
 - Live state remains bounded to the in-flight transaction builder, live table aggregates, current minute buckets pending flush, and summary counters.
 - `MinuteAggregator.Snapshot()` returns defensive table-row copies, while `DrainBefore()` and `DrainAll()` transfer ownership of removed bucket maps to avoid copy churn in the streaming persistence path.
 - Hot-path minute/table/transaction aggregation keeps table keys as structured internal identities and only materializes `schema.table` strings during final result projection.

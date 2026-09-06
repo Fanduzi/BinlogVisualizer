@@ -1,6 +1,6 @@
 // Package binlog guesses ROW/STATEMENT/MIXED from Query-DML versus ROW images.
 // input: raw parser events including Format Description server version.
-// output: FormatObserver counts, guessed input format, and captured server version for replay commands.
+// output: FormatObserver counts for Query-DML, ROW images, unmapped kinds, guessed input format, and captured server version.
 // pos: cheap format-observation helper used by analyze before rendering.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -22,6 +22,7 @@ const (
 type FormatObserver struct {
 	QueryDMLEvents int
 	RowImageEvents int
+	UnmappedEvents int
 	ServerVersion  string
 }
 
@@ -32,6 +33,10 @@ func (o *FormatObserver) Observe(raw RawEvent) {
 	}
 	if o.ServerVersion == "" && raw.ServerVersion != "" {
 		o.ServerVersion = raw.ServerVersion
+	}
+	if raw.EventType == "" {
+		o.UnmappedEvents++
+		return
 	}
 	if isQueryEventType(raw.EventType) && IsQueryDML(raw.Query) {
 		o.QueryDMLEvents++
@@ -75,11 +80,11 @@ func IsQueryDML(query string) bool {
 
 // IsRowImageEvent reports whether the parser event type carries ROW before/after images.
 func IsRowImageEvent(eventType string) bool {
-	return eventType == KindWriteRows || eventType == KindUpdateRows || eventType == KindDeleteRows
+	return eventType == kindWriteRows || eventType == kindUpdateRows || eventType == kindDeleteRows
 }
 
 func isQueryEventType(eventType string) bool {
-	return eventType == KindQuery
+	return eventType == kindQuery
 }
 
 func hasSQLKeywordPrefix(sql, word string) bool {

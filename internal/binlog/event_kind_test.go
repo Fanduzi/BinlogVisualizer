@@ -16,19 +16,19 @@ func TestCanonicalEventTypeMapsGoMysqlEnums(t *testing.T) {
 		et   replication.EventType
 		want string
 	}{
-		{replication.QUERY_EVENT, KindQuery},
-		{replication.WRITE_ROWS_EVENTv2, KindWriteRows},
-		{replication.UPDATE_ROWS_EVENTv1, KindUpdateRows},
-		{replication.DELETE_ROWS_EVENTv0, KindDeleteRows},
-		{replication.ROWS_QUERY_EVENT, KindRowsQuery},
-		{replication.MARIADB_ANNOTATE_ROWS_EVENT, KindRowsQuery},
-		{replication.GTID_EVENT, KindGTID},
-		{replication.MARIADB_GTID_EVENT, KindGTID},
-		{replication.GTID_TAGGED_LOG_EVENT, KindGTID},
-		{replication.XID_EVENT, KindXID},
-		{replication.XA_PREPARE_LOG_EVENT, KindXAPrepare},
-		{replication.TABLE_MAP_EVENT, KindTableMap},
-		{replication.FORMAT_DESCRIPTION_EVENT, KindFormatDescription},
+		{replication.QUERY_EVENT, kindQuery},
+		{replication.WRITE_ROWS_EVENTv2, kindWriteRows},
+		{replication.UPDATE_ROWS_EVENTv1, kindUpdateRows},
+		{replication.DELETE_ROWS_EVENTv0, kindDeleteRows},
+		{replication.ROWS_QUERY_EVENT, kindRowsQuery},
+		{replication.MARIADB_ANNOTATE_ROWS_EVENT, kindRowsQuery},
+		{replication.GTID_EVENT, kindGTID},
+		{replication.MARIADB_GTID_EVENT, kindGTID},
+		{replication.GTID_TAGGED_LOG_EVENT, kindGTID},
+		{replication.XID_EVENT, kindXID},
+		{replication.XA_PREPARE_LOG_EVENT, kindXAPrepare},
+		{replication.TABLE_MAP_EVENT, kindTableMap},
+		{replication.FORMAT_DESCRIPTION_EVENT, kindFormatDescription},
 		{replication.ROTATE_EVENT, ""},
 	}
 	for _, tc := range cases {
@@ -42,7 +42,7 @@ func TestCanonicalEventTypeIgnoresGoMysqlStringSpelling(t *testing.T) {
 	if replication.GTID_TAGGED_LOG_EVENT.String() == "GtidTaggedLogEvent" {
 		t.Fatal("fixture assumption failed: go-mysql still uses CamelCase for tagged GTID")
 	}
-	if got := canonicalEventType(replication.GTID_TAGGED_LOG_EVENT); got != KindGTID {
+	if got := canonicalEventType(replication.GTID_TAGGED_LOG_EVENT); got != kindGTID {
 		t.Fatalf("tagged GTID kind=%q, want GTID despite String()=%q", got, replication.GTID_TAGGED_LOG_EVENT.String())
 	}
 }

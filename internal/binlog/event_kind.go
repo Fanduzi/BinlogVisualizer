@@ -8,40 +8,40 @@ package binlog
 import "github.com/go-mysql-org/go-mysql/replication"
 
 const (
-	KindQuery             = "QUERY"
-	KindWriteRows         = "WRITE_ROWS"
-	KindUpdateRows        = "UPDATE_ROWS"
-	KindDeleteRows        = "DELETE_ROWS"
-	KindRowsQuery         = "ROWS_QUERY"
-	KindGTID              = "GTID"
-	KindXID               = "XID"
-	KindXAPrepare         = "XA_PREPARE"
-	KindTableMap          = "TABLE_MAP"
-	KindFormatDescription = "FORMAT_DESCRIPTION"
+	kindQuery             = "QUERY"
+	kindWriteRows         = "WRITE_ROWS"
+	kindUpdateRows        = "UPDATE_ROWS"
+	kindDeleteRows        = "DELETE_ROWS"
+	kindRowsQuery         = "ROWS_QUERY"
+	kindGTID              = "GTID"
+	kindXID               = "XID"
+	kindXAPrepare         = "XA_PREPARE"
+	kindTableMap          = "TABLE_MAP"
+	kindFormatDescription = "FORMAT_DESCRIPTION"
 )
 
 func canonicalEventType(et replication.EventType) string {
 	switch et {
 	case replication.QUERY_EVENT:
-		return KindQuery
+		return kindQuery
 	case replication.WRITE_ROWS_EVENTv0, replication.WRITE_ROWS_EVENTv1, replication.WRITE_ROWS_EVENTv2:
-		return KindWriteRows
+		return kindWriteRows
 	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
-		return KindUpdateRows
+		return kindUpdateRows
 	case replication.DELETE_ROWS_EVENTv0, replication.DELETE_ROWS_EVENTv1, replication.DELETE_ROWS_EVENTv2:
-		return KindDeleteRows
+		return kindDeleteRows
 	case replication.ROWS_QUERY_EVENT, replication.MARIADB_ANNOTATE_ROWS_EVENT:
-		return KindRowsQuery
+		return kindRowsQuery
 	case replication.GTID_EVENT, replication.GTID_TAGGED_LOG_EVENT, replication.MARIADB_GTID_EVENT:
-		return KindGTID
+		return kindGTID
 	case replication.XID_EVENT:
-		return KindXID
+		return kindXID
 	case replication.XA_PREPARE_LOG_EVENT:
-		return KindXAPrepare
+		return kindXAPrepare
 	case replication.TABLE_MAP_EVENT:
-		return KindTableMap
+		return kindTableMap
 	case replication.FORMAT_DESCRIPTION_EVENT:
-		return KindFormatDescription
+		return kindFormatDescription
 	default:
 		return ""
 	}

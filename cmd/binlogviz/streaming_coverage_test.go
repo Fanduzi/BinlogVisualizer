@@ -1,7 +1,7 @@
 // Package binlogviz adds streaming-path regression coverage for fixtures, alerts, SQL context, and parser backpressure.
 // input: real binlog fixtures from internal/binlog/testdata plus synthetic parser workloads that exercise the command streaming path.
 // output: evidence that parser->normalize->analyzer.Consume->Finalize stays streaming and covers large transaction, spike, and Rows_query cases; stdout/stderr capture drains pipes concurrently so large HTML reports do not deadlock.
-// pos: Stage 5 command-layer regression suite focused on true streaming + DuckDB execution rather than slice-based wrappers.
+// pos: Stage 5 command-layer regression suite focused on true streaming Consume/Finalize rather than slice-based wrappers.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 

@@ -325,5 +325,5 @@ func TestRealFixturePropagatesProducerMetadata(t *testing.T) {
 }
 
 func isRowsEventTypeForTest(eventType string) bool {
-	return eventType == KindWriteRows || eventType == KindUpdateRows || eventType == KindDeleteRows
+	return eventType == kindWriteRows || eventType == kindUpdateRows || eventType == kindDeleteRows
 }
