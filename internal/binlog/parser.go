@@ -38,15 +38,30 @@ func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error 
 // Note: TableMapEvents before the offset are lost, so RowsEvents may have empty schema/table fields.
 // For timestamp-only probes this is harmless; for full event parsing, start from offset 0.
 func (p *parser) ParseFilesFromOffset(paths []string, offset int64, handler func(RawEvent) error) error {
-	bp := replication.NewBinlogParser()
+	return p.parseFiles(paths, offset, nil, handler)
+}
 
-	for _, path := range paths {
+// ParseFilesWithProgress reads binlog files and optionally reports file-relative offsets.
+func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParseProgress), handler func(RawEvent) error) error {
+	return p.parseFiles(paths, 0, onProgress, handler)
+}
+
+func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(ParseProgress), handler func(RawEvent) error) error {
+	bp := replication.NewBinlogParser()
+	if startOffset < 0 {
+		startOffset = 0
+	}
+
+	for index, path := range paths {
 		tableNames := make(map[uint64]cachedTableName)
 		serverVersion := ""
-		startOffset := offset
-		if startOffset < 0 {
-			startOffset = 0
+		fileSize := int64(0)
+		if onProgress != nil {
+			if info, err := os.Stat(path); err == nil {
+				fileSize = info.Size()
+			}
 		}
+		lastOffset := int64(0)
 		cursor := startOffset
 		if cursor == 0 {
 			cursor = binlogMagicSize
@@ -67,51 +82,9 @@ func (p *parser) ParseFilesFromOffset(paths []string, offset int64, handler func
 			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes, cursor = deriveEventPositionRange(ev.Header, cursor)
 			raw.Position = uint32(raw.PositionEnd)
 
-			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames)
-			if raw.ServerVersion != "" {
-				serverVersion = raw.ServerVersion
-			}
-
-			return handler(raw)
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// ParseFilesWithProgress reads binlog files and optionally reports file-relative offsets.
-func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParseProgress), handler func(RawEvent) error) error {
-	bp := replication.NewBinlogParser()
-
-	for index, path := range paths {
-		tableNames := make(map[uint64]cachedTableName)
-		serverVersion := ""
-		fileSize := int64(0)
-		if info, err := os.Stat(path); err == nil {
-			fileSize = info.Size()
-		}
-		lastOffset := int64(0)
-		cursor := int64(binlogMagicSize)
-		if err := bp.ParseFile(path, 0, func(ev *replication.BinlogEvent) error {
-			if ev == nil {
-				return nil
-			}
-
-			raw := RawEvent{
-				Timestamp:     time.Unix(int64(ev.Header.Timestamp), 0),
-				EventType:     canonicalEventType(ev.Header.EventType),
-				BinlogPath:    path,
-				ServerID:      ev.Header.ServerID,
-				ServerVersion: serverVersion,
-				ServerFlavor:  serverFlavor(serverVersion),
-			}
-			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes, cursor = deriveEventPositionRange(ev.Header, cursor)
-			raw.Position = uint32(raw.PositionEnd)
-
-			offset := clampProgressOffset(raw.PositionEnd, fileSize)
-			lastOffset = maxInt64(lastOffset, offset)
 			if onProgress != nil {
+				offset := clampProgressOffset(raw.PositionEnd, fileSize)
+				lastOffset = maxInt64(lastOffset, offset)
 				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
 			}
 

@@ -1,7 +1,7 @@
 // Package analyzer builds chart-ready time series from analyzer minute buckets, events, and transactions.
 // input: minute buckets, normalized events, and completed transactions.
 // output: model.Timeseries projections suitable for HTML/JSON reporting.
-// pos: analyzer-side projection layer that turns canonical aggregates into report-friendly series.
+// pos: analyzer-side projection used by ReportAggregator.Snapshot.
 // note: if this file changes, update this header and README.md.
 package analyzer
 
@@ -94,55 +94,6 @@ type operationMinuteStats struct {
 	updateEvents int
 	deleteEvents int
 	ddlEvents    int
-}
-
-// TimeseriesAggregator tracks operation-level event counts needed for chart projections.
-type TimeseriesAggregator struct {
-	operationCounts map[time.Time]operationMinuteStats
-}
-
-// NewTimeseriesAggregator creates an empty TimeseriesAggregator.
-func NewTimeseriesAggregator() *TimeseriesAggregator {
-	return &TimeseriesAggregator{
-		operationCounts: make(map[time.Time]operationMinuteStats),
-	}
-}
-
-// Consume records operation-level counts for one normalized event.
-func (a *TimeseriesAggregator) Consume(ev model.NormalizedEvent) {
-	if a == nil {
-		return
-	}
-
-	minute := truncateToMinute(ev.Timestamp)
-	stats := a.operationCounts[minute]
-	switch ev.Operation {
-	case "INSERT":
-		stats.insertEvents++
-	case "UPDATE":
-		stats.updateEvents++
-	case "DELETE":
-		stats.deleteEvents++
-	}
-	if ddlEvent, ok := DDLEventFromNormalizedEvent(ev); ok && ddlEvent.Operation != "" {
-		stats.ddlEvents++
-	}
-	a.operationCounts[minute] = stats
-}
-
-// Snapshot builds a model.Timeseries projection from canonical minutes and transactions.
-func (a *TimeseriesAggregator) Snapshot(minutes []model.MinuteBucket, transactions []model.Transaction) model.Timeseries {
-	input := TimeseriesBuildInput{
-		Minutes:      minutes,
-		Transactions: transactions,
-	}
-	if a != nil && len(a.operationCounts) > 0 {
-		input.OperationCounts = make(map[time.Time]operationMinuteStats, len(a.operationCounts))
-		for minute, stats := range a.operationCounts {
-			input.OperationCounts[minute] = stats
-		}
-	}
-	return BuildTimeseries(input)
 }
 
 func collectSeriesMinutes(buckets []model.MinuteBucket, events []model.NormalizedEvent) []time.Time {

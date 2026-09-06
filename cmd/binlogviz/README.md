@@ -7,7 +7,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | File | Responsibility |
 |------|----------------|
 | `root.go` | Builds the root command and registers `analyze`, `compare`, `trend`, `snapshot`, `version`, and `workflow`. |
-| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution, explicit `--workload-id` persistence, time/position/GTID selector flags, documents UTC binlog timestamps and explicit-offset RFC3339 filters, selected-file coverage, aggregate parse progress on `stderr`, Format Description server-version plumbing for replay commands, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
+| `analyze.go` | Orchestrates explicit-path or discovery-mode analyze execution through one streaming path (optional injected normalize, optional HTML dest), explicit `--workload-id` persistence, time/position/GTID selector flags, documents UTC binlog timestamps and explicit-offset RFC3339 filters, selected-file coverage, aggregate parse progress on `stderr`, Format Description server-version plumbing for replay commands, optional snapshot persistence, no-data exit 2 guards, and command-owned DuckDB temp-store lifecycle. |
 | `analyze_selection.go` | Validates single-file position selectors against exact parsed event boundaries and EOF before report rendering. |
 | `analyze_output.go` | Resolves analyze HTML destination: explicit `--output`, `--output -`, TTY default cwd file, and non-TTY stdout redirect. |
 | `exit.go` | Maps command errors onto process exit codes, including analyze no-data exit 2. |
