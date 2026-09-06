@@ -96,8 +96,11 @@ func TestNormalizeMariaDBXAQueries(t *testing.T) {
 		eventType string
 	}{
 		{query: "XA START 'batch-57'", eventType: "XA_START"},
+		{query: "XA BEGIN 'batch-57'", eventType: "XA_START"},
+		{query: "XA END 'batch-57'", eventType: "XA_END"},
 		{query: "XA PREPARE 'batch-57'", eventType: "XA_PREPARE"},
 		{query: "XA COMMIT 'batch-57'", eventType: "XA_COMMIT"},
+		{query: "XA ROLLBACK 'batch-57'", eventType: "XA_ROLLBACK"},
 	}
 
 	for _, tt := range tests {

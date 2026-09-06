@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with optional producer/transaction provenance emitted by the binlog parser layer.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity, Query DDL including GRANT/REVOKE, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, and stable event/operation kinds.
 // pos: normalization boundary between parser extraction and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -231,8 +231,11 @@ func parseXAQuery(query string) (eventType, xid string, ok bool) {
 		eventType string
 	}{
 		{verb: "START", eventType: "XA_START"},
+		{verb: "BEGIN", eventType: "XA_START"},
+		{verb: "END", eventType: "XA_END"},
 		{verb: "PREPARE", eventType: "XA_PREPARE"},
 		{verb: "COMMIT", eventType: "XA_COMMIT"},
+		{verb: "ROLLBACK", eventType: "XA_ROLLBACK"},
 	} {
 		if !hasWordPrefixFold(remainder, boundary.verb) {
 			continue

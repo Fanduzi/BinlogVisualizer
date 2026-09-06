@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA and DDL boundaries, and ROWS/ROWS_QUERY semantics.
-// output: retained transaction evidence with canonical provenance, explicit completeness, trusted replay spans, isolated DDL GTID groups, XA identity, and safe query context.
+// output: closed transaction groups plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -101,11 +101,14 @@ func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation 
 		}
 		b.current.xaXID = ev.XAXID
 		return b.mergeProvenance(ev)
-	case "XID", "COMMIT", "XA_PREPARE", "XA_COMMIT":
+	case "XID", "COMMIT", "XA_PREPARE", "XA_COMMIT", "XA_ROLLBACK":
 		if err := b.mergeProvenance(ev); err != nil {
 			return err
 		}
 		b.handleCommit(ev, relation)
+	case "XA_END":
+		b.accumulateInTxnEvent(ev, relation)
+		return b.mergeProvenance(ev)
 	case "ROWS_QUERY":
 		// Capture SQL context for next ROWS events in this transaction
 		b.handleRowsQuery(ev, relation)
@@ -153,6 +156,18 @@ func (b *TransactionBuilder) DrainCompleted() []model.Transaction {
 	drained := b.completed
 	b.completed = nil
 	return drained
+}
+
+// retainCompletedTransaction reports whether a closed transaction group belongs
+// in AnalysisResult.Transactions. DDL-only groups stay on the DDL timeline.
+func retainCompletedTransaction(txn model.Transaction) bool {
+	if txn.TotalRows > 0 {
+		return true
+	}
+	if txn.XAXID != "" && txn.PositionEnd > txn.PositionStart {
+		return true
+	}
+	return false
 }
 
 // CurrentTxnKey returns the in-flight transaction key, if any.

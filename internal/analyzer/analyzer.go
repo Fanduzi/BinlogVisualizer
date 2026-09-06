@@ -506,7 +506,7 @@ func (a *Analyzer) persistCompletedTransactions() error {
 				a.matchedGTIDs[identity] = struct{}{}
 			}
 		}
-		if txn.TotalRows > 0 || txn.XAXID != "" && txn.PositionEnd > txn.PositionStart {
+		if retainCompletedTransaction(txn) {
 			persisted = append(persisted, txn)
 		}
 	}
