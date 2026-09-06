@@ -571,7 +571,7 @@ func runAnalysisStreamingWithDeps(
 	newTempStore tempStoreFactory,
 	tempRoot string,
 ) error {
-	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, normalize, newAnalyzer, newTempStore, tempRoot, nil, model.FileCoverage{}, "", "")
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, normalize, newAnalyzer, newTempStore, tempRoot, nil, model.FileCoverage{}, "", "", outputDestination{})
 }
 
 func runAnalysisStreamingWithSnapshotDeps(
@@ -588,6 +588,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	fileCoverage model.FileCoverage,
 	snapshotName string,
 	snapshotDir string,
+	dest outputDestination,
 ) error {
 	positionValidator, err := newPositionBoundaryValidator(paths, opts)
 	if err != nil {
@@ -616,14 +617,26 @@ func runAnalysisStreamingWithSnapshotDeps(
 		positionValidator.Observe(raw)
 		formatObserver.Observe(raw)
 		rawEvents++
-		normalized, err := normalize(raw)
-		if err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
+		var ev model.NormalizedEvent
+		if normalize != nil {
+			normalized, err := normalize(raw)
+			if err != nil {
+				return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
+			}
+			if normalized == nil {
+				return nil
+			}
+			ev = *normalized
+		} else {
+			ok, err := binlog.NormalizeRawEventInto(raw, &ev)
+			if err != nil {
+				return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
+			}
+			if !ok {
+				return nil
+			}
 		}
-		if normalized == nil {
-			return nil
-		}
-		if err := streamAnalyzer.Consume(*normalized); err != nil {
+		if err := streamAnalyzer.Consume(ev); err != nil {
 			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
 		}
 		return nil
@@ -675,7 +688,20 @@ func runAnalysisStreamingWithSnapshotDeps(
 	case "markdown", "md":
 		renderErr = report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
 	case "html":
-		renderErr = report.RenderHTMLToStdout(*result, reportOpts)
+		if dest.IsFile || dest.IsStdout {
+			htmlContent, err := report.RenderHTMLWithOptions(*result, reportOpts)
+			if err != nil {
+				return err
+			}
+			if err := writeHTMLAtomically(dest, htmlContent); err != nil {
+				return err
+			}
+			if dest.IsFile {
+				printHTMLSaveConfirmation(dest.Path)
+			}
+		} else {
+			renderErr = report.RenderHTMLToStdout(*result, reportOpts)
+		}
 	default:
 		renderErr = report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
@@ -699,101 +725,7 @@ func runAnalysisStreamingFastWithSnapshot(
 	snapshotName string,
 	snapshotDir string,
 ) error {
-	positionValidator, err := newPositionBoundaryValidator(paths, opts)
-	if err != nil {
-		return err
-	}
-	progress, err := newAggregateProgress(paths, os.Stderr)
-	if err != nil {
-		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
-	}
-
-	var store *analyzer.DuckDBStore
-	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
-		var cleanup func() error
-		store, cleanup, _, err = newTempStore(tempRoot)
-		if err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
-		}
-		defer cleanup()
-	}
-
-	streamAnalyzer := newAnalyzer(opts, store)
-	var formatObserver binlog.FormatObserver
-	rawEvents := 0
-
-	handler := func(raw binlog.RawEvent) error {
-		positionValidator.Observe(raw)
-		formatObserver.Observe(raw)
-		rawEvents++
-		var normalized model.NormalizedEvent
-		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
-		if err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
-		}
-		if !ok {
-			return nil
-		}
-		if err := streamAnalyzer.Consume(normalized); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
-		}
-		return nil
-	}
-
-	if progressParser, ok := parser.(binlog.ProgressParser); ok {
-		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
-			progress.Advance(progressEvent)
-		}, handler); err != nil {
-			return wrapParseError(err)
-		}
-		for index := range paths {
-			progress.FinishFile(index)
-		}
-	} else {
-		if err := parser.ParseFiles(paths, handler); err != nil {
-			return wrapParseError(err)
-		}
-	}
-	if err := positionValidator.Validate(); err != nil {
-		return err
-	}
-	progress.FinishParse()
-	progress.Finalizing()
-
-	result, err := streamAnalyzer.Finalize()
-	if err != nil {
-		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
-	}
-	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
-		return err
-	}
-	applyFileCoverage(result, paths, fileCoverage)
-	if err := noteInputFormat(result, formatObserver); err != nil {
-		return err
-	}
-
-	var renderErr error
-	switch format {
-	case "json":
-		if snapshotMeta != nil {
-			result.Snapshot = snapshotMeta
-		}
-		if snapshotName != "" {
-			renderErr = saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
-		} else {
-			renderErr = report.RenderJSONToStdoutWithOptions(*result, reportOpts)
-		}
-	case "markdown", "md":
-		renderErr = report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
-	case "html":
-		renderErr = report.RenderHTMLToStdout(*result, reportOpts)
-	default:
-		renderErr = report.RenderTextToStdoutWithOptions(*result, reportOpts)
-	}
-	if renderErr != nil {
-		return renderErr
-	}
-	return nil
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, nil, newAnalyzer, newTempStore, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir, outputDestination{})
 }
 
 func hasFileCoverage(fileCoverage model.FileCoverage) bool {
@@ -861,110 +793,7 @@ func runAnalysisStreamingFastWithOutput(
 	snapshotDir string,
 	dest outputDestination,
 ) error {
-	positionValidator, err := newPositionBoundaryValidator(paths, opts)
-	if err != nil {
-		return err
-	}
-	progress, err := newAggregateProgress(paths, os.Stderr)
-	if err != nil {
-		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
-	}
-
-	var store *analyzer.DuckDBStore
-	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
-		var cleanup func() error
-		store, cleanup, _, err = newTempStore(tempRoot)
-		if err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
-		}
-		defer cleanup()
-	}
-
-	streamAnalyzer := newAnalyzer(opts, store)
-	var formatObserver binlog.FormatObserver
-	rawEvents := 0
-
-	handler := func(raw binlog.RawEvent) error {
-		positionValidator.Observe(raw)
-		formatObserver.Observe(raw)
-		rawEvents++
-		var normalized model.NormalizedEvent
-		ok, err := binlog.NormalizeRawEventInto(raw, &normalized)
-		if err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
-		}
-		if !ok {
-			return nil
-		}
-		if err := streamAnalyzer.Consume(normalized); err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
-		}
-		return nil
-	}
-
-	if progressParser, ok := parser.(binlog.ProgressParser); ok {
-		if err := parseFilesWithProgressParallelOrdered(paths, progressParser, defaultAnalyzeProbeWorkers(len(paths)), func(progressEvent binlog.ParseProgress) {
-			progress.Advance(progressEvent)
-		}, handler); err != nil {
-			return wrapParseError(err)
-		}
-		for index := range paths {
-			progress.FinishFile(index)
-		}
-	} else {
-		if err := parser.ParseFiles(paths, handler); err != nil {
-			return wrapParseError(err)
-		}
-	}
-	if err := positionValidator.Validate(); err != nil {
-		return err
-	}
-	progress.FinishParse()
-	progress.Finalizing()
-
-	result, err := streamAnalyzer.Finalize()
-	if err != nil {
-		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
-	}
-	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
-		return err
-	}
-	applyFileCoverage(result, paths, fileCoverage)
-	if err := noteInputFormat(result, formatObserver); err != nil {
-		return err
-	}
-
-	var renderErr error
-	switch format {
-	case "json":
-		if snapshotMeta != nil {
-			result.Snapshot = snapshotMeta
-		}
-		if snapshotName != "" {
-			renderErr = saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir)
-		} else {
-			renderErr = report.RenderJSONToStdoutWithOptions(*result, reportOpts)
-		}
-	case "markdown", "md":
-		renderErr = report.RenderMarkdownToStdoutWithOptions(*result, reportOpts)
-	case "html":
-		htmlContent, err := report.RenderHTMLWithOptions(*result, reportOpts)
-		if err != nil {
-			return err
-		}
-		if err := writeHTMLAtomically(dest, htmlContent); err != nil {
-			return err
-		}
-		if dest.IsFile {
-			printHTMLSaveConfirmation(dest.Path)
-		}
-	default:
-		renderErr = report.RenderTextToStdoutWithOptions(*result, reportOpts)
-	}
-	if renderErr != nil {
-		return renderErr
-	}
-	return nil
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, nil, newAnalyzer, newTempStore, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest)
 }
 
 func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {

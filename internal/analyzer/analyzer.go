@@ -23,12 +23,11 @@ type Analyzer struct {
 	filter *EventFilter
 
 	// Sub-aggregators
-	txnBuilder    *TransactionBuilder
-	tableAgg      *TableAggregator
-	minuteAgg     *MinuteAggregator
-	ddlAgg        *DDLAggregator
-	timeseriesAgg *TimeseriesAggregator
-	reportAgg     *ReportAggregator
+	txnBuilder *TransactionBuilder
+	tableAgg   *TableAggregator
+	minuteAgg  *MinuteAggregator
+	ddlAgg     *DDLAggregator
+	reportAgg  *ReportAggregator
 
 	// Event tracking
 	eventCount int
@@ -299,7 +298,6 @@ func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
 		a.tableAgg.Consume(aggregationEv)
 		a.minuteAgg.Consume(aggregationEv)
 		a.ddlAgg.ConsumeEvent(aggregationEv)
-		a.timeseriesAgg.Consume(aggregationEv)
 	}
 	if !a.opts.HasObjectFilters() || isWorkload {
 		a.reportAgg.ConsumeEvent(aggregationEv)
@@ -348,7 +346,6 @@ func (a *Analyzer) reset() {
 	a.tableAgg = NewTableAggregator()
 	a.minuteAgg = NewMinuteAggregator()
 	a.ddlAgg = NewDDLAggregator()
-	a.timeseriesAgg = NewTimeseriesAggregator()
 	a.reportAgg = NewReportAggregator(a.opts)
 	a.filter = newEventFilter(a.opts)
 	a.eventCount = 0
