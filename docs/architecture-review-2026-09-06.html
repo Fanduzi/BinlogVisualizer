@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>BinlogVisualizer 架构评审</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .leak { stroke: #dc2626; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .mass-iface { background: repeating-linear-gradient(-45deg, #cbd5e1, #cbd5e1 6px, #e2e8f0 6px, #e2e8f0 12px); }
+      .fade-internal { opacity: 0.45; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+      <header class="space-y-6">
+        <p class="text-xs uppercase tracking-[0.2em] text-stone-500">架构评审</p>
+        <h1 class="font-serif text-4xl text-slate-900">BinlogVisualizer</h1>
+        <p class="text-sm text-stone-500">2026-09-06 · 热点：analyze、事务分组、ingest、报告装配</p>
+        <div class="flex flex-wrap gap-6 text-xs tracking-wider text-stone-600">
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-8 border border-slate-400 bg-white"></span> module</span>
+          <span class="inline-flex items-center gap-2"><span class="h-px w-8 border-t border-dashed border-slate-500"></span> seam</span>
+          <span class="inline-flex items-center gap-2"><span class="h-px w-8 bg-red-600"></span> 泄漏</span>
+          <span class="inline-flex items-center gap-2"><span class="h-3 w-8 deep"></span> deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-16">
+
+        <article id="grouping" class="space-y-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 class="font-serif text-2xl">把事务分组收成一个 deep module</h2>
+            <div class="flex gap-2">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs tracking-wider text-emerald-800">强烈</span>
+              <span class="rounded-full bg-slate-200 px-3 py-1 text-xs tracking-wider text-slate-700">in-process</span>
+            </div>
+          </div>
+          <ul class="font-mono text-sm text-stone-600 space-y-0.5">
+            <li>internal/analyzer/transactions.go</li>
+            <li>internal/analyzer/analyzer.go</li>
+            <li>internal/binlog/normalize.go</li>
+            <li>internal/binlog/parser.go</li>
+          </ul>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs tracking-wider text-stone-500 mb-2">之前</p>
+              <pre class="mermaid">
+flowchart LR
+  P["parser XA 字节"] -.leak.-> R["retain 谓词"]
+  N["normalize XA Query"] -.leak.-> G["TransactionBuilder"]
+  G --> R
+  R --> A["Analyzer 扇出"]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class P,N,R leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4">
+              <p class="text-xs tracking-wider text-stone-500 mb-2">之后</p>
+              <div class="h-[280px] deep text-stone-100 p-4 flex flex-col justify-between">
+                <p class="text-xs tracking-wider">interface · 已完成的 group</p>
+                <div class="grid grid-cols-2 gap-2 fade-internal text-xs tracking-wider">
+                  <div class="border border-white/20 p-2">open GTID / BEGIN / XA START</div>
+                  <div class="border border-white/20 p-2">close XID / PREPARE / COMMIT / DDL</div>
+                  <div class="border border-white/20 p-2">XA END / ROLLBACK</div>
+                  <div class="border border-white/20 p-2">retain：有行写入，或 XA 身份</div>
+                </div>
+                <p class="text-[10px] tracking-wider text-stone-400">parser 只抽字节 · Analyzer 消费 group</p>
+              </div>
+            </div>
+          </div>
+          <p><span class="text-xs tracking-wider text-stone-500">问题。</span> 一个 group（GTID、XA、GTID 启动的 DDL）在 builder 里打开，在 normalize 里定类型，在 parser 里取身份，再被第二条 retain 谓词决定留不留。</p>
+          <p><span class="text-xs tracking-wider text-stone-500">做法。</span> 一个 module 拥有 open / continue / close / ignore，以及完成后是否 retain；parser 只抽取字节。</p>
+          <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>locality：GTID 冲突只活在一个 module</li>
+            <li>leverage：下一段 XA 序列只改一张表</li>
+            <li>interface 就是测试面</li>
+            <li>retain 不再穿过 seam 泄漏</li>
+          </ul>
+          <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            不与 ADR-0001 冲突。零行 XA group 被丢掉时，今天会变成 No-data result（exit 2）；加深后的 module 必须保住这条契约。
+          </div>
+        </article>
+
+        <article id="kinds" class="space-y-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 class="font-serif text-2xl">在 parser adapter 上规范化事件种类</h2>
+            <div class="flex gap-2">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs tracking-wider text-emerald-800">强烈</span>
+              <span class="rounded-full bg-slate-200 px-3 py-1 text-xs tracking-wider text-slate-700">ports &amp; adapters</span>
+            </div>
+          </div>
+          <ul class="font-mono text-sm text-stone-600 space-y-0.5">
+            <li>internal/binlog/parser.go</li>
+            <li>internal/binlog/normalize.go</li>
+            <li>internal/binlog/types.go</li>
+            <li>internal/binlog/format.go</li>
+          </ul>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px] flex flex-col">
+              <p class="text-xs tracking-wider text-stone-500 mb-3">之前 · shallow</p>
+              <div class="flex-1 flex items-end gap-8 justify-center">
+                <div class="flex flex-col items-center gap-1 w-28">
+                  <div class="mass-iface w-full h-36 border border-slate-400"></div>
+                  <p class="text-xs tracking-wider text-center">interface<br/>QueryEvent / QUERY_EVENT<br/>WriteRows / WRITE_ROWS<br/>XAPrepareLogEvent / …</p>
+                </div>
+                <div class="flex flex-col items-center gap-1 w-28">
+                  <div class="w-full h-40 bg-slate-700"></div>
+                  <p class="text-xs tracking-wider">implementation<br/>首字母 switch<br/>死分支 case R</p>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px] flex flex-col">
+              <p class="text-xs tracking-wider text-stone-500 mb-3">之后 · deep</p>
+              <div class="flex-1 flex items-end gap-8 justify-center">
+                <div class="flex flex-col items-center gap-1 w-28">
+                  <div class="w-full h-10 bg-slate-300 border border-slate-400"></div>
+                  <p class="text-xs tracking-wider text-center">interface<br/>规范种类<br/>skip 计数</p>
+                </div>
+                <div class="flex flex-col items-center gap-1 w-28">
+                  <div class="w-full h-56 deep"></div>
+                  <p class="text-xs tracking-wider">implementation<br/>go-mysql 名字<br/>Query-DML vs ROW image<br/>XA Query SQL</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p><span class="text-xs tracking-wider text-stone-500">问题。</span> Normalize 的 interface 是一张 go-mysql 双拼写表；不支持的种类（包括 XA END）直接 skip，没有计数。</p>
+          <p><span class="text-xs tracking-wider text-stone-500">做法。</span> parser adapter 每种事件只发一个规范种类；剩下的 Query 分类（BEGIN、Query-DML、DDL、XA SQL）藏在这条 seam 后面；skip 要计数。</p>
+          <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>locality：go-mysql 改名只打一个 adapter</li>
+            <li>leverage：#62 那种 skip 藏不住</li>
+            <li>FormatObserver 仍是 Input format module</li>
+            <li>测试只钉一种名字</li>
+          </ul>
+        </article>
+
+        <article id="report-assembly" class="space-y-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 class="font-serif text-2xl">做完报告装配这个 module</h2>
+            <div class="flex gap-2">
+              <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs tracking-wider text-emerald-800">强烈</span>
+              <span class="rounded-full bg-slate-200 px-3 py-1 text-xs tracking-wider text-slate-700">in-process</span>
+            </div>
+          </div>
+          <ul class="font-mono text-sm text-stone-600 space-y-0.5">
+            <li>internal/analyzer/analyzer.go</li>
+            <li>internal/analyzer/report_aggregator.go</li>
+            <li>internal/analyzer/timeseries.go</li>
+            <li>internal/analyzer/store.go</li>
+            <li>internal/analyzer/detail_store.go</li>
+          </ul>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px] overflow-hidden">
+              <p class="text-xs tracking-wider text-stone-500 mb-3">之前</p>
+              <div class="border border-slate-400 p-2 text-xs tracking-wider space-y-2">
+                Analyzer.consume
+                <div class="ml-3 grid grid-cols-2 gap-1">
+                  <div class="border border-slate-300 p-1">TransactionBuilder</div>
+                  <div class="border border-slate-300 p-1">tableAgg</div>
+                  <div class="border border-slate-300 p-1">minuteAgg</div>
+                  <div class="border border-slate-300 p-1">ddlAgg</div>
+                  <div class="border border-red-400 bg-red-50 p-1 text-red-700">timeseriesAgg · 只写不读</div>
+                  <div class="border border-slate-800 p-1">ReportAggregator</div>
+                </div>
+                <div class="border border-dashed border-red-500 p-1 text-red-700">detailStore / analysisStore / DuckDB CGO</div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px]">
+              <p class="text-xs tracking-wider text-stone-500 mb-3">之后</p>
+              <div class="h-[260px] deep text-stone-100 p-4 flex flex-col gap-3">
+                <p class="text-xs tracking-wider">interface · Consume / Finalize</p>
+                <div class="flex-1 border border-white/20 p-3 fade-internal text-xs tracking-wider space-y-2">
+                  <div>grouping</div>
+                  <div>活的报告快照</div>
+                  <div>可选的 detail adapter</div>
+                </div>
+                <p class="text-[10px] tracking-wider text-stone-400">默认路径不再 import DuckDB</p>
+              </div>
+            </div>
+          </div>
+          <p><span class="text-xs tracking-wider text-stone-500">问题。</span> ReportAggregator 已经拥有活快照，但 Analyzer 仍扇出到只写不读的 aggregator，以及两套重叠的 store interface；DuckDB 的 CGO 编进每个二进制。</p>
+          <p><span class="text-xs tracking-wider text-stone-500">做法。</span> Analyzer 的 implementation 就是报告快照加上 grouping；丢掉未读 aggregator 和查询路径；DuckDB 是第二条 adapter，坐在真实 seam 后面，而不是给内存存储起一个 duckdb 名字。</p>
+          <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>locality：Finalize 只读一份快照</li>
+            <li>leverage：默认 analyze 去掉 CGO</li>
+            <li>两条 adapter 才撑得起 store seam</li>
+            <li>删掉未读的 TimeseriesAggregator</li>
+          </ul>
+        </article>
+
+        <article id="analyze-path" class="space-y-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 class="font-serif text-2xl">只留一条 analyze 流式路径</h2>
+            <div class="flex gap-2">
+              <span class="rounded-full bg-amber-100 px-3 py-1 text-xs tracking-wider text-amber-900">值得探索</span>
+              <span class="rounded-full bg-slate-200 px-3 py-1 text-xs tracking-wider text-slate-700">local-substitutable</span>
+            </div>
+          </div>
+          <ul class="font-mono text-sm text-stone-600 space-y-0.5">
+            <li>cmd/binlogviz/analyze.go</li>
+            <li>cmd/binlogviz/analyze_parallel.go</li>
+            <li>cmd/binlogviz/analyze_workers.go</li>
+          </ul>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px] space-y-2">
+              <p class="text-xs tracking-wider text-stone-500 mb-2">之前</p>
+              <div class="h-12 border-l-4 border-stone-300 bg-stone-100 px-3 flex items-center text-xs tracking-wider">WithDeps · 可注入 normalize</div>
+              <div class="h-12 border-l-4 border-stone-300 bg-stone-100 px-3 flex items-center text-xs tracking-wider">FastWithSnapshot · 复用 dest</div>
+              <div class="h-12 border-l-4 border-stone-300 bg-stone-100 px-3 flex items-center text-xs tracking-wider">FastWithOutput · HTML dest</div>
+              <div class="h-12 border-l-4 border-red-500 bg-red-50 px-3 flex items-center text-xs tracking-wider text-red-800">guards 复制 · No-data / STATEMENT</div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px]">
+              <p class="text-xs tracking-wider text-stone-500 mb-2">之后</p>
+              <div class="h-[260px] border-l-8 border-slate-900 bg-slate-900 text-stone-100 px-4 py-6 flex flex-col justify-between">
+                <p class="text-xs tracking-wider">一条流式路径</p>
+                <p class="text-sm">parse → normalize → Consume → Finalize → guards → render</p>
+                <p class="text-[10px] tracking-wider text-stone-400">测试只在 Parser 和 Analyzer 这两条 seam 上替换 adapter</p>
+              </div>
+            </div>
+          </div>
+          <p><span class="text-xs tracking-wider text-stone-500">问题。</span> 生产和测试不共用一份编排 implementation；No-data result 和 Input format 的 guards 在克隆函数里各抄一份。</p>
+          <p><span class="text-xs tracking-wider text-stone-500">做法。</span> 命令只留一条路径；测试在已有 seam 上替换 parser adapter 和 analyzer。</p>
+          <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>locality：exit 2 只活在一条路径</li>
+            <li>leverage：guard 无法漂移</li>
+            <li>interface 就是操作员路径</li>
+            <li>删掉测试专用克隆</li>
+          </ul>
+          <div class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            会碰到实现 ADR-0001 的代码。加深路径，不要改 0 / 1 / 2。
+          </div>
+        </article>
+
+        <article id="html-chrome" class="space-y-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 class="font-serif text-2xl">收拢 compare / trend 叙述和 HTML chrome</h2>
+            <div class="flex gap-2">
+              <span class="rounded-full bg-amber-100 px-3 py-1 text-xs tracking-wider text-amber-900">值得探索</span>
+              <span class="rounded-full bg-slate-200 px-3 py-1 text-xs tracking-wider text-slate-700">in-process</span>
+            </div>
+          </div>
+          <ul class="font-mono text-sm text-stone-600 space-y-0.5">
+            <li>internal/report/html_template.go</li>
+            <li>internal/compare/html.go · recommendations.go · findings.go</li>
+            <li>internal/trend/html.go · recommendations.go</li>
+            <li>internal/report/html_shell.go</li>
+          </ul>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4 h-[320px]">
+              <p class="text-xs tracking-wider text-stone-500 mb-3">之前</p>
+              <div class="grid grid-cols-3 gap-2 h-[250px]">
+                <div class="border border-slate-300 p-2 text-xs tracking-wider flex flex-col justify-between">
+                  <span>analyze</span>
+                  <span class="text-2xl font-serif">2214</span>
+                  <span class="text-stone-400">html_template</span>
+                </div>
+                <div class="border border-slate-300 p-2 text-xs tracking-wider flex flex-col justify-between">
+                  <span>compare</span>
+                  <span class="text-2xl font-serif">1690</span>
+                  <span class="text-stone-400">html + recs</span>
+                </div>
+                <div class="border border-slate-300 p-2 text-xs tracking-wider flex flex-col justify-between">
+                  <span>trend</span>
+                  <span class="text-2xl font-serif">1363</span>
+                  <span class="text-stone-400">别名 InputReport；复制备注</span>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px]">
+              <p class="text-xs tracking-wider text-stone-500 mb-3">之后</p>
+              <div class="h-[250px] flex flex-col gap-2">
+                <div class="flex-[2] deep text-stone-100 p-3 text-xs tracking-wider">
+                  HTML chrome · 主题 · dataZoom · guard 横幅
+                  <div class="mt-2 fade-internal border border-white/20 p-2">最多 5 条建议 · 最多 2 条 drilldown · evidence 锚点</div>
+                </div>
+                <div class="flex-1 grid grid-cols-3 gap-2 text-xs tracking-wider">
+                  <div class="border border-slate-400 p-2">analyze 绑定</div>
+                  <div class="border border-slate-400 p-2">compare 增量</div>
+                  <div class="border border-slate-400 p-2">trend 序列</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p><span class="text-xs tracking-wider text-stone-500">问题。</span> Trend 已经别名 compare 的输入类型，却又复制 findings 排序、recommendations，以及一整页 HTML；html_shell 只共享了 i18n 函数。</p>
+          <p><span class="text-xs tracking-wider text-stone-500">做法。</span> chrome 和排序只留一份 implementation；compare 增量和 trend 序列仍是数据绑定。LoadReport 和 BuildCompareResult 已经够 deep，不要压扁。</p>
+          <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>locality：主题改动只打一个 module</li>
+            <li>leverage：新 finding 种类不是六份文件</li>
+            <li>测试走 BuildResult / BuildCompareResult</li>
+            <li>LoadReport 保持 deep</li>
+          </ul>
+        </article>
+
+        <article id="parser-loop" class="space-y-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 class="font-serif text-2xl">parser adapter 里只留一个 parse loop</h2>
+            <div class="flex gap-2">
+              <span class="rounded-full bg-slate-200 px-3 py-1 text-xs tracking-wider text-slate-700">可观望</span>
+              <span class="rounded-full bg-slate-200 px-3 py-1 text-xs tracking-wider text-slate-700">ports &amp; adapters</span>
+            </div>
+          </div>
+          <ul class="font-mono text-sm text-stone-600 space-y-0.5">
+            <li>internal/binlog/parser.go</li>
+            <li>internal/binlog/probe.go</li>
+            <li>internal/binlog/types.go</li>
+          </ul>
+          <div class="grid md:grid-cols-2 gap-4">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <p class="text-xs tracking-wider text-stone-500 mb-2">之前</p>
+              <pre class="mermaid">
+flowchart TB
+  A[ParseFilesWithProgress] --> C["RawEvent + 元数据"]
+  B[ParseFilesFromOffset] --> C
+  C --> D[handler]
+  classDef leak stroke:#dc2626,stroke-width:2px;
+  class A,B leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4">
+              <p class="text-xs tracking-wider text-stone-500 mb-2">之后</p>
+              <pre class="mermaid">
+flowchart TB
+  P["parse loop"] --> C["RawEvent + 元数据"]
+  C --> D[handler]
+  P -.-> O["可选 offset"]
+  P -.-> G["可选 progress"]
+  classDef deep fill:#0f172a,color:#f8fafc,stroke:#0f172a;
+  class P deep
+              </pre>
+            </div>
+          </div>
+          <p><span class="text-xs tracking-wider text-stone-500">问题。</span> offset 和 progress 是同一 adapter loop 的两份 implementation；一个 parser 结构体上挂了三条 interface。</p>
+          <p><span class="text-xs tracking-wider text-stone-500">做法。</span> 一个 loop，可选起始 offset 和 progress；保留小的 Parser interface，测试仍能替换 adapter。</p>
+          <ul class="list-disc pl-5 space-y-1 text-sm">
+            <li>locality：LogPos=0 重建只在一个 loop</li>
+            <li>leverage：progress 无法相对 offset 漂移</li>
+            <li>可与规范种类一起做</li>
+            <li>deletion test 弱于分组</li>
+          </ul>
+        </article>
+
+      </section>
+
+      <section id="top-recommendation" class="space-y-4 border-t border-stone-300 pt-10">
+        <p class="text-xs tracking-wider text-stone-500">首选</p>
+        <div class="deep text-stone-100 p-8 space-y-3">
+          <h2 class="font-serif text-3xl"><a href="#grouping" class="underline decoration-white/30 hover:decoration-white">把事务分组收成一个 deep module</a></h2>
+          <p class="text-stone-300">#61–#63 是同一个概念的三个特例。下一段未映射的 MariaDB 序列仍会打中这三条 seam。规范种类是 ingest 这边的亲戚；先做分组，让 retain 和 close 不再泄漏。</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

@@ -23,3 +23,15 @@ _Avoid_: empty success, empty report
 **TPS**:
 Transactions per second on the operator-facing summary. When the analyzed span is shorter than one second, it is not shown as a number.
 _Avoid_: avg TPS/min (the per-minute chart series)
+
+**Transaction group**:
+A start-to-close span in a ROW binlog, opened by a GTID or BEGIN (including XA START). It may or may not appear in the report.
+_Avoid_: GTID group (BEGIN-only spans are groups too), transaction (the report item)
+
+**Transaction**:
+A transaction group that analyze puts in the report: it has ROW image rows, or an XA identity with a recorded file location.
+_Avoid_: in-flight group, discarded DDL group
+
+**XA identity**:
+The SQL-form XA xid (`gtrid`, `bqual`, format id). Empty means unknown.
+_Avoid_: XID (the InnoDB engine xid)
