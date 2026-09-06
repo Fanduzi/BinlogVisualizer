@@ -94,7 +94,7 @@ func TestParseFilesWithProgressCapturesRawEventMetadata(t *testing.T) {
 	}
 
 	first := events[0]
-	if first.EventType != KindFormatDescription {
+	if first.EventType != kindFormatDescription {
 		t.Fatalf("expected first event to be FORMAT_DESCRIPTION, got %q", first.EventType)
 	}
 	if first.BinlogPath != path {
@@ -112,7 +112,7 @@ func TestParseFilesWithProgressCapturesRawEventMetadata(t *testing.T) {
 
 	var writeRows *RawEvent
 	for index := range events {
-		if events[index].EventType == KindWriteRows {
+		if events[index].EventType == kindWriteRows {
 			writeRows = &events[index]
 			break
 		}

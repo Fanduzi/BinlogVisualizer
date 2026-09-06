@@ -37,6 +37,24 @@ func TestAnalyzerKeepsZeroRowXACommitAsTransaction(t *testing.T) {
 	}
 }
 
+func TestAnalyzerOmitsZeroRowXAWithoutFileLocation(t *testing.T) {
+	ts := time.Date(2026, 9, 7, 10, 0, 0, 0, time.UTC)
+	xid := "X'6e6f70617468',X'',1"
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", GTID: "0-7-30", XAXID: xid, PositionStart: 100, PositionEnd: 140},
+		{Timestamp: ts.Add(time.Second), EventType: "XA_START", XAXID: xid, PositionStart: 140, PositionEnd: 180},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "XA_ROLLBACK", XAXID: xid, PositionStart: 180, PositionEnd: 220},
+	}
+
+	result, err := New(Options{}).Analyze(events)
+	if err != nil {
+		t.Fatalf("analyze: %v", err)
+	}
+	if len(result.Transactions) != 0 {
+		t.Fatalf("zero-row XA without a file path leaked into the report: %+v", result.Transactions)
+	}
+}
+
 func TestAnalyzerOmitsDDLOnlyGroupsFromTransactions(t *testing.T) {
 	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
 	events := []model.NormalizedEvent{

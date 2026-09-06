@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, time/position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, and selected-file/count coverage; invalid selectors fail, valid no-data exits 2, and DuckDB temp state is cleaned.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, and unmapped parser-event counts; invalid selectors fail, valid no-data exits 2, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -750,6 +750,7 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 	}
 	result.Diagnostics.InputFormatGuess = observer.Guess()
 	result.Diagnostics.IgnoredQueryDMLEvents = observer.QueryDMLEvents
+	result.Diagnostics.UnmappedEvents = observer.UnmappedEvents
 	result.Diagnostics.ServerVersion = observer.ServerVersion
 	if observer.QueryDMLEvents == 0 {
 		return nil

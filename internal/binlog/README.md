@@ -10,14 +10,14 @@ Binlog parsing, raw event extraction, normalization, and parse-progress contract
 | `event_kind.go` | Maps go-mysql `EventType` enums onto one RawEvent kind (`QUERY`, `WRITE_ROWS`, `GTID`, `XA_PREPARE`, …) so `String()` spellings never reach normalize. |
 | `parser.go` | Wraps `go-mysql-org/go-mysql/replication` through one parse loop (offset and progress are options), extracts event-header server ID, propagated FormatDescription version/flavor, MySQL/MariaDB GTID, Query thread and best-effort invoker, decimal XID, physical MariaDB XA PREPARE identity, row annotations, table names, positions, and progress. |
 | `normalize.go` | Classifies canonical RawEvent kinds into analyzer events: Query SQL (BEGIN/COMMIT/XA/DDL/LOAD DATA), ROW images, GTID, XID, XA PREPARE, table map, and bounded row-annotation SQL. |
-| `format.go` | Cheap Query-DML vs ROW-image observation used to guess STATEMENT/MIXED/ROW, capture Format Description server version, and warn when only row images are counted. |
+| `format.go` | Cheap Query-DML vs ROW-image observation used to guess STATEMENT/MIXED/ROW, count unmapped kinds, capture Format Description server version, and warn when only row images are counted. |
 | `probe.go` | Scans binlog files for reusable file-level metadata such as size and chronological earliest/latest non-zero event timestamps, with internal parser-injectable helpers for reuse in tests and later planning work. |
 | `*_test.go` | Covers canonical event kinds, parser construction, helper behavior, normalization semantics, and real-fixture parser benchmarks isolating parse-only, parse+normalize, and parse+progress layers. |
 | `testdata/*` | Real binlog fixtures used by integration and regression tests. |
 
 ## Exports
 
-- `type RawEvent` — Raw parser event with optional producer/transaction provenance; zero/empty identity is unknown.
+- `type RawEvent` — Raw parser event with optional producer/transaction provenance; zero/empty identity is unknown. `EventType` is a canonical kind: `QUERY`, `WRITE_ROWS`, `UPDATE_ROWS`, `DELETE_ROWS`, `ROWS_QUERY`, `GTID`, `XID`, `XA_PREPARE`, `TABLE_MAP`, `FORMAT_DESCRIPTION` (empty means unmapped).
 - `type Parser`
 - `type ParseProgress`
 - `type ProgressParser`

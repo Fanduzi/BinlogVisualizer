@@ -1,6 +1,6 @@
 // Package binlog verifies Query-DML vs ROW-image format observation.
 // input: synthetic raw events including Format Description server version.
-// output: regression coverage for DML detection, format guess, and captured server version.
+// output: regression coverage for DML detection, format guess, unmapped kinds, and captured server version.
 // pos: unit tests for FormatObserver used by analyze before rendering replay commands.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -68,6 +68,19 @@ func TestFormatObserverCountsQueryDMLAndRowImages(t *testing.T) {
 	}
 	if observer.Guess() != InputFormatMixed {
 		t.Fatalf("guess=%q, want MIXED", observer.Guess())
+	}
+}
+
+func TestFormatObserverCountsUnmappedKinds(t *testing.T) {
+	var observer FormatObserver
+	observer.Observe(RawEvent{EventType: ""})
+	observer.Observe(RawEvent{EventType: "FORMAT_DESCRIPTION", ServerVersion: "8.0.36"})
+	observer.Observe(RawEvent{EventType: "WRITE_ROWS", RowCount: 1})
+	if observer.UnmappedEvents != 1 {
+		t.Fatalf("UnmappedEvents=%d, want 1 empty kind", observer.UnmappedEvents)
+	}
+	if observer.RowImageEvents != 1 {
+		t.Fatalf("RowImageEvents=%d, want 1", observer.RowImageEvents)
 	}
 }
 

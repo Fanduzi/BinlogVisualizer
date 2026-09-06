@@ -1,5 +1,5 @@
 // Package model defines DBA-facing diagnostics contracts for analyze reports.
-// input: file coverage, DDL events, ranked transactions, findings, guessed input format, and Format Description server version.
+// input: file coverage, DDL events, ranked transactions, findings, guessed input format, unmapped parser events, and Format Description server version.
 // output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage.
 // pos: shared diagnostics model between analyzer Finalize and text/JSON/HTML replay commands.
 // note: if this file changes, keep internal/model/README.md synchronized.
@@ -21,7 +21,9 @@ type Diagnostics struct {
 	Findings              []Finding
 	InputFormatGuess      string
 	IgnoredQueryDMLEvents int
-	ServerVersion         string
+	// UnmappedEvents is how many parser events had no canonical kind (ROTATE, etc.).
+	UnmappedEvents int
+	ServerVersion  string
 }
 
 // FileCoverage summarizes which input files were selected or skipped.
