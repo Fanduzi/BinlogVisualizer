@@ -2,13 +2,13 @@
   {
     "timestamp": "2026-04-17T10:00:00Z",
     "binlog_path": "mysql-bin.000072",
-    "event_type": "QUERY_EVENT",
+    "event_type": "QUERY",
     "query": "BEGIN"
   },
   {
     "timestamp": "2026-04-17T10:00:01Z",
     "binlog_path": "mysql-bin.000072",
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "orders",
     "row_count": 50
@@ -16,7 +16,7 @@
   {
     "timestamp": "2026-04-17T10:00:02Z",
     "binlog_path": "mysql-bin.000072",
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "order_items",
     "row_count": 40
@@ -24,7 +24,7 @@
   {
     "timestamp": "2026-04-17T10:00:03Z",
     "binlog_path": "mysql-bin.000072",
-    "event_type": "UPDATE_ROWS_EVENT",
+    "event_type": "UPDATE_ROWS",
     "schema": "shop",
     "table": "users",
     "row_count": 30
@@ -32,7 +32,7 @@
   {
     "timestamp": "2026-04-17T10:00:04Z",
     "binlog_path": "mysql-bin.000072",
-    "event_type": "WRITE_ROWS_EVENT",
+    "event_type": "WRITE_ROWS",
     "schema": "shop",
     "table": "payments",
     "row_count": 20
@@ -40,7 +40,7 @@
   {
     "timestamp": "2026-04-17T10:00:05Z",
     "binlog_path": "mysql-bin.000072",
-    "event_type": "DELETE_ROWS_EVENT",
+    "event_type": "DELETE_ROWS",
     "schema": "shop",
     "table": "audit_logs",
     "row_count": 10
@@ -48,6 +48,6 @@
   {
     "timestamp": "2026-04-17T10:00:06Z",
     "binlog_path": "mysql-bin.000072",
-    "event_type": "XID_EVENT"
+    "event_type": "XID"
   }
 ]

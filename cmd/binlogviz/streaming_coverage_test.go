@@ -139,19 +139,19 @@ func TestRunAnalysisJSONProgressDoesNotPolluteStdout(t *testing.T) {
 			if onProgress != nil {
 				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 16})
 			}
-			if err := handler(binlog.RawEvent{Timestamp: now, EventType: "QUERY_EVENT", Query: "BEGIN", Position: 16}); err != nil {
+			if err := handler(binlog.RawEvent{Timestamp: now, EventType: "QUERY", Query: "BEGIN", Position: 16}); err != nil {
 				return err
 			}
 			if onProgress != nil {
 				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 64})
 			}
-			if err := handler(binlog.RawEvent{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 2, Position: 64}); err != nil {
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 2, Position: 64}); err != nil {
 				return err
 			}
 			if onProgress != nil {
 				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 96})
 			}
-			if err := handler(binlog.RawEvent{Timestamp: now.Add(2 * time.Second), EventType: "XID_EVENT", Position: 96}); err != nil {
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(2 * time.Second), EventType: "XID", Position: 96}); err != nil {
 				return err
 			}
 			return nil
@@ -185,19 +185,19 @@ func TestRunAnalysisTextModeWritesProgressToStderr(t *testing.T) {
 			if onProgress != nil {
 				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 12})
 			}
-			if err := handler(binlog.RawEvent{Timestamp: now, EventType: "QUERY_EVENT", Query: "BEGIN", Position: 12}); err != nil {
+			if err := handler(binlog.RawEvent{Timestamp: now, EventType: "QUERY", Query: "BEGIN", Position: 12}); err != nil {
 				return err
 			}
 			if onProgress != nil {
 				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 48})
 			}
-			if err := handler(binlog.RawEvent{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 3, Position: 48}); err != nil {
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(time.Second), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 3, Position: 48}); err != nil {
 				return err
 			}
 			if onProgress != nil {
 				onProgress(binlog.ParseProgress{Path: paths[0], Index: 0, Offset: 72})
 			}
-			if err := handler(binlog.RawEvent{Timestamp: now.Add(2 * time.Second), EventType: "XID_EVENT", Position: 72}); err != nil {
+			if err := handler(binlog.RawEvent{Timestamp: now.Add(2 * time.Second), EventType: "XID", Position: 72}); err != nil {
 				return err
 			}
 			return nil
@@ -268,10 +268,10 @@ func TestAggregateProgressTracksDuplicatePathsIndependently(t *testing.T) {
 func TestRunAnalysisRowsQueryPresentWithFullContext(t *testing.T) {
 	parser := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY_EVENT", QuerySQL: "UPDATE users SET name = 'alice' WHERE id = 7"},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "testdb", Table: "users", RowCount: 1},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY", QuerySQL: "UPDATE users SET name = 'alice' WHERE id = 7"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "testdb", Table: "users", RowCount: 1},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -289,9 +289,9 @@ func TestRunAnalysisRowsQueryPresentWithFullContext(t *testing.T) {
 func TestRunAnalysisRowsQueryAbsentOmitsFullContext(t *testing.T) {
 	parser := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "testdb", Table: "users", RowCount: 1},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "testdb", Table: "users", RowCount: 1},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -313,9 +313,9 @@ func TestRunAnalysisLargeTransactionAlertStreamingPath(t *testing.T) {
 
 	parser := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 17, 11, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 17, 11, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 8},
-			{Timestamp: time.Date(2026, 3, 17, 11, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 17, 11, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 17, 11, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 8},
+			{Timestamp: time.Date(2026, 3, 17, 11, 0, 2, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -341,7 +341,7 @@ func TestRunAnalysisStopsParsingImmediatelyOnConsumeFailure(t *testing.T) {
 				parserCalls++
 				err := handler(binlog.RawEvent{
 					Timestamp: time.Date(2026, 3, 17, 12, 0, 0, 0, time.UTC).Add(time.Duration(i) * time.Millisecond),
-					EventType: "WRITE_ROWS_EVENT",
+					EventType: "WRITE_ROWS",
 					Schema:    "shop",
 					Table:     "orders",
 					RowCount:  1,
@@ -379,19 +379,19 @@ func TestRunAnalysisRowsQueryPresentAndAbsentRegressionJSONShape(t *testing.T) {
 		{
 			name: "present",
 			events: []binlog.RawEvent{
-				{Timestamp: time.Date(2026, 3, 17, 13, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-				{Timestamp: time.Date(2026, 3, 17, 13, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY_EVENT", QuerySQL: "INSERT INTO users VALUES (1, 'alice')"},
-				{Timestamp: time.Date(2026, 3, 17, 13, 0, 2, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "testdb", Table: "users", RowCount: 1},
-				{Timestamp: time.Date(2026, 3, 17, 13, 0, 3, 0, time.UTC), EventType: "XID_EVENT"},
+				{Timestamp: time.Date(2026, 3, 17, 13, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+				{Timestamp: time.Date(2026, 3, 17, 13, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY", QuerySQL: "INSERT INTO users VALUES (1, 'alice')"},
+				{Timestamp: time.Date(2026, 3, 17, 13, 0, 2, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "testdb", Table: "users", RowCount: 1},
+				{Timestamp: time.Date(2026, 3, 17, 13, 0, 3, 0, time.UTC), EventType: "XID"},
 			},
 			expectQuery: true,
 		},
 		{
 			name: "absent",
 			events: []binlog.RawEvent{
-				{Timestamp: time.Date(2026, 3, 17, 13, 1, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-				{Timestamp: time.Date(2026, 3, 17, 13, 1, 2, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "testdb", Table: "users", RowCount: 1},
-				{Timestamp: time.Date(2026, 3, 17, 13, 1, 3, 0, time.UTC), EventType: "XID_EVENT"},
+				{Timestamp: time.Date(2026, 3, 17, 13, 1, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+				{Timestamp: time.Date(2026, 3, 17, 13, 1, 2, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "testdb", Table: "users", RowCount: 1},
+				{Timestamp: time.Date(2026, 3, 17, 13, 1, 3, 0, time.UTC), EventType: "XID"},
 			},
 			expectQuery: false,
 		},

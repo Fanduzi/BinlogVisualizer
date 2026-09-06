@@ -18,7 +18,7 @@ type RawEvent struct {
 	EventType     string
 	Schema        string
 	Table         string
-	Query         string // SQL query for QUERY_EVENT (e.g., BEGIN, COMMIT)
+	Query         string // SQL query for QUERY events (e.g., BEGIN, COMMIT)
 	QuerySQL      string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
 	ServerID      uint32 // Event-header server ID; zero means unavailable.
 	ServerVersion string // Format Description server version, when the event carries one.

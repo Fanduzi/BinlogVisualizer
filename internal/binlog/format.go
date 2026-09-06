@@ -75,14 +75,11 @@ func IsQueryDML(query string) bool {
 
 // IsRowImageEvent reports whether the parser event type carries ROW before/after images.
 func IsRowImageEvent(eventType string) bool {
-	et := strings.ToUpper(eventType)
-	return strings.Contains(et, "WRITEROWS") || strings.Contains(et, "WRITE_ROWS") ||
-		strings.Contains(et, "UPDATEROWS") || strings.Contains(et, "UPDATE_ROWS") ||
-		strings.Contains(et, "DELETEROWS") || strings.Contains(et, "DELETE_ROWS")
+	return eventType == KindWriteRows || eventType == KindUpdateRows || eventType == KindDeleteRows
 }
 
 func isQueryEventType(eventType string) bool {
-	return eventType == "QUERY_EVENT" || eventType == "QueryEvent"
+	return eventType == KindQuery
 }
 
 func hasSQLKeywordPrefix(sql, word string) bool {

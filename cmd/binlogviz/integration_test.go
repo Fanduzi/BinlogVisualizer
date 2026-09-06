@@ -193,7 +193,7 @@ func TestRunAnalysisParsesMultipleFilesConcurrentlyAndConsumesInOrder(t *testing
 				if err := handler(binlog.RawEvent{
 					Timestamp:  time.Date(2026, 4, 18, 10, index, 0, 0, time.UTC),
 					BinlogPath: path,
-					EventType:  "WRITE_ROWS_EVENT",
+					EventType:  "WRITE_ROWS",
 					Schema:     "shop",
 					Table:      path,
 					RowCount:   1,
@@ -804,10 +804,10 @@ func TestRunAnalysisHappyPath(t *testing.T) {
 	// Create mock parser with sample events
 	mock := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "TABLE_MAP_EVENT", Schema: "shop", Table: "orders"},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "TABLE_MAP", Schema: "shop", Table: "orders"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 5},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -852,9 +852,9 @@ func TestRunAnalysisStreamsEventsDirectlyIntoAnalyzer(t *testing.T) {
 	parserSawConsume := false
 	mock := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 5},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -893,9 +893,9 @@ func TestRunAnalysisStreamsEventsDirectlyIntoAnalyzer(t *testing.T) {
 func TestRunAnalysisJSONOutput(t *testing.T) {
 	mock := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "test", Table: "users", RowCount: 3},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "test", Table: "users", RowCount: 3},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -925,21 +925,21 @@ func TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries(t *testing.T) {
 	ts := time.Date(2026, 8, 29, 12, 0, 0, 0, time.UTC)
 	xid := "X'6276742d3537',X'',1"
 	mock := &mockParser{events: []binlog.RawEvent{
-		{Timestamp: ts, EventType: "MariadbGTIDEvent", GTID: "0-7-1859"},
-		{Timestamp: ts, EventType: "QueryEvent", Query: "XA START " + xid, ThreadID: 1878, ActorUser: "loader", ActorHost: "db.local", PositionStart: 3802, PositionEnd: 3900, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "xa_a", RowCount: 2, PositionStart: 3900, PositionEnd: 4100, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(2 * time.Second), EventType: "UpdateRowsEventV2", Schema: "dogfood_cut", Table: "xa_b", RowCount: 1, PositionStart: 4100, PositionEnd: 4300, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(3 * time.Second), EventType: "XAPrepareLogEvent", XAXID: xid, PositionStart: 4300, PositionEnd: 4444, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(4 * time.Second), EventType: "MariadbGTIDEvent", GTID: "0-7-1860", PositionStart: 4444, PositionEnd: 4500, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(4 * time.Second), EventType: "QueryEvent", Query: "XA COMMIT " + xid, PositionStart: 4500, PositionEnd: 4560, BinlogPath: "mariadb-bin.000001"},
-		{Timestamp: ts.Add(5 * time.Second), EventType: "MariadbGTIDEvent", GTID: "0-7-1861"},
-		{Timestamp: ts.Add(5 * time.Second), EventType: "QueryEvent", Query: "BEGIN", ThreadID: 1879},
-		{Timestamp: ts.Add(5 * time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "next_gtid", RowCount: 4},
-		{Timestamp: ts.Add(6 * time.Second), EventType: "XIDEvent", XID: "3928"},
-		{Timestamp: ts.Add(7 * time.Second), EventType: "MariadbGTIDEvent", GTID: "0-7-1862"},
-		{Timestamp: ts.Add(7 * time.Second), EventType: "MariadbAnnotateRowsEvent", QuerySQL: "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"},
-		{Timestamp: ts.Add(8 * time.Second), EventType: "WriteRowsEventV2", Schema: "dogfood_cut", Table: "slow", RowCount: 2},
-		{Timestamp: ts.Add(9 * time.Second), EventType: "XIDEvent"},
+		{Timestamp: ts, EventType: "GTID", GTID: "0-7-1859"},
+		{Timestamp: ts, EventType: "QUERY", Query: "XA START " + xid, ThreadID: 1878, ActorUser: "loader", ActorHost: "db.local", PositionStart: 3802, PositionEnd: 3900, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(time.Second), EventType: "WRITE_ROWS", Schema: "dogfood_cut", Table: "xa_a", RowCount: 2, PositionStart: 3900, PositionEnd: 4100, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "UPDATE_ROWS", Schema: "dogfood_cut", Table: "xa_b", RowCount: 1, PositionStart: 4100, PositionEnd: 4300, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "XA_PREPARE", XAXID: xid, PositionStart: 4300, PositionEnd: 4444, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "GTID", GTID: "0-7-1860", PositionStart: 4444, PositionEnd: 4500, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "QUERY", Query: "XA COMMIT " + xid, PositionStart: 4500, PositionEnd: 4560, BinlogPath: "mariadb-bin.000001"},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "GTID", GTID: "0-7-1861"},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "QUERY", Query: "BEGIN", ThreadID: 1879},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "WRITE_ROWS", Schema: "dogfood_cut", Table: "next_gtid", RowCount: 4},
+		{Timestamp: ts.Add(6 * time.Second), EventType: "XID", XID: "3928"},
+		{Timestamp: ts.Add(7 * time.Second), EventType: "GTID", GTID: "0-7-1862"},
+		{Timestamp: ts.Add(7 * time.Second), EventType: "ROWS_QUERY", QuerySQL: "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"},
+		{Timestamp: ts.Add(8 * time.Second), EventType: "WRITE_ROWS", Schema: "dogfood_cut", Table: "slow", RowCount: 2},
+		{Timestamp: ts.Add(9 * time.Second), EventType: "XID"},
 	}}
 	for i := range mock.events {
 		mock.events[i].ServerID = 7
@@ -1167,10 +1167,10 @@ func TestRunAnalysisJSONReportsWarningsForTruncatedQueryContext(t *testing.T) {
 
 	mock := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY_EVENT", QuerySQL: longSQL},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "UPDATE_ROWS_EVENT", Schema: "shop", Table: "users", RowCount: 2},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY", QuerySQL: longSQL},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "UPDATE_ROWS", Schema: "shop", Table: "users", RowCount: 2},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -1200,10 +1200,10 @@ func TestRunAnalysisJSONWarningsPersistThroughSnapshotRoundTrip(t *testing.T) {
 
 	mock := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY_EVENT", QuerySQL: longSQL},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "UPDATE_ROWS_EVENT", Schema: "shop", Table: "users", RowCount: 2},
-			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 1, 0, time.UTC), EventType: "ROWS_QUERY", QuerySQL: longSQL},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 2, 0, time.UTC), EventType: "UPDATE_ROWS", Schema: "shop", Table: "users", RowCount: 2},
+			{Timestamp: time.Date(2026, 3, 17, 10, 0, 3, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -1295,9 +1295,9 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 
 	err := runAnalysisWithParserAndTempDir([]string{"dummy.binlog"}, opts, "text", &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 5},
-			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 5},
+			{Timestamp: time.Date(2026, 3, 14, 10, 0, 2, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
 		},
 	}, root, func(path string) {
 		createdPath = path
@@ -1318,7 +1318,7 @@ func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 
 	wantErr := errors.New("normalize boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
-		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Position: 42}},
+		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS", Position: 42}},
 	}, func(raw binlog.RawEvent) (*model.NormalizedEvent, error) {
 		return nil, wantErr
 	}, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
@@ -1337,7 +1337,7 @@ func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 
 	wantErr := errors.New("consume boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
-		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
+		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1}},
 	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{consumeErr: wantErr}
 	}, createDuckDBTempStore, "")
@@ -1354,7 +1354,7 @@ func TestRunAnalysisPropagatesAnalyzerFinalizeError(t *testing.T) {
 
 	wantErr := errors.New("finalize boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
-		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1}},
+		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1}},
 	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{finalizeErr: wantErr}
 	}, createDuckDBTempStore, "")
@@ -1431,7 +1431,7 @@ func TestSpikeDetectionWithDefaultsProducesAlert(t *testing.T) {
 		for i := 0; i < rowCount; i++ {
 			mock.events = append(mock.events, binlog.RawEvent{
 				Timestamp: base.Add(time.Duration(minute)*time.Minute + time.Duration(i)*time.Millisecond),
-				EventType: "WRITE_ROWS_EVENT",
+				EventType: "WRITE_ROWS",
 				Schema:    "shop",
 				Table:     "orders",
 				RowCount:  1,
@@ -1760,9 +1760,9 @@ func TestRunAnalysisDetailStoreNoneDoesNotCreateDuckDBTempStore(t *testing.T) {
 	var createdPath string
 	mock := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 4, 19, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1},
-			{Timestamp: time.Date(2026, 4, 19, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 2, 0, time.UTC), EventType: "XID"},
 		},
 	}
 
@@ -1788,9 +1788,9 @@ func TestRunAnalysisDetailStoreDuckDBCreatesTempStore(t *testing.T) {
 	var createdPath string
 	mock := &mockParser{
 		events: []binlog.RawEvent{
-			{Timestamp: time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC), EventType: "QUERY_EVENT", Query: "BEGIN"},
-			{Timestamp: time.Date(2026, 4, 19, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS_EVENT", Schema: "shop", Table: "orders", RowCount: 1},
-			{Timestamp: time.Date(2026, 4, 19, 10, 0, 2, 0, time.UTC), EventType: "XID_EVENT"},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC), EventType: "QUERY", Query: "BEGIN"},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 1, 0, time.UTC), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1},
+			{Timestamp: time.Date(2026, 4, 19, 10, 0, 2, 0, time.UTC), EventType: "XID"},
 		},
 	}
 

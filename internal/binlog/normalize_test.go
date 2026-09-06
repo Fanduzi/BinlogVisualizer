@@ -16,7 +16,7 @@ import (
 
 func TestNormalizeWriteRowsEvent(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "WRITE_ROWS_EVENTv2",
+		EventType: "WRITE_ROWS",
 		Schema:    "shop",
 		Table:     "orders",
 		RowCount:  3,
@@ -32,7 +32,7 @@ func TestNormalizeWriteRowsEvent(t *testing.T) {
 func TestNormalizeUpdateRowsEventCorrectsRowCount(t *testing.T) {
 	// UPDATE_ROWS already has correct RowCount from parser (rows/2)
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "UPDATE_ROWS_EVENTv2",
+		EventType: "UPDATE_ROWS",
 		Schema:    "shop",
 		Table:     "orders",
 		RowCount:  5, // already corrected by parser
@@ -47,7 +47,7 @@ func TestNormalizeUpdateRowsEventCorrectsRowCount(t *testing.T) {
 
 func TestNormalizeDeleteRowsEvent(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "DELETE_ROWS_EVENTv2",
+		EventType: "DELETE_ROWS",
 		Schema:    "shop",
 		Table:     "orders",
 		RowCount:  2,
@@ -64,7 +64,7 @@ func TestNormalizeQueryBeginEvent(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "QUERY_EVENT",
+		EventType: "QUERY",
 		Query:     "BEGIN",
 	})
 	if err != nil {
@@ -79,7 +79,7 @@ func TestNormalizeQueryCommitEvent(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "QUERY_EVENT",
+		EventType: "QUERY",
 		Query:     "COMMIT",
 	})
 	if err != nil {
@@ -105,7 +105,7 @@ func TestNormalizeMariaDBXAQueries(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.eventType, func(t *testing.T) {
-			ev, err := NormalizeRawEvent(RawEvent{EventType: "QueryEvent", Query: tt.query})
+			ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: tt.query})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -120,7 +120,7 @@ func TestNormalizeMariaDBXAQueries(t *testing.T) {
 }
 
 func TestNormalizeMariaDBXAPrepareLogEvent(t *testing.T) {
-	ev, err := NormalizeRawEvent(RawEvent{EventType: "XAPrepareLogEvent"})
+	ev, err := NormalizeRawEvent(RawEvent{EventType: "XA_PREPARE"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestNormalizeXIDEvent(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "XID_EVENT",
+		EventType: "XID",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -147,7 +147,7 @@ func TestNormalizeTableMapEvent(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "TABLE_MAP_EVENT",
+		EventType: "TABLE_MAP",
 		Schema:    "shop",
 		Table:     "orders",
 	})
@@ -161,7 +161,7 @@ func TestNormalizeTableMapEvent(t *testing.T) {
 
 func TestNormalizeSkipUnsupportedEvent(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "FORMAT_DESCRIPTION_EVENT",
+		EventType: "FORMAT_DESCRIPTION",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -201,7 +201,7 @@ func TestNormalizeRawEventIntoResetsReusableDestination(t *testing.T) {
 	}
 
 	ok, err := NormalizeRawEventInto(RawEvent{
-		EventType: "WRITE_ROWS_EVENTv2",
+		EventType: "WRITE_ROWS",
 		Schema:    "shop",
 		Table:     "orders",
 		RowCount:  3,
@@ -224,7 +224,7 @@ func TestNormalizeRawEventPreservesBinlogMetadata(t *testing.T) {
 	ts := time.Date(2026, 3, 15, 14, 10, 26, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp:     ts,
-		EventType:     "WRITE_ROWS_EVENTv2",
+		EventType:     "WRITE_ROWS",
 		Schema:        "shop",
 		Table:         "orders",
 		RowCount:      3,
@@ -255,7 +255,7 @@ func TestNormalizeRawEventPreservesBinlogMetadata(t *testing.T) {
 
 func TestNormalizeRawEventPreservesTransactionProvenance(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType:     "MariadbGTIDEvent",
+		EventType:     "GTID",
 		ServerID:      7,
 		ServerVersion: "11.8.3-MariaDB-log",
 		ServerFlavor:  "mariadb",
@@ -278,14 +278,11 @@ func TestNormalizeRawEventPreservesTransactionProvenance(t *testing.T) {
 	}
 }
 
-// Tests for go-mysql CamelCase event types (real parser output)
-
 func TestNormalizeQueryEventBegin(t *testing.T) {
-	// go-mysql returns "QueryEvent" not "QUERY_EVENT"
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "QueryEvent",
+		EventType: "QUERY",
 		Query:     "BEGIN",
 		Schema:    "testdb",
 	})
@@ -304,7 +301,7 @@ func TestNormalizeQueryEventCommit(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "QueryEvent",
+		EventType: "QUERY",
 		Query:     "COMMIT",
 	})
 	if err != nil {
@@ -319,7 +316,7 @@ func TestNormalizeXIDEventCamelCase(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "XIDEvent",
+		EventType: "XID",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -333,7 +330,7 @@ func TestNormalizeTableMapEventCamelCase(t *testing.T) {
 	ts := time.Date(2026, 3, 9, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "TableMapEvent",
+		EventType: "TABLE_MAP",
 		Schema:    "testdb",
 		Table:     "users",
 	})
@@ -347,7 +344,7 @@ func TestNormalizeTableMapEventCamelCase(t *testing.T) {
 
 func TestNormalizeWriteRowsEventV2(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "WriteRowsEventV2",
+		EventType: "WRITE_ROWS",
 		Schema:    "testdb",
 		Table:     "users",
 		RowCount:  1,
@@ -362,7 +359,7 @@ func TestNormalizeWriteRowsEventV2(t *testing.T) {
 
 func TestNormalizeUpdateRowsEventV2(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "UpdateRowsEventV2",
+		EventType: "UPDATE_ROWS",
 		Schema:    "testdb",
 		Table:     "users",
 		RowCount:  2,
@@ -377,7 +374,7 @@ func TestNormalizeUpdateRowsEventV2(t *testing.T) {
 
 func TestNormalizeDeleteRowsEventV2(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "DeleteRowsEventV2",
+		EventType: "DELETE_ROWS",
 		Schema:    "testdb",
 		Table:     "users",
 		RowCount:  1,
@@ -397,7 +394,7 @@ func TestNormalizeRowsQueryEvent(t *testing.T) {
 	sql := "INSERT INTO users (id, name) VALUES (1, 'Alice')"
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "RowsQueryEvent",
+		EventType: "ROWS_QUERY",
 		QuerySQL:  sql,
 	})
 	if err != nil {
@@ -417,10 +414,20 @@ func TestNormalizeRowsQueryEvent(t *testing.T) {
 	}
 }
 
+func TestNormalizeRejectsLegacyGoMysqlTypeNames(t *testing.T) {
+	ev, err := NormalizeRawEvent(RawEvent{EventType: "QueryEvent", Query: "BEGIN"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev != nil {
+		t.Fatalf("legacy go-mysql String() names must not normalize, got %+v", ev)
+	}
+}
+
 func TestNormalizeMariaDBLoadDataAnnotation(t *testing.T) {
 	query := "LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow"
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "MariadbAnnotateRowsEvent",
+		EventType: "ROWS_QUERY",
 		QuerySQL:  query,
 	})
 	if err != nil {
@@ -437,7 +444,7 @@ func TestNormalizeMariaDBLoadDataAnnotation(t *testing.T) {
 func TestNormalizeQueryEventLoadDataUsesRowsQueryPipeline(t *testing.T) {
 	query := "  LOAD DATA INFILE '/tmp/slow.csv' INTO TABLE dogfood_cut.slow  "
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "QueryEvent",
+		EventType: "QUERY",
 		Query:     query,
 		ThreadID:  1875,
 	})
@@ -456,7 +463,7 @@ func TestNormalizeRowsQueryEventCamelCase(t *testing.T) {
 	ts := time.Date(2026, 3, 15, 10, 0, 0, 0, time.UTC)
 	ev, err := NormalizeRawEvent(RawEvent{
 		Timestamp: ts,
-		EventType: "ROWS_QUERY_EVENT",
+		EventType: "ROWS_QUERY",
 		QuerySQL:  "UPDATE products SET price = 99.99 WHERE id = 42",
 	})
 	if err != nil {
@@ -469,7 +476,7 @@ func TestNormalizeRowsQueryEventCamelCase(t *testing.T) {
 
 func TestNormalizeRowsQueryEventEmptySQL(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "RowsQueryEvent",
+		EventType: "ROWS_QUERY",
 		QuerySQL:  "",
 	})
 	if err != nil {
@@ -492,7 +499,7 @@ func TestNormalizeRowsQueryEventTruncation(t *testing.T) {
 	}
 
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "RowsQueryEvent",
+		EventType: "ROWS_QUERY",
 		QuerySQL:  longSQL,
 	})
 	if err != nil {
@@ -521,7 +528,7 @@ func TestNormalizeRowsQueryEventTruncationUTF8Boundary(t *testing.T) {
 	longSQL := prefix + "界suffix"
 
 	ev, err := NormalizeRawEvent(RawEvent{
-		EventType: "RowsQueryEvent",
+		EventType: "ROWS_QUERY",
 		QuerySQL:  longSQL,
 	})
 	if err != nil {
@@ -540,7 +547,7 @@ func TestNormalizeRowsQueryEventTruncationUTF8Boundary(t *testing.T) {
 
 func TestNormalizeQueryDDLCreateTableAndDatabase(t *testing.T) {
 	createTable, err := NormalizeRawEvent(RawEvent{
-		EventType:     "QueryEvent",
+		EventType:     "QUERY",
 		Schema:        "testdb",
 		Query:         "CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(100)\n)",
 		PositionStart: 219,
@@ -565,7 +572,7 @@ func TestNormalizeQueryDDLCreateTableAndDatabase(t *testing.T) {
 	}
 
 	createDB, err := NormalizeRawEvent(RawEvent{
-		EventType: "QUERY_EVENT",
+		EventType: "QUERY",
 		Query:     "CREATE DATABASE IF NOT EXISTS dogfood",
 	})
 	if err != nil {
@@ -578,7 +585,7 @@ func TestNormalizeQueryDDLCreateTableAndDatabase(t *testing.T) {
 
 func TestNormalizeQueryDDLGrantAndCreateUser(t *testing.T) {
 	grant, err := NormalizeRawEvent(RawEvent{
-		EventType: "QUERY_EVENT",
+		EventType: "QUERY",
 		Query:     "GRANT REPLICATION SLAVE ON *.* TO 'repl'@'127.0.0.1'",
 	})
 	if err != nil {
@@ -589,7 +596,7 @@ func TestNormalizeQueryDDLGrantAndCreateUser(t *testing.T) {
 	}
 
 	createUser, err := NormalizeRawEvent(RawEvent{
-		EventType: "QueryEvent",
+		EventType: "QUERY",
 		Query:     "CREATE USER 'repl'@'%'",
 	})
 	if err != nil {
@@ -600,7 +607,7 @@ func TestNormalizeQueryDDLGrantAndCreateUser(t *testing.T) {
 	}
 
 	revoke, err := NormalizeRawEvent(RawEvent{
-		EventType: "QUERY_EVENT",
+		EventType: "QUERY",
 		Query:     "REVOKE ALL PRIVILEGES ON *.* FROM 'repl'@'%'",
 	})
 	if err != nil {
@@ -613,7 +620,7 @@ func TestNormalizeQueryDDLGrantAndCreateUser(t *testing.T) {
 
 func TestNormalizeSkipsNonTransactionalQueryWithoutAllocation(t *testing.T) {
 	raw := RawEvent{
-		EventType: "QUERY_EVENT",
+		EventType: "QUERY",
 		Schema:    "shop",
 		Query:     "SET timestamp=1710000000",
 	}
