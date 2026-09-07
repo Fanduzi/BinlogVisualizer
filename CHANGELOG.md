@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.5
+
+Release date: 2026-09-07
+
+Highlights:
+
+- XA ROLLBACK closes its GTID group so the next GTID does not fail analyze
+- Default analyze no longer needs CGO or DuckDB
+- JSON reports unmapped parser events
+- Zero-row XA is retained only with a recorded file location
+
+Related notes:
+
+- [v0.23.5 release notes](docs/releases/release-notes-v0.23.5.md)
+- [v0.23.5 中文发行说明](docs/releases/release-notes-v0.23.5.zh-CN.md)
+
 ## v0.23.4
 
 Release date: 2026-09-06
