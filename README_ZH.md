@@ -14,6 +14,16 @@
 
 BinlogViz 是一个面向 DBA 和运维人员的本地 MySQL `ROW` binlog 分析 CLI。它专门用于回答真实运维问题：哪些表写入最重、哪些事务异常大、尖峰发生在哪些分钟、某个故障窗口内的负载究竟发生了什么。
 
+## 截图
+
+### Analyze HTML 报告
+
+![Analyze HTML 报告](docs/images/analyze-html.png)
+
+### Compare HTML 报告
+
+![Compare HTML 报告](docs/images/compare-html.png)
+
 ## 从这里开始
 
 BinlogViz 做的是 **ROW binlog 的快速摘要**：热表、写入形态、上线前后 compare。510 MB 级文件通常只要数秒。
