@@ -14,6 +14,16 @@
 
 BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs and operators who need to quickly answer practical questions from real binlog files: which tables are absorbing the most writes, which transactions are unusually large, where spikes happened, and how workload changed over a time window.
 
+## Screenshots
+
+### Analyze HTML report
+
+![Analyze HTML report](docs/images/analyze-html.png)
+
+### Compare HTML report
+
+![Compare HTML report](docs/images/compare-html.png)
+
 ## Architecture
 
 The Cobra command layer streams normalized binlog events into the analyzer, then delegates stable machine and human presentation to report, compare, and trend modules.
