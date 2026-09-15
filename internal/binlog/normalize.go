@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, independent admin QUERY as ADMIN, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -18,7 +18,7 @@ func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
 	if raw.EventType == kindQuery {
 		query := strings.TrimSpace(raw.Query)
 		_, _, isXA := parseXAQuery(query)
-		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) && !hasLoadDataPrefix(query) && !isXA {
+		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) && !hasLoadDataPrefix(query) && !isXA && !hasIndependentAdminQueryPrefix(query) {
 			return nil, nil
 		}
 	}
@@ -127,6 +127,11 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 		dst.EventType = "DDL"
 		dst.QuerySQL = query
 		return true, nil
+	case hasIndependentAdminQueryPrefix(query):
+		fillNormalizedEvent(dst, raw)
+		dst.EventType = "ADMIN"
+		dst.QuerySQL = query
+		return true, nil
 	default:
 		return false, nil
 	}
@@ -166,6 +171,34 @@ func hasQueryDDLPrefix(sql string) bool {
 		hasWordPrefixFold(sql, "RENAME") ||
 		hasWordPrefixFold(sql, "GRANT") ||
 		hasWordPrefixFold(sql, "REVOKE")
+}
+
+// hasIndependentAdminQueryPrefix matches the #72 independent GTID-group
+// statements only. SET DEFAULT ROLE is that phrase, not a generic SET prefix.
+func hasIndependentAdminQueryPrefix(sql string) bool {
+	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
+	return hasTwoWordPrefixFold(sql, "ANALYZE", "TABLE") ||
+		hasTwoWordPrefixFold(sql, "OPTIMIZE", "TABLE") ||
+		hasTwoWordPrefixFold(sql, "FLUSH", "PRIVILEGES") ||
+		hasThreeWordPrefixFold(sql, "SET", "DEFAULT", "ROLE")
+}
+
+func hasTwoWordPrefixFold(sql, first, second string) bool {
+	if !hasWordPrefixFold(sql, first) {
+		return false
+	}
+	return hasWordPrefixFold(strings.TrimSpace(sql[len(first):]), second)
+}
+
+func hasThreeWordPrefixFold(sql, first, second, third string) bool {
+	if !hasWordPrefixFold(sql, first) {
+		return false
+	}
+	rest := strings.TrimSpace(sql[len(first):])
+	if !hasWordPrefixFold(rest, second) {
+		return false
+	}
+	return hasWordPrefixFold(strings.TrimSpace(rest[len(second):]), third)
 }
 
 func hasWordPrefixFold(sql, word string) bool {

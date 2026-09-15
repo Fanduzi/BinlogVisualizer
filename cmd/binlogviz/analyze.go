@@ -1,5 +1,5 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
-// input: CLI workload-identity, time/position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
+// input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
 // output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, and unmapped parser-event counts; invalid selectors fail, valid no-data exits 2, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
@@ -853,27 +853,40 @@ func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, st
 	return store, cleanup, path, nil
 }
 
+const analyzeLocalTimeLayout = "2006-01-02 15:04:05"
+
 // parseTimeRange parses start and end time strings into time.Time values.
 func parseTimeRange(startStr, endStr string) (time.Time, time.Time, error) {
-	var startTime, endTime time.Time
-	var err error
-	if startStr != "" {
-		startTime, err = time.Parse(time.RFC3339, startStr)
-		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidStartTime", map[string]any{"Error": err.Error()}))
-		}
+	startTime, err := parseAnalyzeTime(startStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidStartTime", map[string]any{"Error": err.Error()}))
 	}
-	if endStr != "" {
-		endTime, err = time.Parse(time.RFC3339, endStr)
-		if err != nil {
-			return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidEndTime", map[string]any{"Error": err.Error()}))
-		}
+	endTime, err := parseAnalyzeTime(endStr)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidEndTime", map[string]any{"Error": err.Error()}))
 	}
-	// Validate that end is after start if both are specified
 	if !startTime.IsZero() && !endTime.IsZero() && endTime.Before(startTime) {
 		return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.T("error.endTimeBeforeStart"))
 	}
 	return startTime, endTime, nil
+}
+
+func parseAnalyzeTime(value string) (time.Time, error) {
+	return parseAnalyzeTimeInLocation(value, time.Local)
+}
+
+func parseAnalyzeTimeInLocation(value string, loc *time.Location) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	if loc == nil {
+		loc = time.Local
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, nil
+	}
+	return time.ParseInLocation(analyzeLocalTimeLayout, value, loc)
 }
 
 // buildAnalyzerOptions converts CLI options to analyzer.Options.

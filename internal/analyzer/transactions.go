@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
-// input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA and DDL boundaries, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
+// input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, and independent ADMIN boundaries, and ROWS/ROWS_QUERY semantics.
+// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN) plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -119,7 +119,7 @@ func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation 
 	case "TABLE_MAP":
 		b.accumulateInTxnEvent(ev, relation)
 		return b.mergeProvenance(ev)
-	case "DDL":
+	case "DDL", "ADMIN":
 		if err := b.mergeProvenance(ev); err != nil {
 			return err
 		}

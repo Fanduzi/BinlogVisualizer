@@ -63,7 +63,13 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-这两个参数都使用 RFC3339 时间格式。
+这两个参数接受 RFC3339（跨机器推荐；显式偏移量定义该时刻），或运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。binlog 时间戳和报告展示仍为 UTC。
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-09-12T00:00:00+08:00" \
+  --end "2026-09-14T15:00:00+08:00"
+```
 
 ## 5. 安全地输出 JSON
 

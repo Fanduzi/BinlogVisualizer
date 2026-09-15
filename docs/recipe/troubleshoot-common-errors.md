@@ -119,25 +119,25 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 Representative errors:
 
 ```text
-invalid start time format: ... (use RFC3339)
-invalid end time format: ... (use RFC3339)
+invalid start time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS)
+invalid end time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS)
 ```
 
 What it means:
 
-- the value passed to `--start` or `--end` is not valid RFC3339
+- the value passed to `--start` or `--end` is not valid RFC3339 and not `YYYY-MM-DD HH:MM:SS`
 
 Typical fix:
 
-Use explicit RFC3339 timestamps:
+Use explicit RFC3339 timestamps across machines:
 
 ```bash
 binlogviz analyze mysql-bin.000123 \
-  --start "2026-03-15T10:00:00Z" \
-  --end "2026-03-15T10:30:00Z"
+  --start "2026-09-12T00:00:00+08:00" \
+  --end "2026-09-14T15:00:00+08:00"
 ```
 
-If you need local-time interpretation, convert it to a valid RFC3339 timestamp before passing it to the command.
+`YYYY-MM-DD HH:MM:SS` is also accepted and is interpreted in the local timezone of the machine running `binlogviz`. Do not assume Beijing time unless that machine's timezone is `Asia/Shanghai`.
 
 ## `end time must be after start time`
 
@@ -257,7 +257,7 @@ When a command fails, check in this order:
 1. input mode: positional files or discovery mode, but not both
 2. file existence: do the paths actually exist locally
 3. discovery contract: correct directory, exact prefix, numeric suffixes
-4. time format: valid RFC3339 timestamps
+4. time format: valid RFC3339 or `YYYY-MM-DD HH:MM:SS`
 5. output expectation: did you confuse `stdout` report data with `stderr` status lines
 6. runtime environment: can the command create temporary files and complete finalization
 

@@ -1,6 +1,6 @@
 // Package binlogviz validates analyze command flag parsing and CLI option translation.
 // input: synthetic CLI args, parsed flag values, and analyzer/report option expectations.
-// output: regression coverage for UTC/explicit-offset help, stable flag defaults, explicit selected-file coverage, validation, and option builders.
+// output: regression coverage for UTC/explicit-offset help, YYYY-MM-DD HH:MM:SS local-time parsing, stable flag defaults, explicit selected-file coverage, validation, and option builders.
 // pos: command-layer unit test suite for analyze command configuration behavior.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -33,8 +33,8 @@ func TestAnalyzeHelpDocumentsUTCTimestampSemantics(t *testing.T) {
 		lang  string
 		wants []string
 	}{
-		{lang: "en", wants: []string{"binlog timestamps are utc", "explicit offsets define the instant"}},
-		{lang: "zh-CN", wants: []string{"binlog 时间戳为 utc", "显式偏移量定义该时刻"}},
+		{lang: "en", wants: []string{"binlog timestamps are utc", "explicit offsets define the instant", "yyyy-mm-dd hh:mm:ss", "local timezone"}},
+		{lang: "zh-CN", wants: []string{"binlog 时间戳为 utc", "显式偏移量定义该时刻", "yyyy-mm-dd hh:mm:ss", "本地时区"}},
 	} {
 		t.Run(tc.lang, func(t *testing.T) {
 			i18n.ResetForTesting()
@@ -78,6 +78,12 @@ func TestParseTimeRange(t *testing.T) {
 			expectErr: false,
 		},
 		{
+			name:      "whitespace only is empty",
+			start:     "   ",
+			end:       "\t",
+			expectErr: false,
+		},
+		{
 			name:      "invalid start time",
 			start:     "invalid",
 			end:       "2026-03-09T11:00:00Z",
@@ -95,6 +101,42 @@ func TestParseTimeRange(t *testing.T) {
 			end:       "2026-03-09T10:00:00Z",
 			expectErr: true,
 		},
+		{
+			name:      "space format range",
+			start:     "2026-09-12 00:00:00",
+			end:       "2026-09-14 15:00:00",
+			expectErr: false,
+		},
+		{
+			name:      "space format with surrounding whitespace",
+			start:     "  2026-09-12 00:00:00 ",
+			end:       "\t2026-09-14 15:00:00\n",
+			expectErr: false,
+		},
+		{
+			name:      "RFC3339 with surrounding whitespace",
+			start:     "  2026-03-09T10:00:00Z  ",
+			end:       " 2026-03-09T11:00:00Z",
+			expectErr: false,
+		},
+		{
+			name:      "illegal space-format month",
+			start:     "2026-13-01 00:00:00",
+			end:       "",
+			expectErr: true,
+		},
+		{
+			name:      "illegal RFC3339 hour",
+			start:     "2026-03-09T25:00:00Z",
+			end:       "",
+			expectErr: true,
+		},
+		{
+			name:      "space format end before start",
+			start:     "2026-09-14 15:00:00",
+			end:       "2026-09-12 00:00:00",
+			expectErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -108,11 +150,10 @@ func TestParseTimeRange(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error: %v", err)
 				}
-				// If input was provided, output should be non-zero
-				if tt.start != "" && start.IsZero() {
+				if strings.TrimSpace(tt.start) != "" && start.IsZero() {
 					t.Error("expected non-zero start time when input provided")
 				}
-				if tt.end != "" && end.IsZero() {
+				if strings.TrimSpace(tt.end) != "" && end.IsZero() {
 					t.Error("expected non-zero end time when input provided")
 				}
 			}
@@ -130,6 +171,32 @@ func TestParseTimeRangePreservesExplicitOffsetInstant(t *testing.T) {
 	}
 	if !end.Equal(time.Date(2026, 3, 9, 11, 0, 0, 0, time.UTC)) {
 		t.Fatalf("end instant = %s, want 2026-03-09T11:00:00Z", end)
+	}
+}
+
+func TestParseAnalyzeTimeSpaceFormatInShanghaiEqualsRFC3339Offset(t *testing.T) {
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("load Asia/Shanghai: %v", err)
+	}
+	got, err := parseAnalyzeTimeInLocation("2026-09-12 00:00:00", loc)
+	if err != nil {
+		t.Fatalf("parse space format in Shanghai: %v", err)
+	}
+	want, err := time.Parse(time.RFC3339, "2026-09-12T00:00:00+08:00")
+	if err != nil {
+		t.Fatalf("parse RFC3339 offset: %v", err)
+	}
+	if !got.Equal(want) {
+		t.Fatalf("Shanghai space instant = %s, want %s", got.UTC(), want.UTC())
+	}
+
+	trimmed, err := parseAnalyzeTimeInLocation("  2026-09-12 00:00:00  ", loc)
+	if err != nil {
+		t.Fatalf("parse trimmed space format: %v", err)
+	}
+	if !trimmed.Equal(want) {
+		t.Fatalf("trimmed Shanghai space instant = %s, want %s", trimmed.UTC(), want.UTC())
 	}
 }
 

@@ -1,6 +1,6 @@
 // Package binlog verifies raw binlog normalization into analyzer-facing events.
 // input: synthetic RawEvent values covering MySQL/MariaDB provenance, query, XA, rows, and row-annotation variants.
-// output: assertions for normalized provenance, XA identity, LOAD_DATA SQL, UTF-8-safe truncation, and skip behavior.
+// output: assertions for normalized provenance, XA identity, LOAD_DATA SQL, independent admin QUERY as ADMIN not DDL, UTF-8-safe truncation, and skip behavior.
 // pos: regression coverage for the normalize layer between parser output and analyzer input.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -615,6 +615,36 @@ func TestNormalizeQueryDDLGrantAndCreateUser(t *testing.T) {
 	}
 	if revoke == nil || revoke.EventType != "DDL" {
 		t.Fatalf("expected REVOKE to be kept as DDL, got %+v", revoke)
+	}
+}
+
+func TestNormalizeIndependentAdminQueriesAreAdminNotDDL(t *testing.T) {
+	queries := []string{
+		"ANALYZE TABLE app.orders",
+		"OPTIMIZE TABLE app.orders",
+		"FLUSH PRIVILEGES",
+		"FLUSH PRIVILEGES;",
+		"SET DEFAULT ROLE admin TO 'app'@'%'",
+	}
+	for _, query := range queries {
+		ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: query, ServerFlavor: "mysql"})
+		if err != nil {
+			t.Fatalf("normalize %q: %v", query, err)
+		}
+		if ev == nil || ev.EventType != "ADMIN" {
+			t.Fatalf("expected ADMIN for %q, got %+v", query, ev)
+		}
+		if ev.EventType == "DDL" {
+			t.Fatalf("admin query %q must not be classified as DDL", query)
+		}
+	}
+
+	skipped, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: "SET ROLE ALL", ServerFlavor: "mysql"})
+	if err != nil {
+		t.Fatalf("normalize SET ROLE: %v", err)
+	}
+	if skipped != nil {
+		t.Fatalf("SET ROLE must stay skipped, got %+v", skipped)
 	}
 }
 

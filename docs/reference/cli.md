@@ -85,8 +85,8 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--start` | none | Start time, inclusive, in RFC3339 format. |
-| `--end` | none | End time, inclusive, in RFC3339 format. |
+| `--start` | none | Start time, inclusive. RFC3339, or `YYYY-MM-DD HH:MM:SS` in the local timezone of the machine running `binlogviz`. Explicit offsets define the instant; prefer RFC3339 with offset across machines. |
+| `--end` | none | End time, inclusive. Same formats as `--start`. |
 | `--start-position` | none | Exact inclusive event boundary on one explicit binlog file. |
 | `--stop-position` | none | Exact exclusive event boundary, or EOF, on one explicit binlog file. |
 | `--include-gtids` | none | Include complete groups matching a MySQL UUID range set or exact MariaDB identities. |
@@ -118,7 +118,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--include-table` | none | Comma-separated list of tables to analyze (all others excluded). `TABLE` or `SCHEMA.TABLE`. |
 | `--exclude-table` | none | Comma-separated list of tables to skip. `TABLE` or `SCHEMA.TABLE`. |
 
-Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and RFC3339 predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups match no active selector, including exclude-only selectors. Standalone anonymous DDL and unkeyed context are discarded without preventing a later matching keyed group from being retained. Mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
+Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and time predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups match no active selector, including exclude-only selectors. Standalone anonymous DDL and unkeyed context are discarded without preventing a later matching keyed group from being retained. Mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
 
 ### Snapshot-saving behavior
 
@@ -344,12 +344,20 @@ Rules:
 
 ### Time filters
 
-`--start` and `--end` use RFC3339 timestamps.
+`--start` and `--end` accept RFC3339 (recommended across machines) or `YYYY-MM-DD HH:MM:SS`. Space format is the local timezone of the machine running `binlogviz`. Explicit offsets such as `Z` or `+08:00` define the instant. Report timestamps stay UTC.
 
 ```bash
 binlogviz analyze mysql-bin.000123 \
   --start "2026-03-15T10:00:00Z" \
   --end "2026-03-15T10:30:00Z"
+
+binlogviz analyze mysql-bin.000123 \
+  --start "2026-09-12T00:00:00+08:00" \
+  --end "2026-09-14T15:00:00+08:00"
+
+binlogviz analyze mysql-bin.000123 \
+  --start "2026-09-12 00:00:00" \
+  --end "2026-09-14 15:00:00"
 ```
 
 Validation rules:

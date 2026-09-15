@@ -119,25 +119,25 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 代表性错误：
 
 ```text
-invalid start time format: ... (use RFC3339)
-invalid end time format: ... (use RFC3339)
+invalid start time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS)
+invalid end time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS)
 ```
 
 含义：
 
-- `--start` 或 `--end` 传入的值不是合法 RFC3339 时间戳
+- `--start` 或 `--end` 传入的值既不是合法 RFC3339，也不是 `YYYY-MM-DD HH:MM:SS`
 
 典型修复：
 
-使用显式 RFC3339 时间：
+跨机器请使用带显式偏移的 RFC3339：
 
 ```bash
 binlogviz analyze mysql-bin.000123 \
-  --start "2026-03-15T10:00:00Z" \
-  --end "2026-03-15T10:30:00Z"
+  --start "2026-09-12T00:00:00+08:00" \
+  --end "2026-09-14T15:00:00+08:00"
 ```
 
-如果你需要本地时区语义，请先把它转换成合法 RFC3339，再传给命令。
+也接受 `YYYY-MM-DD HH:MM:SS`，并按运行 `binlogviz` 的机器本地时区解释。不要默认当成北京时间，除非该机器时区就是 `Asia/Shanghai`。
 
 ## `end time must be after start time`
 
@@ -239,7 +239,7 @@ create temp DuckDB store: ...
 1. 输入模式：是位置参数模式还是发现模式，且两者不能混用
 2. 文件存在性：给定路径是否真的存在于本地
 3. 发现契约：目录是否正确、前缀是否精确、后缀是否纯数字
-4. 时间格式：是否为合法 RFC3339
+4. 时间格式：是否为合法 RFC3339 或 `YYYY-MM-DD HH:MM:SS`
 5. 输出预期：是否把 `stdout` 报告与 `stderr` 状态输出混淆了
 6. 运行环境：命令是否能创建临时文件并完成 finalize
 
