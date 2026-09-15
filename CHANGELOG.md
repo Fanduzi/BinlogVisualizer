@@ -2,6 +2,21 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.6
+
+Release date: 2026-09-15
+
+Highlights:
+
+- Independent management QUERY (`ANALYZE TABLE`, `OPTIMIZE TABLE`, `FLUSH PRIVILEGES`, `SET DEFAULT ROLE`) closes its GTID group
+- `--start`/`--end` accept `YYYY-MM-DD HH:MM:SS` in the machine-local timezone
+- Explicit RFC3339 offsets and in-transaction GTID conflicts are unchanged
+
+Related notes:
+
+- [v0.23.6 release notes](docs/releases/release-notes-v0.23.6.md)
+- [v0.23.6 中文发行说明](docs/releases/release-notes-v0.23.6.zh-CN.md)
+
 ## v0.23.5
 
 Release date: 2026-09-07

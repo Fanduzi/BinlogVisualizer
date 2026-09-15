@@ -61,6 +61,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
+`--start`/`--end` 也接受运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。跨机器请优先使用带显式偏移的 RFC3339。
+
 ### 从 `SHOW MASTER STATUS` 位点或 GTID 起
 
 位点是单个显式文件上的精确事件边界，使用半开区间 `[start, stop)`。也可以同时给时间条件；各谓词取交集。
@@ -236,12 +238,12 @@ brew install --cask binlogviz
 
 ```bash
 # install.sh（当前版本）
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.5/install.sh
-sh ./install.sh --version v0.23.5
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.6/install.sh
+sh ./install.sh --version v0.23.6
 
 # 或 linux/amd64 tarball
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.5/binlogviz_0.23.5_linux_amd64.tar.gz
-tar -xzf binlogviz_0.23.5_linux_amd64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.6/binlogviz_0.23.6_linux_amd64.tar.gz
+tar -xzf binlogviz_0.23.6_linux_amd64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
@@ -251,27 +253,27 @@ install ./binlogviz /usr/local/bin/binlogviz
 
 权威 release artifact 由 GitHub Actions release workflow 产出。macOS 产物在原生 runner 上构建，Linux 产物则在 manylinux2014 用户态中构建，以保持对 CentOS 7 / glibc 2.17 的兼容基线。本地 `goreleaser` 更适合做配置校验和当前宿主机的可选验证，不是主要发布路径。
 
-下面是 `darwin/arm64` 和当前版本 `v0.23.5` 的示例：
+下面是 `darwin/arm64` 和当前版本 `v0.23.6` 的示例：
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.5/binlogviz_0.23.5_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.5/binlogviz_0.23.5_checksums.txt
-shasum -a 256 -c binlogviz_0.23.5_checksums.txt 2>/dev/null | grep "binlogviz_0.23.5_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.23.5_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.6/binlogviz_0.23.6_darwin_arm64.tar.gz
+curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.23.6/binlogviz_0.23.6_checksums.txt
+shasum -a 256 -c binlogviz_0.23.6_checksums.txt 2>/dev/null | grep "binlogviz_0.23.6_darwin_arm64.tar.gz: OK"
+tar -xzf binlogviz_0.23.6_darwin_arm64.tar.gz
 install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.5/install.sh
-sh ./install.sh --version v0.23.5
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.6/install.sh
+sh ./install.sh --version v0.23.6
 ```
 
 如果只想预览将要解析出的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.23.5 --dry-run
+./install.sh --version v0.23.6 --dry-run
 ```
 
 ### 备选：从源码构建
