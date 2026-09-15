@@ -85,8 +85,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 
 | Flag | 默认值 | 说明 |
 |------|--------|------|
-| `--start` | none | 开始时间，包含边界，RFC3339 格式。 |
-| `--end` | none | 结束时间，包含边界，RFC3339 格式。 |
+| `--start` | none | 开始时间，包含边界。RFC3339，或运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。显式偏移量定义该时刻；跨机器请优先使用带偏移的 RFC3339。 |
+| `--end` | none | 结束时间，包含边界。格式与 `--start` 相同。 |
 | `--start-position` | none | 单个显式 binlog 文件上的精确事件起始边界（包含）。 |
 | `--stop-position` | none | 单个显式 binlog 文件上的精确事件结束边界（不包含），也可为 EOF。 |
 | `--include-gtids` | none | 包含匹配 MySQL UUID range set 或 MariaDB 精确身份的完整事务组。 |
@@ -117,7 +117,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--include-table` | none | 仅分析指定表（逗号分隔，其余均排除）。`TABLE` 或 `SCHEMA.TABLE`。 |
 | `--exclude-table` | none | 跳过指定表（逗号分隔）。`TABLE` 或 `SCHEMA.TABLE`。 |
 
-position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与 RFC3339 条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
+position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与时间条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 
 ### 保存快照时的行为
 
@@ -335,12 +335,20 @@ binlogviz snapshot delete <name>
 
 ### 时间过滤
 
-`--start` 和 `--end` 使用 RFC3339 时间戳。
+`--start` 和 `--end` 接受 RFC3339（跨机器推荐）或 `YYYY-MM-DD HH:MM:SS`。空格格式按运行 `binlogviz` 的机器本地时区解释。`Z`、`+08:00` 等显式偏移量定义该时刻。报告时间戳仍为 UTC。
 
 ```bash
 binlogviz analyze mysql-bin.000123 \
   --start "2026-03-15T10:00:00Z" \
   --end "2026-03-15T10:30:00Z"
+
+binlogviz analyze mysql-bin.000123 \
+  --start "2026-09-12T00:00:00+08:00" \
+  --end "2026-09-14T15:00:00+08:00"
+
+binlogviz analyze mysql-bin.000123 \
+  --start "2026-09-12 00:00:00" \
+  --end "2026-09-14 15:00:00"
 ```
 
 校验规则：

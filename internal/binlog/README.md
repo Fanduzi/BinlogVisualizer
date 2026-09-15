@@ -9,10 +9,10 @@ Binlog parsing, raw event extraction, normalization, and parse-progress contract
 | `types.go` | Defines `RawEvent` with optional server/version/flavor, GTID, Query thread/actor, transaction/XA XID, SQL, and location evidence plus parser/progress contracts. |
 | `event_kind.go` | Maps go-mysql `EventType` enums onto one RawEvent kind (`QUERY`, `WRITE_ROWS`, `GTID`, `XA_PREPARE`, …) so `String()` spellings never reach normalize. |
 | `parser.go` | Wraps `go-mysql-org/go-mysql/replication` through one parse loop (offset and progress are options), extracts event-header server ID, propagated FormatDescription version/flavor, MySQL/MariaDB GTID, Query thread and best-effort invoker, decimal XID, physical MariaDB XA PREPARE identity, row annotations, table names, positions, and progress. |
-| `normalize.go` | Classifies canonical RawEvent kinds into analyzer events: Query SQL (BEGIN/COMMIT/XA/DDL/LOAD DATA), ROW images, GTID, XID, XA PREPARE, table map, and bounded row-annotation SQL. |
+| `normalize.go` | Classifies canonical RawEvent kinds into analyzer events: Query SQL (BEGIN/COMMIT/XA/DDL/LOAD DATA and independent ADMIN: ANALYZE TABLE, OPTIMIZE TABLE, FLUSH PRIVILEGES, SET DEFAULT ROLE), ROW images, GTID, XID, XA PREPARE, table map, and bounded row-annotation SQL. |
 | `format.go` | Cheap Query-DML vs ROW-image observation used to guess STATEMENT/MIXED/ROW, count unmapped kinds, capture Format Description server version, and warn when only row images are counted. |
 | `probe.go` | Scans binlog files for reusable file-level metadata such as size and chronological earliest/latest non-zero event timestamps, with internal parser-injectable helpers for reuse in tests and later planning work. |
-| `*_test.go` | Covers canonical event kinds, parser construction, helper behavior, normalization semantics, and real-fixture parser benchmarks isolating parse-only, parse+normalize, and parse+progress layers. |
+| `*_test.go` | Covers canonical event kinds, parser construction, helper behavior, normalization semantics including independent admin QUERY as ADMIN, and real-fixture parser benchmarks isolating parse-only, parse+normalize, and parse+progress layers. |
 | `testdata/*` | Real binlog fixtures used by integration and regression tests. |
 
 ## Exports
@@ -24,7 +24,7 @@ Binlog parsing, raw event extraction, normalization, and parse-progress contract
 - `type FileProbe`
 - `type FormatObserver`
 - `func NewParser() Parser`
-- `func NormalizeRawEvent(RawEvent) (*model.NormalizedEvent, error)` — Preserves available provenance and bounds SQL to 4096 UTF-8-safe bytes.
+- `func NormalizeRawEvent(RawEvent) (*model.NormalizedEvent, error)` — Preserves available provenance and bounds SQL to 4096 UTF-8-safe bytes. Independent management QUERY becomes `ADMIN`, not `DDL`.
 - `func NormalizeRawEventInto(RawEvent, *model.NormalizedEvent) (bool, error)`
 - `func ProbeFile(path string) (FileProbe, error)`
 - `func ProbeFiles(paths []string) ([]FileProbe, error)`

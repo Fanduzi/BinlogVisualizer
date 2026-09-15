@@ -63,7 +63,13 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-Both flags use RFC3339 timestamps.
+Both flags accept RFC3339 (recommended across machines; explicit offsets define the instant) or `YYYY-MM-DD HH:MM:SS` in the local timezone of the machine running `binlogviz`. Binlog timestamps and report display stay UTC.
+
+```bash
+binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
+  --start "2026-09-12T00:00:00+08:00" \
+  --end "2026-09-14T15:00:00+08:00"
+```
 
 ## 5. Redirect JSON Safely
 

@@ -21,11 +21,11 @@
   },
   "cmd.analyze.flag.start": {
     "description": "开始时间标志描述",
-    "other": "开始时间（包含，RFC3339；显式偏移量定义该时刻；binlog 时间戳为 UTC）"
+    "other": "开始时间（包含；RFC3339 或 YYYY-MM-DD HH:MM:SS；空格格式按本机本地时区解释；显式偏移量定义该时刻；跨机器请优先使用带偏移的 RFC3339；binlog 时间戳为 UTC）"
   },
   "cmd.analyze.flag.end": {
     "description": "结束时间标志描述",
-    "other": "结束时间（包含，RFC3339；显式偏移量定义该时刻；binlog 时间戳为 UTC）"
+    "other": "结束时间（包含；RFC3339 或 YYYY-MM-DD HH:MM:SS；空格格式按本机本地时区解释；显式偏移量定义该时刻；跨机器请优先使用带偏移的 RFC3339；binlog 时间戳为 UTC）"
   },
   "cmd.analyze.flag.fromDir": {
     "description": "from-dir 标志描述",
@@ -149,11 +149,11 @@
   },
   "error.invalidStartTime": {
     "description": "开始时间格式无效错误",
-    "other": "开始时间格式无效：{{.Error}}（请使用 RFC3339 格式）"
+    "other": "开始时间格式无效：{{.Error}}（请使用 RFC3339 或 YYYY-MM-DD HH:MM:SS 格式）"
   },
   "error.invalidEndTime": {
     "description": "结束时间格式无效错误",
-    "other": "结束时间格式无效：{{.Error}}（请使用 RFC3339 格式）"
+    "other": "结束时间格式无效：{{.Error}}（请使用 RFC3339 或 YYYY-MM-DD HH:MM:SS 格式）"
   },
   "error.endTimeBeforeStart": {
     "description": "结束时间早于开始时间错误",

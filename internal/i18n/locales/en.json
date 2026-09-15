@@ -21,11 +21,11 @@
   },
   "cmd.analyze.flag.start": {
     "description": "Start time flag description",
-    "other": "Start time (inclusive, RFC3339; explicit offsets define the instant; binlog timestamps are UTC)"
+    "other": "Start time (inclusive; RFC3339 or YYYY-MM-DD HH:MM:SS; space format uses this machine's local timezone; explicit offsets define the instant; prefer RFC3339 with offset across machines; binlog timestamps are UTC)"
   },
   "cmd.analyze.flag.end": {
     "description": "End time flag description",
-    "other": "End time (inclusive, RFC3339; explicit offsets define the instant; binlog timestamps are UTC)"
+    "other": "End time (inclusive; RFC3339 or YYYY-MM-DD HH:MM:SS; space format uses this machine's local timezone; explicit offsets define the instant; prefer RFC3339 with offset across machines; binlog timestamps are UTC)"
   },
   "cmd.analyze.flag.fromDir": {
     "description": "From-dir flag description",
@@ -149,11 +149,11 @@
   },
   "error.invalidStartTime": {
     "description": "Invalid start time format error",
-    "other": "invalid start time format: {{.Error}} (use RFC3339)"
+    "other": "invalid start time format: {{.Error}} (use RFC3339 or YYYY-MM-DD HH:MM:SS)"
   },
   "error.invalidEndTime": {
     "description": "Invalid end time format error",
-    "other": "invalid end time format: {{.Error}} (use RFC3339)"
+    "other": "invalid end time format: {{.Error}} (use RFC3339 or YYYY-MM-DD HH:MM:SS)"
   },
   "error.endTimeBeforeStart": {
     "description": "End time before start time error",
