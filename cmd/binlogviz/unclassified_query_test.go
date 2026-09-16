@@ -308,4 +308,3 @@ func mysqlCommandQuery(ts time.Time, query string, start, end int64) binlog.RawE
 		BinlogBytes:   end - start,
 	}
 }
-
