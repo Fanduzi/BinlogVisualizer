@@ -1,6 +1,6 @@
 // Package binlog verifies raw binlog normalization into analyzer-facing events.
 // input: synthetic RawEvent values covering MySQL/MariaDB provenance, query, XA, rows, and row-annotation variants.
-// output: assertions for normalized provenance, XA identity, LOAD_DATA SQL, independent admin QUERY as ADMIN not DDL, UTF-8-safe truncation, and skip behavior.
+// output: assertions for normalized provenance, XA identity, LOAD_DATA SQL, ADMIN not DDL, Unclassified QUERY emission, Ignored QUERY skip, UTF-8-safe truncation, and skip behavior.
 // pos: regression coverage for the normalize layer between parser output and analyzer input.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -639,12 +639,14 @@ func TestNormalizeIndependentAdminQueriesAreAdminNotDDL(t *testing.T) {
 		}
 	}
 
-	skipped, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: "SET ROLE ALL", ServerFlavor: "mysql"})
-	if err != nil {
-		t.Fatalf("normalize SET ROLE: %v", err)
-	}
-	if skipped != nil {
-		t.Fatalf("SET ROLE must stay skipped, got %+v", skipped)
+	for _, query := range []string{"SET ROLE ALL", "CHECK TABLE app.orders", "FLUSH TABLES"} {
+		ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: query, ServerFlavor: "mysql"})
+		if err != nil {
+			t.Fatalf("normalize %q: %v", query, err)
+		}
+		if ev == nil || ev.EventType != "UNCLASSIFIED_QUERY" || ev.QuerySQL != query {
+			t.Fatalf("expected Unclassified QUERY for %q, got %+v", query, ev)
+		}
 	}
 }
 

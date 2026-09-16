@@ -1,6 +1,6 @@
 // Package report verifies JSON rendering stability and SQL context presentation modes.
 // input: synthetic AnalysisResult fixtures with provenance, XA identity, and bounded transaction query context variations.
-// output: regression coverage for report-v3 identity fields, producer sets, counted event-byte diagnostics, and summary/off/full JSON SQL contracts.
+// output: regression coverage for report-v3 identity fields, producer sets, counted event-byte diagnostics, optional Ignored QUERY counts, and summary/off/full JSON SQL contracts.
 // pos: JSON renderer regression suite guarding script-facing output contracts.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -352,6 +352,25 @@ func TestRenderJSONExposesUpdateEventsAndRows(t *testing.T) {
 	}
 	if diagnostics["ignored_query_dml_events"].(float64) != 5 {
 		t.Fatalf("ignored_query_dml_events=%v", diagnostics["ignored_query_dml_events"])
+	}
+	if _, ok := diagnostics["ignored_query_events"]; ok {
+		t.Fatalf("ignored_query_events must be omitted when zero, got %v", diagnostics["ignored_query_events"])
+	}
+}
+
+func TestRenderJSONIncludesOptionalIgnoredQueryCount(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{
+		Diagnostics: model.Diagnostics{IgnoredQueryEvents: 3},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	diagnostics := parseJSONMap(t, out)["diagnostics"].(map[string]any)
+	if diagnostics["ignored_query_events"].(float64) != 3 {
+		t.Fatalf("ignored_query_events=%v, want 3", diagnostics["ignored_query_events"])
+	}
+	if diagnostics["ignored_query_dml_events"].(float64) != 0 {
+		t.Fatalf("ignored_query_dml_events=%v, want 0", diagnostics["ignored_query_dml_events"])
 	}
 }
 

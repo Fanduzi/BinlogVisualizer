@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, independent admin QUERY as ADMIN, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, independent ADMIN, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -15,12 +15,8 @@ import (
 // NormalizeRawEvent converts a RawEvent into a NormalizedEvent for analysis.
 // Returns nil for events that should be skipped (e.g., FORMAT_DESCRIPTION).
 func NormalizeRawEvent(raw RawEvent) (*model.NormalizedEvent, error) {
-	if raw.EventType == kindQuery {
-		query := strings.TrimSpace(raw.Query)
-		_, _, isXA := parseXAQuery(query)
-		if !strings.EqualFold(query, "BEGIN") && !strings.EqualFold(query, "COMMIT") && !hasQueryDDLPrefix(query) && !hasLoadDataPrefix(query) && !isXA && !hasIndependentAdminQueryPrefix(query) {
-			return nil, nil
-		}
+	if raw.EventType == kindQuery && !keepsNormalizedQuery(raw.Query) {
+		return nil, nil
 	}
 
 	var ev model.NormalizedEvent
@@ -132,9 +128,43 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 		dst.EventType = "ADMIN"
 		dst.QuerySQL = query
 		return true, nil
-	default:
+	case isIgnoredQuery(query) || IsQueryDML(query) || query == "":
 		return false, nil
+	default:
+		fillNormalizedEvent(dst, raw)
+		dst.EventType = "UNCLASSIFIED_QUERY"
+		dst.QuerySQL = boundQuerySQL(query)
+		return true, nil
 	}
+}
+
+func keepsNormalizedQuery(query string) bool {
+	query = strings.TrimSpace(query)
+	return query != "" && !isIgnoredQuery(query) && !IsQueryDML(query)
+}
+
+// IsIgnoredQuery reports session-prefix SET that is dropped on purpose.
+// SET ROLE and SET DEFAULT ROLE are not Ignored QUERY.
+func IsIgnoredQuery(query string) bool {
+	return isIgnoredQuery(query)
+}
+
+func isIgnoredQuery(sql string) bool {
+	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
+	if !hasWordPrefixFold(sql, "SET") {
+		return false
+	}
+	if hasThreeWordPrefixFold(sql, "SET", "DEFAULT", "ROLE") {
+		return false
+	}
+	return !hasTwoWordPrefixFold(sql, "SET", "ROLE")
+}
+
+func boundQuerySQL(query string) string {
+	if len(query) <= model.MaxStoredSQLBytes {
+		return query
+	}
+	return safeTruncateBytes(query, model.MaxStoredSQLBytes)
 }
 
 func parseXAQuery(query string) (eventType, xid string, ok bool) {

@@ -9,12 +9,12 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes and table display limits. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
 | `text.go` | Owns shared UTC human timestamp formatting and renders completeness-aware incident briefs with separate input-file and counted-event byte metrics plus opt-in minute and write-shape detail sections. |
-| `json.go` | Serializes report v3 with explicit workload identity/scope, RFC3339 `Z` timestamps, requested/effective position and GTID evidence, transaction list/completeness counts, counted bytes, unmapped parser events, producer provenance, SQL metadata, bounded query fields, XA identity, and explicit safe replay metadata. |
-| `markdown.go` | Renders UTC-labelled GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, and finding evidence. |
+| `json.go` | Serializes report v3 with explicit workload identity/scope, RFC3339 `Z` timestamps, requested/effective position and GTID evidence, transaction list/completeness counts, counted bytes, optional Ignored QUERY counts, unmapped parser events, producer provenance, SQL metadata, bounded query fields, XA identity, and explicit safe replay metadata. |
+| `markdown.go` | Renders UTC-labelled GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, optional Ignored QUERY counts, and finding evidence. |
 | `html.go` | Renders the self-contained HTML report with UTC-labelled ranges/evidence/charts, completeness and byte cards, deduplicated transaction evidence, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
 | `html_chrome.go` | Shared five-theme CSS tokens spliced into analyze, compare, and trend HTML. |
 | `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. |
-| `*_test.go` | Verifies UTC timestamp presentation, RFC3339 JSON stability, complete JSON tables and selector round trips, Markdown/HTML evidence, deadlock-free stdout wrappers, SQL modes, counted bytes, completeness, and explicit full-span replay behavior. |
+| `*_test.go` | Verifies UTC timestamp presentation, RFC3339 JSON stability, complete JSON tables and selector round trips, optional Ignored QUERY JSON/Markdown diagnostics, Markdown/HTML evidence, deadlock-free stdout wrappers, SQL modes, counted bytes, completeness, and explicit full-span replay behavior. |
 
 ## Interfaces
 

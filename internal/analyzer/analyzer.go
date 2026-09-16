@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, and retained row/XA transactions with filter-safe DDL boundaries and explicit completeness.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, and Unclassified QUERY failures when a GTID-started non-explicit group's only work is Unclassified QUERY.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -114,6 +114,10 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 		return a.result, nil
 	}
 
+	if err := a.txnBuilder.inFlightUnclassifiedError(); err != nil {
+		a.err = err
+		return nil, err
+	}
 	a.txnBuilder.Flush()
 	if err := a.persistCompletedTransactions(); err != nil {
 		a.err = err

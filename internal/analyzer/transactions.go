@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
-// input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, and independent ADMIN boundaries, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN) plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
+// input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
+// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN), UnclassifiedQueryError when a GTID-started non-explicit group's only work is Unclassified QUERY, plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -62,6 +62,7 @@ type inFlightTxn struct {
 	retainedQuerySQL           string
 	retainedQueryTruncated     bool
 	retainedQueryOriginalBytes int
+	unclassifiedPrefix         string
 }
 
 type windowRelation uint8
@@ -128,6 +129,12 @@ func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation 
 			b.current.hasEndBoundary = true
 			b.finalizeTransaction()
 		}
+	case "UNCLASSIFIED_QUERY":
+		if b.current != nil && b.current.unclassifiedPrefix == "" {
+			b.current.unclassifiedPrefix = ev.QuerySQL
+		}
+		b.accumulateInTxnEvent(ev, relation)
+		return b.mergeProvenance(ev)
 	default:
 		// Still record file coverage for in-flight events (Annotate, GTID leftovers, etc.)
 		b.accumulateInTxnEvent(ev, relation)
@@ -156,6 +163,34 @@ func (b *TransactionBuilder) DrainCompleted() []model.Transaction {
 	drained := b.completed
 	b.completed = nil
 	return drained
+}
+
+// UnclassifiedQueryError is returned when a GTID-started non-explicit
+// transaction group's only work is an Unclassified QUERY.
+type UnclassifiedQueryError struct {
+	Prefix string
+}
+
+func (e *UnclassifiedQueryError) Error() string {
+	if e == nil || e.Prefix == "" {
+		return "Unclassified QUERY"
+	}
+	return "Unclassified QUERY: " + e.Prefix
+}
+
+func unclassifiedQueryError(prefix string) error {
+	return &UnclassifiedQueryError{Prefix: prefix}
+}
+
+func (b *TransactionBuilder) inFlightUnclassifiedError() error {
+	if b == nil || b.current == nil || !b.current.unclassifiedOnly() {
+		return nil
+	}
+	return unclassifiedQueryError(b.current.unclassifiedPrefix)
+}
+
+func (t *inFlightTxn) unclassifiedOnly() bool {
+	return t != nil && t.startedByGTID && !t.isExplicit && t.totalRows == 0 && t.unclassifiedPrefix != ""
 }
 
 // retainCompletedTransaction reports whether a closed transaction group belongs
@@ -220,6 +255,9 @@ func (b *TransactionBuilder) handleBegin(ev model.NormalizedEvent, relation wind
 func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windowRelation) error {
 	if b.current != nil {
 		if b.current.gtid != "" {
+			if ev.GTID != "" && ev.GTID != b.current.gtid && b.current.unclassifiedOnly() {
+				return unclassifiedQueryError(b.current.unclassifiedPrefix)
+			}
 			if err := b.mergeProvenance(ev); err != nil {
 				return err
 			}
