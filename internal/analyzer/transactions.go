@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN), UnclassifiedQueryError when a GTID-started non-explicit group's only work is Unclassified QUERY, plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
+// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN), UnclassifiedQueryError when a GTID-started non-explicit group's only work is Unclassified QUERY, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -53,6 +53,8 @@ type inFlightTxn struct {
 	binlogPathEnd              string
 	positionStart              int64
 	positionEnd                int64
+	windowFileSpan             repeatedFileSpan
+	fullFileSpan               repeatedFileSpan
 	tables                     map[tableIdentity]int
 	operations                 map[string]int
 	rowOperation               string
@@ -390,6 +392,16 @@ func (b *TransactionBuilder) finalizeTransaction() {
 		return
 	}
 
+	if start, end, ok := b.current.windowFileSpan.shared(); ok {
+		b.current.positionStart = start
+		b.current.positionEnd = end
+	}
+	if start, end, ok := b.current.fullFileSpan.shared(); ok {
+		b.current.fullPositionStart = start
+		b.current.fullPositionEnd = end
+		b.current.fullBinlogBytes = end - start
+	}
+
 	binlogBytes := b.current.binlogBytes
 	if b.current.binlogPathStart != "" &&
 		b.current.binlogPathStart == b.current.binlogPathEnd &&
@@ -478,6 +490,7 @@ func (b *TransactionBuilder) updateBinlogCoverage(ev model.NormalizedEvent) {
 	if ev.PositionEnd != 0 {
 		b.current.positionEnd = ev.PositionEnd
 	}
+	b.current.windowFileSpan.note(ev.PositionStart, ev.PositionEnd)
 }
 
 func (b *TransactionBuilder) observeEvent(ev model.NormalizedEvent, relation windowRelation) {
@@ -513,6 +526,36 @@ func (b *TransactionBuilder) observeEvent(ev model.NormalizedEvent, relation win
 	if ev.PositionEnd != 0 {
 		b.current.fullPositionEnd = ev.PositionEnd
 	}
+	b.current.fullFileSpan.note(ev.PositionStart, ev.PositionEnd)
+}
+
+// repeatedFileSpan records a file range that more than one event shared.
+// Expanded transaction-payload inners all carry the wrapper's [start, end).
+type repeatedFileSpan struct {
+	start int64
+	end   int64
+	hits  int
+}
+
+func (s *repeatedFileSpan) note(evStart, evEnd int64) {
+	if evStart <= 0 || evEnd <= evStart {
+		return
+	}
+	if s.hits > 0 && s.start == evStart && s.end == evEnd {
+		s.hits++
+		return
+	}
+	if s.hits >= 2 {
+		return
+	}
+	s.start, s.end, s.hits = evStart, evEnd, 1
+}
+
+func (s repeatedFileSpan) shared() (start, end int64, ok bool) {
+	if s.hits < 2 || s.start <= 0 || s.end <= s.start {
+		return 0, 0, false
+	}
+	return s.start, s.end, true
 }
 
 func (t *inFlightTxn) completeness() model.TransactionCompleteness {
