@@ -1,6 +1,6 @@
 // Package binlog verifies canonical event kinds from go-mysql enums.
-// input: replication.EventType constants including GTID_TAGGED_LOG_EVENT whose String() is not CamelCase.
-// output: assertions that parser-facing kinds are one name per concept.
+// input: replication.EventType constants including GTID_TAGGED_LOG_EVENT, PARTIAL_UPDATE_ROWS_EVENT, ANONYMOUS_GTID_EVENT, MariaDB compressed rows, and TRANSACTION_PAYLOAD_EVENT.
+// output: assertions that parser-facing kinds are one name per concept, including partial-update, anonymous GTID, and MariaDB compressed rows.
 // pos: unit tests for the parser adapter seam used by normalize and FormatObserver.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -29,6 +29,12 @@ func TestCanonicalEventTypeMapsGoMysqlEnums(t *testing.T) {
 		{replication.XA_PREPARE_LOG_EVENT, kindXAPrepare},
 		{replication.TABLE_MAP_EVENT, kindTableMap},
 		{replication.FORMAT_DESCRIPTION_EVENT, kindFormatDescription},
+		{replication.PARTIAL_UPDATE_ROWS_EVENT, kindUpdateRows},
+		{replication.ANONYMOUS_GTID_EVENT, kindGTID},
+		{replication.MARIADB_WRITE_ROWS_COMPRESSED_EVENT_V1, kindWriteRows},
+		{replication.MARIADB_UPDATE_ROWS_COMPRESSED_EVENT_V1, kindUpdateRows},
+		{replication.MARIADB_DELETE_ROWS_COMPRESSED_EVENT_V1, kindDeleteRows},
+		{replication.TRANSACTION_PAYLOAD_EVENT, ""},
 		{replication.ROTATE_EVENT, ""},
 	}
 	for _, tc := range cases {
