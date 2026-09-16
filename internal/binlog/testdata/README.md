@@ -37,6 +37,29 @@ The script:
 - **Format**: MySQL 5.7 ROW binlog
 - **Server ID**: 1
 
+## mysql80_transaction_payload.binlog
+
+A MySQL 8.0.36 ROW binlog with `binlog_transaction_compression=ON`. Used to prove transaction-payload expand through `ParseFiles`.
+
+### Contents
+
+- Flavor / version: MySQL 8.0.36
+- `CREATE TABLE testdb.users (id INT PRIMARY KEY, name VARCHAR(100))` as an independent GTID/QUERY group
+- One compressed DML transaction: `INSERT` alice, `UPDATE` to alice_updated, `DELETE`
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+./create_mysql80_transaction_payload.sh
+```
+
+Requirements:
+- Docker
+- Image `mysql:8.0.36` (override with `MYSQL_IMAGE`)
+
+The script rotates away bootstrap binlogs, records `SHOW MASTER STATUS`, writes the compressed transaction into that file, then copies it. Do not copy an earlier binlog: MySQL 8.0 bootstrap writes a large compressed payload that is not this fixture.
+
 ## Stage 5 Coverage Notes
 
 - Multi-file command-path coverage reuses `minimal.binlog` twice in ordered input tests and benchmarks to exercise the real parser over more than one file without duplicating fixture assets.

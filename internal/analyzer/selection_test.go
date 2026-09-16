@@ -49,6 +49,37 @@ func TestAnalyzerGTIDSelectorFiltersCompleteGroups(t *testing.T) {
 	}
 }
 
+func TestAnalyzerAnonymousGTIDOpensGroupWithEmptyIdentity(t *testing.T) {
+	base := time.Date(2026, 9, 16, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "GTID", GTID: "", ServerFlavor: "mysql", BinlogPath: "mysql-bin.000001", PositionStart: 100, PositionEnd: 140},
+		{Timestamp: base.Add(time.Second), EventType: "BEGIN", ServerFlavor: "mysql", BinlogPath: "mysql-bin.000001", PositionStart: 140, PositionEnd: 180},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1, ServerFlavor: "mysql", BinlogPath: "mysql-bin.000001", PositionStart: 180, PositionEnd: 240},
+		{Timestamp: base.Add(3 * time.Second), EventType: "XID", ServerFlavor: "mysql", BinlogPath: "mysql-bin.000001", PositionStart: 240, PositionEnd: 260},
+	}
+	result, err := New(DefaultOptions()).Analyze(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].GTID != "" || result.Transactions[0].TotalRows != 1 {
+		t.Fatalf("anonymous GTID group = %+v, want one retained transaction with empty identity", result.Transactions)
+	}
+
+	selector, err := ParseGTIDSelector([]string{"24bc7850-2c16-11e6-a073-0242ac110002:1"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := DefaultOptions()
+	opts.GTIDSelector = selector
+	filtered, err := New(opts).Analyze(events)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filtered.Summary.TotalRows != 0 || filtered.Summary.TotalTransactions != 0 || len(filtered.Transactions) != 0 {
+		t.Fatalf("include-GTID kept anonymous group: summary=%+v transactions=%+v", filtered.Summary, filtered.Transactions)
+	}
+}
+
 func TestAnalyzerGTIDSelectorExcludesAnonymousCompleteGroup(t *testing.T) {
 	selector, err := ParseGTIDSelector(nil, []string{"24bc7850-2c16-11e6-a073-0242ac110002:1"})
 	if err != nil {

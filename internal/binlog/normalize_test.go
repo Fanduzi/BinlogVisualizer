@@ -1,6 +1,6 @@
 // Package binlog verifies raw binlog normalization into analyzer-facing events.
 // input: synthetic RawEvent values covering MySQL/MariaDB provenance, query, XA, rows, and row-annotation variants.
-// output: assertions for normalized provenance, XA identity, LOAD_DATA SQL, independent admin QUERY as ADMIN not DDL, UTF-8-safe truncation, and skip behavior.
+// output: assertions for normalized provenance, XA identity, LOAD_DATA SQL, independent admin QUERY as ADMIN not DDL, partial-update as UPDATE, UTF-8-safe truncation, and skip behavior.
 // pos: regression coverage for the normalize layer between parser output and analyzer input.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -12,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"binlogviz/internal/model"
+
+	"github.com/go-mysql-org/go-mysql/replication"
 )
 
 func TestNormalizeWriteRowsEvent(t *testing.T) {
@@ -42,6 +44,16 @@ func TestNormalizeUpdateRowsEventCorrectsRowCount(t *testing.T) {
 	}
 	if ev.Operation != "UPDATE" || ev.RowCount != 5 {
 		t.Fatalf("unexpected normalized event: %+v", ev)
+	}
+}
+
+func TestNormalizePartialUpdateRowsAsUpdate(t *testing.T) {
+	ev, err := NormalizeRawEvent(RawEvent{EventType: canonicalEventType(replication.PARTIAL_UPDATE_ROWS_EVENT), RowCount: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev == nil || ev.EventType != "ROWS" || ev.Operation != "UPDATE" || ev.RowCount != 2 {
+		t.Fatalf("partial-update normalized=%+v, want ROWS UPDATE with 2 rows", ev)
 	}
 }
 

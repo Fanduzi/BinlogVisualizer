@@ -1,6 +1,6 @@
 // Package binlog verifies parser construction, progress helpers, and table-name reuse behavior.
-// input: parser constructors, progress helpers, and synthetic go-mysql events carrying producer, GTID, Query actor, XID, and annotation evidence.
-// output: regression coverage for parser setup, provenance/SQL projection, progress math, event projection, and micro-benchmarks.
+// input: parser constructors, progress helpers, and synthetic go-mysql events carrying producer, GTID, Query actor, XID, annotation, partial-update, and anonymous GTID evidence.
+// output: regression coverage for parser setup, provenance/SQL projection, progress math, event projection, partial-update row counts, empty anonymous identity, and micro-benchmarks.
 // pos: focused unit-test layer for parser helpers that support command-level parsing and progress reporting.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -88,6 +88,30 @@ func TestApplyBinlogEventMetadataCountsUpdateLogicalRows(t *testing.T) {
 
 	if raw.RowCount != 2 {
 		t.Fatalf("expected parser to count 2 logical UPDATE rows from 4 images, got %d", raw.RowCount)
+	}
+}
+
+func TestApplyBinlogEventMetadataCountsPartialUpdateLogicalRows(t *testing.T) {
+	var raw RawEvent
+	applyBinlogEventMetadata(&raw, replication.PARTIAL_UPDATE_ROWS_EVENT, &replication.RowsEvent{
+		Rows: [][]any{
+			{1, "before"},
+			{1, "after"},
+		},
+	}, nil)
+	if raw.RowCount != 1 {
+		t.Fatalf("expected partial-update to count 1 logical UPDATE row from 2 images, got %d", raw.RowCount)
+	}
+}
+
+func TestApplyBinlogEventMetadataAnonymousGTIDLeavesEmptyIdentity(t *testing.T) {
+	var raw RawEvent
+	applyBinlogEventMetadata(&raw, replication.ANONYMOUS_GTID_EVENT, &replication.GTIDEvent{
+		SID: []byte{0x24, 0xbc, 0x78, 0x52, 0x9c, 0xb7, 0x11, 0xee, 0x80, 0x89, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02},
+		GNO: 7,
+	}, nil)
+	if raw.GTID != "" {
+		t.Fatalf("anonymous GTID identity=%q, want empty", raw.GTID)
 	}
 }
 
