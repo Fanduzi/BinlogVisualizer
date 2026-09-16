@@ -1,7 +1,7 @@
 // Package binlogviz verifies Unclassified QUERY and Ignored QUERY command I/O.
 // input: injected mock parser events through runAnalysisWithParser.
-// output: exit 1 Unclassified QUERY (empty stdout, one Error: line, statement prefix, English and zh-CN), exit 2 ADMIN-only no-data, Ignored QUERY JSON count distinct from ignored_query_dml_events, and ADMIN-then-business exit 0.
-// pos: #74 operator I/O seam for ADR-0001/0003 QUERY classes.
+// output: exit 1 Unclassified QUERY (empty stdout, one Error: line, statement prefix, English and zh-CN), including anonymous empty-identity groups on the next GTID and at EOF, exit 2 ADMIN-only no-data, Ignored QUERY JSON count distinct from ignored_query_dml_events, and ADMIN-then-business exit 0.
+// pos: #74/#78 operator I/O seam for ADR-0001/0003 QUERY classes.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 
@@ -71,6 +71,60 @@ func TestAnalyzeUnclassifiedQueryErrorIsLocalized(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "未分类") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
 		t.Fatalf("zh-CN error must include 未分类 and the prefix, got %v", err)
+	}
+}
+
+func TestAnalyzeAnonymousUnclassifiedQueryExitsOneWithPrefix(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	events := unclassifiedCheckTableEvents()
+	events[0] = mysqlAnonymousCommandGTID(events[0].Timestamp, events[0].PositionStart, events[0].PositionEnd)
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, events)
+	if err == nil {
+		t.Fatal("anonymous Unclassified QUERY must fail analyze")
+	}
+	if got := ExitCode(err); got != 1 {
+		t.Fatalf("exit=%d, want 1; err=%v", got, err)
+	}
+	if stdout != "" {
+		t.Fatalf("anonymous Unclassified QUERY stdout must be empty, got %q", stdout)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error: once, got %q", stderr)
+	}
+	assertNoUsageDump(t, stderr)
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("must not say conflicting GTID, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+		t.Fatalf("English error must include Unclassified QUERY and the prefix, got %v", err)
+	}
+}
+
+func TestAnalyzeFinalizeAnonymousUnclassifiedOnlyExitsOne(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 14, 30, 0, 0, time.UTC)
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, []binlog.RawEvent{
+		mysqlAnonymousCommandGTID(ts, 100, 180),
+		mysqlCommandQuery(ts.Add(time.Second), "SET ROLE ALL", 180, 260),
+	})
+	if err == nil {
+		t.Fatal("finalize anonymous Unclassified QUERY must fail")
+	}
+	if got := ExitCode(err); got != 1 {
+		t.Fatalf("exit=%d, want 1; err=%v", got, err)
+	}
+	if stdout != "" {
+		t.Fatalf("finalize anonymous Unclassified QUERY stdout must be empty, got %q", stdout)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error: once, got %q", stderr)
+	}
+	assertNoUsageDump(t, stderr)
+	if strings.Contains(err.Error(), "conflicting GTID") || strings.Contains(err.Error(), "no analyzable events") {
+		t.Fatalf("anonymous finalize must be Unclassified QUERY, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "SET ROLE ALL") {
+		t.Fatalf("anonymous finalize error must include Unclassified QUERY and the prefix, got %v", err)
 	}
 }
 
@@ -279,6 +333,18 @@ func unclassifiedCheckTableEvents() []binlog.RawEvent {
 			PositionEnd:   500,
 			BinlogBytes:   20,
 		},
+	}
+}
+
+func mysqlAnonymousCommandGTID(ts time.Time, start, end int64) binlog.RawEvent {
+	return binlog.RawEvent{
+		Timestamp:     ts,
+		EventType:     "GTID",
+		ServerFlavor:  "mysql",
+		BinlogPath:    "mysql-bin.000001",
+		PositionStart: start,
+		PositionEnd:   end,
+		BinlogBytes:   end - start,
 	}
 }
 

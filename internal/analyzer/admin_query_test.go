@@ -1,7 +1,7 @@
 // Package analyzer verifies ADMIN, Ignored QUERY, and Unclassified QUERY at the normalize-plus-Analyzer seam.
 // input: synthetic parser-shaped RawEvents (canonical kinds, GTID only on GTID events) run through binlog.NormalizeRawEventInto then Analyzer.Consume.
-// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix; Ignored QUERY stays open and next GTID conflicts; explicit BEGIN/XA_START still conflicts.
-// pos: #74 QUERY-class regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
+// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix, including anonymous empty-identity groups on the next GTID and at finalize; Ignored QUERY stays open and next GTID conflicts; explicit BEGIN/XA_START still conflicts.
+// pos: #74/#78 QUERY-class regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
 // note: if this file changes, update this header and README.md.
 package analyzer
 
@@ -135,6 +135,52 @@ func TestAnalyzerUnclassifiedQueryFailsInsteadOfConflictingGTID(t *testing.T) {
 				t.Fatalf("unclassified QUERY error must contain the statement prefix %q, got %v", query, err)
 			}
 		})
+	}
+}
+
+func TestAnalyzerAnonymousUnclassifiedQueryFailsOnNextGTID(t *testing.T) {
+	ts := time.Date(2026, 9, 16, 14, 0, 0, 0, time.UTC)
+	_, err := normalizeAndAnalyze(t, mysqlAnonymousThenBusiness(ts, "CHECK TABLE app.orders"))
+	if err == nil {
+		t.Fatal("anonymous unclassified-only group must fail on the next GTID, not silently finalize")
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("anonymous unclassified QUERY must not be reported as conflicting GTID, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Unclassified QUERY") {
+		t.Fatalf("anonymous unclassified QUERY error must name Unclassified QUERY, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+		t.Fatalf("anonymous unclassified QUERY error must contain the statement prefix, got %v", err)
+	}
+}
+
+func TestAnalyzerFinalizeAnonymousUnclassifiedOnlyGroupFails(t *testing.T) {
+	ts := time.Date(2026, 9, 16, 14, 10, 0, 0, time.UTC)
+	raws := []binlog.RawEvent{
+		mysqlAnonymousGTID(ts, 100, 180),
+		mysqlQuery(ts.Add(time.Second), "CHECK TABLE app.orders", 180, 260),
+	}
+	_, err := normalizeAndAnalyze(t, raws)
+	if err == nil {
+		t.Fatal("finalize of an unclassified-only anonymous group must fail")
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("anonymous finalize must be Unclassified QUERY, not conflicting GTID, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+		t.Fatalf("anonymous finalize error must include Unclassified QUERY and the statement prefix, got %v", err)
+	}
+}
+
+func TestAnalyzerAnonymousIgnoredQueryDoesNotBecomeUnclassified(t *testing.T) {
+	ts := time.Date(2026, 9, 16, 14, 20, 0, 0, time.UTC)
+	_, err := normalizeAndAnalyze(t, mysqlAnonymousThenBusiness(ts, "SET timestamp=1710000000"))
+	if err != nil && strings.Contains(err.Error(), "Unclassified QUERY") {
+		t.Fatalf("Ignored QUERY after anonymous GTID must not become Unclassified QUERY, got %v", err)
+	}
+	if err != nil && !strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("Ignored QUERY after anonymous GTID must stay conflicting GTID when the next GTID already conflicts, got %v", err)
 	}
 }
 
@@ -361,6 +407,29 @@ func mysqlAdminThenBusiness(ts time.Time, query string) []binlog.RawEvent {
 		mysqlQuery(ts.Add(3*time.Second), "BEGIN", 340, 380),
 		mysqlRows(ts.Add(4*time.Second), 3, 380, 500),
 		mysqlXID(ts.Add(5*time.Second), 500, 520),
+	}
+}
+
+func mysqlAnonymousThenBusiness(ts time.Time, query string) []binlog.RawEvent {
+	return []binlog.RawEvent{
+		mysqlAnonymousGTID(ts, 100, 180),
+		mysqlQuery(ts.Add(time.Second), query, 180, 260),
+		mysqlGTID(ts.Add(2*time.Second), 40, 260, 340),
+		mysqlQuery(ts.Add(3*time.Second), "BEGIN", 340, 380),
+		mysqlRows(ts.Add(4*time.Second), 3, 380, 500),
+		mysqlXID(ts.Add(5*time.Second), 500, 520),
+	}
+}
+
+func mysqlAnonymousGTID(ts time.Time, start, end int64) binlog.RawEvent {
+	return binlog.RawEvent{
+		Timestamp:     ts,
+		EventType:     "GTID",
+		ServerFlavor:  "mysql",
+		BinlogPath:    "mysql-bin.000001",
+		PositionStart: start,
+		PositionEnd:   end,
+		BinlogBytes:   end - start,
 	}
 }
 

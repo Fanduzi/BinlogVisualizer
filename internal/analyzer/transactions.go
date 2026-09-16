@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN), UnclassifiedQueryError when a GTID-started non-explicit group's only work is Unclassified QUERY, plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
+// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN), UnclassifiedQueryError when a GTID-started non-explicit group's only work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize), plus retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location).
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -263,6 +263,9 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windo
 			}
 			b.observeEvent(ev, relation)
 			return nil
+		}
+		if err := b.inFlightUnclassifiedError(); err != nil {
+			return err
 		}
 		if b.current.isExplicit {
 			return fmt.Errorf("GTID received while explicit transaction %s is in-flight", b.current.txnKey)
