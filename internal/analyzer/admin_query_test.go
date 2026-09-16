@@ -373,13 +373,7 @@ func normalizeRawEvents(t *testing.T, raws []binlog.RawEvent) []model.Normalized
 }
 
 func consumeAnalyzer(events []model.NormalizedEvent) (*model.AnalysisResult, error) {
-	a := New(Options{})
-	for _, ev := range events {
-		if err := a.Consume(ev); err != nil {
-			return nil, err
-		}
-	}
-	return a.Finalize()
+	return consumeAnalyzerWithOptions(events, Options{})
 }
 
 func assertSingleBusinessTransaction(t *testing.T, result *model.AnalysisResult, gtid string, rows int) {

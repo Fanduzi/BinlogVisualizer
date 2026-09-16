@@ -1,7 +1,7 @@
 // Package binlogviz verifies Unclassified QUERY and Ignored QUERY command I/O.
-// input: injected mock parser events through runAnalysisWithParser.
-// output: exit 1 Unclassified QUERY (empty stdout, one Error: line, statement prefix, English and zh-CN), including anonymous empty-identity groups on the next GTID and at EOF, exit 2 ADMIN-only no-data, Ignored QUERY JSON count distinct from ignored_query_dml_events, and ADMIN-then-business exit 0.
-// pos: #74/#78 operator I/O seam for ADR-0001/0003 QUERY classes.
+// input: injected mock parser events through runAnalysisWithParser, including --end / --stop-position clips around a trailing GTID-started Unclassified QUERY.
+// output: exit 1 Unclassified QUERY (empty stdout, one Error: line, statement prefix, English and zh-CN), including anonymous empty-identity groups on the next GTID and at EOF, exit 0 in-window report when that QUERY is after the window, exit 2 ADMIN-only no-data, Ignored QUERY JSON count distinct from ignored_query_dml_events, and ADMIN-then-business exit 0.
+// pos: #74/#78/#79 operator I/O seam for ADR-0001/0003 QUERY classes and after-window Unclassified QUERY.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 
@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -156,6 +157,86 @@ func TestAnalyzeFinalizeUnclassifiedOnlyExitsOne(t *testing.T) {
 	}
 }
 
+func TestAnalyzeAfterEndUnclassifiedQueryExitsZeroWithReport(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 17, 0, 0, 0, time.UTC)
+	end := ts.Add(3 * time.Second)
+	opts := analyzer.DefaultOptions()
+	opts.End = &end
+	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQuery(ts, "CHECK TABLE app.orders"), opts)
+	if err != nil {
+		t.Fatalf("after --end Unclassified QUERY must exit 0, got %v", err)
+	}
+	if stdout == "" {
+		t.Fatal("after --end Unclassified QUERY stdout must not be empty")
+	}
+	assertCommandBusinessReport(t, stdout, mysqlIssue74SID+":40", 3)
+}
+
+func TestAnalyzeAfterStopPositionUnclassifiedQueryExitsZeroWithReport(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 17, 10, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "mysql-bin.000001")
+	if err := os.WriteFile(path, make([]byte, 520), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stop := int64(360)
+	opts := analyzer.DefaultOptions()
+	opts.StopPosition = &stop
+	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, path, mysqlCommandBusinessThenQuery(ts, "CHECK TABLE app.orders"), opts)
+	if err != nil {
+		t.Fatalf("after --stop-position Unclassified QUERY must exit 0, got %v", err)
+	}
+	if stdout == "" {
+		t.Fatal("after --stop-position Unclassified QUERY stdout must not be empty")
+	}
+	assertCommandBusinessReport(t, stdout, mysqlIssue74SID+":40", 3)
+}
+
+func TestAnalyzeAfterEndUnclassifiedQueryThenNextGTIDExitsZero(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 17, 15, 0, 0, time.UTC)
+	end := ts.Add(3 * time.Second)
+	opts := analyzer.DefaultOptions()
+	opts.End = &end
+	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQueryThenBusiness(ts, "CHECK TABLE app.orders"), opts)
+	if err != nil {
+		t.Fatalf("after --end Unclassified QUERY then next GTID must exit 0, got %v", err)
+	}
+	if stdout == "" {
+		t.Fatal("after --end Unclassified QUERY then next GTID stdout must not be empty")
+	}
+	assertCommandBusinessReport(t, stdout, mysqlIssue74SID+":40", 3)
+}
+
+func TestAnalyzeInWindowUnclassifiedAfterBusinessStillExitsOne(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 17, 20, 0, 0, time.UTC)
+	end := ts.Add(5 * time.Second)
+	opts := analyzer.DefaultOptions()
+	opts.End = &end
+	stdout, stderr, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQuery(ts, "CHECK TABLE app.orders"), opts)
+	if err == nil {
+		t.Fatal("in-window Unclassified QUERY must fail analyze")
+	}
+	if got := ExitCode(err); got != 1 {
+		t.Fatalf("exit=%d, want 1; err=%v", got, err)
+	}
+	if stdout != "" {
+		t.Fatalf("in-window Unclassified QUERY stdout must be empty, got %q", stdout)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error: once, got %q", stderr)
+	}
+	assertNoUsageDump(t, stderr)
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("must not say conflicting GTID, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+		t.Fatalf("English error must include Unclassified QUERY and the prefix, got %v", err)
+	}
+}
+
 func TestAnalyzeAdminOnlyFileExitsNoData(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	ts := time.Date(2026, 9, 16, 10, 0, 0, 0, time.UTC)
@@ -296,13 +377,87 @@ func TestAnalyzeJSONCountsIgnoredQuerySeparatelyFromQueryDML(t *testing.T) {
 
 func runAnalyzeLikeMainWithParser(t *testing.T, events []binlog.RawEvent) (string, string, error) {
 	t.Helper()
+	return runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", events, analyzer.DefaultOptions())
+}
+
+func runAnalyzeLikeMainWithParserOptions(t *testing.T, path string, events []binlog.RawEvent, opts analyzer.Options) (string, string, error) {
+	t.Helper()
 	return captureStdoutStderrRun(t, func() error {
-		err := runAnalysisWithParser([]string{"dummy.binlog"}, analyzer.DefaultOptions(), "json", &mockParser{events: events})
+		err := runAnalysisWithParser([]string{path}, opts, "json", &mockParser{events: events})
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 		}
 		return err
 	})
+}
+
+func assertCommandBusinessReport(t *testing.T, stdout, gtid string, rows int) {
+	t.Helper()
+	var decoded struct {
+		Summary struct {
+			TotalTransactions int `json:"total_transactions"`
+			TotalRows         int `json:"total_rows"`
+		} `json:"summary"`
+		Transactions []struct {
+			GTID string `json:"gtid"`
+		} `json:"transactions"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", err, stdout)
+	}
+	if decoded.Summary.TotalTransactions != 1 || decoded.Summary.TotalRows != rows {
+		t.Fatalf("want one business transaction with %d rows, got txns=%d rows=%d", rows, decoded.Summary.TotalTransactions, decoded.Summary.TotalRows)
+	}
+	if len(decoded.Transactions) != 1 || decoded.Transactions[0].GTID != gtid {
+		t.Fatalf("business GTID = %+v, want %s", decoded.Transactions, gtid)
+	}
+}
+
+func mysqlCommandBusinessThenQuery(ts time.Time, query string) []binlog.RawEvent {
+	return []binlog.RawEvent{
+		mysqlCommandGTID(ts, 40, 100, 180),
+		mysqlCommandQuery(ts.Add(time.Second), "BEGIN", 180, 220),
+		mysqlCommandRows(ts.Add(2*time.Second), 3, 220, 340),
+		mysqlCommandXID(ts.Add(3*time.Second), 340, 360),
+		mysqlCommandGTID(ts.Add(4*time.Second), 41, 360, 440),
+		mysqlCommandQuery(ts.Add(5*time.Second), query, 440, 520),
+	}
+}
+
+func mysqlCommandBusinessThenQueryThenBusiness(ts time.Time, query string) []binlog.RawEvent {
+	return append(mysqlCommandBusinessThenQuery(ts, query),
+		mysqlCommandGTID(ts.Add(6*time.Second), 42, 520, 600),
+		mysqlCommandQuery(ts.Add(7*time.Second), "BEGIN", 600, 640),
+		mysqlCommandRows(ts.Add(8*time.Second), 2, 640, 760),
+		mysqlCommandXID(ts.Add(9*time.Second), 760, 780),
+	)
+}
+
+func mysqlCommandRows(ts time.Time, rows int, start, end int64) binlog.RawEvent {
+	return binlog.RawEvent{
+		Timestamp:     ts,
+		EventType:     "WRITE_ROWS",
+		Schema:        "app",
+		Table:         "orders",
+		RowCount:      rows,
+		ServerFlavor:  "mysql",
+		BinlogPath:    "mysql-bin.000001",
+		PositionStart: start,
+		PositionEnd:   end,
+		BinlogBytes:   end - start,
+	}
+}
+
+func mysqlCommandXID(ts time.Time, start, end int64) binlog.RawEvent {
+	return binlog.RawEvent{
+		Timestamp:     ts,
+		EventType:     "XID",
+		ServerFlavor:  "mysql",
+		BinlogPath:    "mysql-bin.000001",
+		PositionStart: start,
+		PositionEnd:   end,
+		BinlogBytes:   end - start,
+	}
 }
 
 func unclassifiedCheckTableEvents() []binlog.RawEvent {
