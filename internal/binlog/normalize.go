@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, independent ADMIN, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, independent ADMIN including exact FLUSH TABLES, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -203,14 +203,16 @@ func hasQueryDDLPrefix(sql string) bool {
 		hasWordPrefixFold(sql, "REVOKE")
 }
 
-// hasIndependentAdminQueryPrefix matches the #72 independent GTID-group
+// hasIndependentAdminQueryPrefix matches the independent GTID-group
 // statements only. SET DEFAULT ROLE is that phrase, not a generic SET prefix.
+// FLUSH TABLES is exact so FLUSH TABLES WITH READ LOCK stays Unclassified QUERY.
 func hasIndependentAdminQueryPrefix(sql string) bool {
 	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
 	return hasTwoWordPrefixFold(sql, "ANALYZE", "TABLE") ||
 		hasTwoWordPrefixFold(sql, "OPTIMIZE", "TABLE") ||
 		hasTwoWordPrefixFold(sql, "FLUSH", "PRIVILEGES") ||
-		hasThreeWordPrefixFold(sql, "SET", "DEFAULT", "ROLE")
+		hasThreeWordPrefixFold(sql, "SET", "DEFAULT", "ROLE") ||
+		strings.EqualFold(sql, "FLUSH TABLES")
 }
 
 func hasTwoWordPrefixFold(sql, first, second string) bool {

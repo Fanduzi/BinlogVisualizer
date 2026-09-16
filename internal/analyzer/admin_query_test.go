@@ -1,6 +1,6 @@
 // Package analyzer verifies ADMIN, Ignored QUERY, and Unclassified QUERY at the normalize-plus-Analyzer seam.
 // input: synthetic parser-shaped RawEvents (canonical kinds, GTID only on GTID events) run through binlog.NormalizeRawEventInto then Analyzer.Consume.
-// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix; Ignored QUERY stays open and next GTID conflicts; explicit BEGIN/XA_START still conflicts.
+// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix; Ignored QUERY stays open and next GTID conflicts; explicit BEGIN/XA_START still conflicts.
 // pos: #74 QUERY-class regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -24,6 +24,7 @@ func TestAnalyzerClosesMySQLIndependentAdminQueriesBeforeNextGTID(t *testing.T) 
 		"OPTIMIZE TABLE `app`.`orders`",
 		"FLUSH PRIVILEGES",
 		"FLUSH PRIVILEGES;",
+		"FLUSH TABLES",
 		"SET DEFAULT ROLE admin TO 'app'@'%'",
 		"analyze table app.orders",
 	}
@@ -116,7 +117,6 @@ func TestAnalyzerUnclassifiedQueryFailsInsteadOfConflictingGTID(t *testing.T) {
 	unclassified := []string{
 		"SET ROLE ALL",
 		"CHECK TABLE app.orders",
-		"FLUSH TABLES",
 		"FLUSH TABLES WITH READ LOCK",
 	}
 	for _, query := range unclassified {

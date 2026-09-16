@@ -37,6 +37,47 @@ The script:
 - **Format**: MySQL 5.7 ROW binlog
 - **Server ID**: 1
 
+## mysql-8.0.46-flush-tables.binlog
+
+A MySQL 8.0.46 ROW+GTID dialect fixture used to admit `FLUSH TABLES` as ADMIN.
+
+### Contents
+
+After schema setup in an earlier binlog, this file contains:
+
+- Format Description from MySQL 8.0.46
+- One GTID-started non-explicit group whose only work is `FLUSH TABLES`
+- The next GTID: `BEGIN`, one `INSERT` ROW image on `testdb.users`, and `XID`
+
+### Regeneration
+
+To regenerate this fixture, run:
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_flush_tables.sh
+```
+
+Requirements:
+
+- Docker
+- `mysql:8.0.46` image
+
+The script:
+
+1. Starts MySQL 8.0.46 with ROW binlog format and GTID
+2. Creates `testdb.users` in an earlier file
+3. Rotates, then writes `FLUSH TABLES` and one `INSERT`
+4. Extracts that rotated file
+5. Cleans up the container
+
+### File Details
+
+- **Format**: MySQL 8.0.46 ROW binlog with GTID
+- **Flavor**: mysql
+- **Server version**: 8.0.46
+- **Server ID**: 1
+
 ## Stage 5 Coverage Notes
 
 - Multi-file command-path coverage reuses `minimal.binlog` twice in ordered input tests and benchmarks to exercise the real parser over more than one file without duplicating fixture assets.
