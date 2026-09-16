@@ -1,6 +1,6 @@
 // Package analyzer admits FLUSH TABLES as ADMIN from a committed dialect fixture.
 // input: ParseFiles on testdata/mysql-8.0.46-flush-tables.binlog, then NormalizeRawEvent and Analyzer.Consume.
-// output: analyze success, ADMIN close of the FLUSH TABLES GTID group, one following business transaction, no DDL leak, no maintenance report transaction.
+// output: analyze success, ADMIN close of the FLUSH TABLES GTID-started non-explicit group, one following business transaction, no DDL leak, no maintenance report transaction.
 // pos: ADR-0003 admission seam for a new ADMIN verb; synthetic RawEvent lists cannot admit this verb.
 // note: if this file changes, update this header and README.md.
 package analyzer
