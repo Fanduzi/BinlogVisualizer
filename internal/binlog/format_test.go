@@ -95,12 +95,13 @@ func TestFormatObserverCountsIgnoredQuerySeparately(t *testing.T) {
 	}
 }
 
-func TestFormatObserverCountsAdminQueryNotFlushTables(t *testing.T) {
+func TestFormatObserverCountsExactFlushTablesAsAdmin(t *testing.T) {
 	var observer FormatObserver
 	observer.Observe(RawEvent{EventType: "QUERY", Query: "FLUSH PRIVILEGES"})
 	observer.Observe(RawEvent{EventType: "QUERY", Query: "FLUSH TABLES"})
-	if observer.AdminQueryEvents != 1 {
-		t.Fatalf("AdminQueryEvents=%d, want 1 FLUSH PRIVILEGES", observer.AdminQueryEvents)
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "FLUSH TABLES WITH READ LOCK"})
+	if observer.AdminQueryEvents != 2 {
+		t.Fatalf("AdminQueryEvents=%d, want 2 FLUSH PRIVILEGES and exact FLUSH TABLES", observer.AdminQueryEvents)
 	}
 }
 
