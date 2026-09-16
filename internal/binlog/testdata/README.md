@@ -87,6 +87,7 @@ A MySQL 8.0.36 ROW binlog with `binlog_transaction_compression=ON`. Used to prov
 - Flavor / version: MySQL 8.0.36
 - `CREATE TABLE testdb.users (id INT PRIMARY KEY, name VARCHAR(100))` as an independent GTID/QUERY group
 - One compressed DML transaction: `INSERT` alice, `UPDATE` to alice_updated, `DELETE`
+- The compressed DML is one `TRANSACTION_PAYLOAD` event at file offsets `[509, 725)` (216 bytes). The opening GTID is the previous file event at `[430, 509)`. Inner uncompressed `LogPos` is 0 and is not a file offset. The retained transaction reports the wrapper span once.
 
 ### Regeneration
 

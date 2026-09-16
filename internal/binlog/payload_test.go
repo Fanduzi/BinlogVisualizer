@@ -1,7 +1,7 @@
 // Package binlog verifies transaction-payload expand and related physical-kind mapping.
 // input: decoded TransactionPayloadEvent values and the committed MySQL 8.0.36 compressed dialect fixture.
-// output: assertions that inner ROW images keep INSERT/UPDATE/DELETE kinds, and a successful expand does not emit the wrapper as unmapped.
-// pos: parser admission seam for #75 transaction-payload completeness (ParseFiles fixture plus decoded-payload expand).
+// output: assertions that inner ROW images keep INSERT/UPDATE/DELETE kinds, a successful expand does not emit the wrapper as unmapped, and expanded inners share the wrapper's file-relative span once.
+// pos: parser admission seam for #80 wrapper file-span accounting (ParseFiles on the compressed fixture; decoded-payload expand is not the admission ticket).
 // note: if this file changes, update this header and README.md.
 package binlog
 
@@ -11,6 +11,24 @@ import (
 
 	"github.com/go-mysql-org/go-mysql/replication"
 )
+
+func TestExpandTransactionPayloadUsesWrapperSpanNotUncompressedLogPos(t *testing.T) {
+	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{})
+	if !ok {
+		t.Fatal("expected successful expand")
+	}
+	const wrapperStart, wrapperEnd, wrapperBytes int64 = 220, 400, 180
+	var payloadBytes int64
+	for i, raw := range raws {
+		if raw.PositionStart != wrapperStart || raw.PositionEnd != wrapperEnd {
+			t.Fatalf("inner[%d] span [%d,%d), want wrapper [%d,%d) not uncompressed LogPos", i, raw.PositionStart, raw.PositionEnd, wrapperStart, wrapperEnd)
+		}
+		payloadBytes += raw.BinlogBytes
+	}
+	if payloadBytes != wrapperBytes {
+		t.Fatalf("expanded BinlogBytes sum=%d, want wrapper size %d once", payloadBytes, wrapperBytes)
+	}
+}
 
 func TestExpandTransactionPayloadEmitsInnerKindsNotWrapper(t *testing.T) {
 	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{})
@@ -60,12 +78,22 @@ func TestSuccessfulPayloadExpandDoesNotIncrementUnmappedEvents(t *testing.T) {
 }
 
 func TestFailedPayloadExpandLeavesWrapperUnmapped(t *testing.T) {
-	raws, ok := expandTransactionPayload(&replication.BinlogEvent{
+	ev := &replication.BinlogEvent{
 		Header: &replication.EventHeader{EventType: replication.TRANSACTION_PAYLOAD_EVENT, EventSize: 40, LogPos: 120},
 		Event:  &replication.TransactionPayloadEvent{},
-	}, "mysql-bin.000001", "8.0.36", nil)
+	}
+	raws, ok := expandTransactionPayload(ev, "mysql-bin.000001", "8.0.36", nil)
 	if ok {
 		t.Fatalf("empty payload must not count as a successful expand, got %v", eventTypes(raws))
+	}
+	raw := rawEventFromHeader(ev.Header, "mysql-bin.000001", "8.0.36")
+	var observer FormatObserver
+	observer.Observe(raw)
+	if raw.EventType != "" {
+		t.Fatalf("failed expand wrapper kind=%q, want empty unmapped", raw.EventType)
+	}
+	if observer.UnmappedEvents != 1 {
+		t.Fatalf("UnmappedEvents=%d after failed expand, want 1", observer.UnmappedEvents)
 	}
 }
 
@@ -101,6 +129,81 @@ func TestParseFilesExpandsMySQL80CompressedTransactionPayload(t *testing.T) {
 	if observer.RowImageEvents != 3 {
 		t.Fatalf("RowImageEvents=%d, want 3 inner ROW images", observer.RowImageEvents)
 	}
+}
+
+// On-disk TRANSACTION_PAYLOAD header in testdata/mysql80_transaction_payload.binlog
+// (LogPos 725, EventSize 216), not expanded inner LogPos.
+const (
+	mysql80CompressedPayloadWrapperStart = 509
+	mysql80CompressedPayloadWrapperEnd   = 725
+	mysql80CompressedPayloadWrapperBytes = 216
+)
+
+func TestParseFilesCompressedPayloadInnersUseWrapperFileSpanOnce(t *testing.T) {
+	fixture := filepath.Join("testdata", "mysql80_transaction_payload.binlog")
+	start, end, size := compressedPayloadWrapperHeaderSpan(t, fixture)
+	if start != mysql80CompressedPayloadWrapperStart || end != mysql80CompressedPayloadWrapperEnd || size != mysql80CompressedPayloadWrapperBytes {
+		t.Fatalf("fixture wrapper header [%d,%d) bytes=%d, want [%d,%d) bytes=%d", start, end, size, mysql80CompressedPayloadWrapperStart, mysql80CompressedPayloadWrapperEnd, mysql80CompressedPayloadWrapperBytes)
+	}
+	var raws []RawEvent
+	if err := NewParser().ParseFiles([]string{fixture}, func(raw RawEvent) error {
+		raws = append(raws, raw)
+		return nil
+	}); err != nil {
+		t.Fatalf("ParseFiles: %v", err)
+	}
+
+	var payload []RawEvent
+	var payloadBytes int64
+	for _, raw := range raws {
+		if raw.EventType == kindGTID || raw.EventType == kindFormatDescription || raw.EventType == "" {
+			continue
+		}
+		if raw.PositionStart == mysql80CompressedPayloadWrapperStart && raw.PositionEnd == mysql80CompressedPayloadWrapperEnd {
+			payload = append(payload, raw)
+			payloadBytes += raw.BinlogBytes
+		}
+	}
+	if len(payload) < 4 {
+		t.Fatalf("expanded payload events=%d, want BEGIN plus ROW images plus XID on the wrapper span", len(payload))
+	}
+	inserts, updates, deletes := countNormalizedRowOps(t, payload)
+	if inserts != 1 || updates != 1 || deletes != 1 {
+		t.Fatalf("inner operations INSERT/UPDATE/DELETE=%d/%d/%d, want 1/1/1", inserts, updates, deletes)
+	}
+	if payloadBytes != mysql80CompressedPayloadWrapperBytes {
+		t.Fatalf("expanded payload BinlogBytes sum=%d, want wrapper size %d once (not %d times %d inners)", payloadBytes, mysql80CompressedPayloadWrapperBytes, mysql80CompressedPayloadWrapperBytes, len(payload))
+	}
+	for i, raw := range payload {
+		if raw.PositionStart != mysql80CompressedPayloadWrapperStart || raw.PositionEnd != mysql80CompressedPayloadWrapperEnd {
+			t.Fatalf("inner[%d] span [%d,%d), want wrapper [%d,%d)", i, raw.PositionStart, raw.PositionEnd, mysql80CompressedPayloadWrapperStart, mysql80CompressedPayloadWrapperEnd)
+		}
+		if raw.BinlogBytes != 0 && raw.BinlogBytes != mysql80CompressedPayloadWrapperBytes {
+			t.Fatalf("inner[%d] BinlogBytes=%d, want 0 or wrapper size %d", i, raw.BinlogBytes, mysql80CompressedPayloadWrapperBytes)
+		}
+	}
+}
+
+func compressedPayloadWrapperHeaderSpan(t *testing.T, path string) (start, end, size int64) {
+	t.Helper()
+	bp := replication.NewBinlogParser()
+	var found bool
+	if err := bp.ParseFile(path, 0, func(ev *replication.BinlogEvent) error {
+		if ev == nil || ev.Header == nil || ev.Header.EventType != replication.TRANSACTION_PAYLOAD_EVENT {
+			return nil
+		}
+		end = int64(ev.Header.LogPos)
+		size = int64(ev.Header.EventSize)
+		start = end - size
+		found = true
+		return nil
+	}); err != nil {
+		t.Fatalf("read wrapper header: %v", err)
+	}
+	if !found {
+		t.Fatal("fixture missing TRANSACTION_PAYLOAD_EVENT header")
+	}
+	return start, end, size
 }
 
 func decodedPayloadWrapper() *replication.BinlogEvent {
