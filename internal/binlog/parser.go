@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
-// input: binlog file paths, go-mysql replication parser callbacks, and optional progress consumers.
-// output: Parser implementations that emit RawEvent values with canonical kinds, bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates.
+// input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events, bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. rawEventFromHeader is the shared header projection used by the file loop and payload expand.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -71,14 +71,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				return nil
 			}
 
-			raw := RawEvent{
-				Timestamp:     time.Unix(int64(ev.Header.Timestamp), 0),
-				EventType:     canonicalEventType(ev.Header.EventType),
-				BinlogPath:    path,
-				ServerID:      ev.Header.ServerID,
-				ServerVersion: serverVersion,
-				ServerFlavor:  serverFlavor(serverVersion),
-			}
+			raw := rawEventFromHeader(ev.Header, path, serverVersion)
 			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes, cursor = deriveEventPositionRange(ev.Header, cursor)
 			raw.Position = uint32(raw.PositionEnd)
 
@@ -86,6 +79,18 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				offset := clampProgressOffset(raw.PositionEnd, fileSize)
 				lastOffset = maxInt64(lastOffset, offset)
 				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
+			}
+
+			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames); ok {
+				for i := range inners {
+					if inners[i].ServerVersion != "" {
+						serverVersion = inners[i].ServerVersion
+					}
+					if err := handler(inners[i]); err != nil {
+						return err
+					}
+				}
+				return nil
 			}
 
 			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames)
@@ -104,6 +109,21 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 	return nil
 }
 
+func rawEventFromHeader(header *replication.EventHeader, path, serverVersion string) RawEvent {
+	raw := RawEvent{
+		BinlogPath:    path,
+		ServerVersion: serverVersion,
+		ServerFlavor:  serverFlavor(serverVersion),
+	}
+	if header == nil {
+		return raw
+	}
+	raw.Timestamp = time.Unix(int64(header.Timestamp), 0)
+	raw.EventType = canonicalEventType(header.EventType)
+	raw.ServerID = header.ServerID
+	return raw
+}
+
 func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any, tableNames map[uint64]cachedTableName) {
 	switch e := event.(type) {
 	case *replication.QueryEvent:
@@ -112,6 +132,10 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 		raw.ThreadID = e.SlaveProxyID
 		raw.ActorUser, raw.ActorHost = queryEventActor(e.StatusVars)
 	case *replication.GTIDEvent:
+		if et == replication.ANONYMOUS_GTID_EVENT {
+			raw.GTID = ""
+			return
+		}
 		if set, err := e.GTIDNext(); err == nil {
 			raw.GTID = set.String()
 		}
@@ -246,11 +270,42 @@ func readLengthEncodedStatusString(data []byte, pos int) (string, int, bool) {
 // UPDATE events store before/after images as consecutive rows.
 func logicalRowCount(et replication.EventType, imageCount int) int {
 	switch et {
-	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2:
+	case replication.UPDATE_ROWS_EVENTv0, replication.UPDATE_ROWS_EVENTv1, replication.UPDATE_ROWS_EVENTv2,
+		replication.PARTIAL_UPDATE_ROWS_EVENT, replication.MARIADB_UPDATE_ROWS_COMPRESSED_EVENT_V1:
 		return imageCount / 2
 	default:
 		return imageCount
 	}
+}
+
+// expandTransactionPayload returns inner RawEvents when a transaction payload
+// decoded successfully. The wrapper is not a canonical kind and is omitted.
+func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName) ([]RawEvent, bool) {
+	if ev == nil {
+		return nil, false
+	}
+	payload, ok := ev.Event.(*replication.TransactionPayloadEvent)
+	if !ok || len(payload.Events) == 0 {
+		return nil, false
+	}
+	wrapperStart, wrapperEnd, wrapperBytes, _ := deriveEventPositionRange(ev.Header, 0)
+	out := make([]RawEvent, 0, len(payload.Events))
+	for _, inner := range payload.Events {
+		if inner == nil || inner.Header == nil {
+			continue
+		}
+		raw := rawEventFromHeader(inner.Header, path, serverVersion)
+		if inner.Header.LogPos > 0 {
+			start, end, size, _ := deriveEventPositionRange(inner.Header, 0)
+			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = start, end, size
+		} else {
+			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = wrapperStart, wrapperEnd, wrapperBytes
+		}
+		raw.Position = uint32(raw.PositionEnd)
+		applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames)
+		out = append(out, raw)
+	}
+	return out, len(out) > 0
 }
 
 func applyRowsEventTableName(raw *RawEvent, event *replication.RowsEvent, tableNames map[uint64]cachedTableName) {

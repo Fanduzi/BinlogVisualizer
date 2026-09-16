@@ -51,3 +51,7 @@ _Avoid_: unknown query, skipped query
 **Unmapped event**:
 A parser event with no canonical kind. Distinct from a classified QUERY that was ignored.
 _Avoid_: ignored QUERY, skipped QUERY
+
+**Transaction payload**:
+A binlog event that wraps a transaction group's inner events, optionally compressed. Analyze counts the inner ROW images as if they were written separately.
+_Avoid_: compressed binlog (MariaDB compressed row events are a different physical kind)
