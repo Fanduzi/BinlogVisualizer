@@ -203,8 +203,8 @@ func hasQueryDDLPrefix(sql string) bool {
 		hasWordPrefixFold(sql, "REVOKE")
 }
 
-// hasIndependentAdminQueryPrefix matches the independent GTID-group
-// statements only. SET DEFAULT ROLE is that phrase, not a generic SET prefix.
+// hasIndependentAdminQueryPrefix matches the independent
+// GTID-started non-explicit group statements only. SET DEFAULT ROLE is that phrase, not a generic SET prefix.
 // FLUSH TABLES is exact so FLUSH TABLES WITH READ LOCK stays Unclassified QUERY.
 func hasIndependentAdminQueryPrefix(sql string) bool {
 	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
