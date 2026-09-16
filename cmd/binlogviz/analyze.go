@@ -1,11 +1,12 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, and unmapped parser-event counts; invalid selectors fail, valid no-data exits 2, and DuckDB temp state is cleaned.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, and optional Ignored QUERY counts; Unclassified QUERY is exit 1 with one Error: line; invalid selectors fail, valid no-data (including ADMIN-only) exits 2, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -637,6 +638,10 @@ func runAnalysisStreamingWithSnapshotDeps(
 			}
 		}
 		if err := streamAnalyzer.Consume(ev); err != nil {
+			var unclassified *analyzer.UnclassifiedQueryError
+			if errors.As(err, &unclassified) {
+				return err
+			}
 			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
 		}
 		return nil
@@ -664,6 +669,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 
 	result, err := streamAnalyzer.Finalize()
 	if err != nil {
+		if unclassified := localizedUnclassifiedQueryError(err); unclassified != nil {
+			return unclassified
+		}
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
 	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
@@ -750,6 +758,7 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 	}
 	result.Diagnostics.InputFormatGuess = observer.Guess()
 	result.Diagnostics.IgnoredQueryDMLEvents = observer.QueryDMLEvents
+	result.Diagnostics.IgnoredQueryEvents = observer.IgnoredQueryEvents
 	result.Diagnostics.UnmappedEvents = observer.UnmappedEvents
 	result.Diagnostics.ServerVersion = observer.ServerVersion
 	if observer.QueryDMLEvents == 0 {
@@ -1030,10 +1039,21 @@ func wrapParseError(err error) error {
 	if err == nil {
 		return nil
 	}
+	if unclassified := localizedUnclassifiedQueryError(err); unclassified != nil {
+		return unclassified
+	}
 	if mapped := mapBinlogParseError(err.Error()); mapped != "" {
 		return fmt.Errorf("%s", mapped)
 	}
 	return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+}
+
+func localizedUnclassifiedQueryError(err error) error {
+	var unclassified *analyzer.UnclassifiedQueryError
+	if !errors.As(err, &unclassified) || unclassified == nil {
+		return nil
+	}
+	return fmt.Errorf("%s", i18n.Tf("error.unclassifiedQuery", map[string]any{"Prefix": unclassified.Prefix}))
 }
 
 func mapBinlogParseError(msg string) string {
@@ -1062,6 +1082,9 @@ func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *mo
 	if result != nil && opts.HasObjectFilters() && result.Summary.TotalRows == 0 {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
+	if isAdminOnlyNoData(result, observer) {
+		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
+	}
 	if result == nil || result.Summary.TotalEvents > 0 {
 		return nil
 	}
@@ -1072,6 +1095,22 @@ func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *mo
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
 	return nil
+}
+
+func isAdminOnlyNoData(result *model.AnalysisResult, observer binlog.FormatObserver) bool {
+	if result == nil {
+		return false
+	}
+	if result.Summary.TotalTransactions > 0 || result.Summary.TotalRows > 0 {
+		return false
+	}
+	if observer.RowImageEvents > 0 || observer.QueryDMLEvents > 0 {
+		return false
+	}
+	if len(result.Diagnostics.DDLEvents) > 0 {
+		return false
+	}
+	return observer.AdminQueryEvents > 0
 }
 
 func rejectEmptyOrIncompleteBinlog(paths []string, rawEvents int) error {

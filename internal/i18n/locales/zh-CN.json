@@ -215,6 +215,10 @@
     "description": "分析完成错误",
     "other": "分析完成错误：{{.Error}}"
   },
+  "error.unclassifiedQuery": {
+    "description": "GTID 组的唯一工作是未分类 QUERY",
+    "other": "未分类 QUERY：{{.Prefix}}"
+  },
   "progress.parsingBinlogs": {
     "description": "进度条描述",
     "other": "正在解析 binlog"
@@ -294,6 +298,10 @@
   "report.label.ignoredQueryDML": {
     "description": "忽略的 Query-DML 事件标签",
     "other": "忽略的 Query-DML 事件"
+  },
+  "report.label.ignoredQuery": {
+    "description": "已忽略 QUERY 事件标签",
+    "other": "已忽略 QUERY 事件"
   },
   "report.text.rowImageSummary": {
     "description": "默认文本报告格式边界",

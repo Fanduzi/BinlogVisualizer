@@ -1,6 +1,6 @@
 // Package binlog guesses ROW/STATEMENT/MIXED from Query-DML versus ROW images.
 // input: raw parser events including Format Description server version.
-// output: FormatObserver counts for Query-DML, ROW images, unmapped kinds, guessed input format, and captured server version.
+// output: FormatObserver counts for Query-DML, Ignored QUERY, ADMIN QUERY, ROW images, unmapped kinds, guessed input format, and captured server version.
 // pos: cheap format-observation helper used by analyze before rendering.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -20,10 +20,12 @@ const (
 // FormatObserver counts Query-DML versus ROW images so analyze can warn
 // when a STATEMENT or MIXED file would otherwise look like a healthy ROW report.
 type FormatObserver struct {
-	QueryDMLEvents int
-	RowImageEvents int
-	UnmappedEvents int
-	ServerVersion  string
+	QueryDMLEvents     int
+	RowImageEvents     int
+	UnmappedEvents     int
+	IgnoredQueryEvents int
+	AdminQueryEvents   int
+	ServerVersion      string
 }
 
 // Observe records one raw parser event.
@@ -37,6 +39,13 @@ func (o *FormatObserver) Observe(raw RawEvent) {
 	if raw.EventType == "" {
 		o.UnmappedEvents++
 		return
+	}
+	if isQueryEventType(raw.EventType) && IsIgnoredQuery(raw.Query) {
+		o.IgnoredQueryEvents++
+		return
+	}
+	if isQueryEventType(raw.EventType) && hasIndependentAdminQueryPrefix(raw.Query) {
+		o.AdminQueryEvents++
 	}
 	if isQueryEventType(raw.EventType) && IsQueryDML(raw.Query) {
 		o.QueryDMLEvents++

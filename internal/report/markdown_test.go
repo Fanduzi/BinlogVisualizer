@@ -1,6 +1,6 @@
 // Package report verifies Markdown rendering structure, placeholders, and writer behavior.
 // input: synthetic AnalysisResult fixtures plus explicit SQL context presentation modes.
-// output: regression coverage for UTC-labelled Markdown incident evidence, section content, placeholder keys, and deadlock-free writer wrappers.
+// output: regression coverage for UTC-labelled Markdown incident evidence, section content, Ignored QUERY labels, placeholder keys, and deadlock-free writer wrappers.
 // pos: Markdown renderer regression suite guarding user-facing GitHub-flavored report output.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -243,6 +243,7 @@ func TestRenderMarkdownIncludesIncidentDiagnosticsAndDegradesMissingSpans(t *tes
 		Diagnostics: model.Diagnostics{
 			InputFormatGuess:      "MIXED",
 			IgnoredQueryDMLEvents: 2,
+			IgnoredQueryEvents:    1,
 			DDLEvents: []model.DDLEvent{{
 				Timestamp:     time.Date(2026, 3, 9, 10, 5, 0, 0, time.UTC),
 				Operation:     "ALTER TABLE",
@@ -277,6 +278,7 @@ func TestRenderMarkdownIncludesIncidentDiagnosticsAndDegradesMissingSpans(t *tes
 	for _, snippet := range []string{
 		"| Format | MIXED |",
 		"| Ignored Query-DML Events | 2 |",
+		"| Ignored QUERY Events | 1 |",
 		"## DDL Timeline",
 		"| 2026-03-09 10:05:00 UTC | ALTER TABLE | shop\\|core.orders | ALTER TABLE shop\\|core.orders ADD COLUMN note TEXT | mysql-bin.000123:100-200 |",
 		"## Findings",

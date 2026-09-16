@@ -1,6 +1,6 @@
 // Package binlog verifies Query-DML vs ROW-image format observation.
 // input: synthetic raw events including Format Description server version.
-// output: regression coverage for DML detection, format guess, unmapped kinds, and captured server version.
+// output: regression coverage for DML detection, Ignored QUERY counts, ADMIN QUERY counts, format guess, unmapped kinds, and captured server version.
 // pos: unit tests for FormatObserver used by analyze before rendering replay commands.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -68,6 +68,39 @@ func TestFormatObserverCountsQueryDMLAndRowImages(t *testing.T) {
 	}
 	if observer.Guess() != InputFormatMixed {
 		t.Fatalf("guess=%q, want MIXED", observer.Guess())
+	}
+}
+
+func TestFormatObserverCountsIgnoredQuerySeparately(t *testing.T) {
+	var observer FormatObserver
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "SET timestamp=1710000000"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "SET NAMES utf8mb4"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "SET ROLE ALL"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "SET DEFAULT ROLE admin TO 'app'@'%'"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "INSERT INTO users VALUES (1)"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "CHECK TABLE app.orders"})
+	observer.Observe(RawEvent{EventType: ""})
+
+	if observer.IgnoredQueryEvents != 2 {
+		t.Fatalf("IgnoredQueryEvents=%d, want 2 SET timestamp/NAMES", observer.IgnoredQueryEvents)
+	}
+	if observer.QueryDMLEvents != 1 {
+		t.Fatalf("QueryDMLEvents=%d, want 1 INSERT", observer.QueryDMLEvents)
+	}
+	if observer.UnmappedEvents != 1 {
+		t.Fatalf("UnmappedEvents=%d, want 1 empty kind", observer.UnmappedEvents)
+	}
+	if observer.AdminQueryEvents != 1 {
+		t.Fatalf("AdminQueryEvents=%d, want 1 SET DEFAULT ROLE", observer.AdminQueryEvents)
+	}
+}
+
+func TestFormatObserverCountsAdminQueryNotFlushTables(t *testing.T) {
+	var observer FormatObserver
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "FLUSH PRIVILEGES"})
+	observer.Observe(RawEvent{EventType: "QUERY", Query: "FLUSH TABLES"})
+	if observer.AdminQueryEvents != 1 {
+		t.Fatalf("AdminQueryEvents=%d, want 1 FLUSH PRIVILEGES", observer.AdminQueryEvents)
 	}
 }
 

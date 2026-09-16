@@ -1,3 +1,8 @@
+// Package i18n verifies locale loading and translation helpers.
+// input: embedded en and zh-CN catalogs including Unclassified QUERY and Ignored QUERY keys.
+// output: assertions for Init, T/Tf templates, language switching, and new #74 catalog strings.
+// pos: i18n catalog contract tests for CLI and report labels.
+// note: if this file changes, update this header and module README.md.
 package i18n
 
 import (
@@ -68,6 +73,18 @@ func TestT(t *testing.T) {
 			data:     nil,
 			expected: "nonexistent.key",
 		},
+		{
+			name:     "unclassified QUERY error",
+			key:      "error.unclassifiedQuery",
+			data:     map[string]any{"Prefix": "CHECK TABLE app.orders"},
+			expected: "Unclassified QUERY: CHECK TABLE app.orders",
+		},
+		{
+			name:     "Ignored QUERY diagnostic label",
+			key:      "report.label.ignoredQuery",
+			data:     nil,
+			expected: "Ignored QUERY Events",
+		},
 	}
 
 	for _, tt := range tests {
@@ -107,6 +124,18 @@ func TestChineseTranslation(t *testing.T) {
 			key:      "report.section.workload",
 			data:     nil,
 			expected: "工作负载摘要",
+		},
+		{
+			name:     "unclassified QUERY error",
+			key:      "error.unclassifiedQuery",
+			data:     map[string]any{"Prefix": "CHECK TABLE app.orders"},
+			expected: "未分类 QUERY：CHECK TABLE app.orders",
+		},
+		{
+			name:     "Ignored QUERY diagnostic label",
+			key:      "report.label.ignoredQuery",
+			data:     nil,
+			expected: "已忽略 QUERY 事件",
 		},
 	}
 

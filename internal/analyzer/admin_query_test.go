@@ -1,7 +1,7 @@
-// Package analyzer verifies independent management QUERY events close GTID groups.
+// Package analyzer verifies ADMIN, Ignored QUERY, and Unclassified QUERY at the normalize-plus-Analyzer seam.
 // input: synthetic parser-shaped RawEvents (canonical kinds, GTID only on GTID events) run through binlog.NormalizeRawEventInto then Analyzer.Consume.
-// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE close GTID-started non-explicit groups at the QUERY end position without DDL or zero-row report transactions, while unknown QUERY and explicit BEGIN/XA_START still conflict.
-// pos: #72 regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
+// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix; Ignored QUERY stays open and next GTID conflicts; explicit BEGIN/XA_START still conflicts.
+// pos: #74 QUERY-class regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
 // note: if this file changes, update this header and README.md.
 package analyzer
 
@@ -111,23 +111,112 @@ func TestAnalyzerClosesMariaDBFlushPrivilegesBeforeNextGTID(t *testing.T) {
 	assertSingleBusinessTransaction(t, result, "0-7-6", 1)
 }
 
-func TestAnalyzerUnknownQueryDoesNotCloseGTIDGroup(t *testing.T) {
+func TestAnalyzerUnclassifiedQueryFailsInsteadOfConflictingGTID(t *testing.T) {
 	ts := time.Date(2026, 9, 12, 13, 0, 0, 0, time.UTC)
-	unknown := []string{
-		"SET timestamp=1710000000",
+	unclassified := []string{
 		"SET ROLE ALL",
-		"SET NAMES utf8mb4",
 		"CHECK TABLE app.orders",
 		"FLUSH TABLES",
 		"FLUSH TABLES WITH READ LOCK",
 	}
-	for _, query := range unknown {
+	for _, query := range unclassified {
+		t.Run(query, func(t *testing.T) {
+			_, err := normalizeAndAnalyze(t, mysqlAdminThenBusiness(ts, query))
+			if err == nil {
+				t.Fatalf("unclassified QUERY %q must fail analyze", query)
+			}
+			if strings.Contains(err.Error(), "conflicting GTID") {
+				t.Fatalf("unclassified QUERY %q must not be reported as conflicting GTID, got %v", query, err)
+			}
+			if !strings.Contains(err.Error(), "Unclassified QUERY") {
+				t.Fatalf("unclassified QUERY %q error must name Unclassified QUERY, got %v", query, err)
+			}
+			if !strings.Contains(err.Error(), query) {
+				t.Fatalf("unclassified QUERY error must contain the statement prefix %q, got %v", query, err)
+			}
+		})
+	}
+}
+
+func TestAnalyzerIgnoredQueryDoesNotCloseAndNextGTIDConflicts(t *testing.T) {
+	ts := time.Date(2026, 9, 12, 13, 15, 0, 0, time.UTC)
+	ignored := []string{
+		"SET timestamp=1710000000",
+		"SET NAMES utf8mb4",
+		"SET @foo=1",
+	}
+	for _, query := range ignored {
 		t.Run(query, func(t *testing.T) {
 			_, err := normalizeAndAnalyze(t, mysqlAdminThenBusiness(ts, query))
 			if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
-				t.Fatalf("unknown QUERY %q must not be a close boundary, got %v", query, err)
+				t.Fatalf("Ignored QUERY %q must leave the transaction group open, got %v", query, err)
+			}
+			if strings.Contains(err.Error(), "Unclassified QUERY") {
+				t.Fatalf("Ignored QUERY %q must not become Unclassified QUERY, got %v", query, err)
 			}
 		})
+	}
+}
+
+func TestAnalyzerIgnoredQueryThenBeginStillAttachesToGTID(t *testing.T) {
+	ts := time.Date(2026, 9, 12, 13, 20, 0, 0, time.UTC)
+	raws := []binlog.RawEvent{
+		mysqlGTID(ts, 39, 100, 180),
+		mysqlQuery(ts.Add(time.Second), "SET timestamp=1710000000", 180, 220),
+		mysqlQuery(ts.Add(2*time.Second), "SET NAMES utf8mb4", 220, 260),
+		mysqlQuery(ts.Add(3*time.Second), "BEGIN", 260, 300),
+		mysqlRows(ts.Add(4*time.Second), 2, 300, 420),
+		mysqlXID(ts.Add(5*time.Second), 420, 440),
+	}
+	result, err := normalizeAndAnalyze(t, raws)
+	if err != nil {
+		t.Fatalf("Ignored QUERY before BEGIN must stay attached, got %v", err)
+	}
+	assertSingleBusinessTransaction(t, result, mysqlIssue72SID+":39", 2)
+}
+
+func TestAnalyzerAdminOrUnclassifiedAfterExplicitBeginStillConflicts(t *testing.T) {
+	ts := time.Date(2026, 9, 12, 15, 30, 0, 0, time.UTC)
+	cases := []struct {
+		name  string
+		start string
+		query string
+	}{
+		{name: "BEGIN_ADMIN", start: "BEGIN", query: "ANALYZE TABLE app.orders"},
+		{name: "BEGIN_UNCLASSIFIED", start: "BEGIN", query: "CHECK TABLE app.orders"},
+		{name: "XA_START_UNCLASSIFIED", start: "XA START 'batch-74'", query: "SET ROLE ALL"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raws := []binlog.RawEvent{
+				mysqlGTID(ts, 39, 100, 180),
+				mysqlQuery(ts.Add(time.Second), tc.start, 180, 220),
+				mysqlQuery(ts.Add(2*time.Second), tc.query, 220, 280),
+				mysqlGTID(ts.Add(3*time.Second), 40, 280, 360),
+			}
+			_, err := normalizeAndAnalyze(t, raws)
+			if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
+				t.Fatalf("%s then next GTID must stay conflicting GTID, got %v", tc.name, err)
+			}
+		})
+	}
+}
+
+func TestAnalyzerFinalizeUnclassifiedOnlyGroupFails(t *testing.T) {
+	ts := time.Date(2026, 9, 12, 13, 30, 0, 0, time.UTC)
+	raws := []binlog.RawEvent{
+		mysqlGTID(ts, 39, 100, 180),
+		mysqlQuery(ts.Add(time.Second), "CHECK TABLE app.orders", 180, 260),
+	}
+	_, err := normalizeAndAnalyze(t, raws)
+	if err == nil {
+		t.Fatal("finalize of an unclassified-only GTID-started transaction group must fail")
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("finalize must be Unclassified QUERY, not conflicting GTID, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+		t.Fatalf("finalize error must include Unclassified QUERY and the statement prefix, got %v", err)
 	}
 }
 

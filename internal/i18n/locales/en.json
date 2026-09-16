@@ -215,6 +215,10 @@
     "description": "Analysis finalize error",
     "other": "analysis finalize error: {{.Error}}"
   },
+  "error.unclassifiedQuery": {
+    "description": "GTID-started group whose only work is an Unclassified QUERY",
+    "other": "Unclassified QUERY: {{.Prefix}}"
+  },
   "progress.parsingBinlogs": {
     "description": "Progress bar description",
     "other": "Parsing binlogs"
@@ -294,6 +298,10 @@
   "report.label.ignoredQueryDML": {
     "description": "Ignored Query-DML events label",
     "other": "Ignored Query-DML Events"
+  },
+  "report.label.ignoredQuery": {
+    "description": "Ignored QUERY events label",
+    "other": "Ignored QUERY Events"
   },
   "report.text.rowImageSummary": {
     "description": "Default text report format boundary",
