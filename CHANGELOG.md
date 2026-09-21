@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.7
+
+Release date: 2026-09-21
+
+Highlights:
+
+- Unclassified QUERY fails analyze with a statement prefix instead of a fake conflicting GTID
+- Ignored QUERY is counted and never closes a transaction group
+- Transaction payload inner ROW images are counted on one file-relative wrapper span
+- Exact `FLUSH TABLES` is ADMIN from a MySQL 8.0.46 dialect fixture
+
+Related notes:
+
+- [v0.23.7 release notes](docs/releases/release-notes-v0.23.7.md)
+- [v0.23.7 中文发行说明](docs/releases/release-notes-v0.23.7.zh-CN.md)
+
 ## v0.23.6
 
 Release date: 2026-09-15
