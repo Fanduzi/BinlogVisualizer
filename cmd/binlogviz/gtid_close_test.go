@@ -61,6 +61,37 @@ func TestAnalyzeRollbackWithRowsThenBusinessExitsZero(t *testing.T) {
 	}
 }
 
+func TestAnalyzeRollbackToSavepointThenNextGTIDStillConflicts(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, rollbackThenBusinessEvents("ROLLBACK TO SAVEPOINT s1", false))
+	if err == nil || ExitCode(err) != 1 || !strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("exit %d err=%v\nstderr=%s\nstdout=%s", ExitCode(err), err, stderr, stdout)
+	}
+	if stdout != "" {
+		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+}
+
+func TestAnalyzeBeginThenNextGTIDStillConflicts(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 9, 0, 0, 0, time.UTC)
+	events := []binlog.RawEvent{
+		mysqlCommandGTID(ts, 39, 100, 180),
+		mysqlCommandQuery(ts.Add(time.Second), "BEGIN", 180, 220),
+		mysqlCommandGTID(ts.Add(2*time.Second), 40, 220, 300),
+		mysqlCommandQuery(ts.Add(3*time.Second), "BEGIN", 300, 340),
+		mysqlCommandRows(ts.Add(4*time.Second), 1, 340, 420),
+		mysqlCommandXID(ts.Add(5*time.Second), 420, 440),
+	}
+	stdout, _, err := runAnalyzeLikeMainWithParser(t, events)
+	if err == nil || ExitCode(err) != 1 || !strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("exit %d err=%v stdout=%s", ExitCode(err), err, stdout)
+	}
+	if stdout != "" {
+		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+}
+
 func TestAnalyzeXAEndThenNextGTIDExitsZero(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, xaEndThenBusinessEvents())
