@@ -5,6 +5,7 @@ This file records user-visible changes for tagged releases.
 ## Unreleased
 
 - Table and minute `txn_count` count distinct row-image transactions. A DDL-only group does not increment them. `testdata/minimal.binlog` reports 4 on the summary, on `testdb.users`, and on the minute bucket.
+- `trend` and `snapshot` failures print one `Error:` line and do not dump Usage. `analyze` and `compare` already did this.
 
 ## v0.23.7
 
