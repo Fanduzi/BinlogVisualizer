@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
+// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -37,6 +37,7 @@ type inFlightTxn struct {
 	isExplicit                 bool // true if started with BEGIN, false if implicit
 	hasStartBoundary           bool
 	hasEndBoundary             bool
+	suspendedAtXAEnd           bool
 	hadBeforeWindow            bool
 	hadAfterWindow             bool
 	startTime                  time.Time
@@ -104,14 +105,21 @@ func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation 
 		}
 		b.current.xaXID = ev.XAXID
 		return b.mergeProvenance(ev)
-	case "XID", "COMMIT", "XA_PREPARE", "XA_COMMIT", "XA_ROLLBACK":
+	case "XID", "COMMIT", "ROLLBACK", "XA_PREPARE", "XA_COMMIT", "XA_ROLLBACK":
 		if err := b.mergeProvenance(ev); err != nil {
 			return err
 		}
 		b.handleCommit(ev, relation)
 	case "XA_END":
 		b.accumulateInTxnEvent(ev, relation)
-		return b.mergeProvenance(ev)
+		if err := b.mergeProvenance(ev); err != nil {
+			return err
+		}
+		if b.current != nil && b.current.xaXID != "" {
+			b.current.suspendedAtXAEnd = true
+			b.current.hasEndBoundary = true
+		}
+		return nil
 	case "ROWS_QUERY":
 		// Capture SQL context for next ROWS events in this transaction
 		b.handleRowsQuery(ev, relation)
@@ -266,29 +274,42 @@ func (b *TransactionBuilder) handleBegin(ev model.NormalizedEvent, relation wind
 
 func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windowRelation) error {
 	if b.current != nil {
-		if b.current.gtid != "" {
-			if ev.GTID != "" && ev.GTID != b.current.gtid && b.current.unclassifiedOnly() {
-				return unclassifiedQueryError(b.current.unclassifiedPrefix)
+		if b.current.gtid != "" && ev.GTID != "" && ev.GTID != b.current.gtid && b.current.unclassifiedOnly() {
+			return unclassifiedQueryError(b.current.unclassifiedPrefix)
+		}
+		if b.current.gtid == "" {
+			if err := b.inFlightUnclassifiedError(); err != nil {
+				return err
 			}
+		}
+		if b.releasesOnGTID(ev) {
+			b.finalizeTransaction()
+		} else if b.current.gtid == "" && b.current.isExplicit {
+			return fmt.Errorf("GTID received while explicit transaction %s is in-flight", b.current.txnKey)
+		} else {
 			if err := b.mergeProvenance(ev); err != nil {
 				return err
 			}
 			b.observeEvent(ev, relation)
 			return nil
 		}
-		if err := b.inFlightUnclassifiedError(); err != nil {
-			return err
-		}
-		if b.current.isExplicit {
-			return fmt.Errorf("GTID received while explicit transaction %s is in-flight", b.current.txnKey)
-		}
-		b.finalizeTransaction()
 	}
 	b.startTransaction(false)
 	b.current.startedByGTID = true
 	b.current.hasStartBoundary = true
 	b.observeEvent(ev, relation)
 	return b.mergeProvenance(ev)
+}
+
+func (b *TransactionBuilder) releasesOnGTID(ev model.NormalizedEvent) bool {
+	if b.current == nil {
+		return false
+	}
+	if b.current.suspendedAtXAEnd {
+		sameNamed := b.current.gtid != "" && ev.GTID == b.current.gtid
+		return !sameNamed
+	}
+	return b.current.gtid == "" && !b.current.isExplicit
 }
 
 func (b *TransactionBuilder) mergeProvenance(ev model.NormalizedEvent) error {
