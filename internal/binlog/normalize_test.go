@@ -102,6 +102,28 @@ func TestNormalizeQueryCommitEvent(t *testing.T) {
 	}
 }
 
+func TestNormalizePlainRollback(t *testing.T) {
+	for _, query := range []string{"ROLLBACK", "rollback", "ROLLBACK WORK", "ROLLBACK;"} {
+		t.Run(query, func(t *testing.T) {
+			ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: query})
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if ev == nil || ev.EventType != "ROLLBACK" {
+				t.Fatalf("expected ROLLBACK event, got %+v", ev)
+			}
+		})
+	}
+
+	ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: "ROLLBACK TO SAVEPOINT s1"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ev == nil || ev.EventType != "UNCLASSIFIED_QUERY" {
+		t.Fatalf("ROLLBACK TO SAVEPOINT must stay unclassified, got %+v", ev)
+	}
+}
+
 func TestNormalizeMariaDBXAQueries(t *testing.T) {
 	tests := []struct {
 		query     string

@@ -133,6 +133,59 @@ func TestAnalyzerXAEndDoesNotCloseGroup(t *testing.T) {
 	}
 }
 
+func TestAnalyzerPlainRollbackOmitsEmptyGroupAndKeepsNextGTID(t *testing.T) {
+	ts := time.Date(2026, 9, 16, 9, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", GTID: "0-7-1", BinlogPath: "mysql-bin.000001", PositionStart: 100, PositionEnd: 140},
+		{Timestamp: ts.Add(time.Second), EventType: "BEGIN", BinlogPath: "mysql-bin.000001", PositionStart: 140, PositionEnd: 180},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "ROLLBACK", BinlogPath: "mysql-bin.000001", PositionStart: 180, PositionEnd: 200},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "GTID", GTID: "0-7-2", BinlogPath: "mysql-bin.000001", PositionStart: 200, PositionEnd: 240},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "ROWS", Schema: "app", Table: "orders", Operation: "INSERT", RowCount: 1, BinlogPath: "mysql-bin.000001", PositionStart: 240, PositionEnd: 300},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "XID", BinlogPath: "mysql-bin.000001", PositionStart: 300, PositionEnd: 320},
+	}
+
+	result, err := New(Options{}).Analyze(events)
+	if err != nil {
+		t.Fatalf("analyze after plain ROLLBACK: %v", err)
+	}
+	if len(result.Transactions) != 1 || result.Transactions[0].GTID != "0-7-2" || result.Transactions[0].TotalRows != 1 {
+		t.Fatalf("report transactions = %+v, want only the next GTID", result.Transactions)
+	}
+}
+
+func TestAnalyzerXAEndReleasesOnNextGTID(t *testing.T) {
+	ts := time.Date(2026, 9, 16, 11, 0, 0, 0, time.UTC)
+	xid := "'batch-end'"
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", GTID: "0-7-20", BinlogPath: "mysql-bin.000001", PositionStart: 100, PositionEnd: 140},
+		{Timestamp: ts.Add(time.Second), EventType: "XA_START", XAXID: xid, BinlogPath: "mysql-bin.000001", PositionStart: 140, PositionEnd: 180},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "xa_a", Operation: "INSERT", RowCount: 2, BinlogPath: "mysql-bin.000001", PositionStart: 180, PositionEnd: 400},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "XA_END", XAXID: xid, BinlogPath: "mysql-bin.000001", PositionStart: 400, PositionEnd: 420},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "GTID", GTID: "0-7-21", BinlogPath: "mysql-bin.000001", PositionStart: 420, PositionEnd: 460},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1, BinlogPath: "mysql-bin.000001", PositionStart: 460, PositionEnd: 520},
+		{Timestamp: ts.Add(6 * time.Second), EventType: "XID", BinlogPath: "mysql-bin.000001", PositionStart: 520, PositionEnd: 540},
+	}
+
+	result, err := New(Options{}).Analyze(events)
+	if err != nil {
+		t.Fatalf("analyze after XA END: %v", err)
+	}
+	if len(result.Transactions) != 2 {
+		t.Fatalf("report transactions = %+v, want the XA group and the next GTID", result.Transactions)
+	}
+	byGTID := map[string]model.Transaction{}
+	for _, txn := range result.Transactions {
+		byGTID[txn.GTID] = txn
+	}
+	xa := byGTID["0-7-20"]
+	if xa.TotalRows != 2 || xa.XAXID != xid || xa.PositionEnd != 420 || xa.Completeness != model.TransactionComplete {
+		t.Fatalf("XA END group = %+v", xa)
+	}
+	if byGTID["0-7-21"].TotalRows != 1 {
+		t.Fatalf("following GTID = %+v", result.Transactions)
+	}
+}
+
 func TestAnalyzerConflictingGTIDFailsAnalyze(t *testing.T) {
 	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
 	events := []model.NormalizedEvent{
