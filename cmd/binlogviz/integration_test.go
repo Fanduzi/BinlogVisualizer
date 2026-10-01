@@ -1537,32 +1537,24 @@ func TestRealBinlogFixtureJSONIncludesNonZeroTransactionCounts(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &decoded); err != nil {
 		t.Fatalf("decode analyze json: %v\n%s", err, stdout)
 	}
-	if decoded.Summary.TotalTransactions == 0 {
-		t.Fatalf("expected fixture to contain transactions, got %+v", decoded.Summary)
+	if decoded.Summary.TotalTransactions != 4 {
+		t.Fatalf("summary.total_transactions = %d, want 4", decoded.Summary.TotalTransactions)
 	}
 
-	tableTxnCounts := make(map[string]int, len(decoded.Tables))
-	hasTableTxnCount := false
+	var usersTxn int
+	foundUsers := false
 	for _, table := range decoded.Tables {
-		tableTxnCounts[table.Schema+"."+table.Table] = table.TxnCount
-		if table.TxnCount > 0 {
-			hasTableTxnCount = true
+		if table.Schema == "testdb" && table.Table == "users" {
+			foundUsers = true
+			usersTxn = table.TxnCount
 		}
 	}
-	if !hasTableTxnCount {
-		t.Fatalf("expected at least one table txn_count > 0, got %+v", tableTxnCounts)
+	if !foundUsers || usersTxn != 4 {
+		t.Fatalf("testdb.users txn_count = %d, found = %v, want 4; tables = %+v", usersTxn, foundUsers, decoded.Tables)
 	}
 
-	minuteTxnCounts := make(map[string]int, len(decoded.Minutes))
-	hasMinuteTxnCount := false
-	for _, minute := range decoded.Minutes {
-		minuteTxnCounts[minute.Minute] = minute.TxnCount
-		if minute.TxnCount > 0 {
-			hasMinuteTxnCount = true
-		}
-	}
-	if !hasMinuteTxnCount {
-		t.Fatalf("expected at least one minute txn_count > 0, got %+v", minuteTxnCounts)
+	if len(decoded.Minutes) != 1 || decoded.Minutes[0].TxnCount != 4 {
+		t.Fatalf("minutes = %+v, want one minute with txn_count 4", decoded.Minutes)
 	}
 }
 

@@ -286,6 +286,7 @@ func TestTableAggregatorCountsDDLEventsWithoutChangingRowTotals(t *testing.T) {
 		Table:       "orders",
 		Operation:   "ALTER",
 		BinlogBytes: 25,
+		TxnKey:      "ddl-only",
 	})
 	agg.Consume(model.NormalizedEvent{
 		Timestamp:   base.Add(2 * time.Second),
@@ -310,6 +311,9 @@ func TestTableAggregatorCountsDDLEventsWithoutChangingRowTotals(t *testing.T) {
 	}
 	if stats[0].DDLCount != 1 {
 		t.Fatalf("expected 1 ddl event, got %d", stats[0].DDLCount)
+	}
+	if stats[0].TxnCount != 1 {
+		t.Fatalf("expected 1 transaction, got %d", stats[0].TxnCount)
 	}
 	if stats[0].BinlogBytes != 85 {
 		t.Fatalf("expected 85 binlog bytes, got %d", stats[0].BinlogBytes)
