@@ -279,7 +279,7 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 | `update_rows` | integer | yes | Logical UPDATE rows (before/after images count as one row) |
 | `update_events` | integer | yes | Number of UPDATE row events |
 | `delete_rows` | integer | yes |
-| `txn_count` | integer | yes |
+| `txn_count` | integer | yes | Distinct transactions that wrote row images to this table. A DDL-only group does not increment it. |
 
 `diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images.
 
@@ -403,7 +403,7 @@ Each entry contains:
 |------|------|----------|------|
 | `minute` | string | yes | RFC3339 minute bucket timestamp |
 | `total_rows` | integer | yes | Total rows in the minute bucket |
-| `txn_count` | integer | yes | Transaction count in the minute bucket |
+| `txn_count` | integer | yes | Distinct row-image transactions in the minute. DDL does not increment it. |
 | `table_rows` | object | no | JSON object whose keys are table identifiers and whose values are integer row counts; omitted when the map is nil or empty (`omitempty`) |
 
 ### `alerts`

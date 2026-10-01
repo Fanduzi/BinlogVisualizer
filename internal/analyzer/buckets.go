@@ -77,11 +77,9 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 		case "DELETE":
 			bucket.deleteEvents++
 		}
-	}
-
-	// Track distinct transaction
-	if ev.TxnKey != "" {
-		bucket.txnSet[ev.TxnKey] = struct{}{}
+		if ev.TxnKey != "" {
+			bucket.txnSet[ev.TxnKey] = struct{}{}
+		}
 	}
 
 	// Track per-table rows

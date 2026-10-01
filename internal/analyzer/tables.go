@@ -94,6 +94,9 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 		case "DELETE":
 			ts.deleteRows += ev.RowCount
 		}
+		if ev.TxnKey != "" {
+			ts.txnSet[ev.TxnKey] = struct{}{}
+		}
 	}
 
 	minute := truncateToMinute(ev.Timestamp)
@@ -116,11 +119,6 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 		case "DELETE":
 			point.deleteRows += ev.RowCount
 		}
-	}
-
-	// Track distinct transaction
-	if ev.TxnKey != "" {
-		ts.txnSet[ev.TxnKey] = struct{}{}
 	}
 }
 
