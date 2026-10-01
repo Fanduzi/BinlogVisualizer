@@ -1,6 +1,6 @@
 // Package binlogviz verifies GTID groups that DBAs close with plain ROLLBACK or XA END.
 // input: injected QUERY events through runAnalysisWithParser, ROW images, and a following business GTID.
-// output: exit 0 and the following business transaction for plain ROLLBACK and for XA END with no later XA close; zero-row ROLLBACK stays off the report.
+// output: exit 0 and the following business transaction for plain ROLLBACK and for XA END with no later XA close; zero-row ROLLBACK stays off the report; exit 1 open BEGIN, SAVEPOINT-not-a-close, and Ignored-only next-GTID errors; JSON open_explicit_groups when BEGIN reaches EOF.
 // pos: operator I/O seam for the plain-ROLLBACK and XA-END release rules.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/i18n"
 )
 
 func TestAnalyzePlainRollbackThenBusinessExitsZero(t *testing.T) {
@@ -64,8 +65,17 @@ func TestAnalyzeRollbackWithRowsThenBusinessExitsZero(t *testing.T) {
 func TestAnalyzeRollbackToSavepointThenNextGTIDStillConflicts(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, rollbackThenBusinessEvents("ROLLBACK TO SAVEPOINT s1", false))
-	if err == nil || ExitCode(err) != 1 || !strings.Contains(err.Error(), "conflicting GTID") {
+	if err == nil || ExitCode(err) != 1 {
 		t.Fatalf("exit %d err=%v\nstderr=%s\nstdout=%s", ExitCode(err), err, stderr, stdout)
+	}
+	if !strings.Contains(err.Error(), "open BEGIN without close") || !strings.Contains(err.Error(), "ROLLBACK TO SAVEPOINT is not a group close") {
+		t.Fatalf("error must name the open BEGIN and the SAVEPOINT rollback, got %v", err)
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("must not say conflicting GTID, got %v", err)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error: once, got %q", stderr)
 	}
 	if stdout != "" {
 		t.Fatalf("stdout = %q, want empty", stdout)
@@ -83,12 +93,117 @@ func TestAnalyzeBeginThenNextGTIDStillConflicts(t *testing.T) {
 		mysqlCommandRows(ts.Add(4*time.Second), 1, 340, 420),
 		mysqlCommandXID(ts.Add(5*time.Second), 420, 440),
 	}
-	stdout, _, err := runAnalyzeLikeMainWithParser(t, events)
-	if err == nil || ExitCode(err) != 1 || !strings.Contains(err.Error(), "conflicting GTID") {
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, events)
+	if err == nil || ExitCode(err) != 1 || !strings.Contains(err.Error(), "open BEGIN without close") {
 		t.Fatalf("exit %d err=%v stdout=%s", ExitCode(err), err, stdout)
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") || strings.Contains(err.Error(), "SAVEPOINT") || strings.Contains(err.Error(), "Ignored QUERY") {
+		t.Fatalf("bare BEGIN error must not look like a GTID conflict, SAVEPOINT, or Ignored QUERY, got %v", err)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error: once, got %q", stderr)
 	}
 	if stdout != "" {
 		t.Fatalf("stdout = %q, want empty", stdout)
+	}
+}
+
+func TestAnalyzeIgnoredOnlyGroupThenNextGTIDNamesIgnoredQuery(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 9, 30, 0, 0, time.UTC)
+	events := []binlog.RawEvent{
+		mysqlCommandGTID(ts, 39, 100, 180),
+		mysqlCommandQuery(ts.Add(time.Second), "SET timestamp=1710000000", 180, 220),
+		mysqlCommandGTID(ts.Add(2*time.Second), 40, 220, 300),
+		mysqlCommandQuery(ts.Add(3*time.Second), "BEGIN", 300, 340),
+		mysqlCommandRows(ts.Add(4*time.Second), 1, 340, 420),
+		mysqlCommandXID(ts.Add(5*time.Second), 420, 440),
+	}
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, events)
+	if err == nil || ExitCode(err) != 1 {
+		t.Fatalf("exit %d err=%v stdout=%s", ExitCode(err), err, stdout)
+	}
+	if !strings.Contains(err.Error(), "Ignored QUERY does not close the transaction group") || !strings.Contains(err.Error(), "not a missing COMMIT") {
+		t.Fatalf("error must say Ignored QUERY is not a close and not a missing COMMIT, got %v", err)
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") || strings.Contains(err.Error(), "open BEGIN") {
+		t.Fatalf("Ignored-only error must not look like a GTID conflict or an open BEGIN, got %v", err)
+	}
+	if strings.Count(stderr, "Error:") != 1 || stdout != "" {
+		t.Fatalf("stdout=%q stderr=%s", stdout, stderr)
+	}
+}
+
+func TestAnalyzeSavepointThenCommitStillCloses(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 9, 40, 0, 0, time.UTC)
+	events := []binlog.RawEvent{
+		mysqlCommandGTID(ts, 39, 100, 180),
+		mysqlCommandQuery(ts.Add(time.Second), "BEGIN", 180, 220),
+		mysqlCommandQuery(ts.Add(2*time.Second), "ROLLBACK TO SAVEPOINT s1", 220, 260),
+		mysqlCommandXID(ts.Add(3*time.Second), 260, 280),
+		mysqlCommandGTID(ts.Add(4*time.Second), 40, 280, 360),
+		mysqlCommandQuery(ts.Add(5*time.Second), "BEGIN", 360, 400),
+		mysqlCommandRows(ts.Add(6*time.Second), 1, 400, 480),
+		mysqlCommandXID(ts.Add(7*time.Second), 480, 500),
+	}
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, events)
+	if err != nil {
+		t.Fatalf("COMMIT after SAVEPOINT rollback must close the group, exit %d: %v\nstderr=%s", ExitCode(err), err, stderr)
+	}
+	assertRolledBackGroupOmitted(t, stdout, mysqlIssue74SID+":40", 1)
+}
+
+func TestAnalyzeEOFOpenBeginCountsExplicitGroup(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	ts := time.Date(2026, 9, 16, 9, 50, 0, 0, time.UTC)
+	events := []binlog.RawEvent{
+		mysqlCommandGTID(ts, 39, 100, 180),
+		mysqlCommandQuery(ts.Add(time.Second), "BEGIN", 180, 220),
+		mysqlCommandRows(ts.Add(2*time.Second), 2, 220, 300),
+	}
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, events)
+	if err != nil {
+		t.Fatalf("end of input must not fail the open BEGIN, exit %d: %v\nstderr=%s", ExitCode(err), err, stderr)
+	}
+	var decoded struct {
+		Diagnostics struct {
+			OpenExplicitGroups int `json:"open_explicit_groups"`
+		} `json:"diagnostics"`
+	}
+	if jsonErr := json.Unmarshal([]byte(stdout), &decoded); jsonErr != nil {
+		t.Fatalf("json.Unmarshal: %v\n%s", jsonErr, stdout)
+	}
+	if decoded.Diagnostics.OpenExplicitGroups != 1 {
+		t.Fatalf("open_explicit_groups=%d, want 1\n%s", decoded.Diagnostics.OpenExplicitGroups, stdout)
+	}
+}
+
+func TestAnalyzeOpenBeginErrorIsLocalized(t *testing.T) {
+	i18n.ResetForTesting()
+	if err := i18n.Init("zh-CN"); err != nil {
+		t.Fatalf("init zh-CN: %v", err)
+	}
+	t.Cleanup(i18n.ResetForTesting)
+
+	ts := time.Date(2026, 9, 16, 9, 0, 0, 0, time.UTC)
+	events := []binlog.RawEvent{
+		mysqlCommandGTID(ts, 39, 100, 180),
+		mysqlCommandQuery(ts.Add(time.Second), "BEGIN", 180, 220),
+		mysqlCommandGTID(ts.Add(2*time.Second), 40, 220, 300),
+	}
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, events)
+	if err == nil || ExitCode(err) != 1 || stdout != "" {
+		t.Fatalf("exit %d err=%v stdout=%q", ExitCode(err), err, stdout)
+	}
+	if strings.Count(stderr, "Error:") != 1 {
+		t.Fatalf("expected Error: once, got %q", stderr)
+	}
+	if !strings.Contains(err.Error(), "显式 BEGIN 未关闭") || strings.Contains(err.Error(), "open BEGIN without close") {
+		t.Fatalf("zh-CN error must name the unclosed BEGIN, got %v", err)
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("must not say conflicting GTID, got %v", err)
 	}
 }
 

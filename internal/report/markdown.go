@@ -1,6 +1,6 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, trusted replay evidence, DDL timeline, optional Ignored QUERY counts, and findings.
+// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, trusted replay evidence, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -57,6 +57,9 @@ func mdWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary, diag
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.ignoredQueryDML"), formatInt(diagnostics.IgnoredQueryDMLEvents)))
 	if diagnostics.IgnoredQueryEvents > 0 {
 		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.ignoredQuery"), formatInt(diagnostics.IgnoredQueryEvents)))
+	}
+	if diagnostics.OpenExplicitGroups > 0 {
+		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.openExplicitGroups"), formatInt(diagnostics.OpenExplicitGroups)))
 	}
 	buf.WriteString("\n")
 }

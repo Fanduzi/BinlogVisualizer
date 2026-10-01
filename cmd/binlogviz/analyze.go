@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, and optional Ignored QUERY counts; Unclassified QUERY that intersected the window is exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, valid no-data (including ADMIN-only) exits 2, and DuckDB temp state is cleaned.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, valid no-data (including ADMIN-only) exits 2, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -625,6 +625,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 				return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
 			}
 			if normalized == nil {
+				noteSkippedIgnoredQuery(streamAnalyzer, raw)
 				return nil
 			}
 			ev = *normalized
@@ -634,12 +635,12 @@ func runAnalysisStreamingWithSnapshotDeps(
 				return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
 			}
 			if !ok {
+				noteSkippedIgnoredQuery(streamAnalyzer, raw)
 				return nil
 			}
 		}
 		if err := streamAnalyzer.Consume(ev); err != nil {
-			var unclassified *analyzer.UnclassifiedQueryError
-			if errors.As(err, &unclassified) {
+			if operatorGroupError(err) {
 				return err
 			}
 			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
@@ -669,8 +670,8 @@ func runAnalysisStreamingWithSnapshotDeps(
 
 	result, err := streamAnalyzer.Finalize()
 	if err != nil {
-		if unclassified := localizedUnclassifiedQueryError(err); unclassified != nil {
-			return unclassified
+		if localized := localizedOperatorGroupError(err); localized != nil {
+			return localized
 		}
 		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
@@ -1039,13 +1040,49 @@ func wrapParseError(err error) error {
 	if err == nil {
 		return nil
 	}
-	if unclassified := localizedUnclassifiedQueryError(err); unclassified != nil {
-		return unclassified
+	if localized := localizedOperatorGroupError(err); localized != nil {
+		return localized
 	}
 	if mapped := mapBinlogParseError(err.Error()); mapped != "" {
 		return fmt.Errorf("%s", mapped)
 	}
 	return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+}
+
+func noteSkippedIgnoredQuery(stream commandAnalyzer, raw binlog.RawEvent) {
+	if !binlog.IsIgnoredQueryEvent(raw) {
+		return
+	}
+	notifier, ok := stream.(interface{ NoteIgnoredQuery() })
+	if !ok {
+		return
+	}
+	notifier.NoteIgnoredQuery()
+}
+
+func operatorGroupError(err error) bool {
+	var unclassified *analyzer.UnclassifiedQueryError
+	var openBegin *analyzer.OpenBeginError
+	var ignored *analyzer.IgnoredOnlyGroupError
+	return errors.As(err, &unclassified) || errors.As(err, &openBegin) || errors.As(err, &ignored)
+}
+
+func localizedOperatorGroupError(err error) error {
+	if localized := localizedUnclassifiedQueryError(err); localized != nil {
+		return localized
+	}
+	var openBegin *analyzer.OpenBeginError
+	if errors.As(err, &openBegin) && openBegin != nil {
+		if openBegin.SavepointRollback {
+			return fmt.Errorf("%s", i18n.T("error.openBeginSavepoint"))
+		}
+		return fmt.Errorf("%s", i18n.T("error.openBeginWithoutClose"))
+	}
+	var ignored *analyzer.IgnoredOnlyGroupError
+	if errors.As(err, &ignored) {
+		return fmt.Errorf("%s", i18n.T("error.ignoredOnlyGroup"))
+	}
+	return nil
 }
 
 func localizedUnclassifiedQueryError(err error) error {

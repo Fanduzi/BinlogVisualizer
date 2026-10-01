@@ -358,6 +358,30 @@ func TestRenderJSONExposesUpdateEventsAndRows(t *testing.T) {
 	}
 }
 
+func TestRenderJSONIncludesOptionalOpenExplicitGroupCount(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{
+		Diagnostics: model.Diagnostics{OpenExplicitGroups: 1},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	diagnostics := parseJSONMap(t, out)["diagnostics"].(map[string]any)
+	if diagnostics["open_explicit_groups"].(float64) != 1 {
+		t.Fatalf("open_explicit_groups=%v, want 1", diagnostics["open_explicit_groups"])
+	}
+}
+
+func TestRenderJSONOmitsOpenExplicitGroupsWhenZero(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	diagnostics := parseJSONMap(t, out)["diagnostics"].(map[string]any)
+	if _, ok := diagnostics["open_explicit_groups"]; ok {
+		t.Fatalf("open_explicit_groups must be omitted when zero, got %v", diagnostics["open_explicit_groups"])
+	}
+}
+
 func TestRenderJSONIncludesOptionalIgnoredQueryCount(t *testing.T) {
 	out, err := RenderJSON(model.AnalysisResult{
 		Diagnostics: model.Diagnostics{IgnoredQueryEvents: 3},

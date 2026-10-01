@@ -244,6 +244,7 @@ func TestRenderMarkdownIncludesIncidentDiagnosticsAndDegradesMissingSpans(t *tes
 			InputFormatGuess:      "MIXED",
 			IgnoredQueryDMLEvents: 2,
 			IgnoredQueryEvents:    1,
+			OpenExplicitGroups:    1,
 			DDLEvents: []model.DDLEvent{{
 				Timestamp:     time.Date(2026, 3, 9, 10, 5, 0, 0, time.UTC),
 				Operation:     "ALTER TABLE",
@@ -279,6 +280,7 @@ func TestRenderMarkdownIncludesIncidentDiagnosticsAndDegradesMissingSpans(t *tes
 		"| Format | MIXED |",
 		"| Ignored Query-DML Events | 2 |",
 		"| Ignored QUERY Events | 1 |",
+		"| Open Explicit Groups | 1 |",
 		"## DDL Timeline",
 		"| 2026-03-09 10:05:00 UTC | ALTER TABLE | shop\\|core.orders | ALTER TABLE shop\\|core.orders ADD COLUMN note TEXT | mysql-bin.000123:100-200 |",
 		"## Findings",

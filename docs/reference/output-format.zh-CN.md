@@ -281,7 +281,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes | 对该表写入过 row image 的不同事务数。仅含 DDL 的组不计入。 |
 
-`diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。
+`diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。`diagnostics.open_explicit_groups` 在出现时，统计输入结束时仍没有 `COMMIT` 或 plain `ROLLBACK` 的 `BEGIN` 组；计数为 0 时省略。这种未关闭的 `BEGIN` 如果后面又来了 GTID，不会产出报告：analyze 以 exit 1 失败，错误是「显式 BEGIN 未关闭」。
 
 `diagnostics.counted_event_bytes` 是 schema/table 过滤后保留的 ROW/DDL 事件字节总数。`diagnostics.file_coverage.selected[].size` 是输入文件的物理大小；人类可读报告中缺少大小元数据时显示为不可用，而不是 0。
 

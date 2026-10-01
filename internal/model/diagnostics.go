@@ -1,6 +1,6 @@
 // Package model defines DBA-facing diagnostics contracts for analyze reports.
-// input: file coverage, DDL events, ranked transactions, findings, guessed input format, Ignored QUERY counts, unmapped parser events, and Format Description server version.
-// output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage and optional Ignored QUERY counts.
+// input: file coverage, DDL events, ranked transactions, findings, guessed input format, Ignored QUERY counts, unmapped parser events, open explicit BEGIN groups, and Format Description server version.
+// output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage, optional Ignored QUERY counts, and an optional open-explicit-group count.
 // pos: shared diagnostics model between analyzer Finalize and text/JSON/HTML replay commands.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -24,6 +24,9 @@ type Diagnostics struct {
 	// IgnoredQueryEvents is how many session-prefix QUERY events analyze dropped on purpose.
 	// Distinct from IgnoredQueryDMLEvents (STATEMENT/MIXED Query-DML).
 	IgnoredQueryEvents int
+	// OpenExplicitGroups counts BEGIN groups flushed at end of input without COMMIT or plain ROLLBACK.
+	// A later GTID does not reach this count: that case fails analyze instead of closing the group.
+	OpenExplicitGroups int
 	// UnmappedEvents is how many parser events had no canonical kind (ROTATE, etc.).
 	UnmappedEvents int
 	ServerVersion  string

@@ -224,6 +224,50 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 
 If you want both report and runtime status captured, redirect both channels explicitly.
 
+## `open BEGIN without close`
+
+This failure is intentional. The exit code is 1, stdout is empty, and stderr has one `Error:` line.
+
+Representative error:
+
+```text
+open BEGIN without close
+```
+
+What it means:
+
+- a transaction group saw `BEGIN`
+- it did not see `COMMIT` or plain `ROLLBACK` (`ROLLBACK` or `ROLLBACK WORK`, with an optional trailing semicolon)
+- the next different GTID arrived while that group was still open
+
+Analyze does not close the group when the next GTID arrives. Closing it would hide a missing `COMMIT`. This is not a BinlogViz bug. A client crash or a killed session often leaves a bare `BEGIN`.
+
+If the file ends inside that `BEGIN` and no later GTID arrives, analyze can still succeed. JSON then includes `diagnostics.open_explicit_groups` when that count is not zero.
+
+## `ROLLBACK TO SAVEPOINT` is not a group close
+
+`ROLLBACK TO SAVEPOINT ...` stays Unclassified QUERY. It does not close the transaction group, and it is not plain `ROLLBACK`.
+
+When that statement is inside an open `BEGIN` and the next GTID arrives, analyze still exits 1:
+
+```text
+open BEGIN without close: ROLLBACK TO SAVEPOINT is not a group close
+```
+
+A later `COMMIT` or `XID` in the same group still closes it.
+
+## Ignored QUERY does not close a group
+
+`SET timestamp`, `SET NAMES`, and other `SET` that is not `SET ROLE` or `SET DEFAULT ROLE` are Ignored QUERY. Analyze drops them, counts them, and never uses them as a close. That is not a missing `COMMIT`.
+
+A GTID group whose only work is Ignored QUERY still fails when the next GTID arrives (exit 1):
+
+```text
+Ignored QUERY does not close the transaction group; this is not a missing COMMIT
+```
+
+This is a different failure from an open `BEGIN`. Ignored QUERY that appears before `BEGIN` in the same GTID stays attached to that `BEGIN`.
+
 ## Parse or analysis errors during execution
 
 Representative prefixes include:

@@ -1,6 +1,6 @@
 // Package analyzer verifies ADMIN, Ignored QUERY, and Unclassified QUERY at the normalize-plus-Analyzer seam.
 // input: synthetic parser-shaped RawEvents (canonical kinds, GTID only on GTID events) run through binlog.NormalizeRawEventInto then Analyzer.Consume.
-// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix, including anonymous empty-identity groups on the next GTID and at finalize; Ignored QUERY stays open and next GTID conflicts; explicit BEGIN/XA_START still conflicts.
+// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix, including anonymous empty-identity groups on the next GTID and at finalize; Ignored QUERY stays open and the next GTID names that Ignored-only group; explicit BEGIN names an open BEGIN and XA_START still conflicts.
 // pos: #74/#78 QUERY-class regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -194,11 +194,11 @@ func TestAnalyzerIgnoredQueryDoesNotCloseAndNextGTIDConflicts(t *testing.T) {
 	for _, query := range ignored {
 		t.Run(query, func(t *testing.T) {
 			_, err := normalizeAndAnalyze(t, mysqlAdminThenBusiness(ts, query))
-			if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
-				t.Fatalf("Ignored QUERY %q must leave the transaction group open, got %v", query, err)
+			if err == nil || !strings.Contains(err.Error(), "Ignored QUERY does not close the transaction group") || !strings.Contains(err.Error(), "not a missing COMMIT") {
+				t.Fatalf("Ignored QUERY %q must fail as an Ignored-only group, got %v", query, err)
 			}
-			if strings.Contains(err.Error(), "Unclassified QUERY") {
-				t.Fatalf("Ignored QUERY %q must not become Unclassified QUERY, got %v", query, err)
+			if strings.Contains(err.Error(), "conflicting GTID") || strings.Contains(err.Error(), "open BEGIN") || strings.Contains(err.Error(), "Unclassified QUERY") {
+				t.Fatalf("Ignored QUERY %q must not look like a GTID conflict, an open BEGIN, or Unclassified QUERY, got %v", query, err)
 			}
 		})
 	}
@@ -241,8 +241,17 @@ func TestAnalyzerAdminOrUnclassifiedAfterExplicitBeginStillConflicts(t *testing.
 				mysqlGTID(ts.Add(3*time.Second), 40, 280, 360),
 			}
 			_, err := normalizeAndAnalyze(t, raws)
-			if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
-				t.Fatalf("%s then next GTID must stay conflicting GTID, got %v", tc.name, err)
+			if tc.start == "XA START 'batch-74'" {
+				if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
+					t.Fatalf("%s then next GTID must stay conflicting GTID, got %v", tc.name, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "open BEGIN without close") {
+				t.Fatalf("%s then next GTID must say open BEGIN without close, got %v", tc.name, err)
+			}
+			if strings.Contains(err.Error(), "conflicting GTID") || strings.Contains(err.Error(), "SAVEPOINT") {
+				t.Fatalf("%s must not say conflicting GTID or SAVEPOINT, got %v", tc.name, err)
 			}
 		})
 	}
@@ -274,8 +283,11 @@ func TestAnalyzerExplicitBeginThenNextGTIDStillConflicts(t *testing.T) {
 		mysqlGTID(ts.Add(2*time.Second), 40, 220, 300),
 	}
 	_, err := normalizeAndAnalyze(t, raws)
-	if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
-		t.Fatalf("expected conflicting GTID inside an explicit transaction, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "open BEGIN without close") {
+		t.Fatalf("expected open BEGIN without close, got %v", err)
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("bare BEGIN must not say conflicting GTID, got %v", err)
 	}
 }
 
@@ -297,8 +309,17 @@ func TestAnalyzerAdminDoesNotCloseExplicitBeginOrXAStartBeforeNextGTID(t *testin
 				mysqlGTID(ts.Add(3*time.Second), 40, 280, 360),
 			}
 			_, err := normalizeAndAnalyze(t, raws)
-			if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
+			if tc.name == "XA_START" {
+				if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
+					t.Fatalf("%s then ADMIN must leave the explicit group open, got %v", tc.name, err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "open BEGIN without close") {
 				t.Fatalf("%s then ADMIN must leave the explicit group open, got %v", tc.name, err)
+			}
+			if strings.Contains(err.Error(), "conflicting GTID") {
+				t.Fatalf("%s must not say conflicting GTID, got %v", tc.name, err)
 			}
 		})
 	}
@@ -352,7 +373,24 @@ func TestIndependentAdminQueryClosesGroupAtQueryEndPosition(t *testing.T) {
 
 func normalizeAndAnalyze(t *testing.T, raws []binlog.RawEvent) (*model.AnalysisResult, error) {
 	t.Helper()
-	return consumeAnalyzer(normalizeRawEvents(t, raws))
+	a := New(Options{})
+	var dst model.NormalizedEvent
+	for i, raw := range raws {
+		ok, err := binlog.NormalizeRawEventInto(raw, &dst)
+		if err != nil {
+			t.Fatalf("NormalizeRawEventInto raw[%d] %s: %v", i, raw.EventType, err)
+		}
+		if !ok {
+			if binlog.IsIgnoredQueryEvent(raw) {
+				a.NoteIgnoredQuery()
+			}
+			continue
+		}
+		if err := a.Consume(dst); err != nil {
+			return nil, err
+		}
+	}
+	return a.Finalize()
 }
 
 func normalizeRawEvents(t *testing.T, raws []binlog.RawEvent) []model.NormalizedEvent {

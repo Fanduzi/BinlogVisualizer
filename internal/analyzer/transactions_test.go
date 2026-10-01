@@ -301,8 +301,49 @@ func TestTransactionBuilderRejectsConflictingGTIDs(t *testing.T) {
 		t.Fatalf("BEGIN: %v", err)
 	}
 	err := builder.Consume(model.NormalizedEvent{Timestamp: ts.Add(2 * time.Second), EventType: "GTID", GTID: "0-7-1849"})
+	if err == nil || !strings.Contains(err.Error(), "open BEGIN without close") {
+		t.Fatalf("expected open BEGIN without close, got %v", err)
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("bare BEGIN must not say conflicting GTID, got %v", err)
+	}
+}
+
+func TestTransactionBuilderEmptyGTIDThenNextStaysConflicting(t *testing.T) {
+	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	builder := NewTransactionBuilder()
+	if err := builder.Consume(model.NormalizedEvent{Timestamp: ts, EventType: "GTID", GTID: "0-7-1"}); err != nil {
+		t.Fatalf("first GTID: %v", err)
+	}
+	err := builder.Consume(model.NormalizedEvent{Timestamp: ts.Add(time.Second), EventType: "GTID", GTID: "0-7-2"})
 	if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
-		t.Fatalf("expected conflicting GTID integrity error, got %v", err)
+		t.Fatalf("empty group must stay conflicting GTID, got %v", err)
+	}
+	if strings.Contains(err.Error(), "open BEGIN") || strings.Contains(err.Error(), "Ignored QUERY") {
+		t.Fatalf("empty group must not use the open-BEGIN or Ignored QUERY error, got %v", err)
+	}
+}
+
+func TestTransactionBuilderDifferentGTIDOnRowStaysConflicting(t *testing.T) {
+	ts := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	builder := NewTransactionBuilder()
+	events := []model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", GTID: "0-7-1"},
+		{Timestamp: ts.Add(time.Second), EventType: "BEGIN"},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "ROWS", GTID: "0-7-2", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1},
+	}
+	var err error
+	for _, ev := range events {
+		err = builder.Consume(ev)
+		if err != nil {
+			break
+		}
+	}
+	if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("a row carrying another GTID must stay conflicting GTID, got %v", err)
+	}
+	if strings.Contains(err.Error(), "open BEGIN") {
+		t.Fatalf("in-group provenance conflict must not say open BEGIN, got %v", err)
 	}
 }
 

@@ -206,6 +206,50 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 
 如果你希望同时保存报告与运行状态，请显式分别重定向两个通道。
 
+## `显式 BEGIN 未关闭`
+
+这是有意失败。退出码是 1，stdout 为空，stderr 只有一条 `Error:`。
+
+代表性错误：
+
+```text
+显式 BEGIN 未关闭
+```
+
+含义：
+
+- 事务组里出现了 `BEGIN`
+- 没有 `COMMIT`，也没有 plain `ROLLBACK`（`ROLLBACK` 或 `ROLLBACK WORK`，可以带一个结尾分号）
+- 下一个不同的 GTID 到达时，这个组仍然开着
+
+Analyze 不会在下一个 GTID 到达时把组关掉。关掉会把缺少的 `COMMIT` 藏起来。这不是 BinlogViz 的 bug。客户端崩溃或会话被杀掉，经常留下这种 bare `BEGIN`。
+
+如果文件在这个 `BEGIN` 里结束，后面没有新的 GTID，analyze 仍可能成功。此时 JSON 在计数不为 0 时带上 `diagnostics.open_explicit_groups`。
+
+## `ROLLBACK TO SAVEPOINT` 不是事务组结束
+
+`ROLLBACK TO SAVEPOINT ...` 仍是 Unclassified QUERY。它不关闭事务组，也不等于 plain `ROLLBACK`。
+
+这条语句出现在未关闭的 `BEGIN` 里，并且下一个 GTID 到来时，analyze 仍然以 exit 1 失败：
+
+```text
+显式 BEGIN 未关闭：ROLLBACK TO SAVEPOINT 不是事务组结束
+```
+
+同一组里稍后的 `COMMIT` 或 `XID` 仍然会关闭该组。
+
+## Ignored QUERY 不会关闭事务组
+
+`SET timestamp`、`SET NAMES`，以及其他不是 `SET ROLE` / `SET DEFAULT ROLE` 的 `SET`，是 Ignored QUERY。Analyze 丢弃它们、计数，并且从不把它们当作关组边界。这不是缺少 `COMMIT`。
+
+一个 GTID 组里如果只有 Ignored QUERY，下一个 GTID 到来时仍然失败（exit 1）：
+
+```text
+Ignored QUERY 不会关闭事务组；这不是缺少 COMMIT
+```
+
+这和未关闭的 `BEGIN` 不是同一种失败。同一个 GTID 里、`BEGIN` 之前的 Ignored QUERY 仍然附着在那个 `BEGIN` 上。
+
 ## 执行过程中出现解析或分析错误
 
 代表性前缀包括：

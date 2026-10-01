@@ -250,7 +250,10 @@ func TestAnalyzerConflictingGTIDFailsAnalyze(t *testing.T) {
 	}
 
 	_, err := New(Options{}).Analyze(events)
-	if err == nil || !strings.Contains(err.Error(), "conflicting GTID") {
-		t.Fatalf("expected conflicting GTID to fail analyze, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "open BEGIN without close") {
+		t.Fatalf("expected open BEGIN without close, got %v", err)
+	}
+	if strings.Contains(err.Error(), "conflicting GTID") {
+		t.Fatalf("bare BEGIN must not say conflicting GTID, got %v", err)
 	}
 }

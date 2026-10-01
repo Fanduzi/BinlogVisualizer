@@ -219,6 +219,18 @@
     "description": "GTID-started group whose only work is an Unclassified QUERY",
     "other": "Unclassified QUERY: {{.Prefix}}"
   },
+  "error.openBeginWithoutClose": {
+    "description": "Next GTID while BEGIN has no COMMIT and no plain ROLLBACK",
+    "other": "open BEGIN without close"
+  },
+  "error.openBeginSavepoint": {
+    "description": "Next GTID after ROLLBACK TO SAVEPOINT, which does not close the group",
+    "other": "open BEGIN without close: ROLLBACK TO SAVEPOINT is not a group close"
+  },
+  "error.ignoredOnlyGroup": {
+    "description": "Next GTID after a group that held only Ignored QUERY",
+    "other": "Ignored QUERY does not close the transaction group; this is not a missing COMMIT"
+  },
   "progress.parsingBinlogs": {
     "description": "Progress bar description",
     "other": "Parsing binlogs"
@@ -302,6 +314,10 @@
   "report.label.ignoredQuery": {
     "description": "Ignored QUERY events label",
     "other": "Ignored QUERY Events"
+  },
+  "report.label.openExplicitGroups": {
+    "description": "BEGIN groups flushed without COMMIT or plain ROLLBACK",
+    "other": "Open Explicit Groups"
   },
   "report.text.rowImageSummary": {
     "description": "Default text report format boundary",

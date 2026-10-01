@@ -1,5 +1,5 @@
 // Package i18n verifies locale loading and translation helpers.
-// input: embedded en and zh-CN catalogs including Unclassified QUERY and Ignored QUERY keys.
+// input: embedded en and zh-CN catalogs including Unclassified QUERY, open BEGIN, and Ignored QUERY keys.
 // output: assertions for Init, T/Tf templates, language switching, and new #74 catalog strings.
 // pos: i18n catalog contract tests for CLI and report labels.
 // note: if this file changes, update this header and module README.md.
@@ -85,6 +85,24 @@ func TestT(t *testing.T) {
 			data:     nil,
 			expected: "Ignored QUERY Events",
 		},
+		{
+			name:     "open BEGIN without close",
+			key:      "error.openBeginWithoutClose",
+			data:     nil,
+			expected: "open BEGIN without close",
+		},
+		{
+			name:     "SAVEPOINT rollback is not a close",
+			key:      "error.openBeginSavepoint",
+			data:     nil,
+			expected: "open BEGIN without close: ROLLBACK TO SAVEPOINT is not a group close",
+		},
+		{
+			name:     "Ignored-only group",
+			key:      "error.ignoredOnlyGroup",
+			data:     nil,
+			expected: "Ignored QUERY does not close the transaction group; this is not a missing COMMIT",
+		},
 	}
 
 	for _, tt := range tests {
@@ -136,6 +154,24 @@ func TestChineseTranslation(t *testing.T) {
 			key:      "report.label.ignoredQuery",
 			data:     nil,
 			expected: "已忽略 QUERY 事件",
+		},
+		{
+			name:     "open BEGIN without close",
+			key:      "error.openBeginWithoutClose",
+			data:     nil,
+			expected: "显式 BEGIN 未关闭",
+		},
+		{
+			name:     "SAVEPOINT rollback is not a close",
+			key:      "error.openBeginSavepoint",
+			data:     nil,
+			expected: "显式 BEGIN 未关闭：ROLLBACK TO SAVEPOINT 不是事务组结束",
+		},
+		{
+			name:     "Ignored-only group",
+			key:      "error.ignoredOnlyGroup",
+			data:     nil,
+			expected: "Ignored QUERY 不会关闭事务组；这不是缺少 COMMIT",
 		},
 	}
 
