@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, Query DDL including GRANT/REVOKE, independent ADMIN including exact FLUSH TABLES, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE, independent ADMIN including exact FLUSH TABLES, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -110,6 +110,10 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "COMMIT"
 		return true, nil
+	case isPlainRollback(query):
+		fillNormalizedEvent(dst, raw)
+		dst.EventType = "ROLLBACK"
+		return true, nil
 	case isXA:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = xaEventType
@@ -158,6 +162,11 @@ func isIgnoredQuery(sql string) bool {
 		return false
 	}
 	return !hasTwoWordPrefixFold(sql, "SET", "ROLE")
+}
+
+func isPlainRollback(query string) bool {
+	query = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(query), ";"))
+	return strings.EqualFold(query, "ROLLBACK") || strings.EqualFold(query, "ROLLBACK WORK")
 }
 
 func boundQuerySQL(query string) string {

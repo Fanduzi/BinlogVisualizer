@@ -26,8 +26,10 @@ func newTrendCommand() *cobra.Command {
 	opts := &trendOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "trend [<snapshot...>]",
-		Short: "Analyze multiple snapshots as an ordered trend",
+		Use:           "trend [<snapshot...>]",
+		Short:         "Analyze multiple snapshots as an ordered trend",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			hasPattern := strings.TrimSpace(opts.fromSnapshots) != ""
 			if hasPattern && len(args) > 0 {
