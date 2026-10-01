@@ -279,7 +279,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `update_rows` | integer | yes | 逻辑 UPDATE 行（before/after image 计 1 行） |
 | `update_events` | integer | yes | UPDATE 行事件数 |
 | `delete_rows` | integer | yes |
-| `txn_count` | integer | yes |
+| `txn_count` | integer | yes | 对该表写入过 row image 的不同事务数。仅含 DDL 的组不计入。 |
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。
 
@@ -403,7 +403,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 |------|------|----------|------|
 | `minute` | string | yes | RFC3339 的分钟时间桶时间戳 |
 | `total_rows` | integer | yes | 该分钟桶中的总行数 |
-| `txn_count` | integer | yes | 该分钟桶中的事务数 |
+| `txn_count` | integer | yes | 该分钟内写入过 row image 的不同事务数。DDL 不计入。 |
 | `table_rows` | object | no | JSON 对象，key 是表标识，value 是整数行数；为空时省略 |
 
 ### `alerts`

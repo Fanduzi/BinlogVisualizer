@@ -289,6 +289,7 @@ func TestMinuteAggregatorCountsDDLEventsWithoutChangingRowTotals(t *testing.T) {
 		Table:       "orders",
 		Operation:   "ALTER",
 		BinlogBytes: 25,
+		TxnKey:      "ddl-only",
 	})
 
 	buckets := agg.Snapshot()
@@ -310,6 +311,9 @@ func TestMinuteAggregatorCountsDDLEventsWithoutChangingRowTotals(t *testing.T) {
 	}
 	if buckets[0].DDLCount != 1 {
 		t.Fatalf("expected 1 ddl event, got %d", buckets[0].DDLCount)
+	}
+	if buckets[0].TxnCount != 1 {
+		t.Fatalf("expected 1 transaction, got %d", buckets[0].TxnCount)
 	}
 }
 

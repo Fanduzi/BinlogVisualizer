@@ -45,9 +45,11 @@ func newSnapshotSaveCommand() *cobra.Command {
 	opts := &snapshotOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "save <report.json>",
-		Short: "Save an analyze JSON report as a named snapshot",
-		Args:  cobra.ExactArgs(1),
+		Use:           "save <report.json>",
+		Short:         "Save an analyze JSON report as a named snapshot",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			data, err := os.ReadFile(args[0])
 			if err != nil {
@@ -85,9 +87,11 @@ func newSnapshotListCommand() *cobra.Command {
 	opts := &snapshotOptions{format: "text"}
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List saved snapshots",
-		Args:  cobra.NoArgs,
+		Use:           "list",
+		Short:         "List saved snapshots",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			entries, err := snapshotpkg.ListSnapshots(opts.dir)
 			if err != nil {
@@ -120,9 +124,11 @@ func newSnapshotShowCommand() *cobra.Command {
 	opts := &snapshotOptions{format: "text"}
 
 	cmd := &cobra.Command{
-		Use:   "show <name>",
-		Short: "Show snapshot metadata and summary",
-		Args:  cobra.ExactArgs(1),
+		Use:           "show <name>",
+		Short:         "Show snapshot metadata and summary",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			switch opts.format {
 			case "text", "json":
@@ -164,9 +170,11 @@ func newSnapshotRenameCommand() *cobra.Command {
 	opts := &snapshotOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "rename <old-name> <new-name>",
-		Short: "Rename a stored snapshot",
-		Args:  cobra.ExactArgs(2),
+		Use:           "rename <old-name> <new-name>",
+		Short:         "Rename a stored snapshot",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			newPath, err := snapshotpkg.RenameSnapshot(opts.dir, args[0], args[1])
 			if err != nil {
@@ -185,9 +193,11 @@ func newSnapshotDeleteCommand() *cobra.Command {
 	opts := &snapshotOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "delete <name>",
-		Short: "Delete a stored snapshot",
-		Args:  cobra.ExactArgs(1),
+		Use:           "delete <name>",
+		Short:         "Delete a stored snapshot",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deletedPath, err := snapshotpkg.DeleteSnapshot(opts.dir, args[0])
 			if err != nil {
