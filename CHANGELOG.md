@@ -6,6 +6,10 @@ This file records user-visible changes for tagged releases.
 
 - Table and minute `txn_count` count distinct row-image transactions. A DDL-only group does not increment them. `testdata/minimal.binlog` reports 4 on the summary, on `testdb.users`, and on the minute bucket.
 - `trend` and `snapshot` failures print one `Error:` line and do not dump Usage. `analyze` and `compare` already did this.
+- A later GTID after bare `BEGIN` still exits 1. The Error line says `open BEGIN without close`.
+- `ROLLBACK TO SAVEPOINT` still does not close a group. When it precedes that failure, the Error line says it is not a group close.
+- A later GTID after an Ignored-only group still exits 1. The Error line says Ignored QUERY does not close the group and that this is not a missing `COMMIT`.
+- JSON may include `diagnostics.open_explicit_groups` when a `BEGIN` group reaches end of input without a close.
 
 ## v0.23.7
 

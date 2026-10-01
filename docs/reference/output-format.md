@@ -281,7 +281,7 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes | Distinct transactions that wrote row images to this table. A DDL-only group does not increment it. |
 
-`diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images.
+`diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images. `diagnostics.open_explicit_groups`, when present, counts `BEGIN` groups that reached end of input without `COMMIT` or plain `ROLLBACK`. It is omitted when zero. A later GTID after that open `BEGIN` does not produce a report: analyze exits 1 with `open BEGIN without close`.
 
 `diagnostics.counted_event_bytes` is the sum of retained row/DDL event bytes after schema/table filtering. `diagnostics.file_coverage.selected[].size` is physical input-file size; missing size metadata is unavailable rather than zero in human-readable reports.
 

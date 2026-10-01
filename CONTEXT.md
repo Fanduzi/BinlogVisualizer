@@ -41,11 +41,11 @@ An independent management QUERY that closes a GTID-started transaction group tha
 _Avoid_: admin query, DDL (GRANT is DDL; ANALYZE is not)
 
 **Ignored QUERY**:
-A QUERY analyze drops on purpose because it is session prefix, not a group boundary and not counted work. Typical forms are `SET timestamp` and `SET NAMES`.
+A QUERY analyze drops on purpose because it is session prefix, not a group boundary and not counted work. Typical forms are `SET timestamp` and `SET NAMES`. A group that holds only Ignored QUERY stays open; the next GTID fails analyze. That failure is not a missing COMMIT.
 _Avoid_: skipped event (includes unmapped physical kinds), unclassified QUERY
 
 **Unclassified QUERY**:
-A QUERY that is neither a known boundary (BEGIN, COMMIT, plain ROLLBACK, XA, DDL, ADMIN, LOAD DATA) nor Ignored QUERY. If it is the only work in a GTID-started non-explicit group, analyze fails rather than skipping into a conflicting GTID. `ROLLBACK TO SAVEPOINT` stays in this class.
+A QUERY that is neither a known boundary (BEGIN, COMMIT, plain ROLLBACK, XA, DDL, ADMIN, LOAD DATA) nor Ignored QUERY. If it is the only work in a GTID-started non-explicit group, analyze fails rather than skipping into a conflicting GTID. `ROLLBACK TO SAVEPOINT` stays in this class and does not close the group. Inside an open BEGIN, the next GTID fails as an open BEGIN whose Error line says the SAVEPOINT rollback is not a group close.
 _Avoid_: unknown query, skipped query
 
 **Unmapped event**:

@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
+// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -8,6 +8,7 @@ package analyzer
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -16,10 +17,11 @@ import (
 
 // TransactionBuilder reconstructs transactions from normalized events.
 type TransactionBuilder struct {
-	current         *inFlightTxn
-	completed       []model.Transaction
-	txnCounter      uint64
-	lastEventTxnKey string
+	current            *inFlightTxn
+	completed          []model.Transaction
+	txnCounter         uint64
+	lastEventTxnKey    string
+	openExplicitGroups int
 }
 
 type inFlightTxn struct {
@@ -66,6 +68,8 @@ type inFlightTxn struct {
 	retainedQueryTruncated     bool
 	retainedQueryOriginalBytes int
 	unclassifiedPrefix         string
+	sawIgnoredQuery            bool
+	sawSavepointRollback       bool
 }
 
 type windowRelation uint8
@@ -140,6 +144,9 @@ func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation 
 			b.finalizeTransaction()
 		}
 	case "UNCLASSIFIED_QUERY":
+		if isRollbackToSavepoint(ev.QuerySQL) && b.current != nil {
+			b.current.sawSavepointRollback = true
+		}
 		if relation == insideWindow {
 			if b.current != nil && b.current.unclassifiedPrefix == "" {
 				b.current.unclassifiedPrefix = ev.QuerySQL
@@ -202,6 +209,55 @@ func unclassifiedQueryError(prefix string) error {
 	return &UnclassifiedQueryError{Prefix: prefix}
 }
 
+const (
+	openBeginWithoutCloseMessage = "open BEGIN without close"
+	openBeginSavepointMessage    = "open BEGIN without close: ROLLBACK TO SAVEPOINT is not a group close"
+	ignoredOnlyGroupMessage      = "Ignored QUERY does not close the transaction group; this is not a missing COMMIT"
+)
+
+// OpenBeginError is an intentional exit-1 failure: the next GTID arrived
+// while a BEGIN group had no COMMIT and no plain ROLLBACK. The group stays open.
+type OpenBeginError struct {
+	SavepointRollback bool
+}
+
+func (e *OpenBeginError) Error() string {
+	if e != nil && e.SavepointRollback {
+		return openBeginSavepointMessage
+	}
+	return openBeginWithoutCloseMessage
+}
+
+func openBeginError(savepoint bool) error {
+	return &OpenBeginError{SavepointRollback: savepoint}
+}
+
+// IgnoredOnlyGroupError is an intentional exit-1 failure: the next GTID
+// arrived after a group that held only Ignored QUERY. That QUERY is not a close
+// and this is not a missing COMMIT.
+type IgnoredOnlyGroupError struct{}
+
+func (e *IgnoredOnlyGroupError) Error() string {
+	return ignoredOnlyGroupMessage
+}
+
+// NoteIgnoredQuery records that the current group dropped a session-prefix QUERY.
+// The event is not consumed and does not close the group.
+func (b *TransactionBuilder) NoteIgnoredQuery() {
+	if b == nil || b.current == nil {
+		return
+	}
+	b.current.sawIgnoredQuery = true
+}
+
+// OpenExplicitGroups counts BEGIN groups flushed without COMMIT or plain ROLLBACK.
+func (b *TransactionBuilder) OpenExplicitGroups() int {
+	if b == nil {
+		return 0
+	}
+	return b.openExplicitGroups
+}
+
 func (b *TransactionBuilder) inFlightUnclassifiedError() error {
 	if b == nil || b.current == nil || !b.current.unclassifiedOnly() {
 		return nil
@@ -211,6 +267,31 @@ func (b *TransactionBuilder) inFlightUnclassifiedError() error {
 
 func (t *inFlightTxn) unclassifiedOnly() bool {
 	return t != nil && t.startedByGTID && !t.isExplicit && t.totalRows == 0 && t.unclassifiedPrefix != ""
+}
+
+func (t *inFlightTxn) ignoredOnly() bool {
+	return t != nil && t.startedByGTID && !t.isExplicit && t.xaXID == "" && t.totalRows == 0 &&
+		t.unclassifiedPrefix == "" && t.sawIgnoredQuery && !t.hasEndBoundary
+}
+
+func isRollbackToSavepoint(sql string) bool {
+	sql = strings.TrimSpace(sql)
+	if strings.HasSuffix(sql, ";") {
+		sql = strings.TrimSpace(strings.TrimSuffix(sql, ";"))
+	}
+	const prefix = "rollback to savepoint"
+	if len(sql) < len(prefix) || !strings.EqualFold(sql[:len(prefix)], prefix) {
+		return false
+	}
+	if len(sql) == len(prefix) {
+		return true
+	}
+	switch sql[len(prefix)] {
+	case ' ', '\t', '\n', '\r':
+		return true
+	default:
+		return false
+	}
 }
 
 // retainCompletedTransaction reports whether a closed transaction group belongs
@@ -285,8 +366,14 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windo
 		if b.releasesOnGTID(ev) {
 			b.finalizeTransaction()
 		} else if b.current.gtid == "" && b.current.isExplicit {
+			if b.current.xaXID == "" {
+				return openBeginError(b.current.sawSavepointRollback)
+			}
 			return fmt.Errorf("GTID received while explicit transaction %s is in-flight", b.current.txnKey)
 		} else {
+			if err := b.nextGTIDGroupError(ev); err != nil {
+				return err
+			}
 			if err := b.mergeProvenance(ev); err != nil {
 				return err
 			}
@@ -299,6 +386,19 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windo
 	b.current.hasStartBoundary = true
 	b.observeEvent(ev, relation)
 	return b.mergeProvenance(ev)
+}
+
+func (b *TransactionBuilder) nextGTIDGroupError(ev model.NormalizedEvent) error {
+	if b.current == nil || b.current.gtid == "" || ev.GTID == "" || ev.GTID == b.current.gtid {
+		return nil
+	}
+	if b.current.isExplicit && b.current.xaXID == "" {
+		return openBeginError(b.current.sawSavepointRollback)
+	}
+	if b.current.ignoredOnly() {
+		return &IgnoredOnlyGroupError{}
+	}
+	return nil
 }
 
 func (b *TransactionBuilder) releasesOnGTID(ev model.NormalizedEvent) bool {
@@ -424,6 +524,9 @@ func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent, relati
 func (b *TransactionBuilder) finalizeTransaction() {
 	if b.current == nil {
 		return
+	}
+	if b.current.isExplicit && !b.current.hasEndBoundary && b.current.xaXID == "" {
+		b.openExplicitGroups++
 	}
 
 	if start, end, ok := b.current.windowFileSpan.shared(); ok {

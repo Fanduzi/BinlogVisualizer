@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with explicit workload identity, canonical scope, provenance/selector evidence, SQL context, and snapshot presentation controls.
-// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, optional Ignored QUERY counts, unmapped events, and snapshots.
+// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, and snapshots.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -115,6 +115,7 @@ type jsonDiagnostics struct {
 	InputFormatGuess      string            `json:"input_format_guess"`
 	IgnoredQueryDMLEvents int               `json:"ignored_query_dml_events"`
 	IgnoredQueryEvents    int               `json:"ignored_query_events,omitempty"`
+	OpenExplicitGroups    int               `json:"open_explicit_groups,omitempty"`
 	UnmappedEvents        int               `json:"unmapped_events,omitempty"`
 }
 
@@ -485,6 +486,7 @@ func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) json
 		InputFormatGuess:      diagnostics.InputFormatGuess,
 		IgnoredQueryDMLEvents: diagnostics.IgnoredQueryDMLEvents,
 		IgnoredQueryEvents:    diagnostics.IgnoredQueryEvents,
+		OpenExplicitGroups:    diagnostics.OpenExplicitGroups,
 		UnmappedEvents:        diagnostics.UnmappedEvents,
 	}
 }

@@ -11,7 +11,7 @@ ADR-0002 left unknown QUERY skipped. That is the #61–#72 cascade: a skipped in
 ## Consequences
 
 - Tests that expect `FLUSH TABLES` / `CHECK TABLE` / `SET ROLE` to produce “conflicting GTID” must change: either the statement is added to ADMIN with a dialect fixture, or the error is unclassified QUERY.
-- Ignored QUERY starts as `SET timestamp`, `SET NAMES`, and other `SET` that is not `SET ROLE` or `SET DEFAULT ROLE`. Those never close. A next GTID after a group that held only Ignored QUERY is still a conflicting GTID.
+- Ignored QUERY starts as `SET timestamp`, `SET NAMES`, and other `SET` that is not `SET ROLE` or `SET DEFAULT ROLE`. Those never close. A next GTID after a group that held only Ignored QUERY still fails analyze (exit 1). The Error line says Ignored QUERY does not close the group; it is not a missing `COMMIT` and it is not an open `BEGIN`.
 - JSON diagnostics count Ignored QUERY separately from unmapped events (empty kind). Transaction payload wrappers are expanded to inner events before classification; that is ROW-image completeness, not a QUERY class.
 - Synthetic `RawEvent` tests stay for the state machine. They are not the admission ticket for a new ADMIN verb or a new physical kind.
 - BinlogQA retest is a release gate after the fixture is green, not the first detector.
