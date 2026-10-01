@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, and Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, and an open-explicit-group count for BEGIN groups flushed without a close.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -80,6 +80,15 @@ func (a *Analyzer) Analyze(events []model.NormalizedEvent) (*model.AnalysisResul
 	}
 
 	return a.Finalize()
+}
+
+// NoteIgnoredQuery records a dropped session-prefix QUERY on the open group.
+// It does not close the group and does not count the event.
+func (a *Analyzer) NoteIgnoredQuery() {
+	if a == nil || a.err != nil || a.finalized || a.txnBuilder == nil {
+		return
+	}
+	a.txnBuilder.NoteIgnoredQuery()
 }
 
 // Consume processes a single normalized event through the analyzer's streaming pipeline.
@@ -410,6 +419,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		selection := a.selection
 		result.Selection = &selection
 	}
+	result.Diagnostics.OpenExplicitGroups = a.txnBuilder.OpenExplicitGroups()
 	return result, nil
 }
 

@@ -153,6 +153,11 @@ func IsIgnoredQuery(query string) bool {
 	return isIgnoredQuery(query)
 }
 
+// IsIgnoredQueryEvent reports a QUERY event analyze drops and never uses as a close.
+func IsIgnoredQueryEvent(raw RawEvent) bool {
+	return isQueryEventType(raw.EventType) && isIgnoredQuery(raw.Query)
+}
+
 func isIgnoredQuery(sql string) bool {
 	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
 	if !hasWordPrefixFold(sql, "SET") {

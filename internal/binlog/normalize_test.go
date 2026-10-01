@@ -122,6 +122,21 @@ func TestNormalizePlainRollback(t *testing.T) {
 	if ev == nil || ev.EventType != "UNCLASSIFIED_QUERY" {
 		t.Fatalf("ROLLBACK TO SAVEPOINT must stay unclassified, got %+v", ev)
 	}
+	if IsIgnoredQueryEvent(RawEvent{EventType: "QUERY", Query: "ROLLBACK TO SAVEPOINT s1"}) {
+		t.Fatal("ROLLBACK TO SAVEPOINT must not be Ignored QUERY")
+	}
+}
+
+func TestIsIgnoredQueryEvent(t *testing.T) {
+	if !IsIgnoredQueryEvent(RawEvent{EventType: "QUERY", Query: "SET timestamp=1710000000"}) {
+		t.Fatal("SET timestamp must be an Ignored QUERY event")
+	}
+	if IsIgnoredQueryEvent(RawEvent{EventType: "QUERY", Query: "SET ROLE ALL"}) {
+		t.Fatal("SET ROLE must not be Ignored QUERY")
+	}
+	if IsIgnoredQueryEvent(RawEvent{EventType: "GTID", Query: "SET timestamp=1710000000"}) {
+		t.Fatal("non-QUERY events are not Ignored QUERY events")
+	}
 }
 
 func TestNormalizeMariaDBXAQueries(t *testing.T) {

@@ -27,6 +27,7 @@ Binlog parsing, raw event extraction, normalization, and parse-progress contract
 - `func NormalizeRawEvent(RawEvent) (*model.NormalizedEvent, error)` — Preserves available provenance and bounds SQL to 4096 UTF-8-safe bytes. Independent management QUERY becomes `ADMIN`, not `DDL`. Other non-Ignored QUERY becomes `UNCLASSIFIED_QUERY`.
 - `func NormalizeRawEventInto(RawEvent, *model.NormalizedEvent) (bool, error)`
 - `func IsIgnoredQuery(query string) bool` — Session-prefix `SET` that is not `SET ROLE` or `SET DEFAULT ROLE`.
+- `func IsIgnoredQueryEvent(RawEvent) bool` — QUERY event whose SQL is Ignored QUERY. It is still dropped and does not close a group.
 - `func ProbeFile(path string) (FileProbe, error)`
 - `func ProbeFiles(paths []string) ([]FileProbe, error)`
 
