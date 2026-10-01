@@ -45,7 +45,7 @@ A QUERY analyze drops on purpose because it is session prefix, not a group bound
 _Avoid_: skipped event (includes unmapped physical kinds), unclassified QUERY
 
 **Unclassified QUERY**:
-A QUERY that is neither a known boundary (BEGIN, COMMIT, XA, DDL, ADMIN, LOAD DATA) nor Ignored QUERY. If it is the only work in a GTID-started non-explicit group, analyze fails rather than skipping into a conflicting GTID.
+A QUERY that is neither a known boundary (BEGIN, COMMIT, plain ROLLBACK, XA, DDL, ADMIN, LOAD DATA) nor Ignored QUERY. If it is the only work in a GTID-started non-explicit group, analyze fails rather than skipping into a conflicting GTID. `ROLLBACK TO SAVEPOINT` stays in this class.
 _Avoid_: unknown query, skipped query
 
 **Unmapped event**:
