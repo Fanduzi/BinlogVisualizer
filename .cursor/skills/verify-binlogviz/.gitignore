@@ -1,0 +1,4 @@
+# Verification scratch and captured evidence (keep .gitkeep only)
+evidence/**
+!evidence/.gitkeep
+scratch/**
