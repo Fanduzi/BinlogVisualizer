@@ -17,7 +17,7 @@ import (
 func TestAnalyzerAfterEndUnclassifiedQueryKeepsInWindowReport(t *testing.T) {
 	ts := time.Date(2026, 9, 16, 16, 0, 0, 0, time.UTC)
 	end := ts.Add(3 * time.Second)
-	events := normalizeRawEvents(t, mysqlBusinessThenQuery(ts, "CHECK TABLE app.orders"))
+	events := normalizeRawEvents(t, mysqlBusinessThenQuery(ts, "FLUSH TABLES WITH READ LOCK"))
 
 	result, err := consumeAnalyzerWithOptions(events, Options{End: &end})
 	if err != nil {
@@ -29,7 +29,7 @@ func TestAnalyzerAfterEndUnclassifiedQueryKeepsInWindowReport(t *testing.T) {
 func TestAnalyzerAfterStopPositionUnclassifiedQueryKeepsInWindowReport(t *testing.T) {
 	ts := time.Date(2026, 9, 16, 16, 10, 0, 0, time.UTC)
 	stop := int64(360)
-	events := normalizeRawEvents(t, mysqlBusinessThenQuery(ts, "CHECK TABLE app.orders"))
+	events := normalizeRawEvents(t, mysqlBusinessThenQuery(ts, "FLUSH TABLES WITH READ LOCK"))
 
 	result, err := consumeAnalyzerWithOptions(events, Options{StopPosition: &stop})
 	if err != nil {
@@ -42,7 +42,7 @@ func TestAnalyzerAfterWindowUnclassifiedQueryThenNextGTIDKeepsInWindowReport(t *
 	ts := time.Date(2026, 9, 16, 16, 15, 0, 0, time.UTC)
 	end := ts.Add(3 * time.Second)
 	stop := int64(360)
-	raws := mysqlBusinessThenQueryThenBusiness(ts, "CHECK TABLE app.orders")
+	raws := mysqlBusinessThenQueryThenBusiness(ts, "FLUSH TABLES WITH READ LOCK")
 
 	for _, tt := range []struct {
 		name string
@@ -65,7 +65,7 @@ func TestAnalyzerInWindowUnclassifiedQueryStillFails(t *testing.T) {
 	ts := time.Date(2026, 9, 16, 16, 20, 0, 0, time.UTC)
 	end := ts.Add(5 * time.Second)
 	stop := int64(520)
-	events := normalizeRawEvents(t, mysqlBusinessThenQuery(ts, "CHECK TABLE app.orders"))
+	events := normalizeRawEvents(t, mysqlBusinessThenQuery(ts, "FLUSH TABLES WITH READ LOCK"))
 
 	for _, tt := range []struct {
 		name string
@@ -83,7 +83,7 @@ func TestAnalyzerInWindowUnclassifiedQueryStillFails(t *testing.T) {
 			if strings.Contains(err.Error(), "conflicting GTID") {
 				t.Fatalf("must not be conflicting GTID, got %v", err)
 			}
-			if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+			if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 				t.Fatalf("must be Unclassified QUERY with the statement prefix, got %v", err)
 			}
 		})

@@ -78,6 +78,49 @@ The script:
 - **Server version**: 8.0.46
 - **Server ID**: 1
 
+## mysql-8.0.46-check-table.binlog and mysql-8.0.46-set-role.binlog
+
+The MySQL 8.0.46 ROW+GTID fixtures `mysql-8.0.46-check-table.binlog` and `mysql-8.0.46-set-role.binlog` admit `CHECK TABLE` and `SET ROLE ALL` as ADMIN. Stock mysqld 8.0.46 does not write `CHECK TABLE` or `SET ROLE` into the binary log. Each file is a real rotated ROW+GTID binlog. The maintenance group was logged as `FLUSH TABLES`, then the query text was rewritten to the target statement. Event size, end position, and CRC32 are recomputed. Format Description flavor stays mysql and version stays 8.0.46. One business `INSERT` follows each maintenance group.
+
+### Contents
+
+After schema setup in an earlier binlog, each file contains:
+
+- Format Description from MySQL 8.0.46
+- One GTID-started non-explicit group whose only work is the maintenance statement
+  - `mysql-8.0.46-check-table.binlog`: `CHECK TABLE testdb.users`
+  - `mysql-8.0.46-set-role.binlog`: `SET ROLE ALL`
+- The next GTID: `BEGIN`, one `INSERT` ROW image on `testdb.users`, and `XID`
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_check_table_set_role.sh
+```
+
+Requirements:
+
+- Docker
+- `mysql:8.0.46` image
+- python3
+
+The script:
+
+1. Starts MySQL 8.0.46 with ROW binlog format and GTID
+2. Creates `testdb.users` in an earlier file
+3. Rotates twice, and each time writes `FLUSH TABLES` and one `INSERT`
+4. Rewrites that `FLUSH TABLES` query to `CHECK TABLE testdb.users` or `SET ROLE ALL`
+5. Extracts the rotated files
+6. Cleans up the container
+
+### File Details
+
+- **Format**: MySQL 8.0.46 ROW binlog with GTID
+- **Flavor**: mysql
+- **Server version**: 8.0.46
+- **Server ID**: 1
+
 ## mysql80_transaction_payload.binlog
 
 A MySQL 8.0.36 ROW binlog with `binlog_transaction_compression=ON`. Used to prove transaction-payload expand through `ParseFiles`.

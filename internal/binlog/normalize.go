@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE, independent ADMIN including exact FLUSH TABLES, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE, independent ADMIN including exact FLUSH TABLES, CHECK TABLE prefix, and SET ROLE prefix, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -219,13 +219,16 @@ func hasQueryDDLPrefix(sql string) bool {
 
 // hasIndependentAdminQueryPrefix matches the independent
 // GTID-started non-explicit group statements only. SET DEFAULT ROLE is that phrase, not a generic SET prefix.
-// FLUSH TABLES is exact so FLUSH TABLES WITH READ LOCK stays Unclassified QUERY.
+// CHECK TABLE and SET ROLE are two-word prefixes (CHECK TABLE t, SET ROLE ALL, SET ROLE name).
+// SET ROLE does not match SET DEFAULT ROLE. FLUSH TABLES is exact so FLUSH TABLES WITH READ LOCK
+// and FLUSH TABLES tbl stay Unclassified QUERY.
 func hasIndependentAdminQueryPrefix(sql string) bool {
 	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
 	return hasTwoWordPrefixFold(sql, "ANALYZE", "TABLE") ||
 		hasTwoWordPrefixFold(sql, "OPTIMIZE", "TABLE") ||
 		hasTwoWordPrefixFold(sql, "FLUSH", "PRIVILEGES") ||
 		hasThreeWordPrefixFold(sql, "SET", "DEFAULT", "ROLE") ||
+		hasTwoWordPrefixFold(sql, "CHECK", "TABLE") || hasTwoWordPrefixFold(sql, "SET", "ROLE") ||
 		strings.EqualFold(sql, "FLUSH TABLES")
 }
 

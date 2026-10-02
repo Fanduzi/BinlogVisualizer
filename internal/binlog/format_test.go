@@ -90,8 +90,8 @@ func TestFormatObserverCountsIgnoredQuerySeparately(t *testing.T) {
 	if observer.UnmappedEvents != 1 {
 		t.Fatalf("UnmappedEvents=%d, want 1 empty kind", observer.UnmappedEvents)
 	}
-	if observer.AdminQueryEvents != 1 {
-		t.Fatalf("AdminQueryEvents=%d, want 1 SET DEFAULT ROLE", observer.AdminQueryEvents)
+	if observer.AdminQueryEvents != 3 {
+		t.Fatalf("AdminQueryEvents=%d, want SET DEFAULT ROLE, SET ROLE ALL, and CHECK TABLE", observer.AdminQueryEvents)
 	}
 }
 
