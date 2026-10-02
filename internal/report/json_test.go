@@ -371,6 +371,80 @@ func TestRenderJSONIncludesOptionalOpenExplicitGroupCount(t *testing.T) {
 	}
 }
 
+func TestRenderJSONIncludesOpenDMLAndDurationBuckets(t *testing.T) {
+	start := time.Date(2026, 10, 2, 1, 0, 0, 0, time.UTC)
+	out, err := RenderJSON(model.AnalysisResult{
+		Diagnostics: model.Diagnostics{
+			DDLEvents: []model.DDLEvent{{
+				Timestamp:     start,
+				Operation:     "DROP TABLE",
+				Schema:        "shop",
+				Table:         "orders",
+				Statement:     "DROP TABLE shop.orders",
+				BinlogPath:    "mysql-bin.000001",
+				PositionStart: 10,
+				PositionEnd:   40,
+			}},
+			OpenDMLGroups: []model.OpenDMLGroup{{
+				TxnKey:          "txn-open",
+				GTID:            "gtid:1",
+				StartTime:       start,
+				EndTime:         start.Add(45 * time.Second),
+				Duration:        45 * time.Second,
+				TotalRows:       4,
+				Tables:          map[string]int{"shop.orders": 4},
+				BinlogPathStart: "mysql-bin.000001",
+				PositionStart:   40,
+				PositionEnd:     90,
+			}},
+			DurationBuckets: []model.DurationBucket{{Label: ">=30s", TxnCount: 1}},
+			LargestByteTransactions: []model.Transaction{{
+				TxnKey: "txn-bytes", BinlogBytes: 2048, TotalRows: 1, Duration: time.Second,
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	diagnostics := parseJSONMap(t, out)["diagnostics"].(map[string]any)
+	ddl := diagnostics["ddl_events"].([]any)
+	if len(ddl) != 1 || ddl[0].(map[string]any)["operation"] != "DROP TABLE" {
+		t.Fatalf("ddl_events = %#v", diagnostics["ddl_events"])
+	}
+	groups := diagnostics["open_dml_groups"].([]any)
+	group := groups[0].(map[string]any)
+	if group["txn_key"] != "txn-open" || group["total_rows"].(float64) != 4 || group["duration"] != "45s" {
+		t.Fatalf("open_dml_groups = %#v", groups)
+	}
+	if group["note"] != model.OpenDMLNote {
+		t.Fatalf("note = %v", group["note"])
+	}
+	buckets := diagnostics["duration_buckets"].([]any)
+	if buckets[0].(map[string]any)["label"] != ">=30s" {
+		t.Fatalf("duration_buckets = %#v", buckets)
+	}
+	bytes := diagnostics["largest_byte_transactions"].([]any)
+	if bytes[0].(map[string]any)["txn_key"] != "txn-bytes" {
+		t.Fatalf("largest_byte_transactions = %#v", bytes)
+	}
+}
+
+func TestRenderJSONOmitsEmptyDBAEvidence(t *testing.T) {
+	out, err := RenderJSON(model.AnalysisResult{})
+	if err != nil {
+		t.Fatalf("RenderJSON: %v", err)
+	}
+	diagnostics := parseJSONMap(t, out)["diagnostics"].(map[string]any)
+	for _, key := range []string{"open_dml_groups", "duration_buckets", "largest_byte_transactions"} {
+		if _, ok := diagnostics[key]; ok {
+			t.Fatalf("%s must be omitted when empty", key)
+		}
+	}
+	if _, ok := diagnostics["ddl_events"]; !ok {
+		t.Fatal("ddl_events stays the DDL timeline field")
+	}
+}
+
 func TestRenderJSONOmitsOpenExplicitGroupsWhenZero(t *testing.T) {
 	out, err := RenderJSON(model.AnalysisResult{})
 	if err != nil {

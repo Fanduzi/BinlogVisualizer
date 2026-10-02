@@ -109,7 +109,7 @@
   },
   "cmd.analyze.flag.largeTrxDuration": {
     "description": "Large transaction duration threshold flag description",
-    "other": "Duration threshold for large transaction alert"
+    "other": "Duration threshold for committed large-transaction alerts and open uncommitted DML warnings"
   },
   "cmd.analyze.flag.detailStore": {
     "description": "Detail store backend flag description",
@@ -226,6 +226,10 @@
   "error.openBeginSavepoint": {
     "description": "Next GTID after ROLLBACK TO SAVEPOINT, which does not close the group",
     "other": "open BEGIN without close: ROLLBACK TO SAVEPOINT is not a group close"
+  },
+  "error.openBeginDMLDetail": {
+    "description": "Row-image evidence on an unclosed BEGIN",
+    "other": "open DML group still uncommitted in this file/window (not lock-contention proof): dur={{.Duration}} rows={{.Rows}} tables={{.Tables}} file={{.File}}"
   },
   "error.ignoredOnlyGroup": {
     "description": "Next GTID after a group that held only Ignored QUERY",
@@ -475,6 +479,42 @@
     "description": "Short finding label for detected DDL",
     "other": "DDL detected"
   },
+  "report.text.ddlOccurrenceNote": {
+    "description": "DDL timeline is an occurrence list, not a lock-wait duration",
+    "other": "DDL occurrence timeline (not MDL or lock-wait duration)"
+  },
+  "report.text.omittedDDL": {
+    "description": "DDL events omitted by the text timeline limit",
+    "other": "… and {{.Count}} more DDL events"
+  },
+  "report.text.openUncommittedDML": {
+    "description": "Open uncommitted DML section header",
+    "other": "Open Uncommitted DML"
+  },
+  "report.text.openDMLNote": {
+    "description": "Open uncommitted DML is not lock-contention proof",
+    "other": "Open DML group still uncommitted in this file/window (not lock-contention proof)"
+  },
+  "report.text.committedDuration": {
+    "description": "Committed transaction duration bucket line",
+    "other": "Committed duration"
+  },
+  "report.text.topTxnBytes": {
+    "description": "Top transactions by binlog bytes",
+    "other": "Top txn bytes"
+  },
+  "report.text.topTableBytes": {
+    "description": "Top tables by binlog bytes",
+    "other": "Top table bytes"
+  },
+  "report.text.selectedFiles": {
+    "description": "Selected binlog files in a multi-file analyze",
+    "other": "Selected files"
+  },
+  "report.text.fileGrowthHint": {
+    "description": "Rough multi-file size and time span",
+    "other": "{{.Files}} files, {{.Bytes}} over {{.Duration}} (rough span, not a rotate plan)"
+  },
   "report.text.firstSuspiciousPosition": {
     "description": "Next action label for the first suspicious binlog location",
     "other": "First suspicious position"
@@ -509,7 +549,7 @@
   },
   "alert.largeTransaction.exceedsDurationThreshold": {
     "description": "Exceeds duration threshold message part",
-    "other": "exceeds duration threshold"
+    "other": "exceeds duration threshold ({{.Duration}})"
   },
   "alert.largeTransaction.and": {
     "description": "And connector for alert message",
@@ -518,6 +558,10 @@
   "alert.largeTransaction.message": {
     "description": "Large transaction alert message",
     "other": "Transaction {{.TxnKey}} {{.Reasons}}"
+  },
+  "alert.openDML.message": {
+    "description": "Open uncommitted DML group finding",
+    "other": "Open DML group {{.TxnKey}} still uncommitted in this file/window: dur={{.Duration}} rows={{.Rows}} tables={{.Tables}} file={{.File}}"
   },
   "time.notAvailable": {
     "description": "Time not available placeholder",

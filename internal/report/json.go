@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with explicit workload identity, canonical scope, provenance/selector evidence, SQL context, and snapshot presentation controls.
-// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, and snapshots.
+// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, and snapshots.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -103,20 +103,23 @@ type jsonTxnSizeBucket struct {
 }
 
 type jsonDiagnostics struct {
-	FileCoverage          jsonFileCoverage  `json:"file_coverage"`
-	CountedEventBytes     int64             `json:"counted_event_bytes"`
-	DDLEvents             []jsonDDLEvent    `json:"ddl_events"`
-	LargestTransactions   []jsonTransaction `json:"largest_transactions"`
-	LongestTransactions   []jsonTransaction `json:"longest_transactions"`
-	WidestTransactions    []jsonTransaction `json:"widest_transactions"`
-	FileSegments          []jsonFileSegment `json:"file_segments"`
-	HotIntervals          []jsonHotInterval `json:"hot_intervals"`
-	Findings              []jsonFinding     `json:"findings"`
-	InputFormatGuess      string            `json:"input_format_guess"`
-	IgnoredQueryDMLEvents int               `json:"ignored_query_dml_events"`
-	IgnoredQueryEvents    int               `json:"ignored_query_events,omitempty"`
-	OpenExplicitGroups    int               `json:"open_explicit_groups,omitempty"`
-	UnmappedEvents        int               `json:"unmapped_events,omitempty"`
+	FileCoverage            jsonFileCoverage     `json:"file_coverage"`
+	CountedEventBytes       int64                `json:"counted_event_bytes"`
+	DDLEvents               []jsonDDLEvent       `json:"ddl_events"`
+	LargestTransactions     []jsonTransaction    `json:"largest_transactions"`
+	LongestTransactions     []jsonTransaction    `json:"longest_transactions"`
+	WidestTransactions      []jsonTransaction    `json:"widest_transactions"`
+	LargestByteTransactions []jsonTransaction    `json:"largest_byte_transactions,omitempty"`
+	OpenDMLGroups           []jsonOpenDMLGroup   `json:"open_dml_groups,omitempty"`
+	DurationBuckets         []jsonDurationBucket `json:"duration_buckets,omitempty"`
+	FileSegments            []jsonFileSegment    `json:"file_segments"`
+	HotIntervals            []jsonHotInterval    `json:"hot_intervals"`
+	Findings                []jsonFinding        `json:"findings"`
+	InputFormatGuess        string               `json:"input_format_guess"`
+	IgnoredQueryDMLEvents   int                  `json:"ignored_query_dml_events"`
+	IgnoredQueryEvents      int                  `json:"ignored_query_events,omitempty"`
+	OpenExplicitGroups      int                  `json:"open_explicit_groups,omitempty"`
+	UnmappedEvents          int                  `json:"unmapped_events,omitempty"`
 }
 
 type jsonFileCoverage struct {
@@ -130,6 +133,26 @@ type jsonFileCoverageItem struct {
 	Size         int64  `json:"size"`
 	FirstEventAt string `json:"first_event_at,omitempty"`
 	LastEventAt  string `json:"last_event_at,omitempty"`
+}
+
+type jsonOpenDMLGroup struct {
+	TxnKey          string         `json:"txn_key"`
+	GTID            string         `json:"gtid,omitempty"`
+	StartTime       string         `json:"start_time"`
+	EndTime         string         `json:"end_time"`
+	Duration        string         `json:"duration"`
+	TotalRows       int            `json:"total_rows"`
+	Tables          map[string]int `json:"tables,omitempty"`
+	BinlogFileStart string         `json:"binlog_file_start,omitempty"`
+	BinlogFileEnd   string         `json:"binlog_file_end,omitempty"`
+	PosStart        int64          `json:"pos_start,omitempty"`
+	PosEnd          int64          `json:"pos_end,omitempty"`
+	Note            string         `json:"note"`
+}
+
+type jsonDurationBucket struct {
+	Label    string `json:"label"`
+	TxnCount int    `json:"txn_count"`
 }
 
 type jsonDDLEvent struct {
@@ -474,20 +497,23 @@ func convertTxnSizeBuckets(buckets []model.TxnSizeBucket) []jsonTxnSizeBucket {
 
 func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) jsonDiagnostics {
 	return jsonDiagnostics{
-		FileCoverage:          convertFileCoverage(diagnostics.FileCoverage),
-		CountedEventBytes:     diagnostics.CountedEventBytes,
-		DDLEvents:             convertDDLEvents(diagnostics.DDLEvents),
-		LargestTransactions:   convertTransactions(diagnostics.LargestTransactions, mode, diagnostics.ServerVersion),
-		LongestTransactions:   convertTransactions(diagnostics.LongestTransactions, mode, diagnostics.ServerVersion),
-		WidestTransactions:    convertTransactions(diagnostics.WidestTransactions, mode, diagnostics.ServerVersion),
-		FileSegments:          convertFileSegments(diagnostics.FileSegments),
-		HotIntervals:          convertHotIntervals(diagnostics.HotIntervals),
-		Findings:              convertFindings(diagnostics.Findings),
-		InputFormatGuess:      diagnostics.InputFormatGuess,
-		IgnoredQueryDMLEvents: diagnostics.IgnoredQueryDMLEvents,
-		IgnoredQueryEvents:    diagnostics.IgnoredQueryEvents,
-		OpenExplicitGroups:    diagnostics.OpenExplicitGroups,
-		UnmappedEvents:        diagnostics.UnmappedEvents,
+		FileCoverage:            convertFileCoverage(diagnostics.FileCoverage),
+		CountedEventBytes:       diagnostics.CountedEventBytes,
+		DDLEvents:               convertDDLEvents(diagnostics.DDLEvents),
+		LargestTransactions:     convertTransactions(diagnostics.LargestTransactions, mode, diagnostics.ServerVersion),
+		LongestTransactions:     convertTransactions(diagnostics.LongestTransactions, mode, diagnostics.ServerVersion),
+		WidestTransactions:      convertTransactions(diagnostics.WidestTransactions, mode, diagnostics.ServerVersion),
+		LargestByteTransactions: convertOptionalTransactions(diagnostics.LargestByteTransactions, mode, diagnostics.ServerVersion),
+		OpenDMLGroups:           convertOpenDMLGroups(diagnostics.OpenDMLGroups),
+		DurationBuckets:         convertDurationBuckets(diagnostics.DurationBuckets),
+		FileSegments:            convertFileSegments(diagnostics.FileSegments),
+		HotIntervals:            convertHotIntervals(diagnostics.HotIntervals),
+		Findings:                convertFindings(diagnostics.Findings),
+		InputFormatGuess:        diagnostics.InputFormatGuess,
+		IgnoredQueryDMLEvents:   diagnostics.IgnoredQueryDMLEvents,
+		IgnoredQueryEvents:      diagnostics.IgnoredQueryEvents,
+		OpenExplicitGroups:      diagnostics.OpenExplicitGroups,
+		UnmappedEvents:          diagnostics.UnmappedEvents,
 	}
 }
 
@@ -622,6 +648,48 @@ func convertTables(tables []model.TableStats) []jsonTableStats {
 		}
 	}
 	return result
+}
+
+func convertOptionalTransactions(txns []model.Transaction, mode SQLContextMode, serverVersion string) []jsonTransaction {
+	if len(txns) == 0 {
+		return nil
+	}
+	return convertTransactions(txns, mode, serverVersion)
+}
+
+func convertOpenDMLGroups(groups []model.OpenDMLGroup) []jsonOpenDMLGroup {
+	if len(groups) == 0 {
+		return nil
+	}
+	out := make([]jsonOpenDMLGroup, len(groups))
+	for i, group := range groups {
+		out[i] = jsonOpenDMLGroup{
+			TxnKey:          group.TxnKey,
+			GTID:            group.GTID,
+			StartTime:       formatJSONTime(group.StartTime),
+			EndTime:         formatJSONTime(group.EndTime),
+			Duration:        group.Duration.String(),
+			TotalRows:       group.TotalRows,
+			Tables:          copyStringIntMap(group.Tables),
+			BinlogFileStart: group.BinlogPathStart,
+			BinlogFileEnd:   group.BinlogPathEnd,
+			PosStart:        group.PositionStart,
+			PosEnd:          group.PositionEnd,
+			Note:            model.OpenDMLNote,
+		}
+	}
+	return out
+}
+
+func convertDurationBuckets(buckets []model.DurationBucket) []jsonDurationBucket {
+	if len(buckets) == 0 {
+		return nil
+	}
+	out := make([]jsonDurationBucket, len(buckets))
+	for i, bucket := range buckets {
+		out[i] = jsonDurationBucket{Label: bucket.Label, TxnCount: bucket.TxnCount}
+	}
+	return out
 }
 
 func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVersion string) []jsonTransaction {

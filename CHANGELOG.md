@@ -4,6 +4,10 @@ This file records user-visible changes for tagged releases.
 
 ## Unreleased
 
+- Default text prints a DDL occurrence timeline (time, operation, object, position, statement prefix). It is not an MDL or lock-wait duration. JSON already exposes the same events as `diagnostics.ddl_events`. A DDL-only file still exits 0 and now shows that timeline. An ADMIN-only file still exits 2. `FLUSH TABLES WITH READ LOCK` stays Unclassified QUERY (exit 1) and is not an admin/lock list.
+- An explicit `BEGIN` that wrote row images and never `COMMIT`/`ROLLBACK` is reported as an open DML group (duration, tables, rows, file span), not as a lock-contention proof. `--large-trx-duration` marks groups longer than the threshold as warnings. A later GTID still exits 1; the Error line includes the same evidence when the open group wrote rows.
+- Default text lists longest committed transactions beside largest-by-rows and prints committed duration buckets (`<1s`, `1s-10s`, `10s-30s`, `>=30s`). Duration alerts include the duration. JSON adds `diagnostics.duration_buckets` when any committed transaction was counted.
+- Default text shows top transaction and table byte contributors, and for more than one selected file a per-file size and time span. JSON adds `diagnostics.largest_byte_transactions` when a committed transaction has bytes.
 - Table and minute `txn_count` count distinct row-image transactions. A DDL-only group does not increment them. `testdata/minimal.binlog` reports 4 on the summary, on `testdb.users`, and on the minute bucket.
 - `trend` and `snapshot` failures print one `Error:` line and do not dump Usage. `analyze` and `compare` already did this.
 - A later GTID after bare `BEGIN` still exits 1. The Error line says `open BEGIN without close`.

@@ -52,6 +52,8 @@ type ReportAggregator struct {
 	largest             []model.Transaction
 	longest             []model.Transaction
 	widest              []model.Transaction
+	largestBytes        []model.Transaction
+	durations           durationTracker
 	alertReferencedTxns map[string]model.Transaction
 	minutes             []model.MinuteBucket
 	alerts              []model.Alert
@@ -95,6 +97,52 @@ func (t *txnSizeTracker) add(txn model.Transaction) {
 	}
 }
 
+type durationTracker struct {
+	order  []string
+	counts map[string]int
+}
+
+func newDurationTracker() durationTracker {
+	return durationTracker{
+		order:  []string{"<1s", "1s-10s", "10s-30s", ">=30s"},
+		counts: map[string]int{},
+	}
+}
+
+func durationBucketLabel(d time.Duration) string {
+	switch {
+	case d < time.Second:
+		return "<1s"
+	case d < 10*time.Second:
+		return "1s-10s"
+	case d < 30*time.Second:
+		return "10s-30s"
+	default:
+		return ">=30s"
+	}
+}
+
+func (t *durationTracker) add(d time.Duration) {
+	if t.counts == nil {
+		t.counts = map[string]int{}
+	}
+	t.counts[durationBucketLabel(d)]++
+}
+
+func (t durationTracker) snapshot() []model.DurationBucket {
+	if len(t.counts) == 0 {
+		return nil
+	}
+	out := make([]model.DurationBucket, 0, len(t.order))
+	for _, label := range t.order {
+		if t.counts[label] == 0 {
+			continue
+		}
+		out = append(out, model.DurationBucket{Label: label, TxnCount: t.counts[label]})
+	}
+	return out
+}
+
 func (t *txnSizeTracker) snapshot() model.TxnSizeSeriesSummary {
 	nonEmpty := make([]model.TxnSizeBucket, 0, 4)
 	for _, b := range t.buckets {
@@ -112,6 +160,7 @@ func NewReportAggregator(opts Options) *ReportAggregator {
 		patterns:            make(map[string]*model.PatternStats),
 		patternRepTxns:      make(map[string][]model.Transaction),
 		txnSize:             newTxnSizeTracker(),
+		durations:           newDurationTracker(),
 		operationCounts:     make(map[time.Time]operationMinuteStats),
 		alertReferencedTxns: make(map[string]model.Transaction),
 		serverIDs:           make(map[uint32]struct{}),
@@ -188,6 +237,8 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 	a.largest = insertTopTransaction(a.largest, txn, 5, transactionRowsBetter)
 	a.longest = insertTopTransaction(a.longest, txn, 5, transactionDurationBetter)
 	a.widest = insertTopTransaction(a.widest, txn, 5, transactionWidthBetter)
+	a.largestBytes = insertTopTransaction(a.largestBytes, txn, 3, transactionBytesBetter)
+	a.durations.add(txn.Duration)
 	a.consumePattern(txn)
 	a.txnSize.add(txn)
 	newAlerts := DetectLargeTransactionAlerts([]model.Transaction{txn}, a.opts)
@@ -271,15 +322,17 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	}
 
 	diagnostics := model.Diagnostics{
-		FileCoverage:        a.fileCoverage,
-		CountedEventBytes:   countedEventBytes,
-		DDLEvents:           append([]model.DDLEvent(nil), a.ddlEvents...),
-		LargestTransactions: append([]model.Transaction(nil), a.largest...),
-		LongestTransactions: append([]model.Transaction(nil), a.longest...),
-		WidestTransactions:  append([]model.Transaction(nil), a.widest...),
-		FileSegments:        fileSegments,
-		HotIntervals:        SelectHotIntervals(minutes, 5),
-		Findings:            BuildFindingsFromAlerts(alerts, minutes, evidenceTxns, a.ddlEvents),
+		FileCoverage:            a.fileCoverage,
+		CountedEventBytes:       countedEventBytes,
+		DDLEvents:               append([]model.DDLEvent(nil), a.ddlEvents...),
+		LargestTransactions:     append([]model.Transaction(nil), a.largest...),
+		LongestTransactions:     append([]model.Transaction(nil), a.longest...),
+		WidestTransactions:      append([]model.Transaction(nil), a.widest...),
+		LargestByteTransactions: append([]model.Transaction(nil), a.largestBytes...),
+		DurationBuckets:         a.durations.snapshot(),
+		FileSegments:            fileSegments,
+		HotIntervals:            SelectHotIntervals(minutes, 5),
+		Findings:                BuildFindingsFromAlerts(alerts, minutes, evidenceTxns, a.ddlEvents),
 	}
 
 	series := BuildTimeseries(TimeseriesBuildInput{
@@ -444,6 +497,16 @@ func transactionRowsBetter(left, right model.Transaction) bool {
 	}
 	if left.BinlogBytes != right.BinlogBytes {
 		return left.BinlogBytes > right.BinlogBytes
+	}
+	return naturalTxnKeyLess(left.TxnKey, right.TxnKey)
+}
+
+func transactionBytesBetter(left, right model.Transaction) bool {
+	if left.BinlogBytes != right.BinlogBytes {
+		return left.BinlogBytes > right.BinlogBytes
+	}
+	if left.TotalRows != right.TotalRows {
+		return left.TotalRows > right.TotalRows
 	}
 	return naturalTxnKeyLess(left.TxnKey, right.TxnKey)
 }

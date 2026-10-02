@@ -1,6 +1,6 @@
 // Package model defines DBA-facing diagnostics contracts for analyze reports.
 // input: file coverage, DDL events, ranked transactions, findings, guessed input format, Ignored QUERY counts, unmapped parser events, open explicit BEGIN groups, and Format Description server version.
-// output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage, optional Ignored QUERY counts, and an optional open-explicit-group count.
+// output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage, optional Ignored QUERY counts, an optional open-explicit-group count, open uncommitted DML groups, committed duration buckets, and byte-ranked transactions.
 // pos: shared diagnostics model between analyzer Finalize and text/JSON/HTML replay commands.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -27,6 +27,13 @@ type Diagnostics struct {
 	// OpenExplicitGroups counts BEGIN groups flushed at end of input without COMMIT or plain ROLLBACK.
 	// A later GTID does not reach this count: that case fails analyze instead of closing the group.
 	OpenExplicitGroups int
+	// OpenDMLGroups are explicit BEGIN groups that wrote row images and never COMMIT or ROLLBACK in this input.
+	// Empty when none. This is an occurrence span, not a lock-wait proof.
+	OpenDMLGroups []OpenDMLGroup
+	// DurationBuckets counts committed transactions by duration. Empty when none.
+	DurationBuckets []DurationBucket
+	// LargestByteTransactions ranks committed transactions by binlog bytes. Empty when none.
+	LargestByteTransactions []Transaction
 	// UnmappedEvents is how many parser events had no canonical kind (ROTATE, etc.).
 	UnmappedEvents int
 	ServerVersion  string
@@ -59,6 +66,30 @@ type DDLEvent struct {
 	PositionStart int64
 	PositionEnd   int64
 	BinlogBytes   int64
+}
+
+// OpenDMLNote is the stable JSON wording for an uncommitted row-image group.
+const OpenDMLNote = "open DML group still uncommitted in this file/window; not lock-contention proof"
+
+// OpenDMLGroup is an explicit BEGIN group that wrote row images and had no COMMIT or plain ROLLBACK.
+type OpenDMLGroup struct {
+	TxnKey          string
+	GTID            string
+	StartTime       time.Time
+	EndTime         time.Time
+	Duration        time.Duration
+	TotalRows       int
+	Tables          map[string]int
+	BinlogPathStart string
+	BinlogPathEnd   string
+	PositionStart   int64
+	PositionEnd     int64
+}
+
+// DurationBucket counts committed transactions in one duration band.
+type DurationBucket struct {
+	Label    string
+	TxnCount int
 }
 
 // Finding captures one evidence-backed diagnostic finding.

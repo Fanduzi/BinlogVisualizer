@@ -798,3 +798,77 @@ func TestRenderTextAndHTMLShowIncompleteTransactionSummary(t *testing.T) {
 		}
 	}
 }
+
+func TestRenderTextShowsDDLTimelineAndOpenDML(t *testing.T) {
+	forceEnglishReportLocale(t)
+	start := time.Date(2026, 10, 2, 1, 2, 3, 0, time.UTC)
+	result := productTextFixture()
+	result.Diagnostics.DDLEvents = []model.DDLEvent{{
+		Timestamp:     start,
+		Operation:     "ALTER TABLE",
+		Schema:        "shop",
+		Table:         "orders",
+		Statement:     "ALTER TABLE shop.orders ADD COLUMN marker INT",
+		BinlogPath:    "mysql-bin.000044",
+		PositionStart: 100,
+		PositionEnd:   180,
+	}}
+	result.Diagnostics.OpenDMLGroups = []model.OpenDMLGroup{{
+		TxnKey:          "txn-open",
+		Duration:        45 * time.Second,
+		TotalRows:       4,
+		Tables:          map[string]int{"shop.orders": 4},
+		BinlogPathStart: "mysql-bin.000044",
+		BinlogPathEnd:   "mysql-bin.000044",
+		PositionStart:   200,
+		PositionEnd:     420,
+	}}
+	result.Diagnostics.DurationBuckets = []model.DurationBucket{
+		{Label: "1s-10s", TxnCount: 2},
+		{Label: ">=30s", TxnCount: 1},
+	}
+	result.Diagnostics.LongestTransactions = []model.Transaction{
+		{TxnKey: "txn-long-a", Duration: 45 * time.Second, TotalRows: 1, BinlogPathStart: "mysql-bin.000044", PositionStart: 10, PositionEnd: 20},
+		{TxnKey: "txn-long-b", Duration: 31 * time.Second, TotalRows: 2, BinlogPathStart: "mysql-bin.000044", PositionStart: 20, PositionEnd: 30},
+		{TxnKey: "txn-long-c", Duration: 12 * time.Second, TotalRows: 3, BinlogPathStart: "mysql-bin.000044", PositionStart: 30, PositionEnd: 40},
+		{TxnKey: "txn-long-d", Duration: time.Second, TotalRows: 4, BinlogPathStart: "mysql-bin.000044", PositionStart: 40, PositionEnd: 50},
+	}
+	result.Diagnostics.LargestByteTransactions = []model.Transaction{
+		{TxnKey: "txn-bytes", BinlogBytes: 8192, TotalRows: 1},
+	}
+	result.Tables[0].BinlogBytes = 4096
+	result.Diagnostics.FileCoverage.Selected = []model.FileCoverageItem{
+		{BinlogPath: "mysql-bin.000001", Size: 1000, FirstEventAt: start, LastEventAt: start.Add(10 * time.Minute)},
+		{BinlogPath: "mysql-bin.000002", Size: 2000, FirstEventAt: start.Add(10 * time.Minute), LastEventAt: start.Add(20 * time.Minute)},
+	}
+
+	out, err := RenderText(result)
+	if err != nil {
+		t.Fatalf("RenderText: %v", err)
+	}
+	for _, want := range []string{
+		"DDL occurrence timeline (not MDL or lock-wait duration)",
+		"ALTER TABLE",
+		"shop.orders",
+		"mysql-bin.000044:100-180",
+		"ALTER TABLE shop.orders ADD COLUMN marker INT",
+		"Open Uncommitted DML",
+		"not lock-contention proof",
+		"txn-open dur=45.0s rows=4 tables=shop.orders file=mysql-bin.000044:200-420",
+		"Committed duration: 1s-10s=2 >=30s=1",
+		"txn-long-a",
+		"txn-long-c",
+		"Top txn bytes: txn-bytes 8.0KB",
+		"Top table bytes: shop.orders 4.0KB",
+		"Selected files:",
+		"mysql-bin.000001",
+		"2 files, 2.9KB over 20m0s",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("missing %q\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "txn-long-d") {
+		t.Fatalf("fourth longest transaction should stay off the default text\n%s", out)
+	}
+}

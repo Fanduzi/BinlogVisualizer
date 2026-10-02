@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, and an open-explicit-group count for BEGIN groups flushed without a close.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -420,6 +420,13 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		result.Selection = &selection
 	}
 	result.Diagnostics.OpenExplicitGroups = a.txnBuilder.OpenExplicitGroups()
+	if groups := a.txnBuilder.OpenDMLGroups(); len(groups) > 0 {
+		result.Diagnostics.OpenDMLGroups = groups
+		alerts := OpenDMLAlerts(groups, a.opts.LargeTxnDuration)
+		result.Alerts = append(alerts, result.Alerts...)
+		findings := BuildFindingsFromAlerts(alerts, nil, nil, nil)
+		result.Diagnostics.Findings = append(findings, result.Diagnostics.Findings...)
+	}
 	return result, nil
 }
 

@@ -1073,16 +1073,38 @@ func localizedOperatorGroupError(err error) error {
 	}
 	var openBegin *analyzer.OpenBeginError
 	if errors.As(err, &openBegin) && openBegin != nil {
-		if openBegin.SavepointRollback {
-			return fmt.Errorf("%s", i18n.T("error.openBeginSavepoint"))
-		}
-		return fmt.Errorf("%s", i18n.T("error.openBeginWithoutClose"))
+		return localizedOpenBeginError(openBegin)
 	}
 	var ignored *analyzer.IgnoredOnlyGroupError
 	if errors.As(err, &ignored) {
 		return fmt.Errorf("%s", i18n.T("error.ignoredOnlyGroup"))
 	}
 	return nil
+}
+
+func localizedOpenBeginError(openBegin *analyzer.OpenBeginError) error {
+	base := i18n.T("error.openBeginWithoutClose")
+	if openBegin.SavepointRollback {
+		base = i18n.T("error.openBeginSavepoint")
+	}
+	if openBegin.Rows <= 0 {
+		return fmt.Errorf("%s", base)
+	}
+	tables := openBegin.Tables
+	if tables == "" {
+		tables = "-"
+	}
+	location := openBegin.Location
+	if location == "" {
+		location = i18n.T("time.notAvailable")
+	}
+	detail := i18n.Tf("error.openBeginDMLDetail", map[string]any{
+		"Duration": openBegin.Duration.Truncate(time.Millisecond).String(),
+		"Rows":     openBegin.Rows,
+		"Tables":   tables,
+		"File":     location,
+	})
+	return fmt.Errorf("%s; %s", base, detail)
 }
 
 func localizedUnclassifiedQueryError(err error) error {

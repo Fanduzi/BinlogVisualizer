@@ -38,7 +38,7 @@
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
 | `NewTransactionBuilder() *TransactionBuilder` | Reconstructs GTID-aware MySQL/MariaDB XA transaction boundaries, closes GTID-started non-explicit ADMIN groups, fails Unclassified QUERY when that is the only in-window work of a GTID-started non-explicit group (named or anonymous empty identity), fails on conflicting canonical GTIDs, and reports a shared wrapper file span when expanded payload inners all carry that range. |
 | `UnclassifiedQueryError` | Analyze failure when a GTID-started non-explicit transaction group's only in-window work is an Unclassified QUERY. `Error()` includes the bounded statement prefix and does not say conflicting GTID. After-window Unclassified QUERY that never intersected the selected window does not produce this error. |
-| `OpenBeginError` | Exit 1 when the next GTID meets a BEGIN with no COMMIT and no plain ROLLBACK. `Error()` says `open BEGIN without close`. `ROLLBACK TO SAVEPOINT` sets `SavepointRollback` and does not close the group. |
+| `OpenBeginError` | Exit 1 when the next GTID meets a BEGIN with no COMMIT and no plain ROLLBACK. `Error()` says `open BEGIN without close`. When the group wrote row images, it also names duration, rows, tables, and file span. `ROLLBACK TO SAVEPOINT` sets `SavepointRollback` and does not close the group. |
 | `IgnoredOnlyGroupError` | Exit 1 when the next GTID meets a group that held only Ignored QUERY. `Error()` says that QUERY does not close the group and that this is not a missing COMMIT. |
 | `(*Analyzer).NoteIgnoredQuery()` | Records a dropped Ignored QUERY on the current group. It does not close the group. |
 | `NewTableAggregator() *TableAggregator` | Tracks table-level aggregates for reporting. |
@@ -65,7 +65,7 @@
 - Time windows keep inclusive per-event workload totals. Adjacent parsed events may establish transaction completeness and a trusted full replay span, but never add out-of-window rows, events, table totals, operations, or minute buckets.
 - Active schema/table filters remove excluded row and DDL events before workload aggregation; control events remain available for transaction boundaries, and empty filtered transactions are omitted from reports. Table include/exclude tokens accept `TABLE` or `SCHEMA.TABLE` (backticks stripped).
 - Final results preserve `Options.WorkloadID` and the canonical configured include/exclude filters as comparability evidence.
-- ReportAggregator derives counted event bytes from filtered row/DDL minute buckets; physical selected-file bytes remain in command-supplied file coverage.
+- ReportAggregator derives counted event bytes from filtered row/DDL minute buckets; physical selected-file bytes remain in command-supplied file coverage. Committed transactions also fill duration buckets and a top-3 byte ranking. Explicit BEGIN groups that wrote rows and reach EOF without a close are `OpenDMLGroups`, separate from those committed rankings.
 - Alert-referenced transactions are tracked in a bounded map so `BuildFindingsFromAlerts` and `BuildPatternDrilldowns` can resolve evidence even when the referenced transaction is not in the top-5 largest.
 - Pattern maps in snapshot use non-nil empty maps (`make(map[string]int)`) to match `BuildPatterns` semantics for `reflect.DeepEqual` parity.
 - Top-transaction reads hydrate SQL on demand via `attachTopTransactionSQL` using the store's `ResolveTransactionQuerySQL`.

@@ -134,7 +134,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 ### 3. Top Transactions
 
-`Top Transactions` 章节按总行数对事务进行排序，并展示事务大小和持续时间。
+`Top Transactions` 章节按总行数对事务进行排序，并同时列出最多三条最长的已提交事务和已提交时长分桶。
 
 文本输出中常见字段包括：
 
@@ -283,7 +283,9 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。`diagnostics.open_explicit_groups` 在出现时，统计输入结束时仍没有 `COMMIT` 或 plain `ROLLBACK` 的 `BEGIN` 组；计数为 0 时省略。这种未关闭的 `BEGIN` 如果后面又来了 GTID，不会产出报告：analyze 以 exit 1 失败，错误是「显式 BEGIN 未关闭」。
 
-`diagnostics.counted_event_bytes` 是 schema/table 过滤后保留的 ROW/DDL 事件字节总数。`diagnostics.file_coverage.selected[].size` 是输入文件的物理大小；人类可读报告中缺少大小元数据时显示为不可用，而不是 0。
+`diagnostics.counted_event_bytes` 是 schema/table 过滤后保留的 ROW/DDL 事件字节总数。`diagnostics.file_coverage.selected[].size` 是输入文件的物理大小；人类可读报告中缺少大小元数据时显示为不可用，而不是 0。`diagnostics.ddl_events` 是 DDL 发生时间线（时间、操作、对象、语句、位置），不是 MDL 或锁等待时长。`diagnostics.open_dml_groups` 在出现时，列出写过行镜像、并且到输入结束仍没有 `COMMIT` 或 plain `ROLLBACK` 的显式 `BEGIN` 组。每条的 `note` 说明该组在本文件/窗口内仍未提交，不是锁冲突证明。`diagnostics.duration_buckets` 统计已提交事务落在 `<1s`、`1s-10s`、`10s-30s`、`>=30s` 的数量。`diagnostics.largest_byte_transactions` 按 binlog 字节排列已提交事务。这三项为空时省略。
+
+默认文本会打印 DDL 时间线、未提交的开放 DML、最多三条最长已提交事务、时长分桶、字节贡献，以及选中多个文件时的单文件大小和时间跨度。`--large-trx-duration` 仍对超过该时长的已提交事务告警，并对超过同一阈值的开放 DML 给出 warning。开放 `BEGIN` 之后又来了 GTID 仍是 exit 1、stdout 为空；如果该组写过行，Error 行会带上时长、行数、表和位置。只有 DDL 的输入 exit 0。只有 ADMIN 的输入仍是 exit 2。`FLUSH TABLES WITH READ LOCK` 仍是未分类 QUERY（exit 1），不会进入 admin/lock 列表。
 
 ### `transactions`
 
@@ -412,7 +414,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | `large_transaction`、`spike`、`input_format`、`partial_transaction` 或 `unknown_transaction` |
+| `type` | string | yes | `large_transaction`、`open_dml_group`、`spike`、`input_format`、`partial_transaction` 或 `unknown_transaction` |
 | `severity` | string | yes | 当前告警严重级别字符串 |
 | `message` | string | yes | 面向人的告警消息 |
 | `txn_key` | string | no | 事务级告警时出现 |
