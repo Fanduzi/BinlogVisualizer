@@ -24,7 +24,7 @@ const mysqlIssue74SID = "67451bcd-b010-11f1-a85a-822b383dbcd0"
 
 func TestAnalyzeUnclassifiedQueryExitsOneWithPrefix(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
-	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, unclassifiedCheckTableEvents())
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, unclassifiedReadLockEvents())
 	if err == nil {
 		t.Fatal("Unclassified QUERY must fail analyze")
 	}
@@ -41,7 +41,7 @@ func TestAnalyzeUnclassifiedQueryExitsOneWithPrefix(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") {
 		t.Fatalf("must not say conflicting GTID, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 		t.Fatalf("English error must include Unclassified QUERY and the prefix, got %v", err)
 	}
 }
@@ -53,7 +53,7 @@ func TestAnalyzeUnclassifiedQueryErrorIsLocalized(t *testing.T) {
 	}
 	t.Cleanup(i18n.ResetForTesting)
 
-	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, unclassifiedCheckTableEvents())
+	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, unclassifiedReadLockEvents())
 	if err == nil {
 		t.Fatal("Unclassified QUERY must fail analyze")
 	}
@@ -70,14 +70,14 @@ func TestAnalyzeUnclassifiedQueryErrorIsLocalized(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") {
 		t.Fatalf("must not say conflicting GTID, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "未分类") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+	if !strings.Contains(err.Error(), "未分类") || !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 		t.Fatalf("zh-CN error must include 未分类 and the prefix, got %v", err)
 	}
 }
 
 func TestAnalyzeAnonymousUnclassifiedQueryExitsOneWithPrefix(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
-	events := unclassifiedCheckTableEvents()
+	events := unclassifiedReadLockEvents()
 	events[0] = mysqlAnonymousCommandGTID(events[0].Timestamp, events[0].PositionStart, events[0].PositionEnd)
 	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, events)
 	if err == nil {
@@ -96,7 +96,7 @@ func TestAnalyzeAnonymousUnclassifiedQueryExitsOneWithPrefix(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") {
 		t.Fatalf("must not say conflicting GTID, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 		t.Fatalf("English error must include Unclassified QUERY and the prefix, got %v", err)
 	}
 }
@@ -106,7 +106,7 @@ func TestAnalyzeFinalizeAnonymousUnclassifiedOnlyExitsOne(t *testing.T) {
 	ts := time.Date(2026, 9, 16, 14, 30, 0, 0, time.UTC)
 	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, []binlog.RawEvent{
 		mysqlAnonymousCommandGTID(ts, 100, 180),
-		mysqlCommandQuery(ts.Add(time.Second), "SET ROLE ALL", 180, 260),
+		mysqlCommandQuery(ts.Add(time.Second), "FLUSH TABLES testdb.users", 180, 260),
 	})
 	if err == nil {
 		t.Fatal("finalize anonymous Unclassified QUERY must fail")
@@ -124,7 +124,7 @@ func TestAnalyzeFinalizeAnonymousUnclassifiedOnlyExitsOne(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") || strings.Contains(err.Error(), "no analyzable events") {
 		t.Fatalf("anonymous finalize must be Unclassified QUERY, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "SET ROLE ALL") {
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES testdb.users") {
 		t.Fatalf("anonymous finalize error must include Unclassified QUERY and the prefix, got %v", err)
 	}
 }
@@ -134,7 +134,7 @@ func TestAnalyzeFinalizeUnclassifiedOnlyExitsOne(t *testing.T) {
 	ts := time.Date(2026, 9, 16, 9, 30, 0, 0, time.UTC)
 	stdout, stderr, err := runAnalyzeLikeMainWithParser(t, []binlog.RawEvent{
 		mysqlCommandGTID(ts, 39, 100, 180),
-		mysqlCommandQuery(ts.Add(time.Second), "SET ROLE ALL", 180, 260),
+		mysqlCommandQuery(ts.Add(time.Second), "FLUSH TABLES testdb.users", 180, 260),
 	})
 	if err == nil {
 		t.Fatal("finalize Unclassified QUERY must fail")
@@ -152,7 +152,7 @@ func TestAnalyzeFinalizeUnclassifiedOnlyExitsOne(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") || strings.Contains(err.Error(), "no analyzable events") {
 		t.Fatalf("finalize must be Unclassified QUERY, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "SET ROLE ALL") {
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES testdb.users") {
 		t.Fatalf("finalize error must include Unclassified QUERY and the prefix, got %v", err)
 	}
 }
@@ -163,7 +163,7 @@ func TestAnalyzeAfterEndUnclassifiedQueryExitsZeroWithReport(t *testing.T) {
 	end := ts.Add(3 * time.Second)
 	opts := analyzer.DefaultOptions()
 	opts.End = &end
-	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQuery(ts, "CHECK TABLE app.orders"), opts)
+	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQuery(ts, "FLUSH TABLES WITH READ LOCK"), opts)
 	if err != nil {
 		t.Fatalf("after --end Unclassified QUERY must exit 0, got %v", err)
 	}
@@ -183,7 +183,7 @@ func TestAnalyzeAfterStopPositionUnclassifiedQueryExitsZeroWithReport(t *testing
 	stop := int64(360)
 	opts := analyzer.DefaultOptions()
 	opts.StopPosition = &stop
-	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, path, mysqlCommandBusinessThenQuery(ts, "CHECK TABLE app.orders"), opts)
+	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, path, mysqlCommandBusinessThenQuery(ts, "FLUSH TABLES WITH READ LOCK"), opts)
 	if err != nil {
 		t.Fatalf("after --stop-position Unclassified QUERY must exit 0, got %v", err)
 	}
@@ -199,7 +199,7 @@ func TestAnalyzeAfterEndUnclassifiedQueryThenNextGTIDExitsZero(t *testing.T) {
 	end := ts.Add(3 * time.Second)
 	opts := analyzer.DefaultOptions()
 	opts.End = &end
-	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQueryThenBusiness(ts, "CHECK TABLE app.orders"), opts)
+	stdout, _, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQueryThenBusiness(ts, "FLUSH TABLES WITH READ LOCK"), opts)
 	if err != nil {
 		t.Fatalf("after --end Unclassified QUERY then next GTID must exit 0, got %v", err)
 	}
@@ -215,7 +215,7 @@ func TestAnalyzeInWindowUnclassifiedAfterBusinessStillExitsOne(t *testing.T) {
 	end := ts.Add(5 * time.Second)
 	opts := analyzer.DefaultOptions()
 	opts.End = &end
-	stdout, stderr, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQuery(ts, "CHECK TABLE app.orders"), opts)
+	stdout, stderr, err := runAnalyzeLikeMainWithParserOptions(t, "dummy.binlog", mysqlCommandBusinessThenQuery(ts, "FLUSH TABLES WITH READ LOCK"), opts)
 	if err == nil {
 		t.Fatal("in-window Unclassified QUERY must fail analyze")
 	}
@@ -232,7 +232,7 @@ func TestAnalyzeInWindowUnclassifiedAfterBusinessStillExitsOne(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") {
 		t.Fatalf("must not say conflicting GTID, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 		t.Fatalf("English error must include Unclassified QUERY and the prefix, got %v", err)
 	}
 }
@@ -460,11 +460,11 @@ func mysqlCommandXID(ts time.Time, start, end int64) binlog.RawEvent {
 	}
 }
 
-func unclassifiedCheckTableEvents() []binlog.RawEvent {
+func unclassifiedReadLockEvents() []binlog.RawEvent {
 	ts := time.Date(2026, 9, 16, 9, 0, 0, 0, time.UTC)
 	return []binlog.RawEvent{
 		mysqlCommandGTID(ts, 39, 100, 180),
-		mysqlCommandQuery(ts.Add(time.Second), "CHECK TABLE app.orders", 180, 260),
+		mysqlCommandQuery(ts.Add(time.Second), "FLUSH TABLES WITH READ LOCK", 180, 260),
 		mysqlCommandGTID(ts.Add(2*time.Second), 40, 260, 340),
 		mysqlCommandQuery(ts.Add(3*time.Second), "BEGIN", 340, 380),
 		{
