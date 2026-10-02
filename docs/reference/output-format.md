@@ -134,7 +134,7 @@ Example heading:
 
 ### 3. Top Transactions
 
-The `Top Transactions` section ranks transactions by total rows and shows transaction size and duration.
+The `Top Transactions` section ranks transactions by total rows and also lists up to three longest committed transactions plus a committed-duration bucket line.
 
 Useful fields shown in text output include:
 
@@ -283,7 +283,9 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 
 `diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images. `diagnostics.open_explicit_groups`, when present, counts `BEGIN` groups that reached end of input without `COMMIT` or plain `ROLLBACK`. It is omitted when zero. A later GTID after that open `BEGIN` does not produce a report: analyze exits 1 with `open BEGIN without close`.
 
-`diagnostics.counted_event_bytes` is the sum of retained row/DDL event bytes after schema/table filtering. `diagnostics.file_coverage.selected[].size` is physical input-file size; missing size metadata is unavailable rather than zero in human-readable reports.
+`diagnostics.counted_event_bytes` is the sum of retained row/DDL event bytes after schema/table filtering. `diagnostics.file_coverage.selected[].size` is physical input-file size; missing size metadata is unavailable rather than zero in human-readable reports. `diagnostics.ddl_events` is the DDL occurrence timeline (time, operation, object, statement, positions). It does not measure MDL or lock-wait duration. `diagnostics.open_dml_groups`, when present, lists explicit `BEGIN` groups that wrote row images and reached end of input without `COMMIT` or plain `ROLLBACK`. Each entry's `note` says the group is still uncommitted in this file/window and is not lock-contention proof. `diagnostics.duration_buckets` counts committed transactions in `<1s`, `1s-10s`, `10s-30s`, and `>=30s`. `diagnostics.largest_byte_transactions` ranks committed transactions by binlog bytes. Those three fields are omitted when empty.
+
+Default text prints the DDL timeline, open uncommitted DML, up to three longest committed transactions, the duration buckets, byte contributors, and a per-file size/span when more than one file is selected. `--large-trx-duration` still alerts on committed transactions over that duration and also warns on open DML groups over the same threshold. A later GTID after an open `BEGIN` still exits 1 with an empty stdout; if that group wrote rows, the Error line includes duration, rows, tables, and position. DDL-only input exits 0. ADMIN-only input still exits 2. `FLUSH TABLES WITH READ LOCK` stays Unclassified QUERY (exit 1) and is not listed as an admin or lock statement.
 
 ### `transactions`
 
@@ -412,7 +414,7 @@ Each entry contains:
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | `large_transaction`, `spike`, `input_format`, `partial_transaction`, or `unknown_transaction` |
+| `type` | string | yes | `large_transaction`, `open_dml_group`, `spike`, `input_format`, `partial_transaction`, or `unknown_transaction` |
 | `severity` | string | yes | Current alert severity string |
 | `message` | string | yes | Human-readable alert message |
 | `txn_key` | string | no | Present for transaction-scoped alerts |

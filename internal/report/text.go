@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware UTC-labelled incident briefs with separate file/count-event bytes, ranked complete transactions, labelled trusted replay, and opt-in minute/pattern detail.
+// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, ranked complete transactions, labelled trusted replay, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -38,7 +39,9 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	opts = normalizeOptions(opts)
 	var buf strings.Builder
 
-	renderDiagnosticSummary(&buf, result)
+	renderDiagnosticSummary(&buf, result, opts.TopN)
+	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN)
+	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderTopTransactions(&buf, result, opts.TopN)
 	renderTopFindings(&buf, result, opts)
@@ -55,7 +58,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	return buf.String(), nil
 }
 
-func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) {
+func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, topN int) {
 	summary := result.Summary
 	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
 	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
@@ -76,6 +79,8 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult) 
 	if bytes := largestTxnBytes(result); bytes > 0 {
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.largestTxnBytes"), formatByteSize(bytes)))
 	}
+	renderByteContributors(buf, result, topN)
+	renderSelectedFileLines(buf, result.Diagnostics.FileCoverage)
 	buf.WriteString("\n")
 }
 
@@ -224,8 +229,9 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 	buf.WriteString("=== " + i18n.T("report.text.topTransactions") + " ===\n")
 
 	largestLimit := minInt(3, topN)
+	longestLimit := largestLimit
 	otherLimit := minInt(1, topN)
-	lines := make([]string, 0, largestLimit+otherLimit*2)
+	lines := make([]string, 0, largestLimit+longestLimit+otherLimit)
 	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, largestLimit) {
 		line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
 			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
@@ -240,7 +246,10 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
 	}
-	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, otherLimit) {
+	if line := formatCommittedDurationLine(result.Diagnostics.DurationBuckets); line != "" {
+		lines = append(lines, "  "+line)
+	}
+	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, longestLimit) {
 		lines = append(lines, fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
 			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn)))
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
@@ -483,6 +492,11 @@ func suspiciousTransactionLocation(result model.AnalysisResult, txnKey string) s
 }
 
 func largestTxnBytes(result model.AnalysisResult) int64 {
+	for _, txn := range result.Diagnostics.LargestByteTransactions {
+		if txn.BinlogBytes > 0 {
+			return txn.BinlogBytes
+		}
+	}
 	var maxBytes int64
 	for _, txn := range result.Diagnostics.LargestTransactions {
 		if txn.BinlogBytes > maxBytes {
@@ -521,6 +535,180 @@ func formatSuspiciousLocation(txn model.Transaction) string {
 		return i18n.T("time.notAvailable")
 	}
 	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
+}
+
+func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int) {
+	if len(events) == 0 {
+		return
+	}
+	buf.WriteString("=== " + i18n.T("report.html.analyze.ddlTimeline") + " ===\n")
+	buf.WriteString("  " + i18n.T("report.text.ddlOccurrenceNote") + "\n")
+	shown := events
+	extra := 0
+	if limit > 0 && len(events) > limit {
+		shown = events[:limit]
+		extra = len(events) - limit
+	}
+	for _, event := range shown {
+		location := formatBinlogLocation(event.BinlogPath, event.PositionStart, event.PositionEnd)
+		if location == "" {
+			location = i18n.T("time.notAvailable")
+		}
+		buf.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
+			formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location))
+		if stmt := model.MakeQuerySummary(event.Statement); stmt != "" {
+			buf.WriteString("    " + stmt + "\n")
+		}
+	}
+	if extra > 0 {
+		buf.WriteString("  " + i18n.Tf("report.text.omittedDDL", map[string]any{"Count": extra}) + "\n")
+	}
+	buf.WriteString("\n")
+}
+
+func ddlObjectName(event model.DDLEvent) string {
+	object := strings.Trim(strings.TrimSpace(event.Schema+"."+event.Table), ".")
+	if object == "" {
+		object = strings.TrimSpace(event.Object)
+	}
+	if object == "" {
+		return i18n.T("time.notAvailable")
+	}
+	return object
+}
+
+func renderOpenDML(buf *strings.Builder, groups []model.OpenDMLGroup) {
+	if len(groups) == 0 {
+		return
+	}
+	buf.WriteString("=== " + i18n.T("report.text.openUncommittedDML") + " ===\n")
+	buf.WriteString("  " + i18n.T("report.text.openDMLNote") + "\n")
+	for _, group := range groups {
+		tables := joinedSortedTables(group.Tables)
+		if tables == "" {
+			tables = "-"
+		}
+		location := formatBinlogLocationWithEnd(group.BinlogPathStart, group.PositionStart, group.BinlogPathEnd, group.PositionEnd)
+		if location == "" {
+			location = i18n.T("time.notAvailable")
+		}
+		buf.WriteString(fmt.Sprintf("  %s dur=%s rows=%d tables=%s file=%s\n",
+			group.TxnKey, formatDuration(group.Duration), group.TotalRows, tables, location))
+	}
+	buf.WriteString("\n")
+}
+
+func formatCommittedDurationLine(buckets []model.DurationBucket) string {
+	if len(buckets) == 0 {
+		return ""
+	}
+	parts := make([]string, len(buckets))
+	for i, bucket := range buckets {
+		parts[i] = fmt.Sprintf("%s=%d", bucket.Label, bucket.TxnCount)
+	}
+	return i18n.T("report.text.committedDuration") + ": " + strings.Join(parts, " ")
+}
+
+func renderByteContributors(buf *strings.Builder, result model.AnalysisResult, topN int) {
+	limit := minInt(3, topN)
+	var txnParts []string
+	for i, txn := range result.Diagnostics.LargestByteTransactions {
+		if i >= limit || txn.BinlogBytes <= 0 {
+			break
+		}
+		txnParts = append(txnParts, txn.TxnKey+" "+formatByteSize(txn.BinlogBytes))
+	}
+	if len(txnParts) > 0 {
+		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.topTxnBytes"), strings.Join(txnParts, ", ")))
+	}
+	var tableParts []string
+	for _, table := range topTablesByBytes(result.Tables, limit) {
+		if table.BinlogBytes <= 0 {
+			break
+		}
+		tableParts = append(tableParts, fmt.Sprintf("%s.%s %s", table.Schema, table.Table, formatByteSize(table.BinlogBytes)))
+	}
+	if len(tableParts) > 0 {
+		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.topTableBytes"), strings.Join(tableParts, ", ")))
+	}
+}
+
+func topTablesByBytes(tables []model.TableStats, limit int) []model.TableStats {
+	ranked := make([]model.TableStats, 0, len(tables))
+	for _, table := range tables {
+		if table.BinlogBytes > 0 {
+			ranked = append(ranked, table)
+		}
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		if ranked[i].BinlogBytes != ranked[j].BinlogBytes {
+			return ranked[i].BinlogBytes > ranked[j].BinlogBytes
+		}
+		left := ranked[i].Schema + "." + ranked[i].Table
+		right := ranked[j].Schema + "." + ranked[j].Table
+		return left < right
+	})
+	if limit > 0 && len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+	return ranked
+}
+
+func renderSelectedFileLines(buf *strings.Builder, coverage model.FileCoverage) {
+	if len(coverage.Selected) < 2 {
+		return
+	}
+	buf.WriteString("  " + i18n.T("report.text.selectedFiles") + ":\n")
+	var earliest, latest time.Time
+	var total int64
+	timed := 0
+	for _, item := range coverage.Selected {
+		size := i18n.T("time.notAvailable")
+		if item.Size > 0 {
+			size = formatByteSize(item.Size)
+			total += item.Size
+		}
+		name := item.BinlogPath
+		if name == "" {
+			name = i18n.T("time.notAvailable")
+		}
+		buf.WriteString(fmt.Sprintf("    %s  %s  %s\n", name, size, formatFileSpan(item)))
+		if !item.FirstEventAt.IsZero() && !item.LastEventAt.IsZero() {
+			timed++
+			if earliest.IsZero() || item.FirstEventAt.Before(earliest) {
+				earliest = item.FirstEventAt
+			}
+			if item.LastEventAt.After(latest) {
+				latest = item.LastEventAt
+			}
+		}
+	}
+	if timed == len(coverage.Selected) && total > 0 && !latest.Before(earliest) {
+		buf.WriteString("  " + i18n.Tf("report.text.fileGrowthHint", map[string]any{
+			"Files":    len(coverage.Selected),
+			"Bytes":    formatByteSize(total),
+			"Duration": formatDuration(latest.Sub(earliest)),
+		}) + "\n")
+	}
+}
+
+func formatFileSpan(item model.FileCoverageItem) string {
+	if item.FirstEventAt.IsZero() && item.LastEventAt.IsZero() {
+		return i18n.T("time.notAvailable")
+	}
+	return formatTime(item.FirstEventAt) + " - " + formatTime(item.LastEventAt)
+}
+
+func joinedSortedTables(tables map[string]int) string {
+	if len(tables) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(tables))
+	for name := range tables {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, ",")
 }
 
 func formatDDLTimelineSummary(events []model.DDLEvent) string {

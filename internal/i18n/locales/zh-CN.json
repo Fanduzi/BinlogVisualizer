@@ -109,7 +109,7 @@
   },
   "cmd.analyze.flag.largeTrxDuration": {
     "description": "大事务时长阈值标志描述",
-    "other": "大事务告警的时长阈值"
+    "other": "已提交大事务告警，以及未提交开放 DML 警告的时长阈值"
   },
   "cmd.analyze.flag.detailStore": {
     "description": "可选明细存储后端标志描述",
@@ -226,6 +226,10 @@
   "error.openBeginSavepoint": {
     "description": "ROLLBACK TO SAVEPOINT 之后的下一 GTID；该语句不关闭事务组",
     "other": "显式 BEGIN 未关闭：ROLLBACK TO SAVEPOINT 不是事务组结束"
+  },
+  "error.openBeginDMLDetail": {
+    "description": "未关闭 BEGIN 上的行镜像证据",
+    "other": "本文件/窗口内的 DML 组仍未提交（不是锁冲突证明）：时长={{.Duration}} 行数={{.Rows}} 表={{.Tables}} 位置={{.File}}"
   },
   "error.ignoredOnlyGroup": {
     "description": "组内只有 Ignored QUERY 时的下一 GTID",
@@ -475,6 +479,42 @@
     "description": "检测到 DDL 的发现短标签",
     "other": "检测到 DDL"
   },
+  "report.text.ddlOccurrenceNote": {
+    "description": "DDL 时间线只记录发生，不是锁等待时长",
+    "other": "DDL 发生时间线（不是 MDL 或锁等待时长）"
+  },
+  "report.text.omittedDDL": {
+    "description": "文本时间线未显示的 DDL 条数",
+    "other": "… 还有 {{.Count}} 条 DDL 未显示"
+  },
+  "report.text.openUncommittedDML": {
+    "description": "未提交开放 DML 章节标题",
+    "other": "未提交的开放 DML"
+  },
+  "report.text.openDMLNote": {
+    "description": "未提交开放 DML 不是锁冲突证明",
+    "other": "本文件/窗口内的 DML 组仍未提交（不是锁冲突证明）"
+  },
+  "report.text.committedDuration": {
+    "description": "已提交事务时长分桶行",
+    "other": "已提交事务时长"
+  },
+  "report.text.topTxnBytes": {
+    "description": "按 binlog 字节排序的事务",
+    "other": "事务字节贡献"
+  },
+  "report.text.topTableBytes": {
+    "description": "按 binlog 字节排序的表",
+    "other": "表字节贡献"
+  },
+  "report.text.selectedFiles": {
+    "description": "多文件分析中的选中 binlog",
+    "other": "选中文件"
+  },
+  "report.text.fileGrowthHint": {
+    "description": "多文件大小与时间跨度的粗略提示",
+    "other": "{{.Files}} 个文件，{{.Bytes}}，跨度 {{.Duration}}（粗略跨度，不是清理策略）"
+  },
   "report.text.firstSuspiciousPosition": {
     "description": "首个可疑 binlog 位置的下一步标签",
     "other": "首个可疑位置"
@@ -509,7 +549,7 @@
   },
   "alert.largeTransaction.exceedsDurationThreshold": {
     "description": "超过时长阈值消息部分",
-    "other": "超过时长阈值"
+    "other": "超过时长阈值（{{.Duration}}）"
   },
   "alert.largeTransaction.and": {
     "description": "告警消息的连接词",
@@ -518,6 +558,10 @@
   "alert.largeTransaction.message": {
     "description": "大事务告警消息",
     "other": "事务 {{.TxnKey}} {{.Reasons}}"
+  },
+  "alert.openDML.message": {
+    "description": "未提交开放 DML 组发现",
+    "other": "未提交的开放 DML 组 {{.TxnKey}}：时长={{.Duration}} 行数={{.Rows}} 表={{.Tables}} 位置={{.File}}"
   },
   "time.notAvailable": {
     "description": "时间不可用占位符",
