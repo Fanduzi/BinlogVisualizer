@@ -60,7 +60,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - The HTML renderer keeps activity charts readable on large reports by using a larger responsive grid and suppressing non-essential legends that can overlap chart content.
 - Analyze HTML shows a neutral DDL activity notice in Risks & Findings when DDL events exist without alerts; the healthy empty state is reserved for reports without alerts or DDL.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
-- Analyze text and HTML label selected physical input-file bytes separately from counted filtered event bytes; missing selected-file size metadata renders as unavailable.
+- Analyze text and HTML label selected physical input-file bytes separately from counted filtered event bytes; missing selected-file size metadata renders as unavailable. Default text also prints the DDL occurrence timeline, open uncommitted DML, committed duration buckets, longest transactions, byte contributors, and a multi-file size/span hint. JSON omits empty `open_dml_groups`, `duration_buckets`, and `largest_byte_transactions`.
 - Transaction evidence in HTML renders each category champion once, annotates every category it wins, and keeps a separate lookup for the bounded transaction payload.
 - JSON always reports `transactions_listed` and `transactions_omitted` alongside the bounded `transactions` array.
 - Rendered transaction evidence and pattern representatives expose transaction keys to the HTML search control.

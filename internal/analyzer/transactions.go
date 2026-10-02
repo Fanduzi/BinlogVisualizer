@@ -1,12 +1,13 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
+// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it; row-image groups name duration, tables, rows, and span), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, open DML groups for those BEGIN groups that wrote row images, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -22,6 +23,7 @@ type TransactionBuilder struct {
 	txnCounter         uint64
 	lastEventTxnKey    string
 	openExplicitGroups int
+	openDML            []model.OpenDMLGroup
 }
 
 type inFlightTxn struct {
@@ -217,19 +219,25 @@ const (
 
 // OpenBeginError is an intentional exit-1 failure: the next GTID arrived
 // while a BEGIN group had no COMMIT and no plain ROLLBACK. The group stays open.
+// When that group wrote row images, Rows, Tables, Duration, and Location name the open DML span.
 type OpenBeginError struct {
 	SavepointRollback bool
+	Rows              int
+	Tables            string
+	Duration          time.Duration
+	Location          string
 }
 
 func (e *OpenBeginError) Error() string {
+	msg := openBeginWithoutCloseMessage
 	if e != nil && e.SavepointRollback {
-		return openBeginSavepointMessage
+		msg = openBeginSavepointMessage
 	}
-	return openBeginWithoutCloseMessage
-}
-
-func openBeginError(savepoint bool) error {
-	return &OpenBeginError{SavepointRollback: savepoint}
+	if e == nil || e.Rows <= 0 {
+		return msg
+	}
+	return fmt.Sprintf("%s; open DML group still uncommitted in this file/window (not lock-contention proof): dur=%s rows=%d tables=%s file=%s",
+		msg, e.Duration.Truncate(time.Millisecond), e.Rows, e.Tables, e.Location)
 }
 
 // IgnoredOnlyGroupError is an intentional exit-1 failure: the next GTID
@@ -256,6 +264,90 @@ func (b *TransactionBuilder) OpenExplicitGroups() int {
 		return 0
 	}
 	return b.openExplicitGroups
+}
+
+// OpenDMLGroups returns explicit BEGIN groups that wrote row images and were flushed without a close.
+func (b *TransactionBuilder) OpenDMLGroups() []model.OpenDMLGroup {
+	if b == nil || len(b.openDML) == 0 {
+		return nil
+	}
+	return append([]model.OpenDMLGroup(nil), b.openDML...)
+}
+
+func (b *TransactionBuilder) openBeginFailure(conflictAt time.Time) error {
+	e := &OpenBeginError{}
+	if b == nil || b.current == nil {
+		return e
+	}
+	e.SavepointRollback = b.current.sawSavepointRollback
+	if b.current.totalRows <= 0 {
+		return e
+	}
+	e.Rows = b.current.totalRows
+	e.Tables = joinedTxnTables(b.current.tables)
+	if e.Tables == "" {
+		e.Tables = "-"
+	}
+	start := b.current.startTime
+	end := b.current.endTime
+	if !conflictAt.IsZero() && (end.IsZero() || conflictAt.After(end)) {
+		end = conflictAt
+	}
+	if !start.IsZero() && !end.Before(start) {
+		e.Duration = end.Sub(start)
+	}
+	e.Location = openSpanLocation(b.current.binlogPathStart, b.current.binlogPathEnd, b.current.positionStart, b.current.positionEnd)
+	return e
+}
+
+func openDMLGroupFrom(t *inFlightTxn) model.OpenDMLGroup {
+	group := model.OpenDMLGroup{
+		TxnKey:          t.txnKey,
+		GTID:            t.gtid,
+		StartTime:       t.startTime,
+		EndTime:         t.endTime,
+		TotalRows:       t.totalRows,
+		Tables:          exportTxnTables(t.tables),
+		BinlogPathStart: t.binlogPathStart,
+		BinlogPathEnd:   t.binlogPathEnd,
+		PositionStart:   t.positionStart,
+		PositionEnd:     t.positionEnd,
+	}
+	if !t.startTime.IsZero() && !t.endTime.Before(t.startTime) {
+		group.Duration = t.endTime.Sub(t.startTime)
+	}
+	return group
+}
+
+func joinedTxnTables(tables map[tableIdentity]int) string {
+	if len(tables) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(tables))
+	for key := range tables {
+		names = append(names, key.String())
+	}
+	sort.Strings(names)
+	const maxNames = 8
+	if len(names) > maxNames {
+		return strings.Join(names[:maxNames], ",") + fmt.Sprintf(",+%d", len(names)-maxNames)
+	}
+	return strings.Join(names, ",")
+}
+
+func openSpanLocation(pathStart, pathEnd string, start, end int64) string {
+	switch {
+	case pathStart != "" && pathEnd != "" && pathStart == pathEnd && start != 0 && end != 0:
+		return fmt.Sprintf("%s:%d-%d", pathStart, start, end)
+	case pathStart != "" && start != 0 && end != 0:
+		return fmt.Sprintf("%s:%d-%d", pathStart, start, end)
+	case pathStart != "":
+		return pathStart
+	case start != 0 || end != 0:
+		return fmt.Sprintf("%d-%d", start, end)
+	default:
+		return "N/A"
+	}
 }
 
 func (b *TransactionBuilder) inFlightUnclassifiedError() error {
@@ -367,7 +459,7 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windo
 			b.finalizeTransaction()
 		} else if b.current.gtid == "" && b.current.isExplicit {
 			if b.current.xaXID == "" {
-				return openBeginError(b.current.sawSavepointRollback)
+				return b.openBeginFailure(ev.Timestamp)
 			}
 			return fmt.Errorf("GTID received while explicit transaction %s is in-flight", b.current.txnKey)
 		} else {
@@ -393,7 +485,7 @@ func (b *TransactionBuilder) nextGTIDGroupError(ev model.NormalizedEvent) error 
 		return nil
 	}
 	if b.current.isExplicit && b.current.xaXID == "" {
-		return openBeginError(b.current.sawSavepointRollback)
+		return b.openBeginFailure(ev.Timestamp)
 	}
 	if b.current.ignoredOnly() {
 		return &IgnoredOnlyGroupError{}
@@ -525,13 +617,17 @@ func (b *TransactionBuilder) finalizeTransaction() {
 	if b.current == nil {
 		return
 	}
-	if b.current.isExplicit && !b.current.hasEndBoundary && b.current.xaXID == "" {
+	openExplicit := b.current.isExplicit && !b.current.hasEndBoundary && b.current.xaXID == ""
+	if openExplicit {
 		b.openExplicitGroups++
 	}
 
 	if start, end, ok := b.current.windowFileSpan.shared(); ok {
 		b.current.positionStart = start
 		b.current.positionEnd = end
+	}
+	if openExplicit && b.current.totalRows > 0 {
+		b.openDML = append(b.openDML, openDMLGroupFrom(b.current))
 	}
 	if start, end, ok := b.current.fullFileSpan.shared(); ok {
 		b.current.fullPositionStart = start
