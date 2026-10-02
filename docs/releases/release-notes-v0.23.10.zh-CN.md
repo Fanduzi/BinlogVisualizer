@@ -9,7 +9,7 @@ v0.23.10 把已提交事务的时长记为窗口内最早到最晚的非零时�
 ## Bug 修复
 
 - **已提交事务时长按服务器时钟（#99、#92）**：组时长是窗口内最早到最晚的非零时间戳。MySQL 在提交时给开头的 GTID 和 XID 盖戳；`BEGIN` 和行图保留语句开始时刻。准入 fixture 是 `mysql-8.0.46-committed-duration.binlog`：`INSERT` 与 `COMMIT` 之间的 `SELECT SLEEP(2)`（睡眠本身不记入 binlog）落入 `1s-10s` 桶，随后一条自动提交的 INSERT 仍在 `<1s`。`--large-trx-duration 1s` 会带着这段时长告警。默认阈值 `30s` 不会。文件里没有锁等待。
-- **开放 BEGIN+DML 方言 fixture（#98、#91）**：`mysql-8.0.46-open-begin-dml.binlog` 是显式 `BEGIN`、两条 `INSERT` 行图、没有 `COMMIT` 或 `ROLLBACK`，随后一个更晚的业务 GTID。分析完整文件 exit 1，stdout 为空，唯一的 `Error:` 行写明 `open BEGIN without close`、时长、行数、表和文件跨度，并说明这段跨度不是锁争用证据。停在后一个 GTID 的前缀 exit 0，JSON 保留 `diagnostics.open_dml_groups`。该开放组不进入已提交时长排行。Error 行上的时长是开放组第一个事件到后一个 GTID 的墙上时钟（本文件为 `2s`）。EOF 前缀报告的组时长是 `0s`，因为该组自己的开始时刻和最后一行落在同一秒。
+- **开放 BEGIN+DML 方言 fixture（#98、#91）**：`mysql-8.0.46-open-begin-dml.binlog` 是显式 `BEGIN`、两条 `INSERT` 行图、没有 `COMMIT` 或 `ROLLBACK`，随后一个更晚的业务 GTID。分析完整文件 exit 1，stdout 为空，唯一的 `Error:` 行写明 `open BEGIN without close`、时长、行数、表和文件跨度，并说明这段跨度不是锁争用证据。停在后一个 GTID 的前缀 exit 0，JSON 保留 `diagnostics.open_dml_groups`。该开放组不进入已提交时长排行。Error 行上的时长是开放组第一个事件到后一个 GTID 的墙上时钟（本文件为 `4s`）。EOF 前缀报告的组时长是 `2s`，因为该组第一个事件和最后一行相差两秒。
 
 ## 验证
 
