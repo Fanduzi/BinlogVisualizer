@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.9
+
+Release date: 2026-10-02
+
+Highlights:
+
+- `CHECK TABLE` is ADMIN by the two-word prefix, from a MySQL 8.0.46 ROW+GTID fixture
+- `SET ROLE` is ADMIN by the two-word prefix, including `SET ROLE ALL` and `SET ROLE <name>`
+- A maintenance-only GTID group of those statements closes, so the following business transaction lets analyze exit 0
+- Exact `FLUSH TABLES` is unchanged; `FLUSH TABLES WITH READ LOCK` stays Unclassified QUERY
+
+Related notes:
+
+- [v0.23.9 release notes](docs/releases/release-notes-v0.23.9.md)
+- [v0.23.9 中文发行说明](docs/releases/release-notes-v0.23.9.zh-CN.md)
+
 ## v0.23.8
 
 Release date: 2026-10-02
