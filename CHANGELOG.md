@@ -2,6 +2,22 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.10
+
+Release date: 2026-10-02
+
+Highlights:
+
+- Committed duration is the earliest-to-latest non-zero in-window timestamp
+- MySQL 8 stamps the leading GTID and the XID at commit, so file-order duration after `SLEEP` was 0s; `BEGIN` and row events keep the statement start
+- Fixture `mysql-8.0.46-committed-duration.binlog` (`SLEEP(2)`) lands in the `1s-10s` bucket; `--large-trx-duration 1s` warns and the default `30s` does not
+- Fixture `mysql-8.0.46-open-begin-dml.binlog` locks the open BEGIN+DML path: the full file exits 1 with duration, rows, tables, and span on the `Error:` line; an EOF prefix exits 0 and keeps `diagnostics.open_dml_groups`
+
+Related notes:
+
+- [v0.23.10 release notes](docs/releases/release-notes-v0.23.10.md)
+- [v0.23.10 中文发行说明](docs/releases/release-notes-v0.23.10.zh-CN.md)
+
 ## v0.23.9
 
 Release date: 2026-10-02
