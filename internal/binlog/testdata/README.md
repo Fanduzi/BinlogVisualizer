@@ -134,7 +134,7 @@ After schema setup in an earlier binlog, this file contains:
 - No `XID`, `COMMIT`, or `ROLLBACK` for that group
 - A later business GTID: `BEGIN`, one `INSERT` (`bob`), and `XID`
 
-InnoDB writes a transaction at `COMMIT`, so mysqld does not emit this shape on its own. The regen script records a normal 8.0.46 file and drops the first group's `XID` event. Every remaining event, including its CRC32, is unmodified server bytes. The error-line duration is the wall clock from the open group's first event to the later GTID (`2s` in this file). It is not lock-contention evidence. MySQL stamps that GTID event at commit time, so the group's own start and last row share a second and an EOF prefix reports group duration `0s`.
+InnoDB writes a transaction at `COMMIT`, so mysqld does not emit this shape on its own. The regen script records a normal 8.0.46 file and drops the first group's `XID` event. Every remaining event, including its CRC32, is unmodified server bytes. The error-line duration is the wall clock from the open group's first event to the later GTID (`4s` in this file). It is not lock-contention evidence. MySQL stamps that GTID event at commit time, two seconds after the group's first event. The last row shares that commit second, so an EOF prefix reports group duration `2s`.
 
 An EOF-open reading is a prefix of this file that stops at the later GTID. Analyze of that prefix exits 0 and JSON keeps `diagnostics.open_dml_groups`. The full file exits 1.
 
