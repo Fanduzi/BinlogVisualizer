@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it; row-image groups name duration, tables, rows, and span), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, open DML groups for those BEGIN groups that wrote row images, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), and a shared file span when expanded payload inners all carry the wrapper range.
+// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it; row-image groups name duration, tables, rows, and span), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, open DML groups for those BEGIN groups that wrote row images, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), a shared file span when expanded payload inners all carry the wrapper range, and group duration as the earliest-to-latest non-zero in-window timestamp (MySQL stamps the leading GTID and the XID at commit; BEGIN keeps the statement start).
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -740,10 +740,16 @@ func (b *TransactionBuilder) observeEvent(ev model.NormalizedEvent, relation win
 		b.current.hadBeforeWindow = true
 		b.current.hadAfterWindow = true
 	case insideWindow:
-		if b.current.startTime.IsZero() {
-			b.current.startTime = ev.Timestamp
+		// MySQL writes the GTID event first and stamps it at commit, same as the XID.
+		// BEGIN and row events keep their statement start, so the wall span is earliest to latest.
+		if !ev.Timestamp.IsZero() {
+			if b.current.startTime.IsZero() || ev.Timestamp.Before(b.current.startTime) {
+				b.current.startTime = ev.Timestamp
+			}
+			if ev.Timestamp.After(b.current.endTime) {
+				b.current.endTime = ev.Timestamp
+			}
 		}
-		b.current.endTime = ev.Timestamp
 		b.updateBinlogCoverage(ev)
 	}
 	b.current.fullBinlogBytes += ev.BinlogBytes

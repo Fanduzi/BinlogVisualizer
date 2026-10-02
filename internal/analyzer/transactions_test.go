@@ -1,6 +1,6 @@
 // Package analyzer verifies transaction reconstruction behavior from normalized events.
 // input: synthetic normalized events including MySQL/MariaDB provenance, XA/DDL boundaries, row intent, and row counts.
-// output: assertions for canonical GTID integrity, consecutive DDL GTID isolation, provenance, XA boundaries, operation intent, row totals, and table maps.
+// output: assertions for canonical GTID integrity, consecutive DDL GTID isolation, provenance, XA boundaries, operation intent, row totals, table maps, and commit-stamped GTID duration.
 // pos: focused regression coverage for analyzer transaction assembly helpers.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -148,6 +148,27 @@ func TestTransactionBuilderCalculatesDuration(t *testing.T) {
 	}
 	if trx.EndTime != ts.Add(10*time.Second) {
 		t.Fatalf("expected end time %v, got %v", ts.Add(10*time.Second), trx.EndTime)
+	}
+}
+
+func TestTransactionBuilderDurationUsesCommitStampedGTIDSpan(t *testing.T) {
+	builder := NewTransactionBuilder()
+	start := time.Date(2026, 10, 2, 11, 29, 26, 0, time.UTC)
+	commit := start.Add(2 * time.Second)
+	events := []model.NormalizedEvent{
+		{Timestamp: commit, EventType: "GTID", GTID: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:1"},
+		{Timestamp: start, EventType: "BEGIN"},
+		{Timestamp: start, EventType: "ROWS", Schema: "testdb", Table: "users", Operation: "INSERT", RowCount: 1},
+		{Timestamp: commit, EventType: "XID"},
+	}
+	for _, ev := range events {
+		if err := builder.Consume(ev); err != nil {
+			t.Fatalf("consume %s: %v", ev.EventType, err)
+		}
+	}
+	trx := builder.Completed()[0]
+	if trx.Duration != 2*time.Second || !trx.StartTime.Equal(start) || !trx.EndTime.Equal(commit) {
+		t.Fatalf("duration=%s start=%s end=%s", trx.Duration, trx.StartTime, trx.EndTime)
 	}
 }
 

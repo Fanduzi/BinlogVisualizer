@@ -158,6 +158,41 @@ Requirements:
 - **Server version**: 8.0.46
 - **Server ID**: 1
 
+## mysql-8.0.46-committed-duration.binlog
+
+A MySQL 8.0.46 ROW+GTID fixture with one committed transaction whose wall duration is multiple seconds, plus one committed sub-second insert.
+
+### Contents
+
+After schema setup in an earlier binlog, this file contains:
+
+- Format Description from MySQL 8.0.46
+- One GTID-started group: explicit `BEGIN`, one `INSERT` on `testdb.users` (`alice`), `XID`. `SELECT SLEEP(2)` runs between the insert and `COMMIT` and is not logged
+- One following autocommit `INSERT` (`bob`) with `BEGIN` and `XID` in the same second
+
+MySQL writes the GTID event at commit and stamps that event and the `XID` with the commit second. `BEGIN` and the row image keep the statement-start second. In this file that span is `2s` (`1s-10s`). The following insert stays in `<1s`. Nothing in the file is a lock wait, and the regen script does not rewrite timestamps.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_committed_duration.sh
+```
+
+Requirements:
+
+- Docker
+- `mysql:8.0.46` image
+
+The script sleeps two seconds. The checked-in file's span is 2s. Regenerating still passes while that span stays above 1s and below 10s.
+
+### File Details
+
+- **Format**: MySQL 8.0.46 ROW binlog with GTID
+- **Flavor**: mysql
+- **Server version**: 8.0.46
+- **Server ID**: 1
+
 ## mysql80_transaction_payload.binlog
 
 A MySQL 8.0.36 ROW binlog with `binlog_transaction_compression=ON`. Used to prove transaction-payload expand through `ParseFiles`.
