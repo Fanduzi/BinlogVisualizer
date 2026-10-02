@@ -676,6 +676,11 @@ func TestNormalizeIndependentAdminQueriesAreAdminNotDDL(t *testing.T) {
 		"FLUSH TABLES",
 		"FLUSH TABLES;",
 		"SET DEFAULT ROLE admin TO 'app'@'%'",
+		"SET ROLE ALL",
+		"SET ROLE ALL;",
+		"SET ROLE app_read",
+		"CHECK TABLE app.orders",
+		"check table testdb.users",
 	}
 	for _, query := range queries {
 		ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: query, ServerFlavor: "mysql"})
@@ -690,7 +695,7 @@ func TestNormalizeIndependentAdminQueriesAreAdminNotDDL(t *testing.T) {
 		}
 	}
 
-	for _, query := range []string{"SET ROLE ALL", "CHECK TABLE app.orders", "FLUSH TABLES WITH READ LOCK", "FLUSH TABLES testdb.users"} {
+	for _, query := range []string{"FLUSH TABLES WITH READ LOCK", "FLUSH TABLES testdb.users"} {
 		ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: query, ServerFlavor: "mysql"})
 		if err != nil {
 			t.Fatalf("normalize %q: %v", query, err)

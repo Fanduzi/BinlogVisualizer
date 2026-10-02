@@ -1,6 +1,6 @@
 // Package analyzer verifies ADMIN, Ignored QUERY, and Unclassified QUERY at the normalize-plus-Analyzer seam.
 // input: synthetic parser-shaped RawEvents (canonical kinds, GTID only on GTID events) run through binlog.NormalizeRawEventInto then Analyzer.Consume.
-// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix, including anonymous empty-identity groups on the next GTID and at finalize; Ignored QUERY stays open and the next GTID names that Ignored-only group; explicit BEGIN names an open BEGIN and XA_START still conflicts.
+// output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES / CHECK TABLE / SET ROLE close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix, including anonymous empty-identity groups on the next GTID and at finalize; Ignored QUERY stays open and the next GTID names that Ignored-only group; explicit BEGIN names an open BEGIN and XA_START still conflicts.
 // pos: #74/#78 QUERY-class regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -27,6 +27,9 @@ func TestAnalyzerClosesMySQLIndependentAdminQueriesBeforeNextGTID(t *testing.T) 
 		"FLUSH TABLES",
 		"SET DEFAULT ROLE admin TO 'app'@'%'",
 		"analyze table app.orders",
+		"CHECK TABLE app.orders",
+		"SET ROLE ALL",
+		"SET ROLE app_read",
 	}
 	for _, query := range queries {
 		t.Run(query, func(t *testing.T) {
@@ -115,9 +118,8 @@ func TestAnalyzerClosesMariaDBFlushPrivilegesBeforeNextGTID(t *testing.T) {
 func TestAnalyzerUnclassifiedQueryFailsInsteadOfConflictingGTID(t *testing.T) {
 	ts := time.Date(2026, 9, 12, 13, 0, 0, 0, time.UTC)
 	unclassified := []string{
-		"SET ROLE ALL",
-		"CHECK TABLE app.orders",
 		"FLUSH TABLES WITH READ LOCK",
+		"FLUSH TABLES testdb.users",
 	}
 	for _, query := range unclassified {
 		t.Run(query, func(t *testing.T) {
@@ -140,7 +142,7 @@ func TestAnalyzerUnclassifiedQueryFailsInsteadOfConflictingGTID(t *testing.T) {
 
 func TestAnalyzerAnonymousUnclassifiedQueryFailsOnNextGTID(t *testing.T) {
 	ts := time.Date(2026, 9, 16, 14, 0, 0, 0, time.UTC)
-	_, err := normalizeAndAnalyze(t, mysqlAnonymousThenBusiness(ts, "CHECK TABLE app.orders"))
+	_, err := normalizeAndAnalyze(t, mysqlAnonymousThenBusiness(ts, "FLUSH TABLES WITH READ LOCK"))
 	if err == nil {
 		t.Fatal("anonymous unclassified-only group must fail on the next GTID, not silently finalize")
 	}
@@ -150,7 +152,7 @@ func TestAnalyzerAnonymousUnclassifiedQueryFailsOnNextGTID(t *testing.T) {
 	if !strings.Contains(err.Error(), "Unclassified QUERY") {
 		t.Fatalf("anonymous unclassified QUERY error must name Unclassified QUERY, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+	if !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 		t.Fatalf("anonymous unclassified QUERY error must contain the statement prefix, got %v", err)
 	}
 }
@@ -159,7 +161,7 @@ func TestAnalyzerFinalizeAnonymousUnclassifiedOnlyGroupFails(t *testing.T) {
 	ts := time.Date(2026, 9, 16, 14, 10, 0, 0, time.UTC)
 	raws := []binlog.RawEvent{
 		mysqlAnonymousGTID(ts, 100, 180),
-		mysqlQuery(ts.Add(time.Second), "CHECK TABLE app.orders", 180, 260),
+		mysqlQuery(ts.Add(time.Second), "FLUSH TABLES WITH READ LOCK", 180, 260),
 	}
 	_, err := normalizeAndAnalyze(t, raws)
 	if err == nil {
@@ -168,7 +170,7 @@ func TestAnalyzerFinalizeAnonymousUnclassifiedOnlyGroupFails(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") {
 		t.Fatalf("anonymous finalize must be Unclassified QUERY, not conflicting GTID, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 		t.Fatalf("anonymous finalize error must include Unclassified QUERY and the statement prefix, got %v", err)
 	}
 }
@@ -229,8 +231,8 @@ func TestAnalyzerAdminOrUnclassifiedAfterExplicitBeginStillConflicts(t *testing.
 		query string
 	}{
 		{name: "BEGIN_ADMIN", start: "BEGIN", query: "ANALYZE TABLE app.orders"},
-		{name: "BEGIN_UNCLASSIFIED", start: "BEGIN", query: "CHECK TABLE app.orders"},
-		{name: "XA_START_UNCLASSIFIED", start: "XA START 'batch-74'", query: "SET ROLE ALL"},
+		{name: "BEGIN_UNCLASSIFIED", start: "BEGIN", query: "FLUSH TABLES WITH READ LOCK"},
+		{name: "XA_START_UNCLASSIFIED", start: "XA START 'batch-74'", query: "FLUSH TABLES testdb.users"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -261,7 +263,7 @@ func TestAnalyzerFinalizeUnclassifiedOnlyGroupFails(t *testing.T) {
 	ts := time.Date(2026, 9, 12, 13, 30, 0, 0, time.UTC)
 	raws := []binlog.RawEvent{
 		mysqlGTID(ts, 39, 100, 180),
-		mysqlQuery(ts.Add(time.Second), "CHECK TABLE app.orders", 180, 260),
+		mysqlQuery(ts.Add(time.Second), "FLUSH TABLES WITH READ LOCK", 180, 260),
 	}
 	_, err := normalizeAndAnalyze(t, raws)
 	if err == nil {
@@ -270,7 +272,7 @@ func TestAnalyzerFinalizeUnclassifiedOnlyGroupFails(t *testing.T) {
 	if strings.Contains(err.Error(), "conflicting GTID") {
 		t.Fatalf("finalize must be Unclassified QUERY, not conflicting GTID, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "CHECK TABLE app.orders") {
+	if !strings.Contains(err.Error(), "Unclassified QUERY") || !strings.Contains(err.Error(), "FLUSH TABLES WITH READ LOCK") {
 		t.Fatalf("finalize error must include Unclassified QUERY and the statement prefix, got %v", err)
 	}
 }
