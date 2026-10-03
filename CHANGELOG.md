@@ -2,6 +2,21 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.12
+
+Release date: 2026-10-03
+
+Highlights:
+
+- Default text, Markdown, and HTML analyze reports name, per transaction, `server_id`, `thread_id`, GTID, and `xid` or XA xid when the events have them
+- `user@host` appears only when the binlog stored an invoker; a missing field stays absent (no `0`, no empty string)
+- JSON already had these fields; `--sql-context full` is unchanged
+
+Related notes:
+
+- [v0.23.12 release notes](docs/releases/release-notes-v0.23.12.md)
+- [v0.23.12 中文发行说明](docs/releases/release-notes-v0.23.12.zh-CN.md)
+
 ## v0.23.11
 
 Release date: 2026-10-03
