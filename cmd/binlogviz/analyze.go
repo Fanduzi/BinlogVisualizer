@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/table filter that matches nothing exits 2 with its own Error line, other valid no-data (including ADMIN-only) exits 2, --snapshot-name without json fails before rendering, and DuckDB temp state is cleaned.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/table filter that matches nothing exits 2 with its own Error line, other valid no-data (including ADMIN-only) exits 2, --snapshot-name without json fails before rendering, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -92,6 +92,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           i18n.T("cmd.analyze.use"),
 		Short:         i18n.T("cmd.analyze.short"),
+		Long:          i18n.T("cmd.analyze.long"),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {

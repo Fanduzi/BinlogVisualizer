@@ -1,6 +1,6 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, trusted replay evidence, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
+// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, trusted replay evidence, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -157,6 +157,9 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, m
 	for _, t := range transactions {
 		if cmd := FormatReplayCommand(t, serverVersion); cmd != "" {
 			mdReplayCommand(buf, t.TxnKey, cmd)
+		}
+		if id := formatTxnIdentity(t); id != "" {
+			buf.WriteString(fmt.Sprintf("`%s`: %s\n\n", escapeMD(t.TxnKey), escapeMD(id)))
 		}
 		if mode != SQLContextOff && t.QuerySummary != "" {
 			buf.WriteString(fmt.Sprintf("> `%s`\n\n", escapeMD(t.QuerySummary)))

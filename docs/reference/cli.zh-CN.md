@@ -54,6 +54,8 @@ binlogviz workflow describe <plan.yaml> --format json
 - **位置参数文件模式**：通过位置参数传入一个或多个本地 binlog 文件路径。
 - **discovery 模式**：同时提供 `--from-dir` 和 `--prefix`，由 BinlogViz 从目录中解析匹配文件。
 
+默认文本和 JSON 报告会在每条事务上写出事件里实际有的 `server_id`、`thread_id`、GTID，以及 `xid` 或 XA xid。只有 binlog 存了调用者时才出现 `user@host`。事件里没有的字段保持缺席，报告不会补 `0` 或空字符串。Markdown 和 HTML 使用同一规则。
+
 ## 输入规则
 
 ### 位置参数文件模式

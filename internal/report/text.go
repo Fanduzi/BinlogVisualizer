@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, ranked complete transactions, labelled trusted replay, and opt-in minute/pattern detail.
+// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, labelled trusted replay, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -241,6 +241,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		if txn.BinlogBytes > 0 {
 			line += " bytes=" + formatByteSize(txn.BinlogBytes)
 		}
+		line = appendTxnIdentity(line, txn)
 		lines = append(lines, line)
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
@@ -250,15 +251,17 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		lines = append(lines, "  "+line)
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, longestLimit) {
-		lines = append(lines, fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
-			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn)))
+		line := fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
+			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn))
+		lines = append(lines, appendTxnIdentity(line, txn))
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, otherLimit) {
-		lines = append(lines, fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
-			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn)))
+		line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
+			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn))
+		lines = append(lines, appendTxnIdentity(line, txn))
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
@@ -527,6 +530,50 @@ func formatByteSize(n int64) string {
 		return fmt.Sprintf("%.1fKB", float64(n)/float64(kb))
 	default:
 		return fmt.Sprintf("%.1fMB", float64(n)/float64(kb*kb))
+	}
+}
+
+func appendTxnIdentity(line string, txn model.Transaction) string {
+	id := formatTxnIdentity(txn)
+	if id == "" {
+		return line
+	}
+	return line + " " + id
+}
+
+// formatTxnIdentity lists producer and session fields the transaction actually carries.
+// Zero and empty values stay omitted so a missing binlog field is not printed as data.
+func formatTxnIdentity(txn model.Transaction) string {
+	parts := make([]string, 0, 6)
+	if txn.ServerID != 0 {
+		parts = append(parts, fmt.Sprintf("server_id=%d", txn.ServerID))
+	}
+	if txn.ThreadID != 0 {
+		parts = append(parts, fmt.Sprintf("thread_id=%d", txn.ThreadID))
+	}
+	if txn.GTID != "" {
+		parts = append(parts, "gtid="+txn.GTID)
+	}
+	if txn.XID != "" {
+		parts = append(parts, "xid="+txn.XID)
+	}
+	if txn.XAXID != "" {
+		parts = append(parts, "xa_xid="+txn.XAXID)
+	}
+	if userHost := formatUserHost(txn.ActorUser, txn.ActorHost); userHost != "" {
+		parts = append(parts, "user@host="+userHost)
+	}
+	return strings.Join(parts, " ")
+}
+
+func formatUserHost(user, host string) string {
+	switch {
+	case user != "" && host != "":
+		return user + "@" + host
+	case user != "":
+		return user
+	default:
+		return host
 	}
 }
 
