@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
-// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. rawEventFromHeader is the shared header projection used by the file loop and payload expand.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -66,9 +66,15 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 		if cursor == 0 {
 			cursor = binlogMagicSize
 		}
+		// Bytes actually handed to the callback. LogPos can run ahead of the
+		// file after a fixture is edited, so the tail check uses this sum.
+		consumed := cursor
 		if err := bp.ParseFile(path, startOffset, func(ev *replication.BinlogEvent) error {
 			if ev == nil {
 				return nil
+			}
+			if ev.Header != nil {
+				consumed += int64(ev.Header.EventSize)
 			}
 
 			raw := rawEventFromHeader(ev.Header, path, serverVersion)
@@ -103,11 +109,26 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 		}); err != nil {
 			return err
 		}
+		if startOffset == 0 {
+			if err := unreadBinlogTail(path, consumed); err != nil {
+				return err
+			}
+		}
 		if onProgress != nil && fileSize > 0 {
 			onProgress(ParseProgress{Path: path, Index: index, Offset: fileSize})
 		}
 	}
 	return nil
+}
+
+// unreadBinlogTail reports a short read the upstream parser treats as a clean EOF.
+// go-mysql returns success when the next event header is only partly present.
+func unreadBinlogTail(path string, consumed int64) error {
+	info, err := os.Stat(path)
+	if err != nil || consumed < 0 || info.Size() <= consumed {
+		return nil
+	}
+	return fmt.Errorf("%s: %d unread bytes after position %d", path, info.Size()-consumed, consumed)
 }
 
 func rawEventFromHeader(header *replication.EventHeader, path, serverVersion string) RawEvent {

@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, valid no-data (including ADMIN-only) exits 2, and DuckDB temp state is cleaned.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/table filter that matches nothing exits 2 with its own Error line, other valid no-data (including ADMIN-only) exits 2, --snapshot-name without json fails before rendering, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -591,6 +591,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 	snapshotDir string,
 	dest outputDestination,
 ) error {
+	if err := snapshotNameFormatError(format, snapshotName); err != nil {
+		return err
+	}
 	positionValidator, err := newPositionBoundaryValidator(paths, opts)
 	if err != nil {
 		return err
@@ -991,11 +994,18 @@ func validateAnalyzeOptions(opts *analyzeOptions) error {
 	default:
 		return fmt.Errorf("invalid --detail-store %q: expected none or duckdb", opts.detailStore)
 	}
-	if opts.snapshotName != "" && opts.format != "json" {
-		return fmt.Errorf("--snapshot-name requires --format json")
+	if err := snapshotNameFormatError(opts.format, opts.snapshotName); err != nil {
+		return err
 	}
 	if opts.snapshotName != "" {
 		return snapshot.ValidateName(opts.snapshotName)
+	}
+	return nil
+}
+
+func snapshotNameFormatError(format, snapshotName string) error {
+	if snapshotName != "" && format != "json" {
+		return fmt.Errorf("--snapshot-name requires --format json")
 	}
 	return nil
 }
@@ -1125,7 +1135,7 @@ func mapBinlogParseError(msg string) string {
 		return ""
 	case strings.Contains(lower, "fe'bin"):
 		return i18n.T("error.corruptBinlogMagic")
-	case strings.Contains(lower, "get event"):
+	case strings.Contains(lower, "get event"), strings.Contains(lower, "unread bytes"):
 		return i18n.Tf("error.truncatedBinlog", map[string]any{"Detail": msg})
 	case msg == "EOF" || strings.HasSuffix(msg, ": EOF") || lower == "eof":
 		return i18n.T("error.emptyBinlog")
@@ -1139,7 +1149,7 @@ func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *mo
 		return err
 	}
 	if result != nil && opts.HasObjectFilters() && result.Summary.TotalRows == 0 {
-		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
+		return &ExitError{Code: 2, Msg: i18n.T("error.filterMatchedNothing")}
 	}
 	if isAdminOnlyNoData(result, observer) {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}

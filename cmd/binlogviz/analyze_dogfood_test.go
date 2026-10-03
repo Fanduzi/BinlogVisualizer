@@ -7,7 +7,6 @@ package binlogviz
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,7 +22,7 @@ func executeAnalyzeLikeMain(t *testing.T, args ...string) (string, string, error
 	return captureStdoutStderrRun(t, func() error {
 		err := cmd.Execute()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Error:", err)
+			PrintCommandError(os.Stderr, err)
 		}
 		return err
 	})

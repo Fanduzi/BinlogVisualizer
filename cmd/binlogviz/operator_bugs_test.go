@@ -403,5 +403,5 @@ func TestAnalyzeObjectFilterNoRowsExitsTwoWithoutReport(t *testing.T) {
 		}
 		return runErr
 	})
-	assertAnalyzeNoDataExit(t, stdout, stderr, err, "no analyzable events")
+	assertAnalyzeNoDataExit(t, stdout, stderr, err, "filter matched no events")
 }
