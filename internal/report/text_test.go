@@ -1,6 +1,6 @@
 // Package report verifies incident-brief text rendering and opt-in detail sections.
 // input: synthetic AnalysisResult fixtures with summary, table, minute, pattern, and diagnostic evidence.
-// output: regression coverage for default diagnostic sections, byte coverage, table limits, detail flags, and finding/alert-backed suspicious positions.
+// output: regression coverage for default diagnostic sections, byte coverage, table limits, detail flags, finding/alert-backed suspicious positions, and identity fields printed only when present.
 // pos: text renderer regression suite guarding user-facing CLI report formatting.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -870,5 +870,77 @@ func TestRenderTextShowsDDLTimelineAndOpenDML(t *testing.T) {
 	}
 	if strings.Contains(out, "txn-long-d") {
 		t.Fatalf("fourth longest transaction should stay off the default text\n%s", out)
+	}
+}
+
+func TestHumanReportsPrintPresentIdentityOnly(t *testing.T) {
+	present := model.Transaction{
+		TxnKey:       "txn-1",
+		ServerID:     7,
+		ThreadID:     1875,
+		GTID:         "0-7-1848",
+		XID:          "3928",
+		XAXID:        "batch-57",
+		ActorUser:    "alice",
+		ActorHost:    "db.local",
+		TotalRows:    2,
+		Completeness: model.TransactionComplete,
+		Tables:       map[string]int{"shop.orders": 2},
+	}
+	result := model.AnalysisResult{
+		Transactions: []model.Transaction{present},
+		Diagnostics: model.Diagnostics{
+			LargestTransactions: []model.Transaction{present},
+			LongestTransactions: []model.Transaction{present},
+			WidestTransactions:  []model.Transaction{present},
+		},
+	}
+	want := "server_id=7 thread_id=1875 gtid=0-7-1848 xid=3928 xa_xid=batch-57 user@host=alice@db.local"
+	for _, render := range []struct {
+		name string
+		fn   func(model.AnalysisResult) (string, error)
+	}{
+		{name: "text", fn: RenderText},
+		{name: "markdown", fn: RenderMarkdown},
+		{name: "html", fn: RenderHTML},
+	} {
+		out, err := render.fn(result)
+		if err != nil {
+			t.Fatalf("%s: %v", render.name, err)
+		}
+		if !strings.Contains(out, want) {
+			t.Fatalf("%s missing identity %q", render.name, want)
+		}
+	}
+
+	absent := model.Transaction{TxnKey: "txn-empty", TotalRows: 1, Completeness: model.TransactionComplete}
+	empty := model.AnalysisResult{
+		Transactions: []model.Transaction{absent},
+		Diagnostics: model.Diagnostics{
+			LargestTransactions: []model.Transaction{absent},
+			LongestTransactions: []model.Transaction{absent},
+			WidestTransactions:  []model.Transaction{absent},
+		},
+	}
+	for _, render := range []struct {
+		name string
+		fn   func(model.AnalysisResult) (string, error)
+	}{
+		{name: "text", fn: RenderText},
+		{name: "markdown", fn: RenderMarkdown},
+		{name: "html", fn: RenderHTML},
+	} {
+		out, err := render.fn(empty)
+		if err != nil {
+			t.Fatalf("%s empty: %v", render.name, err)
+		}
+		if !strings.Contains(out, "txn-empty") {
+			t.Fatalf("%s did not render the empty-identity transaction", render.name)
+		}
+		for _, token := range []string{"server_id=", "thread_id=", "gtid=", "xid=", "user@host"} {
+			if strings.Contains(out, token) {
+				t.Fatalf("%s invented %q", render.name, token)
+			}
+		}
 	}
 }

@@ -65,3 +65,4 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - JSON always reports `transactions_listed` and `transactions_omitted` alongside the bounded `transactions` array.
 - Rendered transaction evidence and pattern representatives expose transaction keys to the HTML search control.
 - Report v3 emits optional top-level `selection` evidence: requested/effective positions, canonical include/exclude GTIDs, resolved flavor, and matched identities. Existing provenance, SQL, completeness, and replay fields are unchanged.
+- Text, Markdown, and HTML print `server_id`, `thread_id`, GTID, `xid` or `xa_xid`, and `user@host` on a transaction only when that value is present. Zero and empty values stay omitted. JSON already omits the same fields.

@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with UTC-labelled timestamps, completeness, deduplicated transaction evidence, bounded transaction lookup, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with UTC-labelled timestamps, completeness, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -190,12 +190,14 @@ type htmlTxnDiagnostic struct {
 	Location             string
 	QuerySummary         string
 	MysqlbinlogCmd       string
+	Identity             string
 }
 
 type htmlTransactionLookup struct {
 	TxnKey   string
 	Rows     int
 	Duration string
+	Identity string
 }
 
 type htmlTxnTable struct {
@@ -264,6 +266,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			TxnKey:   txn.TxnKey,
 			Rows:     txn.TotalRows,
 			Duration: txn.Duration.String(),
+			Identity: formatTxnIdentity(txn),
 		})
 	}
 	d.HasTransactions = len(d.Transactions) > 0
@@ -605,6 +608,7 @@ func buildHTMLTxnDiagnostic(txn model.Transaction, serverVersion string) htmlTxn
 		Location:             formatBinlogSpan(txn),
 		QuerySummary:         txn.QuerySummary,
 		MysqlbinlogCmd:       mysqlbinlogCmd(txn, serverVersion),
+		Identity:             formatTxnIdentity(txn),
 	}
 }
 
