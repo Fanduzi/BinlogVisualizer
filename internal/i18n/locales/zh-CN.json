@@ -203,6 +203,10 @@
     "description": "已解析到 Format Description 但没有计入任何事件",
     "other": "binlog 没有可分析的事件"
   },
+  "error.filterMatchedNothing": {
+    "description": "可读 binlog 上 schema 或 table 过滤后没有行事件",
+    "other": "schema/table 过滤没有匹配到事件"
+  },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
     "other": "前缀后的后缀必须是数字；请尝试 --prefix {{.Prefix}}"
