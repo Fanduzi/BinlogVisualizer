@@ -2,6 +2,23 @@
 
 This file records user-visible changes for tagged releases.
 
+## v0.23.11
+
+Release date: 2026-10-03
+
+Highlights:
+
+- A schema or table filter that matches nothing stays exit 2, with empty stdout and `Error: schema/table filter matched no events`
+- A file that ends in a partial event is exit 1, `Error: binlog is truncated or corrupt` (that case previously shared exit 2 with an empty filter)
+- A bad magic header stays exit 1 (`not a MySQL binlog`); a complete Format Description-only file stays exit 2 (`binlog has no analyzable events`)
+- `--snapshot-name` with any format other than json fails before a report and writes no snapshot file; `--format json --snapshot-name` still saves the JSON snapshot and exits 0
+- A failing command clears the stderr progress line before `Error:`; analyze results are unchanged
+
+Related notes:
+
+- [v0.23.11 release notes](docs/releases/release-notes-v0.23.11.md)
+- [v0.23.11 中文发行说明](docs/releases/release-notes-v0.23.11.zh-CN.md)
+
 ## v0.23.10
 
 Release date: 2026-10-02
