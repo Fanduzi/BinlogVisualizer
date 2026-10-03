@@ -33,8 +33,8 @@ func TestAnalyzeHelpDocumentsUTCTimestampSemantics(t *testing.T) {
 		lang  string
 		wants []string
 	}{
-		{lang: "en", wants: []string{"binlog timestamps are utc", "explicit offsets define the instant", "yyyy-mm-dd hh:mm:ss", "local timezone"}},
-		{lang: "zh-CN", wants: []string{"binlog 时间戳为 utc", "显式偏移量定义该时刻", "yyyy-mm-dd hh:mm:ss", "本地时区"}},
+		{lang: "en", wants: []string{"binlog timestamps are utc", "explicit offsets define the instant", "yyyy-mm-dd hh:mm:ss", "local timezone", "server_id", "thread_id", "gtid", "xa xid", "user@host"}},
+		{lang: "zh-CN", wants: []string{"binlog 时间戳为 utc", "显式偏移量定义该时刻", "yyyy-mm-dd hh:mm:ss", "本地时区", "server_id", "thread_id", "gtid", "xa xid", "user@host"}},
 	} {
 		t.Run(tc.lang, func(t *testing.T) {
 			i18n.ResetForTesting()

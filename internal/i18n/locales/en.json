@@ -19,6 +19,10 @@
     "description": "Analyze command short description",
     "other": "Analyze binlog files"
   },
+  "cmd.analyze.long": {
+    "description": "Analyze command long description",
+    "other": "Analyze binlog files. Default text and JSON name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host is shown only when the binlog has it. A field the binlog does not have stays absent."
+  },
   "cmd.analyze.flag.start": {
     "description": "Start time flag description",
     "other": "Start time (inclusive; RFC3339 or YYYY-MM-DD HH:MM:SS; space format uses this machine's local timezone; explicit offsets define the instant; prefer RFC3339 with offset across machines; binlog timestamps are UTC)"

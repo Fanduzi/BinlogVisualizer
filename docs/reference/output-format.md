@@ -142,6 +142,7 @@ Useful fields shown in text output include:
 - total rows
 - duration
 - event count
+- `server_id`, `thread_id`, GTID, `xid` or XA xid, and `user@host` when that transaction has them; omitted otherwise
 - SQL context lines when enabled by `--sql-context`
 
 Example heading:

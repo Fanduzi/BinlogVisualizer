@@ -19,6 +19,10 @@
     "description": "analyze 命令简短描述",
     "other": "分析 binlog 文件"
   },
+  "cmd.analyze.long": {
+    "description": "analyze 命令详细描述",
+    "other": "分析 binlog 文件。默认文本和 JSON 按事务给出事件里实际有的 server_id、thread_id、GTID，以及 xid 或 XA xid。只有 binlog 里有 user@host 时才显示。binlog 没有的字段保持缺席。"
+  },
   "cmd.analyze.flag.start": {
     "description": "开始时间标志描述",
     "other": "开始时间（包含；RFC3339 或 YYYY-MM-DD HH:MM:SS；空格格式按本机本地时区解释；显式偏移量定义该时刻；跨机器请优先使用带偏移的 RFC3339；binlog 时间戳为 UTC）"
