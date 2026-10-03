@@ -203,6 +203,10 @@
     "description": "Complete binlog with Format Description but no counted events",
     "other": "binlog has no analyzable events"
   },
+  "error.filterMatchedNothing": {
+    "description": "Schema or table filter left zero row events in a readable binlog",
+    "other": "schema/table filter matched no events"
+  },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
     "other": "suffix after prefix must be digits; try --prefix {{.Prefix}}"

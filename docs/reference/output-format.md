@@ -741,8 +741,12 @@ The page also includes compare summary cards and detailed tables/lists so an ope
 - `Finalizing analysis...`
 - `HTML report saved to …` when `--format html` writes a file
 - `Error: window matched 0 events` when `--start`/`--end` matches no events (exit 2, empty stdout)
+- `Error: schema/table filter matched no events` when an active schema or table filter leaves zero row activity (exit 2, empty stdout)
 - `Error: binlog has no analyzable events` for a complete Format Description-only (or rotate-only) file (exit 2, empty stdout)
+- `Error: binlog is truncated or corrupt: …` when the file ends in a partial event, including leftover bytes after the last complete event (exit 1, empty stdout)
 - command errors (exit 1 unless noted)
+
+A progress bar stays on the current stderr line until the parse finishes. A later `Error:` erases that line first, so the error is not appended to the bar.
 
 ### Compare errors on `stderr`
 

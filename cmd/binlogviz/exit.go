@@ -1,11 +1,15 @@
 // Package binlogviz maps command errors onto operator-visible process exit codes.
 // input: errors returned by cobra command execution.
-// output: ExitError values and ExitCode lookup for the process main.
+// output: ExitError values, ExitCode lookup, and PrintCommandError for the process main.
 // pos: CLI process-exit seam between command RunE errors and os.Exit.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"io"
+)
 
 // ExitError is a command error that should terminate the process with Code.
 type ExitError struct {
@@ -18,6 +22,16 @@ func (e *ExitError) Error() string {
 		return ""
 	}
 	return e.Msg
+}
+
+// PrintCommandError writes one Error line. A parse progress bar may still
+// own the current stderr line; erase that line first so Error never shares it.
+func PrintCommandError(w io.Writer, err error) {
+	if w == nil || err == nil {
+		return
+	}
+	_, _ = io.WriteString(w, "\r\033[2K")
+	fmt.Fprintln(w, "Error:", err)
 }
 
 // ExitCode returns the process exit code for err. Unknown errors are 1.

@@ -648,8 +648,12 @@ BinlogViz 会把最终报告输出保留在 `stdout`。
 - `Finalizing analysis...`
 - `--format html` 写入文件时的 `HTML report saved to …`
 - `--start`/`--end` 匹配到 0 个事件时的 `Error: window matched 0 events`（exit 2，stdout 为空）
+- 生效的 schema/table 过滤没有行活动时的 `Error: schema/table filter matched no events`（exit 2，stdout 为空）
 - 仅 Format Description（或再加 rotate）的完整 binlog：`Error: binlog has no analyzable events`（exit 2，stdout 为空）
+- 文件在事件中间截断，或最后一个完整事件之后还有剩余字节：`Error: binlog is truncated or corrupt: …`（exit 1，stdout 为空）
 - 命令错误（未另行说明时为 exit 1）
+
+进度条会停在当前 stderr 行上，直到解析结束。随后的 `Error:` 会先清掉这一行，不会接在进度条后面。
 
 ### 为什么这很重要
 
