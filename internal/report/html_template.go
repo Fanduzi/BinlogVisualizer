@@ -1196,7 +1196,7 @@ const htmlReportTemplateTail = `
           <div class="diagnostic-item" data-transaction-key="{{.TxnKey}}">
             <div class="diagnostic-head">
               <div class="diagnostic-title"><span>{{.TxnKey}}</span></div>
-              <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.duration"}}={{.Duration}}</div>
+              <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.duration"}}={{.Duration}}{{if .Identity}} · {{.Identity}}{{end}}</div>
             </div>
           </div>
           {{end}}
@@ -1220,7 +1220,7 @@ const htmlReportTemplateTail = `
                 <span>{{.TxnKey}}</span>
                 {{range .Reasons}}<span class="drilldown-flag drilldown-flag-dominance">{{.}}</span>{{end}}
               </div>
-              <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}</div>
+              <div class="diagnostic-meta">{{t "report.html.common.rows"}}={{fmtIntHTML .Rows}} · {{t "report.html.common.events"}}={{fmtIntHTML .Events}} · {{t "report.html.common.duration"}}={{.Duration}} · {{len .Tables}} {{t "report.html.analyze.touchedTables"}}{{if .Identity}} · {{.Identity}}{{end}}</div>
             </div>
             <div class="diagnostic-body">
               {{if .Location}}<div>📍 {{t "report.html.analyze.binlogSpan"}}: <code style="font-family:'JetBrains Mono',monospace;color:var(--accent)">{{.Location}}</code></div>{{end}}

@@ -54,6 +54,8 @@ These flags are available on the root command and apply before subcommand execut
 - **Positional file mode**: pass one or more local binlog file paths as positional arguments.
 - **Discovery mode**: pass `--from-dir` and `--prefix` together so BinlogViz resolves matching files from a directory.
 
+Default text and JSON reports name, on each transaction, `server_id`, `thread_id`, GTID, and `xid` or XA xid when the binlog events contain them. `user@host` appears only when the binlog stored an invoker. A field the events do not have is left out; the report does not fill in `0` or an empty string. Markdown and HTML follow the same rule.
+
 ## Input Rules
 
 ### Positional file mode

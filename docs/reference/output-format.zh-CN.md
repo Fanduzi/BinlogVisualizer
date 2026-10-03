@@ -142,6 +142,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 - 总行数
 - 持续时间
 - 事件数
+- 该事务实际有的 `server_id`、`thread_id`、GTID、`xid` 或 XA xid，以及 `user@host`；没有则省略
 - 当 `--sql-context` 启用时的 SQL 上下文行
 
 示例标题：
