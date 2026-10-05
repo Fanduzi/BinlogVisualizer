@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege statements.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege statements. Index DDL uses the table after ON, including UNIQUE, FULLTEXT, and SPATIAL.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -50,7 +50,13 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 		return DDLStatement{}, false
 	}
 
-	identifier := findDDLIdentifier(tokens[startIndex:])
+	var identifier string
+	if object == "index" {
+		// The name before ON is the index. The table is the next identifier.
+		identifier, _ = identifierAfterKeyword(tokens, "ON")
+	} else {
+		identifier = findDDLIdentifier(tokens[startIndex:])
+	}
 	schema, table := splitQualifiedIdentifier(identifier)
 	if object == "database" && schema == "" && table != "" {
 		schema, table = table, ""
@@ -174,6 +180,10 @@ func classifyDDL(tokens []string) (operation string, object string, identifierIn
 		second = strings.ToUpper(tokens[1])
 	}
 
+	if op, ok := createIndexOperation(tokens); ok {
+		return op, "index", 0, true
+	}
+
 	switch {
 	case first == "ALTER" && second == "TABLE":
 		return "ALTER TABLE", "table", 2, true
@@ -183,8 +193,6 @@ func classifyDDL(tokens []string) (operation string, object string, identifierIn
 		return "CREATE TABLE", "table", skipOptionalIfClause(tokens, 2), true
 	case first == "CREATE" && (second == "DATABASE" || second == "SCHEMA"):
 		return "CREATE DATABASE", "database", skipOptionalIfClause(tokens, 2), true
-	case first == "CREATE" && second == "INDEX":
-		return "CREATE INDEX", "index", 2, true
 	case first == "CREATE" && second == "USER":
 		return "CREATE USER", "user", skipOptionalIfClause(tokens, 2), true
 	case first == "DROP" && second == "TABLE":
@@ -192,7 +200,7 @@ func classifyDDL(tokens []string) (operation string, object string, identifierIn
 	case first == "DROP" && (second == "DATABASE" || second == "SCHEMA"):
 		return "DROP DATABASE", "database", skipOptionalIfClause(tokens, 2), true
 	case first == "DROP" && second == "INDEX":
-		return "DROP INDEX", "index", 2, true
+		return "DROP INDEX", "index", 0, true
 	case first == "DROP" && second == "USER":
 		return "DROP USER", "user", skipOptionalIfClause(tokens, 2), true
 	case first == "ALTER" && second == "USER":
@@ -210,6 +218,36 @@ func classifyDDL(tokens []string) (operation string, object string, identifierIn
 	default:
 		return "", "", 0, false
 	}
+}
+
+func createIndexOperation(tokens []string) (string, bool) {
+	if len(tokens) < 2 || !strings.EqualFold(tokens[0], "CREATE") {
+		return "", false
+	}
+	if strings.EqualFold(tokens[1], "INDEX") {
+		return "CREATE INDEX", true
+	}
+	if len(tokens) >= 3 && strings.EqualFold(tokens[2], "INDEX") {
+		switch strings.ToUpper(tokens[1]) {
+		case "UNIQUE", "FULLTEXT", "SPATIAL":
+			return "CREATE " + strings.ToUpper(tokens[1]) + " INDEX", true
+		}
+	}
+	return "", false
+}
+
+func identifierAfterKeyword(tokens []string, keyword string) (string, bool) {
+	for i := 0; i < len(tokens)-1; i++ {
+		if !strings.EqualFold(tokens[i], keyword) {
+			continue
+		}
+		clean := strings.TrimRight(tokens[i+1], ",(")
+		if clean == "" {
+			return "", false
+		}
+		return clean, true
+	}
+	return "", false
 }
 
 func skipOptionalIfClause(tokens []string, start int) int {
