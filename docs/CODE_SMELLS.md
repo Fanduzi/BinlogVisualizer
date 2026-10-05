@@ -1,4 +1,30 @@
+# Historical snapshot — v0.23.3 audit, not the current tool
+
+This file is the code-smells audit of **v0.23.3 / `main` @ `61c4bb4`**. The original note follows this section and is kept as the record of that revision. It is a historical snapshot. Use the concept, recipe, and reference docs linked from the README for current behavior.
+
+The suggested refactors in the snapshot (a boundary-kind table, an HTML-report split, one transaction DTO) stay in that record. They are not product work.
+
+The corrections below were read from the source tree at `d85f32d3bc80d2194ec4350eac8e3f1cff3d42e5`. Sentences in the snapshot that this section does not mention were not re-certified.
+
+## What the current tree does
+
+**DuckDB is behind build tags.** `internal/analyzer/store_duckdb.go` starts with `//go:build cgo` and is the file that imports `github.com/marcboeker/go-duckdb`. `internal/analyzer/store_nocgo.go` starts with `//go:build !cgo`, and its `NewDuckDBStore` returns `ErrDuckDBRequiresCGO` (declared in `internal/analyzer/store.go`, which does not import DuckDB). A `CGO_ENABLED=0` build omits the DuckDB adapter. Release packaging still compiles with CGO: `.goreleaser.yml` sets `CGO_ENABLED=1`, and the native archive job in `.github/workflows/release.yml` does the same.
+
+**`parseXAQuery` maps `XA END` and `XA ROLLBACK`.** In `internal/binlog/normalize.go`, `parseXAQuery` recognizes `XA START`, `XA BEGIN` (as `XA_START`), `XA END` (`XA_END`), `XA PREPARE`, `XA COMMIT`, and `XA ROLLBACK`. `ok` is true when the XID remainder is non-empty. `normalizeQueryEventInto` keeps those XA queries. `TestNormalizeMariaDBXAQueries` in `internal/binlog/normalize_test.go` covers `XA END` and `XA ROLLBACK`.
+
+**`XA END` stays on the open group.** `TransactionBuilder.consumeWindowed` in `internal/analyzer/transactions.go` handles `XA_END` by itself: the event is recorded on the open group, and a non-empty `xaXID` sets `suspendedAtXAEnd` and `hasEndBoundary` without `finalizeTransaction`. `XA_PREPARE`, `XA_COMMIT`, and `XA_ROLLBACK` share the `handleCommit` path with `XID`, `COMMIT`, and plain `ROLLBACK`, and that path finalizes the group. `releasesOnGTID` finalizes a group suspended at `XA END` when the next GTID name differs, and `handleGTID` then opens the following group.
+
+**Report membership is `retainCompletedTransaction`.** That function is in `internal/analyzer/transactions.go` and is called from `persistCompletedTransactions` in `internal/analyzer/analyzer.go`. It keeps a group when `TotalRows > 0`, or when `XAXID` and `BinlogPathStart` are non-empty and `PositionEnd > PositionStart`. The expression the snapshot cites at `analyzer.go` lines 509–511 is GTID-selector matching, not this predicate.
+
+**Normalize matches one canonical kind.** `canonicalEventType` in `internal/binlog/event_kind.go` maps go-mysql event enums onto one kind (`QUERY`, `WRITE_ROWS`, `XA_PREPARE`, and the other constants in that file). `NormalizeRawEventInto` switches on those kinds. This tree has no `isSupportedNormalizedEvent`, no `hasRowsPrefix`, and no `case 'R'` rows branch.
+
+**`Finalize` assembles the report from the aggregator.** The `Finalize` comment on `(*Analyzer).Finalize` in `internal/analyzer/analyzer.go` says it flushes in-flight state and assembles the analysis result. The `Finalize` row in `internal/analyzer/README.md` says the report comes from `ReportAggregator.Snapshot()` and that DuckDB is not queried on the default path.
+
+---
+
 # Code smells audit (v0.23.3 / `main` @ `61c4bb4`)
+
+Frozen record of that revision. The section above is what was re-read on the later tree. The sentences in this record are the v0.23.3 text.
 
 Audit-only pass requested by Adrian Van via BinlogQA. No product refactor in this change.
 
