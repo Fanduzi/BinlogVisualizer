@@ -217,6 +217,26 @@ Requirements:
 
 The script rotates away bootstrap binlogs, records `SHOW MASTER STATUS`, writes the compressed transaction into that file, then copies it. Do not copy an earlier binlog: MySQL 8.0 bootstrap writes a large compressed payload that is not this fixture.
 
+## mysql-8.0.46-index-ddl.binlog
+
+A MySQL 8.0.46 ROW+GTID file where index DDL names a table that is not the index, and one statement names `idxbug.widgets` while `sessiondb` is selected.
+
+### Contents
+
+- `CREATE TABLE idxbug.orders`, one insert, `CREATE INDEX idx_customer ON idxbug.orders (customer)`
+- After `USE idxbug`: `CREATE UNIQUE INDEX` and `CREATE FULLTEXT INDEX` on `orders`, then `DROP INDEX idx_customer ON orders`
+- After `USE sessiondb`: `CREATE TABLE idxbug.widgets` and `CREATE INDEX idx_w ON idxbug.widgets (id)`
+- A following insert into `idxbug.orders`
+
+The index statements are ordinary `Query` events. The table is the identifier after `ON`. The session database is not the table.
+
+### File Details
+
+- **Format**: MySQL 8.0.46 ROW binlog with GTID
+- **Flavor**: mysql
+- **Server version**: 8.0.46
+- **Server ID**: 1
+
 ## Stage 5 Coverage Notes
 
 - Multi-file command-path coverage reuses `minimal.binlog` twice in ordered input tests and benchmarks to exercise the real parser over more than one file without duplicating fixture assets.
