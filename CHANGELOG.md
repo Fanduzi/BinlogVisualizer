@@ -2,9 +2,21 @@
 
 This file records user-visible changes for tagged releases.
 
-## Unreleased
+## v0.23.13
 
-- Index changes are counted on the table they change. `CREATE INDEX`, `CREATE UNIQUE INDEX`, `CREATE FULLTEXT INDEX`, `CREATE SPATIAL INDEX`, and `DROP INDEX` show that table (the one after `ON`) on the DDL timeline, in the per-table list, and under `--include-table`. They no longer show up as a fake table named after the index, and UNIQUE, FULLTEXT, and SPATIAL indexes are no longer missing from the timeline. A statement that names `schema.table` is counted on that table even when another database is selected. The no-space `name(col)` form is also attributed correctly.
+Release date: 2026-10-05
+
+Highlights:
+
+- `CREATE INDEX`, `CREATE UNIQUE INDEX`, `CREATE FULLTEXT INDEX`, `CREATE SPATIAL INDEX`, and `DROP INDEX` are counted on the table after `ON`, on the DDL timeline, in the per-table list, and under `--include-table`
+- `CREATE UNIQUE INDEX` and `CREATE FULLTEXT INDEX` stay on the DDL timeline, and `CREATE SPATIAL INDEX` does too
+- A schema written in the statement wins over the `USE` database
+- `ON t(col)` and `CREATE TABLE t(id INT)` without a space are parsed as the table name
+
+Related notes:
+
+- [v0.23.13 release notes](docs/releases/release-notes-v0.23.13.md)
+- [v0.23.13 中文发行说明](docs/releases/release-notes-v0.23.13.zh-CN.md)
 
 ## v0.23.12
 
