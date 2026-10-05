@@ -109,6 +109,53 @@ func TestParseDDLStatementCreateDatabaseAndRename(t *testing.T) {
 	}
 }
 
+func TestParseDDLStatementIndexNamesTheTableAfterON(t *testing.T) {
+	cases := []struct {
+		sql, operation, schema, table string
+	}{
+		{"CREATE INDEX idx_customer ON idxbug.orders (customer)", "CREATE INDEX", "idxbug", "orders"},
+		{"CREATE UNIQUE INDEX idx_id_customer ON orders (id, customer)", "CREATE UNIQUE INDEX", "", "orders"},
+		{"CREATE FULLTEXT INDEX ft_note ON orders (note)", "CREATE FULLTEXT INDEX", "", "orders"},
+		{"CREATE SPATIAL INDEX g ON geo.places (loc)", "CREATE SPATIAL INDEX", "geo", "places"},
+		{"DROP INDEX idx_customer ON orders", "DROP INDEX", "", "orders"},
+		{"DROP INDEX `idx_w` ON `idxbug`.`widgets`", "DROP INDEX", "idxbug", "widgets"},
+	}
+	for _, tc := range cases {
+		stmt, ok := ParseDDLStatement(tc.sql)
+		if !ok {
+			t.Fatalf("expected %s to be recognized", tc.sql)
+		}
+		if stmt.Operation != tc.operation || stmt.Object != "index" || stmt.Schema != tc.schema || stmt.Table != tc.table {
+			t.Fatalf("parse %q = %+v, want op=%s schema=%s table=%s", tc.sql, stmt, tc.operation, tc.schema, tc.table)
+		}
+	}
+}
+
+func TestAnalyzeQualifiedIndexDDLIgnoresSessionSchema(t *testing.T) {
+	events := []model.NormalizedEvent{
+		{EventType: "DDL", Schema: "sessiondb", QuerySQL: "CREATE TABLE idxbug.widgets (id INT PRIMARY KEY)"},
+		{EventType: "DDL", Schema: "sessiondb", QuerySQL: "CREATE INDEX idx_w ON idxbug.widgets (id)"},
+		{EventType: "DDL", Schema: "idxbug", QuerySQL: "CREATE UNIQUE INDEX idx_id_customer ON orders (id, customer)"},
+	}
+	result, err := New(DefaultOptions()).Analyze(events)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	got := map[string]int{}
+	for _, table := range result.Tables {
+		got[table.Schema+"."+table.Table] = table.DDLCount
+	}
+	if got["idxbug.widgets"] != 2 || got["idxbug.orders"] != 1 {
+		t.Fatalf("table DDL counts = %v, want idxbug.widgets=2 idxbug.orders=1", got)
+	}
+	if _, ok := got["sessiondb.widgets"]; ok {
+		t.Fatalf("session schema replaced the qualified table: %v", got)
+	}
+	if _, ok := got["sessiondb.idx_w"]; ok || got["idxbug.idx_w"] != 0 {
+		t.Fatalf("index name was used as a table: %v", got)
+	}
+}
+
 func TestParseDDLStatementGrantAndCreateUser(t *testing.T) {
 	grant, ok := ParseDDLStatement("GRANT REPLICATION SLAVE ON *.* TO 'repl'@'127.0.0.1'")
 	if !ok || grant.Operation != "GRANT" || grant.Object != "privilege" {
