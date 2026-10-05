@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -338,18 +338,25 @@ func enrichDDLEvent(ev model.NormalizedEvent) model.NormalizedEvent {
 	if ev.EventType != "DDL" && ev.EventType != "QUERY" {
 		return ev
 	}
+	next, _ := withDDLIdentity(ev)
+	return next
+}
+
+// withDDLIdentity copies a parsed statement's schema and table onto the event.
+// A qualified name wins over the session schema carried on the query event.
+func withDDLIdentity(ev model.NormalizedEvent) (model.NormalizedEvent, bool) {
 	ddl, ok := DDLEventFromNormalizedEvent(ev)
 	if !ok {
-		return ev
+		return ev, false
 	}
 	ev.EventType = "DDL"
-	if ev.Schema == "" {
+	if ddl.Schema != "" {
 		ev.Schema = ddl.Schema
 	}
-	if ev.Table == "" {
+	if ddl.Table != "" {
 		ev.Table = ddl.Table
 	}
-	return ev
+	return ev, true
 }
 
 // reset clears all internal state for a fresh analysis run.
@@ -544,18 +551,7 @@ func filteredWorkloadEvent(ev model.NormalizedEvent) (model.NormalizedEvent, boo
 	if ev.EventType != "QUERY" && ev.EventType != "ROWS_QUERY" {
 		return ev, false
 	}
-	ddl, ok := DDLEventFromNormalizedEvent(ev)
-	if !ok {
-		return ev, false
-	}
-	ev.EventType = "DDL"
-	if ev.Schema == "" {
-		ev.Schema = ddl.Schema
-	}
-	if ev.Table == "" {
-		ev.Table = ddl.Table
-	}
-	return ev, true
+	return withDDLIdentity(ev)
 }
 
 func (a *Analyzer) persistMinuteBuckets(buckets []model.MinuteBucket) error {
