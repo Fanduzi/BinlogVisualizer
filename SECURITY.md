@@ -2,11 +2,7 @@
 
 ## Supported Versions
 
-Security fixes are only guaranteed for the latest tagged release.
-
-Current supported line:
-
-- `v0.5.0`
+Security fixes are only guaranteed for the latest tagged release on the [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases) page. That release is currently [`v0.23.12`](https://github.com/Fanduzi/BinlogVisualizer/releases/tag/v0.23.12).
 
 Older tags may remain visible for historical reasons, but they should not be treated as supported production releases.
 
