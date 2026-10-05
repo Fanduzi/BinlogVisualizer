@@ -119,6 +119,9 @@ func TestParseDDLStatementIndexNamesTheTableAfterON(t *testing.T) {
 		{"CREATE SPATIAL INDEX g ON geo.places (loc)", "CREATE SPATIAL INDEX", "geo", "places"},
 		{"DROP INDEX idx_customer ON orders", "DROP INDEX", "", "orders"},
 		{"DROP INDEX `idx_w` ON `idxbug`.`widgets`", "DROP INDEX", "idxbug", "widgets"},
+		{"CREATE INDEX i ON orders(customer)", "CREATE INDEX", "", "orders"},
+		{"CREATE UNIQUE INDEX i ON idxbug.orders(id,customer)", "CREATE UNIQUE INDEX", "idxbug", "orders"},
+		{"DROP INDEX i ON `idxbug`.`orders`", "DROP INDEX", "idxbug", "orders"},
 	}
 	for _, tc := range cases {
 		stmt, ok := ParseDDLStatement(tc.sql)
@@ -127,6 +130,26 @@ func TestParseDDLStatementIndexNamesTheTableAfterON(t *testing.T) {
 		}
 		if stmt.Operation != tc.operation || stmt.Object != "index" || stmt.Schema != tc.schema || stmt.Table != tc.table {
 			t.Fatalf("parse %q = %+v, want op=%s schema=%s table=%s", tc.sql, stmt, tc.operation, tc.schema, tc.table)
+		}
+	}
+}
+
+func TestParseDDLStatementCutsIdentifierAtParen(t *testing.T) {
+	cases := []struct {
+		sql, operation, object, schema, table string
+	}{
+		{"CREATE TABLE t(id INT PRIMARY KEY)", "CREATE TABLE", "table", "", "t"},
+		{"CREATE TABLE idxbug.t2(id INT)", "CREATE TABLE", "table", "idxbug", "t2"},
+		{"CREATE TABLE `t(id)`(x INT)", "CREATE TABLE", "table", "", "t(id)"},
+		{"CREATE INDEX i ON `orders(customer)`(id)", "CREATE INDEX", "index", "", "orders(customer)"},
+	}
+	for _, tc := range cases {
+		stmt, ok := ParseDDLStatement(tc.sql)
+		if !ok {
+			t.Fatalf("expected %s to be recognized", tc.sql)
+		}
+		if stmt.Operation != tc.operation || stmt.Object != tc.object || stmt.Schema != tc.schema || stmt.Table != tc.table {
+			t.Fatalf("parse %q = %+v, want op=%s object=%s schema=%s table=%s", tc.sql, stmt, tc.operation, tc.object, tc.schema, tc.table)
 		}
 	}
 }
