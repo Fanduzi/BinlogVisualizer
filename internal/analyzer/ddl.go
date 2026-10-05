@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege statements. Index DDL uses the table after ON, including UNIQUE, FULLTEXT, and SPATIAL.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege statements. Index DDL uses the table after ON, including UNIQUE, FULLTEXT, and SPATIAL. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -241,7 +241,7 @@ func identifierAfterKeyword(tokens []string, keyword string) (string, bool) {
 		if !strings.EqualFold(tokens[i], keyword) {
 			continue
 		}
-		clean := strings.TrimRight(tokens[i+1], ",(")
+		clean := trimDDLIdentifier(tokens[i+1])
 		if clean == "" {
 			return "", false
 		}
@@ -270,9 +270,35 @@ func findDDLIdentifier(tokens []string) string {
 		if clean == "" {
 			continue
 		}
-		return strings.TrimRight(clean, ",(")
+		return trimDDLIdentifier(clean)
 	}
 	return ""
+}
+
+// trimDDLIdentifier keeps the object name. A column list glued on as name(col)
+// ends at the first '(' outside backticks. A doubled backtick is an escaped quote.
+// A trailing comma is still dropped.
+func trimDDLIdentifier(token string) string {
+	return strings.TrimRight(cutAtParenOutsideBackticks(strings.TrimSpace(token)), ",")
+}
+
+func cutAtParenOutsideBackticks(token string) string {
+	inBacktick := false
+	for i := 0; i < len(token); i++ {
+		switch token[i] {
+		case '`':
+			if inBacktick && i+1 < len(token) && token[i+1] == '`' {
+				i++
+				continue
+			}
+			inBacktick = !inBacktick
+		case '(':
+			if !inBacktick {
+				return token[:i]
+			}
+		}
+	}
+	return token
 }
 
 func splitQualifiedIdentifier(identifier string) (string, string) {
