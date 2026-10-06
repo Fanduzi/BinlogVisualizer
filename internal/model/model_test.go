@@ -6,6 +6,7 @@
 package model
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -259,13 +260,31 @@ func TestMakeQuerySummaryTruncation(t *testing.T) {
 	// Create SQL longer than MaxQuerySummaryChars
 	longSQL := "SELECT " + makeNChars('x', MaxQuerySummaryChars+50) + " FROM users"
 	summary := MakeQuerySummary(longSQL)
-
-	// Should be truncated and end with "..."
-	if len([]rune(summary)) != MaxQuerySummaryChars {
-		t.Fatalf("expected summary to be exactly %d characters, got %d", MaxQuerySummaryChars, len([]rune(summary)))
+	compressed := compressWhitespace(longSQL)
+	body := safeTruncateRunes(compressed, MaxQuerySummaryChars)
+	marker := TruncationMarker(len(body), len(compressed))
+	if summary != body+marker {
+		t.Fatalf("summary = %q, want body plus %q", summary, marker)
 	}
-	if len(summary) < 3 || summary[len(summary)-3:] != "..." {
-		t.Fatalf("expected summary to end with '...', got %q", summary)
+	if !strings.Contains(summary, "… [truncated:") || !strings.Contains(summary, "bytes]") {
+		t.Fatalf("summary missing truncation marker: %q", summary)
+	}
+}
+
+func TestFormatQuerySummaryKeepsDisplayCutDistinctFromStorage(t *testing.T) {
+	sql := strings.Repeat("a", 180)
+	summary := MakeQuerySummary(sql)
+	if !strings.Contains(summary, TruncationMarker(MaxQuerySummaryChars, 180)) {
+		t.Fatalf("display cut should name original length, got %q", summary)
+	}
+	qc := NewQueryContext(sql)
+	if qc == nil || qc.Truncated || qc.OriginalBytes != 180 {
+		t.Fatalf("180-byte SQL is under the store cap, got %+v", qc)
+	}
+	stored := strings.Repeat("b", MaxStoredSQLBytes)
+	marked := FormatQuerySummary(stored, MaxStoredSQLBytes+1000)
+	if !strings.Contains(marked, TruncationMarker(MaxQuerySummaryChars, MaxStoredSQLBytes+1000)) {
+		t.Fatalf("storage cut should name the original byte length, got %q", marked)
 	}
 }
 

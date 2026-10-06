@@ -160,17 +160,19 @@ binlogviz analyze mysql-bin.000123 --sql-context summary
 binlogviz analyze mysql-bin.000123 --sql-context full
 ```
 
-`off` 会从所有格式去掉查询文本，包括默认文本和 `--show-patterns`。`summary` 和 `full` 会在默认文本的重点事务一节打印这些文本。单份二进制文件可以走管道：
+`off` 会从所有格式去掉查询文本和 DDL 语句文本，包括默认文本和 `--show-patterns`。`summary` 只保留一行有界摘要。`full` 打印存储 SQL，上限 4096 字节；被截断时以 `… [truncated: <shown> of <original> bytes]` 结尾。`query_truncated` 表示这个存储上限，不是 160 字符摘要。`CREATE`/`ALTER USER` 以及 `IDENTIFIED BY` / `AS` 的口令材料在任何模式下都显示为 `<secret>`。单份二进制文件可以走管道：
 
 ```bash
 cat mysql-bin.000123 | binlogviz analyze -
 ```
 
+管道、FIFO 和非可寻址输入会先复制到临时文件，命令结束时删除，包括 Ctrl-C（exit 130，`Error: interrupted`）和 SIGTERM（exit 143）。只有真正的终端才报终端；`/dev/null` 和空管道说 `stdin has no data`。stdin 的回放提示只给出位置，不编造文件路径。
+
 模式说明：
 
-- `off`：省略查询相关字段
-- `summary`：保留有界摘要，便于运维快速建立上下文
-- `full`：在可用时包含有界存储后的 SQL 文本
+- `off`：省略查询文本和 DDL 语句文本
+- `summary`：保留有界摘要；显示被截断时写出原始字节长度
+- `full`：在可用时包含存储 SQL，上限 4096 字节，截断时带标记
 
 这个设置改变的是展示方式，不改变底层负载指标。
 

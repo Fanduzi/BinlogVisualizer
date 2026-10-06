@@ -5,8 +5,10 @@ This file records user-visible changes for tagged releases.
 ## [Unreleased]
 
 - Default text, Markdown, JSON, and HTML analyze reports include Top Threads/Sessions, ranked by rows when any session wrote rows, otherwise by events, bytes, or transactions. Each row shows thread id, and server id, user@host, and schema when the binlog carried them. `--top` limits the section; `--top-threads` overrides it (`0` is unlimited). JSON field: `threads`.
-- `--sql-context off` omits query text from text write-shape patterns, Markdown, and HTML, matching JSON. Default text shows the summary or the bounded stored SQL on Top Transactions when that mode is selected.
-- `binlogviz analyze -` and a non-seekable path such as a pipe read a binary binlog from stdin (copied to a temporary file because parsing needs seek). A terminal or an empty stdin is a clear error. `mysqlbinlog` text is not a binlog and still fails the magic-header check.
+- `--sql-context off` omits query text and DDL statement text from every format. `summary` keeps one bounded line. `full` prints stored SQL capped at 4096 bytes. A cut in any format ends with `… [truncated: <shown> of <original> bytes]`. `query_truncated` means that 4096-byte store cap, not the 160-character summary line.
+- `CREATE USER`, `ALTER USER`, `GRANT ... IDENTIFIED`, and `SET PASSWORD` credential literals are rewritten to `<secret>` before they are shown, in every `--sql-context` mode.
+- DDL Timeline keeps `CREATE`/`ALTER`/`DROP` `VIEW`, `TRIGGER`, `PROCEDURE`, `FUNCTION`, and `EVENT` (object `view`, `trigger`, `routine`, or `event`). `CREATE TRIGGER ... ON table` is counted on that table. DDL that does not match a known object is still listed as generic `DDL` instead of being dropped.
+- `binlogviz analyze -` and a non-seekable path such as a pipe read a binary binlog from stdin (copied to a temporary file because parsing needs seek). The copy is removed when the command finishes, including SIGINT (exit 130, `Error: interrupted`) and SIGTERM (exit 143). Only a real terminal is reported as a terminal; `/dev/null` and an empty pipe say `stdin has no data`. Stdin replay hints name the positions and do not invent a file path. `mysqlbinlog` text is not a binlog and still fails the magic-header check.
 
 ## v0.23.13
 

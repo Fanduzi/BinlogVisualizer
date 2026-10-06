@@ -160,7 +160,7 @@ binlogviz analyze mysql-bin.000123 --sql-context summary
 binlogviz analyze mysql-bin.000123 --sql-context full
 ```
 
-`off` removes query text from every format, including default text and `--show-patterns`. `summary` and `full` print that text on the default text report's Top Transactions section. A pipe works for one binary file:
+`off` removes query text and DDL statement text from every format, including default text and `--show-patterns`. `summary` prints one bounded line. `full` prints stored SQL capped at 4096 bytes; a cut ends with `… [truncated: <shown> of <original> bytes]`. `query_truncated` means that store cap, not the 160-character summary. `CREATE`/`ALTER USER` and `IDENTIFIED BY` / `AS` hashes are shown as `<secret>` in every mode. A pipe works for one binary file:
 
 ```bash
 cat mysql-bin.000123 | binlogviz analyze -
@@ -168,9 +168,9 @@ cat mysql-bin.000123 | binlogviz analyze -
 
 Mode guidance:
 
-- `off`: omit query-related fields
-- `summary`: keep bounded summaries for operator context
-- `full`: include bounded stored SQL text when available
+- `off`: omit query text and DDL statement text
+- `summary`: keep bounded summaries for operator context; a display cut names the original byte length
+- `full`: include stored SQL text when available, capped at 4096 bytes, with a truncation marker when that cap cuts the statement
 
 This setting changes presentation, not the workload metrics themselves.
 

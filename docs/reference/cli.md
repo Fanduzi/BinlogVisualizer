@@ -103,7 +103,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
 | `--workload-id` | none | Explicit workload identity persisted in report v3. Use the same non-empty token only for snapshots of the same workload. |
-| `--sql-context` | `summary` | Query text in every format, including default text and `--show-patterns`: `summary` (one bounded line), `off` (omit query text), or `full` (bounded stored SQL). |
+| `--sql-context` | `summary` | Query text in every format, including default text, DDL statements, and `--show-patterns`: `summary` (one bounded line), `off` (omit query text), or `full` (stored SQL capped at 4096 bytes and marked when cut). Credential material in DDL is redacted in every mode. |
 | `--top-tables` | `10` | Number of top tables to display in human-readable reports; JSON retains all table aggregates. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report; `0` is unlimited. |
 | `--top-threads` | inherits `--top` | Number of top threads or sessions in every format; `0` is unlimited. |

@@ -666,7 +666,7 @@ func (b *TransactionBuilder) finalizeTransaction() {
 		Completeness:    b.current.completeness(),
 		Tables:          exportTxnTables(b.current.tables),
 		Operations:      b.current.operations,
-		QuerySummary:    model.MakeQuerySummary(b.current.retainedQuerySQL),
+		QuerySummary:    model.FormatQuerySummary(b.current.retainedQuerySQL, b.current.retainedQueryOriginalBytes),
 		QueryContext: model.NewQueryContextFromNormalized(
 			b.current.retainedQuerySQL,
 			b.current.retainedQueryTruncated,

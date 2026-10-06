@@ -45,7 +45,7 @@
   },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL 上下文标志描述",
-    "other": "所有格式里的查询文本，包括默认文本和 --show-patterns：summary（一行有界摘要）、off（不输出查询文本）或 full（有界的原始 SQL）"
+    "other": "所有格式里的查询文本，包括默认文本、DDL 语句和 --show-patterns：summary（一行有界摘要）、off（不输出查询文本）或 full（存储 SQL 上限 4096 字节，截断时带标记）。任何模式下 DDL 里的口令材料都会打码"
   },
   "cmd.analyze.flag.top": {
     "description": "默认排序项数量标志描述",
@@ -150,6 +150,10 @@
   "error.stdinOnce": {
     "description": "多次传入 - 时的错误",
     "other": "stdin（-）只能使用一次"
+  },
+  "error.interrupted": {
+    "description": "SIGINT 或 SIGTERM 中断 analyze 时的错误",
+    "other": "已中断"
   },
   "error.readBinlogDir": {
     "description": "读取 binlog 目录错误",
@@ -322,6 +326,10 @@
   "report.label.fullTransactionReplay": {
     "description": "覆盖已观测完整事务的回放命令标签",
     "other": "完整事务回放"
+  },
+  "report.replay.stdinNoPath": {
+    "description": "binlog 来自 stdin、没有可重放文件时的提示",
+    "other": "输入来自 stdin，没有可重放的路径（start-position={{.Start}} stop-position={{.Stop}}）"
   },
   "report.label.totalRows": {
     "description": "行数总数标签",

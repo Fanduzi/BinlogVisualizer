@@ -40,7 +40,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	var buf strings.Builder
 
 	renderDiagnosticSummary(&buf, result, opts.TopN)
-	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN)
+	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
@@ -248,9 +248,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		if appendTextQueryLine(&lines, txn, mode) {
 			printedQuery = true
 		}
-		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
-			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
-		}
+		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
 	}
 	if line := formatCommittedDurationLine(result.Diagnostics.DurationBuckets); line != "" {
 		lines = append(lines, "  "+line)
@@ -262,9 +260,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		if appendTextQueryLine(&lines, txn, mode) {
 			printedQuery = true
 		}
-		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
-			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
-		}
+		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, otherLimit) {
 		line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
@@ -273,9 +269,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		if appendTextQueryLine(&lines, txn, mode) {
 			printedQuery = true
 		}
-		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
-			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
-		}
+		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
 	}
 
 	if !printedQuery {
@@ -390,13 +384,35 @@ func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
 		return ""
 	case SQLContextFull:
 		if txn.QueryContext != nil && strings.TrimSpace(txn.QueryContext.SQL) != "" {
-			return strings.Join(strings.Fields(txn.QueryContext.SQL), " ")
+			sql := model.DisplayStoredSQL(txn.QueryContext.SQL, txn.QueryContext.Truncated, txn.QueryContext.OriginalBytes)
+			return strings.Join(strings.Fields(sql), " ")
 		}
 		return strings.Join(strings.Fields(txn.QuerySummary), " ")
 	case SQLContextSummary:
 		fallthrough
 	default:
 		return strings.Join(strings.Fields(txn.QuerySummary), " ")
+	}
+}
+
+func ddlStatementForMode(statement string, mode SQLContextMode) string {
+	switch mode {
+	case SQLContextOff:
+		return ""
+	case SQLContextFull:
+		return strings.TrimSpace(statement)
+	default:
+		return model.MakeQuerySummary(statement)
+	}
+}
+
+func appendReplayLine(lines *[]string, txn model.Transaction, serverVersion string) {
+	if cmd := mysqlbinlogCmd(txn, serverVersion); cmd != "" {
+		*lines = append(*lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
+		return
+	}
+	if note := stdinReplayNote(txn); note != "" {
+		*lines = append(*lines, "    "+note)
 	}
 }
 
@@ -777,7 +793,7 @@ func formatSuspiciousLocation(txn model.Transaction) string {
 	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
 }
 
-func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int) {
+func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int, mode SQLContextMode) {
 	if len(events) == 0 {
 		return
 	}
@@ -796,7 +812,7 @@ func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int)
 		}
 		buf.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
 			formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location))
-		if stmt := model.MakeQuerySummary(event.Statement); stmt != "" {
+		if stmt := ddlStatementForMode(event.Statement, mode); stmt != "" {
 			buf.WriteString("    " + stmt + "\n")
 		}
 	}

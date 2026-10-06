@@ -1,9 +1,34 @@
 package model
 
 import (
+	"fmt"
 	"strings"
 	"unicode/utf8"
 )
+
+// TruncationMarker is appended wherever stored or displayed SQL is cut.
+// shown and original are byte counts of the SQL, not of the marker.
+func TruncationMarker(shown, original int) string {
+	if shown < 0 {
+		shown = 0
+	}
+	if original < shown {
+		original = shown
+	}
+	return fmt.Sprintf(" … [truncated: %d of %d bytes]", shown, original)
+}
+
+// DisplayStoredSQL returns sql unchanged, or sql plus a truncation marker when
+// the stored statement was cut at MaxStoredSQLBytes.
+func DisplayStoredSQL(sql string, truncated bool, originalBytes int) string {
+	if sql == "" || !truncated {
+		return sql
+	}
+	if originalBytes < len(sql) {
+		originalBytes = len(sql)
+	}
+	return sql + TruncationMarker(len(sql), originalBytes)
+}
 
 // NewQueryContext creates a QueryContext with proper truncation.
 // If sql exceeds MaxStoredSQLBytes, it is truncated and Truncated is set to true.
@@ -49,25 +74,38 @@ func NewQueryContextFromNormalized(sql string, truncated bool, originalBytes int
 }
 
 // MakeQuerySummary creates a bounded summary from SQL.
-// The summary is:
-// - Whitespace compressed
-// - Trimmed of leading/trailing whitespace
-// - Limited to MaxQuerySummaryChars
-// - Suffixed with "..." if truncated
+// The summary is whitespace-compressed and limited to MaxQuerySummaryChars
+// of SQL. A cut, including a stored SQL that was already shorter than the
+// original, appends TruncationMarker with the original byte length.
 func MakeQuerySummary(sql string) string {
-	if sql == "" {
+	return FormatQuerySummary(sql, len(sql))
+}
+
+// FormatQuerySummary is MakeQuerySummary with the pre-storage byte length.
+// originalBytes is the SQL size before the 4096-byte store cap. query_truncated
+// still means that store cap; this marker is the visible cut.
+func FormatQuerySummary(sql string, originalBytes int) string {
+	compressed := compressWhitespace(sql)
+	if compressed == "" {
 		return ""
 	}
-
-	// Compress whitespace and trim
-	summary := compressWhitespace(sql)
-
-	// Truncate to max chars
-	if utf8.RuneCountInString(summary) > MaxQuerySummaryChars {
-		summary = safeTruncateRunes(summary, MaxQuerySummaryChars-3) + "..."
+	if originalBytes < len(sql) {
+		originalBytes = len(sql)
 	}
-
-	return summary
+	body := compressed
+	displayCut := utf8.RuneCountInString(compressed) > MaxQuerySummaryChars
+	if displayCut {
+		body = safeTruncateRunes(compressed, MaxQuerySummaryChars)
+	}
+	storageCut := originalBytes > len(sql)
+	if !displayCut && !storageCut {
+		return body
+	}
+	orig := originalBytes
+	if !storageCut {
+		orig = len(compressed)
+	}
+	return body + TruncationMarker(len(body), orig)
 }
 
 // compressWhitespace replaces runs of whitespace with single space.

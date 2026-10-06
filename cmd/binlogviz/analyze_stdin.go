@@ -6,9 +6,13 @@ import (
 	"os"
 	"path/filepath"
 
+	"golang.org/x/term"
+
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
+
+const stdinAlias = "stdin"
 
 // materializeAnalyzePaths copies non-seekable inputs, including "-", to a
 // temporary file. The parser reads binlogs by seeking. Regular files are unchanged.
@@ -19,7 +23,7 @@ func materializeAnalyzePaths(paths []string) ([]string, map[string]string, func(
 	var dirs []string
 	cleanup := func() {
 		for _, dir := range dirs {
-			_ = os.RemoveAll(dir)
+			releaseStdinTemp(dir)
 		}
 	}
 	out := make([]string, len(paths))
@@ -56,8 +60,8 @@ func ensureSeekableBinlog(path string, seenStdin *bool) (string, string, string,
 		if isTerminal(os.Stdin) {
 			return "", "", "", fmt.Errorf("%s", i18n.T("error.stdinTerminal"))
 		}
-		resolved, dir, err := spoolReader(os.Stdin, "stdin")
-		return resolved, dir, "stdin", err
+		resolved, dir, err := spoolReader(os.Stdin, stdinAlias)
+		return resolved, dir, stdinAlias, err
 	}
 
 	f, err := os.Open(path)
@@ -69,7 +73,7 @@ func ensureSeekableBinlog(path string, seenStdin *bool) (string, string, string,
 		_ = f.Close()
 		return path, "", "", nil
 	}
-	if statErr == nil && isTerminalFile(info) && (path == "/dev/stdin" || filepath.Base(path) == "stdin") {
+	if statErr == nil && isTerminal(f) && (path == "/dev/stdin" || filepath.Base(path) == stdinAlias) {
 		_ = f.Close()
 		return "", "", "", fmt.Errorf("%s", i18n.T("error.stdinTerminal"))
 	}
@@ -77,12 +81,12 @@ func ensureSeekableBinlog(path string, seenStdin *bool) (string, string, string,
 		_ = f.Close()
 		return path, "", "", nil
 	}
-	resolved, dir, err := spoolReader(f, "stdin")
+	resolved, dir, err := spoolReader(f, stdinAlias)
 	_ = f.Close()
 	if err != nil {
 		return "", "", "", err
 	}
-	return resolved, dir, "stdin", nil
+	return resolved, dir, stdinAlias, nil
 }
 
 func mustSpool(info os.FileInfo, f *os.File) bool {
@@ -99,18 +103,7 @@ func mustSpool(info os.FileInfo, f *os.File) bool {
 }
 
 func isTerminal(f *os.File) bool {
-	if f == nil {
-		return false
-	}
-	info, err := f.Stat()
-	if err != nil {
-		return false
-	}
-	return isTerminalFile(info)
-}
-
-func isTerminalFile(info os.FileInfo) bool {
-	return info != nil && info.Mode()&os.ModeCharDevice != 0
+	return f != nil && term.IsTerminal(int(f.Fd()))
 }
 
 func spoolReader(r io.Reader, name string) (string, string, error) {
@@ -121,24 +114,25 @@ func spoolReader(r io.Reader, name string) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
+	trackStdinTemp(dir)
 	path := filepath.Join(dir, name)
 	f, err := os.Create(path)
 	if err != nil {
-		_ = os.RemoveAll(dir)
+		releaseStdinTemp(dir)
 		return "", "", err
 	}
 	n, copyErr := io.Copy(f, r)
 	closeErr := f.Close()
 	if copyErr != nil {
-		_ = os.RemoveAll(dir)
+		releaseStdinTemp(dir)
 		return "", "", copyErr
 	}
 	if closeErr != nil {
-		_ = os.RemoveAll(dir)
+		releaseStdinTemp(dir)
 		return "", "", closeErr
 	}
 	if n == 0 {
-		_ = os.RemoveAll(dir)
+		releaseStdinTemp(dir)
 		return "", "", fmt.Errorf("%s", i18n.T("error.stdinEmpty"))
 	}
 	return path, dir, nil
@@ -195,6 +189,7 @@ func aliasAnalysisPaths(result *model.AnalysisResult, aliases map[string]string)
 	if result.Snapshot != nil {
 		result.Snapshot.Input.Files = displayPaths(result.Snapshot.Input.Files, aliases)
 	}
+	aliasAlerts(result.Alerts, aliases)
 }
 
 func aliasTxnSlice(txns []model.Transaction, aliases map[string]string) {
@@ -204,10 +199,54 @@ func aliasTxnSlice(txns []model.Transaction, aliases map[string]string) {
 }
 
 func aliasTxn(txn *model.Transaction, aliases map[string]string) {
+	if aliasedToStdin(txn.BinlogPathStart, aliases) || aliasedToStdin(txn.BinlogPathEnd, aliases) {
+		txn.StdinInput = true
+	}
 	txn.BinlogPathStart = aliasPath(txn.BinlogPathStart, aliases)
 	txn.BinlogPathEnd = aliasPath(txn.BinlogPathEnd, aliases)
 	if txn.FullReplaySpan != nil {
+		if aliasedToStdin(txn.FullReplaySpan.BinlogPathStart, aliases) || aliasedToStdin(txn.FullReplaySpan.BinlogPathEnd, aliases) {
+			txn.StdinInput = true
+		}
 		txn.FullReplaySpan.BinlogPathStart = aliasPath(txn.FullReplaySpan.BinlogPathStart, aliases)
 		txn.FullReplaySpan.BinlogPathEnd = aliasPath(txn.FullReplaySpan.BinlogPathEnd, aliases)
 	}
+}
+
+func aliasedToStdin(path string, aliases map[string]string) bool {
+	aliased, ok := aliases[path]
+	return ok && aliased == stdinAlias
+}
+
+func aliasAlerts(alerts []model.Alert, aliases map[string]string) {
+	for i := range alerts {
+		if aliasAlertDetails(alerts[i].Details, aliases) {
+			alerts[i].Details["replay_available"] = false
+		}
+	}
+}
+
+func aliasAlertDetails(details map[string]any, aliases map[string]string) bool {
+	if len(details) == 0 {
+		return false
+	}
+	stdin := false
+	var walk func(map[string]any)
+	walk = func(m map[string]any) {
+		for key, value := range m {
+			switch typed := value.(type) {
+			case string:
+				if aliased, ok := aliases[typed]; ok {
+					m[key] = aliased
+					if aliased == stdinAlias {
+						stdin = true
+					}
+				}
+			case map[string]any:
+				walk(typed)
+			}
+		}
+	}
+	walk(details)
+	return stdin
 }

@@ -13,7 +13,7 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | `markdown.go` | Renders UTC-labelled GitHub-flavored Markdown incident records with transaction completeness/span/replay, DDL, input-format, optional Ignored QUERY counts, optional open-explicit-group counts, and finding evidence. |
 | `html.go` | Renders the self-contained HTML report with UTC-labelled ranges/evidence/charts, completeness and byte cards, deduplicated transaction evidence, transaction-key lookup, human-only table limits, responsive charts, and trusted replay commands. |
 | `html_chrome.go` | Shared five-theme CSS tokens spliced into analyze, compare, and trend HTML. |
-| `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. |
+| `mysqlbinlog.go` | Formats retained evidence spans and builds `mysqlbinlog` / `mariadb-binlog` commands only from trusted single-file full replay spans, preferring per-transaction producer versions. Stdin input emits `replay_note` (positions, no path) and leaves `mysqlbinlog_cmd` empty. |
 | `*_test.go` | Verifies UTC timestamp presentation, RFC3339 JSON stability, complete JSON tables and selector round trips, optional Ignored QUERY JSON/Markdown diagnostics, Markdown/HTML evidence, deadlock-free stdout wrappers, SQL modes, counted bytes, completeness, and explicit full-span replay behavior. |
 
 ## Interfaces

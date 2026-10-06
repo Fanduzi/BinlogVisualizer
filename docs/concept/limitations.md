@@ -50,9 +50,10 @@ SQL context is intentionally bounded and presentation-oriented.
 
 Current limits include:
 
-- stored SQL capped at `4096` bytes
-- query summaries capped at `160` characters
-- query fields shown or omitted according to `--sql-context`
+- stored SQL capped at `4096` bytes, with `… [truncated: <shown> of <original> bytes]` when that cap cuts the text
+- query summaries capped at `160` characters of SQL, then the same marker when the text was cut
+- query fields and DDL statement text shown or omitted according to `--sql-context` (`off` omits both)
+- `query_truncated` means the 4096-byte store cap, not the 160-character summary
 
 This means:
 
