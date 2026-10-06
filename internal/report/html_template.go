@@ -1165,6 +1165,53 @@ const htmlReportTemplateTail = `
       {{else}}
       <div class="no-alerts"><span>{{t "report.html.analyze.noTableData"}}</span></div>
       {{end}}
+
+      <div class="table-toolbar">
+        <div class="diagnostic-title">
+          <span>{{.ThreadsTitle}}</span>
+        </div>
+      </div>
+      {{if .HasThreads}}
+      <div class="table-container">
+        <table id="top-threads-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              {{if .ThreadShowID}}<th>thread_id</th>{{end}}
+              {{if .ThreadShowServer}}<th>server_id</th>{{end}}
+              {{if .ThreadShowActor}}<th>user@host</th>{{end}}
+              {{if .ThreadShowSchema}}<th>schema</th>{{end}}
+              {{if .ThreadShowRows}}<th class="num">rows</th>{{end}}
+              {{if .ThreadShowEvents}}<th class="num">events</th>{{end}}
+              {{if .ThreadShowBytes}}<th class="num">bytes</th>{{end}}
+              {{if .ThreadShowTxns}}<th class="num">txns</th>{{end}}
+              <th class="num">share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Threads}}
+            <tr>
+              <td class="num">{{.Rank}}</td>
+              {{if $.ThreadShowID}}<td class="name">{{.ThreadID}}</td>{{end}}
+              {{if $.ThreadShowServer}}<td class="num">{{.ServerID}}</td>{{end}}
+              {{if $.ThreadShowActor}}<td>{{.Actor}}</td>{{end}}
+              {{if $.ThreadShowSchema}}<td>{{.Schema}}</td>{{end}}
+              {{if $.ThreadShowRows}}<td class="num">{{fmtIntHTML .Rows}}</td>{{end}}
+              {{if $.ThreadShowEvents}}<td class="num">{{fmtIntHTML .Events}}</td>{{end}}
+              {{if $.ThreadShowBytes}}<td class="num">{{.Bytes}}</td>{{end}}
+              {{if $.ThreadShowTxns}}<td class="num">{{fmtIntHTML .Txns}}</td>{{end}}
+              <td class="num">{{.Share}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{if .OmittedThreads}}
+      <div class="section-desc" style="padding:0 16px 8px">{{.OmittedThreads}}</div>
+      {{end}}
+      {{else}}
+      <div class="no-alerts"><span>{{t "report.text.noThreads"}}</span></div>
+      {{end}}
     </div>
   </section>
 

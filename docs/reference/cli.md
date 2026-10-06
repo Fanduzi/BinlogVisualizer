@@ -51,7 +51,7 @@ These flags are available on the root command and apply before subcommand execut
 
 `analyze` accepts exactly one input mode per invocation:
 
-- **Positional file mode**: pass one or more local binlog file paths as positional arguments.
+- **Positional file mode**: pass one or more local binlog file paths as positional arguments. `-` reads one binary binlog from stdin.
 - **Discovery mode**: pass `--from-dir` and `--prefix` together so BinlogViz resolves matching files from a directory.
 
 Default text and JSON reports name, on each transaction, `server_id`, `thread_id`, GTID, and `xid` or XA xid when the binlog events contain them. `user@host` appears only when the binlog stored an invoker. A field the events do not have is left out; the report does not fill in `0` or an empty string. Markdown and HTML follow the same rule.
@@ -65,7 +65,10 @@ Use positional arguments when you already know the exact files to analyze.
 ```bash
 binlogviz analyze mysql-bin.000123
 binlogviz analyze mysql-bin.000123 mysql-bin.000124
+cat mysql-bin.000123 | binlogviz analyze -
 ```
+
+`-` reads one binary binlog from a pipe or other non-seekable input. Parsing needs seek, so the bytes are copied to a temporary file and deleted when the command finishes. `binlogviz analyze -` on a terminal, or an empty pipe, fails with `Error:` before parsing. A named pipe path is treated the same way. `mysqlbinlog` text output is not a binlog and fails the magic-header check.
 
 ### Discovery mode
 
@@ -100,10 +103,11 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
 | `--workload-id` | none | Explicit workload identity persisted in report v3. Use the same non-empty token only for snapshots of the same workload. |
-| `--sql-context` | `summary` | SQL context presentation mode: `summary`, `off`, or `full`. |
+| `--sql-context` | `summary` | Query text in every format, including default text and `--show-patterns`: `summary` (one bounded line), `off` (omit query text), or `full` (bounded stored SQL). |
 | `--top-tables` | `10` | Number of top tables to display in human-readable reports; JSON retains all table aggregates. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report; `0` is unlimited. |
-| `--top` | `10` | Default number of ranked items for text detail sections (minutes, patterns). |
+| `--top-threads` | inherits `--top` | Number of top threads or sessions in every format; `0` is unlimited. |
+| `--top` | `10` | Default number of ranked items, including Top Threads and text detail sections (minutes, patterns). |
 | `--details` | `false` | Show minute details and write-shape patterns in the text report. |
 | `--show-minutes` | `false` | Show minute-level activity in the text report. |
 | `--show-patterns` | `false` | Show write-shape patterns in the text report. |

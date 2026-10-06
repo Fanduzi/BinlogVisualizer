@@ -1,6 +1,6 @@
 // Package analyzer incrementally builds report-ready projections without retaining all transactions.
 // input: complete or incomplete transactions with provenance, minute buckets, DDL events, normalized events, and file coverage.
-// output: bounded ReportSnapshot values with producer/byte evidence and incomplete transactions excluded from whole-transaction conclusions.
+// output: bounded ReportSnapshot values with producer/byte evidence, a full session ranking, and incomplete transactions excluded from whole-transaction conclusions.
 // pos: streaming report aggregation layer that replaces QueryAllTransactions-dependent finalization.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -21,6 +21,8 @@ type ReportSnapshot struct {
 	SQLContextAvailable bool
 	Tables              []model.TableStats
 	Transactions        []model.Transaction
+	Threads             []model.ThreadStats
+	ThreadsRankedBy     string
 	Patterns            []model.PatternStats
 	Minutes             []model.MinuteBucket
 	Timeseries          model.Timeseries
@@ -59,6 +61,7 @@ type ReportAggregator struct {
 	alerts              []model.Alert
 	ddlEvents           []model.DDLEvent
 	fileCoverage        model.FileCoverage
+	threads             threadAggregator
 	patterns            map[string]*model.PatternStats
 	patternOrder        []string
 	patternRepTxns      map[string][]model.Transaction
@@ -210,6 +213,7 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 	if a == nil {
 		return
 	}
+	a.threads.add(txn)
 	a.totalTransactions++
 	a.totalRows += txn.TotalRows
 	if txn.QueryContext != nil && txn.QueryContext.SQL != "" {
@@ -296,6 +300,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	minutes := append([]model.MinuteBucket(nil), a.minutes...)
 	sort.Slice(minutes, func(i, j int) bool { return minutes[i].Minute.Before(minutes[j].Minute) })
 	patterns := a.snapshotPatterns()
+	threads, threadsRankedBy := a.threads.snapshot()
 	alerts := append([]model.Alert(nil), a.alerts...)
 	alerts = append(alerts, DetectSpikeAlerts(minutes, a.opts)...)
 
@@ -355,6 +360,8 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		Provenance:          a.snapshotProvenance(),
 		SQLContextAvailable: a.sqlContextAvailable,
 		Transactions:        transactions,
+		Threads:             threads,
+		ThreadsRankedBy:     threadsRankedBy,
 		Patterns:            patterns,
 		Minutes:             minutes,
 		Timeseries:          series,

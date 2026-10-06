@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with UTC-labelled timestamps, completeness, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -85,6 +85,18 @@ type htmlReportData struct {
 	HasTransactionEvidence bool
 	Tables                 []htmlTableRow
 	OmittedTables          string
+	ThreadsTitle           string
+	Threads                []htmlThreadRow
+	HasThreads             bool
+	OmittedThreads         string
+	ThreadShowID           bool
+	ThreadShowServer       bool
+	ThreadShowActor        bool
+	ThreadShowSchema       bool
+	ThreadShowRows         bool
+	ThreadShowEvents       bool
+	ThreadShowBytes        bool
+	ThreadShowTxns         bool
 	TableActivitySeries    template.JS
 	DDLEvents              []htmlDDLEvent
 	HasDDLEvents           bool
@@ -191,6 +203,19 @@ type htmlTxnDiagnostic struct {
 	QuerySummary         string
 	MysqlbinlogCmd       string
 	Identity             string
+}
+
+type htmlThreadRow struct {
+	Rank     int
+	ThreadID string
+	ServerID string
+	Actor    string
+	Schema   string
+	Rows     int
+	Events   int
+	Bytes    string
+	Txns     int
+	Share    string
 }
 
 type htmlTransactionLookup struct {
@@ -312,6 +337,51 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		})
 	}
 	d.TableActivitySeries = mustJSON(tableActivitySeries)
+	d.ThreadsTitle = threadSectionTitle(result.ThreadsRankedBy)
+	shownThreads, omittedThreads := limitThreads(result.Threads, opts.TopThreads)
+	if omittedThreads > 0 {
+		d.OmittedThreads = omittedThreadsLabel(omittedThreads)
+	}
+	for i, thread := range shownThreads {
+		row := htmlThreadRow{
+			Rank:   i + 1,
+			Actor:  formatUserHost(thread.ActorUser, thread.ActorHost),
+			Schema: formatThreadSchemas(thread),
+			Rows:   thread.TotalRows,
+			Events: thread.EventCount,
+			Bytes:  formatByteSize(thread.BinlogBytes),
+			Txns:   thread.TxnCount,
+			Share:  fmt.Sprintf("%.1f%%", thread.Share*100),
+		}
+		if thread.ThreadID != 0 {
+			row.ThreadID = fmt.Sprintf("%d", thread.ThreadID)
+			d.ThreadShowID = true
+		}
+		if thread.ServerID != 0 {
+			row.ServerID = fmt.Sprintf("%d", thread.ServerID)
+			d.ThreadShowServer = true
+		}
+		if row.Actor != "" {
+			d.ThreadShowActor = true
+		}
+		if row.Schema != "" {
+			d.ThreadShowSchema = true
+		}
+		if thread.TotalRows > 0 {
+			d.ThreadShowRows = true
+		}
+		if thread.EventCount > 0 {
+			d.ThreadShowEvents = true
+		}
+		if thread.BinlogBytes > 0 {
+			d.ThreadShowBytes = true
+		}
+		if thread.TxnCount > 0 {
+			d.ThreadShowTxns = true
+		}
+		d.Threads = append(d.Threads, row)
+	}
+	d.HasThreads = len(d.Threads) > 0
 
 	// Alerts
 	for _, a := range result.Alerts {
@@ -352,7 +422,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasDDLEvents = len(d.DDLEvents) > 0
 	d.DDLCount = len(d.DDLEvents)
 
-	d.TransactionEvidence = buildHTMLTransactionEvidence(result.Diagnostics, result.Diagnostics.ServerVersion)
+	d.TransactionEvidence = buildHTMLTransactionEvidence(result.Diagnostics, result.Diagnostics.ServerVersion, opts.SQLContextMode)
 	d.HasTransactionEvidence = len(d.TransactionEvidence) > 0
 
 	for _, interval := range result.Diagnostics.HotIntervals {
@@ -506,7 +576,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	return d
 }
 
-func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion string) []htmlTxnDiagnostic {
+func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion string, mode SQLContextMode) []htmlTxnDiagnostic {
 	evidence := make([]htmlTxnDiagnostic, 0, 3)
 	evidenceIndexByTxnKey := make(map[string]int, 3)
 	addChampion := func(txn model.Transaction, reason string) {
@@ -517,7 +587,7 @@ func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion s
 			}
 			evidenceIndexByTxnKey[txn.TxnKey] = len(evidence)
 		}
-		diagnostic := buildHTMLTxnDiagnostic(txn, serverVersion)
+		diagnostic := buildHTMLTxnDiagnostic(txn, serverVersion, mode)
 		diagnostic.Reasons = []string{reason}
 		evidence = append(evidence, diagnostic)
 	}
@@ -596,7 +666,7 @@ func formatCoverageSize(bytes int64) string {
 	return formatFileSize(bytes)
 }
 
-func buildHTMLTxnDiagnostic(txn model.Transaction, serverVersion string) htmlTxnDiagnostic {
+func buildHTMLTxnDiagnostic(txn model.Transaction, serverVersion string, mode SQLContextMode) htmlTxnDiagnostic {
 	return htmlTxnDiagnostic{
 		TxnKey:               txn.TxnKey,
 		Rows:                 txn.TotalRows,
@@ -606,7 +676,7 @@ func buildHTMLTxnDiagnostic(txn model.Transaction, serverVersion string) htmlTxn
 		BinlogBytesFormatted: formatFileSize(txn.BinlogBytes),
 		Tables:               sortedTxnTables(txn.Tables),
 		Location:             formatBinlogSpan(txn),
-		QuerySummary:         txn.QuerySummary,
+		QuerySummary:         transactionTextQuery(txn, mode),
 		MysqlbinlogCmd:       mysqlbinlogCmd(txn, serverVersion),
 		Identity:             formatTxnIdentity(txn),
 	}

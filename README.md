@@ -62,7 +62,12 @@ The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in t
 
 ```bash
 binlogviz analyze mysql-bin.000123
+cat mysql-bin.000123 | binlogviz analyze -
 ```
+
+`analyze -` reads one binary binlog from a pipe. The parser needs a seekable file, so stdin is copied to a temporary file and removed when the command finishes. A terminal with no data fails before parsing. `mysqlbinlog` text output is not a binlog.
+
+The default text report includes Top Threads, ranked by rows (or by events, bytes, or transactions when there are no row images). It shows `thread_id`, and `server_id`, `user@host`, and schema when the binlog stored them, so "who wrote the most" does not need `jq`. `--top` limits that section; `--top-threads 0` keeps every session. JSON exposes the same ranking as `threads`.
 
 `analyze` exits **0** when at least one event was counted, **1** when the file could not be analyzed (corrupt, truncated, or no Format Description), and **2** when a complete binlog parsed but counted zero events (empty `--start`/`--end` window, or Format Description / rotate only). A schema or table filter that matches nothing is also exit 2, and its `Error:` line says the filter matched no events. Exit 2 writes nothing to `stdout` and one `Error:` line to `stderr`. If a progress bar is still on the current stderr line, that line is cleared before `Error:`.
 
@@ -395,6 +400,7 @@ This keeps the machine-readable report on `stdout` while leaving progress and ru
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --top-tables 20 \
   --top-transactions 20 \
+  --top-threads 20 \
   --top-minutes 30
 ```
 

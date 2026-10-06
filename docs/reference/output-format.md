@@ -132,7 +132,28 @@ Example heading:
 === Top Tables ===
 ```
 
-### 3. Top Transactions
+### 3. Top Threads
+
+`Top Threads` ranks sessions by rows when any session wrote rows. Otherwise it ranks by events, then bytes, then transactions. The heading names the metric, for example `Top Threads (by rows)`.
+
+Columns that have no data in the displayed rows are omitted. A field the binlog did not carry is not printed as `0` or an empty actor.
+
+- `thread_id` when the binlog stored one
+- `server_id` when the event header had one
+- `user@host` when the binlog stored an invoker
+- schema when a table in the session named one
+- rows, events, bytes, and transactions when that metric is non-zero
+- share of the ranking metric
+
+`--top` limits the section. `--top-threads` overrides it. `0` keeps every session. JSON uses the same limit.
+
+```text
+=== Top Threads (by rows) ===
+  # thread_id server_id rows events txns share
+  1 14        1         50001 12     1    62.3%
+```
+
+### 4. Top Transactions
 
 The `Top Transactions` section ranks transactions by total rows and also lists up to three longest committed transactions plus a committed-duration bucket line.
 
@@ -151,7 +172,7 @@ Example heading:
 === Top Transactions ===
 ```
 
-### 4. Top Patterns
+### 5. Top Patterns
 
 The `Top Patterns` section groups recurring write transaction shapes.
 
@@ -161,7 +182,7 @@ Useful fields shown in text output include:
 - total rows
 - transaction count
 - average rows per transaction
-- optional sample query summary
+- optional sample query summary when `--sql-context` is `summary` or `full`; omitted when it is `off`
 - optional drilldown block for selected high-signal patterns (why, workload peak minutes, workload transactions)
 
 Example heading:
@@ -170,7 +191,7 @@ Example heading:
 === Top Patterns ===
 ```
 
-### 5. Minute Activity
+### 6. Minute Activity
 
 The `Minute Activity` section summarizes write activity by minute.
 
@@ -186,7 +207,7 @@ Example heading:
 === Minute Activity ===
 ```
 
-### 6. Alerts
+### 7. Alerts
 
 The `Alerts` section lists detected warnings from analysis logic.
 
@@ -330,13 +351,31 @@ Transaction rows, operations, event counts, and retained positions remain inclus
 
 `transactions` query fields depend on `--sql-context`:
 
-- `off`: omit all query-related fields
-- `summary`: include one whitespace-normalized `query_summary` bounded to 160 characters; include truncation metadata only when context exists
-- `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists
+- `off`: omit all query-related fields, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, and HTML transaction evidence
+- `summary`: include one whitespace-normalized `query_summary` bounded to 160 characters; include truncation metadata only when context exists. Default text prints that line on Top Transactions
+- `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists. Default text prints that SQL on Top Transactions
 
 `sql_context.available` reports whether any source SQL was observed across the full report, even when it falls outside the top transactions. `full` may therefore be selected with `available=false`. Provenance never depends on this mode, and no mode serializes row-image values.
 
 Named snapshots persist this complete report-v3 payload. Snapshot/compare readers continue to accept report versions 0 through 2 without inventing missing identity.
+
+### `threads`
+
+`threads` is always present as an array. It is the session ranking behind Top Threads, limited by `--top` or `--top-threads` the same way as the text section. `threads_listed` and `threads_omitted` count that limit. `threads_ranked_by` is `rows`, `events`, `bytes`, or `transactions`, and is omitted when no session had a thread id or actor.
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `thread_id` | integer | no | Omitted when the binlog had no thread id |
+| `server_id` | integer | no | Omitted when unavailable |
+| `actor` | object | no | `user` / `host` when the binlog stored an invoker |
+| `schema` | string | no | Dominant schema by rows |
+| `schemas` | array | no | Present when the session touched more than one schema |
+| `rows` | integer | yes | Affected rows |
+| `events` | integer | yes | Normalized events |
+| `transactions` | integer | yes | Transactions in this session |
+| `binlog_bytes` | integer | no | Omitted when zero |
+| `share` | number | yes | Fraction of the ranking metric |
+| `share_of_rows` | number | yes | Fraction of rows across ranked sessions |
 
 ### `patterns`
 

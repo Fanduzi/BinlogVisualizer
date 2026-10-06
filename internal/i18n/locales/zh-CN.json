@@ -13,7 +13,7 @@
   },
   "cmd.analyze.use": {
     "description": "analyze 命令用法",
-    "other": "analyze <binlog 文件...> | --from-dir 目录 --prefix 前缀"
+    "other": "analyze [binlog 文件... | -] | --from-dir 目录 --prefix 前缀"
   },
   "cmd.analyze.short": {
     "description": "analyze 命令简短描述",
@@ -21,7 +21,7 @@
   },
   "cmd.analyze.long": {
     "description": "analyze 命令详细描述",
-    "other": "分析 binlog 文件。默认文本和 JSON 按事务给出事件里实际有的 server_id、thread_id、GTID，以及 xid 或 XA xid。只有 binlog 里有 user@host 时才显示。binlog 没有的字段保持缺席。"
+    "other": "分析 binlog 文件。用 - 从管道读取一份二进制 binlog；解析需要 seek，因此会先把 stdin 复制到临时文件。默认文本、JSON、markdown 和 HTML 按行数、事件数、字节或事务数排出热点线程，并在 binlog 带有 thread_id、user@host 或 schema 时写出来。默认文本和 JSON 按事务给出事件里实际有的 server_id、thread_id、GTID，以及 xid 或 XA xid。只有 binlog 里有 user@host 时才显示。binlog 没有的字段保持缺席。"
   },
   "cmd.analyze.flag.start": {
     "description": "开始时间标志描述",
@@ -45,7 +45,7 @@
   },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL 上下文标志描述",
-    "other": "SQL 上下文模式：summary、off 或 full"
+    "other": "所有格式里的查询文本，包括默认文本和 --show-patterns：summary（一行有界摘要）、off（不输出查询文本）或 full（有界的原始 SQL）"
   },
   "cmd.analyze.flag.top": {
     "description": "默认排序项数量标志描述",
@@ -58,6 +58,10 @@
   "cmd.analyze.flag.topTransactions": {
     "description": "top transactions 标志描述",
     "other": "显示的事务数量（0 表示不限制）"
+  },
+  "cmd.analyze.flag.topThreads": {
+    "description": "top threads 标志描述",
+    "other": "显示的线程或会话数量（0 表示不限制）。未显式指定时继承 --top"
   },
   "cmd.analyze.flag.details": {
     "description": "详细文本段落标志描述",
@@ -134,6 +138,18 @@
   "error.requiresBinlogOrDir": {
     "description": "未提供 binlog 文件或 from-dir 错误",
     "other": "需要至少一个 binlog 文件或 --from-dir + --prefix"
+  },
+  "error.stdinTerminal": {
+    "description": "在终端上使用 analyze - 时的错误",
+    "other": "stdin 是终端且没有 binlog 数据；请传入 binlog 文件，或用管道传入二进制 binlog，例如：cat mysql-bin.000001 | binlogviz analyze -"
+  },
+  "error.stdinEmpty": {
+    "description": "stdin 没有字节时的错误",
+    "other": "stdin 没有数据"
+  },
+  "error.stdinOnce": {
+    "description": "多次传入 - 时的错误",
+    "other": "stdin（-）只能使用一次"
   },
   "error.readBinlogDir": {
     "description": "读取 binlog 目录错误",
@@ -414,6 +430,30 @@
   "report.text.topTransactions": {
     "description": "诊断文本重点事务章节标题",
     "other": "重点事务"
+  },
+  "report.text.topThreadsByRows": {
+    "description": "按行数排序的热点线程章节",
+    "other": "热点线程（按行数）"
+  },
+  "report.text.topThreadsByEvents": {
+    "description": "按事件数排序的热点线程章节",
+    "other": "热点线程（按事件数）"
+  },
+  "report.text.topThreadsByBytes": {
+    "description": "按字节排序的热点线程章节",
+    "other": "热点线程（按字节）"
+  },
+  "report.text.topThreadsByTransactions": {
+    "description": "按事务数排序的热点线程章节",
+    "other": "热点线程（按事务数）"
+  },
+  "report.text.noThreads": {
+    "description": "binlog 没有线程或调用方身份时的占位符",
+    "other": "此窗口没有线程或会话身份。"
+  },
+  "report.text.omittedThreads": {
+    "description": "报告显示限制省略的线程数量",
+    "other": "… 还有 {{.Count}} 个线程未显示"
   },
   "report.text.nextActions": {
     "description": "诊断文本下一步建议章节标题",

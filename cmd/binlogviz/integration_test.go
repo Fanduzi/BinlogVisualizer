@@ -1091,8 +1091,22 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 			if !strings.Contains(out, "=== Summary ===") {
 				t.Fatalf("expected diagnostic summary output, got: %s", out)
 			}
-			if strings.Contains(out, "Query:") {
-				t.Fatalf("default diagnostic text output should omit query lines regardless of SQL context mode, got: %s", out)
+			switch tt.mode {
+			case report.SQLContextOff:
+				if strings.Contains(out, "Query:") || strings.Contains(out, "UPDATE users") {
+					t.Fatalf("off mode should omit query text, got: %s", out)
+				}
+			case report.SQLContextSummary:
+				if !strings.Contains(out, "Query: UPDATE users SET name = ? WHERE id = ?") {
+					t.Fatalf("summary mode should show the bounded query on the default text report, got: %s", out)
+				}
+				if strings.Contains(out, "name = 'alice'") {
+					t.Fatalf("summary mode should not print full SQL, got: %s", out)
+				}
+			case report.SQLContextFull:
+				if !strings.Contains(out, "Query: UPDATE users SET name = 'alice' WHERE id = 7") {
+					t.Fatalf("full mode should show stored SQL on the default text report, got: %s", out)
+				}
 			}
 		})
 	}

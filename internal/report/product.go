@@ -33,6 +33,17 @@ func omittedTablesLabel(count int) string {
 	return i18n.Tf("report.text.omittedTables", map[string]any{"Count": count})
 }
 
+func limitThreads(threads []model.ThreadStats, limit int) ([]model.ThreadStats, int) {
+	if limit <= 0 || len(threads) <= limit {
+		return threads, 0
+	}
+	return threads[:limit], len(threads) - limit
+}
+
+func omittedThreadsLabel(count int) string {
+	return i18n.Tf("report.text.omittedThreads", map[string]any{"Count": count})
+}
+
 func selectedInputFileBytes(coverage model.FileCoverage) (int64, bool) {
 	if len(coverage.Selected) == 0 {
 		return 0, false
