@@ -7,7 +7,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | File | Responsibility |
 |------|----------------|
 | `event.go` | Defines normalized binlog events with optional producer/transaction provenance, XA identity, and LOAD_DATA intent. |
-| `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, XA identity, and bounded SQL context. |
+| `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, and bounded SQL context. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
@@ -15,7 +15,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | `report.go` | Defines `AnalysisResult`, explicit workload identity and analyzed scope, requested/effective selector evidence, deterministic report-level producer provenance, report-wide SQL availability, session rankings, and snapshot metadata. |
 | `thread.go` | Defines `ThreadStats` for the Top Threads session ranking. |
 | `timeseries.go` | Defines chart-ready timeseries and transaction-size histogram contracts. |
-| `query_context.go` | Provides bounded SQL context constructors and truncation helpers. |
+| `query_context.go` | Provides bounded SQL context constructors and truncation helpers. A cut appends `… [truncated: shown of original bytes]`. |
 | `*_test.go` | Verifies shared model invariants and helper behavior. |
 
 ## Interfaces

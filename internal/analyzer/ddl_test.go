@@ -220,6 +220,120 @@ func TestDDLEventFromNormalizedEventIgnoresNonDDLQueries(t *testing.T) {
 	}
 }
 
+func TestParseDDLStatementObjectTypesAndGenericDDL(t *testing.T) {
+	cases := []struct {
+		sql, operation, object, schema, table string
+	}{
+		{"CREATE VIEW shop.v2 AS SELECT id FROM shop.small", "CREATE VIEW", "view", "shop", "v2"},
+		{"DROP VIEW shop.v2", "DROP VIEW", "view", "shop", "v2"},
+		{"CREATE OR REPLACE VIEW v AS SELECT 1", "CREATE VIEW", "view", "", "v"},
+		{"CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW shop.v_orders AS SELECT 1", "CREATE VIEW", "view", "shop", "v_orders"},
+		{"CREATE TRIGGER shop.trg_small BEFORE INSERT ON shop.small FOR EACH ROW SET NEW.v = NEW.v + 1", "CREATE TRIGGER", "trigger", "shop", "small"},
+		{"DROP TRIGGER shop.trg_small", "DROP TRIGGER", "trigger", "shop", "trg_small"},
+		{"CREATE DEFINER=`root`@`localhost` PROCEDURE shop.p1() SELECT 1", "CREATE PROCEDURE", "routine", "shop", "p1"},
+		{"DROP PROCEDURE IF EXISTS shop.p1", "DROP PROCEDURE", "routine", "shop", "p1"},
+		{"CREATE FUNCTION shop.f1() RETURNS INT RETURN 1", "CREATE FUNCTION", "routine", "shop", "f1"},
+		{"DROP FUNCTION shop.f1", "DROP FUNCTION", "routine", "shop", "f1"},
+		{"CREATE EVENT shop.e1 ON SCHEDULE EVERY 1 HOUR DO SELECT 1", "CREATE EVENT", "event", "shop", "e1"},
+		{"ALTER EVENT shop.e1 DISABLE", "ALTER EVENT", "event", "shop", "e1"},
+		{"DROP EVENT IF EXISTS shop.e1", "DROP EVENT", "event", "shop", "e1"},
+		{"CREATE TEMPORARY TABLE shop.tmp (id INT)", "CREATE TABLE", "table", "shop", "tmp"},
+		{"CREATE TABLESPACE ts ADD DATAFILE 'x'", "DDL", "ddl", "", ""},
+	}
+	for _, tc := range cases {
+		stmt, ok := ParseDDLStatement(tc.sql)
+		if !ok {
+			t.Fatalf("expected %s to be kept", tc.sql)
+		}
+		if stmt.Operation != tc.operation || stmt.Object != tc.object || stmt.Schema != tc.schema || stmt.Table != tc.table {
+			t.Fatalf("parse %q = %+v, want op=%s object=%s schema=%s table=%s", tc.sql, stmt, tc.operation, tc.object, tc.schema, tc.table)
+		}
+	}
+}
+
+func TestAnalyzeKeepsViewTriggerRoutineAndUnknownDDL(t *testing.T) {
+	statements := []string{
+		"CREATE VIEW shop.v2 AS SELECT id FROM shop.small",
+		"DROP VIEW shop.v2",
+		"CREATE TRIGGER shop.trg_small BEFORE INSERT ON shop.small FOR EACH ROW SET NEW.v = NEW.v + 1",
+		"DROP TRIGGER shop.trg_small",
+		"CREATE PROCEDURE shop.p1() SELECT 1",
+		"DROP PROCEDURE shop.p1",
+		"CREATE FUNCTION shop.f1() RETURNS INT RETURN 1",
+		"CREATE EVENT shop.e1 ON SCHEDULE EVERY 1 HOUR DO SELECT 1",
+		"CREATE TABLESPACE ts ADD DATAFILE 'x'",
+	}
+	events := make([]model.NormalizedEvent, len(statements))
+	base := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	for i, sql := range statements {
+		events[i] = model.NormalizedEvent{
+			Timestamp: base.Add(time.Duration(i) * time.Second),
+			EventType: "DDL",
+			QuerySQL:  sql,
+		}
+	}
+	result, err := New(DefaultOptions()).Analyze(events)
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	if len(result.Diagnostics.DDLEvents) != len(statements) {
+		t.Fatalf("DDL timeline kept %d events, want %d: %+v", len(result.Diagnostics.DDLEvents), len(statements), result.Diagnostics.DDLEvents)
+	}
+	got := map[string]string{}
+	for _, event := range result.Diagnostics.DDLEvents {
+		got[event.Operation] = event.Object
+	}
+	for _, want := range []struct{ op, object string }{
+		{"CREATE VIEW", "view"},
+		{"DROP TRIGGER", "trigger"},
+		{"CREATE PROCEDURE", "routine"},
+		{"CREATE FUNCTION", "routine"},
+		{"CREATE EVENT", "event"},
+		{"DDL", "ddl"},
+	} {
+		if got[want.op] != want.object {
+			t.Fatalf("operation %s object = %q, want %q; events=%+v", want.op, got[want.op], want.object, result.Diagnostics.DDLEvents)
+		}
+	}
+	trigger := result.Diagnostics.DDLEvents[2]
+	if trigger.Schema != "shop" || trigger.Table != "small" {
+		t.Fatalf("CREATE TRIGGER should land on the table after ON, got %s.%s", trigger.Schema, trigger.Table)
+	}
+}
+
+func TestParseDDLStatementRedactsCredentialMaterial(t *testing.T) {
+	hash := "$A$005$" + string([]byte{0x01, 0x02, 0xff}) + "pINSRVdE/pm7UzcDqjMRZ4wRQ3p8g2Ic9"
+	sql := "CREATE USER 'app'@'%' IDENTIFIED WITH 'caching_sha2_password' AS '" + hash + "'"
+	stmt, ok := ParseDDLStatement(sql)
+	if !ok {
+		t.Fatal("expected CREATE USER")
+	}
+	if strings.Contains(stmt.Statement, "pINSRVdE") || strings.Contains(stmt.Statement, hash) || strings.ContainsRune(stmt.Statement, '\x01') {
+		t.Fatalf("credential leaked: %q", stmt.Statement)
+	}
+	if !strings.Contains(stmt.Statement, "IDENTIFIED WITH 'caching_sha2_password' AS <secret>") {
+		t.Fatalf("statement = %q", stmt.Statement)
+	}
+
+	alter, ok := ParseDDLStatement("ALTER USER 'app'@'%' IDENTIFIED BY 's3cret'")
+	if !ok || strings.Contains(alter.Statement, "s3cret") || !strings.Contains(alter.Statement, "IDENTIFIED BY <secret>") {
+		t.Fatalf("alter = %+v", alter)
+	}
+	setPwd, ok := ParseDDLStatement("SET PASSWORD FOR 'app'@'%' = 'hidden'")
+	if ok {
+		t.Fatal("SET PASSWORD is not DDL and must not join the timeline")
+	}
+	_ = setPwd
+	redacted := redactCredentials("SET PASSWORD FOR 'app'@'%' = PASSWORD('hidden')")
+	if strings.Contains(redacted, "hidden") || !strings.Contains(redacted, "<secret>") {
+		t.Fatalf("set password = %q", redacted)
+	}
+	grant, ok := ParseDDLStatement("GRANT SELECT ON shop.* TO 'app'@'%' IDENTIFIED BY 'x'")
+	if !ok || strings.Contains(grant.Statement, "'x'") || !strings.Contains(grant.Statement, "<secret>") {
+		t.Fatalf("grant = %+v", grant)
+	}
+}
+
 func BenchmarkParseDDLStatementNonDDLRowsQuery(b *testing.B) {
 	sql := "UPDATE shop.orders SET status = 'paid', updated_at = NOW() WHERE id IN (" + strings.Repeat("?,", 200) + "?)"
 

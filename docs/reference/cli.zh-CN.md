@@ -102,7 +102,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
-| `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本）或 `full`（有界的原始 SQL）。 |
+| `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本）或 `full`（存储 SQL 上限 4096 字节，截断时带标记）。任何模式下 DDL 里的口令材料都会打码。 |
 | `--top-tables` | `10` | 人类可读报告中显示的 Top 表数量；JSON 保留全部表聚合结果。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量；`0` 表示不限制。 |
 | `--top-threads` | 继承 `--top` | 所有格式中的热点线程或会话数量；`0` 表示不限制。 |

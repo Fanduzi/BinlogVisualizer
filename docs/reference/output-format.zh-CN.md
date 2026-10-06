@@ -329,14 +329,15 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `pos_start` | integer | no | 窗口内保留证据的起始位置 |
 | `pos_end` | integer | no | 窗口内保留证据的结束位置 |
 | `completeness` | string | yes | `complete`、`partial_start`、`partial_end`、`partial_both` 或 `unknown` |
-| `replay_available` | boolean | yes | 是否可以生成可信的完整事务回放命令 |
+| `replay_available` | boolean | yes | 是否可以生成可信的完整事务回放命令。输入来自 stdin 时为 false，即使跨度本身完整 |
+| `replay_note` | string | no | stdin 且跨度本来可回放时出现。写出起止位置，并说明没有文件路径 |
 | `replay_scope` | string | no | 可回放时为 `full_transaction` |
 | `mysqlbinlog_cmd` | string | no | 标记为完整事务的回放命令；没有可信完整跨度时省略 |
 | `tables` | object | no | JSON 对象，key 是表名，value 是整数计数；为空时省略 |
 | `operations` | object | no | JSON 对象，key 是操作名（`INSERT`、`UPDATE`、`DELETE` 或 `LOAD_DATA`），value 是受影响行数；为空时省略 |
 | `query_summary` | string | no | 当 SQL 上下文模式抑制该字段，或没有摘要时省略 |
-| `query_sql` | string | no | 仅在 `--sql-context full` 且存在受限 SQL 上下文时出现 |
-| `query_truncated` | boolean | no | 没有 query 上下文时省略；出现时表示存储的 SQL 是否被截断 |
+| `query_sql` | string | no | 仅在 `--sql-context full` 且存在受限 SQL 上下文时出现。存储被截断时追加 `… [truncated: <shown> of <original> bytes]` |
+| `query_truncated` | boolean | no | 没有 query 上下文时省略。出现时，只有存储 SQL 碰到 4096 字节上限才为 true。更短语句的 160 字符摘要仍是 false |
 | `query_original_bytes` | integer | no | 没有 query 上下文时省略；出现时表示原始 SQL 的字节长度 |
 
 事务行数、操作数、事件数和保留位置继续采用 inclusive 的逐事件窗口语义。相邻解析事件只能帮助确定物理边界，不能增加窗口外 workload。`partial_start` 表示物理起点在所选窗口外，`partial_end` 表示物理终点在窗口外，`partial_both` 表示两端均在窗口外。缺失或旧版边界元数据一律为 `unknown`，不会推断为完整。`transactions` 先列出完整事务排行榜，再按 `txn-N` 的自然数字顺序用有界的 partial/unknown 证据填充剩余位置；后者不参与完整事务排名，也不会进入大小直方图、模式或普通大事务告警。
@@ -345,9 +346,11 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 `transactions` 中的 query 字段取决于 `--sql-context`：
 
-- `off`：省略所有 query 相关字段
-- `summary`：包含经空白归一化且最多 160 个字符的 `query_summary`；存在上下文时才包含截断元数据
-- `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数
+- `off`：所有格式都省略查询文本和 DDL 语句文本。操作、对象和位置仍保留
+- `summary`：包含经空白归一化、SQL 正文最多 160 个字符的 `query_summary`；被截断时追加 `… [truncated: <shown> of <original> bytes]`。存在上下文时才包含截断元数据。`query_truncated` 只有碰到 4096 字节存储上限才为 true
+- `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数。被截断时追加同一标记
+
+`diagnostics.ddl_events[].statement` 遵守同一模式。`off` 省略它。口令材料在这之前已经是 `<secret>`。`CREATE`/`ALTER`/`DROP` VIEW、TRIGGER、PROCEDURE、FUNCTION、EVENT 会留在时间线上，对象类型为 `view`、`trigger`、`routine` 或 `event`。无法识别的 DDL 仍以操作 `DDL`、对象 `ddl` 出现
 
 `sql_context.available` 表示整份报告中是否观察到源 SQL，即使该 SQL 不在 Top 事务中。因而 `full` 与 `available=false` 可以同时出现。provenance 不受该模式影响，任何模式都不会序列化 row-image 值。
 

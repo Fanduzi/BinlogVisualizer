@@ -969,11 +969,22 @@ func TestRenderJSONSQLContextFullModeUsesBoundedSQL(t *testing.T) {
 	if !ok {
 		t.Fatal("full mode should output query_sql")
 	}
-	if len(querySQL) != model.MaxStoredSQLBytes {
-		t.Fatalf("expected bounded query_sql length %d, got %d", model.MaxStoredSQLBytes, len(querySQL))
+	marker := model.TruncationMarker(model.MaxStoredSQLBytes, len(longSQL))
+	if !strings.HasSuffix(querySQL, marker) {
+		end := querySQL
+		if len(end) > 80 {
+			end = end[len(end)-80:]
+		}
+		t.Fatalf("full query_sql missing truncation marker %q, got tail %q", marker, end)
+	}
+	if prefix := strings.TrimSuffix(querySQL, marker); len(prefix) != model.MaxStoredSQLBytes {
+		t.Fatalf("expected stored prefix length %d, got %d", model.MaxStoredSQLBytes, len(prefix))
 	}
 	if querySQL == longSQL {
 		t.Fatal("full mode should not output unbounded original SQL")
+	}
+	if truncated, _ := txn["query_truncated"].(bool); !truncated {
+		t.Fatal("query_truncated means the 4096-byte store cap, want true")
 	}
 }
 

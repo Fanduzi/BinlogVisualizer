@@ -11,6 +11,8 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, compare, tren
 | `analyze_selection.go` | Validates single-file position selectors against exact parsed event boundaries and EOF before report rendering. |
 | `analyze_output.go` | Resolves analyze HTML destination: explicit `--output`, `--output -`, TTY default cwd file, and non-TTY stdout redirect. |
 | `exit.go` | Maps command errors onto process exit codes, including analyze no-data exit 2, and clears a progress line before the process `Error:` line. |
+| `interrupt.go` | Removes stdin/pipe temp copies on SIGINT (exit 130) and SIGTERM (exit 143) and prints `Error: interrupted`. |
+| `analyze_stdin.go` | Spools non-seekable stdin, pipes, and fifos. A real TTY is a terminal error. `/dev/null` and an empty pipe say `stdin has no data`. Replay aliases the spool to `stdin` without inventing a cwd path. |
 | `analyze_parallel.go` | Runs bounded parallel per-file parsing while preserving ordered analyzer consumption for cross-file transaction safety. |
 | `compare.go` | Resolves compare inputs from explicit JSON files or named snapshots and renders text/JSON/HTML compare output with actionable invalid-input errors. |
 | `trend.go` | Resolves explicit or pattern-selected snapshot inputs, optional baseline snapshots, and renders text/JSON/HTML multi-snapshot trend output. |
