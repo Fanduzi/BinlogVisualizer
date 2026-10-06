@@ -32,4 +32,6 @@ type NormalizedEvent struct {
 	QuerySQL           string // Original SQL from Rows_query_log_event (bounded)
 	QueryTruncated     bool   // True if QuerySQL was truncated
 	QueryOriginalBytes int    // Original SQL byte count before truncation
+	RowImages          []RowImage
+	RowImagesOmitted   int
 }

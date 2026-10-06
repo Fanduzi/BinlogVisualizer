@@ -53,6 +53,7 @@ SQL 上下文是有界的，而且面向展示。
 - 存储 SQL 最大 `4096` 字节，被这个上限截断时以 `… [truncated: <shown> of <original> bytes]` 结尾
 - 查询摘要的 SQL 正文最大 `160` 个字符，被截断时后面再加同一标记
 - 查询字段和 DDL 语句文本是否展示由 `--sql-context` 控制（`off` 两者都省略）
+- `--sql-context off` 也会省略 `--show-rows` 的单元格，报告会写明这些值被省略
 - `query_truncated` 表示 4096 字节存储上限，不是 160 字符摘要
 
 这意味着：
@@ -62,6 +63,14 @@ SQL 上下文是有界的，而且面向展示。
 - 即便是 `full` 模式，也只会暴露有界存储后的 SQL，而不是无限长度的原始语句
 
 如果你的流程需要完整长 SQL 的归档或取证保存，就不应把 BinlogViz 当作那个系统。
+
+## 行值
+
+`--show-rows` 默认关闭。打开后，列出的事务带有界行镜像：DELETE 是前镜像，UPDATE 只列出变化的列，INSERT 是后镜像。每个事务最多保留 32 个逻辑行，每个值最多 64 字节。被截断时使用 `… [truncated: shown of original bytes]`，事务上会写明省略了多少行。
+
+列名来自 binlog，前提是 `binlog_row_metadata=FULL`（MySQL 8.0.1+）。否则列是 `@1`..`@N`，报告会说明没有列名。没有这份元数据时，有符号和无符号读数不同的整数会两种都打印，和 `mysqlbinlog -v` 一样。有 FULL 元数据时，按 binlog 记录的有无符号打印。
+
+`--sql-context off` 不打印这些单元格。账号 DDL 的 `<secret>` 打码不变；它作用于语句文本，不是行单元格。BinlogViz 不生成回滚或 flashback SQL。同一事务上的 `mysqlbinlog_cmd` 用来对照。
 
 ## 输出与契约边界
 

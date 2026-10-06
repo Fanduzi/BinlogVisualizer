@@ -883,7 +883,10 @@ const htmlReportTemplateTail = `
       </div>
     </div>
     <div class="section-body" style="padding:16px">
-      <div class="cards" style="margin-bottom:0">
+      {{if .DMLFilter}}<p style="margin:0 0 12px;font-family:'JetBrains Mono',monospace;font-size:12px">{{t "report.label.dmlFilter"}}: {{.DMLFilter}}</p>
+      {{end}}{{if .RowValuesNote}}<p style="margin:0 0 12px;font-size:12px">{{.RowValuesNote}}</p>
+      {{end}}{{if .ColumnNamesNote}}<p style="margin:0 0 12px;font-size:12px">{{.ColumnNamesNote}}</p>
+      {{end}}<div class="cards" style="margin-bottom:0">
         <div class="card">
           <div class="card-head">
             <div class="card-label">{{t "report.html.common.transactions"}}</div>
@@ -1281,7 +1284,7 @@ const htmlReportTemplateTail = `
               {{else if .ReplayNote}}
               <div>{{.ReplayNote}}</div>
               {{end}}
-              {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}
+              {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}{{if .RowText}}<pre style="margin:8px 0 0;padding:8px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px;white-space:pre-wrap">{{.RowText}}</pre>{{end}}
               {{if .Tables}}
               <div class="diagnostic-tables">
                 {{range .Tables}}<span class="diagnostic-chip">{{.Name}} · {{fmtIntHTML .Rows}} rows</span>{{end}}

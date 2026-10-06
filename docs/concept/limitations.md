@@ -53,6 +53,7 @@ Current limits include:
 - stored SQL capped at `4096` bytes, with `… [truncated: <shown> of <original> bytes]` when that cap cuts the text
 - query summaries capped at `160` characters of SQL, then the same marker when the text was cut
 - query fields and DDL statement text shown or omitted according to `--sql-context` (`off` omits both)
+- `--sql-context off` also omits `--show-rows` cell values, and the report says they were omitted
 - `query_truncated` means the 4096-byte store cap, not the 160-character summary
 
 This means:
@@ -62,6 +63,14 @@ This means:
 - even `full` mode only exposes the bounded stored SQL, not unlimited original statements
 
 If your workflow requires complete long-form SQL archival or forensic preservation, BinlogViz should not be treated as that system of record.
+
+## Row values
+
+`--show-rows` is off by default. When it is on, listed transactions carry a bounded image: DELETE before-image, UPDATE columns that differ, INSERT after-image. The report keeps at most 32 logical rows per transaction and 64 bytes of each value. A cut uses `… [truncated: shown of original bytes]`, and the transaction says how many rows were left out.
+
+Column names are taken from the binlog when `binlog_row_metadata=FULL` (MySQL 8.0.1+). Otherwise columns are `@1`..`@N`, and the report says names are missing. Without that metadata, an integer whose signed and unsigned readings differ is printed as both, the same way `mysqlbinlog -v` does. With FULL metadata, a column is printed with the signedness the binlog recorded.
+
+`--sql-context off` does not print those cells. Auth-DDL `<secret>` redaction is unchanged; it applies to statement text, not to row cells. BinlogViz does not generate rollback or flashback SQL. `mysqlbinlog_cmd` on the same transaction is the cross-check.
 
 ## Output and Contract Boundaries
 
