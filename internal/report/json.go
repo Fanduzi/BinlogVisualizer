@@ -247,6 +247,7 @@ type jsonTransaction struct {
 	Completeness       string         `json:"completeness"`
 	ReplayAvailable    bool           `json:"replay_available"`
 	ReplayScope        string         `json:"replay_scope,omitempty"`
+	ReplayNote         string         `json:"replay_note,omitempty"`
 	Tables             map[string]int `json:"tables,omitempty"`
 	Operations         map[string]int `json:"operations,omitempty"`
 	QuerySummary       string         `json:"query_summary,omitempty"`
@@ -522,7 +523,7 @@ func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) json
 	return jsonDiagnostics{
 		FileCoverage:            convertFileCoverage(diagnostics.FileCoverage),
 		CountedEventBytes:       diagnostics.CountedEventBytes,
-		DDLEvents:               convertDDLEvents(diagnostics.DDLEvents),
+		DDLEvents:               convertDDLEvents(diagnostics.DDLEvents, mode),
 		LargestTransactions:     convertTransactions(diagnostics.LargestTransactions, mode, diagnostics.ServerVersion),
 		LongestTransactions:     convertTransactions(diagnostics.LongestTransactions, mode, diagnostics.ServerVersion),
 		WidestTransactions:      convertTransactions(diagnostics.WidestTransactions, mode, diagnostics.ServerVersion),
@@ -564,7 +565,7 @@ func convertFileCoverageItems(items []model.FileCoverageItem) []jsonFileCoverage
 	return result
 }
 
-func convertDDLEvents(events []model.DDLEvent) []jsonDDLEvent {
+func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode) []jsonDDLEvent {
 	if events == nil {
 		return []jsonDDLEvent{}
 	}
@@ -577,7 +578,7 @@ func convertDDLEvents(events []model.DDLEvent) []jsonDDLEvent {
 			Table:         event.Table,
 			Operation:     event.Operation,
 			Object:        event.Object,
-			Statement:     event.Statement,
+			Statement:     ddlStatementForMode(event.Statement, mode),
 			PositionStart: event.PositionStart,
 			PositionEnd:   event.PositionEnd,
 			BinlogBytes:   event.BinlogBytes,
@@ -751,13 +752,14 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 		if jt.ReplayAvailable {
 			jt.ReplayScope = "full_transaction"
 		}
+		jt.ReplayNote = stdinReplayNote(t)
 		switch mode {
 		case SQLContextOff:
 			// omit all query-related fields
 		case SQLContextFull:
 			jt.QuerySummary = t.QuerySummary
 			if t.QueryContext != nil {
-				jt.QuerySQL = t.QueryContext.SQL
+				jt.QuerySQL = model.DisplayStoredSQL(t.QueryContext.SQL, t.QueryContext.Truncated, t.QueryContext.OriginalBytes)
 				jt.QueryTruncated = boolPtr(t.QueryContext.Truncated)
 				jt.QueryOriginalBytes = intPtr(t.QueryContext.OriginalBytes)
 			}

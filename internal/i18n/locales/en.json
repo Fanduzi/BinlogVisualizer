@@ -45,7 +45,7 @@
   },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL context flag description",
-    "other": "Query text in every format, including default text and --show-patterns: summary (one bounded line), off (omit query text), or full (bounded stored SQL)"
+    "other": "Query text in every format, including default text, DDL statements, and --show-patterns: summary (one bounded line), off (omit query text), or full (stored SQL capped at 4096 bytes and marked when cut). Credential material in DDL is redacted in every mode"
   },
   "cmd.analyze.flag.top": {
     "description": "Default ranked items flag description",
@@ -150,6 +150,10 @@
   "error.stdinOnce": {
     "description": "Error when - is passed more than once",
     "other": "stdin (-) can be used only once"
+  },
+  "error.interrupted": {
+    "description": "Error when analyze is interrupted by SIGINT or SIGTERM",
+    "other": "interrupted"
   },
   "error.readBinlogDir": {
     "description": "Error reading binlog directory",
@@ -322,6 +326,10 @@
   "report.label.fullTransactionReplay": {
     "description": "Label for replay commands that cover a physically observed full transaction",
     "other": "Full-transaction replay"
+  },
+  "report.replay.stdinNoPath": {
+    "description": "Replay hint when the binlog was read from stdin and there is no file to rerun",
+    "other": "input came from stdin; no replay path (start-position={{.Start}} stop-position={{.Stop}})"
   },
   "report.label.totalRows": {
     "description": "Total rows label",

@@ -335,14 +335,15 @@ Default text prints the DDL timeline, open uncommitted DML, up to three longest 
 | `pos_start` | integer | no | Start position of retained in-window evidence |
 | `pos_end` | integer | no | End position of retained in-window evidence |
 | `completeness` | string | yes | `complete`, `partial_start`, `partial_end`, `partial_both`, or `unknown` |
-| `replay_available` | boolean | yes | Whether a trusted full-transaction replay command can be emitted |
+| `replay_available` | boolean | yes | Whether a trusted full-transaction replay command can be emitted. False when the input was stdin, even if the span itself is complete |
 | `replay_scope` | string | no | `full_transaction` when replay is available |
-| `mysqlbinlog_cmd` | string | no | Labelled full-transaction replay command; omitted without a trusted full span |
+| `mysqlbinlog_cmd` | string | no | Labelled full-transaction replay command; omitted without a trusted full span, and omitted for stdin |
+| `replay_note` | string | no | Present for stdin when the span would otherwise be replayable. Names start and stop positions and says there is no file path |
 | `tables` | object | no | JSON object whose keys are table names and whose values are integer counts; omitted when the map is nil or empty (`omitempty`) |
 | `operations` | object | no | JSON object whose keys are operation names (`INSERT`, `UPDATE`, `DELETE`, or `LOAD_DATA`) and whose values are affected-row counts; omitted when the map is nil or empty (`omitempty`) |
 | `query_summary` | string | no | Omitted when SQL-context mode suppresses it or when no summary exists |
-| `query_sql` | string | no | Present only in `--sql-context full` when bounded SQL context exists |
-| `query_truncated` | boolean | no | Omitted when no query context exists; when present, indicates whether stored SQL was truncated |
+| `query_sql` | string | no | Present only in `--sql-context full` when bounded SQL context exists. A store cut appends `… [truncated: <shown> of <original> bytes]` |
+| `query_truncated` | boolean | no | Omitted when no query context exists. When present, true only when stored SQL hit the 4096-byte cap. A 160-character summary of a shorter statement stays false |
 | `query_original_bytes` | integer | no | Omitted when no query context exists; when present, reports original SQL byte length |
 
 Transaction rows, operations, event counts, and retained positions remain inclusive and event-window scoped. Adjacent parsed events can establish physical boundaries but do not add out-of-window workload. `partial_start` means the physical start is outside the selected window, `partial_end` means the physical end is outside it, and `partial_both` means both are outside it. Missing or legacy boundary metadata is `unknown`, never inferred as complete. Complete ranked entries appear first in `transactions`; bounded partial/unknown evidence fills remaining slots in natural numeric `txn-N` key order without participating in that whole-transaction ranking. Partial and unknown evidence is also excluded from size histograms, patterns, and ordinary large-transaction alerts.
@@ -351,9 +352,11 @@ Transaction rows, operations, event counts, and retained positions remain inclus
 
 `transactions` query fields depend on `--sql-context`:
 
-- `off`: omit all query-related fields, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, and HTML transaction evidence
-- `summary`: include one whitespace-normalized `query_summary` bounded to 160 characters; include truncation metadata only when context exists. Default text prints that line on Top Transactions
-- `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists. Default text prints that SQL on Top Transactions
+- `off`: omit query text and DDL statement text in every format, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, HTML transaction evidence, and the DDL timeline statement. Operation, object, and position stay
+- `summary`: include one whitespace-normalized `query_summary` whose SQL body is at most 160 characters; a cut appends `… [truncated: <shown> of <original> bytes]`. Include truncation metadata only when context exists. `query_truncated` stays false unless the 4096-byte store cap was hit. Default text prints that line on Top Transactions. DDL timeline statements use the same one-line summary
+- `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists. A cut appends the same marker. Default text prints that SQL on Top Transactions. DDL timeline statements print the stored statement with the marker when cut
+
+`diagnostics.ddl_events[].statement` follows the same mode. `off` omits it. Credential literals are already `<secret>` before that choice. CREATE/ALTER/DROP VIEW, TRIGGER, PROCEDURE, FUNCTION, and EVENT stay on the timeline with object type `view`, `trigger`, `routine`, or `event`. Unrecognized DDL stays as operation `DDL` and object `ddl`.
 
 `sql_context.available` reports whether any source SQL was observed across the full report, even when it falls outside the top transactions. `full` may therefore be selected with `available=false`. Provenance never depends on this mode, and no mode serializes row-image values.
 

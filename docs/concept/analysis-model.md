@@ -160,15 +160,15 @@ BinlogViz separates transaction workload metrics from optional SQL context displ
 
 `--sql-context` controls how transaction query context is exposed:
 
-- `summary`: include the bounded query summary and query metadata fields when query context exists. Default text prints that summary on Top Transactions, and `--show-patterns` prints the sample query
-- `off`: omit query-related fields entirely, including text `Query:` lines, Markdown, and HTML
-- `full`: include the bounded stored SQL plus metadata when query context exists. Default text prints that SQL on Top Transactions
+- `summary`: include one bounded query summary and query metadata fields when query context exists. Default text prints that summary on Top Transactions, and `--show-patterns` prints the sample query. A display cut names the original byte length
+- `off`: omit query text and DDL statement text in every format, including text `Query:` lines, Markdown, and HTML. Operation, object, and position stay
+- `full`: include stored SQL plus metadata when query context exists. Default text prints that SQL on Top Transactions. A cut ends with `… [truncated: <shown> of <original> bytes]`
 
 The implementation deliberately bounds SQL context:
 
-- stored SQL is capped at `4096` bytes
-- query summary is capped at `160` characters
-- truncation metadata is preserved when query context exists
+- stored SQL is capped at `4096` bytes; `query_truncated` means that store cap, not the 160-character summary
+- query summary is capped at `160` characters of SQL, then the truncation marker when the text was cut
+- credential literals in `CREATE`/`ALTER USER`, `GRANT ... IDENTIFIED`, and `SET PASSWORD` become `<secret>` before display, in every mode
 
 This means SQL context is designed for operator orientation, not for lossless archival of original statements.
 

@@ -65,7 +65,7 @@ binlogviz analyze mysql-bin.000123
 cat mysql-bin.000123 | binlogviz analyze -
 ```
 
-`analyze -` reads one binary binlog from a pipe. The parser needs a seekable file, so stdin is copied to a temporary file and removed when the command finishes. A terminal with no data fails before parsing. `mysqlbinlog` text output is not a binlog.
+`analyze -` reads one binary binlog from a pipe. The parser needs a seekable file, so stdin is copied to a temporary file and removed when the command finishes, including Ctrl-C (exit 130) and SIGTERM (exit 143). A terminal fails before parsing. `/dev/null` and an empty pipe say `stdin has no data`. Replay hints for that input say it came from stdin and do not point at a file. `mysqlbinlog` text output is not a binlog.
 
 The default text report includes Top Threads, ranked by rows (or by events, bytes, or transactions when there are no row images). It shows `thread_id`, and `server_id`, `user@host`, and schema when the binlog stored them, so "who wrote the most" does not need `jq`. `--top` limits that section; `--top-threads 0` keeps every session. JSON exposes the same ranking as `threads`.
 
