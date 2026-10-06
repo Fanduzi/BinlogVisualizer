@@ -59,6 +59,7 @@ type Filters struct {
 	ExcludeSchemas []string `json:"exclude_schema"`
 	IncludeTables  []string `json:"include_table"`
 	ExcludeTables  []string `json:"exclude_table"`
+	DML            []string `json:"dml,omitempty"`
 }
 
 // Descriptor is the normalized command-facing view of one stored snapshot.

@@ -1,0 +1,652 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261006 23:38:31 server id 1  end_log_pos 126 CRC32 0xa480df04 	Start: binlog v 4, server v 8.0.46-0ubuntu0.24.04.4 created 261006 23:38:31 at startup
+ROLLBACK/*!*/;
+# at 126
+#261006 23:38:31 server id 1  end_log_pos 157 CRC32 0x714dd069 	Previous-GTIDs
+# [empty]
+# at 157
+#261006 23:38:31 server id 1  end_log_pos 234 CRC32 0x2d6fc874 	GTID	last_committed=0	sequence_number=1	rbr_only=no	original_committed_timestamp=1791329911547552	immediate_commit_timestamp=1791329911547552	transaction_length=185
+# original_commit_timestamp=1791329911547552 (2026-10-06 23:38:31.547552 UTC)
+# immediate_commit_timestamp=1791329911547552 (2026-10-06 23:38:31.547552 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791329911547552*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= 'f4d3a60a-c1de-11f1-a30a-822b383dbcd0:1'/*!*/;
+# at 234
+#261006 23:38:31 server id 1  end_log_pos 342 CRC32 0x1b52d933 	Query	thread_id=10	exec_time=0	error_code=0	Xid = 8
+SET TIMESTAMP=1791329911/*!*/;
+SET @@session.pseudo_thread_id=10/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+/*!80016 SET @@session.default_table_encryption=0*//*!*/;
+CREATE DATABASE shop
+/*!*/;
+# at 342
+#261006 23:38:31 server id 1  end_log_pos 421 CRC32 0x735fa7de 	GTID	last_committed=1	sequence_number=2	rbr_only=no	original_committed_timestamp=1791329911559765	immediate_commit_timestamp=1791329911559765	transaction_length=410
+# original_commit_timestamp=1791329911559765 (2026-10-06 23:38:31.559765 UTC)
+# immediate_commit_timestamp=1791329911559765 (2026-10-06 23:38:31.559765 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791329911559765*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= 'f4d3a60a-c1de-11f1-a30a-822b383dbcd0:2'/*!*/;
+# at 421
+#261006 23:38:31 server id 1  end_log_pos 752 CRC32 0xa58418d2 	Query	thread_id=10	exec_time=0	error_code=0	Xid = 9
+SET TIMESTAMP=1791329911/*!*/;
+SET @@session.explicit_defaults_for_timestamp=1/*!*/;
+/*!80013 SET @@session.sql_require_primary_key=0*//*!*/;
+CREATE TABLE shop.orders (
+  id INT UNSIGNED NOT NULL,
+  qty INT NULL,
+  price DECIMAL(10,2) NULL,
+  note VARCHAR(64) NULL,
+  created_at DATETIME(6) NULL,
+  updated_at TIMESTAMP(6) NULL,
+  payload JSON NULL,
+  raw BLOB NULL,
+  PRIMARY KEY (id)
+)
+/*!*/;
+# at 752
+#261006 23:38:31 server id 1  end_log_pos 831 CRC32 0xeb81ea14 	GTID	last_committed=2	sequence_number=3	rbr_only=yes	original_committed_timestamp=1791329911566243	immediate_commit_timestamp=1791329911566243	transaction_length=6890
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791329911566243 (2026-10-06 23:38:31.566243 UTC)
+# immediate_commit_timestamp=1791329911566243 (2026-10-06 23:38:31.566243 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791329911566243*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= 'f4d3a60a-c1de-11f1-a30a-822b383dbcd0:3'/*!*/;
+# at 831
+#261006 23:38:31 server id 1  end_log_pos 910 CRC32 0xa005b9af 	Query	thread_id=10	exec_time=0	error_code=0
+SET TIMESTAMP=1791329911/*!*/;
+SET @@session.time_zone='+00:00'/*!*/;
+BEGIN
+/*!*/;
+# at 910
+# at 1302
+#261006 23:38:31 server id 1  end_log_pos 1375 CRC32 0xa7810967 	Table_map: `shop`.`orders` mapped to number 124
+# has_generated_invisible_primary_key=0
+# at 1375
+#261006 23:38:31 server id 1  end_log_pos 1550 CRC32 0x3e18eb6f 	Write_rows: table id 124 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1
+###   @2=1
+###   @3=10.00
+###   @4='alpha'
+###   @5='2026-10-06 14:00:01.000000'
+###   @6=1791295201.000000
+###   @7='{"sku": "A"}'
+###   @8='\x01'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=2
+###   @2=2
+###   @3=10.50
+###   @4='beta'
+###   @5='2026-10-06 14:00:02.000000'
+###   @6=1791295202.000000
+###   @7='{"sku": "B"}'
+###   @8=NULL
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=3
+###   @2=-4 (4294967292)
+###   @3=0.00
+###   @4=NULL
+###   @5='2026-10-06 14:00:03.000000'
+###   @6=NULL
+###   @7=NULL
+###   @8=''
+# at 1550
+# at 2073
+#261006 23:38:31 server id 1  end_log_pos 2146 CRC32 0x47e96796 	Table_map: `shop`.`orders` mapped to number 124
+# has_generated_invisible_primary_key=0
+# at 2146
+#261006 23:38:31 server id 1  end_log_pos 7611 CRC32 0x13d3c111 	Write_rows: table id 124 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1030
+###   @2=30
+###   @3=1.25
+###   @4='row-30'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 30}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1020
+###   @2=20
+###   @3=1.25
+###   @4='row-20'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 20}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1010
+###   @2=10
+###   @3=1.25
+###   @4='row-10'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 10}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1000
+###   @2=0
+###   @3=1.25
+###   @4='row-0'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 0}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1031
+###   @2=31
+###   @3=1.25
+###   @4='row-31'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 31}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1021
+###   @2=21
+###   @3=1.25
+###   @4='row-21'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 21}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1011
+###   @2=11
+###   @3=1.25
+###   @4='row-11'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 11}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1001
+###   @2=1
+###   @3=1.25
+###   @4='row-1'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 1}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1032
+###   @2=32
+###   @3=1.25
+###   @4='row-32'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 32}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1022
+###   @2=22
+###   @3=1.25
+###   @4='row-22'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 22}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1012
+###   @2=12
+###   @3=1.25
+###   @4='row-12'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 12}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1002
+###   @2=2
+###   @3=1.25
+###   @4='row-2'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 2}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1033
+###   @2=33
+###   @3=1.25
+###   @4='row-33'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 33}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1023
+###   @2=23
+###   @3=1.25
+###   @4='row-23'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 23}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1013
+###   @2=13
+###   @3=1.25
+###   @4='row-13'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 13}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1003
+###   @2=3
+###   @3=1.25
+###   @4='row-3'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 3}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1034
+###   @2=34
+###   @3=1.25
+###   @4='row-34'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 34}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1024
+###   @2=24
+###   @3=1.25
+###   @4='row-24'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 24}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1014
+###   @2=14
+###   @3=1.25
+###   @4='row-14'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 14}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1004
+###   @2=4
+###   @3=1.25
+###   @4='row-4'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 4}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1035
+###   @2=35
+###   @3=1.25
+###   @4='row-35'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 35}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1025
+###   @2=25
+###   @3=1.25
+###   @4='row-25'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 25}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1015
+###   @2=15
+###   @3=1.25
+###   @4='row-15'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 15}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1005
+###   @2=5
+###   @3=1.25
+###   @4='row-5'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 5}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1036
+###   @2=36
+###   @3=1.25
+###   @4='row-36'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 36}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1026
+###   @2=26
+###   @3=1.25
+###   @4='row-26'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 26}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1016
+###   @2=16
+###   @3=1.25
+###   @4='row-16'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 16}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1006
+###   @2=6
+###   @3=1.25
+###   @4='row-6'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 6}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1037
+###   @2=37
+###   @3=1.25
+###   @4='row-37'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 37}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1027
+###   @2=27
+###   @3=1.25
+###   @4='row-27'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 27}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1017
+###   @2=17
+###   @3=1.25
+###   @4='row-17'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 17}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1007
+###   @2=7
+###   @3=1.25
+###   @4='row-7'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 7}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1038
+###   @2=38
+###   @3=1.25
+###   @4='row-38'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 38}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1028
+###   @2=28
+###   @3=1.25
+###   @4='row-28'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 28}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1018
+###   @2=18
+###   @3=1.25
+###   @4='row-18'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 18}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1008
+###   @2=8
+###   @3=1.25
+###   @4='row-8'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 8}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1039
+###   @2=39
+###   @3=1.25
+###   @4='row-39'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 39}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1029
+###   @2=29
+###   @3=1.25
+###   @4='row-29'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 29}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1019
+###   @2=19
+###   @3=1.25
+###   @4='row-19'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 19}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1009
+###   @2=9
+###   @3=1.25
+###   @4='row-9'
+###   @5='2026-10-06 14:01:00.000000'
+###   @6=1791295260.000000
+###   @7='{"n": 9}'
+###   @8='xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+# at 7611
+#261006 23:38:31 server id 1  end_log_pos 7642 CRC32 0x62cae45b 	Xid = 12
+COMMIT/*!*/;
+# at 7642
+#261006 23:38:31 server id 1  end_log_pos 7721 CRC32 0x7d10aec9 	GTID	last_committed=3	sequence_number=4	rbr_only=yes	original_committed_timestamp=1791329911568553	immediate_commit_timestamp=1791329911568553	transaction_length=1123
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791329911568553 (2026-10-06 23:38:31.568553 UTC)
+# immediate_commit_timestamp=1791329911568553 (2026-10-06 23:38:31.568553 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791329911568553*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= 'f4d3a60a-c1de-11f1-a30a-822b383dbcd0:4'/*!*/;
+# at 7721
+#261006 23:38:31 server id 1  end_log_pos 7792 CRC32 0x27f5f7b4 	Query	thread_id=10	exec_time=0	error_code=0
+SET TIMESTAMP=1791329911/*!*/;
+BEGIN
+/*!*/;
+# at 7792
+# at 7877
+#261006 23:38:31 server id 1  end_log_pos 7950 CRC32 0x72770e67 	Table_map: `shop`.`orders` mapped to number 124
+# has_generated_invisible_primary_key=0
+# at 7950
+#261006 23:38:31 server id 1  end_log_pos 8041 CRC32 0x92c8cc72 	Delete_rows: table id 124 flags: STMT_END_F
+### DELETE FROM `shop`.`orders`
+### WHERE
+###   @1=2
+###   @2=2
+###   @3=10.50
+###   @4='beta'
+###   @5='2026-10-06 14:00:02.000000'
+###   @6=1791295202.000000
+###   @7='{"sku": "B"}'
+###   @8=NULL
+# at 8041
+# at 8295
+#261006 23:38:31 server id 1  end_log_pos 8368 CRC32 0x375ea702 	Table_map: `shop`.`orders` mapped to number 124
+# has_generated_invisible_primary_key=0
+# at 8368
+#261006 23:38:31 server id 1  end_log_pos 8477 CRC32 0x6a79106b 	Write_rows: table id 124 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=-1294967296 (3000000000)
+###   @2=NULL
+###   @3=19.99
+###   @4='it\'s "bad"'
+###   @5='2026-10-06 14:05:01.123456'
+###   @6=1791295501.500000
+###   @7='{"n": 1, "sku": "Z"}'
+###   @8='Þ­¾ï\x01\x02'
+# at 8477
+# at 8552
+#261006 23:38:31 server id 1  end_log_pos 8625 CRC32 0x08c807c5 	Table_map: `shop`.`orders` mapped to number 124
+# has_generated_invisible_primary_key=0
+# at 8625
+#261006 23:38:31 server id 1  end_log_pos 8734 CRC32 0xa506022f 	Delete_rows: table id 124 flags: STMT_END_F
+### DELETE FROM `shop`.`orders`
+### WHERE
+###   @1=-1294967296 (3000000000)
+###   @2=NULL
+###   @3=19.99
+###   @4='it\'s "bad"'
+###   @5='2026-10-06 14:05:01.123456'
+###   @6=1791295501.500000
+###   @7='{"n": 1, "sku": "Z"}'
+###   @8='Þ­¾ï\x01\x02'
+# at 8734
+#261006 23:38:31 server id 1  end_log_pos 8765 CRC32 0x03b4322e 	Xid = 16
+COMMIT/*!*/;
+# at 8765
+#261006 23:38:31 server id 1  end_log_pos 8844 CRC32 0x9d87cbd9 	GTID	last_committed=4	sequence_number=5	rbr_only=yes	original_committed_timestamp=1791329911569604	immediate_commit_timestamp=1791329911569604	transaction_length=575
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791329911569604 (2026-10-06 23:38:31.569604 UTC)
+# immediate_commit_timestamp=1791329911569604 (2026-10-06 23:38:31.569604 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791329911569604*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= 'f4d3a60a-c1de-11f1-a30a-822b383dbcd0:5'/*!*/;
+# at 8844
+#261006 23:38:31 server id 1  end_log_pos 8924 CRC32 0xc16531a9 	Query	thread_id=10	exec_time=0	error_code=0
+SET TIMESTAMP=1791329911/*!*/;
+BEGIN
+/*!*/;
+# at 8924
+# at 9021
+#261006 23:38:31 server id 1  end_log_pos 9094 CRC32 0x1a445793 	Table_map: `shop`.`orders` mapped to number 124
+# has_generated_invisible_primary_key=0
+# at 9094
+#261006 23:38:31 server id 1  end_log_pos 9309 CRC32 0x4d709e4e 	Update_rows: table id 124 flags: STMT_END_F
+### UPDATE `shop`.`orders`
+### WHERE
+###   @1=1
+###   @2=1
+###   @3=10.00
+###   @4='alpha'
+###   @5='2026-10-06 14:00:01.000000'
+###   @6=1791295201.000000
+###   @7='{"sku": "A"}'
+###   @8='\x01'
+### SET
+###   @1=1
+###   @2=2
+###   @3=10.00
+###   @4='changed'
+###   @5='2026-10-06 14:00:01.000000'
+###   @6=1791295201.000000
+###   @7='{"sku": "A"}'
+###   @8='\x01'
+### UPDATE `shop`.`orders`
+### WHERE
+###   @1=3
+###   @2=-4 (4294967292)
+###   @3=0.00
+###   @4=NULL
+###   @5='2026-10-06 14:00:03.000000'
+###   @6=NULL
+###   @7=NULL
+###   @8=''
+### SET
+###   @1=3
+###   @2=-3 (4294967293)
+###   @3=0.00
+###   @4='changed'
+###   @5='2026-10-06 14:00:03.000000'
+###   @6=NULL
+###   @7=NULL
+###   @8=''
+# at 9309
+#261006 23:38:31 server id 1  end_log_pos 9340 CRC32 0x3707f510 	Xid = 21
+COMMIT/*!*/;
+# at 9340
+#261006 23:38:31 server id 1  end_log_pos 9387 CRC32 0x085e9c45 	Rotate to mysql-bin.000002  pos: 4
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

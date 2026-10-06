@@ -345,6 +345,8 @@ Default text prints the DDL timeline, open uncommitted DML, up to three longest 
 | `query_sql` | string | no | Present only in `--sql-context full` when bounded SQL context exists. A store cut appends `… [truncated: <shown> of <original> bytes]` |
 | `query_truncated` | boolean | no | Omitted when no query context exists. When present, true only when stored SQL hit the 4096-byte cap. A 160-character summary of a shorter statement stays false |
 | `query_original_bytes` | integer | no | Omitted when no query context exists; when present, reports original SQL byte length |
+| `rows` | array | no | Present only with `--show-rows` and `--sql-context` other than `off`. Each element is one logical row: `op` (`INSERT`, `UPDATE`, `DELETE`), `columns`, `names` (`full` or `positional`), `before`, `after`, and `changed` (UPDATE column labels that differ). A cell is a string, or JSON `null` for SQL NULL. At most 32 images per transaction |
+| `rows_omitted` | integer | no | Logical rows not stored after that cap |
 
 Transaction rows, operations, event counts, and retained positions remain inclusive and event-window scoped. Adjacent parsed events can establish physical boundaries but do not add out-of-window workload. `partial_start` means the physical start is outside the selected window, `partial_end` means the physical end is outside it, and `partial_both` means both are outside it. Missing or legacy boundary metadata is `unknown`, never inferred as complete. Complete ranked entries appear first in `transactions`; bounded partial/unknown evidence fills remaining slots in natural numeric `txn-N` key order without participating in that whole-transaction ranking. Partial and unknown evidence is also excluded from size histograms, patterns, and ordinary large-transaction alerts.
 
@@ -352,7 +354,7 @@ Transaction rows, operations, event counts, and retained positions remain inclus
 
 `transactions` query fields depend on `--sql-context`:
 
-- `off`: omit query text and DDL statement text in every format, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, HTML transaction evidence, and the DDL timeline statement. Operation, object, and position stay
+- `off`: omit query text and DDL statement text in every format, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, HTML transaction evidence, and the DDL timeline statement. Operation, object, and position stay. `--show-rows` cell values are omitted too; the report says `row values omitted because --sql-context is off`
 - `summary`: include one whitespace-normalized `query_summary` whose SQL body is at most 160 characters; a cut appends `… [truncated: <shown> of <original> bytes]`. Include truncation metadata only when context exists. `query_truncated` stays false unless the 4096-byte store cap was hit. Default text prints that line on Top Transactions. DDL timeline statements use the same one-line summary
 - `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists. A cut appends the same marker. Default text prints that SQL on Top Transactions. DDL timeline statements print the stored statement, also capped at 4096 bytes, with the marker when cut
 
@@ -512,6 +514,7 @@ Current implementation increments this count when transaction query context had 
 | `exclude_schema` | array | yes | Excluded schemas, or empty array |
 | `include_table` | array | yes | Included tables, or empty array |
 | `exclude_table` | array | yes | Excluded tables, or empty array |
+| `dml` | array | no | `--dml` kinds in order `INSERT`, `UPDATE`, `DELETE`. Omitted when the flag was not set. The same field is on report `scope` |
 
 ## Markdown Output
 
@@ -785,6 +788,7 @@ The page also includes compare summary cards and detailed tables/lists so an ope
 - `HTML report saved to …` when `--format html` writes a file
 - `Error: window matched 0 events` when `--start`/`--end` matches no events (exit 2, empty stdout)
 - `Error: schema/table filter matched no events` when an active schema or object filter leaves no row activity and no view, event, routine, or trigger DDL (exit 2, empty stdout). A matching view, event, function, procedure, or trigger exits 0 and prints that DDL.
+- `Error: dml filter matched no events` when `--dml` is set and no row image of those kinds was counted (exit 2, empty stdout). This is checked before the schema/table message when both filters match nothing.
 - `Error: binlog has no analyzable events` for a complete Format Description-only (or rotate-only) file (exit 2, empty stdout)
 - `Error: binlog is truncated or corrupt: …` when the file ends in a partial event, including leftover bytes after the last complete event (exit 1, empty stdout)
 - command errors (exit 1 unless noted)

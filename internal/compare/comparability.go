@@ -166,6 +166,7 @@ func canonicalScopeKey(scope InputSnapshotFilters, selection *InputSelection) st
 			ExcludeSchemas: normalizedScopeValues(scope.ExcludeSchemas),
 			IncludeTables:  normalizedScopeValues(scope.IncludeTables),
 			ExcludeTables:  normalizedScopeValues(scope.ExcludeTables),
+			DML:            normalizedScopeValues(scope.DML),
 		},
 		Selection: canonicalSelection(selection),
 	}
@@ -210,6 +211,7 @@ func cloneScope(scope *InputSnapshotFilters) *InputSnapshotFilters {
 		ExcludeSchemas: append([]string(nil), scope.ExcludeSchemas...),
 		IncludeTables:  append([]string(nil), scope.IncludeTables...),
 		ExcludeTables:  append([]string(nil), scope.ExcludeTables...),
+		DML:            append([]string(nil), scope.DML...),
 	}
 }
 

@@ -107,6 +107,14 @@
     "description": "仅分析指定表标志描述",
     "other": "仅分析指定对象（逗号分隔，TABLE 或 SCHEMA.TABLE）。同样匹配 VIEW、EVENT、FUNCTION、PROCEDURE、TRIGGER 的名字"
   },
+  "cmd.analyze.flag.dml": {
+    "description": "DML 类型过滤标志描述",
+    "other": "只统计这些 ROW 类型（逗号分隔 insert、update、delete，可组合）"
+  },
+  "cmd.analyze.flag.showRows": {
+    "description": "显示行值标志描述",
+    "other": "为列出的事务显示有界行值（DELETE 为前镜像，UPDATE 为变化列，INSERT 为后镜像）。默认关闭。--sql-context off 会省略这些值"
+  },
   "cmd.analyze.flag.excludeTable": {
     "description": "排除指定表标志描述",
     "other": "跳过指定对象（逗号分隔，TABLE 或 SCHEMA.TABLE）。同样匹配 VIEW、EVENT、FUNCTION、PROCEDURE、TRIGGER 的名字"
@@ -231,6 +239,10 @@
     "description": "可读 binlog 上 schema 或 table 过滤后没有行事件",
     "other": "schema/table 过滤没有匹配到事件"
   },
+  "error.dmlFilterMatchedNothing": {
+    "description": "可读 binlog 上 DML 类型过滤后没有行事件",
+    "other": "dml 过滤没有匹配到事件"
+  },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
     "other": "前缀后的后缀必须是数字；请尝试 --prefix {{.Prefix}}"
@@ -354,6 +366,38 @@
   "report.label.openExplicitGroups": {
     "description": "没有 COMMIT 或 plain ROLLBACK 就结束输入的 BEGIN 组",
     "other": "未关闭的显式事务组"
+  },
+  "report.label.dmlFilter": {
+    "description": "生效的 DML 类型过滤标签",
+    "other": "DML 过滤"
+  },
+  "report.label.rowValues": {
+    "description": "行值展示标签",
+    "other": "行值"
+  },
+  "report.label.columnNames": {
+    "description": "列名来源标签",
+    "other": "列名"
+  },
+  "report.text.columnNamesMissing": {
+    "description": "binlog 没有 FULL 行元数据时的说明",
+    "other": "没有列名（binlog_row_metadata 不是 FULL）；列显示为 @1..@N"
+  },
+  "report.text.rowValuesSuppressed": {
+    "description": "--show-rows 打开且 --sql-context 为 off 时的说明",
+    "other": "行值已省略，因为 --sql-context 为 off"
+  },
+  "report.text.rowsOmitted": {
+    "description": "事务上未保存的逻辑行数",
+    "other": "省略的行：{{.Count}}"
+  },
+  "report.text.rowUnchanged": {
+    "description": "UPDATE 前后镜像完全相同",
+    "other": "（没有列发生变化）"
+  },
+  "report.text.unchangedColumns": {
+    "description": "UPDATE 中未变化的列数",
+    "other": "（{{.Count}} 列未变化）"
   },
   "report.text.rowImageSummary": {
     "description": "默认文本报告格式边界",

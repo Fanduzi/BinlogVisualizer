@@ -124,6 +124,9 @@ type htmlReportData struct {
 	OpsPie                 template.JS
 	EChartsJS              template.JS
 	TopN                   int
+	DMLFilter              string
+	ColumnNamesNote        string
+	RowValuesNote          string
 }
 
 type htmlDrilldown struct {
@@ -204,6 +207,7 @@ type htmlTxnDiagnostic struct {
 	MysqlbinlogCmd       string
 	ReplayNote           string
 	Identity             string
+	RowText              string
 }
 
 type htmlThreadRow struct {
@@ -423,7 +427,13 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasDDLEvents = len(d.DDLEvents) > 0
 	d.DDLCount = len(d.DDLEvents)
 
-	d.TransactionEvidence = buildHTMLTransactionEvidence(result.Diagnostics, result.Diagnostics.ServerVersion, opts.SQLContextMode)
+	d.DMLFilter = dmlFilterLabel(result.Scope)
+	if rowValuesSuppressed(opts) {
+		d.RowValuesNote = i18n.T("report.text.rowValuesSuppressed")
+	} else if showRowValues(opts) {
+		d.ColumnNamesNote = columnNamesNote(result)
+	}
+	d.TransactionEvidence = buildHTMLTransactionEvidence(result.Diagnostics, result.Diagnostics.ServerVersion, opts)
 	d.HasTransactionEvidence = len(d.TransactionEvidence) > 0
 
 	for _, interval := range result.Diagnostics.HotIntervals {
@@ -577,7 +587,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	return d
 }
 
-func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion string, mode SQLContextMode) []htmlTxnDiagnostic {
+func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion string, opts Options) []htmlTxnDiagnostic {
+	mode := opts.SQLContextMode
 	evidence := make([]htmlTxnDiagnostic, 0, 3)
 	evidenceIndexByTxnKey := make(map[string]int, 3)
 	addChampion := func(txn model.Transaction, reason string) {
@@ -589,6 +600,7 @@ func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion s
 			evidenceIndexByTxnKey[txn.TxnKey] = len(evidence)
 		}
 		diagnostic := buildHTMLTxnDiagnostic(txn, serverVersion, mode)
+		diagnostic.RowText = strings.TrimPrefix(formatRowImageBlock(txn, opts), "    ")
 		diagnostic.Reasons = []string{reason}
 		evidence = append(evidence, diagnostic)
 	}

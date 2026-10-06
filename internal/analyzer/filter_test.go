@@ -134,3 +134,36 @@ func TestEventFilter_Allow(t *testing.T) {
 		})
 	}
 }
+
+func TestEventFilter_AllowOperation(t *testing.T) {
+	open := newEventFilter(Options{})
+	if !open.AllowOperation("DELETE") || !open.AllowOperation("INSERT") {
+		t.Fatal("empty DML filter must allow every kind")
+	}
+	onlyDelete := newEventFilter(Options{IncludeDML: []string{"DELETE"}})
+	if !onlyDelete.AllowOperation("DELETE") || onlyDelete.AllowOperation("INSERT") || onlyDelete.AllowOperation("UPDATE") {
+		t.Fatal("DELETE filter must keep only DELETE")
+	}
+}
+
+func TestParseDMLKinds(t *testing.T) {
+	got, err := ParseDMLKinds([]string{"delete", "insert, update", "delete"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"INSERT", "UPDATE", "DELETE"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v, want %v", got, want)
+		}
+	}
+	if _, err := ParseDMLKinds(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ParseDMLKinds([]string{"truncate"}); err == nil {
+		t.Fatal("truncate must be rejected")
+	}
+}

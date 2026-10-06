@@ -1079,6 +1079,39 @@ func TestAnalyzerStreamingReportOperationTimeseriesRespectsFilters(t *testing.T)
 	}
 }
 
+func TestAnalyzerDMLFilterCountsOnlyKeptWorkload(t *testing.T) {
+	opts := DefaultOptions()
+	opts.IncludeDML = []string{"DELETE"}
+	a := New(opts)
+	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "BEGIN", BinlogBytes: 1},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 40, BinlogBytes: 100},
+		{Timestamp: base.Add(2 * time.Second), EventType: "XID", BinlogBytes: 4},
+		{Timestamp: base.Add(3 * time.Second), EventType: "BEGIN", BinlogBytes: 1},
+		{Timestamp: base.Add(4 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "DELETE", RowCount: 2, BinlogBytes: 10},
+		{Timestamp: base.Add(5 * time.Second), EventType: "XID", BinlogBytes: 4},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatalf("Consume: %v", err)
+		}
+	}
+	result, err := a.Finalize()
+	if err != nil {
+		t.Fatalf("Finalize: %v", err)
+	}
+	if result.Summary.TotalRows != 2 || result.Summary.TotalTransactions != 1 || result.Summary.TotalEvents != 1 {
+		t.Fatalf("summary rows=%d txns=%d events=%d", result.Summary.TotalRows, result.Summary.TotalTransactions, result.Summary.TotalEvents)
+	}
+	if result.Diagnostics.CountedEventBytes != 10 {
+		t.Fatalf("counted bytes=%d, want the delete image only", result.Diagnostics.CountedEventBytes)
+	}
+	if len(result.Scope.IncludeDML) != 1 || result.Scope.IncludeDML[0] != "DELETE" {
+		t.Fatalf("scope dml=%v", result.Scope.IncludeDML)
+	}
+}
+
 func TestAnalyzerObjectFiltersShareFilteredWorkload(t *testing.T) {
 	base := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
 	events := []model.NormalizedEvent{

@@ -60,6 +60,7 @@ type SnapshotFilters struct {
 	ExcludeSchemas []string
 	IncludeTables  []string
 	ExcludeTables  []string
+	IncludeDML     []string // INSERT, UPDATE, DELETE; empty means every DML kind
 }
 
 // AnalysisSelection records requested selectors and the retained event evidence they matched.

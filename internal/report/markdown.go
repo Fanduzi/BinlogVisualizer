@@ -27,10 +27,10 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 
 	buf.WriteString("# BinlogViz Report\n\n")
 
-	mdWorkloadSummary(&buf, result.Summary, result.Diagnostics)
+	mdWorkloadSummary(&buf, result, opts)
 	mdTopTables(&buf, result.Tables, opts.TopTables)
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
-	mdTopTransactions(&buf, result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion)
+	mdTopTransactions(&buf, result.Transactions, opts, result.Diagnostics.ServerVersion)
 	mdMinuteActivity(&buf, result.Minutes)
 	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode)
 	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts)
@@ -38,7 +38,9 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	return buf.String(), nil
 }
 
-func mdWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary, diagnostics model.Diagnostics) {
+func mdWorkloadSummary(buf *strings.Builder, result model.AnalysisResult, opts Options) {
+	summary := result.Summary
+	diagnostics := result.Diagnostics
 	buf.WriteString("## " + i18n.T("report.section.workload") + "\n\n")
 	buf.WriteString("| Field | Value |\n")
 	buf.WriteString("|---|---|\n")
@@ -55,6 +57,16 @@ func mdWorkloadSummary(buf *strings.Builder, summary model.WorkloadSummary, diag
 		format = i18n.T("time.notAvailable")
 	}
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.format"), escapeMD(format)))
+	if label := dmlFilterLabel(result.Scope); label != "" {
+		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.dmlFilter"), escapeMD(label)))
+	}
+	if rowValuesSuppressed(opts) {
+		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.rowValues"), escapeMD(i18n.T("report.text.rowValuesSuppressed"))))
+	} else if showRowValues(opts) {
+		if note := columnNamesNote(result); note != "" {
+			buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.columnNames"), escapeMD(note)))
+		}
+	}
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.ignoredQueryDML"), formatInt(diagnostics.IgnoredQueryDMLEvents)))
 	if diagnostics.IgnoredQueryEvents > 0 {
 		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.ignoredQuery"), formatInt(diagnostics.IgnoredQueryEvents)))
@@ -178,7 +190,8 @@ func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContex
 	buf.WriteString("\n")
 }
 
-func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, mode SQLContextMode, serverVersion string) {
+func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, opts Options, serverVersion string) {
+	mode := opts.SQLContextMode
 	buf.WriteString("## " + i18n.T("report.section.transactions") + "\n\n")
 	if len(transactions) == 0 {
 		buf.WriteString("_" + i18n.T("report.placeholder.noTransactions") + "_\n\n")
@@ -222,6 +235,9 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, m
 		}
 		if query := transactionTextQuery(t, mode); query != "" {
 			buf.WriteString(fmt.Sprintf("> `%s`\n\n", escapeMD(query)))
+		}
+		if block := formatRowImageBlock(t, opts); block != "" {
+			buf.WriteString("```text\n" + block + "\n```\n\n")
 		}
 	}
 	buf.WriteString("\n")

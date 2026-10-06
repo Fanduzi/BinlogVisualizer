@@ -237,6 +237,40 @@ The index statements are ordinary `Query` events. The table is the identifier af
 - **Server version**: 8.0.46
 - **Server ID**: 1
 
+## mysql-8.0.46-dml-minimal.binlog and mysql-8.0.46-dml-full.binlog
+
+MySQL 8.0.46 ROW+GTID files for a bad DELETE buried in INSERT traffic on `shop.orders`, plus a multi-row UPDATE. The paired `.mysqlbinlog.txt` is `mysqlbinlog -v --base64-output=DECODE-ROWS` for the same file. `minimal` was recorded with `binlog_row_metadata=MINIMAL`. `full` was recorded with `binlog_row_metadata=FULL`.
+
+### Contents
+
+`shop.orders` is `id INT UNSIGNED` primary key, nullable `qty INT`, `price DECIMAL(10,2)`, `note VARCHAR(64)`, `created_at DATETIME(6)`, `updated_at TIMESTAMP(6)`, `payload JSON`, `raw BLOB`. Session `time_zone` is `+00:00`.
+
+- One transaction inserts ids 1, 2, 3 and ids 1000–1039
+- The next inserts id 3000000000 (`qty` NULL, `price` 19.99, `note` `it's "bad"`, JSON `{"n":1,"sku":"Z"}`, blob `DEADBEEF0102`) and deletes ids 2 and 3000000000
+- The next updates `note='changed', qty=qty+1` for ids 1 and 3
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_dml_rows.sh
+```
+
+Requires Docker and `mysql:8.0.46`. The script writes both binlogs and refreshes the `.mysqlbinlog.txt` decodes.
+
+## mariadb-10.11.14-dml.binlog
+
+A MariaDB 10.11.14 ROW binlog: one transaction inserts two rows into `shop.orders`, updates one, and deletes one. Used to confirm `--show-rows` does not crash. Positional column names are expected.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mariadb_10.11_dml.sh
+```
+
+Requires Docker and `mariadb:10.11`.
+
 ## Stage 5 Coverage Notes
 
 - Multi-file command-path coverage reuses `minimal.binlog` twice in ordered input tests and benchmarks to exercise the real parser over more than one file without duplicating fixture assets.

@@ -38,7 +38,40 @@ const (
 
 	// MaxQuerySummaryChars is the maximum characters shown in QuerySummary.
 	MaxQuerySummaryChars = 160
+
+	// MaxRowImagesPerTxn is how many logical row changes one transaction keeps
+	// when row images are requested. Further rows increment RowImagesOmitted.
+	MaxRowImagesPerTxn = 32
+
+	// MaxRowValueBytes is the displayed prefix of one cell value.
+	MaxRowValueBytes = 64
 )
+
+const (
+	// RowNamesFull means column labels came from binlog_row_metadata=FULL.
+	RowNamesFull = "full"
+	// RowNamesPositional means the binlog had no column names; labels are @1..@N.
+	RowNamesPositional = "positional"
+)
+
+// RowCell is one decoded column. Null is SQL NULL.
+// Text is unquoted: a number, a string, or a bounded hex blob.
+type RowCell struct {
+	Null bool
+	Text string
+}
+
+// RowImage is one logical INSERT, UPDATE, or DELETE row kept on a listed transaction.
+type RowImage struct {
+	Schema  string
+	Table   string
+	Op      string
+	Columns []string
+	Names   string // RowNamesFull or RowNamesPositional
+	Before  []RowCell
+	After   []RowCell
+	Changed []string // UPDATE column labels whose before and after differ
+}
 
 // QueryContext holds bounded SQL context from Rows_query_log_event.
 // SQL is truncated if it exceeds MaxStoredSQLBytes.
@@ -50,32 +83,34 @@ type QueryContext struct {
 
 // Transaction represents a reconstructed database transaction.
 type Transaction struct {
-	TxnKey          string
-	XAXID           string
-	ServerID        uint32
-	ServerVersion   string
-	ServerFlavor    string
-	GTID            string
-	ThreadID        uint32
-	XID             string
-	ActorUser       string
-	ActorHost       string
-	StartTime       time.Time
-	EndTime         time.Time
-	Duration        time.Duration
-	TotalRows       int
-	EventCount      int
-	BinlogBytes     int64
-	BinlogPathStart string
-	BinlogPathEnd   string
-	PositionStart   int64
-	PositionEnd     int64
-	Completeness    TransactionCompleteness
-	FullReplaySpan  *TransactionReplaySpan
-	Tables          map[string]int
-	Operations      map[string]int
-	QuerySummary    string        // Bounded summary of triggering SQL (max 160 chars, plus a truncation marker when cut)
-	QueryContext    *QueryContext // Full context if available, nil otherwise
+	TxnKey           string
+	XAXID            string
+	ServerID         uint32
+	ServerVersion    string
+	ServerFlavor     string
+	GTID             string
+	ThreadID         uint32
+	XID              string
+	ActorUser        string
+	ActorHost        string
+	StartTime        time.Time
+	EndTime          time.Time
+	Duration         time.Duration
+	TotalRows        int
+	EventCount       int
+	BinlogBytes      int64
+	BinlogPathStart  string
+	BinlogPathEnd    string
+	PositionStart    int64
+	PositionEnd      int64
+	Completeness     TransactionCompleteness
+	FullReplaySpan   *TransactionReplaySpan
+	Tables           map[string]int
+	Operations       map[string]int
+	QuerySummary     string        // Bounded summary of triggering SQL (max 160 chars, plus a truncation marker when cut)
+	QueryContext     *QueryContext // Full context if available, nil otherwise
+	RowImages        []RowImage    // Bounded row images; nil unless capture was requested
+	RowImagesOmitted int           // Logical rows not stored after MaxRowImagesPerTxn
 	// StdinInput is set when the binlog was read from stdin or another non-seekable
 	// stream. The displayed path "stdin" is not a file that mysqlbinlog can open.
 	StdinInput bool

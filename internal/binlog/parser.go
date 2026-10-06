@@ -17,7 +17,9 @@ import (
 )
 
 // parser implements Parser using go-mysql-org/go-mysql/replication.
-type parser struct{}
+type parser struct {
+	captureRows bool
+}
 
 type cachedTableName struct {
 	schema string
@@ -27,6 +29,15 @@ type cachedTableName struct {
 // NewParser creates a new binlog parser.
 func NewParser() Parser {
 	return &parser{}
+}
+
+// SetCaptureRowImages keeps bounded cell values on ROW events.
+// Off by default so analyze does not retain row images.
+func (p *parser) SetCaptureRowImages(on bool) {
+	if p == nil {
+		return
+	}
+	p.captureRows = on
 }
 
 // ParseFiles reads binlog files and calls handler for each event.
@@ -87,7 +98,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
 			}
 
-			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames); ok {
+			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows); ok {
 				assignPayloadWrapperFileSpan(inners, raw.PositionStart, raw.PositionEnd, raw.BinlogBytes)
 				for i := range inners {
 					if inners[i].ServerVersion != "" {
@@ -100,7 +111,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				return nil
 			}
 
-			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames)
+			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames, p.captureRows)
 			if raw.ServerVersion != "" {
 				serverVersion = raw.ServerVersion
 			}
@@ -146,7 +157,8 @@ func rawEventFromHeader(header *replication.EventHeader, path, serverVersion str
 	return raw
 }
 
-func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any, tableNames map[uint64]cachedTableName) {
+func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any, tableNames map[uint64]cachedTableName, captureRows ...bool) {
+	capture := len(captureRows) > 0 && captureRows[0]
 	switch e := event.(type) {
 	case *replication.QueryEvent:
 		raw.Query = string(e.Query)
@@ -189,6 +201,9 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 	case *replication.RowsEvent:
 		applyRowsEventTableName(raw, e, tableNames)
 		raw.RowCount = logicalRowCount(et, len(e.Rows))
+		if capture {
+			raw.RowImages, raw.RowImagesOmitted = captureRowImages(e, raw.EventType, raw.Schema, raw.Table)
+		}
 	case *replication.FormatDescriptionEvent:
 		raw.ServerVersion = e.ServerVersion
 		raw.ServerFlavor = serverFlavor(e.ServerVersion)
@@ -304,7 +319,8 @@ func logicalRowCount(et replication.EventType, imageCount int) int {
 // decoded successfully. The wrapper is not a canonical kind and is omitted.
 // Inner file positions always use the wrapper's file-relative range; inner
 // LogPos is the uncompressed stream and is not a binlog offset.
-func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName) ([]RawEvent, bool) {
+func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName, captureRows ...bool) ([]RawEvent, bool) {
+	capture := len(captureRows) > 0 && captureRows[0]
 	if ev == nil {
 		return nil, false
 	}
@@ -319,7 +335,7 @@ func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion s
 			continue
 		}
 		raw := rawEventFromHeader(inner.Header, path, serverVersion)
-		applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames)
+		applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture)
 		out = append(out, raw)
 	}
 	assignPayloadWrapperFileSpan(out, wrapperStart, wrapperEnd, wrapperBytes)
