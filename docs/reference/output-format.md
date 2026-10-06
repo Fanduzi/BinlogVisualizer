@@ -354,9 +354,9 @@ Transaction rows, operations, event counts, and retained positions remain inclus
 
 - `off`: omit query text and DDL statement text in every format, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, HTML transaction evidence, and the DDL timeline statement. Operation, object, and position stay
 - `summary`: include one whitespace-normalized `query_summary` whose SQL body is at most 160 characters; a cut appends `… [truncated: <shown> of <original> bytes]`. Include truncation metadata only when context exists. `query_truncated` stays false unless the 4096-byte store cap was hit. Default text prints that line on Top Transactions. DDL timeline statements use the same one-line summary
-- `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists. A cut appends the same marker. Default text prints that SQL on Top Transactions. DDL timeline statements print the stored statement with the marker when cut
+- `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists. A cut appends the same marker. Default text prints that SQL on Top Transactions. DDL timeline statements print the stored statement, also capped at 4096 bytes, with the marker when cut
 
-`diagnostics.ddl_events[].statement` follows the same mode. `off` omits it. Credential literals are already `<secret>` before that choice. CREATE/ALTER/DROP VIEW, TRIGGER, PROCEDURE, FUNCTION, and EVENT stay on the timeline with object type `view`, `trigger`, `routine`, or `event`. Unrecognized DDL stays as operation `DDL` and object `ddl`.
+`diagnostics.ddl_events[].statement` follows the same mode. `off` omits it. Credential literals, including MariaDB `IDENTIFIED VIA`/`WITH` … `USING`/`AS` and `OR` plugin chains, are already `<secret>` before that choice. `SET PASSWORD` is on the timeline. CREATE/ALTER/DROP VIEW, TRIGGER, PROCEDURE, FUNCTION, and EVENT stay on the timeline with object type `view`, `trigger`, `routine`, or `event`. CREATE and DROP TRIGGER both use the trigger name. Unrecognized DDL stays as operation `DDL` and object `ddl`. `--include-table` matches those names. A match exits 0 even when the object changed no rows.
 
 `sql_context.available` reports whether any source SQL was observed across the full report, even when it falls outside the top transactions. `full` may therefore be selected with `available=false`. Provenance never depends on this mode, and no mode serializes row-image values.
 
@@ -784,7 +784,7 @@ The page also includes compare summary cards and detailed tables/lists so an ope
 - `Finalizing analysis...`
 - `HTML report saved to …` when `--format html` writes a file
 - `Error: window matched 0 events` when `--start`/`--end` matches no events (exit 2, empty stdout)
-- `Error: schema/table filter matched no events` when an active schema or table filter leaves zero row activity (exit 2, empty stdout)
+- `Error: schema/table filter matched no events` when an active schema or object filter leaves no row activity and no view, event, routine, or trigger DDL (exit 2, empty stdout). A matching view, event, function, procedure, or trigger exits 0 and prints that DDL.
 - `Error: binlog has no analyzable events` for a complete Format Description-only (or rotate-only) file (exit 2, empty stdout)
 - `Error: binlog is truncated or corrupt: …` when the file ends in a partial event, including leftover bytes after the last complete event (exit 1, empty stdout)
 - command errors (exit 1 unless noted)

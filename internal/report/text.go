@@ -395,14 +395,19 @@ func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
 	}
 }
 
-func ddlStatementForMode(statement string, mode SQLContextMode) string {
+func ddlStatementForMode(event model.DDLEvent, mode SQLContextMode) string {
+	statement := strings.TrimSpace(event.Statement)
 	switch mode {
 	case SQLContextOff:
 		return ""
 	case SQLContextFull:
-		return strings.TrimSpace(statement)
+		return model.DisplayStoredSQL(statement, event.StatementTruncated, event.StatementOriginalBytes)
 	default:
-		return model.MakeQuerySummary(statement)
+		original := event.StatementOriginalBytes
+		if original <= 0 {
+			original = len(statement)
+		}
+		return model.FormatQuerySummary(statement, original)
 	}
 }
 
@@ -812,7 +817,7 @@ func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int,
 		}
 		buf.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
 			formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location))
-		if stmt := ddlStatementForMode(event.Statement, mode); stmt != "" {
+		if stmt := ddlStatementForMode(event, mode); stmt != "" {
 			buf.WriteString("    " + stmt + "\n")
 		}
 	}

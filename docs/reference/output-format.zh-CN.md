@@ -348,9 +348,9 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 - `off`：所有格式都省略查询文本和 DDL 语句文本。操作、对象和位置仍保留
 - `summary`：包含经空白归一化、SQL 正文最多 160 个字符的 `query_summary`；被截断时追加 `… [truncated: <shown> of <original> bytes]`。存在上下文时才包含截断元数据。`query_truncated` 只有碰到 4096 字节存储上限才为 true
-- `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数。被截断时追加同一标记
+- `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数。被截断时追加同一标记。DDL 时间线语句同样以 4096 字节为上限，被截断时带同一标记
 
-`diagnostics.ddl_events[].statement` 遵守同一模式。`off` 省略它。口令材料在这之前已经是 `<secret>`。`CREATE`/`ALTER`/`DROP` VIEW、TRIGGER、PROCEDURE、FUNCTION、EVENT 会留在时间线上，对象类型为 `view`、`trigger`、`routine` 或 `event`。无法识别的 DDL 仍以操作 `DDL`、对象 `ddl` 出现
+`diagnostics.ddl_events[].statement` 遵守同一模式。`off` 省略它。口令材料（含 MariaDB `IDENTIFIED VIA`/`WITH` … `USING`/`AS` 和 `OR` 插件链）在这之前已经是 `<secret>`。`SET PASSWORD` 会出现在时间线上。`CREATE`/`ALTER`/`DROP` VIEW、TRIGGER、PROCEDURE、FUNCTION、EVENT 会留在时间线上，对象类型为 `view`、`trigger`、`routine` 或 `event`。`CREATE TRIGGER` 和 `DROP TRIGGER` 都使用触发器名字。无法识别的 DDL 仍以操作 `DDL`、对象 `ddl` 出现。`--include-table` 可以匹配这些名字；匹配到时即使没有行变更也退出 0。
 
 `sql_context.available` 表示整份报告中是否观察到源 SQL，即使该 SQL 不在 Top 事务中。因而 `full` 与 `available=false` 可以同时出现。provenance 不受该模式影响，任何模式都不会序列化 row-image 值。
 
@@ -685,7 +685,7 @@ BinlogViz 会把最终报告输出保留在 `stdout`。
 - `Finalizing analysis...`
 - `--format html` 写入文件时的 `HTML report saved to …`
 - `--start`/`--end` 匹配到 0 个事件时的 `Error: window matched 0 events`（exit 2，stdout 为空）
-- 生效的 schema/table 过滤没有行活动时的 `Error: schema/table filter matched no events`（exit 2，stdout 为空）
+- 生效的 schema/对象过滤既没有行活动、也没有 view、event、routine 或 trigger DDL 时的 `Error: schema/table filter matched no events`（exit 2，stdout 为空）。匹配到 view、event、function、procedure 或 trigger 时退出 0，并打印这条 DDL。
 - 仅 Format Description（或再加 rotate）的完整 binlog：`Error: binlog has no analyzable events`（exit 2，stdout 为空）
 - 文件在事件中间截断，或最后一个完整事件之后还有剩余字节：`Error: binlog is truncated or corrupt: …`（exit 1，stdout 为空）
 - 命令错误（未另行说明时为 exit 1）

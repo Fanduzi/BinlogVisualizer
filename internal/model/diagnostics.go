@@ -56,16 +56,20 @@ type FileCoverageItem struct {
 
 // DDLEvent captures a single DDL event for diagnostics and timeline rendering.
 type DDLEvent struct {
-	BinlogPath    string
-	Timestamp     time.Time
-	Schema        string
-	Table         string
-	Operation     string
-	Object        string
-	Statement     string
-	PositionStart int64
-	PositionEnd   int64
-	BinlogBytes   int64
+	BinlogPath string
+	Timestamp  time.Time
+	Schema     string
+	Table      string
+	Operation  string
+	Object     string
+	Statement  string
+	// StatementTruncated is the 4096-byte store cap, same as query context.
+	// StatementOriginalBytes is the whitespace-normalized length before that cap.
+	StatementTruncated     bool
+	StatementOriginalBytes int
+	PositionStart          int64
+	PositionEnd            int64
+	BinlogBytes            int64
 }
 
 // OpenDMLNote is the stable JSON wording for an uncommitted row-image group.

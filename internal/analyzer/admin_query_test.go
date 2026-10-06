@@ -373,6 +373,38 @@ func TestIndependentAdminQueryClosesGroupAtQueryEndPosition(t *testing.T) {
 	}
 }
 
+func TestMariaDBSetPasswordClosesDDLGroup(t *testing.T) {
+	ts := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	raws := []binlog.RawEvent{
+		mariaGTID(ts, "0-11-1", 100, 140),
+		mariaQuery(ts.Add(time.Second), "SET PASSWORD FOR 'm2'@'%' = PASSWORD('a1');", 140, 200),
+		mariaGTID(ts.Add(2*time.Second), "0-11-2", 200, 240),
+		mariaQuery(ts.Add(3*time.Second), "CREATE USER 'zz'@'%' IDENTIFIED BY 'b'", 240, 320),
+	}
+	result, err := normalizeAndAnalyze(t, raws)
+	if err != nil {
+		t.Fatalf("SET PASSWORD must close its ddl GTID group: %v", err)
+	}
+	if len(result.Diagnostics.DDLEvents) != 2 {
+		t.Fatalf("timeline = %+v, want SET PASSWORD and CREATE USER", result.Diagnostics.DDLEvents)
+	}
+	if result.Diagnostics.DDLEvents[0].Operation != "SET PASSWORD" || result.Diagnostics.DDLEvents[1].Operation != "CREATE USER" {
+		t.Fatalf("operations = %+v", result.Diagnostics.DDLEvents)
+	}
+	blob := result.Diagnostics.DDLEvents[0].Statement + "\n" + result.Diagnostics.DDLEvents[1].Statement
+	if strings.Contains(blob, "a1") || strings.Contains(blob, "'b'") || !strings.Contains(blob, "<secret>") {
+		t.Fatalf("credential handling = %s", blob)
+	}
+
+	alone, err := normalizeAndAnalyze(t, raws[:2])
+	if err != nil {
+		t.Fatalf("SET PASSWORD as the last event: %v", err)
+	}
+	if len(alone.Diagnostics.DDLEvents) != 1 || alone.Diagnostics.DDLEvents[0].Operation != "SET PASSWORD" {
+		t.Fatalf("last SET PASSWORD dropped: %+v", alone.Diagnostics.DDLEvents)
+	}
+}
+
 func normalizeAndAnalyze(t *testing.T, raws []binlog.RawEvent) (*model.AnalysisResult, error) {
 	t.Helper()
 	a := New(Options{})

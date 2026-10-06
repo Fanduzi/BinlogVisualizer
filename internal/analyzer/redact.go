@@ -35,9 +35,9 @@ func credentialSpans(sql string) []credSpan {
 	var spans []credSpan
 	for i := 0; i < len(sql); {
 		if hasWordAt(sql, i, "identified") {
-			if end, ok := identifiedSecretEnd(sql, i); ok {
-				spans = append(spans, credSpan{start: end.start, end: end.end})
-				i = end.end
+			if found := identifiedCredentialSpans(sql, i); len(found) > 0 {
+				spans = append(spans, found...)
+				i = found[len(found)-1].end
 				continue
 			}
 		}
@@ -55,28 +55,95 @@ func credentialSpans(sql string) []credSpan {
 
 type secretSpan struct{ start, end int }
 
-func identifiedSecretEnd(sql string, identAt int) (secretSpan, bool) {
+// identifiedCredentialSpans redacts MySQL IDENTIFIED BY / WITH … AS|BY and
+// MariaDB IDENTIFIED {VIA|WITH} plugin {USING|AS|BY} [PASSWORD('…')|'…'],
+// including a chain of OR plugin rules.
+func identifiedCredentialSpans(sql string, identAt int) []credSpan {
 	j := skipSpace(sql, identAt+len("identified"))
 	if hasWordAt(sql, j, "by") {
 		j = skipSpace(sql, j+len("by"))
 		if hasWordAt(sql, j, "random") {
-			return secretSpan{}, false
+			return nil
 		}
 		if hasWordAt(sql, j, "password") {
 			j = skipSpace(sql, j+len("password"))
 		}
-		return consumeSecret(sql, j)
-	}
-	if hasWordAt(sql, j, "with") {
-		j = skipSpace(sql, j+len("with"))
-		j = skipPluginName(sql, j)
-		j = skipSpace(sql, j)
-		if hasWordAt(sql, j, "as") || hasWordAt(sql, j, "by") {
-			j = skipSpace(sql, j+2)
-			return consumeSecret(sql, j)
+		sec, ok := consumeSecret(sql, j)
+		if !ok {
+			return nil
 		}
+		return []credSpan{{start: sec.start, end: sec.end}}
 	}
-	return secretSpan{}, false
+	intro := ""
+	switch {
+	case hasWordAt(sql, j, "with"):
+		intro = "with"
+	case hasWordAt(sql, j, "via"):
+		intro = "via"
+	default:
+		return nil
+	}
+	return authRuleSecrets(sql, j+len(intro))
+}
+
+func authRuleSecrets(sql string, j int) []credSpan {
+	var spans []credSpan
+	for {
+		j = skipPluginName(sql, skipSpace(sql, j))
+		j = skipSpace(sql, j)
+		if word, ok := authBinder(sql, j); ok {
+			j = skipSpace(sql, j+len(word))
+			if hasWordAt(sql, j, "random") {
+				j = skipSpace(sql, j+len("random"))
+				if hasWordAt(sql, j, "password") {
+					j += len("password")
+				}
+			} else if span, next, ok := takeAuthSecret(sql, j); ok {
+				spans = append(spans, span)
+				j = next
+			}
+		}
+		j = skipSpace(sql, j)
+		if !hasWordAt(sql, j, "or") {
+			return spans
+		}
+		j += len("or")
+	}
+}
+
+func authBinder(sql string, i int) (string, bool) {
+	switch {
+	case hasWordAt(sql, i, "using"):
+		return "using", true
+	case hasWordAt(sql, i, "as"):
+		return "as", true
+	case hasWordAt(sql, i, "by"):
+		return "by", true
+	default:
+		return "", false
+	}
+}
+
+// takeAuthSecret replaces PASSWORD('…') entirely, or the literal after a bare
+// PASSWORD keyword. A quoted or bare hash is the literal itself.
+func takeAuthSecret(sql string, j int) (credSpan, int, bool) {
+	j = skipSpace(sql, j)
+	if hasWordAt(sql, j, "password") {
+		after := j + len("password")
+		if after < len(sql) && sql[after] == '(' {
+			end, ok := consumeCall(sql, after)
+			if !ok {
+				return credSpan{}, j, false
+			}
+			return credSpan{start: j, end: end}, end, true
+		}
+		j = skipSpace(sql, after)
+	}
+	sec, ok := consumeSecret(sql, j)
+	if !ok {
+		return credSpan{}, j, false
+	}
+	return credSpan{start: sec.start, end: sec.end}, sec.end, true
 }
 
 func setPasswordSecret(sql string, setAt int) (credSpan, bool) {
