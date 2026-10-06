@@ -578,7 +578,7 @@ func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode) []jsonDDLEve
 			Table:         event.Table,
 			Operation:     event.Operation,
 			Object:        event.Object,
-			Statement:     ddlStatementForMode(event.Statement, mode),
+			Statement:     ddlStatementForMode(event, mode),
 			PositionStart: event.PositionStart,
 			PositionEnd:   event.PositionEnd,
 			BinlogBytes:   event.BinlogBytes,

@@ -102,7 +102,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
-| `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本）或 `full`（存储 SQL 上限 4096 字节，截断时带标记）。任何模式下 DDL 里的口令材料都会打码。 |
+| `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本）或 `full`（存储 SQL，含 DDL 语句文本，上限 4096 字节，截断时带标记）。MySQL 和 MariaDB 账号 DDL 里的口令字面量在任何模式下都会打码。 |
 | `--top-tables` | `10` | 人类可读报告中显示的 Top 表数量；JSON 保留全部表聚合结果。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量；`0` 表示不限制。 |
 | `--top-threads` | 继承 `--top` | 所有格式中的热点线程或会话数量；`0` 表示不限制。 |
@@ -120,8 +120,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--spike-min-rows` | `100` | 纳入尖峰检测候选的最小行数。 |
 | `--include-schema` | none | 仅分析指定 schema（逗号分隔，其余均排除）。 |
 | `--exclude-schema` | none | 跳过指定 schema（逗号分隔）。 |
-| `--include-table` | none | 仅分析指定表（逗号分隔，其余均排除）。`TABLE` 或 `SCHEMA.TABLE`。 |
-| `--exclude-table` | none | 跳过指定表（逗号分隔）。`TABLE` 或 `SCHEMA.TABLE`。 |
+| `--include-table` | none | 仅分析指定对象（逗号分隔，其余均排除）。`TABLE` 或 `SCHEMA.TABLE`，也包括 VIEW、EVENT、FUNCTION、PROCEDURE、TRIGGER 的名字。 |
+| `--exclude-table` | none | 跳过指定对象（逗号分隔）。`TABLE` 或 `SCHEMA.TABLE`，也包括 VIEW、EVENT、FUNCTION、PROCEDURE、TRIGGER 的名字。 |
 
 position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与时间条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 

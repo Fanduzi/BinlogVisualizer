@@ -159,7 +159,7 @@ func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContex
 		if object == "" {
 			object = event.Object
 		}
-		statement := ddlStatementForMode(event.Statement, mode)
+		statement := ddlStatementForMode(event, mode)
 		location := formatBinlogLocation(event.BinlogPath, event.PositionStart, event.PositionEnd)
 		if location == "" {
 			location = i18n.T("time.notAvailable")

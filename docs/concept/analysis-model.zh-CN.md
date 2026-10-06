@@ -127,13 +127,14 @@ BinlogViz 将事务负载指标与可选 SQL 上下文展示明确分离。
 
 - `summary`：当存在查询上下文时，包含一行有界查询摘要和相关元数据。显示被截断时写出原始字节长度
 - `off`：所有格式都省略查询文本和 DDL 语句文本。操作、对象和位置仍保留
-- `full`：当存在查询上下文时，包含存储后的 SQL 及其元数据。截断以 `… [truncated: <shown> of <original> bytes]` 结尾
+- `full`：当存在查询上下文时，包含存储后的 SQL 及其元数据。DDL 语句文本同样限制在 4096 字节。截断以 `… [truncated: <shown> of <original> bytes]` 结尾
 
 实现上对 SQL 上下文做了明确限制：
 
 - 存储 SQL 最大为 `4096` 字节。`query_truncated` 表示这个存储上限，不是 160 字符摘要
 - 查询摘要的 SQL 正文最大为 `160` 个字符，被截断时后面再加截断标记
-- `CREATE`/`ALTER USER`、`GRANT ... IDENTIFIED` 和 `SET PASSWORD` 里的口令材料在任何模式下都会先改成 `<secret>`
+- `CREATE`/`ALTER USER`、`GRANT ... IDENTIFIED`、`SET PASSWORD`，以及 MariaDB `IDENTIFIED VIA`/`WITH` … `USING`/`AS`（含 `OR` 插件链）里的口令材料在任何模式下都会先改成 `<secret>`
+- `SET PASSWORD` 是 DDL：它会关闭自己的 GTID 组，并出现在 DDL 时间线上
 
 这意味着 SQL 上下文是为了帮助运维快速建立上下文，而不是为了无损归档原始语句。
 

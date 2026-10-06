@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Index DDL and CREATE TRIGGER use the table after ON. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Credential literals are replaced with <secret>.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -15,11 +15,13 @@ import (
 
 // DDLStatement is the normalized parse result of a supported DDL statement.
 type DDLStatement struct {
-	Operation string
-	Object    string
-	Schema    string
-	Table     string
-	Statement string
+	Operation     string
+	Object        string
+	Schema        string
+	Table         string
+	Statement     string
+	Truncated     bool
+	OriginalBytes int
 }
 
 // DDLAggregator collects DDL events for later diagnostics and reporting.
@@ -40,6 +42,7 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 	}
 
 	normalized := strings.Join(strings.Fields(sanitizeDisplaySQL(redactCredentials(trimmed))), " ")
+	stored, truncated, originalBytes := boundDDLStatement(normalized)
 	tokens := strings.Fields(normalized)
 	if len(tokens) < 2 {
 		return DDLStatement{}, false
@@ -48,17 +51,22 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 	operation, object, startIndex, ok := classifyDDL(tokens)
 	if !ok {
 		return DDLStatement{
-			Operation: "DDL",
-			Object:    "ddl",
-			Statement: normalized,
+			Operation:     "DDL",
+			Object:        "ddl",
+			Statement:     stored,
+			Truncated:     truncated,
+			OriginalBytes: originalBytes,
 		}, true
 	}
 
 	var identifier string
-	if object == "index" || (object == "trigger" && hasKeyword(tokens, "ON")) {
-		// The name before ON is the index or trigger. The table is the next identifier.
+	switch {
+	case operation == "SET PASSWORD":
+		identifier, _ = identifierAfterKeyword(tokens, "FOR")
+	case object == "index":
+		// The name before ON is the index. The table is the next identifier.
 		identifier, _ = identifierAfterKeyword(tokens, "ON")
-	} else {
+	default:
 		identifier = findDDLIdentifier(tokens[skipOptionalIfClause(tokens, startIndex):])
 	}
 	schema, table := splitQualifiedIdentifier(identifier)
@@ -67,12 +75,22 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 	}
 
 	return DDLStatement{
-		Operation: operation,
-		Object:    object,
-		Schema:    schema,
-		Table:     table,
-		Statement: normalized,
+		Operation:     operation,
+		Object:        object,
+		Schema:        schema,
+		Table:         table,
+		Statement:     stored,
+		Truncated:     truncated,
+		OriginalBytes: originalBytes,
 	}, true
+}
+
+func boundDDLStatement(normalized string) (stored string, truncated bool, originalBytes int) {
+	qc := model.NewQueryContext(normalized)
+	if qc == nil {
+		return "", false, 0
+	}
+	return qc.SQL, qc.Truncated, qc.OriginalBytes
 }
 
 func hasSupportedDDLPrefix(sql string) bool {
@@ -82,7 +100,16 @@ func hasSupportedDDLPrefix(sql string) bool {
 		hasWordPrefixFold(sql, "TRUNCATE") ||
 		hasWordPrefixFold(sql, "RENAME") ||
 		hasWordPrefixFold(sql, "GRANT") ||
-		hasWordPrefixFold(sql, "REVOKE")
+		hasWordPrefixFold(sql, "REVOKE") ||
+		isSetPassword(sql)
+}
+
+func isSetPassword(sql string) bool {
+	sql = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sql), ";"))
+	if !hasWordPrefixFold(sql, "SET") {
+		return false
+	}
+	return hasWordPrefixFold(strings.TrimSpace(sql[len("SET"):]), "PASSWORD")
 }
 
 func hasWordPrefixFold(sql, word string) bool {
@@ -112,16 +139,18 @@ func (a *DDLAggregator) ConsumeStatement(ts time.Time, binlogPath string, positi
 		return
 	}
 	a.events = append(a.events, model.DDLEvent{
-		BinlogPath:    binlogPath,
-		Timestamp:     ts.UTC(),
-		Schema:        stmt.Schema,
-		Table:         stmt.Table,
-		Operation:     stmt.Operation,
-		Object:        stmt.Object,
-		Statement:     stmt.Statement,
-		PositionStart: positionStart,
-		PositionEnd:   positionEnd,
-		BinlogBytes:   binlogBytes,
+		BinlogPath:             binlogPath,
+		Timestamp:              ts.UTC(),
+		Schema:                 stmt.Schema,
+		Table:                  stmt.Table,
+		Operation:              stmt.Operation,
+		Object:                 stmt.Object,
+		Statement:              stmt.Statement,
+		StatementTruncated:     stmt.Truncated,
+		StatementOriginalBytes: stmt.OriginalBytes,
+		PositionStart:          positionStart,
+		PositionEnd:            positionEnd,
+		BinlogBytes:            binlogBytes,
 	})
 }
 
@@ -164,16 +193,18 @@ func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool
 	}
 
 	return model.DDLEvent{
-		BinlogPath:    ev.BinlogPath,
-		Timestamp:     ev.Timestamp.UTC(),
-		Schema:        schema,
-		Table:         table,
-		Operation:     stmt.Operation,
-		Object:        stmt.Object,
-		Statement:     stmt.Statement,
-		PositionStart: ev.PositionStart,
-		PositionEnd:   ev.PositionEnd,
-		BinlogBytes:   ev.BinlogBytes,
+		BinlogPath:             ev.BinlogPath,
+		Timestamp:              ev.Timestamp.UTC(),
+		Schema:                 schema,
+		Table:                  table,
+		Operation:              stmt.Operation,
+		Object:                 stmt.Object,
+		Statement:              stmt.Statement,
+		StatementTruncated:     stmt.Truncated,
+		StatementOriginalBytes: stmt.OriginalBytes,
+		PositionStart:          ev.PositionStart,
+		PositionEnd:            ev.PositionEnd,
+		BinlogBytes:            ev.BinlogBytes,
 	}, true
 }
 
@@ -188,6 +219,11 @@ func classifyDDL(tokens []string) (operation string, object string, identifierIn
 		second = strings.ToUpper(tokens[1])
 	}
 	switch first {
+	case "SET":
+		if second == "PASSWORD" {
+			return "SET PASSWORD", "user", 2, true
+		}
+		return "", "", 0, false
 	case "GRANT":
 		return "GRANT", "privilege", 1, true
 	case "REVOKE":
@@ -277,15 +313,6 @@ func isDDLObjectKeyword(tok string) bool {
 	default:
 		return false
 	}
-}
-
-func hasKeyword(tokens []string, keyword string) bool {
-	for _, token := range tokens {
-		if strings.EqualFold(token, keyword) {
-			return true
-		}
-	}
-	return false
 }
 
 func createIndexOperation(tokens []string) (string, bool) {

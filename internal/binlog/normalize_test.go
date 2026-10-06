@@ -134,8 +134,15 @@ func TestIsIgnoredQueryEvent(t *testing.T) {
 	if IsIgnoredQueryEvent(RawEvent{EventType: "QUERY", Query: "SET ROLE ALL"}) {
 		t.Fatal("SET ROLE must not be Ignored QUERY")
 	}
+	if IsIgnoredQueryEvent(RawEvent{EventType: "QUERY", Query: "SET PASSWORD FOR 'm2'@'%' = PASSWORD('a1')"}) {
+		t.Fatal("SET PASSWORD must not be Ignored QUERY")
+	}
 	if IsIgnoredQueryEvent(RawEvent{EventType: "GTID", Query: "SET timestamp=1710000000"}) {
 		t.Fatal("non-QUERY events are not Ignored QUERY events")
+	}
+	ev, err := NormalizeRawEvent(RawEvent{EventType: "QUERY", Query: "SET PASSWORD FOR 'm2'@'%' = PASSWORD('a1')"})
+	if err != nil || ev == nil || ev.EventType != "DDL" {
+		t.Fatalf("SET PASSWORD must be DDL, err=%v ev=%+v", err, ev)
 	}
 }
 

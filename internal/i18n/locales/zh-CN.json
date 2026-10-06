@@ -105,11 +105,11 @@
   },
   "cmd.analyze.flag.includeTable": {
     "description": "仅分析指定表标志描述",
-    "other": "仅分析指定表（逗号分隔，TABLE 或 SCHEMA.TABLE）"
+    "other": "仅分析指定对象（逗号分隔，TABLE 或 SCHEMA.TABLE）。同样匹配 VIEW、EVENT、FUNCTION、PROCEDURE、TRIGGER 的名字"
   },
   "cmd.analyze.flag.excludeTable": {
     "description": "排除指定表标志描述",
-    "other": "跳过指定表（逗号分隔，TABLE 或 SCHEMA.TABLE）"
+    "other": "跳过指定对象（逗号分隔，TABLE 或 SCHEMA.TABLE）。同样匹配 VIEW、EVENT、FUNCTION、PROCEDURE、TRIGGER 的名字"
   },
   "cmd.analyze.flag.largeTrxRows": {
     "description": "大事务行数阈值标志描述",

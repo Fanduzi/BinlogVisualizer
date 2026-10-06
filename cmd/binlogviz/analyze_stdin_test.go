@@ -221,14 +221,7 @@ func TestAnalyzeStdinTempRemovedOnSuccessAndBadMagic(t *testing.T) {
 }
 
 func TestAnalyzeStdinTempRemovedOnSignal(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		sig  syscall.Signal
-		code int
-	}{
-		{name: "SIGINT", sig: syscall.SIGINT, code: 130},
-		{name: "SIGTERM", sig: syscall.SIGTERM, code: 143},
-	} {
+	for _, tc := range stdinCleanupSignals() {
 		t.Run(tc.name, func(t *testing.T) {
 			tmp := t.TempDir()
 			cmd := exec.Command(os.Args[0], "-test.run=^$")
