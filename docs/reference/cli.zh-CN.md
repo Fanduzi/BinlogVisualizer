@@ -51,7 +51,7 @@ binlogviz workflow describe <plan.yaml> --format json
 
 每次调用 `analyze` 只能使用一种输入模式：
 
-- **位置参数文件模式**：通过位置参数传入一个或多个本地 binlog 文件路径。
+- **位置参数文件模式**：通过位置参数传入一个或多个本地 binlog 文件路径。`-` 从 stdin 读取一份二进制 binlog。
 - **discovery 模式**：同时提供 `--from-dir` 和 `--prefix`，由 BinlogViz 从目录中解析匹配文件。
 
 默认文本和 JSON 报告会在每条事务上写出事件里实际有的 `server_id`、`thread_id`、GTID，以及 `xid` 或 XA xid。只有 binlog 存了调用者时才出现 `user@host`。事件里没有的字段保持缺席，报告不会补 `0` 或空字符串。Markdown 和 HTML 使用同一规则。
@@ -65,7 +65,10 @@ binlogviz workflow describe <plan.yaml> --format json
 ```bash
 binlogviz analyze mysql-bin.000123
 binlogviz analyze mysql-bin.000123 mysql-bin.000124
+cat mysql-bin.000123 | binlogviz analyze -
 ```
+
+`-` 从管道或其他不可 seek 的输入读取一份二进制 binlog。解析需要 seek，因此字节会先复制到临时文件，命令结束后删除。在终端上执行 `binlogviz analyze -`，或管道为空，会在解析前以 `Error:` 失败。命名管道路径同样处理。`mysqlbinlog` 的文本输出不是 binlog，会在魔数检查处失败。
 
 ### Discovery 模式
 
@@ -99,9 +102,10 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
-| `--sql-context` | `summary` | SQL 上下文展示模式：`summary`、`off` 或 `full`。 |
+| `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本）或 `full`（有界的原始 SQL）。 |
 | `--top-tables` | `10` | 人类可读报告中显示的 Top 表数量；JSON 保留全部表聚合结果。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量；`0` 表示不限制。 |
+| `--top-threads` | 继承 `--top` | 所有格式中的热点线程或会话数量；`0` 表示不限制。 |
 | `--top` | `10` | 文本明细章节（分钟、写入形态）的默认 Top-N。 |
 | `--details` | `false` | 在文本报告中同时展开分钟明细和写入形态。 |
 | `--show-minutes` | `false` | 在文本报告中展示分钟级活动。 |

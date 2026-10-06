@@ -86,6 +86,21 @@ func TestNormalizeOptionsUsesTopNForUnspecifiedTableLimit(t *testing.T) {
 	}
 }
 
+func TestNormalizeOptionsUsesTopNForUnspecifiedThreadLimit(t *testing.T) {
+	opts := normalizeOptions(Options{TopN: 4})
+	if opts.TopThreads != 4 {
+		t.Fatalf("expected thread limit to follow TopN, got %d", opts.TopThreads)
+	}
+	opts = normalizeOptions(Options{TopN: 4, TopThreads: 2, TopThreadsSet: true})
+	if opts.TopThreads != 2 {
+		t.Fatalf("expected explicit thread limit to be preserved, got %d", opts.TopThreads)
+	}
+	opts = normalizeOptions(Options{TopN: 4, TopThreadsSet: true})
+	if opts.TopThreads != 0 {
+		t.Fatalf("expected explicit zero thread limit to remain unlimited, got %d", opts.TopThreads)
+	}
+}
+
 func TestNormalizeOptionsDetailsEnablesDetailedTextSections(t *testing.T) {
 	opts := normalizeOptions(Options{Details: true})
 

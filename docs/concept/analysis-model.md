@@ -43,6 +43,18 @@ This is a write-activity ranking, not a storage-size view and not a read/query p
 
 Use this section to answer: "Which tables absorbed the most write load in this input range?"
 
+## Top Threads
+
+`Top Threads` ranks sessions so an operator can answer who wrote the most without aggregating transactions by hand.
+
+Each session is one `thread_id` on one `server_id`. A thread id of zero is kept only when the binlog stored `user@host`. Transactions with neither identity are not a session.
+
+The ranking metric is rows when any session wrote rows. Otherwise it is events, then bytes, then transactions. The section shows `server_id`, `user@host`, and schema only when the binlog carried them.
+
+`--top` limits the section in text, Markdown, JSON, and HTML. `--top-threads` overrides that limit. `0` means unlimited.
+
+Use this section to answer: "Which thread or account wrote the most in this window?"
+
 ## Top Transactions
 
 `Top Transactions` ranks reconstructed transactions by total affected rows.
@@ -148,9 +160,9 @@ BinlogViz separates transaction workload metrics from optional SQL context displ
 
 `--sql-context` controls how transaction query context is exposed:
 
-- `summary`: include the bounded query summary and query metadata fields when query context exists
-- `off`: omit query-related fields entirely
-- `full`: include the bounded stored SQL plus metadata when query context exists
+- `summary`: include the bounded query summary and query metadata fields when query context exists. Default text prints that summary on Top Transactions, and `--show-patterns` prints the sample query
+- `off`: omit query-related fields entirely, including text `Query:` lines, Markdown, and HTML
+- `full`: include the bounded stored SQL plus metadata when query context exists. Default text prints that SQL on Top Transactions
 
 The implementation deliberately bounds SQL context:
 

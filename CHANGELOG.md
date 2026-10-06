@@ -2,6 +2,12 @@
 
 This file records user-visible changes for tagged releases.
 
+## [Unreleased]
+
+- Default text, Markdown, JSON, and HTML analyze reports include Top Threads/Sessions, ranked by rows when any session wrote rows, otherwise by events, bytes, or transactions. Each row shows thread id, and server id, user@host, and schema when the binlog carried them. `--top` limits the section; `--top-threads` overrides it (`0` is unlimited). JSON field: `threads`.
+- `--sql-context off` omits query text from text write-shape patterns, Markdown, and HTML, matching JSON. Default text shows the summary or the bounded stored SQL on Top Transactions when that mode is selected.
+- `binlogviz analyze -` and a non-seekable path such as a pipe read a binary binlog from stdin (copied to a temporary file because parsing needs seek). A terminal or an empty stdin is a clear error. `mysqlbinlog` text is not a binlog and still fails the magic-header check.
+
 ## v0.23.13
 
 Release date: 2026-10-05
