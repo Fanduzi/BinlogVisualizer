@@ -9,12 +9,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
 
@@ -404,4 +406,135 @@ func TestAnalyzeObjectFilterNoRowsExitsTwoWithoutReport(t *testing.T) {
 		return runErr
 	})
 	assertAnalyzeNoDataExit(t, stdout, stderr, err, "filter matched no events")
+}
+
+func TestAnalyzeIncludeTableKeepsNonTableObjects(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	events := []binlog.RawEvent{
+		{Timestamp: now, EventType: "QUERY", Query: "CREATE VIEW obj.v1 AS SELECT 1"},
+		{Timestamp: now.Add(time.Second), EventType: "QUERY", Query: "CREATE EVENT obj.ev1 ON SCHEDULE EVERY 1 HOUR DO SELECT 1"},
+		{Timestamp: now.Add(2 * time.Second), EventType: "QUERY", Query: "CREATE FUNCTION obj.f1() RETURNS INT RETURN 1"},
+		{Timestamp: now.Add(3 * time.Second), EventType: "QUERY", Query: "CREATE PROCEDURE obj.p1() SELECT 1"},
+		{Timestamp: now.Add(4 * time.Second), EventType: "QUERY", Query: "CREATE TRIGGER obj.trg_ai BEFORE INSERT ON obj.t FOR EACH ROW SET NEW.v = 1"},
+		{Timestamp: now.Add(5 * time.Second), EventType: "QUERY", Query: "DROP TRIGGER obj.trg_ai"},
+		{Timestamp: now.Add(6 * time.Second), EventType: "QUERY", Query: "BEGIN"},
+		{Timestamp: now.Add(7 * time.Second), EventType: "WRITE_ROWS", Schema: "obj", Table: "t", RowCount: 2},
+		{Timestamp: now.Add(8 * time.Second), EventType: "XID"},
+	}
+	for _, name := range []string{"obj.v1", "obj.ev1", "obj.f1", "obj.p1", "obj.trg_ai"} {
+		opts := analyzer.DefaultOptions()
+		opts.IncludeTables = []string{name}
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+			return runAnalysisWithParser([]string{"dummy.binlog"}, opts, "text", &mockParser{events: events})
+		})
+		if err != nil {
+			t.Fatalf("include %s: %v\nstderr=%s", name, err, stderr)
+		}
+		if !strings.Contains(stdout, name) {
+			t.Fatalf("include %s report missing the object:\n%s", name, stdout)
+		}
+	}
+	opts := analyzer.DefaultOptions()
+	opts.IncludeTables = []string{"obj.missing"}
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		runErr := runAnalysisWithParser([]string{"dummy.binlog"}, opts, "text", &mockParser{events: events})
+		if runErr != nil {
+			fmt.Fprintln(os.Stderr, "Error:", runErr)
+		}
+		return runErr
+	})
+	assertAnalyzeNoDataExit(t, stdout, stderr, err, "filter matched no events")
+
+	opts.IncludeTables = []string{"obj.t"}
+	stdout, stderr, err = captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParser([]string{"dummy.binlog"}, opts, "text", &mockParser{events: events})
+	})
+	if err != nil {
+		t.Fatalf("include base table: %v\nstderr=%s", err, stderr)
+	}
+	if strings.Contains(stdout, "TRIGGER") {
+		t.Fatalf("base table filter kept trigger DDL:\n%s", stdout)
+	}
+}
+
+func TestAnalyzeAuthDDLRedactedInEveryFormat(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	const password = "MariaVia8"
+	const hash = "*FAA7A7FD08B88CBFE862FC3A7D612FB937B13476"
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	events := []binlog.RawEvent{
+		{Timestamp: now, EventType: "GTID", GTID: "0-11-1", ServerFlavor: "mariadb", PositionStart: 100, PositionEnd: 140},
+		{Timestamp: now.Add(time.Second), EventType: "QUERY", ServerFlavor: "mariadb", Query: "CREATE USER 'm5'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('" + password + "')", PositionStart: 140, PositionEnd: 200},
+		{Timestamp: now.Add(2 * time.Second), EventType: "GTID", GTID: "0-11-2", ServerFlavor: "mariadb", PositionStart: 200, PositionEnd: 240},
+		{Timestamp: now.Add(3 * time.Second), EventType: "QUERY", ServerFlavor: "mariadb", Query: "ALTER USER 'm5'@'%' IDENTIFIED VIA mysql_native_password USING '" + hash + "'", PositionStart: 240, PositionEnd: 300},
+		{Timestamp: now.Add(4 * time.Second), EventType: "GTID", GTID: "0-11-3", ServerFlavor: "mariadb", PositionStart: 300, PositionEnd: 340},
+		{Timestamp: now.Add(5 * time.Second), EventType: "QUERY", ServerFlavor: "mariadb", Query: "SET PASSWORD FOR 'm2'@'%' = PASSWORD('a1')", PositionStart: 340, PositionEnd: 400},
+		{Timestamp: now.Add(6 * time.Second), EventType: "GTID", GTID: "0-11-4", ServerFlavor: "mariadb", PositionStart: 400, PositionEnd: 440},
+		{Timestamp: now.Add(7 * time.Second), EventType: "QUERY", ServerFlavor: "mariadb", Query: "CREATE USER 'u'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('chainA') OR ed25519 USING PASSWORD('chainB')", PositionStart: 440, PositionEnd: 520},
+	}
+	secrets := []string{password, hash, "chainA", "chainB", "PASSWORD('a1')", "'a1'"}
+	for _, mode := range []report.SQLContextMode{report.SQLContextOff, report.SQLContextSummary, report.SQLContextFull} {
+		for _, format := range []string{"text", "json", "markdown", "html"} {
+			stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+				return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: mode}, format, &mockParser{events: events}, "", nil)
+			})
+			if err != nil {
+				t.Fatalf("%s %s: %v\nstderr=%s", mode, format, err, stderr)
+			}
+			for _, secret := range secrets {
+				if strings.Contains(stdout, secret) {
+					t.Fatalf("%s %s leaked %q", mode, format, secret)
+				}
+			}
+			if mode == report.SQLContextOff {
+				if strings.Contains(stdout, "<secret>") || strings.Contains(stdout, "&lt;secret&gt;") {
+					t.Fatalf("%s %s printed the DDL statement:\n%s", mode, format, stdout)
+				}
+				continue
+			}
+			if !strings.Contains(stdout, "secret") {
+				t.Fatalf("%s %s missing redaction:\n%s", mode, format, stdout)
+			}
+			if !strings.Contains(stdout, "SET PASSWORD") {
+				t.Fatalf("%s %s dropped SET PASSWORD:\n%s", mode, format, stdout)
+			}
+		}
+	}
+}
+
+func TestAnalyzeFullDDLStatementIsCapped(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	tail := "TAILMARKER_ZZZ"
+	sql := "CREATE TABLE lng.wide (" + strings.Repeat("c INT, ", 800) + tail + " INT)"
+	full := strings.Join(strings.Fields(sql), " ")
+	now := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	parser := &mockParser{events: []binlog.RawEvent{{
+		Timestamp: now, EventType: "QUERY", Query: sql, Schema: "lng",
+	}}}
+	for _, format := range []string{"text", "json", "markdown", "html"} {
+		stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+			return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextFull}, format, parser, "", nil)
+		})
+		if err != nil {
+			t.Fatalf("full %s: %v\nstderr=%s", format, err, stderr)
+		}
+		marker := " … [truncated: 4096 of " + strconv.Itoa(len(full)) + " bytes]"
+		if !strings.Contains(stdout, marker) {
+			t.Fatalf("full %s missing %q", format, marker)
+		}
+		if strings.Contains(stdout, tail) {
+			t.Fatalf("full %s printed the uncapped tail", format)
+		}
+	}
+	stdout, stderr, err := captureStdoutStderrRun(t, func() error {
+		return runAnalysisWithParserAndTempDirAndReportOptions([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.Options{SQLContextMode: report.SQLContextSummary}, "text", parser, "", nil)
+	})
+	if err != nil {
+		t.Fatalf("summary: %v\nstderr=%s", err, stderr)
+	}
+	summaryMarker := " … [truncated: " + strconv.Itoa(model.MaxQuerySummaryChars) + " of " + strconv.Itoa(len(full)) + " bytes]"
+	if !strings.Contains(stdout, summaryMarker) {
+		t.Fatalf("summary missing %q\n%s", summaryMarker, stdout)
+	}
 }

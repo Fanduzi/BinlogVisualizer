@@ -105,11 +105,11 @@
   },
   "cmd.analyze.flag.includeTable": {
     "description": "Include table filter flag description",
-    "other": "Only analyze these tables (comma-separated TABLE or SCHEMA.TABLE)"
+    "other": "Only analyze these objects (comma-separated TABLE or SCHEMA.TABLE). Also matches VIEW, EVENT, FUNCTION, PROCEDURE, and TRIGGER names"
   },
   "cmd.analyze.flag.excludeTable": {
     "description": "Exclude table filter flag description",
-    "other": "Skip these tables (comma-separated TABLE or SCHEMA.TABLE)"
+    "other": "Skip these objects (comma-separated TABLE or SCHEMA.TABLE). Also matches VIEW, EVENT, FUNCTION, PROCEDURE, and TRIGGER names"
   },
   "cmd.analyze.flag.largeTrxRows": {
     "description": "Large transaction rows threshold flag description",

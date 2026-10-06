@@ -46,11 +46,11 @@ binlogviz analyze mysql-bin.000123
 cat mysql-bin.000123 | binlogviz analyze -
 ```
 
-`analyze -` 从管道读取一份二进制 binlog。解析需要可 seek 的文件，所以会把 stdin 复制到临时文件，命令结束时删除，包括 Ctrl-C（退出码 130）和 SIGTERM（退出码 143）。终端会在解析前失败。`/dev/null` 和空管道报 `stdin 没有数据`。这种输入的回放提示会说明来自 stdin，不会编造文件路径。`mysqlbinlog` 的文本输出不是 binlog。
+`analyze -` 从管道读取一份二进制 binlog。解析需要可 seek 的文件，所以会把 stdin 复制到临时文件，命令结束时删除，包括 SIGHUP（退出码 129）、Ctrl-C（退出码 130）、SIGQUIT（退出码 131）和 SIGTERM（退出码 143）。终端会在解析前失败。`/dev/null` 和空管道报 `stdin 没有数据`。这种输入的回放提示会说明来自 stdin，不会编造文件路径。`mysqlbinlog` 的文本输出不是 binlog。
 
 默认文本报告包含热点线程，有行变更时按行数排序（否则按事件数、字节或事务数）。binlog 里有的 `thread_id`、`server_id`、`user@host` 和 schema 会写出来，回答「谁写最多」不必再 `jq`。`--top` 限制这一节；`--top-threads 0` 保留全部会话。JSON 的同一排名在 `threads`。
 
-`analyze` 在计入至少 1 个事件时退出 **0**；无法分析（损坏、截断、没有 Format Description）时退出 **1**；完整 binlog 解析成功但计入 0 个事件（空的 `--start`/`--end` 窗口，或仅 Format Description / rotate）时退出 **2**。schema 或 table 过滤没有匹配到事件同样是 exit 2，`Error:` 会写明过滤没有匹配。exit 2 不写 `stdout`，只在 `stderr` 打一行 `Error:`。如果进度条还停在当前 stderr 行，打印 `Error:` 之前会先清掉那一行。
+`analyze` 在计入至少 1 个事件时退出 **0**；无法分析（损坏、截断、没有 Format Description）时退出 **1**；完整 binlog 解析成功但计入 0 个事件（空的 `--start`/`--end` 窗口，或仅 Format Description / rotate）时退出 **2**。schema 或 table 过滤没有匹配到事件同样是 exit 2，`Error:` 会写明过滤没有匹配。过滤匹配到 view、event、function、procedure 或 trigger 时退出 0，即使没有行变更也会打印这条 DDL。exit 2 不写 `stdout`，只在 `stderr` 打一行 `Error:`。如果进度条还停在当前 stderr 行，打印 `Error:` 之前会先清掉那一行。
 
 ### 按 binlog 顺序分析整个目录
 
@@ -86,7 +86,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --include-table payments
 ```
 
-`--include-table` / `--exclude-table` 接受 `TABLE` 或 `SCHEMA.TABLE`。
+`--include-table` / `--exclude-table` 接受 `TABLE` 或 `SCHEMA.TABLE`，view、event、function、procedure、trigger 也是同样的写法。`CREATE TRIGGER` 和 `DROP TRIGGER` 都用触发器名字，过滤时传这个名字。
 
 ### 把机器可读结果交给脚本或其他工具
 

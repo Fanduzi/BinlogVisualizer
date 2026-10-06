@@ -103,7 +103,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
 | `--workload-id` | none | Explicit workload identity persisted in report v3. Use the same non-empty token only for snapshots of the same workload. |
-| `--sql-context` | `summary` | Query text in every format, including default text, DDL statements, and `--show-patterns`: `summary` (one bounded line), `off` (omit query text), or `full` (stored SQL capped at 4096 bytes and marked when cut). Credential material in DDL is redacted in every mode. |
+| `--sql-context` | `summary` | Query text in every format, including default text, DDL statements, and `--show-patterns`: `summary` (one bounded line), `off` (omit query text), or `full` (stored SQL, including DDL statement text, capped at 4096 bytes and marked when cut). MySQL and MariaDB auth-DDL credential literals are redacted in every mode. |
 | `--top-tables` | `10` | Number of top tables to display in human-readable reports; JSON retains all table aggregates. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report; `0` is unlimited. |
 | `--top-threads` | inherits `--top` | Number of top threads or sessions in every format; `0` is unlimited. |
@@ -121,8 +121,8 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--spike-min-rows` | `100` | Minimum row count for a minute to be considered a spike candidate. |
 | `--include-schema` | none | Comma-separated list of schemas to analyze (all others excluded). |
 | `--exclude-schema` | none | Comma-separated list of schemas to skip. |
-| `--include-table` | none | Comma-separated list of tables to analyze (all others excluded). `TABLE` or `SCHEMA.TABLE`. |
-| `--exclude-table` | none | Comma-separated list of tables to skip. `TABLE` or `SCHEMA.TABLE`. |
+| `--include-table` | none | Comma-separated objects to analyze (all others excluded). `TABLE` or `SCHEMA.TABLE`, including VIEW, EVENT, FUNCTION, PROCEDURE, and TRIGGER names. |
+| `--exclude-table` | none | Comma-separated objects to skip. `TABLE` or `SCHEMA.TABLE`, including VIEW, EVENT, FUNCTION, PROCEDURE, and TRIGGER names. |
 
 Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and time predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups match no active selector, including exclude-only selectors. Standalone anonymous DDL and unkeyed context are discarded without preventing a later matching keyed group from being retained. Mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
 

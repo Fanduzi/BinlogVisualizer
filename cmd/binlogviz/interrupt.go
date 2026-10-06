@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/signal"
 	"sync"
-	"syscall"
 
 	"binlogviz/internal/i18n"
 )
@@ -49,12 +48,13 @@ func cleanupTrackedStdinTemps() {
 	}
 }
 
-// InstallInterruptHandler removes stdin/pipe temp copies on SIGINT and SIGTERM,
-// prints one Error line, and exits 130 or 143.
+// InstallInterruptHandler removes stdin/pipe temp copies on the platform's
+// termination signals, prints one Error line, and exits with 128+signal.
 func InstallInterruptHandler() {
 	interruptOnce.Do(func() {
-		ch := make(chan os.Signal, 2)
-		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+		sigs := notifySignals()
+		ch := make(chan os.Signal, len(sigs))
+		signal.Notify(ch, sigs...)
 		go func() {
 			sig := <-ch
 			cleanupTrackedStdinTemps()
@@ -64,19 +64,14 @@ func InstallInterruptHandler() {
 	})
 }
 
+type signalCleanupCase struct {
+	name string
+	sig  os.Signal
+	code int
+}
+
 type interruptError struct{}
 
 func (interruptError) Error() string {
 	return i18n.T("error.interrupted")
-}
-
-func signalExitCode(sig os.Signal) int {
-	switch sig {
-	case syscall.SIGINT:
-		return 130
-	case syscall.SIGTERM:
-		return 143
-	default:
-		return 1
-	}
 }

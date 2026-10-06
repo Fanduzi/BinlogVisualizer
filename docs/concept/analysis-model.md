@@ -162,13 +162,14 @@ BinlogViz separates transaction workload metrics from optional SQL context displ
 
 - `summary`: include one bounded query summary and query metadata fields when query context exists. Default text prints that summary on Top Transactions, and `--show-patterns` prints the sample query. A display cut names the original byte length
 - `off`: omit query text and DDL statement text in every format, including text `Query:` lines, Markdown, and HTML. Operation, object, and position stay
-- `full`: include stored SQL plus metadata when query context exists. Default text prints that SQL on Top Transactions. A cut ends with `… [truncated: <shown> of <original> bytes]`
+- `full`: include stored SQL plus metadata when query context exists. Default text prints that SQL on Top Transactions. DDL statement text uses the same 4096-byte cap. A cut ends with `… [truncated: <shown> of <original> bytes]`
 
 The implementation deliberately bounds SQL context:
 
 - stored SQL is capped at `4096` bytes; `query_truncated` means that store cap, not the 160-character summary
 - query summary is capped at `160` characters of SQL, then the truncation marker when the text was cut
-- credential literals in `CREATE`/`ALTER USER`, `GRANT ... IDENTIFIED`, and `SET PASSWORD` become `<secret>` before display, in every mode
+- credential literals in `CREATE`/`ALTER USER`, `GRANT ... IDENTIFIED`, `SET PASSWORD`, and MariaDB `IDENTIFIED VIA`/`WITH` … `USING`/`AS` forms (including `OR` plugin chains) become `<secret>` before display, in every mode
+- `SET PASSWORD` is DDL: it closes its GTID group and is listed on the DDL timeline
 
 This means SQL context is designed for operator orientation, not for lossless archival of original statements.
 

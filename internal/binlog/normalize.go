@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE, independent ADMIN including exact FLUSH TABLES, CHECK TABLE prefix, and SET ROLE prefix, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE and SET PASSWORD, independent ADMIN including exact FLUSH TABLES, CHECK TABLE prefix, and SET ROLE prefix, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -148,7 +148,7 @@ func keepsNormalizedQuery(query string) bool {
 }
 
 // IsIgnoredQuery reports session-prefix SET that is dropped on purpose.
-// SET ROLE and SET DEFAULT ROLE are not Ignored QUERY.
+// SET ROLE, SET DEFAULT ROLE, and SET PASSWORD are not Ignored QUERY.
 func IsIgnoredQuery(query string) bool {
 	return isIgnoredQuery(query)
 }
@@ -163,10 +163,14 @@ func isIgnoredQuery(sql string) bool {
 	if !hasWordPrefixFold(sql, "SET") {
 		return false
 	}
-	if hasThreeWordPrefixFold(sql, "SET", "DEFAULT", "ROLE") {
+	if isSetPasswordQuery(sql) || hasThreeWordPrefixFold(sql, "SET", "DEFAULT", "ROLE") {
 		return false
 	}
 	return !hasTwoWordPrefixFold(sql, "SET", "ROLE")
+}
+
+func isSetPasswordQuery(sql string) bool {
+	return hasTwoWordPrefixFold(sql, "SET", "PASSWORD")
 }
 
 func isPlainRollback(query string) bool {
@@ -214,7 +218,8 @@ func hasQueryDDLPrefix(sql string) bool {
 		hasWordPrefixFold(sql, "TRUNCATE") ||
 		hasWordPrefixFold(sql, "RENAME") ||
 		hasWordPrefixFold(sql, "GRANT") ||
-		hasWordPrefixFold(sql, "REVOKE")
+		hasWordPrefixFold(sql, "REVOKE") ||
+		isSetPasswordQuery(sql)
 }
 
 // hasIndependentAdminQueryPrefix matches the independent

@@ -416,7 +416,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			Timestamp: formatTime(ddl.Timestamp),
 			Operation: ddl.Operation,
 			Object:    object,
-			Statement: ddlStatementForMode(ddl.Statement, opts.SQLContextMode),
+			Statement: ddlStatementForMode(ddl, opts.SQLContextMode),
 			Location:  formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd),
 		})
 	}

@@ -228,7 +228,7 @@ func TestParseDDLStatementObjectTypesAndGenericDDL(t *testing.T) {
 		{"DROP VIEW shop.v2", "DROP VIEW", "view", "shop", "v2"},
 		{"CREATE OR REPLACE VIEW v AS SELECT 1", "CREATE VIEW", "view", "", "v"},
 		{"CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW shop.v_orders AS SELECT 1", "CREATE VIEW", "view", "shop", "v_orders"},
-		{"CREATE TRIGGER shop.trg_small BEFORE INSERT ON shop.small FOR EACH ROW SET NEW.v = NEW.v + 1", "CREATE TRIGGER", "trigger", "shop", "small"},
+		{"CREATE TRIGGER shop.trg_small BEFORE INSERT ON shop.small FOR EACH ROW SET NEW.v = NEW.v + 1", "CREATE TRIGGER", "trigger", "shop", "trg_small"},
 		{"DROP TRIGGER shop.trg_small", "DROP TRIGGER", "trigger", "shop", "trg_small"},
 		{"CREATE DEFINER=`root`@`localhost` PROCEDURE shop.p1() SELECT 1", "CREATE PROCEDURE", "routine", "shop", "p1"},
 		{"DROP PROCEDURE IF EXISTS shop.p1", "DROP PROCEDURE", "routine", "shop", "p1"},
@@ -296,8 +296,12 @@ func TestAnalyzeKeepsViewTriggerRoutineAndUnknownDDL(t *testing.T) {
 		}
 	}
 	trigger := result.Diagnostics.DDLEvents[2]
-	if trigger.Schema != "shop" || trigger.Table != "small" {
-		t.Fatalf("CREATE TRIGGER should land on the table after ON, got %s.%s", trigger.Schema, trigger.Table)
+	if trigger.Schema != "shop" || trigger.Table != "trg_small" {
+		t.Fatalf("CREATE TRIGGER should use the trigger name, got %s.%s", trigger.Schema, trigger.Table)
+	}
+	drop := result.Diagnostics.DDLEvents[3]
+	if drop.Schema != "shop" || drop.Table != "trg_small" {
+		t.Fatalf("DROP TRIGGER should use the same name, got %s.%s", drop.Schema, drop.Table)
 	}
 }
 
@@ -319,18 +323,128 @@ func TestParseDDLStatementRedactsCredentialMaterial(t *testing.T) {
 	if !ok || strings.Contains(alter.Statement, "s3cret") || !strings.Contains(alter.Statement, "IDENTIFIED BY <secret>") {
 		t.Fatalf("alter = %+v", alter)
 	}
-	setPwd, ok := ParseDDLStatement("SET PASSWORD FOR 'app'@'%' = 'hidden'")
-	if ok {
-		t.Fatal("SET PASSWORD is not DDL and must not join the timeline")
-	}
-	_ = setPwd
-	redacted := redactCredentials("SET PASSWORD FOR 'app'@'%' = PASSWORD('hidden')")
-	if strings.Contains(redacted, "hidden") || !strings.Contains(redacted, "<secret>") {
-		t.Fatalf("set password = %q", redacted)
+	setPwd, ok := ParseDDLStatement("SET PASSWORD FOR 'app'@'%' = PASSWORD('hidden')")
+	if !ok || setPwd.Operation != "SET PASSWORD" || setPwd.Table != "'app'@'%'" || strings.Contains(setPwd.Statement, "hidden") || !strings.Contains(setPwd.Statement, "= <secret>") {
+		t.Fatalf("set password = %+v", setPwd)
 	}
 	grant, ok := ParseDDLStatement("GRANT SELECT ON shop.* TO 'app'@'%' IDENTIFIED BY 'x'")
 	if !ok || strings.Contains(grant.Statement, "'x'") || !strings.Contains(grant.Statement, "<secret>") {
 		t.Fatalf("grant = %+v", grant)
+	}
+}
+
+func TestParseDDLStatementRedactsMariaDBAuthForms(t *testing.T) {
+	const password = "MariaVia8"
+	const hash = "*FAA7A7FD08B88CBFE862FC3A7D612FB937B13476"
+	cases := []struct {
+		sql  string
+		want string
+	}{
+		{
+			"CREATE USER 'm5'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('" + password + "')",
+			"CREATE USER 'm5'@'%' IDENTIFIED VIA mysql_native_password USING <secret>",
+		},
+		{
+			"ALTER USER 'm5'@'%' IDENTIFIED VIA mysql_native_password USING '" + hash + "'",
+			"ALTER USER 'm5'@'%' IDENTIFIED VIA mysql_native_password USING <secret>",
+		},
+		{
+			"ALTER USER 'm5'@'%' IDENTIFIED WITH mysql_native_password USING PASSWORD('" + password + "')",
+			"ALTER USER 'm5'@'%' IDENTIFIED WITH mysql_native_password USING <secret>",
+		},
+		{
+			"CREATE USER 'u'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('chainA') OR ed25519 USING PASSWORD('chainB') OR unix_socket",
+			"CREATE USER 'u'@'%' IDENTIFIED VIA mysql_native_password USING <secret> OR ed25519 USING <secret> OR unix_socket",
+		},
+		{
+			"GRANT SELECT ON db.* TO 'app'@'%' IDENTIFIED VIA mysql_native_password USING PASSWORD('grantPw')",
+			"GRANT SELECT ON db.* TO 'app'@'%' IDENTIFIED VIA mysql_native_password USING <secret>",
+		},
+		{
+			"CREATE USER 'app'@'%' IDENTIFIED BY RANDOM PASSWORD",
+			"CREATE USER 'app'@'%' IDENTIFIED BY RANDOM PASSWORD",
+		},
+	}
+	for _, tc := range cases {
+		stmt, ok := ParseDDLStatement(tc.sql)
+		if !ok {
+			t.Fatalf("expected DDL: %s", tc.sql)
+		}
+		if stmt.Statement != tc.want {
+			t.Fatalf("statement = %q, want %q", stmt.Statement, tc.want)
+		}
+		for _, secret := range []string{password, hash, "chainA", "chainB", "grantPw"} {
+			if strings.Contains(stmt.Statement, secret) {
+				t.Fatalf("leaked %q in %q", secret, stmt.Statement)
+			}
+		}
+	}
+}
+
+func TestParseDDLStatementCapsStoredStatement(t *testing.T) {
+	tail := "TAILMARKER_ZZZ"
+	sql := "CREATE TABLE lng.wide (" + strings.Repeat("c INT, ", 800) + tail + " INT)"
+	full := strings.Join(strings.Fields(sql), " ")
+	stmt, ok := ParseDDLStatement(sql)
+	if !ok {
+		t.Fatal("expected CREATE TABLE")
+	}
+	if !stmt.Truncated || stmt.OriginalBytes != len(full) {
+		t.Fatalf("cap = truncated %v original %d, want true and %d", stmt.Truncated, stmt.OriginalBytes, len(full))
+	}
+	if len(stmt.Statement) > model.MaxStoredSQLBytes || len(stmt.Statement) == 0 {
+		t.Fatalf("stored len = %d, want 1..%d", len(stmt.Statement), model.MaxStoredSQLBytes)
+	}
+	if strings.Contains(stmt.Statement, tail) {
+		t.Fatalf("stored statement kept the tail: %q", stmt.Statement[len(stmt.Statement)-40:])
+	}
+	if len(stmt.Statement) != model.MaxStoredSQLBytes {
+		t.Fatalf("stored len = %d, want %d", len(stmt.Statement), model.MaxStoredSQLBytes)
+	}
+	shown := model.DisplayStoredSQL(stmt.Statement, stmt.Truncated, stmt.OriginalBytes)
+	marker := model.TruncationMarker(model.MaxStoredSQLBytes, len(full))
+	if !strings.HasSuffix(shown, marker) {
+		t.Fatalf("full display missing %q", marker)
+	}
+}
+
+func TestIncludeTableKeepsNonTableObjectNames(t *testing.T) {
+	base := time.Date(2026, 10, 6, 12, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "DDL", QuerySQL: "CREATE VIEW obj.v1 AS SELECT 1"},
+		{Timestamp: base.Add(time.Second), EventType: "DDL", QuerySQL: "CREATE EVENT obj.ev1 ON SCHEDULE EVERY 1 HOUR DO SELECT 1"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "DDL", QuerySQL: "CREATE FUNCTION obj.f1() RETURNS INT RETURN 1"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "DDL", QuerySQL: "CREATE PROCEDURE obj.p1() SELECT 1"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "DDL", QuerySQL: "CREATE TRIGGER obj.trg_ai BEFORE INSERT ON obj.t FOR EACH ROW SET NEW.v = 1"},
+		{Timestamp: base.Add(5 * time.Second), EventType: "DDL", QuerySQL: "DROP TRIGGER obj.trg_ai"},
+	}
+	for _, name := range []string{"obj.v1", "obj.ev1", "obj.f1", "obj.p1"} {
+		opts := DefaultOptions()
+		opts.IncludeTables = []string{name}
+		result, err := New(opts).Analyze(events)
+		if err != nil {
+			t.Fatalf("include %s: %v", name, err)
+		}
+		if len(result.Diagnostics.DDLEvents) != 1 || result.Diagnostics.DDLEvents[0].Schema+"."+result.Diagnostics.DDLEvents[0].Table != name {
+			t.Fatalf("include %s kept %+v", name, result.Diagnostics.DDLEvents)
+		}
+	}
+	opts := DefaultOptions()
+	opts.IncludeTables = []string{"obj.trg_ai"}
+	result, err := New(opts).Analyze(events)
+	if err != nil {
+		t.Fatalf("include trigger: %v", err)
+	}
+	if len(result.Diagnostics.DDLEvents) != 2 {
+		t.Fatalf("trigger filter kept %+v, want CREATE and DROP", result.Diagnostics.DDLEvents)
+	}
+	opts.IncludeTables = []string{"obj.t"}
+	result, err = New(opts).Analyze(events)
+	if err != nil {
+		t.Fatalf("include base table: %v", err)
+	}
+	if len(result.Diagnostics.DDLEvents) != 0 {
+		t.Fatalf("ON table must not keep the trigger: %+v", result.Diagnostics.DDLEvents)
 	}
 }
 
