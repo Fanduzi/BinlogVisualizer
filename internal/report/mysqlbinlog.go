@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
 
@@ -28,11 +29,27 @@ func txnSpanUsableForMysqlbinlog(txn model.Transaction) bool {
 }
 
 func txnReplayAvailable(txn model.Transaction) bool {
+	if txn.StdinInput {
+		return false
+	}
 	return txnSpanUsableForMysqlbinlog(txn)
 }
 
+// stdinReplayNote is the honest hint when the binlog was not a file.
+// Positions stay visible. There is no path to paste into mysqlbinlog.
+func stdinReplayNote(txn model.Transaction) string {
+	if !txn.StdinInput || txn.FullReplaySpan == nil || !txn.FullReplayAvailable() {
+		return ""
+	}
+	span := txn.FullReplaySpan
+	return i18n.Tf("report.replay.stdinNoPath", map[string]any{
+		"Start": span.PositionStart,
+		"Stop":  span.PositionEnd,
+	})
+}
+
 func mysqlbinlogCmd(txn model.Transaction, serverVersion string) string {
-	if !txnSpanUsableForMysqlbinlog(txn) {
+	if txn.StdinInput || !txnSpanUsableForMysqlbinlog(txn) {
 		return ""
 	}
 	span := txn.FullReplaySpan

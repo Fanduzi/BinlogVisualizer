@@ -46,7 +46,7 @@ binlogviz analyze mysql-bin.000123
 cat mysql-bin.000123 | binlogviz analyze -
 ```
 
-`analyze -` 从管道读取一份二进制 binlog。解析需要可 seek 的文件，所以会把 stdin 复制到临时文件，命令结束后删除。终端上没有数据会在解析前失败。`mysqlbinlog` 的文本输出不是 binlog。
+`analyze -` 从管道读取一份二进制 binlog。解析需要可 seek 的文件，所以会把 stdin 复制到临时文件，命令结束时删除，包括 Ctrl-C（退出码 130）和 SIGTERM（退出码 143）。终端会在解析前失败。`/dev/null` 和空管道报 `stdin 没有数据`。这种输入的回放提示会说明来自 stdin，不会编造文件路径。`mysqlbinlog` 的文本输出不是 binlog。
 
 默认文本报告包含热点线程，有行变更时按行数排序（否则按事件数、字节或事务数）。binlog 里有的 `thread_id`、`server_id`、`user@host` 和 schema 会写出来，回答「谁写最多」不必再 `jq`。`--top` 限制这一节；`--top-threads 0` 保留全部会话。JSON 的同一排名在 `threads`。
 

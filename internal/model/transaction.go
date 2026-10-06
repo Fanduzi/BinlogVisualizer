@@ -74,8 +74,11 @@ type Transaction struct {
 	FullReplaySpan  *TransactionReplaySpan
 	Tables          map[string]int
 	Operations      map[string]int
-	QuerySummary    string        // Bounded summary of triggering SQL (max 160 chars)
+	QuerySummary    string        // Bounded summary of triggering SQL (max 160 chars, plus a truncation marker when cut)
 	QueryContext    *QueryContext // Full context if available, nil otherwise
+	// StdinInput is set when the binlog was read from stdin or another non-seekable
+	// stream. The displayed path "stdin" is not a file that mysqlbinlog can open.
+	StdinInput bool
 }
 
 // EffectiveCompleteness maps missing or invalid metadata to unknown.

@@ -1278,6 +1278,8 @@ const htmlReportTemplateTail = `
                 <code class="mysqlbinlog-cmd">{{.MysqlbinlogCmd}}</code>
                 <button type="button" class="copy-btn" data-copy="{{.MysqlbinlogCmd}}">📋 {{t "report.html.analyze.copy"}}</button>
               </div>
+              {{else if .ReplayNote}}
+              <div>{{.ReplayNote}}</div>
               {{end}}
               {{if .QuerySummary}}<div style="padding:6px 10px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:11.5px">{{.QuerySummary}}</div>{{end}}
               {{if .Tables}}
@@ -1311,7 +1313,7 @@ const htmlReportTemplateTail = `
               <div class="diagnostic-meta">{{.Timestamp}}</div>
             </div>
             <div class="diagnostic-body">
-              <div style="padding:8px 12px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--warn)">{{.Statement}}</div>
+              {{if .Statement}}<div style="padding:8px 12px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--warn)">{{.Statement}}</div>{{end}}
               {{if .Location}}<div class="diagnostic-meta" style="align-self:flex-start">📍 {{.Location}}</div>{{end}}
             </div>
           </div>

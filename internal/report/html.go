@@ -202,6 +202,7 @@ type htmlTxnDiagnostic struct {
 	Location             string
 	QuerySummary         string
 	MysqlbinlogCmd       string
+	ReplayNote           string
 	Identity             string
 }
 
@@ -415,7 +416,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			Timestamp: formatTime(ddl.Timestamp),
 			Operation: ddl.Operation,
 			Object:    object,
-			Statement: ddl.Statement,
+			Statement: ddlStatementForMode(ddl.Statement, opts.SQLContextMode),
 			Location:  formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd),
 		})
 	}
@@ -678,6 +679,7 @@ func buildHTMLTxnDiagnostic(txn model.Transaction, serverVersion string, mode SQ
 		Location:             formatBinlogSpan(txn),
 		QuerySummary:         transactionTextQuery(txn, mode),
 		MysqlbinlogCmd:       mysqlbinlogCmd(txn, serverVersion),
+		ReplayNote:           stdinReplayNote(txn),
 		Identity:             formatTxnIdentity(txn),
 	}
 }

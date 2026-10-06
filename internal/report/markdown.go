@@ -32,7 +32,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion)
 	mdMinuteActivity(&buf, result.Minutes)
-	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents)
+	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode)
 	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts)
 
 	return buf.String(), nil
@@ -147,7 +147,7 @@ func mdTopThreads(buf *strings.Builder, threads []model.ThreadStats, rankedBy st
 	buf.WriteString("\n")
 }
 
-func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent) {
+func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContextMode) {
 	if len(events) == 0 {
 		return
 	}
@@ -159,12 +159,12 @@ func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent) {
 		if object == "" {
 			object = event.Object
 		}
-		statement := model.MakeQuerySummary(event.Statement)
+		statement := ddlStatementForMode(event.Statement, mode)
 		location := formatBinlogLocation(event.BinlogPath, event.PositionStart, event.PositionEnd)
 		if location == "" {
 			location = i18n.T("time.notAvailable")
 		}
-		if statement == "" {
+		if statement == "" && mode != SQLContextOff {
 			statement = i18n.T("time.notAvailable")
 		}
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
@@ -212,7 +212,9 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, m
 	}
 	buf.WriteString("\n")
 	for _, t := range transactions {
-		if cmd := FormatReplayCommand(t, serverVersion); cmd != "" {
+		if note := stdinReplayNote(t); note != "" {
+			buf.WriteString(note + "\n\n")
+		} else if cmd := FormatReplayCommand(t, serverVersion); cmd != "" {
 			mdReplayCommand(buf, t.TxnKey, cmd)
 		}
 		if id := formatTxnIdentity(t); id != "" {

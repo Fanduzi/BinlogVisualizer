@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege statements. Index DDL uses the table after ON, including UNIQUE, FULLTEXT, and SPATIAL. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Index DDL and CREATE TRIGGER use the table after ON. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Credential literals are replaced with <secret>.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -39,7 +39,7 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 		return DDLStatement{}, false
 	}
 
-	normalized := strings.Join(strings.Fields(trimmed), " ")
+	normalized := strings.Join(strings.Fields(sanitizeDisplaySQL(redactCredentials(trimmed))), " ")
 	tokens := strings.Fields(normalized)
 	if len(tokens) < 2 {
 		return DDLStatement{}, false
@@ -47,15 +47,19 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 
 	operation, object, startIndex, ok := classifyDDL(tokens)
 	if !ok {
-		return DDLStatement{}, false
+		return DDLStatement{
+			Operation: "DDL",
+			Object:    "ddl",
+			Statement: normalized,
+		}, true
 	}
 
 	var identifier string
-	if object == "index" {
-		// The name before ON is the index. The table is the next identifier.
+	if object == "index" || (object == "trigger" && hasKeyword(tokens, "ON")) {
+		// The name before ON is the index or trigger. The table is the next identifier.
 		identifier, _ = identifierAfterKeyword(tokens, "ON")
 	} else {
-		identifier = findDDLIdentifier(tokens[startIndex:])
+		identifier = findDDLIdentifier(tokens[skipOptionalIfClause(tokens, startIndex):])
 	}
 	schema, table := splitQualifiedIdentifier(identifier)
 	if object == "database" && schema == "" && table != "" {
@@ -174,50 +178,114 @@ func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool
 }
 
 func classifyDDL(tokens []string) (operation string, object string, identifierIndex int, ok bool) {
+	if op, ok := createIndexOperation(tokens); ok {
+		return op, "index", 0, true
+	}
+
 	first := strings.ToUpper(tokens[0])
 	second := ""
 	if len(tokens) > 1 {
 		second = strings.ToUpper(tokens[1])
 	}
-
-	if op, ok := createIndexOperation(tokens); ok {
-		return op, "index", 0, true
-	}
-
-	switch {
-	case first == "ALTER" && second == "TABLE":
-		return "ALTER TABLE", "table", 2, true
-	case first == "ALTER" && (second == "DATABASE" || second == "SCHEMA"):
-		return "ALTER DATABASE", "database", 2, true
-	case first == "CREATE" && second == "TABLE":
-		return "CREATE TABLE", "table", skipOptionalIfClause(tokens, 2), true
-	case first == "CREATE" && (second == "DATABASE" || second == "SCHEMA"):
-		return "CREATE DATABASE", "database", skipOptionalIfClause(tokens, 2), true
-	case first == "CREATE" && second == "USER":
-		return "CREATE USER", "user", skipOptionalIfClause(tokens, 2), true
-	case first == "DROP" && second == "TABLE":
-		return "DROP TABLE", "table", skipOptionalIfClause(tokens, 2), true
-	case first == "DROP" && (second == "DATABASE" || second == "SCHEMA"):
-		return "DROP DATABASE", "database", skipOptionalIfClause(tokens, 2), true
-	case first == "DROP" && second == "INDEX":
-		return "DROP INDEX", "index", 0, true
-	case first == "DROP" && second == "USER":
-		return "DROP USER", "user", skipOptionalIfClause(tokens, 2), true
-	case first == "ALTER" && second == "USER":
-		return "ALTER USER", "user", 2, true
-	case first == "GRANT":
+	switch first {
+	case "GRANT":
 		return "GRANT", "privilege", 1, true
-	case first == "REVOKE":
+	case "REVOKE":
 		return "REVOKE", "privilege", 1, true
-	case first == "TRUNCATE" && second == "TABLE":
-		return "TRUNCATE TABLE", "table", 2, true
-	case first == "TRUNCATE":
+	case "TRUNCATE":
+		if second == "TABLE" {
+			return "TRUNCATE TABLE", "table", 2, true
+		}
 		return "TRUNCATE TABLE", "table", 1, true
-	case first == "RENAME" && second == "TABLE":
-		return "RENAME TABLE", "table", 2, true
+	case "RENAME":
+		if second == "TABLE" {
+			return "RENAME TABLE", "table", 2, true
+		}
+		return "", "", 0, false
+	case "CREATE", "ALTER", "DROP":
+		return classifyObjectDDL(tokens)
 	default:
 		return "", "", 0, false
 	}
+}
+
+func classifyObjectDDL(tokens []string) (operation string, object string, identifierIndex int, ok bool) {
+	verb := strings.ToUpper(tokens[0])
+	index := skipDDLModifiers(tokens, 1)
+	if index >= len(tokens) {
+		return "", "", 0, false
+	}
+	keyword := strings.ToUpper(tokens[index])
+	nameAt := index + 1
+	switch keyword {
+	case "TABLE":
+		return verb + " TABLE", "table", nameAt, true
+	case "DATABASE", "SCHEMA":
+		return verb + " DATABASE", "database", nameAt, true
+	case "USER":
+		return verb + " USER", "user", nameAt, true
+	case "INDEX":
+		return verb + " INDEX", "index", 0, true
+	case "VIEW":
+		return verb + " VIEW", "view", nameAt, true
+	case "TRIGGER":
+		return verb + " TRIGGER", "trigger", nameAt, true
+	case "PROCEDURE", "FUNCTION":
+		return verb + " " + keyword, "routine", nameAt, true
+	case "EVENT":
+		return verb + " EVENT", "event", nameAt, true
+	default:
+		return "", "", 0, false
+	}
+}
+
+func skipDDLModifiers(tokens []string, i int) int {
+	for i < len(tokens) {
+		tok := strings.ToUpper(tokens[i])
+		switch {
+		case tok == "OR" || tok == "REPLACE" || tok == "TEMPORARY" || tok == "SQL" || tok == "SECURITY" || tok == "INVOKER":
+			i++
+		case tok == "DEFINER":
+			i++
+			if i < len(tokens) && tokens[i] == "=" {
+				i++
+				if i < len(tokens) && !isDDLObjectKeyword(tokens[i]) {
+					i++
+				}
+			}
+		case strings.HasPrefix(tok, "DEFINER=") || strings.HasPrefix(tok, "ALGORITHM="):
+			i++
+		case tok == "ALGORITHM":
+			i++
+			if i < len(tokens) && tokens[i] == "=" {
+				i++
+			}
+			if i < len(tokens) && !isDDLObjectKeyword(tokens[i]) {
+				i++
+			}
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+func isDDLObjectKeyword(tok string) bool {
+	switch strings.ToUpper(tok) {
+	case "TABLE", "DATABASE", "SCHEMA", "USER", "INDEX", "VIEW", "TRIGGER", "PROCEDURE", "FUNCTION", "EVENT":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasKeyword(tokens []string, keyword string) bool {
+	for _, token := range tokens {
+		if strings.EqualFold(token, keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 func createIndexOperation(tokens []string) (string, bool) {
