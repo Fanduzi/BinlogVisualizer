@@ -160,6 +160,12 @@ binlogviz analyze mysql-bin.000123 --sql-context summary
 binlogviz analyze mysql-bin.000123 --sql-context full
 ```
 
+`off` removes query text from every format, including default text and `--show-patterns`. `summary` and `full` print that text on the default text report's Top Transactions section. A pipe works for one binary file:
+
+```bash
+cat mysql-bin.000123 | binlogviz analyze -
+```
+
 Mode guidance:
 
 - `off`: omit query-related fields

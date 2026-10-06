@@ -92,6 +92,8 @@ type AnalysisResult struct {
 	SQLContextAvailable bool
 	Timeseries          Timeseries
 	Tables              []TableStats
+	Threads             []ThreadStats
+	ThreadsRankedBy     string
 	Transactions        []Transaction
 	Patterns            []PatternStats
 	// Minutes is the source-of-truth aggregated minute series.

@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/table filter that matches nothing exits 2 with its own Error line, other valid no-data (including ADMIN-only) exits 2, --snapshot-name without json fails before rendering, and DuckDB temp state is cleaned.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, a Top Threads session ranking, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, user@host, --sql-context, and stdin `-`; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/table filter that matches nothing exits 2 with its own Error line, other valid no-data (including ADMIN-only) exits 2, a terminal or empty stdin `-` fails before parsing, --snapshot-name without json fails before rendering, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -67,6 +67,8 @@ type analyzeOptions struct {
 	top                    int
 	topTables              int
 	topTransactions        int
+	topThreads             int
+	topThreadsChanged      bool
 	details                bool
 	showMinutes            bool
 	showPatterns           bool
@@ -119,6 +121,7 @@ func newAnalyzeCommand() *cobra.Command {
 
 			opts.topTablesChanged = cmd.Flags().Changed("top-tables")
 			opts.topTransactionsChanged = cmd.Flags().Changed("top-transactions")
+			opts.topThreadsChanged = cmd.Flags().Changed("top-threads")
 			opts.startPositionSet = cmd.Flags().Changed("start-position")
 			opts.stopPositionSet = cmd.Flags().Changed("stop-position")
 			if err := validateAnalyzeSelectionInput(args, opts); err != nil {
@@ -141,6 +144,16 @@ func newAnalyzeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			paths, pathAliases, cleanupInputs, err := materializeAnalyzePaths(paths)
+			if cleanupInputs != nil {
+				defer cleanupInputs()
+			}
+			if err != nil {
+				return err
+			}
+			if !discovered {
+				fileCoverage = fileCoverageForPaths(paths)
+			}
 			if discovered {
 				printResolvedPaths(os.Stderr, paths)
 			}
@@ -162,10 +175,10 @@ func newAnalyzeCommand() *cobra.Command {
 			// Build analyzer options
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			analyzerOpts.GTIDSelector = gtidSelector
-			snapshotMeta := buildSnapshotMetadata(paths, opts, startTime, endTime, discovered)
+			snapshotMeta := buildSnapshotMetadata(displayPaths(paths, pathAliases), opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
-			return runAnalysisWithOutput(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir, dest)
+			return runAnalysisWithOutput(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir, dest, pathAliases)
 		},
 	}
 
@@ -187,6 +200,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().IntVar(&opts.top, "top", report.DefaultTopN, i18n.T("cmd.analyze.flag.top"))
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
 	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, i18n.T("cmd.analyze.flag.topTransactions"))
+	cmd.Flags().IntVar(&opts.topThreads, "top-threads", 10, i18n.T("cmd.analyze.flag.topThreads"))
 	cmd.Flags().BoolVar(&opts.details, "details", false, i18n.T("cmd.analyze.flag.details"))
 	cmd.Flags().BoolVar(&opts.showMinutes, "show-minutes", false, i18n.T("cmd.analyze.flag.showMinutes"))
 	cmd.Flags().BoolVar(&opts.showPatterns, "show-patterns", false, i18n.T("cmd.analyze.flag.showPatterns"))
@@ -573,7 +587,7 @@ func runAnalysisStreamingWithDeps(
 	newTempStore tempStoreFactory,
 	tempRoot string,
 ) error {
-	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, normalize, newAnalyzer, newTempStore, tempRoot, nil, model.FileCoverage{}, "", "", outputDestination{})
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, normalize, newAnalyzer, newTempStore, tempRoot, nil, model.FileCoverage{}, "", "", outputDestination{}, nil)
 }
 
 func runAnalysisStreamingWithSnapshotDeps(
@@ -591,6 +605,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	snapshotName string,
 	snapshotDir string,
 	dest outputDestination,
+	pathAliases map[string]string,
 ) error {
 	if err := snapshotNameFormatError(format, snapshotName); err != nil {
 		return err
@@ -683,6 +698,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 		return err
 	}
 	applyFileCoverage(result, paths, fileCoverage)
+	aliasAnalysisPaths(result, pathAliases)
 	if err := noteInputFormat(result, formatObserver); err != nil {
 		return err
 	}
@@ -738,7 +754,7 @@ func runAnalysisStreamingFastWithSnapshot(
 	snapshotName string,
 	snapshotDir string,
 ) error {
-	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, nil, newAnalyzer, newTempStore, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir, outputDestination{})
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, nil, newAnalyzer, newTempStore, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir, outputDestination{}, nil)
 }
 
 func hasFileCoverage(fileCoverage model.FileCoverage) bool {
@@ -782,7 +798,7 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 	return nil
 }
 
-func runAnalysisWithOutput(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, dest outputDestination) error {
+func runAnalysisWithOutput(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, dest outputDestination, pathAliases map[string]string) error {
 	return runAnalysisStreamingFastWithOutput(paths, opts, reportOpts, format, binlog.NewParser(), func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
 		if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
 			return analyzer.NewWithStore(opts, store)
@@ -790,7 +806,7 @@ func runAnalysisWithOutput(paths []string, opts analyzer.Options, reportOpts rep
 		return analyzer.New(opts)
 	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
 		return createDuckDBTempStore(root)
-	}, "", snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest)
+	}, "", snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest, pathAliases)
 }
 
 func runAnalysisStreamingFastWithOutput(
@@ -807,8 +823,9 @@ func runAnalysisStreamingFastWithOutput(
 	snapshotName string,
 	snapshotDir string,
 	dest outputDestination,
+	pathAliases map[string]string,
 ) error {
-	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, nil, newAnalyzer, newTempStore, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest)
+	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, nil, newAnalyzer, newTempStore, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest, pathAliases)
 }
 
 func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {
@@ -978,11 +995,17 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 	if !opts.topTablesChanged {
 		topTables = opts.top
 	}
+	topThreads := opts.topThreads
+	if !opts.topThreadsChanged {
+		topThreads = opts.top
+	}
 	return report.Options{
 		SQLContextMode: mode,
 		TopN:           opts.top,
 		TopTables:      topTables,
 		TopTablesSet:   opts.topTablesChanged,
+		TopThreads:     topThreads,
+		TopThreadsSet:  opts.topThreadsChanged,
 		Details:        opts.details,
 		ShowMinutes:    opts.showMinutes,
 		ShowPatterns:   opts.showPatterns,

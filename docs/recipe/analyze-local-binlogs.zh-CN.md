@@ -160,6 +160,12 @@ binlogviz analyze mysql-bin.000123 --sql-context summary
 binlogviz analyze mysql-bin.000123 --sql-context full
 ```
 
+`off` 会从所有格式去掉查询文本，包括默认文本和 `--show-patterns`。`summary` 和 `full` 会在默认文本的重点事务一节打印这些文本。单份二进制文件可以走管道：
+
+```bash
+cat mysql-bin.000123 | binlogviz analyze -
+```
+
 模式说明：
 
 - `off`：省略查询相关字段

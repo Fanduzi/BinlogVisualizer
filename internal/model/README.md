@@ -12,7 +12,8 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
 | `diagnostics.go` | Defines diagnostics, selected-file coverage, counted filtered event bytes, DDL, open uncommitted DML, committed duration buckets, byte-ranked transactions, findings, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped parser events, and Format Description server-version contracts for operator review. |
-| `report.go` | Defines `AnalysisResult`, explicit workload identity and analyzed scope, requested/effective selector evidence, deterministic report-level producer provenance, report-wide SQL availability, and snapshot metadata. |
+| `report.go` | Defines `AnalysisResult`, explicit workload identity and analyzed scope, requested/effective selector evidence, deterministic report-level producer provenance, report-wide SQL availability, session rankings, and snapshot metadata. |
+| `thread.go` | Defines `ThreadStats` for the Top Threads session ranking. |
 | `timeseries.go` | Defines chart-ready timeseries and transaction-size histogram contracts. |
 | `query_context.go` | Provides bounded SQL context constructors and truncation helpers. |
 | `*_test.go` | Verifies shared model invariants and helper behavior. |

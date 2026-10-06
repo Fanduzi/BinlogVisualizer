@@ -43,7 +43,12 @@ binlogviz analyze minimal.binlog
 
 ```bash
 binlogviz analyze mysql-bin.000123
+cat mysql-bin.000123 | binlogviz analyze -
 ```
+
+`analyze -` 从管道读取一份二进制 binlog。解析需要可 seek 的文件，所以会把 stdin 复制到临时文件，命令结束后删除。终端上没有数据会在解析前失败。`mysqlbinlog` 的文本输出不是 binlog。
+
+默认文本报告包含热点线程，有行变更时按行数排序（否则按事件数、字节或事务数）。binlog 里有的 `thread_id`、`server_id`、`user@host` 和 schema 会写出来，回答「谁写最多」不必再 `jq`。`--top` 限制这一节；`--top-threads 0` 保留全部会话。JSON 的同一排名在 `threads`。
 
 `analyze` 在计入至少 1 个事件时退出 **0**；无法分析（损坏、截断、没有 Format Description）时退出 **1**；完整 binlog 解析成功但计入 0 个事件（空的 `--start`/`--end` 窗口，或仅 Format Description / rotate）时退出 **2**。schema 或 table 过滤没有匹配到事件同样是 exit 2，`Error:` 会写明过滤没有匹配。exit 2 不写 `stdout`，只在 `stderr` 打一行 `Error:`。如果进度条还停在当前 stderr 行，打印 `Error:` 之前会先清掉那一行。
 
@@ -359,6 +364,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --top-tables 20 \
   --top-transactions 20 \
+  --top-threads 20 \
   --top-minutes 30
 ```
 

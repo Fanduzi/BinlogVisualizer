@@ -13,7 +13,7 @@
   },
   "cmd.analyze.use": {
     "description": "Analyze command usage",
-    "other": "analyze <binlog files...> | --from-dir DIR --prefix PREFIX"
+    "other": "analyze [binlog files... | -] | --from-dir DIR --prefix PREFIX"
   },
   "cmd.analyze.short": {
     "description": "Analyze command short description",
@@ -21,7 +21,7 @@
   },
   "cmd.analyze.long": {
     "description": "Analyze command long description",
-    "other": "Analyze binlog files. Default text and JSON name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host is shown only when the binlog has it. A field the binlog does not have stays absent."
+    "other": "Analyze binlog files. Pass - to read one binary binlog from a pipe; stdin is copied to a temporary file because parsing needs seek. Default text, JSON, markdown, and HTML rank Top Threads by rows, events, bytes, or transactions and show thread_id plus user@host and schema when the binlog has them. Default text and JSON name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host is shown only when the binlog has it. A field the binlog does not have stays absent."
   },
   "cmd.analyze.flag.start": {
     "description": "Start time flag description",
@@ -45,7 +45,7 @@
   },
   "cmd.analyze.flag.sqlContext": {
     "description": "SQL context flag description",
-    "other": "SQL context mode: summary, off, or full"
+    "other": "Query text in every format, including default text and --show-patterns: summary (one bounded line), off (omit query text), or full (bounded stored SQL)"
   },
   "cmd.analyze.flag.top": {
     "description": "Default ranked items flag description",
@@ -58,6 +58,10 @@
   "cmd.analyze.flag.topTransactions": {
     "description": "Top transactions flag description",
     "other": "Number of top transactions to show (0 = unlimited)"
+  },
+  "cmd.analyze.flag.topThreads": {
+    "description": "Top threads flag description",
+    "other": "Number of top threads or sessions to show (0 = unlimited). Inherits --top when omitted"
   },
   "cmd.analyze.flag.details": {
     "description": "Detailed text sections flag description",
@@ -134,6 +138,18 @@
   "error.requiresBinlogOrDir": {
     "description": "Error when no binlog files or from-dir provided",
     "other": "requires at least one binlog file or --from-dir + --prefix"
+  },
+  "error.stdinTerminal": {
+    "description": "Error when analyze - is used on a terminal",
+    "other": "stdin is a terminal and has no binlog data; pass a binlog file or pipe binary binlog bytes, for example: cat mysql-bin.000001 | binlogviz analyze -"
+  },
+  "error.stdinEmpty": {
+    "description": "Error when stdin has no bytes",
+    "other": "stdin has no data"
+  },
+  "error.stdinOnce": {
+    "description": "Error when - is passed more than once",
+    "other": "stdin (-) can be used only once"
   },
   "error.readBinlogDir": {
     "description": "Error reading binlog directory",
@@ -414,6 +430,30 @@
   "report.text.topTransactions": {
     "description": "Diagnostic text top transactions section header",
     "other": "Top Transactions"
+  },
+  "report.text.topThreadsByRows": {
+    "description": "Top threads section ranked by rows",
+    "other": "Top Threads (by rows)"
+  },
+  "report.text.topThreadsByEvents": {
+    "description": "Top threads section ranked by events",
+    "other": "Top Threads (by events)"
+  },
+  "report.text.topThreadsByBytes": {
+    "description": "Top threads section ranked by bytes",
+    "other": "Top Threads (by bytes)"
+  },
+  "report.text.topThreadsByTransactions": {
+    "description": "Top threads section ranked by transactions",
+    "other": "Top Threads (by transactions)"
+  },
+  "report.text.noThreads": {
+    "description": "Placeholder when the binlog has no thread or actor identity",
+    "other": "No thread or session identity in this window."
+  },
+  "report.text.omittedThreads": {
+    "description": "Count of threads omitted by the report display limit",
+    "other": "… and {{.Count}} more threads"
   },
   "report.text.nextActions": {
     "description": "Diagnostic text next actions section header",

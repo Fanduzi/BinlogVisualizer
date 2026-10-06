@@ -46,9 +46,13 @@ type Options struct {
 	TopTables int
 	// TopTablesSet distinguishes an explicit zero limit from an omitted value.
 	TopTablesSet bool
-	Details      bool
-	ShowMinutes  bool
-	ShowPatterns bool
+	// TopThreads limits the Top Threads section in every format. Zero is unlimited when TopThreadsSet is true.
+	TopThreads int
+	// TopThreadsSet distinguishes an explicit zero limit from an omitted value.
+	TopThreadsSet bool
+	Details       bool
+	ShowMinutes   bool
+	ShowPatterns  bool
 }
 
 // DefaultOptions returns the backwards-compatible report presentation defaults.
@@ -83,6 +87,9 @@ func normalizeOptions(opts Options) Options {
 	}
 	if !opts.TopTablesSet && opts.TopTables <= 0 {
 		opts.TopTables = opts.TopN
+	}
+	if !opts.TopThreadsSet && opts.TopThreads <= 0 {
+		opts.TopThreads = opts.TopN
 	}
 	if opts.Details {
 		opts.ShowMinutes = true

@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, labelled trusted replay, and opt-in minute/pattern detail.
+// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -43,7 +43,8 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
-	renderTopTransactions(&buf, result, opts.TopN)
+	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
+	renderTopTransactions(&buf, result, opts.TopN, opts.SQLContextMode)
 	renderTopFindings(&buf, result, opts)
 	renderActivitySection(&buf, result)
 	renderNextActions(&buf, result)
@@ -52,7 +53,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 		renderMinuteDetails(&buf, result.Minutes, opts.TopN)
 	}
 	if opts.ShowPatterns {
-		renderWriteShapePatterns(&buf, result.Patterns, result.PatternDrilldowns, opts.TopN)
+		renderWriteShapePatterns(&buf, result.Patterns, result.PatternDrilldowns, opts.TopN, opts.SQLContextMode)
 	}
 
 	return buf.String(), nil
@@ -225,13 +226,14 @@ func maxInt(a, b int) int {
 	return b
 }
 
-func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, topN int) {
+func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, topN int, mode SQLContextMode) {
 	buf.WriteString("=== " + i18n.T("report.text.topTransactions") + " ===\n")
 
 	largestLimit := minInt(3, topN)
 	longestLimit := largestLimit
 	otherLimit := minInt(1, topN)
 	lines := make([]string, 0, largestLimit+longestLimit+otherLimit)
+	printedQuery := false
 	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, largestLimit) {
 		line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
 			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
@@ -243,6 +245,9 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		}
 		line = appendTxnIdentity(line, txn)
 		lines = append(lines, line)
+		if appendTextQueryLine(&lines, txn, mode) {
+			printedQuery = true
+		}
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
@@ -254,6 +259,9 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		line := fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
 			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn))
 		lines = append(lines, appendTxnIdentity(line, txn))
+		if appendTextQueryLine(&lines, txn, mode) {
+			printedQuery = true
+		}
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
@@ -262,11 +270,21 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 		line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
 			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn))
 		lines = append(lines, appendTxnIdentity(line, txn))
+		if appendTextQueryLine(&lines, txn, mode) {
+			printedQuery = true
+		}
 		if cmd := mysqlbinlogCmd(txn, result.Diagnostics.ServerVersion); cmd != "" {
 			lines = append(lines, "    "+i18n.T("report.label.fullTransactionReplay")+": "+cmd)
 		}
 	}
 
+	if !printedQuery {
+		for _, txn := range result.Transactions {
+			if appendTextQueryLine(&lines, txn, mode) {
+				break
+			}
+		}
+	}
 	if len(lines) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noTransactions") + "\n\n")
 		return
@@ -315,7 +333,7 @@ func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, top
 	buf.WriteString("\n")
 }
 
-func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStats, drilldowns []model.PatternDrilldown, topN int) {
+func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStats, drilldowns []model.PatternDrilldown, topN int, mode SQLContextMode) {
 	buf.WriteString("=== " + i18n.T("report.text.writeShapePatterns") + " ===\n")
 	if len(patterns) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noPatterns") + "\n\n")
@@ -332,7 +350,7 @@ func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStat
 		pattern := patterns[i]
 		buf.WriteString(fmt.Sprintf("  %s: rows=%d txns=%d avg_rows_per_txn=%.1f\n",
 			pattern.Label, pattern.TotalRows, pattern.TxnCount, pattern.AvgRowsPerTxn))
-		if strings.TrimSpace(pattern.SampleQuerySummary) != "" {
+		if mode != SQLContextOff && strings.TrimSpace(pattern.SampleQuerySummary) != "" {
 			buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), pattern.SampleQuerySummary))
 		}
 		if drilldown, ok := ddMap[pattern.PatternKey]; ok {
@@ -371,15 +389,190 @@ func transactionTextQuery(txn model.Transaction, mode SQLContextMode) string {
 	case SQLContextOff:
 		return ""
 	case SQLContextFull:
-		if txn.QueryContext != nil {
-			return txn.QueryContext.SQL
+		if txn.QueryContext != nil && strings.TrimSpace(txn.QueryContext.SQL) != "" {
+			return strings.Join(strings.Fields(txn.QueryContext.SQL), " ")
 		}
-		return ""
+		return strings.Join(strings.Fields(txn.QuerySummary), " ")
 	case SQLContextSummary:
 		fallthrough
 	default:
-		return txn.QuerySummary
+		return strings.Join(strings.Fields(txn.QuerySummary), " ")
 	}
+}
+
+func appendTextQueryLine(lines *[]string, txn model.Transaction, mode SQLContextMode) bool {
+	query := transactionTextQuery(txn, mode)
+	if query == "" {
+		return false
+	}
+	*lines = append(*lines, "    "+i18n.T("report.label.query")+": "+query)
+	return true
+}
+
+func renderTopThreads(buf *strings.Builder, threads []model.ThreadStats, rankedBy string, limit int) {
+	buf.WriteString("=== " + threadSectionTitle(rankedBy) + " ===\n")
+	if len(threads) == 0 {
+		buf.WriteString("  " + i18n.T("report.text.noThreads") + "\n\n")
+		return
+	}
+	shown, omitted := limitThreads(threads, limit)
+	cols := threadColumnsOf(shown)
+	rows := make([]threadTextRow, len(shown))
+	for i, thread := range shown {
+		rows[i] = threadTextRow{
+			rank:   fmt.Sprintf("%d", i+1),
+			thread: formatOptionalID(thread.ThreadID),
+			server: formatOptionalID(thread.ServerID),
+			actor:  formatUserHost(thread.ActorUser, thread.ActorHost),
+			schema: formatThreadSchemas(thread),
+			rows:   fmt.Sprintf("%d", thread.TotalRows),
+			events: fmt.Sprintf("%d", thread.EventCount),
+			bytes:  formatByteSize(thread.BinlogBytes),
+			txns:   fmt.Sprintf("%d", thread.TxnCount),
+			share:  fmt.Sprintf("%.1f%%", thread.Share*100),
+		}
+	}
+	writeThreadTable(buf, cols, rows)
+	if omitted > 0 {
+		buf.WriteString("  " + omittedThreadsLabel(omitted) + "\n")
+	}
+	buf.WriteString("\n")
+}
+
+func threadSectionTitle(rankedBy string) string {
+	key := "report.text.topThreadsByRows"
+	switch rankedBy {
+	case model.ThreadRankEvents:
+		key = "report.text.topThreadsByEvents"
+	case model.ThreadRankBytes:
+		key = "report.text.topThreadsByBytes"
+	case model.ThreadRankTransactions:
+		key = "report.text.topThreadsByTransactions"
+	}
+	return i18n.T(key)
+}
+
+type threadColumnSet struct {
+	thread bool
+	server bool
+	actor  bool
+	schema bool
+	rows   bool
+	events bool
+	bytes  bool
+	txns   bool
+}
+
+func threadColumnsOf(threads []model.ThreadStats) threadColumnSet {
+	var cols threadColumnSet
+	for _, thread := range threads {
+		if thread.ThreadID != 0 {
+			cols.thread = true
+		}
+		if thread.ServerID != 0 {
+			cols.server = true
+		}
+		if formatUserHost(thread.ActorUser, thread.ActorHost) != "" {
+			cols.actor = true
+		}
+		if formatThreadSchemas(thread) != "" {
+			cols.schema = true
+		}
+		if thread.TotalRows > 0 {
+			cols.rows = true
+		}
+		if thread.EventCount > 0 {
+			cols.events = true
+		}
+		if thread.BinlogBytes > 0 {
+			cols.bytes = true
+		}
+		if thread.TxnCount > 0 {
+			cols.txns = true
+		}
+	}
+	return cols
+}
+
+type threadTextRow struct {
+	rank   string
+	thread string
+	server string
+	actor  string
+	schema string
+	rows   string
+	events string
+	bytes  string
+	txns   string
+	share  string
+}
+
+func writeThreadTable(buf *strings.Builder, cols threadColumnSet, rows []threadTextRow) {
+	type col struct {
+		show  bool
+		title string
+		width int
+		value func(threadTextRow) string
+	}
+	columns := []col{
+		{true, "#", 1, func(r threadTextRow) string { return r.rank }},
+		{cols.thread, "thread_id", len("thread_id"), func(r threadTextRow) string { return r.thread }},
+		{cols.server, "server_id", len("server_id"), func(r threadTextRow) string { return r.server }},
+		{cols.actor, "user@host", len("user@host"), func(r threadTextRow) string { return r.actor }},
+		{cols.schema, "schema", len("schema"), func(r threadTextRow) string { return r.schema }},
+		{cols.rows, "rows", len("rows"), func(r threadTextRow) string { return r.rows }},
+		{cols.events, "events", len("events"), func(r threadTextRow) string { return r.events }},
+		{cols.bytes, "bytes", len("bytes"), func(r threadTextRow) string { return r.bytes }},
+		{cols.txns, "txns", len("txns"), func(r threadTextRow) string { return r.txns }},
+		{true, "share", len("share"), func(r threadTextRow) string { return r.share }},
+	}
+	for i := range columns {
+		if !columns[i].show {
+			continue
+		}
+		for _, row := range rows {
+			if w := len(columns[i].value(row)); w > columns[i].width {
+				columns[i].width = w
+			}
+		}
+	}
+	var header strings.Builder
+	header.WriteString(" ")
+	for _, column := range columns {
+		if !column.show {
+			continue
+		}
+		fmt.Fprintf(&header, " %-*s", column.width, column.title)
+	}
+	buf.WriteString(strings.TrimRight(header.String(), " ") + "\n")
+	for _, row := range rows {
+		var line strings.Builder
+		line.WriteString(" ")
+		for _, column := range columns {
+			if !column.show {
+				continue
+			}
+			fmt.Fprintf(&line, " %-*s", column.width, column.value(row))
+		}
+		buf.WriteString(strings.TrimRight(line.String(), " ") + "\n")
+	}
+}
+
+func formatOptionalID(id uint32) string {
+	if id == 0 {
+		return "-"
+	}
+	return fmt.Sprintf("%d", id)
+}
+
+func formatThreadSchemas(thread model.ThreadStats) string {
+	if len(thread.Schemas) == 0 {
+		return thread.Schema
+	}
+	if len(thread.Schemas) <= 3 {
+		return strings.Join(thread.Schemas, ",")
+	}
+	return fmt.Sprintf("%s +%d", thread.Schemas[0], len(thread.Schemas)-1)
 }
 
 func formatTPSPeak(summary model.WorkloadSummary, points []model.TimeseriesPoint) string {

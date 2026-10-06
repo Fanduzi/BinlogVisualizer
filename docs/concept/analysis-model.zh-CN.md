@@ -43,6 +43,18 @@ BinlogViz 不会尝试重建完整的数据库历史。它消费规范化后的�
 
 可用这一节回答："在这段输入范围里，哪些表承受了最多写负载？"
 
+## Top Threads
+
+`Top Threads` 按会话排名，用来回答这个窗口里谁写得最多，而不必手工按事务聚合。
+
+每个会话是一个 `server_id` 上的一个 `thread_id`。只有 binlog 存了 `user@host` 时，才会保留 thread id 为 0 的会话。两者都没有的事务不进入这张表。
+
+有行变更时按行数排序，否则依次按事件数、字节、事务数。`server_id`、`user@host` 和 schema 只在 binlog 带了这些字段时出现。
+
+`--top` 同时限制文本、Markdown、JSON 和 HTML。`--top-threads` 覆盖这个上限。`0` 表示不限制。
+
+可用这一节回答："这个窗口里哪个线程或账号写得最多？"
+
 ## Top Transactions
 
 `Top Transactions` 按总影响行数对重建出的事务进行排序。

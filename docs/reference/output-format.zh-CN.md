@@ -132,7 +132,22 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Top Tables ===
 ```
 
-### 3. Top Transactions
+### 3. Top Threads
+
+`Top Threads` 在任一会话有行变更时按行数排序，否则按事件数、字节、事务数。标题会写出依据，例如 `热点线程（按行数）`。
+
+展示行里没有数据的列会省略。binlog 没有的字段不会写成 `0` 或空的调用方。
+
+- binlog 有 `thread_id` 时写出
+- 事件头有 `server_id` 时写出
+- binlog 存了调用方时写出 `user@host`
+- 会话里的表带了 schema 时写出
+- rows、events、bytes、transactions 在该指标非 0 时写出
+- 排序指标的占比
+
+`--top` 限制这一节。`--top-threads` 覆盖它。`0` 保留全部会话。JSON 使用同一上限。
+
+### 4. Top Transactions
 
 `Top Transactions` 章节按总行数对事务进行排序，并同时列出最多三条最长的已提交事务和已提交时长分桶。
 
@@ -151,7 +166,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Top Transactions ===
 ```
 
-### 4. Top Patterns
+### 5. Top Patterns
 
 `Top Patterns` 章节用于归并重复出现的写入事务形状。
 
@@ -170,7 +185,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Top Patterns ===
 ```
 
-### 5. Minute Activity
+### 6. Minute Activity
 
 `Minute Activity` 章节汇总每分钟的写入活动。
 
@@ -186,7 +201,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Minute Activity ===
 ```
 
-### 6. Alerts
+### 7. Alerts
 
 `Alerts` 章节列出分析逻辑检测到的告警。
 
@@ -337,6 +352,24 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 `sql_context.available` 表示整份报告中是否观察到源 SQL，即使该 SQL 不在 Top 事务中。因而 `full` 与 `available=false` 可以同时出现。provenance 不受该模式影响，任何模式都不会序列化 row-image 值。
 
 命名 snapshot 会保存完整的 report-v3 payload。snapshot/compare 读取端继续接受 v0-v2，并且不会伪造缺失身份。
+
+### `threads`
+
+`threads` 始终是数组，对应 Top Threads，并用与文本相同的 `--top` 或 `--top-threads` 截断。`threads_listed` 和 `threads_omitted` 记录这个上限。`threads_ranked_by` 为 `rows`、`events`、`bytes` 或 `transactions`；没有任何会话带 thread id 或调用方时省略。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `thread_id` | integer | 否 | binlog 没有 thread id 时省略 |
+| `server_id` | integer | 否 | 不可用时省略 |
+| `actor` | object | 否 | binlog 存了调用方时的 `user` / `host` |
+| `schema` | string | 否 | 按行数占优的 schema |
+| `schemas` | array | 否 | 会话碰到多个 schema 时出现 |
+| `rows` | integer | 是 | 影响行数 |
+| `events` | integer | 是 | 规范化事件数 |
+| `transactions` | integer | 是 | 该会话的事务数 |
+| `binlog_bytes` | integer | 否 | 为 0 时省略 |
+| `share` | number | 是 | 排序指标的占比 |
+| `share_of_rows` | number | 是 | 已排名会话行数中的占比 |
 
 ### `patterns`
 

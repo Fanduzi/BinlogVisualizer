@@ -412,6 +412,8 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		SQLContextAvailable: snap.SQLContextAvailable,
 		Timeseries:          snap.Timeseries,
 		Tables:              a.tableAgg.Snapshot(),
+		Threads:             snap.Threads,
+		ThreadsRankedBy:     snap.ThreadsRankedBy,
 		Transactions:        topTransactions,
 		Patterns:            snap.Patterns,
 		Minutes:             snap.Minutes,

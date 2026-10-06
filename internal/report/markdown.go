@@ -1,6 +1,6 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, trusted replay evidence, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
+// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -29,6 +29,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 
 	mdWorkloadSummary(&buf, result.Summary, result.Diagnostics)
 	mdTopTables(&buf, result.Tables, opts.TopTables)
+	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion)
 	mdMinuteActivity(&buf, result.Minutes)
 	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents)
@@ -86,6 +87,62 @@ func mdTopTables(buf *strings.Builder, tables []model.TableStats, topN int) {
 	}
 	if omittedTables > 0 {
 		buf.WriteString("_" + omittedTablesLabel(omittedTables) + "_\n")
+	}
+	buf.WriteString("\n")
+}
+
+func mdTopThreads(buf *strings.Builder, threads []model.ThreadStats, rankedBy string, limit int) {
+	buf.WriteString("## " + threadSectionTitle(rankedBy) + "\n\n")
+	if len(threads) == 0 {
+		buf.WriteString("_" + i18n.T("report.text.noThreads") + "_\n\n")
+		return
+	}
+	shown, omitted := limitThreads(threads, limit)
+	cols := threadColumnsOf(shown)
+	type mdCol struct {
+		show  bool
+		title string
+		align string
+		value func(i int, thread model.ThreadStats) string
+	}
+	columns := []mdCol{
+		{true, "#", "---", func(i int, _ model.ThreadStats) string { return fmt.Sprintf("%d", i+1) }},
+		{cols.thread, "thread_id", "---:", func(_ int, thread model.ThreadStats) string { return formatOptionalID(thread.ThreadID) }},
+		{cols.server, "server_id", "---:", func(_ int, thread model.ThreadStats) string { return formatOptionalID(thread.ServerID) }},
+		{cols.actor, "user@host", "---", func(_ int, thread model.ThreadStats) string {
+			return escapeMD(formatUserHost(thread.ActorUser, thread.ActorHost))
+		}},
+		{cols.schema, "schema", "---", func(_ int, thread model.ThreadStats) string { return escapeMD(formatThreadSchemas(thread)) }},
+		{cols.rows, "rows", "---:", func(_ int, thread model.ThreadStats) string { return formatInt(thread.TotalRows) }},
+		{cols.events, "events", "---:", func(_ int, thread model.ThreadStats) string { return formatInt(thread.EventCount) }},
+		{cols.bytes, "bytes", "---:", func(_ int, thread model.ThreadStats) string { return formatInt64(thread.BinlogBytes) }},
+		{cols.txns, "txns", "---:", func(_ int, thread model.ThreadStats) string { return formatInt(thread.TxnCount) }},
+		{true, "share", "---:", func(_ int, thread model.ThreadStats) string { return fmt.Sprintf("%.1f%%", thread.Share*100) }},
+	}
+	var header, align strings.Builder
+	header.WriteString("|")
+	align.WriteString("|")
+	for _, column := range columns {
+		if !column.show {
+			continue
+		}
+		header.WriteString(" " + column.title + " |")
+		align.WriteString(column.align + "|")
+	}
+	buf.WriteString(header.String() + "\n")
+	buf.WriteString(align.String() + "\n")
+	for i, thread := range shown {
+		buf.WriteString("|")
+		for _, column := range columns {
+			if !column.show {
+				continue
+			}
+			buf.WriteString(" " + column.value(i, thread) + " |")
+		}
+		buf.WriteString("\n")
+	}
+	if omitted > 0 {
+		buf.WriteString("_" + omittedThreadsLabel(omitted) + "_\n")
 	}
 	buf.WriteString("\n")
 }
@@ -161,8 +218,8 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, m
 		if id := formatTxnIdentity(t); id != "" {
 			buf.WriteString(fmt.Sprintf("`%s`: %s\n\n", escapeMD(t.TxnKey), escapeMD(id)))
 		}
-		if mode != SQLContextOff && t.QuerySummary != "" {
-			buf.WriteString(fmt.Sprintf("> `%s`\n\n", escapeMD(t.QuerySummary)))
+		if query := transactionTextQuery(t, mode); query != "" {
+			buf.WriteString(fmt.Sprintf("> `%s`\n\n", escapeMD(query)))
 		}
 	}
 	buf.WriteString("\n")

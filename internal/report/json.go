@@ -29,6 +29,10 @@ type jsonAnalysisResult struct {
 	Timeseries          jsonTimeseries         `json:"timeseries"`
 	Diagnostics         jsonDiagnostics        `json:"diagnostics"`
 	Tables              []jsonTableStats       `json:"tables"`
+	Threads             []jsonThreadStats      `json:"threads"`
+	ThreadsListed       int                    `json:"threads_listed"`
+	ThreadsOmitted      int                    `json:"threads_omitted"`
+	ThreadsRankedBy     string                 `json:"threads_ranked_by,omitempty"`
 	Transactions        []jsonTransaction      `json:"transactions"`
 	TransactionsListed  int                    `json:"transactions_listed"`
 	TransactionsOmitted int                    `json:"transactions_omitted"`
@@ -206,6 +210,20 @@ type jsonTableStats struct {
 	TxnCount     int    `json:"txn_count"`
 }
 
+type jsonThreadStats struct {
+	ThreadID     uint32     `json:"thread_id,omitempty"`
+	ServerID     uint32     `json:"server_id,omitempty"`
+	Actor        *jsonActor `json:"actor,omitempty"`
+	Schema       string     `json:"schema,omitempty"`
+	Schemas      []string   `json:"schemas,omitempty"`
+	Rows         int        `json:"rows"`
+	Events       int        `json:"events"`
+	Transactions int        `json:"transactions"`
+	BinlogBytes  int64      `json:"binlog_bytes,omitempty"`
+	Share        float64    `json:"share"`
+	ShareOfRows  float64    `json:"share_of_rows"`
+}
+
 type jsonTransaction struct {
 	TxnKey             string         `json:"txn_key"`
 	XAXID              string         `json:"xa_xid,omitempty"`
@@ -378,6 +396,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 	if transactionsOmitted < 0 {
 		transactionsOmitted = 0
 	}
+	threads, threadsOmitted := limitThreads(result.Threads, opts.TopThreads)
 	return jsonAnalysisResult{
 		ReportVersion:       currentReportVersion,
 		WorkloadID:          result.WorkloadID,
@@ -389,6 +408,10 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		Timeseries:          convertTimeseries(result.Timeseries),
 		Diagnostics:         convertDiagnostics(result.Diagnostics, opts.SQLContextMode),
 		Tables:              convertTables(result.Tables),
+		Threads:             convertThreads(threads),
+		ThreadsListed:       len(threads),
+		ThreadsOmitted:      threadsOmitted,
+		ThreadsRankedBy:     result.ThreadsRankedBy,
 		Transactions:        convertTransactions(result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion),
 		TransactionsListed:  transactionsListed,
 		TransactionsOmitted: transactionsOmitted,
@@ -751,6 +774,34 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 		result[i] = jt
 	}
 	return result
+}
+
+func convertThreads(threads []model.ThreadStats) []jsonThreadStats {
+	if len(threads) == 0 {
+		return []jsonThreadStats{}
+	}
+	out := make([]jsonThreadStats, len(threads))
+	for i, thread := range threads {
+		item := jsonThreadStats{
+			ThreadID:     thread.ThreadID,
+			ServerID:     thread.ServerID,
+			Schema:       thread.Schema,
+			Rows:         thread.TotalRows,
+			Events:       thread.EventCount,
+			Transactions: thread.TxnCount,
+			BinlogBytes:  thread.BinlogBytes,
+			Share:        thread.Share,
+			ShareOfRows:  thread.ShareOfRows,
+		}
+		if thread.ActorUser != "" || thread.ActorHost != "" {
+			item.Actor = &jsonActor{User: thread.ActorUser, Host: thread.ActorHost}
+		}
+		if len(thread.Schemas) > 1 {
+			item.Schemas = append([]string(nil), thread.Schemas...)
+		}
+		out[i] = item
+	}
+	return out
 }
 
 func convertPatterns(patterns []model.PatternStats, mode SQLContextMode) []jsonPatternStats {
