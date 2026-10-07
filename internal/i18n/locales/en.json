@@ -627,6 +627,18 @@
     "description": "DDL timeline is an occurrence list, not a lock-wait duration",
     "other": "DDL occurrence timeline (not MDL or lock-wait duration)"
   },
+  "report.text.ddlGTIDUnavailable": {
+    "description": "DDL timeline line when that statement's transaction has no GTID",
+    "other": "GTID unavailable"
+  },
+  "report.text.ddlTxnStart": {
+    "description": "Label for the file offset where the DDL transaction starts",
+    "other": "txn start"
+  },
+  "report.text.ddlStopBefore": {
+    "description": "The stop position replays earlier events and excludes this DDL",
+    "other": "stop before this DDL (replays earlier events, excludes this DDL)"
+  },
   "report.text.omittedDDL": {
     "description": "DDL events omitted by the text timeline limit",
     "other": "… and {{.Count}} more DDL events"

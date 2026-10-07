@@ -130,6 +130,8 @@ When the binlog is MySQL 8 with `binlog_row_metadata=FULL`, TABLE_MAP optional m
 
 Position selectors reject discovery and multiple explicit files, reversed/out-of-range/mid-event values, and use `[start, stop)` semantics. Position and time predicates intersect. GTID selectors operate after complete group reconstruction across ordered rotations; anonymous groups match no active selector, including exclude-only selectors. Standalone anonymous DDL and unkeyed context are discarded without preventing a later matching keyed group from being retained. Mixed/conflicting/unresolved flavors fail, and a valid selection with no retained events exits 2 without a report.
 
+The DDL Timeline names each DDL's transaction when the binlog has a GTID (MySQL `uuid:seq` or MariaDB `domain-server-seq`), the file byte where that transaction starts (the GTID event's start, not the Query event and not `end_log_pos`), and two copyable values: `mysqlbinlog --stop-position=<N> <file>` and BinlogServer `stop_gtid=<gtid>`. Both replay earlier events and exclude that DDL. No GTID (`GTID_MODE=OFF` or anonymous) omits the GTID and says it is unavailable; the position hint remains. `--sql-context off` still omits only the statement. Exit codes are unchanged.
+
 ### Snapshot-saving behavior
 
 `analyze` can optionally persist the exact JSON payload it writes to `stdout`.

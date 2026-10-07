@@ -21,6 +21,9 @@ func TestSQLContextOffOmitsDDLStatementText(t *testing.T) {
 				Statement:     "CREATE USER 'app'@'%' IDENTIFIED WITH 'caching_sha2_password' AS '<secret>'",
 				PositionStart: 101052,
 				PositionEnd:   101285,
+				GTID:          "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:9",
+				TxnStartPath:  "mysql-bin.000001",
+				TxnStartPos:   100800,
 			}},
 		},
 	}
@@ -55,6 +58,11 @@ func TestSQLContextOffOmitsDDLStatementText(t *testing.T) {
 			}
 			if !strings.Contains(text, "CREATE USER") || !strings.Contains(text, "'app'@'%'") {
 				t.Fatalf("off dropped the DDL operation or object:\n%s", text)
+			}
+			for _, out := range outputs {
+				if !strings.Contains(out, "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:9") || !strings.Contains(out, "--stop-position=100800") {
+					t.Fatalf("off dropped the DDL GTID or stop position:\n%s", out)
+				}
 			}
 			continue
 		}

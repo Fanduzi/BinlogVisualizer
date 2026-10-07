@@ -270,6 +270,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 	if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
 		return err
 	}
+	ev = a.withDDLHold(ev)
 	// The transaction builder already copied the bounded images it keeps.
 	// Drop them here so GTID buffering and later aggregators do not retain cell values.
 	ev.RowImages = nil
@@ -329,6 +330,17 @@ func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
 		return err
 	}
 	return nil
+}
+
+func (a *Analyzer) withDDLHold(ev model.NormalizedEvent) model.NormalizedEvent {
+	gtid, path, pos, ok := a.txnBuilder.takeDDLHold()
+	if !ok {
+		return ev
+	}
+	ev.HoldingGTID = gtid
+	ev.HoldingStartPath = path
+	ev.HoldingStartPos = pos
+	return ev
 }
 
 func (a *Analyzer) withCurrentTxnKey(ev model.NormalizedEvent) model.NormalizedEvent {

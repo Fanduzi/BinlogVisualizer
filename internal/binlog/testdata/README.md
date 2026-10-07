@@ -301,6 +301,29 @@ bash ./create_mysql_8.0.46_busiest_minute.sh
 
 Requires Docker and `mysql:8.0.46`. The checked-in file was recorded on mysqld 8.0.46-0ubuntu0.24.04.4 with the same SQL. A regeneration gets a new GTID UUID; tests assert row counts and timestamps, not that UUID.
 
+## mysql-8.0.46-drop-table.binlog
+
+A MySQL 8.0.46 ROW+GTID fixture for an accidental `DROP TABLE` between two ordinary DML transactions. `GTID_MODE=ON`.
+
+### Contents
+
+After schema setup in an earlier binlog, this file contains:
+
+- One GTID-started insert of `before-drop` into `shop.orders`
+- The next GTID: `DROP TABLE shop.orders`
+- The next GTID: an insert of `after-drop` into `shop.audit`
+
+`mysql-8.0.46-drop-table.mysqlbinlog.txt` is `mysqlbinlog -v --base64-output=DECODE-ROWS` of this file. `mysql-8.0.46-drop-table.stop.mysqlbinlog.txt` is the same command with `--stop-position` at the DROP transaction's GTID event start. That stop includes `before-drop` and excludes `DROP TABLE` and `after-drop`.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_drop_table.sh
+```
+
+Requires Docker and `mysql:8.0.46`. The checked-in file was recorded on mysqld 8.0.46-0ubuntu0.24.04.4 with the same SQL. A regeneration gets a new GTID UUID; tests read the checked-in mysqlbinlog decode instead of hard-coding that UUID.
+
 ## mariadb-10.11.14-dml.binlog
 
 A MariaDB 10.11.14 ROW binlog: one transaction inserts two rows into `shop.orders`, updates one, and deletes one. Used to confirm `--show-rows` does not crash. Positional column names are expected.

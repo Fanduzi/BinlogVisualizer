@@ -34,7 +34,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	mdTopTransactions(&buf, result.Transactions, opts, result.Diagnostics.ServerVersion)
 	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
 	mdMinuteActivity(&buf, result.Minutes, opts.TopN)
-	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode)
+	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode, result.Diagnostics.ServerVersion)
 	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts)
 
 	return buf.String(), nil
@@ -187,7 +187,7 @@ func mdTopThreads(buf *strings.Builder, threads []model.ThreadStats, rankedBy st
 	buf.WriteString("\n")
 }
 
-func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContextMode) {
+func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContextMode, serverVersion string) {
 	if len(events) == 0 {
 		return
 	}
@@ -216,6 +216,29 @@ func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContex
 		))
 	}
 	buf.WriteString("\n")
+	for _, event := range events {
+		object := strings.Trim(strings.TrimSpace(event.Schema+"."+event.Table), ".")
+		if object == "" {
+			object = event.Object
+		}
+		view := ddlTimelineViewFor(event, serverVersion)
+		buf.WriteString("**" + event.Operation + "** `" + object + "`\n\n")
+		if view.Identity != "" {
+			buf.WriteString(view.Identity + "\n\n")
+		}
+		if view.TxnStart != "" {
+			buf.WriteString(i18n.T("report.text.ddlTxnStart") + " `" + view.TxnStart + "`\n\n")
+		}
+		if view.Explain != "" {
+			buf.WriteString(view.Explain + "\n\n")
+		}
+		if view.Mysqlbinlog != "" {
+			buf.WriteString("```\n" + view.Mysqlbinlog + "\n```\n\n")
+		}
+		if view.StopGTID != "" {
+			buf.WriteString("```\nBinlogServer stop_gtid=" + view.StopGTID + "\n```\n\n")
+		}
+	}
 }
 
 func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, opts Options, serverVersion string) {

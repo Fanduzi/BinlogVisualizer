@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -151,6 +151,8 @@ func (a *DDLAggregator) ConsumeStatement(ts time.Time, binlogPath string, positi
 		PositionStart:          positionStart,
 		PositionEnd:            positionEnd,
 		BinlogBytes:            binlogBytes,
+		TxnStartPath:           binlogPath,
+		TxnStartPos:            positionStart,
 	})
 }
 
@@ -192,6 +194,12 @@ func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool
 		table = ev.Table
 	}
 
+	txnPath := ev.HoldingStartPath
+	txnPos := ev.HoldingStartPos
+	if txnPos <= 0 {
+		txnPath = ev.BinlogPath
+		txnPos = ev.PositionStart
+	}
 	return model.DDLEvent{
 		BinlogPath:             ev.BinlogPath,
 		Timestamp:              ev.Timestamp.UTC(),
@@ -205,6 +213,13 @@ func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool
 		PositionStart:          ev.PositionStart,
 		PositionEnd:            ev.PositionEnd,
 		BinlogBytes:            ev.BinlogBytes,
+		GTID:                   ev.HoldingGTID,
+		TxnStartPath:           txnPath,
+		TxnStartPos:            txnPos,
+		ServerID:               ev.ServerID,
+		ThreadID:               ev.ThreadID,
+		ActorUser:              ev.ActorUser,
+		ActorHost:              ev.ActorHost,
 	}, true
 }
 

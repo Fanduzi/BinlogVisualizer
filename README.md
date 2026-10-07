@@ -122,6 +122,14 @@ binlogviz analyze mysql-bin.000123 \
 
 `--show-rows` is off unless you pass it. For each listed transaction it prints the DELETE before-image, the UPDATE columns that changed (`before -> after`), and the INSERT after-image. MySQL 8 with `binlog_row_metadata=FULL` shows column names. Otherwise the columns are `@1`..`@N`, and the report says names are missing. Values are bounded (32 rows per transaction, 64 bytes per value) and a cut is marked, including how many rows were left out. `--sql-context off` omits these values and says so. The transaction's `mysqlbinlog_cmd` is still there for a cross-check. This does not generate rollback SQL. A `TIMESTAMP` column is the UTC wall clock of the stored instant, including fractional seconds, and does not follow this machine's timezone. A `DATETIME` column stays the wall clock written in the binlog.
 
+### Find an accidental DROP
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+The DDL Timeline lists `DROP TABLE`, `TRUNCATE`, and `ALTER` with the GTID of that transaction and the file byte where the transaction starts. Copy `BinlogServer stop_gtid=<gtid>` or `mysqlbinlog --stop-position=<N> <file>`. That stop replays earlier events and excludes the DDL. No GTID in the binlog prints `GTID unavailable` and still prints the position. This does not generate rollback SQL.
+
 ### Send machine-readable output to another tool
 
 ```bash

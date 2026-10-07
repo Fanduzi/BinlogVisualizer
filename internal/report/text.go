@@ -40,7 +40,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	var buf strings.Builder
 
 	renderDiagnosticSummary(&buf, result, opts)
-	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode)
+	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode, result.Diagnostics.ServerVersion)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderNoPrimaryKey(&buf, result.Tables)
@@ -851,7 +851,7 @@ func formatSuspiciousLocation(txn model.Transaction) string {
 	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
 }
 
-func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int, mode SQLContextMode) {
+func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int, mode SQLContextMode, serverVersion string) {
 	if len(events) == 0 {
 		return
 	}
@@ -870,6 +870,7 @@ func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int,
 		}
 		buf.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
 			formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location))
+		writeDDLStopLines(buf, event, serverVersion, "    ")
 		if stmt := ddlStatementForMode(event, mode); stmt != "" {
 			buf.WriteString("    " + stmt + "\n")
 		}
@@ -878,6 +879,25 @@ func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int,
 		buf.WriteString("  " + i18n.Tf("report.text.omittedDDL", map[string]any{"Count": extra}) + "\n")
 	}
 	buf.WriteString("\n")
+}
+
+func writeDDLStopLines(buf *strings.Builder, event model.DDLEvent, serverVersion, indent string) {
+	view := ddlTimelineViewFor(event, serverVersion)
+	if view.Identity != "" {
+		buf.WriteString(indent + view.Identity + "\n")
+	}
+	if view.TxnStart != "" {
+		buf.WriteString(indent + i18n.T("report.text.ddlTxnStart") + " " + view.TxnStart + "\n")
+	}
+	if view.Explain != "" {
+		buf.WriteString(indent + view.Explain + "\n")
+	}
+	if view.Mysqlbinlog != "" {
+		buf.WriteString(indent + view.Mysqlbinlog + "\n")
+	}
+	if view.StopGTID != "" {
+		buf.WriteString(indent + "BinlogServer stop_gtid=" + view.StopGTID + "\n")
+	}
 }
 
 func ddlObjectName(event model.DDLEvent) string {
