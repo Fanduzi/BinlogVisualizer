@@ -29,6 +29,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 
 	mdWorkloadSummary(&buf, result, opts)
 	mdTopTables(&buf, result.Tables, opts.TopTables)
+	mdNoPrimaryKey(&buf, result.Tables)
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, result.Transactions, opts, result.Diagnostics.ServerVersion)
 	mdMinuteActivity(&buf, result.Minutes)
@@ -59,6 +60,9 @@ func mdWorkloadSummary(buf *strings.Builder, result model.AnalysisResult, opts O
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.format"), escapeMD(format)))
 	if label := dmlFilterLabel(result.Scope); label != "" {
 		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.dmlFilter"), escapeMD(label)))
+	}
+	if line := primaryKeyView(result.Tables).summaryLine; line != "" {
+		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.primaryKey"), escapeMD(line)))
 	}
 	if rowValuesSuppressed(opts) {
 		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.rowValues"), escapeMD(i18n.T("report.text.rowValuesSuppressed"))))
@@ -101,6 +105,29 @@ func mdTopTables(buf *strings.Builder, tables []model.TableStats, topN int) {
 		buf.WriteString("_" + omittedTablesLabel(omittedTables) + "_\n")
 	}
 	buf.WriteString("\n")
+}
+
+func mdNoPrimaryKey(buf *strings.Builder, tables []model.TableStats) {
+	view := primaryKeyView(tables)
+	if len(view.risks) == 0 {
+		return
+	}
+	buf.WriteString("## " + i18n.T("report.text.noPrimaryKey") + "\n\n")
+	buf.WriteString(i18n.T("report.text.noPrimaryKeyLead") + "\n\n")
+	buf.WriteString("| # | Table | UPDATE | DELETE |\n")
+	buf.WriteString("|---|---|---:|---:|\n")
+	for i, row := range view.risks {
+		buf.WriteString(fmt.Sprintf("| %d | %s | %d | %d |\n", i+1, escapeMD(row.name()), row.update, row.delete))
+	}
+	buf.WriteString("\n")
+	if len(view.insertOnly) > 0 {
+		buf.WriteString(i18n.Tf("report.text.noPrimaryKeyInsertOnly", map[string]any{
+			"Tables": formatInsertOnlyTables(view.insertOnly),
+		}) + "\n\n")
+	}
+	if view.note != "" {
+		buf.WriteString(view.note + "\n\n")
+	}
 }
 
 func mdTopThreads(buf *strings.Builder, threads []model.ThreadStats, rankedBy string, limit int) {

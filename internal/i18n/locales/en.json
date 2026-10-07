@@ -379,9 +379,41 @@
     "description": "Column name source label",
     "other": "Column names"
   },
+  "report.label.primaryKey": {
+    "description": "Primary key presence label",
+    "other": "Primary key"
+  },
   "report.text.columnNamesMissing": {
     "description": "Shown when the binlog has no FULL row metadata",
     "other": "column names unavailable (binlog_row_metadata is not FULL); columns shown as @1..@N"
+  },
+  "report.text.primaryKeyPresent": {
+    "description": "Every row table has a primary key",
+    "other": "primary key present on every table"
+  },
+  "report.text.primaryKeyUnknown": {
+    "description": "Shown when binlog_row_metadata is not FULL",
+    "other": "primary key presence unknown (binlog_row_metadata is not FULL)"
+  },
+  "report.text.primaryKeyUnknownSome": {
+    "description": "Shown when only some tables lack FULL row metadata",
+    "other": "primary key presence unknown for some tables (binlog_row_metadata is not FULL)"
+  },
+  "report.text.primaryKeyInsertOnly": {
+    "description": "INSERT-only tables without a primary key",
+    "other": "no primary key, INSERT-only (not a replica lag risk): {{.Tables}}"
+  },
+  "report.text.noPrimaryKey": {
+    "description": "Section for tables that lack a primary key",
+    "other": "No Primary Key"
+  },
+  "report.text.noPrimaryKeyLead": {
+    "description": "Why a no-primary-key UPDATE or DELETE matters on a replica",
+    "other": "UPDATE/DELETE on these tables can force a replica table scan."
+  },
+  "report.text.noPrimaryKeyInsertOnly": {
+    "description": "INSERT-only no-primary-key tables, not ranked as lag risk",
+    "other": "INSERT-only, not a lag risk: {{.Tables}}"
   },
   "report.text.rowValuesSuppressed": {
     "description": "Shown when --show-rows is set and --sql-context is off",
@@ -634,6 +666,18 @@
   "report.format.alertLine": {
     "description": "Alert line format",
     "other": "[{{.Severity}}] {{.Type}}: {{.Message}}"
+  },
+  "alert.noPrimaryKey.type": {
+    "description": "No primary key alert type",
+    "other": "no_primary_key"
+  },
+  "alert.noPrimaryKey.severity": {
+    "description": "No primary key alert severity",
+    "other": "warning"
+  },
+  "alert.noPrimaryKey.message": {
+    "description": "No primary key alert message",
+    "other": "{{.Table}} has no primary key and received {{.Update}} UPDATE and {{.Delete}} DELETE rows; replica apply can scan the table"
   },
   "alert.largeTransaction.type": {
     "description": "Large transaction alert type",

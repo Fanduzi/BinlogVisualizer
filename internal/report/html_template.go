@@ -1169,6 +1169,41 @@ const htmlReportTemplateTail = `
       <div class="no-alerts"><span>{{t "report.html.analyze.noTableData"}}</span></div>
       {{end}}
 
+      {{if .NoPKTables}}
+      <div class="table-toolbar">
+        <div class="diagnostic-title">
+          <span>{{t "report.text.noPrimaryKey"}}</span>
+        </div>
+      </div>
+      <div class="section-desc" style="padding:0 16px 8px">{{t "report.text.noPrimaryKeyLead"}}</div>
+      <div class="table-container">
+        <table id="no-primary-key-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Table</th>
+              <th class="num">UPDATE</th>
+              <th class="num">DELETE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .NoPKTables}}
+            <tr>
+              <td>{{fmtIntHTML .Rank}}</td>
+              <td class="name">{{.Name}}</td>
+              <td class="num">{{fmtIntHTML .Update}}</td>
+              <td class="num">{{fmtIntHTML .Delete}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{if .NoPKInsertOnly}}<div class="section-desc" style="padding:8px 16px 14px">{{.NoPKInsertOnly}}</div>{{end}}
+      {{end}}
+      {{if .PrimaryKeyNote}}
+      <div class="section-desc" style="padding:0 16px 14px">{{.PrimaryKeyNote}}</div>
+      {{end}}
+
       <div class="table-toolbar">
         <div class="diagnostic-title">
           <span>{{.ThreadsTitle}}</span>

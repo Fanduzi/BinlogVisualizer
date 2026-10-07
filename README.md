@@ -256,11 +256,20 @@ Text output is intended to stay on a fast diagnostic path. HTML output builds th
 BinlogViz is optimized for these common DBA questions:
 
 - **Which tables are taking the heaviest write load?**
+- **Which UPDATE or DELETE rows hit a table with no primary key?**
 - **Which transactions are large enough to deserve attention?**
 - **Did a spike happen at a specific minute?**
 - **What changed inside a known incident window?**
 - **How does the current window differ from a trusted baseline report?**
 - **Can I hand the result to another script or pipeline safely?**
+
+### Why is my replica lagging?
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+A `No Primary Key` section lists tables that received UPDATE or DELETE rows and have no primary key, ranked by those counts. On a replica, each of those rows can scan the table. `primary key presence unknown (binlog_row_metadata is not FULL)` means the binlog did not record key presence; it is not a claim that a table lacks a key. INSERT-only tables without a primary key are named and are not ranked as this risk.
 
 ## Installation
 
