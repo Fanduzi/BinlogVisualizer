@@ -51,6 +51,16 @@ func newFlashbackCommand() *cobra.Command {
 			if mode == report.SQLContextOff {
 				return fmt.Errorf("%s", i18n.T("error.flashbackSQLContext"))
 			}
+			if opts.schemaFile != "" {
+				body, err := os.ReadFile(opts.schemaFile)
+				if err != nil {
+					return fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaFile", map[string]any{
+						"Path":  opts.schemaFile,
+						"Error": err.Error(),
+					}))
+				}
+				opts.schemaSQL = string(body)
+			}
 			kinds, err := analyzer.ParseDMLKinds(opts.dml)
 			if err != nil {
 				return err
@@ -91,17 +101,18 @@ func newFlashbackCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&opts.startTime, "start", "", i18n.T("cmd.analyze.flag.start"))
 	cmd.Flags().StringVar(&opts.endTime, "end", "", i18n.T("cmd.analyze.flag.end"))
-	cmd.Flags().Int64Var(&opts.startPosition, "start-position", 0, "Start position (inclusive event boundary)")
-	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, "Stop position (exclusive event boundary or EOF)")
-	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, "Include complete transaction groups matching this GTID set")
-	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, "Exclude complete transaction groups matching this GTID set")
+	cmd.Flags().Int64Var(&opts.startPosition, "start-position", 0, i18n.T("cmd.flashback.flag.startPosition"))
+	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, i18n.T("cmd.flashback.flag.stopPosition"))
+	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, i18n.T("cmd.flashback.flag.includeGtids"))
+	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, i18n.T("cmd.flashback.flag.excludeGtids"))
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
 	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
-	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.analyze.flag.includeSchema"))
-	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.analyze.flag.excludeSchema"))
-	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.analyze.flag.includeTable"))
-	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.analyze.flag.excludeTable"))
+	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.flashback.flag.includeSchema"))
+	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.flashback.flag.excludeSchema"))
+	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.flashback.flag.includeTable"))
+	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.flashback.flag.excludeTable"))
+	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.flashback.flag.schemaFile"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
 	help := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
@@ -111,6 +122,7 @@ func newFlashbackCommand() *cobra.Command {
 		refreshFlashbackHelp(cmd)
 		help(cmd, args)
 	})
+	refreshFlashbackHelp(cmd)
 	return cmd
 }
 
@@ -118,23 +130,46 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 	cmd.Use = i18n.T("cmd.flashback.use")
 	cmd.Short = i18n.T("cmd.flashback.short")
 	cmd.Long = i18n.T("cmd.flashback.long")
+	cmd.SetUsageTemplate(flashbackUsageTemplate())
 	usage := map[string]string{
-		"start":          "cmd.analyze.flag.start",
-		"end":            "cmd.analyze.flag.end",
-		"from-dir":       "cmd.analyze.flag.fromDir",
-		"prefix":         "cmd.analyze.flag.prefix",
-		"sql-context":    "cmd.analyze.flag.sqlContext",
-		"include-schema": "cmd.analyze.flag.includeSchema",
-		"exclude-schema": "cmd.analyze.flag.excludeSchema",
-		"include-table":  "cmd.analyze.flag.includeTable",
-		"exclude-table":  "cmd.analyze.flag.excludeTable",
-		"dml":            "cmd.flashback.flag.dml",
+		"start":           "cmd.analyze.flag.start",
+		"end":             "cmd.analyze.flag.end",
+		"start-position":  "cmd.flashback.flag.startPosition",
+		"stop-position":   "cmd.flashback.flag.stopPosition",
+		"include-gtids":   "cmd.flashback.flag.includeGtids",
+		"exclude-gtids":   "cmd.flashback.flag.excludeGtids",
+		"from-dir":        "cmd.analyze.flag.fromDir",
+		"prefix":          "cmd.analyze.flag.prefix",
+		"sql-context":     "cmd.analyze.flag.sqlContext",
+		"include-schema":  "cmd.flashback.flag.includeSchema",
+		"exclude-schema":  "cmd.flashback.flag.excludeSchema",
+		"include-table":   "cmd.flashback.flag.includeTable",
+		"exclude-table":   "cmd.flashback.flag.excludeTable",
+		"schema-file":     "cmd.flashback.flag.schemaFile",
+		"dml":             "cmd.flashback.flag.dml",
 	}
 	for name, key := range usage {
 		if flag := cmd.Flags().Lookup(name); flag != nil {
 			flag.Usage = i18n.T(key)
 		}
 	}
+	if cmd.Parent() != nil {
+		if flag := cmd.Parent().PersistentFlags().Lookup("lang"); flag != nil {
+			flag.Usage = i18n.T("cmd.root.flag.lang")
+		}
+	}
+}
+
+func flashbackUsageTemplate() string {
+	return i18n.T("cmd.flashback.help.usage") + `:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableLocalFlags}}
+
+` + i18n.T("cmd.flashback.help.flags") + `:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+` + i18n.T("cmd.flashback.help.globalFlags") + `:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+`
 }
 
 func writeFlashbackSQL(stream commandAnalyzer) error {

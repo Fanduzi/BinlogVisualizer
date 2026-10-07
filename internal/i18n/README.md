@@ -7,7 +7,7 @@ Embedded English and Simplified Chinese messages for CLI and report presentation
 | File | Responsibility |
 |------|----------------|
 | `i18n.go` | Loads embedded locale files and exposes concurrency-safe translation and language-selection helpers. |
-| `locales/en.json` | Defines English CLI, error, and report messages, including UTC timestamp semantics, local `YYYY-MM-DD HH:MM:SS` `--start`/`--end` help, `--prefix` exact-filename hints, `--dml` / `--show-rows` labels, flashback refusals, the flashback `--dml` help line, the partial-transaction warning, Unclassified QUERY errors, open BEGIN / SAVEPOINT / Ignored-only group errors, and Ignored QUERY diagnostic labels. |
+| `locales/en.json` | Defines English CLI, error, and report messages, including UTC timestamp semantics, local `YYYY-MM-DD HH:MM:SS` `--start`/`--end` help, `--prefix` exact-filename hints, `--dml` / `--show-rows` labels, flashback refusals, the flashback `--dml` help line, the unknown-definition warning, `--schema-file`, the partial-transaction warning, Unclassified QUERY errors, open BEGIN / SAVEPOINT / Ignored-only group errors, and Ignored QUERY diagnostic labels. |
 | `locales/zh-CN.json` | Defines Simplified Chinese equivalents for the same message contract. |
 | `i18n_test.go` | Verifies initialization, locale detection, translation, Unclassified QUERY / open BEGIN / Ignored-only catalog strings, and runtime language switching. |
 

@@ -1,6 +1,6 @@
 // Package binlog formats exact SQL literals from an already-decoded rows event.
 // input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, signedness, collation, enum/set members, primary key).
-// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes.
+// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes. ENUM is the member index and SET is the bitmask.
 // pos: parser helper used only when flashback capture is on. It reuses the decoded row images from the same RowsEvent as display capture.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -343,17 +343,17 @@ func sqlJSON(value any, cell jsonCell) (string, bool) {
 	return sqlJSONBinary(raw)
 }
 
+// sqlEnum writes the 1-based member index (0 is the empty member).
+// A quoted member name is the column charset, which is not utf8mb4 under SET NAMES utf8mb4.
 func sqlEnum(value any, members []string) (string, bool) {
 	idx, ok := int64Value(value)
 	if !ok || idx < 0 || idx > int64(len(members)) {
 		return "", false
 	}
-	if idx == 0 {
-		return "''", true
-	}
-	return quoteSQLString(members[idx-1]), true
+	return strconv.FormatInt(idx, 10), true
 }
 
+// sqlSet writes the member bitmask. Bit 0 is the first member.
 func sqlSet(value any, members []string) (string, bool) {
 	bits, ok := uint64Value(value)
 	if !ok || len(members) > 64 {
@@ -362,16 +362,7 @@ func sqlSet(value any, members []string) (string, bool) {
 	if len(members) < 64 && bits>>uint(len(members)) != 0 {
 		return "", false
 	}
-	if bits == 0 {
-		return "''", true
-	}
-	parts := make([]string, 0, len(members))
-	for i, member := range members {
-		if bits&(uint64(1)<<uint(i)) != 0 {
-			parts = append(parts, member)
-		}
-	}
-	return quoteSQLString(strings.Join(parts, ",")), true
+	return strconv.FormatUint(bits, 10), true
 }
 
 func int64Value(value any) (int64, bool) {
