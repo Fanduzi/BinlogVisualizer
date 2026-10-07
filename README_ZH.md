@@ -131,13 +131,13 @@ binlogviz flashback mysql-bin.000123 \
 mysql --default-character-set=utf8mb4 < flashback.sql
 ```
 
-`--dml`、`--include-table`、`--include-schema`、`--start` / `--end`、`--start-position` / `--stop-position`、`--include-gtids` / `--exclude-gtids` 与 `analyze` 是同一套选择条件。DELETE 变成前镜像的 `INSERT`。INSERT 变成 `DELETE`。UPDATE 把行设回前镜像，`WHERE` 用后镜像的主键，这样改过主键的行仍能对上当前行。语句按 binlog 逆序：最后一个事务在前，事务内最后一行在前。每个原事务包成一个 `START TRANSACTION` / `COMMIT`。注释里有原 GTID（binlog 没有 GTID 时写 `GTID unavailable`）和 `file:start-position`，即文件名和该事务起点字节，用来和 `mysqlbinlog` 对照。
+`--dml`、`--include-table`、`--include-schema`、`--start` / `--end`、`--start-position` / `--stop-position`、`--include-gtids` / `--exclude-gtids` 与 `analyze` 是同一套选择条件。`--schema-file` 不是过滤器：它提供表定义，flashback 仍然离线。DELETE 变成前镜像的 `INSERT`。INSERT 变成 `DELETE`。UPDATE 把行设回前镜像，`WHERE` 用后镜像的主键，这样改过主键的行仍能对上当前行。语句按 binlog 逆序：最后一个事务在前，事务内最后一行在前。每个原事务包成一个 `START TRANSACTION` / `COMMIT`。注释里有原 GTID（binlog 没有 GTID 时写 `GTID unavailable`）和 `file:start-position`，即文件名和该事务起点字节，用来和 `mysqlbinlog` 对照。
 
-binlog 必须是 `binlog_row_metadata=FULL` 且 `binlog_row_image=FULL`。脚本会设置 `utf8mb4`、`time_zone='+00:00'`（`TIMESTAMP` 字面量是 UTC 墙钟），并在该会话去掉 `NO_BACKSLASH_ESCAPES`。没有主键的表按每一列匹配并加 `LIMIT 1`，语句上方的注释会说明。被删行的 `INSERT` 不用 `LIMIT 1`。JSON 按二进制文档重建。非 `utf8mb4` 字符串是字符集引导符加十六进制字节。解析到的 `CREATE` 或 `ALTER` 点名的生成列不会写入 `INSERT` 和 `UPDATE`。
+binlog 必须是 `binlog_row_metadata=FULL` 且 `binlog_row_image=FULL`。脚本会设置 `utf8mb4`、`time_zone='+00:00'`（`TIMESTAMP` 字面量是 UTC 墙钟），并在该会话去掉 `NO_BACKSLASH_ESCAPES`。没有主键的表按每一列匹配并加 `LIMIT 1`，语句上方的注释会说明。被删行的 `INSERT` 不用 `LIMIT 1`。JSON 按二进制文档重建，包括 `binlog_transaction_compression=ON` 记下的事务。非 `utf8mb4` 字符串是字符集引导符加十六进制字节。`ENUM` 写成成员序号，`SET` 写成位掩码，因此 `latin1` 或 `gbk` 的值在严格和非严格 `sql_mode` 下都精确。解析到的 `CREATE` 或 `ALTER`，或者 `--schema-file`（`mysqldump --no-data`，或 `USE` 之后的 `SHOW CREATE TABLE`）点名的生成列，不会写入 `INSERT` 和 `UPDATE`。MySQL 8 的行元数据不标记生成列，`FULL` 镜像同时包含虚拟列和存储列的值，所以只看 binlog 无法区分。选中的表没有定义时，脚本仍列出每一列，stderr 警告不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
 
 `ON DELETE` / `ON UPDATE CASCADE` 的子表行不会被还原。撤销时触发器会执行。之后对同一主键的修改会被覆盖，没有冲突检查。表过滤或 `--dml` 只撤销事务的一部分时，stderr 打出警告。在主库上执行，并保持 `sql_log_bin=1`。
 
-列名缺失、前镜像或后镜像不完整、某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`BIT`、`GEOMETRY`、`VECTOR`、不完整或无法精确表示的 JSON、未知字符集，或缺少有无符号、字符集或 ENUM/SET 成员）、生成列无法确定，或者选定范围内有 DDL 时，flashback 退出 1，只打一行 `Error:`，不打印任何 SQL。`--sql-context off` 同样拒绝：脚本就是行值。什么都没选中时退出 2，`Error:` 与 `analyze` 相同（`schema/table filter matched no events`、`dml filter matched no events` 或 `window matched 0 events`），stdout 为空。账号 DDL 的 `<secret>` 打码仍作用于 `analyze` 里的语句文本。flashback 不打印这些语句；选定范围内的账号 DDL 会按 DDL 拒绝。单元格的值不打码。不运行 `flashback` 时，`analyze` 的文本、Markdown、JSON 和 HTML 不变。
+列名缺失、前镜像或后镜像不完整、某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`BIT`、`GEOMETRY`、`VECTOR`、不完整或无法精确表示的 JSON、未知字符集，或缺少有无符号、字符集或 ENUM/SET 成员）、表定义出现过但读不出来，或者选定范围内有 DDL 时，flashback 退出 1，只打一行 `Error:`，不打印任何 SQL。`--sql-context off` 同样拒绝：脚本就是行值。什么都没选中时退出 2，`Error:` 与 `analyze` 相同（`schema/table filter matched no events`、`dml filter matched no events` 或 `window matched 0 events`），stdout 为空。账号 DDL 的 `<secret>` 打码仍作用于 `analyze` 里的语句文本。flashback 不打印这些语句；选定范围内的账号 DDL 会按 DDL 拒绝。单元格的值不打码。不运行 `flashback` 时，`analyze` 的文本、Markdown、JSON 和 HTML 不变。
 
 ### 把机器可读结果交给脚本或其他工具
 

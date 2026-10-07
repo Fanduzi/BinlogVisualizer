@@ -82,9 +82,9 @@ The same table, schema, `--dml`, time, position, and GTID selectors as `analyze`
 
 A table with no primary key is still reversed: the `DELETE` or `UPDATE` matches every column and adds `LIMIT 1`, and a comment says so. The `INSERT` that puts a deleted row back does not use `LIMIT 1`.
 
-JSON is rebuilt from the binary document (`JSON_OBJECT` / `JSON_ARRAY`, or `CAST(... AS JSON)` for a scalar), so a decimal stays a decimal, a datetime stays a datetime, and `-0.0` keeps its sign. A character column that is not `utf8mb4` is a charset introducer plus the raw bytes (`_latin1 0xE9`, `_utf16 0x00410042`). Collation `binary` stays `X'...'`. `utf8mb4` stays a quoted string.
+JSON is rebuilt from the binary document (`JSON_OBJECT` / `JSON_ARRAY`, or `CAST(... AS JSON)` for a scalar), so a decimal stays a decimal, a datetime stays a datetime, and `-0.0` keeps its sign. That includes JSON inside a transaction recorded with `binlog_transaction_compression=ON`. A character column that is not `utf8mb4` is a charset introducer plus the raw bytes (`_latin1 0xE9`, `_utf16 0x00410042`). Collation `binary` stays `X'...'`. `utf8mb4` stays a quoted string. `ENUM` is the 1-based member index (`0` is the empty member) and `SET` is the bitmask (bit 0 is the first member). A quoted member name would be the column charset, which is not `utf8mb4` for `latin1` or `gbk`: strict `sql_mode` then returns `ERROR 1265`, and non-strict mode can store a blank. The number restores the same member in both modes.
 
-Generated columns, virtual or stored, are omitted from `INSERT` lists and `UPDATE` assignments. They are omitted from a no-primary-key `WHERE` when a base column remains. A generated column that is part of the primary key stays in the `WHERE`. Names are learned from `CREATE TABLE` and `ALTER TABLE` in the files you pass, including transactions dropped by `--exclude-gtids` or a time window. If that statement was seen and cannot be read, flashback refuses the table and prints no SQL. A binlog that never contains the `CREATE` does not identify generated columns.
+Generated columns, virtual or stored, are omitted from `INSERT` lists and `UPDATE` assignments when the definition is known. They are omitted from a no-primary-key `WHERE` when a base column remains. A generated column that is part of the primary key stays in the `WHERE`. Names come from `CREATE TABLE` and `ALTER TABLE` in the files you pass, including transactions dropped by `--exclude-gtids` or a time window, and from `--schema-file` (`mysqldump --no-data`, or `SHOW CREATE TABLE` after `USE`). Flashback does not connect to MySQL. MySQL 8 `TABLE_MAP` optional metadata ends at `COLUMN_VISIBILITY` (invisible columns, not generated columns), and `binlog_row_image=FULL` stores both virtual and stored values, so a missing cell is not a signal and the binlog alone cannot tell them apart. If a definition was seen and cannot be read, flashback refuses the table and prints no SQL. If a selected table was never defined, flashback still prints the script, listing every column, and writes a warning on stderr before that script. The warning names the table, says generated columns cannot be ruled out, and says applying the script can stop at `ERROR 3105` with earlier transactions already committed.
 
 These limits stay even when the literals are exact:
 
@@ -99,7 +99,7 @@ Flashback refuses rather than guessing. Exit 1, one `Error:` line that names the
 - column names are unavailable
 - a before-image or after-image is incomplete (`binlog_row_image` `MINIMAL` or `NOBLOB`)
 - a column cannot be rendered exactly (`FLOAT`, `DOUBLE`, `BIT`, `GEOMETRY`, `VECTOR`, a partial JSON value, a JSON value that cannot be represented exactly, invalid UTF-8 in a `utf8mb4` column, an unknown collation, or missing signedness, collation, or ENUM/SET members)
-- generated columns were declared in a `CREATE` or `ALTER` that cannot be read
+- a `CREATE` or `ALTER` was seen, in the binlog or in `--schema-file`, and cannot be read
 - the selected range contains DDL (no reverse DDL is emitted)
 - `--sql-context off` is set, because the script is the row values
 

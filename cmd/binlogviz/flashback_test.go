@@ -1,11 +1,14 @@
 package binlogviz
 
 import (
+	"encoding/binary"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
@@ -17,6 +20,9 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 	}
 	if strings.Count(stderr, "Error:") != 0 {
 		t.Fatalf("stderr:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, "shop.wide") || !strings.Contains(stderr, "shop.heap") || !strings.Contains(stderr, "generated columns cannot be ruled out") {
+		t.Fatalf("incident fixture warning:\n%s", stderr)
 	}
 	for _, want := range []string{
 		"SET NAMES utf8mb4;",
@@ -32,8 +38,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 		"X'DEADBEEFFF00'",
 		"X'00FFFE'",
 		"JSON_OBJECT(",
-		"'blue'",
-		"'a,c'",
+		", 2, 5)",
 		"WHERE `id` <=> 30 AND `bucket` <=> 9",
 		"-- no primary key on shop.heap; this matches every column and LIMIT 1",
 		"LIMIT 1;",
@@ -87,6 +92,23 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 	}
 	if strings.Count(narrow, "START TRANSACTION;") != 1 || !strings.Contains(narrow, "`id` <=> 5") || strings.Contains(narrow, "18446744073709551615") {
 		t.Fatalf("position window:\n%s", narrow)
+	}
+}
+
+func TestFlashbackSchemaFileClearsGeneratedWarning(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	path := mustFixturePath(t, "mysql-8.0.46-flashback-full.binlog")
+	schema := filepath.Join(t.TempDir(), "wide.sql")
+	body := "USE `shop`;\nCREATE TABLE `wide` (\n  `id` bigint NOT NULL,\n  `bucket` int NOT NULL,\n  PRIMARY KEY (`id`, `bucket`)\n);\n"
+	if err := os.WriteFile(schema, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := executeFlashbackLikeMain(t, path, "--include-table", "shop.wide", "--schema-file", schema)
+	if err != nil {
+		t.Fatalf("schema file: %v\n%s", err, stderr)
+	}
+	if strings.Contains(stderr, "generated columns cannot be ruled out") || !strings.Contains(stdout, "18446744073709551615") {
+		t.Fatalf("stdout:\n%s\nstderr:\n%s", stdout, stderr)
 	}
 }
 
@@ -150,7 +172,7 @@ func TestFlashbackHelpWording(t *testing.T) {
 		t.Fatalf("help: %v\n%s", err, stderr)
 	}
 	out := stdout + stderr
-	if strings.Contains(out, "Only count these ROW kinds") || !strings.Contains(out, "Only undo these ROW kinds") || !strings.Contains(out, "Print SQL that reverses selected ROW changes") {
+	if strings.Contains(out, "Only count these ROW kinds") || strings.Contains(out, "Only analyze") || !strings.Contains(out, "Only undo these ROW kinds") || !strings.Contains(out, "Only undo these schemas") || !strings.Contains(out, "Only undo these tables") || !strings.Contains(out, "SQL file of table definitions") || !strings.Contains(out, "Print SQL that reverses selected ROW changes") {
 		t.Fatalf("english help:\n%s", out)
 	}
 
@@ -163,8 +185,29 @@ func TestFlashbackHelpWording(t *testing.T) {
 		t.Fatalf("zh help: %v\n%s", err, stderr)
 	}
 	out = stdout + stderr
-	if !strings.Contains(out, "只撤销这些 ROW 类型") || !strings.Contains(out, "打印 SQL，把选中的 ROW 变更撤回去") {
-		t.Fatalf("zh help:\n%s", out)
+	for _, want := range []string{
+		"只撤销这些 ROW 类型",
+		"打印 SQL，把选中的 ROW 变更撤回去",
+		"只撤销这些 schema",
+		"只撤销这些表",
+		"起始位点",
+		"结束位点",
+		"只撤销匹配该 GTID 集合的完整事务",
+		"跳过匹配该 GTID 集合的完整事务",
+		"表定义 SQL 文件",
+		"用法:",
+		"选项:",
+		"全局选项:",
+		"输出语言",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("zh help missing %q:\n%s", want, out)
+		}
+	}
+	for _, banned := range []string{"Only analyze", "Start position", "Flags:", "Global Flags:", "Usage:"} {
+		if strings.Contains(out, banned) {
+			t.Fatalf("zh help still has %q:\n%s", banned, out)
+		}
 	}
 }
 
@@ -235,11 +278,19 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 		t.Fatalf("server is not MySQL 8.0 ROW/GTID/FULL: %s", vars)
 	}
 
-	const checksumSQL = "CHECKSUM TABLE shop.wide, shop.heap, shop.jdoc, shop.jheap, shop.chars, shop.gen"
+	mode := e2eMySQL(t, "SELECT @@SESSION.sql_mode")
+	if !strings.Contains(mode, "STRICT_TRANS_TABLES") && !strings.Contains(mode, "STRICT_ALL_TABLES") {
+		t.Fatalf("server sql_mode is not strict: %s", mode)
+	}
+
+	const checksumSQL = "CHECKSUM TABLE shop.wide, shop.heap, shop.jdoc, shop.jheap, shop.chars, shop.gen, shop.es, shop.cj"
 	e2eMySQL(t, "RESET MASTER")
 	e2eMySQL(t, readTestdata(t, "flashback_setup.sql"))
 	beforeSum := e2eMySQL(t, checksumSQL)
 	beforeRows := e2eMySQL(t, flashbackOrderSQL)
+	genBefore := e2eMySQL(t, "CHECKSUM TABLE shop.gen")
+	cjBefore := e2eMySQL(t, "CHECKSUM TABLE shop.cj")
+	esBefore := e2eMySQL(t, "CHECKSUM TABLE shop.es")
 	executed := e2eGTIDSet(e2eMySQL(t, "SELECT @@GLOBAL.gtid_executed"))
 	e2eMySQL(t, "FLUSH LOGS")
 	e2eMySQL(t, readTestdata(t, "flashback_incident.sql"))
@@ -252,15 +303,61 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 	datadir := strings.TrimSpace(e2eMySQL(t, "SELECT @@datadir"))
 	names := binlogNames(t, e2eMySQL(t, "SHOW BINARY LOGS"))
 	dir := t.TempDir()
-	args := make([]string, 0, len(names))
+	closed := make([]string, 0, len(names)-1)
 	for _, name := range names[:len(names)-1] {
 		dst := dir + "/" + name
 		e2eCopy(t, datadir+"/"+name, dst)
-		args = append(args, dst)
+		closed = append(closed, dst)
 	}
-	args = append(args, "--exclude-gtids", executed)
+	incidentPath := closed[len(closed)-1]
+	if !binlogHasEventType(t, incidentPath, transactionPayloadEventType) {
+		t.Fatal("incident binlog has no TRANSACTION_PAYLOAD_EVENT; binlog_transaction_compression did not wrap the JSON delete")
+	}
 
-	sql, stderr, err := executeFlashbackLikeMain(t, args...)
+	warnSQL, warnErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.gen")
+	if err != nil {
+		t.Fatalf("gen warning path: %v\n%s", err, warnErr)
+	}
+	if !strings.Contains(warnErr, "shop.gen") || !strings.Contains(warnErr, "generated columns cannot be ruled out") || !strings.Contains(warnErr, "--schema-file") {
+		t.Fatalf("gen warning:\n%s", warnErr)
+	}
+	if !strings.Contains(warnSQL, "`virt`") || !strings.Contains(warnSQL, "`stor`") {
+		t.Fatalf("warning path dropped generated columns:\n%s", warnSQL)
+	}
+
+	schemaPath := filepath.Join(dir, "gen.sql")
+	schemaBody := "USE `shop`;\n" + e2eMySQL(t, "SHOW CREATE TABLE shop.gen")
+	if !strings.Contains(schemaBody, "GENERATED") {
+		t.Fatalf("SHOW CREATE TABLE shop.gen:\n%s", schemaBody)
+	}
+	if err := os.WriteFile(schemaPath, []byte(schemaBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	genSQL, genErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.gen", "--schema-file", schemaPath)
+	if err != nil {
+		t.Fatalf("gen schema file: %v\n%s", err, genErr)
+	}
+	if strings.Contains(genErr, "generated columns cannot be ruled out") || strings.Contains(genSQL, "`virt`") || strings.Contains(genSQL, "`stor`") {
+		t.Fatalf("schema file sql:\n%s\nstderr:\n%s", genSQL, genErr)
+	}
+
+	cjSQL, cjErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.cj")
+	if err != nil {
+		t.Fatalf("compressed json: %v\n%s", err, cjErr)
+	}
+	if !strings.Contains(cjSQL, "JSON_OBJECT(") || strings.Contains(cjErr, "JSON") {
+		t.Fatalf("compressed json sql:\n%s\nstderr:\n%s", cjSQL, cjErr)
+	}
+
+	esSQL, esErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.es")
+	if err != nil {
+		t.Fatalf("enum: %v\n%s", err, esErr)
+	}
+	if !utf8.ValidString(esSQL) || strings.Contains(esSQL, "café") || strings.Contains(esSQL, "thé") || strings.Contains(esSQL, "中文") || !strings.Contains(esSQL, "INSERT INTO `shop`.`es`") {
+		t.Fatalf("enum sql:\n%s", esSQL)
+	}
+
+	sql, stderr, err := executeFlashbackLikeMain(t, append(closed, "--exclude-gtids", executed)...)
 	if err != nil {
 		t.Fatalf("flashback exclude %s: %v\n%s", executed, err, stderr)
 	}
@@ -279,6 +376,57 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 	if rows != beforeRows {
 		t.Fatalf("ordered rows\nbefore:\n%s\nrestored:\n%s", beforeRows, rows)
 	}
+
+	e2eMySQL(t, `
+START TRANSACTION;
+UPDATE shop.gen SET base = 11 WHERE id = 1;
+DELETE FROM shop.gen WHERE id = 2;
+INSERT INTO shop.gen (id, base) VALUES (4, 40);
+COMMIT;`)
+	e2eMySQL(t, genSQL)
+	if got := e2eMySQL(t, "CHECKSUM TABLE shop.gen"); got != genBefore {
+		t.Fatalf("gen checksum\nbefore:\n%s\nrestored:\n%s", genBefore, got)
+	}
+
+	e2eMySQL(t, "DELETE FROM shop.cj")
+	e2eMySQL(t, cjSQL)
+	if got := e2eMySQL(t, "CHECKSUM TABLE shop.cj"); got != cjBefore {
+		t.Fatalf("cj checksum\nbefore:\n%s\nrestored:\n%s", cjBefore, got)
+	}
+
+	e2eMySQL(t, "DELETE FROM shop.es")
+	e2eMySQL(t, esSQL)
+	if got := e2eMySQL(t, "CHECKSUM TABLE shop.es"); got != esBefore {
+		t.Fatalf("strict es checksum\nbefore:\n%s\nrestored:\n%s", esBefore, got)
+	}
+	e2eMySQL(t, "DELETE FROM shop.es")
+	e2eMySQL(t, "SET SESSION sql_mode='';\n"+esSQL)
+	if got := e2eMySQL(t, "CHECKSUM TABLE shop.es"); got != esBefore {
+		t.Fatalf("non-strict es checksum\nbefore:\n%s\nrestored:\n%s", esBefore, got)
+	}
+}
+
+// transactionPayloadEventType is MySQL TRANSACTION_PAYLOAD_EVENT.
+const transactionPayloadEventType = 40
+
+func binlogHasEventType(t *testing.T, path string, typ byte) bool {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	off := 4
+	for off+19 <= len(data) {
+		size := int(binary.LittleEndian.Uint32(data[off+9 : off+13]))
+		if size < 19 || off+size > len(data) {
+			t.Fatalf("%s: bad event at %d size %d", path, off, size)
+		}
+		if data[off+4] == typ {
+			return true
+		}
+		off += size
+	}
+	return false
 }
 
 const flashbackOrderSQL = `
@@ -291,7 +439,9 @@ SELECT id, note FROM shop.heap ORDER BY id, note;
 SELECT id, HEX(doc) FROM shop.jdoc ORDER BY id;
 SELECT HEX(doc) FROM shop.jheap ORDER BY HEX(doc);
 SELECT id, HEX(l1), HEX(u16) FROM shop.chars ORDER BY id;
-SELECT id, base, stor FROM shop.gen ORDER BY id;
+SELECT id, base, virt, stor FROM shop.gen ORDER BY id;
+SELECT id, HEX(e), HEX(s), HEX(eu) FROM shop.es ORDER BY id;
+SELECT id, HEX(j) FROM shop.cj ORDER BY id;
 `
 
 func readTestdata(t *testing.T, name string) string {
