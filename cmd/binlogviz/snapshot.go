@@ -364,6 +364,9 @@ func formatSnapshotFilters(filters snapshotpkg.Filters) string {
 	if len(filters.ExcludeTables) > 0 {
 		parts = append(parts, "exclude_table="+strings.Join(filters.ExcludeTables, ","))
 	}
+	if len(filters.DML) > 0 {
+		parts = append(parts, "dml="+strings.Join(filters.DML, ","))
+	}
 	slices.Sort(parts)
 	return strings.Join(parts, " ")
 }

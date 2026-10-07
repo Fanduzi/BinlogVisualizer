@@ -15,6 +15,7 @@ type EventFilter struct {
 	excludeSchemas map[string]struct{}
 	includeTables  []tableSelector
 	excludeTables  []tableSelector
+	includeDML     map[string]struct{}
 }
 
 type tableSelector struct {
@@ -36,6 +37,7 @@ func newEventFilter(opts Options) *EventFilter {
 		excludeSchemas: toSet(opts.ExcludeSchemas),
 		includeTables:  parseTableSelectors(opts.IncludeTables),
 		excludeTables:  parseTableSelectors(opts.ExcludeTables),
+		includeDML:     toSet(opts.IncludeDML),
 	}
 }
 
@@ -79,6 +81,16 @@ func anyTableSelector(selectors []tableSelector, schema, table string) bool {
 		}
 	}
 	return false
+}
+
+// AllowOperation reports whether a ROW operation should be counted.
+// An empty DML filter allows INSERT, UPDATE, and DELETE.
+func (f *EventFilter) AllowOperation(operation string) bool {
+	if f == nil || len(f.includeDML) == 0 {
+		return true
+	}
+	_, ok := f.includeDML[operation]
+	return ok
 }
 
 // Allow returns true if the given schema+table should be processed.

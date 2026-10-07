@@ -5,7 +5,11 @@
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // Options configures the analyzer behavior.
 type Options struct {
@@ -42,6 +46,12 @@ type Options struct {
 	ExcludeSchemas []string // skip these schemas
 	IncludeTables  []string // only analyze these objects (empty = all); TABLE or SCHEMA.TABLE, including view, event, routine, and trigger names
 	ExcludeTables  []string // skip these objects; TABLE or SCHEMA.TABLE, including view, event, routine, and trigger names
+	// IncludeDML limits counted ROW images to these kinds (INSERT, UPDATE, DELETE).
+	// Empty means every kind. Canonical uppercase, stable order.
+	IncludeDML []string
+	// CaptureRowImages keeps bounded cell values on listed transactions.
+	// Off unless the operator asked to see rows and did not disable SQL context.
+	CaptureRowImages bool
 }
 
 // HasPositionSelectors reports whether an exact binlog position bound is active.
@@ -73,6 +83,45 @@ func DefaultOptions() Options {
 		SpikeFactor:      5.0,
 		SpikeMinRows:     100,
 	}
+}
+
+// HasDMLFilter reports whether analysis is limited to chosen DML kinds.
+func (o Options) HasDMLFilter() bool {
+	return len(o.IncludeDML) > 0
+}
+
+// ParseDMLKinds validates a --dml list. Empty means no filter.
+// Accepted tokens are insert, update, and delete, in any combination.
+// The result is uppercase and ordered INSERT, UPDATE, DELETE.
+func ParseDMLKinds(values []string) ([]string, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	for _, raw := range values {
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.ToUpper(strings.TrimSpace(part))
+			if part == "" {
+				continue
+			}
+			switch part {
+			case "INSERT", "UPDATE", "DELETE":
+				seen[part] = true
+			default:
+				return nil, fmt.Errorf("invalid --dml %q (allowed: insert, update, delete)", strings.TrimSpace(part))
+			}
+		}
+	}
+	if len(seen) == 0 {
+		return nil, fmt.Errorf("invalid --dml %q (allowed: insert, update, delete)", strings.Join(values, ","))
+	}
+	out := make([]string, 0, len(seen))
+	for _, op := range []string{"INSERT", "UPDATE", "DELETE"} {
+		if seen[op] {
+			out = append(out, op)
+		}
+	}
+	return out, nil
 }
 
 // HasObjectFilters reports whether schema or table filtering is configured.

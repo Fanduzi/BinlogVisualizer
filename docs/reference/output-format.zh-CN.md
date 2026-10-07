@@ -339,6 +339,8 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `query_sql` | string | no | 仅在 `--sql-context full` 且存在受限 SQL 上下文时出现。存储被截断时追加 `… [truncated: <shown> of <original> bytes]` |
 | `query_truncated` | boolean | no | 没有 query 上下文时省略。出现时，只有存储 SQL 碰到 4096 字节上限才为 true。更短语句的 160 字符摘要仍是 false |
 | `query_original_bytes` | integer | no | 没有 query 上下文时省略；出现时表示原始 SQL 的字节长度 |
+| `rows` | array | no | 仅在 `--show-rows` 且 `--sql-context` 不是 `off` 时出现。每个元素是一行逻辑变更：`op`（`INSERT`、`UPDATE`、`DELETE`）、`columns`、`names`（`full` 或 `positional`）、`before`、`after`、`changed`（UPDATE 中前后不同的列名）。单元格是字符串，SQL NULL 为 JSON `null`。每个事务最多 32 条 |
+| `rows_omitted` | integer | no | 超过该上限后未保存的逻辑行数 |
 
 事务行数、操作数、事件数和保留位置继续采用 inclusive 的逐事件窗口语义。相邻解析事件只能帮助确定物理边界，不能增加窗口外 workload。`partial_start` 表示物理起点在所选窗口外，`partial_end` 表示物理终点在窗口外，`partial_both` 表示两端均在窗口外。缺失或旧版边界元数据一律为 `unknown`，不会推断为完整。`transactions` 先列出完整事务排行榜，再按 `txn-N` 的自然数字顺序用有界的 partial/unknown 证据填充剩余位置；后者不参与完整事务排名，也不会进入大小直方图、模式或普通大事务告警。
 
@@ -346,7 +348,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 `transactions` 中的 query 字段取决于 `--sql-context`：
 
-- `off`：所有格式都省略查询文本和 DDL 语句文本。操作、对象和位置仍保留
+- `off`：所有格式都省略查询文本和 DDL 语句文本。操作、对象和位置仍保留。`--show-rows` 的单元格也不打印；报告写明 `row values omitted because --sql-context is off`
 - `summary`：包含经空白归一化、SQL 正文最多 160 个字符的 `query_summary`；被截断时追加 `… [truncated: <shown> of <original> bytes]`。存在上下文时才包含截断元数据。`query_truncated` 只有碰到 4096 字节存储上限才为 true
 - `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数。被截断时追加同一标记。DDL 时间线语句同样以 4096 字节为上限，被截断时带同一标记
 
@@ -506,6 +508,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `exclude_schema` | array | yes | 排除的 schema；没有时为空数组 |
 | `include_table` | array | yes | 包含的表；没有时为空数组 |
 | `exclude_table` | array | yes | 排除的表；没有时为空数组 |
+| `dml` | array | no | `--dml` 的类型，顺序为 `INSERT`、`UPDATE`、`DELETE`。未设置该标志时省略。报告的 `scope` 也有这个字段 |
 
 ## Markdown 输出
 
@@ -686,6 +689,7 @@ BinlogViz 会把最终报告输出保留在 `stdout`。
 - `--format html` 写入文件时的 `HTML report saved to …`
 - `--start`/`--end` 匹配到 0 个事件时的 `Error: window matched 0 events`（exit 2，stdout 为空）
 - 生效的 schema/对象过滤既没有行活动、也没有 view、event、routine 或 trigger DDL 时的 `Error: schema/table filter matched no events`（exit 2，stdout 为空）。匹配到 view、event、function、procedure 或 trigger 时退出 0，并打印这条 DDL。
+- 设置了 `--dml` 但没有计入这些类型的行镜像时：`Error: dml filter matched no events`（exit 2，stdout 为空）。两种过滤都没有匹配时，先报这条，再考虑 schema/table 那条。
 - 仅 Format Description（或再加 rotate）的完整 binlog：`Error: binlog has no analyzable events`（exit 2，stdout 为空）
 - 文件在事件中间截断，或最后一个完整事件之后还有剩余字节：`Error: binlog is truncated or corrupt: …`（exit 1，stdout 为空）
 - 命令错误（未另行说明时为 exit 1）

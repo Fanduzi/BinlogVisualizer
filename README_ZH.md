@@ -50,7 +50,7 @@ cat mysql-bin.000123 | binlogviz analyze -
 
 默认文本报告包含热点线程，有行变更时按行数排序（否则按事件数、字节或事务数）。binlog 里有的 `thread_id`、`server_id`、`user@host` 和 schema 会写出来，回答「谁写最多」不必再 `jq`。`--top` 限制这一节；`--top-threads 0` 保留全部会话。JSON 的同一排名在 `threads`。
 
-`analyze` 在计入至少 1 个事件时退出 **0**；无法分析（损坏、截断、没有 Format Description）时退出 **1**；完整 binlog 解析成功但计入 0 个事件（空的 `--start`/`--end` 窗口，或仅 Format Description / rotate）时退出 **2**。schema 或 table 过滤没有匹配到事件同样是 exit 2，`Error:` 会写明过滤没有匹配。过滤匹配到 view、event、function、procedure 或 trigger 时退出 0，即使没有行变更也会打印这条 DDL。exit 2 不写 `stdout`，只在 `stderr` 打一行 `Error:`。如果进度条还停在当前 stderr 行，打印 `Error:` 之前会先清掉那一行。
+`analyze` 在计入至少 1 个事件时退出 **0**；无法分析（损坏、截断、没有 Format Description）时退出 **1**；完整 binlog 解析成功但计入 0 个事件（空的 `--start`/`--end` 窗口，或仅 Format Description / rotate）时退出 **2**。schema 或 table 过滤没有匹配到事件同样是 exit 2，`Error:` 会写明过滤没有匹配。`--dml` 没有匹配到事件也是 exit 2，`Error: dml filter matched no events`。过滤匹配到 view、event、function、procedure 或 trigger 时退出 0，即使没有行变更也会打印这条 DDL。exit 2 不写 `stdout`，只在 `stderr` 打一行 `Error:`。如果进度条还停在当前 stderr 行，打印 `Error:` 之前会先清掉那一行。
 
 ### 按 binlog 顺序分析整个目录
 
@@ -87,6 +87,21 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 ```
 
 `--include-table` / `--exclude-table` 接受 `TABLE` 或 `SCHEMA.TABLE`，view、event、function、procedure、trigger 也是同样的写法。`CREATE TRIGGER` 和 `DROP TRIGGER` 都用触发器名字，过滤时传这个名字。
+
+### 找到误删并看到被删的行
+
+```bash
+binlogviz analyze mysql-bin.000123 \
+  --include-table shop.orders \
+  --dml delete \
+  --start "2026-10-06 14:00:00" \
+  --end "2026-10-06 14:10:00" \
+  --show-rows
+```
+
+`--dml` 接受 `insert`、`update`、`delete`，用逗号组合。它和 `--include-table` / `--exclude-table`、`--include-schema`、`--start` / `--end`、位点、GTID 过滤一起生效。Summary、Top Tables、Top Transactions、Top Threads 和告警只统计保留下来的类型，报告里会写明这个过滤。类型过滤没有匹配时退出 2，`Error: dml filter matched no events`。
+
+`--show-rows` 默认关闭。打开后，列出的每个事务会打印 DELETE 的前镜像、UPDATE 里发生变化的列（`before -> after`），以及 INSERT 的后镜像。MySQL 8 且 `binlog_row_metadata=FULL` 时显示列名；否则列是 `@1`..`@N`，报告会说明为什么没有列名。值有上限（每个事务 32 行，每个值 64 字节），截断会标明，并给出省略的行数。`--sql-context off` 会一并省略这些值，并在报告里说明。事务上的 `mysqlbinlog_cmd` 仍然在，用来对照。这里不生成回滚 SQL。
 
 ### 把机器可读结果交给脚本或其他工具
 

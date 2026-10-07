@@ -4,6 +4,9 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- `--dml insert,update,delete` limits the analyze report to those ROW kinds. It composes with schema, table, time, position, and GTID filters. Summary, Top Tables, Top Transactions, Top Threads, and alerts count only the kept kinds, and the report names the filter. A kind filter that matches nothing is exit 2, `Error: dml filter matched no events`.
+- `--show-rows` prints bounded row values for listed transactions: DELETE before-image, UPDATE changed columns (`before -> after`), INSERT after-image. Column names come from `binlog_row_metadata=FULL`; otherwise columns are `@1`..`@N` and the report says names are missing. At most 32 rows per transaction and 64 bytes per value; a cut is marked, with a count of omitted rows. Off by default. `--sql-context off` omits the values and says so. Each listed transaction still has `mysqlbinlog_cmd`.
+
 ## v0.23.14
 
 Release date: 2026-10-06

@@ -5,32 +5,38 @@
 // note: if this file changes, update this header and README.md.
 package binlog
 
-import "time"
+import (
+	"time"
+
+	"binlogviz/internal/model"
+)
 
 // RawEvent represents a raw binlog event before normalization.
 // This type isolates the analyzer from parser-specific types.
 type RawEvent struct {
-	Timestamp     time.Time
-	BinlogPath    string
-	PositionStart int64
-	PositionEnd   int64
-	BinlogBytes   int64
-	EventType     string
-	Schema        string
-	Table         string
-	Query         string // SQL query for QUERY events (e.g., BEGIN, COMMIT)
-	QuerySQL      string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
-	ServerID      uint32 // Event-header server ID; zero means unavailable.
-	ServerVersion string // Format Description server version, when the event carries one.
-	ServerFlavor  string // mysql or mariadb, derived from ServerVersion when available.
-	GTID          string
-	ThreadID      uint32
-	XID           string // Decimal transaction XID; empty means unavailable.
-	XAXID         string // SQL-form XA identifier; empty means unavailable.
-	ActorUser     string
-	ActorHost     string
-	RowCount      int
-	Position      uint32 // Legacy next-event position retained for existing callers and error messages.
+	Timestamp        time.Time
+	BinlogPath       string
+	PositionStart    int64
+	PositionEnd      int64
+	BinlogBytes      int64
+	EventType        string
+	Schema           string
+	Table            string
+	Query            string // SQL query for QUERY events (e.g., BEGIN, COMMIT)
+	QuerySQL         string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
+	ServerID         uint32 // Event-header server ID; zero means unavailable.
+	ServerVersion    string // Format Description server version, when the event carries one.
+	ServerFlavor     string // mysql or mariadb, derived from ServerVersion when available.
+	GTID             string
+	ThreadID         uint32
+	XID              string // Decimal transaction XID; empty means unavailable.
+	XAXID            string // SQL-form XA identifier; empty means unavailable.
+	ActorUser        string
+	ActorHost        string
+	RowCount         int
+	RowImages        []model.RowImage // Set only when row-image capture is on. Nil otherwise.
+	RowImagesOmitted int
+	Position         uint32 // Legacy next-event position retained for existing callers and error messages.
 }
 
 // Parser defines the interface for parsing binlog files.
@@ -55,4 +61,10 @@ type ProgressParser interface {
 // OffsetParser parses binlog files starting from a byte offset.
 type OffsetParser interface {
 	ParseFilesFromOffset(paths []string, offset int64, handler func(RawEvent) error) error
+}
+
+// RowImageParser is implemented by parsers that can keep bounded row images.
+// Capture stays off unless the caller turns it on, so a normal analyze does not retain cell values.
+type RowImageParser interface {
+	SetCaptureRowImages(on bool)
 }

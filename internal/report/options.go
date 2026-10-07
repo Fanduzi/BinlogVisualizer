@@ -53,6 +53,9 @@ type Options struct {
 	Details       bool
 	ShowMinutes   bool
 	ShowPatterns  bool
+	// ShowRows prints bounded row images for listed transactions.
+	// --sql-context off suppresses the values and says so.
+	ShowRows bool
 }
 
 // DefaultOptions returns the backwards-compatible report presentation defaults.

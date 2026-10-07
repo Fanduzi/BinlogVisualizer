@@ -238,6 +238,7 @@ type InputSnapshotFilters struct {
 	ExcludeSchemas []string `json:"exclude_schema"`
 	IncludeTables  []string `json:"include_table"`
 	ExcludeTables  []string `json:"exclude_table"`
+	DML            []string `json:"dml,omitempty"`
 }
 
 type CompareResult struct {

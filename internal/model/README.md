@@ -7,7 +7,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | File | Responsibility |
 |------|----------------|
 | `event.go` | Defines normalized binlog events with optional producer/transaction provenance, XA identity, and LOAD_DATA intent. |
-| `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, and bounded SQL context. |
+| `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, bounded SQL context, and optional bounded row images. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |

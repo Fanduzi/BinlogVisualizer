@@ -260,12 +260,19 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 		}
 		return nil
 	}
+	if relation == insideWindow && ev.EventType == "ROWS" && !a.filter.AllowOperation(ev.Operation) {
+		a.txnBuilder.clearCurrentQueryContext()
+		return nil
+	}
 
 	// TransactionBuilder is the source of truth for transaction boundaries.
 	// If it returns an error, stop processing to avoid inconsistent state.
 	if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
 		return err
 	}
+	// The transaction builder already copied the bounded images it keeps.
+	// Drop them here so GTID buffering and later aggregators do not retain cell values.
+	ev.RowImages = nil
 	ev = a.withCurrentTxnKey(ev)
 	if a.opts.HasGTIDSelectors() {
 		if relation == insideWindow {
@@ -306,13 +313,15 @@ func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
 	}
 
 	// Only fan out to other aggregators if transaction processing succeeded.
-	if a.filter.Allow(aggregationEv.Schema, aggregationEv.Table) {
+	// A DML kind filter counts workload events only, matching an object filter:
+	// boundaries of a dropped INSERT group are not summary events or bytes.
+	if a.filter.Allow(aggregationEv.Schema, aggregationEv.Table) && (!a.opts.HasDMLFilter() || isWorkload) {
 		a.reportAgg.ConsumeOperationEvent(aggregationEv)
 		a.tableAgg.Consume(aggregationEv)
 		a.minuteAgg.Consume(aggregationEv)
 		a.ddlAgg.ConsumeEvent(aggregationEv)
 	}
-	if !a.opts.HasObjectFilters() || isWorkload {
+	if (!a.opts.HasObjectFilters() && !a.opts.HasDMLFilter()) || isWorkload {
 		a.reportAgg.ConsumeEvent(aggregationEv)
 	}
 
@@ -403,6 +412,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		ExcludeSchemas: append([]string(nil), a.opts.ExcludeSchemas...),
 		IncludeTables:  append([]string(nil), a.opts.IncludeTables...),
 		ExcludeTables:  append([]string(nil), a.opts.ExcludeTables...),
+		IncludeDML:     append([]string(nil), a.opts.IncludeDML...),
 	}
 	result := &model.AnalysisResult{
 		WorkloadID:          a.opts.WorkloadID,

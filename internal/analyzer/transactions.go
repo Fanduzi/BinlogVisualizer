@@ -72,6 +72,8 @@ type inFlightTxn struct {
 	unclassifiedPrefix         string
 	sawIgnoredQuery            bool
 	sawSavepointRollback       bool
+	rowImages                  []model.RowImage
+	rowImagesOmitted           int
 }
 
 type windowRelation uint8
@@ -611,6 +613,27 @@ func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent, relati
 	if operation != "" {
 		b.current.operations[operation] += ev.RowCount
 	}
+	b.appendRowImages(ev)
+}
+
+// appendRowImages keeps at most MaxRowImagesPerTxn cell images on the open transaction.
+// ponytail: one capped slice per in-flight transaction; evicting to a side store only matters if --top-transactions 0 is used on a huge file.
+func (b *TransactionBuilder) appendRowImages(ev model.NormalizedEvent) {
+	if b.current == nil || (len(ev.RowImages) == 0 && ev.RowImagesOmitted == 0) {
+		return
+	}
+	room := model.MaxRowImagesPerTxn - len(b.current.rowImages)
+	if room < 0 {
+		room = 0
+	}
+	take := len(ev.RowImages)
+	if take > room {
+		take = room
+	}
+	if take > 0 {
+		b.current.rowImages = append(b.current.rowImages, ev.RowImages[:take]...)
+	}
+	b.current.rowImagesOmitted += ev.RowImagesOmitted + len(ev.RowImages) - take
 }
 
 func (b *TransactionBuilder) finalizeTransaction() {
@@ -672,6 +695,8 @@ func (b *TransactionBuilder) finalizeTransaction() {
 			b.current.retainedQueryTruncated,
 			b.current.retainedQueryOriginalBytes,
 		),
+		RowImages:        b.current.rowImages,
+		RowImagesOmitted: b.current.rowImagesOmitted,
 	}
 	if txn.EffectiveCompleteness() != model.TransactionUnknown &&
 		b.current.fullPositionStart > 0 && b.current.fullPositionEnd > b.current.fullPositionStart &&
