@@ -45,6 +45,7 @@ type jsonAnalysisResult struct {
 	Snapshot            *jsonSnapshot          `json:"snapshot,omitempty"`
 	ColumnNamesNote     string                 `json:"column_names_note,omitempty"`
 	RowValuesNote       string                 `json:"row_values_note,omitempty"`
+	PrimaryKeyNote      string                 `json:"primary_key_note,omitempty"`
 }
 
 type jsonSelection struct {
@@ -211,6 +212,7 @@ type jsonTableStats struct {
 	UpdateEvents int    `json:"update_events"`
 	DeleteRows   int    `json:"delete_rows"`
 	TxnCount     int    `json:"txn_count"`
+	KeyStatus    string `json:"key_status,omitempty"`
 }
 
 type jsonThreadStats struct {
@@ -445,6 +447,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 	} else if showRowValues(opts) {
 		converted.ColumnNamesNote = columnNamesNote(result)
 	}
+	converted.PrimaryKeyNote = primaryKeyView(result.Tables).note
 	return converted
 }
 
@@ -693,6 +696,7 @@ func convertTables(tables []model.TableStats) []jsonTableStats {
 			UpdateEvents: t.UpdateEvents,
 			DeleteRows:   t.DeleteRows,
 			TxnCount:     t.TxnCount,
+			KeyStatus:    tableKeyStatus(t),
 		}
 	}
 	return result

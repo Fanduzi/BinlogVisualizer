@@ -132,6 +132,8 @@ Example heading:
 === Top Tables ===
 ```
 
+When `binlog_row_metadata=FULL` and a table with no primary key received UPDATE or DELETE rows, a `No Primary Key` section follows Top Tables. It ranks those tables by UPDATE+DELETE rows. INSERT-only tables without a primary key are one line under that section, or one summary line when nothing was updated or deleted, and are not numbered as a lag risk. If every row table has a primary key, the summary grows by one line: `primary key present on every table`. If FULL metadata is absent, the summary grows by one line: `primary key presence unknown (binlog_row_metadata is not FULL)`. That line is not a claim that any table lacks a primary key. A `no_primary_key` warning is also listed with the other alerts when an UPDATE or DELETE hit a no-primary-key table.
+
 ### 3. Top Threads
 
 `Top Threads` ranks sessions by rows when any session wrote rows. Otherwise it ranks by events, then bytes, then transactions. The heading names the metric, for example `Top Threads (by rows)`.
@@ -215,6 +217,7 @@ Examples include:
 
 - `large_transaction`
 - `spike`
+- `no_primary_key`
 
 Example heading:
 
@@ -253,6 +256,7 @@ The top-level JSON object always contains these fields:
 | `warnings` | integer | yes | Count of analysis warnings recorded in the finalized result |
 | `pattern_drilldowns` | array | yes | Bounded drilldown summaries for high-signal patterns; empty array when nothing qualifies |
 | `snapshot` | object | no | Present only when `analyze` is invoked with `--snapshot-name` |
+| `primary_key_note` | string | no | Present when at least one row table has no FULL primary-key metadata. The sentence says presence is unknown because `binlog_row_metadata` is not FULL. Omitted when every row table is `has_pk` or `no_pk` |
 
 ### `summary`
 
@@ -302,6 +306,7 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 | `update_events` | integer | yes | Number of UPDATE row events |
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes | Distinct transactions that wrote row images to this table. A DDL-only group does not increment it. |
+| `key_status` | string | no | `has_pk`, `no_pk`, or `unknown` for a table that received row events. Omitted when the table had no row events. `has_pk` means FULL metadata included `SIMPLE_PRIMARY_KEY` or `PRIMARY_KEY_WITH_PREFIX`. `no_pk` means FULL metadata was present and neither field was. `unknown` means `binlog_row_metadata` is not FULL; it is not a claim that the table lacks a key. `update_rows` and `delete_rows` are the filtered counts. A `no_pk` table is a replica lag risk only when `update_rows` or `delete_rows` is greater than zero |
 
 `diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images. `diagnostics.open_explicit_groups`, when present, counts `BEGIN` groups that reached end of input without `COMMIT` or plain `ROLLBACK`. It is omitted when zero. A later GTID after that open `BEGIN` does not produce a report: analyze exits 1 with `open BEGIN without close`.
 

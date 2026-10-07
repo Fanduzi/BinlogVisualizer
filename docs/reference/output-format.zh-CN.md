@@ -132,6 +132,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Top Tables ===
 ```
 
+`binlog_row_metadata=FULL` 且没有主键的表收到了 UPDATE 或 DELETE 行时，Top Tables 后面会有「无主键」一节，按 UPDATE+DELETE 行数排序。没有主键但只有 INSERT 的表在这一节里单独一行；如果没有 UPDATE/DELETE，则只在摘要里一行，不会被编号成延迟风险。如果每张有行变更的表都有主键，摘要只多一行：`每张表都有主键`。如果没有 FULL 元数据，摘要只多一行：`主键是否存在未知（binlog_row_metadata 不是 FULL）`。这一行不是在说某张表没有主键。无主键表上出现 UPDATE 或 DELETE 时，告警里还会有一条 `no_primary_key`。
+
 ### 3. Top Threads
 
 `Top Threads` 在任一会话有行变更时按行数排序，否则按事件数、字节、事务数。标题会写出依据，例如 `热点线程（按行数）`。
@@ -209,6 +211,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 - `large_transaction`
 - `spike`
+- `no_primary_key`
 
 示例标题：
 
@@ -247,6 +250,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
 | `pattern_drilldowns` | array | yes | 高信号模式的有界 drilldown 摘要；无模式达到阈值时为空数组 |
 | `snapshot` | object | no | 仅在 `analyze` 使用 `--snapshot-name` 时出现 |
+| `primary_key_note` | string | no | 至少有一张收到行事件的表没有 FULL 主键元数据时出现。这句话说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。每张有行变更的表都是 `has_pk` 或 `no_pk` 时省略 |
 
 ### `summary`
 
@@ -296,6 +300,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `update_events` | integer | yes | UPDATE 行事件数 |
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes | 对该表写入过 row image 的不同事务数。仅含 DDL 的组不计入。 |
+| `key_status` | string | no | 收到行事件的表为 `has_pk`、`no_pk` 或 `unknown`。没有行事件时省略。`has_pk` 表示 FULL 元数据里有 `SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`。`no_pk` 表示有 FULL 元数据，但这两个字段都没有。`unknown` 表示 `binlog_row_metadata` 不是 FULL，不是在说这张表没有主键。`update_rows` 和 `delete_rows` 是过滤后的计数。`no_pk` 的表只有在 `update_rows` 或 `delete_rows` 大于 0 时才算复制延迟风险 |
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。`diagnostics.open_explicit_groups` 在出现时，统计输入结束时仍没有 `COMMIT` 或 plain `ROLLBACK` 的 `BEGIN` 组；计数为 0 时省略。这种未关闭的 `BEGIN` 如果后面又来了 GTID，不会产出报告：analyze 以 exit 1 失败，错误是「显式 BEGIN 未关闭」。
 

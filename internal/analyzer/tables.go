@@ -29,6 +29,10 @@ type tableStats struct {
 	binlogBytes   int64
 	ddlCount      int
 	lastChangedAt time.Time
+	keyStatus     string
+	noPKInsert    int
+	noPKUpdate    int
+	noPKDelete    int
 	txnSet        map[string]struct{} // distinct transactions that touched this table
 	activity      map[time.Time]*tableActivityPoint
 }
@@ -94,6 +98,7 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 		case "DELETE":
 			ts.deleteRows += ev.RowCount
 		}
+		ts.observeKeyStatus(ev)
 		if ev.TxnKey != "" {
 			ts.txnSet[ev.TxnKey] = struct{}{}
 		}
@@ -145,19 +150,23 @@ func (a *TableAggregator) Snapshot() []model.TableStats {
 		})
 
 		result = append(result, model.TableStats{
-			Schema:        ts.schema,
-			Table:         ts.table,
-			TotalRows:     ts.totalRows,
-			InsertRows:    ts.insertRows,
-			UpdateRows:    ts.updateRows,
-			UpdateEvents:  ts.updateEvents,
-			DeleteRows:    ts.deleteRows,
-			TxnCount:      len(ts.txnSet),
-			EventCount:    ts.eventCount,
-			BinlogBytes:   ts.binlogBytes,
-			DDLCount:      ts.ddlCount,
-			LastChangedAt: ts.lastChangedAt,
-			Activity:      activity,
+			Schema:         ts.schema,
+			Table:          ts.table,
+			TotalRows:      ts.totalRows,
+			InsertRows:     ts.insertRows,
+			UpdateRows:     ts.updateRows,
+			UpdateEvents:   ts.updateEvents,
+			DeleteRows:     ts.deleteRows,
+			TxnCount:       len(ts.txnSet),
+			EventCount:     ts.eventCount,
+			BinlogBytes:    ts.binlogBytes,
+			DDLCount:       ts.ddlCount,
+			LastChangedAt:  ts.lastChangedAt,
+			Activity:       activity,
+			KeyStatus:      ts.keyStatus,
+			NoPKInsertRows: ts.noPKInsert,
+			NoPKUpdateRows: ts.noPKUpdate,
+			NoPKDeleteRows: ts.noPKDelete,
 		})
 	}
 
@@ -173,6 +182,35 @@ func (a *TableAggregator) Snapshot() []model.TableStats {
 	})
 
 	return result
+}
+
+func (ts *tableStats) observeKeyStatus(ev model.NormalizedEvent) {
+	status := ev.KeyStatus
+	if status == "" {
+		status = model.KeyStatusUnknown
+	}
+	ts.keyStatus = mergeKeyStatus(ts.keyStatus, status)
+	if status != model.KeyStatusNoPK {
+		return
+	}
+	switch ev.Operation {
+	case "INSERT":
+		ts.noPKInsert += ev.RowCount
+	case "UPDATE":
+		ts.noPKUpdate += ev.RowCount
+	case "DELETE":
+		ts.noPKDelete += ev.RowCount
+	}
+}
+
+func mergeKeyStatus(current, next string) string {
+	if current == "" || current == next {
+		return next
+	}
+	if current == model.KeyStatusNoPK || next == model.KeyStatusNoPK {
+		return model.KeyStatusNoPK
+	}
+	return model.KeyStatusUnknown
 }
 
 // isRowMutation returns true if the operation represents a row mutation.

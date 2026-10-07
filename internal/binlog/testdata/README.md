@@ -258,6 +258,29 @@ bash ./create_mysql_8.0.46_dml_rows.sh
 
 Requires Docker and `mysql:8.0.46`. The script writes both binlogs and refreshes the `.mysqlbinlog.txt` decodes.
 
+## mysql-8.0.46-no-pk-full.binlog and mysql-8.0.46-no-pk-minimal.binlog
+
+MySQL 8.0.46 ROW+GTID files for primary-key presence. `full` was recorded with `binlog_row_metadata=FULL`. `minimal` was recorded with `binlog_row_metadata=MINIMAL`. The paired `.mysqlbinlog.txt` is `mysqlbinlog -v --base64-output=DECODE-ROWS --print-table-metadata`.
+
+### Contents
+
+- `shop.orders`: `id INT UNSIGNED` primary key, plus one UPDATE
+- `shop.prefixed`: `PRIMARY KEY (sku(8))`, plus one UPDATE
+- `shop.heap`: no primary key, three INSERT rows, two UPDATE rows, one DELETE row
+- `shop.log`: no primary key, two INSERT rows, one UPDATE row
+- `shop.scratch`: no primary key, two INSERT rows, no UPDATE or DELETE
+
+On the FULL file, `orders` and `prefixed` carry a primary-key field. `heap`, `log`, and `scratch` have column names and no primary-key field. The MINIMAL file has neither column names nor a primary-key field.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_no_pk.sh
+```
+
+Requires Docker and `mysql:8.0.46`.
+
 ## mariadb-10.11.14-dml.binlog
 
 A MariaDB 10.11.14 ROW binlog: one transaction inserts two rows into `shop.orders`, updates one, and deletes one. Used to confirm `--show-rows` does not crash. Positional column names are expected.
