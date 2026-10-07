@@ -70,7 +70,27 @@ If your workflow requires complete long-form SQL archival or forensic preservati
 
 Column names are taken from the binlog when `binlog_row_metadata=FULL` (MySQL 8.0.1+). Otherwise columns are `@1`..`@N`, and the report says names are missing. Without that metadata, an integer whose signed and unsigned readings differ is printed as both, the same way `mysqlbinlog -v` does. With FULL metadata, a column is printed with the signedness the binlog recorded.
 
-`--sql-context off` does not print those cells. Auth-DDL `<secret>` redaction is unchanged; it applies to statement text, not to row cells. BinlogViz does not generate rollback or flashback SQL. `mysqlbinlog_cmd` on the same transaction is the cross-check.
+`--sql-context off` does not print those cells. Auth-DDL `<secret>` redaction is unchanged; it applies to statement text, not to row cells. `mysqlbinlog_cmd` on the same transaction is the cross-check. The analyze report does not print undo SQL. `binlogviz flashback` does; see below.
+
+## Flashback SQL
+
+`binlogviz flashback` prints SQL that undoes the selected row changes. It reads the local binlog and does not connect to a database. Apply the script yourself after review.
+
+A DELETE becomes `INSERT` of the before-image. An INSERT becomes `DELETE` of the after-image. An UPDATE sets every column back to the before-image and matches the primary key from the after-image. Statements are in reverse binlog order. Each original transaction is one `START TRANSACTION` / `COMMIT`. A comment names the original GTID, or `GTID unavailable`, and `file:start-position` (the basename and the byte where that transaction starts).
+
+The same table, schema, `--dml`, time, position, and GTID selectors as `analyze` choose which rows are included. The binlog must carry column names (`binlog_row_metadata=FULL`) and complete row images (`binlog_row_image=FULL`). The script sets `utf8mb4`, `time_zone='+00:00'`, and strips `NO_BACKSLASH_ESCAPES` for the session. `TIMESTAMP` literals are the UTC wall clock of the stored instant.
+
+A table with no primary key is still reversed: the `DELETE` or `UPDATE` matches every column and adds `LIMIT 1`, and a comment says so. The `INSERT` that puts a deleted row back does not use `LIMIT 1`.
+
+Flashback refuses rather than guessing. Exit 1, one `Error:` line that names the table and the reason, and no SQL on stdout, when:
+
+- column names are unavailable
+- a before-image or after-image is incomplete (`binlog_row_image` `MINIMAL` or `NOBLOB`)
+- a column cannot be rendered exactly (`FLOAT`, `DOUBLE`, `BIT`, `GEOMETRY`, `VECTOR`, a partial JSON value, invalid UTF-8 in a character column, or missing signedness, collation, or ENUM/SET members)
+- the selected range contains DDL (no reverse DDL is emitted)
+- `--sql-context off` is set, because the script is the row values
+
+Nothing selected uses the same exit 2 and `Error:` line as `analyze` (`schema/table filter matched no events`, `dml filter matched no events`, or `window matched 0 events`), with empty stdout. Auth DDL in the selected range is refused as DDL, so those secrets are not copied into the script. Cell values are not redacted. `analyze` text, Markdown, JSON, and HTML stay unchanged when flashback is not used.
 
 ## Output and Contract Boundaries
 
@@ -96,7 +116,7 @@ It is not positioned as:
 
 - a MySQL replication manager
 - a live binlog tailing service
-- a statement replay engine
+- a statement replay engine (flashback emits inverse row DML for a selected range; it does not replay the original statements)
 - a full historical data reconstruction tool
 - a general-purpose SQL observability platform
 
@@ -110,4 +130,4 @@ To keep the tool focused, these are explicit non-goals for the product shape doc
 - turning progress output into part of the machine-readable report stream
 - replacing deeper replication, forensic, or observability systems
 
-Use BinlogViz when you need a fast operational summary of local ROW binlog workload. Reach for other tooling when you need remote collection, statement-perfect reconstruction, or a broader database operations platform.
+Use BinlogViz when you need a fast operational summary of local ROW binlog workload, or SQL that undoes one selected set of row changes. Reach for other tooling when you need remote collection, replay of the original statements, or a broader database operations platform.

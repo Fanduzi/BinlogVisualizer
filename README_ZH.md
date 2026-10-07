@@ -103,7 +103,7 @@ binlogviz analyze mysql-bin.000123 \
 
 `--dml` 接受 `insert`、`update`、`delete`，用逗号组合。它和 `--include-table` / `--exclude-table`、`--include-schema`、`--start` / `--end`、位点、GTID 过滤一起生效。Summary、Top Tables、Top Transactions、Top Threads 和告警只统计保留下来的类型，报告里会写明这个过滤。类型过滤没有匹配时退出 2，`Error: dml filter matched no events`。
 
-`--show-rows` 默认关闭。打开后，列出的每个事务会打印 DELETE 的前镜像、UPDATE 里发生变化的列（`before -> after`），以及 INSERT 的后镜像。MySQL 8 且 `binlog_row_metadata=FULL` 时显示列名；否则列是 `@1`..`@N`，报告会说明为什么没有列名。值有上限（每个事务 32 行，每个值 64 字节），截断会标明，并给出省略的行数。`--sql-context off` 会一并省略这些值，并在报告里说明。事务上的 `mysqlbinlog_cmd` 仍然在，用来对照。这里不生成回滚 SQL。`TIMESTAMP` 列是存储时刻的 UTC 墙钟（含小数秒），不跟随本机时区。`DATETIME` 仍是 binlog 里写下的墙钟。
+`--show-rows` 默认关闭。打开后，列出的每个事务会打印 DELETE 的前镜像、UPDATE 里发生变化的列（`before -> after`），以及 INSERT 的后镜像。MySQL 8 且 `binlog_row_metadata=FULL` 时显示列名；否则列是 `@1`..`@N`，报告会说明为什么没有列名。值有上限（每个事务 32 行，每个值 64 字节），截断会标明，并给出省略的行数。`--sql-context off` 会一并省略这些值，并在报告里说明。事务上的 `mysqlbinlog_cmd` 仍然在，用来对照。报告本身不打印撤销 SQL；同样的选择条件交给 `binlogviz flashback` 才会打印。`TIMESTAMP` 列是存储时刻的 UTC 墙钟（含小数秒），不跟随本机时区。`DATETIME` 仍是 binlog 里写下的墙钟。
 
 ### 找到误操作的 DROP
 
@@ -111,7 +111,31 @@ binlogviz analyze mysql-bin.000123 \
 binlogviz analyze mysql-bin.000123
 ```
 
-DDL 时间线列出 `DROP TABLE`、`TRUNCATE` 和 `ALTER`，并带上该事务的 GTID，以及事务起点的文件字节。复制 `BinlogServer stop_gtid=<gtid>` 或 `mysqlbinlog --stop-position=<N> <file>`。这个停止点回放更早的事件，并且不包含这条 DDL。binlog 里没有 GTID 时，中文界面写「GTID 不可用」，英文界面写 `GTID unavailable`，位置提示仍然在。这里不生成回滚 SQL。
+DDL 时间线列出 `DROP TABLE`、`TRUNCATE` 和 `ALTER`，并带上该事务的 GTID，以及事务起点的文件字节。复制 `BinlogServer stop_gtid=<gtid>` 或 `mysqlbinlog --stop-position=<N> <file>`。这个停止点回放更早的事件，并且不包含这条 DDL。binlog 里没有 GTID 时，中文界面写「GTID 不可用」，英文界面写 `GTID unavailable`，位置提示仍然在。时间线不生成撤销 SQL。选定范围内有 DDL 时，`binlogviz flashback` 会拒绝。
+
+### 撤销误改的行
+
+先用 `analyze`、DDL 时间线或 `--show-rows` 找到那个事务，再打印只撤销这些行变更的 SQL。先审脚本，再自己执行。flashback 不连接数据库。
+
+```bash
+binlogviz analyze mysql-bin.000123 \
+  --include-table shop.orders \
+  --dml delete \
+  --show-rows
+
+binlogviz flashback mysql-bin.000123 \
+  --include-table shop.orders \
+  --dml delete \
+  > flashback.sql
+
+mysql --default-character-set=utf8mb4 < flashback.sql
+```
+
+`--dml`、`--include-table`、`--include-schema`、`--start` / `--end`、`--start-position` / `--stop-position`、`--include-gtids` / `--exclude-gtids` 与 `analyze` 是同一套选择条件。DELETE 变成前镜像的 `INSERT`。INSERT 变成 `DELETE`。UPDATE 把行设回前镜像，`WHERE` 用后镜像的主键，这样改过主键的行仍能对上当前行。语句按 binlog 逆序：最后一个事务在前，事务内最后一行在前。每个原事务包成一个 `START TRANSACTION` / `COMMIT`。注释里有原 GTID（binlog 没有 GTID 时写 `GTID unavailable`）和 `file:start-position`，即文件名和该事务起点字节，用来和 `mysqlbinlog` 对照。
+
+binlog 必须是 `binlog_row_metadata=FULL` 且 `binlog_row_image=FULL`。脚本会设置 `utf8mb4`、`time_zone='+00:00'`（`TIMESTAMP` 字面量是 UTC 墙钟），并在该会话去掉 `NO_BACKSLASH_ESCAPES`。没有主键的表按每一列匹配并加 `LIMIT 1`，语句上方的注释会说明。被删行的 `INSERT` 不用 `LIMIT 1`。
+
+列名缺失、前镜像或后镜像不完整、某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`BIT`、`GEOMETRY`、`VECTOR`、不完整的 JSON，或缺少有无符号、字符集或 ENUM/SET 成员），或者选定范围内有 DDL 时，flashback 退出 1，只打一行 `Error:`，不打印任何 SQL。`--sql-context off` 同样拒绝：脚本就是行值。什么都没选中时退出 2，`Error:` 与 `analyze` 相同（`schema/table filter matched no events`、`dml filter matched no events` 或 `window matched 0 events`），stdout 为空。账号 DDL 的 `<secret>` 打码仍作用于 `analyze` 里的语句文本。flashback 不打印这些语句；选定范围内的账号 DDL 会按 DDL 拒绝。单元格的值不打码。不运行 `flashback` 时，`analyze` 的文本、Markdown、JSON 和 HTML 不变。
 
 ### 把机器可读结果交给脚本或其他工具
 

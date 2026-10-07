@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- `binlogviz flashback` prints SQL that undoes selected ROW changes, without connecting to a database. A DELETE becomes `INSERT` of the before-image, an INSERT becomes `DELETE`, and an UPDATE restores the before-image, matching the after-image primary key. Statements are in reverse binlog order, one `START TRANSACTION` / `COMMIT` per original transaction, with a comment for the original GTID (or `GTID unavailable`) and `file:start-position`. Selectors are the same as `analyze`: table, schema, `--dml`, time, position, and GTID. Requires `binlog_row_metadata=FULL` and `binlog_row_image=FULL`. A table with no primary key is matched on every column with `LIMIT 1`, and the statement says so. Missing names, an incomplete image, a column that cannot be rendered exactly (`FLOAT`, `DOUBLE`, `BIT`, `GEOMETRY`, `VECTOR`, and the other cases in `docs/concept/limitations.md`), DDL in the selected range, or `--sql-context off` exits 1 with one `Error:` line and no SQL. Nothing selected is the same exit 2 as `analyze`. `analyze` text, Markdown, JSON, and HTML are unchanged when flashback is not used. On MySQL 8.0.46, checksums of `shop.wide` and `shop.heap` match the pre-incident state after a bad DELETE, a multi-row UPDATE (including a primary-key change), and an INSERT batch are undone from the incident binlog alone.
+
 ## v0.23.21
 
 Release date: 2026-10-07

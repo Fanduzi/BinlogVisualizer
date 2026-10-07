@@ -6,7 +6,8 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 
 | File | Responsibility |
 |------|----------------|
-| `event.go` | Defines normalized binlog events with optional producer/transaction provenance, XA identity, and LOAD_DATA intent. |
+| `event.go` | Defines normalized binlog events with optional producer/transaction provenance, XA identity, LOAD_DATA intent, and optional flashback rows. |
+| `flash.go` | Defines `FlashRow` and the reasons a selected row cannot be rendered as undo SQL. |
 | `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, bounded SQL context, optional bounded row images, and optional MySQL 8 commit timestamps plus the transaction-start byte. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs, including per-table primary-key presence. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
