@@ -507,6 +507,18 @@
     "description": "Diagnostic text activity sparkline section header",
     "other": "Activity"
   },
+  "report.text.busiestMinutes": {
+    "description": "Section for the minutes with the most rows, and the tables that produced them",
+    "other": "Busiest Minutes"
+  },
+  "report.text.busiestMinutesLead": {
+    "description": "Lead line under busiest minutes: tables are for that minute, not the whole window",
+    "other": "Rows in that minute, by table."
+  },
+  "report.label.drivingTables": {
+    "description": "Tables that produced a minute's rows",
+    "other": "Driving tables"
+  },
   "report.text.topTables": {
     "description": "Diagnostic text top tables section header",
     "other": "Top Tables"

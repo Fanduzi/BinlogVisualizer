@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, and opt-in minute/pattern detail.
+// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, busiest minutes with the tables that produced those rows, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -48,6 +48,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	renderTopTransactions(&buf, result, opts)
 	renderTopFindings(&buf, result, opts)
 	renderActivitySection(&buf, result)
+	renderBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
 	renderNextActions(&buf, result)
 
 	if opts.ShowMinutes {
@@ -366,11 +367,15 @@ func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, top
 		if i >= topN {
 			break
 		}
-		buf.WriteString("  " + i18n.Tf("report.format.minuteActivity", map[string]any{
+		line := i18n.Tf("report.format.minuteActivity", map[string]any{
 			"Minute":    formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"),
 			"TotalRows": minute.TotalRows,
 			"TxnCount":  minute.TxnCount,
-		}) + "\n")
+		})
+		if tables := formatDrivingTables(minute.TableRows, topN); tables != "" {
+			line += "  " + tables
+		}
+		buf.WriteString("  " + line + "\n")
 	}
 	buf.WriteString("\n")
 }
