@@ -134,6 +134,34 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 `binlog_row_metadata=FULL` 且没有主键的表收到了 UPDATE 或 DELETE 行时，Top Tables 后面会有「无主键」一节，按 UPDATE+DELETE 行数排序。没有主键但只有 INSERT 的表在这一节里单独一行；如果没有 UPDATE/DELETE，则只在摘要里一行，不会被编号成延迟风险。如果每张有行变更的表都有主键，摘要只多一行：`每张表都有主键`。如果没有 FULL 元数据，摘要只多一行：`主键是否存在未知（binlog_row_metadata 不是 FULL）`。这一行不是在说某张表没有主键。无主键表上出现 UPDATE 或 DELETE 时，告警里还会有一条 `no_primary_key`。
 
+### 热点行
+
+「热点行」在「无主键」之后、Top Threads 之前。它按主键被 UPDATE 和 DELETE 行镜像碰到的次数排序。INSERT 不计入。没有主键的表不在这一节排名。没有排名、没有无法追踪的表、也没有触及追踪上限时，这一节省略。
+
+每一条包括：
+
+- `schema.table` 和主键值（`id=7`，复合键为 `sku=BOLT, wh=1`）
+- 碰到次数
+- 碰到该键的不同事务数
+- 第一次和最后一次事件时间（UTC）
+- 最早和最晚那个事务的 GTID 和 `file:byte`（事务起点，用来打开 `mysqlbinlog` 或 BinlogServer）
+- 追踪上限被突破、该键继承了被丢掉键的计数时，标成 `近似`
+
+身份只来自 MySQL 8 `binlog_row_metadata=FULL`（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`）。报告不会拿第 1 列 `@1` 来猜。收到 UPDATE 或 DELETE、但 binlog 里没有主键时，这一节写 `{{表}} 无法追踪热点行：binlog 里没有主键列（binlog_row_metadata 不是 FULL）`。已知主键列但某次行镜像没带上时，说明行镜像里没有主键列。`--top` 限制条数。`--top-rows` 覆盖它。`0` 保留已追踪的全部键。`--sql-context off` 隐藏键值（`主键值已隐藏（--sql-context off）`），次数、时间、GTID 和文件位置仍在。过滤与 Top Tables 相同。
+
+追踪最多保留 8192 个主键。满了之后，新键替换被碰到次数最少的键，次数从被丢掉的计数加一开始。报告会说明达到了上限。继承了被丢掉计数的行标成近似。从未被替换的键保持精确。
+
+```text
+=== 热点行 ===
+  按主键统计 UPDATE 和 DELETE 行镜像。
+  1. shop.counters id=7
+     次数=7  事务=6
+     最早 2026-10-06 14:00:01 UTC  <gtid> <file>:<pos>
+     最晚 2026-10-06 14:00:06 UTC  <gtid> <file>:<pos>
+```
+
+Markdown 在 `## 热点行` 下用表格。HTML 使用 `id="hot-rows-table"`。
+
 ### 3. Top Threads
 
 `Top Threads` 在任一会话有行变更时按行数排序，否则按事件数、字节、事务数。标题会写出依据，例如 `热点线程（按行数）`。
@@ -392,7 +420,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 `transactions` 中的 query 字段取决于 `--sql-context`：
 
-- `off`：所有格式都省略查询文本和 DDL 语句文本。操作、对象和位置仍保留。`--show-rows` 的单元格也不打印；报告写明 `row values omitted because --sql-context is off`
+- `off`：所有格式都省略查询文本和 DDL 语句文本。操作、对象和位置仍保留。`--show-rows` 的单元格也不打印；报告写明 `row values omitted because --sql-context is off`。热点行同样隐藏主键值，次数、时间、GTID 和文件位置仍在
 - `summary`：包含经空白归一化、SQL 正文最多 160 个字符的 `query_summary`；被截断时追加 `… [truncated: <shown> of <original> bytes]`。存在上下文时才包含截断元数据。`query_truncated` 只有碰到 4096 字节存储上限才为 true
 - `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数。被截断时追加同一标记。DDL 时间线语句同样以 4096 字节为上限，被截断时带同一标记
 
@@ -418,6 +446,28 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 `sql_context.available` 表示整份报告中是否观察到源 SQL，即使该 SQL 不在 Top 事务中。因而 `full` 与 `available=false` 可以同时出现。provenance 不受该模式影响，任何模式都不会序列化 row-image 值。
 
 命名 snapshot 会保存完整的 report-v3 payload。snapshot/compare 读取端继续接受 v0-v2，并且不会伪造缺失身份。
+
+### `hot_rows`
+
+`hot_rows` 始终是数组，对应热点行，并用与文本相同的 `--top` 或 `--top-rows` 截断。`hot_rows_listed` 和 `hot_rows_omitted` 记录这个上限。analyze 追踪了键时 `hot_row_track_limit` 为 `8192`。新键替换了被碰到次数最少的键时，`hot_rows_overflow` 为 true，`hot_rows_note` 重复上限说明。`hot_row_unavailable` 列出收到了 UPDATE 或 DELETE、但 binlog 里没有主键的表。每条有 `schema`、`table`、`reason`（`metadata` 或 `values`）和 `message`。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `schema` | string | 是 | schema 名 |
+| `table` | string | 是 | 表名 |
+| `primary_key` | string | 否 | `id=7` 或 `sku=BOLT, wh=1`。`--sql-context off` 时省略 |
+| `key_hidden` | boolean | 否 | `--sql-context off` 隐藏了键值时为 true。次数仍在 |
+| `touches` | integer | 是 | 带这个键的 UPDATE 和 DELETE 行镜像数。`approximate` 为 true 时才不是精确值 |
+| `transactions` | integer | 是 | 碰到该键的不同事务数。从未被替换的键是精确的 |
+| `first_time` | string | 否 | 第一次碰到的 RFC3339 UTC 时间 |
+| `last_time` | string | 否 | 最后一次碰到的 RFC3339 UTC 时间 |
+| `first_gtid` | string | 否 | 最早碰到该键的事务 GTID |
+| `first_file` | string | 否 | 该事务起点所在文件的 basename |
+| `first_pos` | integer | 否 | 该事务起点的字节偏移 |
+| `last_gtid` | string | 否 | 最晚碰到该键的事务 GTID |
+| `last_file` | string | 否 | 该事务起点所在文件的 basename |
+| `last_pos` | integer | 否 | 该事务起点的字节偏移 |
+| `approximate` | boolean | 否 | 触及 8192 上限后，该键继承了被丢掉键的次数时为 true |
 
 ### `threads`
 

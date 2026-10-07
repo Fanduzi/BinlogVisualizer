@@ -97,6 +97,13 @@ type htmlReportData struct {
 	ThreadShowEvents       bool
 	ThreadShowBytes        bool
 	ThreadShowTxns         bool
+	HasHotRows             bool
+	HotRowsLead            string
+	HotRows                []htmlHotRow
+	HotRowsHidden          string
+	HotRowsOmitted         string
+	HotRowUnavailable      []string
+	HotRowsNote            string
 	TableActivitySeries    template.JS
 	DDLEvents              []htmlDDLEvent
 	HasDDLEvents           bool
@@ -163,6 +170,19 @@ type htmlRepTxn struct {
 	TxnKey    string
 	TotalRows int
 	Duration  string
+}
+
+type htmlHotRow struct {
+	Rank         int
+	Table        string
+	Key          string
+	Touches      int
+	Transactions int
+	First        string
+	Last         string
+	FirstTxn     string
+	LastTxn      string
+	Approximate  bool
 }
 
 type htmlTableRow struct {
@@ -454,6 +474,42 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasDDLEvents = len(d.DDLEvents) > 0
 	d.DDLCount = len(d.DDLEvents)
 
+	if hotRowHasSection(result.HotRows) {
+		d.HasHotRows = true
+		d.HotRowsLead = i18n.T("report.text.hotRowsLead")
+		listed, omitted := limitHotRows(result.HotRows.Rows, opts.TopRows)
+		if hotRowKeysHidden(opts) && len(listed) > 0 {
+			d.HotRowsHidden = i18n.T("report.text.hotRowsHidden")
+		}
+		d.HotRows = make([]htmlHotRow, len(listed))
+		for i, row := range listed {
+			key := hotRowKey(row, opts)
+			if key == "" {
+				key = i18n.T("report.text.hotRowsHiddenKey")
+			}
+			d.HotRows[i] = htmlHotRow{
+				Rank:         i + 1,
+				Table:        hotRowTable(row),
+				Key:          key,
+				Touches:      row.Touches,
+				Transactions: row.Transactions,
+				First:        formatTime(row.FirstTime),
+				Last:         formatTime(row.LastTime),
+				FirstTxn:     hotRowTxnPlace(row.FirstGTID, row.FirstFile, row.FirstPos),
+				LastTxn:      hotRowTxnPlace(row.LastGTID, row.LastFile, row.LastPos),
+				Approximate:  row.Approximate,
+			}
+		}
+		if omitted > 0 {
+			d.HotRowsOmitted = i18n.Tf("report.text.hotRowsOmitted", map[string]any{"Count": omitted})
+		}
+		for _, gap := range result.HotRows.Unavailable {
+			d.HotRowUnavailable = append(d.HotRowUnavailable, hotRowUnavailableLine(gap))
+		}
+		if result.HotRows.Overflow {
+			d.HotRowsNote = hotRowOverflowLine(result.HotRows.TrackLimit)
+		}
+	}
 	d.DMLFilter = dmlFilterLabel(result.Scope)
 	pk := primaryKeyView(result.Tables)
 	if len(pk.risks) == 0 {

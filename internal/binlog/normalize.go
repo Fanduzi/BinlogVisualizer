@@ -100,6 +100,7 @@ func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 		KeyStatus:         raw.KeyStatus,
 		RowImages:         raw.RowImages,
 		RowImagesOmitted:  raw.RowImagesOmitted,
+		RowKeys:           raw.RowKeys,
 	}
 }
 

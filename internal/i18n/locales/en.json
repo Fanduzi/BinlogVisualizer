@@ -21,7 +21,7 @@
   },
   "cmd.analyze.long": {
     "description": "Analyze command long description",
-    "other": "Analyze binlog files. Pass - to read one binary binlog from a pipe; stdin is copied to a temporary file because parsing needs seek. Default text, JSON, markdown, and HTML rank Top Threads by rows, events, bytes, or transactions and show thread_id plus user@host and schema when the binlog has them. Default text and JSON name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host is shown only when the binlog has it. A field the binlog does not have stays absent."
+    "other": "Analyze binlog files. Pass - to read one binary binlog from a pipe; stdin is copied to a temporary file because parsing needs seek. Default text, JSON, markdown, and HTML rank Top Threads by rows, events, bytes, or transactions and show thread_id plus user@host and schema when the binlog has them. They also list Hot Rows: the primary keys touched by the most UPDATE and DELETE row images, when binlog_row_metadata=FULL names the key. Default text and JSON name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host is shown only when the binlog has it. A field the binlog does not have stays absent."
   },
   "cmd.analyze.flag.start": {
     "description": "Start time flag description",
@@ -62,6 +62,10 @@
   "cmd.analyze.flag.topThreads": {
     "description": "Top threads flag description",
     "other": "Number of top threads or sessions to show (0 = unlimited). Inherits --top when omitted"
+  },
+  "cmd.analyze.flag.topRows": {
+    "description": "Hot rows flag description",
+    "other": "Number of hot primary keys to show (0 = unlimited). Inherits --top when omitted"
   },
   "cmd.analyze.flag.details": {
     "description": "Detailed text sections flag description",
@@ -414,6 +418,58 @@
   "report.text.noPrimaryKeyInsertOnly": {
     "description": "INSERT-only no-primary-key tables, not ranked as lag risk",
     "other": "INSERT-only, not a lag risk: {{.Tables}}"
+  },
+  "report.text.hotRows": {
+    "description": "Hot Rows section title",
+    "other": "Hot Rows"
+  },
+  "report.text.hotRowsLead": {
+    "description": "Hot Rows section lead",
+    "other": "UPDATE and DELETE row images, by primary key."
+  },
+  "report.text.hotRowsUnavailable": {
+    "description": "Hot-row tracking unavailable because metadata is not FULL",
+    "other": "hot-row tracking unavailable for {{.Table}}: primary key is not in the binlog (binlog_row_metadata is not FULL)"
+  },
+  "report.text.hotRowsUnavailableValues": {
+    "description": "Hot-row tracking unavailable because the row image omitted the key",
+    "other": "hot-row tracking unavailable for {{.Table}}: the primary key was not in the row image"
+  },
+  "report.text.hotRowsOverflow": {
+    "description": "Hot-row tracking replaced the least-touched key",
+    "other": "Hot-row tracking keeps {{.Limit}} primary keys. A new key replaced the least-touched key and may count touches that belonged to the dropped key; rows marked approximate include those inherited touches. A key that was never replaced keeps an exact count."
+  },
+  "report.text.hotRowsHidden": {
+    "description": "Primary key values hidden by sql-context off",
+    "other": "primary key values hidden (--sql-context off)"
+  },
+  "report.text.hotRowsHiddenKey": {
+    "description": "Placeholder when a primary key value is hidden",
+    "other": "[hidden]"
+  },
+  "report.text.hotRowsOmitted": {
+    "description": "Hot rows omitted by the top limit",
+    "other": "{{.Count}} more hot rows omitted"
+  },
+  "report.text.hotRowsTouches": {
+    "description": "Hot row touch count label",
+    "other": "touches"
+  },
+  "report.text.hotRowsTransactions": {
+    "description": "Hot row transaction count label",
+    "other": "transactions"
+  },
+  "report.text.hotRowsFirst": {
+    "description": "First touch label",
+    "other": "first"
+  },
+  "report.text.hotRowsLast": {
+    "description": "Last touch label",
+    "other": "last"
+  },
+  "report.text.hotRowsApproximate": {
+    "description": "Approximate hot-row count marker",
+    "other": "approximate"
   },
   "report.text.rowValuesSuppressed": {
     "description": "Shown when --show-rows is set and --sql-context is off",

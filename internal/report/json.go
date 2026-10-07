@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"path/filepath"
 	"time"
 
 	"binlogviz/internal/i18n"
@@ -34,6 +35,13 @@ type jsonAnalysisResult struct {
 	ThreadsListed       int                    `json:"threads_listed"`
 	ThreadsOmitted      int                    `json:"threads_omitted"`
 	ThreadsRankedBy     string                 `json:"threads_ranked_by,omitempty"`
+	HotRows             []jsonHotRow           `json:"hot_rows"`
+	HotRowsListed       int                    `json:"hot_rows_listed"`
+	HotRowsOmitted      int                    `json:"hot_rows_omitted"`
+	HotRowTrackLimit    int                    `json:"hot_row_track_limit,omitempty"`
+	HotRowsOverflow     bool                   `json:"hot_rows_overflow,omitempty"`
+	HotRowsNote         string                 `json:"hot_rows_note,omitempty"`
+	HotRowUnavailable   []jsonHotRowGap        `json:"hot_row_unavailable,omitempty"`
 	Transactions        []jsonTransaction      `json:"transactions"`
 	TransactionsListed  int                    `json:"transactions_listed"`
 	TransactionsOmitted int                    `json:"transactions_omitted"`
@@ -263,6 +271,31 @@ type jsonThreadStats struct {
 	ShareOfRows  float64    `json:"share_of_rows"`
 }
 
+type jsonHotRow struct {
+	Schema       string `json:"schema"`
+	Table        string `json:"table"`
+	PrimaryKey   string `json:"primary_key,omitempty"`
+	KeyHidden    bool   `json:"key_hidden,omitempty"`
+	Touches      int    `json:"touches"`
+	Transactions int    `json:"transactions"`
+	FirstTime    string `json:"first_time,omitempty"`
+	LastTime     string `json:"last_time,omitempty"`
+	FirstGTID    string `json:"first_gtid,omitempty"`
+	FirstFile    string `json:"first_file,omitempty"`
+	FirstPos     int64  `json:"first_pos,omitempty"`
+	LastGTID     string `json:"last_gtid,omitempty"`
+	LastFile     string `json:"last_file,omitempty"`
+	LastPos      int64  `json:"last_pos,omitempty"`
+	Approximate  bool   `json:"approximate,omitempty"`
+}
+
+type jsonHotRowGap struct {
+	Schema  string `json:"schema"`
+	Table   string `json:"table"`
+	Reason  string `json:"reason"`
+	Message string `json:"message"`
+}
+
 type jsonTransaction struct {
 	TxnKey             string         `json:"txn_key"`
 	XAXID              string         `json:"xa_xid,omitempty"`
@@ -451,6 +484,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		transactionsOmitted = 0
 	}
 	threads, threadsOmitted := limitThreads(result.Threads, opts.TopThreads)
+	hotRows, hotOmitted := limitHotRows(result.HotRows.Rows, opts.TopRows)
 	converted := jsonAnalysisResult{
 		ReportVersion:       currentReportVersion,
 		WorkloadID:          result.WorkloadID,
@@ -466,6 +500,13 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		ThreadsListed:       len(threads),
 		ThreadsOmitted:      threadsOmitted,
 		ThreadsRankedBy:     result.ThreadsRankedBy,
+		HotRows:             convertHotRows(hotRows, opts),
+		HotRowsListed:       len(hotRows),
+		HotRowsOmitted:      hotOmitted,
+		HotRowTrackLimit:    result.HotRows.TrackLimit,
+		HotRowsOverflow:     result.HotRows.Overflow,
+		HotRowsNote:         hotRowsNote(result.HotRows),
+		HotRowUnavailable:   convertHotRowGaps(result.HotRows.Unavailable),
 		Transactions:        convertTransactions(result.Transactions, opts, result.Diagnostics.ServerVersion),
 		TransactionsListed:  transactionsListed,
 		TransactionsOmitted: transactionsOmitted,
@@ -893,6 +934,68 @@ func convertTransactions(txns []model.Transaction, opts Options, serverVersion s
 		result[i] = jt
 	}
 	return result
+}
+
+func hotRowsNote(report model.HotRowReport) string {
+	if !report.Overflow {
+		return ""
+	}
+	return hotRowOverflowLine(report.TrackLimit)
+}
+
+func convertHotRows(rows []model.HotRow, opts Options) []jsonHotRow {
+	if len(rows) == 0 {
+		return []jsonHotRow{}
+	}
+	hidden := hotRowKeysHidden(opts)
+	out := make([]jsonHotRow, len(rows))
+	for i, row := range rows {
+		item := jsonHotRow{
+			Schema:       row.Schema,
+			Table:        row.Table,
+			Touches:      row.Touches,
+			Transactions: row.Transactions,
+			FirstTime:    formatJSONTime(row.FirstTime),
+			LastTime:     formatJSONTime(row.LastTime),
+			FirstGTID:    row.FirstGTID,
+			FirstFile:    hotRowFile(row.FirstFile),
+			FirstPos:     row.FirstPos,
+			LastGTID:     row.LastGTID,
+			LastFile:     hotRowFile(row.LastFile),
+			LastPos:      row.LastPos,
+			Approximate:  row.Approximate,
+		}
+		if hidden {
+			item.KeyHidden = true
+		} else {
+			item.PrimaryKey = row.PrimaryKey
+		}
+		out[i] = item
+	}
+	return out
+}
+
+func hotRowFile(path string) string {
+	if path == "" {
+		return ""
+	}
+	return filepath.Base(path)
+}
+
+func convertHotRowGaps(gaps []model.HotRowGap) []jsonHotRowGap {
+	if len(gaps) == 0 {
+		return nil
+	}
+	out := make([]jsonHotRowGap, len(gaps))
+	for i, gap := range gaps {
+		out[i] = jsonHotRowGap{
+			Schema:  gap.Schema,
+			Table:   gap.Table,
+			Reason:  gap.Reason,
+			Message: hotRowUnavailableLine(gap),
+		}
+	}
+	return out
 }
 
 func convertThreads(threads []model.ThreadStats) []jsonThreadStats {

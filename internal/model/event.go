@@ -39,6 +39,16 @@ type NormalizedEvent struct {
 	QueryOriginalBytes int    // Original SQL byte count before truncation
 	RowImages          []RowImage
 	RowImagesOmitted   int
+	// RowKeys are primary-key identities for UPDATE and DELETE images when
+	// FULL metadata named the key. Empty means the key is not known. Never
+	// filled from column @1.
+	RowKeys []string
+	// TxnGTID, TxnStartPath, and TxnStartPos are set by the analyzer from the
+	// open transaction group. The parser leaves them empty. TxnStartPos is
+	// the group's first event (the GTID event when one exists).
+	TxnGTID      string
+	TxnStartPath string
+	TxnStartPos  int64
 	// HoldingGTID, HoldingStartPath, and HoldingStartPos are set by the
 	// analyzer on a DDL event from the open transaction group. The parser
 	// leaves them empty. HoldingStartPos is the group's first event (the

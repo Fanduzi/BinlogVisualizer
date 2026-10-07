@@ -50,6 +50,8 @@ cat mysql-bin.000123 | binlogviz analyze -
 
 默认文本报告包含热点线程，有行变更时按行数排序（否则按事件数、字节或事务数）。binlog 里有的 `thread_id`、`server_id`、`user@host` 和 schema 会写出来，回答「谁写最多」不必再 `jq`。`--top` 限制这一节；`--top-threads 0` 保留全部会话。JSON 的同一排名在 `threads`。
 
+同一份报告还有热点行：被 UPDATE 和 DELETE 行镜像碰到次数最多的主键。每一条给出次数、碰到它的事务数、第一次和最后一次的事件时间，以及最早和最晚那个事务的 GTID 和 file:byte，可以直接拿去跑 `mysqlbinlog` 或 BinlogServer。主键只来自 MySQL 8 `binlog_row_metadata=FULL`。binlog 没有记下主键时，报告会说明这张表无法追踪热点行，不会拿第 1 列 `@1` 来猜。没有主键的表不进这个排名。`--top` 限制这一节；`--top-rows` 覆盖它（`0` 保留已追踪的全部键）。`--sql-context off` 隐藏键值，次数仍在。JSON 字段是 `hot_rows`。追踪最多保留 8192 个主键。超出后，新键替换被碰到次数最少的键；报告会说明达到了上限，继承了被丢掉键的计数的行标成近似。一直留在表里的键计数是精确的。
+
 `analyze` 在计入至少 1 个事件时退出 **0**；无法分析（损坏、截断、没有 Format Description）时退出 **1**；完整 binlog 解析成功但计入 0 个事件（空的 `--start`/`--end` 窗口，或仅 Format Description / rotate）时退出 **2**。schema 或 table 过滤没有匹配到事件同样是 exit 2，`Error:` 会写明过滤没有匹配。`--dml` 没有匹配到事件也是 exit 2，`Error: dml filter matched no events`。过滤匹配到 view、event、function、procedure 或 trigger 时退出 0，即使没有行变更也会打印这条 DDL。exit 2 不写 `stdout`，只在 `stderr` 打一行 `Error:`。如果进度条还停在当前 stderr 行，打印 `Error:` 之前会先清掉那一行。
 
 ### 按 binlog 顺序分析整个目录
@@ -225,7 +227,7 @@ HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操�
 
 ## Analyze 性能门槛
 
-面向故障排查时，单个 1 GB binlog 的 `analyze` 目标耗时是目标 DBA 环境上的 10 秒。超过 15 秒应视为性能失败，并用 `pprof` 做剖析。
+面向故障排查时，单个 1 GB binlog 的 `analyze` 目标耗时是目标 DBA 环境上的 10 秒。超过 15 秒应视为性能失败，并用 `pprof` 做剖析。热点行追踪不会为文件里的每一行建一张表：最多保留 8192 个主键。超出后，新键替换被碰到次数最少的键，报告把继承来的计数标成近似。
 
 默认 `--detail-store none` 与 `--detail-store duckdb` 生成的 JSON 等价，同时峰值 RSS 降低约 38%（在 988 MB MySQL 8.0 ROW binlog 上测量）。总耗时仍主要受 parser/流式聚合限制。
 
@@ -243,6 +245,7 @@ time binlogviz analyze /path/to/mysql-bin.000044 --format html --output /tmp/bin
 BinlogViz 重点服务这些 DBA 常见问题：
 
 - **哪些表承受了最重的写入负载？**
+- **哪个主键被 UPDATE 或 DELETE 的次数最多？**
 - **哪些 UPDATE 或 DELETE 打到了没有主键的表？**
 - **这份副本当时落后多少，是哪些事务造成的？**
 - **哪些事务大到值得优先排查？**
