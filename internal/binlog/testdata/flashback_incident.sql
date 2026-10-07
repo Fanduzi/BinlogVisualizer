@@ -18,3 +18,16 @@ INSERT INTO shop.wide (
   (12, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0.0000, '2020-01-01 00:00:00.000000', '2020-01-01 00:00:00.000000', 'batch \\ end', x'', x'', JSON_OBJECT('s', 'a\\b'), 'blue', 'a,b,c');
 INSERT INTO shop.heap VALUES (4, 'new'), (5, 'it''s');
 COMMIT;
+START TRANSACTION;
+UPDATE shop.jdoc SET doc = JSON_OBJECT('n', 1) WHERE id = 1;
+UPDATE shop.jdoc SET doc = JSON_OBJECT('n', 2) WHERE id = 2;
+DELETE FROM shop.jdoc WHERE id = 3;
+INSERT INTO shop.jdoc (id, doc) VALUES (4, JSON_OBJECT('n', 4, 'd', 10.0));
+UPDATE shop.jheap SET doc = JSON_OBJECT('n', 2) WHERE JSON_EXTRACT(doc, '$.n') = 1;
+UPDATE shop.chars SET l1 = _latin1 0x61, u16 = _utf16 0x0043 WHERE id = 1;
+DELETE FROM shop.chars WHERE id = 2;
+INSERT INTO shop.chars (id, l1, u16) VALUES (9, _latin1 0x62, _utf16 0x0044);
+UPDATE shop.gen SET base = 11 WHERE id = 1;
+DELETE FROM shop.gen WHERE id = 2;
+INSERT INTO shop.gen (id, base) VALUES (4, 40);
+COMMIT;

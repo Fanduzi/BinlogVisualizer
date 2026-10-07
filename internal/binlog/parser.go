@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
-// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand. SetCaptureFlashback attaches exact undo literals; it stays off for analyze.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents; it stays off for analyze.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -88,6 +88,11 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 	// whose location is time.Local, so the string followed the process zone. DATETIME
 	// is a zone-less wall clock and does not use this location.
 	bp.SetTimestampStringLocation(time.UTC)
+	if p.captureFlash {
+		// The hook replaces Decode. It still decodes, and keeps the JSON bytes
+		// go-mysql would otherwise turn into text. Analyze leaves this unset.
+		bp.SetRowsEventDecodeFunc(decodeRowsKeepJSON)
+	}
 	if startOffset < 0 {
 		startOffset = 0
 	}

@@ -31,7 +31,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 		`it\'s "bad" \\ 雪`,
 		"X'DEADBEEFFF00'",
 		"X'00FFFE'",
-		"CAST(",
+		"JSON_OBJECT(",
 		"'blue'",
 		"'a,c'",
 		"WHERE `id` <=> 30 AND `bucket` <=> 9",
@@ -58,17 +58,23 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 		t.Fatalf("emitted DDL:\n%s", stdout)
 	}
 
-	onlyDelete, _, err := executeFlashbackLikeMain(t, path, "--dml", "delete")
+	onlyDelete, deleteErr, err := executeFlashbackLikeMain(t, path, "--dml", "delete")
 	if err != nil {
 		t.Fatalf("dml delete: %v", err)
 	}
 	if strings.Count(onlyDelete, "START TRANSACTION;") != 1 || !strings.Contains(onlyDelete, "18446744073709551615") || strings.Contains(onlyDelete, "`id` <=> 10") {
 		t.Fatalf("dml delete kept the wrong rows:\n%s", onlyDelete)
 	}
+	if strings.Contains(deleteErr, "only partly undone") {
+		t.Fatalf("dml delete warned:\n%s", deleteErr)
+	}
 
-	heap, _, err := executeFlashbackLikeMain(t, path, "--include-table", "shop.heap")
+	heap, heapErr, err := executeFlashbackLikeMain(t, path, "--include-table", "shop.heap")
 	if err != nil {
 		t.Fatalf("heap: %v", err)
+	}
+	if !strings.Contains(heapErr, "only partly undone") {
+		t.Fatalf("split warning missing:\n%s", heapErr)
 	}
 	if strings.Contains(heap, "shop`.`wide") || !strings.Contains(heap, "shop`.`heap") {
 		t.Fatalf("table filter:\n%s", heap)
@@ -127,6 +133,38 @@ func TestAnalyzeOutputDoesNotIncludeFlashbackSQL(t *testing.T) {
 	}
 	if strings.Contains(stdout, "flashback reverses") || strings.Contains(stdout, "SET NAMES utf8mb4") || strings.Contains(stdout, "START TRANSACTION;") {
 		t.Fatalf("analyze printed undo SQL:\n%s", stdout)
+	}
+	_, stderr, err = executeAnalyzeLikeMain(t, path, "--include-table", "shop.heap", "--format", "text")
+	if err != nil {
+		t.Fatalf("analyze heap: %v\n%s", err, stderr)
+	}
+	if strings.Contains(stderr, "only partly undone") {
+		t.Fatalf("analyze warned:\n%s", stderr)
+	}
+}
+
+func TestFlashbackHelpWording(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	stdout, stderr, err := executeFlashbackLikeMain(t, "--help")
+	if err != nil {
+		t.Fatalf("help: %v\n%s", err, stderr)
+	}
+	out := stdout + stderr
+	if strings.Contains(out, "Only count these ROW kinds") || !strings.Contains(out, "Only undo these ROW kinds") || !strings.Contains(out, "Print SQL that reverses selected ROW changes") {
+		t.Fatalf("english help:\n%s", out)
+	}
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"--lang", "zh-CN", "flashback", "--help"})
+	stdout, stderr, err = captureStdoutStderrRun(t, func() error {
+		return cmd.Execute()
+	})
+	if err != nil {
+		t.Fatalf("zh help: %v\n%s", err, stderr)
+	}
+	out = stdout + stderr
+	if !strings.Contains(out, "只撤销这些 ROW 类型") || !strings.Contains(out, "打印 SQL，把选中的 ROW 变更撤回去") {
+		t.Fatalf("zh help:\n%s", out)
 	}
 }
 
@@ -197,34 +235,43 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 		t.Fatalf("server is not MySQL 8.0 ROW/GTID/FULL: %s", vars)
 	}
 
+	const checksumSQL = "CHECKSUM TABLE shop.wide, shop.heap, shop.jdoc, shop.jheap, shop.chars, shop.gen"
 	e2eMySQL(t, "RESET MASTER")
 	e2eMySQL(t, readTestdata(t, "flashback_setup.sql"))
-	beforeSum := e2eMySQL(t, "CHECKSUM TABLE shop.wide, shop.heap")
+	beforeSum := e2eMySQL(t, checksumSQL)
 	beforeRows := e2eMySQL(t, flashbackOrderSQL)
+	executed := e2eGTIDSet(e2eMySQL(t, "SELECT @@GLOBAL.gtid_executed"))
 	e2eMySQL(t, "FLUSH LOGS")
 	e2eMySQL(t, readTestdata(t, "flashback_incident.sql"))
-	afterSum := e2eMySQL(t, "CHECKSUM TABLE shop.wide, shop.heap")
+	afterSum := e2eMySQL(t, checksumSQL)
 	if afterSum == beforeSum {
 		t.Fatalf("incident did not change checksums:\n%s", afterSum)
 	}
 	e2eMySQL(t, "FLUSH LOGS")
 
 	datadir := strings.TrimSpace(e2eMySQL(t, "SELECT @@datadir"))
-	logs := e2eMySQL(t, "SHOW BINARY LOGS")
-	name := previousBinlog(t, logs)
-	src := datadir + "/" + name
-	dst := t.TempDir() + "/" + name
-	e2eCopy(t, src, dst)
-
-	sql, stderr, err := executeFlashbackLikeMain(t, dst)
-	if err != nil {
-		t.Fatalf("flashback: %v\n%s", err, stderr)
+	names := binlogNames(t, e2eMySQL(t, "SHOW BINARY LOGS"))
+	dir := t.TempDir()
+	args := make([]string, 0, len(names))
+	for _, name := range names[:len(names)-1] {
+		dst := dir + "/" + name
+		e2eCopy(t, datadir+"/"+name, dst)
+		args = append(args, dst)
 	}
-	if !strings.Contains(sql, "18446744073709551615") || !strings.Contains(sql, "START TRANSACTION;") {
+	args = append(args, "--exclude-gtids", executed)
+
+	sql, stderr, err := executeFlashbackLikeMain(t, args...)
+	if err != nil {
+		t.Fatalf("flashback exclude %s: %v\n%s", executed, err, stderr)
+	}
+	if !strings.Contains(sql, "18446744073709551615") || !strings.Contains(sql, "JSON_OBJECT(") || !strings.Contains(sql, "_latin1 ") || !strings.Contains(sql, "_utf16 ") {
 		t.Fatalf("live flashback SQL:\n%s", sql)
 	}
+	if strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
+		t.Fatalf("wrote generated columns:\n%s", sql)
+	}
 	e2eMySQL(t, sql)
-	restored := e2eMySQL(t, "CHECKSUM TABLE shop.wide, shop.heap")
+	restored := e2eMySQL(t, checksumSQL)
 	if restored != beforeSum {
 		t.Fatalf("checksum\nbefore:\n%s\nafter incident:\n%s\nrestored:\n%s", beforeSum, afterSum, restored)
 	}
@@ -241,6 +288,10 @@ SELECT id, bucket, i_tiny, i_tiny_u, i_small, i_int, i_int_u, i_big, i_big_u, qt
        note, HEX(raw), HEX(bits), payload, color, flags
 FROM shop.wide ORDER BY id, bucket;
 SELECT id, note FROM shop.heap ORDER BY id, note;
+SELECT id, HEX(doc) FROM shop.jdoc ORDER BY id;
+SELECT HEX(doc) FROM shop.jheap ORDER BY HEX(doc);
+SELECT id, HEX(l1), HEX(u16) FROM shop.chars ORDER BY id;
+SELECT id, base, stor FROM shop.gen ORDER BY id;
 `
 
 func readTestdata(t *testing.T, name string) string {
@@ -252,7 +303,7 @@ func readTestdata(t *testing.T, name string) string {
 	return string(body)
 }
 
-func previousBinlog(t *testing.T, logs string) string {
+func binlogNames(t *testing.T, logs string) []string {
 	t.Helper()
 	var names []string
 	for _, line := range strings.Split(logs, "\n") {
@@ -264,7 +315,19 @@ func previousBinlog(t *testing.T, logs string) string {
 	if len(names) < 2 {
 		t.Fatalf("binary logs:\n%s", logs)
 	}
-	return names[len(names)-2]
+	return names
+}
+
+func e2eGTIDSet(raw string) string {
+	var parts []string
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == '\n' || r == '\r' || r == ' ' || r == '\t'
+	}) {
+		if part != "" {
+			parts = append(parts, part)
+		}
+	}
+	return strings.Join(parts, ",")
 }
 
 func e2eMySQL(t *testing.T, stdin string) string {

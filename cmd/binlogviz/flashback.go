@@ -102,8 +102,39 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.analyze.flag.excludeSchema"))
 	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.analyze.flag.includeTable"))
 	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.analyze.flag.excludeTable"))
-	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.analyze.flag.dml"))
+	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
+	help := cmd.HelpFunc()
+	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		if langFlag != "" {
+			_ = i18n.Init(langFlag)
+		}
+		refreshFlashbackHelp(cmd)
+		help(cmd, args)
+	})
 	return cmd
+}
+
+func refreshFlashbackHelp(cmd *cobra.Command) {
+	cmd.Use = i18n.T("cmd.flashback.use")
+	cmd.Short = i18n.T("cmd.flashback.short")
+	cmd.Long = i18n.T("cmd.flashback.long")
+	usage := map[string]string{
+		"start":          "cmd.analyze.flag.start",
+		"end":            "cmd.analyze.flag.end",
+		"from-dir":       "cmd.analyze.flag.fromDir",
+		"prefix":         "cmd.analyze.flag.prefix",
+		"sql-context":    "cmd.analyze.flag.sqlContext",
+		"include-schema": "cmd.analyze.flag.includeSchema",
+		"exclude-schema": "cmd.analyze.flag.excludeSchema",
+		"include-table":  "cmd.analyze.flag.includeTable",
+		"exclude-table":  "cmd.analyze.flag.excludeTable",
+		"dml":            "cmd.flashback.flag.dml",
+	}
+	for name, key := range usage {
+		if flag := cmd.Flags().Lookup(name); flag != nil {
+			flag.Usage = i18n.T(key)
+		}
+	}
 }
 
 func writeFlashbackSQL(stream commandAnalyzer) error {
@@ -117,6 +148,9 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 	}
 	if sql == "" {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
+	}
+	for _, warning := range src.FlashbackWarnings() {
+		fmt.Fprintln(os.Stderr, warning)
 	}
 	_, err = fmt.Fprint(os.Stdout, sql)
 	return err
