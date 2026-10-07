@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow export`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz flashback`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow export`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -12,6 +12,8 @@ binlogviz --lang zh-CN analyze <binlog files...>
 binlogviz analyze <binlog files...>
 binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz analyze --from-dir DIR --prefix PREFIX --format json --snapshot-name NAME
+binlogviz flashback <binlog files...>
+binlogviz flashback --from-dir DIR --prefix PREFIX
 binlogviz compare <current.json> <baseline.json>
 binlogviz compare --current-snapshot CURRENT --baseline-snapshot BASELINE
 binlogviz trend <snapshot...>
@@ -126,7 +128,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--dml` | none | 只统计这些 ROW 类型（逗号分隔）：`insert`、`update`、`delete`，可组合。与 schema、table、时间、位点、GTID 过滤一起生效。没有匹配时退出 2：`Error: dml filter matched no events`。 |
 | `--show-rows` | `false` | 为列出的事务打印有界行值（DELETE 前镜像，UPDATE 变化列，INSERT 后镜像）。列名需要 `binlog_row_metadata=FULL`；否则列是 `@1`..`@N`。`--sql-context off` 省略这些值。 |
 
-binlog 是 MySQL 8 且 `binlog_row_metadata=FULL` 时，TABLE_MAP 可选元数据会给出每张表的主键（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`），或者说明这张表没有主键。每种输出都会列出没有主键、并且收到了 UPDATE 或 DELETE 行的表，按这些行数排序。副本应用这些行时可能全表扫描。没有主键但只有 INSERT 的表会点名，但不会被排成这种延迟风险。只要有一行 UPDATE 或 DELETE，就会在大事务和尖峰告警旁边给出 `no_primary_key` 警告；没有单独的阈值参数。没有 FULL 元数据时报告不猜测：这些表是 `unknown`，并说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。`--include-table`、schema 过滤、`--dml`，以及时间、位点、GTID 选择，对这一节的作用与对 Top Tables 相同。这里不生成回滚 SQL。
+binlog 是 MySQL 8 且 `binlog_row_metadata=FULL` 时，TABLE_MAP 可选元数据会给出每张表的主键（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`），或者说明这张表没有主键。每种输出都会列出没有主键、并且收到了 UPDATE 或 DELETE 行的表，按这些行数排序。副本应用这些行时可能全表扫描。没有主键但只有 INSERT 的表会点名，但不会被排成这种延迟风险。只要有一行 UPDATE 或 DELETE，就会在大事务和尖峰告警旁边给出 `no_primary_key` 警告；没有单独的阈值参数。没有 FULL 元数据时报告不猜测：这些表是 `unknown`，并说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。`--include-table`、schema 过滤、`--dml`，以及时间、位点、GTID 选择，对这一节的作用与对 Top Tables 相同。analyze 报告不生成撤销 SQL。`binlogviz flashback` 会生成。
 
 热点行按主键被 UPDATE 和 DELETE 行镜像碰到的次数排序。每一条有次数、不同事务数、第一次和最后一次事件时间，以及最早和最晚那个事务的 GTID 和 file:byte（事务起点，用来打开 `mysqlbinlog` 或 BinlogServer）。身份只来自 MySQL 8 `binlog_row_metadata=FULL`（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX` 点名的列，不是第 1 列 `@1`）。binlog 里没有主键时，这张表不参与排名，报告说明无法追踪热点行，因为 `binlog_row_metadata` 不是 FULL。没有主键的表不在这一节排名。`--top` 限制条数；`--top-rows` 覆盖它；`0` 保留已追踪的全部键。`--sql-context off` 隐藏键值，次数仍在。过滤与 Top Tables 相同。追踪最多保留 8192 个主键。满了之后，新键替换被碰到次数最少的键，次数从被丢掉的计数加一开始；报告说明达到了上限，并把这一行标成近似。从未被替换的键保持精确。JSON 字段：`hot_rows`、`hot_rows_listed`、`hot_rows_omitted`、`hot_row_track_limit`、`hot_rows_overflow`、`hot_rows_note`、`hot_row_unavailable`。
 
@@ -159,6 +161,22 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 ```bash
 binlogviz analyze mysql-bin.000123 --details --show-minutes --show-patterns
 ```
+
+## `flashback` 命令语法
+
+```bash
+binlogviz flashback <binlog files...>
+binlogviz flashback --from-dir DIR --prefix PREFIX
+binlogviz flashback mysql-bin.000123 --include-table shop.orders --dml delete
+```
+
+`flashback` 打印撤销选定行变更的 SQL。stdout 是脚本。它不连接数据库。输入规则与 `analyze` 相同：位置参数、stdin `-`，或 `--from-dir` 加 `--prefix`。
+
+选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`、`--include-gtids`、`--exclude-gtids`。DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，并用后镜像的主键匹配。顺序是 binlog 逆序。每个原事务是 `START TRANSACTION` / `COMMIT`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`。
+
+binlog 需要 `binlog_row_metadata=FULL` 和 `binlog_row_image=FULL`。没有主键的表按每一列匹配并加 `LIMIT 1`，注释会说明。被删行的 `INSERT` 不用 `LIMIT 1`。
+
+列名缺失、行镜像不完整、某一列无法精确写成字面量、选定范围内有 DDL，或 `--sql-context off` 时，退出 1，一行 `Error:`，没有 SQL。什么都没选中时退出 2，`Error:` 与 `analyze` 相同，stdout 为空。除此之外 `--sql-context` 不影响脚本：flashback 不打印原始语句，单元格的值不打码。选定范围内的账号 DDL 按 DDL 拒绝。
 
 ## `compare` 命令语法
 

@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set, DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -44,6 +44,9 @@ type Analyzer struct {
 	pendingGroupEvents map[string][]model.NormalizedEvent
 	inputGTIDFlavor    string
 	matchedGTIDs       map[string]struct{}
+
+	flashGroups []flashGroup
+	flashErr    error
 }
 
 // New creates a new Analyzer with the given options.
@@ -296,6 +299,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 }
 
 func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
+	a.noteFlashback(ev)
 	a.recordEffectivePosition(ev)
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if isWorkload {
@@ -417,6 +421,8 @@ func (a *Analyzer) reset() {
 	a.pendingGroupEvents = make(map[string][]model.NormalizedEvent)
 	a.inputGTIDFlavor = ""
 	a.matchedGTIDs = make(map[string]struct{})
+	a.flashGroups = nil
+	a.flashErr = nil
 	if a.store != nil {
 		a.err = a.store.Reset()
 	}

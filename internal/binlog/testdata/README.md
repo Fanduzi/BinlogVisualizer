@@ -237,6 +237,27 @@ The index statements are ordinary `Query` events. The table is the identifier af
 - **Server version**: 8.0.46
 - **Server ID**: 1
 
+## mysql-8.0.46-flashback-full.binlog and mysql-8.0.46-flashback-minimal-image.binlog
+
+MySQL 8.0.46 ROW+GTID files for undo SQL. Both use `binlog_row_metadata=FULL`. `full` was recorded with `binlog_row_image=FULL`. `minimal-image` was recorded with `binlog_row_image=MINIMAL`. Setup (`CREATE`, the original rows) is in the previous binlog; these files are the incident only. The paired `.mysqlbinlog.txt` is `mysqlbinlog -v --base64-output=DECODE-ROWS`. The statements are `flashback_setup.sql` and `flashback_incident.sql`.
+
+### Contents
+
+`shop.wide` has composite primary key `(id, bucket)` and nullable extremes: signed and unsigned integers, `DECIMAL(18,4)`, `DATETIME(6)`, `TIMESTAMP(6)`, `VARCHAR` with quotes, a backslash, and `雪`, `BLOB` / `VARBINARY` with non-UTF-8 bytes, `JSON`, `ENUM`, and `SET`. `shop.heap` has no primary key.
+
+- DELETE `shop.wide` `(1,1)` and `shop.heap` id 2
+- Multi-row UPDATE of wide ids 2 and 4, a primary-key change of `(3,2)` to `(30,9)`, and the heap note to `x`
+- INSERT batch of wide ids 10, 11, 12 and heap ids 4 and 5
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_flashback.sh
+```
+
+Requires Docker and `mysql:8.0.46`, or a local server with `MYSQL_CMD` (for example `MYSQL_CMD="sudo mysql"`). The script restores `binlog_row_image=FULL` before it exits.
+
 ## mysql-8.0.46-dml-minimal.binlog and mysql-8.0.46-dml-full.binlog
 
 MySQL 8.0.46 ROW+GTID files for a bad DELETE buried in INSERT traffic on `shop.orders`, plus a multi-row UPDATE. The paired `.mysqlbinlog.txt` is `mysqlbinlog -v --base64-output=DECODE-ROWS` for the same file. `minimal` was recorded with `binlog_row_metadata=MINIMAL`. `full` was recorded with `binlog_row_metadata=FULL`.
