@@ -231,7 +231,9 @@ The final analysis result is assembled into six stable report areas, an optional
 - `pattern_drilldowns`
 - `warnings`
 
-Text output always renders the six report sections in a fixed order, even when some sections are empty. JSON output always emits the top-level fields, using empty arrays where a result set is absent.
+Text output always renders the six report sections in a fixed order, even when some sections are empty. After Busiest Minutes it also renders Replica Apply Delay: a ranking when any counted transaction has a non-zero MySQL 8 commit-timestamp delay, one line when every pair is equal, and `commit timestamps unavailable` when the fields are absent. JSON output always emits the top-level fields above, using empty arrays where a result set is absent.
+
+`replica_apply_delay` is optional. It is omitted when no counted transaction carried both commit timestamps. It is not an empty object, and a missing timestamp is not serialized as a delay of `0`.
 
 Nested JSON fields are more selective. Optional per-transaction, per-minute, and alert-detail fields may be omitted when their source data is empty or unavailable.
 

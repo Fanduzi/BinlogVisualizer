@@ -104,6 +104,63 @@ func TestApplyBinlogEventMetadataCountsPartialUpdateLogicalRows(t *testing.T) {
 	}
 }
 
+func TestApplyBinlogEventMetadataCopiesMySQL8CommitTimestamps(t *testing.T) {
+	sid := []byte{0x24, 0xbc, 0x78, 0x52, 0x9c, 0xb7, 0x11, 0xee, 0x80, 0x89, 0x02, 0x42, 0xac, 0x12, 0x00, 0x02}
+	var raw RawEvent
+	applyBinlogEventMetadata(&raw, replication.GTID_EVENT, &replication.GTIDEvent{
+		SID:                      sid,
+		GNO:                      7,
+		OriginalCommitTimestamp:  1_000_000,
+		ImmediateCommitTimestamp: 2_500_000,
+	}, nil)
+	if raw.GTID != "24bc7852-9cb7-11ee-8089-0242ac120002:7" {
+		t.Fatalf("gtid=%q", raw.GTID)
+	}
+	if raw.OriginalCommitTimestamp != 1_000_000 || raw.ImmediateCommitTimestamp != 2_500_000 {
+		t.Fatalf("timestamps orig=%d imm=%d", raw.OriginalCommitTimestamp, raw.ImmediateCommitTimestamp)
+	}
+
+	var anon RawEvent
+	applyBinlogEventMetadata(&anon, replication.ANONYMOUS_GTID_EVENT, &replication.GTIDEvent{
+		SID:                      sid,
+		GNO:                      8,
+		OriginalCommitTimestamp:  3_000_000,
+		ImmediateCommitTimestamp: 4_000_000,
+	}, nil)
+	if anon.GTID != "" || anon.OriginalCommitTimestamp != 3_000_000 || anon.ImmediateCommitTimestamp != 4_000_000 {
+		t.Fatalf("anonymous timestamps=%+v", anon)
+	}
+
+	var tagged RawEvent
+	applyBinlogEventMetadata(&tagged, replication.GTID_TAGGED_LOG_EVENT, &replication.GtidTaggedLogEvent{
+		GTIDEvent: replication.GTIDEvent{
+			OriginalCommitTimestamp:  5,
+			ImmediateCommitTimestamp: 9,
+		},
+	}, nil)
+	if tagged.OriginalCommitTimestamp != 5 || tagged.ImmediateCommitTimestamp != 9 {
+		t.Fatalf("tagged timestamps orig=%d imm=%d", tagged.OriginalCommitTimestamp, tagged.ImmediateCommitTimestamp)
+	}
+
+	var missing RawEvent
+	applyBinlogEventMetadata(&missing, replication.GTID_EVENT, &replication.GTIDEvent{
+		SID:                      sid,
+		GNO:                      1,
+		ImmediateCommitTimestamp: 2_500_000,
+	}, nil)
+	if missing.OriginalCommitTimestamp != 0 || missing.ImmediateCommitTimestamp != 0 {
+		t.Fatalf("partial timestamps leaked: %+v", missing)
+	}
+
+	var maria RawEvent
+	applyBinlogEventMetadata(&maria, replication.MARIADB_GTID_EVENT, &replication.MariadbGTIDEvent{
+		GTID: mysql.MariadbGTID{DomainID: 0, ServerID: 7, SequenceNumber: 1},
+	}, nil)
+	if maria.OriginalCommitTimestamp != 0 || maria.ImmediateCommitTimestamp != 0 {
+		t.Fatalf("MariaDB GTID grew commit timestamps: %+v", maria)
+	}
+}
+
 func TestApplyBinlogEventMetadataAnonymousGTIDLeavesEmptyIdentity(t *testing.T) {
 	var raw RawEvent
 	applyBinlogEventMetadata(&raw, replication.ANONYMOUS_GTID_EVENT, &replication.GTIDEvent{

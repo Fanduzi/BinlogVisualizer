@@ -1,6 +1,6 @@
 // Package binlog defines raw binlog event types and parser contracts used by the command layer.
 // input: timestamps, producer/transaction provenance, table/query metadata, row counts, file-relative offsets, and parser callback expectations.
-// output: stable RawEvent values with optional provenance and XA identity plus Parser and ProgressParser interfaces shared across parsing and analysis code.
+// output: stable RawEvent values with optional provenance, MySQL 8 commit timestamps, and XA identity plus Parser and ProgressParser interfaces shared across parsing and analysis code.
 // pos: contract boundary isolating analyzer and CLI orchestration from concrete binlog parser implementations.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -14,30 +14,35 @@ import (
 // RawEvent represents a raw binlog event before normalization.
 // This type isolates the analyzer from parser-specific types.
 type RawEvent struct {
-	Timestamp        time.Time
-	BinlogPath       string
-	PositionStart    int64
-	PositionEnd      int64
-	BinlogBytes      int64
-	EventType        string
-	Schema           string
-	Table            string
-	Query            string // SQL query for QUERY events (e.g., BEGIN, COMMIT)
-	QuerySQL         string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
-	ServerID         uint32 // Event-header server ID; zero means unavailable.
-	ServerVersion    string // Format Description server version, when the event carries one.
-	ServerFlavor     string // mysql or mariadb, derived from ServerVersion when available.
-	GTID             string
-	ThreadID         uint32
-	XID              string // Decimal transaction XID; empty means unavailable.
-	XAXID            string // SQL-form XA identifier; empty means unavailable.
-	ActorUser        string
-	ActorHost        string
-	RowCount         int
-	KeyStatus        string           // has_pk, no_pk, or unknown from TABLE_MAP optional metadata.
-	RowImages        []model.RowImage // Set only when row-image capture is on. Nil otherwise.
-	RowImagesOmitted int
-	Position         uint32 // Legacy next-event position retained for existing callers and error messages.
+	Timestamp     time.Time
+	BinlogPath    string
+	PositionStart int64
+	PositionEnd   int64
+	BinlogBytes   int64
+	EventType     string
+	Schema        string
+	Table         string
+	Query         string // SQL query for QUERY events (e.g., BEGIN, COMMIT)
+	QuerySQL      string // Original SQL from Rows_query_log_event (when binlog_rows_query_log_events=ON)
+	ServerID      uint32 // Event-header server ID; zero means unavailable.
+	ServerVersion string // Format Description server version, when the event carries one.
+	ServerFlavor  string // mysql or mariadb, derived from ServerVersion when available.
+	GTID          string
+	// OriginalCommitTimestamp and ImmediateCommitTimestamp are MySQL 8 GTID
+	// commit times in microseconds since the Unix epoch. Zero means the event
+	// did not carry them (MySQL 5.7, MariaDB, or a zero timestamp).
+	OriginalCommitTimestamp  uint64
+	ImmediateCommitTimestamp uint64
+	ThreadID                 uint32
+	XID                      string // Decimal transaction XID; empty means unavailable.
+	XAXID                    string // SQL-form XA identifier; empty means unavailable.
+	ActorUser                string
+	ActorHost                string
+	RowCount                 int
+	KeyStatus                string           // has_pk, no_pk, or unknown from TABLE_MAP optional metadata.
+	RowImages                []model.RowImage // Set only when row-image capture is on. Nil otherwise.
+	RowImagesOmitted         int
+	Position                 uint32 // Legacy next-event position retained for existing callers and error messages.
 }
 
 // Parser defines the interface for parsing binlog files.

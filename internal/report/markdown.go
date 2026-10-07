@@ -1,6 +1,6 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, busiest minutes with the tables that produced those rows, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
+// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -33,6 +33,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, result.Transactions, opts, result.Diagnostics.ServerVersion)
 	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
+	mdApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN)
 	mdMinuteActivity(&buf, result.Minutes, opts.TopN)
 	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode, result.Diagnostics.ServerVersion)
 	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts)

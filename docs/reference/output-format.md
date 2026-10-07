@@ -209,6 +209,16 @@ Example heading:
 === Minute Activity ===
 ```
 
+### Replica Apply Delay
+
+After Busiest Minutes, `Replica Apply Delay` reports how far behind a replica was. MySQL 8.0 GTID events (including anonymous GTID events) carry `original_commit_timestamp` and `immediate_commit_timestamp`, both in microseconds. Delay is immediate minus original. The lead sentence says this assumes the source and replica clocks agree. That sentence is not a finding, and a negative delay is not an alert.
+
+- A replica, meaning any counted transaction whose timestamps differ, prints the max delay, the nearest-rank p95, the minute where delay peaked, and the slowest transactions. `--top` limits that list. Each line has the GTID when one is present, the transaction start `file:byte` (the GTID event's `# at` byte, the same convention as the DDL Timeline, not the Query event and not `end_log_pos`), both commit times, the delay, and the tables and rows in that transaction.
+- A source, meaning every counted pair is equal, is one line: `Source: original and immediate commit timestamps are equal.` There is no table.
+- A file without these fields (MySQL 5.7, MariaDB, or a zero timestamp) prints one line, `commit timestamps unavailable`, and does not print the clock sentence.
+
+The same table, schema, time, position, GTID, and `--dml` filters that decide Top Tables decide which transactions count. `--sql-context off` hides statements and keeps the timestamps and positions.
+
 ### 7. Alerts
 
 The `Alerts` section lists detected warnings from analysis logic.
@@ -257,6 +267,35 @@ The top-level JSON object always contains these fields:
 | `pattern_drilldowns` | array | yes | Bounded drilldown summaries for high-signal patterns; empty array when nothing qualifies |
 | `snapshot` | object | no | Present only when `analyze` is invoked with `--snapshot-name` |
 | `primary_key_note` | string | no | Present when at least one row table has no FULL primary-key metadata. The sentence says presence is unknown because `binlog_row_metadata` is not FULL. Omitted when every row table is `has_pk` or `no_pk` |
+| `replica_apply_delay` | object | no | MySQL 8 commit-timestamp apply delay. Omitted when no counted transaction carried both timestamps. Never an empty object and never a stand-in `0` for a missing timestamp. See below. |
+
+### `replica_apply_delay`
+
+Present only when at least one counted row transaction has both `original_commit_timestamp` and `immediate_commit_timestamp`. Counted transactions are the same retained row transactions as Top Tables: table, schema, time, position, GTID, and `--dml` filters apply. A DDL-only or zero-row group does not count. `--sql-context off` does not remove this object.
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `origin` | string | yes | `replica` when any counted delay is non-zero, otherwise `source`. These English tokens are not translated. |
+| `max_delay_us` | integer | yes | Signed microseconds. `0` when every counted pair is equal. |
+| `p95_delay_us` | integer | yes | Nearest-rank 95th percentile: the 1-based rank `ceil(0.95*n)`, so the value is an observed delay. Computed over every counted transaction, not only the listed ones. |
+| `peak_minute` | string | no | UTC minute of the immediate commit time of the maximum delay. Ties break toward the earlier immediate time. RFC3339. Omitted when that time is zero. |
+| `transactions` | array | no | Present only when `origin` is `replica`. Limited by `--top`, or by `--top-transactions` when that flag is set explicitly. Omitted for a source, not serialized as `[]`. |
+
+Each `transactions` entry:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `gtid` | string | no | Omitted when the transaction has no GTID, including an anonymous GTID. |
+| `txn_start_file` | string | no | Path passed to analyze. Omitted when unknown. |
+| `txn_start_pos` | integer | no | Start byte of the GTID event (`# at`), the same convention as `diagnostics.ddl_events[].txn_start_pos`. Not the Query event and not `end_log_pos`. |
+| `original_commit_us` | integer | no | Original commit time, microseconds since the Unix epoch. |
+| `immediate_commit_us` | integer | no | Immediate commit time, microseconds since the Unix epoch. |
+| `original_commit_time` | string | no | RFC3339Nano UTC. |
+| `immediate_commit_time` | string | no | RFC3339Nano UTC. |
+| `delay_us` | integer | yes | Signed immediate minus original. A real `0` stays. A missing timestamp is not a row. |
+| `tables` | object | no | `schema.table` to row count for rows that passed the filters. Omitted when empty. |
+
+Missing strings and missing numbers are omitted. They are not empty strings and they are not `0`.
 
 ### `summary`
 

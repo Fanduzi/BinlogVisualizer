@@ -1,6 +1,6 @@
 // Package report defines the embedded HTML template for analyze reports.
 // input: localized labels plus chart-ready, completeness-aware analyze report view data.
-// output: template source used by the analyze HTML renderer, including UTC timestamp-basis copy, completeness-aware cards, deduplicated transaction evidence, bounded transaction lookup, and trusted replay labels.
+// output: template source used by the analyze HTML renderer, including UTC timestamp-basis copy, completeness-aware cards, deduplicated transaction evidence, bounded transaction lookup, replica apply delay after activity, and trusted replay labels.
 // pos: static template layer behind internal/report HTML rendering.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -848,6 +848,7 @@ const htmlReportTemplateTail = `
         <a class="nav-pill" href="#executive-summary">⚡ {{t "report.html.analyze.executiveSummary"}}</a>
         <a class="nav-pill" href="#section-findings">🚨 {{t "report.html.analyze.sectionFindings"}}</a>
         <a class="nav-pill" href="#section-activity">📈 {{t "report.html.analyze.sectionActivity"}}</a>
+        <a class="nav-pill" href="#section-replica-delay">⏱️ {{t "report.text.replicaApplyDelay"}}</a>
         <a class="nav-pill" href="#section-objects">🗄️ {{t "report.html.analyze.sectionObjects"}}</a>
         <a class="nav-pill" href="#section-evidence">🔬 {{t "report.html.analyze.sectionEvidence"}}</a>
       </nav>
@@ -1081,6 +1082,41 @@ const htmlReportTemplateTail = `
         </div>
         {{end}}
       </div>
+    </div>
+  </section>
+
+  <section class="section" id="section-replica-delay">
+    <div class="section-header">
+      <div class="section-header-title">
+        <span class="dot" style="background:var(--warn);box-shadow:0 0 8px rgba(251,191,36,0.6)"></span>
+        <span>{{t "report.text.replicaApplyDelay"}}</span>
+      </div>
+    </div>
+    <div class="section-body">
+      {{if .ApplyDelayUnavailable}}
+      <div class="section-desc">{{t "report.text.replicaApplyDelayUnavailable"}}</div>
+      {{else}}
+      <div class="section-desc">{{t "report.text.replicaApplyDelayClock"}}</div>
+      {{if .ApplyDelaySource}}
+      <div class="section-desc">{{t "report.text.replicaApplyDelaySource"}}</div>
+      {{else}}
+      <div class="section-desc">{{t "report.text.replicaApplyDelayReplica"}}</div>
+      <div class="section-desc">{{.ApplyDelayStats}}</div>
+      {{range .ApplyDelayTxns}}
+      <div class="diagnostic-item">
+        <div class="diagnostic-head">
+          <div class="diagnostic-title">{{if .GTID}}gtid={{.GTID}}{{end}}{{if .Start}} {{.Start}}{{end}}</div>
+          <div class="diagnostic-meta">delay={{.Delay}}</div>
+        </div>
+        <div class="diagnostic-body">
+          <div>original={{.Original}}</div>
+          <div>immediate={{.Immediate}}</div>
+          {{range .Tables}}<div>{{.Name}} {{fmtIntHTML .Rows}}</div>{{end}}
+        </div>
+      </div>
+      {{end}}
+      {{end}}
+      {{end}}
     </div>
   </section>
 

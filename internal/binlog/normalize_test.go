@@ -16,6 +16,25 @@ import (
 	"github.com/go-mysql-org/go-mysql/replication"
 )
 
+func TestNormalizeGTIDKeepsCommitTimestamps(t *testing.T) {
+	ev, err := NormalizeRawEvent(RawEvent{
+		EventType:                kindGTID,
+		GTID:                     "24bc7852-9cb7-11ee-8089-0242ac120002:7",
+		OriginalCommitTimestamp:  11,
+		ImmediateCommitTimestamp: 19,
+	})
+	if err != nil || ev == nil {
+		t.Fatalf("normalize: %v ev=%v", err, ev)
+	}
+	if ev.EventType != "GTID" || ev.OriginalCommitUs != 11 || ev.ImmediateCommitUs != 19 {
+		t.Fatalf("event=%+v", ev)
+	}
+	absent, err := NormalizeRawEvent(RawEvent{EventType: kindGTID, GTID: "24bc7852-9cb7-11ee-8089-0242ac120002:8"})
+	if err != nil || absent == nil || absent.OriginalCommitUs != 0 || absent.ImmediateCommitUs != 0 {
+		t.Fatalf("absent timestamps=%+v err=%v", absent, err)
+	}
+}
+
 func TestNormalizeWriteRowsEvent(t *testing.T) {
 	ev, err := NormalizeRawEvent(RawEvent{
 		EventType: "WRITE_ROWS",

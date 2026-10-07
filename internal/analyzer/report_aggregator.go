@@ -1,6 +1,6 @@
 // Package analyzer incrementally builds report-ready projections without retaining all transactions.
 // input: complete or incomplete transactions with provenance, minute buckets, DDL events, normalized events, and file coverage.
-// output: bounded ReportSnapshot values with producer/byte evidence, a full session ranking, and incomplete transactions excluded from whole-transaction conclusions.
+// output: bounded ReportSnapshot values with producer/byte evidence, a full session ranking, replica apply delay, and incomplete transactions excluded from whole-transaction conclusions.
 // pos: streaming report aggregation layer that replaces QueryAllTransactions-dependent finalization.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
@@ -67,6 +67,7 @@ type ReportAggregator struct {
 	patternRepTxns      map[string][]model.Transaction
 	txnSize             txnSizeTracker
 	operationCounts     map[time.Time]operationMinuteStats
+	applyDelay          applyDelayTracker
 }
 
 type txnSizeTracker struct {
@@ -213,6 +214,7 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 	if a == nil {
 		return
 	}
+	a.applyDelay.add(txn, a.opts.TopTransactions)
 	a.threads.add(txn)
 	a.totalTransactions++
 	a.totalRows += txn.TotalRows
@@ -338,6 +340,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		FileSegments:            fileSegments,
 		HotIntervals:            SelectHotIntervals(minutes, 5),
 		Findings:                BuildFindingsFromAlerts(alerts, minutes, evidenceTxns, a.ddlEvents),
+		ApplyDelay:              a.applyDelay.snapshot(),
 	}
 
 	series := BuildTimeseries(TimeseriesBuildInput{
