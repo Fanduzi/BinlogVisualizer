@@ -1,6 +1,6 @@
 // Package model defines reconstructed transaction contracts and bounded SQL context.
 // input: retained event-window evidence, physical boundaries, producer/transaction provenance, XA identity, and normalized SQL metadata.
-// output: provenance-aware Transaction completeness/replay-span and QueryContext contracts reused across analysis and reporting.
+// output: provenance-aware Transaction completeness/replay-span and QueryContext contracts reused across analysis and reporting, including optional MySQL 8 commit timestamps and the transaction-start byte.
 // pos: shared transaction model layer between analyzer reconstruction and renderer output.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -83,12 +83,20 @@ type QueryContext struct {
 
 // Transaction represents a reconstructed database transaction.
 type Transaction struct {
-	TxnKey           string
-	XAXID            string
-	ServerID         uint32
-	ServerVersion    string
-	ServerFlavor     string
-	GTID             string
+	TxnKey        string
+	XAXID         string
+	ServerID      uint32
+	ServerVersion string
+	ServerFlavor  string
+	GTID          string
+	// OriginalCommitUs and ImmediateCommitUs are the GTID event's commit
+	// timestamps in microseconds since the Unix epoch. Zero means absent.
+	OriginalCommitUs  uint64
+	ImmediateCommitUs uint64
+	// TxnStartPath and TxnStartPos are where the transaction starts. With a
+	// GTID event this is that event's start, not a later Query event.
+	TxnStartPath     string
+	TxnStartPos      int64
 	ThreadID         uint32
 	XID              string
 	ActorUser        string
@@ -151,4 +159,28 @@ func (t Transaction) FullReplayAvailable() bool {
 		spanBytes = span.PositionEnd - span.PositionStart
 	}
 	return spanBytes > maxReplayXIDSpanBytes || (t.EventCount <= 1 && t.TotalRows <= 1)
+}
+
+// HasCommitTimestamps reports whether both MySQL 8 GTID commit timestamps are present.
+func (t Transaction) HasCommitTimestamps() bool {
+	return t.OriginalCommitUs != 0 && t.ImmediateCommitUs != 0
+}
+
+// CommitDelay is immediate commit time minus original commit time.
+// The second result is false when either timestamp is absent. A true result
+// of 0 means the timestamps were equal, not that they were missing.
+func (t Transaction) CommitDelay() (time.Duration, bool) {
+	if !t.HasCommitTimestamps() {
+		return 0, false
+	}
+	us := int64(t.ImmediateCommitUs) - int64(t.OriginalCommitUs)
+	return time.Duration(us) * time.Microsecond, true
+}
+
+// UnixMicroTime converts microseconds since the Unix epoch. Zero stays the zero time.
+func UnixMicroTime(us uint64) time.Time {
+	if us == 0 {
+		return time.Time{}
+	}
+	return time.Unix(0, int64(us)*int64(time.Microsecond)).UTC()
 }

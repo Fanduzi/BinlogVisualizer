@@ -337,6 +337,30 @@ bash ./create_mariadb_10.11_dml.sh
 
 Requires Docker and `mariadb:10.11`.
 
+## mysql-8.0.46-source-apply.binlog and mysql-8.0.46-replica-apply.binlog
+
+A MySQL 8.0.46 source and replica pair. `log_replica_updates` is on for the replica. The replica SQL thread was stopped, the source committed a burst, then the SQL thread was started. Each `*.mysqlbinlog.txt` is `mysqlbinlog -vv --base64-output=DECODE-ROWS`.
+
+The copied file is the closed binlog after schema setup, so it is DML only: 22 transactions, GTIDs `11458b63-c244-11f1-a0d2-822b383dbcd0:7` through `:28`.
+
+On the replica file, read from the dump's `# original_commit_timestamp=` and `# immediate_commit_timestamp=` lines:
+
+- max delay `5426519` µs (`5.426519s`), GTID `:7`, transaction start byte `197`, `shop.audit` 1 row
+- p95 delay `5208595` µs (`5.208595s`), nearest rank 21 of 22, GTID `:8` (`shop.orders` and `shop.catalog`)
+- peak minute `2026-10-07 11:41:00 UTC` (immediate commit of `:7`)
+- the last transaction, `:28`, is the caught-up insert and is `2545` µs
+
+On the source file every pair is equal, so every delay is `0`.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_replica_apply.sh
+```
+
+Uses Docker (`mysql:8.0.46`) when the daemon answers. Otherwise two local mysqld 8.0 datadirs. The checked-in files were recorded on mysqld 8.0.46-0ubuntu0.24.04.4. A regeneration gets a new GTID UUID and new delays; update the pins in `cmd/binlogviz/replica_apply_test.go` from the new dump.
+
 ## Stage 5 Coverage Notes
 
 - Multi-file command-path coverage reuses `minimal.binlog` twice in ordered input tests and benchmarks to exercise the real parser over more than one file without duplicating fixture assets.

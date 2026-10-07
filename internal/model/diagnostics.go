@@ -1,6 +1,6 @@
 // Package model defines DBA-facing diagnostics contracts for analyze reports.
 // input: file coverage, DDL events, ranked transactions, findings, guessed input format, Ignored QUERY counts, unmapped parser events, open explicit BEGIN groups, and Format Description server version.
-// output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage, optional Ignored QUERY counts, an optional open-explicit-group count, open uncommitted DML groups, committed duration buckets, and byte-ranked transactions.
+// output: Diagnostics and related evidence types reused by report renderers, including filtered event-byte coverage, optional Ignored QUERY counts, an optional open-explicit-group count, open uncommitted DML groups, committed duration buckets, byte-ranked transactions, and optional replica apply delay.
 // pos: shared diagnostics model between analyzer Finalize and text/JSON/HTML replay commands.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -37,6 +37,40 @@ type Diagnostics struct {
 	// UnmappedEvents is how many parser events had no canonical kind (ROTATE, etc.).
 	UnmappedEvents int
 	ServerVersion  string
+	// ApplyDelay is replica apply lag from MySQL 8 GTID commit timestamps.
+	// Nil when no counted transaction carried both timestamps. Not a finding.
+	ApplyDelay *ApplyDelay
+}
+
+// ApplyDelayOrigin is replica when any counted transaction's commit timestamps
+// differ, and source when every counted pair is equal.
+type ApplyDelayOrigin string
+
+const (
+	ApplyDelayReplica ApplyDelayOrigin = "replica"
+	ApplyDelaySource  ApplyDelayOrigin = "source"
+)
+
+// ApplyDelay summarizes apply lag for the transactions that passed the same
+// filters as Top Tables. Max and P95 cover that whole set. Transactions is
+// the delay ranking and is empty for a source.
+type ApplyDelay struct {
+	Origin       ApplyDelayOrigin
+	Max          time.Duration
+	P95          time.Duration
+	PeakMinute   time.Time
+	Transactions []ApplyDelayTxn
+}
+
+// ApplyDelayTxn is one counted transaction in the delay ranking.
+type ApplyDelayTxn struct {
+	GTID            string
+	TxnStartPath    string
+	TxnStartPos     int64
+	OriginalCommit  time.Time
+	ImmediateCommit time.Time
+	Delay           time.Duration
+	Tables          map[string]int
 }
 
 // FileCoverage summarizes which input files were selected or skipped.

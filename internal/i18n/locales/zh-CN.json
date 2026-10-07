@@ -515,6 +515,42 @@
     "description": "最忙分钟导语：表是这一分钟的，不是整个窗口",
     "other": "这一分钟里的行，按表列出。"
   },
+  "report.text.replicaApplyDelay": {
+    "description": "由 MySQL 8 提交时间戳得到的副本应用延迟",
+    "other": "副本应用延迟"
+  },
+  "report.text.replicaApplyDelayClock": {
+    "description": "导语：延迟假设源库和副本的时钟一致",
+    "other": "延迟是本机提交时间减去原始提交时间。这假设源库和副本的时钟一致。"
+  },
+  "report.text.replicaApplyDelayReplica": {
+    "description": "这份 binlog 由副本写下",
+    "other": "副本：至少有一个事务在源库提交之后才在这里提交。"
+  },
+  "report.text.replicaApplyDelaySource": {
+    "description": "这份 binlog 由源库写下，两个时间戳相同",
+    "other": "源库：原始提交时间与本机提交时间相同。"
+  },
+  "report.text.replicaApplyDelayUnavailable": {
+    "description": "没有提交时间戳，例如 MySQL 5.7 和 MariaDB",
+    "other": "提交时间戳不可用"
+  },
+  "report.text.replicaApplyDelayStats": {
+    "description": "最大延迟、p95 延迟，以及延迟达到峰值的分钟",
+    "other": "最大 {{.Max}}  p95 {{.P95}}  峰值分钟 {{.Peak}}"
+  },
+  "report.text.replicaApplyDelayOriginal": {
+    "description": "原始提交时间列",
+    "other": "原始提交"
+  },
+  "report.text.replicaApplyDelayImmediate": {
+    "description": "本机提交时间列",
+    "other": "本机提交"
+  },
+  "report.text.replicaApplyDelayDelay": {
+    "description": "应用延迟列",
+    "other": "延迟"
+  },
   "report.label.drivingTables": {
     "description": "产生这一分钟行数的表",
     "other": "驱动表"

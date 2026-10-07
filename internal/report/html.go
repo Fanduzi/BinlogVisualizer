@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, replica apply delay after activity, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -130,6 +130,10 @@ type htmlReportData struct {
 	PrimaryKeyNote         string
 	NoPKTables             []htmlNoPKRow
 	NoPKInsertOnly         string
+	ApplyDelayUnavailable  bool
+	ApplyDelaySource       bool
+	ApplyDelayStats        string
+	ApplyDelayTxns         []htmlApplyDelayTxn
 }
 
 type htmlDrilldown struct {
@@ -633,6 +637,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	}
 	d.HasDrilldowns = len(d.Drilldowns) > 0
 
+	d.ApplyDelayUnavailable, d.ApplyDelaySource, d.ApplyDelayStats, d.ApplyDelayTxns = buildHTMLApplyDelay(result.Diagnostics.ApplyDelay, opts.TopN)
 	return d
 }
 

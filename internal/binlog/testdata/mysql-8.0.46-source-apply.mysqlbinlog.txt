@@ -1,0 +1,619 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261007 11:41:51 server id 1  end_log_pos 126 CRC32 0x6a790177 	Start: binlog v 4, server v 8.0.46-0ubuntu0.24.04.4 created 261007 11:41:51
+# at 126
+#261007 11:41:51 server id 1  end_log_pos 197 CRC32 0x788741b2 	Previous-GTIDs
+# 11458b63-c244-11f1-a0d2-822b383dbcd0:1-6
+# at 197
+#261007 11:41:51 server id 1  end_log_pos 276 CRC32 0xe0913259 	GTID	last_committed=0	sequence_number=1	rbr_only=yes	original_committed_timestamp=1791373311776150	immediate_commit_timestamp=1791373311776150	transaction_length=306
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373311776150 (2026-10-07 11:41:51.776150 UTC)
+# immediate_commit_timestamp=1791373311776150 (2026-10-07 11:41:51.776150 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373311776150*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:7'/*!*/;
+# at 276
+#261007 11:41:51 server id 1  end_log_pos 347 CRC32 0x4d95892b 	Query	thread_id=13	exec_time=0	error_code=0
+SET TIMESTAMP=1791373311/*!*/;
+SET @@session.pseudo_thread_id=13/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+BEGIN
+/*!*/;
+# at 347
+#261007 11:41:51 server id 1  end_log_pos 422 CRC32 0xfae429ba 	Table_map: `shop`.`audit` mapped to number 109
+# has_generated_invisible_primary_key=0
+# at 422
+#261007 11:41:51 server id 1  end_log_pos 472 CRC32 0xf019a200 	Write_rows: table id 109 flags: STMT_END_F
+### INSERT INTO `shop`.`audit`
+### SET
+###   @1=1 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag-audit' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 472
+#261007 11:41:51 server id 1  end_log_pos 503 CRC32 0x52e74751 	Xid = 33
+COMMIT/*!*/;
+# at 503
+#261007 11:41:51 server id 1  end_log_pos 582 CRC32 0xe4a66713 	GTID	last_committed=1	sequence_number=2	rbr_only=yes	original_committed_timestamp=1791373311995934	immediate_commit_timestamp=1791373311995934	transaction_length=426
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373311995934 (2026-10-07 11:41:51.995934 UTC)
+# immediate_commit_timestamp=1791373311995934 (2026-10-07 11:41:51.995934 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373311995934*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:8'/*!*/;
+# at 582
+#261007 11:41:51 server id 1  end_log_pos 653 CRC32 0x2c17b4d8 	Query	thread_id=14	exec_time=0	error_code=0
+SET TIMESTAMP=1791373311/*!*/;
+BEGIN
+/*!*/;
+# at 653
+#261007 11:41:51 server id 1  end_log_pos 729 CRC32 0xe9a08b5d 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 729
+#261007 11:41:51 server id 1  end_log_pos 775 CRC32 0x89f0c4ba 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='multi' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 775
+#261007 11:41:51 server id 1  end_log_pos 852 CRC32 0x74ac5bbc 	Table_map: `shop`.`catalog` mapped to number 112
+# has_generated_invisible_primary_key=0
+# at 852
+#261007 11:41:51 server id 1  end_log_pos 898 CRC32 0x27895f25 	Write_rows: table id 112 flags: STMT_END_F
+### INSERT INTO `shop`.`catalog`
+### SET
+###   @1=1 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='multi' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 898
+#261007 11:41:51 server id 1  end_log_pos 929 CRC32 0x69387ccb 	Xid = 37
+COMMIT/*!*/;
+# at 929
+#261007 11:41:52 server id 1  end_log_pos 1008 CRC32 0xc07df906 	GTID	last_committed=2	sequence_number=3	rbr_only=yes	original_committed_timestamp=1791373312212109	immediate_commit_timestamp=1791373312212109	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373312212109 (2026-10-07 11:41:52.212109 UTC)
+# immediate_commit_timestamp=1791373312212109 (2026-10-07 11:41:52.212109 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373312212109*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:9'/*!*/;
+# at 1008
+#261007 11:41:52 server id 1  end_log_pos 1079 CRC32 0x8a9eb1ec 	Query	thread_id=15	exec_time=0	error_code=0
+SET TIMESTAMP=1791373312/*!*/;
+BEGIN
+/*!*/;
+# at 1079
+#261007 11:41:52 server id 1  end_log_pos 1155 CRC32 0xe75a6b1f 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 1155
+#261007 11:41:52 server id 1  end_log_pos 1199 CRC32 0x94e2d210 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=2 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 1199
+#261007 11:41:52 server id 1  end_log_pos 1230 CRC32 0xfec5c88f 	Xid = 42
+COMMIT/*!*/;
+# at 1230
+#261007 11:41:52 server id 1  end_log_pos 1309 CRC32 0x7b44ad3d 	GTID	last_committed=3	sequence_number=4	rbr_only=yes	original_committed_timestamp=1791373312375255	immediate_commit_timestamp=1791373312375255	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373312375255 (2026-10-07 11:41:52.375255 UTC)
+# immediate_commit_timestamp=1791373312375255 (2026-10-07 11:41:52.375255 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373312375255*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:10'/*!*/;
+# at 1309
+#261007 11:41:52 server id 1  end_log_pos 1380 CRC32 0x6e8f2a60 	Query	thread_id=16	exec_time=0	error_code=0
+SET TIMESTAMP=1791373312/*!*/;
+BEGIN
+/*!*/;
+# at 1380
+#261007 11:41:52 server id 1  end_log_pos 1456 CRC32 0x70d6aa60 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 1456
+#261007 11:41:52 server id 1  end_log_pos 1500 CRC32 0x4cff0f30 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=3 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 1500
+#261007 11:41:52 server id 1  end_log_pos 1531 CRC32 0x06e332ca 	Xid = 45
+COMMIT/*!*/;
+# at 1531
+#261007 11:41:52 server id 1  end_log_pos 1610 CRC32 0x2aa7bd68 	GTID	last_committed=4	sequence_number=5	rbr_only=yes	original_committed_timestamp=1791373312538420	immediate_commit_timestamp=1791373312538420	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373312538420 (2026-10-07 11:41:52.538420 UTC)
+# immediate_commit_timestamp=1791373312538420 (2026-10-07 11:41:52.538420 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373312538420*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:11'/*!*/;
+# at 1610
+#261007 11:41:52 server id 1  end_log_pos 1681 CRC32 0x42350231 	Query	thread_id=17	exec_time=0	error_code=0
+SET TIMESTAMP=1791373312/*!*/;
+BEGIN
+/*!*/;
+# at 1681
+#261007 11:41:52 server id 1  end_log_pos 1757 CRC32 0x892f0c55 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 1757
+#261007 11:41:52 server id 1  end_log_pos 1801 CRC32 0x3e5c6d69 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=4 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 1801
+#261007 11:41:52 server id 1  end_log_pos 1832 CRC32 0x5918a2df 	Xid = 48
+COMMIT/*!*/;
+# at 1832
+#261007 11:41:52 server id 1  end_log_pos 1911 CRC32 0xa72d6159 	GTID	last_committed=5	sequence_number=6	rbr_only=yes	original_committed_timestamp=1791373312703633	immediate_commit_timestamp=1791373312703633	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373312703633 (2026-10-07 11:41:52.703633 UTC)
+# immediate_commit_timestamp=1791373312703633 (2026-10-07 11:41:52.703633 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373312703633*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:12'/*!*/;
+# at 1911
+#261007 11:41:52 server id 1  end_log_pos 1982 CRC32 0x47dfa066 	Query	thread_id=18	exec_time=0	error_code=0
+SET TIMESTAMP=1791373312/*!*/;
+BEGIN
+/*!*/;
+# at 1982
+#261007 11:41:52 server id 1  end_log_pos 2058 CRC32 0x7189075b 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 2058
+#261007 11:41:52 server id 1  end_log_pos 2102 CRC32 0x8dd6569e 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=5 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 2102
+#261007 11:41:52 server id 1  end_log_pos 2133 CRC32 0xad72b317 	Xid = 51
+COMMIT/*!*/;
+# at 2133
+#261007 11:41:52 server id 1  end_log_pos 2212 CRC32 0x8cf7820d 	GTID	last_committed=6	sequence_number=7	rbr_only=yes	original_committed_timestamp=1791373312866055	immediate_commit_timestamp=1791373312866055	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373312866055 (2026-10-07 11:41:52.866055 UTC)
+# immediate_commit_timestamp=1791373312866055 (2026-10-07 11:41:52.866055 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373312866055*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:13'/*!*/;
+# at 2212
+#261007 11:41:52 server id 1  end_log_pos 2283 CRC32 0xed302c38 	Query	thread_id=19	exec_time=0	error_code=0
+SET TIMESTAMP=1791373312/*!*/;
+BEGIN
+/*!*/;
+# at 2283
+#261007 11:41:52 server id 1  end_log_pos 2359 CRC32 0xb65eff49 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 2359
+#261007 11:41:52 server id 1  end_log_pos 2403 CRC32 0x175e87ae 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=6 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 2403
+#261007 11:41:52 server id 1  end_log_pos 2434 CRC32 0xf9b1ea49 	Xid = 54
+COMMIT/*!*/;
+# at 2434
+#261007 11:41:53 server id 1  end_log_pos 2513 CRC32 0x29533d36 	GTID	last_committed=7	sequence_number=8	rbr_only=yes	original_committed_timestamp=1791373313033264	immediate_commit_timestamp=1791373313033264	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373313033264 (2026-10-07 11:41:53.033264 UTC)
+# immediate_commit_timestamp=1791373313033264 (2026-10-07 11:41:53.033264 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373313033264*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:14'/*!*/;
+# at 2513
+#261007 11:41:53 server id 1  end_log_pos 2584 CRC32 0xba6acf0c 	Query	thread_id=20	exec_time=0	error_code=0
+SET TIMESTAMP=1791373313/*!*/;
+BEGIN
+/*!*/;
+# at 2584
+#261007 11:41:53 server id 1  end_log_pos 2660 CRC32 0xd768f37a 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 2660
+#261007 11:41:53 server id 1  end_log_pos 2704 CRC32 0xeb7bd3cd 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=7 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 2704
+#261007 11:41:53 server id 1  end_log_pos 2735 CRC32 0x894987e9 	Xid = 57
+COMMIT/*!*/;
+# at 2735
+#261007 11:41:53 server id 1  end_log_pos 2814 CRC32 0x3775d1eb 	GTID	last_committed=8	sequence_number=9	rbr_only=yes	original_committed_timestamp=1791373313198002	immediate_commit_timestamp=1791373313198002	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373313198002 (2026-10-07 11:41:53.198002 UTC)
+# immediate_commit_timestamp=1791373313198002 (2026-10-07 11:41:53.198002 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373313198002*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:15'/*!*/;
+# at 2814
+#261007 11:41:53 server id 1  end_log_pos 2885 CRC32 0x802d27af 	Query	thread_id=21	exec_time=0	error_code=0
+SET TIMESTAMP=1791373313/*!*/;
+BEGIN
+/*!*/;
+# at 2885
+#261007 11:41:53 server id 1  end_log_pos 2961 CRC32 0xad332ddf 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 2961
+#261007 11:41:53 server id 1  end_log_pos 3005 CRC32 0xa4e097d2 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=8 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 3005
+#261007 11:41:53 server id 1  end_log_pos 3036 CRC32 0x8a31c696 	Xid = 60
+COMMIT/*!*/;
+# at 3036
+#261007 11:41:53 server id 1  end_log_pos 3115 CRC32 0x6e4bf546 	GTID	last_committed=9	sequence_number=10	rbr_only=yes	original_committed_timestamp=1791373313364365	immediate_commit_timestamp=1791373313364365	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373313364365 (2026-10-07 11:41:53.364365 UTC)
+# immediate_commit_timestamp=1791373313364365 (2026-10-07 11:41:53.364365 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373313364365*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:16'/*!*/;
+# at 3115
+#261007 11:41:53 server id 1  end_log_pos 3186 CRC32 0x4f12f4ef 	Query	thread_id=22	exec_time=0	error_code=0
+SET TIMESTAMP=1791373313/*!*/;
+BEGIN
+/*!*/;
+# at 3186
+#261007 11:41:53 server id 1  end_log_pos 3262 CRC32 0xffeab951 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 3262
+#261007 11:41:53 server id 1  end_log_pos 3306 CRC32 0x9e8baaac 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=9 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 3306
+#261007 11:41:53 server id 1  end_log_pos 3337 CRC32 0x848054ba 	Xid = 63
+COMMIT/*!*/;
+# at 3337
+#261007 11:41:53 server id 1  end_log_pos 3416 CRC32 0x6ee1144c 	GTID	last_committed=10	sequence_number=11	rbr_only=yes	original_committed_timestamp=1791373313528285	immediate_commit_timestamp=1791373313528285	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373313528285 (2026-10-07 11:41:53.528285 UTC)
+# immediate_commit_timestamp=1791373313528285 (2026-10-07 11:41:53.528285 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373313528285*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:17'/*!*/;
+# at 3416
+#261007 11:41:53 server id 1  end_log_pos 3487 CRC32 0x896e6aec 	Query	thread_id=23	exec_time=0	error_code=0
+SET TIMESTAMP=1791373313/*!*/;
+BEGIN
+/*!*/;
+# at 3487
+#261007 11:41:53 server id 1  end_log_pos 3563 CRC32 0x0980e3b7 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 3563
+#261007 11:41:53 server id 1  end_log_pos 3607 CRC32 0x1609462f 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=10 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 3607
+#261007 11:41:53 server id 1  end_log_pos 3638 CRC32 0xf35d4c77 	Xid = 66
+COMMIT/*!*/;
+# at 3638
+#261007 11:41:53 server id 1  end_log_pos 3717 CRC32 0x06deb96d 	GTID	last_committed=11	sequence_number=12	rbr_only=yes	original_committed_timestamp=1791373313694846	immediate_commit_timestamp=1791373313694846	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373313694846 (2026-10-07 11:41:53.694846 UTC)
+# immediate_commit_timestamp=1791373313694846 (2026-10-07 11:41:53.694846 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373313694846*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:18'/*!*/;
+# at 3717
+#261007 11:41:53 server id 1  end_log_pos 3788 CRC32 0xfd3250a0 	Query	thread_id=24	exec_time=0	error_code=0
+SET TIMESTAMP=1791373313/*!*/;
+BEGIN
+/*!*/;
+# at 3788
+#261007 11:41:53 server id 1  end_log_pos 3864 CRC32 0x004b37c0 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 3864
+#261007 11:41:53 server id 1  end_log_pos 3908 CRC32 0x72fdcda5 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=11 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 3908
+#261007 11:41:53 server id 1  end_log_pos 3939 CRC32 0x87a6391b 	Xid = 69
+COMMIT/*!*/;
+# at 3939
+#261007 11:41:53 server id 1  end_log_pos 4018 CRC32 0x54500c53 	GTID	last_committed=12	sequence_number=13	rbr_only=yes	original_committed_timestamp=1791373313859753	immediate_commit_timestamp=1791373313859753	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373313859753 (2026-10-07 11:41:53.859753 UTC)
+# immediate_commit_timestamp=1791373313859753 (2026-10-07 11:41:53.859753 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373313859753*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:19'/*!*/;
+# at 4018
+#261007 11:41:53 server id 1  end_log_pos 4089 CRC32 0x9787aef3 	Query	thread_id=25	exec_time=0	error_code=0
+SET TIMESTAMP=1791373313/*!*/;
+BEGIN
+/*!*/;
+# at 4089
+#261007 11:41:53 server id 1  end_log_pos 4165 CRC32 0x23bdf3ea 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 4165
+#261007 11:41:53 server id 1  end_log_pos 4209 CRC32 0xb2d044a5 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=12 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 4209
+#261007 11:41:53 server id 1  end_log_pos 4240 CRC32 0x9aa92659 	Xid = 72
+COMMIT/*!*/;
+# at 4240
+#261007 11:41:54 server id 1  end_log_pos 4319 CRC32 0x6e3fa3f4 	GTID	last_committed=13	sequence_number=14	rbr_only=yes	original_committed_timestamp=1791373314024941	immediate_commit_timestamp=1791373314024941	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373314024941 (2026-10-07 11:41:54.024941 UTC)
+# immediate_commit_timestamp=1791373314024941 (2026-10-07 11:41:54.024941 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373314024941*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:20'/*!*/;
+# at 4319
+#261007 11:41:54 server id 1  end_log_pos 4390 CRC32 0x289db935 	Query	thread_id=26	exec_time=0	error_code=0
+SET TIMESTAMP=1791373314/*!*/;
+BEGIN
+/*!*/;
+# at 4390
+#261007 11:41:54 server id 1  end_log_pos 4466 CRC32 0xe31cd1ed 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 4466
+#261007 11:41:54 server id 1  end_log_pos 4510 CRC32 0x23f06ffc 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=13 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 4510
+#261007 11:41:54 server id 1  end_log_pos 4541 CRC32 0x00badd7f 	Xid = 75
+COMMIT/*!*/;
+# at 4541
+#261007 11:41:54 server id 1  end_log_pos 4620 CRC32 0xa6debdce 	GTID	last_committed=14	sequence_number=15	rbr_only=yes	original_committed_timestamp=1791373314187082	immediate_commit_timestamp=1791373314187082	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373314187082 (2026-10-07 11:41:54.187082 UTC)
+# immediate_commit_timestamp=1791373314187082 (2026-10-07 11:41:54.187082 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373314187082*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:21'/*!*/;
+# at 4620
+#261007 11:41:54 server id 1  end_log_pos 4691 CRC32 0xd6f34a64 	Query	thread_id=27	exec_time=0	error_code=0
+SET TIMESTAMP=1791373314/*!*/;
+BEGIN
+/*!*/;
+# at 4691
+#261007 11:41:54 server id 1  end_log_pos 4767 CRC32 0xd23e7331 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 4767
+#261007 11:41:54 server id 1  end_log_pos 4811 CRC32 0xac32f5a3 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=14 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 4811
+#261007 11:41:54 server id 1  end_log_pos 4842 CRC32 0xb756de88 	Xid = 78
+COMMIT/*!*/;
+# at 4842
+#261007 11:41:54 server id 1  end_log_pos 4921 CRC32 0x90776e6f 	GTID	last_committed=15	sequence_number=16	rbr_only=yes	original_committed_timestamp=1791373314353512	immediate_commit_timestamp=1791373314353512	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373314353512 (2026-10-07 11:41:54.353512 UTC)
+# immediate_commit_timestamp=1791373314353512 (2026-10-07 11:41:54.353512 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373314353512*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:22'/*!*/;
+# at 4921
+#261007 11:41:54 server id 1  end_log_pos 4992 CRC32 0xbb34ab0b 	Query	thread_id=28	exec_time=0	error_code=0
+SET TIMESTAMP=1791373314/*!*/;
+BEGIN
+/*!*/;
+# at 4992
+#261007 11:41:54 server id 1  end_log_pos 5068 CRC32 0x888d33b0 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 5068
+#261007 11:41:54 server id 1  end_log_pos 5112 CRC32 0xd68c8396 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=15 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 5112
+#261007 11:41:54 server id 1  end_log_pos 5143 CRC32 0x6cce0e2e 	Xid = 81
+COMMIT/*!*/;
+# at 5143
+#261007 11:41:54 server id 1  end_log_pos 5222 CRC32 0x6be50a75 	GTID	last_committed=16	sequence_number=17	rbr_only=yes	original_committed_timestamp=1791373314515579	immediate_commit_timestamp=1791373314515579	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373314515579 (2026-10-07 11:41:54.515579 UTC)
+# immediate_commit_timestamp=1791373314515579 (2026-10-07 11:41:54.515579 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373314515579*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:23'/*!*/;
+# at 5222
+#261007 11:41:54 server id 1  end_log_pos 5293 CRC32 0x1b54244f 	Query	thread_id=29	exec_time=0	error_code=0
+SET TIMESTAMP=1791373314/*!*/;
+BEGIN
+/*!*/;
+# at 5293
+#261007 11:41:54 server id 1  end_log_pos 5369 CRC32 0xd63bcf83 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 5369
+#261007 11:41:54 server id 1  end_log_pos 5413 CRC32 0xe3678b05 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=16 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 5413
+#261007 11:41:54 server id 1  end_log_pos 5444 CRC32 0xa2d23789 	Xid = 84
+COMMIT/*!*/;
+# at 5444
+#261007 11:41:54 server id 1  end_log_pos 5523 CRC32 0x56809f00 	GTID	last_committed=17	sequence_number=18	rbr_only=yes	original_committed_timestamp=1791373314678702	immediate_commit_timestamp=1791373314678702	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373314678702 (2026-10-07 11:41:54.678702 UTC)
+# immediate_commit_timestamp=1791373314678702 (2026-10-07 11:41:54.678702 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373314678702*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:24'/*!*/;
+# at 5523
+#261007 11:41:54 server id 1  end_log_pos 5594 CRC32 0x60a33d48 	Query	thread_id=30	exec_time=0	error_code=0
+SET TIMESTAMP=1791373314/*!*/;
+BEGIN
+/*!*/;
+# at 5594
+#261007 11:41:54 server id 1  end_log_pos 5670 CRC32 0x19d9a9d1 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 5670
+#261007 11:41:54 server id 1  end_log_pos 5714 CRC32 0x4f71760f 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=17 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 5714
+#261007 11:41:54 server id 1  end_log_pos 5745 CRC32 0xbee2767d 	Xid = 87
+COMMIT/*!*/;
+# at 5745
+#261007 11:41:54 server id 1  end_log_pos 5824 CRC32 0x58a673b3 	GTID	last_committed=18	sequence_number=19	rbr_only=yes	original_committed_timestamp=1791373314844305	immediate_commit_timestamp=1791373314844305	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373314844305 (2026-10-07 11:41:54.844305 UTC)
+# immediate_commit_timestamp=1791373314844305 (2026-10-07 11:41:54.844305 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373314844305*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:25'/*!*/;
+# at 5824
+#261007 11:41:54 server id 1  end_log_pos 5895 CRC32 0x0b59de28 	Query	thread_id=31	exec_time=0	error_code=0
+SET TIMESTAMP=1791373314/*!*/;
+BEGIN
+/*!*/;
+# at 5895
+#261007 11:41:54 server id 1  end_log_pos 5971 CRC32 0xab59739d 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 5971
+#261007 11:41:54 server id 1  end_log_pos 6015 CRC32 0x5745275f 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=18 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 6015
+#261007 11:41:54 server id 1  end_log_pos 6046 CRC32 0xa14b6e14 	Xid = 90
+COMMIT/*!*/;
+# at 6046
+#261007 11:41:55 server id 1  end_log_pos 6125 CRC32 0x03759cb6 	GTID	last_committed=19	sequence_number=20	rbr_only=yes	original_committed_timestamp=1791373315009068	immediate_commit_timestamp=1791373315009068	transaction_length=301
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373315009068 (2026-10-07 11:41:55.009068 UTC)
+# immediate_commit_timestamp=1791373315009068 (2026-10-07 11:41:55.009068 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373315009068*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:26'/*!*/;
+# at 6125
+#261007 11:41:55 server id 1  end_log_pos 6196 CRC32 0x79aa5175 	Query	thread_id=32	exec_time=0	error_code=0
+SET TIMESTAMP=1791373315/*!*/;
+BEGIN
+/*!*/;
+# at 6196
+#261007 11:41:55 server id 1  end_log_pos 6272 CRC32 0xc9723511 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 6272
+#261007 11:41:55 server id 1  end_log_pos 6316 CRC32 0x68349ef4 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=19 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 6316
+#261007 11:41:55 server id 1  end_log_pos 6347 CRC32 0x41da0c89 	Xid = 93
+COMMIT/*!*/;
+# at 6347
+#261007 11:41:55 server id 1  end_log_pos 6426 CRC32 0x69d26d10 	GTID	last_committed=20	sequence_number=21	rbr_only=yes	original_committed_timestamp=1791373315175951	immediate_commit_timestamp=1791373315175951	transaction_length=328
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373315175951 (2026-10-07 11:41:55.175951 UTC)
+# immediate_commit_timestamp=1791373315175951 (2026-10-07 11:41:55.175951 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373315175951*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:27'/*!*/;
+# at 6426
+#261007 11:41:55 server id 1  end_log_pos 6497 CRC32 0x4ec0f466 	Query	thread_id=33	exec_time=0	error_code=0
+SET TIMESTAMP=1791373315/*!*/;
+BEGIN
+/*!*/;
+# at 6497
+#261007 11:41:55 server id 1  end_log_pos 6573 CRC32 0x2cd08d56 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 6573
+#261007 11:41:55 server id 1  end_log_pos 6644 CRC32 0x6eeb0ccd 	Delete_rows: table id 111 flags: STMT_END_F
+### DELETE FROM `shop`.`orders`
+### WHERE
+###   @1=2 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+### DELETE FROM `shop`.`orders`
+### WHERE
+###   @1=3 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+### DELETE FROM `shop`.`orders`
+### WHERE
+###   @1=4 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+### DELETE FROM `shop`.`orders`
+### WHERE
+###   @1=5 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='lag' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 6644
+#261007 11:41:55 server id 1  end_log_pos 6675 CRC32 0xa86fc527 	Xid = 96
+COMMIT/*!*/;
+# at 6675
+#261007 11:41:57 server id 1  end_log_pos 6754 CRC32 0x7c75ffa9 	GTID	last_committed=21	sequence_number=22	rbr_only=yes	original_committed_timestamp=1791373317746598	immediate_commit_timestamp=1791373317746598	transaction_length=307
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791373317746598 (2026-10-07 11:41:57.746598 UTC)
+# immediate_commit_timestamp=1791373317746598 (2026-10-07 11:41:57.746598 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791373317746598*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '11458b63-c244-11f1-a0d2-822b383dbcd0:28'/*!*/;
+# at 6754
+#261007 11:41:57 server id 1  end_log_pos 6825 CRC32 0x292ad56b 	Query	thread_id=36	exec_time=0	error_code=0
+SET TIMESTAMP=1791373317/*!*/;
+BEGIN
+/*!*/;
+# at 6825
+#261007 11:41:57 server id 1  end_log_pos 6901 CRC32 0xf6621a12 	Table_map: `shop`.`orders` mapped to number 111
+# has_generated_invisible_primary_key=0
+# at 6901
+#261007 11:41:57 server id 1  end_log_pos 6951 CRC32 0xf6e4b8df 	Write_rows: table id 111 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1000 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='caught-up' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 6951
+#261007 11:41:57 server id 1  end_log_pos 6982 CRC32 0x7547ffbe 	Xid = 105
+COMMIT/*!*/;
+# at 6982
+#261007 11:41:57 server id 1  end_log_pos 7029 CRC32 0xca0d551a 	Rotate to mysql-bin.000003  pos: 4
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

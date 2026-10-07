@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with explicit workload identity, canonical scope, provenance/selector evidence, SQL context, and snapshot presentation controls.
-// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, and snapshots.
+// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional replica apply delay, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, and snapshots.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -46,6 +46,30 @@ type jsonAnalysisResult struct {
 	ColumnNamesNote     string                 `json:"column_names_note,omitempty"`
 	RowValuesNote       string                 `json:"row_values_note,omitempty"`
 	PrimaryKeyNote      string                 `json:"primary_key_note,omitempty"`
+	ReplicaApplyDelay   *jsonApplyDelay        `json:"replica_apply_delay,omitempty"`
+}
+
+// jsonApplyDelay is omitted entirely when commit timestamps are unavailable.
+// max_delay_us and p95_delay_us are signed microseconds and are 0 when every
+// counted pair is equal. They are never a stand-in for a missing timestamp.
+type jsonApplyDelay struct {
+	Origin       string              `json:"origin"`
+	MaxDelayUs   int64               `json:"max_delay_us"`
+	P95DelayUs   int64               `json:"p95_delay_us"`
+	PeakMinute   string              `json:"peak_minute,omitempty"`
+	Transactions []jsonApplyDelayTxn `json:"transactions,omitempty"`
+}
+
+type jsonApplyDelayTxn struct {
+	GTID                string         `json:"gtid,omitempty"`
+	TxnStartFile        string         `json:"txn_start_file,omitempty"`
+	TxnStartPos         int64          `json:"txn_start_pos,omitempty"`
+	OriginalCommitUs    uint64         `json:"original_commit_us,omitempty"`
+	ImmediateCommitUs   uint64         `json:"immediate_commit_us,omitempty"`
+	OriginalCommitTime  string         `json:"original_commit_time,omitempty"`
+	ImmediateCommitTime string         `json:"immediate_commit_time,omitempty"`
+	DelayUs             int64          `json:"delay_us"`
+	Tables              map[string]int `json:"tables,omitempty"`
 }
 
 type jsonSelection struct {
@@ -450,6 +474,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		Alerts:              convertAlerts(result.Alerts),
 		Warnings:            result.Warnings,
 		PatternDrilldowns:   convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode),
+		ReplicaApplyDelay:   convertApplyDelay(result.Diagnostics.ApplyDelay, opts.TopN),
 		Snapshot:            convertSnapshot(result.Snapshot),
 	}
 	if rowValuesSuppressed(opts) {
@@ -640,6 +665,37 @@ func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode, serverVersio
 		result[i] = item
 	}
 	return result
+}
+
+func convertApplyDelay(delay *model.ApplyDelay, topN int) *jsonApplyDelay {
+	shown := visibleApplyDelay(delay, topN)
+	if shown == nil {
+		return nil
+	}
+	out := &jsonApplyDelay{
+		Origin:     string(shown.Origin),
+		MaxDelayUs: shown.Max.Microseconds(),
+		P95DelayUs: shown.P95.Microseconds(),
+		PeakMinute: formatJSONTime(shown.PeakMinute),
+	}
+	if len(shown.Transactions) == 0 {
+		return out
+	}
+	out.Transactions = make([]jsonApplyDelayTxn, len(shown.Transactions))
+	for i, txn := range shown.Transactions {
+		out.Transactions[i] = jsonApplyDelayTxn{
+			GTID:                txn.GTID,
+			TxnStartFile:        txn.TxnStartPath,
+			TxnStartPos:         txn.TxnStartPos,
+			OriginalCommitUs:    commitMicros(txn.OriginalCommit),
+			ImmediateCommitUs:   commitMicros(txn.ImmediateCommit),
+			OriginalCommitTime:  formatCommitJSON(txn.OriginalCommit),
+			ImmediateCommitTime: formatCommitJSON(txn.ImmediateCommit),
+			DelayUs:             txn.Delay.Microseconds(),
+			Tables:              copyStringIntMap(txn.Tables),
+		}
+	}
+	return out
 }
 
 func convertHotIntervals(intervals []model.MinuteBucket) []jsonHotInterval {
