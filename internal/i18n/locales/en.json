@@ -271,6 +271,22 @@
     "description": "Flashback had a selected row event with no image",
     "other": "{{.Table}}: row image was not captured"
   },
+  "error.flashbackGenerated": {
+    "description": "Flashback refuses a table whose generated columns could not be read from CREATE or ALTER",
+    "other": "{{.Table}}: generated columns are unknown"
+  },
+  "error.flashbackGeneratedRow": {
+    "description": "Flashback refuses a row that has no base column to write",
+    "other": "{{.Table}}: cannot undo a row whose columns are all generated"
+  },
+  "warning.flashbackSplit": {
+    "description": "Flashback warns when a table or DML filter undoes only part of a transaction",
+    "other": "warning: transaction {{.GTID}} is only partly undone; a table or --dml selection skipped other row changes in that transaction"
+  },
+  "cmd.flashback.flag.dml": {
+    "description": "Flashback DML kind filter flag description",
+    "other": "Only undo these ROW kinds (comma-separated insert, update, delete; combinable)"
+  },
   "cmd.flashback.use": {
     "description": "Flashback command usage",
     "other": "flashback [binlog files... | -] | --from-dir DIR --prefix PREFIX"

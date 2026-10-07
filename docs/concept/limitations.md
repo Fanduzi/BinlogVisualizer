@@ -82,11 +82,24 @@ The same table, schema, `--dml`, time, position, and GTID selectors as `analyze`
 
 A table with no primary key is still reversed: the `DELETE` or `UPDATE` matches every column and adds `LIMIT 1`, and a comment says so. The `INSERT` that puts a deleted row back does not use `LIMIT 1`.
 
+JSON is rebuilt from the binary document (`JSON_OBJECT` / `JSON_ARRAY`, or `CAST(... AS JSON)` for a scalar), so a decimal stays a decimal, a datetime stays a datetime, and `-0.0` keeps its sign. A character column that is not `utf8mb4` is a charset introducer plus the raw bytes (`_latin1 0xE9`, `_utf16 0x00410042`). Collation `binary` stays `X'...'`. `utf8mb4` stays a quoted string.
+
+Generated columns, virtual or stored, are omitted from `INSERT` lists and `UPDATE` assignments. They are omitted from a no-primary-key `WHERE` when a base column remains. A generated column that is part of the primary key stays in the `WHERE`. Names are learned from `CREATE TABLE` and `ALTER TABLE` in the files you pass, including transactions dropped by `--exclude-gtids` or a time window. If that statement was seen and cannot be read, flashback refuses the table and prints no SQL. A binlog that never contains the `CREATE` does not identify generated columns.
+
+These limits stay even when the literals are exact:
+
+- `ON DELETE CASCADE` and `ON UPDATE CASCADE` change child rows that are not in the binlog. Flashback does not restore those children.
+- Triggers on the table fire when the undo runs.
+- The match is the primary key, or every remaining column and `LIMIT 1`. There is no conflict check. The script overwrites changes made after the incident.
+- A table filter or `--dml` can undo only some row changes from one transaction. Flashback then prints a warning on stderr and still prints SQL for the rows it kept. Time, position, and GTID selectors drop whole transactions and do not warn.
+- Apply the script on the primary with `sql_log_bin=1`, so replicas follow under new GTIDs. Do not apply it on a replica.
+
 Flashback refuses rather than guessing. Exit 1, one `Error:` line that names the table and the reason, and no SQL on stdout, when:
 
 - column names are unavailable
 - a before-image or after-image is incomplete (`binlog_row_image` `MINIMAL` or `NOBLOB`)
-- a column cannot be rendered exactly (`FLOAT`, `DOUBLE`, `BIT`, `GEOMETRY`, `VECTOR`, a partial JSON value, invalid UTF-8 in a character column, or missing signedness, collation, or ENUM/SET members)
+- a column cannot be rendered exactly (`FLOAT`, `DOUBLE`, `BIT`, `GEOMETRY`, `VECTOR`, a partial JSON value, a JSON value that cannot be represented exactly, invalid UTF-8 in a `utf8mb4` column, an unknown collation, or missing signedness, collation, or ENUM/SET members)
+- generated columns were declared in a `CREATE` or `ALTER` that cannot be read
 - the selected range contains DDL (no reverse DDL is emitted)
 - `--sql-context off` is set, because the script is the row values
 

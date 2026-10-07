@@ -1,6 +1,10 @@
 package binlog
 
 import (
+	"encoding/binary"
+	"encoding/hex"
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/go-mysql-org/go-mysql/mysql"
@@ -108,6 +112,127 @@ func TestCaptureFlashbackEnumSetBlobAndNoPK(t *testing.T) {
 	}, kindWriteRows, "shop", "heap")
 	if !heapRows[0].NoPK || heapRows[0].After[0] != "NULL" || heapRows[0].After[1] != "NULL" {
 		t.Fatalf("heap: %+v", heapRows[0])
+	}
+}
+
+func TestSQLJSONExactAndRefused(t *testing.T) {
+	cases := []struct {
+		hex  string
+		want string
+	}{
+		{"0001000c000b0001000501006e", "JSON_OBJECT('n', 1)"},
+		{"0001000c000b0001000601006e", "JSON_OBJECT('n', CAST(1 AS UNSIGNED))"},
+		{"00010012000b0001000f0c0064f60403028963", "JSON_OBJECT('d', 9.99)"},
+		{"00010015000b0001000f0c0064f6070b028000000963", "JSON_OBJECT('d', CAST('9.99' AS DECIMAL(11,2)))"},
+		{"00010014000b0001000b0c00640000000000000080", "JSON_OBJECT('d', -0.0E0)"},
+		{"00010014000b0001000b0c00640000000000002440", "JSON_OBJECT('d', 1e+01)"},
+		{"00010016000b0001000f0c00740c0820a107053144a519", "JSON_OBJECT('t', CAST('2020-01-02 03:04:05.500000' AS DATETIME(6)))"},
+		{"0400", "CAST('null' AS JSON)"},
+		{"050100", "CAST(1 AS JSON)"},
+		{"0b0000000000000080", "CAST(-0.0E0 AS JSON)"},
+	}
+	for _, tc := range cases {
+		doc, err := hex.DecodeString(tc.hex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, ok := sqlJSONBinary(doc)
+		if !ok || got != tc.want {
+			t.Fatalf("%s: ok=%v got %s", tc.hex, ok, got)
+		}
+	}
+
+	if _, ok := sqlJSONBinary([]byte{0x07, 0x01, 0x00, 0x00, 0x00}); ok {
+		t.Fatal("non-canonical int width was accepted")
+	}
+	nan := make([]byte, 9)
+	nan[0] = jsonDouble
+	binary.LittleEndian.PutUint64(nan[1:], math.Float64bits(math.NaN()))
+	if _, ok := sqlJSONBinary(nan); ok {
+		t.Fatal("NaN was accepted")
+	}
+	if _, ok := sqlJSONBinary([]byte{jsonOpaque, 0x07, 0x01, 0x00}); ok {
+		t.Fatal("opaque timestamp was accepted")
+	}
+	if _, ok := sqlJSON("{}", jsonCell{}); ok {
+		t.Fatal("text JSON was accepted")
+	}
+	table := &replication.TableMapEvent{ColumnType: []byte{mysql.MYSQL_TYPE_JSON}}
+	if _, problem := flashLiteral(table, 0, &replication.JsonDiff{}, jsonCell{}, nil, nil, nil, nil); problem != "partial JSON" {
+		t.Fatalf("partial: %q", problem)
+	}
+}
+
+func TestSQLCharacterCharsets(t *testing.T) {
+	lit, problem := sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 8})
+	if problem != "" || lit != "_latin1 0xE9" {
+		t.Fatalf("latin1 e9: %s %s", lit, problem)
+	}
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xC3, 0xA9}, map[int]uint64{0: 8})
+	if problem != "" || lit != "_latin1 0xC3A9" {
+		t.Fatalf("latin1 c3a9: %s %s", lit, problem)
+	}
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x00, 0x41, 0x00, 0x42}, map[int]uint64{0: 54})
+	if problem != "" || lit != "_utf16 0x00410042" {
+		t.Fatalf("utf16: %s %s", lit, problem)
+	}
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{}, map[int]uint64{0: 8})
+	if problem != "" || lit != "_latin1 X''" {
+		t.Fatalf("empty: %s %s", lit, problem)
+	}
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte("雪"), map[int]uint64{0: 255})
+	if problem != "" || lit != "'雪'" {
+		t.Fatalf("utf8mb4: %s %s", lit, problem)
+	}
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_BLOB, 0, []byte{0xE9}, map[int]uint64{0: 63})
+	if problem != "" || lit != "X'E9'" {
+		t.Fatalf("binary: %s %s", lit, problem)
+	}
+	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x61}, map[int]uint64{0: 99999})
+	if !strings.Contains(problem, "charset for collation 99999 is unknown") {
+		t.Fatalf("unknown: %s", problem)
+	}
+	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 255})
+	if problem != "VARCHAR" {
+		t.Fatalf("invalid utf8: %s", problem)
+	}
+}
+
+func TestFlashbackFixtureJSONAndCharsetsRoundTripLiterals(t *testing.T) {
+	parser := NewParser()
+	parser.(FlashbackParser).SetCaptureFlashback(true)
+	var literals []string
+	var problems []model.FlashRow
+	err := parser.ParseFiles([]string{"testdata/mysql-8.0.46-flashback-full.binlog"}, func(ev RawEvent) error {
+		for _, row := range ev.FlashRows {
+			if row.ProblemKind != "" {
+				problems = append(problems, row)
+				continue
+			}
+			literals = append(literals, row.Before...)
+			literals = append(literals, row.After...)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(problems) != 0 {
+		t.Fatalf("problems: %+v", problems)
+	}
+	joined := strings.Join(literals, "\n")
+	for _, want := range []string{
+		"JSON_OBJECT('n', 1, 'ok', true, 'sku', 'Z')",
+		"JSON_OBJECT('sku', 'B')",
+		"JSON_ARRAY(1, 2)",
+		"JSON_OBJECT('n', 10)",
+		`JSON_OBJECT('s', 'a\\b')`,
+		`'it\'s "bad" \\ 雪'`,
+		"X'DEADBEEFFF00'",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %s\n%s", want, joined)
+		}
 	}
 }
 

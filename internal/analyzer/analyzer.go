@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set, DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set (generated columns learned from every parsed CREATE/ALTER, including excluded GTIDs, and a split-transaction warning when a table or DML filter keeps only part of a transaction), DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -45,8 +45,11 @@ type Analyzer struct {
 	inputGTIDFlavor    string
 	matchedGTIDs       map[string]struct{}
 
-	flashGroups []flashGroup
-	flashErr    error
+	flashGroups     []flashGroup
+	flashErr        error
+	flashGen        generatedTables
+	flashSplit      map[string]*flashSplit
+	flashSplitOrder []string
 }
 
 // New creates a new Analyzer with the given options.
@@ -250,11 +253,17 @@ func (a *Analyzer) observeGTIDFlavor(ev model.NormalizedEvent) error {
 // fan-out to other aggregators is stopped to prevent inconsistent state.
 func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) error {
 	ev = enrichDDLEvent(ev)
+	if a.opts.Flashback && ev.EventType == "DDL" {
+		a.flashGen.note(ev.Schema, ev.QuerySQL)
+	}
 	if err := a.observeGTIDFlavor(ev); err != nil {
 		return err
 	}
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if relation == insideWindow && a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
+		if a.opts.Flashback && ev.EventType == "ROWS" {
+			a.noteFlashbackSkipped()
+		}
 		a.txnBuilder.clearCurrentQueryContext()
 		if ev.EventType == "DDL" {
 			if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
@@ -265,6 +274,9 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 		return nil
 	}
 	if relation == insideWindow && ev.EventType == "ROWS" && !a.filter.AllowOperation(ev.Operation) {
+		if a.opts.Flashback {
+			a.noteFlashbackSkipped()
+		}
 		a.txnBuilder.clearCurrentQueryContext()
 		return nil
 	}
@@ -423,6 +435,9 @@ func (a *Analyzer) reset() {
 	a.matchedGTIDs = make(map[string]struct{})
 	a.flashGroups = nil
 	a.flashErr = nil
+	a.flashGen = generatedTables{}
+	a.flashSplit = nil
+	a.flashSplitOrder = nil
 	if a.store != nil {
 		a.err = a.store.Reset()
 	}

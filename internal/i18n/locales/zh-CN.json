@@ -271,6 +271,22 @@
     "description": "选中的行事件没有镜像",
     "other": "{{.Table}}：没有捕获到行镜像"
   },
+  "error.flashbackGenerated": {
+    "description": "CREATE 或 ALTER 读不出生成列时拒绝",
+    "other": "{{.Table}}：无法确定生成列"
+  },
+  "error.flashbackGeneratedRow": {
+    "description": "一行里没有可写的基列时拒绝",
+    "other": "{{.Table}}：无法撤销所有列都是生成列的行"
+  },
+  "warning.flashbackSplit": {
+    "description": "表过滤或 --dml 只撤销事务的一部分时警告",
+    "other": "警告：事务 {{.GTID}} 只撤销了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"
+  },
+  "cmd.flashback.flag.dml": {
+    "description": "flashback 的 DML 类型过滤说明",
+    "other": "只撤销这些 ROW 类型（逗号分隔 insert、update、delete，可组合）"
+  },
   "cmd.flashback.use": {
     "description": "flashback 命令用法",
     "other": "flashback [binlog 文件... | -] | --from-dir DIR --prefix PREFIX"
