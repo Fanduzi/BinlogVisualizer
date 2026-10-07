@@ -398,3 +398,51 @@ func TestSchemaFileOmitsGeneratedColumns(t *testing.T) {
 		t.Fatalf("sql %q err %v", sql, err)
 	}
 }
+
+func TestSchemaFileReadsBatchShowCreate(t *testing.T) {
+	// mysql --batch keeps the column break as a real tab and writes each
+	// newline inside the CREATE field as the two characters '\' and 'n'.
+	// -N drops the "Create Table" header; without -N that header is a real row.
+	const create = "gen\tCREATE TABLE `gen` (\\n" +
+		"  `id` int NOT NULL,\\n" +
+		"  `base` int DEFAULT NULL,\\n" +
+		"  `virt` int GENERATED ALWAYS AS ((`base` + 1)) VIRTUAL,\\n" +
+		"  `stor` int GENERATED ALWAYS AS ((`base` * 2)) STORED,\\n" +
+		"  PRIMARY KEY (`id`)\\n" +
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+	for _, batch := range []string{
+		"USE `shop`;\n" + create,
+		"USE `shop`;\nTable\tCreate Table\n" + create,
+	} {
+		assertBatchShowCreate(t, batch)
+	}
+}
+
+func assertBatchShowCreate(t *testing.T, batch string) {
+	t.Helper()
+	base := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	a := New(Options{Flashback: true, SchemaSQL: batch})
+	if err := a.Consume(model.NormalizedEvent{
+		Timestamp: base, EventType: "ROWS", Operation: "DELETE", Schema: "shop", Table: "gen",
+		BinlogPath: "mysql-bin.000001", PositionStart: 10, PositionEnd: 20,
+		FlashRows: []model.FlashRow{{
+			Schema: "shop", Table: "gen", Op: "DELETE",
+			Columns: []string{"id", "base", "virt", "stor"}, Before: []string{"1", "10", "11", "20"}, PK: []int{0},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	sql, err := a.FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (1, 10);") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
+		t.Fatalf("batch show create:\n%s", sql)
+	}
+	if warnings := a.FlashbackWarnings(); len(warnings) != 0 {
+		t.Fatalf("warnings: %#v", warnings)
+	}
+}

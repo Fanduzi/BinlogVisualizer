@@ -1,5 +1,5 @@
 // Package analyzer learns generated column names from CREATE and ALTER text.
-// input: DDL statements in binlog order, including statements later excluded by GTID or time, plus optional CREATE/ALTER text from a schema file.
+// input: DDL statements in binlog order, including statements later excluded by GTID or time, plus optional CREATE/ALTER text from a schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n.
 // output: column names to omit from undo SQL, or a bad mark when a definition cannot be read. A table that was never defined stays absent so flashback can warn.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
@@ -22,6 +22,7 @@ type generatedTables struct {
 // noteScript reads mysqldump --no-data output or SHOW CREATE TABLE text.
 // USE sets the schema for a following unqualified CREATE. A row of
 // "name<TAB>CREATE TABLE ..." is the mysql batch format of SHOW CREATE TABLE.
+// mysql --batch also writes each newline inside that field as the two characters \ n.
 func (g *generatedTables) noteScript(sql string) {
 	if g == nil || strings.TrimSpace(sql) == "" {
 		return
@@ -447,6 +448,39 @@ func copyNames(src map[string]struct{}) map[string]struct{} {
 	return dst
 }
 
+// createTableHead reports whether CREATE TABLE is followed by a table name
+// and a definition. The mysql batch header is the words "Create Table" and
+// then the next row, which is not a definition.
+func createTableHead(sc *sqlScan) bool {
+	save, have, last := sc.i, sc.have, sc.last
+	defer func() {
+		sc.i, sc.have, sc.last = save, have, last
+	}()
+	if sc.wordIs("IF") {
+		sc.wordIs("NOT")
+		sc.wordIs("EXISTS")
+	}
+	if _, ok := sc.ident(); !ok {
+		return false
+	}
+	sc.skip()
+	if sc.i < len(sc.s) && sc.s[sc.i] == '.' {
+		sc.i++
+		if _, ok := sc.ident(); !ok {
+			return false
+		}
+		sc.skip()
+	}
+	if sc.i >= len(sc.s) {
+		return false
+	}
+	if sc.s[sc.i] == '(' {
+		return true
+	}
+	word := sc.peekWord()
+	return strings.EqualFold(word, "LIKE") || strings.EqualFold(word, "AS") || strings.EqualFold(word, "SELECT")
+}
+
 func indexCreateTable(s string) int {
 	sc := &sqlScan{s: s}
 	for sc.i < len(sc.s) {
@@ -465,7 +499,7 @@ func indexCreateTable(s string) int {
 		}
 		start := sc.i
 		w := sc.bare()
-		if strings.EqualFold(w, "CREATE") && sc.wordIs("TABLE") {
+		if strings.EqualFold(w, "CREATE") && sc.wordIs("TABLE") && createTableHead(sc) {
 			return start
 		}
 	}
@@ -573,6 +607,17 @@ func (sc *sqlScan) skip() {
 		switch sc.s[sc.i] {
 		case ' ', '\t', '\n', '\r':
 			sc.i++
+		case '\\':
+			// mysql --batch escapes a newline, tab, CR, or NUL inside a field as
+			// \n, \t, \r, or \0. Those are whitespace in SHOW CREATE TABLE text.
+			if sc.i+1 < len(sc.s) {
+				switch sc.s[sc.i+1] {
+				case 'n', 't', 'r', '0':
+					sc.i += 2
+					continue
+				}
+			}
+			return
 		case '#':
 			for sc.i < len(sc.s) && sc.s[sc.i] != '\n' {
 				sc.i++
