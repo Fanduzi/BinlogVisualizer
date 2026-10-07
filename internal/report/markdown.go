@@ -1,6 +1,6 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
+// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, busiest minutes with the tables that produced those rows, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -32,7 +32,8 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	mdNoPrimaryKey(&buf, result.Tables)
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, result.Transactions, opts, result.Diagnostics.ServerVersion)
-	mdMinuteActivity(&buf, result.Minutes)
+	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
+	mdMinuteActivity(&buf, result.Minutes, opts.TopN)
 	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode)
 	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts)
 
@@ -283,19 +284,39 @@ func mdReplayCommand(buf *strings.Builder, txnKey, cmd string) {
 	buf.WriteString("```\n\n")
 }
 
-func mdMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket) {
+func mdBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+	shown := rowBearingMinutes(minutes)
+	if len(shown) == 0 {
+		return
+	}
+	if topN > 0 && len(shown) > topN {
+		shown = shown[:topN]
+	}
+	buf.WriteString("## " + i18n.T("report.text.busiestMinutes") + "\n\n")
+	if minutesHaveTables(shown) {
+		buf.WriteString(i18n.T("report.text.busiestMinutesLead") + "\n\n")
+	}
+	writeMinuteTable(buf, shown, topN)
+}
+
+func mdMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
 	buf.WriteString("## " + i18n.T("report.section.minutes") + "\n\n")
 	if len(minutes) == 0 {
 		buf.WriteString("_" + i18n.T("report.placeholder.noMinuteActivity") + "_\n\n")
 		return
 	}
-	buf.WriteString("| Time | Rows | Transactions |\n")
-	buf.WriteString("|---|---:|---:|\n")
+	writeMinuteTable(buf, minutes, topN)
+}
+
+func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+	buf.WriteString("| Time | Rows | Transactions | " + i18n.T("report.label.drivingTables") + " |\n")
+	buf.WriteString("|---|---:|---:|---|\n")
 	for _, m := range minutes {
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s |\n",
+		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
 			formatTime(m.Minute),
 			formatInt(m.TotalRows),
 			formatInt(m.TxnCount),
+			escapeMD(formatDrivingTables(m.TableRows, topN)),
 		))
 	}
 	buf.WriteString("\n")

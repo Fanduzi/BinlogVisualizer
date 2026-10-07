@@ -281,6 +281,26 @@ bash ./create_mysql_8.0.46_no_pk.sh
 
 Requires Docker and `mysql:8.0.46`.
 
+## mysql-8.0.46-busiest-minute.binlog
+
+A MySQL 8.0.46 ROW+GTID file whose busiest minute is not the window's hottest table. `binlog_row_metadata=FULL`. Event headers are `2026-03-15 14:00` through `14:03` and `14:05` via `SET TIMESTAMP`.
+
+### Contents
+
+- `shop.catalog`: 20-row inserts at 14:00, 14:01, 14:02, and 14:03, plus 2 rows at 14:05 (82 rows, 5 transactions)
+- `shop.orders`: 15 two-row inserts at 14:05 (30 rows)
+
+The window leader is `shop.catalog`. The 14:05 minute is 32 rows: `shop.orders` 30 and `shop.catalog` 2. The largest transaction is a 20-row catalog insert.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_busiest_minute.sh
+```
+
+Requires Docker and `mysql:8.0.46`. The checked-in file was recorded on mysqld 8.0.46-0ubuntu0.24.04.4 with the same SQL. A regeneration gets a new GTID UUID; tests assert row counts and timestamps, not that UUID.
+
 ## mariadb-10.11.14-dml.binlog
 
 A MariaDB 10.11.14 ROW binlog: one transaction inserts two rows into `shop.orders`, updates one, and deletes one. Used to confirm `--show-rows` does not crash. Positional column names are expected.
