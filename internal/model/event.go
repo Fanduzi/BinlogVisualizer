@@ -35,4 +35,11 @@ type NormalizedEvent struct {
 	QueryOriginalBytes int    // Original SQL byte count before truncation
 	RowImages          []RowImage
 	RowImagesOmitted   int
+	// HoldingGTID, HoldingStartPath, and HoldingStartPos are set by the
+	// analyzer on a DDL event from the open transaction group. The parser
+	// leaves them empty. HoldingStartPos is the group's first event (the
+	// GTID event when one exists).
+	HoldingGTID      string
+	HoldingStartPath string
+	HoldingStartPos  int64
 }

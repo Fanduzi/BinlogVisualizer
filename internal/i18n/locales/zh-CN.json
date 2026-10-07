@@ -627,6 +627,18 @@
     "description": "DDL 时间线只记录发生，不是锁等待时长",
     "other": "DDL 发生时间线（不是 MDL 或锁等待时长）"
   },
+  "report.text.ddlGTIDUnavailable": {
+    "description": "这条 DDL 所在事务在 binlog 里没有 GTID",
+    "other": "GTID 不可用"
+  },
+  "report.text.ddlTxnStart": {
+    "description": "DDL 所在事务起点的文件偏移",
+    "other": "事务起点"
+  },
+  "report.text.ddlStopBefore": {
+    "description": "该位点回放更早的事件，并且不包含这条 DDL",
+    "other": "停在这条 DDL 之前（回放更早的事件，不包含这条 DDL）"
+  },
   "report.text.omittedDDL": {
     "description": "文本时间线未显示的 DDL 条数",
     "other": "… 还有 {{.Count}} 条 DDL 未显示"

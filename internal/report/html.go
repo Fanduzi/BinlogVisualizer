@@ -196,11 +196,16 @@ type htmlAlert struct {
 }
 
 type htmlDDLEvent struct {
-	Timestamp string
-	Operation string
-	Object    string
-	Statement string
-	Location  string
+	Timestamp   string
+	Operation   string
+	Object      string
+	Statement   string
+	Location    string
+	Identity    string
+	TxnStart    string
+	Explain     string
+	Mysqlbinlog string
+	StopGTID    string
 }
 
 type htmlTxnDiagnostic struct {
@@ -428,12 +433,18 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		if object == "" {
 			object = ddl.Object
 		}
+		view := ddlTimelineViewFor(ddl, result.Diagnostics.ServerVersion)
 		d.DDLEvents = append(d.DDLEvents, htmlDDLEvent{
-			Timestamp: formatTime(ddl.Timestamp),
-			Operation: ddl.Operation,
-			Object:    object,
-			Statement: ddlStatementForMode(ddl, opts.SQLContextMode),
-			Location:  formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd),
+			Timestamp:   formatTime(ddl.Timestamp),
+			Operation:   ddl.Operation,
+			Object:      object,
+			Statement:   ddlStatementForMode(ddl, opts.SQLContextMode),
+			Location:    formatBinlogLocation(ddl.BinlogPath, ddl.PositionStart, ddl.PositionEnd),
+			Identity:    view.Identity,
+			TxnStart:    view.TxnStart,
+			Explain:     view.Explain,
+			Mysqlbinlog: view.Mysqlbinlog,
+			StopGTID:    view.StopGTID,
 		})
 	}
 	d.HasDDLEvents = len(d.DDLEvents) > 0

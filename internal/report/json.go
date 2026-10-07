@@ -164,16 +164,26 @@ type jsonDurationBucket struct {
 }
 
 type jsonDDLEvent struct {
-	BinlogPath    string `json:"binlog_path,omitempty"`
-	Timestamp     string `json:"timestamp"`
-	Schema        string `json:"schema,omitempty"`
-	Table         string `json:"table,omitempty"`
-	Operation     string `json:"operation"`
-	Object        string `json:"object,omitempty"`
-	Statement     string `json:"statement,omitempty"`
-	PositionStart int64  `json:"position_start,omitempty"`
-	PositionEnd   int64  `json:"position_end,omitempty"`
-	BinlogBytes   int64  `json:"binlog_bytes,omitempty"`
+	BinlogPath      string     `json:"binlog_path,omitempty"`
+	Timestamp       string     `json:"timestamp"`
+	Schema          string     `json:"schema,omitempty"`
+	Table           string     `json:"table,omitempty"`
+	Operation       string     `json:"operation"`
+	Object          string     `json:"object,omitempty"`
+	Statement       string     `json:"statement,omitempty"`
+	PositionStart   int64      `json:"position_start,omitempty"`
+	PositionEnd     int64      `json:"position_end,omitempty"`
+	BinlogBytes     int64      `json:"binlog_bytes,omitempty"`
+	GTID            string     `json:"gtid,omitempty"`
+	GTIDNote        string     `json:"gtid_note,omitempty"`
+	TxnStartFile    string     `json:"txn_start_file,omitempty"`
+	TxnStartPos     int64      `json:"txn_start_pos,omitempty"`
+	ServerID        uint32     `json:"server_id,omitempty"`
+	ThreadID        uint32     `json:"thread_id,omitempty"`
+	Actor           *jsonActor `json:"actor,omitempty"`
+	MysqlbinlogStop string     `json:"mysqlbinlog_stop,omitempty"`
+	StopGTID        string     `json:"stop_gtid,omitempty"`
+	StopNote        string     `json:"stop_note,omitempty"`
 }
 
 type jsonHotInterval struct {
@@ -550,7 +560,7 @@ func convertDiagnostics(diagnostics model.Diagnostics, opts Options) jsonDiagnos
 	return jsonDiagnostics{
 		FileCoverage:            convertFileCoverage(diagnostics.FileCoverage),
 		CountedEventBytes:       diagnostics.CountedEventBytes,
-		DDLEvents:               convertDDLEvents(diagnostics.DDLEvents, mode),
+		DDLEvents:               convertDDLEvents(diagnostics.DDLEvents, mode, diagnostics.ServerVersion),
 		LargestTransactions:     convertTransactions(diagnostics.LargestTransactions, opts, diagnostics.ServerVersion),
 		LongestTransactions:     convertTransactions(diagnostics.LongestTransactions, opts, diagnostics.ServerVersion),
 		WidestTransactions:      convertTransactions(diagnostics.WidestTransactions, opts, diagnostics.ServerVersion),
@@ -592,24 +602,42 @@ func convertFileCoverageItems(items []model.FileCoverageItem) []jsonFileCoverage
 	return result
 }
 
-func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode) []jsonDDLEvent {
+func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode, serverVersion string) []jsonDDLEvent {
 	if events == nil {
 		return []jsonDDLEvent{}
 	}
 	result := make([]jsonDDLEvent, len(events))
 	for i, event := range events {
-		result[i] = jsonDDLEvent{
-			BinlogPath:    event.BinlogPath,
-			Timestamp:     formatJSONTime(event.Timestamp),
-			Schema:        event.Schema,
-			Table:         event.Table,
-			Operation:     event.Operation,
-			Object:        event.Object,
-			Statement:     ddlStatementForMode(event, mode),
-			PositionStart: event.PositionStart,
-			PositionEnd:   event.PositionEnd,
-			BinlogBytes:   event.BinlogBytes,
+		path, pos := ddlTxnAnchor(event)
+		item := jsonDDLEvent{
+			BinlogPath:      event.BinlogPath,
+			Timestamp:       formatJSONTime(event.Timestamp),
+			Schema:          event.Schema,
+			Table:           event.Table,
+			Operation:       event.Operation,
+			Object:          event.Object,
+			Statement:       ddlStatementForMode(event, mode),
+			PositionStart:   event.PositionStart,
+			PositionEnd:     event.PositionEnd,
+			BinlogBytes:     event.BinlogBytes,
+			GTID:            event.GTID,
+			TxnStartFile:    path,
+			TxnStartPos:     pos,
+			ServerID:        event.ServerID,
+			ThreadID:        event.ThreadID,
+			MysqlbinlogStop: ddlMysqlbinlogStop(path, pos, serverVersion),
+			StopGTID:        event.GTID,
 		}
+		if event.ActorUser != "" || event.ActorHost != "" {
+			item.Actor = &jsonActor{User: event.ActorUser, Host: event.ActorHost}
+		}
+		if event.GTID == "" {
+			item.GTIDNote = i18n.T("report.text.ddlGTIDUnavailable")
+		}
+		if item.MysqlbinlogStop != "" || item.StopGTID != "" {
+			item.StopNote = i18n.T("report.text.ddlStopBefore")
+		}
+		result[i] = item
 	}
 	return result
 }

@@ -304,7 +304,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。`diagnostics.open_explicit_groups` 在出现时，统计输入结束时仍没有 `COMMIT` 或 plain `ROLLBACK` 的 `BEGIN` 组；计数为 0 时省略。这种未关闭的 `BEGIN` 如果后面又来了 GTID，不会产出报告：analyze 以 exit 1 失败，错误是「显式 BEGIN 未关闭」。
 
-`diagnostics.counted_event_bytes` 是 schema/table 过滤后保留的 ROW/DDL 事件字节总数。`diagnostics.file_coverage.selected[].size` 是输入文件的物理大小；人类可读报告中缺少大小元数据时显示为不可用，而不是 0。`diagnostics.ddl_events` 是 DDL 发生时间线（时间、操作、对象、语句、位置），不是 MDL 或锁等待时长。`diagnostics.open_dml_groups` 在出现时，列出写过行镜像、并且到输入结束仍没有 `COMMIT` 或 plain `ROLLBACK` 的显式 `BEGIN` 组。每条的 `note` 说明该组在本文件/窗口内仍未提交，不是锁冲突证明。`diagnostics.duration_buckets` 统计已提交事务落在 `<1s`、`1s-10s`、`10s-30s`、`>=30s` 的数量。`diagnostics.largest_byte_transactions` 按 binlog 字节排列已提交事务。这三项为空时省略。
+`diagnostics.counted_event_bytes` 是 schema/table 过滤后保留的 ROW/DDL 事件字节总数。`diagnostics.file_coverage.selected[].size` 是输入文件的物理大小；人类可读报告中缺少大小元数据时显示为不可用，而不是 0。`diagnostics.ddl_events` 是 DDL 发生时间线（时间、操作、对象、语句、位置，以及 binlog 里有 GTID 时、持有这条 DDL 的事务的 GTID），不是 MDL 或锁等待时长。`diagnostics.open_dml_groups` 在出现时，列出写过行镜像、并且到输入结束仍没有 `COMMIT` 或 plain `ROLLBACK` 的显式 `BEGIN` 组。每条的 `note` 说明该组在本文件/窗口内仍未提交，不是锁冲突证明。`diagnostics.duration_buckets` 统计已提交事务落在 `<1s`、`1s-10s`、`10s-30s`、`>=30s` 的数量。`diagnostics.largest_byte_transactions` 按 binlog 字节排列已提交事务。这三项为空时省略。
 
 默认文本会打印 DDL 时间线、未提交的开放 DML、最多三条最长已提交事务、时长分桶、字节贡献，以及选中多个文件时的单文件大小和时间跨度。`--large-trx-duration` 仍对超过该时长的已提交事务告警，并对超过同一阈值的开放 DML 给出 warning。开放 `BEGIN` 之后又来了 GTID 仍是 exit 1、stdout 为空；如果该组写过行，Error 行会带上时长、行数、表和位置。只有 DDL 的输入 exit 0。只有 ADMIN 的输入仍是 exit 2。`FLUSH TABLES WITH READ LOCK` 仍是未分类 QUERY（exit 1），不会进入 admin/lock 列表。
 
@@ -357,7 +357,24 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 - `summary`：包含经空白归一化、SQL 正文最多 160 个字符的 `query_summary`；被截断时追加 `… [truncated: <shown> of <original> bytes]`。存在上下文时才包含截断元数据。`query_truncated` 只有碰到 4096 字节存储上限才为 true
 - `full`：存在上下文时额外包含 UTF-8 安全、最多 4096 字节的 `query_sql` 及原始字节数。被截断时追加同一标记。DDL 时间线语句同样以 4096 字节为上限，被截断时带同一标记
 
-`diagnostics.ddl_events[].statement` 遵守同一模式。`off` 省略它。口令材料（含 MariaDB `IDENTIFIED VIA`/`WITH` … `USING`/`AS` 和 `OR` 插件链）在这之前已经是 `<secret>`。`SET PASSWORD` 会出现在时间线上。`CREATE`/`ALTER`/`DROP` VIEW、TRIGGER、PROCEDURE、FUNCTION、EVENT 会留在时间线上，对象类型为 `view`、`trigger`、`routine` 或 `event`。`CREATE TRIGGER` 和 `DROP TRIGGER` 都使用触发器名字。无法识别的 DDL 仍以操作 `DDL`、对象 `ddl` 出现。`--include-table` 可以匹配这些名字；匹配到时即使没有行变更也退出 0。
+`diagnostics.ddl_events[].statement` 遵守同一模式。`off` 省略它。口令材料（含 MariaDB `IDENTIFIED VIA`/`WITH` … `USING`/`AS` 和 `OR` 插件链）在这之前已经是 `<secret>`。`gtid`、位置和停止提示不是语句文本，任何模式都保留。
+
+每条 `diagnostics.ddl_events` 额外有这些字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|----------|------|
+| `gtid` | string | 否 | 持有这条 DDL 的事务。MySQL 为 `uuid:seq`，MariaDB 为 `domain-server-seq`。binlog 没有 GTID（`GTID_MODE=OFF` 或匿名 GTID）时省略。不会输出空字符串 |
+| `gtid_note` | string | 否 | 仅在省略 `gtid` 时出现，说明 GTID 不可用 |
+| `txn_start_file` | string | 否 | 该事务起点所在文件 |
+| `txn_start_pos` | integer | 否 | 该事务起点的字节偏移。有 GTID 事件时这是该事件的起点，不是 Query 事件，也不是 `end_log_pos` |
+| `server_id` | integer | 否 | DDL 事件头里的 server id；binlog 没有记录时省略 |
+| `thread_id` | integer | 否 | Query 的线程 id；binlog 没有记录时省略 |
+| `actor` | object | 否 | DDL 事件记录了调用方时的 `user` / `host` |
+| `mysqlbinlog_stop` | string | 否 | `mysqlbinlog --stop-position=<txn_start_pos> <txn_start_file>`（服务器版本是 MariaDB 时为 `mariadb-binlog`）。回放更早的事件，不包含这条 DDL。stdin 没有文件路径时省略 |
+| `stop_gtid` | string | 否 | 与 `gtid` 相同。交给 BinlogServer 的 `stop_gtid`。省略 `gtid` 时一并省略 |
+| `stop_note` | string | 否 | 与 `mysqlbinlog_stop` 或 `stop_gtid` 一起出现，说明该停止点回放更早的事件且不包含这条 DDL |
+
+`position_start` / `position_end` 仍是包含语句的 Query 事件。文本、Markdown 和 HTML 在时间线条目旁打印同一 GTID、事务起点、`mysqlbinlog --stop-position` 和 `BinlogServer stop_gtid`。这里不生成回滚 SQL，也不表示恢复已经完成。`SET PASSWORD` 会出现在时间线上。`CREATE`/`ALTER`/`DROP` VIEW、TRIGGER、PROCEDURE、FUNCTION、EVENT 会留在时间线上，对象类型为 `view`、`trigger`、`routine` 或 `event`。`CREATE TRIGGER` 和 `DROP TRIGGER` 都使用触发器名字。无法识别的 DDL 仍以操作 `DDL`、对象 `ddl` 出现。`--include-table` 可以匹配这些名字；匹配到时即使没有行变更也退出 0。
 
 `sql_context.available` 表示整份报告中是否观察到源 SQL，即使该 SQL 不在 Top 事务中。因而 `full` 与 `available=false` 可以同时出现。provenance 不受该模式影响，任何模式都不会序列化 row-image 值。
 
