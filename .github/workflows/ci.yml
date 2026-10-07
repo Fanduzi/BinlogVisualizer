@@ -36,18 +36,40 @@ jobs:
   flashback-e2e:
     name: flashback e2e
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: Install MySQL 8.0
+      - name: Start preinstalled MySQL 8.0
+        timeout-minutes: 3
         run: |
           set -euo pipefail
-          sudo DEBIAN_FRONTEND=noninteractive apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server-8.0 mysql-client-8.0
-          sudo systemctl stop mysql
-          sudo tee /etc/mysql/mysql.conf.d/binlogviz-flashback.cnf >/dev/null <<'EOF'
+          # ubuntu-24.04 runners already have mysql-server-8.0. apt-get update
+          # talks to azure.archive.ubuntu.com first and, when that mirror stalls,
+          # sits on Ign lines for tens of minutes. Run 37671384306 attempt 1
+          # entered this step at 19:02:20Z and was still inside apt-get update
+          # when the attempt was cancelled at 19:40:17Z. The unit also sets
+          # TimeoutSec=infinity, so a later systemctl start can wait forever.
+          if ! dpkg-query -W mysql-server-8.0 >/dev/null 2>&1 || ! command -v mysql >/dev/null 2>&1; then
+            echo "ubuntu-24.04 runner is missing preinstalled MySQL 8.0 (mysql-server-8.0 and the mysql client)" >&2
+            exit 1
+          fi
+          dpkg-query -W -f '${Package} ${Version}\n' mysql-server-8.0
+          /usr/sbin/mysqld --version
+          sudo mkdir -p /etc/systemd/system/mysql.service.d
+          sudo tee /etc/systemd/system/mysql.service.d/timeout.conf >/dev/null <<'EOF'
+          [Service]
+          TimeoutStartSec=60
+          TimeoutStopSec=30
+          EOF
+          sudo systemctl daemon-reload
+          sudo systemctl show mysql.service -p TimeoutStartUSec -p TimeoutStopUSec --no-pager
+          if sudo systemctl is-active --quiet mysql.service; then
+            timeout 40 sudo systemctl stop mysql.service
+          fi
+          sudo tee /etc/mysql/mysql.conf.d/zz-binlogviz-flashback.cnf >/dev/null <<'EOF'
           [mysqld]
           server-id=1
           log_bin=mysql-bin
@@ -61,17 +83,35 @@ jobs:
           character-set-server=utf8mb4
           collation-server=utf8mb4_0900_ai_ci
           EOF
-          sudo rm -f /var/lib/mysql/mysql-bin.* /var/lib/mysql/binlog.index
-          sudo systemctl start mysql
-          # A normal Ubuntu install lets root in through the socket. The hosted
-          # image does not load auth_socket and keeps a password on root, so use
-          # the packaged debian-sys-maint account from /etc/mysql/debian.cnf.
-          if sudo mysql --protocol=socket -e "SELECT 1" >/dev/null 2>&1; then
+          # The datadir is mode 0700, so a glob in this shell does not expand.
+          sudo bash -c 'rm -f /var/lib/mysql/binlog.[0-9]* /var/lib/mysql/mysql-bin.[0-9]* /var/lib/mysql/binlog.index /var/lib/mysql/mysql-bin.index'
+          if ! timeout 90 sudo systemctl start mysql.service; then
+            echo "MySQL 8.0 did not become ready within 90s" >&2
+            sudo systemctl status mysql.service --no-pager >&2 || true
+            sudo tail -n 80 /var/log/mysql/error.log >&2 || true
+            exit 1
+          fi
+      - name: Verify MySQL 8.0 ROW/GTID/FULL
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          # A stock Ubuntu package lets root in through the socket. The hosted
+          # image keeps a password on root and does not load auth_socket, so
+          # the packaged debian-sys-maint account is the login that works.
+          query="SELECT @@version, @@log_bin, @@binlog_format, @@binlog_row_image, @@binlog_row_metadata, @@gtid_mode"
+          if sudo mysql --protocol=socket --connect-timeout=10 -e "SELECT 1" </dev/null >/dev/null 2>&1; then
             echo 'BINLOGVIZ_MYSQL=sudo mysql --protocol=socket' >> "$GITHUB_ENV"
-            sudo mysql --protocol=socket -N -e "SELECT @@version, @@log_bin, @@binlog_format, @@binlog_row_image, @@binlog_row_metadata, @@gtid_mode"
+            line=$(sudo mysql --protocol=socket --connect-timeout=10 -N --batch -e "$query")
           else
             echo 'BINLOGVIZ_MYSQL=sudo mysql --defaults-file=/etc/mysql/debian.cnf --protocol=socket' >> "$GITHUB_ENV"
-            sudo mysql --defaults-file=/etc/mysql/debian.cnf --protocol=socket -N -e "SELECT @@version, @@log_bin, @@binlog_format, @@binlog_row_image, @@binlog_row_metadata, @@gtid_mode"
+            line=$(sudo mysql --defaults-file=/etc/mysql/debian.cnf --protocol=socket --connect-timeout=10 -N --batch -e "$query")
+          fi
+          echo "server: $line"
+          set -- $(printf '%s\n' "$line" | tr '\t' ' ')
+          if [ "$#" -lt 6 ] || [[ "$1" != 8.0* ]] || [ "$2" != "1" ] || [ "$3" != "ROW" ] || [ "$4" != "FULL" ] || [ "$5" != "FULL" ] || [ "$6" != "ON" ]; then
+            echo "server is not MySQL 8.0 ROW/GTID/FULL: $line" >&2
+            exit 1
           fi
       - name: Round-trip flashback on MySQL 8.0
-        run: BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 20m ./cmd/binlogviz -run TestFlashbackRoundTripMySQL80
+        timeout-minutes: 15
+        run: BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 10m ./cmd/binlogviz -run TestFlashbackRoundTripMySQL80
