@@ -4,6 +4,19 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.17
+
+Release date: 2026-10-07
+
+Highlights:
+
+- `binlogviz analyze` lists tables that received UPDATE or DELETE rows and have no primary key, ranked by those counts, in text, Markdown, JSON, and HTML. On a replica, those rows can scan the table. MySQL 8 `binlog_row_metadata=FULL` TABLE_MAP metadata (`SIMPLE_PRIMARY_KEY` / `PRIMARY_KEY_WITH_PREFIX`) marks each table `has_pk`, `no_pk`, or `unknown`. INSERT-only no-PK tables are named and are not ranked as a lag risk. Without FULL metadata the report leaves presence `unknown` and does not emit `no_pk`. A `no_primary_key` warning is added to Top Findings. There is no new flag.
+
+Related notes:
+
+- [v0.23.17 release notes](docs/releases/release-notes-v0.23.17.md)
+- [v0.23.17 中文发行说明](docs/releases/release-notes-v0.23.17.zh-CN.md)
+
 ## v0.23.16
 
 Release date: 2026-10-07
