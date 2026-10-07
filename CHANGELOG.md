@@ -4,6 +4,19 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.19
+
+Release date: 2026-10-07
+
+Highlights:
+
+- DDL Timeline names the transaction that holds each DDL. `diagnostics.ddl_events[].gtid` is set when the binlog has one (MySQL `uuid:seq` or MariaDB `domain-server-seq`) and omitted, with `GTID unavailable`, when GTID is off or anonymous. The file and byte are where that transaction starts: the GTID event start when one exists, not the Query event and not `end_log_pos`. `position_start` and `position_end` stay the Query event. The timeline prints copy-ready `mysqlbinlog --stop-position=<N> <file>` and, when a GTID exists, `BinlogServer stop_gtid=<gtid>`. That stop replays earlier events and excludes this DDL. On `mysql-8.0.46-drop-table.binlog`, `DROP TABLE shop.orders` is `4d8275bc-c221-11f1-a25e-822b383dbcd0:2` at byte 523. `server_id`, `thread_id`, and `user@host` appear only when the DDL event recorded them. `--sql-context off` still drops the statement. There is no new flag. Exit codes are unchanged. JSON fields are additive. Pairs with BinlogServer v0.5.54 `stop_gtid`.
+
+Related notes:
+
+- [v0.23.19 release notes](docs/releases/release-notes-v0.23.19.md)
+- [v0.23.19 中文发行说明](docs/releases/release-notes-v0.23.19.zh-CN.md)
+
 ## v0.23.18
 
 Release date: 2026-10-07
