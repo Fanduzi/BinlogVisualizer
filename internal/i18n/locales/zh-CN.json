@@ -379,9 +379,41 @@
     "description": "列名来源标签",
     "other": "列名"
   },
+  "report.label.primaryKey": {
+    "description": "主键是否存在的标签",
+    "other": "主键"
+  },
   "report.text.columnNamesMissing": {
     "description": "binlog 没有 FULL 行元数据时的说明",
     "other": "没有列名（binlog_row_metadata 不是 FULL）；列显示为 @1..@N"
+  },
+  "report.text.primaryKeyPresent": {
+    "description": "每张有行变更的表都有主键",
+    "other": "每张表都有主键"
+  },
+  "report.text.primaryKeyUnknown": {
+    "description": "binlog_row_metadata 不是 FULL 时的说明",
+    "other": "主键是否存在未知（binlog_row_metadata 不是 FULL）"
+  },
+  "report.text.primaryKeyUnknownSome": {
+    "description": "只有部分表缺少 FULL 行元数据时的说明",
+    "other": "部分表的主键是否存在未知（binlog_row_metadata 不是 FULL）"
+  },
+  "report.text.primaryKeyInsertOnly": {
+    "description": "没有主键且只有 INSERT 的表",
+    "other": "没有主键，且只有 INSERT（不是复制延迟风险）：{{.Tables}}"
+  },
+  "report.text.noPrimaryKey": {
+    "description": "没有主键的表",
+    "other": "无主键"
+  },
+  "report.text.noPrimaryKeyLead": {
+    "description": "副本上无主键表的 UPDATE/DELETE 会全表扫描",
+    "other": "这些表上的 UPDATE/DELETE 会让副本全表扫描。"
+  },
+  "report.text.noPrimaryKeyInsertOnly": {
+    "description": "只有 INSERT 的无主键表，不计入延迟风险",
+    "other": "仅 INSERT，不是延迟风险：{{.Tables}}"
   },
   "report.text.rowValuesSuppressed": {
     "description": "--show-rows 打开且 --sql-context 为 off 时的说明",
@@ -634,6 +666,18 @@
   "report.format.alertLine": {
     "description": "告警行格式",
     "other": "[{{.Severity}}] {{.Type}}：{{.Message}}"
+  },
+  "alert.noPrimaryKey.type": {
+    "description": "无主键告警类型",
+    "other": "no_primary_key"
+  },
+  "alert.noPrimaryKey.severity": {
+    "description": "无主键告警严重程度",
+    "other": "warning"
+  },
+  "alert.noPrimaryKey.message": {
+    "description": "无主键告警内容",
+    "other": "{{.Table}} 没有主键，收到 {{.Update}} 行 UPDATE 和 {{.Delete}} 行 DELETE；副本应用时可能全表扫描"
   },
   "alert.largeTransaction.type": {
     "description": "大事务告警类型",

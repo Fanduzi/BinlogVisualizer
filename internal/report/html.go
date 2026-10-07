@@ -127,6 +127,9 @@ type htmlReportData struct {
 	DMLFilter              string
 	ColumnNamesNote        string
 	RowValuesNote          string
+	PrimaryKeyNote         string
+	NoPKTables             []htmlNoPKRow
+	NoPKInsertOnly         string
 }
 
 type htmlDrilldown struct {
@@ -177,6 +180,13 @@ type htmlTableRow struct {
 	DeletePct            string
 	DDLPct               string
 	HasActivity          bool
+}
+
+type htmlNoPKRow struct {
+	Rank   int
+	Name   string
+	Update int
+	Delete int
 }
 
 type htmlAlert struct {
@@ -428,6 +438,21 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.DDLCount = len(d.DDLEvents)
 
 	d.DMLFilter = dmlFilterLabel(result.Scope)
+	pk := primaryKeyView(result.Tables)
+	if len(pk.risks) == 0 {
+		d.PrimaryKeyNote = pk.summaryLine
+	} else {
+		d.PrimaryKeyNote = pk.note
+		d.NoPKTables = make([]htmlNoPKRow, len(pk.risks))
+		for i, row := range pk.risks {
+			d.NoPKTables[i] = htmlNoPKRow{Rank: i + 1, Name: row.name(), Update: row.update, Delete: row.delete}
+		}
+		if len(pk.insertOnly) > 0 {
+			d.NoPKInsertOnly = i18n.Tf("report.text.noPrimaryKeyInsertOnly", map[string]any{
+				"Tables": formatInsertOnlyTables(pk.insertOnly),
+			})
+		}
+	}
 	if rowValuesSuppressed(opts) {
 		d.RowValuesNote = i18n.T("report.text.rowValuesSuppressed")
 	} else if showRowValues(opts) {

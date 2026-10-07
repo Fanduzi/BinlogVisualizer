@@ -125,6 +125,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--dml` | none | 只统计这些 ROW 类型（逗号分隔）：`insert`、`update`、`delete`，可组合。与 schema、table、时间、位点、GTID 过滤一起生效。没有匹配时退出 2：`Error: dml filter matched no events`。 |
 | `--show-rows` | `false` | 为列出的事务打印有界行值（DELETE 前镜像，UPDATE 变化列，INSERT 后镜像）。列名需要 `binlog_row_metadata=FULL`；否则列是 `@1`..`@N`。`--sql-context off` 省略这些值。 |
 
+binlog 是 MySQL 8 且 `binlog_row_metadata=FULL` 时，TABLE_MAP 可选元数据会给出每张表的主键（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`），或者说明这张表没有主键。每种输出都会列出没有主键、并且收到了 UPDATE 或 DELETE 行的表，按这些行数排序。副本应用这些行时可能全表扫描。没有主键但只有 INSERT 的表会点名，但不会被排成这种延迟风险。只要有一行 UPDATE 或 DELETE，就会在大事务和尖峰告警旁边给出 `no_primary_key` 警告；没有单独的阈值参数。没有 FULL 元数据时报告不猜测：这些表是 `unknown`，并说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。`--include-table`、schema 过滤、`--dml`，以及时间、位点、GTID 选择，对这一节的作用与对 Top Tables 相同。这里不生成回滚 SQL。
+
 position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与时间条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 
 ### 保存快照时的行为

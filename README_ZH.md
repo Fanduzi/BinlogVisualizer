@@ -235,11 +235,20 @@ time binlogviz analyze /path/to/mysql-bin.000044 --format html --output /tmp/bin
 BinlogViz 重点服务这些 DBA 常见问题：
 
 - **哪些表承受了最重的写入负载？**
+- **哪些 UPDATE 或 DELETE 打到了没有主键的表？**
 - **哪些事务大到值得优先排查？**
 - **某个分钟级尖峰是否真实发生过？**
 - **指定故障窗口内到底发生了什么变化？**
 - **当前窗口和可信基线相比，负载差异到底在哪里？**
 - **结果能否安全交给脚本、管道或其他工具？**
+
+### 为什么副本在延迟？
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+「无主键」一节列出收到了 UPDATE 或 DELETE、并且没有主键的表，按这些行数排序。副本应用这些行时可能全表扫描。`主键是否存在未知（binlog_row_metadata 不是 FULL）` 表示 binlog 没有记下主键信息，不是在说某张表没有主键。没有主键但只有 INSERT 的表会点名，但不会被排成这种风险。
 
 ## 安装
 

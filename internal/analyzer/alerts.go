@@ -146,6 +146,60 @@ func joinedOpenTables(tables map[string]int) string {
 	return strings.Join(names, ",")
 }
 
+// NoPrimaryKeyAlerts warns when a table with no primary key received UPDATE or DELETE rows.
+// One such row is enough. INSERT-only tables are not a replica scan risk and are not alerted.
+func NoPrimaryKeyAlerts(tables []model.TableStats) []model.Alert {
+	risks := noPKLagTables(tables)
+	if len(risks) == 0 {
+		return nil
+	}
+	alerts := make([]model.Alert, len(risks))
+	for i, table := range risks {
+		name := table.Schema + "." + table.Table
+		alerts[i] = model.Alert{
+			Type:     i18n.T("alert.noPrimaryKey.type"),
+			Severity: i18n.T("alert.noPrimaryKey.severity"),
+			Message: i18n.Tf("alert.noPrimaryKey.message", map[string]any{
+				"Table":  name,
+				"Update": table.NoPKUpdateRows,
+				"Delete": table.NoPKDeleteRows,
+			}),
+			Details: map[string]any{
+				"table":       name,
+				"update_rows": table.NoPKUpdateRows,
+				"delete_rows": table.NoPKDeleteRows,
+				"key_status":  model.KeyStatusNoPK,
+			},
+		}
+	}
+	return alerts
+}
+
+func noPKLagTables(tables []model.TableStats) []model.TableStats {
+	var risks []model.TableStats
+	for _, table := range tables {
+		if table.KeyStatus != model.KeyStatusNoPK {
+			continue
+		}
+		if table.NoPKUpdateRows+table.NoPKDeleteRows == 0 {
+			continue
+		}
+		risks = append(risks, table)
+	}
+	sort.Slice(risks, func(i, j int) bool {
+		left := risks[i].NoPKUpdateRows + risks[i].NoPKDeleteRows
+		right := risks[j].NoPKUpdateRows + risks[j].NoPKDeleteRows
+		if left != right {
+			return left > right
+		}
+		if risks[i].Schema != risks[j].Schema {
+			return risks[i].Schema < risks[j].Schema
+		}
+		return risks[i].Table < risks[j].Table
+	})
+	return risks
+}
+
 func sortedTableNames(tables map[string]int) []string {
 	if len(tables) == 0 {
 		return nil

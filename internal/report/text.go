@@ -43,6 +43,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
+	renderNoPrimaryKey(&buf, result.Tables)
 	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	renderTopTransactions(&buf, result, opts)
 	renderTopFindings(&buf, result, opts)
@@ -68,6 +69,9 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, 
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary")))
 	if label := dmlFilterLabel(result.Scope); label != "" {
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.dmlFilter"), label))
+	}
+	if line := primaryKeyView(result.Tables).summaryLine; line != "" {
+		buf.WriteString("  " + line + "\n")
 	}
 	if rowValuesSuppressed(opts) {
 		buf.WriteString("  " + i18n.T("report.text.rowValuesSuppressed") + "\n")
@@ -151,6 +155,34 @@ func collectTopFindingLines(result model.AnalysisResult, topN int) []string {
 		}
 	}
 	return lines
+}
+
+func renderNoPrimaryKey(buf *strings.Builder, tables []model.TableStats) {
+	view := primaryKeyView(tables)
+	if len(view.risks) == 0 {
+		return
+	}
+	buf.WriteString("=== " + i18n.T("report.text.noPrimaryKey") + " ===\n")
+	buf.WriteString("  " + i18n.T("report.text.noPrimaryKeyLead") + "\n")
+	nameWidth := len("Table")
+	for _, row := range view.risks {
+		if len(row.name()) > nameWidth {
+			nameWidth = len(row.name())
+		}
+	}
+	buf.WriteString(fmt.Sprintf("  %-2s %-*s %6s %6s\n", "#", nameWidth, "Table", "UPDATE", "DELETE"))
+	for i, row := range view.risks {
+		buf.WriteString(fmt.Sprintf("  %-2d %-*s %6d %6d\n", i+1, nameWidth, row.name(), row.update, row.delete))
+	}
+	if len(view.insertOnly) > 0 {
+		buf.WriteString("  " + i18n.Tf("report.text.noPrimaryKeyInsertOnly", map[string]any{
+			"Tables": formatInsertOnlyTables(view.insertOnly),
+		}) + "\n")
+	}
+	if view.note != "" {
+		buf.WriteString("  " + view.note + "\n")
+	}
+	buf.WriteString("\n")
 }
 
 func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN int) {

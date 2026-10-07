@@ -23,8 +23,9 @@ type parser struct {
 }
 
 type cachedTableName struct {
-	schema string
-	table  string
+	schema    string
+	table     string
+	keyStatus string
 }
 
 // NewParser creates a new binlog parser.
@@ -197,14 +198,16 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 	case *replication.MariadbAnnotateRowsEvent:
 		raw.QuerySQL = string(e.Query)
 	case *replication.TableMapEvent:
-		name := cachedTableName{schema: string(e.Schema), table: string(e.Table)}
+		name := cachedTableName{schema: string(e.Schema), table: string(e.Table), keyStatus: tableKeyStatus(e)}
 		raw.Schema = name.schema
 		raw.Table = name.table
+		raw.KeyStatus = name.keyStatus
 		if tableNames != nil {
 			tableNames[e.TableID] = name
 		}
 	case *replication.RowsEvent:
 		applyRowsEventTableName(raw, e, tableNames)
+		raw.KeyStatus = rowsKeyStatus(e, tableNames)
 		raw.RowCount = logicalRowCount(et, len(e.Rows))
 		if capture {
 			raw.RowImages, raw.RowImagesOmitted = captureRowImages(e, raw.EventType, raw.Schema, raw.Table)
@@ -428,7 +431,11 @@ func applyRowsEventTableName(raw *RawEvent, event *replication.RowsEvent, tableN
 		return
 	}
 
-	name := cachedTableName{schema: string(event.Table.Schema), table: string(event.Table.Table)}
+	name := cachedTableName{
+		schema:    string(event.Table.Schema),
+		table:     string(event.Table.Table),
+		keyStatus: tableKeyStatus(event.Table),
+	}
 	raw.Schema = name.schema
 	raw.Table = name.table
 	if tableNames != nil && tableID != 0 {
