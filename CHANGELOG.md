@@ -4,6 +4,19 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.18
+
+Release date: 2026-10-07
+
+Highlights:
+
+- `binlogviz analyze` names the tables that produced each busiest minute in text, Markdown, and HTML. On `mysql-8.0.46-busiest-minute.binlog`, Activity peaks at `Rows/min: 32.0 at 2026-03-15 14:05` (`shop.orders` 30, `shop.catalog` 2) while Top Tables stays led by `shop.catalog` (82). JSON `diagnostics.hot_intervals[].table_rows` and `minutes[].table_rows` are unchanged. There is no new flag. `--detect-spikes` stays opt-in.
+
+Related notes:
+
+- [v0.23.18 release notes](docs/releases/release-notes-v0.23.18.md)
+- [v0.23.18 中文发行说明](docs/releases/release-notes-v0.23.18.zh-CN.md)
+
 ## v0.23.17
 
 Release date: 2026-10-07
