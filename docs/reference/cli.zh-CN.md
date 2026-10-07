@@ -180,7 +180,7 @@ binlog 需要 `binlog_row_metadata=FULL` 和 `binlog_row_image=FULL`。没有主
 
 JSON 按二进制文档重建，包括 `binlog_transaction_compression=ON` 的事务，小数、日期时间和 `-0.0` 的符号可以原样还原。非 `utf8mb4` 字符列是字符集引导符加十六进制字节（`_latin1 0xE9`）。`ENUM` 写成成员序号，`SET` 写成位掩码。`ENUM` 序号 0 会先保存 `@@SESSION.sql_mode`，只在这一条语句去掉严格模式，然后把保存的模式设回去。解析到的文件里若有 `CREATE` 或 `ALTER`（含被 `--exclude-gtids` 排除的事件）点名了生成列，或 `--schema-file` 点名了生成列并且记录值和表达式一致，这些列不会出现在 `INSERT` 和 `UPDATE` 赋值里。MySQL 8 的 `TABLE_MAP` 可选元数据不标记生成列，`FULL` 镜像同时包含虚拟列和存储列的值。schema 文件和这些列对不上时不打印 SQL。定义出现过但读不出来时，拒绝该表且不打印 SQL。选中的表没有定义时，脚本仍列出每一列，stderr 警告不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
 
-`ON DELETE` / `ON UPDATE CASCADE` 的子表行不在 binlog 里，不会被还原。撤销时触发器会执行。脚本覆盖事故之后的修改；匹配只有主键，不做冲突检查。表过滤或 `--dml` 只保留一个事务的部分行时，stderr 打出警告。在主库上执行（`sql_log_bin=1`），副本才会在新 GTID 下跟上。
+`ON DELETE` / `ON UPDATE CASCADE` 的子表行不在 binlog 里，不会被还原。撤销时触发器会执行。脚本覆盖事故之后的修改；匹配只有主键，不做冲突检查。表过滤或 `--dml` 只保留一个事务的部分行时，stderr 打出警告。先审阅并测试脚本，再在主库的同一个会话里执行（`sql_log_bin=1`），副本才会在新 GTID 下跟上。某条语句失败时，脚本里更早的事务已经提交。已知限制（#166、#167、#168）和变通办法见 `docs/concept/limitations.zh-CN.md`。
 
 列名缺失、行镜像不完整、某一列无法精确写成字面量、出现过的表定义读不出来、`--schema-file` 和 binlog 的列不一致、选定范围内有 DDL，或 `--sql-context off` 时，退出 1，一行 `Error:`，没有 SQL。什么都没选中时退出 2，`Error:` 与 `analyze` 相同，stdout 为空。除此之外 `--sql-context` 不影响脚本：flashback 不打印原始语句，单元格的值不打码。选定范围内的账号 DDL 按 DDL 拒绝。
 

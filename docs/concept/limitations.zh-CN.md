@@ -74,7 +74,7 @@ SQL 上下文是有界的，而且面向展示。
 
 ## Flashback SQL
 
-`binlogviz flashback` 打印撤销选定行变更的 SQL。它只读本地 binlog，不连接数据库。审完脚本后自己执行。
+`binlogviz flashback` 打印撤销选定行变更的 SQL。它只读本地 binlog，不连接数据库。先审阅并测试脚本，再在主库的同一个会话里执行。
 
 DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，`WHERE` 用后镜像的主键。语句按 binlog 逆序。每个原事务是一个 `START TRANSACTION` / `COMMIT`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`（文件名和该事务起点字节）。
 
@@ -86,7 +86,7 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 生成列（VIRTUAL 或 STORED）在定义已知时不写入 `INSERT` 列清单和 `UPDATE` 赋值。没有主键时，只要还剩基列，就从 `WHERE` 里去掉生成列。生成列若属于主键，仍留在 `WHERE` 中。列名来自你传入文件里的 `CREATE TABLE` 和 `ALTER TABLE`，包括被 `--exclude-gtids` 或时间窗口排除的事务，也来自 `--schema-file`（`mysqldump --no-data`，或 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句里的换行写成 `\n` 的输出）。flashback 不连接 MySQL。MySQL 8 的 `TABLE_MAP` 可选元数据止于 `COLUMN_VISIBILITY`（不可见列，不是生成列），`binlog_row_image=FULL` 同时存下虚拟列和存储列的值，所以缺一个单元格并不是信号，只看 binlog 无法区分。定义出现过但读不出来时，flashback 拒绝该表且不打印 SQL。选中的表从未有过定义时，flashback 仍打印脚本，列出每一列，并在脚本之前把警告写到 stderr。警告点名这张表，说明不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
 
-`--schema-file` 必须是行被写入时的表结构。flashback 拿这份定义和每个选中事件的 binlog `TABLE_MAP` 比较：列数、列名、顺序，以及 binlog 里有的类型、有无符号、字符集、`ENUM`/`SET` 成员、小数精度和小数秒。不一致时点名这张表和有差异的列，并且不打印 SQL。生成列只有每一行的记录值都等于表达式时才省略。能核对的是整数 `+`、`-`、`*`、`/`、括号、列名和 `NULL`。其他表达式一律拒绝，否则把真实列标成生成列会丢掉记下的值。解析到的文件里若有 `CREATE`，就用它替换文件里的这张表。解析到的 `ALTER`（含被时间或 GTID 排除的语句）会更新之后事件使用的定义。选定范围内的 `ALTER` 仍然拒绝，因为 flashback 不撤销 DDL。普通的 `mysqldump --no-data db` 没有 `USE`。库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或这张表在 binlog 里只出现在一个库时的那个库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`，包括 `mysql --batch` 的输出。转储头和 `--schema-file-db` 不一致，或表名出现在多个库时，flashback 警告并且不用这份定义。
+`--schema-file` 必须是行被写入时的表结构。flashback 拿这份定义和每个选中事件的 binlog `TABLE_MAP` 比较：列数、列名、顺序，以及 binlog 里有的类型、有无符号、字符集、`ENUM`/`SET` 成员、小数精度和小数秒。不一致时点名这张表和有差异的列，并且不打印 SQL。生成列只有每一行的记录值都等于表达式时才省略。能核对的是整数 `+`、`-`、`*`、括号、列名和 `NULL`。`/` 按截断计算，MySQL 赋给整数时会四舍五入，所以正确的文件也可能对不上。`DIV` 和其他表达式一律拒绝，否则把真实列标成生成列会丢掉记下的值。解析到的文件里若有 `CREATE`，就用它替换文件里的这张表。解析到的 `ALTER`（含被时间或 GTID 排除的语句）会更新之后事件使用的定义。选定范围内的 `ALTER` 仍然拒绝，因为 flashback 不撤销 DDL。普通的 `mysqldump --no-data db` 没有 `USE`。库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或这张表在 binlog 里只出现在一个库时的那个库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`，包括 `mysql --batch` 的输出。转储头和 `--schema-file-db` 不一致，或表名出现在多个库时，flashback 警告并且不用这份定义。
 
 即使字面量精确，这些限制仍然在：
 
@@ -94,7 +94,15 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 - 撤销执行时，表上的触发器会触发。
 - 匹配只用主键，或剩余每一列加 `LIMIT 1`。没有冲突检查。脚本会覆盖事故之后的修改。
 - 表过滤或 `--dml` 可能只撤销一个事务里的一部分行变更。这时 stderr 打出警告，stdout 仍是保留行的 SQL。时间、位点、GTID 选择丢掉的是整个事务，不警告。
-- 在主库上执行，并保持 `sql_log_bin=1`，副本才会在新 GTID 下跟上。不要在副本上执行。
+- 先审阅并测试脚本。在主库的同一个会话里执行，并保持 `sql_log_bin=1`，副本才会在新 GTID 下跟上。不要在副本上执行。某条语句失败时，脚本里更早的事务已经提交。
+
+### 已知限制
+
+先审阅并测试脚本，再在主库的同一个会话里执行。某条语句失败时，脚本里更早的事务已经提交。
+
+- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)：生成列的表达式核对不了时，正确的 `--schema-file` 也会被拒绝。这包括 JSON 提取（`j->>'$.k'`）、`UPPER`、`CONCAT`、`DIV` 和 `/`。错误信息是 `--schema-file does not match the binlog columns`。解决办法是不传 `--schema-file`，接受「不能排除生成列」的警告，或用 `--include-table` / `--exclude-table` 把这些表排除出选择。
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167)：解析到的 binlog 里若有 `ALTER`，会再应用到已经包含这次变更的 schema 文件上，所以事故之后、ALTER 已经生效时导出的文件也可能被拒绝。把多份 `mysqldump --no-data` 拼成一个文件时，只用第一个 `Database:` 头，后面的转储都绑到那个库。未带库名的表出现在多个库时，逐表警告只点名其中一张没有定义的表。
+- [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168)：还原 `ENUM` 序号 0 时，只在这一条语句去掉 `STRICT_TRANS_TABLES` 和 `STRICT_ALL_TABLES`。`sql_mode=TRADITIONAL` 会把这两个严格模式加回来，执行停在 `ERROR 1265`，脚本里更早的事务已经提交。在不含 `TRADITIONAL` 的会话里执行，或先审阅脚本。
 
 无法精确还原时拒绝，不猜测。退出 1，一行 `Error:` 点名表和原因，stdout 没有 SQL，出现在：
 
