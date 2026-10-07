@@ -178,7 +178,11 @@ Selectors match `analyze`: `--include-schema`, `--exclude-schema`, `--include-ta
 
 The binlog needs `binlog_row_metadata=FULL` and `binlog_row_image=FULL`. A table with no primary key is matched on every column with `LIMIT 1`, and a comment says so. The `INSERT` of a deleted row does not use `LIMIT 1`.
 
-Exit 1, one `Error:` line, and no SQL when column names are missing, a row image is incomplete, a column cannot be rendered exactly, the selected range contains DDL, or `--sql-context off`. Nothing selected is exit 2 with the same `Error:` line as `analyze` and empty stdout. `--sql-context` otherwise has no effect on the script: flashback does not print original statements, and cell values are not redacted. Auth DDL in the selected range is refused as DDL.
+JSON is rebuilt from the binary document, so decimals, datetimes, and the sign of `-0.0` round-trip. A non-`utf8mb4` character column is a charset introducer and hex bytes (`_latin1 0xE9`). Generated columns are omitted from `INSERT` and `UPDATE` assignments when `CREATE` or `ALTER` in the parsed files names them, including events excluded by `--exclude-gtids`. If that definition cannot be read, flashback refuses the table and prints nothing.
+
+`ON DELETE` / `ON UPDATE CASCADE` child rows are not in the binlog and are not restored. Triggers fire on undo. The script overwrites later changes; the match is the primary key only, with no conflict check. A table filter or `--dml` that keeps only some rows of a transaction prints a warning on stderr. Apply on the primary (`sql_log_bin=1`) so replicas follow under new GTIDs.
+
+Exit 1, one `Error:` line, and no SQL when column names are missing, a row image is incomplete, a column cannot be rendered exactly, generated columns cannot be identified, the selected range contains DDL, or `--sql-context off`. Nothing selected is exit 2 with the same `Error:` line as `analyze` and empty stdout. `--sql-context` otherwise has no effect on the script: flashback does not print original statements, and cell values are not redacted. Auth DDL in the selected range is refused as DDL.
 
 ## `compare` Command Syntax
 

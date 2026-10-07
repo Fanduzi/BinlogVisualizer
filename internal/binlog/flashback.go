@@ -1,13 +1,12 @@
 // Package binlog formats exact SQL literals from an already-decoded rows event.
-// input: go-mysql RowsEvent values and FULL row metadata (names, signedness, collation, enum/set members, primary key).
-// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly.
+// input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, signedness, collation, enum/set members, primary key).
+// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes.
 // pos: parser helper used only when flashback capture is on. It reuses the decoded row images from the same RowsEvent as display capture.
 // note: if this file changes, update this header and README.md.
 package binlog
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -23,6 +22,7 @@ import (
 const mysqlCollationBinary uint64 = 63
 
 func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string) []model.FlashRow {
+	docs := recallFlashJSON(ev)
 	base := model.FlashRow{Schema: schema, Table: table, Op: operationFromKind(kind)}
 	if ev == nil || ev.Table == nil || len(ev.Rows) == 0 {
 		base.ProblemKind = model.FlashProblemCapture
@@ -66,18 +66,22 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 		row.PK = append([]int(nil), meta.indexes...)
 		var beforeRow, afterRow []any
 		var beforeSkips, afterSkips []int
+		beforeIndex, afterIndex := -1, -1
 		switch {
 		case update:
-			beforeRow = ev.Rows[i*2]
-			afterRow = ev.Rows[i*2+1]
-			beforeSkips = skipsAt(ev.SkippedColumns, i*2)
-			afterSkips = skipsAt(ev.SkippedColumns, i*2+1)
+			beforeIndex, afterIndex = i*2, i*2+1
+			beforeRow = ev.Rows[beforeIndex]
+			afterRow = ev.Rows[afterIndex]
+			beforeSkips = skipsAt(ev.SkippedColumns, beforeIndex)
+			afterSkips = skipsAt(ev.SkippedColumns, afterIndex)
 		case row.Op == "DELETE":
-			beforeRow = ev.Rows[i]
-			beforeSkips = skipsAt(ev.SkippedColumns, i)
+			beforeIndex = i
+			beforeRow = ev.Rows[beforeIndex]
+			beforeSkips = skipsAt(ev.SkippedColumns, beforeIndex)
 		default:
-			afterRow = ev.Rows[i]
-			afterSkips = skipsAt(ev.SkippedColumns, i)
+			afterIndex = i
+			afterRow = ev.Rows[afterIndex]
+			afterSkips = skipsAt(ev.SkippedColumns, afterIndex)
 		}
 		if len(beforeSkips) > 0 || len(afterSkips) > 0 {
 			row.ProblemKind = model.FlashProblemImage
@@ -85,10 +89,10 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 		}
 		var problem *model.FlashRow
 		if beforeRow != nil {
-			row.Before, problem = flashLiterals(ev.Table, labels, beforeRow, unsigned, enums, sets, collation, schema, table)
+			row.Before, problem = flashLiterals(ev.Table, labels, beforeRow, jsonCellsAt(docs, beforeIndex), unsigned, enums, sets, collation, schema, table)
 		}
 		if problem == nil && afterRow != nil {
-			row.After, problem = flashLiterals(ev.Table, labels, afterRow, unsigned, enums, sets, collation, schema, table)
+			row.After, problem = flashLiterals(ev.Table, labels, afterRow, jsonCellsAt(docs, afterIndex), unsigned, enums, sets, collation, schema, table)
 		}
 		if problem != nil {
 			return append(out, *problem)
@@ -114,14 +118,25 @@ func flashNamesComplete(table *replication.TableMapEvent, width int) bool {
 	return true
 }
 
-func flashLiterals(table *replication.TableMapEvent, labels []string, values []any, unsigned map[int]bool, enums, sets map[int][]string, collation map[int]uint64, schema, tableName string) ([]string, *model.FlashRow) {
+func jsonCellsAt(docs [][]jsonCell, index int) []jsonCell {
+	if index < 0 || index >= len(docs) {
+		return nil
+	}
+	return docs[index]
+}
+
+func flashLiterals(table *replication.TableMapEvent, labels []string, values []any, cells []jsonCell, unsigned map[int]bool, enums, sets map[int][]string, collation map[int]uint64, schema, tableName string) ([]string, *model.FlashRow) {
 	lits := make([]string, len(labels))
 	for i := range labels {
 		var value any
 		if i < len(values) {
 			value = values[i]
 		}
-		lit, typeProblem := flashLiteral(table, i, value, unsigned, enums, sets, collation)
+		var cell jsonCell
+		if i < len(cells) {
+			cell = cells[i]
+		}
+		lit, typeProblem := flashLiteral(table, i, value, cell, unsigned, enums, sets, collation)
 		if typeProblem != "" {
 			return nil, &model.FlashRow{
 				Schema:        schema,
@@ -137,7 +152,7 @@ func flashLiterals(table *replication.TableMapEvent, labels []string, values []a
 	return lits, nil
 }
 
-func flashLiteral(table *replication.TableMapEvent, col int, value any, unsigned map[int]bool, enums, sets map[int][]string, collation map[int]uint64) (string, string) {
+func flashLiteral(table *replication.TableMapEvent, col int, value any, cell jsonCell, unsigned map[int]bool, enums, sets map[int][]string, collation map[int]uint64) (string, string) {
 	if value == nil {
 		return "NULL", ""
 	}
@@ -185,7 +200,10 @@ func flashLiteral(table *replication.TableMapEvent, col int, value any, unsigned
 	case mysql.MYSQL_TYPE_VECTOR:
 		return "", "VECTOR"
 	case mysql.MYSQL_TYPE_JSON:
-		text, ok := sqlJSON(value)
+		if _, ok := value.(*replication.JsonDiff); ok {
+			return "", "partial JSON"
+		}
+		text, ok := sqlJSON(value, cell)
 		if !ok {
 			return "", "JSON"
 		}
@@ -312,24 +330,17 @@ func decimalLiteral(text string) bool {
 	return digits > 0
 }
 
-func sqlJSON(value any) (string, bool) {
-	switch typed := value.(type) {
-	case []byte:
-		if len(typed) == 0 {
-			return "CAST('null' AS JSON)", true
-		}
-		if !json.Valid(typed) || !utf8.Valid(typed) {
-			return "", false
-		}
-		return "CAST(" + quoteSQLString(string(typed)) + " AS JSON)", true
-	case string:
-		if !json.Valid([]byte(typed)) || !utf8.ValidString(typed) {
-			return "", false
-		}
-		return "CAST(" + quoteSQLString(typed) + " AS JSON)", true
-	default:
+func sqlJSON(value any, cell jsonCell) (string, bool) {
+	if cell.ok {
+		return sqlJSONBinary(cell.doc)
+	}
+	// A []byte here is a binary document supplied by a test or a caller that
+	// already sliced the row image. Text from go-mysql is not exact.
+	raw, ok := value.([]byte)
+	if !ok {
 		return "", false
 	}
+	return sqlJSONBinary(raw)
 }
 
 func sqlEnum(value any, members []string) (string, bool) {
@@ -412,27 +423,42 @@ func sqlCharacter(typ byte, col int, value any, collation map[int]uint64) (strin
 	if !ok || id == 0 {
 		return "", name + " (collation is unavailable)"
 	}
-	binary := id == mysqlCollationBinary
-	switch typed := value.(type) {
-	case []byte:
-		if binary {
-			return hexLiteral(typed), ""
-		}
-		if !utf8.Valid(typed) {
-			return "", name
-		}
-		return quoteSQLString(string(typed)), ""
-	case string:
-		if binary {
-			return hexLiteral([]byte(typed)), ""
-		}
-		if !utf8.ValidString(typed) {
-			return "", name
-		}
-		return quoteSQLString(typed), ""
-	default:
+	raw, ok := characterBytes(value)
+	if !ok {
 		return "", name
 	}
+	if id == mysqlCollationBinary {
+		return hexLiteral(raw), ""
+	}
+	charset, known := collationCharset[id]
+	if !known || charset == "" {
+		return "", name + " (charset for collation " + strconv.FormatUint(id, 10) + " is unknown)"
+	}
+	if charset == "utf8mb4" {
+		if !utf8.Valid(raw) {
+			return "", name
+		}
+		return quoteSQLString(string(raw)), ""
+	}
+	return charsetHexLiteral(charset, raw), ""
+}
+
+func characterBytes(value any) ([]byte, bool) {
+	switch typed := value.(type) {
+	case []byte:
+		return typed, true
+	case string:
+		return []byte(typed), true
+	default:
+		return nil, false
+	}
+}
+
+func charsetHexLiteral(charset string, value []byte) string {
+	if len(value) == 0 {
+		return "_" + charset + " X''"
+	}
+	return "_" + charset + " 0x" + strings.ToUpper(hex.EncodeToString(value))
 }
 
 func hexLiteral(value []byte) string {
