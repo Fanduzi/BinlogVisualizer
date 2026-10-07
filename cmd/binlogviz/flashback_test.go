@@ -335,7 +335,7 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 	}
 	genSQL, genErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.gen", "--schema-file", schemaPath)
 	if err != nil {
-		t.Fatalf("gen schema file: %v\n%s", err, genErr)
+		t.Fatalf("gen schema file: %v\n%s\nschema:\n%s", err, genErr, schemaBody)
 	}
 	if strings.Contains(genErr, "generated columns cannot be ruled out") || strings.Contains(genSQL, "`virt`") || strings.Contains(genSQL, "`stor`") {
 		t.Fatalf("schema file sql:\n%s\nstderr:\n%s", genSQL, genErr)

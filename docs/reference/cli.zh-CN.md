@@ -173,7 +173,7 @@ binlogviz flashback mysql-bin.000123 --schema-file schema.sql
 
 `flashback` 打印撤销选定行变更的 SQL。stdout 是脚本。它不连接数据库。输入规则与 `analyze` 相同：位置参数、stdin `-`，或 `--from-dir` 加 `--prefix`。
 
-选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`、`--include-gtids`、`--exclude-gtids`。`--schema-file` 是可选的表定义 SQL（`mysqldump --no-data`，或 `USE` 之后的 `SHOW CREATE TABLE`），不是过滤器。DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，并用后镜像的主键匹配。顺序是 binlog 逆序。每个原事务是 `START TRANSACTION` / `COMMIT`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`。
+选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`、`--include-gtids`、`--exclude-gtids`。`--schema-file` 是可选的表定义 SQL（`mysqldump --no-data`，或 `USE` 之后的 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句内部换行写成 `\n` 的输出），不是过滤器。DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，并用后镜像的主键匹配。顺序是 binlog 逆序。每个原事务是 `START TRANSACTION` / `COMMIT`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`。
 
 binlog 需要 `binlog_row_metadata=FULL` 和 `binlog_row_image=FULL`。没有主键的表按每一列匹配并加 `LIMIT 1`，注释会说明。被删行的 `INSERT` 不用 `LIMIT 1`。
 

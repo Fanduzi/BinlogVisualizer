@@ -6,7 +6,7 @@
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly from ReportAggregator plus table totals. When `Options.Flashback` is set, retained events are also noted for undo SQL. |
 | `flashback.go` | Collects filtered flashback rows and renders reverse-order undo SQL, or one error and no script. Omits generated columns learned from schema SQL or CREATE/ALTER. A selected table with no definition warns and still prints. Warns when a table or DML filter splits a transaction. |
-| `flashback_generated.go` | Reads generated column names from schema-file text and from CREATE TABLE and ALTER TABLE text, including LIKE, DROP, and RENAME. An unreadable definition marks the table bad. A table that was never defined stays absent. |
+| `flashback_generated.go` | Reads generated column names from schema-file text and from CREATE TABLE and ALTER TABLE text, including LIKE, DROP, and RENAME. mysql --batch `SHOW CREATE TABLE` newlines (`\n`) are whitespace. An unreadable definition marks the table bad. A table that was never defined stays absent. |
 | `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, applies exclude-wins matching, and rejects anonymous groups while a selector is active. |
 | `filter.go` | Applies schema/object include and exclude filters, including `SCHEMA.TABLE` tokens for tables, views, events, routines, and triggers, plus an optional INSERT/UPDATE/DELETE kind filter. |
 | `store.go` | Shared detail DTOs and the in-memory store used by default analyze. |
