@@ -42,7 +42,10 @@ type RawEvent struct {
 	KeyStatus                string           // has_pk, no_pk, or unknown from TABLE_MAP optional metadata.
 	RowImages                []model.RowImage // Set only when row-image capture is on. Nil otherwise.
 	RowImagesOmitted         int
-	Position                 uint32 // Legacy next-event position retained for existing callers and error messages.
+	// RowKeys are UPDATE/DELETE primary-key identities from FULL metadata.
+	// Nil when the key is not known. Never guessed from column @1.
+	RowKeys  []string
+	Position uint32 // Legacy next-event position retained for existing callers and error messages.
 }
 
 // Parser defines the interface for parsing binlog files.

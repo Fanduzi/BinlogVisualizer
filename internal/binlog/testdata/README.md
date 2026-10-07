@@ -281,6 +281,25 @@ bash ./create_mysql_8.0.46_no_pk.sh
 
 Requires Docker and `mysql:8.0.46`.
 
+## mysql-8.0.46-hot-rows-full.binlog and mysql-8.0.46-hot-rows-minimal.binlog
+
+MySQL 8.0.46 ROW+GTID files for per-row primary-key ranking. `full` was recorded with `binlog_row_metadata=FULL`. `minimal` was recorded with `binlog_row_metadata=MINIMAL`. Both use `binlog_row_image=FULL`. Event headers for the DML are `2026-10-06 14:00:01` through `14:00:14` via `SET TIMESTAMP`. The paired `.mysqlbinlog.txt` is `mysqlbinlog -v --base64-output=DECODE-ROWS --print-table-metadata`.
+
+### Contents
+
+- `shop.counters`: primary key is `id` (not column `@1` / `label`). `id=7` is updated twice in one transaction at 14:00:01, then once each at 14:00:02 through 14:00:06 (7 touches, 6 transactions). `id=8` is updated once at 14:00:07 and once at 14:00:08. `id=9` is deleted at 14:00:09. An INSERT of `id=4` at 14:00:14 is not a hot-row touch.
+- `shop.inventory`: primary key is `(sku, wh)`. `sku=BOLT, wh=1` is updated at 14:00:10, 14:00:11, and 14:00:12. `sku=NUT, wh=2` is updated once in the 14:00:12 transaction.
+- `shop.heap`: no primary key, twelve updates in one transaction at 14:00:13. It is not ranked. On the MINIMAL file the key is unknown, so the report says hot-row tracking is unavailable and does not guess from `@1`.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_mysql_8.0.46_hot_rows.sh
+```
+
+Requires Docker and `mysql:8.0.46`.
+
 ## mysql-8.0.46-busiest-minute.binlog
 
 A MySQL 8.0.46 ROW+GTID file whose busiest minute is not the window's hottest table. `binlog_row_metadata=FULL`. Event headers are `2026-03-15 14:00` through `14:03` and `14:05` via `SET TIMESTAMP`.

@@ -69,6 +69,8 @@ type analyzeOptions struct {
 	topTransactions        int
 	topThreads             int
 	topThreadsChanged      bool
+	topRows                int
+	topRowsChanged         bool
 	details                bool
 	showMinutes            bool
 	showPatterns           bool
@@ -125,6 +127,7 @@ func newAnalyzeCommand() *cobra.Command {
 			opts.topTablesChanged = cmd.Flags().Changed("top-tables")
 			opts.topTransactionsChanged = cmd.Flags().Changed("top-transactions")
 			opts.topThreadsChanged = cmd.Flags().Changed("top-threads")
+			opts.topRowsChanged = cmd.Flags().Changed("top-rows")
 			opts.startPositionSet = cmd.Flags().Changed("start-position")
 			opts.stopPositionSet = cmd.Flags().Changed("stop-position")
 			if err := validateAnalyzeSelectionInput(args, opts); err != nil {
@@ -208,6 +211,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
 	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, i18n.T("cmd.analyze.flag.topTransactions"))
 	cmd.Flags().IntVar(&opts.topThreads, "top-threads", 10, i18n.T("cmd.analyze.flag.topThreads"))
+	cmd.Flags().IntVar(&opts.topRows, "top-rows", 10, i18n.T("cmd.analyze.flag.topRows"))
 	cmd.Flags().BoolVar(&opts.details, "details", false, i18n.T("cmd.analyze.flag.details"))
 	cmd.Flags().BoolVar(&opts.showMinutes, "show-minutes", false, i18n.T("cmd.analyze.flag.showMinutes"))
 	cmd.Flags().BoolVar(&opts.showPatterns, "show-patterns", false, i18n.T("cmd.analyze.flag.showPatterns"))
@@ -1014,6 +1018,10 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 	if !opts.topThreadsChanged {
 		topThreads = opts.top
 	}
+	topRows := opts.topRows
+	if !opts.topRowsChanged {
+		topRows = opts.top
+	}
 	return report.Options{
 		SQLContextMode: mode,
 		TopN:           opts.top,
@@ -1021,6 +1029,8 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 		TopTablesSet:   opts.topTablesChanged,
 		TopThreads:     topThreads,
 		TopThreadsSet:  opts.topThreadsChanged,
+		TopRows:        topRows,
+		TopRowsSet:     opts.topRowsChanged,
 		Details:        opts.details,
 		ShowMinutes:    opts.showMinutes,
 		ShowPatterns:   opts.showPatterns,

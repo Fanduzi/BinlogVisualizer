@@ -1242,6 +1242,53 @@ const htmlReportTemplateTail = `
       <div class="section-desc" style="padding:0 16px 14px">{{.PrimaryKeyNote}}</div>
       {{end}}
 
+      {{if .HasHotRows}}
+      <div class="table-toolbar">
+        <div class="diagnostic-title">
+          <span>{{t "report.text.hotRows"}}</span>
+        </div>
+      </div>
+      <div class="section-desc" style="padding:0 16px 8px">{{.HotRowsLead}}</div>
+      {{if .HotRowsHidden}}<div class="section-desc" style="padding:0 16px 8px">{{.HotRowsHidden}}</div>{{end}}
+      {{if .HotRows}}
+      <div class="table-container">
+        <table id="hot-rows-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Table</th>
+              <th>Primary key</th>
+              <th class="num">Touches</th>
+              <th class="num">Transactions</th>
+              <th>First</th>
+              <th>Last</th>
+              <th>First transaction</th>
+              <th>Last transaction</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .HotRows}}
+            <tr>
+              <td>{{fmtIntHTML .Rank}}</td>
+              <td class="name">{{.Table}}</td>
+              <td class="name">{{.Key}}</td>
+              <td class="num">{{fmtIntHTML .Touches}}{{if .Approximate}} {{t "report.text.hotRowsApproximate"}}{{end}}</td>
+              <td class="num">{{fmtIntHTML .Transactions}}</td>
+              <td>{{.First}}</td>
+              <td>{{.Last}}</td>
+              <td>{{.FirstTxn}}</td>
+              <td>{{.LastTxn}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      {{end}}
+      {{if .HotRowsOmitted}}<div class="section-desc" style="padding:8px 16px">{{.HotRowsOmitted}}</div>{{end}}
+      {{range .HotRowUnavailable}}<div class="section-desc" style="padding:0 16px 8px">{{.}}</div>{{end}}
+      {{if .HotRowsNote}}<div class="section-desc" style="padding:0 16px 14px">{{.HotRowsNote}}</div>{{end}}
+      {{end}}
+
       <div class="table-toolbar">
         <div class="diagnostic-title">
           <span>{{.ThreadsTitle}}</span>
