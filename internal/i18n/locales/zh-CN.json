@@ -507,6 +507,18 @@
     "description": "诊断文本活动概览迷你曲线章节标题",
     "other": "活动概览"
   },
+  "report.text.busiestMinutes": {
+    "description": "行数最多的分钟，以及产生这些行的表",
+    "other": "最忙分钟"
+  },
+  "report.text.busiestMinutesLead": {
+    "description": "最忙分钟导语：表是这一分钟的，不是整个窗口",
+    "other": "这一分钟里的行，按表列出。"
+  },
+  "report.label.drivingTables": {
+    "description": "产生这一分钟行数的表",
+    "other": "驱动表"
+  },
   "report.text.topTables": {
     "description": "诊断文本热点表章节标题",
     "other": "热点表"
