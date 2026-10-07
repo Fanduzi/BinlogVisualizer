@@ -265,6 +265,7 @@ BinlogViz is optimized for these common DBA questions:
 
 - **Which tables are taking the heaviest write load?**
 - **Which UPDATE or DELETE rows hit a table with no primary key?**
+- **How far behind was this replica, and which transactions caused it?**
 - **Which transactions are large enough to deserve attention?**
 - **Did a spike happen at a specific minute?**
 - **What changed inside a known incident window?**
@@ -278,6 +279,8 @@ binlogviz analyze mysql-bin.000123
 ```
 
 A `No Primary Key` section lists tables that received UPDATE or DELETE rows and have no primary key, ranked by those counts. On a replica, each of those rows can scan the table. `primary key presence unknown (binlog_row_metadata is not FULL)` means the binlog did not record key presence; it is not a claim that a table lacks a key. INSERT-only tables without a primary key are named and are not ranked as this risk.
+
+On a replica binlog from MySQL 8.0 or newer with `log_replica_updates`, `Replica Apply Delay` follows Busiest Minutes. Delay is immediate commit time minus original commit time, and it assumes the source and replica clocks agree. The section gives the max and p95 delay, the minute where delay peaked, and the slowest transactions: GTID, transaction start file:byte, both commit times, delay, and the tables in that transaction. `--top` limits that list. A source binlog, where the two timestamps are equal, is one line and no table. MySQL 5.7 and MariaDB print `commit timestamps unavailable`.
 
 ## Installation
 

@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it; row-image groups name duration, tables, rows, and span), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, open DML groups for those BEGIN groups that wrote row images, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), a shared file span when expanded payload inners all carry the wrapper range, group duration as the earliest-to-latest non-zero in-window timestamp (MySQL stamps the leading GTID and the XID at commit; BEGIN keeps the statement start), and the holding group's GTID plus first-event file offset for each DDL event before that group closes.
+// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it; row-image groups name duration, tables, rows, and span), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, open DML groups for those BEGIN groups that wrote row images, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), a shared file span when expanded payload inners all carry the wrapper range, group duration as the earliest-to-latest non-zero in-window timestamp (MySQL stamps the leading GTID and the XID at commit; BEGIN keeps the statement start), and the holding group's GTID plus first-event file offset for each DDL event before that group closes. The first GTID event's MySQL 8 commit timestamps and that event's start byte stay on the group.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -84,6 +84,10 @@ type inFlightTxn struct {
 	sawSavepointRollback       bool
 	rowImages                  []model.RowImage
 	rowImagesOmitted           int
+	originalCommitUs           uint64
+	immediateCommitUs          uint64
+	txnStartPath               string
+	txnStartPos                int64
 }
 
 type windowRelation uint8
@@ -486,6 +490,7 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windo
 				return err
 			}
 			b.observeEvent(ev, relation)
+			b.noteCommitTimestamps(ev)
 			return nil
 		}
 	}
@@ -493,7 +498,44 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windo
 	b.current.startedByGTID = true
 	b.current.hasStartBoundary = true
 	b.observeEvent(ev, relation)
+	b.noteCommitTimestamps(ev)
 	return b.mergeProvenance(ev)
+}
+
+// noteCommitTimestamps keeps the first GTID event's commit timestamps and the
+// byte where that event starts. A later event in the same group does not replace them.
+func (b *TransactionBuilder) noteCommitTimestamps(ev model.NormalizedEvent) {
+	if b.current == nil {
+		return
+	}
+	if b.current.originalCommitUs == 0 && ev.OriginalCommitUs != 0 && ev.ImmediateCommitUs != 0 {
+		b.current.originalCommitUs = ev.OriginalCommitUs
+		b.current.immediateCommitUs = ev.ImmediateCommitUs
+	}
+	if b.current.txnStartPos == 0 && ev.PositionStart > 0 {
+		b.current.txnStartPos = ev.PositionStart
+		b.current.txnStartPath = ev.BinlogPath
+	}
+}
+
+func txnStartPath(t *inFlightTxn) string {
+	if t == nil {
+		return ""
+	}
+	if t.txnStartPos > 0 {
+		return t.txnStartPath
+	}
+	return t.fullBinlogPathStart
+}
+
+func txnStartPos(t *inFlightTxn) int64 {
+	if t == nil {
+		return 0
+	}
+	if t.txnStartPos > 0 {
+		return t.txnStartPos
+	}
+	return t.fullPositionStart
 }
 
 // noteDDLHold records the open group's GTID and the byte where that group
@@ -709,30 +751,34 @@ func (b *TransactionBuilder) finalizeTransaction() {
 	}
 
 	txn := model.Transaction{
-		TxnKey:          b.current.txnKey,
-		XAXID:           b.current.xaXID,
-		ServerID:        b.current.serverID,
-		ServerVersion:   b.current.serverVersion,
-		ServerFlavor:    b.current.serverFlavor,
-		GTID:            b.current.gtid,
-		ThreadID:        b.current.threadID,
-		XID:             b.current.xid,
-		ActorUser:       b.current.actorUser,
-		ActorHost:       b.current.actorHost,
-		StartTime:       b.current.startTime,
-		EndTime:         b.current.endTime,
-		Duration:        b.current.endTime.Sub(b.current.startTime),
-		TotalRows:       b.current.totalRows,
-		EventCount:      b.current.eventCount,
-		BinlogBytes:     binlogBytes,
-		BinlogPathStart: b.current.binlogPathStart,
-		BinlogPathEnd:   b.current.binlogPathEnd,
-		PositionStart:   b.current.positionStart,
-		PositionEnd:     b.current.positionEnd,
-		Completeness:    b.current.completeness(),
-		Tables:          exportTxnTables(b.current.tables),
-		Operations:      b.current.operations,
-		QuerySummary:    model.FormatQuerySummary(b.current.retainedQuerySQL, b.current.retainedQueryOriginalBytes),
+		TxnKey:            b.current.txnKey,
+		XAXID:             b.current.xaXID,
+		ServerID:          b.current.serverID,
+		ServerVersion:     b.current.serverVersion,
+		ServerFlavor:      b.current.serverFlavor,
+		GTID:              b.current.gtid,
+		OriginalCommitUs:  b.current.originalCommitUs,
+		ImmediateCommitUs: b.current.immediateCommitUs,
+		TxnStartPath:      txnStartPath(b.current),
+		TxnStartPos:       txnStartPos(b.current),
+		ThreadID:          b.current.threadID,
+		XID:               b.current.xid,
+		ActorUser:         b.current.actorUser,
+		ActorHost:         b.current.actorHost,
+		StartTime:         b.current.startTime,
+		EndTime:           b.current.endTime,
+		Duration:          b.current.endTime.Sub(b.current.startTime),
+		TotalRows:         b.current.totalRows,
+		EventCount:        b.current.eventCount,
+		BinlogBytes:       binlogBytes,
+		BinlogPathStart:   b.current.binlogPathStart,
+		BinlogPathEnd:     b.current.binlogPathEnd,
+		PositionStart:     b.current.positionStart,
+		PositionEnd:       b.current.positionEnd,
+		Completeness:      b.current.completeness(),
+		Tables:            exportTxnTables(b.current.tables),
+		Operations:        b.current.operations,
+		QuerySummary:      model.FormatQuerySummary(b.current.retainedQuerySQL, b.current.retainedQueryOriginalBytes),
 		QueryContext: model.NewQueryContextFromNormalized(
 			b.current.retainedQuerySQL,
 			b.current.retainedQueryTruncated,

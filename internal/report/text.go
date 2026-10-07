@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, busiest minutes with the tables that produced those rows, and opt-in minute/pattern detail.
+// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -49,6 +49,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	renderTopFindings(&buf, result, opts)
 	renderActivitySection(&buf, result)
 	renderBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
+	renderApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN)
 	renderNextActions(&buf, result)
 
 	if opts.ShowMinutes {

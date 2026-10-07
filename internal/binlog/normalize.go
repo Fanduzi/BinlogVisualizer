@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE and SET PASSWORD, independent ADMIN including exact FLUSH TABLES, CHECK TABLE prefix, and SET ROLE prefix, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, MySQL 8 commit timestamps, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE and SET PASSWORD, independent ADMIN including exact FLUSH TABLES, CHECK TABLE prefix, and SET ROLE prefix, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -78,26 +78,28 @@ func NormalizeRawEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, erro
 
 func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 	*dst = model.NormalizedEvent{
-		Timestamp:        raw.Timestamp,
-		BinlogPath:       raw.BinlogPath,
-		PositionStart:    raw.PositionStart,
-		PositionEnd:      raw.PositionEnd,
-		BinlogBytes:      raw.BinlogBytes,
-		ServerID:         raw.ServerID,
-		ServerVersion:    raw.ServerVersion,
-		ServerFlavor:     raw.ServerFlavor,
-		GTID:             raw.GTID,
-		ThreadID:         raw.ThreadID,
-		XID:              raw.XID,
-		XAXID:            raw.XAXID,
-		ActorUser:        raw.ActorUser,
-		ActorHost:        raw.ActorHost,
-		Schema:           raw.Schema,
-		Table:            raw.Table,
-		RowCount:         raw.RowCount,
-		KeyStatus:        raw.KeyStatus,
-		RowImages:        raw.RowImages,
-		RowImagesOmitted: raw.RowImagesOmitted,
+		Timestamp:         raw.Timestamp,
+		BinlogPath:        raw.BinlogPath,
+		PositionStart:     raw.PositionStart,
+		PositionEnd:       raw.PositionEnd,
+		BinlogBytes:       raw.BinlogBytes,
+		ServerID:          raw.ServerID,
+		ServerVersion:     raw.ServerVersion,
+		ServerFlavor:      raw.ServerFlavor,
+		GTID:              raw.GTID,
+		OriginalCommitUs:  raw.OriginalCommitTimestamp,
+		ImmediateCommitUs: raw.ImmediateCommitTimestamp,
+		ThreadID:          raw.ThreadID,
+		XID:               raw.XID,
+		XAXID:             raw.XAXID,
+		ActorUser:         raw.ActorUser,
+		ActorHost:         raw.ActorHost,
+		Schema:            raw.Schema,
+		Table:             raw.Table,
+		RowCount:          raw.RowCount,
+		KeyStatus:         raw.KeyStatus,
+		RowImages:         raw.RowImages,
+		RowImagesOmitted:  raw.RowImagesOmitted,
 	}
 }
 

@@ -1,6 +1,6 @@
 // Package model defines normalized event contracts shared across parsing and analysis.
 // input: parsed binlog metadata, producer/transaction provenance, XA identity, and bounded SQL context captured from the binlog layer.
-// output: NormalizedEvent values with stable provenance and transaction/operation semantics reused by analyzer and downstream report builders.
+// output: NormalizedEvent values with stable provenance, optional MySQL 8 commit timestamps, and transaction/operation semantics reused by analyzer and downstream report builders.
 // pos: shared model boundary between internal/binlog and internal/analyzer.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -9,18 +9,22 @@ import "time"
 
 // NormalizedEvent represents a parsed binlog event normalized for analysis.
 type NormalizedEvent struct {
-	Timestamp          time.Time
-	BinlogPath         string
-	PositionStart      int64
-	PositionEnd        int64
-	BinlogBytes        int64
-	EventType          string
-	TxnKey             string
-	XAXID              string
-	ServerID           uint32
-	ServerVersion      string
-	ServerFlavor       string
-	GTID               string
+	Timestamp     time.Time
+	BinlogPath    string
+	PositionStart int64
+	PositionEnd   int64
+	BinlogBytes   int64
+	EventType     string
+	TxnKey        string
+	XAXID         string
+	ServerID      uint32
+	ServerVersion string
+	ServerFlavor  string
+	GTID          string
+	// OriginalCommitUs and ImmediateCommitUs are MySQL 8 GTID commit timestamps
+	// in microseconds since the Unix epoch. Zero means the event did not carry them.
+	OriginalCommitUs   uint64
+	ImmediateCommitUs  uint64
 	ThreadID           uint32
 	XID                string
 	ActorUser          string
