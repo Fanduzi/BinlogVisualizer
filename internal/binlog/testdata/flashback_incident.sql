@@ -39,3 +39,11 @@ SET SESSION binlog_transaction_compression = OFF;
 START TRANSACTION;
 DELETE FROM shop.es;
 COMMIT;
+SET SESSION binlog_transaction_compression = ON;
+START TRANSACTION;
+INSERT INTO shop.yearnum VALUES (2026, 1999, 1, 3000000000, 'junk', 1.0, 1, 1, 1, 1, 1, 1);
+UPDATE shop.yearnum SET note = 'oops', n = 9.5, si = -9, ui = 1, sb = 1, tu = 1, mi = 1, ss = 1
+  WHERE yr = 2026 AND yr2 = 1999 AND region = 1 AND id = 4000000000;
+DELETE FROM shop.yearnum WHERE yr = 2026 AND yr2 = 1999 AND region = 1 AND id = 7;
+COMMIT;
+SET SESSION binlog_transaction_compression = OFF;

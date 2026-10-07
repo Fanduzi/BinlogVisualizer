@@ -1,5 +1,5 @@
 // Package binlog formats exact SQL literals from an already-decoded rows event.
-// input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, signedness, collation, enum/set members, primary key).
+// input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, the SIGNEDNESS bitmap, collation, enum/set members, primary key). Signedness counts YEAR, which go-mysql v1.14 UnsignedMap skips.
 // output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes. ENUM is the member index and SET is the bitmask. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
 // pos: parser helper used only when flashback capture is on. It reuses the decoded row images from the same RowsEvent as display capture.
 // note: if this file changes, update this header and README.md.
@@ -54,7 +54,7 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 		base.ProblemKind = model.FlashProblemCapture
 		return []model.FlashRow{base}
 	}
-	unsigned := ev.Table.UnsignedMap()
+	unsigned := unsignedMap(ev.Table)
 	enums := ev.Table.EnumStrValueMap()
 	sets := ev.Table.SetStrValueMap()
 	collation := ev.Table.CollationMap()
@@ -117,7 +117,7 @@ func flashColumnMeta(table *replication.TableMapEvent, width int) []model.FlashC
 	if table == nil || width <= 0 {
 		return nil
 	}
-	unsigned := table.UnsignedMap()
+	unsigned := unsignedMap(table)
 	enums := table.EnumStrValueMap()
 	sets := table.SetStrValueMap()
 	coll := table.CollationMap()

@@ -1,5 +1,5 @@
 // Package binlog formats bounded ROW images from an already-decoded rows event.
-// input: go-mysql RowsEvent values, optional FULL row metadata (names, signedness), and a per-event image cap.
+// input: go-mysql RowsEvent values, optional FULL row metadata (names, the SIGNEDNESS bitmap), and a per-event image cap.
 // output: model.RowImage values with NULL, integers (signed, unsigned, or both when signedness is absent), decimals, strings, datetimes, JSON, and bounded hex blobs.
 // pos: parser helper used only when row-image capture is on.
 // note: if this file changes, update this header and README.md.
@@ -38,7 +38,7 @@ func captureRowImages(ev *replication.RowsEvent, kind, schema, table string) ([]
 	labels, names := columnLabels(ev.Table, width)
 	var unsigned map[int]bool
 	if ev.Table != nil {
-		unsigned = ev.Table.UnsignedMap()
+		unsigned = unsignedMap(ev.Table)
 	}
 	keep := logical
 	if keep > model.MaxRowImagesPerTxn {
@@ -251,7 +251,7 @@ func pkMetaFrom(table *replication.TableMapEvent) pkMeta {
 		return pkMeta{}
 	}
 	names := table.ColumnNameString()
-	unsigned := table.UnsignedMap()
+	unsigned := unsignedMap(table)
 	meta := pkMeta{
 		indexes: make([]int, 0, len(table.PrimaryKey)),
 		names:   make([]string, 0, len(table.PrimaryKey)),

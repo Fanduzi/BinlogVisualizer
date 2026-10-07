@@ -354,7 +354,7 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 		t.Fatalf("server sql_mode is not strict: %s", mode)
 	}
 
-	const checksumSQL = "CHECKSUM TABLE shop.wide, shop.heap, shop.jdoc, shop.jheap, shop.chars, shop.gen, shop.es, shop.cj"
+	const checksumSQL = "CHECKSUM TABLE shop.wide, shop.heap, shop.jdoc, shop.jheap, shop.chars, shop.gen, shop.es, shop.cj, shop.yearnum"
 	e2eMySQL(t, "RESET MASTER")
 	e2eMySQL(t, readTestdata(t, "flashback_setup.sql"))
 	beforeSum := e2eMySQL(t, checksumSQL)
@@ -362,6 +362,7 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 	genBefore := e2eMySQL(t, "CHECKSUM TABLE shop.gen")
 	cjBefore := e2eMySQL(t, "CHECKSUM TABLE shop.cj")
 	esBefore := e2eMySQL(t, "CHECKSUM TABLE shop.es")
+	yearBefore := e2eMySQL(t, "CHECKSUM TABLE shop.yearnum")
 	executed := e2eGTIDSet(e2eMySQL(t, "SELECT @@GLOBAL.gtid_executed"))
 	e2eMySQL(t, "FLUSH LOGS")
 	e2eMySQL(t, readTestdata(t, "flashback_incident.sql"))
@@ -432,7 +433,7 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flashback exclude %s: %v\n%s", executed, err, stderr)
 	}
-	if !strings.Contains(sql, "18446744073709551615") || !strings.Contains(sql, "JSON_OBJECT(") || !strings.Contains(sql, "_latin1 ") || !strings.Contains(sql, "_utf16 ") {
+	if !strings.Contains(sql, "18446744073709551615") || !strings.Contains(sql, "4000000000") || !strings.Contains(sql, "3000000000") || strings.Contains(sql, "-294967296") || strings.Contains(sql, "-1294967296") || !strings.Contains(sql, "JSON_OBJECT(") || !strings.Contains(sql, "_latin1 ") || !strings.Contains(sql, "_utf16 ") {
 		t.Fatalf("live flashback SQL:\n%s", sql)
 	}
 	if strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
@@ -474,6 +475,42 @@ COMMIT;`)
 	e2eMySQL(t, "SET SESSION sql_mode='';\n"+esSQL)
 	if got := e2eMySQL(t, "CHECKSUM TABLE shop.es"); got != esBefore {
 		t.Fatalf("non-strict es checksum\nbefore:\n%s\nrestored:\n%s", esBefore, got)
+	}
+
+	yearSQL, yearErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.yearnum")
+	if err != nil {
+		t.Fatalf("year: %v\n%s", err, yearErr)
+	}
+	for _, needle := range []string{"4000000000", "3000000000", "18446744073709551615", "-9223372036854775808", "255", "-32768", "-12.5"} {
+		if !strings.Contains(yearSQL, needle) {
+			t.Fatalf("year sql missing %s:\n%s", needle, yearSQL)
+		}
+	}
+	for _, bad := range []string{"-294967296", "-1294967296"} {
+		if strings.Contains(yearSQL, bad) {
+			t.Fatalf("year sql still has shifted value %s:\n%s", bad, yearSQL)
+		}
+	}
+	yearSchema := filepath.Join(t.TempDir(), "yearnum.sql")
+	yearSchemaBody := "USE `shop`;\n" + e2eMySQL(t, "SHOW CREATE TABLE shop.yearnum")
+	if err := os.WriteFile(yearSchema, []byte(yearSchemaBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, yearSchemaErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.yearnum", "--schema-file", yearSchema); err != nil {
+		t.Fatalf("year schema file: %v\n%s\n%s", err, yearSchemaErr, yearSchemaBody)
+	}
+	for _, mode := range []struct{ name, prefix string }{
+		{name: "strict", prefix: ""},
+		{name: "non-strict", prefix: "SET SESSION sql_mode='';\n"},
+	} {
+		e2eMySQL(t, mode.prefix+yearIncidentReplay)
+		if got := e2eMySQL(t, "CHECKSUM TABLE shop.yearnum"); got == yearBefore {
+			t.Fatalf("%s year incident did not change checksum:\n%s", mode.name, got)
+		}
+		e2eMySQL(t, mode.prefix+yearSQL)
+		if got := e2eMySQL(t, "CHECKSUM TABLE shop.yearnum"); got != yearBefore {
+			t.Fatalf("%s year checksum\nbefore:\n%s\nrestored:\n%s\nsql:\n%s", mode.name, yearBefore, got, yearSQL)
+		}
 	}
 
 	flashbackSchemaMatchE2E(t)
@@ -704,6 +741,18 @@ SELECT id, HEX(l1), HEX(u16) FROM shop.chars ORDER BY id;
 SELECT id, base, virt, stor FROM shop.gen ORDER BY id;
 SELECT id, HEX(e), HEX(s), HEX(eu) FROM shop.es ORDER BY id;
 SELECT id, HEX(j) FROM shop.cj ORDER BY id;
+SELECT yr, yr2, region, id, note, n, si, ui, sb, tu, mi, ss FROM shop.yearnum ORDER BY yr, yr2, region, id;
+`
+
+// yearIncidentReplay is the shop.yearnum DML inside flashback_incident.sql.
+// The binlog copy of that DML is wrapped in binlog_transaction_compression.
+const yearIncidentReplay = `
+START TRANSACTION;
+INSERT INTO shop.yearnum VALUES (2026, 1999, 1, 3000000000, 'junk', 1.0, 1, 1, 1, 1, 1, 1);
+UPDATE shop.yearnum SET note = 'oops', n = 9.5, si = -9, ui = 1, sb = 1, tu = 1, mi = 1, ss = 1
+  WHERE yr = 2026 AND yr2 = 1999 AND region = 1 AND id = 4000000000;
+DELETE FROM shop.yearnum WHERE yr = 2026 AND yr2 = 1999 AND region = 1 AND id = 7;
+COMMIT;
 `
 
 func readTestdata(t *testing.T, name string) string {
