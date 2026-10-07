@@ -63,5 +63,12 @@ jobs:
           EOF
           sudo rm -f /var/lib/mysql/mysql-bin.* /var/lib/mysql/binlog.index
           sudo systemctl start mysql
+          # The hosted image ships MySQL with a password on root. debian-sys-maint
+          # can log in from /etc/mysql/debian.cnf; switch root to the socket plugin
+          # so the test's `sudo mysql` matches a normal Ubuntu install.
+          if ! sudo mysql --protocol=socket -e "SELECT 1" >/dev/null 2>&1; then
+            sudo mysql --defaults-file=/etc/mysql/debian.cnf --protocol=socket -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH auth_socket;"
+          fi
+          sudo mysql --protocol=socket -N -e "SELECT @@version, @@log_bin, @@binlog_format, @@binlog_row_image, @@binlog_row_metadata, @@gtid_mode"
       - name: Round-trip flashback on MySQL 8.0
-        run: BINLOGVIZ_FLASHBACK_E2E=1 BINLOGVIZ_MYSQL="sudo mysql" go test -count=1 -timeout 20m ./cmd/binlogviz -run TestFlashbackRoundTripMySQL80
+        run: BINLOGVIZ_FLASHBACK_E2E=1 BINLOGVIZ_MYSQL="sudo mysql --protocol=socket" go test -count=1 -timeout 20m ./cmd/binlogviz -run TestFlashbackRoundTripMySQL80
