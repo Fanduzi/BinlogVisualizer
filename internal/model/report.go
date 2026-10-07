@@ -95,6 +95,7 @@ type AnalysisResult struct {
 	Tables              []TableStats
 	Threads             []ThreadStats
 	ThreadsRankedBy     string
+	HotRows             HotRowReport
 	Transactions        []Transaction
 	Patterns            []PatternStats
 	// Minutes is the source-of-truth aggregated minute series.

@@ -30,6 +30,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	mdWorkloadSummary(&buf, result, opts)
 	mdTopTables(&buf, result.Tables, opts.TopTables)
 	mdNoPrimaryKey(&buf, result.Tables)
+	mdHotRows(&buf, result.HotRows, opts)
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, result.Transactions, opts, result.Diagnostics.ServerVersion)
 	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)

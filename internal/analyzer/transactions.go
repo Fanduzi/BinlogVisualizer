@@ -418,6 +418,15 @@ func retainCompletedTransaction(txn model.Transaction) bool {
 	return false
 }
 
+// touchLocation returns the open group's GTID and the file:byte where that
+// group starts. Both are empty when no group is open.
+func (b *TransactionBuilder) touchLocation() (gtid, path string, pos int64) {
+	if b == nil || b.current == nil {
+		return "", "", 0
+	}
+	return b.current.gtid, txnStartPath(b.current), txnStartPos(b.current)
+}
+
 // CurrentTxnKey returns the in-flight transaction key, if any.
 func (b *TransactionBuilder) CurrentTxnKey() string {
 	if b.current == nil {

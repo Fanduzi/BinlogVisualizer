@@ -120,6 +120,54 @@ func TestCaptureRowImagesCapsPerEvent(t *testing.T) {
 	}
 }
 
+func TestPrimaryKeyValuesUseNamedKeyNotFirstColumn(t *testing.T) {
+	table := &replication.TableMapEvent{
+		ColumnCount: 3,
+		ColumnName:  [][]byte{[]byte("label"), []byte("id"), []byte("n")},
+		PrimaryKey:  []uint64{1},
+	}
+	keys := primaryKeyValues(&replication.RowsEvent{
+		ColumnCount: 3,
+		Table:       table,
+		Rows: [][]any{
+			{"hot", int32(7), int32(0)},
+			{"hot", int32(7), int32(1)},
+		},
+	}, kindUpdateRows, pkMetaFrom(table))
+	if len(keys) != 1 || keys[0] != "id=7" {
+		t.Fatalf("keys=%v", keys)
+	}
+	if strings.Contains(keys[0], "label") || strings.Contains(keys[0], "@") {
+		t.Fatalf("guessed a non-key column: %v", keys)
+	}
+
+	composite := &replication.TableMapEvent{
+		ColumnCount: 3,
+		ColumnName:  [][]byte{[]byte("sku"), []byte("wh"), []byte("qty")},
+		PrimaryKey:  []uint64{0, 1},
+	}
+	got := primaryKeyValues(&replication.RowsEvent{
+		ColumnCount: 3,
+		Table:       composite,
+		Rows:        [][]any{{"BOLT", int32(1), int32(11)}},
+	}, kindDeleteRows, pkMetaFrom(composite))
+	if len(got) != 1 || got[0] != "sku=BOLT, wh=1" {
+		t.Fatalf("composite=%v", got)
+	}
+
+	noKey := &replication.TableMapEvent{
+		ColumnCount: 2,
+		ColumnName:  [][]byte{[]byte("id"), []byte("note")},
+	}
+	if primaryKeyValues(&replication.RowsEvent{
+		ColumnCount: 2,
+		Table:       noKey,
+		Rows:        [][]any{{int32(1), "a"}},
+	}, kindUpdateRows, pkMetaFrom(noKey)) != nil {
+		t.Fatal("missing primary key must not fall back to @1")
+	}
+}
+
 func unsignedLongTable() *replication.TableMapEvent {
 	return &replication.TableMapEvent{
 		ColumnCount:      1,

@@ -25,6 +25,7 @@ type Analyzer struct {
 	// Sub-aggregators
 	txnBuilder *TransactionBuilder
 	tableAgg   *TableAggregator
+	hotRows    *hotRowAggregator
 	minuteAgg  *MinuteAggregator
 	ddlAgg     *DDLAggregator
 	reportAgg  *ReportAggregator
@@ -275,6 +276,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 	// Drop them here so GTID buffering and later aggregators do not retain cell values.
 	ev.RowImages = nil
 	ev = a.withCurrentTxnKey(ev)
+	ev = a.withTxnLocation(ev)
 	if a.opts.HasGTIDSelectors() {
 		if relation == insideWindow {
 			if ev.TxnKey != "" {
@@ -319,6 +321,7 @@ func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
 	if a.filter.Allow(aggregationEv.Schema, aggregationEv.Table) && (!a.opts.HasDMLFilter() || isWorkload) {
 		a.reportAgg.ConsumeOperationEvent(aggregationEv)
 		a.tableAgg.Consume(aggregationEv)
+		a.hotRows.Consume(aggregationEv)
 		a.minuteAgg.Consume(aggregationEv)
 		a.ddlAgg.ConsumeEvent(aggregationEv)
 	}
@@ -340,6 +343,14 @@ func (a *Analyzer) withDDLHold(ev model.NormalizedEvent) model.NormalizedEvent {
 	ev.HoldingGTID = gtid
 	ev.HoldingStartPath = path
 	ev.HoldingStartPos = pos
+	return ev
+}
+
+func (a *Analyzer) withTxnLocation(ev model.NormalizedEvent) model.NormalizedEvent {
+	gtid, path, pos := a.txnBuilder.touchLocation()
+	ev.TxnGTID = gtid
+	ev.TxnStartPath = path
+	ev.TxnStartPos = pos
 	return ev
 }
 
@@ -385,6 +396,7 @@ func (a *Analyzer) reset() {
 	a.err = nil
 	a.txnBuilder = NewTransactionBuilder()
 	a.tableAgg = NewTableAggregator()
+	a.hotRows = newHotRowAggregator(HotRowTrackLimit)
 	a.minuteAgg = NewMinuteAggregator()
 	a.ddlAgg = NewDDLAggregator()
 	a.reportAgg = NewReportAggregator(a.opts)
@@ -436,6 +448,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		Tables:              a.tableAgg.Snapshot(),
 		Threads:             snap.Threads,
 		ThreadsRankedBy:     snap.ThreadsRankedBy,
+		HotRows:             a.hotRows.Snapshot(),
 		Transactions:        topTransactions,
 		Patterns:            snap.Patterns,
 		Minutes:             snap.Minutes,

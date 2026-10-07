@@ -134,6 +134,34 @@ Example heading:
 
 When `binlog_row_metadata=FULL` and a table with no primary key received UPDATE or DELETE rows, a `No Primary Key` section follows Top Tables. It ranks those tables by UPDATE+DELETE rows. INSERT-only tables without a primary key are one line under that section, or one summary line when nothing was updated or deleted, and are not numbered as a lag risk. If every row table has a primary key, the summary grows by one line: `primary key present on every table`. If FULL metadata is absent, the summary grows by one line: `primary key presence unknown (binlog_row_metadata is not FULL)`. That line is not a claim that any table lacks a primary key. A `no_primary_key` warning is also listed with the other alerts when an UPDATE or DELETE hit a no-primary-key table.
 
+### Hot Rows
+
+`Hot Rows` follows No Primary Key and precedes Top Threads. It ranks individual primary keys by how many UPDATE and DELETE row images touched them. INSERT images are not counted. A table with no primary key is not ranked here. The section is omitted when there are no ranked keys, no unavailable tables, and the tracking cap was not hit.
+
+Each listed row shows:
+
+- `schema.table` and the primary-key value (`id=7`, or `sku=BOLT, wh=1` for a composite key)
+- touch count
+- number of distinct transactions that touched that key
+- first and last event time (UTC)
+- GTID and `file:byte` of the first and last transaction that touched it (the transaction start, so `mysqlbinlog` or BinlogServer can open that group)
+- `approximate` when that key inherited a dropped key's count after the tracking cap was hit
+
+The key comes only from MySQL 8 `binlog_row_metadata=FULL` (`SIMPLE_PRIMARY_KEY` or `PRIMARY_KEY_WITH_PREFIX`). The report does not guess from column `@1`. When FULL metadata is absent for a table that received UPDATE or DELETE rows, the section says `hot-row tracking unavailable for <schema.table>: primary key is not in the binlog (binlog_row_metadata is not FULL)`. When the key columns are known but a row image omitted them, the section says the primary key was not in the row image. `--top` limits the list. `--top-rows` overrides it. `0` keeps every tracked key. `--sql-context off` hides the key values (`primary key values hidden (--sql-context off)`) and keeps the counts, times, GTIDs, and positions. The same table, DML, time, position, and GTID filters as Top Tables apply.
+
+Tracking keeps at most 8192 primary keys. When a new key arrives after that, it replaces the least-touched key and starts from that dropped count plus one. The report then says the cap was hit. A row that inherited a dropped count is marked approximate. A key that was never replaced keeps an exact count.
+
+```text
+=== Hot Rows ===
+  UPDATE and DELETE row images, by primary key.
+  1. shop.counters id=7
+     touches=7  transactions=6
+     first 2026-10-06 14:00:01 UTC  <gtid> <file>:<pos>
+     last  2026-10-06 14:00:06 UTC  <gtid> <file>:<pos>
+```
+
+Markdown uses a table under `## Hot Rows`. HTML uses `id="hot-rows-table"`.
+
 ### 3. Top Threads
 
 `Top Threads` ranks sessions by rows when any session wrote rows. Otherwise it ranks by events, then bytes, then transactions. The heading names the metric, for example `Top Threads (by rows)`.
@@ -398,7 +426,7 @@ Transaction rows, operations, event counts, and retained positions remain inclus
 
 `transactions` query fields depend on `--sql-context`:
 
-- `off`: omit query text and DDL statement text in every format, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, HTML transaction evidence, and the DDL timeline statement. Operation, object, and position stay. `--show-rows` cell values are omitted too; the report says `row values omitted because --sql-context is off`
+- `off`: omit query text and DDL statement text in every format, including text `Query:` lines under `--show-patterns`, Markdown blockquotes, HTML transaction evidence, and the DDL timeline statement. Operation, object, and position stay. `--show-rows` cell values are omitted too; the report says `row values omitted because --sql-context is off`. Hot Rows hides primary-key values the same way and keeps touch counts, times, GTIDs, and file positions
 - `summary`: include one whitespace-normalized `query_summary` whose SQL body is at most 160 characters; a cut appends `… [truncated: <shown> of <original> bytes]`. Include truncation metadata only when context exists. `query_truncated` stays false unless the 4096-byte store cap was hit. Default text prints that line on Top Transactions. DDL timeline statements use the same one-line summary
 - `full`: additionally include UTF-8-safe `query_sql` bounded to 4096 bytes plus original-byte metadata when context exists. A cut appends the same marker. Default text prints that SQL on Top Transactions. DDL timeline statements print the stored statement, also capped at 4096 bytes, with the marker when cut
 
@@ -424,6 +452,28 @@ Each `diagnostics.ddl_events` entry adds:
 `sql_context.available` reports whether any source SQL was observed across the full report, even when it falls outside the top transactions. `full` may therefore be selected with `available=false`. Provenance never depends on this mode, and no mode serializes row-image values.
 
 Named snapshots persist this complete report-v3 payload. Snapshot/compare readers continue to accept report versions 0 through 2 without inventing missing identity.
+
+### `hot_rows`
+
+`hot_rows` is always present as an array. It is the primary-key ranking behind Hot Rows, limited by `--top` or `--top-rows` the same way as the text section. `hot_rows_listed` and `hot_rows_omitted` count that limit. `hot_row_track_limit` is `8192` when analyze tracked keys. `hot_rows_overflow` is present and true when a new key replaced the least-touched key. `hot_rows_note` repeats the cap sentence in that case. `hot_row_unavailable` lists tables that received UPDATE or DELETE rows and whose primary key is not in the binlog. Each gap has `schema`, `table`, `reason` (`metadata` or `values`), and `message`.
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `schema` | string | yes | Schema name |
+| `table` | string | yes | Table name |
+| `primary_key` | string | no | `id=7` or `sku=BOLT, wh=1`. Omitted when `--sql-context off` |
+| `key_hidden` | boolean | no | True when `--sql-context off` hid the key. Counts stay |
+| `touches` | integer | yes | UPDATE and DELETE row images that carried this key. Exact unless `approximate` is true |
+| `transactions` | integer | yes | Distinct transactions that touched this key. Exact for a key that was never replaced |
+| `first_time` | string | no | RFC3339 UTC time of the first touch |
+| `last_time` | string | no | RFC3339 UTC time of the last touch |
+| `first_gtid` | string | no | GTID of the first transaction that touched this key |
+| `first_file` | string | no | Basename of the file that holds that transaction's start |
+| `first_pos` | integer | no | Byte offset of that transaction's start |
+| `last_gtid` | string | no | GTID of the last transaction that touched this key |
+| `last_file` | string | no | Basename of the file that holds that transaction's start |
+| `last_pos` | integer | no | Byte offset of that transaction's start |
+| `approximate` | boolean | no | True when this key inherited a dropped key's touch count after the 8192 cap |
 
 ### `threads`
 
