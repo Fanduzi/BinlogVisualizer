@@ -289,11 +289,47 @@
   },
   "warning.flashbackGenerated": {
     "description": "Flashback warns when a selected table has no CREATE in the binlog or schema file",
-    "other": "warning: {{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and earlier transactions stay committed. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE after USE)."
+    "other": "warning: {{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and earlier transactions stay committed. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE). The file must match the table at incident time."
   },
   "error.flashbackSchemaFile": {
     "description": "Flashback could not read --schema-file",
     "other": "cannot read --schema-file {{.Path}}: {{.Error}}"
+  },
+  "error.flashbackSchema": {
+    "description": "Flashback refuses a schema file that does not match the binlog columns",
+    "other": "{{.Table}}: --schema-file does not match the binlog columns: {{.Diff}}"
+  },
+  "error.flashbackSchemaExtra": {
+    "description": "Schema file has columns the binlog does not",
+    "other": "extra {{.Columns}}"
+  },
+  "error.flashbackSchemaMissing": {
+    "description": "Schema file is missing columns the binlog has",
+    "other": "missing {{.Columns}}"
+  },
+  "error.flashbackSchemaOrder": {
+    "description": "Schema file column order differs from the binlog",
+    "other": "reordered (schema file {{.File}}; binlog {{.Binlog}})"
+  },
+  "error.flashbackSchemaType": {
+    "description": "Schema file column type differs from the binlog",
+    "other": "{{.Column}} is {{.File}} in the schema file and {{.Binlog}} in the binlog"
+  },
+  "error.flashbackSchemaGenerated": {
+    "description": "A generated column's logged values do not match its expression",
+    "other": "{{.Column}} is generated in the schema file but the logged values are not {{.Expr}}"
+  },
+  "error.flashbackSchemaUnchecked": {
+    "description": "A generated column's logged values cannot be checked",
+    "other": "{{.Column}} is generated in the schema file but the logged values cannot be checked"
+  },
+  "warning.flashbackSchemaDB": {
+    "description": "Schema file header and --schema-file-db name different databases",
+    "other": "warning: --schema-file Database header is {{.Header}} and --schema-file-db is {{.Flag}}; unqualified tables were not used"
+  },
+  "warning.flashbackSchemaTable": {
+    "description": "An unqualified schema-file table is in more than one binlog schema",
+    "other": "warning: unqualified table {{.Table}} in --schema-file is in more than one schema ({{.Schemas}}); it was not used"
   },
   "cmd.flashback.flag.dml": {
     "description": "Flashback DML kind filter flag description",
@@ -333,7 +369,11 @@
   },
   "cmd.flashback.flag.schemaFile": {
     "description": "Flashback schema file flag",
-    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE). Unqualified names need a preceding USE. Optional; flashback stays offline"
+    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE), as the tables were at incident time. Unqualified names use a preceding USE, the dump's Database header, --schema-file-db, or the only schema of that table in the binlog. Optional; flashback stays offline"
+  },
+  "cmd.flashback.flag.schemaFileDB": {
+    "description": "Flashback default database for an unqualified schema file",
+    "other": "Database for unqualified names in --schema-file when the file has no USE and no mysqldump Database header. Optional; flashback stays offline"
   },
   "cmd.flashback.help.usage": {
     "description": "Flashback help heading for usage",
@@ -357,7 +397,7 @@
   },
   "cmd.flashback.long": {
     "description": "Flashback command long description",
-    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE. ENUM and SET values are numbers."
+    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE, and must describe the table as it was at incident time. ENUM is the member index and SET is the bitmask. ENUM index 0 is restored by dropping strict sql_mode for that statement only."
   },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",

@@ -1,6 +1,6 @@
 // Package analyzer learns generated column names from CREATE and ALTER text.
-// input: DDL statements in binlog order, including statements later excluded by GTID or time, plus optional CREATE/ALTER text from a schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n.
-// output: column names to omit from undo SQL, or a bad mark when a definition cannot be read. A table that was never defined stays absent so flashback can warn.
+// input: DDL statements in binlog order, including statements later excluded by GTID or time, plus optional CREATE/ALTER text from a schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n. A plain mysqldump header and several SHOW CREATE rows without ';' are read too.
+// output: column names to omit from undo SQL, the column list used to check a schema file, or a bad mark when a definition cannot be read. A table that was never defined stays absent so flashback can warn.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -15,37 +15,77 @@ import (
 // in this input. bad means a definition was seen and could not be read, so
 // undo SQL must refuse that table instead of assigning a generated column.
 type generatedTables struct {
-	cols map[string]map[string]struct{}
-	bad  map[string]struct{}
+	cols           map[string]map[string]struct{}
+	defs           map[string][]schemaCol
+	fromFile       map[string]bool
+	pendingBound   map[string]bool
+	bad            map[string]struct{}
+	pending        map[string]*pendingDef
+	seen           map[string]map[string]struct{}
+	abandoned      []abandonedTable
+	flagDB         string
+	headerDB       string
+	ambiguousDB    bool
+	sawUnqualified bool
+	readingFile    bool
 }
 
 // noteScript reads mysqldump --no-data output or SHOW CREATE TABLE text.
-// USE sets the schema for a following unqualified CREATE. A row of
-// "name<TAB>CREATE TABLE ..." is the mysql batch format of SHOW CREATE TABLE.
-// mysql --batch also writes each newline inside that field as the two characters \ n.
+// USE sets the schema for a following unqualified CREATE. Without USE, the
+// mysqldump "-- Host: ... Database:" header or flagDB is that schema.
+// A row of "name<TAB>CREATE TABLE ..." is the mysql batch format. Several of
+// those rows may sit in one file with no ';' between them. mysql --batch
+// writes each newline inside a field as the two characters \ n.
 func (g *generatedTables) noteScript(sql string) {
 	if g == nil || strings.TrimSpace(sql) == "" {
 		return
 	}
+	g.readingFile = true
+	defer func() { g.readingFile = false }()
+	g.headerDB = dumpDatabase(sql)
 	session := ""
+	switch {
+	case g.headerDB != "" && g.flagDB != "" && !strings.EqualFold(g.headerDB, g.flagDB):
+		g.ambiguousDB = true
+	case g.headerDB != "":
+		session = g.headerDB
+	case g.flagDB != "":
+		session = g.flagDB
+	}
 	for _, stmt := range splitSQL(sql) {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
+		g.noteChunk(&session, stmt)
+	}
+}
+
+func (g *generatedTables) noteChunk(session *string, stmt string) {
+	stmt = strings.TrimSpace(stmt)
+	for stmt != "" {
 		sc := &sqlScan{s: stmt}
 		if sc.wordIs("USE") {
 			name, ok := sc.ident()
 			if ok {
-				session = name
+				*session = name
 			}
+			stmt = strings.TrimSpace(sc.rest())
 			continue
 		}
-		body := stmt
-		if at := indexCreateTable(stmt); at > 0 {
-			body = stmt[at:]
+		at := indexCreateTable(stmt)
+		if at < 0 {
+			g.note(*session, stmt)
+			return
 		}
-		g.note(session, body)
+		rest := stmt[at:]
+		next := -1
+		if len(rest) > 1 {
+			next = indexCreateTable(rest[1:])
+		}
+		if next < 0 {
+			g.note(*session, rest)
+			return
+		}
+		cut := next + 1
+		g.note(*session, rest[:cut])
+		stmt = strings.TrimSpace(rest[cut:])
 	}
 }
 
@@ -125,38 +165,75 @@ func (g *generatedTables) noteCreate(session string, sc *sqlScan) {
 	if sc.wordIs("LIKE") {
 		srcSchema, src, ok := sc.qualified(session)
 		if !ok {
-			g.bad[key] = struct{}{}
+			g.markBad(key)
+			return
+		}
+		if srcSchema == "" {
+			if p := g.pending[src]; p != nil && !p.abandoned && !p.bad {
+				g.installCreate(schema, table, cloneSchemaCols(p.cols), true)
+				return
+			}
+			if schema == "" {
+				g.putPendingBad(table)
+				return
+			}
+			g.markBad(key)
 			return
 		}
 		srcKey := generatedKey(srcSchema, src)
 		if _, bad := g.bad[srcKey]; bad {
-			g.bad[key] = struct{}{}
+			g.markBad(key)
 			return
 		}
-		if cols, known := g.cols[srcKey]; known {
-			g.cols[key] = copyNames(cols)
-			delete(g.bad, key)
+		if cols, known := g.defs[srcKey]; known {
+			g.installCreate(schema, table, cols, g.fromFile[srcKey] || g.readingFile)
 			return
 		}
-		g.bad[key] = struct{}{}
+		g.markBad(key)
 		return
 	}
 	if sc.wordIs("AS") || sc.wordIs("SELECT") {
-		g.bad[key] = struct{}{}
+		if schema == "" {
+			g.putPendingBad(table)
+			return
+		}
+		g.markBad(key)
 		return
 	}
 	body, ok := sc.parenBody()
 	if !ok {
-		g.bad[key] = struct{}{}
+		if schema == "" {
+			g.putPendingBad(table)
+			return
+		}
+		g.markBad(key)
 		return
 	}
-	cols, ok := generatedNames(body)
+	cols, ok := parseSchemaColumns(body)
 	if !ok {
-		g.bad[key] = struct{}{}
+		if schema == "" {
+			g.putPendingBad(table)
+			return
+		}
+		g.markBad(key)
 		return
 	}
-	g.cols[key] = cols
-	delete(g.bad, key)
+	g.installCreate(schema, table, applyTableCharset(cols, sc.rest()), g.readingFile)
+}
+
+func (g *generatedTables) installCreate(schema, table string, cols []schemaCol, fromFile bool) {
+	if schema == "" {
+		g.sawUnqualified = true
+		if g.ambiguousDB {
+			return
+		}
+		g.putPending(table, cols)
+		return
+	}
+	key := generatedKey(schema, table)
+	delete(g.pending, table)
+	delete(g.pendingBound, key)
+	g.setDef(key, cols, fromFile)
 }
 
 func (g *generatedTables) noteAlter(session string, sc *sqlScan) {
@@ -167,6 +244,16 @@ func (g *generatedTables) noteAlter(session string, sc *sqlScan) {
 	if !ok {
 		return
 	}
+	if schema == "" {
+		g.alterPending(table, sc.rest())
+		return
+	}
+	if !g.readingFile {
+		g.observe(schema, table)
+	}
+	if p := g.pending[table]; p != nil && p.abandoned {
+		return
+	}
 	key := generatedKey(schema, table)
 	g.ensure()
 	for _, action := range splitComma(sc.rest()) {
@@ -174,125 +261,48 @@ func (g *generatedTables) noteAlter(session string, sc *sqlScan) {
 	}
 }
 
-func (g *generatedTables) applyAlter(key, action string) {
-	sc := &sqlScan{s: strings.TrimSpace(action)}
-	verb := strings.ToUpper(sc.word())
-	switch verb {
-	case "ADD":
-		kind := strings.ToUpper(sc.peekWord())
-		switch kind {
-		case "INDEX", "KEY", "UNIQUE", "FULLTEXT", "SPATIAL", "CONSTRAINT", "PRIMARY", "FOREIGN":
+func (g *generatedTables) alterPending(table, rest string) {
+	g.sawUnqualified = true
+	if g.ambiguousDB {
+		return
+	}
+	p := g.pending[table]
+	if p == nil || p.abandoned {
+		g.putPendingBad(table)
+		return
+	}
+	if p.bad {
+		return
+	}
+	for _, action := range splitComma(rest) {
+		if !alterSlice(&p.cols, action) {
+			p.bad = true
+			p.cols = nil
 			return
-		case "COLUMN":
-			sc.word()
-		}
-		if sc.wordIs("IF") {
-			sc.wordIs("NOT")
-			sc.wordIs("EXISTS")
-		}
-		if !g.known(key) {
-			g.bad[key] = struct{}{}
-			return
-		}
-		if sc.peekByte() == '(' {
-			body, ok := sc.parenBody()
-			if !ok {
-				g.bad[key] = struct{}{}
-				return
-			}
-			cols, ok := generatedNames(body)
-			if !ok {
-				g.bad[key] = struct{}{}
-				return
-			}
-			for name := range cols {
-				g.cols[key][name] = struct{}{}
-			}
-			return
-		}
-		g.addColumnDef(key, sc.rest())
-	case "DROP":
-		kind := strings.ToUpper(sc.peekWord())
-		switch kind {
-		case "INDEX", "KEY", "PRIMARY", "FOREIGN", "CONSTRAINT", "CHECK":
-			return
-		case "COLUMN":
-			sc.word()
-		}
-		if !g.known(key) {
-			g.bad[key] = struct{}{}
-			return
-		}
-		name, ok := sc.ident()
-		if !ok {
-			g.bad[key] = struct{}{}
-			return
-		}
-		delete(g.cols[key], strings.ToLower(name))
-	case "MODIFY":
-		if sc.wordIs("COLUMN") {
-			// consumed
-		}
-		if !g.known(key) {
-			g.bad[key] = struct{}{}
-			return
-		}
-		g.addColumnDef(key, sc.rest())
-	case "CHANGE":
-		if sc.wordIs("COLUMN") {
-			// consumed
-		}
-		if !g.known(key) {
-			g.bad[key] = struct{}{}
-			return
-		}
-		old, ok := sc.ident()
-		if !ok {
-			g.bad[key] = struct{}{}
-			return
-		}
-		delete(g.cols[key], strings.ToLower(old))
-		g.addColumnDef(key, sc.rest())
-	case "RENAME":
-		if !sc.wordIs("COLUMN") || !g.known(key) {
-			return
-		}
-		old, ok := sc.ident()
-		if !ok || !sc.wordIs("TO") {
-			g.bad[key] = struct{}{}
-			return
-		}
-		next, ok := sc.ident()
-		if !ok {
-			g.bad[key] = struct{}{}
-			return
-		}
-		if _, was := g.cols[key][strings.ToLower(old)]; was {
-			delete(g.cols[key], strings.ToLower(old))
-			g.cols[key][strings.ToLower(next)] = struct{}{}
 		}
 	}
+}
+
+func (g *generatedTables) applyAlter(key, action string) {
+	if alterNoColumnChange(action) {
+		return
+	}
+	cols, ok := g.defs[key]
+	if !ok {
+		g.markBad(key)
+		return
+	}
+	next := cloneSchemaCols(cols)
+	if !alterSlice(&next, action) {
+		g.markBad(key)
+		return
+	}
+	g.setDef(key, next, g.fromFile[key])
 }
 
 func (g *generatedTables) known(key string) bool {
 	_, ok := g.cols[key]
 	return ok
-}
-
-func (g *generatedTables) addColumnDef(key, def string) {
-	name, gen, ok := columnDef(def)
-	if !ok {
-		g.bad[key] = struct{}{}
-		return
-	}
-	if g.cols[key] == nil {
-		g.cols[key] = map[string]struct{}{}
-	}
-	if gen {
-		g.cols[key][strings.ToLower(name)] = struct{}{}
-		return
-	}
-	delete(g.cols[key], strings.ToLower(name))
 }
 
 func (g *generatedTables) noteDrop(session string, sc *sqlScan) {
@@ -310,7 +320,11 @@ func (g *generatedTables) noteDrop(session string, sc *sqlScan) {
 		}
 		key := generatedKey(schema, table)
 		delete(g.cols, key)
+		delete(g.defs, key)
 		delete(g.bad, key)
+		delete(g.fromFile, key)
+		delete(g.pendingBound, key)
+		delete(g.pending, table)
 		if !sc.wordIs(",") && sc.peekByte() != ',' {
 			sc.skip()
 			if sc.i < len(sc.s) && sc.s[sc.i] == ',' {
@@ -342,6 +356,24 @@ func (g *generatedTables) noteRename(session string, sc *sqlScan) {
 			g.cols[dstKey] = cols
 			delete(g.cols, srcKey)
 		}
+		if cols, known := g.defs[srcKey]; known {
+			g.defs[dstKey] = cols
+			delete(g.defs, srcKey)
+		}
+		if g.fromFile[srcKey] {
+			if g.fromFile == nil {
+				g.fromFile = map[string]bool{}
+			}
+			g.fromFile[dstKey] = true
+			delete(g.fromFile, srcKey)
+		}
+		if g.pendingBound[srcKey] {
+			if g.pendingBound == nil {
+				g.pendingBound = map[string]bool{}
+			}
+			g.pendingBound[dstKey] = true
+			delete(g.pendingBound, srcKey)
+		}
 		if _, bad := g.bad[srcKey]; bad {
 			g.bad[dstKey] = struct{}{}
 			delete(g.bad, srcKey)
@@ -356,32 +388,6 @@ func (g *generatedTables) noteRename(session string, sc *sqlScan) {
 	}
 }
 
-func generatedNames(body string) (map[string]struct{}, bool) {
-	cols := map[string]struct{}{}
-	for _, part := range splitComma(body) {
-		if strings.TrimSpace(part) == "" || isTableConstraint(part) {
-			continue
-		}
-		name, gen, ok := columnDef(part)
-		if !ok {
-			return nil, false
-		}
-		if gen {
-			cols[strings.ToLower(name)] = struct{}{}
-		}
-	}
-	return cols, true
-}
-
-func columnDef(def string) (name string, generated bool, ok bool) {
-	sc := &sqlScan{s: strings.TrimSpace(def)}
-	name, ok = sc.ident()
-	if !ok || isTableConstraint(name) {
-		return "", false, false
-	}
-	return name, definesGenerated(def), true
-}
-
 func isTableConstraint(def string) bool {
 	switch strings.ToUpper((&sqlScan{s: def}).word()) {
 	case "PRIMARY", "UNIQUE", "KEY", "INDEX", "FULLTEXT", "SPATIAL", "CONSTRAINT", "CHECK", "FOREIGN":
@@ -389,55 +395,6 @@ func isTableConstraint(def string) bool {
 	default:
 		return false
 	}
-}
-
-func definesGenerated(def string) bool {
-	sc := &sqlScan{s: def}
-	depth := 0
-	for sc.i < len(sc.s) {
-		sc.skip()
-		if sc.i >= len(sc.s) {
-			return false
-		}
-		switch sc.s[sc.i] {
-		case '(':
-			depth++
-			sc.i++
-		case ')':
-			if depth > 0 {
-				depth--
-			}
-			sc.i++
-		case '\'', '"':
-			sc.skipString(sc.s[sc.i])
-		case '`':
-			sc.i++
-			for sc.i < len(sc.s) {
-				if sc.s[sc.i] == '`' {
-					sc.i++
-					if sc.i < len(sc.s) && sc.s[sc.i] == '`' {
-						sc.i++
-						continue
-					}
-					break
-				}
-				sc.i++
-			}
-		default:
-			if depth == 0 && identStart(sc.s[sc.i]) {
-				w := sc.bare()
-				if strings.EqualFold(w, "AS") {
-					sc.skip()
-					if sc.i < len(sc.s) && sc.s[sc.i] == '(' {
-						return true
-					}
-				}
-				continue
-			}
-			sc.i++
-		}
-	}
-	return false
 }
 
 func copyNames(src map[string]struct{}) map[string]struct{} {

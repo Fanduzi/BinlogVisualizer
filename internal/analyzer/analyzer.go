@@ -254,8 +254,17 @@ func (a *Analyzer) observeGTIDFlavor(ev model.NormalizedEvent) error {
 // fan-out to other aggregators is stopped to prevent inconsistent state.
 func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) error {
 	ev = enrichDDLEvent(ev)
-	if a.opts.Flashback && ev.EventType == "DDL" {
-		a.flashGen.note(ev.Schema, ev.QuerySQL)
+	if a.opts.Flashback {
+		before := len(a.flashGen.abandoned)
+		if ev.Schema != "" && ev.Table != "" {
+			a.flashGen.observe(ev.Schema, ev.Table)
+		}
+		if ev.EventType == "DDL" {
+			a.flashGen.note(ev.Schema, ev.QuerySQL)
+		}
+		for _, item := range a.flashGen.abandoned[before:] {
+			a.clearPendingUse(item.table)
+		}
 	}
 	if err := a.observeGTIDFlavor(ev); err != nil {
 		return err
@@ -436,7 +445,7 @@ func (a *Analyzer) reset() {
 	a.matchedGTIDs = make(map[string]struct{})
 	a.flashGroups = nil
 	a.flashErr = nil
-	a.flashGen = generatedTables{}
+	a.flashGen = generatedTables{flagDB: strings.Trim(strings.TrimSpace(a.opts.SchemaFileDB), "`")}
 	a.flashUnknown = nil
 	a.flashSplit = nil
 	a.flashSplitOrder = nil
