@@ -3,8 +3,9 @@
 //
 // Note: This package uses global state and is designed for CLI usage where
 // initialization happens once at startup. Thread safety is ensured via sync.RWMutex.
-// Command descriptions (cobra Use/Short fields) are evaluated at package init time
-// before language is determined, so they will always appear in English.
+// Command descriptions (cobra Use/Short fields) are evaluated when the command is
+// built, before --lang is applied, so help stays English unless that command
+// refreshes its strings. flashback does.
 // Runtime output (errors, reports, progress) is properly localized.
 package i18n
 

@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly or the selected range contains DDL.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, generated columns cannot be identified, or the selected range contains DDL. Generated columns learned from parsed CREATE/ALTER are omitted from INSERT and UPDATE SET.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -20,6 +20,13 @@ type flashGroup struct {
 	path string
 	pos  int64
 	rows []model.FlashRow
+	gens []map[string]struct{}
+}
+
+type flashSplit struct {
+	gtid    string
+	kept    bool
+	skipped bool
 }
 
 func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
@@ -45,14 +52,26 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 			return
 		}
 	}
-	a.appendFlashRows(ev, ev.FlashRows)
+	if a.flashGen.unknown(ev.Schema, ev.Table) {
+		a.flashErr = fmt.Errorf("%s", i18n.Tf("error.flashbackGenerated", map[string]any{
+			"Table": flashTable(ev.Schema, ev.Table),
+		}))
+		return
+	}
+	a.appendFlashRows(ev, ev.FlashRows, copyNames(a.flashGen.columns(ev.Schema, ev.Table)))
+	a.noteFlashbackKept(ev)
 }
 
-func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashRow) {
+func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashRow, gen map[string]struct{}) {
 	copied := append([]model.FlashRow(nil), rows...)
+	gens := make([]map[string]struct{}, len(copied))
+	for i := range gens {
+		gens[i] = gen
+	}
 	key := ev.TxnKey
 	if n := len(a.flashGroups); n > 0 && key != "" && a.flashGroups[n-1].key == key {
 		a.flashGroups[n-1].rows = append(a.flashGroups[n-1].rows, copied...)
+		a.flashGroups[n-1].gens = append(a.flashGroups[n-1].gens, gens...)
 		return
 	}
 	path := ev.TxnStartPath
@@ -69,7 +88,64 @@ func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashR
 		path: path,
 		pos:  pos,
 		rows: copied,
+		gens: gens,
 	})
+}
+
+func (a *Analyzer) noteFlashbackKept(ev model.NormalizedEvent) {
+	a.noteFlashSplit(ev.TxnKey, ev.TxnGTID, true)
+}
+
+func (a *Analyzer) noteFlashbackSkipped() {
+	if a == nil || a.txnBuilder == nil {
+		return
+	}
+	gtid, _, _ := a.txnBuilder.touchLocation()
+	a.noteFlashSplit(a.txnBuilder.CurrentTxnKey(), gtid, false)
+}
+
+func (a *Analyzer) noteFlashSplit(key, gtid string, kept bool) {
+	if a == nil || key == "" {
+		return
+	}
+	if a.flashSplit == nil {
+		a.flashSplit = map[string]*flashSplit{}
+	}
+	split, ok := a.flashSplit[key]
+	if !ok {
+		split = &flashSplit{}
+		a.flashSplit[key] = split
+		a.flashSplitOrder = append(a.flashSplitOrder, key)
+	}
+	if gtid != "" {
+		split.gtid = gtid
+	}
+	if kept {
+		split.kept = true
+	} else {
+		split.skipped = true
+	}
+}
+
+// FlashbackWarnings reports transactions a table or --dml filter undid only in part.
+// Empty when flashback has nothing to print.
+func (a *Analyzer) FlashbackWarnings() []string {
+	if a == nil {
+		return nil
+	}
+	var out []string
+	for _, key := range a.flashSplitOrder {
+		split := a.flashSplit[key]
+		if split == nil || !split.kept || !split.skipped {
+			continue
+		}
+		gtid := split.gtid
+		if gtid == "" {
+			gtid = "GTID unavailable"
+		}
+		out = append(out, i18n.Tf("warning.flashbackSplit", map[string]any{"GTID": gtid}))
+	}
+	return out
 }
 
 // FlashbackSQL returns undo SQL for the selected row changes.
@@ -90,7 +166,11 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 	if len(kept) == 0 {
 		return "", nil
 	}
-	return renderFlashbackSQL(kept), nil
+	sql, err := renderFlashbackSQL(kept)
+	if err != nil {
+		return "", err
+	}
+	return sql, nil
 }
 
 func flashRowError(row model.FlashRow) error {
@@ -151,7 +231,7 @@ func oneLine(value string, limit int) string {
 	return value
 }
 
-func renderFlashbackSQL(groups []flashGroup) string {
+func renderFlashbackSQL(groups []flashGroup) (string, error) {
 	var b strings.Builder
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
@@ -173,36 +253,96 @@ func renderFlashbackSQL(groups []flashGroup) string {
 		fmt.Fprintf(&b, "-- binlog: %s:%d\n", oneLine(file, 0), group.pos)
 		b.WriteString("START TRANSACTION;\n")
 		for j := len(group.rows) - 1; j >= 0; j-- {
-			b.WriteString(renderUndoStatement(group.rows[j]))
+			var gen map[string]struct{}
+			if j < len(group.gens) {
+				gen = group.gens[j]
+			}
+			statement, err := renderUndoStatement(group.rows[j], gen)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(statement)
 			b.WriteByte('\n')
 		}
 		b.WriteString("COMMIT;\n")
 	}
-	return b.String()
+	return b.String(), nil
 }
 
-func renderUndoStatement(row model.FlashRow) string {
+func renderUndoStatement(row model.FlashRow, gen map[string]struct{}) (string, error) {
 	table := quoteIdent(row.Schema) + "." + quoteIdent(row.Table)
 	switch row.Op {
 	case "DELETE":
-		return "INSERT INTO " + table + " (" + quoteColumnList(row.Columns) + ") VALUES (" + strings.Join(row.Before, ", ") + ");"
-	case "UPDATE":
-		sets := make([]string, len(row.Columns))
-		for i, column := range row.Columns {
-			sets[i] = quoteIdent(column) + " = " + row.Before[i]
+		cols, vals := assignColumns(row.Columns, row.Before, gen)
+		if len(cols) == 0 {
+			return "", generatedRowError(row)
 		}
-		return undoWhere(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After)
+		return "INSERT INTO " + table + " (" + quoteColumnList(cols) + ") VALUES (" + strings.Join(vals, ", ") + ");", nil
+	case "UPDATE":
+		cols, vals := assignColumns(row.Columns, row.Before, gen)
+		if len(cols) == 0 {
+			return "", generatedRowError(row)
+		}
+		sets := make([]string, len(cols))
+		for i := range cols {
+			sets[i] = quoteIdent(cols[i]) + " = " + vals[i]
+		}
+		return undoWhere(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After, gen)
 	default:
-		return undoWhere(row, "DELETE FROM "+table, row.After)
+		return undoWhere(row, "DELETE FROM "+table, row.After, gen)
 	}
 }
 
-func undoWhere(row model.FlashRow, head string, image []string) string {
+func assignColumns(columns, values []string, gen map[string]struct{}) ([]string, []string) {
+	cols := make([]string, 0, len(columns))
+	vals := make([]string, 0, len(values))
+	for i, column := range columns {
+		if isGenerated(gen, column) {
+			continue
+		}
+		cols = append(cols, column)
+		val := "NULL"
+		if i < len(values) {
+			val = values[i]
+		}
+		vals = append(vals, val)
+	}
+	return cols, vals
+}
+
+func isGenerated(gen map[string]struct{}, name string) bool {
+	if len(gen) == 0 {
+		return false
+	}
+	_, ok := gen[strings.ToLower(name)]
+	return ok
+}
+
+func generatedRowError(row model.FlashRow) error {
+	return fmt.Errorf("%s", i18n.Tf("error.flashbackGeneratedRow", map[string]any{
+		"Table": flashTable(row.Schema, row.Table),
+	}))
+}
+
+func undoWhere(row model.FlashRow, head string, image []string, gen map[string]struct{}) (string, error) {
+	pk := !row.NoPK && len(row.PK) > 0
 	indexes := row.PK
-	if row.NoPK || len(indexes) == 0 {
-		indexes = make([]int, len(row.Columns))
-		for i := range indexes {
-			indexes[i] = i
+	dropped := false
+	if !pk {
+		indexes = make([]int, 0, len(row.Columns))
+		for i, column := range row.Columns {
+			if isGenerated(gen, column) {
+				dropped = true
+				continue
+			}
+			indexes = append(indexes, i)
+		}
+		if len(indexes) == 0 {
+			indexes = make([]int, len(row.Columns))
+			for i := range indexes {
+				indexes[i] = i
+			}
+			dropped = false
 		}
 	}
 	parts := make([]string, 0, len(indexes))
@@ -212,12 +352,19 @@ func undoWhere(row model.FlashRow, head string, image []string) string {
 		}
 		parts = append(parts, quoteIdent(row.Columns[index])+" <=> "+image[index])
 	}
-	statement := head + " WHERE " + strings.Join(parts, " AND ")
-	if row.NoPK || len(row.PK) == 0 {
-		statement += " LIMIT 1"
-		return "-- no primary key on " + flashTable(row.Schema, row.Table) + "; this matches every column and LIMIT 1\n" + statement + ";"
+	if len(parts) == 0 {
+		return "", generatedRowError(row)
 	}
-	return statement + ";"
+	statement := head + " WHERE " + strings.Join(parts, " AND ")
+	if !pk {
+		statement += " LIMIT 1"
+		note := "this matches every column and LIMIT 1"
+		if dropped {
+			note = "this matches every non-generated column and LIMIT 1"
+		}
+		return "-- no primary key on " + flashTable(row.Schema, row.Table) + "; " + note + "\n" + statement + ";", nil
+	}
+	return statement + ";", nil
 }
 
 func quoteColumnList(columns []string) string {
