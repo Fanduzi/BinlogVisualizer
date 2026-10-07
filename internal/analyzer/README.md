@@ -6,7 +6,7 @@
 |------|----------------|
 | `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly from ReportAggregator plus table totals. |
 | `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, applies exclude-wins matching, and rejects anonymous groups while a selector is active. |
-| `filter.go` | Applies schema/object include and exclude filters, including `SCHEMA.TABLE` tokens for tables, views, events, routines, and triggers. |
+| `filter.go` | Applies schema/object include and exclude filters, including `SCHEMA.TABLE` tokens for tables, views, events, routines, and triggers, plus an optional INSERT/UPDATE/DELETE kind filter. |
 | `store.go` | Shared detail DTOs and the in-memory store used by default analyze. |
 | `store_duckdb.go` | CGO DuckDB adapter: `NewDuckDBStore`, batch append, and query helpers. |
 | `store_nocgo.go` | `!cgo` stub so `NewDuckDBStore` fails with `ErrDuckDBRequiresCGO` without importing go-duckdb. |

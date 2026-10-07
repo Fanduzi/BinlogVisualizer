@@ -39,12 +39,12 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	opts = normalizeOptions(opts)
 	var buf strings.Builder
 
-	renderDiagnosticSummary(&buf, result, opts.TopN)
+	renderDiagnosticSummary(&buf, result, opts)
 	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
-	renderTopTransactions(&buf, result, opts.TopN, opts.SQLContextMode)
+	renderTopTransactions(&buf, result, opts)
 	renderTopFindings(&buf, result, opts)
 	renderActivitySection(&buf, result)
 	renderNextActions(&buf, result)
@@ -59,12 +59,23 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	return buf.String(), nil
 }
 
-func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, topN int) {
+func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, opts Options) {
+	topN := opts.TopN
 	summary := result.Summary
 	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
 	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.timestamps"), i18n.T("report.value.binlogUTC")))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary")))
+	if label := dmlFilterLabel(result.Scope); label != "" {
+		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.dmlFilter"), label))
+	}
+	if rowValuesSuppressed(opts) {
+		buf.WriteString("  " + i18n.T("report.text.rowValuesSuppressed") + "\n")
+	} else if showRowValues(opts) {
+		if note := columnNamesNote(result); note != "" {
+			buf.WriteString("  " + note + "\n")
+		}
+	}
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.partialTransactions"), summary.PartialTransactions))
 	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.unknownTransactions"), summary.UnknownTransactions))
@@ -226,8 +237,10 @@ func maxInt(a, b int) int {
 	return b
 }
 
-func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, topN int, mode SQLContextMode) {
+func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.topTransactions") + " ===\n")
+	topN := opts.TopN
+	mode := opts.SQLContextMode
 
 	largestLimit := minInt(3, topN)
 	longestLimit := largestLimit
@@ -249,6 +262,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 			printedQuery = true
 		}
 		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
+		appendRowImageLines(&lines, txn, opts)
 	}
 	if line := formatCommittedDurationLine(result.Diagnostics.DurationBuckets); line != "" {
 		lines = append(lines, "  "+line)
@@ -261,6 +275,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 			printedQuery = true
 		}
 		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
+		appendRowImageLines(&lines, txn, opts)
 	}
 	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, otherLimit) {
 		line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
@@ -270,6 +285,7 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, to
 			printedQuery = true
 		}
 		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
+		appendRowImageLines(&lines, txn, opts)
 	}
 
 	if !printedQuery {

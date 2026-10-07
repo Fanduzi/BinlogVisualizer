@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
 
@@ -42,6 +43,8 @@ type jsonAnalysisResult struct {
 	Warnings            int                    `json:"warnings"`
 	PatternDrilldowns   []jsonPatternDrilldown `json:"pattern_drilldowns"`
 	Snapshot            *jsonSnapshot          `json:"snapshot,omitempty"`
+	ColumnNamesNote     string                 `json:"column_names_note,omitempty"`
+	RowValuesNote       string                 `json:"row_values_note,omitempty"`
 }
 
 type jsonSelection struct {
@@ -255,6 +258,19 @@ type jsonTransaction struct {
 	QueryTruncated     *bool          `json:"query_truncated,omitempty"`
 	QueryOriginalBytes *int           `json:"query_original_bytes,omitempty"`
 	MysqlbinlogCmd     string         `json:"mysqlbinlog_cmd,omitempty"`
+	Rows               []jsonRowImage `json:"rows,omitempty"`
+	RowsOmitted        int            `json:"rows_omitted,omitempty"`
+}
+
+type jsonRowImage struct {
+	Schema  string   `json:"schema,omitempty"`
+	Table   string   `json:"table,omitempty"`
+	Op      string   `json:"op"`
+	Columns []string `json:"columns"`
+	Names   string   `json:"names"`
+	Before  []any    `json:"before,omitempty"`
+	After   []any    `json:"after,omitempty"`
+	Changed []string `json:"changed,omitempty"`
 }
 
 type jsonActor struct {
@@ -319,6 +335,7 @@ type jsonSnapshotFilters struct {
 	ExcludeSchemas []string `json:"exclude_schema"`
 	IncludeTables  []string `json:"include_table"`
 	ExcludeTables  []string `json:"exclude_table"`
+	DML            []string `json:"dml,omitempty"`
 }
 
 type jsonPatternDrilldown struct {
@@ -398,7 +415,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		transactionsOmitted = 0
 	}
 	threads, threadsOmitted := limitThreads(result.Threads, opts.TopThreads)
-	return jsonAnalysisResult{
+	converted := jsonAnalysisResult{
 		ReportVersion:       currentReportVersion,
 		WorkloadID:          result.WorkloadID,
 		Scope:               convertScope(result.Scope),
@@ -407,13 +424,13 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		SQLContext:          jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
 		Summary:             convertSummary(result.Summary),
 		Timeseries:          convertTimeseries(result.Timeseries),
-		Diagnostics:         convertDiagnostics(result.Diagnostics, opts.SQLContextMode),
+		Diagnostics:         convertDiagnostics(result.Diagnostics, opts),
 		Tables:              convertTables(result.Tables),
 		Threads:             convertThreads(threads),
 		ThreadsListed:       len(threads),
 		ThreadsOmitted:      threadsOmitted,
 		ThreadsRankedBy:     result.ThreadsRankedBy,
-		Transactions:        convertTransactions(result.Transactions, opts.SQLContextMode, result.Diagnostics.ServerVersion),
+		Transactions:        convertTransactions(result.Transactions, opts, result.Diagnostics.ServerVersion),
 		TransactionsListed:  transactionsListed,
 		TransactionsOmitted: transactionsOmitted,
 		Patterns:            convertPatterns(result.Patterns, opts.SQLContextMode),
@@ -423,6 +440,12 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		PatternDrilldowns:   convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode),
 		Snapshot:            convertSnapshot(result.Snapshot),
 	}
+	if rowValuesSuppressed(opts) {
+		converted.RowValuesNote = i18n.T("report.text.rowValuesSuppressed")
+	} else if showRowValues(opts) {
+		converted.ColumnNamesNote = columnNamesNote(result)
+	}
+	return converted
 }
 
 func convertSelection(selection *model.AnalysisSelection) *jsonSelection {
@@ -519,15 +542,16 @@ func convertTxnSizeBuckets(buckets []model.TxnSizeBucket) []jsonTxnSizeBucket {
 	return result
 }
 
-func convertDiagnostics(diagnostics model.Diagnostics, mode SQLContextMode) jsonDiagnostics {
+func convertDiagnostics(diagnostics model.Diagnostics, opts Options) jsonDiagnostics {
+	mode := opts.SQLContextMode
 	return jsonDiagnostics{
 		FileCoverage:            convertFileCoverage(diagnostics.FileCoverage),
 		CountedEventBytes:       diagnostics.CountedEventBytes,
 		DDLEvents:               convertDDLEvents(diagnostics.DDLEvents, mode),
-		LargestTransactions:     convertTransactions(diagnostics.LargestTransactions, mode, diagnostics.ServerVersion),
-		LongestTransactions:     convertTransactions(diagnostics.LongestTransactions, mode, diagnostics.ServerVersion),
-		WidestTransactions:      convertTransactions(diagnostics.WidestTransactions, mode, diagnostics.ServerVersion),
-		LargestByteTransactions: convertOptionalTransactions(diagnostics.LargestByteTransactions, mode, diagnostics.ServerVersion),
+		LargestTransactions:     convertTransactions(diagnostics.LargestTransactions, opts, diagnostics.ServerVersion),
+		LongestTransactions:     convertTransactions(diagnostics.LongestTransactions, opts, diagnostics.ServerVersion),
+		WidestTransactions:      convertTransactions(diagnostics.WidestTransactions, opts, diagnostics.ServerVersion),
+		LargestByteTransactions: convertOptionalTransactions(diagnostics.LargestByteTransactions, opts, diagnostics.ServerVersion),
 		OpenDMLGroups:           convertOpenDMLGroups(diagnostics.OpenDMLGroups),
 		DurationBuckets:         convertDurationBuckets(diagnostics.DurationBuckets),
 		FileSegments:            convertFileSegments(diagnostics.FileSegments),
@@ -674,11 +698,11 @@ func convertTables(tables []model.TableStats) []jsonTableStats {
 	return result
 }
 
-func convertOptionalTransactions(txns []model.Transaction, mode SQLContextMode, serverVersion string) []jsonTransaction {
+func convertOptionalTransactions(txns []model.Transaction, opts Options, serverVersion string) []jsonTransaction {
 	if len(txns) == 0 {
 		return nil
 	}
-	return convertTransactions(txns, mode, serverVersion)
+	return convertTransactions(txns, opts, serverVersion)
 }
 
 func convertOpenDMLGroups(groups []model.OpenDMLGroup) []jsonOpenDMLGroup {
@@ -716,7 +740,8 @@ func convertDurationBuckets(buckets []model.DurationBucket) []jsonDurationBucket
 	return out
 }
 
-func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVersion string) []jsonTransaction {
+func convertTransactions(txns []model.Transaction, opts Options, serverVersion string) []jsonTransaction {
+	mode := opts.SQLContextMode
 	if txns == nil {
 		return []jsonTransaction{}
 	}
@@ -773,6 +798,10 @@ func convertTransactions(txns []model.Transaction, mode SQLContextMode, serverVe
 			}
 		}
 		jt.MysqlbinlogCmd = mysqlbinlogCmd(t, serverVersion)
+		if showRowValues(opts) {
+			jt.Rows = convertRowImages(t.RowImages)
+			jt.RowsOmitted = t.RowImagesOmitted
+		}
 		result[i] = jt
 	}
 	return result
@@ -902,7 +931,43 @@ func convertSnapshotFilters(filters model.SnapshotFilters) jsonSnapshotFilters {
 		ExcludeSchemas: copyStringSlice(filters.ExcludeSchemas),
 		IncludeTables:  copyStringSlice(filters.IncludeTables),
 		ExcludeTables:  copyStringSlice(filters.ExcludeTables),
+		DML:            copyStringSlice(filters.IncludeDML),
 	}
+}
+
+func convertRowImages(images []model.RowImage) []jsonRowImage {
+	if len(images) == 0 {
+		return nil
+	}
+	out := make([]jsonRowImage, len(images))
+	for i, image := range images {
+		out[i] = jsonRowImage{
+			Schema:  image.Schema,
+			Table:   image.Table,
+			Op:      image.Op,
+			Columns: append([]string(nil), image.Columns...),
+			Names:   image.Names,
+			Before:  jsonCells(image.Before),
+			After:   jsonCells(image.After),
+			Changed: append([]string(nil), image.Changed...),
+		}
+	}
+	return out
+}
+
+func jsonCells(cells []model.RowCell) []any {
+	if cells == nil {
+		return nil
+	}
+	out := make([]any, len(cells))
+	for i, cell := range cells {
+		if cell.Null {
+			out[i] = nil
+			continue
+		}
+		out[i] = cell.Text
+	}
+	return out
 }
 
 func convertDrilldowns(drilldowns []model.PatternDrilldown, mode SQLContextMode) []jsonPatternDrilldown {

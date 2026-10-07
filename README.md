@@ -69,7 +69,7 @@ cat mysql-bin.000123 | binlogviz analyze -
 
 The default text report includes Top Threads, ranked by rows (or by events, bytes, or transactions when there are no row images). It shows `thread_id`, and `server_id`, `user@host`, and schema when the binlog stored them, so "who wrote the most" does not need `jq`. `--top` limits that section; `--top-threads 0` keeps every session. JSON exposes the same ranking as `threads`.
 
-`analyze` exits **0** when at least one event was counted, **1** when the file could not be analyzed (corrupt, truncated, or no Format Description), and **2** when a complete binlog parsed but counted zero events (empty `--start`/`--end` window, or Format Description / rotate only). A schema or table filter that matches nothing is also exit 2, and its `Error:` line says the filter matched no events. A filter that matches a view, event, function, procedure, or trigger exits 0 and prints that DDL even when no rows changed. Exit 2 writes nothing to `stdout` and one `Error:` line to `stderr`. If a progress bar is still on the current stderr line, that line is cleared before `Error:`.
+`analyze` exits **0** when at least one event was counted, **1** when the file could not be analyzed (corrupt, truncated, or no Format Description), and **2** when a complete binlog parsed but counted zero events (empty `--start`/`--end` window, or Format Description / rotate only). A schema or table filter that matches nothing is also exit 2, and its `Error:` line says the filter matched no events. `--dml` that matches nothing is the same exit, with `Error: dml filter matched no events`. A filter that matches a view, event, function, procedure, or trigger exits 0 and prints that DDL even when no rows changed. Exit 2 writes nothing to `stdout` and one `Error:` line to `stderr`. If a progress bar is still on the current stderr line, that line is cleared before `Error:`.
 
 ### Analyze a whole directory in binlog order
 
@@ -106,6 +106,21 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 ```
 
 `--include-table` / `--exclude-table` accept `TABLE` or `SCHEMA.TABLE`, and the same form for a view, event, function, procedure, or trigger. `CREATE TRIGGER` and `DROP TRIGGER` are both named by the trigger, so pass that name.
+
+### Find the bad DELETE and see its rows
+
+```bash
+binlogviz analyze mysql-bin.000123 \
+  --include-table shop.orders \
+  --dml delete \
+  --start "2026-10-06 14:00:00" \
+  --end "2026-10-06 14:10:00" \
+  --show-rows
+```
+
+`--dml` takes `insert`, `update`, and `delete`, combined with commas. It applies together with `--include-table` / `--exclude-table`, `--include-schema`, `--start` / `--end`, positions, and GTID filters. Summary, Top Tables, Top Transactions, Top Threads, and alerts count only the kinds you kept, and the report names the filter. A kind filter that matches nothing exits 2 with `Error: dml filter matched no events`.
+
+`--show-rows` is off unless you pass it. For each listed transaction it prints the DELETE before-image, the UPDATE columns that changed (`before -> after`), and the INSERT after-image. MySQL 8 with `binlog_row_metadata=FULL` shows column names. Otherwise the columns are `@1`..`@N`, and the report says names are missing. Values are bounded (32 rows per transaction, 64 bytes per value) and a cut is marked, including how many rows were left out. `--sql-context off` omits these values and says so. The transaction's `mysqlbinlog_cmd` is still there for a cross-check. This does not generate rollback SQL.
 
 ### Send machine-readable output to another tool
 

@@ -107,6 +107,14 @@
     "description": "Include table filter flag description",
     "other": "Only analyze these objects (comma-separated TABLE or SCHEMA.TABLE). Also matches VIEW, EVENT, FUNCTION, PROCEDURE, and TRIGGER names"
   },
+  "cmd.analyze.flag.dml": {
+    "description": "DML kind filter flag description",
+    "other": "Only count these ROW kinds (comma-separated insert, update, delete; combinable)"
+  },
+  "cmd.analyze.flag.showRows": {
+    "description": "Show row image flag description",
+    "other": "Show bounded row values for listed transactions (DELETE before-image, UPDATE changed columns, INSERT after-image). Off by default. --sql-context off suppresses the values"
+  },
   "cmd.analyze.flag.excludeTable": {
     "description": "Exclude table filter flag description",
     "other": "Skip these objects (comma-separated TABLE or SCHEMA.TABLE). Also matches VIEW, EVENT, FUNCTION, PROCEDURE, and TRIGGER names"
@@ -231,6 +239,10 @@
     "description": "Schema or table filter left zero row events in a readable binlog",
     "other": "schema/table filter matched no events"
   },
+  "error.dmlFilterMatchedNothing": {
+    "description": "DML kind filter left zero row events in a readable binlog",
+    "other": "dml filter matched no events"
+  },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
     "other": "suffix after prefix must be digits; try --prefix {{.Prefix}}"
@@ -354,6 +366,38 @@
   "report.label.openExplicitGroups": {
     "description": "BEGIN groups flushed without COMMIT or plain ROLLBACK",
     "other": "Open Explicit Groups"
+  },
+  "report.label.dmlFilter": {
+    "description": "Active DML kind filter label",
+    "other": "DML filter"
+  },
+  "report.label.rowValues": {
+    "description": "Row value presentation label",
+    "other": "Row values"
+  },
+  "report.label.columnNames": {
+    "description": "Column name source label",
+    "other": "Column names"
+  },
+  "report.text.columnNamesMissing": {
+    "description": "Shown when the binlog has no FULL row metadata",
+    "other": "column names unavailable (binlog_row_metadata is not FULL); columns shown as @1..@N"
+  },
+  "report.text.rowValuesSuppressed": {
+    "description": "Shown when --show-rows is set and --sql-context is off",
+    "other": "row values omitted because --sql-context is off"
+  },
+  "report.text.rowsOmitted": {
+    "description": "Count of logical row images not stored on a transaction",
+    "other": "rows omitted: {{.Count}}"
+  },
+  "report.text.rowUnchanged": {
+    "description": "UPDATE image whose before and after cells match",
+    "other": "(no column changed)"
+  },
+  "report.text.unchangedColumns": {
+    "description": "Count of UPDATE columns that did not change",
+    "other": "({{.Count}} unchanged)"
   },
   "report.text.rowImageSummary": {
     "description": "Default text report format boundary",

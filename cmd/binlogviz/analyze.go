@@ -83,6 +83,9 @@ type analyzeOptions struct {
 	excludeSchemas         []string
 	includeTables          []string
 	excludeTables          []string
+	dml                    []string
+	dmlKinds               []string
+	showRows               bool
 	topTablesChanged       bool
 	topTransactionsChanged bool
 	detailStore            string
@@ -135,6 +138,7 @@ func newAnalyzeCommand() *cobra.Command {
 			if err := validateAnalyzeOptions(opts); err != nil {
 				return err
 			}
+			reportOpts.ShowRows = opts.showRows
 			gtidSelector, err := buildGTIDSelector(opts)
 			if err != nil {
 				return err
@@ -175,6 +179,9 @@ func newAnalyzeCommand() *cobra.Command {
 			// Build analyzer options
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			analyzerOpts.GTIDSelector = gtidSelector
+			if opts.showRows && reportOpts.SQLContextMode != report.SQLContextOff {
+				analyzerOpts.CaptureRowImages = true
+			}
 			snapshotMeta := buildSnapshotMetadata(displayPaths(paths, pathAliases), opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
@@ -214,6 +221,8 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.analyze.flag.includeSchema"))
 	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.analyze.flag.excludeSchema"))
 	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.analyze.flag.includeTable"))
+	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.analyze.flag.dml"))
+	cmd.Flags().BoolVar(&opts.showRows, "show-rows", false, i18n.T("cmd.analyze.flag.showRows"))
 	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.analyze.flag.excludeTable"))
 	cmd.Flags().StringVar(&opts.detailStore, "detail-store", string(analyzer.DetailStoreNone), i18n.T("cmd.analyze.flag.detailStore"))
 
@@ -618,6 +627,11 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
 	}
+	if opts.CaptureRowImages {
+		if rows, ok := parser.(binlog.RowImageParser); ok {
+			rows.SetCaptureRowImages(true)
+		}
+	}
 
 	var store *analyzer.DuckDBStore
 	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
@@ -964,6 +978,7 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	result.ExcludeSchemas = opts.excludeSchemas
 	result.IncludeTables = opts.includeTables
 	result.ExcludeTables = opts.excludeTables
+	result.IncludeDML = append([]string(nil), opts.dmlKinds...)
 	result.WorkloadID = strings.TrimSpace(opts.workloadID)
 	if mode := analyzer.DetailStoreMode(opts.detailStore); mode != "" {
 		result.DetailStoreMode = mode
@@ -1013,6 +1028,11 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 }
 
 func validateAnalyzeOptions(opts *analyzeOptions) error {
+	kinds, err := analyzer.ParseDMLKinds(opts.dml)
+	if err != nil {
+		return err
+	}
+	opts.dmlKinds = kinds
 	switch analyzer.DetailStoreMode(opts.detailStore) {
 	case analyzer.DetailStoreNone, analyzer.DetailStoreDuckDB:
 	default:
@@ -1066,6 +1086,7 @@ func buildSnapshotMetadata(paths []string, opts *analyzeOptions, startTime, endT
 			ExcludeSchemas: append([]string(nil), opts.excludeSchemas...),
 			IncludeTables:  append([]string(nil), opts.includeTables...),
 			ExcludeTables:  append([]string(nil), opts.excludeTables...),
+			IncludeDML:     append([]string(nil), opts.dmlKinds...),
 		},
 	}
 }
@@ -1171,6 +1192,9 @@ func mapBinlogParseError(msg string) string {
 func applyAnalyzeOutcomeGuards(paths []string, opts analyzer.Options, result *model.AnalysisResult, rawEvents int, observer binlog.FormatObserver) error {
 	if err := rejectEmptyOrIncompleteBinlog(paths, rawEvents); err != nil {
 		return err
+	}
+	if result != nil && opts.HasDMLFilter() && result.Summary.TotalRows == 0 {
+		return &ExitError{Code: 2, Msg: i18n.T("error.dmlFilterMatchedNothing")}
 	}
 	if result != nil && opts.HasObjectFilters() && filterMatchedNoWorkload(result) {
 		return &ExitError{Code: 2, Msg: i18n.T("error.filterMatchedNothing")}
