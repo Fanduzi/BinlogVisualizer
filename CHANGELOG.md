@@ -4,8 +4,21 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
-- `--dml insert,update,delete` limits the analyze report to those ROW kinds. It composes with schema, table, time, position, and GTID filters. Summary, Top Tables, Top Transactions, Top Threads, and alerts count only the kept kinds, and the report names the filter. A kind filter that matches nothing is exit 2, `Error: dml filter matched no events`.
-- `--show-rows` prints bounded row values for listed transactions: DELETE before-image, UPDATE changed columns (`before -> after`), INSERT after-image. Column names come from `binlog_row_metadata=FULL`; otherwise columns are `@1`..`@N` and the report says names are missing. At most 32 rows per transaction and 64 bytes per value; a cut is marked, with a count of omitted rows. Off by default. `--sql-context off` omits the values and says so. Each listed transaction still has `mysqlbinlog_cmd`.
+## v0.23.15
+
+Release date: 2026-10-07
+
+Highlights:
+
+- `--dml insert,update,delete` (combinable) keeps only those ROW kinds. It composes with existing table, schema, time, position, and GTID filters. Summary, Top Tables, Top Transactions, Top Threads, and alerts count only the kept kinds, and the report names the filter. Nothing matched is exit 2, empty stdout, `Error: dml filter matched no events`. JSON field: `scope.dml`.
+- `--show-rows` is off by default. On: DELETE before-image; UPDATE only changed columns (`before -> after`) plus the unchanged count; INSERT after-image. Column names come from MySQL 8 `binlog_row_metadata=FULL`; otherwise `@1`..`@N` and the report says names are missing. Unsigned FULL prints unsigned (for example `3000000000`). Without signedness metadata, integers that differ print both forms. Bounds: 32 logical rows per transaction, 64 bytes per value, with `… [truncated: <shown> of <original> bytes]` and a count of omitted rows. `--sql-context off` also omits these cell values and says so. Each listed transaction still has `mysqlbinlog_cmd`. JSON: `transactions[].rows` with `op`, `columns`, `names`, `before`, `after`, and `changed` (DELETE sets `before`, INSERT sets `after`, UPDATE sets both and `changed`; SQL NULL is JSON `null`), plus `column_names_note` and `row_values_note`.
+- Default text, Markdown, JSON, and HTML are unchanged when neither flag is set. Flashback SQL is not in this release.
+- Known issue (#132), not a blocker and not fixed: `--show-rows` `TIMESTAMP` values follow the process timezone. `mysqlbinlog -v` shows the UTC instant. `DATETIME` is unaffected.
+
+Related notes:
+
+- [v0.23.15 release notes](docs/releases/release-notes-v0.23.15.md)
+- [v0.23.15 中文发行说明](docs/releases/release-notes-v0.23.15.zh-CN.md)
 
 ## v0.23.14
 
