@@ -247,6 +247,42 @@
     "description": "DML kind filter left zero row events in a readable binlog",
     "other": "dml filter matched no events"
   },
+  "error.flashbackSQLContext": {
+    "description": "Flashback refuses --sql-context off because the script is the row values",
+    "other": "flashback prints row values; --sql-context off refuses that"
+  },
+  "error.flashbackNames": {
+    "description": "Flashback refuses when column names are not in the binlog",
+    "other": "{{.Table}}: column names are unavailable (binlog_row_metadata is not FULL)"
+  },
+  "error.flashbackImage": {
+    "description": "Flashback refuses an incomplete before- or after-image",
+    "other": "{{.Table}}: row image is not FULL (before- or after-image is incomplete)"
+  },
+  "error.flashbackType": {
+    "description": "Flashback refuses a column it cannot render as an exact literal",
+    "other": "{{.Table}}.{{.Column}}: cannot render {{.Type}} exactly"
+  },
+  "error.flashbackDDL": {
+    "description": "Flashback refuses DDL inside the selected range",
+    "other": "{{.Table}}: DDL in the selected range ({{.Statement}}); flashback does not undo schema changes"
+  },
+  "error.flashbackCapture": {
+    "description": "Flashback had a selected row event with no image",
+    "other": "{{.Table}}: row image was not captured"
+  },
+  "cmd.flashback.use": {
+    "description": "Flashback command usage",
+    "other": "flashback [binlog files... | -] | --from-dir DIR --prefix PREFIX"
+  },
+  "cmd.flashback.short": {
+    "description": "Flashback command short description",
+    "other": "Print SQL that undoes selected row changes"
+  },
+  "cmd.flashback.long": {
+    "description": "Flashback command long description",
+    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database."
+  },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
     "other": "suffix after prefix must be digits; try --prefix {{.Prefix}}"

@@ -4,7 +4,7 @@
 
 | File | Responsibility |
 |------|----------------|
-| `ci.yml` | Verifies tests, GoReleaser configuration, archive packaging, and the packaged smoke path on pushes to `main` and pull requests. |
+| `ci.yml` | Verifies tests, GoReleaser configuration, archive packaging, and the packaged smoke path on pushes to `main` and pull requests. A separate `flashback-e2e` job on Ubuntu 24.04 starts the image's preinstalled MySQL 8.0 and runs `TestFlashbackRoundTripMySQL80`. |
 | `release.yml` | Runs tests, validates `.goreleaser.yml` and Homebrew tap write access, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, publishes GitHub Releases, and synchronizes the cask on version tags. |
 
 ## Notes

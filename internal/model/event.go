@@ -1,6 +1,6 @@
 // Package model defines normalized event contracts shared across parsing and analysis.
 // input: parsed binlog metadata, producer/transaction provenance, XA identity, and bounded SQL context captured from the binlog layer.
-// output: NormalizedEvent values with stable provenance, optional MySQL 8 commit timestamps, and transaction/operation semantics reused by analyzer and downstream report builders.
+// output: NormalizedEvent values with stable provenance, optional MySQL 8 commit timestamps, optional flashback rows, and transaction/operation semantics reused by analyzer and downstream report builders.
 // pos: shared model boundary between internal/binlog and internal/analyzer.
 // note: if this file changes, keep internal/model/README.md synchronized.
 package model
@@ -39,6 +39,8 @@ type NormalizedEvent struct {
 	QueryOriginalBytes int    // Original SQL byte count before truncation
 	RowImages          []RowImage
 	RowImagesOmitted   int
+	// FlashRows is set only when flashback capture is on. Nil otherwise.
+	FlashRows []FlashRow
 	// RowKeys are primary-key identities for UPDATE and DELETE images when
 	// FULL metadata named the key. Empty means the key is not known. Never
 	// filled from column @1.

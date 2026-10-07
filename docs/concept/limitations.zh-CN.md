@@ -70,7 +70,27 @@ SQL 上下文是有界的，而且面向展示。
 
 列名来自 binlog，前提是 `binlog_row_metadata=FULL`（MySQL 8.0.1+）。否则列是 `@1`..`@N`，报告会说明没有列名。没有这份元数据时，有符号和无符号读数不同的整数会两种都打印，和 `mysqlbinlog -v` 一样。有 FULL 元数据时，按 binlog 记录的有无符号打印。
 
-`--sql-context off` 不打印这些单元格。账号 DDL 的 `<secret>` 打码不变；它作用于语句文本，不是行单元格。BinlogViz 不生成回滚或 flashback SQL。同一事务上的 `mysqlbinlog_cmd` 用来对照。
+`--sql-context off` 不打印这些单元格。账号 DDL 的 `<secret>` 打码不变；它作用于语句文本，不是行单元格。同一事务上的 `mysqlbinlog_cmd` 用来对照。analyze 报告不打印撤销 SQL。`binlogviz flashback` 会打印，见下一节。
+
+## Flashback SQL
+
+`binlogviz flashback` 打印撤销选定行变更的 SQL。它只读本地 binlog，不连接数据库。审完脚本后自己执行。
+
+DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，`WHERE` 用后镜像的主键。语句按 binlog 逆序。每个原事务是一个 `START TRANSACTION` / `COMMIT`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`（文件名和该事务起点字节）。
+
+表、schema、`--dml`、时间、位点、GTID 与 `analyze` 是同一套选择条件。binlog 必须带列名（`binlog_row_metadata=FULL`）和完整行镜像（`binlog_row_image=FULL`）。脚本会设置 `utf8mb4`、`time_zone='+00:00'`，并在该会话去掉 `NO_BACKSLASH_ESCAPES`。`TIMESTAMP` 字面量是存储时刻的 UTC 墙钟。
+
+没有主键的表仍然可以撤销：`DELETE` 或 `UPDATE` 匹配每一列并加 `LIMIT 1`，注释会说明。把被删行插回去的 `INSERT` 不用 `LIMIT 1`。
+
+无法精确还原时拒绝，不猜测。退出 1，一行 `Error:` 点名表和原因，stdout 没有 SQL，出现在：
+
+- 没有列名
+- 前镜像或后镜像不完整（`binlog_row_image` 为 `MINIMAL` 或 `NOBLOB`）
+- 某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`BIT`、`GEOMETRY`、`VECTOR`、不完整的 JSON、字符列里的非法 UTF-8，或缺少有无符号、字符集、ENUM/SET 成员）
+- 选定范围内有 DDL（不生成反向 DDL）
+- 使用了 `--sql-context off`，因为脚本就是行值
+
+什么都没选中时，退出码和 `Error:` 与 `analyze` 相同（`schema/table filter matched no events`、`dml filter matched no events` 或 `window matched 0 events`），stdout 为空。选定范围内的账号 DDL 按 DDL 拒绝，密钥不会被抄进脚本。单元格的值不打码。不使用 flashback 时，analyze 的文本、Markdown、JSON 和 HTML 不变。
 
 ## 输出与契约边界
 
@@ -96,7 +116,7 @@ BinlogViz 聚焦于负载分析，而不是完整的数据库运维控制面。
 
 - MySQL 复制管理器
 - 实时 binlog tailing 服务
-- statement replay 引擎
+- statement replay 引擎（flashback 只为选定范围生成反向行 DML，不重放原始语句）
 - 完整历史数据重建工具
 - 通用 SQL 可观测性平台
 
@@ -110,4 +130,4 @@ BinlogViz 聚焦于负载分析，而不是完整的数据库运维控制面。
 - 将进度输出并入机器可读报告流
 - 替代更深入的复制、取证或可观测性系统
 
-当你需要的是本地 `ROW` binlog 工作负载的快速运维总结时，使用 BinlogViz。若你需要远程采集、statement 级精确重建，或更广泛的数据库运维平台，则应该选择其他工具。
+当你需要的是本地 `ROW` binlog 工作负载的快速运维总结，或撤销一组选定行变更的 SQL 时，使用 BinlogViz。若你需要远程采集、重放原始语句，或更广泛的数据库运维平台，则应该选择其他工具。

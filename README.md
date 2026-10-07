@@ -122,7 +122,7 @@ binlogviz analyze mysql-bin.000123 \
 
 `--dml` takes `insert`, `update`, and `delete`, combined with commas. It applies together with `--include-table` / `--exclude-table`, `--include-schema`, `--start` / `--end`, positions, and GTID filters. Summary, Top Tables, Top Transactions, Top Threads, and alerts count only the kinds you kept, and the report names the filter. A kind filter that matches nothing exits 2 with `Error: dml filter matched no events`.
 
-`--show-rows` is off unless you pass it. For each listed transaction it prints the DELETE before-image, the UPDATE columns that changed (`before -> after`), and the INSERT after-image. MySQL 8 with `binlog_row_metadata=FULL` shows column names. Otherwise the columns are `@1`..`@N`, and the report says names are missing. Values are bounded (32 rows per transaction, 64 bytes per value) and a cut is marked, including how many rows were left out. `--sql-context off` omits these values and says so. The transaction's `mysqlbinlog_cmd` is still there for a cross-check. This does not generate rollback SQL. A `TIMESTAMP` column is the UTC wall clock of the stored instant, including fractional seconds, and does not follow this machine's timezone. A `DATETIME` column stays the wall clock written in the binlog.
+`--show-rows` is off unless you pass it. For each listed transaction it prints the DELETE before-image, the UPDATE columns that changed (`before -> after`), and the INSERT after-image. MySQL 8 with `binlog_row_metadata=FULL` shows column names. Otherwise the columns are `@1`..`@N`, and the report says names are missing. Values are bounded (32 rows per transaction, 64 bytes per value) and a cut is marked, including how many rows were left out. `--sql-context off` omits these values and says so. The transaction's `mysqlbinlog_cmd` is still there for a cross-check. The report itself does not print undo SQL; `binlogviz flashback` does, with the same selectors. A `TIMESTAMP` column is the UTC wall clock of the stored instant, including fractional seconds, and does not follow this machine's timezone. A `DATETIME` column stays the wall clock written in the binlog.
 
 ### Find an accidental DROP
 
@@ -130,7 +130,31 @@ binlogviz analyze mysql-bin.000123 \
 binlogviz analyze mysql-bin.000123
 ```
 
-The DDL Timeline lists `DROP TABLE`, `TRUNCATE`, and `ALTER` with the GTID of that transaction and the file byte where the transaction starts. Copy `BinlogServer stop_gtid=<gtid>` or `mysqlbinlog --stop-position=<N> <file>`. That stop replays earlier events and excludes the DDL. No GTID in the binlog prints `GTID unavailable` and still prints the position. This does not generate rollback SQL.
+The DDL Timeline lists `DROP TABLE`, `TRUNCATE`, and `ALTER` with the GTID of that transaction and the file byte where the transaction starts. Copy `BinlogServer stop_gtid=<gtid>` or `mysqlbinlog --stop-position=<N> <file>`. That stop replays earlier events and excludes the DDL. No GTID in the binlog prints `GTID unavailable` and still prints the position. The timeline does not generate undo SQL. `binlogviz flashback` also refuses a selected range that contains DDL.
+
+### Undo the bad rows
+
+Find the transaction with `analyze`, the DDL Timeline, or `--show-rows`. Then print SQL that reverses only those row changes. Review the script. Apply it yourself. Flashback does not connect to a database.
+
+```bash
+binlogviz analyze mysql-bin.000123 \
+  --include-table shop.orders \
+  --dml delete \
+  --show-rows
+
+binlogviz flashback mysql-bin.000123 \
+  --include-table shop.orders \
+  --dml delete \
+  > flashback.sql
+
+mysql --default-character-set=utf8mb4 < flashback.sql
+```
+
+`--dml`, `--include-table`, `--include-schema`, `--start` / `--end`, `--start-position` / `--stop-position`, and `--include-gtids` / `--exclude-gtids` are the same selectors as `analyze`. A DELETE becomes an `INSERT` of the before-image. An INSERT becomes a `DELETE`. An UPDATE sets the row back to the before-image and matches the primary key from the after-image, so a changed key still finds the current row. Statements are in reverse binlog order, last transaction first and last row first inside it. Each original transaction is one `START TRANSACTION` / `COMMIT`. A comment names the original GTID (`GTID unavailable` when the binlog has none) and `file:start-position`, the basename and the byte where that transaction starts, so you can cross-check with `mysqlbinlog`.
+
+The binlog must have been recorded with `binlog_row_metadata=FULL` and `binlog_row_image=FULL`. The script sets `utf8mb4`, `time_zone='+00:00'` (`TIMESTAMP` literals are the UTC wall clock), and removes `NO_BACKSLASH_ESCAPES` for that session. A table with no primary key is undone by matching every column and `LIMIT 1`, and the statement says so in a comment. `INSERT` of a deleted row does not use `LIMIT 1`.
+
+Flashback exits 1, writes one `Error:` line, and prints no SQL when column names are missing, a before- or after-image is incomplete, a column type cannot be rendered exactly (`FLOAT`, `DOUBLE`, `BIT`, `GEOMETRY`, `VECTOR`, a partial JSON value, or missing signedness, collation, or ENUM/SET members), or the selected range contains DDL. `--sql-context off` is the same refusal: the script is the row values. Nothing selected is exit 2 with the same `Error:` line `analyze` uses (`schema/table filter matched no events`, `dml filter matched no events`, or `window matched 0 events`) and empty stdout. Auth-DDL `<secret>` redaction still applies to statement text in `analyze`. Flashback does not print those statements; an auth DDL in the selected range is refused as DDL. Cell values are not redacted. `analyze` text, Markdown, JSON, and HTML are unchanged when you do not run `flashback`.
 
 ### Send machine-readable output to another tool
 
