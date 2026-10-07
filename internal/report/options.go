@@ -50,9 +50,13 @@ type Options struct {
 	TopThreads int
 	// TopThreadsSet distinguishes an explicit zero limit from an omitted value.
 	TopThreadsSet bool
-	Details       bool
-	ShowMinutes   bool
-	ShowPatterns  bool
+	// TopRows limits the Hot Rows section in every format. Zero is unlimited when TopRowsSet is true.
+	TopRows int
+	// TopRowsSet distinguishes an explicit zero limit from an omitted value.
+	TopRowsSet   bool
+	Details      bool
+	ShowMinutes  bool
+	ShowPatterns bool
 	// ShowRows prints bounded row images for listed transactions.
 	// --sql-context off suppresses the values and says so.
 	ShowRows bool
@@ -93,6 +97,9 @@ func normalizeOptions(opts Options) Options {
 	}
 	if !opts.TopThreadsSet && opts.TopThreads <= 0 {
 		opts.TopThreads = opts.TopN
+	}
+	if !opts.TopRowsSet && opts.TopRows <= 0 {
+		opts.TopRows = opts.TopN
 	}
 	if opts.Details {
 		opts.ShowMinutes = true

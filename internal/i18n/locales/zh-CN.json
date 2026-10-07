@@ -21,7 +21,7 @@
   },
   "cmd.analyze.long": {
     "description": "analyze 命令详细描述",
-    "other": "分析 binlog 文件。用 - 从管道读取一份二进制 binlog；解析需要 seek，因此会先把 stdin 复制到临时文件。默认文本、JSON、markdown 和 HTML 按行数、事件数、字节或事务数排出热点线程，并在 binlog 带有 thread_id、user@host 或 schema 时写出来。默认文本和 JSON 按事务给出事件里实际有的 server_id、thread_id、GTID，以及 xid 或 XA xid。只有 binlog 里有 user@host 时才显示。binlog 没有的字段保持缺席。"
+    "other": "分析 binlog 文件。用 - 从管道读取一份二进制 binlog；解析需要 seek，因此会先把 stdin 复制到临时文件。默认文本、JSON、markdown 和 HTML 按行数、事件数、字节或事务数排出热点线程，并在 binlog 带有 thread_id、user@host 或 schema 时写出来。它们也会列出热点行：当 binlog_row_metadata=FULL 给出主键时，按被 UPDATE 和 DELETE 行镜像碰到的次数给主键排序。默认文本和 JSON 按事务给出事件里实际有的 server_id、thread_id、GTID，以及 xid 或 XA xid。只有 binlog 里有 user@host 时才显示。binlog 没有的字段保持缺席。"
   },
   "cmd.analyze.flag.start": {
     "description": "开始时间标志描述",
@@ -62,6 +62,10 @@
   "cmd.analyze.flag.topThreads": {
     "description": "top threads 标志描述",
     "other": "显示的线程或会话数量（0 表示不限制）。未显式指定时继承 --top"
+  },
+  "cmd.analyze.flag.topRows": {
+    "description": "热点行标志描述",
+    "other": "显示的热点主键数量（0 表示不限制）。未显式指定时继承 --top"
   },
   "cmd.analyze.flag.details": {
     "description": "详细文本段落标志描述",
@@ -414,6 +418,58 @@
   "report.text.noPrimaryKeyInsertOnly": {
     "description": "只有 INSERT 的无主键表，不计入延迟风险",
     "other": "仅 INSERT，不是延迟风险：{{.Tables}}"
+  },
+  "report.text.hotRows": {
+    "description": "热点行章节标题",
+    "other": "热点行"
+  },
+  "report.text.hotRowsLead": {
+    "description": "热点行章节导语",
+    "other": "按主键统计 UPDATE 和 DELETE 行镜像。"
+  },
+  "report.text.hotRowsUnavailable": {
+    "description": "元数据不是 FULL 时无法追踪热点行",
+    "other": "{{.Table}} 无法追踪热点行：binlog 里没有主键列（binlog_row_metadata 不是 FULL）"
+  },
+  "report.text.hotRowsUnavailableValues": {
+    "description": "行镜像里没有主键列时无法追踪热点行",
+    "other": "{{.Table}} 无法追踪热点行：行镜像里没有主键列"
+  },
+  "report.text.hotRowsOverflow": {
+    "description": "热点行追踪表已满并替换了最少被碰到的键",
+    "other": "热点行追踪最多保留 {{.Limit}} 个主键。新的键会替换被碰到次数最少的键，计数可能带上被丢掉的键的次数；标成近似的行包含这些继承来的次数。一直留在表里的键计数是精确的。"
+  },
+  "report.text.hotRowsHidden": {
+    "description": "sql-context off 时隐藏主键值",
+    "other": "主键值已隐藏（--sql-context off）"
+  },
+  "report.text.hotRowsHiddenKey": {
+    "description": "主键值被隐藏时的占位",
+    "other": "[已隐藏]"
+  },
+  "report.text.hotRowsOmitted": {
+    "description": "因 top 限制省略的热点行",
+    "other": "另有 {{.Count}} 个热点行未列出"
+  },
+  "report.text.hotRowsTouches": {
+    "description": "热点行碰到次数",
+    "other": "次数"
+  },
+  "report.text.hotRowsTransactions": {
+    "description": "热点行事务数",
+    "other": "事务"
+  },
+  "report.text.hotRowsFirst": {
+    "description": "第一次碰到",
+    "other": "最早"
+  },
+  "report.text.hotRowsLast": {
+    "description": "最后一次碰到",
+    "other": "最晚"
+  },
+  "report.text.hotRowsApproximate": {
+    "description": "近似计数标记",
+    "other": "近似"
   },
   "report.text.rowValuesSuppressed": {
     "description": "--show-rows 打开且 --sql-context 为 off 时的说明",

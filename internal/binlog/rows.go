@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -235,6 +236,105 @@ func formatBlob(value []byte) string {
 		return "0x" + hexed + model.TruncationMarker(model.MaxRowValueBytes, len(value))
 	}
 	return fmt.Sprintf("0x%s (%d bytes)", hexed, len(value))
+}
+
+// pkMeta is the primary-key columns copied out of one TABLE_MAP.
+// Empty means the binlog did not name a primary key.
+type pkMeta struct {
+	indexes []int
+	names   []string
+	sign    []*bool
+}
+
+func pkMetaFrom(table *replication.TableMapEvent) pkMeta {
+	if table == nil || len(table.PrimaryKey) == 0 || len(table.ColumnName) != int(table.ColumnCount) {
+		return pkMeta{}
+	}
+	names := table.ColumnNameString()
+	unsigned := table.UnsignedMap()
+	meta := pkMeta{
+		indexes: make([]int, 0, len(table.PrimaryKey)),
+		names:   make([]string, 0, len(table.PrimaryKey)),
+		sign:    make([]*bool, 0, len(table.PrimaryKey)),
+	}
+	for _, col := range table.PrimaryKey {
+		idx := int(col)
+		if idx < 0 || idx >= len(names) || names[idx] == "" {
+			return pkMeta{}
+		}
+		meta.indexes = append(meta.indexes, idx)
+		meta.names = append(meta.names, names[idx])
+		if unsigned == nil {
+			meta.sign = append(meta.sign, nil)
+			continue
+		}
+		bit, ok := unsigned[idx]
+		if !ok {
+			meta.sign = append(meta.sign, nil)
+			continue
+		}
+		copied := bit
+		meta.sign = append(meta.sign, &copied)
+	}
+	return meta
+}
+
+// primaryKeyValues returns one identity per UPDATE or DELETE image.
+// An empty string means that image did not carry the primary-key columns.
+// A nil slice means the table map did not name a primary key.
+func primaryKeyValues(ev *replication.RowsEvent, kind string, meta pkMeta) []string {
+	if ev == nil || len(meta.indexes) == 0 || len(ev.Rows) == 0 {
+		return nil
+	}
+	if kind != kindUpdateRows && kind != kindDeleteRows {
+		return nil
+	}
+	update := kind == kindUpdateRows
+	logical := len(ev.Rows)
+	if update {
+		logical = len(ev.Rows) / 2
+	}
+	if logical == 0 {
+		return nil
+	}
+	keys := make([]string, logical)
+	for i := 0; i < logical; i++ {
+		var row []any
+		var skips []int
+		if update {
+			row = ev.Rows[i*2]
+			skips = skipsAt(ev.SkippedColumns, i*2)
+		} else {
+			row = ev.Rows[i]
+			skips = skipsAt(ev.SkippedColumns, i)
+		}
+		keys[i] = formatPrimaryKey(row, skips, meta)
+	}
+	return keys
+}
+
+func formatPrimaryKey(row []any, skips []int, meta pkMeta) string {
+	skipped := skipSet(skips)
+	parts := make([]string, len(meta.indexes))
+	for i, idx := range meta.indexes {
+		if _, omit := skipped[idx]; omit || idx < 0 || idx >= len(row) {
+			return ""
+		}
+		cell := formatCell(row[idx], meta.sign[i])
+		parts[i] = meta.names[i] + "=" + formatPKText(cell)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func formatPKText(cell model.RowCell) string {
+	if cell.Null {
+		return "NULL"
+	}
+	text := cell.Text
+	if strings.ContainsAny(text, ",=\"") || strings.TrimSpace(text) != text {
+		return strconv.Quote(text)
+	}
+	return text
 }
 
 func boundText(value string) string {

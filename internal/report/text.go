@@ -44,6 +44,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderNoPrimaryKey(&buf, result.Tables)
+	renderHotRows(&buf, result.HotRows, opts)
 	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	renderTopTransactions(&buf, result, opts)
 	renderTopFindings(&buf, result, opts)
