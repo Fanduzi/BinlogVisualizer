@@ -1072,6 +1072,8 @@ const htmlReportTemplateTail = `
               <div class="diagnostic-body">
                 <div>{{t "report.html.analyze.binlogBytes"}}: {{fmtIntHTML .BinlogBytes}} <span style="color:var(--primary);font-weight:600;font-family:'JetBrains Mono',monospace;margin-left:4px">({{.BinlogBytesFormatted}})</span></div>
                 {{if .DDLCount}}<div>{{t "report.html.analyze.ddlEvents"}}: {{fmtIntHTML .DDLCount}}</div>{{end}}
+                {{range .Tables}}<div>{{.Name}} {{fmtIntHTML .Rows}}</div>{{end}}
+                {{if .OmittedTablesLabel}}<div>{{.OmittedTablesLabel}}</div>{{end}}
               </div>
             </div>
             {{end}}

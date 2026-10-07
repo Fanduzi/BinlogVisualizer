@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -253,6 +253,8 @@ type htmlHotInterval struct {
 	BinlogBytes          int
 	BinlogBytesFormatted string
 	DDLCount             int
+	Tables               []htmlTxnTable
+	OmittedTablesLabel   string
 }
 
 type htmlFileCoverageData struct {
@@ -462,7 +464,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	d.HasTransactionEvidence = len(d.TransactionEvidence) > 0
 
 	for _, interval := range result.Diagnostics.HotIntervals {
-		d.HotIntervals = append(d.HotIntervals, htmlHotInterval{
+		tables, omitted := limitMinuteTables(rankedMinuteTables(interval.TableRows), opts.TopN)
+		card := htmlHotInterval{
 			Timestamp:            formatTime(interval.Minute),
 			Rows:                 interval.TotalRows,
 			Txns:                 interval.TxnCount,
@@ -470,7 +473,17 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 			BinlogBytes:          int(interval.BinlogBytes),
 			BinlogBytesFormatted: formatFileSize(interval.BinlogBytes),
 			DDLCount:             interval.DDLCount,
-		})
+		}
+		if len(tables) > 0 {
+			card.Tables = make([]htmlTxnTable, len(tables))
+			for i, table := range tables {
+				card.Tables[i] = htmlTxnTable{Name: table.name, Rows: table.rows}
+			}
+		}
+		if omitted > 0 {
+			card.OmittedTablesLabel = omittedTablesLabel(omitted)
+		}
+		d.HotIntervals = append(d.HotIntervals, card)
 	}
 	d.HasHotIntervals = len(d.HotIntervals) > 0
 
