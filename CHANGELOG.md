@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- `--show-rows` prints `TIMESTAMP` (including fractional seconds) as the UTC wall clock of the stored instant. It no longer follows the process timezone. `DATETIME` is unchanged.
+
 ## v0.23.15
 
 Release date: 2026-10-07
