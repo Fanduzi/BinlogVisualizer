@@ -1,6 +1,6 @@
 // Package binlog normalizes raw parser events into analyzer-facing events.
 // input: RawEvent values with canonical kinds, optional producer/transaction provenance, and Query SQL.
-// output: model.NormalizedEvent values with preserved provenance, MySQL 8 commit timestamps, bounded SQL context, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE and SET PASSWORD, independent ADMIN including exact FLUSH TABLES, CHECK TABLE prefix, and SET ROLE prefix, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
+// output: model.NormalizedEvent values with preserved provenance, MySQL 8 commit timestamps, bounded SQL context, optional flashback rows, XA identity including END/ROLLBACK/BEGIN, plain ROLLBACK (not ROLLBACK TO SAVEPOINT), Query DDL including GRANT/REVOKE and SET PASSWORD, independent ADMIN including exact FLUSH TABLES, CHECK TABLE prefix, and SET ROLE prefix, Unclassified QUERY with bounded SQL, dropped Ignored QUERY / Query-DML, and stable event/operation kinds.
 // pos: Query classifier between the parser adapter and analyzer consumption.
 // note: if this file changes, keep internal/binlog/README.md synchronized.
 package binlog
@@ -101,6 +101,7 @@ func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 		RowImages:         raw.RowImages,
 		RowImagesOmitted:  raw.RowImagesOmitted,
 		RowKeys:           raw.RowKeys,
+		FlashRows:         raw.FlashRows,
 	}
 }
 

@@ -247,6 +247,42 @@
     "description": "可读 binlog 上 DML 类型过滤后没有行事件",
     "other": "dml 过滤没有匹配到事件"
   },
+  "error.flashbackSQLContext": {
+    "description": "flashback 在 --sql-context off 时拒绝，因为脚本就是行值",
+    "other": "flashback 会打印行值；--sql-context off 因此拒绝执行"
+  },
+  "error.flashbackNames": {
+    "description": "binlog 里没有列名时 flashback 拒绝",
+    "other": "{{.Table}}：列名不可用（binlog_row_metadata 不是 FULL）"
+  },
+  "error.flashbackImage": {
+    "description": "前镜像或后镜像不完整时 flashback 拒绝",
+    "other": "{{.Table}}：行镜像不是 FULL（前镜像或后镜像不完整）"
+  },
+  "error.flashbackType": {
+    "description": "无法精确写成字面量的列，flashback 拒绝",
+    "other": "{{.Table}}.{{.Column}}：无法精确生成 {{.Type}}"
+  },
+  "error.flashbackDDL": {
+    "description": "选定范围内有 DDL 时 flashback 拒绝",
+    "other": "{{.Table}}：选定范围内有 DDL（{{.Statement}}）；flashback 不撤销结构变更"
+  },
+  "error.flashbackCapture": {
+    "description": "选中的行事件没有镜像",
+    "other": "{{.Table}}：没有捕获到行镜像"
+  },
+  "cmd.flashback.use": {
+    "description": "flashback 命令用法",
+    "other": "flashback [binlog 文件... | -] | --from-dir DIR --prefix PREFIX"
+  },
+  "cmd.flashback.short": {
+    "description": "flashback 命令短说明",
+    "other": "打印撤销所选行变更的 SQL"
+  },
+  "cmd.flashback.long": {
+    "description": "flashback 命令长说明",
+    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。"
+  },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
     "other": "前缀后的后缀必须是数字；请尝试 --prefix {{.Prefix}}"

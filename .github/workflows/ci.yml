@@ -32,3 +32,36 @@ jobs:
           bash scripts/pack_release_archive.sh dist/binlogviz dist/binlogviz_ci_linux_amd64.tar.gz
       - name: Smoke test packaged archive
         run: bash scripts/release_smoke.sh dist/binlogviz_ci_linux_amd64.tar.gz
+
+  flashback-e2e:
+    name: flashback e2e
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install MySQL 8.0
+        run: |
+          set -euo pipefail
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server-8.0 mysql-client-8.0
+          sudo systemctl stop mysql
+          sudo tee /etc/mysql/mysql.conf.d/binlogviz-flashback.cnf >/dev/null <<'EOF'
+          [mysqld]
+          server-id=1
+          log_bin=mysql-bin
+          binlog_format=ROW
+          gtid_mode=ON
+          enforce_gtid_consistency=ON
+          binlog_row_image=FULL
+          binlog_row_metadata=FULL
+          binlog_checksum=CRC32
+          binlog_rows_query_log_events=ON
+          character-set-server=utf8mb4
+          collation-server=utf8mb4_0900_ai_ci
+          EOF
+          sudo rm -f /var/lib/mysql/mysql-bin.* /var/lib/mysql/binlog.index
+          sudo systemctl start mysql
+      - name: Round-trip flashback on MySQL 8.0
+        run: BINLOGVIZ_FLASHBACK_E2E=1 BINLOGVIZ_MYSQL="sudo mysql" go test -count=1 -timeout 20m ./cmd/binlogviz -run TestFlashbackRoundTripMySQL80

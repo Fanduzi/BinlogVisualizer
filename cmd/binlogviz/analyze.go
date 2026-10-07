@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, and command-owned temporary directory roots.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, a Top Threads session ranking, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, user@host, --sql-context, and stdin `-`; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/object filter that matches nothing exits 2 with its own Error line, a filter that matches a view, event, routine, or trigger exits 0 even with zero rows, other valid no-data (including ADMIN-only) exits 2, a terminal or empty stdin `-` fails before parsing, --snapshot-name without json fails before rendering, and DuckDB temp state is cleaned.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, a Top Threads session ranking, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; when Options.Flashback is set, undo SQL is written instead of a report; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, user@host, --sql-context, and stdin `-`; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/object filter that matches nothing exits 2 with its own Error line, a filter that matches a view, event, routine, or trigger exits 0 even with zero rows, other valid no-data (including ADMIN-only) exits 2, a terminal or empty stdin `-` fails before parsing, --snapshot-name without json fails before rendering, and DuckDB temp state is cleaned.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -636,6 +636,11 @@ func runAnalysisStreamingWithSnapshotDeps(
 			rows.SetCaptureRowImages(true)
 		}
 	}
+	if opts.Flashback {
+		if rows, ok := parser.(binlog.FlashbackParser); ok {
+			rows.SetCaptureFlashback(true)
+		}
+	}
 
 	var store *analyzer.DuckDBStore
 	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
@@ -719,6 +724,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 	aliasAnalysisPaths(result, pathAliases)
 	if err := noteInputFormat(result, formatObserver); err != nil {
 		return err
+	}
+	if opts.Flashback {
+		return writeFlashbackSQL(streamAnalyzer)
 	}
 
 	var renderErr error

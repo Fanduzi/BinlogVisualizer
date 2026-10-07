@@ -1,0 +1,346 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261007 18:55:25 server id 1  end_log_pos 126 CRC32 0xc01c82e2 	Start: binlog v 4, server v 8.0.46-0ubuntu0.24.04.4 created 261007 18:55:25
+# at 126
+#261007 18:55:25 server id 1  end_log_pos 197 CRC32 0x0501f6f8 	Previous-GTIDs
+# 6d44b934-c27f-11f1-a3ee-822b383dbcd0:1-7
+# at 197
+#261007 18:55:25 server id 1  end_log_pos 276 CRC32 0xdbdcd674 	GTID	last_committed=0	sequence_number=1	rbr_only=yes	original_committed_timestamp=1791399325208113	immediate_commit_timestamp=1791399325208113	transaction_length=866
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791399325208113 (2026-10-07 18:55:25.208113 UTC)
+# immediate_commit_timestamp=1791399325208113 (2026-10-07 18:55:25.208113 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791399325208113*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '6d44b934-c27f-11f1-a3ee-822b383dbcd0:8'/*!*/;
+# at 276
+#261007 18:55:25 server id 1  end_log_pos 347 CRC32 0x8e23f09d 	Query	thread_id=22	exec_time=0	error_code=0
+SET TIMESTAMP=1791399325/*!*/;
+SET @@session.pseudo_thread_id=22/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+BEGIN
+/*!*/;
+# at 347
+# at 420
+#261007 18:55:25 server id 1  end_log_pos 683 CRC32 0xedd8d906 	Table_map: `shop`.`wide` mapped to number 125
+# has_generated_invisible_primary_key=0
+# at 683
+#261007 18:55:25 server id 1  end_log_pos 857 CRC32 0x917db410 	Delete_rows: table id 125 flags: STMT_END_F
+### DELETE FROM `shop`.`wide`
+### WHERE
+###   @1=1
+###   @2=1
+###   @3=-128 (128)
+###   @4=-1 (255)
+###   @5=-32768 (32768)
+###   @6=-2147483648 (2147483648)
+###   @7=-1 (4294967295)
+###   @8=-9223372036854775808 (9223372036854775808)
+###   @9=-1 (18446744073709551615)
+###   @10=NULL
+###   @11=-123456789012.3400
+###   @12='2026-10-06 14:05:01.123456'
+###   @13=1791295501.500000
+###   @14='it\'s "bad" \\ é›ª'
+###   @15='Þ­¾ïÿ\x00'
+###   @16='\x00ÿþ'
+###   @17='{"n": 1, "ok": true, "sku": "Z"}'
+###   @18=2
+###   @19=b'00000101'
+# at 857
+# at 915
+#261007 18:55:25 server id 1  end_log_pos 986 CRC32 0x62ae0666 	Table_map: `shop`.`heap` mapped to number 126
+# has_generated_invisible_primary_key=0
+# at 986
+#261007 18:55:25 server id 1  end_log_pos 1032 CRC32 0xe2c973fa 	Delete_rows: table id 126 flags: STMT_END_F
+### DELETE FROM `shop`.`heap`
+### WHERE
+###   @1=2
+###   @2='gone'
+# at 1032
+#261007 18:55:25 server id 1  end_log_pos 1063 CRC32 0x5ee8e26e 	Xid = 75
+COMMIT/*!*/;
+# at 1063
+#261007 18:55:25 server id 1  end_log_pos 1142 CRC32 0xebe093c8 	GTID	last_committed=1	sequence_number=2	rbr_only=yes	original_committed_timestamp=1791399325212584	immediate_commit_timestamp=1791399325212584	transaction_length=1696
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791399325212584 (2026-10-07 18:55:25.212584 UTC)
+# immediate_commit_timestamp=1791399325212584 (2026-10-07 18:55:25.212584 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791399325212584*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '6d44b934-c27f-11f1-a3ee-822b383dbcd0:9'/*!*/;
+# at 1142
+#261007 18:55:25 server id 1  end_log_pos 1222 CRC32 0x4da24fe3 	Query	thread_id=22	exec_time=0	error_code=0
+SET TIMESTAMP=1791399325/*!*/;
+BEGIN
+/*!*/;
+# at 1222
+# at 1400
+#261007 18:55:25 server id 1  end_log_pos 1663 CRC32 0x17768233 	Table_map: `shop`.`wide` mapped to number 125
+# has_generated_invisible_primary_key=0
+# at 1663
+#261007 18:55:25 server id 1  end_log_pos 2115 CRC32 0x6865e68f 	Update_rows: table id 125 flags: STMT_END_F
+### UPDATE `shop`.`wide`
+### WHERE
+###   @1=2
+###   @2=1
+###   @3=0
+###   @4=0
+###   @5=0
+###   @6=0
+###   @7=0
+###   @8=0
+###   @9=0
+###   @10=4
+###   @11=0.0001
+###   @12='2026-10-06 14:00:02.000000'
+###   @13=1791295202.000000
+###   @14='beta'
+###   @15=NULL
+###   @16=''
+###   @17='{"sku": "B"}'
+###   @18=1
+###   @19=b'00000000'
+### SET
+###   @1=2
+###   @2=1
+###   @3=0
+###   @4=0
+###   @5=0
+###   @6=0
+###   @7=0
+###   @8=0
+###   @9=0
+###   @10=5
+###   @11=1.5000
+###   @12='2026-10-06 14:00:02.000000'
+###   @13=1791295202.000000
+###   @14='changed'
+###   @15=NULL
+###   @16=''
+###   @17='{"sku": "Q"}'
+###   @18=3
+###   @19=b'00000011'
+### UPDATE `shop`.`wide`
+### WHERE
+###   @1=4
+###   @2=1
+###   @3=1
+###   @4=1
+###   @5=1
+###   @6=1
+###   @7=1
+###   @8=1
+###   @9=1
+###   @10=9
+###   @11=19.9900
+###   @12='2026-10-06 15:00:00.000001'
+###   @13=1791298800.000001
+###   @14='keep'
+###   @15='\x01'
+###   @16='\x02'
+###   @17='[1, 2]'
+###   @18=3
+###   @19=b'00000010'
+### SET
+###   @1=4
+###   @2=1
+###   @3=1
+###   @4=1
+###   @5=1
+###   @6=1
+###   @7=1
+###   @8=1
+###   @9=1
+###   @10=10
+###   @11=1.5000
+###   @12='2026-10-06 15:00:00.000001'
+###   @13=1791298800.000001
+###   @14='changed'
+###   @15='\x01'
+###   @16='\x02'
+###   @17='{"sku": "Q"}'
+###   @18=3
+###   @19=b'00000011'
+# at 2115
+# at 2207
+#261007 18:55:25 server id 1  end_log_pos 2470 CRC32 0x246a2414 	Table_map: `shop`.`wide` mapped to number 125
+# has_generated_invisible_primary_key=0
+# at 2470
+#261007 18:55:25 server id 1  end_log_pos 2540 CRC32 0x8380416f 	Update_rows: table id 125 flags: STMT_END_F
+### UPDATE `shop`.`wide`
+### WHERE
+###   @1=3
+###   @2=2
+###   @3=NULL
+###   @4=NULL
+###   @5=NULL
+###   @6=NULL
+###   @7=NULL
+###   @8=NULL
+###   @9=NULL
+###   @10=NULL
+###   @11=NULL
+###   @12=NULL
+###   @13=NULL
+###   @14=NULL
+###   @15=NULL
+###   @16=NULL
+###   @17=NULL
+###   @18=NULL
+###   @19=NULL
+### SET
+###   @1=30
+###   @2=9
+###   @3=NULL
+###   @4=NULL
+###   @5=NULL
+###   @6=NULL
+###   @7=NULL
+###   @8=NULL
+###   @9=NULL
+###   @10=NULL
+###   @11=NULL
+###   @12=NULL
+###   @13=NULL
+###   @14=NULL
+###   @15=NULL
+###   @16=NULL
+###   @17=NULL
+###   @18=NULL
+###   @19=NULL
+# at 2540
+# at 2608
+#261007 18:55:25 server id 1  end_log_pos 2679 CRC32 0xb02e97b3 	Table_map: `shop`.`heap` mapped to number 126
+# has_generated_invisible_primary_key=0
+# at 2679
+#261007 18:55:25 server id 1  end_log_pos 2728 CRC32 0x3c26df48 	Update_rows: table id 126 flags: STMT_END_F
+### UPDATE `shop`.`heap`
+### WHERE
+###   @1=3
+###   @2=NULL
+### SET
+###   @1=3
+###   @2='x'
+# at 2728
+#261007 18:55:25 server id 1  end_log_pos 2759 CRC32 0x2fea80ef 	Xid = 79
+COMMIT/*!*/;
+# at 2759
+#261007 18:55:25 server id 1  end_log_pos 2838 CRC32 0xa9b4fcb0 	GTID	last_committed=2	sequence_number=3	rbr_only=yes	original_committed_timestamp=1791399325215466	immediate_commit_timestamp=1791399325215466	transaction_length=1597
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791399325215466 (2026-10-07 18:55:25.215466 UTC)
+# immediate_commit_timestamp=1791399325215466 (2026-10-07 18:55:25.215466 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791399325215466*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '6d44b934-c27f-11f1-a3ee-822b383dbcd0:10'/*!*/;
+# at 2838
+#261007 18:55:25 server id 1  end_log_pos 2917 CRC32 0x768167c1 	Query	thread_id=22	exec_time=0	error_code=0
+SET TIMESTAMP=1791399325/*!*/;
+SET @@session.time_zone='+00:00'/*!*/;
+BEGIN
+/*!*/;
+# at 2917
+# at 3562
+#261007 18:55:25 server id 1  end_log_pos 3825 CRC32 0x53c633cf 	Table_map: `shop`.`wide` mapped to number 125
+# has_generated_invisible_primary_key=0
+# at 3825
+#261007 18:55:25 server id 1  end_log_pos 4121 CRC32 0x4e02cef8 	Write_rows: table id 125 flags: STMT_END_F
+### INSERT INTO `shop`.`wide`
+### SET
+###   @1=10
+###   @2=1
+###   @3=7
+###   @4=8
+###   @5=-9 (65527)
+###   @6=9
+###   @7=10
+###   @8=11
+###   @9=12
+###   @10=1
+###   @11=2.5000
+###   @12='2026-10-07 01:02:03.000456'
+###   @13=1791334923.000789
+###   @14='batch "one"'
+###   @15='ª'
+###   @16='»'
+###   @17='{"n": 10}'
+###   @18=1
+###   @19=b'00000100'
+### INSERT INTO `shop`.`wide`
+### SET
+###   @1=11
+###   @2=1
+###   @3=-1 (255)
+###   @4=1
+###   @5=NULL
+###   @6=-2 (4294967294)
+###   @7=2
+###   @8=-3 (18446744073709551613)
+###   @9=3
+###   @10=NULL
+###   @11=NULL
+###   @12=NULL
+###   @13=NULL
+###   @14=NULL
+###   @15=NULL
+###   @16=NULL
+###   @17=NULL
+###   @18=NULL
+###   @19=NULL
+### INSERT INTO `shop`.`wide`
+### SET
+###   @1=12
+###   @2=2
+###   @3=0
+###   @4=0
+###   @5=0
+###   @6=0
+###   @7=0
+###   @8=0
+###   @9=0
+###   @10=0
+###   @11=0.0000
+###   @12='2020-01-01 00:00:00.000000'
+###   @13=1577836800.000000
+###   @14='batch \\ end'
+###   @15=''
+###   @16=''
+###   @17='{"s": "a\\\\b"}'
+###   @18=2
+###   @19=b'00000111'
+# at 4121
+# at 4198
+#261007 18:55:25 server id 1  end_log_pos 4269 CRC32 0x22755793 	Table_map: `shop`.`heap` mapped to number 126
+# has_generated_invisible_primary_key=0
+# at 4269
+#261007 18:55:25 server id 1  end_log_pos 4325 CRC32 0xa373f7d7 	Write_rows: table id 126 flags: STMT_END_F
+### INSERT INTO `shop`.`heap`
+### SET
+###   @1=4
+###   @2='new'
+### INSERT INTO `shop`.`heap`
+### SET
+###   @1=5
+###   @2='it\'s'
+# at 4325
+#261007 18:55:25 server id 1  end_log_pos 4356 CRC32 0xe35e8923 	Xid = 84
+COMMIT/*!*/;
+# at 4356
+#261007 18:55:25 server id 1  end_log_pos 4403 CRC32 0x6b479fea 	Rotate to mysql-bin.000003  pos: 4
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

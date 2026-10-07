@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow export`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz flashback`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow export`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -12,6 +12,8 @@ binlogviz --lang zh-CN analyze <binlog files...>
 binlogviz analyze <binlog files...>
 binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz analyze --from-dir DIR --prefix PREFIX --format json --snapshot-name NAME
+binlogviz flashback <binlog files...>
+binlogviz flashback --from-dir DIR --prefix PREFIX
 binlogviz compare <current.json> <baseline.json>
 binlogviz compare --current-snapshot CURRENT --baseline-snapshot BASELINE
 binlogviz trend <snapshot...>
@@ -127,7 +129,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--dml` | none | Comma-separated ROW kinds to count: `insert`, `update`, `delete`. Combinable. Composes with schema, table, time, position, and GTID filters. A kind filter that matches nothing exits 2: `Error: dml filter matched no events`. |
 | `--show-rows` | `false` | Print bounded row values for listed transactions (DELETE before-image, UPDATE changed columns, INSERT after-image). Column names require `binlog_row_metadata=FULL`; otherwise columns are `@1`..`@N`. `--sql-context off` omits the values. |
 
-When the binlog is MySQL 8 with `binlog_row_metadata=FULL`, TABLE_MAP optional metadata names each table's primary key (`SIMPLE_PRIMARY_KEY` or `PRIMARY_KEY_WITH_PREFIX`) or records that the table has none. Every format then lists tables that have no primary key and received UPDATE or DELETE rows, ranked by those row counts. A replica applying those rows can scan the table. INSERT-only tables without a primary key are named and are not ranked as that lag risk. One UPDATE or DELETE row is enough to raise a `no_primary_key` warning next to the large-transaction and spike alerts; there is no separate threshold flag. Without FULL metadata the report does not guess: each such table is `unknown`, and the report says primary key presence is unknown because `binlog_row_metadata` is not FULL. `--include-table`, schema filters, `--dml`, and time, position, and GTID selectors apply to this section the same way they apply to Top Tables. This does not generate rollback SQL.
+When the binlog is MySQL 8 with `binlog_row_metadata=FULL`, TABLE_MAP optional metadata names each table's primary key (`SIMPLE_PRIMARY_KEY` or `PRIMARY_KEY_WITH_PREFIX`) or records that the table has none. Every format then lists tables that have no primary key and received UPDATE or DELETE rows, ranked by those row counts. A replica applying those rows can scan the table. INSERT-only tables without a primary key are named and are not ranked as that lag risk. One UPDATE or DELETE row is enough to raise a `no_primary_key` warning next to the large-transaction and spike alerts; there is no separate threshold flag. Without FULL metadata the report does not guess: each such table is `unknown`, and the report says primary key presence is unknown because `binlog_row_metadata` is not FULL. `--include-table`, schema filters, `--dml`, and time, position, and GTID selectors apply to this section the same way they apply to Top Tables. The analyze report does not generate undo SQL. `binlogviz flashback` does.
 
 Hot Rows ranks individual primary keys by how many UPDATE and DELETE row images touched them. Each entry has the touch count, the number of distinct transactions, the first and last event time, and the GTID plus file:byte of the first and last transaction (the transaction start, so `mysqlbinlog` or BinlogServer can open that group). Identity comes only from MySQL 8 `binlog_row_metadata=FULL` (`SIMPLE_PRIMARY_KEY` or `PRIMARY_KEY_WITH_PREFIX`, using the named columns, not column `@1`). When the key is not in the binlog, that table is not ranked and the report says hot-row tracking is unavailable because `binlog_row_metadata` is not FULL. A table with no primary key is not ranked in this section. `--top` limits the list; `--top-rows` overrides it; `0` keeps every tracked key. `--sql-context off` hides the key values and keeps the counts. The same filters as Top Tables apply. Tracking keeps at most 8192 primary keys. When a new key arrives after that, it replaces the least-touched key and its touch count starts at the dropped count plus one; the report says the cap was hit and marks that row approximate. A key that was never replaced stays exact. JSON fields: `hot_rows`, `hot_rows_listed`, `hot_rows_omitted`, `hot_row_track_limit`, `hot_rows_overflow`, `hot_rows_note`, `hot_row_unavailable`.
 
@@ -161,6 +163,22 @@ Detail flags for the text report:
 ```bash
 binlogviz analyze mysql-bin.000123 --details --show-minutes --show-patterns
 ```
+
+## `flashback` Command Syntax
+
+```bash
+binlogviz flashback <binlog files...>
+binlogviz flashback --from-dir DIR --prefix PREFIX
+binlogviz flashback mysql-bin.000123 --include-table shop.orders --dml delete
+```
+
+`flashback` prints SQL that undoes the selected row changes. stdout is the script. It does not connect to a database. Input rules match `analyze`: positional files, stdin `-`, or `--from-dir` with `--prefix`.
+
+Selectors match `analyze`: `--include-schema`, `--exclude-schema`, `--include-table`, `--exclude-table`, `--dml`, `--start`, `--end`, `--start-position`, `--stop-position`, `--include-gtids`, and `--exclude-gtids`. A DELETE becomes `INSERT` of the before-image. An INSERT becomes `DELETE` of the after-image. An UPDATE sets every column to the before-image and matches the primary key from the after-image. Order is reverse binlog order. Each original transaction is `START TRANSACTION` / `COMMIT`. A comment names the original GTID, or `GTID unavailable`, and `file:start-position`.
+
+The binlog needs `binlog_row_metadata=FULL` and `binlog_row_image=FULL`. A table with no primary key is matched on every column with `LIMIT 1`, and a comment says so. The `INSERT` of a deleted row does not use `LIMIT 1`.
+
+Exit 1, one `Error:` line, and no SQL when column names are missing, a row image is incomplete, a column cannot be rendered exactly, the selected range contains DDL, or `--sql-context off`. Nothing selected is exit 2 with the same `Error:` line as `analyze` and empty stdout. `--sql-context` otherwise has no effect on the script: flashback does not print original statements, and cell values are not redacted. Auth DDL in the selected range is refused as DDL.
 
 ## `compare` Command Syntax
 

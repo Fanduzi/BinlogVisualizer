@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
-// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand. SetCaptureFlashback attaches exact undo literals; it stays off for analyze.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -19,7 +19,8 @@ import (
 
 // parser implements Parser using go-mysql-org/go-mysql/replication.
 type parser struct {
-	captureRows bool
+	captureRows  bool
+	captureFlash bool
 }
 
 type cachedTableName struct {
@@ -53,6 +54,15 @@ func (p *parser) SetCaptureRowImages(on bool) {
 		return
 	}
 	p.captureRows = on
+}
+
+// SetCaptureFlashback keeps exact cell literals on ROW events for undo SQL.
+// Off by default so analyze does not retain them.
+func (p *parser) SetCaptureFlashback(on bool) {
+	if p == nil {
+		return
+	}
+	p.captureFlash = on
 }
 
 // ParseFiles reads binlog files and calls handler for each event.
@@ -117,7 +127,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
 			}
 
-			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows); ok {
+			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows, p.captureFlash); ok {
 				assignPayloadWrapperFileSpan(inners, raw.PositionStart, raw.PositionEnd, raw.BinlogBytes)
 				for i := range inners {
 					if inners[i].ServerVersion != "" {
@@ -130,7 +140,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				return nil
 			}
 
-			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames, p.captureRows)
+			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames, p.captureRows, p.captureFlash)
 			if raw.ServerVersion != "" {
 				serverVersion = raw.ServerVersion
 			}
@@ -178,6 +188,7 @@ func rawEventFromHeader(header *replication.EventHeader, path, serverVersion str
 
 func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any, tableNames map[uint64]cachedTableName, captureRows ...bool) {
 	capture := len(captureRows) > 0 && captureRows[0]
+	flash := len(captureRows) > 1 && captureRows[1]
 	switch e := event.(type) {
 	case *replication.QueryEvent:
 		raw.Query = string(e.Query)
@@ -226,6 +237,9 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 		raw.RowCount = logicalRowCount(et, len(e.Rows))
 		if capture {
 			raw.RowImages, raw.RowImagesOmitted = captureRowImages(e, raw.EventType, raw.Schema, raw.Table)
+		}
+		if flash {
+			raw.FlashRows = captureFlashbackRows(e, raw.EventType, raw.Schema, raw.Table)
 		}
 		if raw.EventType == kindUpdateRows || raw.EventType == kindDeleteRows {
 			raw.RowKeys = primaryKeyValues(e, raw.EventType, pkMetaForRows(e, tableNames))
@@ -357,6 +371,7 @@ func logicalRowCount(et replication.EventType, imageCount int) int {
 // LogPos is the uncompressed stream and is not a binlog offset.
 func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName, captureRows ...bool) ([]RawEvent, bool) {
 	capture := len(captureRows) > 0 && captureRows[0]
+	flash := len(captureRows) > 1 && captureRows[1]
 	if ev == nil {
 		return nil, false
 	}
@@ -374,7 +389,7 @@ func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion s
 		// go-mysql v1.14 decodes payload inners on a fresh parser, so the UTC
 		// location above never reaches them. Delete this when that parser inherits it.
 		normalizePayloadTimestampCells(inner.Event, payloadTimestampLocation)
-		applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture)
+		applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture, flash)
 		out = append(out, raw)
 	}
 	assignPayloadWrapperFileSpan(out, wrapperStart, wrapperEnd, wrapperBytes)
