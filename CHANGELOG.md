@@ -4,7 +4,18 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
-- `binlogviz analyze` reports replica apply delay from MySQL 8 original and immediate commit timestamps, after Busiest Minutes, in text, Markdown, HTML, and JSON. On `mysql-8.0.46-replica-apply.binlog` the max delay is 5.426519s (5426519µs), p95 is 5.208595s (5208595µs), the peak minute is 2026-10-07 11:41:00 UTC, and the slowest transaction is `11458b63-c244-11f1-a0d2-822b383dbcd0:7` at byte 197 (`shop.audit`, 1 row). A source file where the two timestamps are equal says so in one line. MySQL 5.7 and MariaDB print `commit timestamps unavailable` and omit `replica_apply_delay`. There is no new flag. Exit codes are unchanged.
+## v0.23.20
+
+Release date: 2026-10-07
+
+Highlights:
+
+- `binlogviz analyze` reports replica apply delay from MySQL 8 `original_commit_timestamp` and `immediate_commit_timestamp`, after Busiest Minutes, in text, Markdown, and HTML. `--lang zh-CN` translates the section. JSON adds optional `replica_apply_delay`. On `mysql-8.0.46-replica-apply.binlog` the max delay is 5426519 µs (5.426519s), p95 is 5208595 µs (5.208595s), the peak minute is 2026-10-07 11:41:00 UTC, and the slowest transaction is `11458b63-c244-11f1-a0d2-822b383dbcd0:7` at byte 197 (`shop.audit`, 1 row). The lead sentence assumes the source and replica clocks agree and is not a finding. A source file where the two timestamps are equal says so in one line; JSON `origin` is `source` and `max_delay_us` is 0, with no transaction ranking. Missing timestamps print `commit timestamps unavailable`, omit `replica_apply_delay`, and never fake a delay of 0. There is no new flag. Exit codes are unchanged.
+
+Related notes:
+
+- [v0.23.20 release notes](docs/releases/release-notes-v0.23.20.md)
+- [v0.23.20 中文发行说明](docs/releases/release-notes-v0.23.20.zh-CN.md)
 
 ## v0.23.19
 
