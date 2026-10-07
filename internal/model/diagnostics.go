@@ -67,9 +67,24 @@ type DDLEvent struct {
 	// StatementOriginalBytes is the whitespace-normalized length before that cap.
 	StatementTruncated     bool
 	StatementOriginalBytes int
-	PositionStart          int64
-	PositionEnd            int64
-	BinlogBytes            int64
+	// PositionStart and PositionEnd are the Query event that holds the DDL.
+	PositionStart int64
+	PositionEnd   int64
+	BinlogBytes   int64
+	// GTID is the transaction that holds this DDL. Empty when the binlog has
+	// none (GTID_MODE=OFF or an anonymous GTID event).
+	GTID string
+	// TxnStartPath and TxnStartPos are the file and byte offset where that
+	// transaction starts. With a GTID event this is that event's start, not
+	// the Query event and not end_log_pos.
+	TxnStartPath string
+	TxnStartPos  int64
+	// ServerID, ThreadID, and the actor are copied from the DDL event when
+	// the binlog recorded them. Zero and empty stay omitted.
+	ServerID  uint32
+	ThreadID  uint32
+	ActorUser string
+	ActorHost string
 }
 
 // OpenDMLNote is the stable JSON wording for an uncommitted row-image group.

@@ -1355,6 +1355,11 @@ const htmlReportTemplateTail = `
             <div class="diagnostic-body">
               {{if .Statement}}<div style="padding:8px 12px;background:var(--surface);border-radius:6px;border:1px solid var(--border-subtle);font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--warn)">{{.Statement}}</div>{{end}}
               {{if .Location}}<div class="diagnostic-meta" style="align-self:flex-start">📍 {{.Location}}</div>{{end}}
+              {{if .Identity}}<div class="diagnostic-meta" style="align-self:flex-start">{{.Identity}}</div>{{end}}
+              {{if .TxnStart}}<div class="diagnostic-meta" style="align-self:flex-start">{{t "report.text.ddlTxnStart"}} {{.TxnStart}}</div>{{end}}
+              {{if .Explain}}<div class="diagnostic-meta" style="align-self:flex-start">{{.Explain}}</div>{{end}}
+              {{if .Mysqlbinlog}}<code class="mysqlbinlog-cmd">{{.Mysqlbinlog}}</code>{{end}}
+              {{if .StopGTID}}<code class="mysqlbinlog-cmd">BinlogServer stop_gtid={{.StopGTID}}</code>{{end}}
             </div>
           </div>
           {{end}}

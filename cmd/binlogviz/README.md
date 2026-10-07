@@ -55,6 +55,7 @@ If members, interfaces, discovery-mode behavior, or dependencies change, update 
 - Stage 3 keeps CLI semantics stable while moving the command execution path to true streaming consumption with command-owned DuckDB lifecycle.
 - Stage 4 adds `--sql-context summary|off|full`; CLI parses the mode and delegates presentation decisions to `internal/report`. Report v3 records the selected mode and source-SQL availability without affecting provenance.
 - Stage 5 adds command-path benchmarks for real fixture parsing and synthetic high-volume streaming workloads, keeps fixture assets under `internal/binlog/testdata`, and adds aggregate parse progress based on ordered input file sizes.
+- `drop_table_gtid_test.go` checks `mysql-8.0.46-drop-table.binlog` (GTID and transaction-start byte match `mysqlbinlog`, and `--stop-position` excludes the DROP) and `minimal.binlog` (no `gtid` field, GTID unavailable note).
 - Stage 8 adds named snapshot persistence under `~/.binlogviz/snapshots`, snapshot management commands, and snapshot-based compare input resolution while preserving legacy file-based compare.
 - The trend command adds a higher-level historical workflow on top of the snapshot store. Explicit snapshot lists and workflow jobs keep CLI/plan order by default (`--order cli`); `--order time` sorts by `snapshot.window.start_time` and writes a stderr notice when it reorders.
 - The snapshot subtree now supports long-lived snapshot management with rename/delete and JSON output for list/show so external tooling can consume the snapshot store without parsing text output.

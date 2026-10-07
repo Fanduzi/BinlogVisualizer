@@ -103,6 +103,14 @@ binlogviz analyze mysql-bin.000123 \
 
 `--show-rows` 默认关闭。打开后，列出的每个事务会打印 DELETE 的前镜像、UPDATE 里发生变化的列（`before -> after`），以及 INSERT 的后镜像。MySQL 8 且 `binlog_row_metadata=FULL` 时显示列名；否则列是 `@1`..`@N`，报告会说明为什么没有列名。值有上限（每个事务 32 行，每个值 64 字节），截断会标明，并给出省略的行数。`--sql-context off` 会一并省略这些值，并在报告里说明。事务上的 `mysqlbinlog_cmd` 仍然在，用来对照。这里不生成回滚 SQL。`TIMESTAMP` 列是存储时刻的 UTC 墙钟（含小数秒），不跟随本机时区。`DATETIME` 仍是 binlog 里写下的墙钟。
 
+### 找到误操作的 DROP
+
+```bash
+binlogviz analyze mysql-bin.000123
+```
+
+DDL 时间线列出 `DROP TABLE`、`TRUNCATE` 和 `ALTER`，并带上该事务的 GTID，以及事务起点的文件字节。复制 `BinlogServer stop_gtid=<gtid>` 或 `mysqlbinlog --stop-position=<N> <file>`。这个停止点回放更早的事件，并且不包含这条 DDL。binlog 里没有 GTID 时，中文界面写「GTID 不可用」，英文界面写 `GTID unavailable`，位置提示仍然在。这里不生成回滚 SQL。
+
 ### 把机器可读结果交给脚本或其他工具
 
 ```bash

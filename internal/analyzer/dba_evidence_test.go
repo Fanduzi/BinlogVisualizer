@@ -28,6 +28,80 @@ func TestAnalyzeDDLOnlyKeepsTimeline(t *testing.T) {
 	if ddl.Operation != "ALTER TABLE" || ddl.Schema != "shop" || ddl.Table != "orders" || ddl.PositionStart != 100 {
 		t.Fatalf("DDL timeline = %+v", ddl)
 	}
+	if ddl.GTID != "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee:1" || ddl.TxnStartPos != 4 || ddl.TxnStartPath != "mysql-bin.000001" {
+		t.Fatalf("DDL group identity = gtid %q start %s:%d, want the GTID event at 4", ddl.GTID, ddl.TxnStartPath, ddl.TxnStartPos)
+	}
+	if ddl.PositionStart == ddl.TxnStartPos {
+		t.Fatalf("txn start must be the GTID event, not the query at %d", ddl.PositionStart)
+	}
+}
+
+func TestAnalyzeDDLTimelineAnonymousGTIDOmitsIdentity(t *testing.T) {
+	ts := time.Date(2026, 10, 2, 1, 0, 0, 0, time.UTC)
+	result, err := New(DefaultOptions()).Analyze([]model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", ServerFlavor: "mysql", BinlogPath: "mysql-bin.000001", PositionStart: 4, PositionEnd: 100},
+		{Timestamp: ts.Add(time.Second), EventType: "DDL", ServerID: 1, ThreadID: 9, Schema: "shop", Table: "orders", QuerySQL: "DROP TABLE shop.orders", BinlogPath: "mysql-bin.000001", PositionStart: 100, PositionEnd: 180},
+	})
+	if err != nil {
+		t.Fatalf("anonymous DDL: %v", err)
+	}
+	if len(result.Diagnostics.DDLEvents) != 1 {
+		t.Fatalf("DDL events = %+v", result.Diagnostics.DDLEvents)
+	}
+	ddl := result.Diagnostics.DDLEvents[0]
+	if ddl.GTID != "" || ddl.TxnStartPos != 4 || ddl.ServerID != 1 || ddl.ThreadID != 9 {
+		t.Fatalf("anonymous DDL = %+v, want empty GTID, start 4, and the query event's server/thread", ddl)
+	}
+}
+
+func TestAnalyzeDDLTimelineWithoutGTIDUsesQueryStart(t *testing.T) {
+	ts := time.Date(2026, 10, 2, 1, 0, 0, 0, time.UTC)
+	result, err := New(DefaultOptions()).Analyze([]model.NormalizedEvent{
+		{Timestamp: ts, EventType: "DDL", QuerySQL: "DROP TABLE shop.orders", Schema: "shop", Table: "orders", BinlogPath: "mysql-bin.000001", PositionStart: 219, PositionEnd: 300, ServerID: 1},
+	})
+	if err != nil {
+		t.Fatalf("gtid-off DDL: %v", err)
+	}
+	ddl := result.Diagnostics.DDLEvents[0]
+	if ddl.GTID != "" || ddl.TxnStartPos != 219 || ddl.PositionStart != 219 {
+		t.Fatalf("gtid-off DDL = %+v", ddl)
+	}
+}
+
+func TestAnalyzeDDLTimelineKeepsGTIDWhenSelectorBuffersTheGroup(t *testing.T) {
+	ts := time.Date(2026, 10, 2, 3, 0, 0, 0, time.UTC)
+	const sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	selector, err := ParseGTIDSelector([]string{sid + ":2"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := DefaultOptions()
+	opts.GTIDSelector = selector
+	result, err := New(opts).Analyze([]model.NormalizedEvent{
+		{Timestamp: ts, EventType: "GTID", ServerFlavor: "mysql", GTID: sid + ":1", BinlogPath: "mysql-bin.000001", PositionStart: 4, PositionEnd: 50},
+		{Timestamp: ts.Add(time.Second), EventType: "BEGIN", BinlogPath: "mysql-bin.000001", PositionStart: 50, PositionEnd: 80},
+		{Timestamp: ts.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1, BinlogPath: "mysql-bin.000001", PositionStart: 80, PositionEnd: 120},
+		{Timestamp: ts.Add(3 * time.Second), EventType: "XID", BinlogPath: "mysql-bin.000001", PositionStart: 120, PositionEnd: 150},
+		{Timestamp: ts.Add(4 * time.Second), EventType: "GTID", ServerFlavor: "mysql", GTID: sid + ":2", BinlogPath: "mysql-bin.000001", PositionStart: 150, PositionEnd: 200},
+		{Timestamp: ts.Add(5 * time.Second), EventType: "DDL", ServerFlavor: "mysql", QuerySQL: "TRUNCATE TABLE shop.orders", BinlogPath: "mysql-bin.000001", PositionStart: 200, PositionEnd: 280},
+		{Timestamp: ts.Add(6 * time.Second), EventType: "GTID", ServerFlavor: "mysql", GTID: sid + ":3", BinlogPath: "mysql-bin.000001", PositionStart: 280, PositionEnd: 320},
+		{Timestamp: ts.Add(7 * time.Second), EventType: "BEGIN", BinlogPath: "mysql-bin.000001", PositionStart: 320, PositionEnd: 360},
+		{Timestamp: ts.Add(8 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1, BinlogPath: "mysql-bin.000001", PositionStart: 360, PositionEnd: 400},
+		{Timestamp: ts.Add(9 * time.Second), EventType: "XID", BinlogPath: "mysql-bin.000001", PositionStart: 400, PositionEnd: 430},
+	})
+	if err != nil {
+		t.Fatalf("selected DDL: %v", err)
+	}
+	if len(result.Diagnostics.DDLEvents) != 1 {
+		t.Fatalf("DDL events = %+v", result.Diagnostics.DDLEvents)
+	}
+	ddl := result.Diagnostics.DDLEvents[0]
+	if ddl.Operation != "TRUNCATE TABLE" || ddl.GTID != sid+":2" || ddl.TxnStartPos != 150 || ddl.PositionStart != 200 {
+		t.Fatalf("selected DDL = %+v", ddl)
+	}
+	if result.Summary.TotalRows != 0 {
+		t.Fatalf("included GTID is DDL-only, rows = %d", result.Summary.TotalRows)
+	}
 }
 
 func TestAnalyzeEOFOpenDMLGroupIsFirstClass(t *testing.T) {

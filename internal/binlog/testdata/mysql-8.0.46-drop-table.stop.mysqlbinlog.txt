@@ -1,0 +1,52 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261007  7:33:05 server id 1  end_log_pos 126 CRC32 0x8a1a05fa 	Start: binlog v 4, server v 8.0.46-0ubuntu0.24.04.4 created 261007  7:33:05 at startup
+ROLLBACK/*!*/;
+# at 126
+#261007  7:33:05 server id 1  end_log_pos 157 CRC32 0xe28b17c2 	Previous-GTIDs
+# [empty]
+# at 157
+#261007  7:33:06 server id 1  end_log_pos 236 CRC32 0xba68e288 	GTID	last_committed=0	sequence_number=1	rbr_only=yes	original_committed_timestamp=1791358386012721	immediate_commit_timestamp=1791358386012721	transaction_length=366
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1791358386012721 (2026-10-07 07:33:06.012721 UTC)
+# immediate_commit_timestamp=1791358386012721 (2026-10-07 07:33:06.012721 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1791358386012721*//*!*/;
+/*!80014 SET @@session.original_server_version=80046*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80046*//*!*/;
+SET @@SESSION.GTID_NEXT= '4d8275bc-c221-11f1-a25e-822b383dbcd0:1'/*!*/;
+# at 236
+#261007  7:33:06 server id 1  end_log_pos 307 CRC32 0x18fa12cf 	Query	thread_id=8	exec_time=0	error_code=0
+SET TIMESTAMP=1791358386/*!*/;
+SET @@session.pseudo_thread_id=8/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+BEGIN
+/*!*/;
+# at 307
+# at 380
+#261007  7:33:06 server id 1  end_log_pos 440 CRC32 0xbbcfea38 	Table_map: `shop`.`orders` mapped to number 107
+# has_generated_invisible_primary_key=0
+# at 440
+#261007  7:33:06 server id 1  end_log_pos 492 CRC32 0x0a351ab1 	Write_rows: table id 107 flags: STMT_END_F
+### INSERT INTO `shop`.`orders`
+### SET
+###   @1=1
+###   @2='before-drop'
+# at 492
+#261007  7:33:06 server id 1  end_log_pos 523 CRC32 0x2ef7b152 	Xid = 10
+COMMIT/*!*/;
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

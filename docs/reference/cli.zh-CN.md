@@ -129,6 +129,8 @@ binlog 是 MySQL 8 且 `binlog_row_metadata=FULL` 时，TABLE_MAP 可选元数�
 
 position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与时间条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 
+DDL 时间线在 binlog 有 GTID 时给出持有该 DDL 的事务（MySQL `uuid:seq` 或 MariaDB `domain-server-seq`）、该事务起点的文件字节（GTID 事件的起点，不是 Query 事件，也不是 `end_log_pos`），以及两段可复制的值：`mysqlbinlog --stop-position=<N> <file>` 和 BinlogServer `stop_gtid=<gtid>`。两者都回放更早的事件，并且不包含这条 DDL。没有 GTID（`GTID_MODE=OFF` 或匿名）时省略 GTID 并写明不可用，位置提示仍然在。`--sql-context off` 仍然只省略语句。退出码不变。
+
 ### 保存快照时的行为
 
 `analyze` 可以选择把写到 `stdout` 的同一份 JSON 载荷持久化到快照目录。
