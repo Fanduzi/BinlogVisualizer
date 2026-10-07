@@ -113,6 +113,7 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.flashback.flag.includeTable"))
 	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.flashback.flag.excludeTable"))
 	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.flashback.flag.schemaFile"))
+	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.flashback.flag.schemaFileDB"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
 	help := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
@@ -132,21 +133,22 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 	cmd.Long = i18n.T("cmd.flashback.long")
 	cmd.SetUsageTemplate(flashbackUsageTemplate())
 	usage := map[string]string{
-		"start":           "cmd.analyze.flag.start",
-		"end":             "cmd.analyze.flag.end",
-		"start-position":  "cmd.flashback.flag.startPosition",
-		"stop-position":   "cmd.flashback.flag.stopPosition",
-		"include-gtids":   "cmd.flashback.flag.includeGtids",
-		"exclude-gtids":   "cmd.flashback.flag.excludeGtids",
-		"from-dir":        "cmd.analyze.flag.fromDir",
-		"prefix":          "cmd.analyze.flag.prefix",
-		"sql-context":     "cmd.analyze.flag.sqlContext",
-		"include-schema":  "cmd.flashback.flag.includeSchema",
-		"exclude-schema":  "cmd.flashback.flag.excludeSchema",
-		"include-table":   "cmd.flashback.flag.includeTable",
-		"exclude-table":   "cmd.flashback.flag.excludeTable",
-		"schema-file":     "cmd.flashback.flag.schemaFile",
-		"dml":             "cmd.flashback.flag.dml",
+		"start":          "cmd.analyze.flag.start",
+		"end":            "cmd.analyze.flag.end",
+		"start-position": "cmd.flashback.flag.startPosition",
+		"stop-position":  "cmd.flashback.flag.stopPosition",
+		"include-gtids":  "cmd.flashback.flag.includeGtids",
+		"exclude-gtids":  "cmd.flashback.flag.excludeGtids",
+		"from-dir":       "cmd.analyze.flag.fromDir",
+		"prefix":         "cmd.analyze.flag.prefix",
+		"sql-context":    "cmd.analyze.flag.sqlContext",
+		"include-schema": "cmd.flashback.flag.includeSchema",
+		"exclude-schema": "cmd.flashback.flag.excludeSchema",
+		"include-table":  "cmd.flashback.flag.includeTable",
+		"exclude-table":  "cmd.flashback.flag.excludeTable",
+		"schema-file":    "cmd.flashback.flag.schemaFile",
+		"schema-file-db": "cmd.flashback.flag.schemaFileDB",
+		"dml":            "cmd.flashback.flag.dml",
 	}
 	for name, key := range usage {
 		if flag := cmd.Flags().Lookup(name); flag != nil {
