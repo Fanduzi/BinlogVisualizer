@@ -58,6 +58,9 @@ type Options struct {
 	// SchemaSQL is CREATE/ALTER text from --schema-file. Flashback learns
 	// generated columns from it before binlog DDL. Analyze ignores it.
 	SchemaSQL string
+	// SchemaFileDB is the database for unqualified names in SchemaSQL when
+	// the file has no USE and no mysqldump Database header. Analyze ignores it.
+	SchemaFileDB string
 }
 
 // HasPositionSelectors reports whether an exact binlog position bound is active.

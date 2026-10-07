@@ -1,6 +1,6 @@
 // Package binlog formats exact SQL literals from an already-decoded rows event.
 // input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, signedness, collation, enum/set members, primary key).
-// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes. ENUM is the member index and SET is the bitmask.
+// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes. ENUM is the member index and SET is the bitmask. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
 // pos: parser helper used only when flashback capture is on. It reuses the decoded row images from the same RowsEvent as display capture.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -62,6 +62,7 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 	for i := 0; i < logical; i++ {
 		row := base
 		row.Columns = labels
+		row.Cols = flashColumnMeta(ev.Table, width)
 		row.NoPK = noPK
 		row.PK = append([]int(nil), meta.indexes...)
 		var beforeRow, afterRow []any
@@ -97,9 +98,168 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 		if problem != nil {
 			return append(out, *problem)
 		}
+		row.NonStrict = imageHasEnumZero(ev.Table, row.Before) || imageHasEnumZero(ev.Table, row.After)
 		out = append(out, row)
 	}
 	return out
+}
+
+func imageHasEnumZero(table *replication.TableMapEvent, image []string) bool {
+	for i, lit := range image {
+		if lit == "0" && flashRealType(table, i) == mysql.MYSQL_TYPE_ENUM {
+			return true
+		}
+	}
+	return false
+}
+
+func flashColumnMeta(table *replication.TableMapEvent, width int) []model.FlashCol {
+	if table == nil || width <= 0 {
+		return nil
+	}
+	unsigned := table.UnsignedMap()
+	enums := table.EnumStrValueMap()
+	sets := table.SetStrValueMap()
+	coll := table.CollationMap()
+	enumColl := table.EnumSetCollationMap()
+	out := make([]model.FlashCol, width)
+	for i := 0; i < width; i++ {
+		typ := flashRealType(table, i)
+		var meta uint16
+		if i < len(table.ColumnMeta) {
+			meta = table.ColumnMeta[i]
+		}
+		charset := flashCharset(coll, enumColl, i)
+		col := model.FlashCol{Base: flashBaseName(typ, meta, charset), Charset: charset}
+		if unsigned != nil {
+			if bit, ok := unsigned[i]; ok {
+				col.HasSign = true
+				col.Unsigned = bit
+			}
+		}
+		if members := enums[i]; len(members) > 0 {
+			col.Members = append([]string(nil), members...)
+		} else if members := sets[i]; len(members) > 0 {
+			col.Members = append([]string(nil), members...)
+		}
+		switch typ {
+		case mysql.MYSQL_TYPE_NEWDECIMAL:
+			col.HasPrec = true
+			col.Prec = int(meta >> 8)
+			col.Scale = int(meta & 0xFF)
+		case mysql.MYSQL_TYPE_TIME2, mysql.MYSQL_TYPE_DATETIME2, mysql.MYSQL_TYPE_TIMESTAMP2:
+			col.HasFSP = true
+			col.FSP = int(meta)
+		}
+		out[i] = col
+	}
+	return out
+}
+
+func flashCharset(coll, enumColl map[int]uint64, i int) string {
+	if id, ok := coll[i]; ok {
+		if name, known := collationCharset[id]; known {
+			return name
+		}
+	}
+	if id, ok := enumColl[i]; ok {
+		if name, known := collationCharset[id]; known {
+			return name
+		}
+	}
+	return ""
+}
+
+func flashBaseName(typ byte, meta uint16, charset string) string {
+	switch typ {
+	case mysql.MYSQL_TYPE_TINY:
+		return "tinyint"
+	case mysql.MYSQL_TYPE_SHORT:
+		return "smallint"
+	case mysql.MYSQL_TYPE_INT24:
+		return "mediumint"
+	case mysql.MYSQL_TYPE_LONG:
+		return "int"
+	case mysql.MYSQL_TYPE_LONGLONG:
+		return "bigint"
+	case mysql.MYSQL_TYPE_NEWDECIMAL:
+		return "decimal"
+	case mysql.MYSQL_TYPE_FLOAT:
+		return "float"
+	case mysql.MYSQL_TYPE_DOUBLE:
+		return "double"
+	case mysql.MYSQL_TYPE_BIT:
+		return "bit"
+	case mysql.MYSQL_TYPE_YEAR:
+		return "year"
+	case mysql.MYSQL_TYPE_DATE, mysql.MYSQL_TYPE_NEWDATE:
+		return "date"
+	case mysql.MYSQL_TYPE_TIME, mysql.MYSQL_TYPE_TIME2:
+		return "time"
+	case mysql.MYSQL_TYPE_DATETIME, mysql.MYSQL_TYPE_DATETIME2:
+		return "datetime"
+	case mysql.MYSQL_TYPE_TIMESTAMP, mysql.MYSQL_TYPE_TIMESTAMP2:
+		return "timestamp"
+	case mysql.MYSQL_TYPE_JSON:
+		return "json"
+	case mysql.MYSQL_TYPE_ENUM:
+		return "enum"
+	case mysql.MYSQL_TYPE_SET:
+		return "set"
+	case mysql.MYSQL_TYPE_VARCHAR, mysql.MYSQL_TYPE_VAR_STRING:
+		if charset == "" {
+			return ""
+		}
+		if charset == "binary" {
+			return "varbinary"
+		}
+		return "varchar"
+	case mysql.MYSQL_TYPE_STRING:
+		if charset == "" {
+			return ""
+		}
+		if charset == "binary" {
+			return "binary"
+		}
+		return "char"
+	case mysql.MYSQL_TYPE_BLOB:
+		return blobBaseName(meta, charset)
+	case mysql.MYSQL_TYPE_GEOMETRY:
+		return "geometry"
+	case mysql.MYSQL_TYPE_VECTOR:
+		return "vector"
+	default:
+		return ""
+	}
+}
+
+func blobBaseName(meta uint16, charset string) string {
+	if charset == "" {
+		return ""
+	}
+	prefix := ""
+	switch meta {
+	case 1:
+		prefix = "tiny"
+	case 2:
+		prefix = ""
+	case 3:
+		prefix = "medium"
+	case 4:
+		prefix = "long"
+	default:
+		return ""
+	}
+	if charset == "binary" {
+		if prefix == "" {
+			return "blob"
+		}
+		return prefix + "blob"
+	}
+	if prefix == "" {
+		return "text"
+	}
+	return prefix + "text"
 }
 
 func flashNamesComplete(table *replication.TableMapEvent, width int) bool {

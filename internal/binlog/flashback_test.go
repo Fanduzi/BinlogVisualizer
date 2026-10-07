@@ -375,6 +375,37 @@ func appendOTW(dst []byte, field byte, n uint64) []byte {
 	return append(dst, raw[:width]...)
 }
 
+func TestCaptureEnumIndexZeroMarksNonStrict(t *testing.T) {
+	table := &replication.TableMapEvent{
+		ColumnCount:      2,
+		ColumnType:       []byte{mysql.MYSQL_TYPE_LONG, mysql.MYSQL_TYPE_STRING},
+		ColumnMeta:       []uint16{0, uint16(mysql.MYSQL_TYPE_ENUM) << 8},
+		ColumnName:       [][]byte{[]byte("id"), []byte("e")},
+		EnumStrValue:     [][][]byte{{[]byte("red"), []byte("blue")}},
+		PrimaryKey:       []uint64{0},
+		SignednessBitmap: []byte{0x00},
+	}
+	zero := captureFlashbackRows(&replication.RowsEvent{
+		ColumnCount: 2,
+		Table:       table,
+		Rows:        [][]any{{int32(1), int64(0)}},
+	}, kindDeleteRows, "shop", "ezero")
+	if len(zero) != 1 || zero[0].ProblemKind != "" || !zero[0].NonStrict || zero[0].Before[1] != "0" {
+		t.Fatalf("enum 0: %+v before %#v", zero, zero[0].Before)
+	}
+	if len(zero[0].Cols) != 2 || zero[0].Cols[1].Base != "enum" || len(zero[0].Cols[1].Members) != 2 {
+		t.Fatalf("enum meta: %+v", zero[0].Cols)
+	}
+	member := captureFlashbackRows(&replication.RowsEvent{
+		ColumnCount: 2,
+		Table:       table,
+		Rows:        [][]any{{int32(2), int64(1)}},
+	}, kindDeleteRows, "shop", "ezero")
+	if len(member) != 1 || member[0].NonStrict || member[0].Before[1] != "1" {
+		t.Fatalf("enum 1: %+v before %#v", member, member[0].Before)
+	}
+}
+
 func flashTable(t *testing.T, types []byte, names [][]byte, pk []uint64, sign byte, collation uint64) *replication.TableMapEvent {
 	t.Helper()
 	return &replication.TableMapEvent{

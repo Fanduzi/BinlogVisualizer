@@ -289,11 +289,47 @@
   },
   "warning.flashbackGenerated": {
     "description": "binlog 和 schema 文件都没有这张表的 CREATE 时警告",
-    "other": "警告：{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，更早的事务已经提交。请用 --schema-file 传入 mysqldump --no-data，或在 USE 之后附上 SHOW CREATE TABLE 的输出。"
+    "other": "警告：{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，更早的事务已经提交。请用 --schema-file 传入 mysqldump --no-data 或 SHOW CREATE TABLE 的输出。文件必须是事故当时的表结构。"
   },
   "error.flashbackSchemaFile": {
     "description": "读不到 --schema-file",
     "other": "无法读取 --schema-file {{.Path}}：{{.Error}}"
+  },
+  "error.flashbackSchema": {
+    "description": "schema 文件与 binlog 列不一致时拒绝",
+    "other": "{{.Table}}：--schema-file 与 binlog 的列不一致：{{.Diff}}"
+  },
+  "error.flashbackSchemaExtra": {
+    "description": "schema 文件多出的列",
+    "other": "多了 {{.Columns}}"
+  },
+  "error.flashbackSchemaMissing": {
+    "description": "schema 文件缺少的列",
+    "other": "少了 {{.Columns}}"
+  },
+  "error.flashbackSchemaOrder": {
+    "description": "schema 文件的列顺序与 binlog 不同",
+    "other": "顺序不同（schema 文件 {{.File}}；binlog {{.Binlog}}）"
+  },
+  "error.flashbackSchemaType": {
+    "description": "schema 文件的列类型与 binlog 不同",
+    "other": "{{.Column}} 在 schema 文件里是 {{.File}}，在 binlog 里是 {{.Binlog}}"
+  },
+  "error.flashbackSchemaGenerated": {
+    "description": "生成列的表达式对不上 binlog 里的值",
+    "other": "{{.Column}} 在 schema 文件里是生成列，但记下的值不是 {{.Expr}}"
+  },
+  "error.flashbackSchemaUnchecked": {
+    "description": "生成列的值无法核对",
+    "other": "{{.Column}} 在 schema 文件里是生成列，但无法核对记下的值"
+  },
+  "warning.flashbackSchemaDB": {
+    "description": "转储头和 --schema-file-db 指向不同的库",
+    "other": "警告：--schema-file 的 Database 头是 {{.Header}}，--schema-file-db 是 {{.Flag}}；未带库名的表没有使用"
+  },
+  "warning.flashbackSchemaTable": {
+    "description": "未带库名的表在 binlog 里属于多个库",
+    "other": "警告：--schema-file 里未带库名的表 {{.Table}} 出现在多个库（{{.Schemas}}）；没有使用"
   },
   "cmd.flashback.flag.dml": {
     "description": "flashback 的 DML 类型过滤说明",
@@ -333,7 +369,11 @@
   },
   "cmd.flashback.flag.schemaFile": {
     "description": "flashback 的 schema 文件说明",
-    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE）。未带库名时前面要有 USE。可选；flashback 默认离线"
+    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE），必须是事故当时的表结构。未带库名时用前面的 USE、转储头里的 Database、--schema-file-db，或 binlog 里该表唯一的库。可选；flashback 始终离线"
+  },
+  "cmd.flashback.flag.schemaFileDB": {
+    "description": "未带库名的 schema 文件使用的库",
+    "other": "给 --schema-file 里未带库名的表指定库。文件里没有 USE，转储头里也没有 Database 时使用。可选；flashback 始终离线"
   },
   "cmd.flashback.help.usage": {
     "description": "flashback 帮助里的用法标题",
@@ -357,7 +397,7 @@
   },
   "cmd.flashback.long": {
     "description": "flashback 命令长说明",
-    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列。ENUM 和 SET 写成数字。"
+    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列，并且文件必须是事故当时的表结构。ENUM 和 SET 写成成员序号 / 位掩码。ENUM 序号 0 会在该语句前后暂时去掉严格 sql_mode。"
   },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
