@@ -1,6 +1,6 @@
 // Package analyzer learns generated column names from CREATE and ALTER text.
-// input: DDL statements in binlog order, including statements later excluded by GTID or time.
-// output: column names to omit from undo SQL, or a bad mark when a definition cannot be read.
+// input: DDL statements in binlog order, including statements later excluded by GTID or time, plus optional CREATE/ALTER text from a schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n.
+// output: column names to omit from undo SQL, or a bad mark when a definition cannot be read. A table that was never defined stays absent so flashback can warn.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -17,6 +17,44 @@ import (
 type generatedTables struct {
 	cols map[string]map[string]struct{}
 	bad  map[string]struct{}
+}
+
+// noteScript reads mysqldump --no-data output or SHOW CREATE TABLE text.
+// USE sets the schema for a following unqualified CREATE. A row of
+// "name<TAB>CREATE TABLE ..." is the mysql batch format of SHOW CREATE TABLE.
+// mysql --batch also writes each newline inside that field as the two characters \ n.
+func (g *generatedTables) noteScript(sql string) {
+	if g == nil || strings.TrimSpace(sql) == "" {
+		return
+	}
+	session := ""
+	for _, stmt := range splitSQL(sql) {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+		sc := &sqlScan{s: stmt}
+		if sc.wordIs("USE") {
+			name, ok := sc.ident()
+			if ok {
+				session = name
+			}
+			continue
+		}
+		body := stmt
+		if at := indexCreateTable(stmt); at > 0 {
+			body = stmt[at:]
+		}
+		g.note(session, body)
+	}
+}
+
+func (g *generatedTables) defined(schema, table string) bool {
+	if g == nil || g.cols == nil {
+		return false
+	}
+	_, ok := g.cols[generatedKey(schema, table)]
+	return ok
 }
 
 func (g *generatedTables) note(sessionSchema, sql string) {
@@ -410,6 +448,116 @@ func copyNames(src map[string]struct{}) map[string]struct{} {
 	return dst
 }
 
+// createTableHead reports whether CREATE TABLE is followed by a table name
+// and a definition. The mysql batch header is the words "Create Table" and
+// then the next row, which is not a definition.
+func createTableHead(sc *sqlScan) bool {
+	save, have, last := sc.i, sc.have, sc.last
+	defer func() {
+		sc.i, sc.have, sc.last = save, have, last
+	}()
+	if sc.wordIs("IF") {
+		sc.wordIs("NOT")
+		sc.wordIs("EXISTS")
+	}
+	if _, ok := sc.ident(); !ok {
+		return false
+	}
+	sc.skip()
+	if sc.i < len(sc.s) && sc.s[sc.i] == '.' {
+		sc.i++
+		if _, ok := sc.ident(); !ok {
+			return false
+		}
+		sc.skip()
+	}
+	if sc.i >= len(sc.s) {
+		return false
+	}
+	if sc.s[sc.i] == '(' {
+		return true
+	}
+	word := sc.peekWord()
+	return strings.EqualFold(word, "LIKE") || strings.EqualFold(word, "AS") || strings.EqualFold(word, "SELECT")
+}
+
+func indexCreateTable(s string) int {
+	sc := &sqlScan{s: s}
+	for sc.i < len(sc.s) {
+		sc.skip()
+		if sc.i >= len(sc.s) {
+			return -1
+		}
+		switch sc.s[sc.i] {
+		case '\'', '"', '`':
+			sc.skipString(sc.s[sc.i])
+			continue
+		}
+		if !identStart(sc.s[sc.i]) {
+			sc.i++
+			continue
+		}
+		start := sc.i
+		w := sc.bare()
+		if strings.EqualFold(w, "CREATE") && sc.wordIs("TABLE") && createTableHead(sc) {
+			return start
+		}
+	}
+	return -1
+}
+
+func splitSQL(s string) []string {
+	var parts []string
+	start := 0
+	inString := byte(0)
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if inString != 0 {
+			if c == inString {
+				if i+1 < len(s) && s[i+1] == inString {
+					i++
+					continue
+				}
+				inString = 0
+			} else if c == '\\' && inString != '`' && i+1 < len(s) {
+				i++
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"', '`':
+			inString = c
+		case '#':
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+		case '-':
+			if i+1 < len(s) && s[i+1] == '-' && (i+2 >= len(s) || s[i+2] == ' ' || s[i+2] == '\t' || s[i+2] == '\r' || s[i+2] == '\n') {
+				for i < len(s) && s[i] != '\n' {
+					i++
+				}
+			}
+		case '/':
+			if i+1 < len(s) && s[i+1] == '*' {
+				i += 2
+				for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+					i++
+				}
+				if i+1 < len(s) {
+					i++
+				}
+			}
+		case ';':
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	if strings.TrimSpace(s[start:]) != "" {
+		parts = append(parts, s[start:])
+	}
+	return parts
+}
+
 func splitComma(s string) []string {
 	var parts []string
 	start := 0
@@ -459,6 +607,17 @@ func (sc *sqlScan) skip() {
 		switch sc.s[sc.i] {
 		case ' ', '\t', '\n', '\r':
 			sc.i++
+		case '\\':
+			// mysql --batch escapes a newline, tab, CR, or NUL inside a field as
+			// \n, \t, \r, or \0. Those are whitespace in SHOW CREATE TABLE text.
+			if sc.i+1 < len(sc.s) {
+				switch sc.s[sc.i+1] {
+				case 'n', 't', 'r', '0':
+					sc.i += 2
+					continue
+				}
+			}
+			return
 		case '#':
 			for sc.i < len(sc.s) && sc.s[sc.i] != '\n' {
 				sc.i++

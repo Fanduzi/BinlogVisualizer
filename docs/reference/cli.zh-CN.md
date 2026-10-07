@@ -168,19 +168,20 @@ binlogviz analyze mysql-bin.000123 --details --show-minutes --show-patterns
 binlogviz flashback <binlog files...>
 binlogviz flashback --from-dir DIR --prefix PREFIX
 binlogviz flashback mysql-bin.000123 --include-table shop.orders --dml delete
+binlogviz flashback mysql-bin.000123 --schema-file schema.sql
 ```
 
 `flashback` 打印撤销选定行变更的 SQL。stdout 是脚本。它不连接数据库。输入规则与 `analyze` 相同：位置参数、stdin `-`，或 `--from-dir` 加 `--prefix`。
 
-选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`、`--include-gtids`、`--exclude-gtids`。DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，并用后镜像的主键匹配。顺序是 binlog 逆序。每个原事务是 `START TRANSACTION` / `COMMIT`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`。
+选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`、`--include-gtids`、`--exclude-gtids`。`--schema-file` 是可选的表定义 SQL（`mysqldump --no-data`，或 `USE` 之后的 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句内部换行写成 `\n` 的输出），不是过滤器。DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，并用后镜像的主键匹配。顺序是 binlog 逆序。每个原事务是 `START TRANSACTION` / `COMMIT`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`。
 
 binlog 需要 `binlog_row_metadata=FULL` 和 `binlog_row_image=FULL`。没有主键的表按每一列匹配并加 `LIMIT 1`，注释会说明。被删行的 `INSERT` 不用 `LIMIT 1`。
 
-JSON 按二进制文档重建，小数、日期时间和 `-0.0` 的符号可以原样还原。非 `utf8mb4` 字符列是字符集引导符加十六进制字节（`_latin1 0xE9`）。解析到的文件里若有 `CREATE` 或 `ALTER`（含被 `--exclude-gtids` 排除的事件）点名了生成列，这些列不会出现在 `INSERT` 和 `UPDATE` 赋值里。定义读不出来时，拒绝该表且不打印 SQL。
+JSON 按二进制文档重建，包括 `binlog_transaction_compression=ON` 的事务，小数、日期时间和 `-0.0` 的符号可以原样还原。非 `utf8mb4` 字符列是字符集引导符加十六进制字节（`_latin1 0xE9`）。`ENUM` 写成成员序号，`SET` 写成位掩码。解析到的文件里若有 `CREATE` 或 `ALTER`（含被 `--exclude-gtids` 排除的事件）点名了生成列，或 `--schema-file` 点名了生成列，这些列不会出现在 `INSERT` 和 `UPDATE` 赋值里。MySQL 8 的 `TABLE_MAP` 可选元数据不标记生成列，`FULL` 镜像同时包含虚拟列和存储列的值。定义出现过但读不出来时，拒绝该表且不打印 SQL。选中的表没有定义时，脚本仍列出每一列，stderr 警告不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
 
 `ON DELETE` / `ON UPDATE CASCADE` 的子表行不在 binlog 里，不会被还原。撤销时触发器会执行。脚本覆盖事故之后的修改；匹配只有主键，不做冲突检查。表过滤或 `--dml` 只保留一个事务的部分行时，stderr 打出警告。在主库上执行（`sql_log_bin=1`），副本才会在新 GTID 下跟上。
 
-列名缺失、行镜像不完整、某一列无法精确写成字面量、生成列无法确定、选定范围内有 DDL，或 `--sql-context off` 时，退出 1，一行 `Error:`，没有 SQL。什么都没选中时退出 2，`Error:` 与 `analyze` 相同，stdout 为空。除此之外 `--sql-context` 不影响脚本：flashback 不打印原始语句，单元格的值不打码。选定范围内的账号 DDL 按 DDL 拒绝。
+列名缺失、行镜像不完整、某一列无法精确写成字面量、出现过的表定义读不出来、选定范围内有 DDL，或 `--sql-context off` 时，退出 1，一行 `Error:`，没有 SQL。什么都没选中时退出 2，`Error:` 与 `analyze` 相同，stdout 为空。除此之外 `--sql-context` 不影响脚本：flashback 不打印原始语句，单元格的值不打码。选定范围内的账号 DDL 按 DDL 拒绝。
 
 ## `compare` 命令语法
 

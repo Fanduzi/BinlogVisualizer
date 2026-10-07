@@ -1,3 +1,8 @@
+// Package binlog copies JSON documents out of a row image before go-mysql replaces them with text.
+// input: a RowsEvent and its raw body, including a transaction-payload inner event whose parser did not keep the outer rows hook.
+// output: binary JSON documents stored on the original RowsEvent, or nothing when the walk cannot be trusted.
+// pos: flashback capture only. Analyze does not call it.
+// note: if this file changes, update this header and README.md.
 package binlog
 
 import (
@@ -37,6 +42,25 @@ func recallFlashJSON(ev *replication.RowsEvent) [][]jsonCell {
 	}
 	docs, _ := v.([][]jsonCell)
 	return docs
+}
+
+// keepPayloadJSON stores binary JSON for one transaction-payload inner row event.
+// go-mysql decodes those inners with a parser that does not copy the outer
+// rows hook, so the documents would already be text. The original row images
+// stay as that parser decoded them.
+func keepPayloadJSON(ev *replication.BinlogEvent) {
+	re, ok := ev.Event.(*replication.RowsEvent)
+	if !ok || len(ev.RawData) <= replication.EventHeaderSize {
+		return
+	}
+	body := ev.RawData[replication.EventHeaderSize:]
+	clone := *re
+	if err := clone.Decode(body); err != nil {
+		return
+	}
+	if docs, ok := extractFlashJSON(&clone, body); ok {
+		rememberFlashJSON(re, docs)
+	}
 }
 
 // decodeRowsKeepJSON is the flashback rows decoder. It decodes normally, then

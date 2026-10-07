@@ -4,6 +4,7 @@ go 1.26.1
 
 require (
 	github.com/go-mysql-org/go-mysql v1.14.0
+	github.com/klauspost/compress v1.18.4
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/schollz/progressbar/v3 v3.19.0
@@ -23,7 +24,6 @@ require (
 	github.com/google/flatbuffers v25.1.24+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/klauspost/compress v1.18.4 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect
 	github.com/mitchellh/colorstring v0.0.0-20190213212951-d06e56a500db // indirect
 	github.com/pierrec/lz4/v4 v4.1.22 // indirect
