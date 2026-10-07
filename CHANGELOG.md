@@ -4,7 +4,18 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.21
+
+Release date: 2026-10-07
+
+Highlights:
+
 - `binlogviz analyze` ranks Hot Rows: the primary keys touched by the most UPDATE and DELETE row images, in text, Markdown, JSON, and HTML. Each entry has the touch count, distinct transactions, first and last event time, and the GTID plus file:byte of the first and last transaction. Identity comes only from MySQL 8 `binlog_row_metadata=FULL`. When the key is not in the binlog, the report says hot-row tracking is unavailable for that table and does not guess from column `@1`. Tables with no primary key are not ranked. `--top` limits the section; `--top-rows` overrides it (`0` keeps every tracked key). `--sql-context off` hides the key values and keeps the counts. Tracking keeps at most 8192 primary keys. A new key after that replaces the least-touched key; a row that inherited a dropped count is marked approximate. On `mysql-8.0.46-hot-rows-full.binlog`, `shop.counters` `id=7` has 7 touches across 6 transactions. Exit codes are unchanged.
+
+Related notes:
+
+- [v0.23.21 release notes](docs/releases/release-notes-v0.23.21.md)
+- [v0.23.21 中文发行说明](docs/releases/release-notes-v0.23.21.zh-CN.md)
 
 ## v0.23.20
 
