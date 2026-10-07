@@ -1,6 +1,6 @@
 // Package analyzer reconstructs transaction boundaries and completed transaction snapshots.
 // input: ordered normalized events with provenance, intersected window relation, MySQL/MariaDB XA, DDL, independent ADMIN, and Unclassified QUERY, and ROWS/ROWS_QUERY semantics.
-// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it; row-image groups name duration, tables, rows, and span), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, open DML groups for those BEGIN groups that wrote row images, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), a shared file span when expanded payload inners all carry the wrapper range, and group duration as the earliest-to-latest non-zero in-window timestamp (MySQL stamps the leading GTID and the XID at commit; BEGIN keeps the statement start).
+// output: closed transaction groups (COMMIT/XID/plain ROLLBACK/XA PREPARE/COMMIT/ROLLBACK, GTID-started DDL, GTID-started ADMIN with no BEGIN, a different GTID after XA END, and out-of-window Unclassified QUERY on a GTID-started non-explicit group), UnclassifiedQueryError when a GTID-started non-explicit group's only in-window work is Unclassified QUERY (named or anonymous empty identity, on the next GTID or at finalize; after-window Unclassified QUERY that never intersected does not fail), OpenBeginError when the next GTID meets an unclosed BEGIN (ROLLBACK TO SAVEPOINT does not close it; row-image groups name duration, tables, rows, and span), IgnoredOnlyGroupError when the next GTID meets only Ignored QUERY, a count of explicit BEGIN groups flushed at end of input without a close, open DML groups for those BEGIN groups that wrote row images, retainCompletedTransaction for report membership (ROW image rows, or XA identity with a file location), a shared file span when expanded payload inners all carry the wrapper range, group duration as the earliest-to-latest non-zero in-window timestamp (MySQL stamps the leading GTID and the XID at commit; BEGIN keeps the statement start), and the holding group's GTID plus first-event file offset for each DDL event before that group closes.
 // pos: live transaction state machine used by Analyzer before completed transactions are flushed to the result store.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -24,6 +24,16 @@ type TransactionBuilder struct {
 	lastEventTxnKey    string
 	openExplicitGroups int
 	openDML            []model.OpenDMLGroup
+	ddlHold            ddlHold
+	ddlHoldSet         bool
+}
+
+// ddlHold is the transaction identity of one DDL event: its GTID (empty when
+// the binlog has none) and the file offset where that group starts.
+type ddlHold struct {
+	gtid string
+	path string
+	pos  int64
 }
 
 type inFlightTxn struct {
@@ -99,6 +109,7 @@ func (b *TransactionBuilder) Consume(ev model.NormalizedEvent) error {
 
 func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation windowRelation) error {
 	b.lastEventTxnKey = ""
+	b.ddlHoldSet = false
 	switch ev.EventType {
 	case "GTID":
 		return b.handleGTID(ev, relation)
@@ -143,6 +154,9 @@ func (b *TransactionBuilder) consumeWindowed(ev model.NormalizedEvent, relation 
 			return err
 		}
 		b.accumulateInTxnEvent(ev, relation)
+		if ev.EventType == "DDL" {
+			b.noteDDLHold(ev)
+		}
 		if b.current != nil && b.current.startedByGTID && !b.current.isExplicit {
 			b.current.hasEndBoundary = true
 			b.finalizeTransaction()
@@ -480,6 +494,35 @@ func (b *TransactionBuilder) handleGTID(ev model.NormalizedEvent, relation windo
 	b.current.hasStartBoundary = true
 	b.observeEvent(ev, relation)
 	return b.mergeProvenance(ev)
+}
+
+// noteDDLHold records the open group's GTID and the byte where that group
+// starts, before a GTID-started DDL finalizes the group. With no group, the
+// DDL event itself is the start and the GTID stays empty.
+func (b *TransactionBuilder) noteDDLHold(ev model.NormalizedEvent) {
+	hold := ddlHold{path: ev.BinlogPath, pos: ev.PositionStart}
+	if b.current != nil {
+		hold.gtid = b.current.gtid
+		if b.current.fullPositionStart > 0 {
+			hold.pos = b.current.fullPositionStart
+			if b.current.fullBinlogPathStart != "" {
+				hold.path = b.current.fullBinlogPathStart
+			}
+		}
+	}
+	b.ddlHold = hold
+	b.ddlHoldSet = true
+}
+
+// takeDDLHold returns the identity noted for the DDL event just consumed.
+func (b *TransactionBuilder) takeDDLHold() (gtid, path string, pos int64, ok bool) {
+	if b == nil || !b.ddlHoldSet {
+		return "", "", 0, false
+	}
+	hold := b.ddlHold
+	b.ddlHold = ddlHold{}
+	b.ddlHoldSet = false
+	return hold.gtid, hold.path, hold.pos, true
 }
 
 func (b *TransactionBuilder) nextGTIDGroupError(ev model.NormalizedEvent) error {

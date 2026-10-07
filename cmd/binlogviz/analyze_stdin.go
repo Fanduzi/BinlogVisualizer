@@ -171,7 +171,9 @@ func aliasAnalysisPaths(result *model.AnalysisResult, aliases map[string]string)
 	aliasTxnSlice(result.Diagnostics.WidestTransactions, aliases)
 	aliasTxnSlice(result.Diagnostics.LargestByteTransactions, aliases)
 	for i := range result.Diagnostics.DDLEvents {
-		result.Diagnostics.DDLEvents[i].BinlogPath = aliasPath(result.Diagnostics.DDLEvents[i].BinlogPath, aliases)
+		event := &result.Diagnostics.DDLEvents[i]
+		event.BinlogPath = aliasPath(event.BinlogPath, aliases)
+		event.TxnStartPath = aliasPath(event.TxnStartPath, aliases)
 	}
 	for i := range result.Diagnostics.OpenDMLGroups {
 		group := &result.Diagnostics.OpenDMLGroups[i]
