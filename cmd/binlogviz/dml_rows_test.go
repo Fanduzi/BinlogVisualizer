@@ -520,3 +520,161 @@ func assertKnownCells(t *testing.T, rows []vizImage, full bool) {
 		t.Fatalf("missing known cells price=%v note=%v unsigned=%v changed=%v", sawPrice, sawNote, sawUnsigned, sawChanged)
 	}
 }
+
+// TestShowRowsTimestampIsUTCInEveryZone re-execs under a real process TZ.
+// time.Local is fixed at startup, so setting it in-process is not the same
+// check CI needs: runners are UTC, and the bug follows that zone.
+func TestShowRowsTimestampIsUTCInEveryZone(t *testing.T) {
+	if zone := os.Getenv("BINLOGVIZ_TIMESTAMP_TZ"); zone != "" {
+		assertShowRowsTimestampIsUTC(t, zone)
+		return
+	}
+	for _, zone := range []string{"UTC", "Asia/Shanghai", "America/New_York"} {
+		t.Run(zone, func(t *testing.T) {
+			cmd := exec.Command(os.Args[0], "-test.run", "^TestShowRowsTimestampIsUTCInEveryZone$", "-test.count=1", "-test.timeout", "120s")
+			cmd.Env = envWithTZ(zone)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("TZ=%s: %v\n%s", zone, err, out)
+			}
+		})
+	}
+}
+
+func assertShowRowsTimestampIsUTC(t *testing.T, zone string) {
+	t.Helper()
+	forceEnglishRuntimeOutput(t)
+	loc, err := time.LoadLocation(zone)
+	if err != nil {
+		t.Fatalf("load %s: %v", zone, err)
+	}
+	if time.Local.String() != loc.String() {
+		t.Fatalf("time.Local=%s, want %s", time.Local, loc)
+	}
+	const layout = "2006-01-02 15:04:05.000000"
+	utcFrac := time.Unix(1791295501, 500000000).UTC().Format(layout)
+	localFrac := time.Unix(1791295501, 500000000).Format(layout)
+	utcZero := time.Unix(1791295201, 0).UTC().Format(layout)
+	localZero := time.Unix(1791295201, 0).Format(layout)
+	const datetime = "2026-10-06 14:05:01.123456"
+	if utcFrac != "2026-10-06 14:05:01.500000" || utcZero != "2026-10-06 14:00:01.000000" {
+		t.Fatalf("fixture instants drifted: frac %s zero %s", utcFrac, utcZero)
+	}
+
+	cases := []struct {
+		fixture string
+		tsCol   string
+		dtCol   string
+	}{
+		{fixture: "mysql-8.0.46-dml-full.binlog", tsCol: "updated_at", dtCol: "created_at"},
+		{fixture: "mysql-8.0.46-dml-minimal.binlog", tsCol: "@6", dtCol: "@5"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.fixture, func(t *testing.T) {
+			path := mustFixturePath(t, tc.fixture)
+			stdout, stderr, err := executeAnalyzeLikeMain(t, path, "--show-rows", "--format", "json", "--top-transactions", "0")
+			if err != nil {
+				t.Fatalf("json: %v\n%s", err, stderr)
+			}
+			images := vizRowsInOrder(decodeRowReport(t, stdout))
+			requireColumnText(t, images, tc.tsCol, utcFrac)
+			requireColumnText(t, images, tc.tsCol, utcZero)
+			requireColumnText(t, images, tc.dtCol, datetime)
+			requireColumnText(t, images, tc.dtCol, utcZero)
+			if localFrac != utcFrac {
+				forbidColumnText(t, images, tc.tsCol, localFrac)
+				forbidColumnText(t, images, tc.tsCol, localZero)
+				parsedDT, err := time.ParseInLocation(layout, datetime, time.UTC)
+				if err != nil {
+					t.Fatal(err)
+				}
+				forbidColumnText(t, images, tc.dtCol, parsedDT.In(time.Local).Format(layout))
+			}
+
+			for _, format := range []string{"text", "markdown"} {
+				out, stderr, err := executeAnalyzeLikeMain(t, path, "--show-rows", "--format", format, "--top-transactions", "0")
+				if err != nil {
+					t.Fatalf("%s: %v\n%s", format, err, stderr)
+				}
+				if !strings.Contains(out, utcFrac) || !strings.Contains(out, datetime) {
+					t.Fatalf("%s missing UTC TIMESTAMP %q or DATETIME %q (output %d bytes)", format, utcFrac, datetime, len(out))
+				}
+				if localFrac != utcFrac && (strings.Contains(out, localFrac) || strings.Contains(out, localZero)) {
+					t.Fatalf("%s printed TIMESTAMP in %s (%s / %s)", format, zone, localFrac, localZero)
+				}
+			}
+			// HTML row images are the largest/longest/widest transactions. The
+			// fractional TIMESTAMP lives on the small DELETE, so check that
+			// image with --dml delete, and the opening INSERT on the full report.
+			html, stderr, err := executeAnalyzeLikeMain(t, path, "--show-rows", "--format", "html", "--output", "-", "--top-transactions", "0")
+			if err != nil {
+				t.Fatalf("html: %v\n%s", err, stderr)
+			}
+			if !strings.Contains(html, utcZero) {
+				t.Fatalf("html missing UTC TIMESTAMP %q (output %d bytes)", utcZero, len(html))
+			}
+			if localZero != utcZero && strings.Contains(html, localZero) {
+				t.Fatalf("html printed TIMESTAMP in %s: %s", zone, localZero)
+			}
+			htmlDelete, stderr, err := executeAnalyzeLikeMain(t, path, "--show-rows", "--dml", "delete", "--format", "html", "--output", "-")
+			if err != nil {
+				t.Fatalf("html delete: %v\n%s", err, stderr)
+			}
+			if !strings.Contains(htmlDelete, utcFrac) || !strings.Contains(htmlDelete, datetime) {
+				t.Fatalf("html delete missing UTC TIMESTAMP %q or DATETIME %q (output %d bytes)", utcFrac, datetime, len(htmlDelete))
+			}
+			if localFrac != utcFrac && strings.Contains(htmlDelete, localFrac) {
+				t.Fatalf("html delete printed TIMESTAMP in %s: %s", zone, localFrac)
+			}
+		})
+	}
+}
+
+func envWithTZ(zone string) []string {
+	env := make([]string, 0, len(os.Environ())+2)
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "TZ=") || strings.HasPrefix(entry, "BINLOGVIZ_TIMESTAMP_TZ=") {
+			continue
+		}
+		env = append(env, entry)
+	}
+	return append(env, "TZ="+zone, "BINLOGVIZ_TIMESTAMP_TZ="+zone)
+}
+
+func requireColumnText(t *testing.T, images []vizImage, column, want string) {
+	t.Helper()
+	if columnHasText(images, column, want) {
+		return
+	}
+	t.Fatalf("column %s missing %q", column, want)
+}
+
+func forbidColumnText(t *testing.T, images []vizImage, column, bad string) {
+	t.Helper()
+	if columnHasText(images, column, bad) {
+		t.Fatalf("column %s followed the process zone: %s", column, bad)
+	}
+}
+
+func columnHasText(images []vizImage, column, want string) bool {
+	for _, image := range images {
+		idx := -1
+		for i, name := range image.Columns {
+			if name == column {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			continue
+		}
+		for _, side := range [][]any{image.Before, image.After} {
+			if idx < len(side) {
+				if text, ok := side[idx].(string); ok && text == want {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}

@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
-// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 )
 
@@ -59,6 +60,10 @@ func (p *parser) ParseFilesWithProgress(paths []string, onProgress func(ParsePro
 
 func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(ParseProgress), handler func(RawEvent) error) error {
 	bp := replication.NewBinlogParser()
+	// TIMESTAMP is a UTC instant. With parseTime off, go-mysql prints it via time.Unix,
+	// whose location is time.Local, so the string followed the process zone. DATETIME
+	// is a zone-less wall clock and does not use this location.
+	bp.SetTimestampStringLocation(time.UTC)
 	if startOffset < 0 {
 		startOffset = 0
 	}
@@ -335,11 +340,62 @@ func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion s
 			continue
 		}
 		raw := rawEventFromHeader(inner.Header, path, serverVersion)
+		// go-mysql v1.14 decodes payload inners on a fresh parser, so the UTC
+		// location above never reaches them. Delete this when that parser inherits it.
+		normalizePayloadTimestampCells(inner.Event, payloadTimestampLocation)
 		applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture)
 		out = append(out, raw)
 	}
 	assignPayloadWrapperFileSpan(out, wrapperStart, wrapperEnd, wrapperBytes)
 	return out, len(out) > 0
+}
+
+// payloadTimestampLocation is the zone go-mysql used when it printed payload
+// TIMESTAMP strings. It is the process zone. Tests replace the pointer.
+var payloadTimestampLocation = time.Local
+
+// normalizePayloadTimestampCells rewrites TIMESTAMP strings printed in loc into the
+// UTC wall clock. DATETIME strings are left alone. A zero date does not parse and stays.
+func normalizePayloadTimestampCells(event any, loc *time.Location) {
+	rows, ok := event.(*replication.RowsEvent)
+	if !ok || rows == nil || rows.Table == nil || loc == nil {
+		return
+	}
+	for _, row := range rows.Rows {
+		for i, value := range row {
+			if i >= len(rows.Table.ColumnType) {
+				break
+			}
+			switch rows.Table.ColumnType[i] {
+			case mysql.MYSQL_TYPE_TIMESTAMP, mysql.MYSQL_TYPE_TIMESTAMP2:
+				text, ok := value.(string)
+				if !ok {
+					continue
+				}
+				if utc, ok := timestampWallToUTC(text, loc); ok {
+					row[i] = utc
+				}
+			}
+		}
+	}
+}
+
+func timestampWallToUTC(raw string, loc *time.Location) (string, bool) {
+	layout := "2006-01-02 15:04:05"
+	if dot := strings.IndexByte(raw, '.'); dot >= 0 {
+		frac := len(raw) - dot - 1
+		if frac < 1 || frac > 6 || dot != len(layout) {
+			return "", false
+		}
+		layout += "." + strings.Repeat("0", frac)
+	} else if len(raw) != len(layout) {
+		return "", false
+	}
+	parsed, err := time.ParseInLocation(layout, raw, loc)
+	if err != nil {
+		return "", false
+	}
+	return parsed.UTC().Format(layout), true
 }
 
 // assignPayloadWrapperFileSpan stamps every expanded inner with the wrapper's

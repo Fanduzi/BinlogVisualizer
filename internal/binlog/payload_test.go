@@ -1,6 +1,6 @@
 // Package binlog verifies transaction-payload expand and related physical-kind mapping.
 // input: decoded TransactionPayloadEvent values and the committed MySQL 8.0.36 compressed dialect fixture.
-// output: assertions that inner ROW images keep INSERT/UPDATE/DELETE kinds, a successful expand does not emit the wrapper as unmapped, and expanded inners share the wrapper's file-relative span once.
+// output: assertions that inner ROW images keep INSERT/UPDATE/DELETE kinds, a successful expand does not emit the wrapper as unmapped, expanded inners share the wrapper's file-relative span once, and payload TIMESTAMP strings are rewritten to UTC while DATETIME stays put.
 // pos: parser admission seam for #80 wrapper file-span accounting (ParseFiles on the compressed fixture; decoded-payload expand is not the admission ticket).
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -8,7 +8,9 @@ package binlog
 import (
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 )
 
@@ -204,6 +206,78 @@ func compressedPayloadWrapperHeaderSpan(t *testing.T, path string) (start, end, 
 		t.Fatal("fixture missing TRANSACTION_PAYLOAD_EVENT header")
 	}
 	return start, end, size
+}
+
+func TestExpandTransactionPayloadTimestampsAreUTC(t *testing.T) {
+	prev := payloadTimestampLocation
+	t.Cleanup(func() { payloadTimestampLocation = prev })
+	newYork, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const layout = "2006-01-02 15:04:05.000000"
+	utc := time.Date(2026, 10, 6, 14, 5, 1, 500000000, time.UTC)
+	cases := []struct {
+		name string
+		loc  *time.Location
+	}{
+		{name: "shanghai", loc: time.FixedZone("UTC+8", 8*3600)},
+		{name: "new york", loc: newYork},
+		{name: "utc", loc: time.UTC},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			payloadTimestampLocation = tc.loc
+			localTS := utc.In(tc.loc).Format(layout)
+			raws, ok := expandTransactionPayload(timestampPayload(localTS), "mysql-bin.000001", "8.0.36", nil, true)
+			if !ok || len(raws) != 1 || len(raws[0].RowImages) != 2 {
+				t.Fatalf("expand = %d events, ok=%v", len(raws), ok)
+			}
+			first := raws[0].RowImages[0]
+			if first.After[0].Text != "2026-10-06 14:05:01.123456" {
+				t.Fatalf("DATETIME = %q", first.After[0].Text)
+			}
+			if first.After[1].Text != utc.Format(layout) {
+				t.Fatalf("TIMESTAMP %q in %s stayed %q", localTS, tc.loc, first.After[1].Text)
+			}
+			if raws[0].RowImages[1].After[1].Text != "0000-00-00 00:00:00.000000" {
+				t.Fatalf("zero TIMESTAMP = %q", raws[0].RowImages[1].After[1].Text)
+			}
+		})
+	}
+}
+
+func timestampPayload(localTS string) *replication.BinlogEvent {
+	table := &replication.TableMapEvent{
+		TableID:     7,
+		Schema:      []byte("shop"),
+		Table:       []byte("orders"),
+		ColumnCount: 2,
+		ColumnName:  [][]byte{[]byte("created_at"), []byte("updated_at")},
+		ColumnType:  []byte{mysql.MYSQL_TYPE_DATETIME2, mysql.MYSQL_TYPE_TIMESTAMP2},
+	}
+	return &replication.BinlogEvent{
+		Header: &replication.EventHeader{
+			Timestamp: 1,
+			EventType: replication.TRANSACTION_PAYLOAD_EVENT,
+			EventSize: 100,
+			LogPos:    200,
+		},
+		Event: &replication.TransactionPayloadEvent{
+			Events: []*replication.BinlogEvent{{
+				Header: &replication.EventHeader{EventType: replication.WRITE_ROWS_EVENTv2, Timestamp: 1, EventSize: 40, LogPos: 80},
+				Event: &replication.RowsEvent{
+					TableID:     7,
+					Table:       table,
+					ColumnCount: 2,
+					Rows: [][]any{
+						{"2026-10-06 14:05:01.123456", localTS},
+						{"2026-10-06 14:00:01.000000", "0000-00-00 00:00:00.000000"},
+					},
+				},
+			}},
+		},
+	}
 }
 
 func decodedPayloadWrapper() *replication.BinlogEvent {
