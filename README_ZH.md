@@ -101,7 +101,7 @@ binlogviz analyze mysql-bin.000123 \
 
 `--dml` 接受 `insert`、`update`、`delete`，用逗号组合。它和 `--include-table` / `--exclude-table`、`--include-schema`、`--start` / `--end`、位点、GTID 过滤一起生效。Summary、Top Tables、Top Transactions、Top Threads 和告警只统计保留下来的类型，报告里会写明这个过滤。类型过滤没有匹配时退出 2，`Error: dml filter matched no events`。
 
-`--show-rows` 默认关闭。打开后，列出的每个事务会打印 DELETE 的前镜像、UPDATE 里发生变化的列（`before -> after`），以及 INSERT 的后镜像。MySQL 8 且 `binlog_row_metadata=FULL` 时显示列名；否则列是 `@1`..`@N`，报告会说明为什么没有列名。值有上限（每个事务 32 行，每个值 64 字节），截断会标明，并给出省略的行数。`--sql-context off` 会一并省略这些值，并在报告里说明。事务上的 `mysqlbinlog_cmd` 仍然在，用来对照。这里不生成回滚 SQL。
+`--show-rows` 默认关闭。打开后，列出的每个事务会打印 DELETE 的前镜像、UPDATE 里发生变化的列（`before -> after`），以及 INSERT 的后镜像。MySQL 8 且 `binlog_row_metadata=FULL` 时显示列名；否则列是 `@1`..`@N`，报告会说明为什么没有列名。值有上限（每个事务 32 行，每个值 64 字节），截断会标明，并给出省略的行数。`--sql-context off` 会一并省略这些值，并在报告里说明。事务上的 `mysqlbinlog_cmd` 仍然在，用来对照。这里不生成回滚 SQL。`TIMESTAMP` 列是存储时刻的 UTC 墙钟（含小数秒），不跟随本机时区。`DATETIME` 仍是 binlog 里写下的墙钟。
 
 ### 把机器可读结果交给脚本或其他工具
 
