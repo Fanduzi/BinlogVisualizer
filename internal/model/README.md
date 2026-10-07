@@ -7,11 +7,11 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | File | Responsibility |
 |------|----------------|
 | `event.go` | Defines normalized binlog events with optional producer/transaction provenance, XA identity, and LOAD_DATA intent. |
-| `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, bounded SQL context, and optional bounded row images. |
+| `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, bounded SQL context, optional bounded row images, and optional MySQL 8 commit timestamps plus the transaction-start byte. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs, including per-table primary-key presence. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |
 | `pattern_drilldown.go` | Defines bounded pattern drilldown contracts for high-signal explanations. |
-| `diagnostics.go` | Defines diagnostics, selected-file coverage, counted filtered event bytes, DDL (including the holding transaction's GTID and start offset when the binlog has them), open uncommitted DML, committed duration buckets, byte-ranked transactions, findings, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped parser events, and Format Description server-version contracts for operator review. |
+| `diagnostics.go` | Defines diagnostics, selected-file coverage, counted filtered event bytes, DDL (including the holding transaction's GTID and start offset when the binlog has them), open uncommitted DML, committed duration buckets, byte-ranked transactions, optional replica apply delay, findings, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped parser events, and Format Description server-version contracts for operator review. |
 | `report.go` | Defines `AnalysisResult`, explicit workload identity and analyzed scope, requested/effective selector evidence, deterministic report-level producer provenance, report-wide SQL availability, session rankings, and snapshot metadata. |
 | `thread.go` | Defines `ThreadStats` for the Top Threads session ranking. |
 | `timeseries.go` | Defines chart-ready timeseries and transaction-size histogram contracts. |

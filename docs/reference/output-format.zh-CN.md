@@ -203,6 +203,16 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 === Minute Activity ===
 ```
 
+### 副本应用延迟
+
+最忙分钟之后，「副本应用延迟」说明副本当时落后多少。MySQL 8.0 的 GTID 事件（含匿名 GTID）带有 `original_commit_timestamp` 和 `immediate_commit_timestamp`，单位是微秒。延迟是本机提交时间减去原始提交时间。导语说明这假设源库和副本的时钟一致。这句话不是发现，负延迟也不会变成告警。
+
+- 副本：只要有一个计入的事务两个时间戳不同，就打印最大延迟、最近秩 p95、延迟达到峰值的分钟，以及最慢的事务。`--top` 限制列出几条。每一行在有 GTID 时写出 GTID，事务起点 `file:byte`（GTID 事件的 `# at` 字节，和 DDL 时间线同一约定，不是 Query 事件，也不是 `end_log_pos`），两个提交时间、延迟，以及该事务里的表和行数。
+- 源库：每一对计入的时间戳都相等时，只有一行 `源库：原始提交时间与本机提交时间相同。`，没有表。
+- 没有这些字段的文件（MySQL 5.7、MariaDB，或时间戳为 0）只打印一行 `提交时间戳不可用`，不打印时钟那句。
+
+决定 Top Tables 的表、库、时间、位置、GTID 和 `--dml` 过滤，同样决定哪些事务计入。`--sql-context off` 隐藏语句，保留时间戳和位置。
+
 ### 7. Alerts
 
 `Alerts` 章节列出分析逻辑检测到的告警。
@@ -251,6 +261,35 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `pattern_drilldowns` | array | yes | 高信号模式的有界 drilldown 摘要；无模式达到阈值时为空数组 |
 | `snapshot` | object | no | 仅在 `analyze` 使用 `--snapshot-name` 时出现 |
 | `primary_key_note` | string | no | 至少有一张收到行事件的表没有 FULL 主键元数据时出现。这句话说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。每张有行变更的表都是 `has_pk` 或 `no_pk` 时省略 |
+| `replica_apply_delay` | object | no | MySQL 8 提交时间戳上的应用延迟。没有计入的事务同时带上两个时间戳时省略。不会是空对象，也不会用 `0` 代替缺失的时间戳。见下文。 |
+
+### `replica_apply_delay`
+
+只有当至少一个计入的行事务同时带有 `original_commit_timestamp` 和 `immediate_commit_timestamp` 时才出现。计入的事务与 Top Tables 相同：表、库、时间、位置、GTID 和 `--dml` 过滤都生效。只有 DDL 或零行的组不计入。`--sql-context off` 不会删掉这个对象。
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `origin` | string | yes | 任一计入延迟不为 0 时是 `replica`，否则是 `source`。这两个英文标记不翻译。 |
+| `max_delay_us` | integer | yes | 有符号微秒。每一对都相等时为 `0`。 |
+| `p95_delay_us` | integer | yes | 最近秩 95 分位：1 起始的名次 `ceil(0.95*n)`，所以取值是某条真实延迟。按全部计入事务计算，不只是列出的那些。 |
+| `peak_minute` | string | no | 最大延迟那条事务的本机提交时间所在的 UTC 分钟。并列时取更早的本机提交时间。RFC3339。该时间为零时省略。 |
+| `transactions` | array | no | 仅当 `origin` 为 `replica` 时出现。受 `--top` 限制；显式设置 `--top-transactions` 时改由它限制分析器保留的条数。源库省略，不写成 `[]`。 |
+
+每条 `transactions`：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `gtid` | string | no | 没有 GTID 时省略，匿名 GTID 也省略。 |
+| `txn_start_file` | string | no | 传给 analyze 的路径。未知时省略。 |
+| `txn_start_pos` | integer | no | GTID 事件的起点字节（`# at`），与 `diagnostics.ddl_events[].txn_start_pos` 同一约定。不是 Query 事件，也不是 `end_log_pos`。 |
+| `original_commit_us` | integer | no | 原始提交时间，Unix 纪元以来的微秒。 |
+| `immediate_commit_us` | integer | no | 本机提交时间，Unix 纪元以来的微秒。 |
+| `original_commit_time` | string | no | RFC3339Nano UTC。 |
+| `immediate_commit_time` | string | no | RFC3339Nano UTC。 |
+| `delay_us` | integer | yes | 有符号的本机减原始。真实的 `0` 会保留。缺时间戳的事务不会成为一行。 |
+| `tables` | object | no | `schema.table` 到通过过滤的行数。空时省略。 |
+
+缺失的字符串和数字会省略，不会写成空字符串，也不会写成 `0`。
 
 ### `summary`
 

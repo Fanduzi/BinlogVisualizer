@@ -515,6 +515,42 @@
     "description": "Lead line under busiest minutes: tables are for that minute, not the whole window",
     "other": "Rows in that minute, by table."
   },
+  "report.text.replicaApplyDelay": {
+    "description": "Section for replica apply delay from MySQL 8 commit timestamps",
+    "other": "Replica Apply Delay"
+  },
+  "report.text.replicaApplyDelayClock": {
+    "description": "Lead line: delay assumes source and replica clocks agree",
+    "other": "Delay is immediate commit time minus original commit time. This assumes the source and replica clocks agree."
+  },
+  "report.text.replicaApplyDelayReplica": {
+    "description": "The binlog was written by a replica",
+    "other": "Replica: at least one transaction committed here after it committed on the source."
+  },
+  "report.text.replicaApplyDelaySource": {
+    "description": "The binlog was written by a source; timestamps are equal",
+    "other": "Source: original and immediate commit timestamps are equal."
+  },
+  "report.text.replicaApplyDelayUnavailable": {
+    "description": "Commit timestamps are absent, as on MySQL 5.7 and MariaDB",
+    "other": "commit timestamps unavailable"
+  },
+  "report.text.replicaApplyDelayStats": {
+    "description": "Max delay, p95 delay, and the minute where delay peaked",
+    "other": "max {{.Max}}  p95 {{.P95}}  peak minute {{.Peak}}"
+  },
+  "report.text.replicaApplyDelayOriginal": {
+    "description": "Original commit time column",
+    "other": "Original commit"
+  },
+  "report.text.replicaApplyDelayImmediate": {
+    "description": "Immediate commit time column",
+    "other": "Immediate commit"
+  },
+  "report.text.replicaApplyDelayDelay": {
+    "description": "Apply delay column",
+    "other": "Delay"
+  },
   "report.label.drivingTables": {
     "description": "Tables that produced a minute's rows",
     "other": "Driving tables"
