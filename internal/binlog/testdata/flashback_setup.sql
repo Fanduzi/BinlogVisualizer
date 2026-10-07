@@ -33,6 +33,7 @@ DROP TABLE IF EXISTS shop.chars;
 DROP TABLE IF EXISTS shop.gen;
 DROP TABLE IF EXISTS shop.es;
 DROP TABLE IF EXISTS shop.cj;
+DROP TABLE IF EXISTS shop.yearnum;
 CREATE TABLE shop.jdoc (
   id INT NOT NULL,
   doc JSON NULL,
@@ -65,6 +66,21 @@ CREATE TABLE shop.cj (
   id INT NOT NULL,
   j JSON NULL,
   PRIMARY KEY (id)
+);
+CREATE TABLE shop.yearnum (
+  yr YEAR NOT NULL,
+  yr2 YEAR NOT NULL,
+  region SMALLINT NOT NULL,
+  id INT UNSIGNED NOT NULL,
+  note VARCHAR(20) NULL,
+  n DECIMAL(6,1) NULL,
+  si INT NULL,
+  ui BIGINT UNSIGNED NULL,
+  sb BIGINT NULL,
+  tu TINYINT UNSIGNED NULL,
+  mi MEDIUMINT UNSIGNED NULL,
+  ss SMALLINT NULL,
+  PRIMARY KEY (yr, yr2, region, id)
 );
 SET time_zone = '+00:00';
 INSERT INTO shop.wide VALUES
@@ -102,3 +118,6 @@ INSERT INTO shop.es (id, e, s, eu) VALUES
 INSERT INTO shop.cj (id, j) VALUES
   (1, JSON_OBJECT('a', 1)),
   (2, JSON_OBJECT('dec', 9.99, 'z', CAST(-0.0E0 AS JSON)));
+INSERT INTO shop.yearnum VALUES
+  (2026, 1999, 1, 4000000000, 'original', -12.5, -5, 18446744073709551615, -9223372036854775808, 255, 1000000, -32768),
+  (2026, 1999, 1, 7, 'small', 0.0, 0, 0, 0, 0, 0, 0);
