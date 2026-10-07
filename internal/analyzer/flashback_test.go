@@ -231,7 +231,10 @@ func TestFlashbackLearnsExcludedCreateAndWarnsOnSplit(t *testing.T) {
 	if _, err := dml.FlashbackSQL(); err != nil {
 		t.Fatal(err)
 	}
-	if warnings = dml.FlashbackWarnings(); len(warnings) != 1 {
+	if warnings = dml.FlashbackWarnings(); len(warnings) != 2 ||
+		!strings.Contains(warnings[0], "shop.wide") ||
+		!strings.Contains(warnings[0], "generated columns cannot be ruled out") ||
+		!strings.Contains(warnings[1], "only partly undone") {
 		t.Fatalf("dml warnings: %#v", warnings)
 	}
 
@@ -256,6 +259,10 @@ func TestFlashbackLearnsExcludedCreateAndWarnsOnSplit(t *testing.T) {
 	if !strings.Contains(sql, "`virt`") {
 		t.Fatalf("missing create should still emit the column:\n%s", sql)
 	}
+	warnings = plain.FlashbackWarnings()
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "shop.gen") || !strings.Contains(warnings[0], "generated columns cannot be ruled out") {
+		t.Fatalf("plain warnings: %#v", warnings)
+	}
 
 	refused := New(Options{Flashback: true, GTIDSelector: selector})
 	badEvents := []model.NormalizedEvent{
@@ -279,5 +286,163 @@ func TestFlashbackLearnsExcludedCreateAndWarnsOnSplit(t *testing.T) {
 	sql, err = refused.FlashbackSQL()
 	if err == nil || sql != "" || !strings.Contains(err.Error(), "shop.t: generated columns are unknown") {
 		t.Fatalf("sql %q err %v", sql, err)
+	}
+}
+
+func TestSchemaFileOmitsGeneratedColumns(t *testing.T) {
+	const dump = "USE `shop`;\n" +
+		"/*!40101 SET @saved_cs_client = @@character_set_client */;\n" +
+		"DROP TABLE IF EXISTS `gen`;\n" +
+		"CREATE TABLE `gen` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `base` int DEFAULT NULL,\n" +
+		"  `virt` int GENERATED ALWAYS AS ((`base` + 1)) VIRTUAL,\n" +
+		"  `stor` int GENERATED ALWAYS AS ((`base` * 2)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n" +
+		") ENGINE=InnoDB;\n" +
+		"USE `shop`;\n" +
+		"wide\tCREATE TABLE `wide` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `note` varchar(64) DEFAULT NULL,\n" +
+		"  PRIMARY KEY (`id`)\n" +
+		")"
+	base := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	a := New(Options{Flashback: true, SchemaSQL: dump})
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "ROWS", Operation: "DELETE", Schema: "shop", Table: "gen", BinlogPath: "mysql-bin.000001", PositionStart: 10, PositionEnd: 20, FlashRows: []model.FlashRow{{
+			Schema: "shop", Table: "gen", Op: "DELETE", Columns: []string{"id", "base", "virt", "stor"}, Before: []string{"1", "10", "11", "20"}, PK: []int{0},
+		}}},
+		{Timestamp: base, EventType: "ROWS", Operation: "DELETE", Schema: "shop", Table: "wide", BinlogPath: "mysql-bin.000001", PositionStart: 20, PositionEnd: 30, FlashRows: []model.FlashRow{{
+			Schema: "shop", Table: "wide", Op: "DELETE", Columns: []string{"id", "note"}, Before: []string{"1", "'a'"}, PK: []int{0},
+		}}},
+		{Timestamp: base, EventType: "ROWS", Operation: "DELETE", Schema: "shop", Table: "other", BinlogPath: "mysql-bin.000001", PositionStart: 30, PositionEnd: 40, FlashRows: []model.FlashRow{{
+			Schema: "shop", Table: "other", Op: "DELETE", Columns: []string{"id", "virt"}, Before: []string{"1", "2"}, PK: []int{0},
+		}}},
+	}
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	sql, err := a.FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (1, 10);") || strings.Contains(sql, "`stor`") {
+		t.Fatalf("schema file sql:\n%s", sql)
+	}
+	if !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) VALUES (1, 'a');") {
+		t.Fatalf("show create sql:\n%s", sql)
+	}
+	if !strings.Contains(sql, "INSERT INTO `shop`.`other` (`id`, `virt`) VALUES (1, 2);") {
+		t.Fatalf("unknown table sql:\n%s", sql)
+	}
+	warnings := a.FlashbackWarnings()
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "shop.other") || !strings.Contains(warnings[0], "generated columns cannot be ruled out") || !strings.Contains(warnings[0], "--schema-file") {
+		t.Fatalf("warnings: %#v", warnings)
+	}
+
+	const gtid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	selector, err := ParseGTIDSelector(nil, []string{gtid + ":1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced := New(Options{Flashback: true, SchemaSQL: dump, GTIDSelector: selector})
+	replacedEvents := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "GTID", GTID: gtid + ":1", BinlogPath: "mysql-bin.000001", PositionStart: 100, PositionEnd: 140},
+		{Timestamp: base, EventType: "DDL", Schema: "shop", QuerySQL: "CREATE TABLE shop.gen (id INT PRIMARY KEY, virt INT)", BinlogPath: "mysql-bin.000001", PositionStart: 140, PositionEnd: 200},
+		{Timestamp: base.Add(time.Second), EventType: "GTID", GTID: gtid + ":2", BinlogPath: "mysql-bin.000001", PositionStart: 200, PositionEnd: 240},
+		{Timestamp: base.Add(time.Second), EventType: "BEGIN", BinlogPath: "mysql-bin.000001", PositionStart: 240, PositionEnd: 260},
+		{Timestamp: base.Add(time.Second), EventType: "ROWS", Operation: "DELETE", Schema: "shop", Table: "gen", BinlogPath: "mysql-bin.000001", PositionStart: 260, PositionEnd: 300, FlashRows: []model.FlashRow{{
+			Schema: "shop", Table: "gen", Op: "DELETE", Columns: []string{"id", "virt"}, Before: []string{"1", "2"}, PK: []int{0},
+		}}},
+		{Timestamp: base.Add(time.Second), EventType: "XID", BinlogPath: "mysql-bin.000001", PositionStart: 300, PositionEnd: 340},
+	}
+	for _, ev := range replacedEvents {
+		if err := replaced.Consume(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := replaced.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	sql, err = replaced.FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "`virt`") {
+		t.Fatalf("later create should replace the schema file:\n%s", sql)
+	}
+	if warnings = replaced.FlashbackWarnings(); len(warnings) != 0 {
+		t.Fatalf("replaced warnings: %#v", warnings)
+	}
+
+	bad := New(Options{Flashback: true, SchemaSQL: "USE `shop`;\nCREATE TABLE t AS SELECT 1;\n"})
+	if err := bad.Consume(model.NormalizedEvent{
+		Timestamp: base, EventType: "ROWS", Operation: "DELETE", Schema: "shop", Table: "t",
+		BinlogPath: "mysql-bin.000001", PositionStart: 10, PositionEnd: 20,
+		FlashRows: []model.FlashRow{{
+			Schema: "shop", Table: "t", Op: "DELETE", Columns: []string{"id"}, Before: []string{"1"}, PK: []int{0},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bad.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	sql, err = bad.FlashbackSQL()
+	if err == nil || sql != "" || !strings.Contains(err.Error(), "shop.t: generated columns are unknown") {
+		t.Fatalf("sql %q err %v", sql, err)
+	}
+}
+
+func TestSchemaFileReadsBatchShowCreate(t *testing.T) {
+	// mysql --batch keeps the column break as a real tab and writes each
+	// newline inside the CREATE field as the two characters '\' and 'n'.
+	// -N drops the "Create Table" header; without -N that header is a real row.
+	const create = "gen\tCREATE TABLE `gen` (\\n" +
+		"  `id` int NOT NULL,\\n" +
+		"  `base` int DEFAULT NULL,\\n" +
+		"  `virt` int GENERATED ALWAYS AS ((`base` + 1)) VIRTUAL,\\n" +
+		"  `stor` int GENERATED ALWAYS AS ((`base` * 2)) STORED,\\n" +
+		"  PRIMARY KEY (`id`)\\n" +
+		") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci"
+	for _, batch := range []string{
+		"USE `shop`;\n" + create,
+		"USE `shop`;\nTable\tCreate Table\n" + create,
+	} {
+		assertBatchShowCreate(t, batch)
+	}
+}
+
+func assertBatchShowCreate(t *testing.T, batch string) {
+	t.Helper()
+	base := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
+	a := New(Options{Flashback: true, SchemaSQL: batch})
+	if err := a.Consume(model.NormalizedEvent{
+		Timestamp: base, EventType: "ROWS", Operation: "DELETE", Schema: "shop", Table: "gen",
+		BinlogPath: "mysql-bin.000001", PositionStart: 10, PositionEnd: 20,
+		FlashRows: []model.FlashRow{{
+			Schema: "shop", Table: "gen", Op: "DELETE",
+			Columns: []string{"id", "base", "virt", "stor"}, Before: []string{"1", "10", "11", "20"}, PK: []int{0},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	sql, err := a.FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (1, 10);") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
+		t.Fatalf("batch show create:\n%s", sql)
+	}
+	if warnings := a.FlashbackWarnings(); len(warnings) != 0 {
+		t.Fatalf("warnings: %#v", warnings)
 	}
 }

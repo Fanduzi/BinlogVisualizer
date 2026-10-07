@@ -82,9 +82,9 @@ DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE
 
 没有主键的表仍然可以撤销：`DELETE` 或 `UPDATE` 匹配每一列并加 `LIMIT 1`，注释会说明。把被删行插回去的 `INSERT` 不用 `LIMIT 1`。
 
-JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAST(... AS JSON)`），小数仍是小数，日期时间仍是日期时间，`-0.0` 保留符号。非 `utf8mb4` 的字符列写成字符集引导符加原始字节（`_latin1 0xE9`、`_utf16 0x00410042`）。`binary` 校对仍是 `X'...'`。`utf8mb4` 仍是带引号的字符串。
+JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAST(... AS JSON)`），小数仍是小数，日期时间仍是日期时间，`-0.0` 保留符号。`binlog_transaction_compression=ON` 记下的事务也一样。非 `utf8mb4` 的字符列写成字符集引导符加原始字节（`_latin1 0xE9`、`_utf16 0x00410042`）。`binary` 校对仍是 `X'...'`。`utf8mb4` 仍是带引号的字符串。`ENUM` 写成从 1 开始的成员序号（`0` 是空成员），`SET` 写成位掩码（bit 0 是第一个成员）。带引号的成员名是列自己的字符集，`latin1` 或 `gbk` 在 `SET NAMES utf8mb4` 下并不精确：严格 `sql_mode` 会返回 `ERROR 1265`，非严格模式可能写成空值。数字在两种模式下都还原同一个成员。
 
-生成列（VIRTUAL 或 STORED）不写入 `INSERT` 列清单和 `UPDATE` 赋值。没有主键时，只要还剩基列，就从 `WHERE` 里去掉生成列。生成列若属于主键，仍留在 `WHERE` 中。列名来自你传入文件里的 `CREATE TABLE` 和 `ALTER TABLE`，包括被 `--exclude-gtids` 或时间窗口排除的事务。若语句出现过但读不出来，flashback 拒绝该表且不打印 SQL。binlog 里从没有 `CREATE` 时，无法识别生成列。
+生成列（VIRTUAL 或 STORED）在定义已知时不写入 `INSERT` 列清单和 `UPDATE` 赋值。没有主键时，只要还剩基列，就从 `WHERE` 里去掉生成列。生成列若属于主键，仍留在 `WHERE` 中。列名来自你传入文件里的 `CREATE TABLE` 和 `ALTER TABLE`，包括被 `--exclude-gtids` 或时间窗口排除的事务，也来自 `--schema-file`（`mysqldump --no-data`，或 `USE` 之后的 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句里的换行写成 `\n` 的输出）。flashback 不连接 MySQL。MySQL 8 的 `TABLE_MAP` 可选元数据止于 `COLUMN_VISIBILITY`（不可见列，不是生成列），`binlog_row_image=FULL` 同时存下虚拟列和存储列的值，所以缺一个单元格并不是信号，只看 binlog 无法区分。定义出现过但读不出来时，flashback 拒绝该表且不打印 SQL。选中的表从未有过定义时，flashback 仍打印脚本，列出每一列，并在脚本之前把警告写到 stderr。警告点名这张表，说明不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
 
 即使字面量精确，这些限制仍然在：
 
@@ -99,7 +99,7 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 - 没有列名
 - 前镜像或后镜像不完整（`binlog_row_image` 为 `MINIMAL` 或 `NOBLOB`）
 - 某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`BIT`、`GEOMETRY`、`VECTOR`、不完整的 JSON、无法精确表示的 JSON、`utf8mb4` 列里的非法 UTF-8、未知校对，或缺少有无符号、字符集、ENUM/SET 成员）
-- `CREATE` 或 `ALTER` 里出现了生成列，但语句读不出来
+- binlog 或 `--schema-file` 里出现过 `CREATE` 或 `ALTER`，但语句读不出来
 - 选定范围内有 DDL（不生成反向 DDL）
 - 使用了 `--sql-context off`，因为脚本就是行值
 

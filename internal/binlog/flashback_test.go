@@ -3,12 +3,16 @@ package binlog
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"hash/crc32"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
+	"github.com/klauspost/compress/zstd"
 
 	"binlogviz/internal/model"
 )
@@ -100,7 +104,7 @@ func TestCaptureFlashbackEnumSetBlobAndNoPK(t *testing.T) {
 		t.Fatal("id is a primary key")
 	}
 	got := rows[0].Before
-	if got[1] != "'blue'" || got[2] != "'a,c'" || got[3] != "X'DEADFF'" {
+	if got[1] != "2" || got[2] != "5" || got[3] != "X'DEADFF'" {
 		t.Fatalf("literals: %#v", got)
 	}
 
@@ -234,6 +238,141 @@ func TestFlashbackFixtureJSONAndCharsetsRoundTripLiterals(t *testing.T) {
 			t.Fatalf("missing %s\n%s", want, joined)
 		}
 	}
+}
+
+func TestSQLEnumSetUsesIndexNotCharsetText(t *testing.T) {
+	got, ok := sqlEnum(int64(2), []string{"plain", "caf\xe9", "\xc3\xa9"})
+	if !ok || got != "2" {
+		t.Fatalf("latin1 enum: %q ok=%v", got, ok)
+	}
+	got, ok = sqlEnum(int64(2), []string{"ok", "\xd6\xd0\xce\xc4"})
+	if !ok || got != "2" {
+		t.Fatalf("gbk enum: %q ok=%v", got, ok)
+	}
+	got, ok = sqlEnum(int64(0), []string{"red", "blue"})
+	if !ok || got != "0" {
+		t.Fatalf("empty enum: %q ok=%v", got, ok)
+	}
+	if _, ok = sqlEnum(int64(3), []string{"red", "blue"}); ok {
+		t.Fatal("enum index past the member list was accepted")
+	}
+	got, ok = sqlSet(int64(3), []string{"x", "th\xe9"})
+	if !ok || got != "3" {
+		t.Fatalf("latin1 set: %q ok=%v", got, ok)
+	}
+	got, ok = sqlSet(int64(0), []string{"x", "y"})
+	if !ok || got != "0" {
+		t.Fatalf("empty set: %q ok=%v", got, ok)
+	}
+	if _, ok = sqlSet(int64(4), []string{"x", "y"}); ok {
+		t.Fatal("set bit past the member list was accepted")
+	}
+}
+
+func TestFlashbackCompressedJSONKeepsBinaryDocument(t *testing.T) {
+	path := compressFixturePayload(t, "testdata/mysql-8.0.46-flashback-full.binlog")
+	parser := NewParser()
+	parser.(FlashbackParser).SetCaptureFlashback(true)
+	var literals []string
+	var problems []model.FlashRow
+	err := parser.ParseFiles([]string{path}, func(ev RawEvent) error {
+		for _, row := range ev.FlashRows {
+			if row.ProblemKind != "" {
+				problems = append(problems, row)
+				continue
+			}
+			literals = append(literals, row.Before...)
+			literals = append(literals, row.After...)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(problems) != 0 {
+		t.Fatalf("problems: %+v", problems)
+	}
+	joined := strings.Join(literals, "\n")
+	for _, want := range []string{
+		"JSON_OBJECT('n', 1, 'ok', true, 'sku', 'Z')",
+		"JSON_OBJECT('sku', 'B')",
+		"JSON_ARRAY(1, 2)",
+		"JSON_OBJECT('n', 10)",
+		`JSON_OBJECT('s', 'a\\b')`,
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing %s\n%s", want, joined)
+		}
+	}
+}
+
+// compressFixturePayload wraps every event after the format description in one
+// zstd Transaction_payload, the way binlog_transaction_compression=ON does.
+// Inner events drop the outer CRC32; the payload event carries one checksum.
+func compressFixturePayload(t *testing.T, src string) string {
+	t.Helper()
+	gp := replication.NewBinlogParser()
+	var raws [][]byte
+	if err := gp.ParseFile(src, 0, func(ev *replication.BinlogEvent) error {
+		raws = append(raws, append([]byte(nil), ev.RawData...))
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(raws) < 2 || raws[0][4] != byte(replication.FORMAT_DESCRIPTION_EVENT) {
+		t.Fatalf("fixture events: %d", len(raws))
+	}
+	var plain []byte
+	for _, raw := range raws[1:] {
+		if len(raw) <= replication.EventHeaderSize+replication.BinlogChecksumLength {
+			t.Fatalf("short event %d", len(raw))
+		}
+		body := append([]byte(nil), raw[:len(raw)-replication.BinlogChecksumLength]...)
+		binary.LittleEndian.PutUint32(body[9:13], uint32(len(body)))
+		plain = append(plain, body...)
+	}
+	zw, err := zstd.NewWriter(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	compressed := zw.EncodeAll(plain, nil)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	payload := []byte{2, 1, 0}
+	payload = appendOTW(payload, 3, uint64(len(plain)))
+	payload = appendOTW(payload, 1, uint64(len(compressed)))
+	payload = append(payload, 0)
+	payload = append(payload, compressed...)
+
+	header := make([]byte, replication.EventHeaderSize)
+	header[4] = byte(replication.TRANSACTION_PAYLOAD_EVENT)
+	eventSize := replication.EventHeaderSize + len(payload) + replication.BinlogChecksumLength
+	binary.LittleEndian.PutUint32(header[9:13], uint32(eventSize))
+	binary.LittleEndian.PutUint32(header[13:17], uint32(4+len(raws[0])+eventSize))
+	event := append(header, payload...)
+	var crc [4]byte
+	binary.LittleEndian.PutUint32(crc[:], crc32.ChecksumIEEE(event))
+	event = append(event, crc[:]...)
+
+	out := append(append([]byte{}, replication.BinLogFileHeader...), raws[0]...)
+	out = append(out, event...)
+	path := filepath.Join(t.TempDir(), "compressed-json.binlog")
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func appendOTW(dst []byte, field byte, n uint64) []byte {
+	var raw [8]byte
+	binary.LittleEndian.PutUint64(raw[:], n)
+	width := 1
+	for width < 8 && n>>uint(8*width) != 0 {
+		width++
+	}
+	dst = append(dst, field, byte(width))
+	return append(dst, raw[:width]...)
 }
 
 func flashTable(t *testing.T, types []byte, names [][]byte, pk []uint64, sign byte, collation uint64) *replication.TableMapEvent {

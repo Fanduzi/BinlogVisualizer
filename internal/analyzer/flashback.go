@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, generated columns cannot be identified, or the selected range contains DDL. Generated columns learned from parsed CREATE/ALTER are omitted from INSERT and UPDATE SET.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A selected table with no definition is warned and still printed.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -57,6 +57,9 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 			"Table": flashTable(ev.Schema, ev.Table),
 		}))
 		return
+	}
+	if !a.flashGen.defined(ev.Schema, ev.Table) {
+		a.noteFlashUnknown(flashTable(ev.Schema, ev.Table))
 	}
 	a.appendFlashRows(ev, ev.FlashRows, copyNames(a.flashGen.columns(ev.Schema, ev.Table)))
 	a.noteFlashbackKept(ev)
@@ -127,13 +130,26 @@ func (a *Analyzer) noteFlashSplit(key, gtid string, kept bool) {
 	}
 }
 
-// FlashbackWarnings reports transactions a table or --dml filter undid only in part.
+func (a *Analyzer) noteFlashUnknown(table string) {
+	for _, have := range a.flashUnknown {
+		if have == table {
+			return
+		}
+	}
+	a.flashUnknown = append(a.flashUnknown, table)
+}
+
+// FlashbackWarnings reports tables whose definitions were not seen, then
+// transactions a table or --dml filter undid only in part.
 // Empty when flashback has nothing to print.
 func (a *Analyzer) FlashbackWarnings() []string {
 	if a == nil {
 		return nil
 	}
 	var out []string
+	for _, table := range a.flashUnknown {
+		out = append(out, i18n.Tf("warning.flashbackGenerated", map[string]any{"Table": table}))
+	}
 	for _, key := range a.flashSplitOrder {
 		split := a.flashSplit[key]
 		if split == nil || !split.kept || !split.skipped {

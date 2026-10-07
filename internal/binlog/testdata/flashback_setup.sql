@@ -31,6 +31,8 @@ DROP TABLE IF EXISTS shop.jdoc;
 DROP TABLE IF EXISTS shop.jheap;
 DROP TABLE IF EXISTS shop.chars;
 DROP TABLE IF EXISTS shop.gen;
+DROP TABLE IF EXISTS shop.es;
+DROP TABLE IF EXISTS shop.cj;
 CREATE TABLE shop.jdoc (
   id INT NOT NULL,
   doc JSON NULL,
@@ -50,6 +52,18 @@ CREATE TABLE shop.gen (
   base INT NULL,
   virt INT AS (base + 1) VIRTUAL,
   stor INT AS (base * 2) STORED,
+  PRIMARY KEY (id)
+);
+CREATE TABLE shop.es (
+  id INT NOT NULL,
+  e ENUM('plain', 'café', 'Ã©') CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL,
+  s SET('x', 'thé') CHARACTER SET latin1 COLLATE latin1_swedish_ci NULL,
+  eu ENUM('ok', '中文') CHARACTER SET gbk COLLATE gbk_chinese_ci NULL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE shop.cj (
+  id INT NOT NULL,
+  j JSON NULL,
   PRIMARY KEY (id)
 );
 SET time_zone = '+00:00';
@@ -81,3 +95,10 @@ INSERT INTO shop.chars (id, l1, u16) VALUES
   (3, _latin1 X'', _utf16 X''),
   (4, _latin1 0xC2A335, _utf16 0x0041);
 INSERT INTO shop.gen (id, base) VALUES (1, 10), (2, 20), (3, NULL);
+INSERT INTO shop.es (id, e, s, eu) VALUES
+  (1, 'café', 'x,thé', '中文'),
+  (2, 'Ã©', 'thé', 'ok'),
+  (3, 'plain', '', 'ok');
+INSERT INTO shop.cj (id, j) VALUES
+  (1, JSON_OBJECT('a', 1)),
+  (2, JSON_OBJECT('dec', 9.99, 'z', CAST(-0.0E0 AS JSON)));

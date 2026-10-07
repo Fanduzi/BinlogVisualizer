@@ -7,6 +7,10 @@
     "description": "根命令简短描述",
     "other": "分析 MySQL binlog 文件"
   },
+  "cmd.root.flag.lang": {
+    "description": "语言标志说明",
+    "other": "输出语言（例如 en、zh-CN）"
+  },
   "cmd.root.flag.version": {
     "description": "版本标志描述",
     "other": "打印版本号"
@@ -283,9 +287,65 @@
     "description": "表过滤或 --dml 只撤销事务的一部分时警告",
     "other": "警告：事务 {{.GTID}} 只撤销了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"
   },
+  "warning.flashbackGenerated": {
+    "description": "binlog 和 schema 文件都没有这张表的 CREATE 时警告",
+    "other": "警告：{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，更早的事务已经提交。请用 --schema-file 传入 mysqldump --no-data，或在 USE 之后附上 SHOW CREATE TABLE 的输出。"
+  },
+  "error.flashbackSchemaFile": {
+    "description": "读不到 --schema-file",
+    "other": "无法读取 --schema-file {{.Path}}：{{.Error}}"
+  },
   "cmd.flashback.flag.dml": {
     "description": "flashback 的 DML 类型过滤说明",
     "other": "只撤销这些 ROW 类型（逗号分隔 insert、update、delete，可组合）"
+  },
+  "cmd.flashback.flag.includeSchema": {
+    "description": "flashback 的 include-schema 说明",
+    "other": "只撤销这些 schema（逗号分隔）"
+  },
+  "cmd.flashback.flag.excludeSchema": {
+    "description": "flashback 的 exclude-schema 说明",
+    "other": "撤销时跳过这些 schema（逗号分隔）"
+  },
+  "cmd.flashback.flag.includeTable": {
+    "description": "flashback 的 include-table 说明",
+    "other": "只撤销这些表（逗号分隔，TABLE 或 SCHEMA.TABLE）"
+  },
+  "cmd.flashback.flag.excludeTable": {
+    "description": "flashback 的 exclude-table 说明",
+    "other": "撤销时跳过这些表（逗号分隔，TABLE 或 SCHEMA.TABLE）"
+  },
+  "cmd.flashback.flag.startPosition": {
+    "description": "flashback 的起始位点说明",
+    "other": "起始位点（含该事件边界）"
+  },
+  "cmd.flashback.flag.stopPosition": {
+    "description": "flashback 的结束位点说明",
+    "other": "结束位点（不含该事件边界，或到文件末尾）"
+  },
+  "cmd.flashback.flag.includeGtids": {
+    "description": "flashback 的 include-gtids 说明",
+    "other": "只撤销匹配该 GTID 集合的完整事务"
+  },
+  "cmd.flashback.flag.excludeGtids": {
+    "description": "flashback 的 exclude-gtids 说明",
+    "other": "跳过匹配该 GTID 集合的完整事务"
+  },
+  "cmd.flashback.flag.schemaFile": {
+    "description": "flashback 的 schema 文件说明",
+    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE）。未带库名时前面要有 USE。可选；flashback 默认离线"
+  },
+  "cmd.flashback.help.usage": {
+    "description": "flashback 帮助里的用法标题",
+    "other": "用法"
+  },
+  "cmd.flashback.help.flags": {
+    "description": "flashback 帮助里的选项标题",
+    "other": "选项"
+  },
+  "cmd.flashback.help.globalFlags": {
+    "description": "flashback 帮助里的全局选项标题",
+    "other": "全局选项"
   },
   "cmd.flashback.use": {
     "description": "flashback 命令用法",
@@ -297,7 +357,7 @@
   },
   "cmd.flashback.long": {
     "description": "flashback 命令长说明",
-    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。"
+    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列。ENUM 和 SET 写成数字。"
   },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",

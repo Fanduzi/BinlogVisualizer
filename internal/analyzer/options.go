@@ -1,5 +1,5 @@
 // Package analyzer defines configurable thresholds, filters, and detail-store behavior for binlog analysis.
-// input: CLI or caller-selected analyzer options for workload identity, time/position windows, GTID selectors, limits, alerts, filters, flashback collection, and detail storage.
+// input: CLI or caller-selected analyzer options for workload identity, time/position windows, GTID selectors, limits, alerts, filters, flashback collection, optional schema SQL, and detail storage.
 // output: Options and DefaultOptions values consumed by Analyzer construction and command mapping, plus identity and selector/filter-presence checks.
 // pos: analyzer configuration boundary shared by CLI, tests, and streaming analysis setup.
 // note: if this file changes, update this header and module README.md.
@@ -55,6 +55,9 @@ type Options struct {
 	// Flashback collects every selected row image for undo SQL.
 	// Off unless the flashback command is running. Analyze output ignores it.
 	Flashback bool
+	// SchemaSQL is CREATE/ALTER text from --schema-file. Flashback learns
+	// generated columns from it before binlog DDL. Analyze ignores it.
+	SchemaSQL string
 }
 
 // HasPositionSelectors reports whether an exact binlog position bound is active.

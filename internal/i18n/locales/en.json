@@ -7,6 +7,10 @@
     "description": "Root command short description",
     "other": "Analyze MySQL binlog files"
   },
+  "cmd.root.flag.lang": {
+    "description": "Language flag description",
+    "other": "Language for output (for example en, zh-CN)"
+  },
   "cmd.root.flag.version": {
     "description": "Version flag description",
     "other": "Print the version number"
@@ -283,9 +287,65 @@
     "description": "Flashback warns when a table or DML filter undoes only part of a transaction",
     "other": "warning: transaction {{.GTID}} is only partly undone; a table or --dml selection skipped other row changes in that transaction"
   },
+  "warning.flashbackGenerated": {
+    "description": "Flashback warns when a selected table has no CREATE in the binlog or schema file",
+    "other": "warning: {{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and earlier transactions stay committed. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE after USE)."
+  },
+  "error.flashbackSchemaFile": {
+    "description": "Flashback could not read --schema-file",
+    "other": "cannot read --schema-file {{.Path}}: {{.Error}}"
+  },
   "cmd.flashback.flag.dml": {
     "description": "Flashback DML kind filter flag description",
     "other": "Only undo these ROW kinds (comma-separated insert, update, delete; combinable)"
+  },
+  "cmd.flashback.flag.includeSchema": {
+    "description": "Flashback include-schema flag",
+    "other": "Only undo these schemas (comma-separated)"
+  },
+  "cmd.flashback.flag.excludeSchema": {
+    "description": "Flashback exclude-schema flag",
+    "other": "Skip these schemas when undoing (comma-separated)"
+  },
+  "cmd.flashback.flag.includeTable": {
+    "description": "Flashback include-table flag",
+    "other": "Only undo these tables (comma-separated TABLE or SCHEMA.TABLE)"
+  },
+  "cmd.flashback.flag.excludeTable": {
+    "description": "Flashback exclude-table flag",
+    "other": "Skip these tables when undoing (comma-separated TABLE or SCHEMA.TABLE)"
+  },
+  "cmd.flashback.flag.startPosition": {
+    "description": "Flashback start-position flag",
+    "other": "Start position (inclusive event boundary)"
+  },
+  "cmd.flashback.flag.stopPosition": {
+    "description": "Flashback stop-position flag",
+    "other": "Stop position (exclusive event boundary or EOF)"
+  },
+  "cmd.flashback.flag.includeGtids": {
+    "description": "Flashback include-gtids flag",
+    "other": "Undo complete transaction groups matching this GTID set"
+  },
+  "cmd.flashback.flag.excludeGtids": {
+    "description": "Flashback exclude-gtids flag",
+    "other": "Skip complete transaction groups matching this GTID set"
+  },
+  "cmd.flashback.flag.schemaFile": {
+    "description": "Flashback schema file flag",
+    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE). Unqualified names need a preceding USE. Optional; flashback stays offline"
+  },
+  "cmd.flashback.help.usage": {
+    "description": "Flashback help heading for usage",
+    "other": "Usage"
+  },
+  "cmd.flashback.help.flags": {
+    "description": "Flashback help heading for local flags",
+    "other": "Flags"
+  },
+  "cmd.flashback.help.globalFlags": {
+    "description": "Flashback help heading for inherited flags",
+    "other": "Global Flags"
   },
   "cmd.flashback.use": {
     "description": "Flashback command usage",
@@ -297,7 +357,7 @@
   },
   "cmd.flashback.long": {
     "description": "Flashback command long description",
-    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database."
+    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE. ENUM and SET values are numbers."
   },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
