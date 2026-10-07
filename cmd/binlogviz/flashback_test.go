@@ -99,8 +99,7 @@ func TestFlashbackSchemaFileClearsGeneratedWarning(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	path := mustFixturePath(t, "mysql-8.0.46-flashback-full.binlog")
 	schema := filepath.Join(t.TempDir(), "wide.sql")
-	body := "USE `shop`;\nCREATE TABLE `wide` (\n  `id` bigint NOT NULL,\n  `bucket` int NOT NULL,\n  PRIMARY KEY (`id`, `bucket`)\n);\n"
-	if err := os.WriteFile(schema, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(schema, []byte("USE `shop`;\n"+shopWideCreateSQL), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	stdout, stderr, err := executeFlashbackLikeMain(t, path, "--include-table", "shop.wide", "--schema-file", schema)
@@ -111,6 +110,76 @@ func TestFlashbackSchemaFileClearsGeneratedWarning(t *testing.T) {
 		t.Fatalf("stdout:\n%s\nstderr:\n%s", stdout, stderr)
 	}
 }
+
+func TestFlashbackSchemaFileRefusesMismatch(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	path := mustFixturePath(t, "mysql-8.0.46-flashback-full.binlog")
+	dir := t.TempDir()
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "missing",
+			body: "USE `shop`;\nCREATE TABLE `wide` (\n  `id` bigint NOT NULL,\n  `bucket` int NOT NULL,\n  PRIMARY KEY (`id`, `bucket`)\n);\n",
+			want: "missing",
+		},
+		{
+			name: "extra",
+			body: "USE `shop`;\n" + strings.Replace(shopWideCreateSQL, "  PRIMARY KEY (id, bucket)\n", "  extra_col INT NULL,\n  PRIMARY KEY (id, bucket)\n", 1),
+			want: "extra extra_col",
+		},
+		{
+			name: "reordered",
+			body: "USE `shop`;\n" + strings.Replace(shopWideCreateSQL, "  note VARCHAR(255) NULL,\n  raw BLOB NULL,\n", "  raw BLOB NULL,\n  note VARCHAR(255) NULL,\n", 1),
+			want: "reordered",
+		},
+		{
+			name: "generated",
+			body: "USE `shop`;\n" + strings.Replace(shopWideCreateSQL, "  note VARCHAR(255) NULL,\n", "  note VARCHAR(255) GENERATED ALWAYS AS (1) VIRTUAL,\n", 1),
+			want: "note is generated",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			schema := filepath.Join(dir, tc.name+".sql")
+			if err := os.WriteFile(schema, []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			stdout, stderr, err := executeFlashbackLikeMain(t, path, "--include-table", "shop.wide", "--schema-file", schema)
+			assertFlashbackRefused(t, stdout, stderr, err, "shop.wide")
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// shopWideCreateSQL is the incident-time shop.wide definition from the MySQL 8.0.46 flashback fixture.
+const shopWideCreateSQL = `CREATE TABLE shop.wide (
+  id BIGINT NOT NULL,
+  bucket INT NOT NULL,
+  i_tiny TINYINT NULL,
+  i_tiny_u TINYINT UNSIGNED NULL,
+  i_small SMALLINT NULL,
+  i_int INT NULL,
+  i_int_u INT UNSIGNED NULL,
+  i_big BIGINT NULL,
+  i_big_u BIGINT UNSIGNED NULL,
+  qty INT NULL,
+  price DECIMAL(18,4) NULL,
+  created_at DATETIME(6) NULL,
+  updated_at TIMESTAMP(6) NULL,
+  note VARCHAR(255) NULL,
+  raw BLOB NULL,
+  bits VARBINARY(16) NULL,
+  payload JSON NULL,
+  color ENUM('red','blue','green') NULL,
+  flags SET('a','b','c') NULL,
+  PRIMARY KEY (id, bucket)
+);
+`
 
 func TestFlashbackRefusesIncompleteMetadataImageAndDDL(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
@@ -195,6 +264,8 @@ func TestFlashbackHelpWording(t *testing.T) {
 		"只撤销匹配该 GTID 集合的完整事务",
 		"跳过匹配该 GTID 集合的完整事务",
 		"表定义 SQL 文件",
+		"始终离线",
+		"成员序号 / 位掩码",
 		"用法:",
 		"选项:",
 		"全局选项:",
@@ -404,6 +475,197 @@ COMMIT;`)
 	if got := e2eMySQL(t, "CHECKSUM TABLE shop.es"); got != esBefore {
 		t.Fatalf("non-strict es checksum\nbefore:\n%s\nrestored:\n%s", esBefore, got)
 	}
+
+	flashbackSchemaMatchE2E(t)
+	flashbackSchemaLayoutE2E(t)
+	flashbackEnumZeroE2E(t)
+}
+
+// flashbackSchemaMatchE2E refuses a schema file that is newer than the incident table.
+// The CREATE stays in the previous binlog, so the file is the only definition.
+func flashbackSchemaMatchE2E(t *testing.T) {
+	t.Helper()
+	e2eMySQL(t, `
+DROP TABLE IF EXISTS shop.stale;
+CREATE TABLE shop.stale (
+  id INT NOT NULL,
+  a INT NULL,
+  c INT NULL,
+  PRIMARY KEY (id)
+);
+INSERT INTO shop.stale VALUES (1, 10, 99);`)
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, "DELETE FROM shop.stale WHERE id = 1")
+	path := e2eIncidentBinlog(t)
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "generated",
+			body: "USE `shop`;\nCREATE TABLE `stale` (\n  `id` int NOT NULL,\n  `a` int DEFAULT NULL,\n  `c` int GENERATED ALWAYS AS ((`a` + 1)) STORED,\n  PRIMARY KEY (`id`)\n);\n",
+			want: "c is generated",
+		},
+		{
+			name: "extra",
+			body: "USE `shop`;\nCREATE TABLE `stale` (\n  `id` int NOT NULL,\n  `a` int DEFAULT NULL,\n  `c` int DEFAULT NULL,\n  `d` int DEFAULT NULL,\n  PRIMARY KEY (`id`)\n);\n",
+			want: "extra d",
+		},
+		{
+			name: "missing",
+			body: "USE `shop`;\nCREATE TABLE `stale` (\n  `id` int NOT NULL,\n  `a` int DEFAULT NULL,\n  PRIMARY KEY (`id`)\n);\n",
+			want: "missing c",
+		},
+		{
+			name: "reordered",
+			body: "USE `shop`;\nCREATE TABLE `stale` (\n  `id` int NOT NULL,\n  `c` int DEFAULT NULL,\n  `a` int DEFAULT NULL,\n  PRIMARY KEY (`id`)\n);\n",
+			want: "reordered",
+		},
+	}
+	for _, tc := range cases {
+		schema := filepath.Join(t.TempDir(), tc.name+".sql")
+		if err := os.WriteFile(schema, []byte(tc.body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		stdout, stderr, err := executeFlashbackLikeMain(t, path, "--schema-file", schema, "--include-table", "shop.stale")
+		assertFlashbackRefused(t, stdout, stderr, err, "shop.stale")
+		if !strings.Contains(err.Error(), tc.want) {
+			t.Fatalf("%s: error %v, want %q\nstderr:\n%s", tc.name, err, tc.want, stderr)
+		}
+	}
+}
+
+// flashbackSchemaLayoutE2E restores shop.gen and shop.wide from a plain mysqldump
+// and from two SHOW CREATE TABLE rows that have no semicolon between them.
+func flashbackSchemaLayoutE2E(t *testing.T) {
+	t.Helper()
+	const sumSQL = "CHECKSUM TABLE shop.gen, shop.wide"
+	const mutate = `
+START TRANSACTION;
+UPDATE shop.gen SET base = 11 WHERE id = 1;
+DELETE FROM shop.gen WHERE id = 2;
+INSERT INTO shop.gen (id, base) VALUES (4, 40);
+UPDATE shop.wide SET note = 'schema-file' WHERE id = 1 AND bucket = 1;
+COMMIT;`
+	restore := func(schemaPath, label string) {
+		t.Helper()
+		before := e2eMySQL(t, sumSQL)
+		e2eMySQL(t, "FLUSH LOGS")
+		e2eMySQL(t, mutate)
+		path := e2eIncidentBinlog(t)
+		sql, stderr, err := executeFlashbackLikeMain(t, path, "--schema-file", schemaPath, "--include-table", "shop.gen,shop.wide")
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", label, err, stderr)
+		}
+		if strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") || !strings.Contains(sql, "shop`.`wide") {
+			t.Fatalf("%s sql:\n%s\nstderr:\n%s", label, sql, stderr)
+		}
+		e2eMySQL(t, sql)
+		if got := e2eMySQL(t, sumSQL); got != before {
+			t.Fatalf("%s checksum\nbefore:\n%s\nrestored:\n%s", label, before, got)
+		}
+	}
+
+	dump := e2eTool(t, "mysqldump", []string{"--no-data", "--default-character-set=utf8mb4", "--set-gtid-purged=OFF", "shop"}, "")
+	if !strings.Contains(dump, "Database: shop") || strings.Contains(dump, "\nUSE ") {
+		t.Fatalf("mysqldump --no-data shop:\n%s", dump)
+	}
+	dumpPath := filepath.Join(t.TempDir(), "shop.sql")
+	if err := os.WriteFile(dumpPath, []byte(dump), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	restore(dumpPath, "mysqldump")
+
+	show := e2eMySQL(t, "SHOW CREATE TABLE shop.gen; SHOW CREATE TABLE shop.wide;")
+	if strings.Count(show, "CREATE TABLE") < 2 || strings.Contains(show, "USE ") {
+		t.Fatalf("show create:\n%s", show)
+	}
+	showPath := filepath.Join(t.TempDir(), "show.sql")
+	if err := os.WriteFile(showPath, []byte(show), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	restore(showPath, "show create")
+}
+
+func flashbackEnumZeroE2E(t *testing.T) {
+	t.Helper()
+	e2eMySQL(t, `
+DROP TABLE IF EXISTS shop.ezero;
+CREATE TABLE shop.ezero (
+  id INT NOT NULL,
+  e ENUM('red','blue') NOT NULL,
+  PRIMARY KEY (id)
+);`)
+	e2eMySQL(t, "SET SESSION sql_mode=''; INSERT INTO shop.ezero VALUES (1, 0), (2, 1);")
+	before := e2eMySQL(t, "CHECKSUM TABLE shop.ezero")
+	indexes := e2eMySQL(t, "SELECT id, e+0 FROM shop.ezero ORDER BY id")
+	if indexes != "1\t0\n2\t1\n" && indexes != "1\t0\n2\t1" {
+		t.Fatalf("enum indexes:\n%q", indexes)
+	}
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, `
+START TRANSACTION;
+DELETE FROM shop.ezero WHERE id = 2;
+DELETE FROM shop.ezero WHERE id = 1;
+COMMIT;`)
+	path := e2eIncidentBinlog(t)
+	sql, stderr, err := executeFlashbackLikeMain(t, path, "--include-table", "shop.ezero")
+	if err != nil {
+		t.Fatalf("enum 0: %v\n%s", err, stderr)
+	}
+	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode;"
+	const restoreMode = "SET SESSION sql_mode = @binlogviz_sql_mode;"
+	if strings.Count(sql, save) != 1 || strings.Count(sql, restoreMode) != 1 {
+		t.Fatalf("enum 0 sql:\n%s", sql)
+	}
+	i := strings.Index(sql, save)
+	j := strings.Index(sql, restoreMode)
+	mid := sql[i:j]
+	if !strings.Contains(mid, "(1, 0)") || strings.Contains(mid, "(2, 1)") || !strings.Contains(sql, "(2, 1)") {
+		t.Fatalf("enum 0 wrap:\n%s", sql)
+	}
+	e2eMySQL(t, sql)
+	if got := e2eMySQL(t, "CHECKSUM TABLE shop.ezero"); got != before {
+		t.Fatalf("enum 0 checksum\nbefore:\n%s\nrestored:\n%s", before, got)
+	}
+	if got := e2eMySQL(t, "SELECT id, e+0 FROM shop.ezero ORDER BY id"); got != indexes {
+		t.Fatalf("enum 0 indexes\nbefore:\n%q\nrestored:\n%q", indexes, got)
+	}
+}
+
+func e2eIncidentBinlog(t *testing.T) string {
+	t.Helper()
+	e2eMySQL(t, "FLUSH LOGS")
+	datadir := strings.TrimSpace(e2eMySQL(t, "SELECT @@datadir"))
+	names := binlogNames(t, e2eMySQL(t, "SHOW BINARY LOGS"))
+	name := names[len(names)-2]
+	dst := filepath.Join(t.TempDir(), name)
+	e2eCopy(t, datadir+"/"+name, dst)
+	return dst
+}
+
+func e2eTool(t *testing.T, bin string, args []string, stdin string) string {
+	t.Helper()
+	base := strings.Fields(os.Getenv("BINLOGVIZ_MYSQL"))
+	if len(base) == 0 {
+		base = []string{"sudo", "mysql"}
+	}
+	for i, arg := range base {
+		if arg == "mysql" || strings.HasSuffix(arg, "/mysql") {
+			base[i] = bin
+			break
+		}
+	}
+	cmd := exec.Command(base[0], append(base[1:], args...)...)
+	cmd.Stdin = strings.NewReader(stdin)
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("%s: %v\n%s", bin, err, stderr.String())
+	}
+	return stdout.String()
 }
 
 // transactionPayloadEventType is MySQL TRANSACTION_PAYLOAD_EVENT.
