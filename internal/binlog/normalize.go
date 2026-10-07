@@ -95,6 +95,7 @@ func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 		Schema:           raw.Schema,
 		Table:            raw.Table,
 		RowCount:         raw.RowCount,
+		KeyStatus:        raw.KeyStatus,
 		RowImages:        raw.RowImages,
 		RowImagesOmitted: raw.RowImagesOmitted,
 	}

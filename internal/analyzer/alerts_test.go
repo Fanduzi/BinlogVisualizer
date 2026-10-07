@@ -186,6 +186,28 @@ func TestDetectLargeTransactionAlertsNoneTriggered(t *testing.T) {
 	}
 }
 
+func TestNoPrimaryKeyAlertsRankUpdateDeleteAndSkipInsertOnly(t *testing.T) {
+	alerts := NoPrimaryKeyAlerts([]model.TableStats{
+		{Schema: "shop", Table: "orders", KeyStatus: model.KeyStatusHasPK, UpdateRows: 10, DeleteRows: 4, NoPKUpdateRows: 0},
+		{Schema: "shop", Table: "scratch", KeyStatus: model.KeyStatusNoPK, InsertRows: 3, NoPKInsertRows: 3},
+		{Schema: "shop", Table: "log", KeyStatus: model.KeyStatusNoPK, UpdateRows: 1, NoPKUpdateRows: 1},
+		{Schema: "shop", Table: "heap", KeyStatus: model.KeyStatusNoPK, UpdateRows: 2, DeleteRows: 1, NoPKUpdateRows: 2, NoPKDeleteRows: 1},
+		{Schema: "shop", Table: "unknown", KeyStatus: model.KeyStatusUnknown, UpdateRows: 9, DeleteRows: 9},
+	})
+	if len(alerts) != 2 {
+		t.Fatalf("alerts=%d, want heap then log", len(alerts))
+	}
+	if alerts[0].Type != "no_primary_key" || alerts[0].Severity != "warning" {
+		t.Fatalf("alert=%+v", alerts[0])
+	}
+	if alerts[0].Details["table"] != "shop.heap" || alerts[0].Details["update_rows"] != 2 || alerts[0].Details["delete_rows"] != 1 {
+		t.Fatalf("heap details=%v", alerts[0].Details)
+	}
+	if alerts[1].Details["table"] != "shop.log" {
+		t.Fatalf("second alert=%v", alerts[1].Details)
+	}
+}
+
 func TestDetectLargeTransactionAlertsDisabledThresholds(t *testing.T) {
 	// When thresholds are zero (disabled), no alerts should be generated
 	transactions := []model.Transaction{

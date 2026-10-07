@@ -29,6 +29,7 @@ type NormalizedEvent struct {
 	Table              string
 	Operation          string // INSERT, UPDATE, DELETE, LOAD_DATA
 	RowCount           int
+	KeyStatus          string // has_pk, no_pk, or unknown; set on ROW events from TABLE_MAP metadata
 	QuerySQL           string // Original SQL from Rows_query_log_event (bounded)
 	QueryTruncated     bool   // True if QuerySQL was truncated
 	QueryOriginalBytes int    // Original SQL byte count before truncation

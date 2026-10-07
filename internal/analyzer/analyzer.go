@@ -446,6 +446,11 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		findings := BuildFindingsFromAlerts(alerts, nil, nil, nil)
 		result.Diagnostics.Findings = append(findings, result.Diagnostics.Findings...)
 	}
+	if pkAlerts := NoPrimaryKeyAlerts(result.Tables); len(pkAlerts) > 0 {
+		result.Alerts = append(pkAlerts, result.Alerts...)
+		findings := BuildFindingsFromAlerts(pkAlerts, nil, nil, nil)
+		result.Diagnostics.Findings = append(findings, result.Diagnostics.Findings...)
+	}
 	return result, nil
 }
 

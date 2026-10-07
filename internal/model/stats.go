@@ -19,6 +19,15 @@ type TableActivityPoint struct {
 	DDLCount    int
 }
 
+const (
+	// KeyStatusHasPK means binlog_row_metadata=FULL named a primary key.
+	KeyStatusHasPK = "has_pk"
+	// KeyStatusNoPK means FULL metadata was present and named no primary key.
+	KeyStatusNoPK = "no_pk"
+	// KeyStatusUnknown means the binlog did not carry FULL row metadata.
+	KeyStatusUnknown = "unknown"
+)
+
 // TableStats holds per-table write statistics.
 type TableStats struct {
 	Schema        string
@@ -34,6 +43,14 @@ type TableStats struct {
 	DDLCount      int
 	LastChangedAt time.Time
 	Activity      []TableActivityPoint
+	// KeyStatus is has_pk, no_pk, or unknown for tables that received row events.
+	// Empty means the table had no row events.
+	KeyStatus string
+	// NoPKInsertRows, NoPKUpdateRows, and NoPKDeleteRows count rows whose
+	// TABLE_MAP said the table had no primary key.
+	NoPKInsertRows int
+	NoPKUpdateRows int
+	NoPKDeleteRows int
 }
 
 // MinuteBucket holds aggregated activity for a single minute.

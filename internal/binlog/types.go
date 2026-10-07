@@ -34,6 +34,7 @@ type RawEvent struct {
 	ActorUser        string
 	ActorHost        string
 	RowCount         int
+	KeyStatus        string           // has_pk, no_pk, or unknown from TABLE_MAP optional metadata.
 	RowImages        []model.RowImage // Set only when row-image capture is on. Nil otherwise.
 	RowImagesOmitted int
 	Position         uint32 // Legacy next-event position retained for existing callers and error messages.
