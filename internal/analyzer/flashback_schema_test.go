@@ -99,13 +99,13 @@ func TestSchemaFileRefusesMismatches(t *testing.T) {
 			name:   "generated values differ",
 			schema: strings.Replace(base, "  `c` int DEFAULT NULL,\n", "  `c` int GENERATED ALWAYS AS ((`a` + 1)) STORED,\n", 1),
 			flash:  row([]string{"id", "a", "c"}, []string{"1", "10", "99"}, ints),
-			want:   []string{"shop.t", "c is generated", "a` + 1"},
+			want:   []string{"shop.t", "does not match", "c is generated", "a` + 1", "--include-table", "incident time"},
 		},
 		{
-			name:   "generated expression unchecked",
-			schema: strings.Replace(base, "  `c` int DEFAULT NULL,\n", "  `c` int GENERATED ALWAYS AS (lower(`a`)) VIRTUAL,\n", 1),
-			flash:  row([]string{"id", "a", "c"}, []string{"1", "10", "11"}, ints),
-			want:   []string{"shop.t", "c is generated", "cannot be checked"},
+			name:   "division truncated",
+			schema: strings.Replace(base, "  `c` int DEFAULT NULL,\n", "  `c` int GENERATED ALWAYS AS ((`a` / 2)) STORED,\n", 1),
+			flash:  row([]string{"id", "a", "c"}, []string{"1", "5", "2"}, ints),
+			want:   []string{"shop.t", "does not match", "c is generated", "/ 2", "--include-table"},
 		},
 	}
 	for _, tc := range cases {
@@ -114,12 +114,182 @@ func TestSchemaFileRefusesMismatches(t *testing.T) {
 			if err == nil || sql != "" {
 				t.Fatalf("sql %q err %v", sql, err)
 			}
-			for _, want := range tc.want {
+			if strings.Contains(err.Error(), "cannot verify") {
+				t.Fatalf("mismatch was reported as unverifiable: %v", err)
+			}
+			for _, want := range append(tc.want, "does not match", "--include-table", "incident time", "ALTER") {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("error %v, missing %q", err, want)
 				}
 			}
 		})
+	}
+}
+
+func TestSchemaFileTrustsUncheckedGenerated(t *testing.T) {
+	const schema = "USE `p160`;\nCREATE TABLE `gen` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `j` json DEFAULT NULL,\n" +
+		"  `jv` varchar(20) GENERATED ALWAYS AS (j->>'$.k') VIRTUAL,\n" +
+		"  PRIMARY KEY (`id`)\n);\n" +
+		"CREATE TABLE `gen_nopk` (\n" +
+		"  `a` int DEFAULT NULL,\n" +
+		"  `v` varchar(10) GENERATED ALWAYS AS (UPPER(`a`)) VIRTUAL\n);\n"
+	rows := []model.FlashRow{
+		{
+			Schema: "p160", Table: "gen", Op: "DELETE",
+			Columns: []string{"id", "j", "jv"},
+			Cols: []model.FlashCol{
+				{Base: "int", HasSign: true},
+				{Base: "json"},
+				{Base: "varchar", Charset: "utf8mb4"},
+			},
+			Before: []string{"1", "CAST('{\"k\":\"ab\"}' AS JSON)", "'ab'"},
+			PK:     []int{0},
+		},
+		{
+			Schema: "p160", Table: "gen", Op: "DELETE",
+			Columns: []string{"id", "j", "jv"},
+			Cols: []model.FlashCol{
+				{Base: "int", HasSign: true},
+				{Base: "json"},
+				{Base: "varchar", Charset: "utf8mb4"},
+			},
+			Before: []string{"2", "CAST('{\"k\":\"cd\"}' AS JSON)", "'cd'"},
+			PK:     []int{0},
+		},
+		{
+			Schema: "p160", Table: "gen_nopk", Op: "DELETE", NoPK: true,
+			Columns: []string{"a", "v"},
+			Cols: []model.FlashCol{
+				{Base: "int", HasSign: true},
+				{Base: "varchar"},
+			},
+			Before: []string{"1", "'1'"},
+		},
+	}
+	sql, warnings, err := flashSchemaResult(t, schema, "", rows...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sql, "`jv`") || strings.Contains(sql, "`v`") || !strings.Contains(sql, "INSERT INTO `p160`.`gen` (`id`, `j`)") {
+		t.Fatalf("sql:\n%s", sql)
+	}
+	text := strings.Join(warnings, "\n")
+	if strings.Contains(text, "does not match") {
+		t.Fatalf("warning blamed the file:\n%s", text)
+	}
+	for _, want := range []string{"cannot verify", "p160.gen", "jv", "p160.gen_nopk", "UPPER", "--include-table", "incident time", "ALTER"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("warnings missing %q:\n%s", want, text)
+		}
+	}
+	if strings.Count(text, "p160.gen:") != 1 {
+		t.Fatalf("warning repeated per row:\n%s", text)
+	}
+}
+
+func TestSchemaFileIntegerGeneratedOps(t *testing.T) {
+	const schema = "USE `p164`;\nCREATE TABLE `ar` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `a` int DEFAULT NULL,\n" +
+		"  `b` int DEFAULT NULL,\n" +
+		"  `s1` int GENERATED ALWAYS AS (((`a` + `b`) * 3) - 1) STORED,\n" +
+		"  `s2` int GENERATED ALWAYS AS ((`a` / 2)) STORED,\n" +
+		"  `s3` bigint GENERATED ALWAYS AS ((-(`a`) * `b`)) VIRTUAL,\n" +
+		"  `s4` int GENERATED ALWAYS AS ((`a` DIV 2)) VIRTUAL,\n" +
+		"  `s5` int GENERATED ALWAYS AS ((`a` % 2)) VIRTUAL,\n" +
+		"  `s6` int GENERATED ALWAYS AS (MOD(`a`, 2)) VIRTUAL,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	cols := []model.FlashCol{
+		{Base: "int", HasSign: true},
+		{Base: "int", HasSign: true},
+		{Base: "int", HasSign: true},
+		{Base: "int", HasSign: true},
+		{Base: "int", HasSign: true},
+		{Base: "bigint", HasSign: true},
+		{Base: "int", HasSign: true},
+		{Base: "int", HasSign: true},
+		{Base: "int", HasSign: true},
+	}
+	names := []string{"id", "a", "b", "s1", "s2", "s3", "s4", "s5", "s6"}
+	row := func(before []string) model.FlashRow {
+		return model.FlashRow{
+			Schema: "p164", Table: "ar", Op: "DELETE",
+			Columns: names, Cols: cols, Before: before, PK: []int{0},
+		}
+	}
+	sql, warnings, err := flashSchemaResult(t, schema, "",
+		row([]string{"1", "5", "7", "35", "3", "-35", "2", "1", "1"}),
+		row([]string{"2", "-5", "NULL", "NULL", "-3", "NULL", "-2", "-1", "-1"}),
+		row([]string{"3", "4", "0", "11", "2", "0", "2", "0", "0"}),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sql, "`s1`") || strings.Contains(sql, "`s2`") || strings.Contains(sql, "`s4`") || !strings.Contains(sql, "VALUES (2, -5, NULL)") {
+		t.Fatalf("sql:\n%s", sql)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("integer expressions should be checked, warnings: %#v", warnings)
+	}
+
+	bad, err := flashSchemaSQL(t, schema, "", row([]string{"1", "5", "7", "35", "2", "-35", "3", "1", "1"}))
+	if err == nil || bad != "" || !strings.Contains(err.Error(), "does not match") || !strings.Contains(err.Error(), "s2") {
+		t.Fatalf("sql %q err %v", bad, err)
+	}
+}
+
+func TestEvalIntExprMySQLAssignment(t *testing.T) {
+	cases := []struct {
+		expr string
+		env  map[string]string
+		want string
+		ok   bool
+	}{
+		{expr: "(a + b) * 3 - 1", env: map[string]string{"a": "5", "b": "7"}, want: "35", ok: true},
+		{expr: "a / 2", env: map[string]string{"a": "5"}, want: "3", ok: true},
+		{expr: "a / 2", env: map[string]string{"a": "-5"}, want: "-3", ok: true},
+		{expr: "-a * b", env: map[string]string{"a": "5", "b": "7"}, want: "-35", ok: true},
+		{expr: "a DIV 2", env: map[string]string{"a": "5"}, want: "2", ok: true},
+		{expr: "a div 2", env: map[string]string{"a": "-5"}, want: "-2", ok: true},
+		{expr: "a % 2", env: map[string]string{"a": "5"}, want: "1", ok: true},
+		{expr: "a MOD 2", env: map[string]string{"a": "-5"}, want: "-1", ok: true},
+		{expr: "MOD(a, 2)", env: map[string]string{"a": "5"}, want: "1", ok: true},
+		{expr: "5 % -2", want: "1", ok: true},
+		{expr: "-5 DIV -2", want: "2", ok: true},
+		{expr: "1/2", want: "1", ok: true},
+		{expr: "-1/2", want: "-1", ok: true},
+		{expr: "2/3", want: "1", ok: true},
+		{expr: "1/3", want: "0", ok: true},
+		{expr: "-2/3", want: "-1", ok: true},
+		{expr: "7/2", want: "4", ok: true},
+		{expr: "-7/2", want: "-4", ok: true},
+		{expr: "(a + b) * 3 - 1", env: map[string]string{"a": "-5", "b": "NULL"}, want: "NULL", ok: true},
+		{expr: "-a * b", env: map[string]string{"a": "-5", "b": "NULL"}, want: "NULL", ok: true},
+		{expr: "(a + b) * 3 - 1", env: map[string]string{"a": "4", "b": "0"}, want: "11", ok: true},
+		{expr: "-a * b", env: map[string]string{"a": "4", "b": "0"}, want: "0", ok: true},
+		{expr: "a % b", env: map[string]string{"a": "4", "b": "0"}, want: "NULL", ok: true},
+		{expr: "a / 0", env: map[string]string{"a": "4"}, want: "NULL", ok: true},
+		{expr: "UPPER(a)", env: map[string]string{"a": "1"}, ok: false},
+		{expr: "j->>'$.k'", env: map[string]string{"j": "1"}, ok: false},
+		{expr: "CONCAT(a, b)", env: map[string]string{"a": "1", "b": "2"}, ok: false},
+	}
+	for _, tc := range cases {
+		v, ok := evalIntExpr(tc.expr, tc.env)
+		if ok != tc.ok {
+			t.Fatalf("%s ok=%v want %v", tc.expr, ok, tc.ok)
+		}
+		if !tc.ok {
+			continue
+		}
+		got := "NULL"
+		if !v.null {
+			got = roundRatHalfAway(v.n).String()
+		}
+		if got != tc.want {
+			t.Fatalf("%s = %s, want %s", tc.expr, got, tc.want)
+		}
 	}
 }
 
@@ -361,7 +531,7 @@ func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
 	}
 	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode;"
 	const restore = "SET SESSION sql_mode = @binlogviz_sql_mode;"
-	if strings.Count(sql, save) != 1 || strings.Count(sql, restore) != 1 || !strings.Contains(sql, "STRICT_TRANS_TABLES") || !strings.Contains(sql, "STRICT_ALL_TABLES") {
+	if strings.Count(sql, save) != 1 || strings.Count(sql, restore) != 1 || !strings.Contains(sql, "STRICT_TRANS_TABLES") || !strings.Contains(sql, "STRICT_ALL_TABLES") || !strings.Contains(sql, ",TRADITIONAL,") {
 		t.Fatalf("wrap:\n%s", sql)
 	}
 	i := strings.Index(sql, save)
@@ -394,6 +564,12 @@ func flashEvent(row model.FlashRow) model.NormalizedEvent {
 
 func flashSchemaSQL(t *testing.T, schema, db string, rows ...model.FlashRow) (string, error) {
 	t.Helper()
+	sql, _, err := flashSchemaResult(t, schema, db, rows...)
+	return sql, err
+}
+
+func flashSchemaResult(t *testing.T, schema, db string, rows ...model.FlashRow) (string, []string, error) {
+	t.Helper()
 	a := New(Options{Flashback: true, SchemaSQL: schema, SchemaFileDB: db})
 	events := make([]model.NormalizedEvent, len(rows))
 	for i, row := range rows {
@@ -402,7 +578,8 @@ func flashSchemaSQL(t *testing.T, schema, db string, rows ...model.FlashRow) (st
 		events[i].PositionEnd = events[i].PositionStart + 10
 	}
 	consumeFlash(t, a, events...)
-	return a.FlashbackSQL()
+	sql, err := a.FlashbackSQL()
+	return sql, a.FlashbackWarnings(), err
 }
 
 func consumeFlash(t *testing.T, a *Analyzer, events ...model.NormalizedEvent) {
