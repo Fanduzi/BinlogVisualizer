@@ -309,6 +309,32 @@ func TestSchemaFileRefusesGeneratedContradiction(t *testing.T) {
 	}
 }
 
+func TestSchemaFileAsciiExampleIsText(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `code` varchar(20) CHARACTER SET ascii DEFAULT NULL,\n" +
+		"  `c` varchar(20) CHARACTER SET ascii GENERATED ALWAYS AS (upper(`code`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	row := model.FlashRow{
+		Schema: "shop", Table: "t", Op: "DELETE",
+		Columns: []string{"id", "code", "c"},
+		Cols: []model.FlashCol{
+			{Base: "int", HasSign: true},
+			{Base: "varchar", Charset: "ascii"},
+			{Base: "varchar", Charset: "ascii"},
+		},
+		Before: []string{"1", "_ascii 0x6162", "_ascii 0x6E6F74652D31"},
+		PK:     []int{0},
+	}
+	sql, _, err := flashSchemaResult(t, schema, "", row)
+	if err == nil || sql != "" {
+		t.Fatalf("sql %q err %v", sql, err)
+	}
+	if !strings.Contains(err.Error(), "note-1") || !strings.Contains(err.Error(), "code='ab'") || strings.Contains(err.Error(), "0x6E6F74652D31") {
+		t.Fatalf("example stayed hex: %v", err)
+	}
+}
+
 func TestSchemaFileRefusesDependencyClash(t *testing.T) {
 	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
 		"  `id` int NOT NULL,\n" +
@@ -460,6 +486,9 @@ func TestSchemaFileUnverifiedGeneratedWarns(t *testing.T) {
 	}
 	if !guardBeforeTransaction(sql) {
 		t.Fatalf("guard is not in the header:\n%s", sql)
+	}
+	if !strings.Contains(sql, "FROM DUAL WHERE NOT EXISTS") || strings.Contains(sql, "AS q WHERE") {
+		t.Fatalf("guard arm is not SELECT ... FROM DUAL:\n%s", sql)
 	}
 	text := strings.Join(warnings, "\n")
 	if !strings.Contains(text, "shop.t.c") || !strings.Contains(text, "not verified") || !strings.Contains(text, "MD5") || !strings.Contains(text, "guard") {

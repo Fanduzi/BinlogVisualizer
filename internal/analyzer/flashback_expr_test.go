@@ -247,6 +247,30 @@ func TestIssue182ListedCases(t *testing.T) {
 	check(t, kinds[1], kinds, []string{"j", "g"}, []string{"JSON_OBJECT('v', 1.0)", "CAST(1 AS JSON)"}, true, false)
 }
 
+func TestExampleLiteral(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{in: "_ascii 0x6E6F74652D31", want: "'note-1'"},
+		{in: "_ascii 0x6162", want: "'ab'"},
+		{in: "_latin1 0xE9", want: "'é'"},
+		{in: "_latin1 0x80", want: "'€'"},
+		{in: "_utf8mb4 0x6E6F7465", want: "'note'"},
+		{in: "_utf16 0x006E006F00740065", want: "'note'"},
+		{in: "_gbk 0x6162", want: "'ab'"},
+		{in: "_gbk 0xC4E3", want: "'你'"},
+		{in: "_ascii 0x0061", want: "_ascii 0x0061"},
+		{in: "_binary 0x6162", want: "_binary 0x6162"},
+		{in: "X'6162'", want: "X'6162'"},
+		{in: "'note-1'", want: "'note-1'"},
+		{in: "_swe7 0x5B", want: "_swe7 0x5B"},
+		{in: "_ascii X''", want: "''"},
+	}
+	for _, tc := range cases {
+		if got := exampleLiteral(tc.in); got != tc.want {
+			t.Fatalf("%s → %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestGeneratedRefs(t *testing.T) {
 	cases := []struct {
 		expr string
