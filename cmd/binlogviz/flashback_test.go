@@ -520,6 +520,7 @@ COMMIT;`)
 	flashbackGeneratedExprE2E(t)
 	flashbackGeneratedLossE2E(t)
 	flashbackTargetGuardE2E(t)
+	flashbackDecimalGeneratedE2E(t)
 }
 
 // flashbackSchemaMatchE2E refuses a schema file that is newer than the incident table.
@@ -1089,6 +1090,292 @@ COMMIT;`)
 	e2eMySQL(t, sql)
 	if got := e2eMySQL(t, "SELECT id, v FROM p182.j ORDER BY id"); got != stored {
 		t.Fatalf("json restored\nwant:\n%s\ngot:\n%s\nsql:\n%s", stored, got, sql)
+	}
+}
+
+// flashbackDecimalGeneratedE2E restores DECIMAL generated columns that divide,
+// including exact quotients, repeating fractions, negatives, and BIGINT edges.
+// A wrong expression is refused. A non-strict clip only warns. A quotient
+// written with div_precision_increment=0 is refused.
+func flashbackDecimalGeneratedE2E(t *testing.T) {
+	t.Helper()
+	e2eMySQL(t, `
+DROP DATABASE IF EXISTS p179;
+CREATE DATABASE p179;
+CREATE TABLE p179.qd (
+  id INT NOT NULL,
+  a BIGINT,
+  b BIGINT,
+  g DECIMAL(40,4) AS (a / b) STORED,
+  g9 DECIMAL(40,9) AS (a / b) STORED,
+  half DECIMAL(20,1) AS (a / b) STORED,
+  mul DECIMAL(40,4) AS ((a / b) * b) STORED,
+  gi BIGINT AS (a / b) STORED,
+  gimul BIGINT AS ((a / b) * b) STORED,
+  note VARCHAR(10),
+  PRIMARY KEY (id)
+);
+CREATE TABLE p179.price (
+  id INT NOT NULL,
+  total DECIMAL(14,2),
+  qty DECIMAL(10,2),
+  unit_price DECIMAL(12,4) AS (total / qty) STORED,
+  PRIMARY KEY (id)
+);
+CREATE TABLE p179.wide (
+  id INT NOT NULL,
+  au BIGINT UNSIGNED,
+  bu BIGINT UNSIGNED,
+  g DECIMAL(40,4) AS (au / bu) STORED,
+  g9 DECIMAL(40,9) AS (au / bu) STORED,
+  mul DECIMAL(40,4) AS ((au / bu) * bu) STORED,
+  PRIMARY KEY (id)
+);
+CREATE TABLE p179.ops (
+  id INT NOT NULL,
+  a INT,
+  b INT,
+  s1 DECIMAL(40,4) AS ((a + b) * 3 - 1) STORED,
+  neg DECIMAL(40,4) AS (-(a * b)) STORED,
+  dv DECIMAL(20,4) AS (a DIV b) STORED,
+  md DECIMAL(20,4) AS (MOD(a, b)) STORED,
+  half DECIMAL(20,4) AS (a / 2) STORED,
+  PRIMARY KEY (id)
+);
+CREATE TABLE p179.small (
+  id INT NOT NULL,
+  a INT,
+  t TINYINT AS (a * 100) STORED,
+  PRIMARY KEY (id)
+);
+INSERT INTO p179.qd (id, a, b, note) VALUES
+  (1, 5, 2, 'half'),
+  (2, 15, 4, 'exact'),
+  (3, 1, 3, 'rep'),
+  (4, 2, 3, 'rep'),
+  (5, 1, 7, 'rep'),
+  (6, -5, 2, 'neg'),
+  (7, 5, -2, 'neg'),
+  (8, -5, -2, 'neg'),
+  (9, 9, 2, 'up'),
+  (10, 1, 2, 'half'),
+  (11, -1, 2, 'half'),
+  (12, 1, 8, 'eighth'),
+  (13, -3, 8, 'eighth'),
+  (14, 49999, 20000, 'edge'),
+  (15, 1, 30000, 'tiny'),
+  (16, 1, 10000000000, 'loss'),
+  (17, 1, 1000000000, 'keep'),
+  (18, 9223372036854775807, 2, 'max'),
+  (19, -9223372036854775808, 2, 'min'),
+  (20, NULL, 2, 'null'),
+  (21, 7, 4, 'threeq'),
+  (22, 22, 7, 'pi'),
+  (23, 9999999995, 10000000000, 'near1');
+INSERT INTO p179.price (id, total, qty) VALUES
+  (1, 15.00, 4.00),
+  (2, 10.00, 3.00),
+  (3, 1.00, 7.00),
+  (4, -15.50, 2.00),
+  (5, 5.00, 2.50),
+  (6, 0.00, 1.00);
+INSERT INTO p179.wide (id, au, bu) VALUES
+  (1, 18446744073709551615, 2),
+  (2, 18446744073709551615, 3),
+  (3, 18446744073709551615, 7),
+  (4, 5, 2);
+INSERT INTO p179.ops (id, a, b) VALUES
+  (1, 5, 7),
+  (2, -5, 2),
+  (3, 9, 2),
+  (4, 5, NULL);
+INSERT INTO p179.small (id, a) VALUES (1, 1), (2, 0);
+`)
+	qd := e2eMySQL(t, `SELECT CONCAT_WS('|', id, IFNULL(g,'NULL'), IFNULL(g9,'NULL'), IFNULL(half,'NULL'), IFNULL(mul,'NULL'), IFNULL(gi,'NULL'), IFNULL(gimul,'NULL')) FROM p179.qd ORDER BY id`)
+	const wantQD = "" +
+		"1|2.5000|2.500000000|2.5|5.0000|3|5\n" +
+		"2|3.7500|3.750000000|3.8|15.0000|4|15\n" +
+		"3|0.3333|0.333333333|0.3|1.0000|0|1\n" +
+		"4|0.6667|0.666666666|0.7|2.0000|1|2\n" +
+		"5|0.1429|0.142857142|0.1|1.0000|0|1\n" +
+		"6|-2.5000|-2.500000000|-2.5|-5.0000|-3|-5\n" +
+		"7|-2.5000|-2.500000000|-2.5|5.0000|-3|5\n" +
+		"8|2.5000|2.500000000|2.5|-5.0000|3|-5\n" +
+		"9|4.5000|4.500000000|4.5|9.0000|5|9\n" +
+		"10|0.5000|0.500000000|0.5|1.0000|1|1\n" +
+		"11|-0.5000|-0.500000000|-0.5|-1.0000|-1|-1\n" +
+		"12|0.1250|0.125000000|0.1|1.0000|0|1\n" +
+		"13|-0.3750|-0.375000000|-0.4|-3.0000|0|-3\n" +
+		"14|2.5000|2.499950000|2.5|49999.0000|2|49999\n" +
+		"15|0.0000|0.000033333|0.0|1.0000|0|1\n" +
+		"16|0.0000|0.000000000|0.0|0.0000|0|0\n" +
+		"17|0.0000|0.000000001|0.0|1.0000|0|1\n" +
+		"18|4611686018427387903.5000|4611686018427387903.500000000|4611686018427387903.5|9223372036854775807.0000|4611686018427387904|9223372036854775807\n" +
+		"19|-4611686018427387904.0000|-4611686018427387904.000000000|-4611686018427387904.0|-9223372036854775808.0000|-4611686018427387904|-9223372036854775808\n" +
+		"20|NULL|NULL|NULL|NULL|NULL|NULL\n" +
+		"21|1.7500|1.750000000|1.8|7.0000|2|7\n" +
+		"22|3.1429|3.142857142|3.1|22.0000|3|22\n" +
+		"23|1.0000|0.999999999|1.0|9999999990.0000|1|9999999990\n"
+	if qd != wantQD {
+		t.Fatalf("MySQL DECIMAL generated values:\n%s", qd)
+	}
+	price := e2eMySQL(t, `SELECT CONCAT_WS('|', id, unit_price) FROM p179.price ORDER BY id`)
+	const wantPrice = "1|3.7500\n2|3.3333\n3|0.1429\n4|-7.7500\n5|2.0000\n6|0.0000\n"
+	if price != wantPrice {
+		t.Fatalf("unit_price:\n%s", price)
+	}
+	wide := e2eMySQL(t, `SELECT CONCAT_WS('|', id, g, g9, mul) FROM p179.wide ORDER BY id`)
+	const wantWide = "" +
+		"1|9223372036854775807.5000|9223372036854775807.500000000|18446744073709551615.0000\n" +
+		"2|6148914691236517205.0000|6148914691236517205.000000000|18446744073709551615.0000\n" +
+		"3|2635249153387078802.1429|2635249153387078802.142857142|18446744073709551615.0000\n" +
+		"4|2.5000|2.500000000|5.0000\n"
+	if wide != wantWide {
+		t.Fatalf("unsigned:\n%s", wide)
+	}
+
+	const sumSQL = "CHECKSUM TABLE p179.qd, p179.price, p179.wide, p179.ops, p179.small"
+	before := e2eMySQL(t, sumSQL)
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, `
+START TRANSACTION;
+DELETE FROM p179.qd;
+DELETE FROM p179.price;
+DELETE FROM p179.wide;
+DELETE FROM p179.ops;
+DELETE FROM p179.small;
+COMMIT;`)
+	if e2eMySQL(t, sumSQL) == before {
+		t.Fatal("incident did not change DECIMAL generated checksums")
+	}
+	path := e2eIncidentBinlog(t)
+	dump := e2eTool(t, "mysqldump", []string{
+		"--no-data", "--default-character-set=utf8mb4", "--set-gtid-purged=OFF",
+		"--databases", "p179",
+	}, "")
+	if !strings.Contains(dump, "`g` decimal(40,4) GENERATED ALWAYS AS ((`a` / `b`))") || !strings.Contains(dump, "unit_price") {
+		t.Fatalf("dump missing DECIMAL generated columns:\n%s", dump)
+	}
+	dumpPath := filepath.Join(t.TempDir(), "p179.sql")
+	if err := os.WriteFile(dumpPath, []byte(dump), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sql, stderr, err := executeFlashbackLikeMain(t, path, "--schema-file", dumpPath, "--include-table", "p179.qd,p179.price,p179.wide,p179.ops,p179.small")
+	if err != nil {
+		t.Fatalf("decimal generated: %v\n%s\ndump:\n%s", err, stderr, dump)
+	}
+	if strings.Contains(stderr, "does not match") || strings.Contains(stderr, "cannot verify") || strings.Contains(stderr, "not verified") || strings.Contains(sql, "-- WARNING: generated column") {
+		t.Fatalf("correct DECIMAL dump was not accepted:\nstderr:\n%s\nsql:\n%s", stderr, sql)
+	}
+	for _, col := range []string{"`g`", "`g9`", "`half`", "`mul`", "`gi`", "`gimul`", "`unit_price`", "`s1`", "`neg`", "`dv`", "`md`", "`t`"} {
+		if sqlAssignsColumn(sql, col) {
+			t.Fatalf("sql still assigns %s:\n%s", col, sql)
+		}
+	}
+	if !strings.Contains(sql, "p179.qd.g") || !guardBeforeFirstGTID(sql) {
+		t.Fatalf("missing generated-column guard:\n%s", sql)
+	}
+	e2eMySQL(t, sql)
+	if got := e2eMySQL(t, sumSQL); got != before {
+		t.Fatalf("decimal checksum\nbefore:\n%s\nrestored:\n%s\nsql:\n%s", before, got, sql)
+	}
+
+	needle := "`g` decimal(40,4) GENERATED ALWAYS AS ((`a` / `b`))"
+	if strings.Count(dump, needle) != 1 {
+		t.Fatalf("dump needle count %d:\n%s", strings.Count(dump, needle), dump)
+	}
+	wrong := strings.Replace(dump, needle, "`g` decimal(40,4) GENERATED ALWAYS AS ((`a` + `b`))", 1)
+	wrongPath := filepath.Join(t.TempDir(), "p179-wrong.sql")
+	if err := os.WriteFile(wrongPath, []byte(wrong), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := executeFlashbackLikeMain(t, path, "--schema-file", wrongPath, "--include-table", "p179.qd")
+	assertFlashbackRefused(t, stdout, stderr, err, "does not match")
+	if strings.Contains(err.Error(), "cannot verify") || !strings.Contains(err.Error(), "p179.qd") {
+		t.Fatalf("wrong decimal dump: %v", err)
+	}
+
+	e2eMySQL(t, `
+DROP DATABASE IF EXISTS p179clip;
+CREATE DATABASE p179clip;
+SET SESSION sql_mode='';
+CREATE TABLE p179clip.clip (
+  id INT NOT NULL,
+  a INT,
+  t TINYINT AS (a * 100) STORED,
+  tu TINYINT UNSIGNED AS (a - 10) STORED,
+  PRIMARY KEY (id)
+);
+INSERT INTO p179clip.clip (id, a) VALUES (1, 1), (2, 5), (3, -5), (4, 20);
+`)
+	clipped := e2eMySQL(t, "SELECT CONCAT_WS('|', id, t, tu) FROM p179clip.clip ORDER BY id")
+	const wantClip = "1|100|0\n2|127|0\n3|-128|0\n4|127|10\n"
+	if clipped != wantClip {
+		t.Fatalf("clipped values:\n%s", clipped)
+	}
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, "DELETE FROM p179clip.clip")
+	clipPath := e2eIncidentBinlog(t)
+	clipDump := e2eTool(t, "mysqldump", []string{
+		"--no-data", "--default-character-set=utf8mb4", "--set-gtid-purged=OFF",
+		"--databases", "p179clip",
+	}, "")
+	clipFile := filepath.Join(t.TempDir(), "p179clip.sql")
+	if err := os.WriteFile(clipFile, []byte(clipDump), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sql, stderr, err = executeFlashbackLikeMain(t, clipPath, "--schema-file", clipFile, "--include-table", "p179clip.clip")
+	if err != nil {
+		t.Fatalf("clip dump refused: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, "not verified") || strings.Contains(stderr, "does not match") || sql == "" || sqlAssignsColumn(sql, "`t`") || sqlAssignsColumn(sql, "`tu`") {
+		t.Fatalf("clip should warn and omit:\nstderr:\n%s\nsql:\n%s", stderr, sql)
+	}
+	badClip := strings.Replace(clipDump, "((`a` * 100))", "((`a` + 100))", 1)
+	if badClip == clipDump {
+		t.Fatalf("clip dump had no a*100:\n%s", clipDump)
+	}
+	badClipFile := filepath.Join(t.TempDir(), "p179clip-wrong.sql")
+	if err := os.WriteFile(badClipFile, []byte(badClip), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err = executeFlashbackLikeMain(t, clipPath, "--schema-file", badClipFile, "--include-table", "p179clip.clip")
+	assertFlashbackRefused(t, stdout, stderr, err, "does not match")
+
+	e2eMySQL(t, `
+DROP DATABASE IF EXISTS p179inc;
+CREATE DATABASE p179inc;
+SET SESSION div_precision_increment = 0;
+CREATE TABLE p179inc.t (
+  id INT NOT NULL,
+  a INT,
+  b INT,
+  g DECIMAL(40,4) AS (a / b) STORED,
+  gi INT AS (a / b) STORED,
+  PRIMARY KEY (id)
+);
+INSERT INTO p179inc.t (id, a, b) VALUES (1, 5, 2), (2, 7, 4), (3, 15, 4), (4, 10, 5);
+`)
+	inc := e2eMySQL(t, "SELECT CONCAT_WS('|', id, g, gi) FROM p179inc.t ORDER BY id")
+	const wantInc = "1|2.0000|2\n2|1.0000|1\n3|3.0000|3\n4|2.0000|2\n"
+	if inc != wantInc {
+		t.Fatalf("div_precision_increment=0 values:\n%s", inc)
+	}
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, "DELETE FROM p179inc.t")
+	incPath := e2eIncidentBinlog(t)
+	incDump := e2eTool(t, "mysqldump", []string{
+		"--no-data", "--default-character-set=utf8mb4", "--set-gtid-purged=OFF",
+		"--databases", "p179inc",
+	}, "")
+	incFile := filepath.Join(t.TempDir(), "p179inc.sql")
+	if err := os.WriteFile(incFile, []byte(incDump), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err = executeFlashbackLikeMain(t, incPath, "--schema-file", incFile, "--include-table", "p179inc.t")
+	assertFlashbackRefused(t, stdout, stderr, err, "does not match")
+	if strings.Contains(err.Error(), "cannot verify") {
+		t.Fatalf("increment 0 was treated as unverifiable: %v", err)
 	}
 }
 

@@ -1,6 +1,6 @@
 // Package analyzer evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
-// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
+// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -1189,6 +1189,14 @@ func matchGenerated(got genVal, lit string, col schemaCol) (match, confident boo
 				return false, false
 			}
 		}
+		if clip, clipped := integerClip(iv, col); clipped {
+			// Non-strict sql_mode stores the type's endpoint. Matching that
+			// endpoint would also accept a real column that happens to hold it.
+			if intValMatches(intVal{n: new(big.Rat).SetInt(clip)}, literalNumber(lit)) {
+				return false, false
+			}
+			return false, true
+		}
 		return intValMatches(iv, literalNumber(lit)), true
 	}
 	if col.base == "json" && got.kind == genJSON && logged.kind == genJSON {
@@ -2117,13 +2125,31 @@ func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol)
 	unknown := false
 	for _, im := range images {
 		env := loggedEnv(im.columns, im.values, meta)
-		got, ok := evalGenExpr(col.expr, env)
-		if !ok {
+		lit, found := columnLit(im, col.name)
+		if !found {
 			unknown = true
 			continue
 		}
-		lit, found := columnLit(im, col.name)
-		if !found {
+		if col.base == "decimal" || integerAssign(col.base) {
+			if dec, ok := evalDecExpr(col.expr, env); ok {
+				var match, confident bool
+				if col.base == "decimal" {
+					match, confident = matchDecLiteral(dec, lit, col)
+				} else {
+					match, confident = matchDecAsInt(dec, lit, col)
+				}
+				if !confident {
+					unknown = true
+					continue
+				}
+				if !match {
+					return exampleImage(im), false
+				}
+				continue
+			}
+		}
+		got, ok := evalGenExpr(col.expr, env)
+		if !ok {
 			unknown = true
 			continue
 		}
@@ -2476,4 +2502,467 @@ func textCharset(charset string) string {
 	default:
 		return charset
 	}
+}
+
+// mysqlDefaultDivPrecIncrement is MySQL's default div_precision_increment.
+// The binlog does not record the variable. Integer / integer at this default
+// is not "4 extra digits": decimal.cc rounds the fractional width up to a
+// multiple of 9 (DIG_PER_DEC1) and cuts the rest off. 1/7 is 0.142857142,
+// and DECIMAL(40,9) stores that truncation. Assignment then rounds half away
+// from zero to the column scale, so DECIMAL(40,4) stores 0.1429.
+const mysqlDefaultDivPrecIncrement = 4
+
+const mysqlDecDigitsPerWord = 9
+
+// mysqlDecMaxScale is DECIMAL's maximum scale. Column scales stay within it.
+const mysqlDecMaxScale = 30
+
+// decVal is one exact decimal result at a known scale. scale is the number of
+// fractional digits MySQL kept. Further digits were cut off, not rounded.
+type decVal struct {
+	null  bool
+	n     *big.Rat
+	scale int
+}
+
+func integerClip(v intVal, col schemaCol) (*big.Int, bool) {
+	if v.null || v.n == nil {
+		return nil, false
+	}
+	min, max, ok := integerBounds(col)
+	if !ok {
+		return nil, false
+	}
+	rounded := roundRatHalfAway(v.n)
+	if rounded.Cmp(min) >= 0 && rounded.Cmp(max) <= 0 {
+		return nil, false
+	}
+	if rounded.Sign() < 0 {
+		return min, true
+	}
+	return max, true
+}
+
+func integerBounds(col schemaCol) (min, max *big.Int, ok bool) {
+	bits := 0
+	switch col.base {
+	case "tinyint":
+		bits = 8
+	case "smallint":
+		bits = 16
+	case "mediumint":
+		bits = 24
+	case "int":
+		bits = 32
+	case "bigint":
+		bits = 64
+	default:
+		return nil, nil, false
+	}
+	if col.unsigned {
+		max = new(big.Int).Lsh(big.NewInt(1), uint(bits))
+		max.Sub(max, big.NewInt(1))
+		return new(big.Int), max, true
+	}
+	max = new(big.Int).Lsh(big.NewInt(1), uint(bits-1))
+	min = new(big.Int).Neg(max)
+	max = new(big.Int).Sub(max, big.NewInt(1))
+	return min, max, true
+}
+
+// mysqlDivFrac is the fractional digit count of a / in MySQL 8.0.
+// do_div_mod rounds each operand's scale up to a multiple of 9, spends
+// div_precision_increment on that padding, then rounds the sum up again.
+func mysqlDivFrac(frac1, frac2, inc int) int {
+	if frac1 < 0 {
+		frac1 = 0
+	}
+	if frac2 < 0 {
+		frac2 = 0
+	}
+	pad1 := roundUpToWord(frac1)
+	pad2 := roundUpToWord(frac2)
+	extra := inc - (pad1 - frac1) - (pad2 - frac2)
+	if extra < 0 {
+		extra = 0
+	}
+	return roundUpToWord(pad1 + pad2 + extra)
+}
+
+func roundUpToWord(digits int) int {
+	if digits <= 0 {
+		return 0
+	}
+	words := (digits + mysqlDecDigitsPerWord - 1) / mysqlDecDigitsPerWord
+	return words * mysqlDecDigitsPerWord
+}
+
+func roundRatToScale(r *big.Rat, scale int) *big.Rat {
+	if r == nil {
+		return new(big.Rat)
+	}
+	if scale <= 0 {
+		return new(big.Rat).SetInt(roundRatHalfAway(r))
+	}
+	pow := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
+	scaled := new(big.Rat).Mul(r, new(big.Rat).SetInt(pow))
+	return new(big.Rat).SetFrac(roundRatHalfAway(scaled), pow)
+}
+
+func truncRatToScale(r *big.Rat, scale int) *big.Rat {
+	if r == nil {
+		return new(big.Rat)
+	}
+	if scale < 0 {
+		scale = 0
+	}
+	pow := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
+	num := new(big.Int).Mul(new(big.Int).Set(r.Num()), pow)
+	q := new(big.Int).Quo(num, r.Denom())
+	if scale == 0 {
+		return new(big.Rat).SetInt(q)
+	}
+	return new(big.Rat).SetFrac(q, pow)
+}
+
+func ratAtScale(r *big.Rat, scale int) bool {
+	if r == nil || scale < 0 {
+		return false
+	}
+	if scale == 0 {
+		return r.IsInt()
+	}
+	pow := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
+	return new(big.Rat).Mul(r, new(big.Rat).SetInt(pow)).IsInt()
+}
+
+func decimalMax(prec, scale int) *big.Rat {
+	num := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(prec)), nil)
+	num.Sub(num, big.NewInt(1))
+	den := big.NewInt(1)
+	if scale > 0 {
+		den = new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(scale)), nil)
+	}
+	return new(big.Rat).SetFrac(num, den)
+}
+
+func decimalFits(r *big.Rat, prec, scale int) bool {
+	if r == nil || prec <= 0 || scale < 0 || scale > prec {
+		return false
+	}
+	abs := new(big.Rat).Abs(r)
+	return abs.Cmp(decimalMax(prec, scale)) <= 0
+}
+
+func decimalClip(r *big.Rat, prec, scale int) *big.Rat {
+	max := decimalMax(prec, scale)
+	if r.Sign() < 0 {
+		return new(big.Rat).Neg(max)
+	}
+	return max
+}
+
+// matchDecAsInt assigns a decimal result to an integer column.
+// The quotient was already cut to MySQL's division width, so (a/b)*b is not
+// brought back to a when that cut drops digits. 1/10000000000*10000000000 is 0.
+func matchDecAsInt(v decVal, lit string, col schemaCol) (match, confident bool) {
+	logged, ok := parseLoggedValue(lit)
+	if !ok {
+		return false, false
+	}
+	if v.null || logged.kind == genNull {
+		return v.null && logged.kind == genNull, true
+	}
+	if logged.kind != genNum || logged.n == nil || v.n == nil {
+		return false, false
+	}
+	iv := intVal{n: v.n}
+	if clip, clipped := integerClip(iv, col); clipped {
+		if intValMatches(intVal{n: new(big.Rat).SetInt(clip)}, literalNumber(lit)) {
+			return false, false
+		}
+		return false, true
+	}
+	return intValMatches(iv, literalNumber(lit)), true
+}
+
+func matchDecLiteral(v decVal, lit string, col schemaCol) (match, confident bool) {
+	logged, ok := parseLoggedValue(lit)
+	if !ok {
+		return false, false
+	}
+	if v.null || logged.kind == genNull {
+		return v.null && logged.kind == genNull, true
+	}
+	if logged.kind != genNum || logged.n == nil || v.n == nil {
+		return false, false
+	}
+	prec, scale := col.prec, col.scale
+	if !col.hasPrec {
+		prec, scale = 10, 0
+	}
+	rounded := roundRatToScale(v.n, scale)
+	if !decimalFits(rounded, prec, scale) {
+		if logged.n.Cmp(decimalClip(rounded, prec, scale)) == 0 {
+			return false, false
+		}
+		return false, true
+	}
+	return rounded.Cmp(logged.n) == 0, true
+}
+
+func decFromGen(v genVal) (decVal, bool) {
+	if v.kind == genNull {
+		return decVal{null: true}, true
+	}
+	if v.kind != genNum || v.n == nil {
+		return decVal{}, false
+	}
+	scale := 0
+	switch v.base {
+	case "":
+		if !v.n.IsInt() {
+			return decVal{}, false
+		}
+	case "decimal":
+		if v.hasPrec {
+			scale = v.scale
+		}
+		if scale < 0 || scale > mysqlDecMaxScale || !ratAtScale(v.n, scale) {
+			return decVal{}, false
+		}
+	case "tinyint", "smallint", "mediumint", "int", "bigint", "year":
+		if !v.n.IsInt() {
+			return decVal{}, false
+		}
+	default:
+		return decVal{}, false
+	}
+	return decVal{n: new(big.Rat).Set(v.n), scale: scale}, true
+}
+
+func evalDecExpr(expr string, env map[string]genVal) (decVal, bool) {
+	sc := &sqlScan{s: expr}
+	v, ok := parseDecAdd(sc, env)
+	if !ok {
+		return decVal{}, false
+	}
+	sc.skip()
+	if sc.i != len(sc.s) {
+		return decVal{}, false
+	}
+	return v, true
+}
+
+func parseDecAdd(sc *sqlScan, env map[string]genVal) (decVal, bool) {
+	left, ok := parseDecMul(sc, env)
+	if !ok {
+		return decVal{}, false
+	}
+	for {
+		sc.skip()
+		if sc.i >= len(sc.s) || (sc.s[sc.i] != '+' && sc.s[sc.i] != '-') {
+			return left, true
+		}
+		if sc.s[sc.i] == '-' && sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '>' {
+			return left, true
+		}
+		op := sc.s[sc.i]
+		sc.i++
+		right, ok := parseDecMul(sc, env)
+		if !ok {
+			return decVal{}, false
+		}
+		next, ok := applyDecAdd(left, right, op)
+		if !ok {
+			return decVal{}, false
+		}
+		left = next
+	}
+}
+
+func applyDecAdd(left, right decVal, op byte) (decVal, bool) {
+	if left.null || right.null {
+		return decVal{null: true}, true
+	}
+	if left.n == nil || right.n == nil {
+		return decVal{}, false
+	}
+	n := new(big.Rat)
+	if op == '+' {
+		n.Add(left.n, right.n)
+	} else {
+		n.Sub(left.n, right.n)
+	}
+	scale := left.scale
+	if right.scale > scale {
+		scale = right.scale
+	}
+	return decVal{n: n, scale: scale}, true
+}
+
+func parseDecMul(sc *sqlScan, env map[string]genVal) (decVal, bool) {
+	left, ok := parseDecUnary(sc, env)
+	if !ok {
+		return decVal{}, false
+	}
+	for {
+		op, ok := consumeMulOp(sc)
+		if !ok {
+			return left, true
+		}
+		right, ok := parseDecUnary(sc, env)
+		if !ok {
+			return decVal{}, false
+		}
+		next, ok := applyDecMul(left, right, op)
+		if !ok {
+			return decVal{}, false
+		}
+		left = next
+	}
+}
+
+func applyDecMul(left, right decVal, op string) (decVal, bool) {
+	if left.null || right.null {
+		return decVal{null: true}, true
+	}
+	if left.n == nil || right.n == nil {
+		return decVal{}, false
+	}
+	switch op {
+	case "*":
+		scale := left.scale + right.scale
+		prod := new(big.Rat).Mul(left.n, right.n)
+		if scale > mysqlDecMaxScale {
+			prod = roundRatToScale(prod, mysqlDecMaxScale)
+			scale = mysqlDecMaxScale
+		}
+		return decVal{n: prod, scale: scale}, true
+	case "/":
+		if right.n.Sign() == 0 {
+			return decVal{null: true}, true
+		}
+		scale := mysqlDivFrac(left.scale, right.scale, mysqlDefaultDivPrecIncrement)
+		q := truncRatToScale(new(big.Rat).Quo(left.n, right.n), scale)
+		return decVal{n: q, scale: scale}, true
+	case "DIV":
+		return decIntOp(left, right, false)
+	case "%", "MOD":
+		return decIntOp(left, right, true)
+	default:
+		return decVal{}, false
+	}
+}
+
+func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
+	if left.null || right.null {
+		return decVal{null: true}, true
+	}
+	if left.scale != 0 || right.scale != 0 {
+		return decVal{}, false
+	}
+	next, ok := applyIntDiv(intVal{n: left.n}, intVal{n: right.n}, remainder)
+	if !ok {
+		return decVal{}, false
+	}
+	if next.null {
+		return decVal{null: true}, true
+	}
+	return decVal{n: next.n, scale: 0}, true
+}
+
+func parseDecUnary(sc *sqlScan, env map[string]genVal) (decVal, bool) {
+	sc.skip()
+	if sc.i < len(sc.s) && (sc.s[sc.i] == '-' || sc.s[sc.i] == '+') && !sc.startsArrow() {
+		op := sc.s[sc.i]
+		sc.i++
+		v, ok := parseDecUnary(sc, env)
+		if !ok || v.null || op == '+' {
+			return v, ok
+		}
+		if v.n == nil {
+			return decVal{}, false
+		}
+		return decVal{n: new(big.Rat).Neg(v.n), scale: v.scale}, true
+	}
+	return parseDecPrimary(sc, env)
+}
+
+func parseDecPrimary(sc *sqlScan, env map[string]genVal) (decVal, bool) {
+	sc.skip()
+	if sc.i >= len(sc.s) {
+		return decVal{}, false
+	}
+	switch sc.s[sc.i] {
+	case '(':
+		body, ok := sc.parenBody()
+		if !ok {
+			return decVal{}, false
+		}
+		return evalDecExpr(body, env)
+	}
+	if sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
+		return sc.decNumber()
+	}
+	quoted := sc.s[sc.i] == '`'
+	name, ok := sc.ident()
+	if !ok {
+		return decVal{}, false
+	}
+	if !quoted && strings.EqualFold(name, "MOD") && sc.peekByte() == '(' {
+		return parseDecMod(sc, env)
+	}
+	if sc.peekByte() == '(' {
+		return decVal{}, false
+	}
+	if !quoted && isNullWord(name) {
+		return decVal{null: true}, true
+	}
+	if !quoted && isBoolWord(name) {
+		if strings.EqualFold(name, "TRUE") {
+			return decVal{n: big.NewRat(1, 1), scale: 0}, true
+		}
+		return decVal{n: new(big.Rat), scale: 0}, true
+	}
+	v, ok := env[strings.ToLower(name)]
+	if !ok || v.kind == genBad {
+		return decVal{}, false
+	}
+	return decFromGen(v)
+}
+
+func parseDecMod(sc *sqlScan, env map[string]genVal) (decVal, bool) {
+	body, ok := sc.parenBody()
+	if !ok {
+		return decVal{}, false
+	}
+	parts := splitComma(body)
+	if len(parts) != 2 {
+		return decVal{}, false
+	}
+	left, ok := evalDecExpr(parts[0], env)
+	if !ok {
+		return decVal{}, false
+	}
+	right, ok := evalDecExpr(parts[1], env)
+	if !ok {
+		return decVal{}, false
+	}
+	return decIntOp(left, right, true)
+}
+
+func (sc *sqlScan) decNumber() (decVal, bool) {
+	start := sc.i
+	for sc.i < len(sc.s) && sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
+		sc.i++
+	}
+	if sc.i < len(sc.s) && (sc.s[sc.i] == '.' || sc.s[sc.i] == 'e' || sc.s[sc.i] == 'E') {
+		return decVal{}, false
+	}
+	n := new(big.Int)
+	if _, ok := n.SetString(sc.s[start:sc.i], 10); !ok {
+		return decVal{}, false
+	}
+	return decVal{n: new(big.Rat).SetInt(n), scale: 0}, true
 }
