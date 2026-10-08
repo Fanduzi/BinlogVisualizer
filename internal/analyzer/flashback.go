@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, an expression cannot be checked and AllowUnverifiedGenerated is off, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET when that definition matches. An unchecked expression is omitted only with AllowUnverifiedGenerated, and the script header says so. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -289,8 +289,8 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 }
 
 // reviewGenerated checks schema-file generated columns against every logged image.
-// A contradiction refuses the script. An expression that cannot be evaluated
-// refuses unless AllowUnverifiedGenerated is set.
+// A contradiction refuses the script. An expression that cannot be checked exactly
+// is omitted, with a warning, when nothing contradicts it.
 func (a *Analyzer) reviewGenerated() error {
 	if a.flashReviewed {
 		return a.flashReviewErr
@@ -334,7 +334,7 @@ func (a *Analyzer) collectGeneratedReview() error {
 			}
 		}
 	}
-	var parts, notes, warns []string
+	var mismatches, notes, warns []string
 	for _, key := range order {
 		b := groups[key]
 		table := flashTable(b.schema, b.table)
@@ -342,23 +342,20 @@ func (a *Analyzer) collectGeneratedReview() error {
 			if !col.generated {
 				continue
 			}
-			example, unknown := generatedColumnOutcome(col, b.images)
+			example, unknown := generatedColumnOutcome(col, b.images, b.cols)
 			if example != "" {
-				return generatedMismatch(table, col, example)
+				mismatches = append(mismatches, generatedMismatch(table, col, example).Error())
+				continue
 			}
 			if !unknown {
 				continue
 			}
-			parts = append(parts, "generated column "+table+"."+col.name+" ("+exprText(col.expr)+")")
 			notes = append(notes, unverifiedGeneratedComment(table, col))
 			warns = append(warns, unverifiedGeneratedWarning(table, col))
 		}
 	}
-	if len(parts) == 0 {
-		return nil
-	}
-	if !a.opts.AllowUnverifiedGenerated {
-		return unverifiedGeneratedError(parts)
+	if len(mismatches) > 0 {
+		return fmt.Errorf("%s", strings.Join(mismatches, "\n"))
 	}
 	a.noteSchemaWarnings(warns)
 	a.flashGenNotes = append(a.flashGenNotes, notes...)
@@ -453,6 +450,10 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 	b.WriteString("SET NAMES utf8mb4;\n")
 	b.WriteString("SET time_zone = '+00:00';\n")
 	b.WriteString("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\n")
+	if guard := renderGeneratedGuard(groups); guard != "" {
+		b.WriteByte('\n')
+		b.WriteString(guard)
+	}
 	for i := len(groups) - 1; i >= 0; i-- {
 		group := groups[i]
 		b.WriteByte('\n')
@@ -504,9 +505,9 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}) (string, e
 		for i := range cols {
 			sets[i] = quoteIdent(cols[i]) + " = " + vals[i]
 		}
-		statement, err = undoWhere(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After, gen)
+		statement, err = undoWhere(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After)
 	default:
-		statement, err = undoWhere(row, "DELETE FROM "+table, row.After, gen)
+		statement, err = undoWhere(row, "DELETE FROM "+table, row.After)
 	}
 	if err != nil {
 		return "", err
@@ -563,25 +564,13 @@ func generatedRowError(row model.FlashRow) error {
 	}))
 }
 
-func undoWhere(row model.FlashRow, head string, image []string, gen map[string]struct{}) (string, error) {
+func undoWhere(row model.FlashRow, head string, image []string) (string, error) {
 	pk := !row.NoPK && len(row.PK) > 0
 	indexes := row.PK
-	dropped := false
 	if !pk {
-		indexes = make([]int, 0, len(row.Columns))
-		for i, column := range row.Columns {
-			if isGenerated(gen, column) {
-				dropped = true
-				continue
-			}
-			indexes = append(indexes, i)
-		}
-		if len(indexes) == 0 {
-			indexes = make([]int, len(row.Columns))
-			for i := range indexes {
-				indexes[i] = i
-			}
-			dropped = false
+		indexes = make([]int, len(row.Columns))
+		for i := range indexes {
+			indexes[i] = i
 		}
 	}
 	parts := make([]string, 0, len(indexes))
@@ -597,13 +586,98 @@ func undoWhere(row model.FlashRow, head string, image []string, gen map[string]s
 	statement := head + " WHERE " + strings.Join(parts, " AND ")
 	if !pk {
 		statement += " LIMIT 1"
-		note := "this matches every column and LIMIT 1"
-		if dropped {
-			note = "this matches every non-generated column and LIMIT 1"
-		}
-		return "-- no primary key on " + flashTable(row.Schema, row.Table) + "; " + note + "\n" + statement + ";", nil
+		return "-- no primary key on " + flashTable(row.Schema, row.Table) + "; this matches every column and LIMIT 1\n" + statement + ";", nil
 	}
 	return statement + ";", nil
+}
+
+type guardCol struct {
+	schema string
+	table  string
+	column string
+}
+
+// renderGeneratedGuard fails the apply before any transaction when a column
+// this script omitted is not GENERATED on the target. One check lists every
+// mismatch. Success runs DO 0 and leaves sql_mode unchanged.
+func renderGeneratedGuard(groups []flashGroup) string {
+	cols := omittedGeneratedCols(groups)
+	if len(cols) == 0 {
+		return ""
+	}
+	var arms []string
+	for i, col := range cols {
+		name := flashTable(col.schema, col.table) + "." + col.column
+		arms = append(arms, fmt.Sprintf(
+			"SELECT %d AS n, %s AS q FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s AND (EXTRA LIKE '%%STORED GENERATED%%' OR EXTRA LIKE '%%VIRTUAL GENERATED%%'))",
+			i+1, sqlQuote(name), sqlQuote(col.schema), sqlQuote(col.table), sqlQuote(col.column),
+		))
+	}
+	var b strings.Builder
+	b.WriteString("-- Guard: every generated column omitted below must be GENERATED on the target. Apply stops here when the schema file does not match.\n")
+	b.WriteString("SET @binlogviz_group_concat_max_len = @@SESSION.group_concat_max_len;\n")
+	b.WriteString("SET SESSION group_concat_max_len = 1048576;\n")
+	b.WriteString("SET @binlogviz_mismatch = (\n")
+	b.WriteString("  SELECT GROUP_CONCAT(q ORDER BY n SEPARATOR ', ')\n")
+	b.WriteString("  FROM (\n    ")
+	b.WriteString(strings.Join(arms, "\n    UNION ALL\n    "))
+	b.WriteString("\n  ) AS binlogviz_gen\n);\n")
+	b.WriteString("SET SESSION group_concat_max_len = @binlogviz_group_concat_max_len;\n")
+	b.WriteString("SET @binlogviz_guard_sql = IF(@binlogviz_mismatch IS NULL, 'DO 0', CONCAT('SELECT ', QUOTE(CONCAT('binlogviz: schema file does not match the target: ', @binlogviz_mismatch))));\n")
+	b.WriteString("PREPARE binlogviz_guard FROM @binlogviz_guard_sql;\n")
+	b.WriteString("EXECUTE binlogviz_guard;\n")
+	b.WriteString("DEALLOCATE PREPARE binlogviz_guard;\n")
+	b.WriteString("SET @binlogviz_mode = @@SESSION.sql_mode;\n")
+	b.WriteString("SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL, @binlogviz_mode, CONCAT('binlogviz: schema file does not match the target: ', @binlogviz_mismatch));\n")
+	b.WriteString("SET SESSION sql_mode = @binlogviz_mode;\n")
+	return b.String()
+}
+
+func omittedGeneratedCols(groups []flashGroup) []guardCol {
+	var out []guardCol
+	seen := map[string]struct{}{}
+	for _, group := range groups {
+		for i, row := range group.rows {
+			if i >= len(group.binds) {
+				continue
+			}
+			for _, col := range group.binds[i].cols {
+				if !col.generated {
+					continue
+				}
+				key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.name)
+				if _, ok := seen[key]; ok {
+					continue
+				}
+				seen[key] = struct{}{}
+				out = append(out, guardCol{schema: row.Schema, table: row.Table, column: col.name})
+			}
+		}
+	}
+	return out
+}
+
+func sqlQuote(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 2)
+	b.WriteByte('\'')
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\', '\'':
+			b.WriteByte('\\')
+			b.WriteByte(s[i])
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case 0:
+			b.WriteString(`\0`)
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	b.WriteByte('\'')
+	return b.String()
 }
 
 func quoteColumnList(columns []string) string {

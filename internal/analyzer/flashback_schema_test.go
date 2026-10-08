@@ -295,19 +295,43 @@ func TestSchemaFileRefusesGeneratedContradiction(t *testing.T) {
 		After:  []string{"1", "'abc'", "'oops'"},
 		PK:     []int{0},
 	}
-	for _, allow := range []bool{false, true} {
-		sql, _, err := flashSchemaResultAllow(t, schema, "", allow, row)
-		if err == nil || sql != "" {
-			t.Fatalf("allow %v sql %q err %v", allow, sql, err)
+	sql, _, err := flashSchemaResult(t, schema, "", row)
+	if err == nil || sql != "" {
+		t.Fatalf("sql %q err %v", sql, err)
+	}
+	for _, want := range []string{"shop.t", "c is generated", "UPPER", "manual-1", "does not match", "--include-table"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %v, missing %q", err, want)
 		}
-		for _, want := range []string{"shop.t", "c is generated", "UPPER", "manual-1", "does not match", "--include-table"} {
-			if !strings.Contains(err.Error(), want) {
-				t.Fatalf("allow %v error %v, missing %q", allow, err, want)
-			}
-		}
-		if strings.Contains(err.Error(), "cannot verify") || strings.Contains(err.Error(), "--allow-unverified-generated") {
-			t.Fatalf("contradiction looked unverified: %v", err)
-		}
+	}
+	if strings.Contains(err.Error(), "cannot verify") || strings.Contains(err.Error(), "--allow-unverified-generated") {
+		t.Fatalf("contradiction looked unverified: %v", err)
+	}
+}
+
+func TestSchemaFileAsciiExampleIsText(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `code` varchar(20) CHARACTER SET ascii DEFAULT NULL,\n" +
+		"  `c` varchar(20) CHARACTER SET ascii GENERATED ALWAYS AS (upper(`code`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	row := model.FlashRow{
+		Schema: "shop", Table: "t", Op: "DELETE",
+		Columns: []string{"id", "code", "c"},
+		Cols: []model.FlashCol{
+			{Base: "int", HasSign: true},
+			{Base: "varchar", Charset: "ascii"},
+			{Base: "varchar", Charset: "ascii"},
+		},
+		Before: []string{"1", "_ascii 0x6162", "_ascii 0x6E6F74652D31"},
+		PK:     []int{0},
+	}
+	sql, _, err := flashSchemaResult(t, schema, "", row)
+	if err == nil || sql != "" {
+		t.Fatalf("sql %q err %v", sql, err)
+	}
+	if !strings.Contains(err.Error(), "note-1") || !strings.Contains(err.Error(), "code='ab'") || strings.Contains(err.Error(), "0x6E6F74652D31") {
+		t.Fatalf("example stayed hex: %v", err)
 	}
 }
 
@@ -342,7 +366,7 @@ func TestSchemaFileRefusesDependencyClash(t *testing.T) {
 		PK:     []int{0},
 	}
 	for _, rows := range [][]model.FlashRow{{update}, {insert, deleted}} {
-		sql, _, err := flashSchemaResultAllow(t, schema, "", true, rows...)
+		sql, _, err := flashSchemaResult(t, schema, "", rows...)
 		if err == nil || sql != "" {
 			t.Fatalf("sql %q err %v", sql, err)
 		}
@@ -354,7 +378,86 @@ func TestSchemaFileRefusesDependencyClash(t *testing.T) {
 	}
 }
 
-func TestSchemaFileUnverifiedGeneratedNeedsFlag(t *testing.T) {
+func TestSchemaFileReportsEveryContradiction(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `x` varchar(20) DEFAULT NULL,\n" +
+		"  `c` varchar(20) GENERATED ALWAYS AS (UPPER(`x`)) STORED,\n" +
+		"  `d` varchar(20) GENERATED ALWAYS AS (UPPER(`x`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n" +
+		"CREATE TABLE `u` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `x` varchar(20) DEFAULT NULL,\n" +
+		"  `c` varchar(20) GENERATED ALWAYS AS (UPPER(`x`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	cols := []model.FlashCol{
+		{Base: "int", HasSign: true},
+		{Base: "varchar", Charset: "utf8mb4"},
+		{Base: "varchar", Charset: "utf8mb4"},
+		{Base: "varchar", Charset: "utf8mb4"},
+	}
+	ucols := cols[:3]
+	one := model.FlashRow{
+		Schema: "shop", Table: "t", Op: "UPDATE",
+		Columns: []string{"id", "x", "c", "d"}, Cols: cols,
+		Before: []string{"1", "'ab'", "'no'", "'no'"},
+		After:  []string{"1", "'ab'", "'NO'", "'NO'"},
+		PK:     []int{0},
+	}
+	two := model.FlashRow{
+		Schema: "shop", Table: "u", Op: "UPDATE",
+		Columns: []string{"id", "x", "c"}, Cols: ucols,
+		Before: []string{"1", "'ab'", "'zz'"},
+		After:  []string{"1", "'ab'", "'zz'"},
+		PK:     []int{0},
+	}
+	sql, _, err := flashSchemaResult(t, schema, "", one, two)
+	if err == nil || sql != "" {
+		t.Fatalf("sql %q err %v", sql, err)
+	}
+	if strings.Count(err.Error(), "Error:") != 0 {
+		t.Fatalf("contradiction text contains Error:: %v", err)
+	}
+	for _, want := range []string{"shop.t", "shop.u", "c is generated", "d is generated"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %v, missing %q", err, want)
+		}
+	}
+}
+
+func TestEscapedQuoteGeneratedExpr(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `s` varchar(20) DEFAULT NULL,\n" +
+		"  `g` varchar(40) GENERATED ALWAYS AS (concat(`s`,_utf8mb4'it\\'s',_utf8mb4'\\\\t')) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	row := model.FlashRow{
+		Schema: "shop", Table: "t", Op: "DELETE",
+		Columns: []string{"id", "s", "g"},
+		Cols: []model.FlashCol{
+			{Base: "int", HasSign: true},
+			{Base: "varchar", Charset: "utf8mb4"},
+			{Base: "varchar", Charset: "utf8mb4"},
+		},
+		Before: []string{"1", "'a'", `'ait\'s\\t'`},
+		PK:     []int{0},
+	}
+	sql, warnings, err := flashSchemaResult(t, schema, "", row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 || strings.Contains(sql, "`g`") && strings.Contains(sql, "VALUES") && strings.Contains(sql, "`g`,") {
+		t.Fatalf("warnings %#v sql:\n%s", warnings, sql)
+	}
+	if !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`, `s`) VALUES (1, 'a');") {
+		t.Fatalf("sql:\n%s", sql)
+	}
+	if !strings.Contains(sql, "'shop.t.g'") {
+		t.Fatalf("guard missing shop.t.g:\n%s", sql)
+	}
+}
+
+func TestSchemaFileUnverifiedGeneratedWarns(t *testing.T) {
 	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
 		"  `id` int NOT NULL,\n" +
 		"  `x` varchar(20) DEFAULT NULL,\n" +
@@ -374,24 +477,30 @@ func TestSchemaFileUnverifiedGeneratedNeedsFlag(t *testing.T) {
 		After:  []string{"1", "'def'", "'bbb'", "'keep'"},
 		PK:     []int{0},
 	}
-	sql, _, err := flashSchemaResult(t, schema, "", row)
-	if err == nil || sql != "" || !strings.Contains(err.Error(), "--allow-unverified-generated") || !strings.Contains(err.Error(), "shop.t.c") {
-		t.Fatalf("sql %q err %v", sql, err)
-	}
-	if strings.Contains(err.Error(), "does not match") {
-		t.Fatalf("unverified was reported as a mismatch: %v", err)
-	}
-	sql, warnings, err := flashSchemaResultAllow(t, schema, "", true, row)
+	sql, warnings, err := flashSchemaResult(t, schema, "", row)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "`c`") || !strings.Contains(sql, "`note`") || !strings.Contains(sql, "-- WARNING: generated column shop.t.c not verified") {
+	if strings.Contains(sql, "SET `c`") || strings.Contains(sql, "`c`,") || strings.Contains(sql, ", `c`") || !strings.Contains(sql, "`note`") || !strings.Contains(sql, "-- WARNING: generated column shop.t.c not verified") || !strings.Contains(sql, "The guard below checks") || !strings.Contains(sql, "schema file does not match the target") || !strings.Contains(sql, "'shop.t.c'") {
 		t.Fatalf("sql:\n%s", sql)
 	}
+	if !guardBeforeTransaction(sql) {
+		t.Fatalf("guard is not in the header:\n%s", sql)
+	}
+	if !strings.Contains(sql, "FROM DUAL WHERE NOT EXISTS") || strings.Contains(sql, "AS q WHERE") {
+		t.Fatalf("guard arm is not SELECT ... FROM DUAL:\n%s", sql)
+	}
 	text := strings.Join(warnings, "\n")
-	if !strings.Contains(text, "shop.t.c") || !strings.Contains(text, "not verified") || !strings.Contains(text, "MD5") {
+	if !strings.Contains(text, "shop.t.c") || !strings.Contains(text, "not verified") || !strings.Contains(text, "MD5") || !strings.Contains(text, "guard") {
 		t.Fatalf("warnings:\n%s", text)
 	}
+}
+
+func guardBeforeTransaction(sql string) bool {
+	guard := strings.Index(sql, "binlogviz_mismatch")
+	gtid := strings.Index(sql, "-- gtid:")
+	sets := strings.Index(sql, "SET NAMES utf8mb4;")
+	return guard > sets && (gtid < 0 || guard < gtid)
 }
 
 func TestEvalIntExprMySQLAssignment(t *testing.T) {
@@ -724,12 +833,7 @@ func flashSchemaSQL(t *testing.T, schema, db string, rows ...model.FlashRow) (st
 
 func flashSchemaResult(t *testing.T, schema, db string, rows ...model.FlashRow) (string, []string, error) {
 	t.Helper()
-	return flashSchemaResultAllow(t, schema, db, false, rows...)
-}
-
-func flashSchemaResultAllow(t *testing.T, schema, db string, allow bool, rows ...model.FlashRow) (string, []string, error) {
-	t.Helper()
-	a := New(Options{Flashback: true, SchemaSQL: schema, SchemaFileDB: db, AllowUnverifiedGenerated: allow})
+	a := New(Options{Flashback: true, SchemaSQL: schema, SchemaFileDB: db})
 	events := make([]model.NormalizedEvent, len(rows))
 	for i, row := range rows {
 		events[i] = flashEvent(row)
