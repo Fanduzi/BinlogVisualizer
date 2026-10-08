@@ -999,7 +999,11 @@ COMMIT;`)
 		t.Fatal(err)
 	}
 	stdout, stderr, err := executeFlashbackLikeMain(t, asciiPath, "--schema-file", asciiFile, "--include-table", "p178a.t")
-	assertFlashbackRefused(t, stdout, stderr, err, "note-1")
+	// The logged ascii value is the introducer literal, which is the bytes of note-1.
+	assertFlashbackRefused(t, stdout, stderr, err, "_ascii 0x6E6F74652D31")
+	if !strings.Contains(err.Error(), "p178a.t") || !strings.Contains(strings.ToLower(err.Error()), "upper") {
+		t.Fatalf("ascii contradiction: %v", err)
+	}
 	if got := e2eMySQL(t, asciiSum); got != asciiAfter || e2eMySQL(t, "SELECT COUNT(*) FROM p178a.t") != asciiRows {
 		t.Fatalf("ascii refusal changed rows\nbefore %s\nafter %s", asciiAfter, got)
 	}
