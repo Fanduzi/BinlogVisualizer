@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set (generated columns learned from Options.SchemaSQL and from every parsed CREATE/ALTER, including excluded GTIDs; a warning when a schema-file generated expression cannot be checked; a warning when a selected table has no definition; and a split-transaction warning when a table or DML filter keeps only part of a transaction), DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set (generated columns learned from Options.SchemaSQL and from every parsed CREATE/ALTER, including excluded GTIDs; a refusal when a schema-file generated value contradicts the expression, or when the expression cannot be checked and AllowUnverifiedGenerated is off; a warning when a selected table has no definition; and a split-transaction warning when a table or DML filter keeps only part of a transaction), DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images.
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -50,6 +50,9 @@ type Analyzer struct {
 	flashGen        generatedTables
 	flashUnknown    []string
 	flashSchemaWarn []string
+	flashGenNotes   []string
+	flashReviewed   bool
+	flashReviewErr  error
 	flashSplit      map[string]*flashSplit
 	flashSplitOrder []string
 }
@@ -449,6 +452,9 @@ func (a *Analyzer) reset() {
 	a.flashGen = generatedTables{flagDB: strings.Trim(strings.TrimSpace(a.opts.SchemaFileDB), "`")}
 	a.flashUnknown = nil
 	a.flashSchemaWarn = nil
+	a.flashGenNotes = nil
+	a.flashReviewed = false
+	a.flashReviewErr = nil
 	a.flashSplit = nil
 	a.flashSplitOrder = nil
 	if a.opts.Flashback && strings.TrimSpace(a.opts.SchemaSQL) != "" {

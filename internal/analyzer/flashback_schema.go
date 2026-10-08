@@ -1,6 +1,6 @@
 // Package analyzer checks a schema file against TABLE_MAP metadata.
 // input: CREATE/ALTER text from --schema-file or the binlog, plus flashback rows that carry column metadata.
-// output: the column list in effect for one table, or an error that names the table and the columns that differ. A generated expression that cannot be evaluated is a warning when the column list matches; the column is still omitted. Unqualified names are bound only when one schema is unambiguous.
+// output: the column list in effect for one table, or an error that names the table and the columns that differ. Generated values are checked later, against every logged image. Unqualified names are bound only when one schema is unambiguous.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -618,18 +618,6 @@ func validateSchemaRow(row model.FlashRow, cols []schemaCol) (warns []string, er
 			return nil, schemaMismatch(table, []string{diff})
 		}
 	}
-	for i := range cols {
-		if !cols[i].generated {
-			continue
-		}
-		mismatch, unchecked := checkGenerated(cols[i], row)
-		if mismatch != "" {
-			return nil, schemaMismatch(table, []string{mismatch})
-		}
-		if unchecked {
-			warns = append(warns, uncheckedGenerated(table, cols[i]))
-		}
-	}
 	return warns, nil
 }
 
@@ -791,56 +779,6 @@ func memberList(members []string) string {
 		quoted[i] = "'" + member + "'"
 	}
 	return strings.Join(quoted, ",")
-}
-
-// checkGenerated compares logged values with an integer generated expression.
-// A mismatch means the file and the binlog disagree. unchecked means the
-// expression cannot be evaluated; the column list already matched, so the
-// caller trusts the generated flag and warns.
-func checkGenerated(col schemaCol, row model.FlashRow) (mismatch string, unchecked bool) {
-	if strings.TrimSpace(col.expr) == "" {
-		return "", true
-	}
-	var images [][]string
-	if row.Before != nil {
-		images = append(images, row.Before)
-	}
-	if row.After != nil {
-		images = append(images, row.After)
-	}
-	if len(images) == 0 {
-		return "", true
-	}
-	sawUnchecked := false
-	for _, image := range images {
-		env := map[string]string{}
-		for i, name := range row.Columns {
-			if i < len(image) {
-				env[strings.ToLower(name)] = image[i]
-			}
-		}
-		want, ok := evalIntExpr(col.expr, env)
-		if !ok {
-			sawUnchecked = true
-			continue
-		}
-		idx := schemaColIndexNames(row.Columns, col.name)
-		if idx < 0 || idx >= len(image) || !intValMatches(want, image[idx]) {
-			return i18n.Tf("error.flashbackSchemaGenerated", map[string]any{
-				"Column": col.name,
-				"Expr":   exprText(col.expr),
-			}), false
-		}
-	}
-	return "", sawUnchecked
-}
-
-func uncheckedGenerated(table string, col schemaCol) string {
-	return i18n.Tf("warning.flashbackSchemaUnchecked", map[string]any{
-		"Table":  table,
-		"Column": col.name,
-		"Expr":   exprText(col.expr),
-	})
 }
 
 func exprText(expr string) string {
