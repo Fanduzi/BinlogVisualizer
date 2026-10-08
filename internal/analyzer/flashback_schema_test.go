@@ -558,7 +558,7 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 		t.Fatal(err)
 	}
 	execAt := strings.Index(sql, "EXECUTE binlogviz_guard;")
-	lockAt := strings.Index(sql, "SET SESSION transaction_read_only = IF(@binlogviz_mismatch IS NULL, @@SESSION.transaction_read_only, 1);")
+	lockAt := strings.Index(sql, "PREPARE binlogviz_lock FROM @binlogviz_lock_sql;")
 	modeAt := strings.Index(sql, "SET SESSION sql_mode = @binlogviz_mode;")
 	if execAt < 0 || lockAt < 0 || modeAt < 0 || execAt > lockAt || lockAt > modeAt {
 		t.Fatalf("message, lock, then sql_mode:\n%s", sql)
@@ -599,25 +599,31 @@ func TestGeneratedGuardOldServerSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(guardOldServerMsg, ",") || len(guardOldServerMsg) > guardValueLimit {
+	if strings.Contains(guardOldServerMsg, ",") || len(guardOldServerMsg) > guardValueLimit || guardOldServerMsg != "binlogviz: target MySQL < 5.7.0 is not supported for apply" {
 		t.Fatalf("message: %q", guardOldServerMsg)
 	}
 	oldAt := strings.Index(sql, guardOldServerCheckSQL())
 	execAt := strings.Index(sql, "EXECUTE binlogviz_guard;")
 	early := "SET SESSION sql_mode = IF(@binlogviz_old, @binlogviz_mode, @@SESSION.sql_mode);"
 	earlyAt := strings.Index(sql, early)
-	lockAt := strings.Index(sql, "transaction_read_only")
-	if oldAt < 0 || execAt < 0 || earlyAt < 0 || lockAt < 0 || oldAt > execAt || execAt > earlyAt || earlyAt > lockAt {
-		t.Fatalf("version check, message, failing SET, then transaction_read_only:\n%s", sql)
+	lockSQL := "SET @binlogviz_lock_sql = IF(@binlogviz_mismatch IS NULL OR @binlogviz_old, 'DO 0', CONCAT('SET SESSION ', @binlogviz_ro, ' = 1'));"
+	lockAt := strings.Index(sql, lockSQL)
+	prepAt := strings.Index(sql, "PREPARE binlogviz_lock FROM @binlogviz_lock_sql;")
+	if oldAt < 0 || execAt < 0 || earlyAt < 0 || lockAt < 0 || prepAt < 0 || oldAt > execAt || execAt > earlyAt || earlyAt > lockAt || lockAt > prepAt {
+		t.Fatalf("version check, message, then prepared lock:\n%s", sql)
+	}
+	if strings.Contains(sql, "SET SESSION transaction_read_only =") || strings.Contains(sql, "SET SESSION tx_read_only =") {
+		t.Fatalf("lock names the variable in a direct SET:\n%s", sql)
 	}
 	for _, want := range []string{
 		guardOldServerMsg,
 		"SET @binlogviz_mode = IF(@binlogviz_old, " + sqlQuote(guardOldServerMsg) + ", @binlogviz_mode);",
 		"SUBSTRING_INDEX(@@version, '-', 1)",
-		"@binlogviz_major > 5",
-		"@binlogviz_minor > 7",
+		"@binlogviz_minor >= 7",
+		"'transaction_read_only'",
+		"'tx_read_only'",
 		"@binlogviz_patch >= 20",
-		"Apply requires MySQL 5.7.20 or newer.",
+		"Apply requires MySQL 5.7 or newer.",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("missing %q\n%s", want, sql)
