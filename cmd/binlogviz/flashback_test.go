@@ -241,7 +241,7 @@ func TestFlashbackHelpWording(t *testing.T) {
 		t.Fatalf("help: %v\n%s", err, stderr)
 	}
 	out := stdout + stderr
-	if strings.Contains(out, "Only count these ROW kinds") || strings.Contains(out, "Only analyze") || !strings.Contains(out, "Only undo these ROW kinds") || !strings.Contains(out, "Only undo these schemas") || !strings.Contains(out, "Only undo these tables") || !strings.Contains(out, "SQL file of table definitions") || !strings.Contains(out, "Print SQL that reverses selected ROW changes") || !strings.Contains(out, "Omit a generated column whose expression") {
+	if strings.Contains(out, "Only count these ROW kinds") || strings.Contains(out, "Only analyze") || strings.Contains(out, "allow-unverified-generated") || !strings.Contains(out, "Only undo these ROW kinds") || !strings.Contains(out, "Only undo these schemas") || !strings.Contains(out, "Only undo these tables") || !strings.Contains(out, "SQL file of table definitions") || !strings.Contains(out, "Print SQL that reverses selected ROW changes") || !strings.Contains(out, "checks that each omitted generated column is generated on the target") {
 		t.Fatalf("english help:\n%s", out)
 	}
 
@@ -519,6 +519,7 @@ COMMIT;`)
 	flashbackEnumZeroE2E(t)
 	flashbackGeneratedExprE2E(t)
 	flashbackGeneratedLossE2E(t)
+	flashbackTargetGuardE2E(t)
 }
 
 // flashbackSchemaMatchE2E refuses a schema file that is newer than the incident table.
@@ -811,9 +812,12 @@ COMMIT;`)
 		t.Fatalf("verifiable generated columns were not checked:\nstderr:\n%s\nsql:\n%s\ndump:\n%s", stderr, sql, dump)
 	}
 	for _, col := range []string{"`jv`", "`v`", "`s1`", "`s2`", "`s3`", "`s4`", "`full_name`"} {
-		if strings.Contains(sql, col) {
+		if sqlAssignsColumn(sql, col) {
 			t.Fatalf("sql still assigns %s:\n%s", col, sql)
 		}
+	}
+	if !strings.Contains(sql, "schema file does not match the target") || !strings.Contains(sql, "p160.gen.jv") || !guardBeforeFirstGTID(sql) {
+		t.Fatalf("missing generated-column guard:\n%s", sql)
 	}
 	e2eMySQL(t, sql)
 	if got := e2eMySQL(t, sumSQL); got != before {
@@ -821,9 +825,10 @@ COMMIT;`)
 	}
 }
 
-// flashbackGeneratedLossE2E refuses a schema file that marks a real column as generated.
-// One file is a wrong-environment dump. The other is a post-ALTER dump used on a
-// copy of the pre-ALTER binlog. Both exit 1 with no SQL, including with the flag.
+// flashbackGeneratedLossE2E refuses a schema file that marks a real column as generated
+// when the logged values contradict the expression. One file is a wrong-environment
+// dump. The other is a post-ALTER dump used on the pre-ALTER binlog. Both exit 1
+// with no SQL.
 func flashbackGeneratedLossE2E(t *testing.T) {
 	t.Helper()
 	e2eMySQL(t, `
@@ -887,16 +892,10 @@ COMMIT;`)
 		{name: "p178.t", want: "manual-1"},
 		{name: "p178.cust", want: "Countess"},
 	} {
-		for _, flag := range []string{"", "--allow-unverified-generated"} {
-			args := []string{path, "--schema-file", wrongPath, "--include-table", table.name}
-			if flag != "" {
-				args = append(args, flag)
-			}
-			stdout, stderr, err := executeFlashbackLikeMain(t, args...)
-			assertFlashbackRefused(t, stdout, stderr, err, table.want)
-			if !strings.Contains(err.Error(), table.name) || strings.Contains(err.Error(), "cannot verify") {
-				t.Fatalf("%s %s: %v", table.name, flag, err)
-			}
+		stdout, stderr, err := executeFlashbackLikeMain(t, path, "--schema-file", wrongPath, "--include-table", table.name)
+		assertFlashbackRefused(t, stdout, stderr, err, table.want)
+		if !strings.Contains(err.Error(), table.name) || strings.Contains(err.Error(), "cannot verify") {
+			t.Fatalf("%s: %v", table.name, err)
 		}
 	}
 
@@ -912,17 +911,204 @@ COMMIT;`)
 	if err := os.WriteFile(dumpPath, []byte(dump), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	for _, flag := range []string{"", "--allow-unverified-generated"} {
-		args := []string{path, "--schema-file", dumpPath, "--include-table", "p178b.t"}
-		if flag != "" {
-			args = append(args, flag)
-		}
-		stdout, stderr, err := executeFlashbackLikeMain(t, args...)
-		assertFlashbackRefused(t, stdout, stderr, err, "p178b.t")
-		if !strings.Contains(strings.ToLower(err.Error()), "upper") || !strings.Contains(err.Error(), "manual-1") {
-			t.Fatalf("%s: %v", flag, err)
+	stdout, stderr, err := executeFlashbackLikeMain(t, path, "--schema-file", dumpPath, "--include-table", "p178b.t")
+	assertFlashbackRefused(t, stdout, stderr, err, "p178b.t")
+	if !strings.Contains(strings.ToLower(err.Error()), "upper") || !strings.Contains(err.Error(), "manual-1") {
+		t.Fatalf("post-alter contradiction: %v", err)
+	}
+}
+
+// flashbackTargetGuardE2E covers a wrong dump that the evaluator can contradict,
+// a matching-values wrong dump that must die in the apply guard (including a
+// no-primary-key duplicate), a real post-ALTER generated column, and JSON
+// null / decimal generated columns.
+func flashbackTargetGuardE2E(t *testing.T) {
+	t.Helper()
+	e2eMySQL(t, `
+DROP DATABASE IF EXISTS p178a;
+DROP DATABASE IF EXISTS p183;
+DROP DATABASE IF EXISTS p183ok;
+DROP DATABASE IF EXISTS p182;
+CREATE DATABASE p178a;
+CREATE DATABASE p183;
+CREATE DATABASE p183ok;
+CREATE DATABASE p182;
+CREATE TABLE p178a.t (
+  id INT NOT NULL,
+  code VARCHAR(20) CHARACTER SET ascii,
+  c VARCHAR(20) CHARACTER SET ascii,
+  PRIMARY KEY (id)
+);
+INSERT INTO p178a.t VALUES (1, 'ab', 'note-1');
+CREATE TABLE p183.t (
+  id INT NOT NULL,
+  x VARCHAR(20),
+  c VARCHAR(20),
+  PRIMARY KEY (id)
+);
+INSERT INTO p183.t VALUES (1, 'ab', 'AB');
+CREATE TABLE p183.heap (
+  x VARCHAR(20),
+  note VARCHAR(40),
+  n INT
+);
+INSERT INTO p183.heap VALUES ('dup', 'kept-note', 1);
+CREATE TABLE p183ok.t (
+  id INT NOT NULL,
+  x VARCHAR(20),
+  c VARCHAR(20),
+  PRIMARY KEY (id)
+);
+ALTER TABLE p183ok.t CHANGE c c VARCHAR(20) GENERATED ALWAYS AS (UPPER(x)) STORED;
+INSERT INTO p183ok.t (id, x) VALUES (1, 'ab');
+CREATE TABLE p182.j (
+  id INT NOT NULL,
+  doc JSON,
+  v VARCHAR(64) AS (doc->>'$.v'),
+  PRIMARY KEY (id)
+);
+INSERT INTO p182.j (id, doc) VALUES
+  (1, JSON_OBJECT('v', CAST('null' AS JSON))),
+  (2, JSON_OBJECT('v', CAST(1.0 AS JSON))),
+  (3, JSON_OBJECT('v', CAST(0.1 AS JSON))),
+  (4, JSON_OBJECT('v', CAST(1e2 AS JSON)));
+`)
+	stored := e2eMySQL(t, "SELECT id, v FROM p182.j ORDER BY id")
+	t.Logf("JSON generated values:\n%s", stored)
+
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, `
+START TRANSACTION;
+DELETE FROM p178a.t;
+UPDATE p183.t SET x = 'cd', c = 'CD' WHERE id = 1;
+INSERT INTO p183.heap VALUES ('dup', 'DUP', 1);
+UPDATE p183ok.t SET x = 'zz' WHERE id = 1;
+DELETE FROM p182.j;
+COMMIT;`)
+	asciiPath := e2eIncidentBinlog(t)
+	const asciiSum = "CHECKSUM TABLE p178a.t"
+	asciiAfter := e2eMySQL(t, asciiSum)
+	asciiRows := e2eMySQL(t, "SELECT COUNT(*) FROM p178a.t")
+	asciiSchema := "USE `p178a`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `code` varchar(20) CHARACTER SET ascii DEFAULT NULL,\n" +
+		"  `c` varchar(20) CHARACTER SET ascii GENERATED ALWAYS AS (upper(`code`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	asciiFile := filepath.Join(t.TempDir(), "ascii.sql")
+	if err := os.WriteFile(asciiFile, []byte(asciiSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := executeFlashbackLikeMain(t, asciiPath, "--schema-file", asciiFile, "--include-table", "p178a.t")
+	assertFlashbackRefused(t, stdout, stderr, err, "note-1")
+	if got := e2eMySQL(t, asciiSum); got != asciiAfter || e2eMySQL(t, "SELECT COUNT(*) FROM p178a.t") != asciiRows {
+		t.Fatalf("ascii refusal changed rows\nbefore %s\nafter %s", asciiAfter, got)
+	}
+
+	const matchSum = "CHECKSUM TABLE p183.t, p183.heap"
+	matchAfter := e2eMySQL(t, matchSum)
+	matchSchema := "USE `p183`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `x` varchar(20) DEFAULT NULL,\n" +
+		"  `c` varchar(20) GENERATED ALWAYS AS (upper(`x`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n" +
+		"CREATE TABLE `heap` (\n" +
+		"  `x` varchar(20) DEFAULT NULL,\n" +
+		"  `note` varchar(40) GENERATED ALWAYS AS (upper(`x`)) STORED,\n" +
+		"  `n` int DEFAULT NULL\n);\n"
+	matchFile := filepath.Join(t.TempDir(), "match.sql")
+	if err := os.WriteFile(matchFile, []byte(matchSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sql, stderr, err := executeFlashbackLikeMain(t, asciiPath, "--schema-file", matchFile, "--include-table", "p183.t,p183.heap")
+	if err != nil {
+		t.Fatalf("matching dump: %v\n%s", err, stderr)
+	}
+	for _, name := range []string{"p183.t.c", "p183.heap.note"} {
+		if !strings.Contains(sql, "'"+name+"'") {
+			t.Fatalf("guard missing %s:\n%s", name, sql)
 		}
 	}
+	if !strings.Contains(sql, "schema file does not match the target") || !guardBeforeFirstGTID(sql) {
+		t.Fatalf("guard:\n%s", sql)
+	}
+	if !strings.Contains(sql, "`note` <=> 'DUP'") {
+		t.Fatalf("no-pk WHERE dropped the generated column:\n%s", sql)
+	}
+	if sqlAssignsColumn(sql, "`c`") || sqlAssignsColumn(sql, "`note`") {
+		t.Fatalf("matching dump assigned a generated column:\n%s", sql)
+	}
+	out, applyErr := e2eMySQLResult(t, sql)
+	t.Logf("GUARD_APPLY_OUTPUT_BEGIN\n%s\nGUARD_APPLY_OUTPUT_END", out)
+	if applyErr == nil || !strings.Contains(out, "schema file does not match the target") || !strings.Contains(out, "p183.t.c") || !strings.Contains(out, "p183.heap.note") {
+		t.Fatalf("guard apply err=%v\n%s\nsql:\n%s", applyErr, out, sql)
+	}
+	if got := e2eMySQL(t, matchSum); got != matchAfter {
+		t.Fatalf("guard apply changed rows\nbefore:\n%s\nafter:\n%s", matchAfter, got)
+	}
+	heap := e2eMySQL(t, "SELECT x, note, n FROM p183.heap ORDER BY note")
+	if !strings.Contains(heap, "kept-note") || !strings.Contains(heap, "DUP") {
+		t.Fatalf("duplicate rows:\n%s", heap)
+	}
+
+	okBefore := e2eMySQL(t, "SELECT id, x, c FROM p183ok.t")
+	okWant := "1\tab\tAB"
+	dump := e2eTool(t, "mysqldump", []string{
+		"--no-data", "--default-character-set=utf8mb4", "--set-gtid-purged=OFF",
+		"--databases", "p183ok",
+	}, "")
+	dumpPath := filepath.Join(t.TempDir(), "p183ok.sql")
+	if err := os.WriteFile(dumpPath, []byte(dump), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sql, stderr, err = executeFlashbackLikeMain(t, asciiPath, "--schema-file", dumpPath, "--include-table", "p183ok.t")
+	if err != nil {
+		t.Fatalf("post-alter restore: %v\n%s\ndump:\n%s", err, stderr, dump)
+	}
+	if !strings.Contains(sql, "schema file does not match the target") || !strings.Contains(sql, "'p183ok.t.c'") {
+		t.Fatalf("post-alter guard:\n%s", sql)
+	}
+	e2eMySQL(t, sql)
+	if got := e2eMySQL(t, "SELECT id, x, c FROM p183ok.t"); strings.TrimSpace(got) != okWant {
+		t.Fatalf("post-alter row %q want %q\nwas %q\nsql:\n%s", strings.TrimSpace(got), okWant, strings.TrimSpace(okBefore), sql)
+	}
+	jsonDump := e2eTool(t, "mysqldump", []string{
+		"--no-data", "--default-character-set=utf8mb4", "--set-gtid-purged=OFF",
+		"--databases", "p182",
+	}, "")
+	jsonPath := filepath.Join(t.TempDir(), "p182.sql")
+	if err := os.WriteFile(jsonPath, []byte(jsonDump), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sql, stderr, err = executeFlashbackLikeMain(t, asciiPath, "--schema-file", jsonPath, "--include-table", "p182.j")
+	if err != nil {
+		t.Fatalf("json flashback: %v\n%s\nstored before delete:\n%s\ndump:\n%s", err, stderr, stored, jsonDump)
+	}
+	if strings.Contains(stderr, "does not match") {
+		t.Fatalf("json contradiction:\n%s\nstored:\n%s\nsql:\n%s", stderr, stored, sql)
+	}
+	e2eMySQL(t, sql)
+	if got := e2eMySQL(t, "SELECT id, v FROM p182.j ORDER BY id"); got != stored {
+		t.Fatalf("json restored\nwant:\n%s\ngot:\n%s\nsql:\n%s", stored, got, sql)
+	}
+}
+
+func sqlAssignsColumn(sql, col string) bool {
+	for _, stmt := range strings.Split(sql, ";") {
+		body := stmt
+		if i := strings.Index(strings.ToUpper(stmt), " WHERE "); i >= 0 {
+			body = stmt[:i]
+		}
+		if strings.Contains(body, col) {
+			return true
+		}
+	}
+	return false
+}
+
+func guardBeforeFirstGTID(sql string) bool {
+	guard := strings.Index(sql, "@binlogviz_mismatch")
+	gtid := strings.Index(sql, "-- gtid:")
+	return guard > 0 && gtid > guard
 }
 
 func e2eIncidentBinlog(t *testing.T) string {
@@ -1047,6 +1233,15 @@ func e2eGTIDSet(raw string) string {
 
 func e2eMySQL(t *testing.T, stdin string) string {
 	t.Helper()
+	out, err := e2eMySQLResult(t, stdin)
+	if err != nil {
+		t.Fatalf("mysql: %v\n%s\nSQL:\n%s", err, out, stdin)
+	}
+	return out
+}
+
+func e2eMySQLResult(t *testing.T, stdin string) (string, error) {
+	t.Helper()
 	base := strings.Fields(os.Getenv("BINLOGVIZ_MYSQL"))
 	if len(base) == 0 {
 		base = []string{"sudo", "mysql"}
@@ -1055,10 +1250,7 @@ func e2eMySQL(t *testing.T, stdin string) string {
 	cmd := exec.Command(base[0], args...)
 	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("mysql: %v\n%s\nSQL:\n%s", err, out, stdin)
-	}
-	return string(out)
+	return string(out), err
 }
 
 func e2eCopy(t *testing.T, src, dst string) {

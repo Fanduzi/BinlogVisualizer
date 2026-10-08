@@ -84,15 +84,15 @@ DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE
 
 JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAST(... AS JSON)`），小数仍是小数，日期时间仍是日期时间，`-0.0` 保留符号。`binlog_transaction_compression=ON` 记下的事务也一样。非 `utf8mb4` 的字符列写成字符集引导符加原始字节（`_latin1 0xE9`、`_utf16 0x00410042`）。`binary` 校对仍是 `X'...'`。`utf8mb4` 仍是带引号的字符串。`ENUM` 写成从 1 开始的成员序号（`0` 是空成员），`SET` 写成位掩码（bit 0 是第一个成员）。带引号的成员名是列自己的字符集，`latin1` 或 `gbk` 在 `SET NAMES utf8mb4` 下并不精确：严格 `sql_mode` 会返回 `ERROR 1265`，非严格模式可能写成空值。数字在两种模式下都还原同一个成员。序号 0 不是成员。严格 `sql_mode` 会报 `ERROR 1265`。flashback 还原这一行时先保存 `@@SESSION.sql_mode`，只在这一条语句去掉 `STRICT_TRANS_TABLES`、`STRICT_ALL_TABLES` 和 `TRADITIONAL`，然后把保存的模式设回去。`TRADITIONAL` 也要去掉，因为 MySQL 会把它展开回那两个严格模式。其他语句仍是严格模式。空的 `sql_mode` 以及会话一开始带 `NO_BACKSLASH_ESCAPES` 时，这一行仍然能还原。脚本头会在整个会话去掉 `NO_BACKSLASH_ESCAPES`，并且不会设回去。
 
-生成列（VIRTUAL 或 STORED）在定义已知时不写入 `INSERT` 列清单和 `UPDATE` 赋值。没有主键时，只要还剩基列，就从 `WHERE` 里去掉生成列。生成列若属于主键，仍留在 `WHERE` 中。列名来自你传入文件里的 `CREATE TABLE` 和 `ALTER TABLE`，包括被 `--exclude-gtids` 或时间窗口排除的事务，也来自 `--schema-file`（`mysqldump --no-data`，或 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句里的换行写成 `\n` 的输出）。flashback 不连接 MySQL。MySQL 8 的 `TABLE_MAP` 可选元数据止于 `COLUMN_VISIBILITY`（不可见列，不是生成列），`binlog_row_image=FULL` 同时存下虚拟列和存储列的值，所以缺一个单元格并不是信号。`FULL` 镜像仍然记下了这个值，flashback 会拿它和 schema 文件里的表达式核对。定义出现过但读不出来时，flashback 拒绝该表且不打印 SQL。选中的表从未有过定义时，flashback 仍打印脚本，列出每一列，并在脚本之前把警告写到 stderr。警告点名这张表，说明不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
+生成列（VIRTUAL 或 STORED）在定义已知时不写入 `INSERT` 列清单和 `UPDATE` 赋值。没有主键时，`WHERE` 仍然比较生成列和其余每一列，因此把 `INSERT` 撤回去时不会删到另一行重复数据。生成列若属于主键，仍留在 `WHERE` 中。它们不出现在 `INSERT` 和 `UPDATE` 的赋值里。列名来自你传入文件里的 `CREATE TABLE` 和 `ALTER TABLE`，包括被 `--exclude-gtids` 或时间窗口排除的事务，也来自 `--schema-file`（`mysqldump --no-data`，或 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句里的换行写成 `\n` 的输出）。flashback 不连接 MySQL。MySQL 8 的 `TABLE_MAP` 可选元数据止于 `COLUMN_VISIBILITY`（不可见列，不是生成列），`binlog_row_image=FULL` 同时存下虚拟列和存储列的值，所以缺一个单元格并不是信号。`FULL` 镜像仍然记下了这个值，flashback 会拿它和 schema 文件里的表达式核对。定义出现过但读不出来时，flashback 拒绝该表且不打印 SQL。选中的表从未有过定义时，flashback 仍打印脚本，列出每一列，并在脚本之前把警告写到 stderr。警告点名这张表，说明不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
 
-`--schema-file` 必须是行被写入时的表结构。flashback 拿这份定义和每个选中事件的 binlog `TABLE_MAP` 比较：列数、列名、顺序，以及 binlog 里有的类型、有无符号、字符集、`ENUM`/`SET` 成员、小数精度和小数秒。不一致时点名这张表和有差异的列，说明文件对不上，并且不打印 SQL。错误里还会说明下一步：用事故当时的转储；若之后有 `ALTER`，用更早的转储；或用 `--include-table` 把这张表排除。生成列在每一行的记录值都等于表达式时才省略。能核对的是整数 `+`、`-`、`*`、`/`、`DIV`、`%`、`MOD`、括号、列名和 `NULL`，以及 `UPPER`、`LOWER`、`CONCAT`、`CONCAT_WS`、`LENGTH`、`CHAR_LENGTH` 和简单的 JSON 提取（`->`、`->>`、带常量路径的 `JSON_EXTRACT`、`JSON_UNQUOTE`）。`/` 按 MySQL 赋给整数的方式舍入，远离零的一半进位，所以整数列里的 `5 / 2` 是 `3`，`-5 / 2` 是 `-3`。`DIV` 向零截断。`UPPER` 和 `LOWER` 按字符集转换。`NULL` 仍是 `NULL`，但 `CONCAT_WS` 会跳过 `NULL` 参数。记下的值对不上这个表达式时，退出 1，并且不打印 SQL。错误会点名表、列、表达式，并给出一行示例。两份镜像里表达式引用的列相同、生成列不同，也一样拒绝，包括只改了这一列的 `UPDATE`，以及一对 `INSERT`/`DELETE`。表达式无法计算、且记下的值没有矛盾时，除非传入 `--allow-unverified-generated`，否则拒绝。错误会说明这个选项，并说明如果这一列其实不是生成列，省略它会丢掉已存储的值。带上这个选项时，脚本省略该列，stderr 给出警告，脚本头写入 `-- WARNING: generated column db.tbl.col not verified`。这个选项不能覆盖矛盾的值。记下的值恰好等于能核对的表达式时，真实列和生成列仍然分不开。解析到的文件里若有 `CREATE`，就用它替换文件里的这张表。解析到的 `ALTER`（含被时间或 GTID 排除的语句）会更新之后事件使用的定义。选定范围内的 `ALTER` 仍然拒绝，因为 flashback 不撤销 DDL。普通的 `mysqldump --no-data db` 没有 `USE`。库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或这张表在 binlog 里只出现在一个库时的那个库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`，包括 `mysql --batch` 的输出。转储头和 `--schema-file-db` 不一致，或表名出现在多个库时，flashback 警告并且不用这份定义。
+`--schema-file` 必须是行被写入时的表结构。flashback 拿这份定义和每个选中事件的 binlog `TABLE_MAP` 比较：列数、列名、顺序，以及 binlog 里有的类型、有无符号、字符集、`ENUM`/`SET` 成员、小数精度和小数秒。不一致时点名这张表和有差异的列，说明文件对不上，并且不打印 SQL。错误里还会说明下一步：用事故当时的转储；若之后有 `ALTER`，用更早的转储；或用 `--include-table` 把这张表排除。生成列在每一行的记录值都等于表达式时才省略。能核对的是整数 `+`、`-`、`*`、`/`、`DIV`、`%`、`MOD`、括号、列名和 `NULL`，以及 `UPPER`、`LOWER`、`CONCAT`、`CONCAT_WS`、`LENGTH`、`CHAR_LENGTH` 和简单的 JSON 提取（`->`、`->>`、带常量路径的 `JSON_EXTRACT`、`JSON_UNQUOTE`）。`/` 按 MySQL 赋给整数的方式舍入，远离零的一半进位，所以整数列里的 `5 / 2` 是 `3`，`-5 / 2` 是 `-3`。`DIV` 向零截断。`UPPER` 和 `LOWER` 只覆盖 `ascii`、`latin1` 的一一对应，以及 `utf8mb4` 里拉丁字母和 `µ`（U+00B5）到 `Μ`（U+039C）。`ß`、`ÿ` 以及其他超出拉丁字母的码位不核对。`NULL` 仍是 `NULL`，但 `CONCAT_WS` 会跳过 `NULL` 参数。记下的值对不上这个表达式时，退出 1，并且不打印 SQL。错误会点名表、列、表达式，并给出一行示例。两份镜像里表达式引用的列相同、生成列不同，也一样拒绝，包括只改了这一列的 `UPDATE`，以及一对 `INSERT`/`DELETE`。表达式无法精确计算、且记下的值没有矛盾时，脚本省略该列。stderr 对这一列警告一次。脚本头有一行英文注释 `-- WARNING: generated column db.tbl.col not verified`，说明下面的守卫会检查目标。核对不了的情况只算无法核对：既不当成匹配，也不当成矛盾。已经证明的矛盾，包括两份镜像里引用的值相同而生成列不同，仍然退出 1，不打印 SQL。记下的值恰好等于能核对的表达式时，flashback 当时仍然分不开真实列和生成列。脚本里的守卫会在目标上拦住这种情况。解析到的文件里若有 `CREATE`，就用它替换文件里的这张表。解析到的 `ALTER`（含被时间或 GTID 排除的语句）会更新之后事件使用的定义。选定范围内的 `ALTER` 仍然拒绝，因为 flashback 不撤销 DDL。普通的 `mysqldump --no-data db` 没有 `USE`。库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或这张表在 binlog 里只出现在一个库时的那个库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`，包括 `mysql --batch` 的输出。转储头和 `--schema-file-db` 不一致，或表名出现在多个库时，flashback 警告并且不用这份定义。
 
 即使字面量精确，这些限制仍然在：
 
 - `ON DELETE CASCADE` 和 `ON UPDATE CASCADE` 改动的子表行不在 binlog 里，flashback 不会把它们改回去。
 - 撤销执行时，表上的触发器会触发。
-- 匹配只用主键，或剩余每一列加 `LIMIT 1`。没有冲突检查。脚本会覆盖事故之后的修改。
+- 匹配只用主键，或每一列加 `LIMIT 1`。没有冲突检查。脚本会覆盖事故之后的修改。
 - 表过滤或 `--dml` 可能只撤销一个事务里的一部分行变更。这时 stderr 打出警告，stdout 仍是保留行的 SQL。时间、位点、GTID 选择丢掉的是整个事务，不警告。
 - 先审阅并测试脚本。在主库的同一个会话里执行，并保持 `sql_log_bin=1`，副本才会在新 GTID 下跟上。不要在副本上执行。某条语句失败时，脚本里更早的事务已经提交。
 
@@ -100,7 +100,8 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 先审阅并测试脚本，再在主库的同一个会话里执行。某条语句失败时，脚本里更早的事务已经提交。
 
-- `--schema-file` 把真实列标成生成列时，若记下的值恰好等于 binlogviz 能核对的表达式（`c` 一直被写成 `a + 1`、`UPPER(x)`，或 `first` 与 `last` 拼出来的名字），这一列仍会被省略，命令以退出码 0 结束（[#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)）。MySQL 8 的行元数据不标记生成列，这种情况和正确的转储分不开。记下的值与表达式矛盾时，包括只改了这个所谓生成列的 `UPDATE`，退出 1，并且不打印 SQL。表达式无法计算时同样拒绝，除非传入 `--allow-unverified-generated`。这个选项会省略该列，并在脚本头写警告；它不能覆盖矛盾的值。表里确实有生成列时，不传 `--schema-file` 解决不了问题：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，更早的事务已经提交。
+- `--schema-file` 把真实列标成生成列时，若记下的值恰好等于 binlogviz 能核对的表达式，或者表达式无法核对且没有矛盾（`c` 一直被写成 `a + 1`、`UPPER(x)`，或 `first` 与 `last` 拼出来的名字），这一列仍会被省略，命令以退出码 0 结束（[#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)）。MySQL 8 的行元数据不标记生成列，flashback 当时分不开这种情况和正确的转储。脚本会在三条 `SET` 之后、第一个事务之前放一个守卫。目标上 `information_schema.COLUMNS.EXTRA` 不是 `STORED GENERATED` 或 `VIRTUAL GENERATED` 时，执行在任何事务之前失败。错误说明 schema 文件和目标对不上，并列出每一个对不上的 `库.表.列`，不是只列出第一个。这能拦住环境不对的转储，以及表达式恰好等于记下的值的转储，也包括没有主键时把 `INSERT` 撤回去却删到另一行重复数据。记下的值与表达式矛盾时，包括只改了这个所谓生成列的 `UPDATE`，退出 1，并且不打印 SQL。表里确实有生成列时，不传 `--schema-file` 解决不了问题：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，更早的事务已经提交。
+- 事故之后如果把普通列改成了生成列，原来的值写不回去。`ALTER` 之后的转储，在记下的值和这个新表达式矛盾时会被拒绝。事故当时的转储仍把这一列当成普通列去赋值，执行停在 `ERROR 3105`，因为目标上这一列已经是生成列。要还原其他列，从事故当时的脚本里把这一列从 `INSERT` 清单和 `SET` 清单中删掉。MySQL 会重新计算它。算出来的值和当初存下的值不一样时，这不是原来的值。不要加 `--force` 执行：客户端会跳过这条错误，继续跑后面的事务。
 - 非严格会话写下的行，在严格会话里执行可能失败（[#180](https://github.com/Fanduzi/BinlogVisualizer/issues/180)）。零日期报 `ERROR 1292`（错误的日期值）。生成列 `a/b` 在 `b` 为 0 时写入，严格会话报 `ERROR 1365`（除以零）。脚本里更早的事务已经提交。用当初那个会话的 `sql_mode` 执行。
 - [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167)：解析到的 binlog 里若有 `ALTER`，会再应用到已经包含这次变更的 schema 文件上。ALTER 之后导出的文件（ALTER 早于事故，这份文件正是事故当时的结构）也可能被拒绝。怎么认出来：错误里同一列出现两次。英文是 `reordered (schema file ...; binlog ...)`，例如 `id, a, b, c, c`。中文是 `--schema-file 与 binlog 的列不一致`，后面跟着 `顺序不同（schema 文件 …；binlog …）`。用这次 `ALTER` 之前的转储（实测可以还原），或者不要传入包含这次 `ALTER` 的那个 binlog 文件。把多份 `mysqldump --no-data` 拼成一个文件时，只用第一个 `Database:` 头，后面的转储都绑到那个库。每份转储前面加上 `USE db;`，或者每个库单独跑一次 flashback，带上 `--schema-file-db` 和这个库自己的那份转储。拿拼接后的文件按库单独跑不行：要么拒绝（`--schema-file 与 binlog 的列不一致`），要么警告 `Database` 头和 `--schema-file-db` 不一致、不使用这份定义。两种都会安全失败，但都还原不了。未带库名的表出现在多个库时，逐表警告只点名其中一张没有定义的表。给表加上库名，或补上 `USE`，这份定义才会被用上。
 
@@ -108,12 +109,13 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 某条语句失败时，脚本里更早的事务已经提交。把整个脚本再跑一遍，没有主键的表里会出现重复行。有主键的表会停在 `ERROR 1062`。
 
-脚本分两部分。第一个 `-- gtid:` 行之前的都是脚本头：两行注释、使用 `--allow-unverified-generated` 时每个被省略的生成列各一行 `-- WARNING: generated column ... not verified`，以及三条会话语句。
+脚本分两部分。第一个 `-- gtid:` 行之前的都是脚本头：两行注释、核对不了的生成列各一行英文 `-- WARNING: generated column ... not verified`、三条会话语句，以及脚本因为 schema 文件省略了生成列时跟在这三条语句后面的守卫。恢复执行时保留整个脚本头，包括守卫。脚本里的注释是英文。
 
 ```sql
 SET NAMES utf8mb4;
 SET time_zone = '+00:00';
 SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');
+-- Guard: every generated column omitted below must be GENERATED on the target.
 ```
 
 后面是事务块，按 binlog 逆序：最后发生的事务排在最前面。每一块以 `-- gtid:` 注释开头（没有 GTID 时是 `-- gtid: GTID unavailable`），下一行是 `-- binlog: file:pos`，以 `COMMIT;` 结束。块里面的 `SET @binlogviz_sql_mode` / `SET SESSION sql_mode` 属于这一块。

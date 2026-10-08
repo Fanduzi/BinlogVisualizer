@@ -103,10 +103,13 @@ func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "matches every non-generated column") || strings.Contains(sql, "`virt`") {
+	if !strings.Contains(sql, "matches every column") || !strings.Contains(sql, "`virt` <=> 3") {
 		t.Fatalf("no-pk where: %s", sql)
 	}
-	if !strings.Contains(sql, "UPDATE `shop`.`heap` SET `id` = 1, `note` = 'a' WHERE `id` <=> 1 AND `note` <=> 'b' LIMIT 1;") {
+	if strings.Contains(sql, "SET `virt`") || strings.Contains(sql, ", `virt`") {
+		t.Fatalf("no-pk assigned generated column: %s", sql)
+	}
+	if !strings.Contains(sql, "UPDATE `shop`.`heap` SET `id` = 1, `note` = 'a' WHERE `id` <=> 1 AND `virt` <=> 3 AND `note` <=> 'b' LIMIT 1;") {
 		t.Fatalf("no-pk sql: %s", sql)
 	}
 
