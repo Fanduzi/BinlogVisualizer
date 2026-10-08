@@ -491,6 +491,69 @@ func TestOutOfRangeSchemaWarns(t *testing.T) {
 	}
 }
 
+func TestDecimalMulDoesNotRoundIntermediate(t *testing.T) {
+	// DECIMAL(31,30) * DECIMAL(6,5). The exact product is 0.4999…5, so one
+	// half-up round stores 0. Rounding the product to 30 places first makes
+	// 0.5, and the column round then stores 1.
+	const (
+		aLit = "0.500005000050000500005000050000"
+		bLit = "0.99999"
+		expr = "(`a` * `b`)"
+	)
+	a := schemaCol{name: "a", base: "decimal", prec: 31, scale: 30, hasPrec: true}
+	b := schemaCol{name: "b", base: "decimal", prec: 6, scale: 5, hasPrec: true}
+	t.Run("decimal(10,0)", func(t *testing.T) {
+		g := schemaCol{name: "g", base: "decimal", expr: expr, prec: 10, scale: 0, hasPrec: true}
+		meta := []schemaCol{a, b, g}
+		assertGenOutcome(t, g, meta, []string{"a", "b", "g"}, []string{aLit, bLit, "0"}, "unverified")
+		assertGenOutcome(t, g, meta, []string{"a", "b", "g"}, []string{aLit, bLit, "1"}, "unverified")
+	})
+	t.Run("int", func(t *testing.T) {
+		g := schemaCol{name: "g", base: "int", expr: expr}
+		meta := []schemaCol{a, b, g}
+		assertGenOutcome(t, g, meta, []string{"a", "b", "g"}, []string{aLit, bLit, "0"}, "match")
+		assertGenOutcome(t, g, meta, []string{"a", "b", "g"}, []string{aLit, bLit, "1"}, "mismatch")
+	})
+}
+
+func TestDecimalPrecisionOverflowUnverified(t *testing.T) {
+	// 41 digits times 41 digits is 81 digits, past DECIMAL's 65-digit precision.
+	wide := "1" + strings.Repeat("0", 40)
+	a := schemaCol{name: "a", base: "decimal", prec: 50, scale: 0, hasPrec: true}
+	b := schemaCol{name: "b", base: "decimal", prec: 50, scale: 0, hasPrec: true}
+	metaDec := func(g schemaCol) []schemaCol { return []schemaCol{a, b, g} }
+	gDec := schemaCol{name: "g", base: "decimal", expr: "(`a` * `b`)", prec: 10, scale: 0, hasPrec: true}
+	gInt := schemaCol{name: "g", base: "int", expr: "(`a` * `b`)"}
+	for _, lit := range []string{"0", "1", "9999999999"} {
+		assertGenOutcome(t, gDec, metaDec(gDec), []string{"a", "b", "g"}, []string{wide, wide, lit}, "unverified")
+	}
+	for _, lit := range []string{"0", "1", "2147483647"} {
+		assertGenOutcome(t, gInt, metaDec(gInt), []string{"a", "b", "g"}, []string{wide, wide, lit}, "unverified")
+	}
+
+	// 5*10^64 + 5*10^64 = 10^65, which is 66 digits.
+	hi := "5" + strings.Repeat("0", 64)
+	addA := schemaCol{name: "a", base: "decimal", prec: 65, scale: 0, hasPrec: true}
+	addB := schemaCol{name: "b", base: "decimal", prec: 65, scale: 0, hasPrec: true}
+	add := schemaCol{name: "g", base: "int", expr: "(`a` + `b`)"}
+	assertGenOutcome(t, add, []schemaCol{addA, addB, add}, []string{"a", "b", "g"}, []string{hi, hi, "0"}, "unverified")
+	sub := schemaCol{name: "g", base: "decimal", expr: "(`a` - `b`)", prec: 65, scale: 0, hasPrec: true}
+	// 5*10^64 - (-5*10^64) is the same overflow. -5*10^64 still fits in DECIMAL(65,0).
+	assertGenOutcome(t, sub, []schemaCol{addA, addB, sub}, []string{"a", "b", "g"}, []string{hi, "-" + hi, "0"}, "unverified")
+
+	// Division width for scale 15/15 is 36, past 30. Do not claim either target.
+	frac := "1." + strings.Repeat("0", 15)
+	seven := "7." + strings.Repeat("0", 15)
+	da := schemaCol{name: "a", base: "decimal", prec: 20, scale: 15, hasPrec: true}
+	db := schemaCol{name: "b", base: "decimal", prec: 20, scale: 15, hasPrec: true}
+	for _, base := range []string{"decimal", "int"} {
+		g := schemaCol{name: "g", base: base, expr: "(`a` / `b`)", prec: 10, scale: 0, hasPrec: base == "decimal"}
+		for _, lit := range []string{"0", "1"} {
+			assertGenOutcome(t, g, []schemaCol{da, db, g}, []string{"a", "b", "g"}, []string{frac, seven, lit}, "unverified")
+		}
+	}
+}
+
 func assertGenOutcome(t *testing.T, col schemaCol, meta []schemaCol, cols, vals []string, want string) {
 	t.Helper()
 	example, unknown := generatedColumnOutcome(col, []loggedImage{{columns: cols, values: vals}}, meta)
