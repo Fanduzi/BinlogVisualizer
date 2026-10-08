@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET when that definition matches. An expression in --schema-file that cannot be checked is omitted with a warning when the column list matches. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, an expression cannot be checked and AllowUnverifiedGenerated is off, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET when that definition matches. An unchecked expression is omitted only with AllowUnverifiedGenerated, and the script header says so. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -150,7 +150,7 @@ func (a *Analyzer) finishSchema() error {
 			bind.deferCheck = false
 		}
 	}
-	return nil
+	return a.reviewGenerated()
 }
 
 func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashRow, bind flashBind) {
@@ -281,11 +281,107 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 	if len(kept) == 0 {
 		return "", nil
 	}
-	sql, err := renderFlashbackSQL(kept)
+	sql, err := renderFlashbackSQL(kept, a.flashGenNotes)
 	if err != nil {
 		return "", err
 	}
 	return sql, nil
+}
+
+// reviewGenerated checks schema-file generated columns against every logged image.
+// A contradiction refuses the script. An expression that cannot be evaluated
+// refuses unless AllowUnverifiedGenerated is set.
+func (a *Analyzer) reviewGenerated() error {
+	if a.flashReviewed {
+		return a.flashReviewErr
+	}
+	a.flashReviewed = true
+	a.flashReviewErr = a.collectGeneratedReview()
+	return a.flashReviewErr
+}
+
+func (a *Analyzer) collectGeneratedReview() error {
+	type bucket struct {
+		schema string
+		table  string
+		cols   []schemaCol
+		images []loggedImage
+	}
+	var order []string
+	groups := map[string]*bucket{}
+	for _, group := range a.flashGroups {
+		for i, row := range group.rows {
+			if i >= len(group.binds) {
+				continue
+			}
+			cols := group.binds[i].cols
+			sig := generatedSig(cols)
+			if sig == "" {
+				continue
+			}
+			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + sig
+			b := groups[key]
+			if b == nil {
+				b = &bucket{schema: row.Schema, table: row.Table, cols: cols}
+				groups[key] = b
+				order = append(order, key)
+			}
+			if row.Before != nil {
+				b.images = append(b.images, loggedImage{columns: row.Columns, values: row.Before})
+			}
+			if row.After != nil {
+				b.images = append(b.images, loggedImage{columns: row.Columns, values: row.After})
+			}
+		}
+	}
+	var parts, notes, warns []string
+	for _, key := range order {
+		b := groups[key]
+		table := flashTable(b.schema, b.table)
+		for _, col := range b.cols {
+			if !col.generated {
+				continue
+			}
+			example, unknown := generatedColumnOutcome(col, b.images)
+			if example != "" {
+				return generatedMismatch(table, col, example)
+			}
+			if !unknown {
+				continue
+			}
+			parts = append(parts, "generated column "+table+"."+col.name+" ("+exprText(col.expr)+")")
+			notes = append(notes, unverifiedGeneratedComment(table, col))
+			warns = append(warns, unverifiedGeneratedWarning(table, col))
+		}
+	}
+	if len(parts) == 0 {
+		return nil
+	}
+	if !a.opts.AllowUnverifiedGenerated {
+		return unverifiedGeneratedError(parts)
+	}
+	a.noteSchemaWarnings(warns)
+	a.flashGenNotes = append(a.flashGenNotes, notes...)
+	return nil
+}
+
+func generatedSig(cols []schemaCol) string {
+	var b strings.Builder
+	found := false
+	for _, col := range cols {
+		if !col.generated {
+			continue
+		}
+		found = true
+		b.WriteString(strings.ToLower(col.name))
+		b.WriteByte(0)
+		b.WriteString(col.expr)
+		b.WriteByte(0)
+	}
+	if !found {
+		return ""
+	}
+	return b.String()
 }
 
 func flashRowError(row model.FlashRow) error {
@@ -346,10 +442,14 @@ func oneLine(value string, limit int) string {
 	return value
 }
 
-func renderFlashbackSQL(groups []flashGroup) (string, error) {
+func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 	var b strings.Builder
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
+	for _, note := range notes {
+		b.WriteString(note)
+		b.WriteByte('\n')
+	}
 	b.WriteString("SET NAMES utf8mb4;\n")
 	b.WriteString("SET time_zone = '+00:00';\n")
 	b.WriteString("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\n")
