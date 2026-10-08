@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
@@ -450,7 +451,8 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 	b.WriteString("SET NAMES utf8mb4;\n")
 	b.WriteString("SET time_zone = '+00:00';\n")
 	b.WriteString("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\n")
-	if guard := renderGeneratedGuard(groups); guard != "" {
+	guard := renderGeneratedGuard(groups)
+	if guard != "" {
 		b.WriteByte('\n')
 		b.WriteString(guard)
 	}
@@ -467,6 +469,12 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 			file = "binlog"
 		}
 		fmt.Fprintf(&b, "-- binlog: %s:%d\n", oneLine(file, 0), group.pos)
+		if guard != "" {
+			// SET sql_mode, COMMIT, START TRANSACTION, and SET GTID_NEXT do not
+			// clear this session flag. Repeat the lock outside a transaction so
+			// this block cannot start writable.
+			b.WriteString(guardLockSQL)
+		}
 		b.WriteString("START TRANSACTION;\n")
 		for j := len(group.rows) - 1; j >= 0; j-- {
 			var gen map[string]struct{}
@@ -597,9 +605,64 @@ type guardCol struct {
 	column string
 }
 
+const guardMismatchLead = "binlogviz: schema file does not match the target"
+const guardValueLimit = 200
+
+// guardLockSQL commits first so the assignment is not inside the transaction
+// the information_schema reads open when autocommit is 0. A match assigns the
+// current flag back to itself.
+const guardLockSQL = "COMMIT;\nSET SESSION transaction_read_only = IF(@binlogviz_mismatch IS NULL, @@SESSION.transaction_read_only, 1);\n"
+
+// guardSafeLabel keeps a column name from being split by MySQL's sql_mode
+// parser (commas) or by the list separator used below.
+func guardSafeLabel(name string) string {
+	name = strings.ReplaceAll(name, " | ", " / ")
+	return strings.ReplaceAll(name, ",", ";")
+}
+
+// trimGuardList keeps only whole names that fit in room runes.
+// The SQL in renderGeneratedGuard implements this same cut.
+func trimGuardList(list string, room int) string {
+	if room < 0 {
+		room = 0
+	}
+	runes := []rune(list)
+	if len(runes) <= room {
+		return list
+	}
+	cut := string(runes[:room])
+	extended := []rune(list + " | ")
+	if room+3 <= len(extended) && string(extended[room:room+3]) == " | " {
+		return cut
+	}
+	idx := strings.LastIndex(cut, " | ")
+	if idx < 0 {
+		return ""
+	}
+	return cut[:idx]
+}
+
+// guardErrorValue is the sql_mode string the guard assigns on a mismatch.
+// It stays within guardValueLimit runes and bytes, and it contains no comma.
+func guardErrorValue(safeNames []string) string {
+	list := strings.Join(safeNames, " | ")
+	full := guardMismatchLead + ": " + list
+	if utf8.RuneCountInString(full) <= guardValueLimit && len(full) <= guardValueLimit {
+		return full
+	}
+	head := fmt.Sprintf("%s (%d columns): ", guardMismatchLead, len(safeNames))
+	short := head + trimGuardList(list, guardValueLimit-utf8.RuneCountInString(head))
+	if utf8.RuneCountInString(short) <= guardValueLimit && len(short) <= guardValueLimit {
+		return short
+	}
+	return fmt.Sprintf("%s (%d columns)", guardMismatchLead, len(safeNames))
+}
+
 // renderGeneratedGuard fails the apply before any transaction when a column
 // this script omitted is not GENERATED on the target. One check lists every
-// mismatch. Success runs DO 0 and leaves sql_mode unchanged.
+// mismatch. Success runs DO 0 and leaves sql_mode and transaction_read_only
+// unchanged. A mismatch prints the list, switches the session to read-only,
+// then fails SET sql_mode so the message is already visible.
 func renderGeneratedGuard(groups []flashGroup) string {
 	cols := omittedGeneratedCols(groups)
 	if len(cols) == 0 {
@@ -609,26 +672,36 @@ func renderGeneratedGuard(groups []flashGroup) string {
 	for i, col := range cols {
 		name := flashTable(col.schema, col.table) + "." + col.column
 		arms = append(arms, fmt.Sprintf(
-			"SELECT %d AS n, %s AS q FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s AND (EXTRA LIKE '%%STORED GENERATED%%' OR EXTRA LIKE '%%VIRTUAL GENERATED%%'))",
-			i+1, sqlQuote(name), sqlQuote(col.schema), sqlQuote(col.table), sqlQuote(col.column),
+			"SELECT %d AS n, %s AS q, %s AS safe_q FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s AND (EXTRA LIKE '%%STORED GENERATED%%' OR EXTRA LIKE '%%VIRTUAL GENERATED%%'))",
+			i+1, sqlQuote(name), sqlQuote(guardSafeLabel(name)), sqlQuote(col.schema), sqlQuote(col.table), sqlQuote(col.column),
 		))
 	}
+	lead := sqlQuote(guardMismatchLead)
 	var b strings.Builder
-	b.WriteString("-- Guard: every generated column omitted below must be GENERATED on the target. Apply stops here when the schema file does not match.\n")
+	b.WriteString("-- Guard: every generated column omitted below must be GENERATED on the target. Apply stops here when the schema file does not match. A client that continues is left read-only, so later writes fail.\n")
 	b.WriteString("SET @binlogviz_group_concat_max_len = @@SESSION.group_concat_max_len;\n")
 	b.WriteString("SET SESSION group_concat_max_len = 1048576;\n")
-	b.WriteString("SET @binlogviz_mismatch = (\n")
-	b.WriteString("  SELECT GROUP_CONCAT(q ORDER BY n SEPARATOR ', ')\n")
+	b.WriteString("SELECT GROUP_CONCAT(q ORDER BY n SEPARATOR ', '),\n")
+	b.WriteString("       GROUP_CONCAT(safe_q ORDER BY n SEPARATOR ' | '),\n")
+	b.WriteString("       COUNT(*)\n")
+	b.WriteString("  INTO @binlogviz_mismatch, @binlogviz_safe, @binlogviz_n\n")
 	b.WriteString("  FROM (\n    ")
 	b.WriteString(strings.Join(arms, "\n    UNION ALL\n    "))
-	b.WriteString("\n  ) AS binlogviz_gen\n);\n")
+	b.WriteString("\n  ) AS binlogviz_gen;\n")
 	b.WriteString("SET SESSION group_concat_max_len = @binlogviz_group_concat_max_len;\n")
-	b.WriteString("SET @binlogviz_guard_sql = IF(@binlogviz_mismatch IS NULL, 'DO 0', CONCAT('SELECT ', QUOTE(CONCAT('binlogviz: schema file does not match the target: ', @binlogviz_mismatch))));\n")
+	fmt.Fprintf(&b, "SET @binlogviz_guard_sql = IF(@binlogviz_mismatch IS NULL, 'DO 0', CONCAT('SELECT ', QUOTE(CONCAT(%s, ': ', @binlogviz_mismatch))));\n", lead)
 	b.WriteString("PREPARE binlogviz_guard FROM @binlogviz_guard_sql;\n")
 	b.WriteString("EXECUTE binlogviz_guard;\n")
 	b.WriteString("DEALLOCATE PREPARE binlogviz_guard;\n")
 	b.WriteString("SET @binlogviz_mode = @@SESSION.sql_mode;\n")
-	b.WriteString("SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL, @binlogviz_mode, CONCAT('binlogviz: schema file does not match the target: ', @binlogviz_mismatch));\n")
+	fmt.Fprintf(&b, "SET @binlogviz_full = CONCAT(%s, ': ', IFNULL(@binlogviz_safe, ''));\n", lead)
+	fmt.Fprintf(&b, "SET @binlogviz_head = CONCAT(%s, ' (', @binlogviz_n, ' columns): ');\n", lead)
+	fmt.Fprintf(&b, "SET @binlogviz_room = %d - CHAR_LENGTH(@binlogviz_head);\n", guardValueLimit)
+	b.WriteString("SET @binlogviz_cut = IF(@binlogviz_safe IS NULL, '', LEFT(@binlogviz_safe, GREATEST(@binlogviz_room, 0)));\n")
+	b.WriteString("SET @binlogviz_cut = IF(@binlogviz_safe IS NULL OR CHAR_LENGTH(@binlogviz_safe) <= @binlogviz_room, IFNULL(@binlogviz_safe, ''), IF(SUBSTRING(CONCAT(@binlogviz_safe, ' | '), CHAR_LENGTH(@binlogviz_cut) + 1, 3) = ' | ', @binlogviz_cut, IF(LOCATE(' | ', @binlogviz_cut) = 0, '', LEFT(@binlogviz_cut, GREATEST(CHAR_LENGTH(@binlogviz_cut) - CHAR_LENGTH(SUBSTRING_INDEX(@binlogviz_cut, ' | ', -1)) - 3, 0)))));\n")
+	b.WriteString("SET @binlogviz_short = CONCAT(@binlogviz_head, @binlogviz_cut);\n")
+	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL, @binlogviz_mode, IF(CHAR_LENGTH(@binlogviz_full) <= %d AND LENGTH(@binlogviz_full) <= %d, @binlogviz_full, IF(CHAR_LENGTH(@binlogviz_short) <= %d AND LENGTH(@binlogviz_short) <= %d, @binlogviz_short, CONCAT(%s, ' (', @binlogviz_n, ' columns)'))));\n", guardValueLimit, guardValueLimit, guardValueLimit, guardValueLimit, lead)
+	b.WriteString(guardLockSQL)
 	b.WriteString("SET SESSION sql_mode = @binlogviz_mode;\n")
 	return b.String()
 }

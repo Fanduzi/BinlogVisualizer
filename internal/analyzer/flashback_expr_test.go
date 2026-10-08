@@ -271,6 +271,38 @@ func TestExampleLiteral(t *testing.T) {
 	}
 }
 
+func TestExampleEnumSetLabels(t *testing.T) {
+	meta := []schemaCol{
+		{name: "id", base: "int"},
+		{name: "e", base: "enum", members: []string{"a", "b"}},
+		{name: "s", base: "set", members: []string{"x", "y"}},
+		{name: "c", base: "varchar"},
+	}
+	got := exampleImage(loggedImage{
+		columns: []string{"id", "e", "s", "c"},
+		values:  []string{"1", "1", "3", "'1'"},
+	}, meta)
+	if got != "id=1, e='a', s='x,y', c='1'" {
+		t.Fatalf("labels: %q", got)
+	}
+	bare := []schemaCol{{name: "e", base: "enum"}}
+	if got := exampleImage(loggedImage{columns: []string{"e"}, values: []string{"1"}}, bare); got != "e=1" {
+		t.Fatalf("no members: %q", got)
+	}
+	if got := exampleImage(loggedImage{columns: []string{"e"}, values: []string{"0"}}, meta); got != "e=''" {
+		t.Fatalf("index 0: %q", got)
+	}
+	if got := exampleImage(loggedImage{columns: []string{"e"}, values: []string{"9"}}, meta); got != "e=9" {
+		t.Fatalf("out of range: %q", got)
+	}
+	if got := exampleImage(loggedImage{columns: []string{"e", "s"}, values: []string{"NULL", "0"}}, meta); got != "e=NULL, s=''" {
+		t.Fatalf("null and empty set: %q", got)
+	}
+	if got := exampleImage(loggedImage{columns: []string{"s"}, values: []string{"4"}}, meta); got != "s=4" {
+		t.Fatalf("bit above members: %q", got)
+	}
+}
+
 func TestGeneratedRefs(t *testing.T) {
 	cases := []struct {
 		expr string
