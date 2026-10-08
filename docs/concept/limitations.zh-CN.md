@@ -82,11 +82,11 @@ DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE
 
 没有主键的表仍然可以撤销：`DELETE` 或 `UPDATE` 匹配每一列并加 `LIMIT 1`，注释会说明。把被删行插回去的 `INSERT` 不用 `LIMIT 1`。
 
-JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAST(... AS JSON)`），小数仍是小数，日期时间仍是日期时间，`-0.0` 保留符号。`binlog_transaction_compression=ON` 记下的事务也一样。非 `utf8mb4` 的字符列写成字符集引导符加原始字节（`_latin1 0xE9`、`_utf16 0x00410042`）。`binary` 校对仍是 `X'...'`。`utf8mb4` 仍是带引号的字符串。`ENUM` 写成从 1 开始的成员序号（`0` 是空成员），`SET` 写成位掩码（bit 0 是第一个成员）。带引号的成员名是列自己的字符集，`latin1` 或 `gbk` 在 `SET NAMES utf8mb4` 下并不精确：严格 `sql_mode` 会返回 `ERROR 1265`，非严格模式可能写成空值。数字在两种模式下都还原同一个成员。序号 0 不是成员。严格 `sql_mode` 会报 `ERROR 1265`。flashback 还原这一行时先保存 `@@SESSION.sql_mode`，只在这一条语句去掉 `STRICT_TRANS_TABLES` 和 `STRICT_ALL_TABLES`，然后把保存的模式设回去。其他语句仍是严格模式。
+JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAST(... AS JSON)`），小数仍是小数，日期时间仍是日期时间，`-0.0` 保留符号。`binlog_transaction_compression=ON` 记下的事务也一样。非 `utf8mb4` 的字符列写成字符集引导符加原始字节（`_latin1 0xE9`、`_utf16 0x00410042`）。`binary` 校对仍是 `X'...'`。`utf8mb4` 仍是带引号的字符串。`ENUM` 写成从 1 开始的成员序号（`0` 是空成员），`SET` 写成位掩码（bit 0 是第一个成员）。带引号的成员名是列自己的字符集，`latin1` 或 `gbk` 在 `SET NAMES utf8mb4` 下并不精确：严格 `sql_mode` 会返回 `ERROR 1265`，非严格模式可能写成空值。数字在两种模式下都还原同一个成员。序号 0 不是成员。严格 `sql_mode` 会报 `ERROR 1265`。flashback 还原这一行时先保存 `@@SESSION.sql_mode`，只在这一条语句去掉 `STRICT_TRANS_TABLES`、`STRICT_ALL_TABLES` 和 `TRADITIONAL`，然后把保存的模式设回去。`TRADITIONAL` 也要去掉，因为 MySQL 会把它展开回那两个严格模式。其他语句仍是严格模式。空的 `sql_mode` 以及会话一开始带 `NO_BACKSLASH_ESCAPES` 时，这一行仍然能还原。脚本头会在整个会话去掉 `NO_BACKSLASH_ESCAPES`，并且不会设回去。
 
 生成列（VIRTUAL 或 STORED）在定义已知时不写入 `INSERT` 列清单和 `UPDATE` 赋值。没有主键时，只要还剩基列，就从 `WHERE` 里去掉生成列。生成列若属于主键，仍留在 `WHERE` 中。列名来自你传入文件里的 `CREATE TABLE` 和 `ALTER TABLE`，包括被 `--exclude-gtids` 或时间窗口排除的事务，也来自 `--schema-file`（`mysqldump --no-data`，或 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句里的换行写成 `\n` 的输出）。flashback 不连接 MySQL。MySQL 8 的 `TABLE_MAP` 可选元数据止于 `COLUMN_VISIBILITY`（不可见列，不是生成列），`binlog_row_image=FULL` 同时存下虚拟列和存储列的值，所以缺一个单元格并不是信号，只看 binlog 无法区分。定义出现过但读不出来时，flashback 拒绝该表且不打印 SQL。选中的表从未有过定义时，flashback 仍打印脚本，列出每一列，并在脚本之前把警告写到 stderr。警告点名这张表，说明不能排除生成列，并且执行可能在 `ERROR 3105` 停下，更早的事务已经提交。
 
-`--schema-file` 必须是行被写入时的表结构。flashback 拿这份定义和每个选中事件的 binlog `TABLE_MAP` 比较：列数、列名、顺序，以及 binlog 里有的类型、有无符号、字符集、`ENUM`/`SET` 成员、小数精度和小数秒。不一致时点名这张表和有差异的列，并且不打印 SQL。生成列只有每一行的记录值都等于表达式时才省略。能核对的是整数 `+`、`-`、`*`、括号、列名和 `NULL`。`/` 按截断计算，MySQL 赋给整数时会四舍五入，所以正确的文件也可能对不上。`DIV` 和其他表达式一律拒绝，否则把真实列标成生成列会丢掉记下的值。解析到的文件里若有 `CREATE`，就用它替换文件里的这张表。解析到的 `ALTER`（含被时间或 GTID 排除的语句）会更新之后事件使用的定义。选定范围内的 `ALTER` 仍然拒绝，因为 flashback 不撤销 DDL。普通的 `mysqldump --no-data db` 没有 `USE`。库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或这张表在 binlog 里只出现在一个库时的那个库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`，包括 `mysql --batch` 的输出。转储头和 `--schema-file-db` 不一致，或表名出现在多个库时，flashback 警告并且不用这份定义。
+`--schema-file` 必须是行被写入时的表结构。flashback 拿这份定义和每个选中事件的 binlog `TABLE_MAP` 比较：列数、列名、顺序，以及 binlog 里有的类型、有无符号、字符集、`ENUM`/`SET` 成员、小数精度和小数秒。不一致时点名这张表和有差异的列，说明文件对不上，并且不打印 SQL。错误里还会说明下一步：用事故当时的转储；若之后有 `ALTER`，用更早的转储；或用 `--include-table` 把这张表排除。生成列在每一行的记录值都等于整数表达式时才省略。能核对的是 `+`、`-`、`*`、`/`、`DIV`、`%`、`MOD`、括号、列名和 `NULL`。`/` 按 MySQL 赋给整数的方式舍入，远离零的一半进位，所以整数列里的 `5 / 2` 是 `3`，`-5 / 2` 是 `-3`。`DIV` 向零截断。核对不了的表达式（JSON 提取、`UPPER`、`CONCAT`、日期函数，以及这个核对器不会计算的其他表达式）在列数、列名、顺序和类型都一致时仍然省略。stderr 会警告 binlogviz 无法核对这个表达式，点名表和列，并给出同样的下一步。这是警告，不是拒绝：脚本会打印出来，命令以退出码 0 结束。记下的值对不上能核对的表达式时，这是不一致。解析到的文件里若有 `CREATE`，就用它替换文件里的这张表。解析到的 `ALTER`（含被时间或 GTID 排除的语句）会更新之后事件使用的定义。选定范围内的 `ALTER` 仍然拒绝，因为 flashback 不撤销 DDL。普通的 `mysqldump --no-data db` 没有 `USE`。库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或这张表在 binlog 里只出现在一个库时的那个库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`，包括 `mysql --batch` 的输出。转储头和 `--schema-file-db` 不一致，或表名出现在多个库时，flashback 警告并且不用这份定义。
 
 即使字面量精确，这些限制仍然在：
 
@@ -100,15 +100,8 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 先审阅并测试脚本，再在主库的同一个会话里执行。某条语句失败时，脚本里更早的事务已经提交。
 
-- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)：生成列的表达式核对不了时，正确的 `--schema-file` 也会被拒绝。这包括 JSON 提取（`j->>'$.k'`）、`UPPER`、`CONCAT` 和 `DIV`。`/` 只在 MySQL 对结果做了舍入时才会对不上，因为核对按截断计算。英文错误是 `--schema-file does not match the binlog columns`。`--lang zh-CN` 下是 `--schema-file 与 binlog 的列不一致`。表里确实有生成列时，不传 `--schema-file` 解决不了问题：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，更早的事务已经提交。把包含 `CREATE TABLE`（或之后的 `ALTER`）的 binlog 和事故 binlog 一起传入，并用 `--include-gtids` 只选事故。从解析到的 binlog 学到的定义不按 schema 文件核对，生成列会从脚本里去掉，校验和可以回到事故前。也可以手工编辑脚本，从 `INSERT` 列清单和 `UPDATE` 赋值里删掉生成列。`--include-table` / `--exclude-table` 只是不选这些表，行还得用别的办法还原。
+- `--schema-file` 把真实列标成生成列时，这一列仍可能被省略，命令以退出码 0 结束（[#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)）。有两种情况和正确的转储分不开，因为 MySQL 8 的行元数据不标记生成列。记下的值恰好等于 binlogviz 能核对的表达式（`c` 一直被写成 `a + 1`）。或者表达式核对不了（JSON 提取、`UPPER`、`CONCAT` 以及其他），但列数、列名、顺序和类型一致，于是文件被信任。记下的值就不会出现在脚本里。文件必须是事故当时的表结构。表达式核对不了时，stderr 会点名这一列。真正的不一致（多了列或少了列，英文是 `extra c`、`missing c`，以及类型不同，或记下的值对不上能核对的表达式）仍然退出 1，并且不打印 SQL。表里确实有生成列时，不传 `--schema-file` 解决不了问题：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，更早的事务已经提交。
 - [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167)：解析到的 binlog 里若有 `ALTER`，会再应用到已经包含这次变更的 schema 文件上。ALTER 之后导出的文件（ALTER 早于事故，这份文件正是事故当时的结构）也可能被拒绝。怎么认出来：错误里同一列出现两次。英文是 `reordered (schema file ...; binlog ...)`，例如 `id, a, b, c, c`。中文是 `--schema-file 与 binlog 的列不一致`，后面跟着 `顺序不同（schema 文件 …；binlog …）`。用这次 `ALTER` 之前的转储（实测可以还原），或者不要传入包含这次 `ALTER` 的那个 binlog 文件。把多份 `mysqldump --no-data` 拼成一个文件时，只用第一个 `Database:` 头，后面的转储都绑到那个库。每份转储前面加上 `USE db;`，或者每个库单独跑一次 flashback，带上 `--schema-file-db` 和这个库自己的那份转储。拿拼接后的文件按库单独跑不行：要么拒绝（`--schema-file 与 binlog 的列不一致`），要么警告 `Database` 头和 `--schema-file-db` 不一致、不使用这份定义。两种都会安全失败，但都还原不了。未带库名的表出现在多个库时，逐表警告只点名其中一张没有定义的表。给表加上库名，或补上 `USE`，这份定义才会被用上。
-- [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168)：还原 `ENUM` 序号 0 时，只在这一条语句去掉 `STRICT_TRANS_TABLES` 和 `STRICT_ALL_TABLES`。`sql_mode=TRADITIONAL` 会把这两个严格模式加回来，执行停在 `ERROR 1265`，脚本里更早的事务已经提交。怎么认出来：`SELECT @@SESSION.sql_mode` 里有 `TRADITIONAL`，脚本里有 `@binlogviz_sql_mode`。执行脚本之前，把会话设成 TRADITIONAL 的展开形式，但不要带 `TRADITIONAL` 这个词：
-
-  ```sql
-  SET SESSION sql_mode = 'STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
-  ```
-
-  这样 `ENUM` 序号 0 的行能写回去，脚本结尾也会把保存的模式设回去。把整个脚本包进一个外层事务没有用。每个原事务自己有 `START TRANSACTION`，新开一个事务会把上一个提交掉。
 
 ### 执行失败后接着跑
 
@@ -129,7 +122,7 @@ SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');
 1. 保留脚本头。脚本里的 `TIMESTAMP` 字面量都是 UTC 墙钟，必须有 `SET time_zone = '+00:00'`。脚本头被删掉时，剩下的部分按会话自己的时区执行：退出码仍是 0，MySQL 不报任何错，还原出来的每个 `TIMESTAMP` 都偏了这个时差（`+08:00` 的服务器上，`09:00:00.123` 会变成 `01:00:00.123`）。
 2. 只删掉失败那一块上面的事务块。
 3. 保留失败的那一块和它下面的全部。
-4. 原会话已经中断，在新会话里执行「脚本头 + 剩下的部分」。失败原因需要会话设置时（例如 #168 的 `sql_mode`），把那条 `SET SESSION` 放在脚本头之前，作为接着跑的文件的第一行。
+4. 原会话已经中断，在新会话里执行「脚本头 + 剩下的部分」。失败原因需要会话设置时，把那条 `SET SESSION` 放在脚本头之前，作为接着跑的文件的第一行。
 
 已经提交的事务不要再跑。
 
