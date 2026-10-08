@@ -1,6 +1,6 @@
 // Package analyzer evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
-// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
+// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -14,6 +14,14 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/encoding/korean"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/encoding/traditionalchinese"
+	xunicode "golang.org/x/text/encoding/unicode"
 
 	"binlogviz/internal/i18n"
 )
@@ -1854,9 +1862,214 @@ func exampleImage(im loggedImage) string {
 		if i < len(im.values) {
 			lit = im.values[i]
 		}
-		parts = append(parts, name+"="+lit)
+		parts = append(parts, name+"="+exampleLiteral(lit))
 	}
 	return oneLine(strings.Join(parts, ", "), 180)
+}
+
+// exampleLiteral shows a logged SQL literal in a contradiction error.
+// A text-charset introducer whose bytes are printable text becomes a quoted
+// string. Binary bytes and any non-printable value stay in the original form.
+func exampleLiteral(lit string) string {
+	charset, raw, ok := introducerHex(strings.TrimSpace(lit))
+	if !ok || charset == "binary" {
+		return lit
+	}
+	text, ok := decodeTextCharset(charset, raw)
+	if !ok || !printableText(text) {
+		return lit
+	}
+	return quoteExampleText(text)
+}
+
+func introducerHex(lit string) (charset string, raw []byte, ok bool) {
+	if len(lit) < 2 || lit[0] != '_' {
+		return "", nil, false
+	}
+	i := 1
+	for i < len(lit) {
+		c := lit[i]
+		if c == '_' || (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') {
+			i++
+			continue
+		}
+		break
+	}
+	if i == 1 {
+		return "", nil, false
+	}
+	raw, ok = hexIntroducerBody(strings.TrimSpace(lit[i:]))
+	if !ok {
+		return "", nil, false
+	}
+	return strings.ToLower(lit[1:i]), raw, true
+}
+
+func hexIntroducerBody(s string) ([]byte, bool) {
+	if strings.HasPrefix(strings.ToLower(s), "0x") {
+		return decodeHex(s[2:])
+	}
+	if len(s) >= 2 && (s[0] == 'X' || s[0] == 'x') && s[1] == '\'' && strings.HasSuffix(s, "'") {
+		return decodeHex(s[2 : len(s)-1])
+	}
+	return nil, false
+}
+
+func decodeTextCharset(charset string, raw []byte) (string, bool) {
+	switch charset {
+	case "ascii":
+		if !asciiBytes(raw) {
+			return "", false
+		}
+		return string(raw), true
+	case "utf8", "utf8mb3", "utf8mb4":
+		if !utf8.Valid(raw) {
+			return "", false
+		}
+		return string(raw), true
+	case "ucs2":
+		return decodeUCS2(raw)
+	case "utf32":
+		return decodeUTF32BE(raw)
+	}
+	if enc, ok := textCharsetEncoding(charset); ok {
+		return decodeEncoding(enc, raw)
+	}
+	return asciiSupersetText(charset, raw)
+}
+
+func textCharsetEncoding(charset string) (encoding.Encoding, bool) {
+	switch charset {
+	case "latin1":
+		return charmap.Windows1252, true
+	case "latin2":
+		return charmap.ISO8859_2, true
+	case "latin5":
+		return charmap.ISO8859_9, true
+	case "latin7":
+		return charmap.ISO8859_13, true
+	case "greek":
+		return charmap.ISO8859_7, true
+	case "hebrew":
+		return charmap.ISO8859_8, true
+	case "cp850":
+		return charmap.CodePage850, true
+	case "cp852":
+		return charmap.CodePage852, true
+	case "cp866":
+		return charmap.CodePage866, true
+	case "cp1250":
+		return charmap.Windows1250, true
+	case "cp1251":
+		return charmap.Windows1251, true
+	case "cp1256":
+		return charmap.Windows1256, true
+	case "cp1257":
+		return charmap.Windows1257, true
+	case "koi8r":
+		return charmap.KOI8R, true
+	case "koi8u":
+		return charmap.KOI8U, true
+	case "macroman":
+		return charmap.Macintosh, true
+	case "gbk", "gb2312":
+		return simplifiedchinese.GBK, true
+	case "gb18030":
+		return simplifiedchinese.GB18030, true
+	case "big5":
+		return traditionalchinese.Big5, true
+	case "sjis", "cp932":
+		return japanese.ShiftJIS, true
+	case "ujis", "eucjpms":
+		return japanese.EUCJP, true
+	case "euckr":
+		return korean.EUCKR, true
+	case "utf16":
+		return xunicode.UTF16(xunicode.BigEndian, xunicode.IgnoreBOM), true
+	case "utf16le":
+		return xunicode.UTF16(xunicode.LittleEndian, xunicode.IgnoreBOM), true
+	default:
+		return nil, false
+	}
+}
+
+func decodeEncoding(enc encoding.Encoding, raw []byte) (string, bool) {
+	out, err := enc.NewDecoder().Bytes(raw)
+	if err != nil || bytes.ContainsRune(out, unicode.ReplacementChar) {
+		return "", false
+	}
+	return string(out), true
+}
+
+// asciiSupersetText covers a text charset that has no exact decoder here.
+// Letters, digits, and the punctuation those charsets do not remap are the
+// same character. swe7, dec8, and hp8 remap ASCII punctuation, so they stay hex.
+func asciiSupersetText(charset string, raw []byte) (string, bool) {
+	switch charset {
+	case "swe7", "dec8", "hp8":
+		return "", false
+	}
+	for _, b := range raw {
+		if b < 0x20 || b > 0x7E {
+			return "", false
+		}
+	}
+	return string(raw), true
+}
+
+func decodeUCS2(raw []byte) (string, bool) {
+	if len(raw)%2 != 0 {
+		return "", false
+	}
+	var b strings.Builder
+	for i := 0; i < len(raw); i += 2 {
+		r := rune(uint16(raw[i])<<8 | uint16(raw[i+1]))
+		if r >= 0xD800 && r <= 0xDFFF {
+			return "", false
+		}
+		b.WriteRune(r)
+	}
+	return b.String(), true
+}
+
+func decodeUTF32BE(raw []byte) (string, bool) {
+	if len(raw)%4 != 0 {
+		return "", false
+	}
+	var b strings.Builder
+	for i := 0; i < len(raw); i += 4 {
+		r := rune(uint32(raw[i])<<24 | uint32(raw[i+1])<<16 | uint32(raw[i+2])<<8 | uint32(raw[i+3]))
+		if !utf8.ValidRune(r) {
+			return "", false
+		}
+		b.WriteRune(r)
+	}
+	return b.String(), true
+}
+
+func printableText(s string) bool {
+	if !utf8.ValidString(s) {
+		return false
+	}
+	for _, r := range s {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func quoteExampleText(s string) string {
+	var b strings.Builder
+	b.WriteByte('\'')
+	for _, r := range s {
+		if r == '\\' || r == '\'' {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	b.WriteByte('\'')
+	return b.String()
 }
 
 func columnLit(im loggedImage, name string) (string, bool) {
