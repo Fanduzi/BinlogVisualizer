@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. MySQL older than 5.7.20 fails that guard with a clear message before transaction_read_only is used. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -606,7 +606,18 @@ type guardCol struct {
 }
 
 const guardMismatchLead = "binlogviz: schema file does not match the target"
+const guardOldServerMsg = "binlogviz: target MySQL < 5.7.20 is not supported for apply"
 const guardValueLimit = 200
+
+// guardOldServerCheckSQL sets @binlogviz_old to 1 when @@version is older than
+// 5.7.20. A -suffix is ignored. 5.7.20+ and 8.0 set it to 0.
+func guardOldServerCheckSQL() string {
+	return "SET @binlogviz_ver = SUBSTRING_INDEX(@@version, '-', 1);\n" +
+		"SET @binlogviz_major = CAST(SUBSTRING_INDEX(@binlogviz_ver, '.', 1) AS UNSIGNED);\n" +
+		"SET @binlogviz_minor = CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(@binlogviz_ver, '.', 2), '.', -1) AS UNSIGNED);\n" +
+		"SET @binlogviz_patch = CAST(SUBSTRING_INDEX(@binlogviz_ver, '.', -1) AS UNSIGNED);\n" +
+		"SET @binlogviz_old = IF(@binlogviz_major > 5 OR (@binlogviz_major = 5 AND @binlogviz_minor > 7) OR (@binlogviz_major = 5 AND @binlogviz_minor = 7 AND @binlogviz_patch >= 20), 0, 1);\n"
+}
 
 // guardLockSQL commits first so the assignment is not inside the transaction
 // the information_schema reads open when autocommit is 0. A match assigns the
@@ -678,7 +689,7 @@ func renderGeneratedGuard(groups []flashGroup) string {
 	}
 	lead := sqlQuote(guardMismatchLead)
 	var b strings.Builder
-	b.WriteString("-- Guard: every generated column omitted below must be GENERATED on the target. Apply stops here when the schema file does not match. A client that continues is left read-only, so later writes fail.\n")
+	b.WriteString("-- Guard: every generated column omitted below must be GENERATED on the target. Apply stops here when the schema file does not match. A client that continues is left read-only, so later writes fail. Apply requires MySQL 5.7.20 or newer.\n")
 	b.WriteString("SET @binlogviz_group_concat_max_len = @@SESSION.group_concat_max_len;\n")
 	b.WriteString("SET SESSION group_concat_max_len = 1048576;\n")
 	b.WriteString("SELECT GROUP_CONCAT(q ORDER BY n SEPARATOR ', '),\n")
@@ -689,7 +700,8 @@ func renderGeneratedGuard(groups []flashGroup) string {
 	b.WriteString(strings.Join(arms, "\n    UNION ALL\n    "))
 	b.WriteString("\n  ) AS binlogviz_gen;\n")
 	b.WriteString("SET SESSION group_concat_max_len = @binlogviz_group_concat_max_len;\n")
-	fmt.Fprintf(&b, "SET @binlogviz_guard_sql = IF(@binlogviz_mismatch IS NULL, 'DO 0', CONCAT('SELECT ', QUOTE(CONCAT(%s, ': ', @binlogviz_mismatch))));\n", lead)
+	b.WriteString(guardOldServerCheckSQL())
+	fmt.Fprintf(&b, "SET @binlogviz_guard_sql = IF(@binlogviz_old, CONCAT('SELECT ', QUOTE(%s)), IF(@binlogviz_mismatch IS NULL, 'DO 0', CONCAT('SELECT ', QUOTE(CONCAT(%s, ': ', @binlogviz_mismatch)))));\n", sqlQuote(guardOldServerMsg), lead)
 	b.WriteString("PREPARE binlogviz_guard FROM @binlogviz_guard_sql;\n")
 	b.WriteString("EXECUTE binlogviz_guard;\n")
 	b.WriteString("DEALLOCATE PREPARE binlogviz_guard;\n")
@@ -701,6 +713,10 @@ func renderGeneratedGuard(groups []flashGroup) string {
 	b.WriteString("SET @binlogviz_cut = IF(@binlogviz_safe IS NULL OR CHAR_LENGTH(@binlogviz_safe) <= @binlogviz_room, IFNULL(@binlogviz_safe, ''), IF(SUBSTRING(CONCAT(@binlogviz_safe, ' | '), CHAR_LENGTH(@binlogviz_cut) + 1, 3) = ' | ', @binlogviz_cut, IF(LOCATE(' | ', @binlogviz_cut) = 0, '', LEFT(@binlogviz_cut, GREATEST(CHAR_LENGTH(@binlogviz_cut) - CHAR_LENGTH(SUBSTRING_INDEX(@binlogviz_cut, ' | ', -1)) - 3, 0)))));\n")
 	b.WriteString("SET @binlogviz_short = CONCAT(@binlogviz_head, @binlogviz_cut);\n")
 	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL, @binlogviz_mode, IF(CHAR_LENGTH(@binlogviz_full) <= %d AND LENGTH(@binlogviz_full) <= %d, @binlogviz_full, IF(CHAR_LENGTH(@binlogviz_short) <= %d AND LENGTH(@binlogviz_short) <= %d, @binlogviz_short, CONCAT(%s, ' (', @binlogviz_n, ' columns)'))));\n", guardValueLimit, guardValueLimit, guardValueLimit, guardValueLimit, lead)
+	// An older server has no transaction_read_only. Fail with the message
+	// before that statement; 5.7.20+ and 8.0 assign the current sql_mode.
+	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_old, %s, @binlogviz_mode);\n", sqlQuote(guardOldServerMsg))
+	b.WriteString("SET SESSION sql_mode = IF(@binlogviz_old, @binlogviz_mode, @@SESSION.sql_mode);\n")
 	b.WriteString(guardLockSQL)
 	b.WriteString("SET SESSION sql_mode = @binlogviz_mode;\n")
 	return b.String()
