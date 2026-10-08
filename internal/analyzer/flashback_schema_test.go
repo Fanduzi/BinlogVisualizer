@@ -1,9 +1,11 @@
 package analyzer
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"binlogviz/internal/model"
 )
@@ -335,6 +337,34 @@ func TestSchemaFileAsciiExampleIsText(t *testing.T) {
 	}
 }
 
+func TestSchemaFileEnumSetExampleUsesLabels(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `e` enum('a','b') CHARACTER SET utf8mb4,\n" +
+		"  `s` set('x','y') CHARACTER SET utf8mb4,\n" +
+		"  `c` varchar(20) CHARACTER SET utf8mb4 GENERATED ALWAYS AS (upper(`e`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	row := model.FlashRow{
+		Schema: "shop", Table: "t", Op: "DELETE",
+		Columns: []string{"id", "e", "s", "c"},
+		Cols: []model.FlashCol{
+			{Base: "int", HasSign: true},
+			{Base: "enum", Members: []string{"a", "b"}, Charset: "utf8mb4"},
+			{Base: "set", Members: []string{"x", "y"}, Charset: "utf8mb4"},
+			{Base: "varchar", Charset: "utf8mb4"},
+		},
+		Before: []string{"1", "1", "3", "'no'"},
+		PK:     []int{0},
+	}
+	sql, _, err := flashSchemaResult(t, schema, "", row)
+	if err == nil || sql != "" {
+		t.Fatalf("sql %q err %v", sql, err)
+	}
+	if !strings.Contains(err.Error(), "e='a'") || !strings.Contains(err.Error(), "s='x,y'") {
+		t.Fatalf("example kept indexes: %v", err)
+	}
+}
+
 func TestSchemaFileRefusesDependencyClash(t *testing.T) {
 	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
 		"  `id` int NOT NULL,\n" +
@@ -501,6 +531,112 @@ func guardBeforeTransaction(sql string) bool {
 	gtid := strings.Index(sql, "-- gtid:")
 	sets := strings.Index(sql, "SET NAMES utf8mb4;")
 	return guard > sets && (gtid < 0 || guard < gtid)
+}
+
+func TestGeneratedGuardReadOnlyText(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `x` varchar(20) DEFAULT NULL,\n" +
+		"  `c` varchar(32) GENERATED ALWAYS AS (md5(`x`)) STORED,\n" +
+		"  `d` varchar(40) GENERATED ALWAYS AS (sha(`x`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	cols := []model.FlashCol{
+		{Base: "int", HasSign: true},
+		{Base: "varchar", Charset: "utf8mb4"},
+		{Base: "varchar", Charset: "utf8mb4"},
+		{Base: "varchar", Charset: "utf8mb4"},
+	}
+	row := model.FlashRow{
+		Schema: "shop", Table: "t", Op: "UPDATE",
+		Columns: []string{"id", "x", "c", "d"}, Cols: cols,
+		Before: []string{"1", "'ab'", "'old-c'", "'old-d'"},
+		After:  []string{"1", "'cd'", "'new-c'", "'new-d'"},
+		PK:     []int{0},
+	}
+	sql, _, err := flashSchemaResult(t, schema, "", row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	execAt := strings.Index(sql, "EXECUTE binlogviz_guard;")
+	lockAt := strings.Index(sql, "SET SESSION transaction_read_only = IF(@binlogviz_mismatch IS NULL, @@SESSION.transaction_read_only, 1);")
+	modeAt := strings.Index(sql, "SET SESSION sql_mode = @binlogviz_mode;")
+	if execAt < 0 || lockAt < 0 || modeAt < 0 || execAt > lockAt || lockAt > modeAt {
+		t.Fatalf("message, lock, then sql_mode:\n%s", sql)
+	}
+	if strings.Count(sql, guardLockSQL) < 2 {
+		t.Fatalf("lock is not repeated before the transaction:\n%s", sql)
+	}
+	start := strings.Index(sql, "START TRANSACTION;")
+	if start < 0 || !strings.HasSuffix(sql[:start], guardLockSQL) {
+		t.Fatalf("lock is not immediately before START TRANSACTION:\n%s", sql)
+	}
+	for _, want := range []string{"SEPARATOR ', '", "SEPARATOR ' | '", "200", "columns)", "COMMIT;"} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("missing %q\n%s", want, sql)
+		}
+	}
+	if !guardBeforeTransaction(sql) {
+		t.Fatalf("guard is not in the header:\n%s", sql)
+	}
+}
+
+func TestGuardSafeLabel(t *testing.T) {
+	if got := guardSafeLabel("db.t.a,b"); got != "db.t.a;b" {
+		t.Fatalf("comma: %q", got)
+	}
+	if got := guardSafeLabel("db.t.c | d"); got != "db.t.c / d" {
+		t.Fatalf("separator: %q", got)
+	}
+	if got := guardSafeLabel("shop.t.c"); got != "shop.t.c" {
+		t.Fatalf("plain: %q", got)
+	}
+}
+
+func TestTrimGuardList(t *testing.T) {
+	const list = "aa | bb | cc"
+	cases := []struct {
+		room int
+		want string
+	}{
+		{room: 7, want: "aa | bb"},
+		{room: 6, want: "aa"},
+		{room: 2, want: "aa"},
+		{room: 1, want: ""},
+		{room: len(list), want: list},
+		{room: -1, want: ""},
+	}
+	for _, tc := range cases {
+		if got := trimGuardList(list, tc.room); got != tc.want {
+			t.Fatalf("room %d: %q want %q", tc.room, got, tc.want)
+		}
+	}
+}
+
+func TestGuardErrorValue(t *testing.T) {
+	two := guardErrorValue([]string{guardSafeLabel("p183.t.c"), guardSafeLabel("p183.heap.note")})
+	if strings.Contains(two, ",") || strings.Contains(two, "(2 columns)") || two != guardMismatchLead+": p183.t.c | p183.heap.note" {
+		t.Fatalf("two: %q", two)
+	}
+	safe := []string{guardSafeLabel("db.t.a,b"), guardSafeLabel("db.t.c | d")}
+	mixed := guardErrorValue(safe)
+	if strings.Contains(mixed, ",") || !strings.Contains(mixed, "db.t.a;b") || !strings.Contains(mixed, "db.t.c / d") {
+		t.Fatalf("safe names: %q", mixed)
+	}
+	names := make([]string, 12)
+	for i := range names {
+		names[i] = fmt.Sprintf("p186.guardwide.col_%02d", i+1)
+	}
+	wide := guardErrorValue(names)
+	if !strings.Contains(wide, "(12 columns)") || !strings.Contains(wide, "p186.guardwide.col_01") || !strings.Contains(wide, "p186.guardwide.col_05") || strings.Contains(wide, "p186.guardwide.col_06") || strings.Contains(wide, ",") {
+		t.Fatalf("wide: %q", wide)
+	}
+	if utf8.RuneCountInString(wide) > guardValueLimit || len(wide) > guardValueLimit {
+		t.Fatalf("wide length runes=%d bytes=%d", utf8.RuneCountInString(wide), len(wide))
+	}
+	huge := guardErrorValue([]string{strings.Repeat("字", 60)})
+	if huge != guardMismatchLead+" (1 columns)" {
+		t.Fatalf("multibyte: %q", huge)
+	}
 }
 
 func TestEvalIntExprMySQLAssignment(t *testing.T) {
