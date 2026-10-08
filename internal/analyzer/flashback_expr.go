@@ -1,6 +1,6 @@
 // Package analyzer evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
-// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
+// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -2132,6 +2132,14 @@ func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol)
 		}
 		if col.base == "decimal" || integerAssign(col.base) {
 			if dec, ok := evalDecExpr(col.expr, env); ok {
+				// decOmit was parsed and must not fall through to a different
+				// arithmetic. decIntOnly is an exact product whose scale is past
+				// 30: a DECIMAL target must not claim it, and an integer target
+				// rounds that product once.
+				if dec.mode == decOmit || (dec.mode == decIntOnly && col.base == "decimal") {
+					unknown = true
+					continue
+				}
 				var match, confident bool
 				if col.base == "decimal" {
 					match, confident = matchDecLiteral(dec, lit, col)
@@ -2517,12 +2525,26 @@ const mysqlDecDigitsPerWord = 9
 // mysqlDecMaxScale is DECIMAL's maximum scale. Column scales stay within it.
 const mysqlDecMaxScale = 30
 
-// decVal is one exact decimal result at a known scale. scale is the number of
-// fractional digits MySQL kept. Further digits were cut off, not rounded.
+// mysqlDecMaxPrec is DECIMAL's maximum precision.
+const mysqlDecMaxPrec = 65
+
+const (
+	decClaim uint8 = iota
+	// decIntOnly is an exact product whose scale is above 30. Integer
+	// assignment rounds it once. A DECIMAL target must not claim it.
+	decIntOnly
+	// decOmit means the expression was understood and is unverified.
+	decOmit
+)
+
+// decVal is one decimal result. scale is the fractional digits of an exact
+// product or sum, or the division width MySQL cuts to. mode says whether a
+// target may compare the value after one assignment round.
 type decVal struct {
 	null  bool
 	n     *big.Rat
 	scale int
+	mode  uint8
 }
 
 func integerClip(v intVal, col schemaCol) (*big.Int, bool) {
@@ -2785,8 +2807,8 @@ func applyDecAdd(left, right decVal, op byte) (decVal, bool) {
 	if left.null || right.null {
 		return decVal{null: true}, true
 	}
-	if left.n == nil || right.n == nil {
-		return decVal{}, false
+	if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil {
+		return decVal{mode: decOmit}, true
 	}
 	n := new(big.Rat)
 	if op == '+' {
@@ -2798,7 +2820,9 @@ func applyDecAdd(left, right decVal, op byte) (decVal, bool) {
 	if right.scale > scale {
 		scale = right.scale
 	}
-	return decVal{n: n, scale: scale}, true
+	// The sum is exact at max(scale). MySQL does not round it here. A sum
+	// that does not fit in 65 digits is unverified, not rounded down.
+	return placeDec(n, scale, false), true
 }
 
 func parseDecMul(sc *sqlScan, env map[string]genVal) (decVal, bool) {
@@ -2827,25 +2851,37 @@ func applyDecMul(left, right decVal, op string) (decVal, bool) {
 	if left.null || right.null {
 		return decVal{null: true}, true
 	}
+	if left.mode == decOmit || right.mode == decOmit {
+		return decVal{mode: decOmit}, true
+	}
 	if left.n == nil || right.n == nil {
 		return decVal{}, false
 	}
 	switch op {
 	case "*":
+		if left.mode != decClaim || right.mode != decClaim {
+			return decVal{mode: decOmit}, true
+		}
+		// MySQL keeps this product and rounds once, on store. Rounding to
+		// 30 places here and again on store can carry into the stored digit.
 		scale := left.scale + right.scale
 		prod := new(big.Rat).Mul(left.n, right.n)
-		if scale > mysqlDecMaxScale {
-			prod = roundRatToScale(prod, mysqlDecMaxScale)
-			scale = mysqlDecMaxScale
-		}
-		return decVal{n: prod, scale: scale}, true
+		return placeDec(prod, scale, true), true
 	case "/":
 		if right.n.Sign() == 0 {
+			if right.mode != decClaim {
+				return decVal{mode: decOmit}, true
+			}
 			return decVal{null: true}, true
+		}
+		if left.mode != decClaim || right.mode != decClaim {
+			return decVal{mode: decOmit}, true
 		}
 		scale := mysqlDivFrac(left.scale, right.scale, mysqlDefaultDivPrecIncrement)
 		q := truncRatToScale(new(big.Rat).Quo(left.n, right.n), scale)
-		return decVal{n: q, scale: scale}, true
+		// The cut to mysqlDivFrac is MySQL's division, not a second round.
+		// A width past 30, or a quotient past 65 digits, is unverified.
+		return placeDec(q, scale, false), true
 	case "DIV":
 		return decIntOp(left, right, false)
 	case "%", "MOD":
@@ -2855,12 +2891,50 @@ func applyDecMul(left, right decVal, op string) (decVal, bool) {
 	}
 }
 
+// placeDec accepts an exact result. product is set for multiplication: a
+// scale above 30 stays exact so an integer target can round once, and a
+// DECIMAL target does not claim it. Every other too-wide or too-long result
+// is omitted.
+func placeDec(n *big.Rat, scale int, product bool) decVal {
+	if n == nil || scale < 0 || !ratAtScale(n, scale) || decDigits(n, scale) > mysqlDecMaxPrec {
+		return decVal{mode: decOmit}
+	}
+	if scale > mysqlDecMaxScale {
+		if product {
+			return decVal{n: n, scale: scale, mode: decIntOnly}
+		}
+		return decVal{mode: decOmit}
+	}
+	return decVal{n: n, scale: scale}
+}
+
+// decDigits is the precision of n written with exactly scale fractional digits.
+func decDigits(n *big.Rat, scale int) int {
+	if n == nil || scale < 0 {
+		return mysqlDecMaxPrec + 1
+	}
+	abs := new(big.Rat).Abs(n)
+	ip := new(big.Int).Quo(new(big.Int).Set(abs.Num()), abs.Denom())
+	digits := 0
+	if ip.Sign() > 0 {
+		digits = len(ip.String())
+	}
+	prec := digits + scale
+	if prec < 1 {
+		return 1
+	}
+	return prec
+}
+
 func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
 	if left.null || right.null {
 		return decVal{null: true}, true
 	}
 	if left.scale != 0 || right.scale != 0 {
 		return decVal{}, false
+	}
+	if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil {
+		return decVal{mode: decOmit}, true
 	}
 	next, ok := applyIntDiv(intVal{n: left.n}, intVal{n: right.n}, remainder)
 	if !ok {
@@ -2869,7 +2943,7 @@ func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
 	if next.null {
 		return decVal{null: true}, true
 	}
-	return decVal{n: next.n, scale: 0}, true
+	return placeDec(next.n, 0, false), true
 }
 
 func parseDecUnary(sc *sqlScan, env map[string]genVal) (decVal, bool) {
@@ -2881,10 +2955,13 @@ func parseDecUnary(sc *sqlScan, env map[string]genVal) (decVal, bool) {
 		if !ok || v.null || op == '+' {
 			return v, ok
 		}
-		if v.n == nil {
+		if v.mode == decOmit || v.n == nil {
+			if v.mode == decOmit {
+				return decVal{mode: decOmit}, true
+			}
 			return decVal{}, false
 		}
-		return decVal{n: new(big.Rat).Neg(v.n), scale: v.scale}, true
+		return decVal{n: new(big.Rat).Neg(v.n), scale: v.scale, mode: v.mode}, true
 	}
 	return parseDecPrimary(sc, env)
 }
