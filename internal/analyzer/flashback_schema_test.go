@@ -557,8 +557,8 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	execAt := strings.Index(sql, "EXECUTE binlogviz_guard;")
-	lockAt := strings.Index(sql, "PREPARE binlogviz_lock FROM @binlogviz_lock_sql;")
+	execAt := strings.Index(sql, "EXECUTE "+guardStmtMsg+";")
+	lockAt := strings.Index(sql, "SET SESSION TRANSACTION READ ONLY;")
 	modeAt := strings.Index(sql, "SET SESSION sql_mode = @binlogviz_mode;")
 	if execAt < 0 || lockAt < 0 || modeAt < 0 || execAt > lockAt || lockAt > modeAt {
 		t.Fatalf("message, lock, then sql_mode:\n%s", sql)
@@ -580,7 +580,7 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 	}
 }
 
-func TestGeneratedGuardOldServerSQL(t *testing.T) {
+func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
 		"  `id` int NOT NULL,\n" +
 		"  `c` varchar(32) GENERATED ALWAYS AS (md5(`id`)) STORED,\n" +
@@ -599,34 +599,63 @@ func TestGeneratedGuardOldServerSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(guardOldServerMsg, ",") || len(guardOldServerMsg) > guardValueLimit || guardOldServerMsg != "binlogviz: target MySQL < 5.7.0 is not supported for apply" {
-		t.Fatalf("message: %q", guardOldServerMsg)
+	for _, msg := range []string{guardOldServerMsg, guardNotRunMsg} {
+		if strings.Contains(msg, ",") || len(msg) > guardValueLimit || !strings.Contains(sql, sqlQuote(msg)) {
+			t.Fatalf("message %q in:\n%s", msg, sql)
+		}
 	}
-	oldAt := strings.Index(sql, guardOldServerCheckSQL())
-	execAt := strings.Index(sql, "EXECUTE binlogviz_guard;")
-	early := "SET SESSION sql_mode = IF(@binlogviz_old, @binlogviz_mode, @@SESSION.sql_mode);"
-	earlyAt := strings.Index(sql, early)
-	lockSQL := "SET @binlogviz_lock_sql = IF(@binlogviz_mismatch IS NULL OR @binlogviz_old, 'DO 0', CONCAT('SET SESSION ', @binlogviz_ro, ' = 1'));"
-	lockAt := strings.Index(sql, lockSQL)
-	prepAt := strings.Index(sql, "PREPARE binlogviz_lock FROM @binlogviz_lock_sql;")
-	if oldAt < 0 || execAt < 0 || earlyAt < 0 || lockAt < 0 || prepAt < 0 || oldAt > execAt || execAt > earlyAt || earlyAt > lockAt || lockAt > prepAt {
-		t.Fatalf("version check, message, then prepared lock:\n%s", sql)
+	// The lock names no variable, so no server version can turn it into ERROR 1193.
+	if strings.Contains(sql, "SET SESSION transaction_read_only") || strings.Contains(sql, "SET SESSION tx_read_only") || strings.Contains(sql, "@binlogviz_lock_sql") {
+		t.Fatalf("lock names a read-only variable:\n%s", sql)
 	}
-	if strings.Contains(sql, "SET SESSION transaction_read_only =") || strings.Contains(sql, "SET SESSION tx_read_only =") {
-		t.Fatalf("lock names the variable in a direct SET:\n%s", sql)
+	if strings.Contains(sql, "PREPARE binlogviz_lock ") || strings.Contains(sql, "PREPARE binlogviz_guard ") {
+		t.Fatalf("old statement names:\n%s", sql)
+	}
+	resetAt := strings.Index(sql, "SET @binlogviz_checked = 0;")
+	checkAt := strings.Index(sql, "INTO @binlogviz_mismatch, @binlogviz_safe, @binlogviz_n, @binlogviz_checked")
+	verAt := strings.Index(sql, guardServerCheckSQL())
+	roAt := strings.Index(sql, "PREPARE "+guardStmtRO+" FROM @binlogviz_ro_sql;")
+	unlockSet := "SET @binlogviz_unlock_sql = IF(@binlogviz_old <=> 0 AND @binlogviz_checked <=> 1 AND @binlogviz_mismatch IS NULL AND NOT (@binlogviz_ro_was <=> 1), 'SET SESSION TRANSACTION READ WRITE', 'DO 0');"
+	unlockAt := strings.Index(sql, unlockSet)
+	lockAt := strings.Index(sql, guardLockSQL)
+	modeAt := strings.Index(sql, "SET SESSION sql_mode = @binlogviz_mode;")
+	order := []int{resetAt, checkAt, verAt, roAt, unlockAt, lockAt, modeAt}
+	for i, at := range order {
+		if at < 0 || (i > 0 && order[i-1] > at) {
+			t.Fatalf("guard order %v:\n%s", order, sql)
+		}
+	}
+	// The read-only flag is read before the first lock.
+	if roAt > strings.Index(sql, "SET SESSION TRANSACTION READ ONLY;") {
+		t.Fatalf("flag read after the lock:\n%s", sql)
+	}
+	// READ WRITE appears only as the unlock string; nothing else unlocks.
+	if strings.Count(sql, "READ WRITE") != 1 {
+		t.Fatalf("unlock outside the guard:\n%s", sql)
+	}
+	if !strings.HasPrefix(guardLockSQL, "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\nPREPARE "+guardStmtUnlock+" FROM @binlogviz_unlock_sql;\n") {
+		t.Fatalf("lock: %q", guardLockSQL)
+	}
+	start := strings.Index(sql, "START TRANSACTION;")
+	if start < 0 || !strings.HasSuffix(sql[:start], guardLockSQL) || strings.Count(sql, guardLockSQL) != 2 {
+		t.Fatalf("per-transaction lock:\n%s", sql)
 	}
 	for _, want := range []string{
-		guardOldServerMsg,
-		"SET @binlogviz_mode = IF(@binlogviz_old, " + sqlQuote(guardOldServerMsg) + ", @binlogviz_mode);",
-		"SUBSTRING_INDEX(@@version, '-', 1)",
+		"LOCATE('MariaDB', @@version)",
+		"SUBSTRING(@@version, 7)",
+		"@binlogviz_major = 11 AND @binlogviz_minor >= 1",
+		"@binlogviz_major = 10 AND @binlogviz_minor >= 2",
 		"@binlogviz_minor >= 7",
-		"'transaction_read_only'",
-		"'tx_read_only'",
 		"@binlogviz_patch >= 20",
-		"Apply requires MySQL 5.7 or newer.",
+		"Apply requires MySQL 5.7 or MariaDB 10.2 or newer.",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("missing %q\n%s", want, sql)
+		}
+	}
+	for _, name := range []string{guardStmtMsg, guardStmtRO, guardStmtUnlock} {
+		if !strings.HasPrefix(name, "binlogviz_fb_") || !strings.HasSuffix(name, "_x9q") {
+			t.Fatalf("statement name %q", name)
 		}
 	}
 	if !guardBeforeTransaction(sql) {
