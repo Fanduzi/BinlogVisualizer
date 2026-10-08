@@ -319,13 +319,9 @@
     "description": "A generated column's logged values do not match its expression",
     "other": "{{.Column}} is generated in the schema file but the logged values are not {{.Expr}}; example {{.Example}}"
   },
-  "error.flashbackUnverifiedGenerated": {
-    "description": "A generated expression cannot be evaluated and the logged values do not contradict it",
-    "other": "{{.Columns}} not verified. Logged values do not contradict the expression, and binlogviz cannot evaluate it. If the column is not generated, omitting it loses the stored value. Pass --allow-unverified-generated to omit it and print the script. That flag does not override a logged value that contradicts the expression."
-  },
   "warning.flashbackSchemaUnchecked": {
     "description": "A generated column was omitted because its expression could not be evaluated",
-    "other": "warning: generated column {{.Table}}.{{.Column}} not verified ({{.Expr}}); it is left out of the script. If the column is not generated, its value is lost."
+    "other": "warning: generated column {{.Table}}.{{.Column}} not verified ({{.Expr}}); it is left out of the script. The guard below checks that this column is generated on the target."
   },
   "warning.flashbackSchemaDB": {
     "description": "Schema file header and --schema-file-db name different databases",
@@ -379,10 +375,6 @@
     "description": "Flashback default database for an unqualified schema file",
     "other": "Database for unqualified names in --schema-file when the file has no USE and no mysqldump Database header. Optional; flashback stays offline"
   },
-  "cmd.flashback.flag.allowUnverifiedGenerated": {
-    "description": "Flashback flag that omits an unevaluable generated column",
-    "other": "Omit a generated column whose expression binlogviz cannot evaluate, when the logged values do not contradict it. The script header warns that the column was not checked. If the column is not generated, its value is lost. A logged value that contradicts the expression still exits 1."
-  },
   "cmd.flashback.help.usage": {
     "description": "Flashback help heading for usage",
     "other": "Usage"
@@ -405,7 +397,7 @@
   },
   "cmd.flashback.long": {
     "description": "Flashback command long description",
-    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE, and must describe the table as it was at incident time. ENUM is the member index and SET is the bitmask. ENUM index 0 is restored by dropping strict sql_mode for that statement only. An expression binlogviz cannot evaluate is refused unless --allow-unverified-generated is set. A logged value that contradicts the expression is refused either way."
+    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE, and must describe the table as it was at incident time. ENUM is the member index and SET is the bitmask. ENUM index 0 is restored by dropping strict sql_mode for that statement only. A logged value that contradicts a generated expression is refused. An expression that cannot be checked is omitted, and the script guard checks that each omitted generated column is generated on the target."
   },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
