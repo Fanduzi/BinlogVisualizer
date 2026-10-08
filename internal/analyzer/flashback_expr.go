@@ -1,6 +1,6 @@
 // Package analyzer evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
-// output: a match, a contradiction (with one example image), or unverified when the expression cannot be evaluated and the images do not contradict it. UPPER/LOWER follow the character set. NULL propagates, except CONCAT_WS, which skips NULL arguments.
+// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -8,6 +8,7 @@ package analyzer
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"math/big"
 	"strconv"
 	"strings"
@@ -29,15 +30,24 @@ const (
 )
 
 // genVal is a logged literal or an expression result.
-// text is Unicode when the charset decodes. raw is the original bytes when known.
+// text is Unicode when decoded is set. An undecoded charset is unverifiable.
+// raw is the original bytes when known. base and the precision fields are the
+// schema column the literal came from, so string functions can use that type.
 type genVal struct {
 	kind    genKind
 	n       *big.Rat
+	numText string
 	text    string
 	raw     []byte
 	haveRaw bool
 	charset string
+	decoded bool
 	j       *jNode
+	base    string
+	members []string
+	prec    int
+	scale   int
+	hasPrec bool
 }
 
 type jKind uint8
@@ -51,13 +61,22 @@ const (
 	jObj
 )
 
+type jNumKind uint8
+
+const (
+	jnInt jNumKind = iota
+	jnDec
+	jnFloat
+)
+
 type jNode struct {
-	kind jKind
-	b    bool
-	num  string
-	str  string
-	arr  []*jNode
-	obj  []jPair
+	kind  jKind
+	b     bool
+	num   string
+	nkind jNumKind
+	str   string
+	arr   []*jNode
+	obj   []jPair
 }
 
 type jPair struct {
@@ -83,11 +102,14 @@ func genNumVal(text string) (genVal, bool) {
 	if !ok {
 		return genVal{}, false
 	}
-	return genVal{kind: genNum, n: r}, true
+	return genVal{kind: genNum, n: r, numText: text}, true
 }
 
 func genTextVal(text, charset string) genVal {
-	return genVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: charset}
+	if charset == "" {
+		charset = "utf8mb4"
+	}
+	return genVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: charset, decoded: true}
 }
 
 func (v genVal) asInt() (intVal, bool) {
@@ -466,8 +488,17 @@ func evalLength(args []genVal, chars bool) (genVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
+	// BINARY(n) is stored padded with 0x00. The binlog image drops that pad,
+	// and both LENGTH and CHAR_LENGTH count the declared width. No width is BINARY(1).
+	if v.base == "binary" {
+		width := 1
+		if v.hasPrec && v.prec > 0 {
+			width = v.prec
+		}
+		return genNumVal(strconv.Itoa(width))
+	}
 	// LENGTH is the byte count of the stored value in any charset.
-	if !chars && v.kind == genText && v.haveRaw {
+	if !chars && v.kind == genText && v.haveRaw && v.decoded {
 		return genNumVal(strconv.Itoa(len(v.raw)))
 	}
 	src, ok := v.coerceText()
@@ -552,7 +583,8 @@ func jsonUnquote(v genVal) (genVal, bool) {
 	}
 	switch v.j.kind {
 	case jNull:
-		return genNullVal(), true
+		// ->> of a JSON null is the four characters null. A missing path stays SQL NULL.
+		return genTextVal("null", "utf8mb4"), true
 	case jStr:
 		return genTextVal(v.j.str, "utf8mb4"), true
 	case jBool:
@@ -561,7 +593,17 @@ func jsonUnquote(v genVal) (genVal, bool) {
 		}
 		return genTextVal("false", "utf8mb4"), true
 	case jNum:
-		return genTextVal(v.j.num, "utf8mb4"), true
+		switch v.j.nkind {
+		case jnFloat:
+			f, ok := parseJSONFloat(v.j.num)
+			if !ok {
+				return genVal{}, false
+			}
+			return genTextVal(mysqlJSONFloatString(f), "utf8mb4"), true
+		default:
+			// Decimal text keeps trailing zeros. An integer has no ".0".
+			return genTextVal(v.j.num, "utf8mb4"), true
+		}
 	default:
 		// Object and array text depends on spacing MySQL chooses. Do not guess.
 		return genVal{}, false
@@ -576,10 +618,28 @@ func (v genVal) pathText() (string, bool) {
 }
 
 func (v genVal) coerceText() (genVal, bool) {
+	if v.kind == genNull {
+		return genNullVal(), true
+	}
+	switch v.base {
+	case "enum":
+		return v.enumAsText()
+	case "set":
+		return v.setAsText()
+	case "decimal":
+		return v.decimalAsText()
+	case "float", "double", "timestamp":
+		return genVal{}, false
+	case "time", "datetime":
+		return v.temporalAsText()
+	}
 	switch v.kind {
 	case genNull:
 		return genNullVal(), true
 	case genText:
+		if !v.decoded {
+			return genVal{}, false
+		}
 		switch v.charset {
 		case "binary", "utf8mb4", "utf8", "ascii", "latin1", "":
 			return v, true
@@ -596,10 +656,10 @@ func (v genVal) coerceText() (genVal, bool) {
 	}
 }
 
-// foldText applies MySQL case conversion.
-// latin1 uses the charset's 1:1 map. utf8mb4 uses that map for Latin-1 letters.
-// ß and ÿ, and code points above Latin-1, stay unverified: utf8mb4_general_ci and
-// utf8mb4_0900_ai_ci do not agree, and this checker has no collation id.
+// foldText applies MySQL case conversion for the charsets this checker models.
+// latin1 uses the charset's 1:1 map, so µ (0xB5) stays µ. utf8mb4 uses that map
+// for Latin-1 letters and maps µ (U+00B5) to Μ (U+039C). ß and ÿ, and every
+// other code point above Latin-1, stay unverified.
 // binary is unchanged, which is MySQL's rule for the binary charset.
 func foldText(text, charset string, upper bool) (string, bool) {
 	switch charset {
@@ -632,13 +692,13 @@ func foldText(text, charset string, upper bool) (string, bool) {
 }
 
 func utf8Case(r rune, upper bool) (rune, bool) {
+	if upper && r == 0x00B5 {
+		return 0x039C, true
+	}
 	if r == 0xDF || r == 0xFF || r > 0xFF {
 		return 0, false
 	}
-	if r < 0x80 || r <= 0xFF {
-		return rune(latin1Case(byte(r), upper)), true
-	}
-	return 0, false
+	return rune(latin1Case(byte(r), upper)), true
 }
 
 // latin1Case is MySQL's latin1 to_upper / to_lower map.
@@ -694,9 +754,9 @@ func (sc *sqlScan) quotedText(charset string) (genVal, bool) {
 			}
 			raw = append(raw, byte(r))
 		}
-		return genVal{kind: genText, text: text, raw: raw, haveRaw: true, charset: "latin1"}, true
+		return genVal{kind: genText, text: text, raw: raw, haveRaw: true, charset: "latin1", decoded: true}, true
 	case "binary":
-		return genVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: "binary"}, true
+		return genVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: "binary", decoded: true}, true
 	case "utf8mb4", "utf8", "ascii", "":
 		return genTextVal(text, "utf8mb4"), true
 	default:
@@ -802,24 +862,49 @@ func normalizeIntroCharset(charset string) string {
 }
 
 func tagCharset(v genVal, charset string) genVal {
-	if charset == "latin1" && v.haveRaw {
+	v.decoded = false
+	v.text = ""
+	v.charset = charset
+	switch charset {
+	case "latin1":
+		if !v.haveRaw {
+			return v
+		}
 		v.charset = "latin1"
 		v.text = latin1ToUTF8(v.raw)
+		v.decoded = true
 		return v
-	}
-	if charset == "utf8mb4" && v.haveRaw && utf8.Valid(v.raw) {
-		v.charset = "utf8mb4"
-		v.text = string(v.raw)
+	case "utf8mb4", "utf8":
+		if v.haveRaw && utf8.Valid(v.raw) {
+			v.charset = "utf8mb4"
+			v.text = string(v.raw)
+			v.decoded = true
+		}
 		return v
-	}
-	if charset == "binary" {
+	case "ascii":
+		if v.haveRaw && asciiBytes(v.raw) {
+			v.charset = "ascii"
+			v.text = string(v.raw)
+			v.decoded = true
+		}
+		return v
+	case "binary":
 		v.charset = "binary"
 		v.text = string(v.raw)
+		v.decoded = true
+		return v
+	default:
 		return v
 	}
-	v.charset = charset
-	v.text = ""
-	return v
+}
+
+func asciiBytes(raw []byte) bool {
+	for _, b := range raw {
+		if b >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 func latin1ToUTF8(raw []byte) string {
@@ -845,7 +930,7 @@ func (sc *sqlScan) hexBinary() (genVal, bool, bool) {
 		if !ok {
 			return genVal{}, false, true
 		}
-		return genVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw)}, true, true
+		return genVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw), decoded: true}, true, true
 	}
 	if (sc.s[sc.i] == 'X' || sc.s[sc.i] == 'x') && sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '\'' {
 		sc.i += 2
@@ -861,7 +946,7 @@ func (sc *sqlScan) hexBinary() (genVal, bool, bool) {
 		if !ok {
 			return genVal{}, false, true
 		}
-		return genVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw)}, true, true
+		return genVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw), decoded: true}, true, true
 	}
 	return genVal{}, false, false
 }
@@ -1029,7 +1114,15 @@ func parseLoggedValue(lit string) (genVal, bool) {
 	}
 }
 
-func loggedEnv(columns, values []string) map[string]genVal {
+func loggedEnv(columns, values []string, meta ...[]schemaCol) map[string]genVal {
+	var cols []schemaCol
+	if len(meta) > 0 {
+		cols = meta[0]
+	}
+	byName := make(map[string]schemaCol, len(cols))
+	for _, col := range cols {
+		byName[strings.ToLower(col.name)] = col
+	}
 	env := make(map[string]genVal, len(columns))
 	for i, name := range columns {
 		lit := "NULL"
@@ -1041,9 +1134,26 @@ func loggedEnv(columns, values []string) map[string]genVal {
 			env[strings.ToLower(name)] = genVal{kind: genBad}
 			continue
 		}
+		if col, found := byName[strings.ToLower(name)]; found {
+			v = attachColMeta(v, col)
+		}
 		env[strings.ToLower(name)] = v
 	}
 	return env
+}
+
+func attachColMeta(v genVal, col schemaCol) genVal {
+	v.base = col.base
+	if len(col.members) > 0 {
+		v.members = append([]string(nil), col.members...)
+	}
+	v.prec = col.prec
+	v.scale = col.scale
+	v.hasPrec = col.hasPrec
+	if v.charset == "" && col.charset != "" {
+		v.charset = col.charset
+	}
+	return v
 }
 
 // matchGenerated reports whether got is the logged literal after assignment to col.
@@ -1145,6 +1255,10 @@ func assignText(v genVal, col schemaCol) (string, bool) {
 		return "", false
 	}
 	text := src.text
+	if (col.base == "char" || col.base == "varchar") && col.hasPrec && utf8.RuneCountInString(text) > col.prec {
+		// Non-strict sessions truncate. This checker does not know sql_mode, so a longer result is unverifiable.
+		return "", false
+	}
 	if col.base == "char" && col.hasPrec {
 		text = padChar(text, col.prec)
 	}
@@ -1205,7 +1319,7 @@ func jsonEqual(a, b *jNode) bool {
 	case jStr:
 		return a.str == b.str
 	case jNum:
-		return jsonNumEqual(a.num, b.num)
+		return jsonNumEqual(a, b)
 	case jArr:
 		if len(a.arr) != len(b.arr) {
 			return false
@@ -1241,30 +1355,33 @@ func objGet(n *jNode, key string) (*jNode, bool) {
 	return nil, false
 }
 
-func jsonNumEqual(a, b string) bool {
-	if a == b {
-		return true
-	}
-	// -0 and 0 are different JSON numbers.
-	if strings.HasPrefix(a, "-") != strings.HasPrefix(b, "-") && (isZeroNum(a) || isZeroNum(b)) {
+func jsonNumEqual(a, b *jNode) bool {
+	if a == nil || b == nil || a.nkind != b.nkind {
 		return false
 	}
-	ra, oka := new(big.Rat).SetString(trimExp(a))
-	rb, okb := new(big.Rat).SetString(trimExp(b))
-	if !oka || !okb {
-		return false
+	switch a.nkind {
+	case jnFloat:
+		fa, oka := parseJSONFloat(a.num)
+		fb, okb := parseJSONFloat(b.num)
+		if !oka || !okb {
+			return false
+		}
+		return fa == fb && math.Signbit(fa) == math.Signbit(fb)
+	case jnDec:
+		ra, oka := new(big.Rat).SetString(a.num)
+		rb, okb := new(big.Rat).SetString(b.num)
+		if !oka || !okb {
+			return false
+		}
+		return ra.Cmp(rb) == 0
+	default:
+		ia, oka := new(big.Int).SetString(a.num, 10)
+		ib, okb := new(big.Int).SetString(b.num, 10)
+		if !oka || !okb {
+			return false
+		}
+		return ia.Cmp(ib) == 0
 	}
-	return ra.Cmp(rb) == 0
-}
-
-func isZeroNum(s string) bool {
-	r, ok := new(big.Rat).SetString(trimExp(s))
-	return ok && r.Sign() == 0
-}
-
-func trimExp(s string) string {
-	// big.Rat accepts 1.5 but not 1e2. JSON numbers from flashback integers need no exponent.
-	return s
 }
 
 func parseJSONPath(path string) ([]jStep, bool) {
@@ -1442,7 +1559,7 @@ func parseJSONNode(sc *sqlScan) (*jNode, bool) {
 		if text == "" || text == "-" {
 			return nil, false
 		}
-		return &jNode{kind: jNum, num: text}, true
+		return newJNum(text), true
 	}
 	return nil, false
 }
@@ -1488,7 +1605,7 @@ func parseJSONCast(sc *sqlScan) (*jNode, bool) {
 		if base == "DATE" || base == "TIME" || base == "DATETIME" || base == "TIMESTAMP" {
 			return &jNode{kind: jStr, str: text}, true
 		}
-		return &jNode{kind: jNum, num: text}, true
+		return newJNum(text), true
 	default:
 		return nil, false
 	}
@@ -1667,7 +1784,7 @@ func parseJSONTextAt(s string, i int) (*jNode, int, bool) {
 		if i == start || (i == start+1 && s[start] == '-') {
 			return nil, start, false
 		}
-		return &jNode{kind: jNum, num: s[start:i]}, i, true
+		return newJNum(s[start:i]), i, true
 	}
 	return nil, i, false
 }
@@ -1766,7 +1883,7 @@ func refKey(im loggedImage, refs []string) (string, bool) {
 // generatedColumnOutcome checks one generated column against every logged image.
 // mismatch is set when a value contradicts the expression. unverified is set when
 // nothing contradicted it and at least one image could not be evaluated.
-func generatedColumnOutcome(col schemaCol, rows []loggedImage) (example string, unverified bool) {
+func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol) (example string, unverified bool) {
 	if strings.TrimSpace(col.expr) == "" || len(rows) == 0 {
 		return "", true
 	}
@@ -1786,7 +1903,7 @@ func generatedColumnOutcome(col schemaCol, rows []loggedImage) (example string, 
 	}
 	unknown := false
 	for _, im := range images {
-		env := loggedEnv(im.columns, im.values)
+		env := loggedEnv(im.columns, im.values, meta)
 		got, ok := evalGenExpr(col.expr, env)
 		if !ok {
 			unknown = true
@@ -1850,12 +1967,6 @@ func generatedMismatch(table string, col schemaCol, example string) error {
 	})})
 }
 
-func unverifiedGeneratedError(parts []string) error {
-	return fmt.Errorf("%s", i18n.Tf("error.flashbackUnverifiedGenerated", map[string]any{
-		"Columns": strings.Join(parts, "; "),
-	}))
-}
-
 func unverifiedGeneratedWarning(table string, col schemaCol) string {
 	return i18n.Tf("warning.flashbackSchemaUnchecked", map[string]any{
 		"Table":  table,
@@ -1866,5 +1977,290 @@ func unverifiedGeneratedWarning(table string, col schemaCol) string {
 
 // unverifiedGeneratedComment is the script-header line. It stays English, like the other script comments.
 func unverifiedGeneratedComment(table string, col schemaCol) string {
-	return "-- WARNING: generated column " + table + "." + col.name + " not verified (" + exprText(col.expr) + "); it is left out of the script. If the column is not generated, its value is lost."
+	return "-- WARNING: generated column " + table + "." + col.name + " not verified (" + exprText(col.expr) + "); it is left out of the script. The guard below checks that this column is generated on the target."
+}
+
+func newJNum(text string) *jNode {
+	return &jNode{kind: jNum, num: text, nkind: classifyJSONNum(text)}
+}
+
+func classifyJSONNum(text string) jNumKind {
+	if strings.ContainsAny(text, "eE") || negZeroJSON(text) {
+		return jnFloat
+	}
+	if strings.Contains(text, ".") {
+		return jnDec
+	}
+	return jnInt
+}
+
+func negZeroJSON(text string) bool {
+	// -0 and -0.0 are JSON doubles. -0.00 still has a decimal scale, so it stays a decimal.
+	return text == "-0" || text == "-0.0"
+}
+
+func parseJSONFloat(text string) (float64, bool) {
+	f, err := strconv.ParseFloat(strings.TrimSpace(text), 64)
+	if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, false
+	}
+	if f == 0 && strings.HasPrefix(strings.TrimSpace(text), "-") {
+		return math.Copysign(0, -1), true
+	}
+	return f, true
+}
+
+// mysqlJSONFloatString is MySQL's JSON double text: my_gcvt at field width 34,
+// then ".0" when the result has neither a decimal point nor an exponent.
+func mysqlJSONFloatString(f float64) string {
+	neg := math.Signbit(f)
+	abs := math.Abs(f)
+	if abs == 0 {
+		if neg {
+			return "-0.0"
+		}
+		return "0.0"
+	}
+	sci := strconv.FormatFloat(abs, 'e', -1, 64)
+	mant, expStr, ok := strings.Cut(sci, "e")
+	if !ok {
+		return sci
+	}
+	exp, err := strconv.Atoi(expStr)
+	if err != nil {
+		return sci
+	}
+	digits := strings.ReplaceAll(mant, ".", "")
+	decpt := exp + 1
+	useF := decpt >= -14 && (decpt <= 15 || len(digits) > decpt)
+	var b strings.Builder
+	if neg {
+		b.WriteByte('-')
+	}
+	if useF {
+		writeJSONFixed(&b, digits, decpt)
+	} else {
+		b.WriteByte(digits[0])
+		if len(digits) > 1 {
+			b.WriteByte('.')
+			b.WriteString(digits[1:])
+		}
+		b.WriteByte('e')
+		b.WriteString(strconv.Itoa(exp))
+	}
+	s := b.String()
+	if !strings.ContainsAny(s, ".e") {
+		s += ".0"
+	}
+	return s
+}
+
+func writeJSONFixed(b *strings.Builder, digits string, decpt int) {
+	if decpt <= 0 {
+		b.WriteString("0.")
+		for i := 0; i < -decpt; i++ {
+			b.WriteByte('0')
+		}
+		b.WriteString(digits)
+		return
+	}
+	if decpt >= len(digits) {
+		b.WriteString(digits)
+		for i := len(digits); i < decpt; i++ {
+			b.WriteByte('0')
+		}
+		return
+	}
+	b.WriteString(digits[:decpt])
+	b.WriteByte('.')
+	b.WriteString(digits[decpt:])
+}
+
+func (v genVal) enumAsText() (genVal, bool) {
+	if v.kind == genNull {
+		return genNullVal(), true
+	}
+	if !knownTextCharset(v.charset) {
+		return genVal{}, false
+	}
+	idx, ok := v.exactInt()
+	if !ok || idx < 0 || idx > int64(len(v.members)) {
+		return genVal{}, false
+	}
+	if idx == 0 {
+		return genTextVal("", textCharset(v.charset)), true
+	}
+	return genTextVal(v.members[idx-1], textCharset(v.charset)), true
+}
+
+func (v genVal) setAsText() (genVal, bool) {
+	if v.kind == genNull {
+		return genNullVal(), true
+	}
+	if !knownTextCharset(v.charset) || len(v.members) > 64 {
+		return genVal{}, false
+	}
+	bits, ok := v.exactUint()
+	if !ok {
+		return genVal{}, false
+	}
+	if len(v.members) < 64 && bits>>uint(len(v.members)) != 0 {
+		return genVal{}, false
+	}
+	var parts []string
+	for i, member := range v.members {
+		if bits&(uint64(1)<<uint(i)) != 0 {
+			parts = append(parts, member)
+		}
+	}
+	return genTextVal(strings.Join(parts, ","), textCharset(v.charset)), true
+}
+
+func (v genVal) decimalAsText() (genVal, bool) {
+	if v.kind == genNull {
+		return genNullVal(), true
+	}
+	if v.kind != genNum || v.n == nil {
+		return genVal{}, false
+	}
+	scale := 0
+	if v.hasPrec {
+		scale = v.scale
+	}
+	if text, ok := decimalLiteralScale(v.numText, scale); ok {
+		return genTextVal(text, "ascii"), true
+	}
+	return genTextVal(formatRatScale(v.n, scale), "ascii"), true
+}
+
+func decimalLiteralScale(text string, scale int) (string, bool) {
+	text = strings.TrimSpace(text)
+	if text == "" || strings.ContainsAny(text, "eE") {
+		return "", false
+	}
+	body := text
+	if strings.HasPrefix(body, "+") || strings.HasPrefix(body, "-") {
+		body = body[1:]
+	}
+	intPart, frac, hasDot := strings.Cut(body, ".")
+	if intPart == "" || strings.Contains(intPart, ".") {
+		return "", false
+	}
+	for i := 0; i < len(intPart); i++ {
+		if intPart[i] < '0' || intPart[i] > '9' {
+			return "", false
+		}
+	}
+	if hasDot {
+		if len(frac) != scale {
+			return "", false
+		}
+		for i := 0; i < len(frac); i++ {
+			if frac[i] < '0' || frac[i] > '9' {
+				return "", false
+			}
+		}
+	} else if scale != 0 {
+		return "", false
+	}
+	if strings.HasPrefix(text, "-") && strings.Trim(body, "0.") == "" {
+		return strings.TrimPrefix(text, "-"), true
+	}
+	return text, true
+}
+
+func formatRatScale(r *big.Rat, scale int) string {
+	if scale < 0 {
+		scale = 0
+	}
+	abs := new(big.Rat).Abs(r)
+	s := abs.FloatString(scale)
+	if r.Sign() < 0 {
+		return "-" + s
+	}
+	return s
+}
+
+func (v genVal) temporalAsText() (genVal, bool) {
+	if v.kind == genNull {
+		return genNullVal(), true
+	}
+	if v.kind != genText || !v.decoded {
+		return genVal{}, false
+	}
+	fsp := 0
+	if v.hasPrec {
+		fsp = v.prec
+	}
+	text, ok := padFractional(v.text, fsp)
+	if !ok {
+		return genVal{}, false
+	}
+	return genTextVal(text, "ascii"), true
+}
+
+func padFractional(text string, fsp int) (string, bool) {
+	if fsp < 0 || fsp > 6 {
+		return "", false
+	}
+	base, frac, has := strings.Cut(text, ".")
+	if !has {
+		frac = ""
+	}
+	if fsp == 0 {
+		if strings.Trim(frac, "0") != "" {
+			return "", false
+		}
+		return base, true
+	}
+	if len(frac) > fsp {
+		if strings.Trim(frac[fsp:], "0") != "" {
+			return "", false
+		}
+		frac = frac[:fsp]
+	}
+	if len(frac) < fsp {
+		frac += strings.Repeat("0", fsp-len(frac))
+	}
+	return base + "." + frac, true
+}
+
+func (v genVal) exactInt() (int64, bool) {
+	if v.kind != genNum || v.n == nil || !v.n.IsInt() {
+		return 0, false
+	}
+	num := v.n.Num()
+	if !num.IsInt64() {
+		return 0, false
+	}
+	return num.Int64(), true
+}
+
+func (v genVal) exactUint() (uint64, bool) {
+	if v.kind != genNum || v.n == nil || !v.n.IsInt() || v.n.Sign() < 0 {
+		return 0, false
+	}
+	num := v.n.Num()
+	if !num.IsUint64() {
+		return 0, false
+	}
+	return num.Uint64(), true
+}
+
+func knownTextCharset(charset string) bool {
+	switch charset {
+	case "", "utf8", "utf8mb4", "ascii", "latin1", "binary":
+		return true
+	default:
+		return false
+	}
+}
+
+func textCharset(charset string) string {
+	switch charset {
+	case "", "utf8", "utf8mb4":
+		return "utf8mb4"
+	default:
+		return charset
+	}
 }

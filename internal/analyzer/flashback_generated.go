@@ -1,5 +1,5 @@
 // Package analyzer learns generated column names from CREATE and ALTER text.
-// input: DDL statements in binlog order, including statements later excluded by GTID or time, plus optional CREATE/ALTER text from a schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n. A plain mysqldump header and several SHOW CREATE rows without ';' are read too.
+// input: DDL statements in binlog order, including statements later excluded by GTID or time, plus optional CREATE/ALTER text from a schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n. A plain mysqldump header and several SHOW CREATE rows without ';' are read too. A backslash inside a quoted string, including \', is part of that string.
 // output: column names to omit from undo SQL, the column list used to check a schema file, or a bad mark when a definition cannot be read. A table that was never defined stays absent so flashback can warn.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
@@ -523,6 +523,10 @@ func splitComma(s string) []string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if inString != 0 {
+			if c == '\\' && inString != '`' && i+1 < len(s) {
+				i++
+				continue
+			}
 			if c == inString {
 				if i+1 < len(s) && s[i+1] == inString {
 					i++
@@ -719,6 +723,10 @@ func (sc *sqlScan) parenBody() (string, bool) {
 	for i := start; i < len(sc.s); i++ {
 		c := sc.s[i]
 		if inString != 0 {
+			if c == '\\' && inString != '`' && i+1 < len(sc.s) {
+				i++
+				continue
+			}
 			if c == inString {
 				if i+1 < len(sc.s) && sc.s[i+1] == inString {
 					i++
@@ -748,6 +756,10 @@ func (sc *sqlScan) parenBody() (string, bool) {
 func (sc *sqlScan) skipString(quote byte) {
 	sc.i++
 	for sc.i < len(sc.s) {
+		if quote != '`' && sc.s[sc.i] == '\\' && sc.i+1 < len(sc.s) {
+			sc.i += 2
+			continue
+		}
 		if sc.s[sc.i] == quote {
 			sc.i++
 			if sc.i < len(sc.s) && sc.s[sc.i] == quote {
