@@ -1,6 +1,6 @@
 // Package binlogviz proves numeric cells against a live MySQL 8.0 server.
 // input: BINLOGVIZ_FLASHBACK_E2E=1 and a local MySQL 8.0 ROW/GTID/FULL server.
-// output: failure when analyze or flashback disagrees with the value MySQL holds.
+// output: failure when analyze or flashback disagrees with the value MySQL holds; -v logs the checked value count.
 // pos: command-layer oracle for every integer and numeric type, including compressed transactions.
 // note: if this file changes, update this header and README.md.
 package binlogviz
@@ -810,6 +810,7 @@ func numericCompare(t *testing.T, tables []numericTable, viz map[string]map[stri
 	var bad []string
 	var floats []string
 	floatInexact := false
+	checked := 0
 	for _, tbl := range tables {
 		truth := numericTruth(t, tbl)
 		got := viz[tbl.name]
@@ -827,6 +828,7 @@ func numericCompare(t *testing.T, tables []numericTable, viz map[string]map[stri
 				if col.kind == numSkip {
 					continue
 				}
+				checked++
 				want := cols[col.name]
 				have := row[col.name]
 				switch col.kind {
@@ -865,6 +867,10 @@ func numericCompare(t *testing.T, tables []numericTable, viz map[string]map[stri
 		}
 		t.Fatalf("numeric decode mismatch:\n%s", strings.Join(bad, "\n"))
 	}
+	if checked == 0 {
+		t.Fatal("numeric matrix checked no values")
+	}
+	t.Logf("checked %d numeric values", checked)
 	return floatInexact
 }
 

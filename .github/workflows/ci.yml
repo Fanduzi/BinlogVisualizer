@@ -114,4 +114,19 @@ jobs:
           fi
       - name: Round-trip flashback on MySQL 8.0
         timeout-minutes: 18
-        run: BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 12m ./cmd/binlogviz -run 'TestFlashbackRoundTripMySQL80|TestNumericDecodeMySQL80'
+        run: |
+          set -euo pipefail
+          # A skip or a -run miss still exits 0. -v prints --- PASS; require both names.
+          log=$(mktemp)
+          BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 12m -v ./cmd/binlogviz \
+            -run 'TestFlashbackRoundTripMySQL80|TestNumericDecodeMySQL80' 2>&1 | tee "$log"
+          if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
+            echo "MySQL e2e skipped" >&2
+            exit 1
+          fi
+          for name in TestFlashbackRoundTripMySQL80 TestNumericDecodeMySQL80; do
+            if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then
+              echo "missing --- PASS for ${name}" >&2
+              exit 1
+            fi
+          done
