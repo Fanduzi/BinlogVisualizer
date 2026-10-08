@@ -2,6 +2,7 @@ package binlogviz
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -933,6 +934,7 @@ CREATE DATABASE p178a;
 CREATE DATABASE p183;
 CREATE DATABASE p183ok;
 CREATE DATABASE p182;
+CREATE DATABASE p186;
 CREATE TABLE p178a.t (
   id INT NOT NULL,
   code VARCHAR(20) CHARACTER SET ascii,
@@ -972,6 +974,12 @@ INSERT INTO p182.j (id, doc) VALUES
   (2, JSON_OBJECT('v', CAST(1.0 AS JSON))),
   (3, JSON_OBJECT('v', CAST(0.1 AS JSON))),
   (4, JSON_OBJECT('v', CAST(1e2 AS JSON)));
+CREATE TABLE p186.guardwide (
+  id INT NOT NULL,
+  `+wideGuardCols()+`,
+  PRIMARY KEY (id)
+);
+INSERT INTO p186.guardwide VALUES (1, `+wideGuardVals()+`);
 `)
 	stored := e2eMySQL(t, "SELECT id, v FROM p182.j ORDER BY id")
 	t.Logf("JSON generated values:\n%s", stored)
@@ -984,6 +992,7 @@ UPDATE p183.t SET x = 'cd', c = 'CD' WHERE id = 1;
 INSERT INTO p183.heap VALUES ('dup', 'DUP', 1);
 UPDATE p183ok.t SET x = 'zz' WHERE id = 1;
 DELETE FROM p182.j;
+DELETE FROM p186.guardwide;
 COMMIT;`)
 	asciiPath := e2eIncidentBinlog(t)
 	const asciiSum = "CHECKSUM TABLE p178a.t"
@@ -1045,6 +1054,27 @@ COMMIT;`)
 	if got := e2eMySQL(t, matchSum); got != matchAfter {
 		t.Fatalf("guard apply changed rows\nbefore:\n%s\nafter:\n%s", matchAfter, got)
 	}
+	assertGuardForceKeepsRows(t, "FORCE", sql, matchSum, matchAfter, func(out string) {
+		msg := "binlogviz: schema file does not match the target: p183.t.c, p183.heap.note"
+		errLine := mysqlErrorLine(out, "1231")
+		msgAt := strings.Index(out, msg)
+		errAt := strings.Index(out, errLine)
+		if msgAt < 0 || errLine == "" || errAt < 0 || msgAt > errAt {
+			t.Fatalf("guard message was not printed before the error\n%s", out)
+		}
+		if strings.Contains(errLine, ",") || strings.Contains(errLine, "(2 columns)") || !strings.Contains(errLine, "p183.t.c") || !strings.Contains(errLine, "p183.heap.note") || !strings.Contains(errLine, " | ") {
+			t.Fatalf("error line: %s", errLine)
+		}
+		if mysqlErrorLine(out, "1792") == "" {
+			t.Fatalf("missing read-only refusal\n%s", out)
+		}
+	})
+	assertGuardForceKeepsRows(t, "AUTOCOMMIT0", "SET SESSION autocommit=0;\n"+sql+"COMMIT;\n", matchSum, matchAfter, func(out string) {
+		errLine := mysqlErrorLine(out, "1231")
+		if errLine == "" || !strings.Contains(errLine, "p183.t.c") || !strings.Contains(errLine, "p183.heap.note") || mysqlErrorLine(out, "1792") == "" {
+			t.Fatalf("autocommit=0 guard:\n%s", out)
+		}
+	})
 	heap := e2eMySQL(t, "SELECT x, note, n FROM p183.heap ORDER BY note")
 	if !strings.Contains(heap, "kept-note") || !strings.Contains(heap, "DUP") {
 		t.Fatalf("duplicate rows:\n%s", heap)
@@ -1067,7 +1097,10 @@ COMMIT;`)
 	if !strings.Contains(sql, "schema file does not match the target") || !strings.Contains(sql, "'p183ok.t.c'") {
 		t.Fatalf("post-alter guard:\n%s", sql)
 	}
-	e2eMySQL(t, sql)
+	probe := e2eMySQL(t, sql+"SELECT CONCAT('RO=', @@SESSION.transaction_read_only, ' AC=', @@SESSION.autocommit);\n")
+	if !strings.Contains(probe, "RO=0") || !strings.Contains(probe, "AC=1") {
+		t.Fatalf("matching guard changed the session: %q", probe)
+	}
 	if got := e2eMySQL(t, "SELECT id, x, c FROM p183ok.t"); strings.TrimSpace(got) != okWant {
 		t.Fatalf("post-alter row %q want %q\nwas %q\nsql:\n%s", strings.TrimSpace(got), okWant, strings.TrimSpace(okBefore), sql)
 	}
@@ -1089,6 +1122,64 @@ COMMIT;`)
 	e2eMySQL(t, sql)
 	if got := e2eMySQL(t, "SELECT id, v FROM p182.j ORDER BY id"); got != stored {
 		t.Fatalf("json restored\nwant:\n%s\ngot:\n%s\nsql:\n%s", stored, got, sql)
+	}
+
+	const wideSum = "CHECKSUM TABLE p186.guardwide"
+	wideAfter := e2eMySQL(t, wideSum)
+	var wideSchema strings.Builder
+	wideSchema.WriteString("USE `p186`;\nCREATE TABLE `guardwide` (\n  `id` int NOT NULL,\n")
+	for i := 1; i <= 12; i++ {
+		fmt.Fprintf(&wideSchema, "  `col_%02d` varchar(40) GENERATED ALWAYS AS (md5(`id`)) STORED,\n", i)
+	}
+	wideSchema.WriteString("  PRIMARY KEY (`id`)\n);\n")
+	wideFile := filepath.Join(t.TempDir(), "p186.sql")
+	if err := os.WriteFile(wideFile, []byte(wideSchema.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	wideSQL, stderr, err := executeFlashbackLikeMain(t, asciiPath, "--schema-file", wideFile, "--include-table", "p186.guardwide")
+	if err != nil {
+		t.Fatalf("wide guard: %v\n%s", err, stderr)
+	}
+	assertGuardForceKeepsRows(t, "WIDE_FORCE", wideSQL, wideSum, wideAfter, func(out string) {
+		errLine := mysqlErrorLine(out, "1231")
+		if errLine == "" || !strings.Contains(errLine, "(12 columns)") || !strings.Contains(errLine, "p186.guardwide.col_01") || !strings.Contains(errLine, "p186.guardwide.col_05") || strings.Contains(errLine, "p186.guardwide.col_06") || strings.Contains(errLine, ",") {
+			t.Fatalf("wide error line: %s\n%s", errLine, out)
+		}
+		if !strings.Contains(out, "p186.guardwide.col_12") || mysqlErrorLine(out, "1792") == "" {
+			t.Fatalf("wide guard output:\n%s", out)
+		}
+	})
+	assertGuardForceKeepsRows(t, "WIDE_AUTOCOMMIT0", "SET SESSION autocommit=0;\n"+wideSQL+"COMMIT;\n", wideSum, wideAfter, nil)
+}
+
+func wideGuardCols() string {
+	parts := make([]string, 12)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("`col_%02d` VARCHAR(40)", i+1)
+	}
+	return strings.Join(parts, ",\n  ")
+}
+
+func wideGuardVals() string {
+	parts := make([]string, 12)
+	for i := range parts {
+		parts[i] = "'x'"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func assertGuardForceKeepsRows(t *testing.T, label, script, checksumSQL, before string, check func(string)) {
+	t.Helper()
+	out, err := e2eMySQLForce(t, script)
+	t.Logf("GUARD_%s_OUTPUT_BEGIN\n%s\nGUARD_%s_OUTPUT_END", label, out, label)
+	if err != nil {
+		t.Fatalf("%s force exit: %v\n%s", label, err, out)
+	}
+	if got := e2eMySQL(t, checksumSQL); got != before {
+		t.Fatalf("%s changed rows\nbefore:\n%s\nafter:\n%s", label, before, got)
+	}
+	if check != nil {
+		check(out)
 	}
 }
 
@@ -1242,15 +1333,52 @@ func e2eMySQL(t *testing.T, stdin string) string {
 
 func e2eMySQLResult(t *testing.T, stdin string) (string, error) {
 	t.Helper()
+	return e2eMySQLRun(t, stdin, false)
+}
+
+// e2eMySQLForce applies stdin with the client flag that continues after an error.
+// stdbuf keeps the guard's SELECT ahead of the later error lines in the captured log.
+func e2eMySQLForce(t *testing.T, stdin string) (string, error) {
+	t.Helper()
+	return e2eMySQLRun(t, stdin, true)
+}
+
+func e2eMySQLRun(t *testing.T, stdin string, force bool) (string, error) {
+	t.Helper()
 	base := strings.Fields(os.Getenv("BINLOGVIZ_MYSQL"))
 	if len(base) == 0 {
 		base = []string{"sudo", "mysql"}
 	}
-	args := append(append([]string{}, base[1:]...), "--default-character-set=utf8mb4", "-N", "--batch")
-	cmd := exec.Command(base[0], args...)
+	args := make([]string, 0, len(base)+8)
+	if force {
+		inserted := false
+		for _, arg := range base {
+			if !inserted && (arg == "mysql" || strings.HasSuffix(arg, "/mysql")) {
+				args = append(args, "stdbuf", "-o0", "-e0", arg)
+				inserted = true
+				continue
+			}
+			args = append(args, arg)
+		}
+		args = append(args, "--force", "--quick")
+	} else {
+		args = append(args, base...)
+	}
+	args = append(args, "--default-character-set=utf8mb4", "-N", "--batch")
+	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+func mysqlErrorLine(out, code string) string {
+	needle := "ERROR " + code
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+	return ""
 }
 
 func e2eCopy(t *testing.T, src, dst string) {
