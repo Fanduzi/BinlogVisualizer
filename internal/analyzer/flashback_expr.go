@@ -1,6 +1,6 @@
 // Package analyzer evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
-// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
+// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. ENUM and SET print the schema-file member labels when the file lists them; an index of 0 is an empty label, and a value with no member list stays the raw index or bitmask. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -1863,16 +1863,72 @@ func parseJSONString(s string, i int) (string, int, bool) {
 	return "", i, false
 }
 
-func exampleImage(im loggedImage) string {
+func exampleImage(im loggedImage, meta []schemaCol) string {
 	parts := make([]string, 0, len(im.columns))
 	for i, name := range im.columns {
 		lit := "NULL"
 		if i < len(im.values) {
 			lit = im.values[i]
 		}
-		parts = append(parts, name+"="+exampleLiteral(lit))
+		col, found := schemaColByName(meta, name)
+		parts = append(parts, name+"="+exampleCell(lit, col, found))
 	}
 	return oneLine(strings.Join(parts, ", "), 180)
+}
+
+func schemaColByName(meta []schemaCol, name string) (schemaCol, bool) {
+	for _, col := range meta {
+		if strings.EqualFold(col.name, name) {
+			return col, true
+		}
+	}
+	return schemaCol{}, false
+}
+
+func exampleCell(lit string, col schemaCol, found bool) string {
+	if found {
+		if text, ok := exampleMember(lit, col); ok {
+			return text
+		}
+	}
+	return exampleLiteral(lit)
+}
+
+// exampleMember prints an ENUM index or SET bitmask as schema-file labels.
+// ok is false when the column has no member list or the literal is not one.
+func exampleMember(lit string, col schemaCol) (string, bool) {
+	base := strings.ToLower(col.base)
+	if (base != "enum" && base != "set") || len(col.members) == 0 {
+		return "", false
+	}
+	s := strings.TrimSpace(lit)
+	if strings.EqualFold(s, "NULL") {
+		return "NULL", true
+	}
+	if base == "enum" {
+		idx, err := strconv.ParseInt(s, 10, 64)
+		if err != nil || idx < 0 || idx > int64(len(col.members)) {
+			return "", false
+		}
+		if idx == 0 {
+			return quoteExampleText(""), true
+		}
+		return quoteExampleText(col.members[idx-1]), true
+	}
+	bits, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return "", false
+	}
+	if len(col.members) < 64 && bits>>uint(len(col.members)) != 0 {
+		return "", false
+	}
+	var parts []string
+	for i, member := range col.members {
+		if bits&(uint64(1)<<uint(i)) != 0 {
+			parts = append(parts, member)
+		}
+	}
+	return quoteExampleText(strings.Join(parts, ",")), true
 }
 
 // exampleLiteral shows a logged SQL literal in a contradiction error.
@@ -2151,7 +2207,7 @@ func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol)
 					continue
 				}
 				if !match {
-					return exampleImage(im), false
+					return exampleImage(im, meta), false
 				}
 				continue
 			}
@@ -2167,16 +2223,16 @@ func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol)
 			continue
 		}
 		if !match {
-			return exampleImage(im), false
+			return exampleImage(im, meta), false
 		}
 	}
-	if clash := dependencyClash(col, images, nameList); clash != "" {
+	if clash := dependencyClash(col, images, nameList, meta); clash != "" {
 		return clash, false
 	}
 	return "", unknown
 }
 
-func dependencyClash(col schemaCol, images []loggedImage, names []string) string {
+func dependencyClash(col schemaCol, images []loggedImage, names []string, meta []schemaCol) string {
 	refs, ok := generatedRefs(col.expr, names)
 	if !ok {
 		return ""
@@ -2197,11 +2253,11 @@ func dependencyClash(col schemaCol, images []loggedImage, names []string) string
 		}
 		if prev, ok := seen[key]; ok {
 			if prev.lit != lit {
-				return oneLine(prev.example+"; another image with the same inputs has "+col.name+"="+lit, 220)
+				return oneLine(prev.example+"; another image with the same inputs has "+col.name+"="+exampleCell(lit, col, true), 220)
 			}
 			continue
 		}
-		seen[key] = hit{lit: lit, example: exampleImage(im)}
+		seen[key] = hit{lit: lit, example: exampleImage(im, meta)}
 	}
 	return ""
 }
