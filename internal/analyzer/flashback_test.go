@@ -27,7 +27,7 @@ func TestRenderFlashbackReversesTransactionsAndRows(t *testing.T) {
 				{Schema: "shop", Table: "heap", Op: "INSERT", Columns: []string{"id", "note"}, After: []string{"3", "'a'"}, NoPK: true},
 			},
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
