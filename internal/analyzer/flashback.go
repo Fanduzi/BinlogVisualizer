@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET when that definition matches. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET when that definition matches. An expression in --schema-file that cannot be checked is omitted with a warning when the column list matches. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -77,7 +77,7 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 		bind.deferCheck = pending
 		if pending {
 			// The schema is not final until every table map for this name is seen.
-		} else if err := validateSchemaRows(ev.FlashRows, cols); err != nil {
+		} else if err := a.acceptSchemaRows(ev.FlashRows, cols); err != nil {
 			a.flashErr = err
 			return
 		} else {
@@ -90,13 +90,37 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 	a.noteFlashbackKept(ev)
 }
 
-func validateSchemaRows(rows []model.FlashRow, cols []schemaCol) error {
+func (a *Analyzer) acceptSchemaRows(rows []model.FlashRow, cols []schemaCol) error {
 	for _, row := range rows {
-		if err := validateSchemaRow(row, cols); err != nil {
+		if err := a.acceptSchema(row, cols); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (a *Analyzer) acceptSchema(row model.FlashRow, cols []schemaCol) error {
+	warns, err := validateSchemaRow(row, cols)
+	if err != nil {
+		return err
+	}
+	a.noteSchemaWarnings(warns)
+	return nil
+}
+
+func (a *Analyzer) noteSchemaWarnings(warns []string) {
+	for _, warn := range warns {
+		dup := false
+		for _, have := range a.flashSchemaWarn {
+			if have == warn {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			a.flashSchemaWarn = append(a.flashSchemaWarn, warn)
+		}
+	}
 }
 
 func (a *Analyzer) clearPendingUse(table string) {
@@ -119,7 +143,7 @@ func (a *Analyzer) finishSchema() error {
 			if !bind.deferCheck {
 				continue
 			}
-			if err := validateSchemaRow(group.rows[i], bind.cols); err != nil {
+			if err := a.acceptSchema(group.rows[i], bind.cols); err != nil {
 				return err
 			}
 			bind.gen = generatedNameSet(bind.cols)
@@ -218,6 +242,7 @@ func (a *Analyzer) FlashbackWarnings() []string {
 	}
 	var out []string
 	out = append(out, a.flashGen.schemaWarnings()...)
+	out = append(out, a.flashSchemaWarn...)
 	for _, table := range a.flashUnknown {
 		out = append(out, i18n.Tf("warning.flashbackGenerated", map[string]any{"Table": table}))
 	}
@@ -397,9 +422,12 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}) (string, e
 // the session mode is restored immediately after it. @binlogviz_sql_mode
 // holds the mode that was in effect, including the script's earlier
 // NO_BACKSLASH_ESCAPES removal.
+// TRADITIONAL is removed as well. MySQL re-expands that token into
+// STRICT_TRANS_TABLES and STRICT_ALL_TABLES, so leaving it in the list
+// keeps the session strict.
 func nonStrictEnumWrap(statement string) string {
 	return "SET @binlogviz_sql_mode = @@SESSION.sql_mode;\n" +
-		"SET SESSION sql_mode = TRIM(BOTH ',' FROM REPLACE(REPLACE(REPLACE(REPLACE(@@SESSION.sql_mode, 'STRICT_ALL_TABLES', ''), 'STRICT_TRANS_TABLES', ''), ',,', ','), ',,', ','));\n" +
+		"SET SESSION sql_mode = TRIM(BOTH ',' FROM REPLACE(REPLACE(REPLACE(CONCAT(',', @@SESSION.sql_mode, ','), ',STRICT_ALL_TABLES,', ','), ',STRICT_TRANS_TABLES,', ','), ',TRADITIONAL,', ','));\n" +
 		statement + "\n" +
 		"SET SESSION sql_mode = @binlogviz_sql_mode;"
 }

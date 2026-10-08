@@ -297,7 +297,7 @@
   },
   "error.flashbackSchema": {
     "description": "Flashback refuses a schema file that does not match the binlog columns",
-    "other": "{{.Table}}: --schema-file does not match the binlog columns: {{.Diff}}"
+    "other": "{{.Table}}: --schema-file does not match the binlog columns: {{.Diff}}. Use a dump from incident time, an older dump if an ALTER came later, or --include-table to leave the table out."
   },
   "error.flashbackSchemaExtra": {
     "description": "Schema file has columns the binlog does not",
@@ -319,9 +319,9 @@
     "description": "A generated column's logged values do not match its expression",
     "other": "{{.Column}} is generated in the schema file but the logged values are not {{.Expr}}"
   },
-  "error.flashbackSchemaUnchecked": {
-    "description": "A generated column's logged values cannot be checked",
-    "other": "{{.Column}} is generated in the schema file but the logged values cannot be checked"
+  "warning.flashbackSchemaUnchecked": {
+    "description": "A generated column's expression cannot be verified, but the column list matches",
+    "other": "warning: {{.Table}}: binlogviz cannot verify generated column {{.Column}} ({{.Expr}}). Column count, names, order, and types match the binlog, so the file is used and this column is left out of the script. If the column is not generated, its value is lost and the command still exits 0. Use a dump from incident time, an older dump if an ALTER came later, or --include-table to leave the table out."
   },
   "warning.flashbackSchemaDB": {
     "description": "Schema file header and --schema-file-db name different databases",
