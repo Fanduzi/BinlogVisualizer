@@ -580,6 +580,54 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 	}
 }
 
+func TestGeneratedGuardOldServerSQL(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `c` varchar(32) GENERATED ALWAYS AS (md5(`id`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	cols := []model.FlashCol{
+		{Base: "int", HasSign: true},
+		{Base: "varchar", Charset: "utf8mb4"},
+	}
+	row := model.FlashRow{
+		Schema: "shop", Table: "t", Op: "DELETE",
+		Columns: []string{"id", "c"}, Cols: cols,
+		Before: []string{"1", "'abc'"},
+		PK:     []int{0},
+	}
+	sql, _, err := flashSchemaResult(t, schema, "", row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(guardOldServerMsg, ",") || len(guardOldServerMsg) > guardValueLimit {
+		t.Fatalf("message: %q", guardOldServerMsg)
+	}
+	oldAt := strings.Index(sql, guardOldServerCheckSQL())
+	execAt := strings.Index(sql, "EXECUTE binlogviz_guard;")
+	early := "SET SESSION sql_mode = IF(@binlogviz_old, @binlogviz_mode, @@SESSION.sql_mode);"
+	earlyAt := strings.Index(sql, early)
+	lockAt := strings.Index(sql, "transaction_read_only")
+	if oldAt < 0 || execAt < 0 || earlyAt < 0 || lockAt < 0 || oldAt > execAt || execAt > earlyAt || earlyAt > lockAt {
+		t.Fatalf("version check, message, failing SET, then transaction_read_only:\n%s", sql)
+	}
+	for _, want := range []string{
+		guardOldServerMsg,
+		"SET @binlogviz_mode = IF(@binlogviz_old, " + sqlQuote(guardOldServerMsg) + ", @binlogviz_mode);",
+		"SUBSTRING_INDEX(@@version, '-', 1)",
+		"@binlogviz_major > 5",
+		"@binlogviz_minor > 7",
+		"@binlogviz_patch >= 20",
+		"Apply requires MySQL 5.7.20 or newer.",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("missing %q\n%s", want, sql)
+		}
+	}
+	if !guardBeforeTransaction(sql) {
+		t.Fatalf("guard is not in the header:\n%s", sql)
+	}
+}
+
 func TestGuardSafeLabel(t *testing.T) {
 	if got := guardSafeLabel("db.t.a,b"); got != "db.t.a;b" {
 		t.Fatalf("comma: %q", got)
