@@ -1,6 +1,6 @@
 // Package binlog formats exact SQL literals from an already-decoded rows event.
 // input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, the SIGNEDNESS bitmap, collation, enum/set members, primary key). Signedness counts YEAR, which go-mysql v1.14 UnsignedMap skips.
-// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes. ENUM is the member index and SET is the bitmask. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
+// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes. ENUM is the member index and SET is the bitmask. MEDIUMINT unsigned is the low 24 bits. BIT is a b'...' literal of the column width. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
 // pos: parser helper used only when flashback capture is on. It reuses the decoded row images from the same RowsEvent as display capture.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -329,7 +329,7 @@ func flashLiteral(table *replication.TableMapEvent, col int, value any, cell jso
 		if !ok {
 			return "", typeName(typ) + " (signedness is unavailable)"
 		}
-		text, ok := sqlInteger(value, bit)
+		text, ok := sqlInteger(value, typ, bit)
 		if !ok {
 			return "", typeName(typ)
 		}
@@ -354,7 +354,15 @@ func flashLiteral(table *replication.TableMapEvent, col int, value any, cell jso
 	case mysql.MYSQL_TYPE_DOUBLE:
 		return "", "DOUBLE"
 	case mysql.MYSQL_TYPE_BIT:
-		return "", "BIT"
+		var meta uint16
+		if table != nil && col >= 0 && col < len(table.ColumnMeta) {
+			meta = table.ColumnMeta[col]
+		}
+		text, ok := sqlBit(value, meta)
+		if !ok {
+			return "", "BIT"
+		}
+		return text, ""
 	case mysql.MYSQL_TYPE_GEOMETRY:
 		return "", "GEOMETRY"
 	case mysql.MYSQL_TYPE_VECTOR:
@@ -423,25 +431,15 @@ func flashRealType(table *replication.TableMapEvent, i int) byte {
 	return typ
 }
 
-func sqlInteger(value any, unsigned bool) (string, bool) {
-	var signed int64
-	var wide uint64
-	switch typed := value.(type) {
-	case int8:
-		signed, wide = int64(typed), uint64(uint8(typed))
-	case int16:
-		signed, wide = int64(typed), uint64(uint16(typed))
-	case int32:
-		signed, wide = int64(typed), uint64(uint32(typed))
-	case int64:
-		signed, wide = typed, uint64(typed)
-	default:
+func sqlInteger(value any, typ byte, unsigned bool) (string, bool) {
+	signed, wide, ok := integerReadings(value, typ)
+	if !ok {
 		return "", false
 	}
 	if unsigned {
-		return strconv.FormatUint(wide, 10), true
+		return wide, true
 	}
-	return strconv.FormatInt(signed, 10), true
+	return signed, true
 }
 
 func sqlDecimal(value any) (string, bool) {
