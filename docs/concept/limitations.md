@@ -101,7 +101,7 @@ These limits stay even when the literals are exact:
 Review the script, test it, and apply it in a single session on the primary. A statement that fails leaves earlier transactions in the script committed.
 
 - [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166): a correct `--schema-file` is refused when a generated column uses an expression the checker cannot verify. That includes JSON extraction (`j->>'$.k'`), `UPPER`, `CONCAT`, and `DIV`. `/` fails the check when MySQL rounded the result, because the check truncates. The error says `--schema-file does not match the binlog columns`. Omitting `--schema-file` is not a workaround for a real generated column: the script assigns that column, and apply stops at `ERROR 3105` with earlier transactions already committed. Pass the binlog that contains the `CREATE TABLE` (or a later `ALTER`) as well as the incident, and select the incident with `--include-gtids`. A definition learned from those parsed binlogs is not checked as a schema file, so the generated columns are left out of the script and the checksum can be restored. Or hand-edit the script and remove the generated columns from `INSERT` column lists and `UPDATE` assignments. `--include-table` or `--exclude-table` only skips the table; the rows still have to be restored another way.
-- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it, so a dump taken after that `ALTER` can be refused even though the `ALTER` came before the incident and the file is the incident-time definition. How to recognise it: the error says `reordered (schema file ...; binlog ...)` and lists the same column twice (`id, a, b, c, c`). Use a dump taken before that `ALTER`, which restores, or leave out the binlog file that holds the `ALTER`. A file made by joining several `mysqldump --no-data` outputs uses only the first `Database:` header, so later dumps are bound to that database. Put `USE db;` before each dump, or run one flashback per database with `--schema-file-db`. When an unqualified table name occurs in more than one schema, the per-table warning names only one of the tables left without a definition. Qualify that table, or add `USE`, so the definition is used.
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it, so a dump taken after that `ALTER` can be refused even though the `ALTER` came before the incident and the file is the incident-time definition. How to recognise it: the error says `reordered (schema file ...; binlog ...)` and lists the same column twice (`id, a, b, c, c`). Use a dump taken before that `ALTER`, which restores, or leave out the binlog file that holds the `ALTER`. A file made by joining several `mysqldump --no-data` outputs uses only the first `Database:` header, so later dumps are bound to that database. Put `USE db;` before each dump, or run one flashback per database with `--schema-file-db` and that database's own dump file. A per-database run against the joined file does not work: it either refuses (`--schema-file does not match the binlog columns`) or warns that the `Database` header and `--schema-file-db` disagree and does not use the definition. Both fail safe, but neither restores. When an unqualified table name occurs in more than one schema, the per-table warning names only one of the tables left without a definition. Qualify that table, or add `USE`, so the definition is used.
 - [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168): restoring an `ENUM` index of 0 drops `STRICT_TRANS_TABLES` and `STRICT_ALL_TABLES` for that statement. Under `sql_mode=TRADITIONAL` those strict modes come back, apply stops with `ERROR 1265`, and earlier transactions in the script are already committed. How to recognise it: `SELECT @@SESSION.sql_mode` contains `TRADITIONAL`, and the script contains `@binlogviz_sql_mode`. Before the script, set the session to TRADITIONAL's expansion without the `TRADITIONAL` token:
 
   ```sql
@@ -114,7 +114,54 @@ Review the script, test it, and apply it in a single session on the primary. A s
 
 A statement that fails leaves earlier transactions in the script committed. Running the whole script again inserts a second copy of each restored row in a table with no primary key. A table with a primary key stops at `ERROR 1062`.
 
-The script is in reverse binlog order: the last original transaction is the first block. Blocks above the failure have been applied. Blocks below it have not. Find the block MySQL rejected. It starts with a `-- gtid:` comment (or `-- gtid: GTID unavailable`) and a `-- binlog: file:pos` comment. The last committed transaction is the block above that one. Delete every block above the failure, keep the failed block and every block below it, and run that remainder. Do not re-run a transaction that already committed.
+A script has two parts. The header is every line before the first `-- gtid:` line: two comments and three session statements.
+
+```sql
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');
+```
+
+The transaction blocks follow, in reverse binlog order: the last original transaction is the first block. Each block starts with a `-- gtid:` comment (or `-- gtid: GTID unavailable`) and a `-- binlog: file:pos` comment, and ends with `COMMIT;`. The `SET @binlogviz_sql_mode` / `SET SESSION sql_mode` lines inside a block belong to that block.
+
+Blocks above the failure have been applied. Blocks below it have not. The client reports the failing line (`ERROR 1265 (01000) at line 20: ...`). The failed block is the last `-- gtid:` line at or before that line number. To resume:
+
+1. Keep the header. Every `TIMESTAMP` literal in the script is the UTC wall clock and needs `SET time_zone = '+00:00'`. If the header is dropped, the remainder runs in the session's own time zone: apply still exits 0, MySQL reports nothing, and every restored `TIMESTAMP` is shifted by that offset (on a `+08:00` server, `09:00:00.123` comes back as `01:00:00.123`).
+2. Delete only the transaction blocks above the failed one.
+3. Keep the failed block and every block below it.
+4. Run the header plus that remainder in a new session, because the failed session aborted. If the failure needed a session option (such as the #168 `sql_mode`), put that `SET SESSION` statement above the header, as the first line of the resume file.
+
+Do not re-run a transaction that already committed.
+
+Example. This script stopped at `ERROR 1265 (01000) at line 20`. The last `-- gtid:` line at or before line 20 is line 13. Lines 1–6 are the header, lines 7–12 are the block that committed, and line 13 onward has not run:
+
+```text
+ 1  -- flashback reverses the selected row changes, last transaction first.
+ 2  -- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.
+ 3  SET NAMES utf8mb4;                                   -- header: keep
+ 4  SET time_zone = '+00:00';                            -- header: keep
+ 5  SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');  -- header: keep
+ 6
+ 7  -- gtid: 3528e50c-c289-11f1-8861-0242ac110003:986    -- committed: delete lines 7-12
+ 8  -- binlog: mysql-bin.000124:542
+ 9  START TRANSACTION;
+10  INSERT INTO `shop`.`r_nopk` (`n`, `ts`, `s`) VALUES (1, '2026-10-08 00:00:00', 'one');
+11  COMMIT;
+12
+13  -- gtid: 3528e50c-c289-11f1-8861-0242ac110003:985    -- failed: keep from here to the end
+14  -- binlog: mysql-bin.000124:197
+15  START TRANSACTION;
+...
+```
+
+The resume file is lines 1–6 plus line 13 to the end. This keeps the header, drops every block that starts before line 13, and keeps the rest:
+
+```bash
+awk -v n=13 'NR >= n || !seen { if (NR < n && /^-- gtid:/) { seen = 1; next } print }' flashback.sql > resume.sql
+mysql --default-character-set=utf8mb4 < resume.sql
+```
+
+Check that `resume.sql` starts with the three `SET` lines and that its first `-- gtid:` line is the failed block before applying it.
 
 Flashback refuses rather than guessing. Exit 1, one `Error:` line that names the table and the reason, and no SQL on stdout, when:
 

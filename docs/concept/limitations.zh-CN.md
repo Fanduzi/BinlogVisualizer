@@ -100,8 +100,8 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 先审阅并测试脚本，再在主库的同一个会话里执行。某条语句失败时，脚本里更早的事务已经提交。
 
-- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)：生成列的表达式核对不了时，正确的 `--schema-file` 也会被拒绝。这包括 JSON 提取（`j->>'$.k'`）、`UPPER`、`CONCAT` 和 `DIV`。`/` 只在 MySQL 对结果做了舍入时才会对不上，因为核对按截断计算。英文错误是 `--schema-file does not match the binlog columns`。`--lang zh-CN` 下是 `--schema-file 与 binlog 的列不一致`。不传 `--schema-file` 不是真有生成列时的办法：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，更早的事务已经提交。把记下 `CREATE TABLE`（或之后的 `ALTER`）的 binlog 和事故 binlog 一起传入，并用 `--include-gtids` 只选事故。从解析到的 binlog 学到的定义不按 schema 文件核对，生成列会从脚本里去掉，校验和可以回到事故前。也可以手工编辑脚本，从 `INSERT` 列清单和 `UPDATE` 赋值里删掉生成列。`--include-table` / `--exclude-table` 只是不选这些表，行还得用别的办法还原。
-- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167)：解析到的 binlog 里若有 `ALTER`，会再应用到已经包含这次变更的 schema 文件上。ALTER 之后导出的文件（ALTER 早于事故，这份文件正是事故当时的结构）也可能被拒绝。怎么认出来：错误里同一列出现两次。英文是 `reordered (schema file ...; binlog ...)`，例如 `id, a, b, c, c`。中文是 `--schema-file 与 binlog 的列不一致`，后面跟着 `顺序不同（schema 文件 …；binlog …）`。用这次 `ALTER` 之前的转储（已核对可以还原），或者不要传入记下这次 `ALTER` 的那个 binlog 文件。把多份 `mysqldump --no-data` 拼成一个文件时，只用第一个 `Database:` 头，后面的转储都绑到那个库。每份转储前面加上 `USE db;`，或者每个库单独跑一次 flashback 并带上 `--schema-file-db`。未带库名的表出现在多个库时，逐表警告只点名其中一张没有定义的表。给表加上库名，或补上 `USE`，这份定义才会被用上。
+- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)：生成列的表达式核对不了时，正确的 `--schema-file` 也会被拒绝。这包括 JSON 提取（`j->>'$.k'`）、`UPPER`、`CONCAT` 和 `DIV`。`/` 只在 MySQL 对结果做了舍入时才会对不上，因为核对按截断计算。英文错误是 `--schema-file does not match the binlog columns`。`--lang zh-CN` 下是 `--schema-file 与 binlog 的列不一致`。表里确实有生成列时，不传 `--schema-file` 解决不了问题：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，更早的事务已经提交。把包含 `CREATE TABLE`（或之后的 `ALTER`）的 binlog 和事故 binlog 一起传入，并用 `--include-gtids` 只选事故。从解析到的 binlog 学到的定义不按 schema 文件核对，生成列会从脚本里去掉，校验和可以回到事故前。也可以手工编辑脚本，从 `INSERT` 列清单和 `UPDATE` 赋值里删掉生成列。`--include-table` / `--exclude-table` 只是不选这些表，行还得用别的办法还原。
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167)：解析到的 binlog 里若有 `ALTER`，会再应用到已经包含这次变更的 schema 文件上。ALTER 之后导出的文件（ALTER 早于事故，这份文件正是事故当时的结构）也可能被拒绝。怎么认出来：错误里同一列出现两次。英文是 `reordered (schema file ...; binlog ...)`，例如 `id, a, b, c, c`。中文是 `--schema-file 与 binlog 的列不一致`，后面跟着 `顺序不同（schema 文件 …；binlog …）`。用这次 `ALTER` 之前的转储（实测可以还原），或者不要传入包含这次 `ALTER` 的那个 binlog 文件。把多份 `mysqldump --no-data` 拼成一个文件时，只用第一个 `Database:` 头，后面的转储都绑到那个库。每份转储前面加上 `USE db;`，或者每个库单独跑一次 flashback，带上 `--schema-file-db` 和这个库自己的那份转储。拿拼接后的文件按库单独跑不行：要么拒绝（`--schema-file 与 binlog 的列不一致`），要么警告 `Database` 头和 `--schema-file-db` 不一致、不使用这份定义。两种都会安全失败，但都还原不了。未带库名的表出现在多个库时，逐表警告只点名其中一张没有定义的表。给表加上库名，或补上 `USE`，这份定义才会被用上。
 - [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168)：还原 `ENUM` 序号 0 时，只在这一条语句去掉 `STRICT_TRANS_TABLES` 和 `STRICT_ALL_TABLES`。`sql_mode=TRADITIONAL` 会把这两个严格模式加回来，执行停在 `ERROR 1265`，脚本里更早的事务已经提交。怎么认出来：`SELECT @@SESSION.sql_mode` 里有 `TRADITIONAL`，脚本里有 `@binlogviz_sql_mode`。执行脚本之前，把会话设成 TRADITIONAL 的展开形式，但不要带 `TRADITIONAL` 这个词：
 
   ```sql
@@ -112,9 +112,56 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 ### 执行失败后接着跑
 
-某条语句失败时，脚本里更早的事务已经提交。把整个脚本再跑一遍，没有主键的表会多出一份行。有主键的表会停在 `ERROR 1062`。
+某条语句失败时，脚本里更早的事务已经提交。把整个脚本再跑一遍，没有主键的表里会出现重复行。有主键的表会停在 `ERROR 1062`。
 
-脚本按 binlog 逆序：最后发生的事务排在最前面。失败位置上面的块已经执行过，下面的块还没有。找到 MySQL 拒绝的那一块。它以 `-- gtid:` 注释开头（没有 GTID 时是 `-- gtid: GTID unavailable`），下一行是 `-- binlog: file:pos`。最后提交成功的事务是它上面的那一块。删掉失败位置上面的块，保留失败的那一块和它下面的全部，再执行剩下的部分。已经提交的事务不要再跑。
+脚本分两部分。第一个 `-- gtid:` 行之前的都是脚本头：两行注释和三条会话语句。
+
+```sql
+SET NAMES utf8mb4;
+SET time_zone = '+00:00';
+SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');
+```
+
+后面是事务块，按 binlog 逆序：最后发生的事务排在最前面。每一块以 `-- gtid:` 注释开头（没有 GTID 时是 `-- gtid: GTID unavailable`），下一行是 `-- binlog: file:pos`，以 `COMMIT;` 结束。块里面的 `SET @binlogviz_sql_mode` / `SET SESSION sql_mode` 属于这一块。
+
+失败位置上面的块已经执行过，下面的块还没有。客户端会报出失败的行号（`ERROR 1265 (01000) at line 20: ...`）。失败的那一块，就是行号小于等于这个数的最后一个 `-- gtid:` 行。接着跑的步骤：
+
+1. 保留脚本头。脚本里的 `TIMESTAMP` 字面量都是 UTC 墙钟，必须有 `SET time_zone = '+00:00'`。脚本头被删掉时，剩下的部分按会话自己的时区执行：退出码仍是 0，MySQL 不报任何错，还原出来的每个 `TIMESTAMP` 都偏了这个时差（`+08:00` 的服务器上，`09:00:00.123` 会变成 `01:00:00.123`）。
+2. 只删掉失败那一块上面的事务块。
+3. 保留失败的那一块和它下面的全部。
+4. 原会话已经中断，在新会话里执行「脚本头 + 剩下的部分」。失败原因需要会话设置时（例如 #168 的 `sql_mode`），把那条 `SET SESSION` 放在脚本头之前，作为接着跑的文件的第一行。
+
+已经提交的事务不要再跑。
+
+例子。下面这个脚本停在 `ERROR 1265 (01000) at line 20`。行号小于等于 20 的最后一个 `-- gtid:` 行是第 13 行。第 1–6 行是脚本头，第 7–12 行是已经提交的块，第 13 行起还没有执行：
+
+```text
+ 1  -- flashback reverses the selected row changes, last transaction first.
+ 2  -- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.
+ 3  SET NAMES utf8mb4;                                   -- 脚本头：保留
+ 4  SET time_zone = '+00:00';                            -- 脚本头：保留
+ 5  SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');  -- 脚本头：保留
+ 6
+ 7  -- gtid: 3528e50c-c289-11f1-8861-0242ac110003:986    -- 已提交：删掉第 7-12 行
+ 8  -- binlog: mysql-bin.000124:542
+ 9  START TRANSACTION;
+10  INSERT INTO `shop`.`r_nopk` (`n`, `ts`, `s`) VALUES (1, '2026-10-08 00:00:00', 'one');
+11  COMMIT;
+12
+13  -- gtid: 3528e50c-c289-11f1-8861-0242ac110003:985    -- 失败的块：从这里保留到结尾
+14  -- binlog: mysql-bin.000124:197
+15  START TRANSACTION;
+...
+```
+
+接着跑的文件是第 1–6 行加上第 13 行到结尾。下面的命令保留脚本头，删掉第 13 行之前开始的每一块，其余保留：
+
+```bash
+awk -v n=13 'NR >= n || !seen { if (NR < n && /^-- gtid:/) { seen = 1; next } print }' flashback.sql > resume.sql
+mysql --default-character-set=utf8mb4 < resume.sql
+```
+
+执行前检查 `resume.sql` 开头是那三条 `SET`，第一个 `-- gtid:` 行是失败的那一块。
 
 无法精确还原时拒绝，不猜测。退出 1，一行 `Error:` 点名表和原因，stdout 没有 SQL，出现在：
 
