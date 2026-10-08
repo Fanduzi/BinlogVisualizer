@@ -1,6 +1,6 @@
 // Package binlog formats bounded ROW images from an already-decoded rows event.
 // input: go-mysql RowsEvent values, optional FULL row metadata (names, the SIGNEDNESS bitmap), and a per-event image cap.
-// output: model.RowImage values with NULL, integers (signed, unsigned, or both when signedness is absent), decimals, strings, datetimes, JSON, and bounded hex blobs.
+// output: model.RowImage values with NULL, integers (signed, unsigned, or both when signedness is absent; MEDIUMINT unsigned is 24 bits), decimals, BIT integers, strings, datetimes, JSON, and bounded hex blobs.
 // pos: parser helper used only when row-image capture is on.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -8,11 +8,13 @@ package binlog
 import (
 	"encoding/hex"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 
 	"binlogviz/internal/model"
@@ -69,10 +71,10 @@ func captureRowImages(ev *replication.RowsEvent, kind, schema, table string) ([]
 			Names:   names,
 		}
 		if beforeRow != nil {
-			img.Before = formatImage(beforeRow, skipSet(beforeSkips), labels, unsigned, nil)
+			img.Before = formatImage(beforeRow, skipSet(beforeSkips), labels, ev.Table, unsigned, nil)
 		}
 		if afterRow != nil {
-			img.After = formatImage(afterRow, skipSet(afterSkips), labels, unsigned, img.Before)
+			img.After = formatImage(afterRow, skipSet(afterSkips), labels, ev.Table, unsigned, img.Before)
 		}
 		if update {
 			img.Changed = changedColumns(labels, img.Before, img.After)
@@ -129,7 +131,7 @@ func skipSet(skips []int) map[int]struct{} {
 	return out
 }
 
-func formatImage(row []any, skips map[int]struct{}, labels []string, unsigned map[int]bool, fallback []model.RowCell) []model.RowCell {
+func formatImage(row []any, skips map[int]struct{}, labels []string, table *replication.TableMapEvent, unsigned map[int]bool, fallback []model.RowCell) []model.RowCell {
 	cells := make([]model.RowCell, len(labels))
 	for i := range labels {
 		if _, skipped := skips[i]; skipped {
@@ -148,7 +150,7 @@ func formatImage(row []any, skips map[int]struct{}, labels []string, unsigned ma
 				signedness = &bit
 			}
 		}
-		cells[i] = formatCell(value, signedness)
+		cells[i] = formatCell(value, flashRealType(table, i), signedness)
 	}
 	return cells
 }
@@ -167,12 +169,40 @@ func changedColumns(labels []string, before, after []model.RowCell) []string {
 }
 
 // formatCell renders one decoded binlog value.
+// typ is the binlog real type. MYSQL_TYPE_DECIMAL is 0, the old decimal type,
+// so an unknown type is MYSQL_TYPE_NULL, and integer width then follows the Go value.
 // unsigned nil means the binlog did not say signedness (mysqlbinlog prints both forms when they differ).
-func formatCell(value any, unsigned *bool) model.RowCell {
+func formatCell(value any, typ byte, unsigned *bool) model.RowCell {
 	if value == nil {
 		return model.RowCell{Null: true}
 	}
-	if text, ok := formatInt(value, unsigned); ok {
+	switch typ {
+	case mysql.MYSQL_TYPE_BIT:
+		text, ok := bitDecimal(value)
+		if !ok {
+			return model.RowCell{Text: inexactCell("BIT")}
+		}
+		return model.RowCell{Text: text}
+	case mysql.MYSQL_TYPE_NEWDECIMAL, mysql.MYSQL_TYPE_DECIMAL:
+		text, ok := sqlDecimal(value)
+		if !ok {
+			return model.RowCell{Text: inexactCell("DECIMAL")}
+		}
+		return model.RowCell{Text: text}
+	case mysql.MYSQL_TYPE_FLOAT:
+		text, ok := floatText(value, 32)
+		if !ok {
+			return model.RowCell{Text: inexactCell("FLOAT")}
+		}
+		return model.RowCell{Text: text}
+	case mysql.MYSQL_TYPE_DOUBLE:
+		text, ok := floatText(value, 64)
+		if !ok {
+			return model.RowCell{Text: inexactCell("DOUBLE")}
+		}
+		return model.RowCell{Text: text}
+	}
+	if text, ok := formatInt(value, typ, unsigned); ok {
 		return model.RowCell{Text: text}
 	}
 	switch typed := value.(type) {
@@ -195,23 +225,11 @@ func formatCell(value any, unsigned *bool) model.RowCell {
 	}
 }
 
-func formatInt(value any, unsigned *bool) (string, bool) {
-	var signed int64
-	var wide uint64
-	switch typed := value.(type) {
-	case int8:
-		signed, wide = int64(typed), uint64(uint8(typed))
-	case int16:
-		signed, wide = int64(typed), uint64(uint16(typed))
-	case int32:
-		signed, wide = int64(typed), uint64(uint32(typed))
-	case int64:
-		signed, wide = typed, uint64(typed)
-	default:
+func formatInt(value any, typ byte, unsigned *bool) (string, bool) {
+	signedText, unsignedText, ok := integerReadings(value, typ)
+	if !ok {
 		return "", false
 	}
-	signedText := strconv.FormatInt(signed, 10)
-	unsignedText := strconv.FormatUint(wide, 10)
 	if unsigned != nil {
 		if *unsigned {
 			return unsignedText, true
@@ -222,6 +240,52 @@ func formatInt(value any, unsigned *bool) (string, bool) {
 		return signedText + " (" + unsignedText + ")", true
 	}
 	return signedText, true
+}
+
+// inexactCell is a non-numeric marker. A truncated or guessed number would be a wrong value.
+func inexactCell(name string) string {
+	return "<" + name + ">"
+}
+
+// floatText is the shortest decimal that parses back to the same bits.
+// MySQL casts a FLOAT literal through DOUBLE first, and rejects a decimal
+// above the largest finite float32 even when that decimal is the IEEE
+// round-trip of that float. Those values are not printed as a number.
+func floatText(value any, bits int) (string, bool) {
+	var f float64
+	switch typed := value.(type) {
+	case float32:
+		f = float64(typed)
+		bits = 32
+	case float64:
+		f = typed
+	default:
+		return "", false
+	}
+	if bits <= 0 {
+		bits = 64
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return "", false
+	}
+	text := strconv.FormatFloat(f, 'g', -1, bits)
+	parsed, err := strconv.ParseFloat(text, 64)
+	if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+		return "", false
+	}
+	if bits <= 32 {
+		if math.Abs(parsed) > float64(math.MaxFloat32) {
+			return "", false
+		}
+		if float32(parsed) != float32(f) {
+			return "", false
+		}
+		return text, true
+	}
+	if parsed != f {
+		return "", false
+	}
+	return text, true
 }
 
 func formatBlob(value []byte) string {
@@ -244,6 +308,7 @@ type pkMeta struct {
 	indexes []int
 	names   []string
 	sign    []*bool
+	types   []byte
 }
 
 func pkMetaFrom(table *replication.TableMapEvent) pkMeta {
@@ -256,6 +321,7 @@ func pkMetaFrom(table *replication.TableMapEvent) pkMeta {
 		indexes: make([]int, 0, len(table.PrimaryKey)),
 		names:   make([]string, 0, len(table.PrimaryKey)),
 		sign:    make([]*bool, 0, len(table.PrimaryKey)),
+		types:   make([]byte, 0, len(table.PrimaryKey)),
 	}
 	for _, col := range table.PrimaryKey {
 		idx := int(col)
@@ -264,17 +330,15 @@ func pkMetaFrom(table *replication.TableMapEvent) pkMeta {
 		}
 		meta.indexes = append(meta.indexes, idx)
 		meta.names = append(meta.names, names[idx])
-		if unsigned == nil {
-			meta.sign = append(meta.sign, nil)
-			continue
+		meta.types = append(meta.types, flashRealType(table, idx))
+		var sign *bool
+		if unsigned != nil {
+			if bit, ok := unsigned[idx]; ok {
+				copied := bit
+				sign = &copied
+			}
 		}
-		bit, ok := unsigned[idx]
-		if !ok {
-			meta.sign = append(meta.sign, nil)
-			continue
-		}
-		copied := bit
-		meta.sign = append(meta.sign, &copied)
+		meta.sign = append(meta.sign, sign)
 	}
 	return meta
 }
@@ -320,7 +384,11 @@ func formatPrimaryKey(row []any, skips []int, meta pkMeta) string {
 		if _, omit := skipped[idx]; omit || idx < 0 || idx >= len(row) {
 			return ""
 		}
-		cell := formatCell(row[idx], meta.sign[i])
+		var typ byte
+		if i < len(meta.types) {
+			typ = meta.types[i]
+		}
+		cell := formatCell(row[idx], typ, meta.sign[i])
 		parts[i] = meta.names[i] + "=" + formatPKText(cell)
 	}
 	return strings.Join(parts, ", ")

@@ -66,7 +66,7 @@ If your workflow requires complete long-form SQL archival or forensic preservati
 
 ## Row values
 
-`--show-rows` is off by default. When it is on, listed transactions carry a bounded image: DELETE before-image, UPDATE columns that differ, INSERT after-image. The report keeps at most 32 logical rows per transaction and 64 bytes of each value. A cut uses `… [truncated: shown of original bytes]`, and the transaction says how many rows were left out.
+`--show-rows` is off by default. When it is on, listed transactions carry a bounded image: DELETE before-image, UPDATE columns that differ, INSERT after-image. The report keeps at most 32 logical rows per transaction. Strings and blobs stop at 64 bytes. Integers, decimals, and `BIT` values are printed in full, so a `DECIMAL(65)` is not cut into a wrong number. A cut uses `… [truncated: shown of original bytes]`, and the transaction says how many rows were left out.
 
 Column names are taken from the binlog when `binlog_row_metadata=FULL` (MySQL 8.0.1+). Otherwise columns are `@1`..`@N`, and the report says names are missing. Without that metadata, an integer whose signed and unsigned readings differ is printed as both, the same way `mysqlbinlog -v` does. With FULL metadata, a column is printed with the signedness the binlog recorded.
 
@@ -100,15 +100,27 @@ These limits stay even when the literals are exact:
 
 Review the script, test it, and apply it in a single session on the primary. A statement that fails leaves earlier transactions in the script committed.
 
-- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166): a correct `--schema-file` is refused when a generated column uses an expression the checker cannot verify. That includes JSON extraction (`j->>'$.k'`), `UPPER`, `CONCAT`, `DIV`, and `/`. The error says `--schema-file does not match the binlog columns`. Omit `--schema-file` and accept the warning that generated columns cannot be ruled out, or leave those tables out of the selection with `--include-table` or `--exclude-table`.
-- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it, so a dump taken after that `ALTER` can be refused even though it is the incident-time definition. A file made by joining several `mysqldump --no-data` outputs uses only the first `Database:` header, so later dumps are bound to that database. When an unqualified table name occurs in more than one schema, the per-table warning names only one of the tables left without a definition.
-- [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168): restoring an `ENUM` index of 0 drops `STRICT_TRANS_TABLES` and `STRICT_ALL_TABLES` for that statement. Under `sql_mode=TRADITIONAL` those strict modes come back, apply stops with `ERROR 1265`, and earlier transactions in the script are already committed. Apply under a session without `TRADITIONAL`, or review the script first.
+- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166): a correct `--schema-file` is refused when a generated column uses an expression the checker cannot verify. That includes JSON extraction (`j->>'$.k'`), `UPPER`, `CONCAT`, and `DIV`. `/` fails the check when MySQL rounded the result, because the check truncates. The error says `--schema-file does not match the binlog columns`. Omitting `--schema-file` is not a workaround for a real generated column: the script assigns that column, and apply stops at `ERROR 3105` with earlier transactions already committed. Pass the binlog that contains the `CREATE TABLE` (or a later `ALTER`) as well as the incident, and select the incident with `--include-gtids`. A definition learned from those parsed binlogs is not checked as a schema file, so the generated columns are left out of the script and the checksum can be restored. Or hand-edit the script and remove the generated columns from `INSERT` column lists and `UPDATE` assignments. `--include-table` or `--exclude-table` only skips the table; the rows still have to be restored another way.
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it, so a dump taken after that `ALTER` can be refused even though the `ALTER` came before the incident and the file is the incident-time definition. How to recognise it: the error says `reordered (schema file ...; binlog ...)` and lists the same column twice (`id, a, b, c, c`). Use a dump taken before that `ALTER`, which restores, or leave out the binlog file that holds the `ALTER`. A file made by joining several `mysqldump --no-data` outputs uses only the first `Database:` header, so later dumps are bound to that database. Put `USE db;` before each dump, or run one flashback per database with `--schema-file-db`. When an unqualified table name occurs in more than one schema, the per-table warning names only one of the tables left without a definition. Qualify that table, or add `USE`, so the definition is used.
+- [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168): restoring an `ENUM` index of 0 drops `STRICT_TRANS_TABLES` and `STRICT_ALL_TABLES` for that statement. Under `sql_mode=TRADITIONAL` those strict modes come back, apply stops with `ERROR 1265`, and earlier transactions in the script are already committed. How to recognise it: `SELECT @@SESSION.sql_mode` contains `TRADITIONAL`, and the script contains `@binlogviz_sql_mode`. Before the script, set the session to TRADITIONAL's expansion without the `TRADITIONAL` token:
+
+  ```sql
+  SET SESSION sql_mode = 'STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
+  ```
+
+  That statement restores the `ENUM` index-0 rows and lets the script restore the saved mode afterwards. Wrapping the whole script in one outer transaction does not help. Each original transaction has its own `START TRANSACTION`, and starting a transaction commits the previous one.
+
+### Resuming after a failed apply
+
+A statement that fails leaves earlier transactions in the script committed. Running the whole script again inserts a second copy of each restored row in a table with no primary key. A table with a primary key stops at `ERROR 1062`.
+
+The script is in reverse binlog order: the last original transaction is the first block. Blocks above the failure have been applied. Blocks below it have not. Find the block MySQL rejected. It starts with a `-- gtid:` comment (or `-- gtid: GTID unavailable`) and a `-- binlog: file:pos` comment. The last committed transaction is the block above that one. Delete every block above the failure, keep the failed block and every block below it, and run that remainder. Do not re-run a transaction that already committed.
 
 Flashback refuses rather than guessing. Exit 1, one `Error:` line that names the table and the reason, and no SQL on stdout, when:
 
 - column names are unavailable
 - a before-image or after-image is incomplete (`binlog_row_image` `MINIMAL` or `NOBLOB`)
-- a column cannot be rendered exactly (`FLOAT`, `DOUBLE`, `BIT`, `GEOMETRY`, `VECTOR`, a partial JSON value, a JSON value that cannot be represented exactly, invalid UTF-8 in a `utf8mb4` column, an unknown collation, or missing signedness, collation, or ENUM/SET members)
+- a column cannot be rendered exactly (`FLOAT`, `DOUBLE`, `GEOMETRY`, `VECTOR`, a partial JSON value, a JSON value that cannot be represented exactly, invalid UTF-8 in a `utf8mb4` column, an unknown collation, or missing signedness, collation, or ENUM/SET members). `BIT` is a `b'...'` literal of the column width. A `FLOAT` or `DOUBLE` whose decimal MySQL will not cast is `<FLOAT>` or `<DOUBLE>` in `--show-rows`, not a wrong number.
 - a `CREATE` or `ALTER` was seen, in the binlog or in `--schema-file`, and cannot be read
 - `--schema-file` does not match the binlog columns for a selected event
 - the selected range contains DDL (no reverse DDL is emitted)

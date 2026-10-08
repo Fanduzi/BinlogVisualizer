@@ -113,5 +113,5 @@ jobs:
             exit 1
           fi
       - name: Round-trip flashback on MySQL 8.0
-        timeout-minutes: 15
-        run: BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 10m ./cmd/binlogviz -run TestFlashbackRoundTripMySQL80
+        timeout-minutes: 18
+        run: BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 12m ./cmd/binlogviz -run 'TestFlashbackRoundTripMySQL80|TestNumericDecodeMySQL80'

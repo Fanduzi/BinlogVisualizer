@@ -66,7 +66,7 @@ SQL 上下文是有界的，而且面向展示。
 
 ## 行值
 
-`--show-rows` 默认关闭。打开后，列出的事务带有界行镜像：DELETE 是前镜像，UPDATE 只列出变化的列，INSERT 是后镜像。每个事务最多保留 32 个逻辑行，每个值最多 64 字节。被截断时使用 `… [truncated: shown of original bytes]`，事务上会写明省略了多少行。
+`--show-rows` 默认关闭。打开后，列出的事务带有界行镜像：DELETE 是前镜像，UPDATE 只列出变化的列，INSERT 是后镜像。每个事务最多保留 32 个逻辑行。字符串和二进制值最多 64 字节。整数、小数和 `BIT` 会完整打印，因此 `DECIMAL(65)` 不会被截成一个错误的数。被截断时使用 `… [truncated: shown of original bytes]`，事务上会写明省略了多少行。
 
 列名来自 binlog，前提是 `binlog_row_metadata=FULL`（MySQL 8.0.1+）。否则列是 `@1`..`@N`，报告会说明没有列名。没有这份元数据时，有符号和无符号读数不同的整数会两种都打印，和 `mysqlbinlog -v` 一样。有 FULL 元数据时，按 binlog 记录的有无符号打印。
 
@@ -100,15 +100,27 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 先审阅并测试脚本，再在主库的同一个会话里执行。某条语句失败时，脚本里更早的事务已经提交。
 
-- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)：生成列的表达式核对不了时，正确的 `--schema-file` 也会被拒绝。这包括 JSON 提取（`j->>'$.k'`）、`UPPER`、`CONCAT`、`DIV` 和 `/`。错误信息是 `--schema-file does not match the binlog columns`。解决办法是不传 `--schema-file`，接受「不能排除生成列」的警告，或用 `--include-table` / `--exclude-table` 把这些表排除出选择。
-- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167)：解析到的 binlog 里若有 `ALTER`，会再应用到已经包含这次变更的 schema 文件上，所以事故之后、ALTER 已经生效时导出的文件也可能被拒绝。把多份 `mysqldump --no-data` 拼成一个文件时，只用第一个 `Database:` 头，后面的转储都绑到那个库。未带库名的表出现在多个库时，逐表警告只点名其中一张没有定义的表。
-- [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168)：还原 `ENUM` 序号 0 时，只在这一条语句去掉 `STRICT_TRANS_TABLES` 和 `STRICT_ALL_TABLES`。`sql_mode=TRADITIONAL` 会把这两个严格模式加回来，执行停在 `ERROR 1265`，脚本里更早的事务已经提交。在不含 `TRADITIONAL` 的会话里执行，或先审阅脚本。
+- [#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)：生成列的表达式核对不了时，正确的 `--schema-file` 也会被拒绝。这包括 JSON 提取（`j->>'$.k'`）、`UPPER`、`CONCAT` 和 `DIV`。`/` 只在 MySQL 对结果做了舍入时才会对不上，因为核对按截断计算。英文错误是 `--schema-file does not match the binlog columns`。`--lang zh-CN` 下是 `--schema-file 与 binlog 的列不一致`。不传 `--schema-file` 不是真有生成列时的办法：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，更早的事务已经提交。把记下 `CREATE TABLE`（或之后的 `ALTER`）的 binlog 和事故 binlog 一起传入，并用 `--include-gtids` 只选事故。从解析到的 binlog 学到的定义不按 schema 文件核对，生成列会从脚本里去掉，校验和可以回到事故前。也可以手工编辑脚本，从 `INSERT` 列清单和 `UPDATE` 赋值里删掉生成列。`--include-table` / `--exclude-table` 只是不选这些表，行还得用别的办法还原。
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167)：解析到的 binlog 里若有 `ALTER`，会再应用到已经包含这次变更的 schema 文件上。ALTER 之后导出的文件（ALTER 早于事故，这份文件正是事故当时的结构）也可能被拒绝。怎么认出来：错误里同一列出现两次。英文是 `reordered (schema file ...; binlog ...)`，例如 `id, a, b, c, c`。中文是 `--schema-file 与 binlog 的列不一致`，后面跟着 `顺序不同（schema 文件 …；binlog …）`。用这次 `ALTER` 之前的转储（已核对可以还原），或者不要传入记下这次 `ALTER` 的那个 binlog 文件。把多份 `mysqldump --no-data` 拼成一个文件时，只用第一个 `Database:` 头，后面的转储都绑到那个库。每份转储前面加上 `USE db;`，或者每个库单独跑一次 flashback 并带上 `--schema-file-db`。未带库名的表出现在多个库时，逐表警告只点名其中一张没有定义的表。给表加上库名，或补上 `USE`，这份定义才会被用上。
+- [#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168)：还原 `ENUM` 序号 0 时，只在这一条语句去掉 `STRICT_TRANS_TABLES` 和 `STRICT_ALL_TABLES`。`sql_mode=TRADITIONAL` 会把这两个严格模式加回来，执行停在 `ERROR 1265`，脚本里更早的事务已经提交。怎么认出来：`SELECT @@SESSION.sql_mode` 里有 `TRADITIONAL`，脚本里有 `@binlogviz_sql_mode`。执行脚本之前，把会话设成 TRADITIONAL 的展开形式，但不要带 `TRADITIONAL` 这个词：
+
+  ```sql
+  SET SESSION sql_mode = 'STRICT_TRANS_TABLES,STRICT_ALL_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
+  ```
+
+  这样 `ENUM` 序号 0 的行能写回去，脚本结尾也会把保存的模式设回去。把整个脚本包进一个外层事务没有用。每个原事务自己有 `START TRANSACTION`，新开一个事务会把上一个提交掉。
+
+### 执行失败后接着跑
+
+某条语句失败时，脚本里更早的事务已经提交。把整个脚本再跑一遍，没有主键的表会多出一份行。有主键的表会停在 `ERROR 1062`。
+
+脚本按 binlog 逆序：最后发生的事务排在最前面。失败位置上面的块已经执行过，下面的块还没有。找到 MySQL 拒绝的那一块。它以 `-- gtid:` 注释开头（没有 GTID 时是 `-- gtid: GTID unavailable`），下一行是 `-- binlog: file:pos`。最后提交成功的事务是它上面的那一块。删掉失败位置上面的块，保留失败的那一块和它下面的全部，再执行剩下的部分。已经提交的事务不要再跑。
 
 无法精确还原时拒绝，不猜测。退出 1，一行 `Error:` 点名表和原因，stdout 没有 SQL，出现在：
 
 - 没有列名
 - 前镜像或后镜像不完整（`binlog_row_image` 为 `MINIMAL` 或 `NOBLOB`）
-- 某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`BIT`、`GEOMETRY`、`VECTOR`、不完整的 JSON、无法精确表示的 JSON、`utf8mb4` 列里的非法 UTF-8、未知校对，或缺少有无符号、字符集、ENUM/SET 成员）
+- 某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`GEOMETRY`、`VECTOR`、不完整的 JSON、无法精确表示的 JSON、`utf8mb4` 列里的非法 UTF-8、未知校对，或缺少有无符号、字符集、ENUM/SET 成员）。`BIT` 是列宽的 `b'...'` 字面量。MySQL 无法转回的 `FLOAT` 或 `DOUBLE` 在 `--show-rows` 里写成 `<FLOAT>` 或 `<DOUBLE>`，而不是一个错误的数。
 - binlog 或 `--schema-file` 里出现过 `CREATE` 或 `ALTER`，但语句读不出来
 - `--schema-file` 和某个选中事件的 binlog 列不一致
 - 选定范围内有 DDL（不生成反向 DDL）

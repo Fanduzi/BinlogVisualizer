@@ -16,7 +16,7 @@ func boolPtr(v bool) *bool { return &v }
 func wideID() uint32 { return 3000000000 }
 
 func TestFormatCellTypesAndNull(t *testing.T) {
-	if cell := formatCell(nil, nil); !cell.Null || cell.Text != "" {
+	if cell := formatCell(nil, mysql.MYSQL_TYPE_NULL, nil); !cell.Null || cell.Text != "" {
 		t.Fatalf("NULL cell = %+v", cell)
 	}
 	wide := uint32(3000000000)
@@ -43,19 +43,19 @@ func TestFormatCellTypesAndNull(t *testing.T) {
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			cell := formatCell(tt.value, tt.unsigned)
+			cell := formatCell(tt.value, mysql.MYSQL_TYPE_NULL, tt.unsigned)
 			if cell.Null || cell.Text != tt.want {
 				t.Fatalf("got %+v, want %q", cell, tt.want)
 			}
 		})
 	}
 	long := strings.Repeat("x", model.MaxRowValueBytes+8)
-	cell := formatCell(long, nil)
+	cell := formatCell(long, mysql.MYSQL_TYPE_NULL, nil)
 	if !strings.Contains(cell.Text, "truncated") || strings.Contains(cell.Text, long) {
 		t.Fatalf("string was not bounded: %q", cell.Text)
 	}
 	blob := bytesRepeat(0x78, model.MaxRowValueBytes+8)
-	cell = formatCell(blob, nil)
+	cell = formatCell(blob, mysql.MYSQL_TYPE_NULL, nil)
 	if !strings.HasPrefix(cell.Text, "0x") || !strings.Contains(cell.Text, "truncated") {
 		t.Fatalf("blob was not bounded: %q", cell.Text)
 	}
