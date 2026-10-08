@@ -4,6 +4,9 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- `binlogviz flashback` keeps a correct incident-time `--schema-file` when a generated column uses an expression the checker cannot evaluate (JSON extraction, `UPPER`, `CONCAT`, date functions, and the rest). The column count, names, order, and types must still match the binlog `TABLE_MAP`. The undo SQL is printed and the command exits 0. stderr warns that binlogviz cannot verify the expression, names the table and column, and says to use a dump from incident time, an older dump if an `ALTER` came later, or `--include-table` to leave the table out. A real mismatch still exits 1 with no SQL, and that error uses the same next step instead of only saying the file is wrong. Integer `/` is rounded the way MySQL assigns to an integer, half away from zero (`5 / 2` is `3`, `-5 / 2` is `-3`). `DIV`, `%`, and `MOD` are checked. Residual risk: a column that is not generated is still omitted, with exit 0, when the file marks it generated and either the logged values equal the expression or the expression cannot be checked. The binlog cannot tell these apart. Fixes #166.
+- `binlogviz flashback` drops `TRADITIONAL` as well as `STRICT_TRANS_TABLES` and `STRICT_ALL_TABLES` for the one statement that writes an `ENUM` index of 0, then restores the saved `@@SESSION.sql_mode`. `sql_mode=TRADITIONAL` no longer expands back to strict mode, so that statement does not stop at `ERROR 1265`. An empty `sql_mode` and a session that started with `NO_BACKSLASH_ESCAPES` still restore the row. Fixes #168.
+
 ## v0.23.22
 
 Release date: 2026-10-08

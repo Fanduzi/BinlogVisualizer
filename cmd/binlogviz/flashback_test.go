@@ -516,6 +516,7 @@ COMMIT;`)
 	flashbackSchemaMatchE2E(t)
 	flashbackSchemaLayoutE2E(t)
 	flashbackEnumZeroE2E(t)
+	flashbackGeneratedExprE2E(t)
 }
 
 // flashbackSchemaMatchE2E refuses a schema file that is newer than the incident table.
@@ -569,6 +570,11 @@ INSERT INTO shop.stale VALUES (1, 10, 99);`)
 		assertFlashbackRefused(t, stdout, stderr, err, "shop.stale")
 		if !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("%s: error %v, want %q\nstderr:\n%s", tc.name, err, tc.want, stderr)
+		}
+		for _, hint := range []string{"does not match", "--include-table", "incident time"} {
+			if !strings.Contains(err.Error(), hint) || strings.Contains(err.Error(), "cannot verify") {
+				t.Fatalf("%s: error %v, want a real mismatch hint", tc.name, err)
+			}
 		}
 	}
 }
@@ -662,12 +668,151 @@ COMMIT;`)
 	if !strings.Contains(mid, "(1, 0)") || strings.Contains(mid, "(2, 1)") || !strings.Contains(sql, "(2, 1)") {
 		t.Fatalf("enum 0 wrap:\n%s", sql)
 	}
-	e2eMySQL(t, sql)
-	if got := e2eMySQL(t, "CHECKSUM TABLE shop.ezero"); got != before {
-		t.Fatalf("enum 0 checksum\nbefore:\n%s\nrestored:\n%s", before, got)
+	for _, mode := range []struct {
+		name    string
+		prefix  string
+		restore bool
+	}{
+		{name: "strict", restore: true},
+		{name: "empty", prefix: "SET SESSION sql_mode='';\n", restore: true},
+		{name: "no-backslash", prefix: "SET SESSION sql_mode='NO_BACKSLASH_ESCAPES';\n"},
+		{name: "traditional", prefix: "SET SESSION sql_mode='TRADITIONAL';\n", restore: true},
+	} {
+		baseline := e2eSessionMode(t, mode.prefix+"DO 0;")
+		e2eMySQL(t, "DELETE FROM shop.ezero")
+		gotMode := e2eSessionMode(t, mode.prefix+sql)
+		if got := e2eMySQL(t, "CHECKSUM TABLE shop.ezero"); got != before {
+			t.Fatalf("%s enum 0 checksum\nbefore:\n%s\nrestored:\n%s", mode.name, before, got)
+		}
+		if got := e2eMySQL(t, "SELECT id, e+0 FROM shop.ezero ORDER BY id"); got != indexes {
+			t.Fatalf("%s enum 0 indexes\nbefore:\n%q\nrestored:\n%q", mode.name, indexes, got)
+		}
+		if mode.restore {
+			if gotMode != baseline {
+				t.Fatalf("%s sql_mode\nbefore: %q\nafter: %q", mode.name, baseline, gotMode)
+			}
+			if mode.name == "traditional" && !strings.Contains(gotMode, "TRADITIONAL") {
+				t.Fatalf("traditional mode was not restored: %q", gotMode)
+			}
+			continue
+		}
+		if gotMode != "" {
+			t.Fatalf("%s sql_mode = %q, want empty after the header strips NO_BACKSLASH_ESCAPES", mode.name, gotMode)
+		}
 	}
-	if got := e2eMySQL(t, "SELECT id, e+0 FROM shop.ezero ORDER BY id"); got != indexes {
-		t.Fatalf("enum 0 indexes\nbefore:\n%q\nrestored:\n%q", indexes, got)
+}
+
+func e2eSessionMode(t *testing.T, sql string) string {
+	t.Helper()
+	out := e2eMySQL(t, sql+"\nSELECT CONCAT('MODE=[', @@SESSION.sql_mode, ']');")
+	const marker = "MODE=["
+	i := strings.Index(out, marker)
+	if i < 0 {
+		t.Fatalf("mode probe:\n%s", out)
+	}
+	rest := out[i+len(marker):]
+	j := strings.IndexByte(rest, ']')
+	if j < 0 {
+		t.Fatalf("mode probe:\n%s", out)
+	}
+	return rest[:j]
+}
+
+// flashbackGeneratedExprE2E restores tables whose generated columns use JSON,
+// UPPER, integer division, and DIV from a mysqldump --no-data taken at incident time.
+func flashbackGeneratedExprE2E(t *testing.T) {
+	t.Helper()
+	e2eMySQL(t, `
+DROP DATABASE IF EXISTS p160;
+DROP DATABASE IF EXISTS p164;
+CREATE DATABASE p160;
+CREATE DATABASE p164;
+CREATE TABLE p160.gen (
+  id INT NOT NULL,
+  j JSON,
+  jv VARCHAR(20) AS (j->>'$.k') VIRTUAL,
+  PRIMARY KEY (id)
+);
+CREATE TABLE p160.gen_nopk (
+  a INT,
+  v VARCHAR(10) AS (UPPER(a)) VIRTUAL
+);
+CREATE TABLE p164.ar (
+  id INT NOT NULL,
+  a INT,
+  b INT,
+  s1 INT AS ((a + b) * 3 - 1) STORED,
+  s2 INT AS (a / 2) STORED,
+  s3 BIGINT AS (-a * b) VIRTUAL,
+  s4 INT AS (a DIV 2) VIRTUAL,
+  PRIMARY KEY (id)
+);
+INSERT INTO p160.gen (id, j) VALUES (1, '{"k":"ab"}'), (2, '{"k":"cd"}');
+INSERT INTO p160.gen_nopk (a) VALUES (1), (2);
+INSERT INTO p164.ar (id, a, b) VALUES (1, 5, 7), (2, -5, NULL), (3, 4, 0);
+`)
+	stored := e2eMySQL(t, "SELECT id, a, b, s1, s2, s3, s4 FROM p164.ar ORDER BY id")
+	const wantStored = "1\t5\t7\t35\t3\t-35\t2\n2\t-5\tNULL\tNULL\t-3\tNULL\t-2\n3\t4\t0\t11\t2\t0\t2"
+	if strings.TrimSpace(stored) != wantStored {
+		t.Fatalf("MySQL stored generated values:\n%q", stored)
+	}
+	const sumSQL = "CHECKSUM TABLE p160.gen, p160.gen_nopk, p164.ar"
+	before := e2eMySQL(t, sumSQL)
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, `
+START TRANSACTION;
+UPDATE p160.gen SET j = '{"k":"zz"}' WHERE id = 1;
+DELETE FROM p160.gen WHERE id = 2;
+INSERT INTO p160.gen (id, j) VALUES (3, '{"k":"new"}');
+UPDATE p160.gen_nopk SET a = 9 WHERE a = 1;
+DELETE FROM p160.gen_nopk WHERE a = 2;
+INSERT INTO p160.gen_nopk (a) VALUES (8);
+UPDATE p164.ar SET a = 9, b = 1 WHERE id = 1;
+DELETE FROM p164.ar WHERE id = 2;
+INSERT INTO p164.ar (id, a, b) VALUES (4, 8, 3);
+COMMIT;`)
+	if e2eMySQL(t, sumSQL) == before {
+		t.Fatal("incident did not change generated-column checksums")
+	}
+	path := e2eIncidentBinlog(t)
+	dump := e2eTool(t, "mysqldump", []string{
+		"--no-data", "--default-character-set=utf8mb4", "--set-gtid-purged=OFF",
+		"--databases", "p160", "p164",
+	}, "")
+	lowerDump := strings.ToLower(dump)
+	if !strings.Contains(lowerDump, "json_extract") && !strings.Contains(dump, "->>") {
+		t.Fatalf("dump missing json generated column:\n%s", dump)
+	}
+	if !strings.Contains(lowerDump, "upper") || !strings.Contains(lowerDump, "div") {
+		t.Fatalf("dump missing UPPER or DIV:\n%s", dump)
+	}
+	dumpPath := filepath.Join(t.TempDir(), "generated.sql")
+	if err := os.WriteFile(dumpPath, []byte(dump), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sql, stderr, err := executeFlashbackLikeMain(t, path, "--schema-file", dumpPath, "--include-table", "p160.gen,p160.gen_nopk,p164.ar")
+	if err != nil {
+		t.Fatalf("generated expr: %v\n%s\ndump:\n%s", err, stderr, dump)
+	}
+	if strings.Contains(stderr, "does not match") {
+		t.Fatalf("stderr blamed the file:\n%s\ndump:\n%s", stderr, dump)
+	}
+	for _, want := range []string{"cannot verify", "p160.gen", "--include-table", "incident time"} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("stderr missing %q:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, "p164.ar") {
+		t.Fatalf("integer expressions were not checked:\n%s\ndump:\n%s", stderr, dump)
+	}
+	for _, col := range []string{"`jv`", "`v`", "`s1`", "`s2`", "`s3`", "`s4`"} {
+		if strings.Contains(sql, col) {
+			t.Fatalf("sql still assigns %s:\n%s", col, sql)
+		}
+	}
+	e2eMySQL(t, sql)
+	if got := e2eMySQL(t, sumSQL); got != before {
+		t.Fatalf("generated checksum\nbefore:\n%s\nrestored:\n%s\nsql:\n%s", before, got, sql)
 	}
 }
 

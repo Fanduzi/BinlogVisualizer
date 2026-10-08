@@ -1,12 +1,13 @@
 // Package analyzer checks a schema file against TABLE_MAP metadata.
 // input: CREATE/ALTER text from --schema-file or the binlog, plus flashback rows that carry column metadata.
-// output: the column list in effect for one table, or an error that names the table and the columns that differ. Unqualified names are bound only when one schema is unambiguous.
+// output: the column list in effect for one table, or an error that names the table and the columns that differ. A generated expression that cannot be evaluated is a warning when the column list matches; the column is still omitted. Unqualified names are bound only when one schema is unambiguous.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -580,13 +581,13 @@ func dumpDatabase(sql string) string {
 	return ""
 }
 
-func validateSchemaRow(row model.FlashRow, cols []schemaCol) error {
+func validateSchemaRow(row model.FlashRow, cols []schemaCol) (warns []string, err error) {
 	if len(row.Cols) == 0 {
-		return nil
+		return nil, nil
 	}
 	table := flashTable(row.Schema, row.Table)
 	if len(cols) != len(row.Columns) || len(row.Cols) != len(row.Columns) {
-		return schemaMismatch(table, columnCountDiff(cols, row.Columns))
+		return nil, schemaMismatch(table, columnCountDiff(cols, row.Columns))
 	}
 	extra, missing := columnNameDiff(cols, row.Columns)
 	if len(extra) > 0 || len(missing) > 0 {
@@ -597,7 +598,7 @@ func validateSchemaRow(row model.FlashRow, cols []schemaCol) error {
 		if len(missing) > 0 {
 			parts = append(parts, i18n.Tf("error.flashbackSchemaMissing", map[string]any{"Columns": strings.Join(missing, ", ")}))
 		}
-		return schemaMismatch(table, parts)
+		return nil, schemaMismatch(table, parts)
 	}
 	var reordered bool
 	for i := range cols {
@@ -607,25 +608,29 @@ func validateSchemaRow(row model.FlashRow, cols []schemaCol) error {
 		}
 	}
 	if reordered {
-		return schemaMismatch(table, []string{i18n.Tf("error.flashbackSchemaOrder", map[string]any{
+		return nil, schemaMismatch(table, []string{i18n.Tf("error.flashbackSchemaOrder", map[string]any{
 			"File":   schemaColNames(cols),
 			"Binlog": strings.Join(row.Columns, ", "),
 		})})
 	}
 	for i := range cols {
 		if diff := schemaTypeDiff(cols[i], row.Cols[i]); diff != "" {
-			return schemaMismatch(table, []string{diff})
+			return nil, schemaMismatch(table, []string{diff})
 		}
 	}
 	for i := range cols {
 		if !cols[i].generated {
 			continue
 		}
-		if diff := generatedValueDiff(cols[i], row); diff != "" {
-			return schemaMismatch(table, []string{diff})
+		mismatch, unchecked := checkGenerated(cols[i], row)
+		if mismatch != "" {
+			return nil, schemaMismatch(table, []string{mismatch})
+		}
+		if unchecked {
+			warns = append(warns, uncheckedGenerated(table, cols[i]))
 		}
 	}
-	return nil
+	return warns, nil
 }
 
 func schemaMismatch(table string, parts []string) error {
@@ -788,9 +793,13 @@ func memberList(members []string) string {
 	return strings.Join(quoted, ",")
 }
 
-func generatedValueDiff(col schemaCol, row model.FlashRow) string {
+// checkGenerated compares logged values with an integer generated expression.
+// A mismatch means the file and the binlog disagree. unchecked means the
+// expression cannot be evaluated; the column list already matched, so the
+// caller trusts the generated flag and warns.
+func checkGenerated(col schemaCol, row model.FlashRow) (mismatch string, unchecked bool) {
 	if strings.TrimSpace(col.expr) == "" {
-		return uncheckedGenerated(col)
+		return "", true
 	}
 	var images [][]string
 	if row.Before != nil {
@@ -800,8 +809,9 @@ func generatedValueDiff(col schemaCol, row model.FlashRow) string {
 		images = append(images, row.After)
 	}
 	if len(images) == 0 {
-		return uncheckedGenerated(col)
+		return "", true
 	}
+	sawUnchecked := false
 	for _, image := range images {
 		env := map[string]string{}
 		for i, name := range row.Columns {
@@ -811,24 +821,34 @@ func generatedValueDiff(col schemaCol, row model.FlashRow) string {
 		}
 		want, ok := evalIntExpr(col.expr, env)
 		if !ok {
-			return uncheckedGenerated(col)
+			sawUnchecked = true
+			continue
 		}
 		idx := schemaColIndexNames(row.Columns, col.name)
 		if idx < 0 || idx >= len(image) || !intValMatches(want, image[idx]) {
 			return i18n.Tf("error.flashbackSchemaGenerated", map[string]any{
 				"Column": col.name,
-				"Expr":   oneLine(col.expr, 80),
-			})
+				"Expr":   exprText(col.expr),
+			}), false
 		}
 	}
-	return ""
+	return "", sawUnchecked
 }
 
-func uncheckedGenerated(col schemaCol) string {
-	return i18n.Tf("error.flashbackSchemaUnchecked", map[string]any{
+func uncheckedGenerated(table string, col schemaCol) string {
+	return i18n.Tf("warning.flashbackSchemaUnchecked", map[string]any{
+		"Table":  table,
 		"Column": col.name,
-		"Expr":   oneLine(col.expr, 80),
+		"Expr":   exprText(col.expr),
 	})
+}
+
+func exprText(expr string) string {
+	text := oneLine(expr, 80)
+	if text == "" {
+		return "(empty)"
+	}
+	return text
 }
 
 func schemaColIndexNames(names []string, want string) int {
@@ -840,17 +860,53 @@ func schemaColIndexNames(names []string, want string) int {
 	return -1
 }
 
+// intVal is an exact rational. The final comparison rounds half away from
+// zero, which is how MySQL assigns that result to an integer column.
+// `/` keeps the exact quotient. `DIV` and `%`/`MOD` are integer operations
+// and truncate toward zero. A zero divisor is NULL, matching a non-strict
+// insert that stored NULL.
 type intVal struct {
 	null bool
-	n    int64
+	n    *big.Rat
 }
 
 func intValMatches(v intVal, lit string) bool {
 	if v.null {
 		return lit == "NULL"
 	}
-	n, err := strconv.ParseInt(lit, 10, 64)
-	return err == nil && n == v.n
+	if v.n == nil {
+		return false
+	}
+	want, ok := new(big.Int).SetString(lit, 10)
+	return ok && roundRatHalfAway(v.n).Cmp(want) == 0
+}
+
+func roundRatHalfAway(r *big.Rat) *big.Int {
+	num := r.Num()
+	den := r.Denom()
+	q := new(big.Int)
+	rem := new(big.Int)
+	q.QuoRem(num, den, rem)
+	twice := new(big.Int).Lsh(new(big.Int).Abs(rem), 1)
+	if twice.Cmp(den) >= 0 {
+		if num.Sign() >= 0 {
+			q.Add(q, big.NewInt(1))
+		} else {
+			q.Sub(q, big.NewInt(1))
+		}
+	}
+	return q
+}
+
+func intFromString(s string) (intVal, bool) {
+	if s == "NULL" {
+		return intVal{null: true}, true
+	}
+	i, ok := new(big.Int).SetString(s, 10)
+	if !ok {
+		return intVal{}, false
+	}
+	return intVal{n: new(big.Rat).SetInt(i)}, true
 }
 
 func evalIntExpr(expr string, env map[string]string) (intVal, bool) {
@@ -887,9 +943,9 @@ func parseAddExpr(sc *sqlScan, env map[string]string) (intVal, bool) {
 			continue
 		}
 		if op == '+' {
-			left.n += right.n
+			left.n = new(big.Rat).Add(left.n, right.n)
 		} else {
-			left.n -= right.n
+			left.n = new(big.Rat).Sub(left.n, right.n)
 		}
 	}
 }
@@ -900,30 +956,95 @@ func parseMulExpr(sc *sqlScan, env map[string]string) (intVal, bool) {
 		return intVal{}, false
 	}
 	for {
-		sc.skip()
-		if sc.i >= len(sc.s) || (sc.s[sc.i] != '*' && sc.s[sc.i] != '/') {
+		op, ok := consumeMulOp(sc)
+		if !ok {
 			return left, true
 		}
-		op := sc.s[sc.i]
-		sc.i++
 		right, ok := parseUnaryExpr(sc, env)
 		if !ok {
 			return intVal{}, false
 		}
-		if left.null || right.null {
-			left = intVal{null: true}
-			continue
+		next, ok := applyMulOp(left, right, op)
+		if !ok {
+			return intVal{}, false
 		}
-		if op == '*' {
-			left.n *= right.n
-			continue
-		}
-		if right.n == 0 {
-			left = intVal{null: true}
-			continue
-		}
-		left.n /= right.n
+		left = next
 	}
+}
+
+func consumeMulOp(sc *sqlScan) (string, bool) {
+	sc.skip()
+	if sc.i >= len(sc.s) {
+		return "", false
+	}
+	switch sc.s[sc.i] {
+	case '*', '/', '%':
+		op := string(sc.s[sc.i])
+		sc.i++
+		return op, true
+	}
+	if !identStart(sc.s[sc.i]) {
+		return "", false
+	}
+	save := *sc
+	word := strings.ToUpper(sc.bare())
+	if word == "DIV" || word == "MOD" {
+		return word, true
+	}
+	*sc = save
+	return "", false
+}
+
+func applyMulOp(left, right intVal, op string) (intVal, bool) {
+	if left.null || right.null {
+		return intVal{null: true}, true
+	}
+	switch op {
+	case "*":
+		return intVal{n: new(big.Rat).Mul(left.n, right.n)}, true
+	case "/":
+		if right.n.Sign() == 0 {
+			return intVal{null: true}, true
+		}
+		return intVal{n: new(big.Rat).Quo(left.n, right.n)}, true
+	case "DIV":
+		return applyIntDiv(left, right, false)
+	case "%", "MOD":
+		return applyIntDiv(left, right, true)
+	default:
+		return intVal{}, false
+	}
+}
+
+// applyIntDiv evaluates DIV (remainder == false) or %/MOD.
+// Both operands must already be integers. A fractional operand cannot be
+// checked, because MySQL's decimal DIV is not the same as truncating first.
+func applyIntDiv(left, right intVal, remainder bool) (intVal, bool) {
+	if left.null || right.null {
+		return intVal{null: true}, true
+	}
+	li, ok1 := ratAsInt(left.n)
+	ri, ok2 := ratAsInt(right.n)
+	if !ok1 || !ok2 {
+		return intVal{}, false
+	}
+	if ri.Sign() == 0 {
+		return intVal{null: true}, true
+	}
+	var out *big.Int
+	if remainder {
+		out = new(big.Int).Rem(li, ri)
+	} else {
+		out = new(big.Int).Quo(li, ri)
+	}
+	return intVal{n: new(big.Rat).SetInt(out)}, true
+}
+
+func ratAsInt(r *big.Rat) (*big.Int, bool) {
+	if r == nil || !r.IsInt() {
+		return nil, false
+	}
+	return new(big.Int).Set(r.Num()), true
 }
 
 func parseUnaryExpr(sc *sqlScan, env map[string]string) (intVal, bool) {
@@ -935,8 +1056,7 @@ func parseUnaryExpr(sc *sqlScan, env map[string]string) (intVal, bool) {
 		if !ok || v.null || op == '+' {
 			return v, ok
 		}
-		v.n = -v.n
-		return v, true
+		return intVal{n: new(big.Rat).Neg(v.n)}, true
 	}
 	return parsePrimaryExpr(sc, env)
 }
@@ -958,18 +1078,17 @@ func parsePrimaryExpr(sc *sqlScan, env map[string]string) (intVal, bool) {
 		for sc.i < len(sc.s) && sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
 			sc.i++
 		}
-		if sc.i < len(sc.s) && sc.s[sc.i] == '.' {
+		if sc.i < len(sc.s) && (sc.s[sc.i] == '.' || sc.s[sc.i] == 'e' || sc.s[sc.i] == 'E') {
 			return intVal{}, false
 		}
-		n, err := strconv.ParseInt(sc.s[start:sc.i], 10, 64)
-		if err != nil {
-			return intVal{}, false
-		}
-		return intVal{n: n}, true
+		return intFromString(sc.s[start:sc.i])
 	}
 	name, ok := sc.ident()
 	if !ok {
 		return intVal{}, false
+	}
+	if strings.EqualFold(name, "MOD") && sc.peekByte() == '(' {
+		return parseModCall(sc, env)
 	}
 	sc.skip()
 	if sc.i < len(sc.s) && sc.s[sc.i] == '.' {
@@ -979,14 +1098,27 @@ func parsePrimaryExpr(sc *sqlScan, env map[string]string) (intVal, bool) {
 	if !ok {
 		return intVal{}, false
 	}
-	if lit == "NULL" {
-		return intVal{null: true}, true
-	}
-	n, err := strconv.ParseInt(lit, 10, 64)
-	if err != nil {
+	return intFromString(lit)
+}
+
+func parseModCall(sc *sqlScan, env map[string]string) (intVal, bool) {
+	body, ok := sc.parenBody()
+	if !ok {
 		return intVal{}, false
 	}
-	return intVal{n: n}, true
+	parts := splitComma(body)
+	if len(parts) != 2 {
+		return intVal{}, false
+	}
+	left, ok := evalIntExpr(parts[0], env)
+	if !ok {
+		return intVal{}, false
+	}
+	right, ok := evalIntExpr(parts[1], env)
+	if !ok {
+		return intVal{}, false
+	}
+	return applyIntDiv(left, right, true)
 }
 
 func schemaColIndex(cols []schemaCol, name string) int {
