@@ -1,6 +1,6 @@
 // Package analyzer checks a schema file against TABLE_MAP metadata.
 // input: CREATE/ALTER text from --schema-file or the binlog, plus flashback rows that carry column metadata.
-// output: the column list in effect for one table, or an error that names the table and the columns that differ. Generated values are checked later, against every logged image. Unqualified names are bound only when one schema is unambiguous.
+// output: the column list in effect for one table, or an error that names the table and the columns that differ. Generated values are checked later, against every logged image. Unqualified names are bound only when one schema is unambiguous. A schema-file table that differs only in letter case binds a lower-case binlog name when it is the only match.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -187,11 +187,70 @@ func (g *generatedTables) definition(schema, table string) (cols []schemaCol, fr
 	return cloneSchemaCols(cols), g.fromFile[key], g.pendingBound[key], true
 }
 
+// foldCase handles a --schema-file whose names differ from the binlog only in
+// letter case, as when the dump comes from a lower_case_table_names=0 server
+// and the binlog from one with 1 or 2. It runs only when schema.table has no
+// definition of its own. A single case-insensitive match is used when the
+// binlog names are all lower case, because a server that folds names logs
+// them that way; the match is then checked against the rows like any other
+// schema-file table. Otherwise the near miss is only named in a warning.
+func (g *generatedTables) foldCase(schema, table string) {
+	if g == nil || g.defs == nil || schema == "" {
+		return
+	}
+	key := generatedKey(schema, table)
+	if _, ok := g.defs[key]; ok {
+		return
+	}
+	if _, ok := g.bad[key]; ok {
+		return
+	}
+	if _, ok := g.cols[key]; ok {
+		return
+	}
+	if g.folded[key] {
+		return
+	}
+	if g.folded == nil {
+		g.folded = map[string]bool{}
+	}
+	g.folded[key] = true
+	var hits []string
+	for k := range g.defs {
+		if g.fromFile[k] && !g.pendingBound[k] && strings.EqualFold(k, key) {
+			hits = append(hits, k)
+		}
+	}
+	if len(hits) == 0 {
+		return
+	}
+	sort.Strings(hits)
+	names := make([]string, len(hits))
+	for i, k := range hits {
+		names[i] = strings.Replace(k, "\x00", ".", 1)
+	}
+	binlog := schema + "." + table
+	folded := schema == strings.ToLower(schema) && table == strings.ToLower(table)
+	if len(hits) == 1 && folded {
+		g.setDef(key, g.defs[hits[0]], true)
+		g.foldNotes = append(g.foldNotes, i18n.Tf("warning.flashbackSchemaFold", map[string]any{
+			"Binlog": binlog,
+			"File":   names[0],
+		}))
+		return
+	}
+	g.foldNotes = append(g.foldNotes, i18n.Tf("warning.flashbackSchemaFoldMiss", map[string]any{
+		"Binlog": binlog,
+		"File":   strings.Join(names, ", "),
+	}))
+}
+
 func (g *generatedTables) schemaWarnings() []string {
 	if g == nil {
 		return nil
 	}
 	var out []string
+	out = append(out, g.foldNotes...)
 	if g.ambiguousDB && g.sawUnqualified {
 		out = append(out, i18n.Tf("warning.flashbackSchemaDB", map[string]any{
 			"Header": g.headerDB,
@@ -572,7 +631,12 @@ func dumpDatabase(sql string) string {
 		if rest == "" {
 			continue
 		}
-		field := strings.Trim(strings.Fields(rest)[0], "`")
+		// mysqldump writes the name unquoted to the end of the line, so a
+		// name with spaces must keep everything after "Database:".
+		field := strings.TrimSpace(rest)
+		if len(field) >= 2 && field[0] == '`' && field[len(field)-1] == '`' {
+			field = strings.ReplaceAll(field[1:len(field)-1], "``", "`")
+		}
 		if field == "" {
 			continue
 		}
