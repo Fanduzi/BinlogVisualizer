@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- `binlogviz flashback --schema-file` now reads a mysqldump `Database:` header whose name has spaces, and uses a dump table whose names differ from the binlog only in letter case when the binlog names are all lower case, as with a `lower_case_table_names=0` dump and a `lower_case_table_names=1` or `2` binlog (#187). A warning names the file table it used, and the rows are still checked against it. A mixed-case binlog name, or two file tables that fold to the same name, is not guessed: the warning names the near miss.
+
 ## v0.23.27
 
 Release date: 2026-10-09

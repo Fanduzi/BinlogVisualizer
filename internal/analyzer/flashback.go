@@ -64,6 +64,7 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 			return
 		}
 	}
+	a.flashGen.foldCase(ev.Schema, ev.Table)
 	if a.flashGen.unknown(ev.Schema, ev.Table) {
 		a.flashErr = fmt.Errorf("%s", i18n.Tf("error.flashbackGenerated", map[string]any{
 			"Table": flashTable(ev.Schema, ev.Table),
