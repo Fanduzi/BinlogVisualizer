@@ -4,7 +4,25 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.25
+
+Release date: 2026-10-09
+
+Highlights:
+
 - `binlogviz flashback` restores rows written by a non-strict session when the script is applied in a strict one (#180). A zero month or day in a `DATE`, `DATETIME` or `TIMESTAMP` no longer stops apply at `ERROR 1292`, and a left-out generated column such as `a / b` written with `b` = 0 no longer stops it at `ERROR 1365`. Only that statement drops `NO_ZERO_DATE` and `NO_ZERO_IN_DATE`, or `ERROR_FOR_DIVISION_BY_ZERO`, plus `TRADITIONAL`, and the saved `@@SESSION.sql_mode` is restored right after it. Strict mode stays on, so a value that does not fit the target still fails.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it; joined dumps use only the first `Database:` header.
+- [#187](https://github.com/Fanduzi/BinlogVisualizer/issues/187), [#192](https://github.com/Fanduzi/BinlogVisualizer/issues/192), [#193](https://github.com/Fanduzi/BinlogVisualizer/issues/193): a `Database:` header with a space and mixed-case names under `lower_case_table_names`; non-ASCII column names in the guard error; a non-default `div_precision_increment` with `DECIMAL` operands.
+
+Related notes:
+
+- [v0.23.25 release notes](docs/releases/release-notes-v0.23.25.md)
+- [v0.23.25 中文发行说明](docs/releases/release-notes-v0.23.25.zh-CN.md)
 
 ## v0.23.24
 
