@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.23.25 — flashback restores rows written by a non-strict session</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.23.26 — flashback guard error keeps non-ASCII column names</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.23.25</div>
+                  <div class="release-version">v0.23.26</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">patch release</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">flashback restores rows written by a non-strict session</div>
-                <div class="release-copy" data-i18n="releases.items.v02325">binlogviz flashback restores zero dates and generated columns that divided by zero when the script is applied in a strict session (#180). Only the statement that writes such a value drops NO_ZERO_DATE and NO_ZERO_IN_DATE, or ERROR_FOR_DIVISION_BY_ZERO, and the session sql_mode is restored right after it. Strict mode stays on.</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.25/docs/releases/release-notes-v0.23.25.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">flashback guard error keeps non-ASCII column names</div>
+                <div class="release-copy" data-i18n="releases.items.v02326">binlogviz flashback lists non-ASCII column names in the guard ERROR 1231 line (#192). MySQL cuts that value at 200 bytes, and the guard now picks whole names by bytes, so CJK names are listed instead of the bare count. The guard refuses in the same cases and writes no rows. analyze output is unchanged.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.26/docs/releases/release-notes-v0.23.26.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.23.25</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v02325">flashback restores rows written by a non-strict session</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v02325">binlogviz flashback restores zero dates and generated columns that divided by zero when the script is applied in a strict session (#180). Only the statement that writes such a value drops NO_ZERO_DATE and NO_ZERO_IN_DATE, or ERROR_FOR_DIVISION_BY_ZERO, and the session sql_mode is restored right after it. Strict mode stays on.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.25/docs/releases/release-notes-v0.23.25.md" target="_blank" rel="noopener" data-i18n="releases.links.v02325">Open v0.23.25 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.23.24</div>
@@ -1693,8 +1701,8 @@ install the binary, analyze one binlog, then move to ordered directory ranges an
 <span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>
 
 <span class="token-comment"># Linux: install.sh or tarball</span>
-<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.25/install.sh</span>
-<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.25</span>
+<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.26/install.sh</span>
+<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.26</span>
 
 <span class="token-comment"># verify install with the sample ROW binlog</span>
 <span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>
@@ -1797,7 +1805,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.23.25 — flashback restores rows written by a non-strict session',
+            badge: 'v0.23.26 — flashback guard error keeps non-ASCII column names',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'Fast ROW-binlog summary: hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.\nSTATEMENT or MIXED files come back empty or undercounted. Printed positions are file evidence — use them as mysqlbinlog --start-position only when the span covers the transaction events, not an XID-only interval.',
             primary: 'Install BinlogViz',
@@ -1901,9 +1909,10 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
             currentFocus: 'patch release',
-            currentTitle: 'flashback restores rows written by a non-strict session',
+            currentTitle: 'flashback guard error keeps non-ASCII column names',
             currentLink: 'Read release notes →',
             labels: {
+              v02325: 'flashback restores rows written by a non-strict session',
               v02324: 'flashback guard is bound to its own script',
               v02323: 'flashback apply guard fails closed on MariaDB and MySQL 5.7',
               v02322: 'binlogviz flashback prints undo SQL',
@@ -1941,6 +1950,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: 'Trust boundary'
             },
             links: {
+              v02325: 'Open v0.23.25 notes →',
               v02324: 'Open v0.23.24 notes →',
               v02323: 'Open v0.23.23 notes →',
               v02322: 'Open v0.23.22 notes →',
@@ -1982,6 +1992,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v02326: 'binlogviz flashback lists non-ASCII column names in the guard ERROR 1231 line (#192). MySQL cuts that value at 200 bytes, and the guard now picks whole names by bytes, so CJK names are listed instead of the bare count. The guard refuses in the same cases and writes no rows. analyze output is unchanged.',
               v02325: 'binlogviz flashback restores zero dates and generated columns that divided by zero when the script is applied in a strict session (#180). Only the statement that writes such a value drops NO_ZERO_DATE and NO_ZERO_IN_DATE, or ERROR_FOR_DIVISION_BY_ZERO, and the session sql_mode is restored right after it. Strict mode stays on.',
               v02324: 'binlogviz flashback binds the apply guard to its own script with a token, and every undo statement checks it. A header-less block pasted into a session that ran another script, a client reconnect inside a block, and XA START now change no row. A script applied in a session that is already read-only stops with a clear message instead of a bare ERROR 1792. analyze output is unchanged.',
               v02323: 'binlogviz flashback checks schema-file generated columns against the logged rows and accepts more correct dumps (UPPER, CONCAT, JSON extraction, DECIMAL division). A wrong dump is refused, or stopped by an apply-time guard that locks the session with SET SESSION TRANSACTION READ ONLY, so mysql --force writes no rows on MySQL 5.7+, MariaDB 10.2+, older servers, and a server that refuses PREPARE. analyze output is unchanged.',
@@ -2030,7 +2041,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'The right onboarding path for a product site is simple and credible:\ninstall the binary, analyze one binlog, then move to ordered directory ranges and named snapshots when the incident story gets wide enough to compare against a baseline.',
             quick: {
               title: 'Quick start',
-              code: '<span class="token-comment"># macOS only (Homebrew cask)</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux: install.sh or tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.25/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.25</span>\n\n<span class="token-comment"># verify install with the sample ROW binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># save current + baseline snapshots, inspect them as JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
+              code: '<span class="token-comment"># macOS only (Homebrew cask)</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux: install.sh or tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.26/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.26</span>\n\n<span class="token-comment"># verify install with the sample ROW binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># save current + baseline snapshots, inspect them as JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: 'What a good first session looks like',
@@ -2083,7 +2094,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.23.25 —— flashback 能还原非严格会话写下的行',
+            badge: 'v0.23.26 —— flashback 守卫报错保留非 ASCII 列名',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'ROW binlog 的快速摘要：热表、写入形态、上线前后 compare。510 MB 级大约数秒。\nSTATEMENT / MIXED 会空或少计。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 mysqlbinlog --start-position。',
             primary: '安装 BinlogViz',
@@ -2187,9 +2198,10 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
             currentFocus: '补丁版本',
-            currentTitle: 'flashback 能还原非严格会话写下的行',
+            currentTitle: 'flashback 守卫报错保留非 ASCII 列名',
             currentLink: '查看发布说明 →',
             labels: {
+              v02325: 'flashback 能还原非严格会话写下的行',
               v02324: 'flashback 守卫绑定到所属脚本',
               v02323: 'flashback 执行守卫在 MariaDB 和 MySQL 5.7 上失败即锁定',
               v02322: 'binlogviz flashback 打印撤销 SQL',
@@ -2227,6 +2239,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: '信任边界'
             },
             links: {
+              v02325: '打开 v0.23.25 说明 →',
               v02324: '打开 v0.23.24 说明 →',
               v02323: '打开 v0.23.23 说明 →',
               v02322: '打开 v0.23.22 说明 →',
@@ -2268,6 +2281,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v02326: 'binlogviz flashback 守卫的 ERROR 1231 报错里会列出非 ASCII 列名（#192）。MySQL 把这个值截到 200 字节，守卫现在按字节挑完整的列名，中文列名会列出来，而不是只显示列数。守卫拒绝的情况不变，不写入任何行。analyze 的输出不变。',
               v02325: 'binlogviz flashback 在严格会话里执行时，也能还原零日期和除以零的生成列（#180）。只有写这种值的那一条语句去掉 NO_ZERO_DATE 和 NO_ZERO_IN_DATE，或 ERROR_FOR_DIVISION_BY_ZERO，执行完立即恢复会话的 sql_mode。严格模式仍然开着。',
               v02324: 'binlogviz flashback 用令牌把执行守卫绑定到所属脚本，每条撤销语句都会核对这个令牌。在执行过其他脚本的会话里粘贴不带头部的块、块执行中途客户端重连、XA START，现在都不会改动任何行。在已经只读的会话里执行脚本，会给出明确提示，而不是只报 ERROR 1792。analyze 的输出不变。',
               v02323: 'binlogviz flashback 按 binlog 里的行核对 schema 文件中的生成列，更多正确的转储会被接受（UPPER、CONCAT、JSON 提取、DECIMAL 除法）。错误的转储会被拒绝，或被执行时的守卫拦下：守卫用 SET SESSION TRANSACTION READ ONLY 锁住会话，所以在 MySQL 5.7+、MariaDB 10.2+、老版本服务器以及拒绝 PREPARE 的服务器上，mysql --force 都不会写入任何行。analyze 的输出不变。',
@@ -2316,7 +2330,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '对产品官网来说，正确的上手路径应该简单且可信：\n安装二进制，分析一个 binlog，然后在事故故事变宽到需要基线对比时，再切到目录范围和命名快照。',
             quick: {
               title: '快速开始',
-              code: '<span class="token-comment"># 仅 macOS（Homebrew cask）</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux：install.sh 或 tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.25/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.25</span>\n\n<span class="token-comment"># 用样例 ROW binlog 验证安装</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># 保存 current + baseline 快照，查看 JSON 元数据，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
+              code: '<span class="token-comment"># 仅 macOS（Homebrew cask）</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux：install.sh 或 tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.26/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.26</span>\n\n<span class="token-comment"># 用样例 ROW binlog 验证安装</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># 保存 current + baseline 快照，查看 JSON 元数据，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: '一个好的首轮会话应该长这样',
