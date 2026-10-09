@@ -1252,3 +1252,83 @@ func consumeFlash(t *testing.T, a *Analyzer, events ...model.NormalizedEvent) {
 		t.Fatal(err)
 	}
 }
+
+func TestSchemaFileDatabaseHeaderWithSpace(t *testing.T) {
+	if got := dumpDatabase("-- Host: localhost    Database: p185 q\n"); got != "p185 q" {
+		t.Fatalf("header db = %q", got)
+	}
+	if got := dumpDatabase("-- Host: localhost    Database: shop  \r\n"); got != "shop" {
+		t.Fatalf("header db = %q", got)
+	}
+	const gen = "CREATE TABLE `we'ird` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `virt` int GENERATED ALWAYS AS ((`id` + 1)) VIRTUAL,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	row := model.FlashRow{
+		Schema: "p185 q", Table: "we'ird", Op: "DELETE",
+		Columns: []string{"id", "virt"}, Cols: intCols(2),
+		Before: []string{"1", "2"}, PK: []int{0},
+	}
+	sql, err := flashSchemaSQL(t, "-- Host: localhost    Database: p185 q\n"+gen, "", row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sql, "`virt`") {
+		t.Fatalf("header with a space did not bind the table:\n%s", sql)
+	}
+}
+
+func TestSchemaFileLetterCaseFold(t *testing.T) {
+	const gen = "USE `P185L`;\nCREATE TABLE `MixT` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `Gc` int GENERATED ALWAYS AS ((`id` + 1)) VIRTUAL,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	row := model.FlashRow{
+		Schema: "p185l", Table: "mixt", Op: "DELETE",
+		Columns: []string{"id", "Gc"}, Cols: intCols(2),
+		Before: []string{"1", "2"}, PK: []int{0},
+	}
+	a := New(Options{Flashback: true, SchemaSQL: gen})
+	consumeFlash(t, a, flashEvent(row))
+	sql, err := a.FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sql, "`Gc`") {
+		t.Fatalf("lower-case binlog name did not use the file definition:\n%s", sql)
+	}
+	text := strings.Join(a.FlashbackWarnings(), "\n")
+	if !strings.Contains(text, "p185l.mixt") || !strings.Contains(text, "P185L.MixT") || strings.Contains(text, "generated columns cannot be ruled out") {
+		t.Fatalf("warnings: %s", text)
+	}
+
+	// A mixed-case binlog name may be a different table on a
+	// lower_case_table_names=0 server, so it is only named, not used.
+	upper := row
+	upper.Schema, upper.Table = "P185L", "mixt"
+	b := New(Options{Flashback: true, SchemaSQL: gen})
+	consumeFlash(t, b, flashEvent(upper))
+	sql, err = b.FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "`Gc`") {
+		t.Fatalf("mixed-case binlog name used a folded definition:\n%s", sql)
+	}
+	text = strings.Join(b.FlashbackWarnings(), "\n")
+	if !strings.Contains(text, "P185L.MixT") || !strings.Contains(text, "was not used") || !strings.Contains(text, "generated columns cannot be ruled out") {
+		t.Fatalf("warnings: %s", text)
+	}
+
+	// Two file tables that fold to the same name are not guessed between.
+	two := gen + "CREATE TABLE `mixT` (\n  `id` int NOT NULL,\n  PRIMARY KEY (`id`)\n);\n"
+	c := New(Options{Flashback: true, SchemaSQL: two})
+	consumeFlash(t, c, flashEvent(row))
+	sql, err = c.FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sql, "`Gc`") {
+		t.Fatalf("ambiguous fold guessed:\n%s", sql)
+	}
+}
