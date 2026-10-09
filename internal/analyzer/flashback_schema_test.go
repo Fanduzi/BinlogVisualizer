@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -220,7 +221,7 @@ func TestSchemaFileVerifiesJSONAndUpper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "`jv`") || strings.Contains(sql, "`v`") || strings.Contains(sql, "`full_name`") || !strings.Contains(sql, "INSERT INTO `p160`.`gen` (`id`, `j`)") || !strings.Contains(sql, "VALUES (2, 'Grace', NULL)") {
+	if strings.Contains(sql, "`jv`") || strings.Contains(sql, "`v`") || strings.Contains(sql, "`full_name`") || !strings.Contains(sql, "INSERT INTO `p160`.`gen` (`id`, `j`)") || !strings.Contains(sql, "SELECT 2, 'Grace', NULL FROM DUAL WHERE ") {
 		t.Fatalf("sql:\n%s", sql)
 	}
 	if len(warnings) != 0 {
@@ -266,7 +267,7 @@ func TestSchemaFileIntegerGeneratedOps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "`s1`") || strings.Contains(sql, "`s2`") || strings.Contains(sql, "`s4`") || !strings.Contains(sql, "VALUES (2, -5, NULL)") {
+	if strings.Contains(sql, "`s1`") || strings.Contains(sql, "`s2`") || strings.Contains(sql, "`s4`") || !strings.Contains(sql, "SELECT 2, -5, NULL FROM DUAL WHERE ") {
 		t.Fatalf("sql:\n%s", sql)
 	}
 	if len(warnings) != 0 {
@@ -479,7 +480,7 @@ func TestEscapedQuoteGeneratedExpr(t *testing.T) {
 	if len(warnings) != 0 || strings.Contains(sql, "`g`") && strings.Contains(sql, "VALUES") && strings.Contains(sql, "`g`,") {
 		t.Fatalf("warnings %#v sql:\n%s", warnings, sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`, `s`) VALUES (1, 'a');") {
+	if !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`, `s`) SELECT 1, 'a' FROM DUAL WHERE @binlogviz_ok <=> '") {
 		t.Fatalf("sql:\n%s", sql)
 	}
 	if !strings.Contains(sql, "'shop.t.g'") {
@@ -563,11 +564,12 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 	if execAt < 0 || lockAt < 0 || modeAt < 0 || execAt > lockAt || lockAt > modeAt {
 		t.Fatalf("message, lock, then sql_mode:\n%s", sql)
 	}
-	if strings.Count(sql, guardLockSQL) < 2 {
+	lock := renderedGuardLock(t, sql)
+	if strings.Count(sql, lock) < 2 {
 		t.Fatalf("lock is not repeated before the transaction:\n%s", sql)
 	}
 	start := strings.Index(sql, "START TRANSACTION;")
-	if start < 0 || !strings.HasSuffix(sql[:start], guardLockSQL) {
+	if start < 0 || !strings.HasSuffix(sql[:start], lock) {
 		t.Fatalf("lock is not immediately before START TRANSACTION:\n%s", sql)
 	}
 	for _, want := range []string{"SEPARATOR ', '", "SEPARATOR ' | '", "200", "columns)", "COMMIT;"} {
@@ -615,9 +617,11 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	checkAt := strings.Index(sql, "INTO @binlogviz_mismatch, @binlogviz_safe, @binlogviz_n, @binlogviz_checked")
 	verAt := strings.Index(sql, guardServerCheckSQL())
 	roAt := strings.Index(sql, "PREPARE "+guardStmtRO+" FROM @binlogviz_ro_sql;")
-	unlockSet := "SET @binlogviz_unlock_sql = IF(@binlogviz_old <=> 0 AND @binlogviz_checked <=> 1 AND @binlogviz_mismatch IS NULL AND NOT (@binlogviz_ro_was <=> 1), 'SET SESSION TRANSACTION READ WRITE', 'DO 0');"
-	unlockAt := strings.Index(sql, unlockSet)
-	lockAt := strings.Index(sql, guardLockSQL)
+	token := guardToken(t, sql)
+	okSet := "SET @binlogviz_ok = IF(@binlogviz_old <=> 0 AND @binlogviz_checked <=> 1 AND @binlogviz_mismatch IS NULL AND NOT (@binlogviz_ro_was <=> 1), '" + token + "', NULL);"
+	unlockAt := strings.Index(sql, okSet)
+	lock := renderedGuardLock(t, sql)
+	lockAt := strings.Index(sql, lock)
 	modeAt := strings.Index(sql, "SET SESSION sql_mode = @binlogviz_mode;")
 	order := []int{resetAt, checkAt, verAt, roAt, unlockAt, lockAt, modeAt}
 	for i, at := range order {
@@ -629,15 +633,16 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	if roAt > strings.Index(sql, "SET SESSION TRANSACTION READ ONLY;") {
 		t.Fatalf("flag read after the lock:\n%s", sql)
 	}
-	// READ WRITE appears only as the unlock string; nothing else unlocks.
-	if strings.Count(sql, "READ WRITE") != 1 {
-		t.Fatalf("unlock outside the guard:\n%s", sql)
+	// READ WRITE appears only in the token-gated lock; nothing else unlocks.
+	gated := "SET @binlogviz_unlock_sql = IF(@binlogviz_ok <=> '" + token + "', 'SET SESSION TRANSACTION READ WRITE', 'DO 0');"
+	if strings.Count(sql, "READ WRITE") != strings.Count(sql, gated) || strings.Count(sql, gated) != 2 {
+		t.Fatalf("unlock outside the token-gated lock:\n%s", sql)
 	}
-	if !strings.HasPrefix(guardLockSQL, "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\nPREPARE "+guardStmtUnlock+" FROM @binlogviz_unlock_sql;\n") {
-		t.Fatalf("lock: %q", guardLockSQL)
+	if !strings.HasPrefix(lock, "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n"+gated+"\nPREPARE "+guardStmtUnlock+" FROM @binlogviz_unlock_sql;\n") {
+		t.Fatalf("lock: %q", lock)
 	}
 	start := strings.Index(sql, "START TRANSACTION;")
-	if start < 0 || !strings.HasSuffix(sql[:start], guardLockSQL) || strings.Count(sql, guardLockSQL) != 2 {
+	if start < 0 || !strings.HasSuffix(sql[:start], lock) || strings.Count(sql, lock) != 2 {
 		t.Fatalf("per-transaction lock:\n%s", sql)
 	}
 	for _, want := range []string{
@@ -660,6 +665,101 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	}
 	if !guardBeforeTransaction(sql) {
 		t.Fatalf("guard is not in the header:\n%s", sql)
+	}
+}
+
+var guardTokenRe = regexp.MustCompile(`SET @binlogviz_ok = IF\(.*, '([0-9a-f]{16})', NULL\);`)
+
+// guardToken returns the per-script token the guard sets on a match.
+func guardToken(t *testing.T, sql string) string {
+	t.Helper()
+	m := guardTokenRe.FindAllStringSubmatch(sql, -1)
+	if len(m) != 1 {
+		t.Fatalf("want one token assignment, got %d:\n%s", len(m), sql)
+	}
+	if strings.Contains(sql, guardTokenMark) {
+		t.Fatalf("token placeholder left in the script:\n%s", sql)
+	}
+	return m[0][1]
+}
+
+func renderedGuardLock(t *testing.T, sql string) string {
+	t.Helper()
+	return strings.ReplaceAll(guardLockSQL, guardTokenMark, guardToken(t, sql))
+}
+
+// #197/#191: every undo statement checks this script's token, so a block
+// from another script, a header-less block, or the rest of a block after a
+// reconnect changes no row; the token differs between scripts and is stable.
+func TestGeneratedGuardTokenGatesEveryStatement(t *testing.T) {
+	const schema = "USE `shop`;\nCREATE TABLE `t` (\n" +
+		"  `id` int NOT NULL,\n" +
+		"  `x` varchar(20) DEFAULT NULL,\n" +
+		"  `c` varchar(32) GENERATED ALWAYS AS (md5(`x`)) STORED,\n" +
+		"  PRIMARY KEY (`id`)\n);\n"
+	cols := []model.FlashCol{
+		{Base: "int", HasSign: true},
+		{Base: "varchar", Charset: "utf8mb4"},
+		{Base: "varchar", Charset: "utf8mb4"},
+	}
+	rows := func(id string) []model.FlashRow {
+		return []model.FlashRow{
+			{Schema: "shop", Table: "t", Op: "DELETE", Columns: []string{"id", "x", "c"}, Cols: cols,
+				Before: []string{id, "'ab'", "'h1'"}, PK: []int{0}},
+			{Schema: "shop", Table: "t", Op: "UPDATE", Columns: []string{"id", "x", "c"}, Cols: cols,
+				Before: []string{"7", "'ab'", "'h1'"}, After: []string{"7", "'cd'", "'h2'"}, PK: []int{0}},
+			{Schema: "shop", Table: "t", Op: "INSERT", Columns: []string{"id", "x", "c"}, Cols: cols,
+				After: []string{"8", "'ef'", "'h3'"}, PK: []int{0}},
+		}
+	}
+	sql, _, err := flashSchemaResult(t, schema, "", rows("1")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := guardToken(t, sql)
+	cond := "@binlogviz_ok <=> '" + token + "'"
+	for _, want := range []string{
+		"INSERT INTO `shop`.`t` (`id`, `x`) SELECT 1, 'ab' FROM DUAL WHERE " + cond + ";",
+		"UPDATE `shop`.`t` SET `id` = 7, `x` = 'ab' WHERE `id` <=> 7 AND " + cond + ";",
+		"DELETE FROM `shop`.`t` WHERE `id` <=> 8 AND " + cond + ";",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("missing %q\n%s", want, sql)
+		}
+	}
+	if strings.Contains(sql, " VALUES (") {
+		t.Fatalf("ungated INSERT:\n%s", sql)
+	}
+	again, _, err := flashSchemaResult(t, schema, "", rows("1")...)
+	if err != nil || again != sql {
+		t.Fatalf("token is not stable: %v", err)
+	}
+	other, _, err := flashSchemaResult(t, schema, "", rows("2")...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if guardToken(t, other) == token {
+		t.Fatalf("two scripts share token %s", token)
+	}
+	for _, msg := range []string{guardReadOnlyMsg} {
+		if strings.Contains(msg, ",") || len(msg) > guardValueLimit || !strings.Contains(sql, sqlQuote(msg)) {
+			t.Fatalf("message %q in:\n%s", msg, sql)
+		}
+	}
+	if !strings.Contains(sql, sqlQuote(guardMismatchHint)) {
+		t.Fatalf("mismatch hint missing:\n%s", sql)
+	}
+}
+
+func TestFlashbackWithoutGuardHasNoToken(t *testing.T) {
+	row := model.FlashRow{Schema: "shop", Table: "t", Op: "DELETE", Columns: []string{"id"},
+		Cols: []model.FlashCol{{Base: "int", HasSign: true}}, Before: []string{"1"}, PK: []int{0}}
+	sql, err := renderFlashbackSQL([]flashGroup{{rows: []model.FlashRow{row}, binds: []flashBind{{}}}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(sql, "binlogviz_ok") || !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`) VALUES (1);") {
+		t.Fatalf("script without a guard changed:\n%s", sql)
 	}
 }
 
@@ -815,10 +915,10 @@ func TestSchemaFileAcceptsMatchingGeneratedAndSkipsIncomparableEnums(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (3, NULL);") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
+	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 3, NULL FROM DUAL WHERE @binlogviz_ok <=> '") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
 		t.Fatalf("generated sql:\n%s", sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`es` (`id`, `e`) VALUES (1, 2);") {
+	if !strings.Contains(sql, "INSERT INTO `shop`.`es` (`id`, `e`) SELECT 1, 2 FROM DUAL WHERE @binlogviz_ok <=> '") {
 		t.Fatalf("enum sql:\n%s", sql)
 	}
 }
@@ -876,7 +976,7 @@ func TestSchemaFileLayoutsBindWithoutUSE(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "`virt`") || !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) VALUES (1, 'a');") {
+	if strings.Contains(sql, "`virt`") || !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) SELECT 1, 'a' FROM DUAL WHERE @binlogviz_ok <=> '") {
 		t.Fatalf("multi show create:\n%s", sql)
 	}
 	if warnings := a.FlashbackWarnings(); len(warnings) != 0 {
