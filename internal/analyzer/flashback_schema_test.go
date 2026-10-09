@@ -816,6 +816,21 @@ func TestGuardErrorValue(t *testing.T) {
 	if utf8.RuneCountInString(wide) > guardValueLimit || len(wide) > guardValueLimit {
 		t.Fatalf("wide length runes=%d bytes=%d", utf8.RuneCountInString(wide), len(wide))
 	}
+	// #192: names are picked by bytes, so CJK names that fit in 200 bytes stay listed.
+	cjk := make([]string, 6)
+	for i := range cjk {
+		cjk[i] = fmt.Sprintf("p186.z6.生成列_客户全名_%d", i+1)
+	}
+	gotCJK := guardErrorValue(cjk)
+	if !strings.HasPrefix(gotCJK, guardMismatchLead+" (6 columns): "+cjk[0]+" | "+cjk[1]) || strings.Contains(gotCJK, cjk[5]) || len(gotCJK) > guardValueLimit {
+		t.Fatalf("cjk: %q (%d bytes)", gotCJK, len(gotCJK))
+	}
+	if got := trimGuardList("字字 | 字", 7); got != "字字" {
+		t.Fatalf("byte cut: %q", got)
+	}
+	if got := trimGuardList("字字 | 字", 5); got != "" {
+		t.Fatalf("byte cut mid-rune: %q", got)
+	}
 	huge := guardErrorValue([]string{strings.Repeat("字", 60)})
 	if huge != guardMismatchLead+" (1 columns)" {
 		t.Fatalf("multibyte: %q", huge)
