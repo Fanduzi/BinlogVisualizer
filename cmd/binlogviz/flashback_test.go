@@ -1076,6 +1076,27 @@ COMMIT;`)
 			t.Fatalf("autocommit=0 guard:\n%s", out)
 		}
 	})
+	// #194/#195: this server evaluates the rendered version check for other servers' version strings.
+	assertGuardVersionChoice(t, sql)
+	// #196: a block cut off from the header stays read-only.
+	if cut := strings.Index(sql, "-- gtid:"); cut > 0 {
+		assertGuardForceKeepsRows(t, "HEADERLESS", sql[cut:], matchSum, matchAfter, func(out string) {
+			if mysqlErrorLine(out, "1792") == "" {
+				t.Fatalf("header-less block was not read-only\n%s", out)
+			}
+		})
+	}
+	// #196: a server that refuses new prepared statements still cannot write.
+	prevPrep := strings.TrimSpace(e2eMySQL(t, "SELECT @@GLOBAL.max_prepared_stmt_count"))
+	e2eMySQL(t, "SET GLOBAL max_prepared_stmt_count = 0")
+	restorePrep := func() { e2eMySQL(t, "SET GLOBAL max_prepared_stmt_count = "+prevPrep) }
+	t.Cleanup(func() { _, _ = e2eMySQLResult(t, "SET GLOBAL max_prepared_stmt_count = "+prevPrep) })
+	assertGuardForceKeepsRows(t, "NOPREPARE", sql, matchSum, matchAfter, func(out string) {
+		if mysqlErrorLine(out, "1461") == "" || mysqlErrorLine(out, "1792") == "" {
+			t.Fatalf("max_prepared_stmt_count=0 guard:\n%s", out)
+		}
+	})
+	restorePrep()
 	heap := e2eMySQL(t, "SELECT x, note, n FROM p183.heap ORDER BY note")
 	if !strings.Contains(heap, "kept-note") || !strings.Contains(heap, "DUP") {
 		t.Fatalf("duplicate rows:\n%s", heap)
@@ -1167,6 +1188,56 @@ func wideGuardVals() string {
 		parts[i] = "'x'"
 	}
 	return strings.Join(parts, ", ")
+}
+
+// assertGuardVersionChoice runs the guard's own version check from script on
+// this server with @@version replaced by each string, and checks which servers
+// are refused and which read-only variable is read.
+func assertGuardVersionChoice(t *testing.T, script string) {
+	t.Helper()
+	start := strings.Index(script, "SET @binlogviz_maria = ")
+	roAt := strings.Index(script, "SET @binlogviz_ro = ")
+	if start < 0 || roAt < start {
+		t.Fatalf("version check not found:\n%s", script)
+	}
+	end := roAt + strings.Index(script[roAt:], "\n") + 1
+	block := strings.ReplaceAll(script[start:end], "@@version", "@binlogviz_v")
+	cases := []struct {
+		version, old, ro string
+	}{
+		{"5.5.62", "1", "tx_read_only"},
+		{"5.6.51-log", "1", "tx_read_only"},
+		{"5.7.0", "0", "tx_read_only"},
+		{"5.7.9", "0", "tx_read_only"},
+		{"5.7.19-log", "0", "tx_read_only"},
+		{"5.7.20", "0", "transaction_read_only"},
+		{"5.7.44-48-log", "0", "transaction_read_only"},
+		{"8.0.46-0ubuntu0.24.04.4", "0", "transaction_read_only"},
+		{"8.0.36-28", "0", "transaction_read_only"},
+		{"8.4.3", "0", "transaction_read_only"},
+		{"9.1.0", "0", "transaction_read_only"},
+		{"10.1.48-MariaDB", "1", "tx_read_only"},
+		{"10.6.28-MariaDB-log", "0", "tx_read_only"},
+		{"10.11.19-MariaDB-ubu2204-log", "0", "tx_read_only"},
+		{"5.5.5-10.11.6-MariaDB", "0", "tx_read_only"},
+		{"11.0.6-MariaDB", "0", "tx_read_only"},
+		{"11.1.6-MariaDB", "0", "transaction_read_only"},
+		{"11.4.13-MariaDB", "0", "transaction_read_only"},
+		{"12.0.2-MariaDB", "0", "transaction_read_only"},
+	}
+	var b strings.Builder
+	for _, tc := range cases {
+		fmt.Fprintf(&b, "SET @binlogviz_v = '%s';\n%sSELECT CONCAT(@binlogviz_v, ' ', @binlogviz_old, ' ', @binlogviz_ro);\n", tc.version, block)
+	}
+	got := strings.Split(strings.TrimSpace(e2eMySQL(t, b.String())), "\n")
+	if len(got) != len(cases) {
+		t.Fatalf("version check output:\n%s", strings.Join(got, "\n"))
+	}
+	for i, tc := range cases {
+		if want := tc.version + " " + tc.old + " " + tc.ro; strings.TrimSpace(got[i]) != want {
+			t.Errorf("version check %q want %q", got[i], want)
+		}
+	}
 }
 
 func assertGuardForceKeepsRows(t *testing.T, label, script, checksumSQL, before string, check func(string)) {
