@@ -2161,6 +2161,35 @@ func refKey(im loggedImage, refs []string) (string, bool) {
 // mismatch is set when a value contradicts the expression. unverified is set when
 // nothing contradicted it and at least one image could not be evaluated.
 func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol) (example string, unverified bool) {
+	return generatedColumnOutcomeInc(col, rows, meta, mysqlDefaultDivPrecIncrement)
+}
+
+// mysqlMaxDivPrecIncrement is the largest div_precision_increment MySQL accepts.
+const mysqlMaxDivPrecIncrement = 30
+
+// divIncrementFit lists the non-default div_precision_increment values at
+// which every logged image of col is a confident match. The binlog does not
+// record the variable, so a column refused at the default that fits another
+// increment points at the server setting, not at the dump. It is only a hint
+// for the error message: the column is still refused.
+func divIncrementFit(col schemaCol, rows []loggedImage, meta []schemaCol) []int {
+	if !strings.Contains(col.expr, "/") || (col.base != "decimal" && !integerAssign(col.base)) {
+		return nil
+	}
+	var fit []int
+	for inc := 0; inc <= mysqlMaxDivPrecIncrement; inc++ {
+		if inc == mysqlDefaultDivPrecIncrement {
+			continue
+		}
+		example, unknown := generatedColumnOutcomeInc(col, rows, meta, inc)
+		if example == "" && !unknown {
+			fit = append(fit, inc)
+		}
+	}
+	return fit
+}
+
+func generatedColumnOutcomeInc(col schemaCol, rows []loggedImage, meta []schemaCol, inc int) (example string, unverified bool) {
 	if strings.TrimSpace(col.expr) == "" || len(rows) == 0 {
 		return "", true
 	}
@@ -2187,7 +2216,7 @@ func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol)
 			continue
 		}
 		if col.base == "decimal" || integerAssign(col.base) {
-			if dec, ok := evalDecExpr(col.expr, env); ok {
+			if dec, ok := evalDecExprInc(col.expr, env, inc); ok {
 				// decOmit was parsed and must not fall through to a different
 				// arithmetic. decIntOnly is an exact product whose scale is past
 				// 30: a DECIMAL target must not claim it, and an integer target
@@ -2268,6 +2297,36 @@ func generatedMismatch(table string, col schemaCol, example string) error {
 		"Expr":    exprText(col.expr),
 		"Example": example,
 	})})
+}
+
+// divIncrementMismatch replaces the usual schema-file advice: the dump is
+// probably right and the server ran with a non-default div_precision_increment.
+func divIncrementMismatch(table string, col schemaCol, example string, fit []int) error {
+	return fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaDivInc", map[string]any{
+		"Table":      table,
+		"Column":     col.name,
+		"Expr":       exprText(col.expr),
+		"Increments": intRanges(fit),
+		"Example":    example,
+	}))
+}
+
+// intRanges prints sorted ints as "0-3, 5, 8-30".
+func intRanges(vals []int) string {
+	var parts []string
+	for i := 0; i < len(vals); {
+		j := i
+		for j+1 < len(vals) && vals[j+1] == vals[j]+1 {
+			j++
+		}
+		if j == i {
+			parts = append(parts, strconv.Itoa(vals[i]))
+		} else {
+			parts = append(parts, strconv.Itoa(vals[i])+"-"+strconv.Itoa(vals[j]))
+		}
+		i = j + 1
+	}
+	return strings.Join(parts, ", ")
 }
 
 func unverifiedGeneratedWarning(table string, col schemaCol) string {
@@ -2820,7 +2879,12 @@ func decFromGen(v genVal) (decVal, bool) {
 }
 
 func evalDecExpr(expr string, env map[string]genVal) (decVal, bool) {
-	sc := &sqlScan{s: expr}
+	return evalDecExprInc(expr, env, mysqlDefaultDivPrecIncrement)
+}
+
+// evalDecExprInc evaluates expr with / at div_precision_increment inc.
+func evalDecExprInc(expr string, env map[string]genVal, inc int) (decVal, bool) {
+	sc := &sqlScan{s: expr, divInc: inc + 1}
 	v, ok := parseDecAdd(sc, env)
 	if !ok {
 		return decVal{}, false
@@ -2895,7 +2959,7 @@ func parseDecMul(sc *sqlScan, env map[string]genVal) (decVal, bool) {
 		if !ok {
 			return decVal{}, false
 		}
-		next, ok := applyDecMul(left, right, op)
+		next, ok := applyDecMul(left, right, op, sc.divPrec())
 		if !ok {
 			return decVal{}, false
 		}
@@ -2903,7 +2967,7 @@ func parseDecMul(sc *sqlScan, env map[string]genVal) (decVal, bool) {
 	}
 }
 
-func applyDecMul(left, right decVal, op string) (decVal, bool) {
+func applyDecMul(left, right decVal, op string, inc int) (decVal, bool) {
 	if left.null || right.null {
 		return decVal{null: true}, true
 	}
@@ -2933,7 +2997,7 @@ func applyDecMul(left, right decVal, op string) (decVal, bool) {
 		if left.mode != decClaim || right.mode != decClaim {
 			return decVal{mode: decOmit}, true
 		}
-		scale := mysqlDivFrac(left.scale, right.scale, mysqlDefaultDivPrecIncrement)
+		scale := mysqlDivFrac(left.scale, right.scale, inc)
 		q := truncRatToScale(new(big.Rat).Quo(left.n, right.n), scale)
 		// The cut to mysqlDivFrac is MySQL's division, not a second round.
 		// A width past 30, or a quotient past 65 digits, is unverified.
@@ -3033,7 +3097,7 @@ func parseDecPrimary(sc *sqlScan, env map[string]genVal) (decVal, bool) {
 		if !ok {
 			return decVal{}, false
 		}
-		return evalDecExpr(body, env)
+		return evalDecExprInc(body, env, sc.divPrec())
 	}
 	if sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
 		return sc.decNumber()
@@ -3074,11 +3138,11 @@ func parseDecMod(sc *sqlScan, env map[string]genVal) (decVal, bool) {
 	if len(parts) != 2 {
 		return decVal{}, false
 	}
-	left, ok := evalDecExpr(parts[0], env)
+	left, ok := evalDecExprInc(parts[0], env, sc.divPrec())
 	if !ok {
 		return decVal{}, false
 	}
-	right, ok := evalDecExpr(parts[1], env)
+	right, ok := evalDecExprInc(parts[1], env, sc.divPrec())
 	if !ok {
 		return decVal{}, false
 	}

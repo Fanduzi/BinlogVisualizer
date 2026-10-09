@@ -315,6 +315,10 @@
     "description": "Schema file column type differs from the binlog",
     "other": "{{.Column}} is {{.File}} in the schema file and {{.Binlog}} in the binlog"
   },
+  "error.flashbackSchemaDivInc": {
+    "description": "A generated / column matches only at a non-default div_precision_increment",
+    "other": "{{.Table}}: --schema-file does not match the binlog columns at MySQL's default div_precision_increment of 4: {{.Column}} is generated as {{.Expr}}, but the logged values match it only at div_precision_increment {{.Increments}}; example {{.Example}}. The binlog does not record that variable. If the incident server ran with a non-default increment, the dump may be right and flashback has no way to check this table: leave it out with --include-table or --exclude-table. If the expression in the dump is wrong, for example / where the table has DIV, use a dump from incident time, or an older dump if an ALTER came later."
+  },
   "error.flashbackSchemaGenerated": {
     "description": "A generated column's logged values do not match its expression",
     "other": "{{.Column}} is generated in the schema file but the logged values are not {{.Expr}}; example {{.Example}}"

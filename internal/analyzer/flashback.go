@@ -349,6 +349,10 @@ func (a *Analyzer) collectGeneratedReview() error {
 			}
 			example, unknown := generatedColumnOutcome(col, b.images, b.cols)
 			if example != "" {
+				if fit := divIncrementFit(col, b.images, b.cols); len(fit) > 0 {
+					mismatches = append(mismatches, divIncrementMismatch(table, col, example, fit).Error())
+					continue
+				}
 				mismatches = append(mismatches, generatedMismatch(table, col, example).Error())
 				continue
 			}
