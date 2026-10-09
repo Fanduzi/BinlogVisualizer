@@ -1750,5 +1750,13 @@
   "report.comparability.notComparableSummary": {
     "description": "Not-comparable guard summary",
     "other": "Causal findings suppressed because inputs are not comparable; raw deltas remain available."
+  },
+  "warning.flashbackSchemaFold": {
+    "description": "A schema-file table matched the binlog table only when letter case is ignored",
+    "other": "warning: {{.Binlog}}: using {{.File}} from --schema-file, which differs only in letter case (the dump and the binlog server likely have different lower_case_table_names). The rows are still checked against it."
+  },
+  "warning.flashbackSchemaFoldMiss": {
+    "description": "A schema-file table differs from the binlog table only in letter case but was not used",
+    "other": "warning: {{.Binlog}}: --schema-file has {{.File}}, which differs only in letter case; it was not used. If lower_case_table_names differs between the servers, rename the table in the file to match the binlog."
   }
 }

@@ -28,6 +28,8 @@ type generatedTables struct {
 	ambiguousDB    bool
 	sawUnqualified bool
 	readingFile    bool
+	folded         map[string]bool
+	foldNotes      []string
 }
 
 // noteScript reads mysqldump --no-data output or SHOW CREATE TABLE text.

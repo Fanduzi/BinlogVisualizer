@@ -1750,5 +1750,13 @@
   "report.comparability.notComparableSummary": {
     "description": "输入不可比保护摘要",
     "other": "由于输入不可比较，已抑制因果发现；原始差值仍然可用。"
+  },
+  "warning.flashbackSchemaFold": {
+    "description": "A schema-file table matched the binlog table only when letter case is ignored",
+    "other": "warning: {{.Binlog}}：使用 --schema-file 中的 {{.File}}，二者只有大小写不同（导出库与产生 binlog 的库 lower_case_table_names 可能不同）。行数据仍会按它校验。"
+  },
+  "warning.flashbackSchemaFoldMiss": {
+    "description": "A schema-file table differs from the binlog table only in letter case but was not used",
+    "other": "warning: {{.Binlog}}：--schema-file 中有 {{.File}}，只有大小写不同，未采用。如果两台服务器的 lower_case_table_names 不同，请把文件里的表名改成与 binlog 一致。"
   }
 }
