@@ -4,7 +4,26 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.28
+
+Release date: 2026-10-09
+
+Highlights:
+
 - `binlogviz flashback --schema-file` now reads a mysqldump `Database:` header whose name has spaces, and uses a dump table whose names differ from the binlog only in letter case when the binlog names are all lower case, as with a `lower_case_table_names=0` dump and a `lower_case_table_names=1` or `2` binlog (#187). A warning names the file table it used, and the rows are still checked against it. A mixed-case binlog name, or two file tables that fold to the same name, is not guessed: the warning names the near miss.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#215](https://github.com/Fanduzi/BinlogVisualizer/issues/215): the letter-case fold assumes an all-lower-case binlog name comes from a `lower_case_table_names=1` or `2` server. On a `lower_case_table_names=0` server with both `t` and `T`, a dump that has only `T` is used for `t`, and the apply guard or flashback refuses a case that v0.23.27 restored. A refused folded table is named by its binlog name, not the file table. Both fail safe.
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it; joined dumps use only the first `Database:` header.
+- [#193](https://github.com/Fanduzi/BinlogVisualizer/issues/193): a non-default `div_precision_increment` with `DECIMAL` operands.
+
+Related notes:
+
+- [v0.23.28 release notes](docs/releases/release-notes-v0.23.28.md)
+- [v0.23.28 中文发行说明](docs/releases/release-notes-v0.23.28.zh-CN.md)
 
 ## v0.23.27
 
