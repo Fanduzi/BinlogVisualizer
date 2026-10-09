@@ -732,9 +732,11 @@ const guardLockSQL = "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n" +
 	"DEALLOCATE PREPARE " + guardStmtUnlock + ";\n"
 
 // guardSafeLabel keeps a column name from being split by MySQL's sql_mode
-// parser (commas) or by the list separator used below.
+// parser (commas) or by the list separator used below. Every "|" becomes "/",
+// so a name can never form " | " with a neighbouring separator (a name ending
+// in " |" or starting with "| " did, and the byte cut then kept part of it).
 func guardSafeLabel(name string) string {
-	name = strings.ReplaceAll(name, " | ", " / ")
+	name = strings.ReplaceAll(name, "|", "/")
 	return strings.ReplaceAll(name, ",", ";")
 }
 
