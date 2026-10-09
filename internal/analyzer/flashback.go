@@ -738,26 +738,25 @@ func guardSafeLabel(name string) string {
 	return strings.ReplaceAll(name, ",", ";")
 }
 
-// trimGuardList keeps only whole names that fit in room runes.
+// trimGuardList keeps only whole names that fit in room bytes. MySQL cuts
+// the sql_mode error value at 200 bytes, so a cut by characters drops every
+// name once multibyte names push it past that. The separator is ASCII, so a
+// cut at a separator is always on a character boundary.
 // The SQL in renderGeneratedGuard implements this same cut.
 func trimGuardList(list string, room int) string {
 	if room < 0 {
 		room = 0
 	}
-	runes := []rune(list)
-	if len(runes) <= room {
+	if len(list) <= room {
 		return list
 	}
-	cut := string(runes[:room])
-	extended := []rune(list + " | ")
-	if room+3 <= len(extended) && string(extended[room:room+3]) == " | " {
-		return cut
-	}
-	idx := strings.LastIndex(cut, " | ")
+	// A separator that starts at or before room ends the last name that fits.
+	window := (list + " | ")[:room+3]
+	idx := strings.LastIndex(window, " | ")
 	if idx < 0 {
 		return ""
 	}
-	return cut[:idx]
+	return list[:idx]
 }
 
 // guardErrorValue is the sql_mode string the guard assigns on a mismatch.
@@ -769,9 +768,11 @@ func guardErrorValue(safeNames []string) string {
 		return full
 	}
 	head := fmt.Sprintf("%s (%d columns): ", guardMismatchLead, len(safeNames))
-	short := head + trimGuardList(list, guardValueLimit-utf8.RuneCountInString(head))
-	if utf8.RuneCountInString(short) <= guardValueLimit && len(short) <= guardValueLimit {
-		return short
+	if cut := trimGuardList(list, guardValueLimit-len(head)); cut != "" {
+		short := head + cut
+		if utf8.RuneCountInString(short) <= guardValueLimit && len(short) <= guardValueLimit {
+			return short
+		}
 	}
 	return fmt.Sprintf("%s (%d columns)", guardMismatchLead, len(safeNames))
 }
@@ -819,11 +820,16 @@ func renderGeneratedGuard(groups []flashGroup) string {
 	b.WriteString("SET @binlogviz_mode = @@SESSION.sql_mode;\n")
 	fmt.Fprintf(&b, "SET @binlogviz_full = CONCAT(%s, ': ', IFNULL(@binlogviz_safe, ''));\n", lead)
 	fmt.Fprintf(&b, "SET @binlogviz_head = CONCAT(%s, ' (', @binlogviz_n, ' columns): ');\n", lead)
-	fmt.Fprintf(&b, "SET @binlogviz_room = %d - CHAR_LENGTH(@binlogviz_head);\n", guardValueLimit)
-	b.WriteString("SET @binlogviz_cut = IF(@binlogviz_safe IS NULL, '', LEFT(@binlogviz_safe, GREATEST(@binlogviz_room, 0)));\n")
-	b.WriteString("SET @binlogviz_cut = IF(@binlogviz_safe IS NULL OR CHAR_LENGTH(@binlogviz_safe) <= @binlogviz_room, IFNULL(@binlogviz_safe, ''), IF(SUBSTRING(CONCAT(@binlogviz_safe, ' | '), CHAR_LENGTH(@binlogviz_cut) + 1, 3) = ' | ', @binlogviz_cut, IF(LOCATE(' | ', @binlogviz_cut) = 0, '', LEFT(@binlogviz_cut, GREATEST(CHAR_LENGTH(@binlogviz_cut) - CHAR_LENGTH(SUBSTRING_INDEX(@binlogviz_cut, ' | ', -1)) - 3, 0)))));\n")
+	// Cut by bytes (#192): pick whole names on the binary copy, then take
+	// that many characters from the original. The script runs under
+	// SET NAMES utf8mb4, so the binary copy is utf8mb4.
+	fmt.Fprintf(&b, "SET @binlogviz_room = %d - LENGTH(@binlogviz_head);\n", guardValueLimit)
+	b.WriteString("SET @binlogviz_bin = CAST(IFNULL(@binlogviz_safe, '') AS BINARY);\n")
+	b.WriteString("SET @binlogviz_win = LEFT(CONCAT(@binlogviz_bin, CAST(' | ' AS BINARY)), GREATEST(@binlogviz_room + 3, 0));\n")
+	b.WriteString("SET @binlogviz_bcut = IF(LENGTH(@binlogviz_bin) <= @binlogviz_room, @binlogviz_bin, IF(LOCATE(CAST(' | ' AS BINARY), @binlogviz_win) = 0, CAST('' AS BINARY), LEFT(@binlogviz_win, LENGTH(@binlogviz_win) - LENGTH(SUBSTRING_INDEX(@binlogviz_win, CAST(' | ' AS BINARY), -1)) - 3)));\n")
+	b.WriteString("SET @binlogviz_cut = IF(@binlogviz_safe IS NULL, '', LEFT(@binlogviz_safe, CHAR_LENGTH(CONVERT(@binlogviz_bcut USING utf8mb4))));\n")
 	b.WriteString("SET @binlogviz_short = CONCAT(@binlogviz_head, @binlogviz_cut);\n")
-	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL, @binlogviz_mode, IF(CHAR_LENGTH(@binlogviz_full) <= %d AND LENGTH(@binlogviz_full) <= %d, @binlogviz_full, IF(CHAR_LENGTH(@binlogviz_short) <= %d AND LENGTH(@binlogviz_short) <= %d, @binlogviz_short, CONCAT(%s, ' (', @binlogviz_n, ' columns)'))));\n", guardValueLimit, guardValueLimit, guardValueLimit, guardValueLimit, lead)
+	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL, @binlogviz_mode, IF(CHAR_LENGTH(@binlogviz_full) <= %d AND LENGTH(@binlogviz_full) <= %d, @binlogviz_full, IF(@binlogviz_cut <> '' AND CHAR_LENGTH(@binlogviz_short) <= %d AND LENGTH(@binlogviz_short) <= %d, @binlogviz_short, CONCAT(%s, ' (', @binlogviz_n, ' columns)'))));\n", guardValueLimit, guardValueLimit, guardValueLimit, guardValueLimit, lead)
 	// A match in a session that is already read-only (an earlier failed
 	// script) cannot write either; say so instead of a bare ERROR 1792.
 	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL AND @binlogviz_ro_was <=> 1, %s, @binlogviz_mode);\n", sqlQuote(guardReadOnlyMsg))
