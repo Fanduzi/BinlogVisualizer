@@ -30,7 +30,9 @@ type FlashCol struct {
 // Before and After hold SQL literals aligned with Columns. A non-empty
 // ProblemKind means this row must not be rendered. Cols carries TABLE_MAP
 // metadata used to check a schema file. NonStrict is set when an ENUM value
-// is the error member (index 0), which strict sql_mode rejects.
+// is the error member (index 0), which strict sql_mode rejects. ZeroDate is
+// set when a DATE, DATETIME or TIMESTAMP value has a zero month or day
+// ('0000-00-00', '2026-00-15'), which NO_ZERO_DATE and NO_ZERO_IN_DATE reject.
 type FlashRow struct {
 	Schema        string
 	Table         string
@@ -42,6 +44,7 @@ type FlashRow struct {
 	PK            []int
 	NoPK          bool
 	NonStrict     bool
+	ZeroDate      bool
 	ProblemKind   string
 	ProblemColumn string
 	ProblemType   string
