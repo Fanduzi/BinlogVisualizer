@@ -70,7 +70,7 @@ func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 		Before:  []string{"2", "20", "21", "40"},
 		PK:      []int{0},
 	}
-	sql, err := renderUndoStatement(deleted, cols)
+	sql, err := renderUndoStatement(deleted, cols, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 		After:   []string{"1", "11", "12", "22"},
 		PK:      []int{0},
 	}
-	sql, err = renderUndoStatement(updated, cols)
+	sql, err = renderUndoStatement(updated, cols, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 		Before:  []string{"1", "2", "'a'"},
 		After:   []string{"1", "3", "'b'"},
 	}
-	sql, err = renderUndoStatement(heap, map[string]struct{}{"virt": {}})
+	sql, err = renderUndoStatement(heap, map[string]struct{}{"virt": {}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 		After:   []string{"11", "10"},
 		PK:      []int{0},
 	}
-	sql, err = renderUndoStatement(keyed, map[string]struct{}{"g": {}})
+	sql, err = renderUndoStatement(keyed, map[string]struct{}{"g": {}}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 		Schema: "shop", Table: "gen", Op: "DELETE",
 		Columns: []string{"virt"}, Before: []string{"1"}, PK: []int{0},
 	}
-	if _, err = renderUndoStatement(onlyGen, cols); err == nil || !strings.Contains(err.Error(), "shop.gen: cannot undo a row whose columns are all generated") {
+	if _, err = renderUndoStatement(onlyGen, cols, ""); err == nil || !strings.Contains(err.Error(), "shop.gen: cannot undo a row whose columns are all generated") {
 		t.Fatalf("all generated: %v", err)
 	}
 
@@ -334,13 +334,13 @@ func TestSchemaFileOmitsGeneratedColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (1, 10);") || strings.Contains(sql, "`stor`") {
+	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 1, 10 FROM DUAL WHERE @binlogviz_ok <=> '") || strings.Contains(sql, "`stor`") {
 		t.Fatalf("schema file sql:\n%s", sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) VALUES (1, 'a');") {
+	if !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) SELECT 1, 'a' FROM DUAL WHERE @binlogviz_ok <=> '") {
 		t.Fatalf("show create sql:\n%s", sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`other` (`id`, `virt`) VALUES (1, 2);") {
+	if !strings.Contains(sql, "INSERT INTO `shop`.`other` (`id`, `virt`) SELECT 1, 2 FROM DUAL WHERE @binlogviz_ok <=> '") {
 		t.Fatalf("unknown table sql:\n%s", sql)
 	}
 	warnings := a.FlashbackWarnings()
@@ -442,7 +442,7 @@ func assertBatchShowCreate(t *testing.T, batch string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (1, 10);") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
+	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 1, 10 FROM DUAL WHERE @binlogviz_ok <=> '") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
 		t.Fatalf("batch show create:\n%s", sql)
 	}
 	if warnings := a.FlashbackWarnings(); len(warnings) != 0 {

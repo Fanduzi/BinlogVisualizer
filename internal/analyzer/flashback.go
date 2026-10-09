@@ -1,11 +1,13 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. The lock is SET SESSION TRANSACTION READ ONLY, which names no server variable, and a prepared READ WRITE undoes it only after the check ran and matched on MySQL 5.7+ or MariaDB 10.2+, so a failed step, including PREPARE, leaves the session read-only. Older servers fail that guard with a clear message and stay read-only. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. The lock is SET SESSION TRANSACTION READ ONLY, which names no server variable, and a prepared READ WRITE undoes it only when @binlogviz_ok holds this script's token, which the guard sets only after the check ran and matched on MySQL 5.7+ or MariaDB 10.2+ in a writable session, so a failed step, including PREPARE, a header-less block, another script's block, or a reconnect leaves the session read-only. Every undo statement also checks the token, so statements run in a session without it change no row. The token is a hash of the rendered script. A match in a session that is already read-only fails the guard with a disconnect hint. Older servers fail that guard with a clear message and stay read-only. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0 is wrapped in a sql_mode save and restore that also drops TRADITIONAL.
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -456,6 +458,13 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 		b.WriteByte('\n')
 		b.WriteString(guard)
 	}
+	// With a guard, every undo statement also checks this script's token, so
+	// a statement run in a session where this script's guard did not match
+	// (a reconnect inside a block, a block from another script) changes no row.
+	tokenCond := ""
+	if guard != "" {
+		tokenCond = guardTokenCond
+	}
 	for i := len(groups) - 1; i >= 0; i-- {
 		group := groups[i]
 		b.WriteByte('\n')
@@ -482,7 +491,7 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 			if j < len(group.binds) {
 				gen = group.binds[j].gen
 			}
-			statement, err := renderUndoStatement(group.rows[j], gen)
+			statement, err := renderUndoStatement(group.rows[j], gen, tokenCond)
 			if err != nil {
 				return "", err
 			}
@@ -491,10 +500,22 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 		}
 		b.WriteString("COMMIT;\n")
 	}
-	return b.String(), nil
+	out := b.String()
+	if guard != "" {
+		// The token is a hash of the script with a fixed placeholder, so the
+		// same input always prints the same script and two different scripts
+		// get different tokens.
+		sum := sha256.Sum256([]byte(out))
+		out = strings.ReplaceAll(out, guardTokenMark, hex.EncodeToString(sum[:8]))
+	}
+	return out, nil
 }
 
-func renderUndoStatement(row model.FlashRow, gen map[string]struct{}) (string, error) {
+// renderUndoStatement prints one undo statement. A non-empty cond is added to
+// the statement so it changes no row unless cond is true: an INSERT becomes
+// INSERT ... SELECT ... FROM DUAL WHERE cond, and UPDATE and DELETE add
+// AND cond to the WHERE.
+func renderUndoStatement(row model.FlashRow, gen map[string]struct{}, cond string) (string, error) {
 	table := quoteIdent(row.Schema) + "." + quoteIdent(row.Table)
 	var statement string
 	var err error
@@ -504,7 +525,11 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}) (string, e
 		if len(cols) == 0 {
 			return "", generatedRowError(row)
 		}
-		statement = "INSERT INTO " + table + " (" + quoteColumnList(cols) + ") VALUES (" + strings.Join(vals, ", ") + ");"
+		if cond != "" {
+			statement = "INSERT INTO " + table + " (" + quoteColumnList(cols) + ") SELECT " + strings.Join(vals, ", ") + " FROM DUAL WHERE " + cond + ";"
+		} else {
+			statement = "INSERT INTO " + table + " (" + quoteColumnList(cols) + ") VALUES (" + strings.Join(vals, ", ") + ");"
+		}
 	case "UPDATE":
 		cols, vals := assignColumns(row.Columns, row.Before, gen)
 		if len(cols) == 0 {
@@ -514,9 +539,9 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}) (string, e
 		for i := range cols {
 			sets[i] = quoteIdent(cols[i]) + " = " + vals[i]
 		}
-		statement, err = undoWhere(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After)
+		statement, err = undoWhere(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After, cond)
 	default:
-		statement, err = undoWhere(row, "DELETE FROM "+table, row.After)
+		statement, err = undoWhere(row, "DELETE FROM "+table, row.After, cond)
 	}
 	if err != nil {
 		return "", err
@@ -573,7 +598,7 @@ func generatedRowError(row model.FlashRow) error {
 	}))
 }
 
-func undoWhere(row model.FlashRow, head string, image []string) (string, error) {
+func undoWhere(row model.FlashRow, head string, image []string, cond string) (string, error) {
 	pk := !row.NoPK && len(row.PK) > 0
 	indexes := row.PK
 	if !pk {
@@ -592,6 +617,9 @@ func undoWhere(row model.FlashRow, head string, image []string) (string, error) 
 	if len(parts) == 0 {
 		return "", generatedRowError(row)
 	}
+	if cond != "" {
+		parts = append(parts, cond)
+	}
 	statement := head + " WHERE " + strings.Join(parts, " AND ")
 	if !pk {
 		statement += " LIMIT 1"
@@ -609,6 +637,14 @@ type guardCol struct {
 const guardMismatchLead = "binlogviz: schema file does not match the target"
 const guardOldServerMsg = "binlogviz: target server is older than MySQL 5.7.0 or MariaDB 10.2 and is not supported for apply"
 const guardNotRunMsg = "binlogviz: generated-column guard did not run"
+const guardReadOnlyMsg = "binlogviz: this session is already read-only so the script cannot write. Disconnect and apply the script again in a new session"
+const guardMismatchHint = ". This session is now read-only: disconnect, fix the schema file, and apply the script again in a new session."
+
+// guardTokenMark is replaced by this script's token after rendering. The
+// guard sets @binlogviz_ok to the token only when it ran in this session and
+// matched; every block and every undo statement checks it.
+const guardTokenMark = "\x00binlogviz-token\x00"
+const guardTokenCond = "@binlogviz_ok <=> '" + guardTokenMark + "'"
 const guardValueLimit = 200
 
 // Prepared statement names. The suffix keeps them apart from names a DBA
@@ -640,16 +676,17 @@ func guardServerCheckSQL() string {
 // transaction the information_schema reads open when autocommit is 0, then
 // sets the session read-only with SET SESSION TRANSACTION READ ONLY, which
 // names no variable and exists on MySQL 5.6.5+ and MariaDB 10.0+. Only the
-// prepared @binlogviz_unlock_sql can make the session writable again, and the
-// guard sets it to SET SESSION TRANSACTION READ WRITE only after the check ran
-// and matched on a supported server whose session was writable. If PREPARE
-// fails (max_prepared_stmt_count) or any guard step fails, the session stays
-// read-only and every write fails with ERROR 1792. A header-less block or a
-// reconnect stays read-only only in a session that has not run a matching
-// guard, where the variable is unset. Known gaps (#197): a header-less block
-// after a correct script in the same session unlocks itself, and a reconnect in
-// the middle of a block is not locked until the next block.
+// prepared @binlogviz_unlock_sql can make the session writable again, and it
+// is SET SESSION TRANSACTION READ WRITE only when @binlogviz_ok holds this
+// script's token, which the guard sets only after the check ran and matched on
+// a supported server whose session was writable. A header-less block, a block
+// after a reconnect, and a block from another script that is run after this
+// one all stay read-only. If PREPARE fails (max_prepared_stmt_count) or any
+// guard step fails, the session stays read-only and every write fails with
+// ERROR 1792. A reconnect inside a block is covered by the token check in each
+// undo statement, not by this lock.
 const guardLockSQL = "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n" +
+	"SET @binlogviz_unlock_sql = IF(" + guardTokenCond + ", 'SET SESSION TRANSACTION READ WRITE', 'DO 0');\n" +
 	"PREPARE " + guardStmtUnlock + " FROM @binlogviz_unlock_sql;\n" +
 	"EXECUTE " + guardStmtUnlock + ";\n" +
 	"DEALLOCATE PREPARE " + guardStmtUnlock + ";\n"
@@ -737,7 +774,7 @@ func renderGeneratedGuard(groups []flashGroup) string {
 	b.WriteString("SET @binlogviz_ro_was = NULL;\n")
 	b.WriteString("SET @binlogviz_ro_sql = CONCAT('SET @binlogviz_ro_was = @@SESSION.', @binlogviz_ro);\n")
 	fmt.Fprintf(&b, "PREPARE %s FROM @binlogviz_ro_sql;\nEXECUTE %s;\nDEALLOCATE PREPARE %s;\n", guardStmtRO, guardStmtRO, guardStmtRO)
-	fmt.Fprintf(&b, "SET @binlogviz_guard_sql = IF(@binlogviz_old <=> 0, IF(@binlogviz_checked <=> 1, IF(@binlogviz_mismatch IS NULL, 'DO 0', CONCAT('SELECT ', QUOTE(CONCAT(%s, ': ', @binlogviz_mismatch)))), CONCAT('SELECT ', QUOTE(%s))), CONCAT('SELECT ', QUOTE(%s)));\n", lead, sqlQuote(guardNotRunMsg), sqlQuote(guardOldServerMsg))
+	fmt.Fprintf(&b, "SET @binlogviz_guard_sql = IF(@binlogviz_old <=> 0, IF(@binlogviz_checked <=> 1, IF(@binlogviz_mismatch IS NULL, IF(@binlogviz_ro_was <=> 1, CONCAT('SELECT ', QUOTE(%s)), 'DO 0'), CONCAT('SELECT ', QUOTE(CONCAT(%s, ': ', @binlogviz_mismatch, %s)))), CONCAT('SELECT ', QUOTE(%s))), CONCAT('SELECT ', QUOTE(%s)));\n", sqlQuote(guardReadOnlyMsg), lead, sqlQuote(guardMismatchHint), sqlQuote(guardNotRunMsg), sqlQuote(guardOldServerMsg))
 	fmt.Fprintf(&b, "PREPARE %s FROM @binlogviz_guard_sql;\nEXECUTE %s;\nDEALLOCATE PREPARE %s;\n", guardStmtMsg, guardStmtMsg, guardStmtMsg)
 	b.WriteString("SET @binlogviz_mode = @@SESSION.sql_mode;\n")
 	fmt.Fprintf(&b, "SET @binlogviz_full = CONCAT(%s, ': ', IFNULL(@binlogviz_safe, ''));\n", lead)
@@ -747,11 +784,15 @@ func renderGeneratedGuard(groups []flashGroup) string {
 	b.WriteString("SET @binlogviz_cut = IF(@binlogviz_safe IS NULL OR CHAR_LENGTH(@binlogviz_safe) <= @binlogviz_room, IFNULL(@binlogviz_safe, ''), IF(SUBSTRING(CONCAT(@binlogviz_safe, ' | '), CHAR_LENGTH(@binlogviz_cut) + 1, 3) = ' | ', @binlogviz_cut, IF(LOCATE(' | ', @binlogviz_cut) = 0, '', LEFT(@binlogviz_cut, GREATEST(CHAR_LENGTH(@binlogviz_cut) - CHAR_LENGTH(SUBSTRING_INDEX(@binlogviz_cut, ' | ', -1)) - 3, 0)))));\n")
 	b.WriteString("SET @binlogviz_short = CONCAT(@binlogviz_head, @binlogviz_cut);\n")
 	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL, @binlogviz_mode, IF(CHAR_LENGTH(@binlogviz_full) <= %d AND LENGTH(@binlogviz_full) <= %d, @binlogviz_full, IF(CHAR_LENGTH(@binlogviz_short) <= %d AND LENGTH(@binlogviz_short) <= %d, @binlogviz_short, CONCAT(%s, ' (', @binlogviz_n, ' columns)'))));\n", guardValueLimit, guardValueLimit, guardValueLimit, guardValueLimit, lead)
+	// A match in a session that is already read-only (an earlier failed
+	// script) cannot write either; say so instead of a bare ERROR 1792.
+	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_mismatch IS NULL AND @binlogviz_ro_was <=> 1, %s, @binlogviz_mode);\n", sqlQuote(guardReadOnlyMsg))
 	// An unsupported server or a check that did not run fails SET sql_mode too.
 	fmt.Fprintf(&b, "SET @binlogviz_mode = IF(@binlogviz_old <=> 0, IF(@binlogviz_checked <=> 1, @binlogviz_mode, %s), %s);\n", sqlQuote(guardNotRunMsg), sqlQuote(guardOldServerMsg))
-	// Unlock only on a match that ran on a supported server, and only when the
-	// session was writable before; a NULL anywhere keeps it read-only.
-	b.WriteString("SET @binlogviz_unlock_sql = IF(@binlogviz_old <=> 0 AND @binlogviz_checked <=> 1 AND @binlogviz_mismatch IS NULL AND NOT (@binlogviz_ro_was <=> 1), 'SET SESSION TRANSACTION READ WRITE', 'DO 0');\n")
+	// Set this script's token only on a match that ran on a supported server,
+	// and only when the session was writable before; a NULL anywhere keeps
+	// the session read-only and every undo statement a no-op.
+	b.WriteString("SET @binlogviz_ok = IF(@binlogviz_old <=> 0 AND @binlogviz_checked <=> 1 AND @binlogviz_mismatch IS NULL AND NOT (@binlogviz_ro_was <=> 1), '" + guardTokenMark + "', NULL);\n")
 	b.WriteString(guardLockSQL)
 	b.WriteString("SET SESSION sql_mode = @binlogviz_mode;\n")
 	return b.String()
