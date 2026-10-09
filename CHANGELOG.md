@@ -4,7 +4,29 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.24
+
+Release date: 2026-10-09
+
+Highlights:
+
+- `binlogviz flashback` closes the last ways a guarded script could still write wrong rows after its guard failed (#197, #191). `analyze` output and scripts without a guard are unchanged from v0.23.23. Details follow.
 - `binlogviz flashback` binds the apply guard to the script. The guard sets `@binlogviz_ok` to a token derived from the script text only on a match, each block unlocks only with that token, and every undo statement checks it (`INSERT ... SELECT ... FROM DUAL WHERE @binlogviz_ok <=> '<token>'`, `AND @binlogviz_ok <=> '<token>'` in `UPDATE`/`DELETE`). A header-less block pasted after another, correct script in the same session no longer writes (`ERROR 1792`), and when an interactive client reconnects in the middle of a block, the rest of that block changes no row. The same holds inside `XA START`. Fixes #197. A script applied in a session that is already read-only, for example after a failed guard, now stops at its own guard with `binlogviz: this session is already read-only so the script cannot write. Disconnect and apply the script again in a new session`, and a mismatch prints that the session is now read-only and what to do. Fixes #191. Scripts without a guard are unchanged.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- On a correct target, a reconnect in the middle of a block leaves that block not applied (earlier statements roll back, the rest change nothing). Resume from that block, with the header, in a new session.
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it; joined dumps use only the first `Database:` header.
+- [#180](https://github.com/Fanduzi/BinlogVisualizer/issues/180): rows written by a non-strict session can fail under a strict session (`ERROR 1292`, `ERROR 1365`). Apply with the original session's `sql_mode`.
+- [#187](https://github.com/Fanduzi/BinlogVisualizer/issues/187), [#192](https://github.com/Fanduzi/BinlogVisualizer/issues/192), [#193](https://github.com/Fanduzi/BinlogVisualizer/issues/193): a `Database:` header with a space and mixed-case names under `lower_case_table_names`; non-ASCII column names in the guard error; a non-default `div_precision_increment` with `DECIMAL` operands.
+- Resuming after a failed apply: keep the header, delete only the blocks above the failed one, and run the header plus the failed block and everything after it in a new session.
+
+Related notes:
+
+- [v0.23.24 release notes](docs/releases/release-notes-v0.23.24.md)
+- [v0.23.24 中文发行说明](docs/releases/release-notes-v0.23.24.zh-CN.md)
 
 ## v0.23.23
 
