@@ -1127,6 +1127,34 @@ func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
 	}
 }
 
+func TestRelaxedModesDropOnlyWhatTheRowNeeds(t *testing.T) {
+	gen := map[string]struct{}{"g": {}}
+	cases := []struct {
+		name string
+		row  model.FlashRow
+		gen  map[string]struct{}
+		want []string
+	}{
+		{"plain", model.FlashRow{Op: "DELETE", Columns: []string{"id"}, Before: []string{"1"}}, nil, nil},
+		{"enum0", model.FlashRow{Op: "DELETE", NonStrict: true, Columns: []string{"id"}, Before: []string{"1"}}, nil, []string{"STRICT_ALL_TABLES", "STRICT_TRANS_TABLES", "TRADITIONAL"}},
+		{"zerodate", model.FlashRow{Op: "UPDATE", ZeroDate: true, Columns: []string{"id"}, Before: []string{"1"}}, nil, []string{"NO_ZERO_DATE", "NO_ZERO_IN_DATE", "TRADITIONAL"}},
+		{"gen null", model.FlashRow{Op: "DELETE", Columns: []string{"id", "g"}, Before: []string{"1", "NULL"}}, gen, []string{"ERROR_FOR_DIVISION_BY_ZERO", "TRADITIONAL"}},
+		{"gen value", model.FlashRow{Op: "DELETE", Columns: []string{"id", "g"}, Before: []string{"1", "5"}}, gen, nil},
+		{"gen null kept", model.FlashRow{Op: "DELETE", Columns: []string{"id", "g"}, Before: []string{"1", "NULL"}}, nil, nil},
+		{"insert undo", model.FlashRow{Op: "INSERT", Columns: []string{"id", "g"}, After: []string{"1", "NULL"}}, gen, nil},
+	}
+	for _, c := range cases {
+		got := relaxedModes(c.row, c.gen)
+		if strings.Join(got, ",") != strings.Join(c.want, ",") {
+			t.Fatalf("%s: got %v want %v", c.name, got, c.want)
+		}
+	}
+	wrapped := sqlModeWrap("DELETE FROM t;", []string{"NO_ZERO_DATE", "TRADITIONAL"})
+	if strings.Contains(wrapped, "STRICT_TRANS_TABLES") || !strings.Contains(wrapped, "',NO_ZERO_DATE,'") || !strings.HasSuffix(wrapped, "SET SESSION sql_mode = @binlogviz_sql_mode;") {
+		t.Fatalf("wrap:\n%s", wrapped)
+	}
+}
+
 func intCols(n int) []model.FlashCol {
 	cols := make([]model.FlashCol, n)
 	for i := range cols {

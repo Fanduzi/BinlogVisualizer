@@ -99,6 +99,7 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 			return append(out, *problem)
 		}
 		row.NonStrict = imageHasEnumZero(ev.Table, row.Before) || imageHasEnumZero(ev.Table, row.After)
+		row.ZeroDate = imageHasZeroDate(ev.Table, row.Before) || imageHasZeroDate(ev.Table, row.After)
 		out = append(out, row)
 	}
 	return out
@@ -111,6 +112,32 @@ func imageHasEnumZero(table *replication.TableMapEvent, image []string) bool {
 		}
 	}
 	return false
+}
+
+// imageHasZeroDate reports a DATE, DATETIME or TIMESTAMP literal whose month
+// or day is zero. Such a value was stored by a session without NO_ZERO_DATE or
+// NO_ZERO_IN_DATE, and strict mode rejects it on apply.
+func imageHasZeroDate(table *replication.TableMapEvent, image []string) bool {
+	for i, lit := range image {
+		switch flashRealType(table, i) {
+		case mysql.MYSQL_TYPE_NEWDATE,
+			mysql.MYSQL_TYPE_DATETIME, mysql.MYSQL_TYPE_DATETIME2,
+			mysql.MYSQL_TYPE_TIMESTAMP, mysql.MYSQL_TYPE_TIMESTAMP2:
+			if zeroDateLiteral(lit) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// zeroDateLiteral reads a quoted 'YYYY-MM-DD...' literal and reports a zero
+// month or day. Any other shape is not a zero date.
+func zeroDateLiteral(lit string) bool {
+	if len(lit) < 12 || lit[0] != '\'' || lit[5] != '-' || lit[8] != '-' {
+		return false
+	}
+	return lit[6:8] == "00" || lit[9:11] == "00"
 }
 
 func flashColumnMeta(table *replication.TableMapEvent, width int) []model.FlashCol {
