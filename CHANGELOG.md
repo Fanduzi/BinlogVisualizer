@@ -4,6 +4,27 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.30
+
+Release date: 2026-10-10
+
+Highlights:
+
+- `binlogviz flashback --schema-file` names the `div_precision_increment` values that fit when a generated column with `/` is refused (#193). The table is still refused, but the error says the dump may be right and points at `--include-table` / `--exclude-table`, instead of only blaming the dump. Accept and refuse decisions and scripts are unchanged.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#215](https://github.com/Fanduzi/BinlogVisualizer/issues/215): the letter-case fold assumes a `lower_case_table_names=1` or `2` binlog server; a refused folded table is named by its binlog name. Both fail safe.
+- A column added and then modified or renamed within the parsed binlogs still makes a correct incident-time dump fail with `reordered ... c, c` (fails safe).
+- A `--schema-file-db` warning that conflicts with several `Database:` headers names only the last one.
+
+Related notes:
+
+- [v0.23.30 release notes](docs/releases/release-notes-v0.23.30.md)
+- [v0.23.30 中文发行说明](docs/releases/release-notes-v0.23.30.zh-CN.md)
+
 ## v0.23.29
 
 Release date: 2026-10-09
