@@ -6,7 +6,7 @@ This file records user-visible changes for tagged releases.
 
 ## v0.23.23
 
-Release date: 2026-10-08
+Release date: 2026-10-09
 
 Highlights:
 
