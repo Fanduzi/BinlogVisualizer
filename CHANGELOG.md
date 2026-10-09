@@ -4,6 +4,27 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.27
+
+Release date: 2026-10-09
+
+Highlights:
+
+- The `binlogviz flashback` guard error no longer shows a column that does not exist (#208). A name ending in ` |` could form the ` | ` separator, so the 200-byte cut kept part of that name. Every `|` in a guard label is now shown as `/`; the guard's `SELECT` on stdout and the SQL keep the real names. The guard refuses in the same cases and writes no rows.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- In the guard error line, a `|` in a column name is shown as `/`, so `a|b` and `a/b` look the same there. stdout and the SQL keep the real names.
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it; joined dumps use only the first `Database:` header.
+- [#187](https://github.com/Fanduzi/BinlogVisualizer/issues/187), [#193](https://github.com/Fanduzi/BinlogVisualizer/issues/193): a `Database:` header with a space and mixed-case names under `lower_case_table_names`; a non-default `div_precision_increment` with `DECIMAL` operands.
+
+Related notes:
+
+- [v0.23.27 release notes](docs/releases/release-notes-v0.23.27.md)
+- [v0.23.27 中文发行说明](docs/releases/release-notes-v0.23.27.zh-CN.md)
+
 ## v0.23.26
 
 Release date: 2026-10-09
