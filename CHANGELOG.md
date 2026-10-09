@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- `binlogviz flashback` binds the apply guard to the script. The guard sets `@binlogviz_ok` to a token derived from the script text only on a match, each block unlocks only with that token, and every undo statement checks it (`INSERT ... SELECT ... FROM DUAL WHERE @binlogviz_ok <=> '<token>'`, `AND @binlogviz_ok <=> '<token>'` in `UPDATE`/`DELETE`). A header-less block pasted after another, correct script in the same session no longer writes (`ERROR 1792`), and when an interactive client reconnects in the middle of a block, the rest of that block changes no row. The same holds inside `XA START`. Fixes #197. A script applied in a session that is already read-only, for example after a failed guard, now stops at its own guard with `binlogviz: this session is already read-only so the script cannot write. Disconnect and apply the script again in a new session`, and a mismatch prints that the session is now read-only and what to do. Fixes #191. Scripts without a guard are unchanged.
+
 ## v0.23.23
 
 Release date: 2026-10-09

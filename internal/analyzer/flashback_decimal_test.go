@@ -434,7 +434,7 @@ func TestDecimalGeneratedSchemaFile(t *testing.T) {
 			t.Fatalf("sql assigns %s:\n%s", col, sql)
 		}
 	}
-	if !strings.Contains(sql, "VALUES (1, 5, 2)") || strings.Contains(sql, "2.5000") {
+	if !strings.Contains(sql, "SELECT 1, 5, 2 FROM DUAL WHERE ") || strings.Contains(sql, "2.5000") {
 		t.Fatalf("sql:\n%s", sql)
 	}
 	if strings.Contains(sql, "not verified") {
