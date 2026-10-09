@@ -4,6 +4,28 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.29
+
+Release date: 2026-10-09
+
+Highlights:
+
+- `binlogviz flashback --schema-file` binds more correct dumps (#167). An `ADD COLUMN` from the parsed binlogs whose column is already in the dump with the same definition is treated as already applied, so the incident-time dump is no longer refused with `reordered ... c, c`. Each `Database:` header in a file of joined mysqldump outputs binds the dump that follows it, as `USE` does. When an ambiguous unqualified name leaves several tables without a definition, each one is warned about. Off-timeline dumps and changed definitions are still refused.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#193](https://github.com/Fanduzi/BinlogVisualizer/issues/193): a non-default `div_precision_increment` with `DECIMAL` operands.
+- [#215](https://github.com/Fanduzi/BinlogVisualizer/issues/215): the letter-case fold assumes a `lower_case_table_names=1` or `2` binlog server; a refused folded table is named by its binlog name. Both fail safe.
+- A column added and then modified or renamed within the parsed binlogs still makes a correct incident-time dump fail with `reordered ... c, c` (fails safe).
+- A `--schema-file-db` warning that conflicts with several `Database:` headers names only the last one.
+
+Related notes:
+
+- [v0.23.29 release notes](docs/releases/release-notes-v0.23.29.md)
+- [v0.23.29 中文发行说明](docs/releases/release-notes-v0.23.29.zh-CN.md)
+
 ## v0.23.28
 
 Release date: 2026-10-09
