@@ -397,7 +397,7 @@
   },
   "cmd.flashback.long": {
     "description": "flashback 命令长说明",
-    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列，并且文件必须是事故当时的表结构。ENUM 和 SET 写成成员序号 / 位掩码。ENUM 序号 0 会在该语句前后暂时去掉严格 sql_mode。记下的值与生成列表达式矛盾时拒绝。无法计算生成列表达式时省略该列，脚本里的守卫会检查目标上被省略的每一列是不是生成列。"
+    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列，并且文件必须是事故当时的表结构。ENUM 和 SET 写成成员序号 / 位掩码。ENUM 序号 0、零日期、以及记下值为 NULL 而被略去的生成列，只在该语句前后暂时去掉会拒绝它们的 sql_mode 标志。记下的值与生成列表达式矛盾时拒绝。无法计算生成列表达式时省略该列，脚本里的守卫会检查目标上被省略的每一列是不是生成列。"
   },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",
