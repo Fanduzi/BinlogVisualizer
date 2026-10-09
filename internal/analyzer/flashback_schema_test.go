@@ -773,6 +773,40 @@ func TestGuardSafeLabel(t *testing.T) {
 	if got := guardSafeLabel("shop.t.c"); got != "shop.t.c" {
 		t.Fatalf("plain: %q", got)
 	}
+	// #208: a name ending in " |" or starting with "| " must not form a separator.
+	if got := guardSafeLabel("db.t.x |"); got != "db.t.x /" {
+		t.Fatalf("suffix: %q", got)
+	}
+	if got := guardSafeLabel("db.t.| y"); got != "db.t./ y" {
+		t.Fatalf("prefix: %q", got)
+	}
+}
+
+// #208: with names ending in " |", the byte cut must keep only whole names.
+func TestGuardErrorValuePipeSuffix(t *testing.T) {
+	a := "p192.t." + strings.Repeat("a", 37)
+	b := "p192.t.生成列客户全名订单金额生成列客户全名订单金额生成列客户全 |"
+	c := "p192.t.c"
+	got := guardErrorValue([]string{guardSafeLabel(a), guardSafeLabel(b), guardSafeLabel(c)})
+	want := guardMismatchLead + " (3 columns): " + a
+	if got != want {
+		t.Fatalf("got %q (%d bytes)\nwant %q", got, len(got), want)
+	}
+	// Every room size: the kept list is a prefix of whole safe names.
+	names := []string{guardSafeLabel("d.t.x |"), guardSafeLabel("d.t.| y"), guardSafeLabel("d.t.字 |"), guardSafeLabel("d.t.z")}
+	list := strings.Join(names, " | ")
+	for room := 0; room <= len(list); room++ {
+		cut := trimGuardList(list, room)
+		ok := cut == ""
+		for k := 1; k <= len(names); k++ {
+			if cut == strings.Join(names[:k], " | ") {
+				ok = true
+			}
+		}
+		if !ok || len(cut) > room {
+			t.Fatalf("room %d: %q is not whole names", room, cut)
+		}
+	}
 }
 
 func TestTrimGuardList(t *testing.T) {
