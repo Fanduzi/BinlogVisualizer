@@ -369,7 +369,7 @@
   },
   "cmd.flashback.flag.schemaFile": {
     "description": "Flashback schema file flag",
-    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE), as the tables were at incident time. Unqualified names use a preceding USE, the dump's Database header, --schema-file-db, or the only schema of that table in the binlog. Optional; flashback stays offline"
+    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE), as the tables were at incident time. Unqualified names use a preceding USE, the preceding mysqldump Database header, --schema-file-db, or the only schema of that table in the binlog. Optional; flashback stays offline"
   },
   "cmd.flashback.flag.schemaFileDB": {
     "description": "Flashback default database for an unqualified schema file",
