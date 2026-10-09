@@ -4,6 +4,27 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.26
+
+Release date: 2026-10-09
+
+Highlights:
+
+- The `binlogviz flashback` guard error keeps non-ASCII column names (#192). MySQL cuts the `ERROR 1231` value at 200 bytes; the guard now picks whole names by bytes instead of characters, so CJK names are listed instead of falling back to the bare count. When no whole name fits, the value is the count form with no trailing `: `. The guard refuses in the same cases and writes no rows.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#167](https://github.com/Fanduzi/BinlogVisualizer/issues/167): an `ALTER` in the parsed binlog is applied a second time on top of a schema file that already contains it; joined dumps use only the first `Database:` header.
+- [#187](https://github.com/Fanduzi/BinlogVisualizer/issues/187), [#193](https://github.com/Fanduzi/BinlogVisualizer/issues/193): a `Database:` header with a space and mixed-case names under `lower_case_table_names`; a non-default `div_precision_increment` with `DECIMAL` operands.
+- [#208](https://github.com/Fanduzi/BinlogVisualizer/issues/208): a column name ending in ` |` can be cut mid-name in the guard error. Cosmetic; the guard still refuses and writes no rows.
+
+Related notes:
+
+- [v0.23.26 release notes](docs/releases/release-notes-v0.23.26.md)
+- [v0.23.26 中文发行说明](docs/releases/release-notes-v0.23.26.zh-CN.md)
+
 ## v0.23.25
 
 Release date: 2026-10-09
