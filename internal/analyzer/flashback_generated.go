@@ -567,6 +567,16 @@ type sqlScan struct {
 	i    int
 	last int
 	have bool
+	// divInc is div_precision_increment plus one; zero means MySQL's default.
+	divInc int
+}
+
+// divPrec is the div_precision_increment this scan divides with.
+func (sc *sqlScan) divPrec() int {
+	if sc.divInc == 0 {
+		return mysqlDefaultDivPrecIncrement
+	}
+	return sc.divInc - 1
 }
 
 func (sc *sqlScan) skip() {
