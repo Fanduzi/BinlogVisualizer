@@ -369,7 +369,7 @@
   },
   "cmd.flashback.flag.schemaFile": {
     "description": "flashback 的 schema 文件说明",
-    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE），必须是事故当时的表结构。未带库名时用前面的 USE、转储头里的 Database、--schema-file-db，或 binlog 里该表唯一的库。可选；flashback 始终离线"
+    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE），必须是事故当时的表结构。未带库名时用前面的 USE、前面最近的转储头里的 Database、--schema-file-db，或 binlog 里该表唯一的库。可选；flashback 始终离线"
   },
   "cmd.flashback.flag.schemaFileDB": {
     "description": "未带库名的 schema 文件使用的库",

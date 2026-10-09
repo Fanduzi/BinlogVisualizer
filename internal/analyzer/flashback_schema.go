@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"binlogviz/internal/i18n"
@@ -609,6 +610,37 @@ func normalizeCharset(charset string) string {
 	default:
 		return strings.ToLower(charset)
 	}
+}
+
+// dumpSegment is the part of a schema file that follows one mysqldump
+// "-- Host: ... Database:" header, up to the next header. db is empty for text
+// before the first header.
+type dumpSegment struct {
+	db  string
+	sql string
+}
+
+// dumpSegments splits concatenated single-database dumps so each header sets
+// the schema for the dump that follows it, as USE does.
+func dumpSegments(sql string) []dumpSegment {
+	lines := strings.SplitAfter(sql, "\n")
+	var out []dumpSegment
+	cur := dumpSegment{}
+	var b strings.Builder
+	for _, line := range lines {
+		if db := dumpDatabase(line); db != "" {
+			cur.sql = b.String()
+			if strings.TrimSpace(cur.sql) != "" || cur.db != "" {
+				out = append(out, cur)
+			}
+			cur = dumpSegment{db: db}
+			b.Reset()
+		}
+		b.WriteString(line)
+	}
+	cur.sql = b.String()
+	out = append(out, cur)
+	return out
 }
 
 // dumpDatabase reads the mysqldump header "-- Host: ... Database: <db>".
@@ -1307,9 +1339,76 @@ func addOneColumn(cols *[]schemaCol, def string) bool {
 	if !ok {
 		return false
 	}
+	// A schema file taken after this ALTER already has the column. MySQL
+	// rejects a duplicate ADD, so an identical column means the file
+	// includes the ALTER and the definition is already in effect.
+	if idx := schemaColIndex(*cols, col.name); idx >= 0 && sameSchemaCol((*cols)[idx], col) {
+		return true
+	}
 	pos := columnInsertPos(*cols, def)
 	*cols = insertSchemaCol(*cols, pos, col)
 	return true
+}
+
+// sameSchemaCol reports whether two parsed columns have the same name, type
+// and generation expression. Quoting, spacing and outer parentheses in the
+// expression are ignored because mysqldump rewrites them. A charset counts
+// only when both sides name one, since a file applies the table default.
+func sameSchemaCol(a, b schemaCol) bool {
+	if !strings.EqualFold(a.name, b.name) || a.generated != b.generated ||
+		!strings.EqualFold(a.base, b.base) || a.unsigned != b.unsigned {
+		return false
+	}
+	if a.generated && normalizeGenExpr(a.expr) != normalizeGenExpr(b.expr) {
+		return false
+	}
+	if a.charset != "" && b.charset != "" && normalizeCharset(a.charset) != normalizeCharset(b.charset) {
+		return false
+	}
+	if a.hasPrec && b.hasPrec && (a.prec != b.prec || a.scale != b.scale) {
+		return false
+	}
+	if len(a.members) != len(b.members) {
+		return false
+	}
+	for i := range a.members {
+		if a.members[i] != b.members[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func normalizeGenExpr(expr string) string {
+	var b strings.Builder
+	for _, r := range expr {
+		if r == '`' || unicode.IsSpace(r) {
+			continue
+		}
+		b.WriteRune(unicode.ToLower(r))
+	}
+	out := b.String()
+	for len(out) >= 2 && out[0] == '(' && out[len(out)-1] == ')' && outerParen(out) {
+		out = out[1 : len(out)-1]
+	}
+	return out
+}
+
+// outerParen reports whether the first '(' closes at the last byte.
+func outerParen(s string) bool {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 && i != len(s)-1 {
+				return false
+			}
+		}
+	}
+	return depth == 0
 }
 
 func replaceSchemaColumn(cols *[]schemaCol, def, old string) bool {

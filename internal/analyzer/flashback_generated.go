@@ -34,7 +34,8 @@ type generatedTables struct {
 
 // noteScript reads mysqldump --no-data output or SHOW CREATE TABLE text.
 // USE sets the schema for a following unqualified CREATE. Without USE, the
-// mysqldump "-- Host: ... Database:" header or flagDB is that schema.
+// mysqldump "-- Host: ... Database:" header or flagDB is that schema. Each
+// header of concatenated dumps sets the schema for the dump that follows it.
 // A row of "name<TAB>CREATE TABLE ..." is the mysql batch format. Several of
 // those rows may sit in one file with no ';' between them. mysql --batch
 // writes each newline inside a field as the two characters \ n.
@@ -45,17 +46,20 @@ func (g *generatedTables) noteScript(sql string) {
 	g.readingFile = true
 	defer func() { g.readingFile = false }()
 	g.headerDB = dumpDatabase(sql)
-	session := ""
-	switch {
-	case g.headerDB != "" && g.flagDB != "" && !strings.EqualFold(g.headerDB, g.flagDB):
-		g.ambiguousDB = true
-	case g.headerDB != "":
-		session = g.headerDB
-	case g.flagDB != "":
-		session = g.flagDB
-	}
-	for _, stmt := range splitSQL(sql) {
-		g.noteChunk(&session, stmt)
+	for _, seg := range dumpSegments(sql) {
+		session := ""
+		switch {
+		case seg.db != "" && g.flagDB != "" && !strings.EqualFold(seg.db, g.flagDB):
+			g.ambiguousDB = true
+			g.headerDB = seg.db
+		case seg.db != "":
+			session = seg.db
+		case g.headerDB == "" && g.flagDB != "":
+			session = g.flagDB
+		}
+		for _, stmt := range splitSQL(seg.sql) {
+			g.noteChunk(&session, stmt)
+		}
 	}
 }
 

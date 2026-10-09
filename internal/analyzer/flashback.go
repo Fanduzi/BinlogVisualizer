@@ -135,6 +135,7 @@ func (a *Analyzer) clearPendingUse(table string) {
 				continue
 			}
 			group.binds[i] = flashBind{}
+			a.noteFlashUnknown(flashTable(group.rows[i].Schema, group.rows[i].Table))
 		}
 	}
 }
