@@ -1085,6 +1085,30 @@ COMMIT;`)
 				t.Fatalf("header-less block was not read-only\n%s", out)
 			}
 		})
+		// #197: a stale unlock and another script's token left in the
+		// session do not unlock this script's blocks.
+		stale := "SET @binlogviz_unlock_sql = 'SET SESSION TRANSACTION READ WRITE';\nSET @binlogviz_ok = '0123456789abcdef';\n"
+		assertGuardForceKeepsRows(t, "STALE_TOKEN", stale+sql[cut:], matchSum, matchAfter, func(out string) {
+			if mysqlErrorLine(out, "1792") == "" {
+				t.Fatalf("stale token unlocked a block\n%s", out)
+			}
+		})
+		// #197: the statements of a block run in a new, writable session (an
+		// interactive client that reconnected inside the block) change no row.
+		var dml strings.Builder
+		for _, line := range strings.Split(sql[cut:], "\n") {
+			if strings.HasPrefix(line, "INSERT INTO ") || strings.HasPrefix(line, "UPDATE ") || strings.HasPrefix(line, "DELETE FROM ") {
+				dml.WriteString(line + "\n")
+			}
+		}
+		if dml.Len() == 0 {
+			t.Fatalf("no undo statements in:\n%s", sql)
+		}
+		assertGuardForceKeepsRows(t, "RECONNECT_DML", dml.String(), matchSum, matchAfter, func(out string) {
+			if mysqlErrorLine(out, "1792") != "" {
+				t.Fatalf("writable session refused the statements instead of skipping them\n%s", out)
+			}
+		})
 	}
 	// #196: a server that refuses new prepared statements still cannot write.
 	prevPrep := strings.TrimSpace(e2eMySQL(t, "SELECT @@GLOBAL.max_prepared_stmt_count"))
