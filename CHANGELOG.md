@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- `binlogviz flashback` restores rows written by a non-strict session when the script is applied in a strict one (#180). A zero month or day in a `DATE`, `DATETIME` or `TIMESTAMP` no longer stops apply at `ERROR 1292`, and a left-out generated column such as `a / b` written with `b` = 0 no longer stops it at `ERROR 1365`. Only that statement drops `NO_ZERO_DATE` and `NO_ZERO_IN_DATE`, or `ERROR_FOR_DIVISION_BY_ZERO`, plus `TRADITIONAL`, and the saved `@@SESSION.sql_mode` is restored right after it. Strict mode stays on, so a value that does not fit the target still fails.
+
 ## v0.23.24
 
 Release date: 2026-10-09

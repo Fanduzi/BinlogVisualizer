@@ -417,3 +417,37 @@ func flashTable(t *testing.T, types []byte, names [][]byte, pk []uint64, sign by
 		DefaultCharset:   []uint64{collation},
 	}
 }
+
+func TestCaptureZeroDateMarksRow(t *testing.T) {
+	table := &replication.TableMapEvent{
+		ColumnCount:      3,
+		ColumnType:       []byte{mysql.MYSQL_TYPE_LONG, mysql.MYSQL_TYPE_DATE, mysql.MYSQL_TYPE_DATETIME2},
+		ColumnMeta:       []uint16{0, 0, 0},
+		ColumnName:       [][]byte{[]byte("id"), []byte("d"), []byte("dt")},
+		PrimaryKey:       []uint64{0},
+		SignednessBitmap: []byte{0x00},
+	}
+	cases := []struct {
+		d, dt string
+		zero  bool
+	}{
+		{"0000-00-00", "2026-01-01 00:00:00", true},
+		{"2026-01-01", "2026-00-00 00:00:00", true},
+		{"2026-05-00", "2026-01-01 00:00:00", true},
+		{"0000-01-01", "2026-01-01 00:00:00", false},
+		{"2026-01-01", "2026-01-01 00:00:00", false},
+	}
+	for _, c := range cases {
+		rows := captureFlashbackRows(&replication.RowsEvent{
+			ColumnCount: 3,
+			Table:       table,
+			Rows:        [][]any{{int32(1), c.d, c.dt}},
+		}, kindDeleteRows, "shop", "zd")
+		if len(rows) != 1 || rows[0].ProblemKind != "" || rows[0].ZeroDate != c.zero {
+			t.Fatalf("%s %s: %+v", c.d, c.dt, rows)
+		}
+	}
+	if zeroDateLiteral("'00'") || zeroDateLiteral("NULL") || zeroDateLiteral("0") {
+		t.Fatal("short literal read as a zero date")
+	}
+}
