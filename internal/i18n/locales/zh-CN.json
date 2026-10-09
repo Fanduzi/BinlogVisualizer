@@ -315,6 +315,10 @@
     "description": "schema 文件的列类型与 binlog 不同",
     "other": "{{.Column}} 在 schema 文件里是 {{.File}}，在 binlog 里是 {{.Binlog}}"
   },
+  "error.flashbackSchemaDivInc": {
+    "description": "生成列含 / 且只在非默认 div_precision_increment 下成立",
+    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但记下的值只在 div_precision_increment 为 {{.Increments}} 时成立；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --include-table 或 --exclude-table 把它排除。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
+  },
   "error.flashbackSchemaGenerated": {
     "description": "生成列的表达式对不上 binlog 里的值",
     "other": "{{.Column}} 在 schema 文件里是生成列，但记下的值不是 {{.Expr}}；示例 {{.Example}}"
