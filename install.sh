@@ -33,7 +33,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$VERSION" ]; then
-  echo "--version is required, for example: ./install.sh --version v0.23.22" >&2
+  echo "--version is required, for example: ./install.sh --version v0.23.23" >&2
   exit 1
 fi
 
