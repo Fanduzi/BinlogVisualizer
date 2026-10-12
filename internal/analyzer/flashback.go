@@ -8,6 +8,7 @@ package analyzer
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -46,7 +47,7 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 		return
 	}
 	if ev.EventType == "DDL" {
-		a.flashErr = flashDDLError(ev)
+		a.flashErr = flashDDLError(ev, a.refusalTable(ev.Schema, ev.Table))
 		return
 	}
 	if ev.EventType != "ROWS" {
@@ -54,57 +55,59 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 	}
 	if len(ev.FlashRows) == 0 {
 		a.flashErr = fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{
-			"Table": flashTable(ev.Schema, ev.Table),
+			"Table": a.refusalTable(ev.Schema, ev.Table),
 		}))
 		return
 	}
 	for _, row := range ev.FlashRows {
 		if row.ProblemKind != "" {
-			a.flashErr = flashRowError(row)
+			a.flashErr = flashRowError(row, a.refusalTable(row.Schema, row.Table))
 			return
 		}
 	}
-	a.flashGen.foldCase(ev.Schema, ev.Table)
-	if a.flashGen.unknown(ev.Schema, ev.Table) {
+	res := a.flashCat.resolve(ev.Schema, ev.Table)
+	label := refusalLabel(res, ev.Schema, ev.Table)
+	bind := flashBind{}
+	switch res.kind {
+	case resolveRefused:
 		a.flashErr = fmt.Errorf("%s", i18n.Tf("error.flashbackGenerated", map[string]any{
-			"Table": flashTable(ev.Schema, ev.Table),
+			"Table": label,
 		}))
 		return
-	}
-	bind := flashBind{}
-	cols, fromFile, pending, ok := a.flashGen.definition(ev.Schema, ev.Table)
-	if !ok {
+	case resolveMissing, resolveAmbiguous:
 		a.noteFlashUnknown(flashTable(ev.Schema, ev.Table))
-	} else if fromFile {
-		bind.cols = cols
-		bind.fromPending = pending
-		bind.deferCheck = pending
-		if pending {
+	default: // resolveExact, resolveFold
+		if !res.checkRows {
+			bind.gen = generatedNameSet(res.cols)
+			break
+		}
+		bind.cols = res.cols
+		bind.fromPending = res.deferred
+		bind.deferCheck = res.deferred
+		if res.deferred {
 			// The schema is not final until every table map for this name is seen.
-		} else if err := a.acceptSchemaRows(ev.FlashRows, cols); err != nil {
+		} else if err := a.acceptSchemaRows(label, ev.FlashRows, res.cols); err != nil {
 			a.flashErr = err
 			return
 		} else {
-			bind.gen = generatedNameSet(cols)
+			bind.gen = generatedNameSet(res.cols)
 		}
-	} else {
-		bind.gen = generatedNameSet(cols)
 	}
 	a.appendFlashRows(ev, ev.FlashRows, bind)
 	a.noteFlashbackKept(ev)
 }
 
-func (a *Analyzer) acceptSchemaRows(rows []model.FlashRow, cols []schemaCol) error {
+func (a *Analyzer) acceptSchemaRows(label string, rows []model.FlashRow, cols []schemaCol) error {
 	for _, row := range rows {
-		if err := a.acceptSchema(row, cols); err != nil {
+		if err := a.acceptSchema(label, row, cols); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (a *Analyzer) acceptSchema(row model.FlashRow, cols []schemaCol) error {
-	warns, err := validateSchemaRow(row, cols)
+func (a *Analyzer) acceptSchema(label string, row model.FlashRow, cols []schemaCol) error {
+	warns, err := validateSchemaRow(label, row, cols)
 	if err != nil {
 		return err
 	}
@@ -148,7 +151,7 @@ func (a *Analyzer) finishSchema() error {
 			if !bind.deferCheck {
 				continue
 			}
-			if err := a.acceptSchema(group.rows[i], bind.cols); err != nil {
+			if err := a.acceptSchema(a.refusalTable(group.rows[i].Schema, group.rows[i].Table), group.rows[i], bind.cols); err != nil {
 				return err
 			}
 			bind.gen = generatedNameSet(bind.cols)
@@ -246,7 +249,7 @@ func (a *Analyzer) FlashbackWarnings() []string {
 		return nil
 	}
 	var out []string
-	out = append(out, a.flashGen.schemaWarnings()...)
+	out = append(out, a.flashCat.warnings()...)
 	out = append(out, a.flashSchemaWarn...)
 	for _, table := range a.flashUnknown {
 		out = append(out, i18n.Tf("warning.flashbackGenerated", map[string]any{"Table": table}))
@@ -272,10 +275,10 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 		return "", fmt.Errorf("%s", i18n.T("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
 	if a.flashErr != nil {
-		return "", a.flashGen.labelFold(a.flashErr)
+		return "", a.flashErr
 	}
 	if err := a.finishSchema(); err != nil {
-		return "", a.flashGen.labelFold(err)
+		return "", err
 	}
 	var kept []flashGroup
 	for _, group := range a.flashGroups {
@@ -287,8 +290,12 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 		return "", nil
 	}
 	sql, err := renderFlashbackSQL(kept, a.flashGenNotes)
+	var rowErr *generatedRowRefusal
+	if errors.As(err, &rowErr) {
+		return "", rowErr.named(a.refusalTable(rowErr.schema, rowErr.table))
+	}
 	if err != nil {
-		return "", a.flashGen.labelFold(err)
+		return "", err
 	}
 	return sql, nil
 }
@@ -343,6 +350,7 @@ func (a *Analyzer) collectGeneratedReview() error {
 	for _, key := range order {
 		b := groups[key]
 		table := flashTable(b.schema, b.table)
+		label := a.refusalTable(b.schema, b.table)
 		var imgs *genImages
 		for _, col := range b.cols {
 			if !col.generated {
@@ -354,10 +362,10 @@ func (a *Analyzer) collectGeneratedReview() error {
 			example, unknown := imgs.outcome(col)
 			if example != "" {
 				if fit, unchecked := imgs.divIncrementFit(col); len(fit) > 0 || len(unchecked) > 0 {
-					mismatches = append(mismatches, divIncrementMismatch(table, col, example, fit, unchecked).Error())
+					mismatches = append(mismatches, divIncrementMismatch(label, col, example, fit, unchecked).Error())
 					continue
 				}
-				mismatches = append(mismatches, generatedMismatch(table, col, example).Error())
+				mismatches = append(mismatches, generatedMismatch(label, col, example).Error())
 				continue
 			}
 			if !unknown {
@@ -394,8 +402,7 @@ func generatedSig(cols []schemaCol) string {
 	return b.String()
 }
 
-func flashRowError(row model.FlashRow) error {
-	table := flashTable(row.Schema, row.Table)
+func flashRowError(row model.FlashRow, table string) error {
 	switch row.ProblemKind {
 	case model.FlashProblemNames:
 		return fmt.Errorf("%s", i18n.Tf("error.flashbackNames", map[string]any{"Table": table}))
@@ -406,8 +413,9 @@ func flashRowError(row model.FlashRow) error {
 		if column == "" {
 			column = "?"
 		}
+		// The column follows the table name, so the plain binlog name is kept.
 		return fmt.Errorf("%s", i18n.Tf("error.flashbackType", map[string]any{
-			"Table":  table,
+			"Table":  flashTable(row.Schema, row.Table),
 			"Column": column,
 			"Type":   row.ProblemType,
 		}))
@@ -416,14 +424,14 @@ func flashRowError(row model.FlashRow) error {
 	}
 }
 
-func flashDDLError(ev model.NormalizedEvent) error {
+func flashDDLError(ev model.NormalizedEvent, table string) error {
 	statement := strings.TrimSpace(ev.QuerySQL)
 	if statement == "" {
 		statement = "DDL"
 	}
 	statement = oneLine(statement, 120)
 	return fmt.Errorf("%s", i18n.Tf("error.flashbackDDL", map[string]any{
-		"Table":     flashTable(ev.Schema, ev.Table),
+		"Table":     table,
 		"Statement": statement,
 	}))
 }
@@ -643,9 +651,44 @@ func isGenerated(gen map[string]struct{}, name string) bool {
 }
 
 func generatedRowError(row model.FlashRow) error {
-	return fmt.Errorf("%s", i18n.Tf("error.flashbackGeneratedRow", map[string]any{
-		"Table": flashTable(row.Schema, row.Table),
-	}))
+	return &generatedRowRefusal{schema: row.Schema, table: row.Table}
+}
+
+// generatedRowRefusal is a row with no base column to write. It names the
+// binlog table; FlashbackSQL re-renders it with the catalog label.
+type generatedRowRefusal struct {
+	schema, table string
+	label         string
+}
+
+func (e *generatedRowRefusal) Error() string {
+	label := e.label
+	if label == "" {
+		label = flashTable(e.schema, e.table)
+	}
+	return i18n.Tf("error.flashbackGeneratedRow", map[string]any{"Table": label})
+}
+
+func (e *generatedRowRefusal) named(label string) error {
+	copied := *e
+	copied.label = label
+	return &copied
+}
+
+// refusalTable names schema.table in a refusal, from its current catalog binding.
+func (a *Analyzer) refusalTable(schema, table string) string {
+	return refusalLabel(a.flashCat.peek(schema, table), schema, table)
+}
+
+// refusalLabel is the table name every refusal prints. A table bound by a
+// letter-case fold also names the schema-file table, in every language and on
+// every refusal line (#225).
+func refusalLabel(res resolution, schema, table string) string {
+	name := flashTable(schema, table)
+	if res.fileTable == "" {
+		return name
+	}
+	return i18n.Tf("error.flashbackSchemaFoldLabel", map[string]any{"Binlog": name, "File": res.fileTable})
 }
 
 func undoWhere(row model.FlashRow, head string, image []string, cond string) (string, error) {

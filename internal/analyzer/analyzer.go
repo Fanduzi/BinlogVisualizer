@@ -47,7 +47,7 @@ type Analyzer struct {
 
 	flashGroups     []flashGroup
 	flashErr        error
-	flashGen        generatedTables
+	flashCat        *schemaCatalog
 	flashUnknown    []string
 	flashSchemaWarn []string
 	flashGenNotes   []string
@@ -259,15 +259,12 @@ func (a *Analyzer) observeGTIDFlavor(ev model.NormalizedEvent) error {
 func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) error {
 	ev = enrichDDLEvent(ev)
 	if a.opts.Flashback {
-		before := len(a.flashGen.abandoned)
-		if ev.Schema != "" && ev.Table != "" {
-			a.flashGen.observe(ev.Schema, ev.Table)
-		}
+		dropped := a.flashCat.observeTable(ev.Schema, ev.Table)
 		if ev.EventType == "DDL" {
-			a.flashGen.note(ev.Schema, ev.QuerySQL)
+			dropped = append(dropped, a.flashCat.observeDDL(ev.Schema, ev.QuerySQL)...)
 		}
-		for _, item := range a.flashGen.abandoned[before:] {
-			a.clearPendingUse(item.table)
+		for _, table := range dropped {
+			a.clearPendingUse(table)
 		}
 	}
 	if err := a.observeGTIDFlavor(ev); err != nil {
@@ -449,7 +446,7 @@ func (a *Analyzer) reset() {
 	a.matchedGTIDs = make(map[string]struct{})
 	a.flashGroups = nil
 	a.flashErr = nil
-	a.flashGen = generatedTables{flagDB: strings.Trim(strings.TrimSpace(a.opts.SchemaFileDB), "`")}
+	a.flashCat = newSchemaCatalog(a.opts.SchemaFileDB)
 	a.flashUnknown = nil
 	a.flashSchemaWarn = nil
 	a.flashGenNotes = nil
@@ -458,7 +455,7 @@ func (a *Analyzer) reset() {
 	a.flashSplit = nil
 	a.flashSplitOrder = nil
 	if a.opts.Flashback && strings.TrimSpace(a.opts.SchemaSQL) != "" {
-		a.flashGen.noteScript(a.opts.SchemaSQL)
+		a.flashCat.loadFile(a.opts.SchemaSQL)
 	}
 	if a.store != nil {
 		a.err = a.store.Reset()

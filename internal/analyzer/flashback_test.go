@@ -52,11 +52,20 @@ func TestRenderFlashbackReversesTransactionsAndRows(t *testing.T) {
 	}
 }
 
+// genNames is the generated column set in effect for schema.table, or nil.
+func genNames(c *schemaCatalog, schema, table string) map[string]struct{} {
+	res := c.peek(schema, table)
+	if res.kind != resolveExact && res.kind != resolveFold {
+		return nil
+	}
+	return generatedNameSet(res.cols)
+}
+
 func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 	const create = "CREATE TABLE shop.gen (id INT PRIMARY KEY, base INT, virt INT AS (base + 1) VIRTUAL, stor INT AS (base * 2) STORED)"
-	var learned generatedTables
-	learned.note("shop", create)
-	cols := learned.columns("shop", "gen")
+	learned := newSchemaCatalog("")
+	learned.observeDDL("shop", create)
+	cols := genNames(learned, "shop", "gen")
 	if _, ok := cols["virt"]; !ok || len(cols) != 2 {
 		t.Fatalf("generated: %#v", cols)
 	}
@@ -135,34 +144,34 @@ func TestGeneratedColumnsOmittedOrRefused(t *testing.T) {
 		t.Fatalf("all generated: %v", err)
 	}
 
-	var bad generatedTables
-	bad.note("shop", "CREATE TABLE shop.t AS SELECT 1")
-	bad.note("shop", "CREATE TABLE shop.copied LIKE shop.missing")
-	bad.note("shop", "ALTER TABLE shop.fresh ADD COLUMN g INT AS (id + 1) VIRTUAL")
+	bad := newSchemaCatalog("")
+	bad.observeDDL("shop", "CREATE TABLE shop.t AS SELECT 1")
+	bad.observeDDL("shop", "CREATE TABLE shop.copied LIKE shop.missing")
+	bad.observeDDL("shop", "ALTER TABLE shop.fresh ADD COLUMN g INT AS (id + 1) VIRTUAL")
 	for _, table := range []string{"t", "copied", "fresh"} {
-		if !bad.unknown("shop", table) {
+		if bad.resolve("shop", table).kind != resolveRefused {
 			t.Fatalf("%s should be unknown", table)
 		}
 	}
 
-	learned.note("shop", "ALTER TABLE shop.gen ADD COLUMN extra INT AS (base + 2) VIRTUAL")
-	learned.note("shop", "CREATE TABLE shop.gen2 LIKE shop.gen")
-	if _, ok := learned.columns("shop", "gen2")["extra"]; !ok {
-		t.Fatalf("like: %#v", learned.columns("shop", "gen2"))
+	learned.observeDDL("shop", "ALTER TABLE shop.gen ADD COLUMN extra INT AS (base + 2) VIRTUAL")
+	learned.observeDDL("shop", "CREATE TABLE shop.gen2 LIKE shop.gen")
+	if _, ok := genNames(learned, "shop", "gen2")["extra"]; !ok {
+		t.Fatalf("like: %#v", genNames(learned, "shop", "gen2"))
 	}
-	learned.note("shop", "ALTER TABLE `shop`.`gen` DROP COLUMN virt")
-	if _, ok := learned.columns("shop", "gen")["virt"]; ok {
+	learned.observeDDL("shop", "ALTER TABLE `shop`.`gen` DROP COLUMN virt")
+	if _, ok := genNames(learned, "shop", "gen")["virt"]; ok {
 		t.Fatal("drop column kept virt")
 	}
-	learned.note("shop", "DROP TABLE IF EXISTS shop.gen, shop.gen2")
-	if learned.columns("shop", "gen") != nil || learned.unknown("shop", "gen") {
+	learned.observeDDL("shop", "DROP TABLE IF EXISTS shop.gen, shop.gen2")
+	if genNames(learned, "shop", "gen") != nil || learned.resolve("shop", "gen").kind == resolveRefused {
 		t.Fatal("drop table")
 	}
 
-	var always generatedTables
-	always.note("shop", "CREATE TABLE shop.g (id INT PRIMARY KEY, v INT GENERATED ALWAYS AS ((id + 1)) STORED)")
-	if _, ok := always.columns("shop", "g")["v"]; !ok {
-		t.Fatalf("generated always: %#v", always.columns("shop", "g"))
+	always := newSchemaCatalog("")
+	always.observeDDL("shop", "CREATE TABLE shop.g (id INT PRIMARY KEY, v INT GENERATED ALWAYS AS ((id + 1)) STORED)")
+	if _, ok := genNames(always, "shop", "g")["v"]; !ok {
+		t.Fatalf("generated always: %#v", genNames(always, "shop", "g"))
 	}
 }
 
