@@ -134,49 +134,6 @@ func (v genVal) asInt() (intVal, bool) {
 	}
 }
 
-// evalGenExpr evaluates expr with logged column values.
-// ok is false when the expression uses something this checker does not evaluate.
-func evalGenExpr(expr string, env map[string]genVal) (genVal, bool) {
-	sc := &sqlScan{s: expr}
-	v, ok := parseGenAdd(sc, env)
-	if !ok {
-		return genVal{}, false
-	}
-	sc.skip()
-	if sc.i != len(sc.s) {
-		return genVal{}, false
-	}
-	return v, true
-}
-
-func parseGenAdd(sc *sqlScan, env map[string]genVal) (genVal, bool) {
-	left, ok := parseGenMul(sc, env)
-	if !ok {
-		return genVal{}, false
-	}
-	for {
-		sc.skip()
-		if sc.i >= len(sc.s) || (sc.s[sc.i] != '+' && sc.s[sc.i] != '-') {
-			return left, true
-		}
-		// `->` and `->>` are consumed inside a primary. A following arrow is not addition.
-		if sc.s[sc.i] == '-' && sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '>' {
-			return left, true
-		}
-		op := sc.s[sc.i]
-		sc.i++
-		right, ok := parseGenMul(sc, env)
-		if !ok {
-			return genVal{}, false
-		}
-		next, ok := applyGenAdd(left, right, op)
-		if !ok {
-			return genVal{}, false
-		}
-		left = next
-	}
-}
-
 func applyGenAdd(left, right genVal, op byte) (genVal, bool) {
 	li, ok1 := left.asInt()
 	ri, ok2 := right.asInt()
@@ -195,77 +152,8 @@ func applyGenAdd(left, right genVal, op byte) (genVal, bool) {
 	return genVal{kind: genNum, n: n}, true
 }
 
-func parseGenMul(sc *sqlScan, env map[string]genVal) (genVal, bool) {
-	left, ok := parseGenUnary(sc, env)
-	if !ok {
-		return genVal{}, false
-	}
-	for {
-		op, ok := consumeMulOp(sc)
-		if !ok {
-			return left, true
-		}
-		right, ok := parseGenUnary(sc, env)
-		if !ok {
-			return genVal{}, false
-		}
-		li, ok1 := left.asInt()
-		ri, ok2 := right.asInt()
-		if !ok1 || !ok2 {
-			return genVal{}, false
-		}
-		next, ok := applyMulOp(li, ri, op)
-		if !ok {
-			return genVal{}, false
-		}
-		left = genVal{kind: genNum, n: next.n}
-		if next.null {
-			left = genNullVal()
-		}
-	}
-}
-
-func parseGenUnary(sc *sqlScan, env map[string]genVal) (genVal, bool) {
-	sc.skip()
-	if sc.i < len(sc.s) && (sc.s[sc.i] == '-' || sc.s[sc.i] == '+') && !sc.startsArrow() {
-		op := sc.s[sc.i]
-		sc.i++
-		v, ok := parseGenUnary(sc, env)
-		if !ok || v.kind == genNull || op == '+' {
-			return v, ok
-		}
-		iv, ok := v.asInt()
-		if !ok || iv.null {
-			return v, ok
-		}
-		return genVal{kind: genNum, n: new(big.Rat).Neg(iv.n)}, true
-	}
-	return parseGenPrimary(sc, env)
-}
-
 func (sc *sqlScan) startsArrow() bool {
 	return sc.i+1 < len(sc.s) && sc.s[sc.i] == '-' && sc.s[sc.i+1] == '>'
-}
-
-func parseGenPrimary(sc *sqlScan, env map[string]genVal) (genVal, bool) {
-	v, ok := parseGenAtom(sc, env)
-	if !ok {
-		return genVal{}, false
-	}
-	for {
-		unquote, arrow := sc.consumeArrow()
-		if !arrow {
-			return v, true
-		}
-		path, ok := sc.constString()
-		if !ok {
-			return genVal{}, false
-		}
-		v, ok = applyJSONArrow(v, path, unquote)
-		if !ok {
-			return genVal{}, false
-		}
-	}
 }
 
 func (sc *sqlScan) consumeArrow() (unquote, ok bool) {
@@ -279,77 +167,6 @@ func (sc *sqlScan) consumeArrow() (unquote, ok bool) {
 		return true, true
 	}
 	return false, true
-}
-
-func parseGenAtom(sc *sqlScan, env map[string]genVal) (genVal, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) {
-		return genVal{}, false
-	}
-	switch sc.s[sc.i] {
-	case '(':
-		body, ok := sc.parenBody()
-		if !ok {
-			return genVal{}, false
-		}
-		return evalGenExpr(body, env)
-	case '\'', '"':
-		return sc.quotedText("utf8mb4")
-	}
-	if sc.s[sc.i] == 'X' || sc.s[sc.i] == 'x' {
-		if v, ok, parsed := sc.hexBinary(); parsed {
-			return v, ok
-		}
-	}
-	if sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
-		return sc.numberAtom()
-	}
-	quoted := sc.s[sc.i] == '`'
-	name, ok := sc.ident()
-	if !ok {
-		return genVal{}, false
-	}
-	if !quoted && strings.HasPrefix(name, "_") {
-		if v, ok, parsed := sc.introducedLiteral(name); parsed {
-			return v, ok
-		}
-	}
-	if sc.peekByte() == '(' {
-		return parseGenCall(sc, name, env)
-	}
-	sc.skipCollate()
-	if !quoted && isNullWord(name) {
-		return genNullVal(), true
-	}
-	if !quoted && isBoolWord(name) {
-		if strings.EqualFold(name, "TRUE") {
-			return genNumVal("1")
-		}
-		return genNumVal("0")
-	}
-	v, ok := env[strings.ToLower(name)]
-	if !ok || v.kind == genBad {
-		return genVal{}, false
-	}
-	return v, true
-}
-
-func parseGenCall(sc *sqlScan, name string, env map[string]genVal) (genVal, bool) {
-	body, ok := sc.parenBody()
-	if !ok {
-		return genVal{}, false
-	}
-	var args []genVal
-	if strings.TrimSpace(body) != "" {
-		for _, part := range splitComma(body) {
-			v, ok := evalGenExpr(part, env)
-			if !ok {
-				return genVal{}, false
-			}
-			args = append(args, v)
-		}
-	}
-	return evalGenCall(name, args)
 }
 
 func evalGenCall(name string, args []genVal) (genVal, bool) {
@@ -825,7 +642,7 @@ func decodeSQLEscape(c byte) byte {
 }
 
 func (sc *sqlScan) constString() (string, bool) {
-	v, ok := parseGenAtom(sc, nil)
+	v, ok := sc.evalAtom()
 	if !ok || v.kind != genText {
 		return "", false
 	}
@@ -1103,7 +920,7 @@ func parseLoggedValue(lit string) (genVal, bool) {
 		return v, true
 	case s[0] == '_' || s[0] == 'X' || s[0] == 'x' || strings.HasPrefix(strings.ToLower(s), "0x"):
 		sc := &sqlScan{s: s}
-		v, ok := parseGenAtom(sc, nil)
+		v, ok := sc.evalAtom()
 		if !ok {
 			return genVal{}, false
 		}
@@ -2957,51 +2774,6 @@ func decFromGen(v genVal) (decVal, bool) {
 	return decVal{n: new(big.Rat).Set(v.n), scale: scale}, true
 }
 
-func evalDecExpr(expr string, env map[string]genVal) (decVal, bool) {
-	return evalDecExprInc(expr, env, mysqlDefaultDivPrecIncrement)
-}
-
-// evalDecExprInc evaluates expr with / at div_precision_increment inc.
-func evalDecExprInc(expr string, env map[string]genVal, inc int) (decVal, bool) {
-	sc := &sqlScan{s: expr, divInc: inc + 1}
-	v, ok := parseDecAdd(sc, env)
-	if !ok {
-		return decVal{}, false
-	}
-	sc.skip()
-	if sc.i != len(sc.s) {
-		return decVal{}, false
-	}
-	return v, true
-}
-
-func parseDecAdd(sc *sqlScan, env map[string]genVal) (decVal, bool) {
-	left, ok := parseDecMul(sc, env)
-	if !ok {
-		return decVal{}, false
-	}
-	for {
-		sc.skip()
-		if sc.i >= len(sc.s) || (sc.s[sc.i] != '+' && sc.s[sc.i] != '-') {
-			return left, true
-		}
-		if sc.s[sc.i] == '-' && sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '>' {
-			return left, true
-		}
-		op := sc.s[sc.i]
-		sc.i++
-		right, ok := parseDecMul(sc, env)
-		if !ok {
-			return decVal{}, false
-		}
-		next, ok := applyDecAdd(left, right, op)
-		if !ok {
-			return decVal{}, false
-		}
-		left = next
-	}
-}
-
 func applyDecAdd(left, right decVal, op byte) (decVal, bool) {
 	if left.null || right.null {
 		return decVal{null: true}, true
@@ -3022,28 +2794,6 @@ func applyDecAdd(left, right decVal, op byte) (decVal, bool) {
 	// The sum is exact at max(scale). MySQL does not round it here. A sum
 	// that does not fit in 65 digits is unverified, not rounded down.
 	return placeDec(n, scale, false), true
-}
-
-func parseDecMul(sc *sqlScan, env map[string]genVal) (decVal, bool) {
-	left, ok := parseDecUnary(sc, env)
-	if !ok {
-		return decVal{}, false
-	}
-	for {
-		op, ok := consumeMulOp(sc)
-		if !ok {
-			return left, true
-		}
-		right, ok := parseDecUnary(sc, env)
-		if !ok {
-			return decVal{}, false
-		}
-		next, ok := applyDecMul(left, right, op, sc.divPrec())
-		if !ok {
-			return decVal{}, false
-		}
-		left = next
-	}
 }
 
 func applyDecMul(left, right decVal, op string, inc int) (decVal, bool) {
@@ -3143,102 +2893,4 @@ func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
 		return decVal{null: true}, true
 	}
 	return placeDec(next.n, 0, false), true
-}
-
-func parseDecUnary(sc *sqlScan, env map[string]genVal) (decVal, bool) {
-	sc.skip()
-	if sc.i < len(sc.s) && (sc.s[sc.i] == '-' || sc.s[sc.i] == '+') && !sc.startsArrow() {
-		op := sc.s[sc.i]
-		sc.i++
-		v, ok := parseDecUnary(sc, env)
-		if !ok || v.null || op == '+' {
-			return v, ok
-		}
-		if v.mode == decOmit || v.n == nil {
-			if v.mode == decOmit {
-				return decVal{mode: decOmit}, true
-			}
-			return decVal{}, false
-		}
-		return decVal{n: new(big.Rat).Neg(v.n), scale: v.scale, mode: v.mode}, true
-	}
-	return parseDecPrimary(sc, env)
-}
-
-func parseDecPrimary(sc *sqlScan, env map[string]genVal) (decVal, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) {
-		return decVal{}, false
-	}
-	switch sc.s[sc.i] {
-	case '(':
-		body, ok := sc.parenBody()
-		if !ok {
-			return decVal{}, false
-		}
-		return evalDecExprInc(body, env, sc.divPrec())
-	}
-	if sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
-		return sc.decNumber()
-	}
-	quoted := sc.s[sc.i] == '`'
-	name, ok := sc.ident()
-	if !ok {
-		return decVal{}, false
-	}
-	if !quoted && strings.EqualFold(name, "MOD") && sc.peekByte() == '(' {
-		return parseDecMod(sc, env)
-	}
-	if sc.peekByte() == '(' {
-		return decVal{}, false
-	}
-	if !quoted && isNullWord(name) {
-		return decVal{null: true}, true
-	}
-	if !quoted && isBoolWord(name) {
-		if strings.EqualFold(name, "TRUE") {
-			return decVal{n: big.NewRat(1, 1), scale: 0}, true
-		}
-		return decVal{n: new(big.Rat), scale: 0}, true
-	}
-	v, ok := env[strings.ToLower(name)]
-	if !ok || v.kind == genBad {
-		return decVal{}, false
-	}
-	return decFromGen(v)
-}
-
-func parseDecMod(sc *sqlScan, env map[string]genVal) (decVal, bool) {
-	body, ok := sc.parenBody()
-	if !ok {
-		return decVal{}, false
-	}
-	parts := splitComma(body)
-	if len(parts) != 2 {
-		return decVal{}, false
-	}
-	left, ok := evalDecExprInc(parts[0], env, sc.divPrec())
-	if !ok {
-		return decVal{}, false
-	}
-	right, ok := evalDecExprInc(parts[1], env, sc.divPrec())
-	if !ok {
-		return decVal{}, false
-	}
-	return decIntOp(left, right, true)
-}
-
-func (sc *sqlScan) decNumber() (decVal, bool) {
-	start := sc.i
-	for sc.i < len(sc.s) && sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
-		sc.i++
-	}
-	if sc.i < len(sc.s) && (sc.s[sc.i] == '.' || sc.s[sc.i] == 'e' || sc.s[sc.i] == 'E') {
-		return decVal{}, false
-	}
-	n := new(big.Int)
-	if _, ok := n.SetString(sc.s[start:sc.i], 10); !ok {
-		return decVal{}, false
-	}
-	return decVal{n: new(big.Rat).SetInt(n), scale: 0}, true
 }

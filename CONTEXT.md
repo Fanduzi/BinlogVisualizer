@@ -63,3 +63,7 @@ _Avoid_: generatedTables (its old name), schema binding, label rewrite
 **Apply guard**:
 The SQL a flashback script runs before its first transaction when it omits generated columns: it checks those columns are GENERATED on the target, cuts the mismatch message to whole names within MySQL's 200-byte sql_mode value, and leaves the session read-only unless the check matched; each block repeats the lock and each undo statement checks the script's token. One module, `internal/analyzer/flashback_guard.go` (header, block lock, row condition, token seal); the message cut exists only in the emitted SQL and is tested by running it on MySQL. See ADR-0006.
 _Avoid_: guard twin, guardErrorValue (removed Go copy of the cut)
+
+**Expression evaluator**:
+The code that computes a schema-file generated-column expression from logged values, to check the logged generated value. One grammar parsed once per expression text into a cached tree; one walk in the general domain (`evalGenExpr`: integers, text, JSON) or the exact-DECIMAL domain (`evalDecExprInc`, which takes div_precision_increment and accepts only numbers, columns, NULL/TRUE/FALSE, arithmetic, MOD and parentheses). One module, `internal/analyzer/flashback_eval.go`. See ADR-0007.
+_Avoid_: gen parser, dec parser, evalIntExpr (removed integer evaluator)
