@@ -343,14 +343,18 @@ func (a *Analyzer) collectGeneratedReview() error {
 	for _, key := range order {
 		b := groups[key]
 		table := flashTable(b.schema, b.table)
+		var imgs *genImages
 		for _, col := range b.cols {
 			if !col.generated {
 				continue
 			}
-			example, unknown := generatedColumnOutcome(col, b.images, b.cols)
+			if imgs == nil {
+				imgs = prepareGenImages(b.images, b.cols)
+			}
+			example, unknown := imgs.outcome(col)
 			if example != "" {
-				if fit := divIncrementFit(col, b.images, b.cols); len(fit) > 0 {
-					mismatches = append(mismatches, divIncrementMismatch(table, col, example, fit).Error())
+				if fit, unchecked := imgs.divIncrementFit(col); len(fit) > 0 || len(unchecked) > 0 {
+					mismatches = append(mismatches, divIncrementMismatch(table, col, example, fit, unchecked).Error())
 					continue
 				}
 				mismatches = append(mismatches, generatedMismatch(table, col, example).Error())

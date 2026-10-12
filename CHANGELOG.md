@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- Flashback: the `div_precision_increment` hint for a refused `/` column (#193) is much faster on a refused run (each image is parsed once per table, not once per column and increment), and it names the increments it could not check instead of printing a cut-short `only at` range or no hint at all. The advice now says `--exclude-table` (or `--include-table` listing only the other tables). Accept and refuse decisions and scripts are unchanged (#226, #227).
+
 ## v0.23.31
 
 Release date: 2026-10-12
