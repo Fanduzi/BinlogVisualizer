@@ -1757,10 +1757,14 @@
   },
   "warning.flashbackSchemaFold": {
     "description": "A schema-file table matched the binlog table only when letter case is ignored",
-    "other": "warning: {{.Binlog}}: using {{.File}} from --schema-file, which differs only in letter case (the dump and the binlog server likely have different lower_case_table_names). The rows are still checked against it."
+    "other": "warning: {{.Binlog}}: using {{.File}} from --schema-file, which differs only in letter case. This assumes the binlog server folds table names (lower_case_table_names=1 or 2). If it ran with lower_case_table_names=0, {{.Binlog}} and {{.File}} can be two different tables: use a dump that has {{.Binlog}} under its exact name. The rows are still checked against it."
   },
   "warning.flashbackSchemaFoldMiss": {
     "description": "A schema-file table differs from the binlog table only in letter case but was not used",
     "other": "warning: {{.Binlog}}: --schema-file has {{.File}}, which differs only in letter case; it was not used. If lower_case_table_names differs between the servers, rename the table in the file to match the binlog."
+  },
+  "error.flashbackSchemaFoldLabel": {
+    "description": "A refused table that used a letter-case fold names the schema-file table too",
+    "other": "{{.Binlog}} (schema file table {{.File}}, letter case differs)"
   }
 }

@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- Flashback: when a table matched through the letter-case fold is refused, the error names the schema-file table as well as the binlog table, and the fold warning says it assumes the binlog server had `lower_case_table_names=1` or `2` (#215).
+
 ## v0.23.30
 
 Release date: 2026-10-10
