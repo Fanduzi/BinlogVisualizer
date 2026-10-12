@@ -1,11 +1,12 @@
 // Package analyzer: the generated-column expression evaluator.
 // input: a generated-column expression from a schema file, logged column values, and (for DECIMAL arithmetic) a div_precision_increment.
-// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; evalGenExpr) or the exact-DECIMAL domain (evalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses.
+// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; evalGenExpr) or the exact-DECIMAL domain (evalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237).
 // pos: flashback-only module. Analyze does not call it. Value helpers (genVal, decVal, apply*) live in flashback_expr.go and flashback_schema.go.
 // note: if this file changes, update this header, CONTEXT.md (Expression evaluator) and docs/adr/0007-expression-evaluator.md.
 package analyzer
 
 import (
+	"math"
 	"math/big"
 	"strings"
 	"sync"
@@ -370,7 +371,7 @@ func (n *exprNode) evalDec(env map[string]genVal, inc int) (decVal, bool) {
 		if !ok {
 			return decVal{}, false
 		}
-		return applyDecAdd(left, right, n.op)
+		return decZeroScale(applyDecAdd(left, right, n.op))
 	case exMul:
 		left, ok := n.l.evalDec(env, inc)
 		if !ok {
@@ -380,7 +381,12 @@ func (n *exprNode) evalDec(env map[string]genVal, inc int) (decVal, bool) {
 		if !ok {
 			return decVal{}, false
 		}
-		return applyDecMul(left, right, n.mulOp, inc)
+		if n.mulOp == "/" && decIsZero(left) && right.mode == decClaim && right.n != nil && right.n.Sign() != 0 {
+			// MySQL's decimal_div returns a plain 0 for a zero dividend
+			// before it sizes the quotient.
+			return decVal{n: new(big.Rat), scale: 0}, true
+		}
+		return decZeroScale(applyDecMul(left, right, n.mulOp, inc))
 	case exUnary:
 		v, ok := n.x.evalDec(env, inc)
 		if !ok || v.null || n.op == '+' {
@@ -433,7 +439,7 @@ func (n *exprNode) evalDec(env map[string]genVal, inc int) (decVal, bool) {
 		if !ok {
 			return decVal{}, false
 		}
-		return decIntOp(left, right, true)
+		return decZeroScale(decIntOp(left, right, true))
 	}
 	// exArrow, exLit: not DECIMAL arithmetic.
 	return decVal{}, false
@@ -447,4 +453,121 @@ func (sc *sqlScan) evalAtom() (genVal, bool) {
 		return genVal{}, false
 	}
 	return n.evalGen(nil)
+}
+
+// walk follows a constant JSON path. An array index on a value that is not
+// an array autowraps it, as MySQL does: [0] is the value itself and any
+// other index is missing (#237).
+func (n *jNode) walk(steps []jStep) (*jNode, bool) {
+	cur := n
+	for _, step := range steps {
+		if cur == nil {
+			return nil, false
+		}
+		if step.isIdx {
+			if cur.kind != jArr {
+				if step.index != 0 {
+					return nil, false
+				}
+				continue
+			}
+			if step.index < 0 || step.index >= len(cur.arr) {
+				return nil, false
+			}
+			cur = cur.arr[step.index]
+			continue
+		}
+		if cur.kind != jObj {
+			return nil, false
+		}
+		found := false
+		for _, pair := range cur.obj {
+			if pair.k == step.key {
+				cur = pair.v
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, false
+		}
+	}
+	return cur, true
+}
+
+// decIntOp is DIV (remainder false) or % / MOD (remainder true) on exact
+// DECIMAL values. Operands with a fraction come from MySQL's own rounded
+// arithmetic (for example a / already cut to its scale), so the result
+// follows that rounding (#238). DIV truncates the exact quotient toward
+// zero; a quotient outside BIGINT is not claimed. % is exact, takes the
+// dividend's sign and the larger operand scale (scale 0 when it is zero). A zero divisor is NULL.
+func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
+	if left.null || right.null {
+		return decVal{null: true}, true
+	}
+	if right.mode == decClaim && right.n != nil && right.n.Sign() == 0 {
+		return decVal{null: true}, true // whatever the dividend is
+	}
+	if left.scale == 0 && right.scale == 0 {
+		if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil {
+			return decVal{mode: decOmit}, true
+		}
+		next, ok := applyIntDiv(intVal{n: left.n}, intVal{n: right.n}, remainder)
+		if !ok {
+			return decVal{}, false
+		}
+		if next.null {
+			return decVal{null: true}, true
+		}
+		return placeDec(next.n, 0, false), true
+	}
+	// An operand this walk does not claim, or one near DECIMAL's 65 digits
+	// (where MySQL's own arithmetic can overflow first), is declined as
+	// before this was modelled.
+	if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil ||
+		decDigits(left.n, left.scale) > decIntOpMaxDigits || decDigits(right.n, right.scale) > decIntOpMaxDigits {
+		return decVal{}, false
+	}
+	q := new(big.Rat).Quo(left.n, right.n)
+	t := new(big.Int).Quo(q.Num(), q.Denom()) // toward zero
+	if !remainder {
+		if t.Cmp(maxInt64Big) > 0 || t.Cmp(minInt64Big) < 0 {
+			return decVal{mode: decOmit}, true
+		}
+		return placeDec(new(big.Rat).SetInt(t), 0, false), true
+	}
+	rem := new(big.Rat).Sub(left.n, new(big.Rat).Mul(right.n, new(big.Rat).SetInt(t)))
+	if rem.Sign() == 0 {
+		// MySQL's decimal_mod makes a zero remainder a plain 0 (scale 0),
+		// which a following / sees.
+		return placeDec(rem, 0, false), true
+	}
+	scale := left.scale
+	if right.scale > scale {
+		scale = right.scale
+	}
+	return placeDec(rem, scale, false), true
+}
+
+// decIntOpMaxDigits bounds the operands of a fractional DIV or %.
+const decIntOpMaxDigits = 60
+
+var (
+	maxInt64Big = big.NewInt(math.MaxInt64)
+	minInt64Big = big.NewInt(math.MinInt64)
+)
+
+// decZeroScale applies MySQL's rule that an arithmetic result of zero is a
+// plain 0 with scale 0 (decimal_make_zero), which a later / sees: for
+// example 1.0000/((x - x) - 7) has 9 digits, not 9 + x's scale (#238). A
+// literal zero keeps its scale; this is only applied to operator results.
+func decZeroScale(v decVal, ok bool) (decVal, bool) {
+	if ok && !v.null && v.mode == decClaim && v.n != nil && v.n.Sign() == 0 {
+		v.scale = 0
+	}
+	return v, ok
+}
+
+func decIsZero(v decVal) bool {
+	return !v.null && v.mode == decClaim && v.n != nil && v.n.Sign() == 0
 }

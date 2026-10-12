@@ -1106,37 +1106,6 @@ func padChar(text string, width int) string {
 	return text + strings.Repeat(" ", width-n)
 }
 
-func (n *jNode) walk(steps []jStep) (*jNode, bool) {
-	cur := n
-	for _, step := range steps {
-		if cur == nil {
-			return nil, false
-		}
-		if step.isIdx {
-			if cur.kind != jArr || step.index < 0 || step.index >= len(cur.arr) {
-				return nil, false
-			}
-			cur = cur.arr[step.index]
-			continue
-		}
-		if cur.kind != jObj {
-			return nil, false
-		}
-		found := false
-		for _, pair := range cur.obj {
-			if pair.k == step.key {
-				cur = pair.v
-				found = true
-				break
-			}
-		}
-		if !found {
-			return nil, false
-		}
-	}
-	return cur, true
-}
-
 func jsonEqual(a, b *jNode) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
@@ -2873,24 +2842,4 @@ func decDigits(n *big.Rat, scale int) int {
 		return 1
 	}
 	return prec
-}
-
-func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
-	if left.null || right.null {
-		return decVal{null: true}, true
-	}
-	if left.scale != 0 || right.scale != 0 {
-		return decVal{}, false
-	}
-	if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil {
-		return decVal{mode: decOmit}, true
-	}
-	next, ok := applyIntDiv(intVal{n: left.n}, intVal{n: right.n}, remainder)
-	if !ok {
-		return decVal{}, false
-	}
-	if next.null {
-		return decVal{null: true}, true
-	}
-	return placeDec(next.n, 0, false), true
 }
