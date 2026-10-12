@@ -59,3 +59,7 @@ _Avoid_: compressed binlog (MariaDB compressed row events are a different physic
 **Schema catalog**:
 The flashback module that answers which table definition applies to a binlog `db.table`, and why. It loads `--schema-file` text (USE, `Database:` headers, `--schema-file-db`), replays binlog DDL and table maps, and resolves a name to one typed result: exact, case-fold (naming the schema-file table), ambiguous, missing, or refused with a reason. Refusal and warning text is built by callers from that result. Lives in `internal/analyzer/schema_catalog.go`; see ADR-0005.
 _Avoid_: generatedTables (its old name), schema binding, label rewrite
+
+**Apply guard**:
+The SQL a flashback script runs before its first transaction when it omits generated columns: it checks those columns are GENERATED on the target, cuts the mismatch message to whole names within MySQL's 200-byte sql_mode value, and leaves the session read-only unless the check matched; each block repeats the lock and each undo statement checks the script's token. One module, `internal/analyzer/flashback_guard.go` (header, block lock, row condition, token seal); the message cut exists only in the emitted SQL and is tested by running it on MySQL. See ADR-0006.
+_Avoid_: guard twin, guardErrorValue (removed Go copy of the cut)
