@@ -2157,121 +2157,190 @@ func refKey(im loggedImage, refs []string) (string, bool) {
 	return b.String(), true
 }
 
+// genImages is one table's logged images. Each image's evaluation
+// environment is built once and shared by every generated column and every
+// div_precision_increment: it depends only on the logged values and the
+// schema-file columns.
+type genImages struct {
+	images []loggedImage
+	envs   []map[string]genVal
+	names  []string
+	meta   []schemaCol
+}
+
+func prepareGenImages(rows []loggedImage, meta []schemaCol) *genImages {
+	g := &genImages{images: rows, envs: make([]map[string]genVal, len(rows)), meta: meta}
+	seen := map[string]struct{}{}
+	for i, row := range rows {
+		g.envs[i] = loggedEnv(row.columns, row.values, meta)
+		for _, name := range row.columns {
+			key := strings.ToLower(name)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			g.names = append(g.names, name)
+		}
+	}
+	return g
+}
+
 // generatedColumnOutcome checks one generated column against every logged image.
 // mismatch is set when a value contradicts the expression. unverified is set when
 // nothing contradicted it and at least one image could not be evaluated.
 func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol) (example string, unverified bool) {
-	return generatedColumnOutcomeInc(col, rows, meta, mysqlDefaultDivPrecIncrement)
+	return prepareGenImages(rows, meta).outcome(col)
 }
 
-// mysqlMaxDivPrecIncrement is the largest div_precision_increment MySQL accepts.
-const mysqlMaxDivPrecIncrement = 30
-
-// divIncrementFit lists the non-default div_precision_increment values at
-// which every logged image of col is a confident match. The binlog does not
-// record the variable, so a column refused at the default that fits another
-// increment points at the server setting, not at the dump. It is only a hint
-// for the error message: the column is still refused.
-func divIncrementFit(col schemaCol, rows []loggedImage, meta []schemaCol) []int {
-	if !strings.Contains(col.expr, "/") || (col.base != "decimal" && !integerAssign(col.base)) {
-		return nil
-	}
-	var fit []int
-	for inc := 0; inc <= mysqlMaxDivPrecIncrement; inc++ {
-		if inc == mysqlDefaultDivPrecIncrement {
-			continue
-		}
-		example, unknown := generatedColumnOutcomeInc(col, rows, meta, inc)
-		if example == "" && !unknown {
-			fit = append(fit, inc)
-		}
-	}
-	return fit
-}
-
-func generatedColumnOutcomeInc(col schemaCol, rows []loggedImage, meta []schemaCol, inc int) (example string, unverified bool) {
-	if strings.TrimSpace(col.expr) == "" || len(rows) == 0 {
+func (g *genImages) outcome(col schemaCol) (example string, unverified bool) {
+	if strings.TrimSpace(col.expr) == "" || len(g.images) == 0 {
 		return "", true
 	}
-	var images []loggedImage
-	names := map[string]struct{}{}
-	var nameList []string
-	for _, row := range rows {
-		images = append(images, row)
-		for _, name := range row.columns {
-			key := strings.ToLower(name)
-			if _, ok := names[key]; ok {
-				continue
-			}
-			names[key] = struct{}{}
-			nameList = append(nameList, name)
-		}
+	bad, unknown := g.checkInc(col, mysqlDefaultDivPrecIncrement, -1)
+	if bad >= 0 {
+		return exampleImage(g.images[bad], g.meta), false
 	}
-	unknown := false
-	for _, im := range images {
-		env := loggedEnv(im.columns, im.values, meta)
-		lit, found := columnLit(im, col.name)
-		if !found {
-			unknown = true
-			continue
-		}
-		if col.base == "decimal" || integerAssign(col.base) {
-			if dec, ok := evalDecExprInc(col.expr, env, inc); ok {
-				// decOmit was parsed and must not fall through to a different
-				// arithmetic. decIntOnly is an exact product whose scale is past
-				// 30: a DECIMAL target must not claim it, and an integer target
-				// rounds that product once.
-				if dec.mode == decOmit || (dec.mode == decIntOnly && col.base == "decimal") {
-					unknown = true
-					continue
-				}
-				var match, confident bool
-				if col.base == "decimal" {
-					match, confident = matchDecLiteral(dec, lit, col)
-				} else {
-					match, confident = matchDecAsInt(dec, lit, col)
-				}
-				if !confident {
-					unknown = true
-					continue
-				}
-				if !match {
-					return exampleImage(im, meta), false
-				}
-				continue
-			}
-		}
-		got, ok := evalGenExpr(col.expr, env)
-		if !ok {
-			unknown = true
-			continue
-		}
-		match, confident := matchGenerated(got, lit, col)
-		if !confident {
-			unknown = true
-			continue
-		}
-		if !match {
-			return exampleImage(im, meta), false
-		}
-	}
-	if clash := dependencyClash(col, images, nameList, meta); clash != "" {
+	if clash := g.dependencyClash(col); clash != "" {
 		return clash, false
 	}
 	return "", unknown
 }
 
-func dependencyClash(col schemaCol, images []loggedImage, names []string, meta []schemaCol) string {
-	refs, ok := generatedRefs(col.expr, names)
+// mysqlMaxDivPrecIncrement is the largest div_precision_increment MySQL accepts.
+const mysqlMaxDivPrecIncrement = 30
+
+// divIncrementFit sorts the non-default div_precision_increment values for a
+// column refused at the default. fit lists the increments at which every
+// logged image is a confident match. unchecked lists the increments where no
+// image contradicted the expression but at least one could not be evaluated,
+// for example past 30 fractional digits or 65 digits of precision. The binlog
+// does not record the variable, so a column that fits another increment
+// points at the server setting, not at the dump. It is only a hint for the
+// error message: the column is still refused.
+func (g *genImages) divIncrementFit(col schemaCol) (fit, unchecked []int) {
+	if !strings.Contains(col.expr, "/") || (col.base != "decimal" && !integerAssign(col.base)) {
+		return nil, nil
+	}
+	if strings.TrimSpace(col.expr) == "" || len(g.images) == 0 {
+		return nil, nil
+	}
+	// Two images with the same inputs and different stored values fit no
+	// increment. This does not depend on the increment, so check it once.
+	if g.dependencyClash(col) != "" {
+		return nil, nil
+	}
+	probe := -1
+	for inc := 0; inc <= mysqlMaxDivPrecIncrement; inc++ {
+		if inc == mysqlDefaultDivPrecIncrement {
+			continue
+		}
+		bad, unknown := g.checkInc(col, inc, probe)
+		switch {
+		case bad >= 0:
+			// Try the image that refused this increment first at the next one:
+			// most non-fitting increments then stop after one evaluation.
+			probe = bad
+		case unknown:
+			unchecked = append(unchecked, inc)
+		default:
+			fit = append(fit, inc)
+		}
+	}
+	return fit, unchecked
+}
+
+// checkInc evaluates col at div_precision_increment inc. bad is the index of
+// an image that contradicts the expression, or -1. unknown is set when no
+// image contradicted it and at least one could not be evaluated. first, when
+// not -1, is checked before the others; the result does not depend on order.
+func (g *genImages) checkInc(col schemaCol, inc, first int) (bad int, unknown bool) {
+	if first >= 0 && first < len(g.images) {
+		res := g.checkImage(col, inc, first)
+		if res == imageMismatch {
+			return first, false
+		}
+		if res == imageUnknown {
+			unknown = true
+		}
+	}
+	for i := range g.images {
+		if i == first {
+			continue
+		}
+		switch g.checkImage(col, inc, i) {
+		case imageMismatch:
+			return i, false
+		case imageUnknown:
+			unknown = true
+		}
+	}
+	return -1, unknown
+}
+
+type imageResult int
+
+const (
+	imageMatch imageResult = iota
+	imageMismatch
+	imageUnknown
+)
+
+func (g *genImages) checkImage(col schemaCol, inc, i int) imageResult {
+	im := g.images[i]
+	env := g.envs[i]
+	lit, found := columnLit(im, col.name)
+	if !found {
+		return imageUnknown
+	}
+	if col.base == "decimal" || integerAssign(col.base) {
+		if dec, ok := evalDecExprInc(col.expr, env, inc); ok {
+			// decOmit was parsed and must not fall through to a different
+			// arithmetic. decIntOnly is an exact product whose scale is past
+			// 30: a DECIMAL target must not claim it, and an integer target
+			// rounds that product once.
+			if dec.mode == decOmit || (dec.mode == decIntOnly && col.base == "decimal") {
+				return imageUnknown
+			}
+			var match, confident bool
+			if col.base == "decimal" {
+				match, confident = matchDecLiteral(dec, lit, col)
+			} else {
+				match, confident = matchDecAsInt(dec, lit, col)
+			}
+			if !confident {
+				return imageUnknown
+			}
+			if !match {
+				return imageMismatch
+			}
+			return imageMatch
+		}
+	}
+	got, ok := evalGenExpr(col.expr, env)
+	if !ok {
+		return imageUnknown
+	}
+	match, confident := matchGenerated(got, lit, col)
+	if !confident {
+		return imageUnknown
+	}
+	if !match {
+		return imageMismatch
+	}
+	return imageMatch
+}
+
+func (g *genImages) dependencyClash(col schemaCol) string {
+	refs, ok := generatedRefs(col.expr, g.names)
 	if !ok {
 		return ""
 	}
 	type hit struct {
-		lit     string
-		example string
+		lit string
+		idx int
 	}
 	seen := map[string]hit{}
-	for _, im := range images {
+	for i, im := range g.images {
 		key, ok := refKey(im, refs)
 		if !ok {
 			continue
@@ -2282,11 +2351,11 @@ func dependencyClash(col schemaCol, images []loggedImage, names []string, meta [
 		}
 		if prev, ok := seen[key]; ok {
 			if prev.lit != lit {
-				return oneLine(prev.example+"; another image with the same inputs has "+col.name+"="+exampleCell(lit, col, true), 220)
+				return oneLine(exampleImage(g.images[prev.idx], g.meta)+"; another image with the same inputs has "+col.name+"="+exampleCell(lit, col, true), 220)
 			}
 			continue
 		}
-		seen[key] = hit{lit: lit, example: exampleImage(im, meta)}
+		seen[key] = hit{lit: lit, idx: i}
 	}
 	return ""
 }
@@ -2301,13 +2370,23 @@ func generatedMismatch(table string, col schemaCol, example string) error {
 
 // divIncrementMismatch replaces the usual schema-file advice: the dump is
 // probably right and the server ran with a non-default div_precision_increment.
-func divIncrementMismatch(table string, col schemaCol, example string, fit []int) error {
+// unchecked increments are named so a partial fit does not read as exact.
+func divIncrementMismatch(table string, col schemaCol, example string, fit, unchecked []int) error {
+	var clause string
+	switch {
+	case len(unchecked) == 0:
+		clause = i18n.Tf("error.flashbackDivIncFit", map[string]any{"Increments": intRanges(fit)})
+	case len(fit) == 0:
+		clause = i18n.Tf("error.flashbackDivIncUnchecked", map[string]any{"Unchecked": intRanges(unchecked)})
+	default:
+		clause = i18n.Tf("error.flashbackDivIncFitUnchecked", map[string]any{"Increments": intRanges(fit), "Unchecked": intRanges(unchecked)})
+	}
 	return fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaDivInc", map[string]any{
-		"Table":      table,
-		"Column":     col.name,
-		"Expr":       exprText(col.expr),
-		"Increments": intRanges(fit),
-		"Example":    example,
+		"Table":   table,
+		"Column":  col.name,
+		"Expr":    exprText(col.expr),
+		"Fit":     clause,
+		"Example": example,
 	}))
 }
 

@@ -317,7 +317,19 @@
   },
   "error.flashbackSchemaDivInc": {
     "description": "A generated / column matches only at a non-default div_precision_increment",
-    "other": "{{.Table}}: --schema-file does not match the binlog columns at MySQL's default div_precision_increment of 4: {{.Column}} is generated as {{.Expr}}, but the logged values match it only at div_precision_increment {{.Increments}}; example {{.Example}}. The binlog does not record that variable. If the incident server ran with a non-default increment, the dump may be right and flashback has no way to check this table: leave it out with --include-table or --exclude-table. If the expression in the dump is wrong, for example / where the table has DIV, use a dump from incident time, or an older dump if an ALTER came later."
+    "other": "{{.Table}}: --schema-file does not match the binlog columns at MySQL's default div_precision_increment of 4: {{.Column}} is generated as {{.Expr}}, but {{.Fit}}; example {{.Example}}. The binlog does not record that variable. If the incident server ran with a non-default increment, the dump may be right and flashback has no way to check this table: leave it out with --exclude-table (or list only the other tables with --include-table). If the expression in the dump is wrong, for example / where the table has DIV, use a dump from incident time, or an older dump if an ALTER came later."
+  },
+  "error.flashbackDivIncFit": {
+    "description": "Every non-default increment that was checked; all logged values match at these",
+    "other": "the logged values match it only at div_precision_increment {{.Increments}}"
+  },
+  "error.flashbackDivIncFitUnchecked": {
+    "description": "Some increments match, others could not be checked",
+    "other": "the logged values match it at div_precision_increment {{.Increments}}, and flashback could not check them at {{.Unchecked}}"
+  },
+  "error.flashbackDivIncUnchecked": {
+    "description": "No checked increment matches, some could not be checked",
+    "other": "the logged values match no increment flashback could check, and it could not check them at div_precision_increment {{.Unchecked}}"
   },
   "error.flashbackSchemaGenerated": {
     "description": "A generated column's logged values do not match its expression",
@@ -1328,7 +1340,7 @@
     "other": "Byte Coverage"
   },
   "report.html.compare.metric": {
-    "description": "Compare metric column label",
+    "description": "Compare metric table header",
     "other": "Metric"
   },
   "report.html.compare.topTableChanges": {
@@ -1550,10 +1562,6 @@
   "report.html.trend.noDiagnosticData": {
     "description": "Trend empty diagnostics state",
     "other": "No diagnostic data available for trend analysis."
-  },
-  "report.html.compare.metric": {
-    "description": "Compare metric table header",
-    "other": "Metric"
   },
   "report.html.compare.largestTxnRows": {
     "description": "Compare largest transaction by rows label",
