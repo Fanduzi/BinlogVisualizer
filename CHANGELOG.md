@@ -4,7 +4,27 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
-- Flashback: the `div_precision_increment` hint for a refused `/` column (#193) is much faster on a refused run (each image is parsed once per table, not once per column and increment), and it names the increments it could not check instead of printing a cut-short `only at` range or no hint at all. The advice now says `--exclude-table` (or `--include-table` listing only the other tables). Accept and refuse decisions and scripts are unchanged (#226, #227).
+## v0.23.32
+
+Release date: 2026-10-12
+
+Highlights:
+
+- `binlogviz flashback`: the `div_precision_increment` hint for a refused `/` column (#193) is fast again and names the increments it could not check (#226, part of #227). On a 19.5 MB, 186-table binlog a refused run takes 27.2 s, against 407.7 s on v0.23.29 and about 10 h on v0.23.30/31. Increments that could not be evaluated are listed as not checked instead of being dropped, and the advice now says `--exclude-table` (or `--include-table` listing only the other tables). Accept and refuse decisions and scripts are unchanged.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#225](https://github.com/Fanduzi/BinlogVisualizer/issues/225): the schema-file table label is missing from zh-CN refusals and from every refused folded table after the first. Message only.
+- [#227](https://github.com/Fanduzi/BinlogVisualizer/issues/227) (remaining): zh-CN refusals still start with the English `Error:` prefix, and `FLUSH TABLES` is not mentioned.
+- [#231](https://github.com/Fanduzi/BinlogVisualizer/issues/231): wrong-dump columns that fit no increment now often get the increment wording instead of "the dump is wrong". Still refused.
+- A column added and then modified or renamed within the parsed binlogs still makes a correct incident-time dump fail with `reordered ... c, c` (fails safe).
+
+Related notes:
+
+- [v0.23.32 release notes](docs/releases/release-notes-v0.23.32.md)
+- [v0.23.32 中文发行说明](docs/releases/release-notes-v0.23.32.zh-CN.md)
 
 ## v0.23.31
 
