@@ -23,3 +23,15 @@ A change to the grammar had to be made two or three times. Nothing checked that 
 - Evaluation clones literal values, so a caller cannot change the cached tree.
 - The tests in `flashback_eval_test.go` exercise the interface. The integer-assignment cases now run through `evalGenExpr`.
 - Flashback output is unchanged byte for byte. Analyze does not call this module.
+
+## Later fixes in this module
+
+- #237: a JSON array index on a value that is not an array autowraps it, as in MySQL 8.0. `[0]` returns the value itself, and any other index is missing (NULL).
+- #238: in the DECIMAL walk, DIV, `%` and MOD now accept operands that have a fraction. Before, such an operand sent the expression to the general evaluator, which divides exactly. Each `/` stays rounded the way MySQL rounds it:
+  - DIV truncates the quotient toward zero; a quotient outside BIGINT is not claimed.
+  - `%` is exact and takes the larger operand scale.
+  - A zero divisor gives NULL whatever the dividend is.
+  - An arithmetic result of zero is a plain 0 with scale 0 (MySQL's `decimal_make_zero`), and a zero dividend of `/` gives 0, so a later `/` is sized the way MySQL sizes it.
+  - Operands over 60 digits still go to the general evaluator.
+
+  A later `/` whose scale goes past 30 stays unverified, as before.
