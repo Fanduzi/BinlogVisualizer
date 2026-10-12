@@ -55,3 +55,7 @@ _Avoid_: ignored QUERY, skipped QUERY
 **Transaction payload**:
 A binlog event that wraps a transaction group's inner events, optionally compressed. Analyze counts the inner ROW images as if they were written separately.
 _Avoid_: compressed binlog (MariaDB compressed row events are a different physical kind)
+
+**Schema catalog**:
+The flashback module that answers which table definition applies to a binlog `db.table`, and why. It loads `--schema-file` text (USE, `Database:` headers, `--schema-file-db`), replays binlog DDL and table maps, and resolves a name to one typed result: exact, case-fold (naming the schema-file table), ambiguous, missing, or refused with a reason. Refusal and warning text is built by callers from that result. Lives in `internal/analyzer/schema_catalog.go`; see ADR-0005.
+_Avoid_: generatedTables (its old name), schema binding, label rewrite

@@ -12,18 +12,19 @@ func TestSchemaFileConcatenatedDumpsBindEachHeader(t *testing.T) {
 		"CREATE TABLE `g` (\n  `id` int NOT NULL,\n  `b` int,\n  `c` int\n);\n" +
 		"-- Host: localhost    Database: p160b\n" +
 		"CREATE TABLE `g` (\n  `id` int NOT NULL,\n  `a` int,\n  `z` int\n);\n"
-	g := generatedTables{}
-	g.noteScript(both)
+	g := newSchemaCatalog("")
+	g.loadFile(both)
 	for _, tc := range []struct{ db, want string }{{"p160", "id, b, c"}, {"p160b", "id, a, z"}} {
-		cols, fromFile, _, ok := g.definition(tc.db, "g")
-		if !ok || !fromFile {
+		res := g.resolve(tc.db, "g")
+		cols := res.cols
+		if res.kind != resolveExact || !res.checkRows {
 			t.Fatalf("%s.g: no file definition", tc.db)
 		}
 		if got := schemaColNames(cols); got != tc.want {
 			t.Fatalf("%s.g columns = %s, want %s", tc.db, got, tc.want)
 		}
 	}
-	if _, _, _, ok := g.definition("", "g"); ok {
+	if g.peek("", "g").kind != resolveMissing {
 		t.Fatal("unqualified g must not be defined")
 	}
 }
@@ -31,16 +32,16 @@ func TestSchemaFileConcatenatedDumpsBindEachHeader(t *testing.T) {
 func TestSchemaFileConcatenatedDumpConflictingFlagStaysAmbiguous(t *testing.T) {
 	both := "-- Host: localhost    Database: p160\nCREATE TABLE `g` (`id` int);\n" +
 		"-- Host: localhost    Database: p160b\nCREATE TABLE `h` (`id` int);\n"
-	g := generatedTables{flagDB: "p160"}
-	g.noteScript(both)
-	if _, _, _, ok := g.definition("p160", "g"); !ok {
+	g := newSchemaCatalog("p160")
+	g.loadFile(both)
+	if g.resolve("p160", "g").kind != resolveExact {
 		t.Fatal("p160.g should bind: header matches --schema-file-db")
 	}
-	if _, _, _, ok := g.definition("p160b", "h"); ok {
+	if g.resolve("p160b", "h").kind != resolveMissing {
 		t.Fatal("p160b.h must not bind when its header conflicts with --schema-file-db")
 	}
-	if !g.ambiguousDB {
-		t.Fatal("conflicting header must be reported")
+	if len(g.warnings()) != 1 {
+		t.Fatalf("conflicting header must be reported: %q", g.warnings())
 	}
 }
 
@@ -48,11 +49,12 @@ func TestSchemaFileAlreadyHasBinlogAddColumn(t *testing.T) {
 	dump := "-- Host: localhost    Database: p164\n" +
 		"CREATE TABLE `al2` (\n  `id` int NOT NULL,\n  `a` int DEFAULT NULL,\n  `b` int DEFAULT NULL,\n" +
 		"  `c` int GENERATED ALWAYS AS ((`a` + 1)) STORED,\n  PRIMARY KEY (`id`)\n);\n"
-	g := generatedTables{}
-	g.noteScript(dump)
-	g.note("p164", "ALTER TABLE p164.al2 ADD COLUMN c INT AS (a + 1) STORED")
-	cols, _, _, ok := g.definition("p164", "al2")
-	if !ok {
+	g := newSchemaCatalog("")
+	g.loadFile(dump)
+	g.observeDDL("p164", "ALTER TABLE p164.al2 ADD COLUMN c INT AS (a + 1) STORED")
+	res := g.resolve("p164", "al2")
+	cols := res.cols
+	if res.kind != resolveExact {
 		t.Fatal("al2 lost its definition")
 	}
 	if got := schemaColNames(cols); got != "id, a, b, c" {
@@ -64,10 +66,10 @@ func TestSchemaFileAlreadyHasBinlogAddColumn(t *testing.T) {
 
 	// A different column under the same name is not this ALTER; keep the
 	// old behavior so the row check refuses instead of guessing.
-	g2 := generatedTables{}
-	g2.noteScript(dump)
-	g2.note("p164", "ALTER TABLE p164.al2 ADD COLUMN c INT AS (a + 2) STORED")
-	cols, _, _, _ = g2.definition("p164", "al2")
+	g2 := newSchemaCatalog("")
+	g2.loadFile(dump)
+	g2.observeDDL("p164", "ALTER TABLE p164.al2 ADD COLUMN c INT AS (a + 2) STORED")
+	cols = g2.resolve("p164", "al2").cols
 	if got := schemaColNames(cols); got == "id, a, b, c" {
 		t.Fatalf("a different expression must not be treated as already applied: %s", got)
 	}
