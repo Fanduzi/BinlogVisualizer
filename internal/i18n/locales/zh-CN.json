@@ -1757,10 +1757,14 @@
   },
   "warning.flashbackSchemaFold": {
     "description": "A schema-file table matched the binlog table only when letter case is ignored",
-    "other": "warning: {{.Binlog}}：使用 --schema-file 中的 {{.File}}，二者只有大小写不同（导出库与产生 binlog 的库 lower_case_table_names 可能不同）。行数据仍会按它校验。"
+    "other": "warning: {{.Binlog}}：使用 --schema-file 中的 {{.File}}，二者只有大小写不同。这假定产生 binlog 的服务器会把表名转成小写（lower_case_table_names=1 或 2）。如果它是 lower_case_table_names=0，{{.Binlog}} 和 {{.File}} 可能是两张不同的表：请使用表名与 binlog 完全一致（{{.Binlog}}）的导出。行数据仍会按它校验。"
   },
   "warning.flashbackSchemaFoldMiss": {
     "description": "A schema-file table differs from the binlog table only in letter case but was not used",
     "other": "warning: {{.Binlog}}：--schema-file 中有 {{.File}}，只有大小写不同，未采用。如果两台服务器的 lower_case_table_names 不同，请把文件里的表名改成与 binlog 一致。"
+  },
+  "error.flashbackSchemaFoldLabel": {
+    "description": "A refused table that used a letter-case fold names the schema-file table too",
+    "other": "{{.Binlog}}（schema file 中的表为 {{.File}}，仅大小写不同）"
   }
 }

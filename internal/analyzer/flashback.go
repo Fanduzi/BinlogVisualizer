@@ -272,10 +272,10 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 		return "", fmt.Errorf("%s", i18n.T("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
 	if a.flashErr != nil {
-		return "", a.flashErr
+		return "", a.flashGen.labelFold(a.flashErr)
 	}
 	if err := a.finishSchema(); err != nil {
-		return "", err
+		return "", a.flashGen.labelFold(err)
 	}
 	var kept []flashGroup
 	for _, group := range a.flashGroups {
@@ -288,7 +288,7 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 	}
 	sql, err := renderFlashbackSQL(kept, a.flashGenNotes)
 	if err != nil {
-		return "", err
+		return "", a.flashGen.labelFold(err)
 	}
 	return sql, nil
 }
