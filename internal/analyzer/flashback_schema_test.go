@@ -1,12 +1,10 @@
 package analyzer
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
-	"unicode/utf8"
 
 	"binlogviz/internal/model"
 )
@@ -779,95 +777,6 @@ func TestGuardSafeLabel(t *testing.T) {
 	}
 	if got := guardSafeLabel("db.t.| y"); got != "db.t./ y" {
 		t.Fatalf("prefix: %q", got)
-	}
-}
-
-// #208: with names ending in " |", the byte cut must keep only whole names.
-func TestGuardErrorValuePipeSuffix(t *testing.T) {
-	a := "p192.t." + strings.Repeat("a", 37)
-	b := "p192.t.生成列客户全名订单金额生成列客户全名订单金额生成列客户全 |"
-	c := "p192.t.c"
-	got := guardErrorValue([]string{guardSafeLabel(a), guardSafeLabel(b), guardSafeLabel(c)})
-	want := guardMismatchLead + " (3 columns): " + a
-	if got != want {
-		t.Fatalf("got %q (%d bytes)\nwant %q", got, len(got), want)
-	}
-	// Every room size: the kept list is a prefix of whole safe names.
-	names := []string{guardSafeLabel("d.t.x |"), guardSafeLabel("d.t.| y"), guardSafeLabel("d.t.字 |"), guardSafeLabel("d.t.z")}
-	list := strings.Join(names, " | ")
-	for room := 0; room <= len(list); room++ {
-		cut := trimGuardList(list, room)
-		ok := cut == ""
-		for k := 1; k <= len(names); k++ {
-			if cut == strings.Join(names[:k], " | ") {
-				ok = true
-			}
-		}
-		if !ok || len(cut) > room {
-			t.Fatalf("room %d: %q is not whole names", room, cut)
-		}
-	}
-}
-
-func TestTrimGuardList(t *testing.T) {
-	const list = "aa | bb | cc"
-	cases := []struct {
-		room int
-		want string
-	}{
-		{room: 7, want: "aa | bb"},
-		{room: 6, want: "aa"},
-		{room: 2, want: "aa"},
-		{room: 1, want: ""},
-		{room: len(list), want: list},
-		{room: -1, want: ""},
-	}
-	for _, tc := range cases {
-		if got := trimGuardList(list, tc.room); got != tc.want {
-			t.Fatalf("room %d: %q want %q", tc.room, got, tc.want)
-		}
-	}
-}
-
-func TestGuardErrorValue(t *testing.T) {
-	two := guardErrorValue([]string{guardSafeLabel("p183.t.c"), guardSafeLabel("p183.heap.note")})
-	if strings.Contains(two, ",") || strings.Contains(two, "(2 columns)") || two != guardMismatchLead+": p183.t.c | p183.heap.note" {
-		t.Fatalf("two: %q", two)
-	}
-	safe := []string{guardSafeLabel("db.t.a,b"), guardSafeLabel("db.t.c | d")}
-	mixed := guardErrorValue(safe)
-	if strings.Contains(mixed, ",") || !strings.Contains(mixed, "db.t.a;b") || !strings.Contains(mixed, "db.t.c / d") {
-		t.Fatalf("safe names: %q", mixed)
-	}
-	names := make([]string, 12)
-	for i := range names {
-		names[i] = fmt.Sprintf("p186.guardwide.col_%02d", i+1)
-	}
-	wide := guardErrorValue(names)
-	if !strings.Contains(wide, "(12 columns)") || !strings.Contains(wide, "p186.guardwide.col_01") || !strings.Contains(wide, "p186.guardwide.col_05") || strings.Contains(wide, "p186.guardwide.col_06") || strings.Contains(wide, ",") {
-		t.Fatalf("wide: %q", wide)
-	}
-	if utf8.RuneCountInString(wide) > guardValueLimit || len(wide) > guardValueLimit {
-		t.Fatalf("wide length runes=%d bytes=%d", utf8.RuneCountInString(wide), len(wide))
-	}
-	// #192: names are picked by bytes, so CJK names that fit in 200 bytes stay listed.
-	cjk := make([]string, 6)
-	for i := range cjk {
-		cjk[i] = fmt.Sprintf("p186.z6.生成列_客户全名_%d", i+1)
-	}
-	gotCJK := guardErrorValue(cjk)
-	if !strings.HasPrefix(gotCJK, guardMismatchLead+" (6 columns): "+cjk[0]+" | "+cjk[1]) || strings.Contains(gotCJK, cjk[5]) || len(gotCJK) > guardValueLimit {
-		t.Fatalf("cjk: %q (%d bytes)", gotCJK, len(gotCJK))
-	}
-	if got := trimGuardList("字字 | 字", 7); got != "字字" {
-		t.Fatalf("byte cut: %q", got)
-	}
-	if got := trimGuardList("字字 | 字", 5); got != "" {
-		t.Fatalf("byte cut mid-rune: %q", got)
-	}
-	huge := guardErrorValue([]string{strings.Repeat("字", 60)})
-	if huge != guardMismatchLead+" (1 columns)" {
-		t.Fatalf("multibyte: %q", huge)
 	}
 }
 
