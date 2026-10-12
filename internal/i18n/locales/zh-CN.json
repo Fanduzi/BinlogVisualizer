@@ -317,7 +317,19 @@
   },
   "error.flashbackSchemaDivInc": {
     "description": "生成列含 / 且只在非默认 div_precision_increment 下成立",
-    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但记下的值只在 div_precision_increment 为 {{.Increments}} 时成立；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --include-table 或 --exclude-table 把它排除。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
+    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但{{.Fit}}；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --exclude-table 排除它（或用 --include-table 只列出其他表）。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
+  },
+  "error.flashbackDivIncFit": {
+    "description": "核对过的非默认增量中，所有记下的值都成立的那些",
+    "other": "记下的值只在 div_precision_increment 为 {{.Increments}} 时成立"
+  },
+  "error.flashbackDivIncFitUnchecked": {
+    "description": "部分增量成立，部分增量无法核对",
+    "other": "记下的值在 div_precision_increment 为 {{.Increments}} 时成立，为 {{.Unchecked}} 时 flashback 无法核对"
+  },
+  "error.flashbackDivIncUnchecked": {
+    "description": "核对过的增量都不成立，部分增量无法核对",
+    "other": "记下的值在 flashback 能核对的增量下都不成立，div_precision_increment 为 {{.Unchecked}} 时无法核对"
   },
   "error.flashbackSchemaGenerated": {
     "description": "生成列的表达式对不上 binlog 里的值",
@@ -1328,7 +1340,7 @@
     "other": "字节覆盖"
   },
   "report.html.compare.metric": {
-    "description": "Compare 指标列标题",
+    "description": "Compare 指标列表头",
     "other": "指标"
   },
   "report.html.compare.topTableChanges": {
@@ -1550,10 +1562,6 @@
   "report.html.trend.noDiagnosticData": {
     "description": "Trend 无诊断数据提示",
     "other": "没有可用于趋势分析的诊断数据。"
-  },
-  "report.html.compare.metric": {
-    "description": "Compare 指标列表头",
-    "other": "指标"
   },
   "report.html.compare.largestTxnRows": {
     "description": "Compare 最大事务（行数）标签",
