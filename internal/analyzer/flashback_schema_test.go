@@ -780,7 +780,9 @@ func TestGuardSafeLabel(t *testing.T) {
 	}
 }
 
-func TestEvalIntExprMySQLAssignment(t *testing.T) {
+// Integer assignment through the one evaluator (the separate integer
+// evaluator was removed): an exact result, rounded half away from zero.
+func TestEvalGenExprIntegerAssignment(t *testing.T) {
 	cases := []struct {
 		expr string
 		env  map[string]string
@@ -816,15 +818,23 @@ func TestEvalIntExprMySQLAssignment(t *testing.T) {
 		{expr: "CONCAT(a, b)", env: map[string]string{"a": "1", "b": "2"}, ok: false},
 	}
 	for _, tc := range cases {
-		v, ok := evalIntExpr(tc.expr, tc.env)
-		if ok != tc.ok {
-			t.Fatalf("%s ok=%v want %v", tc.expr, ok, tc.ok)
+		var cols, vals []string
+		for name, val := range tc.env {
+			cols, vals = append(cols, name), append(vals, val)
 		}
+		v, ok := evalGenExpr(tc.expr, loggedEnv(cols, vals))
 		if !tc.ok {
+			// Not integer arithmetic: the evaluator must not claim a number.
+			if ok && v.kind == genNum {
+				t.Fatalf("%s: claimed a number", tc.expr)
+			}
 			continue
 		}
+		if !ok {
+			t.Fatalf("%s: not evaluated", tc.expr)
+		}
 		got := "NULL"
-		if !v.null {
+		if v.kind != genNull {
 			got = roundRatHalfAway(v.n).String()
 		}
 		if got != tc.want {
