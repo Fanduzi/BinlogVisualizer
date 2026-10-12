@@ -4,6 +4,30 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.23.33
+
+Release date: 2026-10-13
+
+Highlights:
+
+- `binlogviz flashback`: generated columns are checked the way MySQL 8.0 computes them in two more places. `->'$.v[0]'` on a non-array JSON value is the value itself (#237). A `/` inside `DIV`, `%` or `MOD` on DECIMAL keeps MySQL's rounding (#238). Both could give a rare false accept before. More `DIV`/`%` DECIMAL columns are now verified and kept in the script. A few columns that were verified only by luck are now can't-verify (left out with a guard, never accepted wrongly).
+- #225: a case-fold refusal names the schema-file table in zh-CN and on every refused table.
+- Internal refactors with byte-identical output: schema catalog (#234), guard module (#235), expression evaluator (#236).
+- The repository history was rewritten on 2026-10-12. Commit hashes from before that date changed; release tags point at the rewritten commits.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#227](https://github.com/Fanduzi/BinlogVisualizer/issues/227) (remaining): zh-CN refusals still start with the English `Error:` prefix, and `FLUSH TABLES` is not mentioned.
+- [#231](https://github.com/Fanduzi/BinlogVisualizer/issues/231): wrong-dump columns that fit no increment often get the increment wording instead of "the dump is wrong". Still refused.
+- A column added and then modified or renamed within the parsed binlogs still makes a correct incident-time dump fail with `reordered ... c, c` (fails safe).
+
+Related notes:
+
+- [v0.23.33 release notes](docs/releases/release-notes-v0.23.33.md)
+- [v0.23.33 中文发行说明](docs/releases/release-notes-v0.23.33.zh-CN.md)
+
 ## v0.23.32
 
 Release date: 2026-10-12
