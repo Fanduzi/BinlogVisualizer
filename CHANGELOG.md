@@ -4,7 +4,27 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
-- Flashback: when a table matched through the letter-case fold is refused, the error names the schema-file table as well as the binlog table, and the fold warning says it assumes the binlog server had `lower_case_table_names=1` or `2` (#215).
+## v0.23.31
+
+Release date: 2026-10-12
+
+Highlights:
+
+- `binlogviz flashback --schema-file`: when a table matched through the letter-case fold is refused, the error names the schema-file table as well as the binlog table, and the fold warning says it assumes the binlog server had `lower_case_table_names=1` or `2` (#215). Accept and refuse decisions and scripts are unchanged.
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- [#225](https://github.com/Fanduzi/BinlogVisualizer/issues/225): the new schema-file table label is missing from zh-CN refusals and from every refused table after the first. Message only; flashback still exits 1.
+- [#226](https://github.com/Fanduzi/BinlogVisualizer/issues/226): the #193 `div_precision_increment` hint makes a refused run much slower on large binlogs. Performance only.
+- [#227](https://github.com/Fanduzi/BinlogVisualizer/issues/227): the #193 increment range can be cut short or left out. No named increment is wrong.
+- A column added and then modified or renamed within the parsed binlogs still makes a correct incident-time dump fail with `reordered ... c, c` (fails safe).
+
+Related notes:
+
+- [v0.23.31 release notes](docs/releases/release-notes-v0.23.31.md)
+- [v0.23.31 中文发行说明](docs/releases/release-notes-v0.23.31.zh-CN.md)
 
 ## v0.23.30
 
