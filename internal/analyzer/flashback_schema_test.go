@@ -1320,6 +1320,27 @@ func TestSchemaFileLetterCaseFold(t *testing.T) {
 		t.Fatalf("warnings: %s", text)
 	}
 
+	// A refused folded table names the file table too (#215), both for a
+	// generated value that contradicts the file and for a column mismatch.
+	const label = "p185l.mixt (schema file table P185L.MixT, letter case differs): "
+	bad := row
+	bad.Before = []string{"1", "5"}
+	d := New(Options{Flashback: true, SchemaSQL: gen})
+	consumeFlash(t, d, flashEvent(bad))
+	if _, err = d.FlashbackSQL(); err == nil || !strings.HasPrefix(err.Error(), label) {
+		t.Fatalf("generated refusal = %v", err)
+	}
+	extra := row
+	extra.Columns, extra.Cols, extra.Before = []string{"id", "Gc", "Z"}, intCols(3), []string{"1", "2", "3"}
+	e := New(Options{Flashback: true, SchemaSQL: gen})
+	consumeFlash(t, e, flashEvent(extra))
+	if _, err = e.FlashbackSQL(); err == nil || !strings.HasPrefix(err.Error(), label) || !strings.Contains(err.Error(), "does not match the binlog columns") {
+		t.Fatalf("column refusal = %v", err)
+	}
+	if text := strings.Join(a.FlashbackWarnings(), "\n"); !strings.Contains(text, "lower_case_table_names=0") {
+		t.Fatalf("fold warning does not state its assumption: %s", text)
+	}
+
 	// Two file tables that fold to the same name are not guessed between.
 	two := gen + "CREATE TABLE `mixT` (\n  `id` int NOT NULL,\n  PRIMARY KEY (`id`)\n);\n"
 	c := New(Options{Flashback: true, SchemaSQL: two})

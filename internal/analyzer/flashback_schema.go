@@ -234,6 +234,10 @@ func (g *generatedTables) foldCase(schema, table string) {
 	folded := schema == strings.ToLower(schema) && table == strings.ToLower(table)
 	if len(hits) == 1 && folded {
 		g.setDef(key, g.defs[hits[0]], true)
+		if g.foldFrom == nil {
+			g.foldFrom = map[string]string{}
+		}
+		g.foldFrom[binlog] = names[0]
 		g.foldNotes = append(g.foldNotes, i18n.Tf("warning.flashbackSchemaFold", map[string]any{
 			"Binlog": binlog,
 			"File":   names[0],
@@ -245,6 +249,38 @@ func (g *generatedTables) foldCase(schema, table string) {
 		"File":   strings.Join(names, ", "),
 	}))
 }
+
+// labelFold rewrites a refusal for a folded table so it also names the
+// schema-file table that was used. The fold warning is printed only on
+// success, so without this the error names a table the file does not have.
+func (g *generatedTables) labelFold(err error) error {
+	if g == nil || err == nil || len(g.foldFrom) == 0 {
+		return err
+	}
+	msg := err.Error()
+	best := ""
+	for binlog := range g.foldFrom {
+		if strings.HasPrefix(msg, binlog+":") && len(binlog) > len(best) {
+			best = binlog
+		}
+	}
+	if best == "" {
+		return err
+	}
+	label := i18n.Tf("error.flashbackSchemaFoldLabel", map[string]any{
+		"Binlog": best,
+		"File":   g.foldFrom[best],
+	})
+	return &foldedError{msg: label + msg[len(best):], err: err}
+}
+
+type foldedError struct {
+	msg string
+	err error
+}
+
+func (e *foldedError) Error() string { return e.msg }
+func (e *foldedError) Unwrap() error { return e.err }
 
 func (g *generatedTables) schemaWarnings() []string {
 	if g == nil {

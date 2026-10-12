@@ -30,6 +30,8 @@ type generatedTables struct {
 	readingFile    bool
 	folded         map[string]bool
 	foldNotes      []string
+	// foldFrom maps a folded binlog table (db.tbl) to the schema-file table it used.
+	foldFrom map[string]string
 }
 
 // noteScript reads mysqldump --no-data output or SHOW CREATE TABLE text.
