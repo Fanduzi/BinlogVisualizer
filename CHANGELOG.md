@@ -6,9 +6,12 @@ This file records user-visible changes for tagged releases.
 
 - Errors under `--lang zh-CN` (or a Chinese locale) start with `错误：` instead of the English `Error:` (#227).
 - `binlogviz flashback` div_precision_increment refusals:
-  - The advice for restoring the table by hand now says to `SET SESSION div_precision_increment=N` and `FLUSH TABLES` the table before the INSERT. MySQL fixes a generated-column expression when it opens a table (#227).
+  - The advice for restoring the table by hand now says to `SET SESSION div_precision_increment=N` and then ``FLUSH TABLES `db`.`tbl` `` before the INSERT, because MySQL fixes a generated-column expression when it opens a table (#227).
+  - N is defined as the incident server's value, with an example taken from the increments named in the message (#244).
+  - The advice warns that `FLUSH TABLES` waits for open transactions on the table and queues new queries behind it, and offers a fresh connection that runs `SET SESSION` before its first statement as the alternative (#244).
   - Schema-file refusals say "leave the table out with --exclude-table (or list only the other tables with --include-table)" (#227).
-  - A generated `/` column that matches no increment flashback could check now leads with the plain "the logged values are not ..." message. The increments it could not check follow as a short note, instead of the increment wording (#231).
+  - A generated `/` column that matches no increment flashback could check, but has increments it could not check, keeps the increment wording: the dump may be right at one of those increments (#243). On a correct dump such columns (for example 10-30 unchecked) were otherwise told the dump is wrong. The wrong-dump advice stays as the last sentence (#231 stays open for a better split).
+- zh-CN: the letter-case fold warnings start with `警告：`; `window matched 0 events` and `invalid MariaDB GTID` are translated (#244).
   - Accept/refuse and every script are unchanged.
 
 ## v0.23.33

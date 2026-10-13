@@ -317,7 +317,7 @@
   },
   "error.flashbackSchemaDivInc": {
     "description": "生成列含 / 且只在非默认 div_precision_increment 下成立",
-    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但{{.Fit}}；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --exclude-table 排除它（或用 --include-table 只列出其他表）。如果要按事故时的增量手工恢复这张表，先 SET SESSION div_precision_increment=N，再对这张表执行 FLUSH TABLES，然后 INSERT：MySQL 在打开表时固定生成列表达式，已经打开的表沿用打开时的增量。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
+    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但{{.Fit}}；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --exclude-table 排除它（或用 --include-table 只列出其他表）。如果要手工恢复这张表：先 SET SESSION div_precision_increment=N（N 是事故服务器上 div_precision_increment 的值，即上面列出的值之一，例如 {{.N}}），再执行 FLUSH TABLES {{.Name}}，然后 INSERT：MySQL 在打开表时固定生成列表达式，已经打开的表沿用打开时的值。FLUSH TABLES {{.Name}} 会等待这张表上未结束的事务，之后对这张表的新查询都排在它后面；繁忙的服务器上请在低峰期执行，或者改用一个还没访问过这张表的新连接，在它的第一条语句之前执行 SET SESSION。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
   },
   "error.flashbackDivIncFit": {
     "description": "核对过的非默认增量中，所有记下的值都成立的那些",
@@ -326,6 +326,10 @@
   "error.flashbackDivIncFitUnchecked": {
     "description": "部分增量成立，部分增量无法核对",
     "other": "记下的值在 div_precision_increment 为 {{.Increments}} 时成立，为 {{.Unchecked}} 时 flashback 无法核对"
+  },
+  "error.flashbackDivIncUnchecked": {
+    "description": "核对过的增量都不成立，部分增量无法核对",
+    "other": "记下的值在 flashback 能核对的 div_precision_increment 值下都不成立，div_precision_increment 为 {{.Unchecked}} 时无法核对"
   },
   "error.flashbackSchemaGenerated": {
     "description": "生成列的表达式对不上 binlog 里的值",
@@ -461,7 +465,7 @@
   },
   "progress.windowMatchedZero": {
     "description": "时间窗口未匹配到事件",
-    "other": "window matched 0 events"
+    "other": "时间窗口没有匹配到事件"
   },
   "report.section.workload": {
     "description": "工作负载摘要章节标题",
@@ -1761,11 +1765,11 @@
   },
   "warning.flashbackSchemaFold": {
     "description": "A schema-file table matched the binlog table only when letter case is ignored",
-    "other": "warning: {{.Binlog}}：使用 --schema-file 中的 {{.File}}，二者只有大小写不同。这假定产生 binlog 的服务器会把表名转成小写（lower_case_table_names=1 或 2）。如果它是 lower_case_table_names=0，{{.Binlog}} 和 {{.File}} 可能是两张不同的表：请使用表名与 binlog 完全一致（{{.Binlog}}）的导出。行数据仍会按它校验。"
+    "other": "警告：{{.Binlog}}：使用 --schema-file 中的 {{.File}}，二者只有大小写不同。这假定产生 binlog 的服务器会把表名转成小写（lower_case_table_names=1 或 2）。如果它是 lower_case_table_names=0，{{.Binlog}} 和 {{.File}} 可能是两张不同的表：请使用表名与 binlog 完全一致（{{.Binlog}}）的导出。行数据仍会按它校验。"
   },
   "warning.flashbackSchemaFoldMiss": {
     "description": "A schema-file table differs from the binlog table only in letter case but was not used",
-    "other": "warning: {{.Binlog}}：--schema-file 中有 {{.File}}，只有大小写不同，未采用。如果两台服务器的 lower_case_table_names 不同，请把文件里的表名改成与 binlog 一致。"
+    "other": "警告：{{.Binlog}}：--schema-file 中有 {{.File}}，只有大小写不同，未采用。如果两台服务器的 lower_case_table_names 不同，请把文件里的表名改成与 binlog 一致。"
   },
   "error.flashbackSchemaFoldLabel": {
     "description": "A refused table that used a letter-case fold names the schema-file table too",
@@ -1775,8 +1779,8 @@
     "description": "失败命令打印的那一行错误的前缀",
     "other": "错误："
   },
-  "error.flashbackSchemaGeneratedUnchecked": {
-    "description": "生成列 / 在 flashback 能核对的增量下都不成立，部分增量无法核对",
-    "other": "{{.Column}} 在 schema 文件里是生成列，但在 flashback 能核对的任何 div_precision_increment 下，记下的值都不是 {{.Expr}}；示例 {{.Example}}。div_precision_increment 为 {{.Unchecked}} 时 flashback 无法核对；只有事故服务器用的是其中之一，转储才可能没错"
+  "error.invalidMariaDBGTID": {
+    "description": "MariaDB GTID 参数不是 domain-server-sequence 形式",
+    "other": "无效的 MariaDB GTID {{.Value}}"
   }
 }
