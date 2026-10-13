@@ -4,17 +4,29 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
-- Errors under `--lang zh-CN` (or a Chinese locale) start with `错误：` instead of the English `Error:` (#227).
-- `binlogviz flashback` div_precision_increment refusals:
-  - The advice for restoring the table by hand now says to `SET SESSION div_precision_increment=N` and then ``FLUSH TABLES `db`.`tbl` `` before the INSERT, because MySQL fixes a generated-column expression when it opens a table (#227).
-  - N is defined as the incident server's value, with an example taken from the increments named in the message (#244).
-  - The advice warns that `FLUSH TABLES` waits for statements still running on the table while new queries on it queue behind it (`Waiting for table flush`), and offers a fresh connection that runs `SET SESSION` before its first statement as the alternative (#244, #246).
-  - The hand-restore advice is printed once per run, on the first such refusal line, instead of on every refused column; each refusal stays one line (#246).
-  - The example N skips 0 when other increments are listed and prefers the start of a range, for example 28 for `0, 28-30` (#246).
-  - Schema-file refusals say "leave the table out with --exclude-table (or list only the other tables with --include-table)" (#227).
-  - A generated `/` column that matches no increment flashback could check, but has increments it could not check, keeps the increment wording: the dump may be right at one of those increments (#243). On a correct dump such columns (for example 10-30 unchecked) were otherwise told the dump is wrong. The wrong-dump advice stays as the last sentence (#231 stays open for a better split).
-- zh-CN: the letter-case fold warnings start with `警告：`; `window matched 0 events` and `invalid MariaDB GTID` are translated (#244), and so is "another image with the same inputs" in generated-column refusals (#246).
-  - Accept/refuse and every script are unchanged.
+## v0.23.34
+
+Release date: 2026-10-13
+
+Highlights:
+
+- `binlogviz flashback` messages only; generated SQL, exit codes and accept/refuse are unchanged from v0.23.33.
+- zh-CN: errors start with `错误：` and case-fold warnings with `警告：`; the remaining English phrases are translated (#227, #244, #246).
+- The hand-restore advice for `div_precision_increment` refusals: `SET SESSION div_precision_increment=N` (N defined, with a sensible example), then ``FLUSH TABLES `db`.`tbl` ``, then the INSERT. It says FLUSH TABLES waits for statements still running on the table while new queries queue behind it, and offers a fresh connection instead (#227, #244, #246).
+- That advice is printed once per run instead of on every refused column; each refusal stays one line. Refusal stderr is about 31-41% smaller (#246).
+- A correct dump whose real increment flashback can't check (for example `10-30`) is told it may be right, not that it is wrong (#243). A column that fits no increment at all gets a plain mismatch lead (#231).
+
+### Known limitations
+
+Review a flashback script, test it, and apply it in a single new session on the primary, with the script header. A statement that fails leaves earlier transactions in the script committed. See `docs/concept/limitations.md`.
+
+- flashback cannot tell a correct dump at an uncheckable increment from a wrong dump; such columns are still refused, with the "may be right" wording.
+- A column added and then modified or renamed within the parsed binlogs still makes a correct incident-time dump fail with `reordered ... c, c` (fails safe).
+
+Related notes:
+
+- [v0.23.34 release notes](docs/releases/release-notes-v0.23.34.md)
+- [v0.23.34 中文发行说明](docs/releases/release-notes-v0.23.34.zh-CN.md)
 
 ## v0.23.33
 
