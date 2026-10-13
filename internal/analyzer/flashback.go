@@ -344,6 +344,7 @@ func (a *Analyzer) collectGeneratedReview() error {
 		}
 	}
 	var mismatches, notes, warns []string
+	hinted := false
 	for _, key := range order {
 		b := groups[key]
 		table := flashTable(b.schema, b.table)
@@ -362,7 +363,12 @@ func (a *Analyzer) collectGeneratedReview() error {
 				// message: an unchecked one may be where the dump is right,
 				// so the dump is not called wrong (#243).
 				if fit, unchecked := imgs.divIncrementFit(col); len(fit) > 0 || len(unchecked) > 0 {
-					mismatches = append(mismatches, divIncrementMismatch(label, sqlTableName(b.schema, b.table), col, example, fit, unchecked).Error())
+					line := divIncrementMismatch(label, col, example, fit, unchecked).Error()
+					if !hinted {
+						hinted = true
+						line = joinHint(line, divIncrementHint(sqlTableName(b.schema, b.table), fit, unchecked))
+					}
+					mismatches = append(mismatches, line)
 					continue
 				}
 				mismatches = append(mismatches, generatedMismatch(label, col, example).Error())
@@ -381,6 +387,15 @@ func (a *Analyzer) collectGeneratedReview() error {
 	a.noteSchemaWarnings(warns)
 	a.flashGenNotes = append(a.flashGenNotes, notes...)
 	return nil
+}
+
+// joinHint appends the once-per-run hand-restore note to a refusal line,
+// keeping it one line ("Error: ..."). zh text needs no separating space.
+func joinHint(line, hint string) string {
+	if strings.HasSuffix(line, "。") {
+		return line + hint
+	}
+	return line + " " + hint
 }
 
 func generatedSig(cols []schemaCol) string {

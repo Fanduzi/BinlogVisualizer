@@ -317,7 +317,7 @@
   },
   "error.flashbackSchemaDivInc": {
     "description": "A generated / column matches only at a non-default div_precision_increment",
-    "other": "{{.Table}}: --schema-file does not match the binlog columns at MySQL's default div_precision_increment of 4: {{.Column}} is generated as {{.Expr}}, but {{.Fit}}; example {{.Example}}. The binlog does not record that variable. If the incident server ran with a non-default increment, the dump may be right and flashback has no way to check this table: leave it out with --exclude-table (or list only the other tables with --include-table). To restore this table by hand, run SET SESSION div_precision_increment=N, where N is the incident server's value (one of those named above, for example {{.N}}), then FLUSH TABLES {{.Name}}, then the INSERT: MySQL fixes a generated-column expression when it opens the table, so a table already open keeps the value it was opened with. FLUSH TABLES {{.Name}} waits for open transactions on the table and queues new queries behind it; on a busy server do it in a quiet window, or instead use a fresh connection that has not touched the table and run SET SESSION before its first statement. If the expression in the dump is wrong, for example / where the table has DIV, use a dump from incident time, or an older dump if an ALTER came later."
+    "other": "{{.Table}}: --schema-file does not match the binlog columns at MySQL's default div_precision_increment of 4: {{.Column}} is generated as {{.Expr}}, but {{.Fit}}; example {{.Example}}. The binlog does not record that variable. If the incident server ran with a non-default increment, the dump may be right and flashback has no way to check this table: leave it out with --exclude-table (or list only the other tables with --include-table). If the expression in the dump is wrong, for example / where the table has DIV, use a dump from incident time, or an older dump if an ALTER came later."
   },
   "error.flashbackDivIncFit": {
     "description": "Every non-default increment that was checked; all logged values match at these",
@@ -1782,5 +1782,13 @@
   "error.invalidMariaDBGTID": {
     "description": "A MariaDB GTID argument is not domain-server-sequence",
     "other": "invalid MariaDB GTID {{.Value}}"
+  },
+  "error.flashbackSchemaDivIncHint": {
+    "description": "Hand-restore note for div_precision_increment refusals, printed once per run",
+    "other": "To restore a table refused for this reason by hand (this note is printed once per run and applies to every such table): run SET SESSION div_precision_increment=N, where N is the incident server's value (one of the increments named for that column, for example {{.N}}), then FLUSH TABLES `db`.`tbl` (here FLUSH TABLES {{.Name}}), then the INSERT: MySQL fixes a generated-column expression when it opens the table, so a table already open keeps the value it was opened with. FLUSH TABLES waits for statements still running on the table, and new queries on the table queue behind it (state 'Waiting for table flush'); on a busy server do it in a quiet window, or instead use a fresh connection that has not touched the table and run SET SESSION before its first statement."
+  },
+  "error.flashbackSchemaSameInputs": {
+    "description": "Another logged image with the same inputs has a different value for the generated column",
+    "other": "; another image with the same inputs has "
   }
 }

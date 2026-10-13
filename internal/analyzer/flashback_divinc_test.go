@@ -10,6 +10,17 @@ import (
 // #193: a correct dump whose / column was stored under a non-default
 // div_precision_increment is still refused, but the error names the
 // increments that fit instead of only blaming the dump.
+func TestExampleIncrement(t *testing.T) {
+	for _, c := range []struct {
+		in   []int
+		want int
+	}{{[]int{0, 28, 29, 30}, 28}, {[]int{0, 1, 2, 3}, 1}, {[]int{0}, 0}, {[]int{5, 9}, 5}, {[]int{0, 12}, 12}, {nil, 0}} {
+		if got := exampleIncrement(c.in); got != c.want {
+			t.Errorf("exampleIncrement(%v) = %d, want %d", c.in, got, c.want)
+		}
+	}
+}
+
 func TestDivIncrementHint(t *testing.T) {
 	schema := "CREATE TABLE `r` (\n" +
 		"  `id` int NOT NULL,\n" +
@@ -50,10 +61,13 @@ func TestDivIncrementHint(t *testing.T) {
 	msg := err.Error()
 	// #227: 22-30 put the quotient past 30 fractional digits, so they are
 	// named as unchecked instead of being dropped from an "only" range.
-	for _, want := range []string{"div_precision_increment 0-3", "could not check them at 22-30", "share is generated", "--exclude-table", "does not match", "then FLUSH TABLES `", "waits for open transactions", "fresh connection", "for example 0"} {
+	for _, want := range []string{"div_precision_increment 0-3", "could not check them at 22-30", "share is generated", "--exclude-table", "does not match", "then FLUSH TABLES `", "waits for statements still running on the table", "Waiting for table flush", "FLUSH TABLES `db`.`tbl`", "printed once per run", "fresh connection", "for example 1"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("missing %q in %s", want, msg)
 		}
+	}
+	if strings.Contains(msg, "open transactions") || strings.Contains(msg, "\n") {
+		t.Fatalf("stale FLUSH note or multi-line refusal: %s", msg)
 	}
 	if strings.Contains(msg, "only at") {
 		t.Fatalf("partial fit printed as exact: %s", msg)
