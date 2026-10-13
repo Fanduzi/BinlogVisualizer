@@ -2137,7 +2137,7 @@ func (g *genImages) dependencyClash(col schemaCol) string {
 		}
 		if prev, ok := seen[key]; ok {
 			if prev.lit != lit {
-				return oneLine(exampleImage(g.images[prev.idx], g.meta)+"; another image with the same inputs has "+col.name+"="+exampleCell(lit, col, true), 220)
+				return oneLine(exampleImage(g.images[prev.idx], g.meta)+i18n.T("error.flashbackSchemaSameInputs")+col.name+"="+exampleCell(lit, col, true), 220)
 			}
 			continue
 		}
@@ -2157,17 +2157,9 @@ func generatedMismatch(table string, col schemaCol, example string) error {
 // divIncrementMismatch replaces the usual schema-file advice: the dump is
 // probably right and the server ran with a non-default div_precision_increment.
 // unchecked increments are named so a partial fit does not read as exact.
-// name is the table as SQL (`db`.`tbl`) for the FLUSH TABLES hint; the
-// hint's example N is the first fitting increment, else the first unchecked.
-func divIncrementMismatch(table, name string, col schemaCol, example string, fit, unchecked []int) error {
+// The long hand-restore note is not part of it; see divIncrementHint.
+func divIncrementMismatch(table string, col schemaCol, example string, fit, unchecked []int) error {
 	var clause string
-	n := 0
-	switch {
-	case len(fit) > 0:
-		n = fit[0]
-	case len(unchecked) > 0:
-		n = unchecked[0]
-	}
 	switch {
 	case len(unchecked) == 0:
 		clause = i18n.Tf("error.flashbackDivIncFit", map[string]any{"Increments": intRanges(fit)})
@@ -2182,9 +2174,41 @@ func divIncrementMismatch(table, name string, col schemaCol, example string, fit
 		"Expr":    exprText(col.expr),
 		"Fit":     clause,
 		"Example": example,
-		"N":       n,
-		"Name":    name,
 	}))
+}
+
+// divIncrementHint is the hand-restore note (SET SESSION, FLUSH TABLES and
+// its cost, the fresh-connection route). It is printed once per run, on the
+// first increment refusal line, not once per column (#246). name is that
+// table as SQL (`db`.`tbl`).
+func divIncrementHint(name string, fit, unchecked []int) string {
+	vals := fit
+	if len(vals) == 0 {
+		vals = unchecked
+	}
+	return i18n.Tf("error.flashbackSchemaDivIncHint", map[string]any{
+		"N":    exampleIncrement(vals),
+		"Name": name,
+	})
+}
+
+// exampleIncrement picks the N shown in the hint: the start of the first run
+// of two or more consecutive increments, else the first one, leaving out 0
+// when anything else is listed: "0, 28-30" gives 28 and "0-3" gives 1, since
+// an increment of 0 is an odd value to suggest.
+func exampleIncrement(vals []int) int {
+	if len(vals) > 1 && vals[0] == 0 {
+		vals = vals[1:]
+	}
+	for i := 0; i+1 < len(vals); i++ {
+		if vals[i+1] == vals[i]+1 {
+			return vals[i]
+		}
+	}
+	if len(vals) > 0 {
+		return vals[0]
+	}
+	return 0
 }
 
 // sqlTableName is schema.table with backtick quoting, as an operator would

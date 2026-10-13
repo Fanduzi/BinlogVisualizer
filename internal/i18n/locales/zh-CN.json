@@ -317,7 +317,7 @@
   },
   "error.flashbackSchemaDivInc": {
     "description": "生成列含 / 且只在非默认 div_precision_increment 下成立",
-    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但{{.Fit}}；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --exclude-table 排除它（或用 --include-table 只列出其他表）。如果要手工恢复这张表：先 SET SESSION div_precision_increment=N（N 是事故服务器上 div_precision_increment 的值，即上面列出的值之一，例如 {{.N}}），再执行 FLUSH TABLES {{.Name}}，然后 INSERT：MySQL 在打开表时固定生成列表达式，已经打开的表沿用打开时的值。FLUSH TABLES {{.Name}} 会等待这张表上未结束的事务，之后对这张表的新查询都排在它后面；繁忙的服务器上请在低峰期执行，或者改用一个还没访问过这张表的新连接，在它的第一条语句之前执行 SET SESSION。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
+    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但{{.Fit}}；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --exclude-table 排除它（或用 --include-table 只列出其他表）。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
   },
   "error.flashbackDivIncFit": {
     "description": "核对过的非默认增量中，所有记下的值都成立的那些",
@@ -1782,5 +1782,13 @@
   "error.invalidMariaDBGTID": {
     "description": "MariaDB GTID 参数不是 domain-server-sequence 形式",
     "other": "无效的 MariaDB GTID {{.Value}}"
+  },
+  "error.flashbackSchemaDivIncHint": {
+    "description": "div_precision_increment 拒绝的手工恢复说明，每次运行只打印一次",
+    "other": "如果要手工恢复因此被拒绝的表（这段说明每次运行只打印一次，适用于所有这类表）：先 SET SESSION div_precision_increment=N（N 是事故服务器上 div_precision_increment 的值，即该列列出的值之一，例如 {{.N}}），再执行 FLUSH TABLES `库`.`表`（这里是 FLUSH TABLES {{.Name}}），然后 INSERT：MySQL 在打开表时固定生成列表达式，已经打开的表沿用打开时的值。FLUSH TABLES 会等这张表上正在执行的语句结束，期间对这张表的新查询都会排队（状态为 Waiting for table flush）；繁忙的服务器上请在低峰期执行，或者改用一个还没访问过这张表的新连接，在它的第一条语句之前执行 SET SESSION。"
+  },
+  "error.flashbackSchemaSameInputs": {
+    "description": "另一条输入相同的镜像里生成列的值不同",
+    "other": "；另一条输入相同的镜像里 "
   }
 }
