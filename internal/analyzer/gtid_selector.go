@@ -6,10 +6,13 @@
 package analyzer
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+
+	"binlogviz/internal/i18n"
 )
 
 type sequenceRange struct {
@@ -303,13 +306,13 @@ func parseMariaDBGTIDs(values []string) (map[string]struct{}, []string, error) {
 func parseMariaDBGTID(value string) (string, error) {
 	parts := strings.Split(strings.TrimSpace(value), "-")
 	if len(parts) != 3 {
-		return "", fmt.Errorf("invalid MariaDB GTID %q", value)
+		return "", errors.New(i18n.Tf("error.invalidMariaDBGTID", map[string]any{"Value": strconv.Quote(value)}))
 	}
 	canonical := make([]string, 3)
 	for index, part := range parts {
 		number, err := strconv.ParseUint(part, 10, 64)
 		if err != nil {
-			return "", fmt.Errorf("invalid MariaDB GTID %q", value)
+			return "", errors.New(i18n.Tf("error.invalidMariaDBGTID", map[string]any{"Value": strconv.Quote(value)}))
 		}
 		canonical[index] = strconv.FormatUint(number, 10)
 	}

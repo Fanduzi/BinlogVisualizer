@@ -2154,26 +2154,25 @@ func generatedMismatch(table string, col schemaCol, example string) error {
 	})})
 }
 
-// generatedUncheckedMismatch is the plain "dump is wrong" refusal for a
-// column that matches no increment flashback could check, with the
-// increments it could not check as a trailing note (#231).
-func generatedUncheckedMismatch(table string, col schemaCol, example string, unchecked []int) error {
-	return schemaMismatch(table, []string{i18n.Tf("error.flashbackSchemaGeneratedUnchecked", map[string]any{
-		"Column":    col.name,
-		"Expr":      exprText(col.expr),
-		"Example":   example,
-		"Unchecked": intRanges(unchecked),
-	})})
-}
-
 // divIncrementMismatch replaces the usual schema-file advice: the dump is
 // probably right and the server ran with a non-default div_precision_increment.
 // unchecked increments are named so a partial fit does not read as exact.
-func divIncrementMismatch(table string, col schemaCol, example string, fit, unchecked []int) error {
+// name is the table as SQL (`db`.`tbl`) for the FLUSH TABLES hint; the
+// hint's example N is the first fitting increment, else the first unchecked.
+func divIncrementMismatch(table, name string, col schemaCol, example string, fit, unchecked []int) error {
 	var clause string
+	n := 0
+	switch {
+	case len(fit) > 0:
+		n = fit[0]
+	case len(unchecked) > 0:
+		n = unchecked[0]
+	}
 	switch {
 	case len(unchecked) == 0:
 		clause = i18n.Tf("error.flashbackDivIncFit", map[string]any{"Increments": intRanges(fit)})
+	case len(fit) == 0:
+		clause = i18n.Tf("error.flashbackDivIncUnchecked", map[string]any{"Unchecked": intRanges(unchecked)})
 	default:
 		clause = i18n.Tf("error.flashbackDivIncFitUnchecked", map[string]any{"Increments": intRanges(fit), "Unchecked": intRanges(unchecked)})
 	}
@@ -2183,7 +2182,19 @@ func divIncrementMismatch(table string, col schemaCol, example string, fit, unch
 		"Expr":    exprText(col.expr),
 		"Fit":     clause,
 		"Example": example,
+		"N":       n,
+		"Name":    name,
 	}))
+}
+
+// sqlTableName is schema.table with backtick quoting, as an operator would
+// type it after FLUSH TABLES.
+func sqlTableName(schema, table string) string {
+	q := func(s string) string { return "`" + strings.ReplaceAll(s, "`", "``") + "`" }
+	if schema == "" {
+		return q(table)
+	}
+	return q(schema) + "." + q(table)
 }
 
 // intRanges prints sorted ints as "0-3, 5, 8-30".
