@@ -297,7 +297,7 @@
   },
   "error.flashbackSchema": {
     "description": "schema 文件与 binlog 列不一致时拒绝",
-    "other": "{{.Table}}：--schema-file 与 binlog 的列不一致：{{.Diff}}。请使用事故当时的转储；若之后有 ALTER，用更早的转储；或用 --include-table 把这张表排除。"
+    "other": "{{.Table}}：--schema-file 与 binlog 的列不一致：{{.Diff}}。请使用事故当时的转储；若之后有 ALTER，用更早的转储；或用 --exclude-table 排除这张表（或用 --include-table 只列出其他表）。"
   },
   "error.flashbackSchemaExtra": {
     "description": "schema 文件多出的列",
@@ -317,7 +317,7 @@
   },
   "error.flashbackSchemaDivInc": {
     "description": "生成列含 / 且只在非默认 div_precision_increment 下成立",
-    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但{{.Fit}}；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --exclude-table 排除它（或用 --include-table 只列出其他表）。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
+    "other": "{{.Table}}：按 MySQL 默认的 div_precision_increment=4，--schema-file 与 binlog 的列不一致：{{.Column}} 是生成列 {{.Expr}}，但{{.Fit}}；示例 {{.Example}}。binlog 不记录这个变量。如果事故服务器用的是非默认值，转储可能没错，但 flashback 无法核对这张表：请用 --exclude-table 排除它（或用 --include-table 只列出其他表）。如果要按事故时的增量手工恢复这张表，先 SET SESSION div_precision_increment=N，再对这张表执行 FLUSH TABLES，然后 INSERT：MySQL 在打开表时固定生成列表达式，已经打开的表沿用打开时的增量。如果是转储里的表达式不对（例如表里是 DIV 而转储写成 /），请使用事故当时的转储；若之后有 ALTER，用更早的转储。"
   },
   "error.flashbackDivIncFit": {
     "description": "核对过的非默认增量中，所有记下的值都成立的那些",
@@ -326,10 +326,6 @@
   "error.flashbackDivIncFitUnchecked": {
     "description": "部分增量成立，部分增量无法核对",
     "other": "记下的值在 div_precision_increment 为 {{.Increments}} 时成立，为 {{.Unchecked}} 时 flashback 无法核对"
-  },
-  "error.flashbackDivIncUnchecked": {
-    "description": "核对过的增量都不成立，部分增量无法核对",
-    "other": "记下的值在 flashback 能核对的增量下都不成立，div_precision_increment 为 {{.Unchecked}} 时无法核对"
   },
   "error.flashbackSchemaGenerated": {
     "description": "生成列的表达式对不上 binlog 里的值",
@@ -1774,5 +1770,13 @@
   "error.flashbackSchemaFoldLabel": {
     "description": "A refused table that used a letter-case fold names the schema-file table too",
     "other": "{{.Binlog}}（schema file 中的表为 {{.File}}，仅大小写不同）"
+  },
+  "cli.errorPrefix": {
+    "description": "失败命令打印的那一行错误的前缀",
+    "other": "错误："
+  },
+  "error.flashbackSchemaGeneratedUnchecked": {
+    "description": "生成列 / 在 flashback 能核对的增量下都不成立，部分增量无法核对",
+    "other": "{{.Column}} 在 schema 文件里是生成列，但在 flashback 能核对的任何 div_precision_increment 下，记下的值都不是 {{.Expr}}；示例 {{.Example}}。div_precision_increment 为 {{.Unchecked}} 时 flashback 无法核对；只有事故服务器用的是其中之一，转储才可能没错"
   }
 }

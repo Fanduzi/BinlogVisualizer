@@ -2154,6 +2154,18 @@ func generatedMismatch(table string, col schemaCol, example string) error {
 	})})
 }
 
+// generatedUncheckedMismatch is the plain "dump is wrong" refusal for a
+// column that matches no increment flashback could check, with the
+// increments it could not check as a trailing note (#231).
+func generatedUncheckedMismatch(table string, col schemaCol, example string, unchecked []int) error {
+	return schemaMismatch(table, []string{i18n.Tf("error.flashbackSchemaGeneratedUnchecked", map[string]any{
+		"Column":    col.name,
+		"Expr":      exprText(col.expr),
+		"Example":   example,
+		"Unchecked": intRanges(unchecked),
+	})})
+}
+
 // divIncrementMismatch replaces the usual schema-file advice: the dump is
 // probably right and the server ran with a non-default div_precision_increment.
 // unchecked increments are named so a partial fit does not read as exact.
@@ -2162,8 +2174,6 @@ func divIncrementMismatch(table string, col schemaCol, example string, fit, unch
 	switch {
 	case len(unchecked) == 0:
 		clause = i18n.Tf("error.flashbackDivIncFit", map[string]any{"Increments": intRanges(fit)})
-	case len(fit) == 0:
-		clause = i18n.Tf("error.flashbackDivIncUnchecked", map[string]any{"Unchecked": intRanges(unchecked)})
 	default:
 		clause = i18n.Tf("error.flashbackDivIncFitUnchecked", map[string]any{"Increments": intRanges(fit), "Unchecked": intRanges(unchecked)})
 	}

@@ -50,7 +50,7 @@ func TestDivIncrementHint(t *testing.T) {
 	msg := err.Error()
 	// #227: 22-30 put the quotient past 30 fractional digits, so they are
 	// named as unchecked instead of being dropped from an "only" range.
-	for _, want := range []string{"div_precision_increment 0-3", "could not check them at 22-30", "share is generated", "--exclude-table", "does not match"} {
+	for _, want := range []string{"div_precision_increment 0-3", "could not check them at 22-30", "share is generated", "--exclude-table", "does not match", "FLUSH TABLES on the table before the INSERT"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("missing %q in %s", want, msg)
 		}
@@ -59,18 +59,21 @@ func TestDivIncrementHint(t *testing.T) {
 		t.Fatalf("partial fit printed as exact: %s", msg)
 	}
 
-	// A value no checked increment produces still names the unchecked ones
-	// and keeps the wrong-dump advice.
+	// A value no checked increment produces leads with the plain wrong-dump
+	// message (#231) and names the unchecked increments only as a note.
 	_, err = flashSchemaSQL(t, schema, "",
 		row([]string{"1", "1.000000", "3", "0.50000000000000000000"}),
 	)
 	if err == nil {
 		t.Fatal("garbage value accepted")
 	}
-	for _, want := range []string{"match no increment flashback could check", "div_precision_increment 22-30", "use a dump from incident time"} {
+	for _, want := range []string{"share is generated in the schema file but the logged values are not", "at any div_precision_increment flashback could check", "could not check div_precision_increment 22-30", "Use a dump from incident time"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("garbage value: missing %q in %v", want, err)
 		}
+	}
+	if strings.Contains(err.Error(), "at MySQL's default div_precision_increment of 4") {
+		t.Fatalf("garbage value got the increment lead: %v", err)
 	}
 
 	// Two images with the same inputs and different stored values fit no

@@ -358,8 +358,13 @@ func (a *Analyzer) collectGeneratedReview() error {
 			}
 			example, unknown := imgs.outcome(col)
 			if example != "" {
-				if fit, unchecked := imgs.divIncrementFit(col); len(fit) > 0 || len(unchecked) > 0 {
+				if fit, unchecked := imgs.divIncrementFit(col); len(fit) > 0 {
 					mismatches = append(mismatches, divIncrementMismatch(label, col, example, fit, unchecked).Error())
+					continue
+				} else if len(unchecked) > 0 {
+					// No increment fits: lead with the dump, and name the
+					// unchecked increments only as a trailing note (#231).
+					mismatches = append(mismatches, generatedUncheckedMismatch(label, col, example, unchecked).Error())
 					continue
 				}
 				mismatches = append(mismatches, generatedMismatch(label, col, example).Error())
