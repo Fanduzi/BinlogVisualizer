@@ -9,6 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+
+	"binlogviz/internal/i18n"
 )
 
 // ExitError is a command error that should terminate the process with Code.
@@ -24,14 +27,24 @@ func (e *ExitError) Error() string {
 	return e.Msg
 }
 
-// PrintCommandError writes one Error line. A parse progress bar may still
-// own the current stderr line; erase that line first so Error never shares it.
+// PrintCommandError writes one Error line, with the prefix in the output
+// language ("Error: " in English, "错误：" in zh-CN, #227). A parse progress
+// bar may still own the current stderr line; erase that line first so the
+// error never shares it.
 func PrintCommandError(w io.Writer, err error) {
 	if w == nil || err == nil {
 		return
 	}
 	_, _ = io.WriteString(w, "\r\033[2K")
-	fmt.Fprintln(w, "Error:", err)
+	prefix := i18n.T("cli.errorPrefix")
+	if prefix == "cli.errorPrefix" || prefix == "" {
+		prefix = "Error:"
+	}
+	sep := " "
+	if strings.HasSuffix(prefix, "：") {
+		sep = ""
+	}
+	fmt.Fprintln(w, prefix+sep+err.Error())
 }
 
 // ExitCode returns the process exit code for err. Unknown errors are 1.
