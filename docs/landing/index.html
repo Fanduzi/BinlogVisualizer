@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.23.34 — flashback refusal messages: correct FLUSH TABLES advice, printed once per run</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.24.0 — streaming flashback, conflict refusal, typed exit codes, hardened parsing</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.23.34</div>
-                  <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">patch release</span>
+                  <div class="release-version">v0.24.0</div>
+                  <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">minor release</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">flashback refusal messages: correct FLUSH TABLES advice, printed once per run</div>
-                <div class="release-copy" data-i18n="releases.items.v02334">binlogviz flashback only changes messages; scripts, exit codes and accept/refuse are unchanged. zh-CN errors and warnings start with 错误：/警告： (#227, #244). The div_precision_increment hand-restore advice gives SET SESSION with a defined N, FLUSH TABLES `db`.`tbl`, what FLUSH waits for, and a fresh-connection alternative, and is printed once per run, so refusal stderr is about 31-41% smaller (#246). A correct dump at an increment flashback cannot check is told it may be right (#243, #231).</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.34/docs/releases/release-notes-v0.23.34.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">streaming flashback, conflict refusal, typed exit codes, hardened parsing</div>
+                <div class="release-copy" data-i18n="releases.items.v0240">binlogviz flashback streams row images through a temp file (#258) and refuses with exit 7 when a selected row was changed again later; --conflict guard and --plan let you choose (#259, #267). Every command has typed exit codes and --error-format json (#263, #268). Event CRC32 is verified and hostile input is bounded before decoding, so corrupt binlogs exit 5 (#271, #272). Also --quiet and no ANSI on non-TTY stderr (#253), password redaction (#250), a faster top-transactions ranking (#252) and MariaDB 11.4 collations (#269). Scripts that matched exit 1 must read the new codes.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.24.0/docs/releases/release-notes-v0.24.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.23.34</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v02334">flashback refusal messages: correct FLUSH TABLES advice, printed once per run</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v02334">binlogviz flashback only changes messages; scripts, exit codes and accept/refuse are unchanged. zh-CN errors and warnings start with 错误：/警告： (#227, #244). The div_precision_increment hand-restore advice gives SET SESSION with a defined N, FLUSH TABLES `db`.`tbl`, what FLUSH waits for, and a fresh-connection alternative, and is printed once per run, so refusal stderr is about 31-41% smaller (#246). A correct dump at an increment flashback cannot check is told it may be right (#243, #231).</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.34/docs/releases/release-notes-v0.23.34.md" target="_blank" rel="noopener" data-i18n="releases.links.v02334">Open v0.23.34 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.23.33</div>
@@ -1765,8 +1773,8 @@ install the binary, analyze one binlog, then move to ordered directory ranges an
 <span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>
 
 <span class="token-comment"># Linux: install.sh or tarball</span>
-<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.34/install.sh</span>
-<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.34</span>
+<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.24.0/install.sh</span>
+<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.24.0</span>
 
 <span class="token-comment"># verify install with the sample ROW binlog</span>
 <span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>
@@ -1869,7 +1877,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.23.34 — flashback refusal messages: correct FLUSH TABLES advice, printed once per run',
+            badge: 'v0.24.0 — streaming flashback, conflict refusal, typed exit codes, hardened parsing',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'Fast ROW-binlog summary: hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.\nSTATEMENT or MIXED files come back empty or undercounted. Printed positions are file evidence — use them as mysqlbinlog --start-position only when the span covers the transaction events, not an XID-only interval.',
             primary: 'Install BinlogViz',
@@ -1972,10 +1980,11 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             title: 'Release focus and recent milestones',
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
-            currentFocus: 'patch release',
-            currentTitle: 'flashback refusal messages: correct FLUSH TABLES advice, printed once per run',
+            currentFocus: 'minor release',
+            currentTitle: 'streaming flashback, conflict refusal, typed exit codes, hardened parsing',
             currentLink: 'Read release notes →',
             labels: {
+              v02334: 'flashback refusal messages: correct FLUSH TABLES advice, printed once per run',
               v02333: 'flashback checks JSON [0] and DECIMAL DIV/% the way MySQL does',
               v02332: 'flashback div_precision_increment hint is fast again and names unchecked increments',
               v02331: 'flashback names the schema-file table when a letter-case match is refused',
@@ -2022,6 +2031,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: 'Trust boundary'
             },
             links: {
+              v02334: 'Open v0.23.34 notes →',
               v02333: 'Open v0.23.33 notes →',
               v02332: 'Open v0.23.32 notes →',
               v02331: 'Open v0.23.31 notes →',
@@ -2072,6 +2082,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v0240: 'binlogviz flashback streams row images through a temp file (#258) and refuses with exit 7 when a selected row was changed again later; --conflict guard and --plan let you choose (#259, #267). Every command has typed exit codes and --error-format json (#263, #268). Event CRC32 is verified and hostile input is bounded before decoding, so corrupt binlogs exit 5 (#271, #272). Also --quiet and no ANSI on non-TTY stderr (#253), password redaction (#250), a faster top-transactions ranking (#252) and MariaDB 11.4 collations (#269). Scripts that matched exit 1 must read the new codes.',
               v02334: 'binlogviz flashback only changes messages; scripts, exit codes and accept/refuse are unchanged. zh-CN errors and warnings start with 错误：/警告： (#227, #244). The div_precision_increment hand-restore advice gives SET SESSION with a defined N, FLUSH TABLES `db`.`tbl`, what FLUSH waits for, and a fresh-connection alternative, and is printed once per run, so refusal stderr is about 31-41% smaller (#246). A correct dump at an increment flashback cannot check is told it may be right (#243, #231).',
               v02333: 'binlogviz flashback now evaluates $.v[0] on a non-array JSON value as the value itself (#237) and keeps MySQL rounding for a / inside DIV, % or MOD on DECIMAL (#238). Both could give a rare false accept before. More DIV/% DECIMAL columns are verified and kept in the script; a few that were verified only by luck are now left out with a guard. Also the #225 label fix and three refactors with unchanged output (#234, #235, #236).',
               v02332: 'binlogviz flashback re-checks a refused / column at every div_precision_increment much faster (#226): a refused run on a 19.5 MB, 186-table binlog takes 27 s instead of about 10 h on v0.23.30/31. The hint now names increments it could not check instead of a cut-short range (#227), and suggests --exclude-table. Accept and refuse decisions and scripts are unchanged.',
@@ -2129,7 +2140,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'The right onboarding path for a product site is simple and credible:\ninstall the binary, analyze one binlog, then move to ordered directory ranges and named snapshots when the incident story gets wide enough to compare against a baseline.',
             quick: {
               title: 'Quick start',
-              code: '<span class="token-comment"># macOS only (Homebrew cask)</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux: install.sh or tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.34/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.34</span>\n\n<span class="token-comment"># verify install with the sample ROW binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># save current + baseline snapshots, inspect them as JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
+              code: '<span class="token-comment"># macOS only (Homebrew cask)</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux: install.sh or tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.24.0/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.24.0</span>\n\n<span class="token-comment"># verify install with the sample ROW binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># save current + baseline snapshots, inspect them as JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: 'What a good first session looks like',
@@ -2182,7 +2193,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.23.34 —— flashback 拒绝提示：FLUSH TABLES 说明改正，每次运行只打印一次',
+            badge: 'v0.24.0 —— 流式 flashback、冲突拒绝、分类退出码、加固的解析',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'ROW binlog 的快速摘要：热表、写入形态、上线前后 compare。510 MB 级大约数秒。\nSTATEMENT / MIXED 会空或少计。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 mysqlbinlog --start-position。',
             primary: '安装 BinlogViz',
@@ -2285,10 +2296,11 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             title: '当前版本与最近里程碑',
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
-            currentFocus: '补丁版本',
-            currentTitle: 'flashback 拒绝提示：FLUSH TABLES 说明改正，每次运行只打印一次',
+            currentFocus: '次版本',
+            currentTitle: '流式 flashback、冲突拒绝、分类退出码、加固的解析',
             currentLink: '查看发布说明 →',
             labels: {
+              v02334: 'flashback 拒绝提示：FLUSH TABLES 说明改正，每次运行只打印一次',
               v02333: 'flashback 对 JSON [0] 和 DECIMAL DIV/% 的核对与 MySQL 一致',
               v02332: 'flashback 的 div_precision_increment 提示重新变快，并写出无法核对的增量',
               v02331: 'flashback 在大小写折叠匹配被拒绝时写出转储里的表名',
@@ -2335,6 +2347,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: '信任边界'
             },
             links: {
+              v02334: '打开 v0.23.34 说明 →',
               v02333: '打开 v0.23.33 说明 →',
               v02332: '打开 v0.23.32 说明 →',
               v02331: '打开 v0.23.31 说明 →',
@@ -2385,6 +2398,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v0240: 'binlogviz flashback 通过临时文件流式处理行镜像（#258）；所选的行后来又被修改时以退出码 7 拒绝，可用 --conflict guard 和 --plan 选择（#259、#267）。每个命令都有分类退出码和 --error-format json（#263、#268）。解码前校验事件 CRC32 并限制恶意输入，损坏的 binlog 退出码为 5（#271、#272）。另有 --quiet、非终端不输出 ANSI（#253）、密码脱敏（#250）、更快的大事务排行（#252）和 MariaDB 11.4 排序规则（#269）。匹配退出码 1 的脚本需要读取新的退出码。',
               v02334: 'binlogviz flashback 只改提示信息，脚本、退出码和接受/拒绝都不变。zh-CN 的错误和警告以 错误：/警告： 开头（#227、#244）。div_precision_increment 的手工恢复说明给出带 N 定义的 SET SESSION、FLUSH TABLES `库`.`表`、FLUSH 会等什么，以及新连接的替代做法，并且每次运行只打印一次，拒绝的 stderr 小了约 31%–41%（#246）。增量值无法核对的正确转储会被告知可能没错（#243、#231）。',
               v02333: 'binlogviz flashback 对非数组 JSON 值取 $.v[0] 时得到值本身（#237），DECIMAL 上 DIV、%、MOD 里的 / 保留 MySQL 的舍入（#238）。两处以前都可能极少数误接受。更多 DIV/% 的 DECIMAL 列现在能核对并留在脚本里；少数以前碰巧核对通过的列改为加守卫省略。另含 #225 标签修复和三处输出不变的重构（#234、#235、#236）。',
               v02332: 'binlogviz flashback 对被拒绝的 / 列逐个增量重新核对时快了很多（#226）：在 19.5 MB、186 张表的 binlog 上，被拒绝的运行只需 27 秒，v0.23.30/31 约 10 小时。提示现在写出无法核对的增量，而不是不完整的范围（#227），并建议用 --exclude-table。接受和拒绝的判定以及脚本都不变。',
@@ -2442,7 +2456,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '对产品官网来说，正确的上手路径应该简单且可信：\n安装二进制，分析一个 binlog，然后在事故故事变宽到需要基线对比时，再切到目录范围和命名快照。',
             quick: {
               title: '快速开始',
-              code: '<span class="token-comment"># 仅 macOS（Homebrew cask）</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux：install.sh 或 tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.23.34/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.23.34</span>\n\n<span class="token-comment"># 用样例 ROW binlog 验证安装</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># 保存 current + baseline 快照，查看 JSON 元数据，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
+              code: '<span class="token-comment"># 仅 macOS（Homebrew cask）</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux：install.sh 或 tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.24.0/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--version</span> <span class="token-string">v0.24.0</span>\n\n<span class="token-comment"># 用样例 ROW binlog 验证安装</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># 保存 current + baseline 快照，查看 JSON 元数据，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: '一个好的首轮会话应该长这样',
