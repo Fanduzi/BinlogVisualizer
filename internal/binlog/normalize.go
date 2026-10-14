@@ -323,3 +323,57 @@ func safeTruncateBytes(s string, maxBytes int) string {
 	}
 	return truncated
 }
+
+// stripLeadingSQLComments drops the comments before a statement's first
+// keyword. MariaDB logs "/* c */ CREATE USER ..." verbatim where MySQL 8.0
+// logs "CREATE USER ...", and every classifier here matches on the first
+// keyword (#269). Executable comments (/*! and /*M!) run their body, so they
+// stay. Text that is only comments, or an unterminated comment, is returned
+// unchanged.
+func stripLeadingSQLComments(query string) string {
+	rest := strings.TrimLeft(query, " \t\r\n")
+	for {
+		switch {
+		case strings.HasPrefix(rest, "/*!") || strings.HasPrefix(rest, "/*M!"):
+			return finishStrip(query, rest)
+		case strings.HasPrefix(rest, "/*"):
+			end := strings.Index(rest[2:], "*/")
+			if end < 0 {
+				return query
+			}
+			rest = rest[2+end+2:]
+		case strings.HasPrefix(rest, "#") || hasLineCommentDashes(rest):
+			end := strings.IndexByte(rest, '\n')
+			if end < 0 {
+				return query
+			}
+			rest = rest[end+1:]
+		default:
+			return finishStrip(query, rest)
+		}
+		rest = strings.TrimLeft(rest, " \t\r\n")
+	}
+}
+
+func finishStrip(query, rest string) string {
+	if rest == "" {
+		return query
+	}
+	return rest
+}
+
+// hasLineCommentDashes matches "-- " style comments: two dashes followed by
+// whitespace or the end of the text, as MySQL requires.
+func hasLineCommentDashes(s string) bool {
+	if !strings.HasPrefix(s, "--") {
+		return false
+	}
+	if len(s) == 2 {
+		return true
+	}
+	switch s[2] {
+	case ' ', '\t', '\r', '\n':
+		return true
+	}
+	return false
+}
