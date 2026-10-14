@@ -123,7 +123,7 @@ func writeHTMLAtomically(dest outputDestination, content string) error {
 }
 
 func printHTMLSaveConfirmation(path string) {
-	printHTMLSaveConfirmationTo(os.Stderr, path)
+	printHTMLSaveConfirmationTo(infoWriter(os.Stderr), path)
 }
 
 func printHTMLSaveConfirmationTo(out io.Writer, path string) {

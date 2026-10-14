@@ -295,6 +295,10 @@
     "description": "--conflict 取值无效",
     "other": "--conflict {{.Value}} 无效：请用 refuse 或 guard"
   },
+  "cmd.root.flag.quiet": {
+    "description": "根命令 --quiet 帮助",
+    "other": "stderr 不输出进度条和提示行，错误和警告照常输出。stderr 不是终端或 TERM=dumb 时本来就没有进度条"
+  },
   "cmd.root.flag.errorFormat": {
     "description": "根命令 --error-format 帮助",
     "other": "stderr 上的错误格式：text（默认）或 json，一行 {\"error\":{\"kind\",\"code\",\"message\",\"details\"}}。也可以设置 BINLOGVIZ_ERROR_FORMAT=json"

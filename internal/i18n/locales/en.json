@@ -295,6 +295,10 @@
     "description": "Invalid --conflict value",
     "other": "invalid --conflict {{.Value}}: use refuse or guard"
   },
+  "cmd.root.flag.quiet": {
+    "description": "Root --quiet help",
+    "other": "No progress bar or info lines on stderr; errors and warnings still print. The bar is already off when stderr is not a terminal or TERM=dumb"
+  },
   "cmd.root.flag.errorFormat": {
     "description": "Root --error-format help",
     "other": "Error output on stderr: text (default) or json, one {\"error\":{\"kind\",\"code\",\"message\",\"details\"}} line. Also BINLOGVIZ_ERROR_FORMAT=json"

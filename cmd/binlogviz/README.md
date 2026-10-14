@@ -12,6 +12,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, flashback, co
 | `analyze_selection.go` | Validates single-file position selectors against exact parsed event boundaries and EOF before report rendering. |
 | `analyze_output.go` | Resolves analyze HTML destination: explicit `--output`, `--output -`, TTY default cwd file, and non-TTY stdout redirect. |
 | `exit.go` | Maps command errors onto process exit codes by kind (`internal/clierr`, ADR 0008: 1 error, 2 no data, 3 usage, 4 input, 5 corrupt, 6 refused, 7 conflict, 8 output), prints one `Error:` line after clearing a progress line, or one JSON error line with `--error-format json`. |
+| `terminal.go` | Terminal hygiene (#253): the progress bar and `\r\033[2K` only on an interactive stderr (a TTY, `TERM` not `dumb`, no `--quiet`). A pipe or file gets the one plain `Finalizing analysis...` line; `--quiet`/`-q` drops info lines too. Errors and warnings always print. |
 | `interrupt.go` | Removes stdin/pipe temp copies on SIGHUP (exit 129), SIGINT (exit 130), SIGQUIT (exit 131), and SIGTERM (exit 143) and prints `Error: interrupted`. Unix only for SIGHUP and SIGQUIT. |
 | `analyze_stdin.go` | Spools non-seekable stdin, pipes, and fifos. A real TTY is a terminal error. `/dev/null` and an empty pipe say `stdin has no data`. Replay aliases the spool to `stdin` without inventing a cwd path. |
 | `analyze_parallel.go` | Runs bounded parallel per-file parsing while preserving ordered analyzer consumption for cross-file transaction safety. |

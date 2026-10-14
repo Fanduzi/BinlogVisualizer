@@ -66,7 +66,10 @@ func PrintCommandError(w io.Writer, err error) {
 		_, _ = w.Write(clierr.JSONLine(kind, ExitCode(err), err.Error(), details))
 		return
 	}
-	_, _ = io.WriteString(w, "\r\033[2K")
+	// A progress bar can only own the line on an interactive stderr.
+	if f, ok := w.(*os.File); ok && f == os.Stderr && interactiveStderr() {
+		_, _ = io.WriteString(w, "\r\033[2K")
+	}
 	prefix := i18n.T("cli.errorPrefix")
 	if prefix == "cli.errorPrefix" || prefix == "" {
 		prefix = "Error:"

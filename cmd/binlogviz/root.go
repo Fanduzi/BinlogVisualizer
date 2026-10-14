@@ -48,6 +48,7 @@ func NewRootCommand() *cobra.Command {
 
 	// Add global flags
 	cmd.PersistentFlags().StringVar(&langFlag, "lang", "", "Language for output (e.g., en, zh-CN)")
+	cmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, i18n.T("cmd.root.flag.quiet"))
 	cmd.PersistentFlags().StringVar(&errorFormat, "error-format", "", i18n.T("cmd.root.flag.errorFormat"))
 	// Flag, argument and command-name mistakes are usage errors, exit 3 (ADR 0008).
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
