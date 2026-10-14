@@ -20,7 +20,7 @@ type applyDelayTracker struct {
 	maxUs        int64
 	maxImmediate time.Time
 	has          bool
-	top          []model.ApplyDelayTxn
+	top          *topN[model.ApplyDelayTxn]
 }
 
 func (t *applyDelayTracker) add(txn model.Transaction, limit int) {
@@ -39,7 +39,10 @@ func (t *applyDelayTracker) add(txn model.Transaction, limit int) {
 		t.maxUs = delayUs
 		t.maxImmediate = immediate
 	}
-	t.top = insertApplyDelay(t.top, model.ApplyDelayTxn{
+	if t.top == nil {
+		t.top = newTopN(limit, applyDelayBetter)
+	}
+	t.top.add(model.ApplyDelayTxn{
 		GTID:            txn.GTID,
 		TxnStartPath:    txn.TxnStartPath,
 		TxnStartPos:     txn.TxnStartPos,
@@ -47,7 +50,7 @@ func (t *applyDelayTracker) add(txn model.Transaction, limit int) {
 		ImmediateCommit: immediate,
 		Delay:           delay,
 		Tables:          cloneDelayTables(txn.Tables),
-	}, limit)
+	})
 }
 
 func (t applyDelayTracker) snapshot() *model.ApplyDelay {
@@ -70,7 +73,7 @@ func (t applyDelayTracker) snapshot() *model.ApplyDelay {
 		PeakMinute: t.maxImmediate.UTC().Truncate(time.Minute),
 	}
 	if origin == model.ApplyDelayReplica {
-		out.Transactions = append([]model.ApplyDelayTxn(nil), t.top...)
+		out.Transactions = append([]model.ApplyDelayTxn(nil), t.top.sorted()...)
 	}
 	return out
 }
@@ -91,34 +94,6 @@ func percentile95(sorted []int64) int64 {
 		rank = n
 	}
 	return sorted[rank-1]
-}
-
-func insertApplyDelay(current []model.ApplyDelayTxn, txn model.ApplyDelayTxn, limit int) []model.ApplyDelayTxn {
-	if limit == 0 {
-		limit = len(current) + 1
-	}
-	insertAt := len(current)
-	for index := range current {
-		if applyDelayBetter(txn, current[index]) {
-			insertAt = index
-			break
-		}
-	}
-	if insertAt == len(current) {
-		if len(current) < limit {
-			return append(current, txn)
-		}
-		return current
-	}
-	if len(current) < limit {
-		current = append(current, model.ApplyDelayTxn{})
-	}
-	copy(current[insertAt+1:], current[insertAt:])
-	current[insertAt] = txn
-	if len(current) > limit {
-		current = current[:limit]
-	}
-	return current
 }
 
 func applyDelayBetter(left, right model.ApplyDelayTxn) bool {

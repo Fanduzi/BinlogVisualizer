@@ -115,8 +115,8 @@ func TestReportAggregatorDoesNotRetainAllTransactions(t *testing.T) {
 		t.Fatalf("largest transactions retained %d, want <= 5", len(snapshot.Diagnostics.LargestTransactions))
 	}
 	for _, reps := range agg.patternRepTxns {
-		if len(reps) > maxRepresentativeTxns {
-			t.Fatalf("pattern reps retained %d, want <= %d", len(reps), maxRepresentativeTxns)
+		if reps.len() > maxRepresentativeTxns {
+			t.Fatalf("pattern reps retained %d, want <= %d", reps.len(), maxRepresentativeTxns)
 		}
 	}
 }
