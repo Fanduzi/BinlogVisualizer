@@ -4,6 +4,37 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.24.0
+
+Release date: 2026-10-15
+
+Highlights:
+
+- ADR 0008: row stream, streaming flashback and typed errors.
+- `binlogviz flashback` streams row images through a temp file, so memory no longer grows with the undo set (#258).
+- flashback refuses with exit 7 when a selected row was changed again later; `--conflict guard` writes guarded undo SQL and `--plan` prints a JSON plan (#259). A later change inside the selection is not a conflict (#267).
+- Typed exit codes (1 error, 2 no_data, 3 usage, 4 input, 5 corrupt, 6 refused, 7 conflict, 8 output) and `--error-format json` / `BINLOGVIZ_ERROR_FORMAT=json` with one JSON line on stderr (#263, #268). See [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
+- No progress bar or ANSI escape codes when stderr is not a terminal; `-q`/`--quiet` (#253).
+- Credentials, including password hashes, are redacted in flashback messages (#250).
+- Top transactions are ranked with a heap, with no quadratic slowdown (#252).
+- Event CRC32 is verified and hostile input is bounded before decoding (counts, rows widths, JSON offsets and depth, payload size); corrupt input exits 5 (#271, #272).
+- MariaDB 11.4 collation ids and leading QUERY comments (#269).
+
+### Behavior changes
+
+- Several failures that exited 1 now exit 3, 4, 5 or 6; exit 1 is only failures with no other kind.
+- flashback can now refuse with exit 7 (conflict).
+- Corrupt input exits 5 instead of exit 0 with wrong output or exit 2 after a panic.
+
+### Known gaps
+
+#277, #278, #255, #256, #257, #270.
+
+Related notes:
+
+- [v0.24.0 release notes](docs/releases/release-notes-v0.24.0.md)
+- [v0.24.0 中文发行说明](docs/releases/release-notes-v0.24.0.zh-CN.md)
+
 ## v0.23.34
 
 Release date: 2026-10-13
