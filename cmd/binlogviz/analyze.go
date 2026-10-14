@@ -179,7 +179,7 @@ func newAnalyzeCommand() *cobra.Command {
 				fileCoverage = fileCoverageForPaths(paths)
 			}
 			if discovered {
-				printResolvedPaths(os.Stderr, paths)
+				printResolvedPaths(infoWriter(os.Stderr), paths)
 			}
 			if len(paths) == 0 {
 				return fmt.Errorf("%s", i18n.T("error.noResolvedFiles"))
@@ -540,7 +540,10 @@ func totalInputBytes(paths []string) (int64, []int64) {
 
 func newAggregateProgress(paths []string, out io.Writer) (*aggregateProgress, error) {
 	totalBytes, fileSizes := totalInputBytes(paths)
-	if totalBytes <= 0 || len(fileSizes) == 0 {
+	out = infoWriter(out)
+	// The bar is for people at a terminal; a pipe or file gets only the
+	// plain "Finalizing analysis..." line, and --quiet gets nothing (#253).
+	if totalBytes <= 0 || len(fileSizes) == 0 || !interactiveStderr() {
 		return &aggregateProgress{fileSizes: fileSizes, offsets: make([]int64, len(paths)), statusWriter: out}, nil
 	}
 	bar := progressbar.NewOptions64(
@@ -885,7 +888,7 @@ func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Optio
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(os.Stderr, "Saved snapshot %q to %s\n", snapshotName, savedPath); err != nil {
+	if _, err := fmt.Fprintf(infoWriter(os.Stderr), "Saved snapshot %q to %s\n", snapshotName, savedPath); err != nil {
 		return err
 	}
 	_, err = fmt.Fprint(os.Stdout, payload)

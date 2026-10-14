@@ -12,8 +12,8 @@ import (
 func TestPrintCommandErrorPrefixFollowsLanguage(t *testing.T) {
 	defer i18n.MustInit("en")
 	for _, tc := range []struct{ lang, want string }{
-		{"en", "\r\033[2KError: boom\n"},
-		{"zh-CN", "\r\033[2K错误：boom\n"},
+		{"en", "Error: boom\n"},
+		{"zh-CN", "错误：boom\n"},
 	} {
 		i18n.MustInit(tc.lang)
 		var b bytes.Buffer

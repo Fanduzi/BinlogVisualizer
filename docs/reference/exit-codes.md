@@ -27,3 +27,7 @@ Signals keep their shell codes: SIGHUP 129, SIGINT 130, SIGQUIT 131, SIGTERM 143
 - `kind` and `code` are stable; `message` is localized.
 - `details` is present only when there is something machine-readable: a corrupt event's `event_type`, `end_position`, `event_size` and `cause`; a flashback conflict's `count` and `listed` (table, key, later GTID and position).
 - A corrupt event never prints the parser's Go struct or raw event bytes (#254).
+
+## Progress and quiet mode
+
+The progress bar, carriage returns and ANSI erase codes are written only when stderr is a terminal and `TERM` is not `dumb`. A pipe or file gets one plain `Finalizing analysis...` line. `--quiet` (`-q`, any command) drops progress and info lines (resolved paths, save confirmations); errors and warnings still print (#253).

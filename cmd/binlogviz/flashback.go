@@ -94,7 +94,7 @@ func newFlashbackCommand() *cobra.Command {
 				fileCoverage = fileCoverageForPaths(paths)
 			}
 			if discovered {
-				printResolvedPaths(os.Stderr, paths)
+				printResolvedPaths(infoWriter(os.Stderr), paths)
 			}
 			if len(paths) == 0 {
 				return fmt.Errorf("%s", i18n.T("error.noResolvedFiles"))
