@@ -19,6 +19,9 @@ import (
 type jsonCell struct {
 	ok  bool
 	doc []byte
+	// diff is the raw partial-update cell (Json_diff_vector) of a JSON column
+	// whose partial bit is set; the bounds check validates it.
+	diff []byte
 }
 
 // flashJSON keeps binary JSON documents for the RowsEvent currently being decoded.
@@ -246,6 +249,10 @@ func walkRowImage(data []byte, re *replication.RowsEvent, bitmap []byte, partial
 		n, ok := cellSize(data[pos:], re.Table.ColumnType[i], columnMeta(re.Table, i))
 		if !ok {
 			return 0, nil, false
+		}
+		if isPartial {
+			m := int(columnMeta(re.Table, i))
+			cells[i].diff = data[pos+m : pos+n]
 		}
 		pos += n
 	}

@@ -1196,6 +1196,11 @@ func wrapParseError(err error) error {
 	if localized := localizedOperatorGroupError(err); localized != nil {
 		return clierr.Wrap(clierr.KindError, localized)
 	}
+	var corrupt *binlog.CorruptEventError
+	if errors.As(err, &corrupt) {
+		msg := i18n.Tf("error.corruptEvent", map[string]any{"Path": corrupt.Path, "Offset": corrupt.Offset, "Cause": corrupt.Cause})
+		return clierr.WithDetails(clierr.KindCorrupt, fmt.Errorf("%s", msg), map[string]any{"path": corrupt.Path, "offset": corrupt.Offset, "cause": corrupt.Cause})
+	}
 	if mapped := mapBinlogParseError(err.Error()); mapped != "" {
 		return clierr.Wrap(clierr.KindCorrupt, fmt.Errorf("%s", mapped))
 	}

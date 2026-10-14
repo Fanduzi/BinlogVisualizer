@@ -364,15 +364,24 @@ func compressFixturePayload(t *testing.T, src string) string {
 	return path
 }
 
+// appendOTW appends one payload header field the way MySQL writes it: the
+// value is net_store_length encoded and the length byte counts those bytes.
 func appendOTW(dst []byte, field byte, n uint64) []byte {
-	var raw [8]byte
-	binary.LittleEndian.PutUint64(raw[:], n)
-	width := 1
-	for width < 8 && n>>uint(8*width) != 0 {
-		width++
+	var enc []byte
+	switch {
+	case n < 251:
+		enc = []byte{byte(n)}
+	case n < 1<<16:
+		enc = []byte{0xfc, byte(n), byte(n >> 8)}
+	case n < 1<<24:
+		enc = []byte{0xfd, byte(n), byte(n >> 8), byte(n >> 16)}
+	default:
+		enc = make([]byte, 9)
+		enc[0] = 0xfe
+		binary.LittleEndian.PutUint64(enc[1:], n)
 	}
-	dst = append(dst, field, byte(width))
-	return append(dst, raw[:width]...)
+	dst = append(dst, field, byte(len(enc)))
+	return append(dst, enc...)
 }
 
 func TestCaptureEnumIndexZeroMarksNonStrict(t *testing.T) {

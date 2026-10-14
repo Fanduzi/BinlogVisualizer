@@ -9,7 +9,7 @@ Every command maps a failure to one **kind**. The exit code is a function of the
 | 2 | `no_data` | a complete binlog with nothing in range or nothing matching the filters (ADR 0001) |
 | 3 | `usage` | unknown command, subcommand (`snapshot x`, `workflow x`) or flag, wrong arguments, an invalid `--format` (#251), `--error-format`, `--start`/`--end`, GTID set, `--dml`, `--conflict` or `--output` value, a negative count such as `--top-transactions -1` (#268) |
 | 4 | `input` | an input file or `--from-dir` is missing, unreadable or a directory, a `compare` report cannot be read, or `--schema-file` cannot be read (#268) |
-| 5 | `corrupt` | not a binlog, empty, truncated, a corrupt event, or no Format Description |
+| 5 | `corrupt` | not a binlog, empty, truncated, a corrupt event (including a CRC32 checksum mismatch), or no Format Description |
 | 6 | `refused` | flashback cannot write an exact script: DDL in range, a row image that is not FULL, a `--schema-file` mismatch, `--sql-context off` |
 | 7 | `conflict` | flashback: a selected row was changed again later in the scanned binlogs (`--conflict refuse`, the default; #259) |
 | 8 | `output` | writing the report, the script or the flashback temp file failed (for example ENOSPC). SIGPIPE stays 141 |

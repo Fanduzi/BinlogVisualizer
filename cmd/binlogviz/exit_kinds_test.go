@@ -40,6 +40,12 @@ func TestExitCodesByKind(t *testing.T) {
 	if err := os.WriteFile(truncated, body[:len(body)-7], 0o600); err != nil {
 		t.Fatal(err)
 	}
+	flipped := append([]byte(nil), body...)
+	flipped[len(flipped)/2] ^= 0xff
+	crcBad := filepath.Join(dir, "crc.binlog")
+	if err := os.WriteFile(crcBad, flipped, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	notBinlog := filepath.Join(dir, "x.txt")
 	if err := os.WriteFile(notBinlog, []byte("hello, not a binlog"), 0o600); err != nil {
 		t.Fatal(err)
@@ -58,6 +64,8 @@ func TestExitCodesByKind(t *testing.T) {
 		{"missing file", []string{"analyze", filepath.Join(dir, "nosuch.binlog")}, 4},
 		{"not a binlog", []string{"analyze", notBinlog}, 5},
 		{"truncated", []string{"analyze", truncated}, 5},
+		{"checksum mismatch", []string{"analyze", crcBad}, 5},
+		{"checksum mismatch flashback", []string{"flashback", crcBad}, 5},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

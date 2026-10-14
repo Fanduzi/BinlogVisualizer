@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
-// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand. QUERY text has its leading comments stripped (not executable /*! or /*M! ones), so MariaDB's verbatim "/* c */ CREATE USER" classifies like MySQL's. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents, including JSON inside a transaction payload; it stays off for analyze.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. Event bytes are read and checked by readEvents (CRC32 with the in-use flag masked, size and count bounds) before go-mysql decodes them, and a mismatch, bounds failure or decoder panic returns a CorruptEventError naming the file and event start offset. rawEventFromHeader is the shared header projection used by the file loop and payload expand. QUERY text has its leading comments stripped (not executable /*! or /*M! ones), so MariaDB's verbatim "/* c */ CREATE USER" classifies like MySQL's. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents, including JSON inside a transaction payload; it stays off for analyze.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -40,6 +40,19 @@ func cachedFromTable(table *replication.TableMapEvent) cachedTableName {
 		keyStatus: tableKeyStatus(table),
 		pk:        pkMetaFrom(table),
 	}
+}
+
+// CorruptEventError reports an event whose bytes cannot be trusted: its
+// CRC32 checksum does not match, or the decoder panicked on it. Offset is the
+// file offset where the event starts.
+type CorruptEventError struct {
+	Path   string
+	Offset int64
+	Cause  string
+}
+
+func (e *CorruptEventError) Error() string {
+	return fmt.Sprintf("%s: corrupt event at offset %d: %s", e.Path, e.Offset, e.Cause)
 }
 
 // NewParser creates a new binlog parser.
@@ -88,11 +101,17 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 	// whose location is time.Local, so the string followed the process zone. DATETIME
 	// is a zone-less wall clock and does not use this location.
 	bp.SetTimestampStringLocation(time.UTC)
+	decodeRows := func(re *replication.RowsEvent, data []byte) error { return re.Decode(data) }
 	if p.captureFlash {
-		// The hook replaces Decode. It still decodes, and keeps the JSON bytes
-		// go-mysql would otherwise turn into text. Analyze leaves this unset.
-		bp.SetRowsEventDecodeFunc(decodeRowsKeepJSON)
+		// This decoder still decodes, and keeps the JSON bytes go-mysql would
+		// otherwise turn into text. Analyze uses plain Decode.
+		decodeRows = decodeRowsKeepJSON
 	}
+	// Event bytes are checked before go-mysql decodes them (readEvents);
+	// the rows decoder also refuses a width that would allocate past the
+	// table map or loop without consuming bytes.
+	fault := &rowsFault{}
+	bp.SetRowsEventDecodeFunc(boundedRowsDecode(decodeRows, fault))
 	if startOffset < 0 {
 		startOffset = 0
 	}
@@ -114,7 +133,17 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 		// Bytes actually handed to the callback. LogPos can run ahead of the
 		// file after a fixture is edited, so the tail check uses this sum.
 		consumed := cursor
-		if err := bp.ParseFile(path, startOffset, func(ev *replication.BinlogEvent) error {
+		// inHandler is true while a downstream consumer runs. A panic there is
+		// a bug in BinlogViz and keeps panicking; any other panic comes from
+		// decoding the event bytes and means the event is corrupt.
+		inHandler := false
+		consume := func(raw RawEvent) error {
+			inHandler = true
+			err := handler(raw)
+			inHandler = false
+			return err
+		}
+		if err := parseFileGuarded(bp, path, startOffset, &consumed, &inHandler, fault, func(ev *replication.BinlogEvent) error {
 			if ev == nil {
 				return nil
 			}
@@ -138,7 +167,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 					if inners[i].ServerVersion != "" {
 						serverVersion = inners[i].ServerVersion
 					}
-					if err := handler(inners[i]); err != nil {
+					if err := consume(inners[i]); err != nil {
 						return err
 					}
 				}
@@ -150,7 +179,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				serverVersion = raw.ServerVersion
 			}
 
-			return handler(raw)
+			return consume(raw)
 		}); err != nil {
 			return err
 		}
@@ -164,6 +193,23 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 		}
 	}
 	return nil
+}
+
+// parseFileGuarded runs readEvents and turns a decoder panic into a
+// CorruptEventError at the offset of the event being read. consumed is the
+// running byte count; during a decode it is where that event starts.
+func parseFileGuarded(bp *replication.BinlogParser, path string, offset int64, consumed *int64, inHandler *bool, fault *rowsFault, onEvent replication.OnEventFunc) (err error) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		if *inHandler {
+			panic(r)
+		}
+		err = &CorruptEventError{Path: path, Offset: *consumed, Cause: fmt.Sprintf("event decoder failed: %v", r)}
+	}()
+	return readEvents(bp, path, offset, consumed, fault, onEvent)
 }
 
 // unreadBinlogTail reports a short read the upstream parser treats as a clean EOF.
