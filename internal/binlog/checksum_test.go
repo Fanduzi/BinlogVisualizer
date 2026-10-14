@@ -65,7 +65,7 @@ func TestParseFilesAcceptsIntactFixture(t *testing.T) {
 func TestParseFileGuardedTurnsDecoderPanicIntoCorruptEvent(t *testing.T) {
 	consumed := int64(120)
 	inHandler := false
-	err := parseFileGuarded(replication.NewBinlogParser(), checksumFixture, 0, &consumed, &inHandler, func(*replication.BinlogEvent) error {
+	err := parseFileGuarded(replication.NewBinlogParser(), checksumFixture, 0, &consumed, &inHandler, nil, func(*replication.BinlogEvent) error {
 		panic("slice bounds out of range [65541:243]")
 	})
 	var corrupt *CorruptEventError
@@ -82,7 +82,7 @@ func TestParseFileGuardedKeepsConsumerPanics(t *testing.T) {
 			t.Fatalf("want the consumer panic to propagate, got %v", r)
 		}
 	}()
-	_ = parseFileGuarded(replication.NewBinlogParser(), checksumFixture, 0, &consumed, &inHandler, func(*replication.BinlogEvent) error {
+	_ = parseFileGuarded(replication.NewBinlogParser(), checksumFixture, 0, &consumed, &inHandler, nil, func(*replication.BinlogEvent) error {
 		panic("consumer bug")
 	})
 	t.Fatal("panic was swallowed")

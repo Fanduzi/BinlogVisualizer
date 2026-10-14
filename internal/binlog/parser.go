@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
-// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. Event CRC32 checksums are verified (the in-use flag of an open binlog's Format Description is masked first), and a checksum mismatch or a decoder panic returns a CorruptEventError naming the file and event start offset. rawEventFromHeader is the shared header projection used by the file loop and payload expand. QUERY text has its leading comments stripped (not executable /*! or /*M! ones), so MariaDB's verbatim "/* c */ CREATE USER" classifies like MySQL's. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents, including JSON inside a transaction payload; it stays off for analyze.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. Event bytes are read and checked by readEvents (CRC32 with the in-use flag masked, size and count bounds) before go-mysql decodes them, and a mismatch, bounds failure or decoder panic returns a CorruptEventError naming the file and event start offset. rawEventFromHeader is the shared header projection used by the file loop and payload expand. QUERY text has its leading comments stripped (not executable /*! or /*M! ones), so MariaDB's verbatim "/* c */ CREATE USER" classifies like MySQL's. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents, including JSON inside a transaction payload; it stays off for analyze.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -8,7 +8,6 @@ package binlog
 import (
 	"encoding/binary"
 	"fmt"
-	"hash/crc32"
 	"os"
 	"strconv"
 	"strings"
@@ -102,11 +101,17 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 	// whose location is time.Local, so the string followed the process zone. DATETIME
 	// is a zone-less wall clock and does not use this location.
 	bp.SetTimestampStringLocation(time.UTC)
+	decodeRows := func(re *replication.RowsEvent, data []byte) error { return re.Decode(data) }
 	if p.captureFlash {
-		// The hook replaces Decode. It still decodes, and keeps the JSON bytes
-		// go-mysql would otherwise turn into text. Analyze leaves this unset.
-		bp.SetRowsEventDecodeFunc(decodeRowsKeepJSON)
+		// This decoder still decodes, and keeps the JSON bytes go-mysql would
+		// otherwise turn into text. Analyze uses plain Decode.
+		decodeRows = decodeRowsKeepJSON
 	}
+	// Event bytes are checked before go-mysql decodes them (readEvents);
+	// the rows decoder also refuses a width that would allocate past the
+	// table map or loop without consuming bytes.
+	fault := &rowsFault{}
+	bp.SetRowsEventDecodeFunc(boundedRowsDecode(decodeRows, fault))
 	if startOffset < 0 {
 		startOffset = 0
 	}
@@ -128,11 +133,6 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 		// Bytes actually handed to the callback. LogPos can run ahead of the
 		// file after a fixture is edited, so the tail check uses this sum.
 		consumed := cursor
-		// Without a CRC32 check a flipped byte in a row image decodes to a
-		// different value and flashback writes wrong SQL. go-mysql's own check
-		// is off: it rejects the Format Description of a binlog still open or
-		// left by a crash (see verifyEventChecksum).
-		checksum := replication.BINLOG_CHECKSUM_ALG_OFF
 		// inHandler is true while a downstream consumer runs. A panic there is
 		// a bug in BinlogViz and keeps panicking; any other panic comes from
 		// decoding the event bytes and means the event is corrupt.
@@ -143,12 +143,9 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 			inHandler = false
 			return err
 		}
-		if err := parseFileGuarded(bp, path, startOffset, &consumed, &inHandler, func(ev *replication.BinlogEvent) error {
+		if err := parseFileGuarded(bp, path, startOffset, &consumed, &inHandler, fault, func(ev *replication.BinlogEvent) error {
 			if ev == nil {
 				return nil
-			}
-			if !verifyEventChecksum(ev, &checksum) {
-				return &CorruptEventError{Path: path, Offset: consumed, Cause: "CRC32 checksum mismatch"}
 			}
 			if ev.Header != nil {
 				consumed += int64(ev.Header.EventSize)
@@ -198,10 +195,10 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 	return nil
 }
 
-// parseFileGuarded runs bp.ParseFile and turns a decoder panic into a
+// parseFileGuarded runs readEvents and turns a decoder panic into a
 // CorruptEventError at the offset of the event being read. consumed is the
 // running byte count; during a decode it is where that event starts.
-func parseFileGuarded(bp *replication.BinlogParser, path string, offset int64, consumed *int64, inHandler *bool, onEvent replication.OnEventFunc) (err error) {
+func parseFileGuarded(bp *replication.BinlogParser, path string, offset int64, consumed *int64, inHandler *bool, fault *rowsFault, onEvent replication.OnEventFunc) (err error) {
 	defer func() {
 		r := recover()
 		if r == nil {
@@ -212,40 +209,7 @@ func parseFileGuarded(bp *replication.BinlogParser, path string, offset int64, c
 		}
 		err = &CorruptEventError{Path: path, Offset: *consumed, Cause: fmt.Sprintf("event decoder failed: %v", r)}
 	}()
-	return bp.ParseFile(path, offset, onEvent)
-}
-
-// binlogFlagsOffset is where the 2-byte flags field sits in the event header.
-const binlogFlagsOffset = 17
-
-// verifyEventChecksum checks the CRC32 footer of ev against the checksum
-// algorithm the file's Format Description declared, and records that
-// algorithm when ev is the Format Description. MySQL sets
-// LOG_EVENT_BINLOG_IN_USE_F in the Format Description of an open binlog after
-// the checksum is written and clears it on close, so the flag is masked
-// before the check, as MySQL's own reader does. go-mysql v1.14 does not mask
-// it. Events without a checksum (OFF, or pre-5.6 files) pass.
-func verifyEventChecksum(ev *replication.BinlogEvent, alg *replication.BinlogChecksum) bool {
-	if ev == nil || ev.Header == nil {
-		return true
-	}
-	if fde, ok := ev.Event.(*replication.FormatDescriptionEvent); ok {
-		*alg = fde.ChecksumAlgorithm
-	}
-	if *alg != replication.BINLOG_CHECKSUM_ALG_CRC32 {
-		return true
-	}
-	raw := ev.RawData
-	if len(raw) < replication.EventHeaderSize+replication.BinlogChecksumLength {
-		return false
-	}
-	body := raw[:len(raw)-replication.BinlogChecksumLength]
-	want := binary.LittleEndian.Uint32(raw[len(raw)-replication.BinlogChecksumLength:])
-	if ev.Header.EventType == replication.FORMAT_DESCRIPTION_EVENT && raw[binlogFlagsOffset]&byte(replication.LOG_EVENT_BINLOG_IN_USE_F) != 0 {
-		body = append([]byte(nil), body...)
-		body[binlogFlagsOffset] &^= byte(replication.LOG_EVENT_BINLOG_IN_USE_F)
-	}
-	return crc32.ChecksumIEEE(body) == want
+	return readEvents(bp, path, offset, consumed, fault, onEvent)
 }
 
 // unreadBinlogTail reports a short read the upstream parser treats as a clean EOF.
