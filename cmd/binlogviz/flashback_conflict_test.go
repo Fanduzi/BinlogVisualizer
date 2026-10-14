@@ -13,7 +13,7 @@ func TestFlashbackConflictExitCode(t *testing.T) {
 	if ExitCode(err) != 7 {
 		t.Fatalf("conflict exit %d", ExitCode(err))
 	}
-	if ExitCode(flashbackExit(errors.New("refused"))) != 1 {
-		t.Fatal("other refusals keep exit 1 until typed errors land")
+	if ExitCode(flashbackExit(errors.New("refused"))) != 6 {
+		t.Fatal("other refusals are exit 6")
 	}
 }

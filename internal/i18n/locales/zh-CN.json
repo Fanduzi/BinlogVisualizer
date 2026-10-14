@@ -295,6 +295,10 @@
     "description": "--conflict 取值无效",
     "other": "--conflict {{.Value}} 无效：请用 refuse 或 guard"
   },
+  "cmd.root.flag.errorFormat": {
+    "description": "根命令 --error-format 帮助",
+    "other": "stderr 上的错误格式：text（默认）或 json，一行 {\"error\":{\"kind\",\"code\",\"message\",\"details\"}}。也可以设置 BINLOGVIZ_ERROR_FORMAT=json"
+  },
   "error.flashbackConflict": {
     "description": "选中的行之后又被修改时 flashback 拒绝",
     "other": "flashback 已拒绝：{{.Count}} 处选中的行在扫描的 binlog 中之后又被修改过，撤销会覆盖这些后续修改。第一处：{{.First}}。可以加 --conflict guard 只撤销仍与日志后镜像一致的行，或缩小范围，或用 --plan 查看。"

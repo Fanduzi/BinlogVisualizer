@@ -6,11 +6,13 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -122,7 +124,16 @@ func newAnalyzeCommand() *cobra.Command {
 			}
 			return fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			// Each stage gives its untyped errors a kind (ADR 0008): flags and
+			// options are usage, finding and opening inputs is input; the
+			// pipeline types its own errors.
+			stage := clierr.KindUsage
+			defer func() { err = clierr.Wrap(stage, err) }()
+			// #251: an unknown --format is a usage error, before any input is read.
+			if _, ferr := report.ParseFormat(opts.format); ferr != nil {
+				return ferr
+			}
 			// Parse time range
 			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
 			if err != nil {
@@ -152,6 +163,7 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
+			stage = clierr.KindInput
 			paths, discovered, fileCoverage, err := resolveAnalyzePaths(args, opts)
 			if err != nil {
 				return err
@@ -179,6 +191,7 @@ func newAnalyzeCommand() *cobra.Command {
 			}
 
 			// Resolve output destination
+			stage = clierr.KindUsage
 			dest, err := resolveOutputDestination(paths, discovered, opts.output, opts.format)
 			if err != nil {
 				return err
@@ -193,6 +206,7 @@ func newAnalyzeCommand() *cobra.Command {
 			snapshotMeta := buildSnapshotMetadata(displayPaths(paths, pathAliases), opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
+			stage = clierr.KindError
 			return runAnalysisWithOutput(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir, dest, pathAliases)
 		},
 	}
@@ -766,7 +780,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 		renderErr = report.RenderTextToStdoutWithOptions(*result, reportOpts)
 	}
 	if renderErr != nil {
-		return renderErr
+		return clierr.Wrap(clierr.KindOutput, renderErr)
 	}
 	return nil
 }
@@ -1120,13 +1134,83 @@ func wrapParseError(err error) error {
 	if err == nil {
 		return nil
 	}
+	// An open BEGIN or unclassified QUERY is a readable binlog that cannot
+	// be analyzed safely: exit 1, as ADR 0001 documents, not corrupt.
 	if localized := localizedOperatorGroupError(err); localized != nil {
-		return localized
+		return clierr.Wrap(clierr.KindError, localized)
 	}
 	if mapped := mapBinlogParseError(err.Error()); mapped != "" {
-		return fmt.Errorf("%s", mapped)
+		return clierr.Wrap(clierr.KindCorrupt, fmt.Errorf("%s", mapped))
 	}
-	return fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
+	if msg, details := describeEventError(err.Error()); msg != "" {
+		return clierr.WithDetails(clierr.KindCorrupt, fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": msg})), details)
+	}
+	return clierr.Wrap(clierr.KindCorrupt, fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()})))
+}
+
+var (
+	eventDumpRe = regexp.MustCompile(`&replication\.EventHeader\{[^}]*\}`)
+	eventTypeRe = regexp.MustCompile(`EventType:0x([0-9a-fA-F]+)`)
+	eventPosRe  = regexp.MustCompile(`LogPos:0x([0-9a-fA-F]+)`)
+	eventSizeRe = regexp.MustCompile(`EventSize:0x([0-9a-fA-F]+)`)
+	eventErrRe  = regexp.MustCompile(`Err: (.*)$`)
+)
+
+// cleanEventCause keeps the parser's reason and drops what follows it: raw
+// event bytes ("data ...") and Go struct dumps (&replication.TableMapEvent{...}).
+func cleanEventCause(cause string) string {
+	cut := len(cause)
+	for _, mark := range []string{", data ", " data \"", "data \"", "&replication.", "%!"} {
+		if i := strings.Index(cause, mark); i >= 0 && i < cut {
+			cut = i
+		}
+	}
+	cause = strings.TrimRight(strings.TrimSpace(cause[:cut]), ",:;")
+	if len(cause) > 200 {
+		cause = cause[:200] + "..."
+	}
+	if cause == "" {
+		cause = "undecodable event"
+	}
+	return cause
+}
+
+// describeEventError replaces go-mysql's %#v event dump (header struct plus
+// raw Data bytes) with the event type, end position, size and cause (#254).
+func describeEventError(msg string) (string, map[string]any) {
+	header := eventDumpRe.FindString(msg)
+	if header == "" {
+		return "", nil
+	}
+	hex := func(re *regexp.Regexp) (int64, bool) {
+		m := re.FindStringSubmatch(header)
+		if m == nil {
+			return 0, false
+		}
+		v, err := strconv.ParseInt(m[1], 16, 64)
+		return v, err == nil
+	}
+	details := map[string]any{}
+	parts := []string{"corrupt event"}
+	if v, ok := hex(eventTypeRe); ok {
+		details["event_type"] = v
+		parts = append(parts, fmt.Sprintf("type %d", v))
+	}
+	if v, ok := hex(eventPosRe); ok {
+		details["end_position"] = v
+		parts = append(parts, fmt.Sprintf("ending at position %d", v))
+	}
+	if v, ok := hex(eventSizeRe); ok {
+		details["event_size"] = v
+		parts = append(parts, fmt.Sprintf("size %d", v))
+	}
+	out := strings.Join(parts, ", ")
+	if m := eventErrRe.FindStringSubmatch(msg); m != nil {
+		cause := cleanEventCause(m[1])
+		details["cause"] = cause
+		out += ": " + cause
+	}
+	return out, details
 }
 
 func noteSkippedIgnoredQuery(stream commandAnalyzer, raw binlog.RawEvent) {
@@ -1275,7 +1359,7 @@ func rejectEmptyOrIncompleteBinlog(paths []string, rawEvents int) error {
 	if rawEvents > 0 || !anyNonEmptyFile(paths) {
 		return nil
 	}
-	return fmt.Errorf("%s", i18n.T("error.noFormatDescription"))
+	return clierr.Wrap(clierr.KindCorrupt, fmt.Errorf("%s", i18n.T("error.noFormatDescription")))
 }
 
 func anyNonEmptyFile(paths []string) bool {

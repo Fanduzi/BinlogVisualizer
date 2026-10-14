@@ -11,3 +11,6 @@ Analyze used to exit 0 whenever the parser returned, including empty time window
 
 - Tests that expected exit 0 on a window miss must change.
 - Non-zero analyze exits write nothing to stdout (same contract as STATEMENT failure).
+
+
+Superseded in part by ADR 0008: corrupt or incomplete input is now exit 5 (`corrupt`), and usage, input, refusal, conflict and output failures have their own codes. Exit 2 is unchanged. See `docs/reference/exit-codes.md`.

@@ -6,6 +6,7 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -65,7 +66,7 @@ func runCompare(opts *compareOptions, args []string, out io.Writer) error {
 	switch opts.format {
 	case "text", "json", "html":
 	default:
-		return fmt.Errorf("unsupported compare format: %s", opts.format)
+		return clierr.Errorf(clierr.KindUsage, "unsupported compare format: %s", opts.format)
 	}
 
 	current, baseline, err := resolveCompareReports(args, opts)

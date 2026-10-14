@@ -7,6 +7,7 @@
 package analyzer
 
 import (
+	"binlogviz/internal/clierr"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -310,12 +311,12 @@ func (a *Analyzer) spillCurrent() error {
 	if a.flashSpill == nil {
 		spill, err := newFlashSpill()
 		if err != nil {
-			return fmt.Errorf("flashback: cannot create temp file: %w", err)
+			return clierr.Wrap(clierr.KindOutput, fmt.Errorf("flashback: cannot create temp file: %w", err))
 		}
 		a.flashSpill = spill
 	}
 	if err := a.flashSpill.append(cur); err != nil {
-		return fmt.Errorf("flashback: cannot write temp file: %w", err)
+		return clierr.Wrap(clierr.KindOutput, fmt.Errorf("flashback: cannot write temp file: %w", err))
 	}
 	return nil
 }

@@ -302,8 +302,8 @@ func assertFlashbackRefused(t *testing.T, stdout, stderr string, err error, want
 	if err == nil {
 		t.Fatalf("expected refusal %q, stdout=%q stderr=%q", want, stdout, stderr)
 	}
-	if got := ExitCode(err); got != 1 {
-		t.Fatalf("exit %d, want 1; err=%v", got, err)
+	if got := ExitCode(err); got != 6 {
+		t.Fatalf("exit %d, want 6; err=%v", got, err)
 	}
 	if stdout != "" {
 		t.Fatalf("refusal printed SQL:\n%s", stdout)

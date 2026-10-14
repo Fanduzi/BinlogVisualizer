@@ -169,7 +169,7 @@ func TestDMLFilterMissExit2(t *testing.T) {
 		t.Fatalf("err=%v\nstderr=%s", err, stderr)
 	}
 	_, _, bad := executeAnalyzeLikeMain(t, fixture, "--dml", "truncate")
-	if bad == nil || ExitCode(bad) != 1 || !strings.Contains(bad.Error(), "invalid --dml") {
+	if bad == nil || ExitCode(bad) != 3 || !strings.Contains(bad.Error(), "invalid --dml") {
 		t.Fatalf("invalid dml: %v", bad)
 	}
 }

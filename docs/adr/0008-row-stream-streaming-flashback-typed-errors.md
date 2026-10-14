@@ -85,4 +85,4 @@ Later, not in this stack:
 
 - Flashback writes a temp file about the size of the selected row images; `$TMPDIR` must have room. The generated-column review still holds the images of tables that have schema-file generated columns (a `--schema-file` path only).
 - A flashback that used to exit 0 now exits 7 when later changes exist; scripts must choose `--conflict guard` or narrow the range.
-- Exit 1 is now only failures with no other kind. Scripts that matched 1 for usage, missing or corrupt input, or a flashback refusal must read the new codes; the JSON error is the stable contract.
+- Exit 1 is now only failures with no other kind. Scripts that matched 1 for usage, missing or corrupt input, or a flashback refusal must read the new codes; the JSON error is the stable contract. The table lives in `docs/reference/exit-codes.md`.
