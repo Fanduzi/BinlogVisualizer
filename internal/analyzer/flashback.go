@@ -641,7 +641,7 @@ func flashRowError(row model.FlashRow, table string) error {
 }
 
 func flashDDLError(ev model.NormalizedEvent, table string) error {
-	statement := strings.TrimSpace(ev.QuerySQL)
+	statement := strings.TrimSpace(messageStatement(ev.QuerySQL))
 	if statement == "" {
 		statement = "DDL"
 	}
