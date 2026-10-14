@@ -1,7 +1,7 @@
 // Package analyzer detects flashback conflicts: later changes to selected rows.
 // input: every row event in the scanned range (selected or not) and the selected rows.
 // output: a FlashbackConflictError that refuses the script by default (#259), the post-image guard switch, and the JSON plan.
-// pos: flashback collector on Analyzer (ADR 0008). Memory is one 8-byte hash per selected row key, not the binlog.
+// pos: flashback collector on Analyzer (ADR 0008). Memory is one 8-byte hash per selected row key plus one candidate per later change to a selected key, not the binlog. A candidate whose own change is selected is dropped (#267).
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
@@ -116,7 +116,19 @@ func rowKeyLabel(row *model.FlashRow, image []string) string {
 	return strings.Join(parts, ",")
 }
 
-// noteSelectedKeys remembers the row keys an undo will write.
+// conflictRef is one later change to a selected key, from transaction txn.
+type conflictRef struct{ txn, key uint64 }
+
+// pendingConflict is a candidate until the run ends: if the same transaction's
+// change to the key is selected too, the script undoes it and it is dropped (#267).
+type pendingConflict struct {
+	seq    int64
+	detail FlashbackConflict
+}
+
+// noteSelectedKeys remembers the row keys an undo will write, and resolves
+// candidates from this same transaction: a selected change is undone by
+// this script, so it is not a later change the script would overwrite.
 func (a *Analyzer) noteSelectedKeys(txnKey string, rows []model.FlashRow) {
 	if a.flashKeys == nil {
 		a.flashKeys = map[uint64]uint64{}
@@ -126,6 +138,7 @@ func (a *Analyzer) noteSelectedKeys(txnKey string, rows []model.FlashRow) {
 		for _, image := range [][]string{rows[i].Before, rows[i].After} {
 			if k, ok := rowKeyHash(&rows[i], image); ok {
 				a.flashKeys[k] = txn
+				delete(a.flashPending, conflictRef{txn: txn, key: k})
 			}
 		}
 	}
@@ -159,26 +172,51 @@ func (a *Analyzer) checkFlashConflict(ev model.NormalizedEvent) {
 			if owner == txn {
 				continue
 			}
-			a.flashConflicts++
-			if len(a.flashConflictList) < flashConflictListed {
-				gtid, _, _ := a.txnBuilder.touchLocation()
-				if gtid == "" {
-					gtid = "GTID unavailable"
-				}
-				a.flashConflictList = append(a.flashConflictList, FlashbackConflict{
-					Table:         flashTable(row.Schema, row.Table),
-					Key:           rowKeyLabel(row, image),
-					LaterGTID:     gtid,
-					LaterPosition: fmt.Sprintf("%s:%d", filepath.Base(ev.BinlogPath), ev.PositionStart),
-					LaterOp:       row.Op,
-				})
+			ref := conflictRef{txn: txn, key: k}
+			if _, seen := a.flashPending[ref]; seen {
+				break
 			}
+			if a.flashPending == nil {
+				a.flashPending = map[conflictRef]pendingConflict{}
+			}
+			gtid, _, _ := a.txnBuilder.touchLocation()
+			if gtid == "" {
+				gtid = "GTID unavailable"
+			}
+			a.flashPendingSeq++
+			a.flashPending[ref] = pendingConflict{seq: a.flashPendingSeq, detail: FlashbackConflict{
+				Table:         flashTable(row.Schema, row.Table),
+				Key:           rowKeyLabel(row, image),
+				LaterGTID:     gtid,
+				LaterPosition: fmt.Sprintf("%s:%d", filepath.Base(ev.BinlogPath), ev.PositionStart),
+				LaterOp:       row.Op,
+			}}
 			break
 		}
 	}
 }
 
+// settleConflicts turns the candidates left after the run into the
+// conflict count and the first listed conflicts, in binlog order.
+func (a *Analyzer) settleConflicts() {
+	if a.flashConflictsSettled {
+		return
+	}
+	a.flashConflictsSettled = true
+	left := make([]pendingConflict, 0, len(a.flashPending))
+	for _, p := range a.flashPending {
+		left = append(left, p)
+	}
+	sort.Slice(left, func(i, j int) bool { return left[i].seq < left[j].seq })
+	a.flashConflicts = len(left)
+	a.flashConflictList = nil
+	for i := 0; i < len(left) && i < flashConflictListed; i++ {
+		a.flashConflictList = append(a.flashConflictList, left[i].detail)
+	}
+}
+
 func (a *Analyzer) conflictError() error {
+	a.settleConflicts()
 	if a.flashConflicts == 0 || a.postImageGuard() {
 		return nil
 	}
@@ -263,6 +301,7 @@ func (a *Analyzer) WriteFlashbackPlan(w io.Writer) error {
 		plan.Tables = append(plan.Tables, *t)
 	}
 	sort.Slice(plan.Tables, func(i, j int) bool { return plan.Tables[i].Table < plan.Tables[j].Table })
+	a.settleConflicts()
 	plan.Conflicts = FlashbackPlanCounts{Count: a.flashConflicts, Listed: append([]FlashbackConflict{}, a.flashConflictList...)}
 	plan.Conflicts.Omitted = plan.Conflicts.Count - len(plan.Conflicts.Listed)
 	cerr := a.conflictError()

@@ -45,26 +45,29 @@ type Analyzer struct {
 	inputGTIDFlavor    string
 	matchedGTIDs       map[string]struct{}
 
-	flashCur          *flashGroup
-	flashSpill        *flashSpill
-	flashKeys         map[uint64]uint64
-	flashConflicts    int
-	flashConflictList []FlashbackConflict
-	flashGroupID      int64
-	flashSeq          int64
-	flashClearSeq     map[string]int64
-	flashPendingNames map[string][]string
-	flashChecked      bool
-	flashErr          error
-	flashCat          *schemaCatalog
-	flashUnknown      []string
-	flashSchemaWarn   []string
-	flashGenNotes     []string
-	flashReviewed     bool
-	flashReviewErr    error
-	flashSplit        map[string]*flashSplit
-	flashSplitOrder   []string
-	flashSplitDone    []string
+	flashCur              *flashGroup
+	flashSpill            *flashSpill
+	flashKeys             map[uint64]uint64
+	flashConflicts        int
+	flashPending          map[conflictRef]pendingConflict
+	flashPendingSeq       int64
+	flashConflictsSettled bool
+	flashConflictList     []FlashbackConflict
+	flashGroupID          int64
+	flashSeq              int64
+	flashClearSeq         map[string]int64
+	flashPendingNames     map[string][]string
+	flashChecked          bool
+	flashErr              error
+	flashCat              *schemaCatalog
+	flashUnknown          []string
+	flashSchemaWarn       []string
+	flashGenNotes         []string
+	flashReviewed         bool
+	flashReviewErr        error
+	flashSplit            map[string]*flashSplit
+	flashSplitOrder       []string
+	flashSplitDone        []string
 }
 
 // New creates a new Analyzer with the given options.
@@ -460,6 +463,9 @@ func (a *Analyzer) reset() {
 	a.flashGroupID = 0
 	a.flashKeys = nil
 	a.flashConflicts = 0
+	a.flashPending = nil
+	a.flashPendingSeq = 0
+	a.flashConflictsSettled = false
 	a.flashConflictList = nil
 	a.flashClearSeq = nil
 	a.flashPendingNames = nil
