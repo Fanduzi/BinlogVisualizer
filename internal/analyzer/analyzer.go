@@ -45,16 +45,23 @@ type Analyzer struct {
 	inputGTIDFlavor    string
 	matchedGTIDs       map[string]struct{}
 
-	flashGroups     []flashGroup
-	flashErr        error
-	flashCat        *schemaCatalog
-	flashUnknown    []string
-	flashSchemaWarn []string
-	flashGenNotes   []string
-	flashReviewed   bool
-	flashReviewErr  error
-	flashSplit      map[string]*flashSplit
-	flashSplitOrder []string
+	flashCur          *flashGroup
+	flashSpill        *flashSpill
+	flashGroupID      int64
+	flashSeq          int64
+	flashClearSeq     map[string]int64
+	flashPendingNames map[string][]string
+	flashChecked      bool
+	flashErr          error
+	flashCat          *schemaCatalog
+	flashUnknown      []string
+	flashSchemaWarn   []string
+	flashGenNotes     []string
+	flashReviewed     bool
+	flashReviewErr    error
+	flashSplit        map[string]*flashSplit
+	flashSplitOrder   []string
+	flashSplitDone    []string
 }
 
 // New creates a new Analyzer with the given options.
@@ -444,7 +451,12 @@ func (a *Analyzer) reset() {
 	a.pendingGroupEvents = make(map[string][]model.NormalizedEvent)
 	a.inputGTIDFlavor = ""
 	a.matchedGTIDs = make(map[string]struct{})
-	a.flashGroups = nil
+	a.closeFlashSpill()
+	a.flashSeq = 0
+	a.flashGroupID = 0
+	a.flashClearSeq = nil
+	a.flashPendingNames = nil
+	a.flashChecked = false
 	a.flashErr = nil
 	a.flashCat = newSchemaCatalog(a.opts.SchemaFileDB)
 	a.flashUnknown = nil
@@ -454,6 +466,7 @@ func (a *Analyzer) reset() {
 	a.flashReviewErr = nil
 	a.flashSplit = nil
 	a.flashSplitOrder = nil
+	a.flashSplitDone = nil
 	if a.opts.Flashback && strings.TrimSpace(a.opts.SchemaSQL) != "" {
 		a.flashCat.loadFile(a.opts.SchemaSQL)
 	}

@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -51,6 +52,20 @@ func (g flashGuard) Seal(script string) string {
 	}
 	sum := sha256.Sum256([]byte(script))
 	return strings.ReplaceAll(script, guardTokenMark, hex.EncodeToString(sum[:8]))
+}
+
+// sealWriter writes through to w with the token placeholder replaced by the
+// token for sum, the sha256 of the whole script as Seal computes it. The
+// renderer never splits the placeholder across writes.
+func (g flashGuard) sealWriter(w io.Writer, sum []byte) writerFunc {
+	if g.header == "" {
+		return toWriter(w)
+	}
+	token := hex.EncodeToString(sum[:8])
+	return func(s string) error {
+		_, err := io.WriteString(w, strings.ReplaceAll(s, guardTokenMark, token))
+		return err
+	}
 }
 
 type guardCol struct {
@@ -195,21 +210,27 @@ func omittedGeneratedCols(groups []flashGroup) []guardCol {
 	var out []guardCol
 	seen := map[string]struct{}{}
 	for _, group := range groups {
-		for i, row := range group.rows {
-			if i >= len(group.binds) {
+		out = appendGuardCols(out, seen, group)
+	}
+	return out
+}
+
+// appendGuardCols adds the generated columns of one group not yet in seen.
+func appendGuardCols(out []guardCol, seen map[string]struct{}, group flashGroup) []guardCol {
+	for i, row := range group.rows {
+		if i >= len(group.binds) {
+			continue
+		}
+		for _, col := range group.binds[i].cols {
+			if !col.generated {
 				continue
 			}
-			for _, col := range group.binds[i].cols {
-				if !col.generated {
-					continue
-				}
-				key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.name)
-				if _, ok := seen[key]; ok {
-					continue
-				}
-				seen[key] = struct{}{}
-				out = append(out, guardCol{schema: row.Schema, table: row.Table, column: col.name})
+			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.name)
+			if _, ok := seen[key]; ok {
+				continue
 			}
+			seen[key] = struct{}{}
+			out = append(out, guardCol{schema: row.Schema, table: row.Table, column: col.name})
 		}
 	}
 	return out
