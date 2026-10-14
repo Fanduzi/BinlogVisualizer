@@ -1,6 +1,7 @@
 package binlogviz
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 
@@ -179,16 +180,21 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 	if !ok || src == nil {
 		return fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
-	sql, err := src.FlashbackSQL()
+	// Every refusal happens here, before any SQL is written.
+	rows, err := src.PrepareFlashback()
 	if err != nil {
 		return err
 	}
-	if sql == "" {
+	if rows == 0 {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
 	for _, warning := range src.FlashbackWarnings() {
 		fmt.Fprintln(os.Stderr, warning)
 	}
-	_, err = fmt.Fprint(os.Stdout, sql)
-	return err
+	// The script streams from a temp file: memory does not grow with the binlog (#258).
+	out := bufio.NewWriterSize(os.Stdout, 1<<16)
+	if _, err := src.WriteFlashback(out); err != nil {
+		return err
+	}
+	return out.Flush()
 }
