@@ -231,6 +231,10 @@
     "description": "损坏或非 binlog 文件头错误",
     "other": "不是 MySQL binlog：文件头不是 4 字节 magic fe'bin'"
   },
+  "error.corruptEvent": {
+    "description": "事件 CRC32 校验失败或无法解码",
+    "other": "{{.Path}}：偏移 {{.Offset}} 处的 binlog 事件已损坏（{{.Cause}}），该文件不可信，已停止"
+  },
   "error.truncatedBinlog": {
     "description": "截断或损坏的 binlog 事件错误",
     "other": "binlog 已截断或损坏：事件不完整（{{.Detail}}）"

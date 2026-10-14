@@ -231,6 +231,10 @@
     "description": "Corrupt or non-binlog header error",
     "other": "not a MySQL binlog: header is not the 4-byte magic fe'bin'"
   },
+  "error.corruptEvent": {
+    "description": "Event failed its CRC32 checksum or could not be decoded",
+    "other": "{{.Path}}: binlog event at offset {{.Offset}} is corrupt ({{.Cause}}); stopped because the file cannot be trusted"
+  },
   "error.truncatedBinlog": {
     "description": "Truncated or corrupt binlog event error",
     "other": "binlog is truncated or corrupt: incomplete event ({{.Detail}})"
