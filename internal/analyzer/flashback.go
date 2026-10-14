@@ -243,6 +243,7 @@ func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashR
 			a.notePendingName(copied[i])
 		}
 	}
+	a.noteSelectedKeys(ev.TxnKey, copied)
 	key := ev.TxnKey
 	if cur := a.flashCur; cur != nil && key != "" && cur.key == key {
 		cur.rows = append(cur.rows, copied...)
@@ -433,6 +434,18 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 // the number of undo rows. Zero rows means there is nothing to print.
 // FlashbackWarnings is complete after it returns.
 func (a *Analyzer) PrepareFlashback() (int, error) {
+	rows, err := a.prepareChecks()
+	if err != nil {
+		return 0, err
+	}
+	if err := a.conflictError(); err != nil {
+		return 0, err
+	}
+	return rows, nil
+}
+
+// prepareChecks is PrepareFlashback without the conflict refusal.
+func (a *Analyzer) prepareChecks() (int, error) {
 	if a == nil {
 		return 0, fmt.Errorf("%s", i18n.T("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
@@ -469,7 +482,7 @@ func (a *Analyzer) WriteFlashback(w io.Writer) (int, error) {
 	}
 	err = writeFlashbackScript(w, func(fn func(*flashGroup) error) error {
 		return a.eachFlashGroup(true, fn)
-	}, a.flashGenNotes, cols)
+	}, a.flashGenNotes, cols, a.postImageGuard())
 	var rowErr *generatedRowRefusal
 	if errors.As(err, &rowErr) {
 		return 0, rowErr.named(a.refusalTable(rowErr.schema, rowErr.table))
@@ -674,7 +687,7 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 			}
 		}
 		return nil
-	}, notes, omittedGeneratedCols(groups))
+	}, notes, omittedGeneratedCols(groups), false)
 	if err != nil {
 		return "", err
 	}
@@ -684,22 +697,25 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 // writeFlashbackScript renders the script twice from backward (last group
 // first): into the guard hash, then to w with the token sealed in. Nothing
 // reaches w when a statement cannot be rendered.
-func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) error, notes []string, cols []guardCol) error {
+func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) error, notes []string, cols []guardCol, postImage bool) error {
 	guard := newFlashGuard(cols)
 	h := sha256.New()
-	if err := renderFlashbackTo(toWriter(h), backward, notes, guard); err != nil {
+	if err := renderFlashbackTo(toWriter(h), backward, notes, guard, postImage); err != nil {
 		return err
 	}
-	return renderFlashbackTo(guard.sealWriter(w, h.Sum(nil)), backward, notes, guard)
+	return renderFlashbackTo(guard.sealWriter(w, h.Sum(nil)), backward, notes, guard, postImage)
 }
 
-func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, guard flashGuard) error {
+func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, guard flashGuard, postImage bool) error {
 	var b strings.Builder
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
 	for _, note := range notes {
 		b.WriteString(note)
 		b.WriteByte('\n')
+	}
+	if postImage {
+		b.WriteString("-- --conflict guard: each undo matches the logged after image, so a row changed after the batch is left unchanged (0 rows affected).\n")
 	}
 	b.WriteString("SET NAMES utf8mb4;\n")
 	b.WriteString("SET time_zone = '+00:00';\n")
@@ -729,7 +745,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 			if j < len(group.binds) {
 				gen = group.binds[j].gen
 			}
-			statement, err := renderUndoStatement(group.rows[j], gen, tokenCond)
+			statement, err := renderUndo(group.rows[j], gen, tokenCond, postImage)
 			if err != nil {
 				return err
 			}
@@ -776,6 +792,13 @@ func writeBlockHead(b *strings.Builder, group *flashGroup, guard flashGuard) {
 // INSERT ... SELECT ... FROM DUAL WHERE cond, and UPDATE and DELETE add
 // AND cond to the WHERE.
 func renderUndoStatement(row model.FlashRow, gen map[string]struct{}, cond string) (string, error) {
+	return renderUndo(row, gen, cond, false)
+}
+
+// renderUndo is renderUndoStatement with the --conflict guard switch. With
+// postImage, an UPDATE or DELETE undo matches every logged after-image
+// column, and a DELETE undo inserts only when the key is still absent.
+func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postImage bool) (string, error) {
 	table := quoteIdent(row.Schema) + "." + quoteIdent(row.Table)
 	var statement string
 	var err error
@@ -785,8 +808,15 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}, cond strin
 		if len(cols) == 0 {
 			return "", generatedRowError(row)
 		}
+		var conds []string
+		if postImage && !row.NoPK && len(row.PK) > 0 {
+			conds = append(conds, "NOT EXISTS (SELECT 1 FROM "+table+" WHERE "+keyMatch(row, row.Before)+")")
+		}
 		if cond != "" {
-			statement = "INSERT INTO " + table + " (" + quoteColumnList(cols) + ") SELECT " + strings.Join(vals, ", ") + " FROM DUAL WHERE " + cond + ";"
+			conds = append(conds, cond)
+		}
+		if len(conds) > 0 {
+			statement = "INSERT INTO " + table + " (" + quoteColumnList(cols) + ") SELECT " + strings.Join(vals, ", ") + " FROM DUAL WHERE " + strings.Join(conds, " AND ") + ";"
 		} else {
 			statement = "INSERT INTO " + table + " (" + quoteColumnList(cols) + ") VALUES (" + strings.Join(vals, ", ") + ");"
 		}
@@ -799,9 +829,9 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}, cond strin
 		for i := range cols {
 			sets[i] = quoteIdent(cols[i]) + " = " + vals[i]
 		}
-		statement, err = undoWhere(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After, cond)
+		statement, err = undoWhereImage(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After, cond, postImage)
 	default:
-		statement, err = undoWhere(row, "DELETE FROM "+table, row.After, cond)
+		statement, err = undoWhereImage(row, "DELETE FROM "+table, row.After, cond, postImage)
 	}
 	if err != nil {
 		return "", err
@@ -934,9 +964,26 @@ func refusalLabel(res resolution, schema, table string) string {
 }
 
 func undoWhere(row model.FlashRow, head string, image []string, cond string) (string, error) {
+	return undoWhereImage(row, head, image, cond, false)
+}
+
+// keyMatch is the primary-key match for image.
+func keyMatch(row model.FlashRow, image []string) string {
+	parts := make([]string, 0, len(row.PK))
+	for _, index := range row.PK {
+		if index >= 0 && index < len(row.Columns) && index < len(image) {
+			parts = append(parts, quoteIdent(row.Columns[index])+" <=> "+image[index])
+		}
+	}
+	return strings.Join(parts, " AND ")
+}
+
+// undoWhereImage matches the primary key, or with allColumns (the --conflict
+// guard) every logged column of image, so a row changed later matches nothing.
+func undoWhereImage(row model.FlashRow, head string, image []string, cond string, allColumns bool) (string, error) {
 	pk := !row.NoPK && len(row.PK) > 0
 	indexes := row.PK
-	if !pk {
+	if !pk || allColumns {
 		indexes = make([]int, len(row.Columns))
 		for i := range indexes {
 			indexes[i] = i

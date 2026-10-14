@@ -283,6 +283,22 @@
     "description": "一行里没有可写的基列时拒绝",
     "other": "{{.Table}}：无法撤销所有列都是生成列的行"
   },
+  "cmd.flashback.flag.conflict": {
+    "description": "Flashback --conflict 帮助",
+    "other": "选中的行在扫描的 binlog 中之后又被修改时怎么办：refuse（默认；退出码 7，不输出脚本）或 guard（每条撤销语句匹配日志里的后镜像，之后被改过的行保持不动）"
+  },
+  "cmd.flashback.flag.plan": {
+    "description": "Flashback --plan 帮助",
+    "other": "输出 JSON 计划（事务数、每张表的行数、冲突、guard）而不是 SQL；退出码与真正执行时一致"
+  },
+  "error.flashbackConflictFlag": {
+    "description": "--conflict 取值无效",
+    "other": "--conflict {{.Value}} 无效：请用 refuse 或 guard"
+  },
+  "error.flashbackConflict": {
+    "description": "选中的行之后又被修改时 flashback 拒绝",
+    "other": "flashback 已拒绝：{{.Count}} 处选中的行在扫描的 binlog 中之后又被修改过，撤销会覆盖这些后续修改。第一处：{{.First}}。可以加 --conflict guard 只撤销仍与日志后镜像一致的行，或缩小范围，或用 --plan 查看。"
+  },
   "warning.flashbackSplit": {
     "description": "表过滤或 --dml 只撤销事务的一部分时警告",
     "other": "警告：事务 {{.GTID}} 只撤销了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"

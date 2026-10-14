@@ -283,6 +283,22 @@
     "description": "Flashback refuses a row that has no base column to write",
     "other": "{{.Table}}: cannot undo a row whose columns are all generated"
   },
+  "cmd.flashback.flag.conflict": {
+    "description": "Flashback --conflict help",
+    "other": "What to do when a selected row was changed again later in the scanned binlogs: refuse (default; exit 7, no script) or guard (each undo matches the logged after image, so a row changed later is left alone)"
+  },
+  "cmd.flashback.flag.plan": {
+    "description": "Flashback --plan help",
+    "other": "Print a JSON plan (transactions, rows per table, conflicts, guard) instead of SQL; the exit code is what the real run would return"
+  },
+  "error.flashbackConflictFlag": {
+    "description": "Invalid --conflict value",
+    "other": "invalid --conflict {{.Value}}: use refuse or guard"
+  },
+  "error.flashbackConflict": {
+    "description": "Flashback refuses when selected rows were changed later",
+    "other": "flashback refused: {{.Count}} selected row change(s) were changed again later in the scanned binlogs, and undoing them would overwrite those later changes. First: {{.First}}. Rerun with --conflict guard to skip rows that no longer match the logged after image, narrow the range, or see --plan."
+  },
   "warning.flashbackSplit": {
     "description": "Flashback warns when a table or DML filter undoes only part of a transaction",
     "other": "warning: transaction {{.GTID}} is only partly undone; a table or --dml selection skipped other row changes in that transaction"

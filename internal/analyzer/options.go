@@ -55,6 +55,12 @@ type Options struct {
 	// Flashback collects every selected row image for undo SQL.
 	// Off unless the flashback command is running. Analyze output ignores it.
 	Flashback bool
+	// FlashbackConflict is the --conflict policy: "" or "refuse" refuses a
+	// script that would overwrite later changes to the same rows; "guard"
+	// writes it with every undo matched against the logged after image.
+	FlashbackConflict string
+	// FlashbackPlan prints the JSON plan instead of SQL (--plan).
+	FlashbackPlan bool
 	// SchemaSQL is CREATE/ALTER text from --schema-file. Flashback learns
 	// generated columns from it before binlog DDL. Analyze ignores it.
 	SchemaSQL string
