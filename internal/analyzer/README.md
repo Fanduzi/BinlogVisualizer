@@ -28,6 +28,7 @@
 | `spikes.go` | Detects overall and table-level spike alerts from minute buckets. |
 | `diagnostics.go` | Builds DBA-oriented findings with alert-referenced-only transaction indexing, bounded top-N transaction/minute rankings, hot intervals, and file throughput segments. Internal helpers are indexed lookups only; legacy linear scans have been removed. |
 | `pattern_drilldowns.go` | Selects high-signal pattern drilldown candidates. Representative transactions must share the pattern identity (table set + ops + shape); sub-1% shares stay visible. |
+| `topn.go` | Ranked best-N collector (#252): bounded heap with a limit, append-only without, one cached sort on read; ties keep arrival order exactly as v0.23.34. |
 | `report_aggregator.go` | Maintains bounded report state, filtered event-byte coverage, SQL availability, producer sets, a session ranking (`threads.go`), replica apply delay (`apply_delay.go`), and numeric-key-ordered transaction evidence while excluding incomplete transactions from whole-transaction rankings, patterns, histograms, and ordinary large alerts. |
 | `apply_delay.go` | Ranks MySQL 8 commit-timestamp delay for retained row transactions. Both timestamps must be non-zero. Summary stats cover every counted transaction; the stored list follows `TopTransactions`. | |
 | `detail_store.go` | Defines optional detail persistence backends. The default mode is `none`; DuckDB remains available for explicit detail storage. |

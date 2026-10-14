@@ -49,12 +49,12 @@ type ReportAggregator struct {
 	serverVersions      map[string]struct{}
 	serverFlavors       map[string]struct{}
 
-	topTransactions     []model.Transaction
-	incompleteEvidence  []model.Transaction
-	largest             []model.Transaction
-	longest             []model.Transaction
-	widest              []model.Transaction
-	largestBytes        []model.Transaction
+	topTransactions     *topN[model.Transaction]
+	incompleteEvidence  *topN[model.Transaction]
+	largest             *topN[model.Transaction]
+	longest             *topN[model.Transaction]
+	widest              *topN[model.Transaction]
+	largestBytes        *topN[model.Transaction]
 	durations           durationTracker
 	alertReferencedTxns map[string]model.Transaction
 	minutes             []model.MinuteBucket
@@ -64,7 +64,7 @@ type ReportAggregator struct {
 	threads             threadAggregator
 	patterns            map[string]*model.PatternStats
 	patternOrder        []string
-	patternRepTxns      map[string][]model.Transaction
+	patternRepTxns      map[string]*topN[model.Transaction]
 	txnSize             txnSizeTracker
 	operationCounts     map[time.Time]operationMinuteStats
 	applyDelay          applyDelayTracker
@@ -162,7 +162,7 @@ func NewReportAggregator(opts Options) *ReportAggregator {
 	return &ReportAggregator{
 		opts:                opts,
 		patterns:            make(map[string]*model.PatternStats),
-		patternRepTxns:      make(map[string][]model.Transaction),
+		patternRepTxns:      make(map[string]*topN[model.Transaction]),
 		txnSize:             newTxnSizeTracker(),
 		durations:           newDurationTracker(),
 		operationCounts:     make(map[time.Time]operationMinuteStats),
@@ -234,16 +234,16 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 		alert := incompleteTransactionAlert(txn)
 		a.alerts = append(a.alerts, alert)
 		a.alertReferencedTxns[txn.TxnKey] = txn
-		a.incompleteEvidence = insertTopTransaction(a.incompleteEvidence, txn, a.opts.TopTransactions, func(left, right model.Transaction) bool {
+		addRanked(&a.incompleteEvidence, a.opts.TopTransactions, func(left, right model.Transaction) bool {
 			return naturalTxnKeyLess(left.TxnKey, right.TxnKey)
-		})
+		}, txn)
 		return
 	}
-	a.topTransactions = insertTopTransaction(a.topTransactions, txn, a.opts.TopTransactions, transactionRowsBetter)
-	a.largest = insertTopTransaction(a.largest, txn, 5, transactionRowsBetter)
-	a.longest = insertTopTransaction(a.longest, txn, 5, transactionDurationBetter)
-	a.widest = insertTopTransaction(a.widest, txn, 5, transactionWidthBetter)
-	a.largestBytes = insertTopTransaction(a.largestBytes, txn, 3, transactionBytesBetter)
+	addRanked(&a.topTransactions, a.opts.TopTransactions, transactionRowsBetter, txn)
+	addRanked(&a.largest, 5, transactionRowsBetter, txn)
+	addRanked(&a.longest, 5, transactionDurationBetter, txn)
+	addRanked(&a.widest, 5, transactionWidthBetter, txn)
+	addRanked(&a.largestBytes, 3, transactionBytesBetter, txn)
 	a.durations.add(txn.Duration)
 	a.consumePattern(txn)
 	a.txnSize.add(txn)
@@ -320,7 +320,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	}
 
 	// Merge largest + alert-referenced transactions into a single evidence pool.
-	evidenceTxns := mergeEvidenceTransactions(a.largest, a.alertReferencedTxns)
+	evidenceTxns := mergeEvidenceTransactions(a.largest.sorted(), a.alertReferencedTxns)
 	drilldownTxns := mergeEvidenceTransactions(evidenceTxns, flattenPatternRepTxns(a.patternRepTxns))
 	fileSegments := BuildFileSegments(minutes, 5)
 	var countedEventBytes int64
@@ -332,10 +332,10 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		FileCoverage:            a.fileCoverage,
 		CountedEventBytes:       countedEventBytes,
 		DDLEvents:               append([]model.DDLEvent(nil), a.ddlEvents...),
-		LargestTransactions:     append([]model.Transaction(nil), a.largest...),
-		LongestTransactions:     append([]model.Transaction(nil), a.longest...),
-		WidestTransactions:      append([]model.Transaction(nil), a.widest...),
-		LargestByteTransactions: append([]model.Transaction(nil), a.largestBytes...),
+		LargestTransactions:     append([]model.Transaction(nil), a.largest.sorted()...),
+		LongestTransactions:     append([]model.Transaction(nil), a.longest.sorted()...),
+		WidestTransactions:      append([]model.Transaction(nil), a.widest.sorted()...),
+		LargestByteTransactions: append([]model.Transaction(nil), a.largestBytes.sorted()...),
 		DurationBuckets:         a.durations.snapshot(),
 		FileSegments:            fileSegments,
 		HotIntervals:            SelectHotIntervals(minutes, 5),
@@ -349,14 +349,15 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	})
 	series.TxnSizeSeriesSummary = a.txnSize.snapshot()
 
-	transactions := append([]model.Transaction(nil), a.topTransactions...)
+	transactions := append([]model.Transaction(nil), a.topTransactions.sorted()...)
+	incomplete := a.incompleteEvidence.sorted()
 	if a.opts.TopTransactions == 0 {
-		transactions = append(transactions, a.incompleteEvidence...)
+		transactions = append(transactions, incomplete...)
 	} else if remaining := a.opts.TopTransactions - len(transactions); remaining > 0 {
-		if remaining > len(a.incompleteEvidence) {
-			remaining = len(a.incompleteEvidence)
+		if remaining > len(incomplete) {
+			remaining = len(incomplete)
 		}
-		transactions = append(transactions, a.incompleteEvidence[:remaining]...)
+		transactions = append(transactions, incomplete[:remaining]...)
 	}
 	return ReportSnapshot{
 		Summary:             summary,
@@ -421,41 +422,22 @@ func incompleteTransactionAlert(txn model.Transaction) model.Alert {
 	}
 }
 
-func insertTopTransaction(current []model.Transaction, txn model.Transaction, limit int, better func(left, right model.Transaction) bool) []model.Transaction {
-	if limit == 0 {
-		limit = len(current) + 1
+// addRanked adds txn to a ranked list, creating it with limit and better on
+// first use. Each add is O(log limit), or O(1) when unlimited (#252).
+func addRanked(list **topN[model.Transaction], limit int, better func(left, right model.Transaction) bool, txn model.Transaction) {
+	if *list == nil {
+		*list = newTopN(limit, better)
 	}
-	insertAt := len(current)
-	for index := range current {
-		if better(txn, current[index]) {
-			insertAt = index
-			break
-		}
-	}
-	if insertAt == len(current) {
-		if len(current) < limit {
-			return append(current, txn)
-		}
-		return current
-	}
-	if len(current) < limit {
-		current = append(current, model.Transaction{})
-	}
-	copy(current[insertAt+1:], current[insertAt:])
-	current[insertAt] = txn
-	if len(current) > limit {
-		current = current[:limit]
-	}
-	return current
+	(*list).add(txn)
 }
 
-func flattenPatternRepTxns(byPattern map[string][]model.Transaction) map[string]model.Transaction {
+func flattenPatternRepTxns(byPattern map[string]*topN[model.Transaction]) map[string]model.Transaction {
 	if len(byPattern) == 0 {
 		return nil
 	}
 	out := make(map[string]model.Transaction)
 	for _, txns := range byPattern {
-		for _, txn := range txns {
+		for _, txn := range txns.sorted() {
 			if txn.TxnKey != "" {
 				out[txn.TxnKey] = txn
 			}
@@ -578,7 +560,9 @@ func (a *ReportAggregator) consumePattern(txn model.Transaction) {
 	if p.SampleQuerySummary == "" && strings.TrimSpace(txn.QuerySummary) != "" {
 		p.SampleQuerySummary = txn.QuerySummary
 	}
-	a.patternRepTxns[key] = insertTopTransaction(a.patternRepTxns[key], txn, maxRepresentativeTxns, transactionRowsBetter)
+	rep := a.patternRepTxns[key]
+	addRanked(&rep, maxRepresentativeTxns, transactionRowsBetter, txn)
+	a.patternRepTxns[key] = rep
 }
 
 func (a *ReportAggregator) snapshotPatterns() []model.PatternStats {
