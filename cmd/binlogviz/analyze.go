@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -468,17 +469,36 @@ func printResolvedPaths(out io.Writer, paths []string) {
 	}
 }
 
-// validateFiles checks that all input files are accessible.
+// validateFiles checks that every input is a file this process can open.
+// A missing, unreadable or directory path is an input error (exit 4), found
+// here before the parser would report it as a corrupt binlog (#268).
 func validateFiles(paths []string) error {
 	for _, path := range paths {
-		if _, err := os.Stat(path); err != nil {
+		if err := checkReadableFile(path); err != nil {
 			if os.IsNotExist(err) {
-				return fmt.Errorf("%s", i18n.Tf("error.fileNotFound", map[string]any{"Path": path}))
+				return clierr.Wrap(clierr.KindInput, fmt.Errorf("%s", i18n.Tf("error.fileNotFound", map[string]any{"Path": path})))
 			}
-			return fmt.Errorf("%s", i18n.Tf("error.cannotAccessFile", map[string]any{"Path": path, "Error": err.Error()}))
+			return clierr.Wrap(clierr.KindInput, fmt.Errorf("%s", i18n.Tf("error.cannotAccessFile", map[string]any{"Path": path, "Error": err.Error()})))
 		}
 	}
 	return nil
+}
+
+var errIsDirectory = errors.New("is a directory")
+
+func checkReadableFile(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return &fs.PathError{Op: "read", Path: path, Err: errIsDirectory}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // runAnalysis executes the complete analysis pipeline.
@@ -1080,11 +1100,45 @@ func validateAnalyzeOptions(opts *analyzeOptions) error {
 	default:
 		return fmt.Errorf("invalid --detail-store %q: expected none or duckdb", opts.detailStore)
 	}
+	if err := validateNonNegativeCounts(opts); err != nil {
+		return err
+	}
 	if err := snapshotNameFormatError(opts.format, opts.snapshotName); err != nil {
 		return err
 	}
 	if opts.snapshotName != "" {
 		return snapshot.ValidateName(opts.snapshotName)
+	}
+	return nil
+}
+
+// validateNonNegativeCounts refuses a negative count or limit; none of them
+// has a meaning below 0, and accepting one silently was #268.
+func validateNonNegativeCounts(opts *analyzeOptions) error {
+	counts := []struct {
+		flag  string
+		value int
+	}{
+		{"--top", opts.top},
+		{"--top-tables", opts.topTables},
+		{"--top-transactions", opts.topTransactions},
+		{"--top-threads", opts.topThreads},
+		{"--top-rows", opts.topRows},
+		{"--top-minutes", opts.topMinutes},
+		{"--large-trx-rows", opts.largeTrxRows},
+		{"--spike-window", opts.spikeWindow},
+		{"--spike-min-rows", opts.spikeMinRows},
+	}
+	for _, c := range counts {
+		if c.value < 0 {
+			return clierr.Errorf(clierr.KindUsage, "invalid %s %d: must be 0 or more", c.flag, c.value)
+		}
+	}
+	if opts.spikeFactor < 0 {
+		return clierr.Errorf(clierr.KindUsage, "invalid --spike-factor %v: must be 0 or more", opts.spikeFactor)
+	}
+	if opts.largeTrxDuration < 0 {
+		return clierr.Errorf(clierr.KindUsage, "invalid --large-trx-duration %s: must be 0 or more", opts.largeTrxDuration)
 	}
 	return nil
 }

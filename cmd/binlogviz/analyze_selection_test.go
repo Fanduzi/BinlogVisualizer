@@ -43,8 +43,10 @@ func TestAnalyzePositionSelectorsRejectDirectoryArgument(t *testing.T) {
 	cmd := newAnalyzeCommand()
 	cmd.SetArgs([]string{t.TempDir(), "--start-position", "4"})
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "exactly one explicit binlog file") || !strings.Contains(err.Error(), "not a regular file") {
-		t.Fatalf("error = %v, want explicit regular-file position error", err)
+	// A directory is refused as an input before the position selectors are
+	// checked (#268): exit 4, not a corrupt binlog.
+	if err == nil || !strings.Contains(err.Error(), "is a directory") || ExitCode(err) != 4 {
+		t.Fatalf("error = %v (exit %d), want a directory input error", err, ExitCode(err))
 	}
 }
 
