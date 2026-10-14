@@ -228,7 +228,7 @@ func (e *UnclassifiedQueryError) Error() string {
 }
 
 func unclassifiedQueryError(prefix string) error {
-	return &UnclassifiedQueryError{Prefix: prefix}
+	return &UnclassifiedQueryError{Prefix: messageStatement(prefix)}
 }
 
 const (

@@ -29,6 +29,13 @@ func redactCredentials(sql string) string {
 	return b.String()
 }
 
+// messageStatement is the one way an error message quotes SQL: credentials
+// are redacted on the whole statement, before any cut to one line, so a
+// cut can never leave half a secret unrecognized (#250).
+func messageStatement(sql string) string {
+	return redactCredentials(sql)
+}
+
 type credSpan struct{ start, end int }
 
 func credentialSpans(sql string) []credSpan {
