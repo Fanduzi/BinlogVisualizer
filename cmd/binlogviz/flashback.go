@@ -2,6 +2,7 @@ package binlogviz
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 
@@ -62,6 +63,9 @@ func newFlashbackCommand() *cobra.Command {
 				}
 				opts.schemaSQL = string(body)
 			}
+			if !analyzer.ValidFlashbackConflict(opts.conflict) {
+				return fmt.Errorf("%s", i18n.Tf("error.flashbackConflictFlag", map[string]any{"Value": opts.conflict}))
+			}
 			kinds, err := analyzer.ParseDMLKinds(opts.dml)
 			if err != nil {
 				return err
@@ -97,6 +101,8 @@ func newFlashbackCommand() *cobra.Command {
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			analyzerOpts.GTIDSelector = gtidSelector
 			analyzerOpts.Flashback = true
+			analyzerOpts.FlashbackConflict = opts.conflict
+			analyzerOpts.FlashbackPlan = opts.plan
 			return runAnalysisWithOutput(paths, analyzerOpts, report.Options{}, "text", nil, fileCoverage, "", "", outputDestination{}, pathAliases)
 		},
 	}
@@ -116,6 +122,8 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.flashback.flag.schemaFile"))
 	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.flashback.flag.schemaFileDB"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
+	cmd.Flags().StringVar(&opts.conflict, "conflict", analyzer.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
+	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
 	help := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if langFlag != "" {
@@ -175,15 +183,36 @@ func flashbackUsageTemplate() string {
 `
 }
 
+// flashbackConflictExit is the exit code of a conflict refusal (ADR 0008).
+const flashbackConflictExit = 7
+
+// flashbackExit gives a conflict refusal its own exit code, so a script
+// can tell "would overwrite later changes" from other refusals (#259).
+func flashbackExit(err error) error {
+	var conflict *analyzer.FlashbackConflictError
+	if errors.As(err, &conflict) {
+		return &ExitError{Code: flashbackConflictExit, Msg: err.Error()}
+	}
+	return err
+}
+
 func writeFlashbackSQL(stream commandAnalyzer) error {
 	src, ok := stream.(*analyzer.Analyzer)
 	if !ok || src == nil {
 		return fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
+	if src.FlashbackPlanMode() {
+		out := bufio.NewWriter(os.Stdout)
+		err := src.WriteFlashbackPlan(out)
+		if ferr := out.Flush(); err == nil && ferr != nil {
+			return ferr
+		}
+		return flashbackExit(err)
+	}
 	// Every refusal happens here, before any SQL is written.
 	rows, err := src.PrepareFlashback()
 	if err != nil {
-		return err
+		return flashbackExit(err)
 	}
 	if rows == 0 {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}

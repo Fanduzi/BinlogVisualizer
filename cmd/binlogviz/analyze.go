@@ -48,6 +48,8 @@ var inspectFirstBinlogTimestamp = readFirstBinlogTimestamp
 
 // analyzeOptions holds the parsed CLI flags for the analyze command.
 type analyzeOptions struct {
+	conflict               string
+	plan                   bool
 	startTime              string
 	endTime                string
 	startPosition          int64
