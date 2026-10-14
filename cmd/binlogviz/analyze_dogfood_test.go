@@ -144,8 +144,8 @@ func TestAnalyzeMagicOnlyFileExitsNonZero(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected non-zero exit for magic-only file, stdout=%q stderr=%q", stdout, stderr)
 	}
-	if got := ExitCode(err); got != 1 {
-		t.Fatalf("magic-only exit code=%d, want 1 (incomplete file)", got)
+	if got := ExitCode(err); got != 5 {
+		t.Fatalf("magic-only exit code=%d, want 5 (corrupt: incomplete file, ADR 0008)", got)
 	}
 	assertNoUsageDump(t, stderr)
 	if !strings.Contains(err.Error(), "Format Description") {

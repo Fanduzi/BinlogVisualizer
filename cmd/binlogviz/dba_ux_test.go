@@ -46,8 +46,8 @@ func TestSchemaFilterMissIsDistinctFromBadBinlog(t *testing.T) {
 	if badOut != "" {
 		t.Fatalf("bad file must not write a report, stdout=%q", badOut)
 	}
-	if got := ExitCode(badErr); got != 1 {
-		t.Fatalf("partial header exit=%d, want 1; err=%v", got, badErr)
+	if got := ExitCode(badErr); got != 5 {
+		t.Fatalf("partial header exit=%d, want 5 (corrupt, ADR 0008); err=%v", got, badErr)
 	}
 	if !strings.Contains(badErr.Error(), "truncated or corrupt") {
 		t.Fatalf("partial header must say the file is truncated or corrupt, got %v", badErr)
@@ -64,8 +64,8 @@ func TestSchemaFilterMissIsDistinctFromBadBinlog(t *testing.T) {
 	if garbageErr == nil || ExitCode(garbageErr) == ExitCode(filterErr) && garbageErr.Error() == filterErr.Error() {
 		t.Fatalf("garbage file must not look like a filter miss\nfilter=%v\ngarbage=%v", filterErr, garbageErr)
 	}
-	if ExitCode(garbageErr) != 1 || !strings.Contains(garbageErr.Error(), "not a MySQL binlog") {
-		t.Fatalf("garbage exit=%d err=%v, want exit 1 and a bad-magic message", ExitCode(garbageErr), garbageErr)
+	if ExitCode(garbageErr) != 5 || !strings.Contains(garbageErr.Error(), "not a MySQL binlog") {
+		t.Fatalf("garbage exit=%d err=%v, want exit 5 and a bad-magic message", ExitCode(garbageErr), garbageErr)
 	}
 }
 

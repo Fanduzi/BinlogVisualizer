@@ -1,6 +1,7 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"bufio"
 	"errors"
 	"fmt"
@@ -36,7 +37,9 @@ func newFlashbackCommand() *cobra.Command {
 			}
 			return fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			stage := clierr.KindUsage
+			defer func() { err = clierr.Wrap(stage, err) }()
 			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
 			if err != nil {
 				return err
@@ -51,15 +54,15 @@ func newFlashbackCommand() *cobra.Command {
 				return err
 			}
 			if mode == report.SQLContextOff {
-				return fmt.Errorf("%s", i18n.T("error.flashbackSQLContext"))
+				return clierr.Wrap(clierr.KindRefused, fmt.Errorf("%s", i18n.T("error.flashbackSQLContext")))
 			}
 			if opts.schemaFile != "" {
 				body, err := os.ReadFile(opts.schemaFile)
 				if err != nil {
-					return fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaFile", map[string]any{
+					return clierr.Wrap(clierr.KindInput, fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaFile", map[string]any{
 						"Path":  opts.schemaFile,
 						"Error": err.Error(),
-					}))
+					})))
 				}
 				opts.schemaSQL = string(body)
 			}
@@ -75,6 +78,7 @@ func newFlashbackCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			stage = clierr.KindInput
 			paths, discovered, fileCoverage, err := resolveAnalyzePaths(args, opts)
 			if err != nil {
 				return err
@@ -98,6 +102,7 @@ func newFlashbackCommand() *cobra.Command {
 			if err := validateFiles(paths); err != nil {
 				return err
 			}
+			stage = clierr.KindError
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			analyzerOpts.GTIDSelector = gtidSelector
 			analyzerOpts.Flashback = true
@@ -183,17 +188,17 @@ func flashbackUsageTemplate() string {
 `
 }
 
-// flashbackConflictExit is the exit code of a conflict refusal (ADR 0008).
-const flashbackConflictExit = 7
-
-// flashbackExit gives a conflict refusal its own exit code, so a script
-// can tell "would overwrite later changes" from other refusals (#259).
+// flashbackExit types a flashback refusal: a conflict (#259) is its own
+// kind, exit 7; any other refusal is exit 6 (ADR 0008).
 func flashbackExit(err error) error {
+	if err == nil {
+		return nil
+	}
 	var conflict *analyzer.FlashbackConflictError
 	if errors.As(err, &conflict) {
-		return &ExitError{Code: flashbackConflictExit, Msg: err.Error()}
+		return clierr.WithDetails(clierr.KindConflict, err, map[string]any{"count": conflict.Count, "listed": conflict.Listed})
 	}
-	return err
+	return clierr.Wrap(clierr.KindRefused, err)
 }
 
 func writeFlashbackSQL(stream commandAnalyzer) error {
@@ -205,7 +210,7 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 		out := bufio.NewWriter(os.Stdout)
 		err := src.WriteFlashbackPlan(out)
 		if ferr := out.Flush(); err == nil && ferr != nil {
-			return ferr
+			return clierr.Wrap(clierr.KindOutput, ferr)
 		}
 		return flashbackExit(err)
 	}
@@ -223,7 +228,11 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 	// The script streams from a temp file: memory does not grow with the binlog (#258).
 	out := bufio.NewWriterSize(os.Stdout, 1<<16)
 	if _, err := src.WriteFlashback(out); err != nil {
-		return err
+		var refusal *analyzer.FlashbackConflictError
+		if errors.As(err, &refusal) {
+			return flashbackExit(err)
+		}
+		return clierr.Wrap(clierr.KindOutput, err)
 	}
-	return out.Flush()
+	return clierr.Wrap(clierr.KindOutput, out.Flush())
 }

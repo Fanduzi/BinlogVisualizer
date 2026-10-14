@@ -1,6 +1,7 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,18 @@ import (
 
 // langFlag holds the value of --lang flag.
 var langFlag string
+
+// typeUsageArgs makes every positional-argument check return a usage error.
+func typeUsageArgs(cmd *cobra.Command) {
+	for _, c := range cmd.Commands() {
+		if check := c.Args; check != nil {
+			c.Args = func(cc *cobra.Command, args []string) error {
+				return clierr.Wrap(clierr.KindUsage, check(cc, args))
+			}
+		}
+		typeUsageArgs(c)
+	}
+}
 
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -35,6 +48,18 @@ func NewRootCommand() *cobra.Command {
 
 	// Add global flags
 	cmd.PersistentFlags().StringVar(&langFlag, "lang", "", "Language for output (e.g., en, zh-CN)")
+	cmd.PersistentFlags().StringVar(&errorFormat, "error-format", "", i18n.T("cmd.root.flag.errorFormat"))
+	// Flag, argument and command-name mistakes are usage errors, exit 3 (ADR 0008).
+	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return clierr.Wrap(clierr.KindUsage, err)
+	})
+	cmd.Args = func(c *cobra.Command, args []string) error {
+		if len(args) > 0 {
+			return clierr.Errorf(clierr.KindUsage, "unknown command %q for %q. Run '%s --help'", args[0], c.CommandPath(), c.CommandPath())
+		}
+		return nil
+	}
+	typeUsageArgs(cmd)
 	cmd.Flags().BoolP("version", "v", false, i18n.T("cmd.root.flag.version"))
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		if v, _ := cmd.Flags().GetBool("version"); v {

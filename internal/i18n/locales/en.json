@@ -295,6 +295,10 @@
     "description": "Invalid --conflict value",
     "other": "invalid --conflict {{.Value}}: use refuse or guard"
   },
+  "cmd.root.flag.errorFormat": {
+    "description": "Root --error-format help",
+    "other": "Error output on stderr: text (default) or json, one {\"error\":{\"kind\",\"code\",\"message\",\"details\"}} line. Also BINLOGVIZ_ERROR_FORMAT=json"
+  },
   "error.flashbackConflict": {
     "description": "Flashback refuses when selected rows were changed later",
     "other": "flashback refused: {{.Count}} selected row change(s) were changed again later in the scanned binlogs, and undoing them would overwrite those later changes. First: {{.First}}. Rerun with --conflict guard to skip rows that no longer match the logged after image, narrow the range, or see --plan."

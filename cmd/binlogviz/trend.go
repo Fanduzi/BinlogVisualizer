@@ -1,6 +1,7 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"fmt"
 	"io"
 	"path"
@@ -59,7 +60,7 @@ func runTrend(opts *trendOptions, args []string, out, errOut io.Writer) error {
 	switch opts.format {
 	case "text", "json", "html":
 	default:
-		return fmt.Errorf("unsupported trend format: %s", opts.format)
+		return clierr.Errorf(clierr.KindUsage, "unsupported trend format: %s", opts.format)
 	}
 
 	points, inputMode, resolvedDir, err := resolveTrendInputs(args, opts)
