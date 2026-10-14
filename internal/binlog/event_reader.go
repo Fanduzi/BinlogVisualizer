@@ -89,6 +89,7 @@ type eventReader struct {
 	consumed *int64
 	fault    *rowsFault
 	alg      replication.BinlogChecksum
+	fde      []byte
 }
 
 // next reads, checks and dispatches the event at pos. It returns the event
@@ -125,6 +126,7 @@ func (r *eventReader) next(pos int64, onEvent replication.OnEventFunc) (int64, e
 			return 0, corrupt("format description: " + err.Error())
 		}
 		r.alg = fde.ChecksumAlgorithm
+		r.fde = raw
 	}
 	body := raw[replication.EventHeaderSize:]
 	if r.alg == replication.BINLOG_CHECKSUM_ALG_CRC32 {
@@ -135,6 +137,11 @@ func (r *eventReader) next(pos int64, onEvent replication.OnEventFunc) (int64, e
 	}
 	if err := checkEventBounds(eventType, body); err != nil {
 		return 0, corrupt(err.Error())
+	}
+	if eventType == replication.TRANSACTION_PAYLOAD_EVENT {
+		if err := checkPayload(body, r.fde); err != nil {
+			return 0, corrupt(err.Error())
+		}
 	}
 	r.fault.err = nil
 	ev, err := r.bp.Parse(raw)
@@ -274,7 +281,7 @@ func checkRowsBounds(re *replication.RowsEvent, data []byte) error {
 	if pos < len(data) && setBits(re.ColumnBitmap1, re.ColumnCount) == 0 && setBits(re.ColumnBitmap2, re.ColumnCount) == 0 {
 		return corruptCause("rows event names no columns")
 	}
-	return nil
+	return checkRowsJSON(re, data)
 }
 
 func setBits(bitmap []byte, columns uint64) int {
