@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -130,7 +131,14 @@ func loadCompareReport(side, path string) (comparepkg.InputReport, error) {
 	if errors.As(err, &syntaxErr) {
 		return comparepkg.InputReport{}, errors.New("compare wants two JSON reports or --current-snapshot/--baseline-snapshot")
 	}
-	return comparepkg.InputReport{}, fmt.Errorf("load %s report %s: %w", side, path, err)
+	err = fmt.Errorf("load %s report %s: %w", side, path, err)
+	// A report that cannot be opened or read (missing, permission, a
+	// directory) is an input error, exit 4, as for analyze (#268).
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		return comparepkg.InputReport{}, clierr.Wrap(clierr.KindInput, err)
+	}
+	return comparepkg.InputReport{}, err
 }
 
 func loadSnapshotCompareReport(side, dir, name string) (comparepkg.InputReport, error) {

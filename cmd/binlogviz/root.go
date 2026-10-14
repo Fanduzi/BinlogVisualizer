@@ -3,6 +3,7 @@ package binlogviz
 import (
 	"binlogviz/internal/clierr"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -13,9 +14,23 @@ import (
 // langFlag holds the value of --lang flag.
 var langFlag string
 
-// typeUsageArgs makes every positional-argument check return a usage error.
+// rejectUnknownSubcommand is the Args check of a command that only groups
+// subcommands (root, snapshot, workflow). Without it cobra runs the group
+// with the stray word as an argument, prints help and exits 0 (#268).
+func rejectUnknownSubcommand(c *cobra.Command, args []string) error {
+	if len(args) > 0 {
+		return clierr.Errorf(clierr.KindUsage, "unknown command %q for %q. Run '%s --help'", args[0], c.CommandPath(), c.CommandPath())
+	}
+	return nil
+}
+
+// typeUsageArgs makes every positional-argument check return a usage error,
+// and makes every group command refuse an unknown subcommand.
 func typeUsageArgs(cmd *cobra.Command) {
 	for _, c := range cmd.Commands() {
+		if c.HasSubCommands() && c.Args == nil {
+			c.Args = rejectUnknownSubcommand
+		}
 		if check := c.Args; check != nil {
 			c.Args = func(cc *cobra.Command, args []string) error {
 				return clierr.Wrap(clierr.KindUsage, check(cc, args))
@@ -29,13 +44,19 @@ func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "binlogviz",
 		Short: i18n.T("cmd.root.short"),
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// main prints the one error line (text or JSON); cobra prints
+		// neither the error nor the usage text, so a JSON error is the only
+		// stderr line (#268). The error says to run --help.
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize i18n with the specified language
 			// If langFlag is empty, it will detect from environment
 			if err := i18n.Init(langFlag); err != nil {
 				// Fall back to English on error
 				_ = i18n.Init("en")
 			}
+			return validateErrorFormatFlag(errorFormat)
 		},
 	}
 	cmd.AddCommand(newAnalyzeCommand())
@@ -54,12 +75,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return clierr.Wrap(clierr.KindUsage, err)
 	})
-	cmd.Args = func(c *cobra.Command, args []string) error {
-		if len(args) > 0 {
-			return clierr.Errorf(clierr.KindUsage, "unknown command %q for %q. Run '%s --help'", args[0], c.CommandPath(), c.CommandPath())
-		}
-		return nil
-	}
+	cmd.Args = rejectUnknownSubcommand
 	typeUsageArgs(cmd)
 	cmd.Flags().BoolP("version", "v", false, i18n.T("cmd.root.flag.version"))
 	cmd.Run = func(cmd *cobra.Command, args []string) {
@@ -71,4 +87,14 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	return cmd
+}
+
+// validateErrorFormatFlag accepts "", text and json (any case). Anything
+// else is a usage error, so a typo does not silently fall back to text.
+func validateErrorFormatFlag(value string) error {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "text", "json":
+		return nil
+	}
+	return clierr.Errorf(clierr.KindUsage, "invalid --error-format %q: expected text or json", value)
 }

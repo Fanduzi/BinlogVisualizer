@@ -1,6 +1,6 @@
 // Package binlogviz decides what goes to stderr besides errors and warnings.
 // input: --quiet, whether stderr is a terminal, and TERM.
-// output: whether the progress bar and line erase codes may be written, and the writer for info lines.
+// output: whether the progress bar and line erase codes may be written, and the writer for info lines (dropped by --quiet and by JSON errors).
 // pos: one place for terminal hygiene (#253, ADR 0008); agents and CI get plain stderr.
 // note: if this file changes, update this header and README.md.
 package binlogviz
@@ -23,9 +23,10 @@ func interactiveStderr() bool {
 }
 
 // infoWriter is where progress-adjacent info lines go ("Finalizing
-// analysis...", resolved paths, save confirmations). --quiet drops them.
+// analysis...", resolved paths, save confirmations). --quiet drops them, and
+// so do JSON errors: a failed run's stderr is then the one JSON line (#268).
 func infoWriter(w io.Writer) io.Writer {
-	if quietFlag {
+	if quietFlag || jsonErrors() {
 		return io.Discard
 	}
 	return w
