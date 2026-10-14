@@ -144,3 +144,71 @@ func TestFlashbackPlanReportsRowsAndConflicts(t *testing.T) {
 		t.Fatalf("plan: %s", b.String())
 	}
 }
+
+// #267: a later change that is itself selected is undone by the same
+// script, so it is not a conflict. Only unselected later changes count.
+func TestFlashbackSelectedLaterChangeIsNotConflict(t *testing.T) {
+	selector, err := ParseGTIDSelector([]string{conflictUUID + ":5-6"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(Options{Flashback: true, GTIDSelector: selector})
+	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
+	pos := int64(4)
+	ev := func(e model.NormalizedEvent) {
+		e.Timestamp, e.BinlogPath, e.PositionStart = base, "mysql-bin.000001", pos
+		pos += 40
+		e.PositionEnd = pos
+		if err := a.Consume(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, txn := range []conflictTxn{
+		{"5", []model.FlashRow{orderUpdate("1", "1", "2"), orderUpdate("2", "1", "2")}},
+		{"6", []model.FlashRow{orderUpdate("1", "2", "3")}}, // selected: undone too
+		{"7", []model.FlashRow{orderUpdate("2", "2", "3")}}, // not selected: conflict
+	} {
+		ev(model.NormalizedEvent{EventType: "GTID", GTID: conflictUUID + ":" + txn.gno})
+		ev(model.NormalizedEvent{EventType: "BEGIN"})
+		for _, row := range txn.rows {
+			ev(model.NormalizedEvent{EventType: "ROWS", Operation: row.Op, Schema: row.Schema, Table: row.Table, RowCount: 1, FlashRows: []model.FlashRow{row}})
+		}
+		ev(model.NormalizedEvent{EventType: "XID"})
+	}
+	if _, err := a.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = a.WriteFlashback(&countWriter{})
+	var conflict *FlashbackConflictError
+	if !errors.As(err, &conflict) || conflict.Count != 1 || conflict.Listed[0].Key != "id=2" || conflict.Listed[0].LaterGTID != conflictUUID+":7" {
+		t.Fatalf("want only the unselected :7 change, got %v %+v", err, conflict)
+	}
+}
+
+// A whole-file undo (no selectors) has no conflicts: every later change is selected.
+func TestFlashbackWholeRangeHasNoConflict(t *testing.T) {
+	a := New(Options{Flashback: true})
+	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
+	pos := int64(4)
+	for i, gno := range []string{"1", "2", "3"} {
+		for _, e := range []model.NormalizedEvent{
+			{EventType: "GTID", GTID: conflictUUID + ":" + gno}, {EventType: "BEGIN"},
+			{EventType: "ROWS", Operation: "UPDATE", Schema: "shop", Table: "orders", RowCount: 1,
+				FlashRows: []model.FlashRow{orderUpdate("1", string(rune('0'+i)), string(rune('1'+i)))}},
+			{EventType: "XID"},
+		} {
+			e.Timestamp, e.BinlogPath, e.PositionStart = base, "mysql-bin.000001", pos
+			pos += 40
+			e.PositionEnd = pos
+			if err := a.Consume(e); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := a.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := a.WriteFlashback(&countWriter{}); err != nil || rows != 3 {
+		t.Fatalf("rows %d err %v", rows, err)
+	}
+}
