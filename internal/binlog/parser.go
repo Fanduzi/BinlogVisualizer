@@ -1,6 +1,6 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
 // input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
-// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents, including JSON inside a transaction payload; it stays off for analyze.
+// output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. rawEventFromHeader is the shared header projection used by the file loop and payload expand. QUERY text has its leading comments stripped (not executable /*! or /*M! ones), so MariaDB's verbatim "/* c */ CREATE USER" classifies like MySQL's. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents, including JSON inside a transaction payload; it stays off for analyze.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -196,7 +196,7 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 	flash := len(captureRows) > 1 && captureRows[1]
 	switch e := event.(type) {
 	case *replication.QueryEvent:
-		raw.Query = string(e.Query)
+		raw.Query = stripLeadingSQLComments(string(e.Query))
 		raw.Schema = string(e.Schema)
 		raw.ThreadID = e.SlaveProxyID
 		raw.ActorUser, raw.ActorHost = queryEventActor(e.StatusVars)

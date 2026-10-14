@@ -1,7 +1,44 @@
 package binlog
 
+// charsetOfCollation maps a TABLE_MAP collation id to its character set.
+// MySQL 8.0 and MariaDB agree on every id below 1024. MariaDB adds three
+// ranges, checked against information_schema on 11.4 (testdata):
+//   - 576-738: croatian, myanmar and thai_520_w2 for the Unicode charsets;
+//   - 1024+id: the NO PAD variant of legacy collation id (id < 248);
+//   - 2048-3327: UCA 14.0.0 collations, whose charset is (id-2048)>>8
+//     (utf8mb3, utf8mb4, ucs2, utf16, utf32); utf8mb4_uca1400_ai_ci is 2304.
+//
+// Any other id is refused rather than guessed.
+func charsetOfCollation(id uint64) (string, bool) {
+	switch {
+	case id >= 1024 && id < 2048:
+		if base := id - 1024; base > 0 && base < 248 {
+			return charsetOfCollation(base)
+		}
+		return "", false
+	case id >= 2048 && id < 2048+uint64(len(uca1400Charsets))<<8:
+		return uca1400Charsets[(id-2048)>>8], true
+	}
+	name, ok := collationCharset[id]
+	if !ok {
+		name, ok = mariadbCollationCharset[id]
+	}
+	return name, ok && name != ""
+}
+
+// uca1400Charsets is MariaDB's charset slot order in UCA 14.0.0 collation ids.
+var uca1400Charsets = [...]string{"utf8mb3", "utf8mb4", "ucs2", "utf16", "utf32"}
+
+// mariadbCollationCharset is MariaDB's own ids below 1024 that MySQL lacks.
+var mariadbCollationCharset = map[uint64]string{
+	576: "utf8mb3", 577: "utf8mb3", 578: "utf8mb3",
+	608: "utf8mb4", 609: "utf8mb4", 610: "utf8mb4",
+	640: "ucs2", 641: "ucs2", 642: "ucs2",
+	672: "utf16", 673: "utf16", 674: "utf16",
+	736: "utf32", 737: "utf32", 738: "utf32",
+}
+
 // collationCharset is MySQL 8.0 collation id → character set.
-// Ids missing from this table are refused rather than guessed.
 var collationCharset = map[uint64]string{
 	1: "big5",
 	2: "latin2",

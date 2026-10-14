@@ -1,6 +1,6 @@
 // Package binlog formats exact SQL literals from an already-decoded rows event.
 // input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, the SIGNEDNESS bitmap, collation, enum/set members, primary key). Signedness counts YEAR, which go-mysql v1.14 UnsignedMap skips.
-// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes. ENUM is the member index and SET is the bitmask. MEDIUMINT unsigned is the low 24 bits. BIT is a b'...' literal of the column width. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
+// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes; the charset comes from the MySQL or MariaDB collation id (charsetOfCollation). ENUM is the member index and SET is the bitmask. MEDIUMINT unsigned is the low 24 bits. BIT is a b'...' literal of the column width. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
 // pos: parser helper used only when flashback capture is on. It reuses the decoded row images from the same RowsEvent as display capture.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -185,12 +185,12 @@ func flashColumnMeta(table *replication.TableMapEvent, width int) []model.FlashC
 
 func flashCharset(coll, enumColl map[int]uint64, i int) string {
 	if id, ok := coll[i]; ok {
-		if name, known := collationCharset[id]; known {
+		if name, known := charsetOfCollation(id); known {
 			return name
 		}
 	}
 	if id, ok := enumColl[i]; ok {
-		if name, known := collationCharset[id]; known {
+		if name, known := charsetOfCollation(id); known {
 			return name
 		}
 	}
@@ -606,8 +606,8 @@ func sqlCharacter(typ byte, col int, value any, collation map[int]uint64) (strin
 	if id == mysqlCollationBinary {
 		return hexLiteral(raw), ""
 	}
-	charset, known := collationCharset[id]
-	if !known || charset == "" {
+	charset, known := charsetOfCollation(id)
+	if !known {
 		return "", name + " (charset for collation " + strconv.FormatUint(id, 10) + " is unknown)"
 	}
 	if charset == "utf8mb4" {
