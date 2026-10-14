@@ -41,7 +41,7 @@ One `clierr` package defines a small taxonomy. Every command error is one of the
 | Exit | Kind | Examples |
 |---|---|---|
 | 0 | ok | |
-| 1 | internal | an unexpected bug |
+| 1 | error | any failure with no other kind (an open BEGIN or unclassified QUERY stays here, as ADR 0001 documents) |
 | 2 | no_data | a complete binlog with nothing in range (ADR 0001, unchanged) |
 | 3 | usage | unknown flag, invalid `--format` (#251), bad time or GTID set |
 | 4 | input | file missing or unreadable |
@@ -50,7 +50,7 @@ One `clierr` package defines a small taxonomy. Every command error is one of the
 | 7 | conflict | flashback: later changes to the same rows (default policy) |
 | 8 | output | stdout or file write failed (ENOSPC); SIGPIPE keeps 141 |
 
-With `--error-format json` (and by default when stderr is not a TTY and `BINLOGVIZ_ERROR_FORMAT=json`), stderr carries one line: `{"error":{"kind":"corrupt","code":5,"message":"…","details":{…}}}`. `message` is localized; `kind` and `details` keys are stable. Go `%#v` dumps of parser internals never reach the user (#254). Credential text in any error (CREATE USER, GRANT, SET PASSWORD) passes through one redactor (#250).
+With `--error-format json` (or `BINLOGVIZ_ERROR_FORMAT=json`), stderr carries one line: `{"error":{"kind":"corrupt","code":5,"message":"…","details":{…}}}`. `message` is localized; `kind` and `details` keys are stable. Go `%#v` dumps of parser internals never reach the user (#254). Credential text in any error (CREATE USER, GRANT, SET PASSWORD) passes through one redactor (#250).
 
 ### 5. Terminal hygiene
 
@@ -85,4 +85,4 @@ Later, not in this stack:
 
 - Flashback writes a temp file about the size of the selected row images; `$TMPDIR` must have room. The generated-column review still holds the images of tables that have schema-file generated columns (a `--schema-file` path only).
 - A flashback that used to exit 0 now exits 7 when later changes exist; scripts must choose `--conflict guard` or narrow the range.
-- Exit 1 now means only "internal". Scripts that matched 1 for usage, missing or corrupt input must read the new codes; the JSON error is the stable contract.
+- Exit 1 is now only failures with no other kind. Scripts that matched 1 for usage, missing or corrupt input, or a flashback refusal must read the new codes; the JSON error is the stable contract.
