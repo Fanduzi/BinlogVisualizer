@@ -8,13 +8,18 @@
 // decompressed, never in proportion to the declared size; a decoded payload
 // event carrying the declared size and its inner events.
 // pos: regression for BinlogQA's #293 QA at 1c51a0ae (bomb_gib: 33 KB file,
-// out of memory at 3 GiB) and the P3s in #278 comment 6223264959.
+// out of memory at 3 GiB), the P3s in #278 comment 6223264959, and the r2
+// many-small P1 (a fixture payload rebuilt with 600k XID events).
 // note: if this file changes, update this header and README.md.
 package binlog
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
+	"hash/crc32"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -130,5 +135,107 @@ func TestPayloadDecodedOnceWithDeclaredSize(t *testing.T) {
 	}
 	if seen == 0 {
 		t.Fatal("no payload event")
+	}
+}
+
+// manySmallPayloadFile replaces the fixture's payload event at 509 with one
+// holding n XID events (27 bytes each), declared exactly, CRC32 recomputed.
+func manySmallPayloadFile(t *testing.T, n int) (string, uint64) {
+	t.Helper()
+	fixture, err := os.ReadFile("testdata/mysql80_transaction_payload.binlog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const at, oldSize = 509, 216
+	frame := make([]byte, 0, 27*n)
+	for i := 0; i < n; i++ {
+		x := make([]byte, 27)
+		x[4] = byte(replication.XID_EVENT)
+		binary.LittleEndian.PutUint32(x[5:], 1)
+		binary.LittleEndian.PutUint32(x[9:], 27)
+		binary.LittleEndian.PutUint64(x[19:], uint64(i))
+		frame = append(frame, x...)
+	}
+	declared := uint64(len(frame))
+	body := otwPayloadBody(t, nineByteSize(declared), frame)
+	ev := append([]byte(nil), fixture[at:at+replication.EventHeaderSize]...)
+	ev = append(ev, body...)
+	ev = append(ev, 0, 0, 0, 0)
+	binary.LittleEndian.PutUint32(ev[9:], uint32(len(ev)))
+	binary.LittleEndian.PutUint32(ev[13:], uint32(at+len(ev)))
+	binary.LittleEndian.PutUint32(ev[len(ev)-4:], crc32.ChecksumIEEE(ev[:len(ev)-4]))
+	out := append(append([]byte(nil), fixture[:at]...), ev...)
+	path := filepath.Join(t.TempDir(), "many_small.binlog")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path, declared
+}
+
+// A payload of many tiny inner events must stream: the live heap while its
+// events reach the handler stays a constant, not a multiple of the payload
+// (#293 QA r2: 14.7M events declaring ~1 GiB reached 4 GB RSS).
+func TestPayloadManySmallEventsStream(t *testing.T) {
+	const n = 600_000
+	path, declared := manySmallPayloadFile(t, n)
+	for _, flash := range []bool{false, true} {
+		p := NewParser()
+		if flash {
+			p.(FlashbackParser).SetCaptureFlashback(true)
+		}
+		var base runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&base)
+		var peak uint64
+		seen := 0
+		sample := func() {
+			var m runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&m)
+			if m.HeapAlloc > base.HeapAlloc && m.HeapAlloc-base.HeapAlloc > peak {
+				peak = m.HeapAlloc - base.HeapAlloc
+			}
+		}
+		err := p.ParseFiles([]string{path}, func(raw RawEvent) error {
+			seen++
+			if seen == 1 || seen%100_000 == 0 {
+				sample()
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("flash %v: %v", flash, err)
+		}
+		if seen < n {
+			t.Fatalf("flash %v: %d events, want at least %d", flash, seen, n)
+		}
+		if peak > 24<<20 {
+			t.Fatalf("flash %v: live heap reached %d MiB for a %d MiB payload of %d events", flash, peak>>20, declared>>20, n)
+		}
+	}
+}
+
+// An inner event go-mysql panics on (payload_inner_panic: a query event whose
+// lengths run past it) or fails on with its own dump of the bytes
+// (payload_inner_bad_query) is corrupt, named by type and offset, without Go
+// runtime text or go-mysql's dump (#278 comment 6223874751). Both files are
+// BinlogQA's ipe_q1 and ipe_unknown from the #293 r2 QA.
+func TestPayloadInnerDecodeFailureIsPlain(t *testing.T) {
+	for _, name := range []string{"payload_inner_panic.binlog", "payload_inner_bad_query.binlog"} {
+		for _, flash := range []bool{false, true} {
+			err := parseWithin(t, filepath.Join("testdata", name), flash)
+			var corrupt *CorruptEventError
+			if !errors.As(err, &corrupt) {
+				t.Fatalf("%s flash %v: got %v, want a CorruptEventError", name, flash, err)
+			}
+			for _, leak := range []string{"runtime error", "index out of range", "slice bounds", "Data \"", "goroutine"} {
+				if strings.Contains(err.Error(), leak) {
+					t.Fatalf("%s flash %v: message leaks %q: %v", name, flash, leak, err)
+				}
+			}
+			if !strings.Contains(err.Error(), "payload inner") {
+				t.Fatalf("%s flash %v: %v does not name the inner event", name, flash, err)
+			}
+		}
 	}
 }
