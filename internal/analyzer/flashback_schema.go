@@ -444,7 +444,7 @@ func dumpDatabase(sql string) string {
 
 // validateSchemaRow checks one row's metadata against cols. table is the
 // name refusals print (refusalLabel).
-func validateSchemaRow(table string, row model.FlashRow, cols []schemaCol) (warns []string, err error) {
+func validateSchemaRow(table string, row model.FlashRow, cols []schemaCol) (warns []FlashbackWarning, err error) {
 	if len(row.Cols) == 0 {
 		return nil, nil
 	}

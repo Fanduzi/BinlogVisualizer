@@ -61,7 +61,7 @@ type Analyzer struct {
 	flashErr              error
 	flashCat              *schemaCatalog
 	flashUnknown          []string
-	flashSchemaWarn       []string
+	flashSchemaWarn       []FlashbackWarning
 	flashGenNotes         []string
 	flashReviewed         bool
 	flashReviewErr        error

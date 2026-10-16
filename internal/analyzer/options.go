@@ -61,6 +61,9 @@ type Options struct {
 	FlashbackConflict string
 	// FlashbackPlan prints the JSON plan instead of SQL (--plan).
 	FlashbackPlan bool
+	// FlashbackConflictLimit bounds the conflicts listed in the plan and the
+	// exit 7 details: 0 lists the default 20, a negative value lists all.
+	FlashbackConflictLimit int
 	// SchemaSQL is CREATE/ALTER text from --schema-file. Flashback learns
 	// generated columns from it before binlog DDL. Analyze ignores it.
 	SchemaSQL string

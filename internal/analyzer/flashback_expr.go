@@ -2239,8 +2239,8 @@ func intRanges(vals []int) string {
 	return strings.Join(parts, ", ")
 }
 
-func unverifiedGeneratedWarning(table string, col schemaCol) string {
-	return i18n.Tf("warning.flashbackSchemaUnchecked", map[string]any{
+func unverifiedGeneratedWarning(table string, col schemaCol) FlashbackWarning {
+	return newFlashWarning(WarnGeneratedColumnUnverified, "warning.flashbackSchemaUnchecked", map[string]any{
 		"Table":  table,
 		"Column": col.name,
 		"Expr":   exprText(col.expr),

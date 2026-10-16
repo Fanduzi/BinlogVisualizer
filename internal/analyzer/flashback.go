@@ -124,18 +124,9 @@ func (a *Analyzer) acceptSchema(label string, row model.FlashRow, cols []schemaC
 	return nil
 }
 
-func (a *Analyzer) noteSchemaWarnings(warns []string) {
+func (a *Analyzer) noteSchemaWarnings(warns []FlashbackWarning) {
 	for _, warn := range warns {
-		dup := false
-		for _, have := range a.flashSchemaWarn {
-			if have == warn {
-				dup = true
-				break
-			}
-		}
-		if !dup {
-			a.flashSchemaWarn = append(a.flashSchemaWarn, warn)
-		}
+		a.flashSchemaWarn = appendWarningOnce(a.flashSchemaWarn, warn)
 	}
 }
 
@@ -390,18 +381,31 @@ func (a *Analyzer) noteFlashUnknown(table string) {
 	a.flashUnknown = append(a.flashUnknown, table)
 }
 
-// FlashbackWarnings reports tables whose definitions were not seen, then
-// transactions a table or --dml filter undid only in part.
-// Empty when flashback has nothing to print.
+// FlashbackWarnings is FlashbackWarningList as the stderr lines flashback prints.
 func (a *Analyzer) FlashbackWarnings() []string {
+	list := a.FlashbackWarningList()
+	if list == nil {
+		return nil
+	}
+	out := make([]string, len(list))
+	for i, w := range list {
+		out[i] = w.Line()
+	}
+	return out
+}
+
+// FlashbackWarningList reports schema-file notes, tables whose definitions
+// were not seen, then transactions a table or --dml filter undid only in part.
+// Empty when flashback has nothing to print.
+func (a *Analyzer) FlashbackWarningList() []FlashbackWarning {
 	if a == nil {
 		return nil
 	}
-	var out []string
+	var out []FlashbackWarning
 	out = append(out, a.flashCat.warnings()...)
 	out = append(out, a.flashSchemaWarn...)
 	for _, table := range a.flashUnknown {
-		out = append(out, i18n.Tf("warning.flashbackGenerated", map[string]any{"Table": table}))
+		out = append(out, newFlashWarning(WarnTableDefinitionMissing, "warning.flashbackGenerated", map[string]any{"Table": table}))
 	}
 	gtids := append([]string(nil), a.flashSplitDone...)
 	for _, key := range a.flashSplitOrder {
@@ -415,7 +419,7 @@ func (a *Analyzer) FlashbackWarnings() []string {
 		if gtid == "" {
 			gtid = "GTID unavailable"
 		}
-		out = append(out, i18n.Tf("warning.flashbackSplit", map[string]any{"GTID": gtid}))
+		out = append(out, newFlashWarning(WarnPartialTransaction, "warning.flashbackSplit", map[string]any{"GTID": gtid}))
 	}
 	return out
 }
@@ -544,7 +548,8 @@ func (a *Analyzer) collectGeneratedReview() error {
 	if err != nil {
 		return err
 	}
-	var mismatches, notes, warns []string
+	var mismatches, notes []string
+	var warns []FlashbackWarning
 	hinted := false
 	for _, key := range order {
 		b := groups[key]
