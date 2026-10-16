@@ -329,12 +329,15 @@ This path installs the prebuilt release artifact and removes the macOS quarantin
 ```bash
 # install.sh (current release)
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
-sh ./install.sh            # latest release; pin with --version v0.24.0
+sh ./install.sh            # latest release; pin with --version vX.Y.Z
 
-# or linux/amd64 tarball
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_linux_amd64.tar.gz
-tar -xzf binlogviz_0.24.0_linux_amd64.tar.gz
-install ./binlogviz /usr/local/bin/binlogviz
+# or the linux/amd64 tarball: resolve the latest tag, verify the checksum, unpack
+VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Fanduzi/BinlogVisualizer/releases/latest)"; VERSION="${VERSION##*/}"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_linux_amd64.tar.gz"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_checksums.txt"
+grep " binlogviz_${VERSION#v}_linux_amd64.tar.gz\$" "binlogviz_${VERSION#v}_checksums.txt" | sha256sum -c - &&
+  tar -xzf "binlogviz_${VERSION#v}_linux_amd64.tar.gz" &&
+  install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 ### Preferred cross-platform fallback: Download a Release Artifact
@@ -343,21 +346,22 @@ Download the release archive for your platform from GitHub Releases, verify the 
 
 The authoritative release artifacts are produced by the GitHub Actions release workflow. macOS artifacts are built on native runners, while Linux artifacts are built inside a manylinux2014 userspace so the glibc baseline stays compatible with CentOS 7 / glibc 2.17. Local `goreleaser` is intended for config validation and optional current-host checks, not as the primary release path.
 
-Example for `darwin/arm64` and the current release `v0.24.0`:
+Example for `darwin/arm64` and the latest release. A checksum mismatch prints `FAILED` and exits non-zero; stop there.
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_checksums.txt
-shasum -a 256 -c binlogviz_0.24.0_checksums.txt 2>/dev/null | grep "binlogviz_0.24.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.24.0_darwin_arm64.tar.gz
-install ./binlogviz /usr/local/bin/binlogviz
+VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Fanduzi/BinlogVisualizer/releases/latest)"; VERSION="${VERSION##*/}"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_darwin_arm64.tar.gz"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_checksums.txt"
+grep " binlogviz_${VERSION#v}_darwin_arm64.tar.gz\$" "binlogviz_${VERSION#v}_checksums.txt" | shasum -a 256 -c - &&
+  tar -xzf "binlogviz_${VERSION#v}_darwin_arm64.tar.gz" &&
+  install ./binlogviz /usr/local/bin/binlogviz
 ```
 
-Or fetch the install helper from the same release tag before running it:
+Or run the install helper. It installs the latest release, refuses to install when the sha256 does not match `checksums.txt` or no sha256 tool exists (pass `--no-verify` to skip the check on purpose), and accepts `--version vX.Y.Z` and `--bin-dir DIR`:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
-sh ./install.sh            # latest release; pin with --version v0.24.0
+sh ./install.sh            # latest release; pin with --version vX.Y.Z
 ```
 
 To preview the resolved artifact without downloading:
