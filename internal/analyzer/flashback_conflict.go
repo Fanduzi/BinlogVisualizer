@@ -1,12 +1,13 @@
 // Package analyzer detects flashback conflicts: later changes to selected rows.
 // input: every row event in the scanned range (selected or not) and the selected rows.
-// output: a FlashbackConflictError that refuses the script by default (#259), the post-image guard switch, and the JSON plan.
+// output: a FlashbackConflictError that refuses the script by default (#259), the post-image guard switch, and the JSON plan (plan_version 2; a refusal still prints it, #270).
 // pos: flashback collector on Analyzer (ADR 0008). Memory is one 8-byte hash per selected row key plus one candidate per later change to a selected key, not the binlog. A candidate whose own change is selected is dropped (#267).
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strings"
 
+	"binlogviz/internal/clierr"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
@@ -24,8 +26,17 @@ const (
 	FlashbackConflictGuard  = "guard"
 )
 
-// flashConflictListed bounds the conflicts kept for messages and the plan.
+// flashConflictListed is the default bound on the conflicts kept for
+// messages and the plan (--conflict-limit).
 const flashConflictListed = 20
+
+// conflictLimit is how many conflicts to list; negative lists all.
+func (a *Analyzer) conflictLimit() int {
+	if a.opts.FlashbackConflictLimit == 0 {
+		return flashConflictListed
+	}
+	return a.opts.FlashbackConflictLimit
+}
 
 // FlashbackConflict is one later change to a selected row.
 type FlashbackConflict struct {
@@ -210,7 +221,8 @@ func (a *Analyzer) settleConflicts() {
 	sort.Slice(left, func(i, j int) bool { return left[i].seq < left[j].seq })
 	a.flashConflicts = len(left)
 	a.flashConflictList = nil
-	for i := 0; i < len(left) && i < flashConflictListed; i++ {
+	limit := a.conflictLimit()
+	for i := 0; i < len(left) && (limit < 0 || i < limit); i++ {
 		a.flashConflictList = append(a.flashConflictList, left[i].detail)
 	}
 }
@@ -223,18 +235,32 @@ func (a *Analyzer) conflictError() error {
 	return &FlashbackConflictError{Count: a.flashConflicts, Listed: append([]FlashbackConflict(nil), a.flashConflictList...)}
 }
 
+// FlashbackPlanVersion is the --plan schema version. It changes only when a
+// field changes meaning or type; added fields keep it.
+// 2: warnings are {code, message} objects; refusal names why the script is refused (#270, #282).
+const FlashbackPlanVersion = 2
+
 // FlashbackPlan is the --plan output: what the script would undo, and why it
-// would be refused. plan_version changes only when a field changes meaning.
+// would be refused.
 type FlashbackPlan struct {
-	PlanVersion       int                  `json:"plan_version"`
-	Transactions      int                  `json:"transactions"`
-	Rows              int                  `json:"rows"`
-	Tables            []FlashbackPlanTable `json:"tables"`
-	ConflictPolicy    string               `json:"conflict_policy"`
-	Conflicts         FlashbackPlanCounts  `json:"conflicts"`
-	GuardedStatements int                  `json:"guarded_statements"`
-	WouldRefuse       bool                 `json:"would_refuse"`
-	Warnings          []string             `json:"warnings"`
+	PlanVersion       int                   `json:"plan_version"`
+	Transactions      int                   `json:"transactions"`
+	Rows              int                   `json:"rows"`
+	Tables            []FlashbackPlanTable  `json:"tables"`
+	ConflictPolicy    string                `json:"conflict_policy"`
+	Conflicts         FlashbackPlanCounts   `json:"conflicts"`
+	GuardedStatements int                   `json:"guarded_statements"`
+	WouldRefuse       bool                  `json:"would_refuse"`
+	Refusal           *FlashbackPlanRefusal `json:"refusal"`
+	Warnings          []FlashbackWarning    `json:"warnings"`
+}
+
+// FlashbackPlanRefusal is why the real run would print no script. Kind is
+// the exit kind: "conflict" (exit 7) or "refused" (exit 6). After a
+// "refused", the counts are zero: the rows were not read to the end.
+type FlashbackPlanRefusal struct {
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
 }
 
 // FlashbackPlanTable counts the logged operations an undo reverses, per table.
@@ -245,7 +271,7 @@ type FlashbackPlanTable struct {
 	Delete int    `json:"delete"`
 }
 
-// FlashbackPlanCounts lists conflicts, bounded.
+// FlashbackPlanCounts lists conflicts, bounded by --conflict-limit.
 type FlashbackPlanCounts struct {
 	Count   int                 `json:"count"`
 	Listed  []FlashbackConflict `json:"listed"`
@@ -253,20 +279,51 @@ type FlashbackPlanCounts struct {
 }
 
 // WriteFlashbackPlan writes the JSON plan instead of SQL. It returns the
-// error a real run would return (a refusal or a conflict) after writing the
-// plan, so the exit code matches; a refusal other than a conflict writes no plan.
+// error a real run would return after writing the plan, so the exit code
+// matches. A refusal (exit 6) or a conflict (exit 7) still writes a plan,
+// with would_refuse and refusal set; any other failure writes none.
 func (a *Analyzer) WriteFlashbackPlan(w io.Writer) error {
-	if _, err := a.prepareChecks(); err != nil {
-		return err
+	plan, err := a.flashbackPlan()
+	if err != nil {
+		kind := clierr.KindRefused
+		var conflict *FlashbackConflictError
+		if errors.As(err, &conflict) {
+			kind = clierr.KindConflict
+		} else if typed, _ := clierr.Of(err); typed != clierr.KindError {
+			return err
+		}
+		plan.WouldRefuse = true
+		plan.Refusal = &FlashbackPlanRefusal{Kind: string(kind), Message: err.Error()}
 	}
-	plan := FlashbackPlan{PlanVersion: 1, ConflictPolicy: a.conflictPolicy(), Tables: []FlashbackPlanTable{}, Warnings: a.FlashbackWarnings()}
-	if plan.Warnings == nil {
-		plan.Warnings = []string{}
+	body, jerr := json.MarshalIndent(plan, "", "  ")
+	if jerr != nil {
+		return jerr
+	}
+	if _, werr := w.Write(append(body, '\n')); werr != nil {
+		return werr
+	}
+	return err
+}
+
+// flashbackPlan counts what the script would undo. The error is the one the
+// real run would return; the plan holds what was known when it stopped.
+func (a *Analyzer) flashbackPlan() (plan FlashbackPlan, err error) {
+	plan = FlashbackPlan{
+		PlanVersion:    FlashbackPlanVersion,
+		ConflictPolicy: a.conflictPolicy(),
+		Tables:         []FlashbackPlanTable{},
+		Conflicts:      FlashbackPlanCounts{Listed: []FlashbackConflict{}},
+	}
+	defer func() {
+		plan.Warnings = append([]FlashbackWarning{}, a.FlashbackWarningList()...)
+	}()
+	if _, err = a.prepareChecks(); err != nil {
+		return plan, err
 	}
 	tables := map[string]*FlashbackPlanTable{}
 	guard := a.postImageGuard()
 	lastID := int64(-1)
-	err := a.eachFlashGroup(false, func(g *flashGroup) error {
+	err = a.eachFlashGroup(false, func(g *flashGroup) error {
 		if g.id != lastID {
 			lastID = g.id
 			plan.Transactions++
@@ -295,7 +352,7 @@ func (a *Analyzer) WriteFlashbackPlan(w io.Writer) error {
 		return nil
 	})
 	if err != nil {
-		return err
+		return plan, err
 	}
 	for _, t := range tables {
 		plan.Tables = append(plan.Tables, *t)
@@ -304,16 +361,7 @@ func (a *Analyzer) WriteFlashbackPlan(w io.Writer) error {
 	a.settleConflicts()
 	plan.Conflicts = FlashbackPlanCounts{Count: a.flashConflicts, Listed: append([]FlashbackConflict{}, a.flashConflictList...)}
 	plan.Conflicts.Omitted = plan.Conflicts.Count - len(plan.Conflicts.Listed)
-	cerr := a.conflictError()
-	plan.WouldRefuse = cerr != nil
-	body, err := json.MarshalIndent(plan, "", "  ")
-	if err != nil {
-		return err
-	}
-	if _, err := w.Write(append(body, '\n')); err != nil {
-		return err
-	}
-	return cerr
+	return plan, a.conflictError()
 }
 
 // postImageGuarded reports whether --conflict guard changes this row's undo.

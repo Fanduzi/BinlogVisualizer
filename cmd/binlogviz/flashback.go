@@ -69,6 +69,9 @@ func newFlashbackCommand() *cobra.Command {
 			if !analyzer.ValidFlashbackConflict(opts.conflict) {
 				return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.flashbackConflictFlag", map[string]any{"Value": opts.conflict}))
 			}
+			if opts.conflictLimit < 0 {
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.flashbackConflictLimit", map[string]any{"Value": opts.conflictLimit}))
+			}
 			kinds, err := analyzer.ParseDMLKinds(opts.dml)
 			if err != nil {
 				return err
@@ -108,6 +111,10 @@ func newFlashbackCommand() *cobra.Command {
 			analyzerOpts.Flashback = true
 			analyzerOpts.FlashbackConflict = opts.conflict
 			analyzerOpts.FlashbackPlan = opts.plan
+			analyzerOpts.FlashbackConflictLimit = opts.conflictLimit
+			if opts.conflictLimit == 0 {
+				analyzerOpts.FlashbackConflictLimit = -1 // --conflict-limit 0 lists every conflict
+			}
 			return runAnalysisWithOutput(paths, analyzerOpts, report.Options{}, "text", nil, fileCoverage, "", "", outputDestination{}, pathAliases)
 		},
 	}
@@ -129,6 +136,7 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
 	cmd.Flags().StringVar(&opts.conflict, "conflict", analyzer.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
 	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
+	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
 	help := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		if langFlag != "" {
@@ -163,6 +171,7 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 		"schema-file":    "cmd.flashback.flag.schemaFile",
 		"schema-file-db": "cmd.flashback.flag.schemaFileDB",
 		"dml":            "cmd.flashback.flag.dml",
+		"conflict-limit": "cmd.flashback.flag.conflictLimit",
 	}
 	for name, key := range usage {
 		if flag := cmd.Flags().Lookup(name); flag != nil {

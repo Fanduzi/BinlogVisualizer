@@ -53,6 +53,7 @@ var inspectFirstBinlogTimestamp = readFirstBinlogTimestamp
 type analyzeOptions struct {
 	conflict               string
 	plan                   bool
+	conflictLimit          int
 	startTime              string
 	endTime                string
 	startPosition          int64

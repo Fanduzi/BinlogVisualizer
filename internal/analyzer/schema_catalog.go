@@ -8,8 +8,6 @@ package analyzer
 import (
 	"sort"
 	"strings"
-
-	"binlogviz/internal/i18n"
 )
 
 // resolveKind says how a binlog db.table was bound to a definition.
@@ -161,7 +159,7 @@ func (g *schemaCatalog) peek(schema, table string) resolution {
 
 // warnings returns the schema warnings in print order: letter-case notes,
 // the header/--schema-file-db conflict, then unqualified tables not used.
-func (g *schemaCatalog) warnings() []string { return g.schemaWarnings() }
+func (g *schemaCatalog) warnings() []FlashbackWarning { return g.schemaWarnings() }
 
 // schemaCatalog records generated column names learned from CREATE and ALTER
 // statements in the parsed binlog. A table missing from cols was not defined
@@ -182,7 +180,7 @@ type schemaCatalog struct {
 	sawUnqualified bool
 	readingFile    bool
 	folded         map[string]bool
-	foldNotes      []string
+	foldNotes      []FlashbackWarning
 	// foldFrom maps a folded binlog key to the schema-file table (db.tbl) it used.
 	foldFrom map[string]string
 	// foldMiss maps a binlog key to schema-file tables that differ only in
@@ -729,7 +727,7 @@ func (g *schemaCatalog) foldCase(schema, table string) {
 			g.foldFrom = map[string]string{}
 		}
 		g.foldFrom[key] = names[0]
-		g.foldNotes = append(g.foldNotes, i18n.Tf("warning.flashbackSchemaFold", map[string]any{
+		g.foldNotes = append(g.foldNotes, newFlashWarning(WarnSchemaFileCaseFolded, "warning.flashbackSchemaFold", map[string]any{
 			"Binlog": binlog,
 			"File":   names[0],
 		}))
@@ -739,26 +737,26 @@ func (g *schemaCatalog) foldCase(schema, table string) {
 		g.foldMiss = map[string][]string{}
 	}
 	g.foldMiss[key] = names
-	g.foldNotes = append(g.foldNotes, i18n.Tf("warning.flashbackSchemaFoldMiss", map[string]any{
+	g.foldNotes = append(g.foldNotes, newFlashWarning(WarnSchemaFileCaseMismatch, "warning.flashbackSchemaFoldMiss", map[string]any{
 		"Binlog": binlog,
 		"File":   strings.Join(names, ", "),
 	}))
 }
 
-func (g *schemaCatalog) schemaWarnings() []string {
+func (g *schemaCatalog) schemaWarnings() []FlashbackWarning {
 	if g == nil {
 		return nil
 	}
-	var out []string
+	var out []FlashbackWarning
 	out = append(out, g.foldNotes...)
 	if g.ambiguousDB && g.sawUnqualified {
-		out = append(out, i18n.Tf("warning.flashbackSchemaDB", map[string]any{
+		out = append(out, newFlashWarning(WarnSchemaFileDBMismatch, "warning.flashbackSchemaDB", map[string]any{
 			"Header": g.headerDB,
 			"Flag":   g.flagDB,
 		}))
 	}
 	for _, item := range g.abandoned {
-		out = append(out, i18n.Tf("warning.flashbackSchemaTable", map[string]any{
+		out = append(out, newFlashWarning(WarnSchemaFileTableAmbiguous, "warning.flashbackSchemaTable", map[string]any{
 			"Table":   item.table,
 			"Schemas": strings.Join(item.schemas, ", "),
 		}))

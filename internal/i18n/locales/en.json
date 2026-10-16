@@ -293,7 +293,15 @@
   },
   "cmd.flashback.flag.plan": {
     "description": "Flashback --plan help",
-    "other": "Print a JSON plan (transactions, rows per table, conflicts, guard) instead of SQL; the exit code is what the real run would return"
+    "other": "Print a JSON plan (plan_version 2: transactions, rows per table, conflicts, guard, refusal, warning codes) instead of SQL; the exit code is what the real run would return, and a refusal (exit 6 or 7) still prints the plan"
+  },
+  "cmd.flashback.flag.conflictLimit": {
+    "description": "Flashback --conflict-limit help",
+    "other": "How many conflicts --plan and the exit 7 error list; 0 lists every conflict. The count is always the full count"
+  },
+  "error.flashbackConflictLimit": {
+    "description": "Invalid --conflict-limit value",
+    "other": "invalid --conflict-limit {{.Value}}: use 0 (list all) or a positive number"
   },
   "error.flashbackConflictFlag": {
     "description": "Invalid --conflict value",
@@ -313,11 +321,15 @@
   },
   "warning.flashbackSplit": {
     "description": "Flashback warns when a table or DML filter undoes only part of a transaction",
-    "other": "warning: transaction {{.GTID}} is only partly undone; a table or --dml selection skipped other row changes in that transaction"
+    "other": "transaction {{.GTID}} is only partly undone; a table or --dml selection skipped other row changes in that transaction"
+  },
+  "warning.flashbackLine": {
+    "description": "Prefix for a flashback warning printed on stderr",
+    "other": "warning: {{.Message}}"
   },
   "warning.flashbackGenerated": {
     "description": "Flashback warns when a selected table has no CREATE in the binlog or schema file",
-    "other": "warning: {{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and earlier transactions stay committed. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE). The file must match the table at incident time."
+    "other": "{{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and earlier transactions stay committed. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE). The file must match the table at incident time."
   },
   "error.flashbackSchemaFile": {
     "description": "Flashback could not read --schema-file",
@@ -365,15 +377,15 @@
   },
   "warning.flashbackSchemaUnchecked": {
     "description": "A generated column was omitted because its expression could not be evaluated",
-    "other": "warning: generated column {{.Table}}.{{.Column}} not verified ({{.Expr}}); it is left out of the script. The guard below checks that this column is generated on the target."
+    "other": "generated column {{.Table}}.{{.Column}} not verified ({{.Expr}}); it is left out of the script. The guard below checks that this column is generated on the target."
   },
   "warning.flashbackSchemaDB": {
     "description": "Schema file header and --schema-file-db name different databases",
-    "other": "warning: --schema-file Database header is {{.Header}} and --schema-file-db is {{.Flag}}; unqualified tables were not used"
+    "other": "--schema-file Database header is {{.Header}} and --schema-file-db is {{.Flag}}; unqualified tables were not used"
   },
   "warning.flashbackSchemaTable": {
     "description": "An unqualified schema-file table is in more than one binlog schema",
-    "other": "warning: unqualified table {{.Table}} in --schema-file is in more than one schema ({{.Schemas}}); it was not used"
+    "other": "unqualified table {{.Table}} in --schema-file is in more than one schema ({{.Schemas}}); it was not used"
   },
   "cmd.flashback.flag.dml": {
     "description": "Flashback DML kind filter flag description",
@@ -1793,11 +1805,11 @@
   },
   "warning.flashbackSchemaFold": {
     "description": "A schema-file table matched the binlog table only when letter case is ignored",
-    "other": "warning: {{.Binlog}}: using {{.File}} from --schema-file, which differs only in letter case. This assumes the binlog server folds table names (lower_case_table_names=1 or 2). If it ran with lower_case_table_names=0, {{.Binlog}} and {{.File}} can be two different tables: use a dump that has {{.Binlog}} under its exact name. The rows are still checked against it."
+    "other": "{{.Binlog}}: using {{.File}} from --schema-file, which differs only in letter case. This assumes the binlog server folds table names (lower_case_table_names=1 or 2). If it ran with lower_case_table_names=0, {{.Binlog}} and {{.File}} can be two different tables: use a dump that has {{.Binlog}} under its exact name. The rows are still checked against it."
   },
   "warning.flashbackSchemaFoldMiss": {
     "description": "A schema-file table differs from the binlog table only in letter case but was not used",
-    "other": "warning: {{.Binlog}}: --schema-file has {{.File}}, which differs only in letter case; it was not used. If lower_case_table_names differs between the servers, rename the table in the file to match the binlog."
+    "other": "{{.Binlog}}: --schema-file has {{.File}}, which differs only in letter case; it was not used. If lower_case_table_names differs between the servers, rename the table in the file to match the binlog."
   },
   "error.flashbackSchemaFoldLabel": {
     "description": "A refused table that used a letter-case fold names the schema-file table too",

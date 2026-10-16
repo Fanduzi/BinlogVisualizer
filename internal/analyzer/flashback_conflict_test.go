@@ -3,6 +3,7 @@ package analyzer
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,11 +26,17 @@ func orderUpdate(id, before, after string) model.FlashRow {
 // conflictRun selects GTID :5 and feeds every transaction in order.
 func conflictRun(t *testing.T, policy string, txns ...conflictTxn) *Analyzer {
 	t.Helper()
+	return conflictRunOpts(t, Options{FlashbackConflict: policy}, txns...)
+}
+
+func conflictRunOpts(t *testing.T, opts Options, txns ...conflictTxn) *Analyzer {
+	t.Helper()
 	selector, err := ParseGTIDSelector([]string{conflictUUID + ":5"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := New(Options{Flashback: true, GTIDSelector: selector, FlashbackConflict: policy})
+	opts.Flashback, opts.GTIDSelector = true, selector
+	a := New(opts)
 	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
 	pos := int64(4)
 	ev := func(e model.NormalizedEvent) {
@@ -139,9 +146,108 @@ func TestFlashbackPlanReportsRowsAndConflicts(t *testing.T) {
 	if jerr := json.Unmarshal([]byte(b.String()), &plan); jerr != nil {
 		t.Fatalf("%v: %s", jerr, b.String())
 	}
-	if plan.PlanVersion != 1 || plan.Transactions != 1 || plan.Rows != 2 || plan.Conflicts.Count != 1 ||
+	if plan.PlanVersion != 2 || plan.Transactions != 1 || plan.Rows != 2 || plan.Conflicts.Count != 1 ||
 		plan.ConflictPolicy != "refuse" || !plan.WouldRefuse || len(plan.Tables) != 1 || plan.Tables[0].Update != 2 {
 		t.Fatalf("plan: %s", b.String())
+	}
+	if plan.Refusal == nil || plan.Refusal.Kind != "conflict" || !strings.Contains(plan.Refusal.Message, "1014") {
+		t.Fatalf("refusal: %s", b.String())
+	}
+}
+
+// #270 item 2: a refusal other than a conflict (exit 6) still prints the
+// plan, so a script gets JSON for every refusal.
+func TestFlashbackPlanOnRefusalNamesReason(t *testing.T) {
+	selector, err := ParseGTIDSelector([]string{conflictUUID + ":5"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := New(Options{Flashback: true, FlashbackPlan: true, GTIDSelector: selector})
+	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
+	pos := int64(4)
+	for _, e := range []model.NormalizedEvent{
+		{EventType: "GTID", GTID: conflictUUID + ":5"},
+		{EventType: "BEGIN"},
+		// No row images: a non-FULL binlog_row_image, refused.
+		{EventType: "ROWS", Operation: "UPDATE", Schema: "shop", Table: "orders", RowCount: 1},
+		{EventType: "XID"},
+	} {
+		e.Timestamp, e.BinlogPath, e.PositionStart = base, "mysql-bin.000001", pos
+		pos += 40
+		e.PositionEnd = pos
+		if err := a.Consume(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.Finalize(); err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	perr := a.WriteFlashbackPlan(&b)
+	if perr == nil {
+		t.Fatal("the plan keeps the refusal error")
+	}
+	var plan FlashbackPlan
+	if jerr := json.Unmarshal([]byte(b.String()), &plan); jerr != nil {
+		t.Fatalf("a refusal must still print the plan: %v: %q", jerr, b.String())
+	}
+	if !plan.WouldRefuse || plan.Refusal == nil || plan.Refusal.Kind != "refused" || plan.Refusal.Message != perr.Error() ||
+		plan.Rows != 0 || plan.Tables == nil || plan.Warnings == nil || plan.Conflicts.Listed == nil {
+		t.Fatalf("plan: %s", b.String())
+	}
+}
+
+// A plan with nothing refused has refusal null and warnings as objects.
+func TestFlashbackPlanCleanRunHasNullRefusal(t *testing.T) {
+	a := conflictRunOpts(t, Options{FlashbackPlan: true},
+		conflictTxn{"5", []model.FlashRow{orderUpdate("1", "1", "2")}},
+	)
+	var b strings.Builder
+	if err := a.WriteFlashbackPlan(&b); err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(b.String()), &raw); err != nil {
+		t.Fatal(err)
+	}
+	var warnings []FlashbackWarning
+	if err := json.Unmarshal(raw["warnings"], &warnings); err != nil {
+		t.Fatal(err)
+	}
+	// No CREATE TABLE was logged: one coded warning, no "warning:" prefix.
+	if string(raw["refusal"]) != "null" || string(raw["would_refuse"]) != "false" || len(warnings) != 1 ||
+		warnings[0].Code != WarnTableDefinitionMissing || !strings.HasPrefix(warnings[0].Message, "shop.orders: ") {
+		t.Fatalf("plan: %s", b.String())
+	}
+	// Stderr keeps the v0.25.0 text.
+	if lines := a.FlashbackWarnings(); len(lines) != 1 || lines[0] != "warning: "+warnings[0].Message {
+		t.Fatalf("stderr lines: %q", lines)
+	}
+}
+
+// #270 item 3: --conflict-limit lists every conflict an operator must review.
+func TestFlashbackConflictLimit(t *testing.T) {
+	var sel, later []model.FlashRow
+	for i := 0; i < 25; i++ {
+		id := strconv.Itoa(1000 + i)
+		sel = append(sel, orderUpdate(id, "1", "2"))
+		later = append(later, orderUpdate(id, "2", "3"))
+	}
+	for _, tc := range []struct{ limit, listed int }{{0, 20}, {3, 3}, {-1, 25}} {
+		a := conflictRunOpts(t, Options{FlashbackConflictLimit: tc.limit}, conflictTxn{"5", sel}, conflictTxn{"6", later})
+		var b strings.Builder
+		_ = a.WriteFlashbackPlan(&b)
+		var plan FlashbackPlan
+		if err := json.Unmarshal([]byte(b.String()), &plan); err != nil {
+			t.Fatal(err)
+		}
+		if plan.Conflicts.Count != 25 || len(plan.Conflicts.Listed) != tc.listed || plan.Conflicts.Omitted != 25-tc.listed {
+			t.Fatalf("limit %d: count %d listed %d omitted %d", tc.limit, plan.Conflicts.Count, len(plan.Conflicts.Listed), plan.Conflicts.Omitted)
+		}
+		var conflict *FlashbackConflictError
+		if _, err := a.WriteFlashback(&countWriter{}); !errors.As(err, &conflict) || len(conflict.Listed) != tc.listed {
+			t.Fatalf("limit %d: exit 7 details list %v", tc.limit, err)
+		}
 	}
 }
 

@@ -57,7 +57,7 @@ func TestSchemaCatalogUnqualifiedBindsToOnlySchema(t *testing.T) {
 			t.Fatalf("%s.x1: %+v", schema, res)
 		}
 	}
-	if w := strings.Join(c.warnings(), "\n"); !strings.Contains(w, "more than one schema (p1, p2)") {
+	if w := warningText(c.warnings()); !strings.Contains(w, "more than one schema (p1, p2)") {
 		t.Fatalf("warnings: %s", w)
 	}
 }

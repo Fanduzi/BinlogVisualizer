@@ -293,7 +293,15 @@
   },
   "cmd.flashback.flag.plan": {
     "description": "Flashback --plan 帮助",
-    "other": "输出 JSON 计划（事务数、每张表的行数、冲突、guard）而不是 SQL；退出码与真正执行时一致"
+    "other": "输出 JSON 计划（plan_version 2：事务数、每张表的行数、冲突、guard、拒绝原因、警告代码）而不是 SQL；退出码与真正执行时一致，被拒绝时（退出码 6 或 7）也输出计划"
+  },
+  "cmd.flashback.flag.conflictLimit": {
+    "description": "Flashback --conflict-limit 帮助",
+    "other": "--plan 和退出码 7 的错误里列出多少处冲突；0 列出全部。冲突总数始终是完整的"
+  },
+  "error.flashbackConflictLimit": {
+    "description": "--conflict-limit 取值无效",
+    "other": "--conflict-limit {{.Value}} 无效：请用 0（列出全部）或正整数"
   },
   "error.flashbackConflictFlag": {
     "description": "--conflict 取值无效",
@@ -313,11 +321,15 @@
   },
   "warning.flashbackSplit": {
     "description": "表过滤或 --dml 只撤销事务的一部分时警告",
-    "other": "警告：事务 {{.GTID}} 只撤销了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"
+    "other": "事务 {{.GTID}} 只撤销了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"
+  },
+  "warning.flashbackLine": {
+    "description": "stderr 上 flashback 警告的前缀",
+    "other": "警告：{{.Message}}"
   },
   "warning.flashbackGenerated": {
     "description": "binlog 和 schema 文件都没有这张表的 CREATE 时警告",
-    "other": "警告：{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，更早的事务已经提交。请用 --schema-file 传入 mysqldump --no-data 或 SHOW CREATE TABLE 的输出。文件必须是事故当时的表结构。"
+    "other": "{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，更早的事务已经提交。请用 --schema-file 传入 mysqldump --no-data 或 SHOW CREATE TABLE 的输出。文件必须是事故当时的表结构。"
   },
   "error.flashbackSchemaFile": {
     "description": "读不到 --schema-file",
@@ -365,15 +377,15 @@
   },
   "warning.flashbackSchemaUnchecked": {
     "description": "生成列表达式无法计算，因此省略了这一列",
-    "other": "警告：生成列 {{.Table}}.{{.Column}} 未经核对（{{.Expr}}）；脚本里省略了这一列。下面的守卫会检查目标表上这一列是不是生成列。"
+    "other": "生成列 {{.Table}}.{{.Column}} 未经核对（{{.Expr}}）；脚本里省略了这一列。下面的守卫会检查目标表上这一列是不是生成列。"
   },
   "warning.flashbackSchemaDB": {
     "description": "转储头和 --schema-file-db 指向不同的库",
-    "other": "警告：--schema-file 的 Database 头是 {{.Header}}，--schema-file-db 是 {{.Flag}}；未带库名的表没有使用"
+    "other": "--schema-file 的 Database 头是 {{.Header}}，--schema-file-db 是 {{.Flag}}；未带库名的表没有使用"
   },
   "warning.flashbackSchemaTable": {
     "description": "未带库名的表在 binlog 里属于多个库",
-    "other": "警告：--schema-file 里未带库名的表 {{.Table}} 出现在多个库（{{.Schemas}}）；没有使用"
+    "other": "--schema-file 里未带库名的表 {{.Table}} 出现在多个库（{{.Schemas}}）；没有使用"
   },
   "cmd.flashback.flag.dml": {
     "description": "flashback 的 DML 类型过滤说明",
@@ -1793,11 +1805,11 @@
   },
   "warning.flashbackSchemaFold": {
     "description": "A schema-file table matched the binlog table only when letter case is ignored",
-    "other": "警告：{{.Binlog}}：使用 --schema-file 中的 {{.File}}，二者只有大小写不同。这假定产生 binlog 的服务器会把表名转成小写（lower_case_table_names=1 或 2）。如果它是 lower_case_table_names=0，{{.Binlog}} 和 {{.File}} 可能是两张不同的表：请使用表名与 binlog 完全一致（{{.Binlog}}）的导出。行数据仍会按它校验。"
+    "other": "{{.Binlog}}：使用 --schema-file 中的 {{.File}}，二者只有大小写不同。这假定产生 binlog 的服务器会把表名转成小写（lower_case_table_names=1 或 2）。如果它是 lower_case_table_names=0，{{.Binlog}} 和 {{.File}} 可能是两张不同的表：请使用表名与 binlog 完全一致（{{.Binlog}}）的导出。行数据仍会按它校验。"
   },
   "warning.flashbackSchemaFoldMiss": {
     "description": "A schema-file table differs from the binlog table only in letter case but was not used",
-    "other": "警告：{{.Binlog}}：--schema-file 中有 {{.File}}，只有大小写不同，未采用。如果两台服务器的 lower_case_table_names 不同，请把文件里的表名改成与 binlog 一致。"
+    "other": "{{.Binlog}}：--schema-file 中有 {{.File}}，只有大小写不同，未采用。如果两台服务器的 lower_case_table_names 不同，请把文件里的表名改成与 binlog 一致。"
   },
   "error.flashbackSchemaFoldLabel": {
     "description": "A refused table that used a letter-case fold names the schema-file table too",
