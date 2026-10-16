@@ -49,7 +49,7 @@ func TestDiscoverCleanupIncludesSnapshotsWhenRequested(t *testing.T) {
 	}
 
 	wantSnapshots := []string{"stale-snapshot.json"}
-	if !reflect.DeepEqual(result.SnapshotOrphans, wantSnapshots) {
+	if !reflect.DeepEqual(baseNames(result.SnapshotOrphans), wantSnapshots) {
 		t.Fatalf("snapshot orphans mismatch: got %v want %v", result.SnapshotOrphans, wantSnapshots)
 	}
 	assertNotContains(t, result.SnapshotOrphans, "week1.json", "live snapshot must not be orphaned")
@@ -63,6 +63,7 @@ func TestDiscoverCleanupIgnoresMissingSnapshotDirectory(t *testing.T) {
 		t.Fatalf("remove snapshot dir: %v", err)
 	}
 	createCleanArtifactOrphans(t, outputDir)
+	ledgerStale(t, outputDir, LedgerArtifact, "compare/stale-report.json")
 
 	result, err := DiscoverCleanCandidates(outputDir, manifest, true)
 	if err != nil {
@@ -129,7 +130,7 @@ func TestApplyCleanupDeletesSnapshotOrphansWhenIncluded(t *testing.T) {
 
 	applied := ApplyClean(result)
 
-	assertContains(t, applied.Deleted, "stale-snapshot.json", "snapshot orphan should be deleted")
+	assertContains(t, baseNames(applied.Deleted), "stale-snapshot.json", "snapshot orphan should be deleted")
 	if _, err := os.Stat(filepath.Join(manifest.SnapshotDir, "stale-snapshot.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected stale snapshot to be deleted, stat err=%v", err)
 	}
@@ -177,6 +178,7 @@ func makeCleanFixture(t *testing.T) (string, Manifest) {
 	snapshotDir := filepath.Join(t.TempDir(), "snapshots")
 	manifest := Manifest{
 		WorkflowName: "cleanup-test",
+		Status:       "success",
 		SnapshotDir:  snapshotDir,
 		Steps: []StepRecord{
 			{Kind: "analyze", Name: "week1", Status: "success", Artifacts: []string{"analyze/week1.json"}, SnapshotName: "week1"},
@@ -200,6 +202,38 @@ func createCleanOrphans(t *testing.T, outputDir, snapshotDir string) {
 	if err := os.WriteFile(filepath.Join(snapshotDir, "ignored.txt"), []byte("ignored"), 0o644); err != nil {
 		t.Fatalf("write ignored snapshot file: %v", err)
 	}
+	// The stale files were written by an earlier run of this workflow.
+	ledgerStale(t, outputDir, LedgerArtifact, "compare/stale-report.json", "compare/stale-report.html",
+		"trend/stale-trend.json", "trend/stale-trend.html", "analyze/stale-analyze.json")
+	abs, _ := filepath.Abs(filepath.Join(snapshotDir, "stale-snapshot.json"))
+	ledgerStale(t, outputDir, LedgerSnapshot, filepath.ToSlash(abs))
+}
+
+func ledgerStale(t *testing.T, outputDir, kind string, paths ...string) {
+	t.Helper()
+	var entries []LedgerEntry
+	for _, p := range paths {
+		full := p
+		if kind == LedgerArtifact {
+			full = filepath.Join(outputDir, p)
+		}
+		sum, err := FileSHA256(full)
+		if err != nil {
+			t.Fatalf("hash %s: %v", p, err)
+		}
+		entries = append(entries, LedgerEntry{Path: p, Kind: kind, Step: "earlier", RunID: "r0", SHA256: sum})
+	}
+	if err := AppendLedger(outputDir, entries); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func baseNames(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, filepath.Base(p))
+	}
+	return out
 }
 
 func createCleanArtifactOrphans(t *testing.T, outputDir string) {

@@ -17,6 +17,7 @@ type Manifest struct {
 	PlanSHA256          string          `json:"plan_sha256,omitempty"`
 	ResolvedInputFiles  []string        `json:"resolved_input_files,omitempty"`
 	SnapshotDir         string          `json:"snapshot_dir,omitempty"`
+	RunID               string          `json:"run_id,omitempty"`
 	RunStartedAt        string          `json:"run_started_at"`
 	RunFinishedAt       string          `json:"run_finished_at"`
 	Status              string          `json:"status"`

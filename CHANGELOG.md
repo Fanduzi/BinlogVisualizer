@@ -6,6 +6,11 @@ This file records user-visible changes for tagged releases.
 
 ### Fixed
 
+- **P1 #289: `workflow clean` deleted the last good run's outputs and snapshots after a failed re-run.** A failed run rewrites the manifest, so clean's view no longer matched the disk. Clean now uses per-file attribution (ADR 0009 §8). `workflow run`/`resume` append every file they write (path, step, run id, sha256) to `<output_dir>/ledger.jsonl`, and clean deletes only ledger-recorded files whose sha256 still matches and that no current step owns. Everything else is kept and listed in `kept_orphans`; `--force` (new) also deletes unattributed outputs of recorded step kinds. Clean refuses with exit 6 when the latest run did not succeed (`run_not_successful`, not overridable). `--include-snapshots` deletes only snapshots the ledger attributes, never one the workflow did not create.
+- **Migration:** workflow directories from earlier versions have no ledger, so clean refuses (6, `no_ledger`). Re-run `binlogviz workflow run <plan.yaml>` into the directory to rebuild it, or pass `--force` (it never deletes snapshots).
+- Clean JSON gains `force`, `ledger` and `kept_orphans`; `snapshot_orphans` and deleted snapshot entries are now absolute paths. The manifest gains `run_id`.
+- `workflow export`'s plan warning follows `--error-format json` (one `{"warning":{…}}` line).
+
 - **P1: `workflow clean --apply` deleted every output when the manifest was untrustworthy.** A `{}` manifest, or one with `steps` missing or `[]`, made clean treat every analyze/compare/trend output as orphaned, delete them all and exit 0. Clean (preview and `--apply`) now refuses and deletes nothing: a manifest missing required fields exits 5, and one that records no steps while artifacts exist exits 6, both with `details.reason: untrusted_manifest`. Clean also only considers files of kinds the manifest recorded steps for (ADR 0009 §8).
 - `workflow export` with a `{}` manifest exits 5 instead of writing an archive with only index.html and manifest.json. With no recorded steps it warns that artifacts are not included. When plan.yaml is not included it now warns on stderr too, and `--format json` reports `plan_included` (new field).
 
@@ -36,6 +41,8 @@ New exit code: **9 `unsupported`**, for format and version limits only.
 | `workflow resume` when the manifest's `plan_path` is outside the workflow root (`details.reason: trust_boundary`) | 1 | 6 refused |
 | `workflow clean` / `export` with a manifest missing `workflow_name` (`{}`) (`details.reason: untrusted_manifest`) | 0 (clean deleted every output) | 5 corrupt |
 | `workflow clean` with a manifest that records no steps while artifacts exist (`details.reason: untrusted_manifest`) | 0 (clean deleted every output) | 6 refused |
+| `workflow clean` after a failed run (`details.reason: run_not_successful`) | 0 (clean deleted the last good outputs and snapshots, #289) | 6 refused |
+| `workflow clean` in a workflow dir without `ledger.jsonl` (`details.reason: no_ledger`; `--force` overrides) | 0 | 6 refused |
 | `analyze /dev/null`, or empty stdin | 4 | 5 corrupt, the same as an empty file |
 | A STATEMENT or MIXED binlog with no ROW images (`analyze`, `flashback`) | 1 | 9 unsupported |
 | A report with a `report_version` newer than this build | 1 | 9 unsupported |

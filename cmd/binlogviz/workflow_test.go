@@ -2245,8 +2245,10 @@ func TestWorkflowCleanApplyIncludesSnapshotsFromDefaultSnapshotDir(t *testing.T)
 	if strings.TrimSpace(stderr) != "" {
 		t.Fatalf("expected empty stderr, got %q", stderr)
 	}
-	if _, err := os.Stat(staleSnapshotPath); !os.IsNotExist(err) {
-		t.Fatalf("expected stale snapshot to be deleted from default snapshot dir, stat err=%v", err)
+	// #289: the workflow did not write this snapshot (it is not in the
+	// ledger), so --include-snapshots must keep it.
+	if _, err := os.Stat(staleSnapshotPath); err != nil {
+		t.Fatalf("a snapshot the workflow did not create must be kept: %v", err)
 	}
 	for _, name := range []string{"week1.json", "week2.json"} {
 		if _, err := os.Stat(filepath.Join(mf.SnapshotDir, name)); err != nil {
@@ -2766,6 +2768,7 @@ func setupWorkflowCleanCommandFixture(t *testing.T) string {
 	snapshotDir := filepath.Join(outputDir, "snapshots")
 	manifest := workflow.Manifest{
 		WorkflowName: "cleanup-test",
+		Status:       "success",
 		SnapshotDir:  snapshotDir,
 		Steps: []workflow.StepRecord{
 			{Kind: "analyze", Name: "week1", Status: "success", Artifacts: []string{"analyze/week1.json"}, SnapshotName: "week1"},
@@ -2775,6 +2778,24 @@ func setupWorkflowCleanCommandFixture(t *testing.T) string {
 		},
 	}
 	createWorkflowCleanCommandFiles(t, outputDir, snapshotDir, manifest)
+	// The stale outputs were written by an earlier run of this workflow.
+	var entries []workflow.LedgerEntry
+	for _, rel := range []string{"analyze/stale-analyze.json", "compare/stale-report.json", "compare/stale-report.html", "trend/stale-trend.json", "trend/stale-trend.html"} {
+		sum, err := workflow.FileSHA256(filepath.Join(outputDir, rel))
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries = append(entries, workflow.LedgerEntry{Path: rel, Kind: workflow.LedgerArtifact, Step: "earlier", RunID: "r0", SHA256: sum})
+	}
+	staleSnap, _ := filepath.Abs(filepath.Join(snapshotDir, "stale-snapshot.json"))
+	snapSum, err := workflow.FileSHA256(staleSnap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries = append(entries, workflow.LedgerEntry{Path: filepath.ToSlash(staleSnap), Kind: workflow.LedgerSnapshot, Step: "earlier", RunID: "r0", SHA256: snapSum})
+	if err := workflow.AppendLedger(outputDir, entries); err != nil {
+		t.Fatal(err)
+	}
 	manifestBytes, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		t.Fatalf("marshal manifest: %v", err)

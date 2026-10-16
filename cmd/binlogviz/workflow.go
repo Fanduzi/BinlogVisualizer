@@ -59,6 +59,7 @@ type workflowStatusOptions struct {
 }
 
 type workflowCleanOptions struct {
+	force            bool
 	apply            bool
 	includeSnapshots bool
 	format           string
@@ -148,7 +149,10 @@ func newWorkflowCleanCommand() *cobra.Command {
 				return clierr.Errorf(clierr.KindInput, "read workflow manifest %s: %w", manifestPath, err)
 			}
 
-			result, err := workflow.DiscoverCleanCandidates(outputDir, manifest, opts.includeSnapshots)
+			result, err := workflow.DiscoverCleanCandidatesWithOptions(outputDir, manifest, workflow.CleanOptions{
+				IncludeSnapshots: opts.includeSnapshots,
+				Force:            opts.force,
+			})
 			if err != nil {
 				return err
 			}
@@ -166,7 +170,8 @@ func newWorkflowCleanCommand() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&opts.apply, "apply", false, "Delete orphaned files instead of previewing them")
-	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Include orphaned snapshot JSON files in cleanup")
+	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Also delete superseded snapshots this workflow created (per ledger.jsonl)")
+	cmd.Flags().BoolVar(&opts.force, "force", false, "Also delete unattributed outputs of recorded step kinds, and allow a workflow dir without ledger.jsonl; never deletes snapshots the ledger does not attribute")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
 
 	return cmd
@@ -207,7 +212,13 @@ func newWorkflowExportCommand() *cobra.Command {
 			}
 			if !result.PlanIncluded {
 				// Scripts that read only the exit code must still see this.
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: plan.yaml not included in export: %s\n", result.PlanWarning)
+				// With JSON errors it is one JSON line, like errors.
+				if jsonErrors() {
+					line, _ := json.Marshal(map[string]any{"warning": map[string]string{"code": "plan_not_included", "message": result.PlanWarning}})
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(), string(line))
+				} else {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: plan.yaml not included in export: %s\n", result.PlanWarning)
+				}
 			}
 
 			return writeWorkflowExportOutput(cmd.OutOrStdout(), opts.format, buildWorkflowExportOutput(manifest.WorkflowName, outputDir, archivePath, opts.format, result))
@@ -692,6 +703,20 @@ func writeWorkflowCleanOutput(out io.Writer, format string, result workflow.Clea
 			}
 		}
 	}
+	if _, err := fmt.Fprintln(out, "\nKept (not attributable to this workflow; --force deletes artifacts of recorded kinds)"); err != nil {
+		return err
+	}
+	if len(result.KeptOrphans) == 0 {
+		if _, err := fmt.Fprintln(out, "- none"); err != nil {
+			return err
+		}
+	} else {
+		for _, path := range result.KeptOrphans {
+			if _, err := fmt.Fprintf(out, "- %s\n", path); err != nil {
+				return err
+			}
+		}
+	}
 	if _, err := fmt.Fprintln(out, "\nDeleted"); err != nil {
 		return err
 	}
@@ -887,6 +912,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	// Initialize the updated manifest
 	newMf := resumePlan.UpdatedManifest
 	newMf.RunStartedAt = startedAt.Format(time.RFC3339)
+	newMf.RunID = workflow.NewRunID(startedAt) // each attempt is its own ledger run
 	newMf.Steps = []workflow.StepRecord{}
 
 	// Reuse input files from original run
@@ -1099,6 +1125,21 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 	}
 
 	mf.WorkflowSummary = workflow.BuildWorkflowSummary(outputDir, *mf)
+
+	// Record every file this run wrote in the append-only ledger before the
+	// manifest, so clean can attribute files per file (ADR 0009 §8, #289).
+	// A failed ledger write only loses attribution, which makes clean keep
+	// more, never delete more.
+	if mf.RunID == "" {
+		mf.RunID = workflow.NewRunID(startedAt)
+	}
+	entries, hashErrs := workflow.LedgerEntriesForRun(outputDir, *mf, mf.RunID, time.Now())
+	for _, herr := range hashErrs {
+		fmt.Fprintf(stderr, "workflow: not recorded in ledger: %v\n", herr)
+	}
+	if lerr := workflow.AppendLedger(outputDir, entries); lerr != nil {
+		fmt.Fprintf(stderr, "workflow: failed to append ledger: %v\n", lerr)
+	}
 
 	manifestPath := filepath.Join(outputDir, "manifest.json")
 	if writeErr := workflow.WriteManifest(manifestPath, *mf); writeErr != nil {
