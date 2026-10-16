@@ -1,5 +1,5 @@
 // input: repository install.sh, README.md, README_ZH.md, and docs/landing/index.html.
-// output: guards that install instructions follow the latest release instead of a pinned tag (#281).
+// output: guards that install instructions, including the manual tarball snippets, follow the latest release instead of a pinned tag (#281, #285).
 // pos: release-doc drift guard; the install path must never again silently install an old release.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -53,6 +53,7 @@ func TestInstallScriptDefaultsToLatestRelease(t *testing.T) {
 func TestInstallDocsDoNotPinAReleaseTag(t *testing.T) {
 	pinnedScript := regexp.MustCompile(`BinlogVisualizer/v\d+\.\d+\.\d+/install\.sh`)
 	pinnedRun := regexp.MustCompile(`install\.sh(</span>)?\s+(<span[^>]*>)?--version(</span>)?\s+(<span[^>]*>)?v\d`)
+	pinnedTarball := regexp.MustCompile(`releases/download/v\d+\.\d+\.\d+/`)
 	for _, name := range []string{"README.md", "README_ZH.md", filepath.Join("docs", "landing", "index.html")} {
 		body, err := os.ReadFile(filepath.Join(repoRoot(t), name))
 		if err != nil {
@@ -65,6 +66,9 @@ func TestInstallDocsDoNotPinAReleaseTag(t *testing.T) {
 			code, _, _ := strings.Cut(line, "#")
 			if pinnedRun.MatchString(code) {
 				t.Errorf("%s runs install.sh with a pinned --version; default to latest: %s", name, strings.TrimSpace(line))
+			}
+			if pinnedTarball.MatchString(line) {
+				t.Errorf("%s downloads a tarball from a pinned tag; resolve releases/latest first (#285): %s", name, strings.TrimSpace(line))
 			}
 		}
 	}
