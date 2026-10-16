@@ -4,6 +4,11 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- **P1: `workflow clean --apply` deleted every output when the manifest was untrustworthy.** A `{}` manifest, or one with `steps` missing or `[]`, made clean treat every analyze/compare/trend output as orphaned, delete them all and exit 0. Clean (preview and `--apply`) now refuses and deletes nothing: a manifest missing required fields exits 5, and one that records no steps while artifacts exist exits 6, both with `details.reason: untrusted_manifest`. Clean also only considers files of kinds the manifest recorded steps for (ADR 0009 §8).
+- `workflow export` with a `{}` manifest exits 5 instead of writing an archive with only index.html and manifest.json. With no recorded steps it warns that artifacts are not included. When plan.yaml is not included it now warns on stderr too, and `--format json` reports `plan_included` (new field).
+
 ### Breaking: exit codes for scripts (#277, ADR 0009)
 
 Every command error now has a kind, and some failures changed exit code. Scripts that test `$? -eq 1` or `$? -eq 4` for the cases below must be updated. The JSON error `kind` (`--error-format json`) is the stable contract; see [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
@@ -29,6 +34,8 @@ New exit code: **9 `unsupported`**, for format and version limits only.
 | A workflow manifest with none of its fields (`{}`) in `resume` | 1 | 5 corrupt |
 | `workflow resume` when plan.yaml changed since the run (`details.reason: plan_changed`) | 1 | 6 refused |
 | `workflow resume` when the manifest's `plan_path` is outside the workflow root (`details.reason: trust_boundary`) | 1 | 6 refused |
+| `workflow clean` / `export` with a manifest missing `workflow_name` (`{}`) (`details.reason: untrusted_manifest`) | 0 (clean deleted every output) | 5 corrupt |
+| `workflow clean` with a manifest that records no steps while artifacts exist (`details.reason: untrusted_manifest`) | 0 (clean deleted every output) | 6 refused |
 | `analyze /dev/null`, or empty stdin | 4 | 5 corrupt, the same as an empty file |
 | A STATEMENT or MIXED binlog with no ROW images (`analyze`, `flashback`) | 1 | 9 unsupported |
 | A report with a `report_version` newer than this build | 1 | 9 unsupported |

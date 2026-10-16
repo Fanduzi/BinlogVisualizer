@@ -49,8 +49,12 @@ func DiscoverCleanCandidates(outputDir string, manifest Manifest, includeSnapsho
 		Skipped:          []string{},
 	}
 
+	if err := CheckCleanTrust(outputDir, manifest); err != nil {
+		return CleanResult{}, err
+	}
+
 	liveArtifacts := liveArtifactSet(manifest)
-	artifactOrphans, err := discoverArtifactOrphans(outputDir, liveArtifacts)
+	artifactOrphans, err := discoverArtifactOrphans(outputDir, liveArtifacts, recordedKinds(manifest))
 	if err != nil {
 		return CleanResult{}, err
 	}
@@ -87,13 +91,20 @@ func liveArtifactSet(manifest Manifest) map[string]struct{} {
 	return live
 }
 
-func discoverArtifactOrphans(outputDir string, liveArtifacts map[string]struct{}) ([]string, error) {
+// discoverArtifactOrphans lists files under a kind directory that no step
+// lists. Only kinds the manifest recorded are scanned: a file of a kind with
+// no recorded step cannot be attributed to the workflow, so it is never a
+// deletion candidate.
+func discoverArtifactOrphans(outputDir string, liveArtifacts map[string]struct{}, kinds map[string]bool) ([]string, error) {
 	discovered := make([]string, 0)
 	for kind, extensions := range map[string]map[string]struct{}{
 		"analyze": {".json": {}},
 		"compare": {".json": {}, ".html": {}},
 		"trend":   {".json": {}, ".html": {}},
 	} {
+		if !kinds[kind] {
+			continue
+		}
 		orphans, err := discoverOrphansInDir(filepath.Join(outputDir, kind), kind, liveArtifacts, extensions)
 		if err != nil {
 			return nil, err

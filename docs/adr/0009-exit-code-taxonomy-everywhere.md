@@ -35,7 +35,12 @@ An agent cannot tell "fix your arguments" from "this file is bad" from "this too
 5. **A flag set to an empty value is a usage error.** `--error-format=` exits 3; only an unset flag falls back to `BINLOGVIZ_ERROR_FORMAT` or text.
 6. **Required flags are checked in `RunE`.** Cobra's `MarkFlagRequired` returns an untyped error before our code runs, so commands check required flags themselves and return `usage`.
 
-7. **Read-only commands do not enforce resume policy.** `workflow status` and `workflow export` only read and report. On a `plan_path` outside the workflow root they still exit 0: `status` reports the run as not resumable, and `export` skips plan.yaml with a warning. The trust boundary guards what `resume` executes, not what is displayed.
+7. **Read-only commands do not enforce resume policy.** `workflow status` and `workflow export` only read and report. On a `plan_path` outside the workflow root they still exit 0: `status` reports the run as not resumable, and `export` skips plan.yaml with a warning, printed on stderr as well as in the output, and `--format json` reports `"plan_included": false`. The trust boundary guards what `resume` executes, not what is displayed.
+8. **Destructive commands act only on a trustworthy manifest.** `workflow clean` decides what to delete only from the manifest, so it first checks the manifest can attribute files to recorded steps. Preview and `--apply` run the same check and give the same result:
+   - A manifest missing required fields (`{}`, no `workflow_name`) is damaged content: **5 corrupt**, `details.reason: untrusted_manifest`. This follows rule 2: the file was read but its content is broken, and the same input is 5 in `resume` and `export`.
+   - A well-formed manifest that records no steps (`steps` missing or `[]`) while `analyze/`, `compare/` or `trend/` hold files: **6 refused**, `details.reason: untrusted_manifest`. Nothing is wrong with the file as JSON; clean deliberately refuses, because an empty step list cannot tell "the run produced nothing" from "the record was lost", and treating it as "everything is orphaned" deleted every output (P1, exit 0 before this rule).
+   - With a trusted manifest, clean scans only the kinds the manifest recorded steps for. A file in a kind directory with no recorded step of that kind cannot be attributed to the workflow and is never a candidate. Within a recorded kind, a file no step lists (for example the output of a renamed step) is still an orphan, as before.
+   - `workflow export` applies the same integrity check (a `{}` manifest exits 5) and, for a manifest with no steps, warns that artifacts on disk are not included instead of silently writing an archive with only index.html and manifest.json.
 
 ## Consequences
 

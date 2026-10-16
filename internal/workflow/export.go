@@ -26,6 +26,10 @@ type ExportResult struct {
 	Root      string
 	Warnings  []string
 	Entries   []ExportEntry
+	// PlanIncluded reports whether plan.yaml is in the archive.
+	PlanIncluded bool
+	// PlanWarning is why plan.yaml is not in the archive, if it is not.
+	PlanWarning string
 }
 
 // ExportEntry is one file that will be written into the export archive.
@@ -43,6 +47,13 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 		Root:      root,
 		Warnings:  []string{},
 		Entries:   []ExportEntry{},
+	}
+
+	if err := CheckManifestIntegrity(manifest); err != nil {
+		return ExportResult{}, err
+	}
+	if len(manifest.Steps) == 0 && hasStepArtifacts(outputDir) {
+		result.Warnings = append(result.Warnings, "manifest records no steps; workflow artifacts on disk are not included")
 	}
 
 	manifestPath := filepath.Join(outputDir, "manifest.json")
@@ -114,9 +125,14 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 		}
 		if warning != "" {
 			result.Warnings = append(result.Warnings, warning)
+			result.PlanWarning = warning
 		} else {
 			result.Entries = append(result.Entries, planEntry)
+			result.PlanIncluded = true
 		}
+	} else {
+		result.PlanWarning = "manifest has no plan_path; plan.yaml is not included"
+		result.Warnings = append(result.Warnings, result.PlanWarning)
 	}
 
 	if opts.IncludeSnapshots {

@@ -2716,7 +2716,12 @@ func TestWorkflowExportJSONOutputIncludesWarningsForMissingOptionalInputs(t *tes
 			if err != nil {
 				t.Fatalf("workflow export: %v", err)
 			}
-			if strings.TrimSpace(stderr) != "" {
+			// A plan left out of the archive is also reported on stderr.
+			if tt.name == "missing plan file" {
+				if !strings.Contains(stderr, "plan.yaml not included") {
+					t.Fatalf("expected a plan warning on stderr, got %q", stderr)
+				}
+			} else if strings.TrimSpace(stderr) != "" {
 				t.Fatalf("expected empty stderr, got %q", stderr)
 			}
 
