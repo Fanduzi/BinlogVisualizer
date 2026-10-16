@@ -14,6 +14,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"binlogviz/internal/clierr"
@@ -124,6 +126,9 @@ func ReadLedger(outputDir string) (Ledger, error) {
 		if err := json.Unmarshal(sc.Bytes(), &e); err != nil || e.Path == "" || e.SHA256 == "" {
 			return l, clierr.Reasonf(clierr.KindCorrupt, "untrusted_ledger", "workflow ledger line %d is corrupt", n)
 		}
+		if err := validateLedgerEntry(e); err != nil {
+			return l, clierr.Reasonf(clierr.KindCorrupt, "untrusted_ledger", "workflow ledger line %d: %v", n, err)
+		}
 		key := ledgerKey(e.Kind, e.Path)
 		if l.hashes[key] == nil {
 			l.hashes[key] = map[string]bool{}
@@ -148,7 +153,40 @@ func (l Ledger) Attributed(kind, path, sha string) bool {
 	return l.hashes[ledgerKey(kind, path)][sha]
 }
 
-// Snapshots lists the absolute snapshot paths the ledger records, in first-written order.
+// validateLedgerEntry enforces the only path shapes clean will act on:
+// artifacts are "<analyze|compare|trend>/<file>", snapshots are a bare
+// "<file>.json" inside the configured snapshot dir. Absolute paths, "..",
+// backslashes, and hidden names make the whole ledger untrusted.
+func validateLedgerEntry(e LedgerEntry) error {
+	if err := validateRelPath(e.Path); err != nil {
+		return err
+	}
+	parts := strings.Split(e.Path, "/")
+	switch e.Kind {
+	case LedgerArtifact:
+		if len(parts) != 2 || !isArtifactKind(parts[0]) {
+			return errUntrustedPath(e.Path, "artifact paths must be <analyze|compare|trend>/<file>")
+		}
+	case LedgerSnapshot:
+		if len(parts) != 1 || !strings.HasSuffix(e.Path, ".json") || !strings.HasPrefix(e.Step, "analyze:") {
+			return errUntrustedPath(e.Path, "snapshot paths must be a bare <name>.json recorded by an analyze step")
+		}
+	default:
+		return errUntrustedPath(e.Path, "unknown kind "+strconv.Quote(e.Kind))
+	}
+	return nil
+}
+
+func isArtifactKind(kind string) bool {
+	for _, k := range artifactKinds {
+		if k == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// Snapshots lists the snapshot file names (relative to the snapshot dir) the ledger records the ledger records, in first-written order.
 func (l Ledger) Snapshots() []string {
 	var out []string
 	for _, key := range l.order {
@@ -182,17 +220,18 @@ func LedgerEntriesForRun(outputDir string, m Manifest, runID string, now time.Ti
 			entries = append(entries, LedgerEntry{Path: filepath.ToSlash(filepath.Clean(rel)), Kind: LedgerArtifact, Step: stepID, RunID: runID, SHA256: sum, WrittenAt: ts})
 		}
 		if step.Kind == "analyze" && step.Status == "success" && step.SnapshotName != "" && m.SnapshotDir != "" {
-			abs, err := filepath.Abs(filepath.Join(m.SnapshotDir, step.SnapshotName+".json"))
-			if err != nil {
-				errs = append(errs, err)
+			name := step.SnapshotName + ".json"
+			if validateRelPath(name) != nil || strings.Contains(name, "/") {
+				errs = append(errs, clierr.Errorf(clierr.KindInput, "snapshot name %q is not a plain file name", step.SnapshotName))
 				continue
 			}
+			abs := filepath.Join(m.SnapshotDir, name)
 			sum, err := FileSHA256(abs)
 			if err != nil {
 				errs = append(errs, clierr.Errorf(clierr.KindInput, "hash snapshot %s: %w", abs, err))
 				continue
 			}
-			entries = append(entries, LedgerEntry{Path: filepath.ToSlash(abs), Kind: LedgerSnapshot, Step: stepID, RunID: runID, SHA256: sum, WrittenAt: ts})
+			entries = append(entries, LedgerEntry{Path: name, Kind: LedgerSnapshot, Step: stepID, RunID: runID, SHA256: sum, WrittenAt: ts})
 		}
 	}
 	return entries, errs

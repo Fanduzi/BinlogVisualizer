@@ -90,6 +90,18 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 		}
 	}
 
+	// The ledger travels with the archive so a restored directory can still
+	// be cleaned without --force (ADR 0009 §8).
+	ledgerPath := filepath.Join(outputDir, LedgerFile)
+	if insideLedger, err := pathWithinRoot(ledgerPath, outputDir); err == nil && insideLedger && IsPlainFile(outputDir, LedgerFile) {
+		ledgerEntry, err := readExportEntry(root, ledgerPath, LedgerFile)
+		if err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("skipping %s: %v", LedgerFile, err))
+		} else {
+			result.Entries = append(result.Entries, ledgerEntry)
+		}
+	}
+
 	for _, step := range manifest.Steps {
 		for _, artifact := range step.Artifacts {
 			normalizedArtifact, ok := normalizeExportRelativePath(artifact)

@@ -205,8 +205,18 @@ func createCleanOrphans(t *testing.T, outputDir, snapshotDir string) {
 	// The stale files were written by an earlier run of this workflow.
 	ledgerStale(t, outputDir, LedgerArtifact, "compare/stale-report.json", "compare/stale-report.html",
 		"trend/stale-trend.json", "trend/stale-trend.html", "analyze/stale-analyze.json")
-	abs, _ := filepath.Abs(filepath.Join(snapshotDir, "stale-snapshot.json"))
-	ledgerStale(t, outputDir, LedgerSnapshot, filepath.ToSlash(abs))
+	ledgerStaleSnapshot(t, outputDir, snapshotDir, "stale-snapshot.json")
+}
+
+func ledgerStaleSnapshot(t *testing.T, outputDir, snapshotDir, name string) {
+	t.Helper()
+	sum, err := FileSHA256(filepath.Join(snapshotDir, name))
+	if err != nil {
+		t.Fatalf("hash %s: %v", name, err)
+	}
+	if err := AppendLedger(outputDir, []LedgerEntry{{Path: name, Kind: LedgerSnapshot, Step: "analyze:stale-snapshot", RunID: "r0", SHA256: sum}}); err != nil {
+		t.Fatalf("append ledger: %v", err)
+	}
 }
 
 func ledgerStale(t *testing.T, outputDir, kind string, paths ...string) {

@@ -1,4 +1,5 @@
 .
+.lock
 analyze
 analyze/week1.json
 analyze/week2.json

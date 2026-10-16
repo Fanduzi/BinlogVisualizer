@@ -149,6 +149,12 @@ func newWorkflowCleanCommand() *cobra.Command {
 				return clierr.Errorf(clierr.KindInput, "read workflow manifest %s: %w", manifestPath, err)
 			}
 
+			unlock, err := workflow.LockDir(outputDir)
+			if err != nil {
+				return err
+			}
+			defer unlock()
+
 			result, err := workflow.DiscoverCleanCandidatesWithOptions(outputDir, manifest, workflow.CleanOptions{
 				IncludeSnapshots: opts.includeSnapshots,
 				Force:            opts.force,
@@ -169,7 +175,7 @@ func newWorkflowCleanCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().BoolVar(&opts.apply, "apply", false, "Delete orphaned files instead of previewing them")
+	cmd.Flags().BoolVar(&opts.apply, "apply", false, "Move orphaned files into <output_dir>/.trash/<id>/ instead of previewing them")
 	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Also delete superseded snapshots this workflow created (per ledger.jsonl)")
 	cmd.Flags().BoolVar(&opts.force, "force", false, "Also delete unattributed outputs of recorded step kinds, and allow a workflow dir without ledger.jsonl; never deletes snapshots the ledger does not attribute")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
@@ -731,6 +737,14 @@ func writeWorkflowCleanOutput(out io.Writer, format string, result workflow.Clea
 			}
 		}
 	}
+	for _, dir := range []string{result.TrashDir, result.SnapshotTrashDir} {
+		if dir == "" {
+			continue
+		}
+		if _, err := fmt.Fprintf(out, "Moved to trash: %s (clean never empties it; delete it yourself when no longer needed)\n", dir); err != nil {
+			return err
+		}
+	}
 	if _, err := fmt.Fprintln(out, "\nSkipped"); err != nil {
 		return err
 	}
@@ -839,6 +853,11 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	if err != nil {
 		return clierr.Errorf(clierr.KindInput, "load manifest from %s: %w", outputDir, err)
 	}
+	unlock, err := workflow.LockDir(outputDir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	// Early validation before trying to load the plan
 	if mf.ManifestVersion == 0 && mf.WorkflowName == "" && mf.Status == "" && mf.PlanPath == "" && len(mf.Steps) == 0 {
@@ -1031,6 +1050,11 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 	if err := workflow.EnsureLayout(outputDir); err != nil {
 		return clierr.Errorf(clierr.KindOutput, "create output layout: %w", err)
 	}
+	unlock, err := workflow.LockDir(outputDir)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 
 	copiedPlanPath, err := copyWorkflowPlanIntoOutputDir(outputDir, planPath)
 	if err != nil {

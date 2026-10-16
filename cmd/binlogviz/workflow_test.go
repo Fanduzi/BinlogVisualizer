@@ -2792,7 +2792,7 @@ func setupWorkflowCleanCommandFixture(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entries = append(entries, workflow.LedgerEntry{Path: filepath.ToSlash(staleSnap), Kind: workflow.LedgerSnapshot, Step: "earlier", RunID: "r0", SHA256: snapSum})
+	entries = append(entries, workflow.LedgerEntry{Path: filepath.Base(staleSnap), Kind: workflow.LedgerSnapshot, Step: "analyze:stale-snapshot", RunID: "r0", SHA256: snapSum})
 	if err := workflow.AppendLedger(outputDir, entries); err != nil {
 		t.Fatal(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 )
 
 // CleanOptions controls workflow cleanup behavior.
@@ -33,18 +34,24 @@ type CleanCounts struct {
 // in dry-run, would delete). KeptOrphans are files no current step owns that
 // clean keeps because the ledger does not attribute them (ADR 0009 §8).
 type CleanResult struct {
-	WorkflowName     string      `json:"workflow_name"`
-	OutputDir        string      `json:"output_dir"`
-	SnapshotDir      string      `json:"-"`
-	Mode             string      `json:"mode"`
-	IncludeSnapshots bool        `json:"include_snapshots"`
-	Force            bool        `json:"force"`
-	Ledger           string      `json:"ledger"`
-	ArtifactOrphans  []string    `json:"artifact_orphans"`
-	SnapshotOrphans  []string    `json:"snapshot_orphans"`
-	KeptOrphans      []string    `json:"kept_orphans"`
-	Deleted          []string    `json:"deleted"`
-	Skipped          []string    `json:"skipped"`
+	WorkflowName     string   `json:"workflow_name"`
+	OutputDir        string   `json:"output_dir"`
+	SnapshotDir      string   `json:"-"`
+	Mode             string   `json:"mode"`
+	IncludeSnapshots bool     `json:"include_snapshots"`
+	Force            bool     `json:"force"`
+	Ledger           string   `json:"ledger"`
+	ArtifactOrphans  []string `json:"artifact_orphans"`
+	SnapshotOrphans  []string `json:"snapshot_orphans"`
+	KeptOrphans      []string `json:"kept_orphans"`
+	Deleted          []string `json:"deleted"`
+	Skipped          []string `json:"skipped"`
+	// TrashDir and SnapshotTrashDir are where --apply moved deleted files
+	// (<root>/.trash/<id>, <snapshot-dir>/.trash/<id>). Clean never purges
+	// them; empty them by hand once you no longer need the files.
+	TrashID          string      `json:"-"`
+	TrashDir         string      `json:"trash_dir,omitempty"`
+	SnapshotTrashDir string      `json:"snapshot_trash_dir,omitempty"`
 	Counts           CleanCounts `json:"counts"`
 }
 
@@ -102,14 +109,25 @@ func DiscoverCleanCandidatesWithOptions(outputDir string, manifest Manifest, opt
 			"refusing to clean: %s has no %s, so no file can be attributed to this workflow (it was written by an older binlogviz); re-run `binlogviz workflow run <plan.yaml>` into this directory to rebuild the ledger, or pass --force to delete unlisted outputs of recorded step kinds", outputDir, LedgerFile)
 	}
 
+	// Every kind dir must be a real directory inside the root before
+	// anything is considered, --force or not.
+	present := map[string]bool{}
+	for _, kind := range artifactKinds {
+		ok, err := CheckKindDir(outputDir, kind)
+		if err != nil {
+			return CleanResult{}, err
+		}
+		present[kind] = ok
+	}
+
 	live := liveArtifactSet(manifest)
 	kinds := recordedKinds(manifest)
 	for _, kind := range artifactKinds {
+		if !present[kind] {
+			continue
+		}
 		entries, err := os.ReadDir(filepath.Join(outputDir, kind))
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
 			return CleanResult{}, clierr.Errorf(clierr.KindInput, "read %s cleanup directory: %w", kind, err)
 		}
 		for _, entry := range entries {
@@ -121,6 +139,11 @@ func DiscoverCleanCandidatesWithOptions(outputDir string, manifest Manifest, opt
 			}
 			rel := kind + "/" + entry.Name()
 			if _, ok := live[rel]; ok {
+				continue
+			}
+			if !IsPlainFile(outputDir, rel) {
+				// Symlinks, hidden names and non-regular files are never deleted.
+				result.KeptOrphans = append(result.KeptOrphans, rel)
 				continue
 			}
 			sum, err := FileSHA256(filepath.Join(outputDir, kind, entry.Name()))
@@ -137,20 +160,21 @@ func DiscoverCleanCandidatesWithOptions(outputDir string, manifest Manifest, opt
 	sort.Strings(result.ArtifactOrphans)
 	sort.Strings(result.KeptOrphans)
 
-	if opts.IncludeSnapshots {
-		liveSnaps := liveSnapshotPaths(manifest)
-		for _, path := range ledger.Snapshots() {
-			if liveSnaps[path] {
+	if opts.IncludeSnapshots && manifest.SnapshotDir != "" {
+		liveSnaps := liveSnapshotNames(manifest)
+		for _, name := range ledger.Snapshots() {
+			// Ledger validation guarantees a bare <name>.json.
+			if liveSnaps[name] || !IsPlainFile(manifest.SnapshotDir, name) {
 				continue
 			}
-			sum, err := FileSHA256(filepath.FromSlash(path))
+			sum, err := FileSHA256(filepath.Join(manifest.SnapshotDir, name))
 			if err != nil {
 				continue // already gone or unreadable: nothing to delete
 			}
-			if ledger.Attributed(LedgerSnapshot, path, sum) {
-				result.SnapshotOrphans = append(result.SnapshotOrphans, path)
+			if ledger.Attributed(LedgerSnapshot, name, sum) {
+				result.SnapshotOrphans = append(result.SnapshotOrphans, name)
 			} else {
-				result.KeptOrphans = append(result.KeptOrphans, path)
+				result.KeptOrphans = append(result.KeptOrphans, name)
 			}
 		}
 		sort.Strings(result.SnapshotOrphans)
@@ -180,45 +204,48 @@ func liveArtifactSet(manifest Manifest) map[string]struct{} {
 	return live
 }
 
-// liveSnapshotPaths are the snapshots the current manifest's successful
-// analyze steps own, as absolute slash paths (the ledger's form).
-func liveSnapshotPaths(manifest Manifest) map[string]bool {
+// liveSnapshotNames are the snapshot file names (relative to the snapshot
+// dir, the ledger's form) the current manifest's successful analyze steps own.
+func liveSnapshotNames(manifest Manifest) map[string]bool {
 	live := map[string]bool{}
-	if manifest.SnapshotDir == "" {
-		return live
-	}
 	for _, step := range manifest.Steps {
 		if step.Kind != "analyze" || step.Status != "success" || step.SnapshotName == "" {
 			continue
 		}
-		if abs, err := filepath.Abs(filepath.Join(manifest.SnapshotDir, step.SnapshotName+".json")); err == nil {
-			live[filepath.ToSlash(abs)] = true
-		}
+		live[step.SnapshotName+".json"] = true
 	}
 	return live
 }
 
-// ApplyClean deletes discovered cleanup candidates and records deleted/skipped paths.
+// ApplyClean moves each candidate into the trash with TrashFile (the only
+// deletion primitive); nothing is unlinked. Failures are reported as skipped.
 func ApplyClean(result CleanResult) CleanResult {
 	applied := result
 	applied.Mode = "apply"
 	applied.Deleted = []string{}
 	applied.Skipped = []string{}
+	id := applied.TrashID
+	if id == "" {
+		id = NewRunID(time.Now())
+	}
 
 	for _, relPath := range applied.ArtifactOrphans {
-		if err := os.Remove(resolveArtifactPath(applied.OutputDir, relPath)); err != nil {
+		dir, err := TrashFile(applied.OutputDir, relPath, id)
+		if err != nil {
 			applied.Skipped = append(applied.Skipped, relPath)
 			continue
 		}
+		applied.TrashDir = dir
 		applied.Deleted = append(applied.Deleted, relPath)
 	}
 	if applied.IncludeSnapshots {
 		for _, name := range applied.SnapshotOrphans {
-			// Snapshot orphans are absolute paths from the ledger.
-			if err := os.Remove(filepath.FromSlash(name)); err != nil {
+			dir, err := TrashFile(applied.SnapshotDir, name, id)
+			if err != nil {
 				applied.Skipped = append(applied.Skipped, name)
 				continue
 			}
+			applied.SnapshotTrashDir = dir
 			applied.Deleted = append(applied.Deleted, name)
 		}
 	}

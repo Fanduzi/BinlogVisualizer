@@ -21,6 +21,7 @@ var (
 	manifestErrorPattern = regexp.MustCompile(`"error": "discover binlog files: .*"`)
 	planSHA256Pattern    = regexp.MustCompile(`"plan_sha256": "[0-9a-f]+"`)
 	runIDPattern         = regexp.MustCompile(`"run_id": "[^"]+"`)
+	trashIDPattern       = regexp.MustCompile(`/\.trash/\d{8}T\d{6}Z-[0-9a-f]{8}`)
 	resolvedFilesPattern = regexp.MustCompile(`(?s)"resolved_input_files": \[.*?\]`)
 )
 
@@ -1179,7 +1180,7 @@ func normalizeWorkflowCleanOutput(raw, outputDir string) string {
 	if testRoot != "" && testRoot != "." && testRoot != "/" {
 		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
 	}
-	return out
+	return trashIDPattern.ReplaceAllString(out, "/.trash/<trash-id>")
 }
 
 func normalizeWorkflowExportOutput(raw, outputDir, archivePath string) string {
