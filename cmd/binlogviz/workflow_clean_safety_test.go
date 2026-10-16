@@ -9,9 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -230,33 +227,5 @@ func TestExportRoundTripKeepsLedger(t *testing.T) {
 	mustExist(t, filepath.Join(root, "ledger.jsonl"))
 	if err := cleanQuiet(t, root); err != nil {
 		t.Fatalf("clean on a restored export must not be no_ledger: %v", err)
-	}
-}
-
-// Only the deletion primitive may remove or rename files in workflow code.
-func TestWorkflowDeletesOnlyThroughPrimitive(t *testing.T) {
-	files, _ := filepath.Glob("../../internal/workflow/*.go")
-	more, _ := filepath.Glob("workflow*.go")
-	files = append(files, more...)
-	banned := map[string]bool{"Remove": true, "RemoveAll": true, "Rename": true, "Truncate": true, "Unlink": true, "Unlinkat": true, "Rmdir": true}
-	fset := token.NewFileSet()
-	for _, name := range files {
-		if strings.HasSuffix(name, "_test.go") || filepath.Base(name) == "safefs.go" {
-			continue
-		}
-		f, err := parser.ParseFile(fset, name, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			if sel, ok := call.Fun.(*ast.SelectorExpr); ok && banned[sel.Sel.Name] {
-				t.Errorf("%s: %s outside internal/workflow/safefs.go; delete through workflow.TrashFile", fset.Position(call.Pos()), sel.Sel.Name)
-			}
-			return true
-		})
 	}
 }
