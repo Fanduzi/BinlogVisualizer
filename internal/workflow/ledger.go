@@ -168,8 +168,8 @@ func validateLedgerEntry(e LedgerEntry) error {
 			return errUntrustedPath(e.Path, "artifact paths must be <analyze|compare|trend>/<file>")
 		}
 	case LedgerSnapshot:
-		if len(parts) != 1 || !strings.HasSuffix(e.Path, ".json") || !strings.HasPrefix(e.Step, "analyze:") {
-			return errUntrustedPath(e.Path, "snapshot paths must be a bare <name>.json recorded by an analyze step")
+		if len(parts) != 1 || !strings.HasSuffix(e.Path, ".json") || e.Step != "analyze:"+strings.TrimSuffix(e.Path, ".json") {
+			return errUntrustedPath(e.Path, "snapshot paths must be a bare <name>.json recorded by step analyze:<name>")
 		}
 	default:
 		return errUntrustedPath(e.Path, "unknown kind "+strconv.Quote(e.Kind))

@@ -1083,7 +1083,7 @@ func TestWorkflowCleanTextGoldenApply(t *testing.T) {
 	outputDir := setupWorkflowCleanCommandFixture(t)
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots"})
+	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots", "--snapshot-dir", filepath.Join(outputDir, "snapshots")})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 

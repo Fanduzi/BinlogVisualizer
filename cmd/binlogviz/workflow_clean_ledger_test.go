@@ -115,7 +115,7 @@ func TestCleanDeletesOnlyLedgerAttributedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := cleanQuiet(t, outputDir, "--apply", "--include-snapshots"); err != nil {
+	if err := cleanQuiet(t, outputDir, "--apply", "--include-snapshots", "--snapshot-dir", snapshotDir); err != nil {
 		t.Fatalf("clean: %v", err)
 	}
 	mustBeGone(t,
@@ -128,7 +128,7 @@ func TestCleanDeletesOnlyLedgerAttributedFiles(t *testing.T) {
 
 	// --force removes unattributed artifacts, but never a snapshot the
 	// workflow did not create.
-	if err := cleanQuiet(t, outputDir, "--apply", "--include-snapshots", "--force"); err != nil {
+	if err := cleanQuiet(t, outputDir, "--apply", "--include-snapshots", "--force", "--snapshot-dir", snapshotDir); err != nil {
 		t.Fatalf("clean --force: %v", err)
 	}
 	mustBeGone(t, manual, edited)
@@ -181,7 +181,7 @@ func TestCleanWithoutLedgerNeedsForce(t *testing.T) {
 	}
 	mustExist(t, stale)
 
-	if err := cleanQuiet(t, outputDir, "--apply", "--include-snapshots", "--force"); err != nil {
+	if err := cleanQuiet(t, outputDir, "--apply", "--include-snapshots", "--force", "--snapshot-dir", snapshotDir); err != nil {
 		t.Fatalf("clean --force: %v", err)
 	}
 	mustBeGone(t, stale)

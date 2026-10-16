@@ -153,7 +153,7 @@ func TestCleanMovesToTrash(t *testing.T) {
 	}
 	stdout, _, err := captureStdoutStderrRun(t, func() error {
 		cmd := NewRootCommand()
-		cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots", "--format", "json"})
+		cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots", "--snapshot-dir", snapshotDir, "--format", "json"})
 		return cmd.Execute()
 	})
 	if err != nil {

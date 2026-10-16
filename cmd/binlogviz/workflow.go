@@ -59,6 +59,7 @@ type workflowStatusOptions struct {
 }
 
 type workflowCleanOptions struct {
+	snapshotDir      string
 	force            bool
 	apply            bool
 	includeSnapshots bool
@@ -155,21 +156,37 @@ func newWorkflowCleanCommand() *cobra.Command {
 			}
 			defer unlock()
 
+			snapshotDir := ""
+			if opts.includeSnapshots {
+				// Never from the manifest alone (ADR 0009 §8).
+				snapshotDir, err = snapshot.ResolveSnapshotDir(opts.snapshotDir)
+				if err != nil {
+					return clierr.Errorf(clierr.KindInput, "resolve snapshot dir: %w", err)
+				}
+			}
 			result, err := workflow.DiscoverCleanCandidatesWithOptions(outputDir, manifest, workflow.CleanOptions{
 				IncludeSnapshots: opts.includeSnapshots,
 				Force:            opts.force,
+				SnapshotDir:      snapshotDir,
 			})
 			if err != nil {
 				return err
 			}
 			if opts.apply {
-				result = workflow.ApplyClean(result)
+				result, err = workflow.ApplyClean(result)
+				if err != nil {
+					return err
+				}
 			}
 			if err := writeWorkflowCleanOutput(cmd.OutOrStdout(), opts.format, result); err != nil {
 				return err
 			}
 			if opts.apply && len(result.Skipped) > 0 {
-				return clierr.Errorf(clierr.KindOutput, "workflow clean completed with %d skipped deletions", len(result.Skipped))
+				causes := make([]string, 0, len(result.Skipped))
+				for _, path := range result.Skipped {
+					causes = append(causes, path+": "+result.SkipReasons[path])
+				}
+				return clierr.Errorf(clierr.KindOutput, "workflow clean could not move %d file(s) to trash: %s", len(result.Skipped), strings.Join(causes, "; "))
 			}
 			return nil
 		},
@@ -177,6 +194,7 @@ func newWorkflowCleanCommand() *cobra.Command {
 
 	cmd.Flags().BoolVar(&opts.apply, "apply", false, "Move orphaned files into <output_dir>/.trash/<id>/ instead of previewing them")
 	cmd.Flags().BoolVar(&opts.includeSnapshots, "include-snapshots", false, "Also delete superseded snapshots this workflow created (per ledger.jsonl)")
+	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Snapshot directory for --include-snapshots (default: the standard snapshot dir); must match the manifest's snapshot_dir")
 	cmd.Flags().BoolVar(&opts.force, "force", false, "Also delete unattributed outputs of recorded step kinds, and allow a workflow dir without ledger.jsonl; never deletes snapshots the ledger does not attribute")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Output format: text or json")
 
@@ -904,7 +922,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	}
 
 	// Use manifest's snapshot_dir if not overridden
-	effectiveSnapshotDir := mf.SnapshotDir
+	effectiveSnapshotDir := workflow.ResolveManifestSnapshotDir(outputDir, mf.SnapshotDir)
 	if snapshotDir != "" {
 		effectiveSnapshotDir = snapshotDir
 	}
