@@ -1,6 +1,6 @@
 // Package binlog bounds the values inside an event before go-mysql decodes them.
 // input: raw rows-event bodies with their table map, and transaction payload event bodies.
-// output: nil, or a corruptCause naming the first value that cannot be decoded in bounded time and memory; for a payload, the decoded TransactionPayloadEvent with its inner events.
+// output: nil, or a corruptCause naming the first value that cannot be decoded in bounded time and memory; for a payload, a checked streamedPayload that hands its inner events on one at a time.
 // pos: second layer of the raw-byte checks in event_reader.go. go-mysql's binary JSON decoder recurses on offsets without a depth limit and its payload decoder decompresses without a size limit, so payloads are decoded here as a bounded stream and never handed to it; a Go fatal error from either cannot be recovered.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
@@ -245,38 +246,65 @@ func hasJSONColumn(table *replication.TableMapEvent) bool {
 // large event costs memory only for the bytes the frame really produces.
 const payloadEventChunk = 1 << 20
 
-// checkPayload decodes a MySQL 8 transaction payload and discards it; tests
-// use it to run the bounds checks alone.
+// maxPayloadTableMaps caps the distinct table ids one payload may map. The
+// inner parser keeps every table map it has seen, so without a cap a small
+// frame of distinct table maps would grow memory with the payload, not with
+// its largest event. MySQL maps each table a transaction touches once.
+const maxPayloadTableMaps = 1 << 16
+
+// checkPayload runs the payload checks alone; tests use it.
 func checkPayload(body []byte, fde []byte) error {
 	_, err := decodePayload(body, fde)
 	return err
 }
 
-// errPayloadMissingTableMap reports an inner rows event before any table map.
-// go-mysql fails the whole payload then, and readEvents skips it as it skips
-// such an outer event.
-var errPayloadMissingTableMap = corruptCause(missingTableMap)
+// streamedPayload is a transaction payload checked by decodePayload whose
+// inner events are not held: each decodes the frame again and hands the
+// inner events to fn one at a time, so a consumer never holds more than the
+// event it is given. Events stays nil.
+type streamedPayload struct {
+	replication.TransactionPayloadEvent
+	each func(fn func(*replication.BinlogEvent) error) error
+}
 
-// decodePayload decodes a MySQL 8 transaction payload in place of go-mysql,
-// which decompresses with no size limit. The header fields are
-// net_field_length values. The declared uncompressed size must be at most
-// 1 GiB. The zstd frame is read as a stream, one inner event at a time: each
-// inner header must name an event that fits in what is left of the declared
-// size, the event's bytes are read into a buffer that grows only as bytes
-// arrive, it passes the same count, rows and JSON checks as an outer event,
-// and it is parsed once. The stream stops with a corruptCause at the first
-// inner event that does not fit, or as soon as it yields a byte past the
-// declared size; the total must equal the declared size. Memory follows the
-// bytes the frame really produces, never the declaration. fde is the outer
-// Format Description event, nil if none was read. A nil event and nil error
-// mean a compression type go-mysql refuses itself.
-func decodePayload(body []byte, fde []byte) (*replication.TransactionPayloadEvent, error) {
+// decodePayload checks a MySQL 8 transaction payload in place of go-mysql,
+// which decompresses with no size limit and keeps every inner event. The
+// header fields are net_field_length values and the declared uncompressed
+// size must be at most 1 GiB. Then the whole frame is walked once as a
+// bounded stream (walkPayload) and every inner event decoded and dropped;
+// only if all of it passes does the caller get a streamedPayload, whose each
+// walks the same bytes again and hands the events on. Nothing of a payload
+// is emitted before all of it is known good, so a corrupt event anywhere
+// fails the payload before its first event reaches analyze or flashback.
+// That includes an inner rows event with no table map before it: go-mysql
+// failed the whole payload on it (an outer such event is skipped, an inner
+// one never was), and so does this. The cost is decompressing twice; memory stays the largest inner
+// event plus a constant. A nil event and nil error mean a compression type
+// go-mysql refuses itself.
+func decodePayload(body []byte, fde []byte) (*streamedPayload, error) {
+	ev, limit, hasDeclared, err := parsePayloadHeader(body)
+	if err != nil || ev == nil {
+		return nil, err
+	}
+	if err := walkPayload(ev, limit, hasDeclared, fde, nil); err != nil {
+		return nil, err
+	}
+	sp := &streamedPayload{TransactionPayloadEvent: *ev}
+	sp.each = func(fn func(*replication.BinlogEvent) error) error {
+		return walkPayload(ev, limit, hasDeclared, fde, fn)
+	}
+	return sp, nil
+}
+
+// parsePayloadHeader reads the payload header fields. The returned limit is
+// the declared size, or 1 GiB when none is declared.
+func parsePayloadHeader(body []byte) (*replication.TransactionPayloadEvent, uint64, bool, error) {
 	ev := &replication.TransactionPayloadEvent{}
 	hasDeclared := false
 	pos := 0
 	for {
 		if pos >= len(body) {
-			return nil, corruptCause("payload header has no end mark")
+			return nil, 0, false, corruptCause("payload header has no end mark")
 		}
 		field := body[pos]
 		pos++
@@ -284,18 +312,18 @@ func decodePayload(body []byte, fde []byte) (*replication.TransactionPayloadEven
 			break
 		}
 		if pos >= len(body) {
-			return nil, corruptCause("payload header field exceeds the event")
+			return nil, 0, false, corruptCause("payload header field exceeds the event")
 		}
 		length := int(body[pos])
 		pos++
 		// net_store_length writes at most 9 bytes: 0xfe and 8 value bytes
 		// for values of 2^24 and up, which a 1 GiB size needs.
 		if length > 9 || pos+length > len(body) {
-			return nil, corruptCause("payload header field exceeds the event")
+			return nil, 0, false, corruptCause("payload header field exceeds the event")
 		}
 		v, ok := netFieldLength(body[pos : pos+length])
 		if !ok {
-			return nil, corruptCause(fmt.Sprintf("payload header field %d is malformed: % x is not a net_field_length value", field, body[pos:pos+length]))
+			return nil, 0, false, corruptCause(fmt.Sprintf("payload header field %d is malformed: % x is not a net_field_length value", field, body[pos:pos+length]))
 		}
 		switch field {
 		case replication.OTW_PAYLOAD_SIZE_FIELD:
@@ -308,22 +336,34 @@ func decodePayload(body []byte, fde []byte) (*replication.TransactionPayloadEven
 		pos += length
 	}
 	if ev.CompressionType != replication.ZSTD {
-		return nil, nil // go-mysql refuses other compression types without decoding.
+		return nil, 0, false, nil // go-mysql refuses other compression types without decoding.
 	}
 	ev.Payload = body[pos:]
 	limit := uint64(maxPayloadUncompressed)
 	if hasDeclared {
 		if ev.UncompressedSize > maxPayloadUncompressed {
-			return nil, corruptCause(fmt.Sprintf("payload declares %s uncompressed, more than the limit %s", humanBytes(ev.UncompressedSize), humanBytes(maxPayloadUncompressed)))
+			return nil, 0, false, corruptCause(fmt.Sprintf("payload declares %s uncompressed, more than the limit %s", humanBytes(ev.UncompressedSize), humanBytes(maxPayloadUncompressed)))
 		}
 		limit = ev.UncompressedSize
 	}
+	return ev, limit, hasDeclared, nil
+}
+
+// walkPayload reads ev's zstd frame (128 MiB window cap) as a stream, one
+// inner event at a time: each inner header must name an event that fits in
+// what is left of limit, its bytes go into a buffer that grows only as they
+// arrive, it passes the same count, rows and JSON checks as an outer event,
+// it is parsed, handed to fn when fn is not nil, and dropped. The walk stops
+// with a corruptCause at the first inner event that does not fit or decode,
+// or as soon as the frame yields a byte past limit; with a declared size the
+// total must equal it. An error from fn is returned as is.
+func walkPayload(ev *replication.TransactionPayloadEvent, limit uint64, hasDeclared bool, fde []byte, fn func(*replication.BinlogEvent) error) error {
 	decoder, err := zstd.NewReader(bytes.NewReader(ev.Payload),
 		zstd.WithDecoderConcurrency(1),
 		zstd.WithDecoderLowmem(true),
 		zstd.WithDecoderMaxWindow(maxPayloadWindow))
 	if err != nil {
-		return nil, corruptCause("payload is not a zstd frame: " + err.Error())
+		return corruptCause("payload is not a zstd frame: " + err.Error())
 	}
 	defer decoder.Close()
 	stream := &payloadStream{r: decoder, left: limit}
@@ -341,10 +381,11 @@ func decodePayload(body []byte, fde []byte) (*replication.TransactionPayloadEven
 			off[len(off)-5] = byte(replication.BINLOG_CHECKSUM_ALG_OFF)
 		}
 		if _, err := vp.Parse(off); err != nil {
-			return nil, corruptCause("format description: " + err.Error())
+			return corruptCause("format description: " + err.Error())
 		}
 	}
 
+	tables := make(map[uint64]struct{})
 	var total uint64
 	header := make([]byte, replication.EventHeaderSize)
 	for {
@@ -355,48 +396,88 @@ func decodePayload(body []byte, fde []byte) (*replication.TransactionPayloadEven
 		if err != nil {
 			if err == io.ErrUnexpectedEOF {
 				if got := total + uint64(n); hasDeclared && got != ev.UncompressedSize {
-					return nil, corruptCause(fmt.Sprintf("payload decompresses to %d bytes, not the declared %d", got, ev.UncompressedSize))
+					return corruptCause(fmt.Sprintf("payload decompresses to %d bytes, not the declared %d", got, ev.UncompressedSize))
 				}
-				return nil, corruptCause(fmt.Sprintf("payload ends inside an inner event header (%d of %d bytes)", n, len(header)))
+				return corruptCause(fmt.Sprintf("payload ends inside an inner event header (%d of %d bytes)", n, len(header)))
 			}
-			return nil, stream.fail(err)
+			return stream.fail(err)
 		}
 		size := uint64(binary.LittleEndian.Uint32(header[eventSizeOffset:]))
 		if size < replication.EventHeaderSize {
-			return nil, corruptCause(fmt.Sprintf("payload inner event at %d declares %d bytes, less than its %d-byte header", total, size, replication.EventHeaderSize))
+			return corruptCause(fmt.Sprintf("payload inner event at %d declares %d bytes, less than its %d-byte header", total, size, replication.EventHeaderSize))
 		}
 		if size-replication.EventHeaderSize > stream.left {
-			return nil, corruptCause(fmt.Sprintf("payload inner event of %s at %d exceeds the payload of %s", humanBytes(size), total, humanBytes(limit)))
+			return corruptCause(fmt.Sprintf("payload inner event of %s at %d exceeds the payload of %s", humanBytes(size), total, humanBytes(limit)))
 		}
 		raw, err := readGrowing(stream, header, int(size))
 		if err != nil {
 			if err == io.ErrUnexpectedEOF {
-				return nil, corruptCause(fmt.Sprintf("payload inner event of %s at %d exceeds the payload", humanBytes(size), total))
+				return corruptCause(fmt.Sprintf("payload inner event of %s at %d exceeds the payload", humanBytes(size), total))
 			}
-			return nil, stream.fail(err)
+			return stream.fail(err)
 		}
-		if err := checkEventBounds(replication.EventType(raw[4]), raw[replication.EventHeaderSize:]); err != nil {
-			return nil, err
+		eventType := replication.EventType(raw[4])
+		if err := checkEventBounds(eventType, raw[replication.EventHeaderSize:]); err != nil {
+			return err
 		}
-		fault.err = nil
-		inner, err := vp.Parse(raw)
+		inner, err := parseInner(vp, fault, raw)
 		if err != nil {
-			if fault.err != nil {
-				return nil, fault.err
+			if _, ok := err.(corruptCause); ok {
+				return err
 			}
-			if err.Error() == missingTableMap {
-				return nil, errPayloadMissingTableMap
+			if err == errInnerNoTableMap {
+				return corruptCause(fmt.Sprintf("payload inner %s at %d has no table map before it", eventType, total))
 			}
-			return nil, corruptCause("payload inner event: " + err.Error())
+			return corruptCause(fmt.Sprintf("payload inner %s at %d does not decode", eventType, total))
 		}
-		ev.Events = append(ev.Events, inner)
+		if tm, ok := inner.Event.(*replication.TableMapEvent); ok {
+			tables[tm.TableID] = struct{}{}
+			if len(tables) > maxPayloadTableMaps {
+				return corruptCause(fmt.Sprintf("payload maps more than %d tables", maxPayloadTableMaps))
+			}
+		}
 		total += size
+		if fn != nil {
+			if err := fn(inner); err != nil {
+				return err
+			}
+		}
 	}
 	if hasDeclared && total != ev.UncompressedSize {
-		return nil, corruptCause(fmt.Sprintf("payload decompresses to %d bytes, not the declared %d", total, ev.UncompressedSize))
+		return corruptCause(fmt.Sprintf("payload decompresses to %d bytes, not the declared %d", total, ev.UncompressedSize))
 	}
-	return ev, nil
+	return nil
 }
+
+// parseInner parses one inner event. A rows bounds failure comes back as its
+// corruptCause, a rows event with no table map as errInnerNoTableMap, and
+// any other go-mysql error or a panic as errInnerDecode, so neither go-mysql's dump of
+// the bytes nor Go runtime text reaches the message.
+func parseInner(vp *replication.BinlogParser, fault *rowsFault, raw []byte) (ev *replication.BinlogEvent, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			ev, err = nil, errInnerDecode
+		}
+	}()
+	fault.err = nil
+	ev, err = vp.Parse(raw)
+	if err == nil {
+		return ev, nil
+	}
+	if fault.err != nil {
+		return nil, fault.err
+	}
+	// go-mysql wraps it in an EventError with a dump of the bytes.
+	if strings.HasSuffix(err.Error(), missingTableMap) {
+		return nil, errInnerNoTableMap
+	}
+	return nil, errInnerDecode
+}
+
+var (
+	errInnerDecode     = errors.New("inner event does not decode")
+	errInnerNoTableMap = errors.New("inner rows event has no table map")
+)
 
 // netFieldLength reads one MySQL net_field_length value that fills b
 // exactly. 0xfb (NULL) and 0xff (error marker) are not values.

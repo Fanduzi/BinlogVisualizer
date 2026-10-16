@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/go-mysql-org/go-mysql/replication"
+	"github.com/klauspost/compress/zstd"
 )
 
 func nineByteSize(v uint64) []byte {
@@ -109,24 +110,28 @@ func TestPayloadBoundMessageIsReadable(t *testing.T) {
 	}
 }
 
-// readEvents hands go-mysql's consumer a payload event it decoded itself:
-// the declared size is the net_field_length value (fc ad 01 = 429; go-mysql
-// v1.14 reads the bytes as a fixed-length integer) and the inner events are
-// there, so the frame is not decompressed a second time.
-func TestPayloadDecodedOnceWithDeclaredSize(t *testing.T) {
+// readEvents hands the consumer a checked payload whose header carries the
+// declared size as the net_field_length value (fc ad 01 = 429; go-mysql
+// v1.14 reads the bytes as a fixed-length integer) and whose inner events
+// come one at a time through each, never as a held slice.
+func TestPayloadEventCarriesDeclaredSize(t *testing.T) {
 	var consumed int64
 	seen := 0
 	err := readEvents(replication.NewBinlogParser(), "testdata/mysql80_transaction_payload.binlog", 0, &consumed, nil, func(ev *replication.BinlogEvent) error {
-		p, ok := ev.Event.(*replication.TransactionPayloadEvent)
+		p, ok := ev.Event.(*streamedPayload)
 		if !ok {
 			return nil
 		}
 		seen++
-		if p.UncompressedSize != 429 {
-			return fmt.Errorf("UncompressedSize %d, want 429", p.UncompressedSize)
+		if p.UncompressedSize != 429 || p.CompressionType != replication.ZSTD || p.Events != nil {
+			return fmt.Errorf("payload header %d/%d, %d held events", p.UncompressedSize, p.CompressionType, len(p.Events))
 		}
-		if len(p.Events) == 0 || p.CompressionType != replication.ZSTD {
-			return fmt.Errorf("payload not decoded: %d events, compression %d", len(p.Events), p.CompressionType)
+		inners := 0
+		if err := p.each(func(*replication.BinlogEvent) error { inners++; return nil }); err != nil {
+			return err
+		}
+		if inners == 0 {
+			return fmt.Errorf("no inner events")
 		}
 		return nil
 	})
@@ -138,15 +143,8 @@ func TestPayloadDecodedOnceWithDeclaredSize(t *testing.T) {
 	}
 }
 
-// manySmallPayloadFile replaces the fixture's payload event at 509 with one
-// holding n XID events (27 bytes each), declared exactly, CRC32 recomputed.
-func manySmallPayloadFile(t *testing.T, n int) (string, uint64) {
-	t.Helper()
-	fixture, err := os.ReadFile("testdata/mysql80_transaction_payload.binlog")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const at, oldSize = 509, 216
+// xidEvents returns n inner XID events, 27 bytes each.
+func xidEvents(n int) []byte {
 	frame := make([]byte, 0, 27*n)
 	for i := 0; i < n; i++ {
 		x := make([]byte, 27)
@@ -156,8 +154,19 @@ func manySmallPayloadFile(t *testing.T, n int) (string, uint64) {
 		binary.LittleEndian.PutUint64(x[19:], uint64(i))
 		frame = append(frame, x...)
 	}
-	declared := uint64(len(frame))
-	body := otwPayloadBody(t, nineByteSize(declared), frame)
+	return frame
+}
+
+// payloadFile replaces the fixture's payload event at 509 with one whose
+// frame is frame, declared exactly, CRC32 recomputed.
+func payloadFile(t *testing.T, frame []byte) string {
+	t.Helper()
+	fixture, err := os.ReadFile("testdata/mysql80_transaction_payload.binlog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const at = 509
+	body := otwPayloadBody(t, nineByteSize(uint64(len(frame))), frame)
 	ev := append([]byte(nil), fixture[at:at+replication.EventHeaderSize]...)
 	ev = append(ev, body...)
 	ev = append(ev, 0, 0, 0, 0)
@@ -165,11 +174,45 @@ func manySmallPayloadFile(t *testing.T, n int) (string, uint64) {
 	binary.LittleEndian.PutUint32(ev[13:], uint32(at+len(ev)))
 	binary.LittleEndian.PutUint32(ev[len(ev)-4:], crc32.ChecksumIEEE(ev[:len(ev)-4]))
 	out := append(append([]byte(nil), fixture[:at]...), ev...)
-	path := filepath.Join(t.TempDir(), "many_small.binlog")
+	path := filepath.Join(t.TempDir(), "payload.binlog")
 	if err := os.WriteFile(path, out, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return path, declared
+	return path
+}
+
+// manySmallPayloadFile holds a payload of n XID events.
+func manySmallPayloadFile(t *testing.T, n int) (string, uint64) {
+	t.Helper()
+	frame := xidEvents(n)
+	return payloadFile(t, frame), uint64(len(frame))
+}
+
+// Corruption late in a payload fails it before any of its inner events
+// reaches the handler, so analyze and flashback never see half a payload.
+func TestPayloadCorruptLateEmitsNothing(t *testing.T) {
+	frame := append(xidEvents(1000), make([]byte, 27)...) // a header declaring 0 bytes
+	path := payloadFile(t, frame)
+	for _, flash := range []bool{false, true} {
+		p := NewParser()
+		if flash {
+			p.(FlashbackParser).SetCaptureFlashback(true)
+		}
+		xids := 0
+		err := p.ParseFiles([]string{path}, func(raw RawEvent) error {
+			if raw.PositionStart == 509 {
+				xids++
+			}
+			return nil
+		})
+		var corrupt *CorruptEventError
+		if !errors.As(err, &corrupt) || corrupt.Offset != 509 {
+			t.Fatalf("flash %v: got %v, want a CorruptEventError at 509", flash, err)
+		}
+		if xids != 0 {
+			t.Fatalf("flash %v: %d inner events of the corrupt payload reached the handler", flash, xids)
+		}
+	}
 }
 
 // A payload of many tiny inner events must stream: the live heap while its
@@ -236,6 +279,62 @@ func TestPayloadInnerDecodeFailureIsPlain(t *testing.T) {
 			if !strings.Contains(err.Error(), "payload inner") {
 				t.Fatalf("%s flash %v: %v does not name the inner event", name, flash, err)
 			}
+		}
+	}
+}
+
+// An inner rows event with no table map before it fails the whole payload,
+// as go-mysql's payload decoder did (every head before this exits 5 on it):
+// none of its inner events, not even those before the rows event, reaches
+// the handler, and the message names the rows event.
+func TestPayloadMissingTableMapFailsWholePayload(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/mysql80_transaction_payload.binlog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const at, size, frameAt = 509, 216, 509 + 19 + 12
+	dec, err := zstd.NewReader(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dec.Close()
+	inner, err := dec.DecodeAll(fixture[frameAt:at+size-4], nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frame []byte
+	dropped := false
+	for pos := 0; pos < len(inner); {
+		n := int(binary.LittleEndian.Uint32(inner[pos+9:]))
+		if replication.EventType(inner[pos+4]) == replication.TABLE_MAP_EVENT {
+			dropped = true
+		} else {
+			frame = append(frame, inner[pos:pos+n]...)
+		}
+		pos += n
+	}
+	if !dropped {
+		t.Fatal("fixture payload has no table map")
+	}
+	path := payloadFile(t, frame)
+	for _, flash := range []bool{false, true} {
+		p := NewParser()
+		if flash {
+			p.(FlashbackParser).SetCaptureFlashback(true)
+		}
+		fromPayload := 0
+		err := p.ParseFiles([]string{path}, func(raw RawEvent) error {
+			if raw.PositionStart == at {
+				fromPayload++
+			}
+			return nil
+		})
+		var corrupt *CorruptEventError
+		if !errors.As(err, &corrupt) || corrupt.Offset != at || !strings.Contains(err.Error(), "has no table map before it") {
+			t.Fatalf("flash %v: got %v", flash, err)
+		}
+		if fromPayload != 0 {
+			t.Fatalf("flash %v: %d events of the failed payload reached the handler", flash, fromPayload)
 		}
 	}
 }

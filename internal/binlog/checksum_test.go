@@ -69,7 +69,7 @@ func TestParseFileGuardedTurnsDecoderPanicIntoCorruptEvent(t *testing.T) {
 		panic("slice bounds out of range [65541:243]")
 	})
 	var corrupt *CorruptEventError
-	if !errors.As(err, &corrupt) || corrupt.Offset != 120 || corrupt.Cause != "event decoder failed: slice bounds out of range [65541:243]" {
+	if !errors.As(err, &corrupt) || corrupt.Offset != 120 || corrupt.Cause != "event decoder failed on malformed event bytes" {
 		t.Fatalf("got %v", err)
 	}
 }

@@ -139,12 +139,10 @@ func (r *eventReader) next(pos int64, onEvent replication.OnEventFunc) (int64, e
 		return 0, corrupt(err.Error())
 	}
 	if eventType == replication.TRANSACTION_PAYLOAD_EVENT {
-		// Decoded here, once and bounded; go-mysql would decompress the
-		// frame again with no limit.
+		// Checked here as a bounded stream; go-mysql would decompress the
+		// frame with no limit and keep every inner event. The consumer
+		// walks the inner events through payload.each.
 		payload, err := decodePayload(body, r.fde)
-		if err == errPayloadMissingTableMap {
-			return eventSize, nil
-		}
 		if err != nil {
 			return 0, corrupt(err.Error())
 		}
