@@ -4,6 +4,11 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Install
+
+- **`install.sh` no longer fails silently or installs an unverified binary (#285).** A checksum mismatch now prints `checksum mismatch for <archive> (expected …, got …)` and an archive missing from `checksums.txt` prints `no checksum for <archive>`; both exit 1 and install nothing. With no `sha256sum`, `shasum`, or `openssl` the script refuses instead of warning and continuing; `--no-verify` skips the check on purpose. A release that does not exist names the URL and release instead of a bare `curl: (22)`. `--version 0.24.0` (no `v`) is accepted, `--bin-dir` with no value and a malformed `--version` get a clear message, `wget` works when `curl` is missing, replacing an existing install names the old version, and `--dry-run` prints `verify=`.
+- The manual tarball snippets in README.md and README_ZH.md resolve the latest release tag instead of hard-coding `v0.24.0`, check the sha256 with `sha256sum -c -` / `shasum -a 256 -c -` so a mismatch prints `FAILED`, and stop before unpacking when it fails. The install-docs test now also rejects pinned `releases/download/vX.Y.Z/` URLs.
+
 ### Fixed
 
 - **P1: `workflow clean --apply` deleted every output when the manifest was untrustworthy.** A `{}` manifest, or one with `steps` missing or `[]`, made clean treat every analyze/compare/trend output as orphaned, delete them all and exit 0. Clean (preview and `--apply`) now refuses and deletes nothing: a manifest missing required fields exits 5, and one that records no steps while artifacts exist exits 6, both with `details.reason: untrusted_manifest`. Clean also only considers files of kinds the manifest recorded steps for (ADR 0009 §8).

@@ -308,12 +308,15 @@ brew install --cask binlogviz
 ```bash
 # install.sh（当前版本）
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
-sh ./install.sh            # latest release; pin with --version v0.24.0
+sh ./install.sh            # latest release; pin with --version vX.Y.Z
 
-# 或 linux/amd64 tarball
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_linux_amd64.tar.gz
-tar -xzf binlogviz_0.24.0_linux_amd64.tar.gz
-install ./binlogviz /usr/local/bin/binlogviz
+# 或 linux/amd64 tarball：先解析最新 tag，校验 checksum，再解压
+VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Fanduzi/BinlogVisualizer/releases/latest)"; VERSION="${VERSION##*/}"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_linux_amd64.tar.gz"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_checksums.txt"
+grep " binlogviz_${VERSION#v}_linux_amd64.tar.gz\$" "binlogviz_${VERSION#v}_checksums.txt" | sha256sum -c - &&
+  tar -xzf "binlogviz_${VERSION#v}_linux_amd64.tar.gz" &&
+  install ./binlogviz /usr/local/bin/binlogviz
 ```
 
 ### 通用备选：下载 Release Artifact
@@ -322,21 +325,22 @@ install ./binlogviz /usr/local/bin/binlogviz
 
 权威 release artifact 由 GitHub Actions release workflow 产出。macOS 产物在原生 runner 上构建，Linux 产物则在 manylinux2014 用户态中构建，以保持对 CentOS 7 / glibc 2.17 的兼容基线。本地 `goreleaser` 更适合做配置校验和当前宿主机的可选验证，不是主要发布路径。
 
-下面是 `darwin/arm64` 和当前版本 `v0.24.0` 的示例：
+下面是 `darwin/arm64` 和最新版本的示例。checksum 不符时会打印 `FAILED` 并以非零退出，此时不要继续。
 
 ```bash
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_darwin_arm64.tar.gz
-curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_checksums.txt
-shasum -a 256 -c binlogviz_0.24.0_checksums.txt 2>/dev/null | grep "binlogviz_0.24.0_darwin_arm64.tar.gz: OK"
-tar -xzf binlogviz_0.24.0_darwin_arm64.tar.gz
-install ./binlogviz /usr/local/bin/binlogviz
+VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Fanduzi/BinlogVisualizer/releases/latest)"; VERSION="${VERSION##*/}"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_darwin_arm64.tar.gz"
+curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_checksums.txt"
+grep " binlogviz_${VERSION#v}_darwin_arm64.tar.gz\$" "binlogviz_${VERSION#v}_checksums.txt" | shasum -a 256 -c - &&
+  tar -xzf "binlogviz_${VERSION#v}_darwin_arm64.tar.gz" &&
+  install ./binlogviz /usr/local/bin/binlogviz
 ```
 
-也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
+也可以用仓库内置的安装脚本。它安装最新版本；sha256 与 `checksums.txt` 不符或找不到 sha256 工具时拒绝安装（确实要跳过校验时传 `--no-verify`）；支持 `--version vX.Y.Z` 和 `--bin-dir DIR`：
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
-sh ./install.sh            # latest release; pin with --version v0.24.0
+sh ./install.sh            # latest release; pin with --version vX.Y.Z
 ```
 
 如果只想预览将要解析出的 artifact，而不实际下载：
