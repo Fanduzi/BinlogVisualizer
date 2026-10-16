@@ -84,6 +84,11 @@ func ParseRerunSelectors(plan Plan, selectors []string) ([]RerunSelector, error)
 // outputDir is the workflow root used for trust-boundary validation of plan_path.
 // planPath and planSHA256 are the canonical plan path and its current hash.
 func ValidateResumableManifest(m Manifest, outputDir string, planPath string, planSHA256 string) error {
+	if m.ManifestVersion == 0 && m.WorkflowName == "" && m.Status == "" && m.PlanPath == "" && len(m.Steps) == 0 {
+		// #277: {} (or a manifest with none of its fields) is damaged, not a
+		// legacy run; 9 is reserved for a real legacy or newer version marker.
+		return clierr.New(clierr.KindCorrupt, "cannot resume: manifest is missing required fields (manifest_version, workflow_name, status)")
+	}
 	if m.ManifestVersion == 0 {
 		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
 	}
@@ -107,7 +112,7 @@ func ValidateResumableManifest(m Manifest, outputDir string, planPath string, pl
 		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no plan_sha256")
 	}
 	if planSHA256 != m.PlanSHA256 {
-		return clierr.Errorf(clierr.KindInput, "cannot resume: plan file has changed since the original run (hash mismatch)")
+		return clierr.Reasonf(clierr.KindRefused, "plan_changed", "cannot resume: plan file has changed since the original run (hash mismatch)")
 	}
 	if len(m.ResolvedInputFiles) == 0 {
 		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no resolved_input_files")

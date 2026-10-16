@@ -93,7 +93,7 @@ func TestLoadReportRejectsInvalidJSON(t *testing.T) {
 
 func TestLoadReportRejectsForeignJSON(t *testing.T) {
 	_, err := LoadReport(filepath.Join("testdata", "foreign.json"))
-	if err == nil || !strings.Contains(err.Error(), "unsupported BinlogViz report shape") {
+	if err == nil || !strings.Contains(err.Error(), "corrupt BinlogViz report: missing required fields") {
 		t.Fatalf("expected shape error, got %v", err)
 	}
 }
@@ -152,7 +152,7 @@ func TestLoadReportRejectsReportsMissingRequiredCompareFields(t *testing.T) {
 			}
 
 			_, err := LoadReport(path)
-			if err == nil || !strings.Contains(err.Error(), "unsupported BinlogViz report shape") {
+			if err == nil || !strings.Contains(err.Error(), "corrupt BinlogViz report: missing required fields") {
 				t.Fatalf("expected shape error, got %v", err)
 			}
 		})
@@ -215,7 +215,7 @@ func TestDecodeReportJSONRejectsForeignJSON(t *testing.T) {
 	}
 
 	_, err = DecodeReportJSON(data)
-	if err == nil || !strings.Contains(err.Error(), "unsupported BinlogViz report shape") {
+	if err == nil || !strings.Contains(err.Error(), "corrupt BinlogViz report: missing required fields") {
 		t.Fatalf("expected shape error, got %v", err)
 	}
 }
