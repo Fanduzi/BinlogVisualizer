@@ -91,6 +91,13 @@ func WithDetails(kind Kind, err error, details map[string]any) error {
 	return &Error{Kind: kind, Err: err, Details: details}
 }
 
+// Reasonf is an error of kind with details.reason set, for failures that
+// share a kind but need different fixes (for example invalid_plan,
+// plan_changed, trust_boundary).
+func Reasonf(kind Kind, reason, format string, args ...any) error {
+	return &Error{Kind: kind, Err: fmt.Errorf(format, args...), Details: map[string]any{"reason": reason}}
+}
+
 // Errorf is Wrap(kind, fmt.Errorf(...)): a %w operand that already has a
 // kind keeps it, so context added on the way up never hides the innermost,
 // most specific classification.

@@ -18,14 +18,15 @@ An agent cannot tell "fix your arguments" from "this file is bad" from "this too
 1. **One new kind.** `unsupported`, exit 9, is reserved for **format and version limits** of this build: intact, well-formed input in a format or version binlogviz does not handle. Today that means:
    - a binlog whose DML is only in STATEMENT form (no ROW images);
    - a report whose `report_version` is newer than this build supports;
-   - a workflow plan version, or a manifest version, that this build cannot run or resume;
+   - a workflow plan version, or a real manifest version marker, that this build cannot run or resume: `manifest_version` newer than 2, or a legacy manifest (no `manifest_version` but legacy content such as `workflow_name`). A manifest with none of its fields (`{}`) is `corrupt` (5), not legacy;
    - a plan option that v1 does not support (`defaults.analyze.format` other than json).
 
    It differs from `corrupt` (5): the file is fine, and the fix is a different binlog format, tool or binlogviz version. Retrying the same input with this build will not help. Valid JSON that lacks required fields (for example `{}` given as a report or snapshot) is **not** 9: that is content that is broken for its purpose, so it is `corrupt` (5).
 2. **Rule for choosing a kind.**
    - `usage` (3): the fix is in the command line: a flag, argument, name or format value, including a missing required flag and a value that is out of range for the given input.
-   - `input` (4): an input the user named cannot be found, opened or read (file, directory, snapshot, manifest, plan).
-   - `corrupt` (5): an input was read but its content is broken: not a binlog, empty (a 0-byte file, `/dev/null` and empty stdin alike), truncated, JSON or YAML that does not decode, or a report, snapshot, workflow plan or manifest that decodes but lacks required fields or has invalid values.
+   - `input` (4): an input the user named cannot be found, opened or read (file, directory, snapshot, manifest, plan). Only the read itself: a manifest that reads but does not decode is 5.
+   - `corrupt` (5): an input was read but its content is broken: not a binlog, empty (a 0-byte file, `/dev/null` and empty stdin alike), truncated, JSON or YAML that does not decode, or a report, snapshot, workflow plan or manifest that decodes but lacks required fields or has invalid values. The message says so ("corrupt BinlogViz report: missing required fields"). A workflow plan that fails validation carries `details.reason: "invalid_plan"`, so an agent can tell an authoring mistake from file damage.
+   - `refused` (6): the input is readable and well-formed, and binlogviz deliberately refuses to act on it to protect correctness. Beyond flashback (ADR 0008), `workflow resume` refuses with `details.reason`: `plan_changed` when plan.yaml no longer matches the manifest's `plan_sha256` (the fix is a fresh run), and `trust_boundary` when the manifest's `plan_path` resolves outside the workflow root or is not `<root>/plan.yaml`.
    - `unsupported` (9): above.
    - `output` (8): writing a report, artifact, temp file or manifest failed.
    - `error` (1): only failures that have no better kind, chiefly ADR 0001's open BEGIN and unclassified QUERY, and internal invariants.
@@ -33,6 +34,8 @@ An agent cannot tell "fix your arguments" from "this file is bad" from "this too
 4. **Innermost kind wins.** `clierr.Errorf` with a `%w` operand that already has a kind keeps that kind, like `clierr.Wrap`. Context added on the way up (`analyze window "w1": …`) never hides the specific classification.
 5. **A flag set to an empty value is a usage error.** `--error-format=` exits 3; only an unset flag falls back to `BINLOGVIZ_ERROR_FORMAT` or text.
 6. **Required flags are checked in `RunE`.** Cobra's `MarkFlagRequired` returns an untyped error before our code runs, so commands check required flags themselves and return `usage`.
+
+7. **Read-only commands do not enforce resume policy.** `workflow status` and `workflow export` only read and report. On a `plan_path` outside the workflow root they still exit 0: `status` reports the run as not resumable, and `export` skips plan.yaml with a warning. The trust boundary guards what `resume` executes, not what is displayed.
 
 ## Consequences
 

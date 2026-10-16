@@ -52,13 +52,13 @@ func ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error)
 
 	// Ensure the resolved plan path is inside the resolved root.
 	if !isInsideDir(resolvedRoot, resolvedPlanPath) {
-		return "", clierr.Errorf(clierr.KindCorrupt, "plan_path %q resolves outside workflow root: trust boundary violated", planPath)
+		return "", clierr.Reasonf(clierr.KindRefused, "trust_boundary", "plan_path %q resolves outside workflow root: trust boundary violated", planPath)
 	}
 
 	// Tighten: only <root>/plan.yaml is accepted — not nested, not renamed.
 	expectedPath := filepath.Join(resolvedRoot, "plan.yaml")
 	if resolvedPlanPath != expectedPath {
-		return "", clierr.Errorf(clierr.KindCorrupt, "plan_path must be <root>/plan.yaml, got %q: trust boundary violated", planPath)
+		return "", clierr.Reasonf(clierr.KindRefused, "trust_boundary", "plan_path must be <root>/plan.yaml, got %q: trust boundary violated", planPath)
 	}
 
 	return resolvedPlanPath, nil

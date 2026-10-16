@@ -810,6 +810,9 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	}
 
 	// Early validation before trying to load the plan
+	if mf.ManifestVersion == 0 && mf.WorkflowName == "" && mf.Status == "" && mf.PlanPath == "" && len(mf.Steps) == 0 {
+		return workflow.ValidateResumableManifest(mf, "", "", "")
+	}
 	if mf.ManifestVersion == 0 {
 		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
 	}
@@ -1465,11 +1468,13 @@ func buildWorkflowReportOptions(plan workflow.Plan) (report.Options, error) {
 func workflowManifestFromJSON(path string) (workflow.Manifest, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return workflow.Manifest{}, err
+		// Only a failed read is input (4); see ADR 0009.
+		return workflow.Manifest{}, clierr.Wrap(clierr.KindInput, err)
 	}
 	var m workflow.Manifest
 	if err := json.Unmarshal(data, &m); err != nil {
-		return workflow.Manifest{}, err
+		// A manifest that reads but does not decode is corrupt (5).
+		return workflow.Manifest{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 	return m, nil
 }

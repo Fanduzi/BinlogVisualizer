@@ -395,7 +395,7 @@ func TestCompareCommandRejectsInvalidReportShape(t *testing.T) {
 	})
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "load baseline report") || !strings.Contains(err.Error(), "unsupported BinlogViz report shape") {
+	if err == nil || !strings.Contains(err.Error(), "load baseline report") || !strings.Contains(err.Error(), "corrupt BinlogViz report: missing required fields") {
 		t.Fatalf("expected invalid-shape error, got %v", err)
 	}
 }

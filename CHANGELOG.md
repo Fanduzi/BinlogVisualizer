@@ -23,13 +23,19 @@ New exit code: **9 `unsupported`**, for format and version limits only.
 | A snapshot or snapshot source that cannot be read (missing, mode 000) | 1 | 4 input |
 | `workflow describe`/`validate`/`run`/`status`/`clean`/`export` with a missing plan or output directory | 1 | 4 input |
 | `snapshot save` or `compare` with JSON that does not decode | 1 | 5 corrupt |
-| A report or snapshot that is valid JSON but lacks required fields (for example `{}`) | 1 | 5 corrupt |
-| A workflow plan that does not decode or fails validation; a manifest missing required fields | 1 | 5 corrupt |
+| A report or snapshot that is valid JSON but lacks required fields (for example `{}`); the message is now "corrupt BinlogViz report: missing required fields" | 1 | 5 corrupt |
+| A workflow plan that does not decode, or fails validation (`details.reason: invalid_plan`) | 1 | 5 corrupt |
+| A workflow manifest that reads but does not decode (`{bad`) in `resume`/`status`/`clean`/`export` | 1 | 5 corrupt |
+| A workflow manifest with none of its fields (`{}`) in `resume` | 1 | 5 corrupt |
+| `workflow resume` when plan.yaml changed since the run (`details.reason: plan_changed`) | 1 | 6 refused |
+| `workflow resume` when the manifest's `plan_path` is outside the workflow root (`details.reason: trust_boundary`) | 1 | 6 refused |
 | `analyze /dev/null`, or empty stdin | 4 | 5 corrupt, the same as an empty file |
 | A STATEMENT or MIXED binlog with no ROW images (`analyze`, `flashback`) | 1 | 9 unsupported |
 | A report with a `report_version` newer than this build | 1 | 9 unsupported |
-| A workflow plan version or manifest version this build cannot run or resume | 1 | 9 unsupported |
+| A workflow plan version, or a legacy or newer `manifest_version`, this build cannot run or resume | 1 | 9 unsupported |
 | Writing a snapshot, workflow artifact, manifest or export archive fails | 1 | 8 output |
+
+`workflow status` and `workflow export` are read-only: on a `plan_path` outside the workflow root they still exit 0 (status reports the run as not resumable; export skips plan.yaml with a warning).
 
 Exit 1 is now only for failures with no better kind: ADR 0001's open `BEGIN` and unclassified QUERY, and internal errors. A test fails the build if any command error is created without a kind.
 
