@@ -4,6 +4,20 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.26.0
+
+Release date: 2026-10-17
+
+Highlights:
+
+- Breaking for scripts: `flashback --plan` is `plan_version` 2. Warnings carry a stable `code`, and exit 6 and exit 7 refusals print the plan with a `refusal` field (#270, #282, #296).
+- `flashback --conflict-limit N` sets how many conflicts the plan and the exit 7 details list (#270, #296).
+
+Related notes:
+
+- [v0.26.0 release notes](docs/releases/release-notes-v0.26.0.md)
+- [v0.26.0 中文发行说明](docs/releases/release-notes-v0.26.0.zh-CN.md)
+
 ### Changed
 
 - **Breaking for scripts: `flashback --plan` is `plan_version` 2 (#270, #282).** Each `warnings` entry is now `{"code", "message"}` with a stable code (`partial_transaction`, `table_definition_missing`, `generated_column_unverified`, `schema_file_db_mismatch`, `schema_file_table_ambiguous`, `schema_file_case_folded`, `schema_file_case_mismatch`) and a message without the localized `warning:` prefix. A refusal now prints the plan too: exit 6 (DDL, non-FULL row image, FLOAT and the other refusals) used to print nothing; now `would_refuse` is true and the new `refusal` field is `{"kind": "refused", "message": ...}`, or `"conflict"` for exit 7. `refusal` is `null` when nothing is refused. Stderr warnings are unchanged.
