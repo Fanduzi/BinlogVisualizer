@@ -133,15 +133,13 @@ func loadCompareReport(side, path string) (comparepkg.InputReport, error) {
 	}
 	// A report that cannot be opened or read (missing, permission, a
 	// directory) is an input error, exit 4, as for analyze (#268). One that
-	// reads but does not decode is corrupt; another report shape is
-	// unsupported (#277).
+	// reads but does not decode, or lacks required fields, is corrupt; a
+	// report_version from a newer build keeps its unsupported kind (#277).
 	kind := clierr.KindCorrupt
 	var pathErr *fs.PathError
 	switch {
 	case errors.As(err, &pathErr):
 		kind = clierr.KindInput
-	case isUnsupportedReportShape(err):
-		kind = clierr.KindUnsupported
 	}
 	return comparepkg.InputReport{}, clierr.Errorf(kind, "load %s report %s: %w", side, path, err)
 }

@@ -6,8 +6,8 @@
 package compare
 
 import (
+	"binlogviz/internal/clierr"
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 )
@@ -48,7 +48,7 @@ type rawInputTable struct {
 func LoadReport(path string) (InputReport, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return InputReport{}, fmt.Errorf("read compare input %s: %w", path, err)
+		return InputReport{}, clierr.Errorf(clierr.KindInput, "read compare input %s: %w", path, err)
 	}
 
 	report, err := DecodeReportJSON(data)
@@ -56,7 +56,7 @@ func LoadReport(path string) (InputReport, error) {
 		if strings.Contains(err.Error(), "unsupported BinlogViz report shape") || strings.Contains(err.Error(), "unsupported report_version") {
 			return InputReport{}, err
 		}
-		return InputReport{}, fmt.Errorf("decode compare input %s: %w", path, err)
+		return InputReport{}, clierr.Errorf(clierr.KindCorrupt, "decode compare input %s: %w", path, err)
 	}
 	return report, nil
 }
@@ -65,7 +65,7 @@ func LoadReport(path string) (InputReport, error) {
 func DecodeReportJSON(data []byte) (InputReport, error) {
 	var raw rawInputReport
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return InputReport{}, err
+		return InputReport{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 	if err := validateRawInputReport(raw); err != nil {
 		return InputReport{}, err
@@ -73,7 +73,7 @@ func DecodeReportJSON(data []byte) (InputReport, error) {
 
 	var report InputReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return InputReport{}, err
+		return InputReport{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 	if err := normalizeTransactionCompleteness(&report, reportVersion(raw)); err != nil {
 		return InputReport{}, err
@@ -91,29 +91,29 @@ func reportVersion(report rawInputReport) int {
 func validateRawInputReport(report rawInputReport) error {
 	version := reportVersion(report)
 	if version < 0 || version > currentSupportedReportVersion {
-		return fmt.Errorf("unsupported report_version %d: this BinlogViz build supports up to %d", version, currentSupportedReportVersion)
+		return clierr.Errorf(clierr.KindUnsupported, "unsupported report_version %d: this BinlogViz build supports up to %d", version, currentSupportedReportVersion)
 	}
 	if report.Summary == nil || report.Tables == nil || report.Alerts == nil || report.Warnings == nil {
-		return fmt.Errorf("unsupported BinlogViz report shape")
+		return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 	}
 	if report.Summary.TotalTransactions == nil || report.Summary.TotalRows == nil || report.Summary.TotalEvents == nil {
-		return fmt.Errorf("unsupported BinlogViz report shape")
+		return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 	}
 	if version >= 3 && (report.Summary.PartialTransactions == nil || report.Summary.UnknownTransactions == nil || report.Transactions == nil) {
-		return fmt.Errorf("unsupported BinlogViz report shape")
+		return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 	}
 	if report.Summary.StartTime == nil || report.Summary.EndTime == nil || report.Summary.Duration == nil {
-		return fmt.Errorf("unsupported BinlogViz report shape")
+		return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 	}
 	if strings.TrimSpace(*report.Summary.Duration) == "" {
-		return fmt.Errorf("unsupported BinlogViz report shape")
+		return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 	}
 	for _, table := range *report.Tables {
 		if table.Schema == nil || strings.TrimSpace(*table.Schema) == "" {
-			return fmt.Errorf("unsupported BinlogViz report shape")
+			return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 		}
 		if table.Table == nil || strings.TrimSpace(*table.Table) == "" {
-			return fmt.Errorf("unsupported BinlogViz report shape")
+			return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 		}
 	}
 	return nil
@@ -136,13 +136,13 @@ func normalizeTransactionCompleteness(report *InputReport, version int) error {
 				txn.Completeness = "unknown"
 			}
 			if !validTransactionCompleteness(txn.Completeness) {
-				return fmt.Errorf("unsupported BinlogViz report shape")
+				return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 			}
 			if version >= 3 && txn.ReplayAvailable == nil {
-				return fmt.Errorf("unsupported BinlogViz report shape")
+				return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 			}
 			if txn.ReplayAvailable != nil && *txn.ReplayAvailable && txn.ReplayScope != "full_transaction" {
-				return fmt.Errorf("unsupported BinlogViz report shape")
+				return clierr.Errorf(clierr.KindCorrupt, "unsupported BinlogViz report shape")
 			}
 		}
 	}

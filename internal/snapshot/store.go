@@ -100,7 +100,7 @@ func DefaultSnapshotDir(home string) (string, error) {
 		var err error
 		home, err = os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return "", clierr.Wrap(clierr.KindError, err)
 		}
 	}
 	if home == "" {
@@ -161,7 +161,7 @@ func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
 	}
 
 	if err := os.MkdirAll(resolvedDir, 0o755); err != nil {
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 
 	path := filepath.Join(resolvedDir, name+jsonExtension)
@@ -174,12 +174,12 @@ func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
 		if os.IsExist(err) && !overwrite {
 			return "", clierr.Errorf(clierr.KindUsage, "snapshot file %q already exists", path)
 		}
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	defer file.Close()
 
 	if _, err := file.Write(report); err != nil {
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 
 	return path, nil
@@ -197,7 +197,7 @@ func ListSnapshots(dir string) ([]Entry, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return []Entry{}, nil
 		}
-		return nil, err
+		return nil, clierr.Wrap(clierr.KindInput, err)
 	}
 
 	result := make([]Entry, 0, len(entries))
@@ -247,7 +247,7 @@ func LoadSnapshot(dir, name string) (string, []byte, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", nil, clierr.Errorf(clierr.KindInput, "snapshot %q not found", name)
 		}
-		return "", nil, err
+		return "", nil, clierr.Wrap(clierr.KindInput, err)
 	}
 	return path, data, nil
 }
@@ -286,7 +286,7 @@ func RenameSnapshot(dir, oldName, newName string) (string, error) {
 	}
 	if err := os.Remove(oldPath); err != nil {
 		_ = os.Remove(newPath)
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	return newPath, nil
 }
@@ -307,19 +307,19 @@ func DeleteSnapshot(dir, name string) (string, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return "", clierr.Errorf(clierr.KindInput, "snapshot %q not found", name)
 		}
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	return path, nil
 }
 
 func decodeDescriptor(path string, data []byte, fallbackName string) (Descriptor, error) {
 	if _, err := comparepkg.DecodeReportJSON(data); err != nil {
-		return Descriptor{}, err
+		return Descriptor{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 
 	var stored storedSnapshot
 	if err := json.Unmarshal(data, &stored); err != nil {
-		return Descriptor{}, err
+		return Descriptor{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 
 	desc := Descriptor{
@@ -351,7 +351,7 @@ func decodeDescriptor(path string, data []byte, fallbackName string) (Descriptor
 func renameSnapshotPayload(data []byte, oldName, newName string) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, err
+		return nil, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 
 	snapshot, ok := payload["snapshot"].(map[string]any)

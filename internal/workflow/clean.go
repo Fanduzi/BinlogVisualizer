@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"fmt"
+	"binlogviz/internal/clierr"
 	"os"
 	"path/filepath"
 	"sort"
@@ -110,7 +110,7 @@ func discoverOrphansInDir(dirPath, kind string, liveArtifacts map[string]struct{
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("read %s cleanup directory: %w", dirPath, err)
+		return nil, clierr.Errorf(clierr.KindInput, "read %s cleanup directory: %w", dirPath, err)
 	}
 
 	orphans := make([]string, 0)
@@ -136,7 +136,7 @@ func discoverSnapshotOrphans(manifest Manifest) ([]string, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("read snapshot cleanup directory: %w", err)
+		return nil, clierr.Errorf(clierr.KindInput, "read snapshot cleanup directory: %w", err)
 	}
 
 	liveSnapshots := liveSnapshotSet(manifest)

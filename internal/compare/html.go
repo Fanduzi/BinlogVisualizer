@@ -6,6 +6,7 @@
 package compare
 
 import (
+	"binlogviz/internal/clierr"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -98,7 +99,7 @@ func RenderHTML(result CompareResult) (string, error) {
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("render compare html template: %w", err)
+		return "", clierr.Errorf(clierr.KindError, "render compare html template: %w", err)
 	}
 	return buf.String(), nil
 }

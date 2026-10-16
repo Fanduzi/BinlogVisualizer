@@ -202,13 +202,13 @@ func TestRenderTextRendersPatternEmptyState(t *testing.T) {
 
 func TestRenderTextNoDrilldownWhenEmpty(t *testing.T) {
 	output, err := RenderText(CompareResult{
-		CurrentLabel:    "current",
-		BaselineLabel:   "baseline",
-		PatternChanges:  []PatternChange{},
+		CurrentLabel:      "current",
+		BaselineLabel:     "baseline",
+		PatternChanges:    []PatternChange{},
 		PatternDrilldowns: []PatternDrilldown{},
-		TableChanges:    []TableChange{},
-		OperationMix:    []OperationDelta{},
-		AlertChanges:    AlertDelta{},
+		TableChanges:      []TableChange{},
+		OperationMix:      []OperationDelta{},
+		AlertChanges:      AlertDelta{},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -228,9 +228,9 @@ func TestRenderTextDrilldownBeneathSelectedPattern(t *testing.T) {
 		},
 		PatternDrilldowns: []PatternDrilldown{
 			{
-				PatternKey:  "orders.insert",
-				Label:       "orders.insert",
-				WhySelected: "dominant driver of the row delta between windows",
+				PatternKey:   "orders.insert",
+				Label:        "orders.insert",
+				WhySelected:  "dominant driver of the row delta between windows",
 				BaselineRows: 200,
 				CurrentRows:  1200,
 				DeltaRows:    1000,

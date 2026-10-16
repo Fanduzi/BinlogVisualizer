@@ -234,8 +234,9 @@ func newWorkflowDescribeCommand() *cobra.Command {
 			planPath := args[0]
 			f, err := os.Open(planPath)
 			if err != nil {
-				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err))
-				return err
+				openErr := clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err)
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, openErr)
+				return openErr
 			}
 			defer f.Close()
 
@@ -276,8 +277,9 @@ func newWorkflowValidateCommand() *cobra.Command {
 			planPath := args[0]
 			f, err := os.Open(planPath)
 			if err != nil {
-				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err))
-				return err
+				openErr := clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err)
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, openErr)
+				return openErr
 			}
 			defer f.Close()
 

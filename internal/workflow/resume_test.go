@@ -184,10 +184,10 @@ func TestValidateResumableManifestRejectsMissingPlanSHA256(t *testing.T) {
 
 func makeResumePlanAndManifest() (Plan, Manifest) {
 	plan := Plan{
-		Version: 1,
+		Version:  1,
 		Workflow: WorkflowMeta{Name: "test-resume"},
 		Defaults: Defaults{
-			Input:   InputDefaults{FromDir: "/tmp/mysql", Prefix: "mysql-bin."},
+			Input:    InputDefaults{FromDir: "/tmp/mysql", Prefix: "mysql-bin."},
 			Snapshot: SnapshotConfig{Save: true},
 		},
 		Windows: []Window{{Name: "week1"}, {Name: "week2"}},

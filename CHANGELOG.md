@@ -4,7 +4,34 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
-- Every command error now has a kind (ADR 0009, #277). New exit 9 `unsupported` for a STATEMENT/MIXED binlog with no ROW images, an unsupported report shape or workflow manifest version. `snapshot save` without `--name` and out-of-range position selectors exit 3; a snapshot source or compare report that is not valid JSON exits 5; `analyze /dev/null` exits 5 like an empty file; a missing snapshot exits 4. A test fails the build on any untyped error.
+### Breaking: exit codes for scripts (#277, ADR 0009)
+
+Every command error now has a kind, and some failures changed exit code. Scripts that test `$? -eq 1` or `$? -eq 4` for the cases below must be updated. The JSON error `kind` (`--error-format json`) is the stable contract; see [docs/reference/exit-codes.md](docs/reference/exit-codes.md).
+
+New exit code: **9 `unsupported`**, for format and version limits only.
+
+| Case | Before | After |
+|---|---|---|
+| `snapshot save` without `--name`, or with an invalid name | 1 | 3 usage |
+| `snapshot save` when the snapshot already exists | 1 | 3 usage |
+| `snapshot list`/`show`, `workflow status`/`clean`/`export` with an invalid `--format` | 1 | 3 usage |
+| `--error-format=` (empty) | 0 (ignored) | 3 usage |
+| `--start-position`/`--stop-position` out of range or not on an event boundary | 1 | 3 usage |
+| `compare --current-snapshot` without `--baseline-snapshot`, mixed compare modes; `trend` with fewer than 2 snapshots | 1 | 3 usage |
+| `workflow resume --rerun` with a bad selector | 1 | 3 usage |
+| `snapshot show`/`delete`/`rename` of an unknown snapshot; `trend`/`compare` with a missing snapshot | 1 | 4 input |
+| A snapshot or snapshot source that cannot be read (missing, mode 000) | 1 | 4 input |
+| `workflow describe`/`validate`/`run`/`status`/`clean`/`export` with a missing plan or output directory | 1 | 4 input |
+| `snapshot save` or `compare` with JSON that does not decode | 1 | 5 corrupt |
+| A report or snapshot that is valid JSON but lacks required fields (for example `{}`) | 1 | 5 corrupt |
+| A workflow plan that does not decode or fails validation; a manifest missing required fields | 1 | 5 corrupt |
+| `analyze /dev/null`, or empty stdin | 4 | 5 corrupt, the same as an empty file |
+| A STATEMENT or MIXED binlog with no ROW images (`analyze`, `flashback`) | 1 | 9 unsupported |
+| A report with a `report_version` newer than this build | 1 | 9 unsupported |
+| A workflow plan version or manifest version this build cannot run or resume | 1 | 9 unsupported |
+| Writing a snapshot, workflow artifact, manifest or export archive fails | 1 | 8 output |
+
+Exit 1 is now only for failures with no better kind: ADR 0001's open `BEGIN` and unclassified QUERY, and internal errors. A test fails the build if any command error is created without a kind.
 
 ## v0.24.0
 

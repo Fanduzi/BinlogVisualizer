@@ -65,9 +65,6 @@ func newSnapshotSaveCommand() *cobra.Command {
 				return clierr.Errorf(clierr.KindInput, "read snapshot source %s: %w", args[0], err)
 			}
 			if _, err := comparepkg.DecodeReportJSON(data); err != nil {
-				if isUnsupportedReportShape(err) {
-					return clierr.Wrap(clierr.KindUnsupported, err)
-				}
 				return clierr.Errorf(clierr.KindCorrupt, "decode snapshot source %s: %w", args[0], err)
 			}
 
@@ -168,10 +165,6 @@ func newSnapshotShowCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to load snapshots from")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Snapshot show output format: text or json")
 	return cmd
-}
-
-func isUnsupportedReportShape(err error) bool {
-	return err != nil && err.Error() == "unsupported BinlogViz report shape"
 }
 
 func newSnapshotRenameCommand() *cobra.Command {

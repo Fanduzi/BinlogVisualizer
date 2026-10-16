@@ -274,12 +274,12 @@ func TestBuildTrendEvidenceRefs_LowSignalNoFalseRefs(t *testing.T) {
 
 // testPatternPoint describes a single pattern trend for test data generation.
 type testPatternPoint struct {
-	key          string
-	label        string
-	firstRows    int
-	firstShare   float64
-	lastRows     int
-	lastShare    float64
+	key        string
+	label      string
+	firstRows  int
+	firstShare float64
+	lastRows   int
+	lastShare  float64
 }
 
 func buildTestResult(numPoints int, patterns []testPatternPoint) Result {
@@ -306,15 +306,15 @@ func buildTestResult(numPoints int, patterns []testPatternPoint) Result {
 			rowsSeries[j] = PatternTrendRowsPoint{SnapshotName: "snap", Rows: rows}
 		}
 		patternTrends[i] = PatternTrend{
-			PatternKey:       p.key,
-			Label:            p.label,
-			FirstRows:        p.firstRows,
-			LastRows:         p.lastRows,
-			DeltaRows:        p.lastRows - p.firstRows,
-			FirstShareOfRows: p.firstShare,
-			LastShareOfRows:  p.lastShare,
-			DeltaShareOfRows: p.lastShare - p.firstShare,
-			RowsSeries:       rowsSeries,
+			PatternKey:        p.key,
+			Label:             p.label,
+			FirstRows:         p.firstRows,
+			LastRows:          p.lastRows,
+			DeltaRows:         p.lastRows - p.firstRows,
+			FirstShareOfRows:  p.firstShare,
+			LastShareOfRows:   p.lastShare,
+			DeltaShareOfRows:  p.lastShare - p.firstShare,
+			RowsSeries:        rowsSeries,
 			ShareOfRowsSeries: shareSeries,
 		}
 	}

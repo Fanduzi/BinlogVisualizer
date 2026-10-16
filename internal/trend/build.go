@@ -6,7 +6,7 @@
 package trend
 
 import (
-	"fmt"
+	"binlogviz/internal/clierr"
 	"math"
 	"sort"
 	"strings"
@@ -17,7 +17,7 @@ import (
 
 func BuildResult(opts BuildOptions) (Result, error) {
 	if len(opts.Points) < 2 {
-		return Result{}, fmt.Errorf("trend requires at least 2 snapshots")
+		return Result{}, clierr.Errorf(clierr.KindUsage, "trend requires at least 2 snapshots")
 	}
 	topTables := opts.TopTables
 	if topTables <= 0 {
@@ -129,7 +129,7 @@ func normalizeTrendOrder(order string) (string, error) {
 	case "time":
 		return "time", nil
 	default:
-		return "", fmt.Errorf("unsupported trend order %q: want cli or time", order)
+		return "", clierr.Errorf(clierr.KindUsage, "unsupported trend order %q: want cli or time", order)
 	}
 }
 
@@ -155,15 +155,15 @@ func samePointNames(left, right []string) bool {
 
 func resolvePoint(input BuildInput) (resolvedPoint, error) {
 	if input.Report.Snapshot == nil {
-		return resolvedPoint{}, fmt.Errorf("snapshot %q missing snapshot metadata", input.Path)
+		return resolvedPoint{}, clierr.Errorf(clierr.KindCorrupt, "snapshot %q missing snapshot metadata", input.Path)
 	}
 	window, startRaw := resolvedSnapshotWindow(input.Report)
 	if startRaw == "" {
-		return resolvedPoint{}, fmt.Errorf("snapshot %q missing snapshot.window.start_time", displayName(input.Report.Snapshot))
+		return resolvedPoint{}, clierr.Errorf(clierr.KindCorrupt, "snapshot %q missing snapshot.window.start_time", displayName(input.Report.Snapshot))
 	}
 	start, err := time.Parse(time.RFC3339, startRaw)
 	if err != nil {
-		return resolvedPoint{}, fmt.Errorf("snapshot %q has invalid snapshot.window.start_time: %w", displayName(input.Report.Snapshot), err)
+		return resolvedPoint{}, clierr.Errorf(clierr.KindCorrupt, "snapshot %q has invalid snapshot.window.start_time: %w", displayName(input.Report.Snapshot), err)
 	}
 
 	meta := SnapshotMeta{

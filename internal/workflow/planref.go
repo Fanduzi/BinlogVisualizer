@@ -1,7 +1,7 @@
 package workflow
 
 import (
-	"fmt"
+	"binlogviz/internal/clierr"
 	"path/filepath"
 	"strings"
 )
@@ -15,13 +15,13 @@ import (
 // (Open, ReadFile, SHA256) instead of the raw manifest.PlanPath.
 func ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error) {
 	if planPath == "" {
-		return "", fmt.Errorf("plan_path is empty: manifest has no plan_path")
+		return "", clierr.Errorf(clierr.KindCorrupt, "plan_path is empty: manifest has no plan_path")
 	}
 
 	// Canonicalize the workflow root.
 	canonicalRoot, err := filepath.Abs(outputDir)
 	if err != nil {
-		return "", fmt.Errorf("cannot canonicalize workflow root %q: %w", outputDir, err)
+		return "", clierr.Errorf(clierr.KindInput, "cannot canonicalize workflow root %q: %w", outputDir, err)
 	}
 	canonicalRoot = filepath.Clean(canonicalRoot)
 
@@ -39,7 +39,7 @@ func ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error)
 		// Resolve any existing prefix symlinks instead.
 		resolvedPlanPath, err = resolveExistingPrefix(absPlanPath)
 		if err != nil {
-			return "", fmt.Errorf("cannot resolve plan_path %q: %w", planPath, err)
+			return "", clierr.Errorf(clierr.KindInput, "cannot resolve plan_path %q: %w", planPath, err)
 		}
 	}
 
@@ -52,13 +52,13 @@ func ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error)
 
 	// Ensure the resolved plan path is inside the resolved root.
 	if !isInsideDir(resolvedRoot, resolvedPlanPath) {
-		return "", fmt.Errorf("plan_path %q resolves outside workflow root: trust boundary violated", planPath)
+		return "", clierr.Errorf(clierr.KindCorrupt, "plan_path %q resolves outside workflow root: trust boundary violated", planPath)
 	}
 
 	// Tighten: only <root>/plan.yaml is accepted — not nested, not renamed.
 	expectedPath := filepath.Join(resolvedRoot, "plan.yaml")
 	if resolvedPlanPath != expectedPath {
-		return "", fmt.Errorf("plan_path must be <root>/plan.yaml, got %q: trust boundary violated", planPath)
+		return "", clierr.Errorf(clierr.KindCorrupt, "plan_path must be <root>/plan.yaml, got %q: trust boundary violated", planPath)
 	}
 
 	return resolvedPlanPath, nil

@@ -25,9 +25,9 @@ func buildComparePatternDrilldowns(result CompareResult) []PatternDrilldown {
 	totalMovement := totalCompareRowMovement(changes)
 
 	type candidate struct {
-		change   PatternChange
-		score    float64
-		flags    CompareDrilldownSignals
+		change    PatternChange
+		score     float64
+		flags     CompareDrilldownSignals
 		keyPoints []CompareKeyPoint
 	}
 

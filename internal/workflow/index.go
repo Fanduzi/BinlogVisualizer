@@ -1,8 +1,8 @@
 package workflow
 
 import (
+	"binlogviz/internal/clierr"
 	"bytes"
-	"fmt"
 	"html/template"
 	"path/filepath"
 	"strings"
@@ -59,27 +59,27 @@ type indexWorkflowFindingView struct {
 }
 
 type indexViewModel struct {
-	WorkflowName              string
-	WorkflowPlanVersion       int
-	BinlogvizVersion          string
-	PlanPath                  string
-	Mode                      string
-	Attempt                   int
-	RunStartedAt              string
-	RunFinishedAt             string
-	Status                    string
-	Error                     string
-	TotalSteps                int
-	SucceededSteps            int
-	FailedSteps               int
-	TotalArtifacts            int
-	Steps                     []indexStepView
-	AnalyzeArtifacts          []indexArtifactLink
-	CompareArtifacts          []indexArtifactLink
-	TrendArtifacts            []indexArtifactLink
-	WorkflowRecommendations   []indexWorkflowRecommendationView
-	WorkflowFindings          []indexWorkflowFindingView
-	WorkflowSummaryWarnings   []string
+	WorkflowName            string
+	WorkflowPlanVersion     int
+	BinlogvizVersion        string
+	PlanPath                string
+	Mode                    string
+	Attempt                 int
+	RunStartedAt            string
+	RunFinishedAt           string
+	Status                  string
+	Error                   string
+	TotalSteps              int
+	SucceededSteps          int
+	FailedSteps             int
+	TotalArtifacts          int
+	Steps                   []indexStepView
+	AnalyzeArtifacts        []indexArtifactLink
+	CompareArtifacts        []indexArtifactLink
+	TrendArtifacts          []indexArtifactLink
+	WorkflowRecommendations []indexWorkflowRecommendationView
+	WorkflowFindings        []indexWorkflowFindingView
+	WorkflowSummaryWarnings []string
 }
 
 // RenderIndex renders a self-contained HTML workflow index page.
@@ -88,12 +88,12 @@ func RenderIndex(input IndexInput) (string, error) {
 
 	tmpl, err := template.New("index").Parse(indexTemplate)
 	if err != nil {
-		return "", fmt.Errorf("parse index template: %w", err)
+		return "", clierr.Errorf(clierr.KindError, "parse index template: %w", err)
 	}
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, vm); err != nil {
-		return "", fmt.Errorf("execute index template: %w", err)
+		return "", clierr.Errorf(clierr.KindError, "execute index template: %w", err)
 	}
 	return buf.String(), nil
 }
