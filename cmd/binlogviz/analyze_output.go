@@ -6,6 +6,7 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"fmt"
 	"io"
 	"os"
@@ -29,7 +30,7 @@ type outputDestination struct {
 func resolveOutputDestination(paths []string, discovered bool, requested string, format string) (outputDestination, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return outputDestination{}, fmt.Errorf("get working directory: %w", err)
+		return outputDestination{}, clierr.Errorf(clierr.KindOutput, "get working directory: %w", err)
 	}
 	return resolveOutputDestinationWithCwd(paths, discovered, requested, format, cwd, stdoutIsTerminal())
 }
@@ -45,7 +46,7 @@ func stdoutIsTerminal() bool {
 func resolveOutputDestinationWithCwd(paths []string, discovered bool, requested string, format string, cwd string, stdoutIsTTY bool) (outputDestination, error) {
 	if format != "html" {
 		if requested != "" {
-			return outputDestination{}, fmt.Errorf("--output is only supported with --format html")
+			return outputDestination{}, clierr.Errorf(clierr.KindUsage, "--output is only supported with --format html")
 		}
 		return outputDestination{IsStdout: true}, nil
 	}
@@ -99,7 +100,7 @@ func writeHTMLAtomically(dest outputDestination, content string) error {
 	dir := filepath.Dir(dest.Path)
 	tmp, err := os.CreateTemp(dir, ".binlogviz-html-*")
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "create temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
 
@@ -109,14 +110,14 @@ func writeHTMLAtomically(dest outputDestination, content string) error {
 
 	if _, err := tmp.WriteString(content); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("write temp file: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "write temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "close temp file: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, dest.Path); err != nil {
-		return fmt.Errorf("rename to destination: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "rename to destination: %w", err)
 	}
 
 	return nil

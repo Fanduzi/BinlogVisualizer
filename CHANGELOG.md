@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- Every command error now has a kind (ADR 0009, #277). New exit 9 `unsupported` for a STATEMENT/MIXED binlog with no ROW images, an unsupported report shape or workflow manifest version. `snapshot save` without `--name` and out-of-range position selectors exit 3; a snapshot source or compare report that is not valid JSON exits 5; `analyze /dev/null` exits 5 like an empty file; a missing snapshot exits 4. A test fails the build on any untyped error.
+
 ## v0.24.0
 
 Release date: 2026-10-15

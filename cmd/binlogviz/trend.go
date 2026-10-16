@@ -34,10 +34,10 @@ func newTrendCommand() *cobra.Command {
 		Args: func(cmd *cobra.Command, args []string) error {
 			hasPattern := strings.TrimSpace(opts.fromSnapshots) != ""
 			if hasPattern && len(args) > 0 {
-				return fmt.Errorf("cannot combine explicit snapshot arguments with --from-snapshots")
+				return clierr.Errorf(clierr.KindUsage, "cannot combine explicit snapshot arguments with --from-snapshots")
 			}
 			if !hasPattern && len(args) < 2 {
-				return fmt.Errorf("trend requires at least 2 snapshots")
+				return clierr.Errorf(clierr.KindUsage, "trend requires at least 2 snapshots")
 			}
 			return nil
 		},
@@ -105,11 +105,11 @@ func runTrend(opts *trendOptions, args []string, out, errOut io.Writer) error {
 		output, err = trendpkg.RenderText(result)
 	}
 	if err != nil {
-		return fmt.Errorf("render trend output (%s): %w", opts.format, err)
+		return clierr.Errorf(clierr.KindError, "render trend output (%s): %w", opts.format, err)
 	}
 	_, err = fmt.Fprint(out, output)
 	if err != nil {
-		return fmt.Errorf("write trend output: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "write trend output: %w", err)
 	}
 	return nil
 }
@@ -130,7 +130,7 @@ func resolveTrendInputs(args []string, opts *trendOptions) ([]trendpkg.BuildInpu
 		for _, entry := range entries {
 			matched, matchErr := path.Match(pattern, entry.Name)
 			if matchErr != nil {
-				return nil, "", "", fmt.Errorf("invalid snapshot pattern %q: %w", pattern, matchErr)
+				return nil, "", "", clierr.Errorf(clierr.KindUsage, "invalid snapshot pattern %q: %w", pattern, matchErr)
 			}
 			if !matched {
 				continue
@@ -142,7 +142,7 @@ func resolveTrendInputs(args []string, opts *trendOptions) ([]trendpkg.BuildInpu
 			selected = append(selected, loaded)
 		}
 		if len(selected) < 2 {
-			return nil, "", "", fmt.Errorf("trend requires at least 2 snapshots after resolving pattern %q", pattern)
+			return nil, "", "", clierr.Errorf(clierr.KindUsage, "trend requires at least 2 snapshots after resolving pattern %q", pattern)
 		}
 		return selected, "pattern", resolvedDir, nil
 	}
@@ -174,5 +174,5 @@ func loadTrendSnapshot(dir, name string) (trendpkg.BuildInput, error) {
 }
 
 func trendLoadError(side, name string, err error) error {
-	return fmt.Errorf("load %s snapshot %q: %w", side, name, err)
+	return clierr.Errorf(clierr.KindInput, "load %s snapshot %q: %w", side, name, err)
 }

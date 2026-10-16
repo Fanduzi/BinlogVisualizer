@@ -165,8 +165,8 @@ func TestAnalyzePositionBoundaryValidationAndNoMatch(t *testing.T) {
 		wantText string
 		wantExit int
 	}{
-		{name: "mid event", start: int64Pointer(150), wantText: "not an exact event boundary", wantExit: 1},
-		{name: "out of range", stop: int64Pointer(201), wantText: "out of range", wantExit: 1},
+		{name: "mid event", start: int64Pointer(150), wantText: "not an exact event boundary", wantExit: 3},
+		{name: "out of range", stop: int64Pointer(201), wantText: "out of range", wantExit: 3},
 		{name: "EOF no match", start: int64Pointer(200), wantExit: 2},
 	}
 	for _, tt := range tests {

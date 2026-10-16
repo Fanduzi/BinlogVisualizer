@@ -91,9 +91,16 @@ func WithDetails(kind Kind, err error, details map[string]any) error {
 	return &Error{Kind: kind, Err: err, Details: details}
 }
 
-// Errorf is Wrap(kind, fmt.Errorf(...)).
+// Errorf is Wrap(kind, fmt.Errorf(...)): a %w operand that already has a
+// kind keeps it, so context added on the way up never hides the innermost,
+// most specific classification.
 func Errorf(kind Kind, format string, args ...any) error {
-	return &Error{Kind: kind, Err: fmt.Errorf(format, args...)}
+	return Wrap(kind, fmt.Errorf(format, args...))
+}
+
+// New is Wrap(kind, errors.New(msg)).
+func New(kind Kind, msg string) error {
+	return &Error{Kind: kind, Err: errors.New(msg)}
 }
 
 // Of returns the kind of err, or KindError when it has none.

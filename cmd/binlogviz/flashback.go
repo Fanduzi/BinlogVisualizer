@@ -27,15 +27,15 @@ func newFlashbackCommand() *cobra.Command {
 			hasFromDir := opts.fromDir != ""
 			hasPrefix := opts.prefix != ""
 			if hasArgs && (hasFromDir || hasPrefix) {
-				return fmt.Errorf("%s", i18n.T("error.combineArgsWithDir"))
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.combineArgsWithDir"))
 			}
 			if hasFromDir != hasPrefix {
-				return fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirAndPrefixRequired"))
 			}
 			if hasArgs || hasFromDir {
 				return nil
 			}
-			return fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
+			return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
 		},
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			stage := clierr.KindUsage
@@ -54,12 +54,12 @@ func newFlashbackCommand() *cobra.Command {
 				return err
 			}
 			if mode == report.SQLContextOff {
-				return clierr.Wrap(clierr.KindRefused, fmt.Errorf("%s", i18n.T("error.flashbackSQLContext")))
+				return clierr.Errorf(clierr.KindRefused, "%s", i18n.T("error.flashbackSQLContext"))
 			}
 			if opts.schemaFile != "" {
 				body, err := os.ReadFile(opts.schemaFile)
 				if err != nil {
-					return clierr.Wrap(clierr.KindInput, fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaFile", map[string]any{
+					return clierr.Wrap(clierr.KindInput, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.flashbackSchemaFile", map[string]any{
 						"Path":  opts.schemaFile,
 						"Error": err.Error(),
 					})))
@@ -67,7 +67,7 @@ func newFlashbackCommand() *cobra.Command {
 				opts.schemaSQL = string(body)
 			}
 			if !analyzer.ValidFlashbackConflict(opts.conflict) {
-				return fmt.Errorf("%s", i18n.Tf("error.flashbackConflictFlag", map[string]any{"Value": opts.conflict}))
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.flashbackConflictFlag", map[string]any{"Value": opts.conflict}))
 			}
 			kinds, err := analyzer.ParseDMLKinds(opts.dml)
 			if err != nil {
@@ -97,7 +97,7 @@ func newFlashbackCommand() *cobra.Command {
 				printResolvedPaths(infoWriter(os.Stderr), paths)
 			}
 			if len(paths) == 0 {
-				return fmt.Errorf("%s", i18n.T("error.noResolvedFiles"))
+				return clierr.Errorf(clierr.KindInput, "%s", i18n.T("error.noResolvedFiles"))
 			}
 			if err := validateFiles(paths); err != nil {
 				return err
@@ -204,7 +204,7 @@ func flashbackExit(err error) error {
 func writeFlashbackSQL(stream commandAnalyzer) error {
 	src, ok := stream.(*analyzer.Analyzer)
 	if !ok || src == nil {
-		return fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": "selected range"}))
+		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
 	if src.FlashbackPlanMode() {
 		out := bufio.NewWriter(os.Stdout)

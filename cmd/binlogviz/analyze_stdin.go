@@ -1,7 +1,8 @@
 package binlogviz
 
 import (
-	"fmt"
+	"binlogviz/internal/clierr"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -52,13 +53,13 @@ func materializeAnalyzePaths(paths []string) ([]string, map[string]string, func(
 func ensureSeekableBinlog(path string, seenStdin *bool) (string, string, string, error) {
 	if path == "-" {
 		if seenStdin != nil && *seenStdin {
-			return "", "", "", fmt.Errorf("%s", i18n.T("error.stdinOnce"))
+			return "", "", "", clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.stdinOnce"))
 		}
 		if seenStdin != nil {
 			*seenStdin = true
 		}
 		if isTerminal(os.Stdin) {
-			return "", "", "", fmt.Errorf("%s", i18n.T("error.stdinTerminal"))
+			return "", "", "", clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.stdinTerminal"))
 		}
 		resolved, dir, err := spoolReader(os.Stdin, stdinAlias)
 		return resolved, dir, stdinAlias, err
@@ -75,7 +76,7 @@ func ensureSeekableBinlog(path string, seenStdin *bool) (string, string, string,
 	}
 	if statErr == nil && isTerminal(f) && (path == "/dev/stdin" || filepath.Base(path) == stdinAlias) {
 		_ = f.Close()
-		return "", "", "", fmt.Errorf("%s", i18n.T("error.stdinTerminal"))
+		return "", "", "", clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.stdinTerminal"))
 	}
 	if !mustSpool(info, f) {
 		_ = f.Close()
@@ -83,6 +84,10 @@ func ensureSeekableBinlog(path string, seenStdin *bool) (string, string, string,
 	}
 	resolved, dir, err := spoolReader(f, stdinAlias)
 	_ = f.Close()
+	if errors.Is(err, errSpoolEmpty) {
+		// #277: /dev/null and an empty file are the same failure, exit 5.
+		return "", "", "", clierr.Errorf(clierr.KindCorrupt, "%s", i18n.T("error.emptyBinlog"))
+	}
 	if err != nil {
 		return "", "", "", err
 	}
@@ -112,28 +117,28 @@ func spoolReader(r io.Reader, name string) (string, string, error) {
 	}
 	dir, err := os.MkdirTemp("", "binlogviz-stdin-")
 	if err != nil {
-		return "", "", err
+		return "", "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	trackStdinTemp(dir)
 	path := filepath.Join(dir, name)
 	f, err := os.Create(path)
 	if err != nil {
 		releaseStdinTemp(dir)
-		return "", "", err
+		return "", "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	n, copyErr := io.Copy(f, r)
 	closeErr := f.Close()
 	if copyErr != nil {
 		releaseStdinTemp(dir)
-		return "", "", copyErr
+		return "", "", clierr.Wrap(clierr.KindInput, copyErr)
 	}
 	if closeErr != nil {
 		releaseStdinTemp(dir)
-		return "", "", closeErr
+		return "", "", clierr.Wrap(clierr.KindOutput, closeErr)
 	}
 	if n == 0 {
 		releaseStdinTemp(dir)
-		return "", "", fmt.Errorf("%s", i18n.T("error.stdinEmpty"))
+		return "", "", clierr.Wrap(clierr.KindCorrupt, &spoolEmptyError{msg: i18n.T("error.stdinEmpty")})
 	}
 	return path, dir, nil
 }
@@ -252,3 +257,11 @@ func aliasAlertDetails(details map[string]any, aliases map[string]string) bool {
 	walk(details)
 	return stdin
 }
+
+// errSpoolEmpty marks a spooled stream that carried no bytes.
+var errSpoolEmpty = clierr.New(clierr.KindCorrupt, "empty input")
+
+type spoolEmptyError struct{ msg string }
+
+func (e *spoolEmptyError) Error() string        { return e.msg }
+func (e *spoolEmptyError) Is(target error) bool { return target == errSpoolEmpty }

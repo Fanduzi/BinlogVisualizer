@@ -115,15 +115,15 @@ func newAnalyzeCommand() *cobra.Command {
 			hasFromDir := opts.fromDir != ""
 			hasPrefix := opts.prefix != ""
 			if hasArgs && (hasFromDir || hasPrefix) {
-				return fmt.Errorf("%s", i18n.T("error.combineArgsWithDir"))
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.combineArgsWithDir"))
 			}
 			if hasFromDir != hasPrefix {
-				return fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirAndPrefixRequired"))
 			}
 			if hasArgs || hasFromDir {
 				return nil
 			}
-			return fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
+			return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
 		},
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			// Each stage gives its untyped errors a kind (ADR 0008): flags and
@@ -183,7 +183,7 @@ func newAnalyzeCommand() *cobra.Command {
 				printResolvedPaths(infoWriter(os.Stderr), paths)
 			}
 			if len(paths) == 0 {
-				return fmt.Errorf("%s", i18n.T("error.noResolvedFiles"))
+				return clierr.Errorf(clierr.KindInput, "%s", i18n.T("error.noResolvedFiles"))
 			}
 
 			// Validate input files exist
@@ -265,16 +265,16 @@ func validateAnalyzeSelectionInput(args []string, opts *analyzeOptions) error {
 		return nil
 	}
 	if opts.fromDir != "" || opts.prefix != "" || len(args) != 1 {
-		return fmt.Errorf("position selectors require exactly one explicit binlog file")
+		return clierr.Errorf(clierr.KindUsage, "position selectors require exactly one explicit binlog file")
 	}
 	if opts.startPositionSet && opts.startPosition < 0 {
-		return fmt.Errorf("--start-position must not be negative")
+		return clierr.Errorf(clierr.KindUsage, "--start-position must not be negative")
 	}
 	if opts.stopPositionSet && opts.stopPosition < 0 {
-		return fmt.Errorf("--stop-position must not be negative")
+		return clierr.Errorf(clierr.KindUsage, "--stop-position must not be negative")
 	}
 	if opts.startPositionSet && opts.stopPositionSet && opts.stopPosition <= opts.startPosition {
-		return fmt.Errorf("--stop-position must be greater than --start-position")
+		return clierr.Errorf(clierr.KindUsage, "--stop-position must be greater than --start-position")
 	}
 	return nil
 }
@@ -285,10 +285,10 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 	hasPrefix := opts.prefix != ""
 
 	if hasArgs && (hasFromDir || hasPrefix) {
-		return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.combineArgsWithDir"))
+		return nil, false, model.FileCoverage{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.combineArgsWithDir"))
 	}
 	if hasFromDir != hasPrefix {
-		return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.fromDirAndPrefixRequired"))
+		return nil, false, model.FileCoverage{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirAndPrefixRequired"))
 	}
 	if hasArgs {
 		return args, false, fileCoverageForPaths(args), nil
@@ -304,7 +304,7 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 		}
 		return plan.Paths, true, plan.FileCoverage, nil
 	}
-	return nil, false, model.FileCoverage{}, fmt.Errorf("%s", i18n.T("error.requiresBinlogOrDir"))
+	return nil, false, model.FileCoverage{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
 }
 
 func fileCoverageForPaths(paths []string) model.FileCoverage {
@@ -326,7 +326,7 @@ func fileCoverageForPaths(paths []string) model.FileCoverage {
 func discoverBinlogPaths(dir, prefix string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("%s", i18n.Tf("error.readBinlogDir", map[string]any{"Error": err.Error()}))
+		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.readBinlogDir", map[string]any{"Error": err.Error()}))
 	}
 
 	candidates := make([]string, 0, len(entries))
@@ -342,7 +342,7 @@ func discoverBinlogPaths(dir, prefix string) ([]string, error) {
 
 	sortBinlogPaths(candidates, prefix)
 	if len(candidates) == 0 {
-		return nil, fmt.Errorf("%s", noMatchingBinlogFilesError(dir, prefix))
+		return nil, clierr.Errorf(clierr.KindInput, "%s", noMatchingBinlogFilesError(dir, prefix))
 	}
 	return candidates, nil
 }
@@ -476,9 +476,9 @@ func validateFiles(paths []string) error {
 	for _, path := range paths {
 		if err := checkReadableFile(path); err != nil {
 			if os.IsNotExist(err) {
-				return clierr.Wrap(clierr.KindInput, fmt.Errorf("%s", i18n.Tf("error.fileNotFound", map[string]any{"Path": path})))
+				return clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.fileNotFound", map[string]any{"Path": path}))
 			}
-			return clierr.Wrap(clierr.KindInput, fmt.Errorf("%s", i18n.Tf("error.cannotAccessFile", map[string]any{"Path": path, "Error": err.Error()})))
+			return clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.cannotAccessFile", map[string]any{"Path": path, "Error": err.Error()}))
 		}
 	}
 	return nil
@@ -671,7 +671,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	}
 	progress, err := newAggregateProgress(paths, os.Stderr)
 	if err != nil {
-		return fmt.Errorf("%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
+		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.buildParseProgress", map[string]any{"Error": err.Error()}))
 	}
 	if opts.CaptureRowImages {
 		if rows, ok := parser.(binlog.RowImageParser); ok {
@@ -689,7 +689,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 		var cleanup func() error
 		store, cleanup, _, err = newTempStore(tempRoot)
 		if err != nil {
-			return fmt.Errorf("%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
+			return clierr.Errorf(clierr.KindOutput, "%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
 		}
 		defer cleanup()
 	}
@@ -706,7 +706,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if normalize != nil {
 			normalized, err := normalize(raw)
 			if err != nil {
-				return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
+				return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
 			}
 			if normalized == nil {
 				noteSkippedIgnoredQuery(streamAnalyzer, raw)
@@ -716,7 +716,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 		} else {
 			ok, err := binlog.NormalizeRawEventInto(raw, &ev)
 			if err != nil {
-				return fmt.Errorf("%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
+				return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.normalizeError", map[string]any{"Position": raw.Position, "Error": err.Error()}))
 			}
 			if !ok {
 				noteSkippedIgnoredQuery(streamAnalyzer, raw)
@@ -727,7 +727,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 			if operatorGroupError(err) {
 				return err
 			}
-			return fmt.Errorf("%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
+			return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
 		}
 		return nil
 	}
@@ -757,7 +757,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if localized := localizedOperatorGroupError(err); localized != nil {
 			return localized
 		}
-		return fmt.Errorf("%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
+		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
 	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
 		return err
@@ -854,7 +854,7 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 		return nil
 	}
 	if observer.RowImageEvents == 0 {
-		return fmt.Errorf("%s", binlog.StatementOrMixedWarning)
+		return clierr.Errorf(clierr.KindUnsupported, "%s", binlog.StatementOrMixedWarning)
 	}
 	_, _ = fmt.Fprintln(os.Stderr, binlog.StatementOrMixedWarning)
 	result.Alerts = append(result.Alerts, model.Alert{
@@ -958,14 +958,14 @@ const analyzeLocalTimeLayout = "2006-01-02 15:04:05"
 func parseTimeRange(startStr, endStr string) (time.Time, time.Time, error) {
 	startTime, err := parseAnalyzeTime(startStr)
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidStartTime", map[string]any{"Error": err.Error()}))
+		return time.Time{}, time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.invalidStartTime", map[string]any{"Error": err.Error()}))
 	}
 	endTime, err := parseAnalyzeTime(endStr)
 	if err != nil {
-		return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.Tf("error.invalidEndTime", map[string]any{"Error": err.Error()}))
+		return time.Time{}, time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.invalidEndTime", map[string]any{"Error": err.Error()}))
 	}
 	if !startTime.IsZero() && !endTime.IsZero() && endTime.Before(startTime) {
-		return time.Time{}, time.Time{}, fmt.Errorf("%s", i18n.T("error.endTimeBeforeStart"))
+		return time.Time{}, time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.endTimeBeforeStart"))
 	}
 	return startTime, endTime, nil
 }
@@ -1098,7 +1098,7 @@ func validateAnalyzeOptions(opts *analyzeOptions) error {
 	switch analyzer.DetailStoreMode(opts.detailStore) {
 	case analyzer.DetailStoreNone, analyzer.DetailStoreDuckDB:
 	default:
-		return fmt.Errorf("invalid --detail-store %q: expected none or duckdb", opts.detailStore)
+		return clierr.Errorf(clierr.KindUsage, "invalid --detail-store %q: expected none or duckdb", opts.detailStore)
 	}
 	if err := validateNonNegativeCounts(opts); err != nil {
 		return err
@@ -1145,7 +1145,7 @@ func validateNonNegativeCounts(opts *analyzeOptions) error {
 
 func snapshotNameFormatError(format, snapshotName string) error {
 	if snapshotName != "" && format != "json" {
-		return fmt.Errorf("--snapshot-name requires --format json")
+		return clierr.Errorf(clierr.KindUsage, "--snapshot-name requires --format json")
 	}
 	return nil
 }
@@ -1199,15 +1199,15 @@ func wrapParseError(err error) error {
 	var corrupt *binlog.CorruptEventError
 	if errors.As(err, &corrupt) {
 		msg := i18n.Tf("error.corruptEvent", map[string]any{"Path": corrupt.Path, "Offset": corrupt.Offset, "Cause": corrupt.Cause})
-		return clierr.WithDetails(clierr.KindCorrupt, fmt.Errorf("%s", msg), map[string]any{"path": corrupt.Path, "offset": corrupt.Offset, "cause": corrupt.Cause})
+		return clierr.WithDetails(clierr.KindCorrupt, clierr.Errorf(clierr.KindCorrupt, "%s", msg), map[string]any{"path": corrupt.Path, "offset": corrupt.Offset, "cause": corrupt.Cause})
 	}
 	if mapped := mapBinlogParseError(err.Error()); mapped != "" {
-		return clierr.Wrap(clierr.KindCorrupt, fmt.Errorf("%s", mapped))
+		return clierr.Errorf(clierr.KindCorrupt, "%s", mapped)
 	}
 	if msg, details := describeEventError(err.Error()); msg != "" {
-		return clierr.WithDetails(clierr.KindCorrupt, fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": msg})), details)
+		return clierr.WithDetails(clierr.KindCorrupt, clierr.Errorf(clierr.KindCorrupt, "%s", i18n.Tf("error.parseError", map[string]any{"Error": msg})), details)
 	}
-	return clierr.Wrap(clierr.KindCorrupt, fmt.Errorf("%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()})))
+	return clierr.Errorf(clierr.KindCorrupt, "%s", i18n.Tf("error.parseError", map[string]any{"Error": err.Error()}))
 }
 
 var (
@@ -1303,7 +1303,7 @@ func localizedOperatorGroupError(err error) error {
 	}
 	var ignored *analyzer.IgnoredOnlyGroupError
 	if errors.As(err, &ignored) {
-		return fmt.Errorf("%s", i18n.T("error.ignoredOnlyGroup"))
+		return clierr.Errorf(clierr.KindError, "%s", i18n.T("error.ignoredOnlyGroup"))
 	}
 	return nil
 }
@@ -1314,7 +1314,7 @@ func localizedOpenBeginError(openBegin *analyzer.OpenBeginError) error {
 		base = i18n.T("error.openBeginSavepoint")
 	}
 	if openBegin.Rows <= 0 {
-		return fmt.Errorf("%s", base)
+		return clierr.Errorf(clierr.KindError, "%s", base)
 	}
 	tables := openBegin.Tables
 	if tables == "" {
@@ -1330,7 +1330,7 @@ func localizedOpenBeginError(openBegin *analyzer.OpenBeginError) error {
 		"Tables":   tables,
 		"File":     location,
 	})
-	return fmt.Errorf("%s; %s", base, detail)
+	return clierr.Errorf(clierr.KindError, "%s; %s", base, detail)
 }
 
 func localizedUnclassifiedQueryError(err error) error {
@@ -1338,7 +1338,7 @@ func localizedUnclassifiedQueryError(err error) error {
 	if !errors.As(err, &unclassified) || unclassified == nil {
 		return nil
 	}
-	return fmt.Errorf("%s", i18n.Tf("error.unclassifiedQuery", map[string]any{"Prefix": unclassified.Prefix}))
+	return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.unclassifiedQuery", map[string]any{"Prefix": unclassified.Prefix}))
 }
 
 func mapBinlogParseError(msg string) string {
@@ -1421,7 +1421,7 @@ func rejectEmptyOrIncompleteBinlog(paths []string, rawEvents int) error {
 	if rawEvents > 0 || !anyNonEmptyFile(paths) {
 		return nil
 	}
-	return clierr.Wrap(clierr.KindCorrupt, fmt.Errorf("%s", i18n.T("error.noFormatDescription")))
+	return clierr.Errorf(clierr.KindCorrupt, "%s", i18n.T("error.noFormatDescription"))
 }
 
 func anyNonEmptyFile(paths []string) bool {
