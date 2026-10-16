@@ -6,6 +6,7 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -80,14 +81,14 @@ func newWorkflowStatusCommand() *cobra.Command {
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
-				return fmt.Errorf("unsupported workflow status format %q (allowed: text, json)", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "unsupported workflow status format %q (allowed: text, json)", opts.format)
 			}
 
 			outputDir := args[0]
 			manifestPath := filepath.Join(outputDir, "manifest.json")
 			manifest, err := workflowManifestFromJSON(manifestPath)
 			if err != nil {
-				return fmt.Errorf("read workflow manifest %s: %w", manifestPath, err)
+				return clierr.Errorf(clierr.KindInput, "read workflow manifest %s: %w", manifestPath, err)
 			}
 
 			var plan *workflow.Plan
@@ -102,7 +103,7 @@ func newWorkflowStatusCommand() *cobra.Command {
 						if loadErr == nil {
 							plan = &loaded
 						} else {
-							planLoadErr = fmt.Errorf("cannot resume: load plan: %w", loadErr)
+							planLoadErr = clierr.Errorf(clierr.KindInput, "cannot resume: load plan: %w", loadErr)
 						}
 					}
 				}
@@ -137,14 +138,14 @@ func newWorkflowCleanCommand() *cobra.Command {
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
-				return fmt.Errorf("unsupported workflow clean format %q (allowed: text, json)", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "unsupported workflow clean format %q (allowed: text, json)", opts.format)
 			}
 
 			outputDir := args[0]
 			manifestPath := filepath.Join(outputDir, "manifest.json")
 			manifest, err := workflowManifestFromJSON(manifestPath)
 			if err != nil {
-				return fmt.Errorf("read workflow manifest %s: %w", manifestPath, err)
+				return clierr.Errorf(clierr.KindInput, "read workflow manifest %s: %w", manifestPath, err)
 			}
 
 			result, err := workflow.DiscoverCleanCandidates(outputDir, manifest, opts.includeSnapshots)
@@ -158,7 +159,7 @@ func newWorkflowCleanCommand() *cobra.Command {
 				return err
 			}
 			if opts.apply && len(result.Skipped) > 0 {
-				return fmt.Errorf("workflow clean completed with %d skipped deletions", len(result.Skipped))
+				return clierr.Errorf(clierr.KindOutput, "workflow clean completed with %d skipped deletions", len(result.Skipped))
 			}
 			return nil
 		},
@@ -182,14 +183,14 @@ func newWorkflowExportCommand() *cobra.Command {
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
-				return fmt.Errorf("unsupported workflow export format %q (allowed: text, json)", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "unsupported workflow export format %q (allowed: text, json)", opts.format)
 			}
 
 			outputDir := args[0]
 			manifestPath := filepath.Join(outputDir, "manifest.json")
 			manifest, err := workflowManifestFromJSON(manifestPath)
 			if err != nil {
-				return fmt.Errorf("read workflow manifest %s: %w", manifestPath, err)
+				return clierr.Errorf(clierr.KindInput, "read workflow manifest %s: %w", manifestPath, err)
 			}
 
 			archivePath, err := resolveWorkflowExportArchivePath(outputDir, opts.output)
@@ -227,14 +228,15 @@ func newWorkflowDescribeCommand() *cobra.Command {
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
-				return fmt.Errorf("unsupported workflow describe format %q (allowed: text, json)", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "unsupported workflow describe format %q (allowed: text, json)", opts.format)
 			}
 
 			planPath := args[0]
 			f, err := os.Open(planPath)
 			if err != nil {
-				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, fmt.Errorf("open workflow plan: %w", err))
-				return err
+				openErr := clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err)
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, openErr)
+				return openErr
 			}
 			defer f.Close()
 
@@ -269,14 +271,15 @@ func newWorkflowValidateCommand() *cobra.Command {
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.format != "text" && opts.format != "json" {
-				return fmt.Errorf("unsupported workflow validate format %q (allowed: text, json)", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "unsupported workflow validate format %q (allowed: text, json)", opts.format)
 			}
 
 			planPath := args[0]
 			f, err := os.Open(planPath)
 			if err != nil {
-				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, fmt.Errorf("open workflow plan: %w", err))
-				return err
+				openErr := clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err)
+				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, openErr)
+				return openErr
 			}
 			defer f.Close()
 
@@ -315,7 +318,7 @@ func newWorkflowRunCommand() *cobra.Command {
 
 			f, err := os.Open(planPath)
 			if err != nil {
-				return fmt.Errorf("open workflow plan: %w", err)
+				return clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err)
 			}
 			defer f.Close()
 
@@ -393,7 +396,7 @@ func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Pl
 	if format == "json" {
 		data, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
-			return fmt.Errorf("encode workflow validate output: %w", err)
+			return clierr.Errorf(clierr.KindOutput, "encode workflow validate output: %w", err)
 		}
 		_, err = fmt.Fprintln(out, string(data))
 		return err
@@ -443,7 +446,7 @@ func writeWorkflowDescribeOutput(out io.Writer, format string, desc workflow.Des
 	if format == "json" {
 		data, err := json.MarshalIndent(desc, "", "  ")
 		if err != nil {
-			return fmt.Errorf("encode workflow describe output: %w", err)
+			return clierr.Errorf(clierr.KindOutput, "encode workflow describe output: %w", err)
 		}
 		_, err = fmt.Fprintln(out, string(data))
 		return err
@@ -507,7 +510,7 @@ func writeWorkflowStatusOutput(out io.Writer, format string, status workflow.Sta
 	if format == "json" {
 		data, err := json.MarshalIndent(status, "", "  ")
 		if err != nil {
-			return fmt.Errorf("encode workflow status output: %w", err)
+			return clierr.Errorf(clierr.KindOutput, "encode workflow status output: %w", err)
 		}
 		_, err = fmt.Fprintln(out, string(data))
 		return err
@@ -634,7 +637,7 @@ func writeWorkflowCleanOutput(out io.Writer, format string, result workflow.Clea
 	if format == "json" {
 		data, err := json.MarshalIndent(result, "", "  ")
 		if err != nil {
-			return fmt.Errorf("encode workflow clean output: %w", err)
+			return clierr.Errorf(clierr.KindOutput, "encode workflow clean output: %w", err)
 		}
 		_, err = fmt.Fprintln(out, string(data))
 		return err
@@ -732,7 +735,7 @@ func resolveWorkflowExportArchivePath(outputDir string, output string) (string, 
 	}
 	archivePath, err := filepath.Abs(output)
 	if err != nil {
-		return "", fmt.Errorf("resolve archive path: %w", err)
+		return "", clierr.Errorf(clierr.KindInput, "resolve archive path: %w", err)
 	}
 	return archivePath, nil
 }
@@ -765,7 +768,7 @@ func writeWorkflowExportOutput(out io.Writer, format string, payload workflowExp
 	if format == "json" {
 		data, err := json.MarshalIndent(payload, "", "  ")
 		if err != nil {
-			return fmt.Errorf("encode workflow export output: %w", err)
+			return clierr.Errorf(clierr.KindOutput, "encode workflow export output: %w", err)
 		}
 		_, err = fmt.Fprintln(out, string(data))
 		return err
@@ -803,18 +806,18 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	manifestPath := filepath.Join(outputDir, "manifest.json")
 	mf, err := workflowManifestFromJSON(manifestPath)
 	if err != nil {
-		return fmt.Errorf("load manifest from %s: %w", outputDir, err)
+		return clierr.Errorf(clierr.KindInput, "load manifest from %s: %w", outputDir, err)
 	}
 
 	// Early validation before trying to load the plan
 	if mf.ManifestVersion == 0 {
-		return fmt.Errorf("cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
+		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
 	}
 	if mf.ManifestVersion != 2 {
-		return fmt.Errorf("cannot resume: manifest_version %d is not supported (only version 2 is supported)", mf.ManifestVersion)
+		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest_version %d is not supported (only version 2 is supported)", mf.ManifestVersion)
 	}
 	if mf.PlanPath == "" {
-		return fmt.Errorf("cannot resume: manifest has no plan_path")
+		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no plan_path")
 	}
 
 	// Trust-boundary check: reject before opening any file; use canonical path.
@@ -828,19 +831,19 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 
 	f, err := os.Open(planPath)
 	if err != nil {
-		return fmt.Errorf("open plan file %s: %w", planPath, err)
+		return clierr.Errorf(clierr.KindInput, "open plan file %s: %w", planPath, err)
 	}
 	defer f.Close()
 
 	plan, err := workflow.LoadPlan(f)
 	if err != nil {
-		return fmt.Errorf("load plan: %w", err)
+		return clierr.Errorf(clierr.KindInput, "load plan: %w", err)
 	}
 
 	// Compute current plan hash and validate resumability
 	planSHA256, err := computeFileSHA256(planPath)
 	if err != nil {
-		return fmt.Errorf("hash plan file: %w", err)
+		return clierr.Errorf(clierr.KindInput, "hash plan file: %w", err)
 	}
 
 	if err := workflow.ValidateResumableManifest(mf, outputDir, planPath, planSHA256); err != nil {
@@ -889,7 +892,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 			// Reuse: carry forward the prior step record
 			priorStep := findPriorStep(mf, planned.Kind, planned.Name)
 			if priorStep == nil {
-				return fmt.Errorf("internal error: no prior step for reusable %s:%s", planned.Kind, planned.Name)
+				return clierr.Errorf(clierr.KindError, "internal error: no prior step for reusable %s:%s", planned.Kind, planned.Name)
 			}
 			reused := *priorStep
 			reused.Execution = "reused"
@@ -900,11 +903,11 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 				artifactPath := filepath.Join(outputDir, "analyze", planned.Name+".json")
 				data, err := os.ReadFile(artifactPath)
 				if err != nil {
-					return fmt.Errorf("read reusable analyze artifact %s: %w", artifactPath, err)
+					return clierr.Errorf(clierr.KindInput, "read reusable analyze artifact %s: %w", artifactPath, err)
 				}
 				reportInput, err := comparepkg.DecodeReportJSON(data)
 				if err != nil {
-					return fmt.Errorf("decode reusable analyze report for %q: %w", planned.Name, err)
+					return clierr.Errorf(clierr.KindCorrupt, "decode reusable analyze report for %q: %w", planned.Name, err)
 				}
 				windowReports[planned.Name] = reportInput
 			}
@@ -991,23 +994,23 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 	fmt.Fprintf(stderr, "workflow %q: starting\n", plan.Workflow.Name)
 
 	if err := workflow.EnsureLayout(outputDir); err != nil {
-		return fmt.Errorf("create output layout: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "create output layout: %w", err)
 	}
 
 	copiedPlanPath, err := copyWorkflowPlanIntoOutputDir(outputDir, planPath)
 	if err != nil {
-		return fmt.Errorf("copy plan file: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "copy plan file: %w", err)
 	}
 	planSHA256, err := computeFileSHA256(copiedPlanPath)
 	if err != nil {
-		return fmt.Errorf("hash plan file: %w", err)
+		return clierr.Errorf(clierr.KindInput, "hash plan file: %w", err)
 	}
 
 	effectiveSnapshotDir := ""
 	if plan.Defaults.Snapshot.Save {
 		effectiveSnapshotDir, err = snapshot.ResolveSnapshotDir(snapshotDir)
 		if err != nil {
-			return fmt.Errorf("resolve snapshot dir: %w", err)
+			return clierr.Errorf(clierr.KindOutput, "resolve snapshot dir: %w", err)
 		}
 	}
 
@@ -1029,7 +1032,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 	// Resolve input paths via discovery mode
 	paths, err := discoverBinlogPaths(plan.Defaults.Input.FromDir, plan.Defaults.Input.Prefix)
 	if err != nil {
-		return finalizeWorkflow(outputDir, &mf, startedAt, stderr, fmt.Errorf("discover binlog files: %w", err))
+		return finalizeWorkflow(outputDir, &mf, startedAt, stderr, clierr.Errorf(clierr.KindInput, "discover binlog files: %w", err))
 	}
 	mf.ResolvedInputFiles = paths
 
@@ -1092,7 +1095,7 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 	if writeErr := workflow.WriteManifest(manifestPath, *mf); writeErr != nil {
 		fmt.Fprintf(stderr, "workflow: failed to write manifest: %v\n", writeErr)
 		if stepErr == nil {
-			return fmt.Errorf("write manifest: %w", writeErr)
+			return clierr.Errorf(clierr.KindOutput, "write manifest: %w", writeErr)
 		}
 	} else {
 		fmt.Fprintf(stderr, "workflow: manifest written to %s\n", manifestPath)
@@ -1102,7 +1105,7 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 	if indexErr := writeWorkflowIndex(outputDir, *mf); indexErr != nil {
 		fmt.Fprintf(stderr, "workflow: failed to write index: %v\n", indexErr)
 		if stepErr == nil {
-			return fmt.Errorf("write index: %w", indexErr)
+			return clierr.Errorf(clierr.KindOutput, "write index: %w", indexErr)
 		}
 	} else {
 		fmt.Fprintf(stderr, "workflow: index written to %s\n", filepath.Join(outputDir, "index.html"))
@@ -1120,7 +1123,7 @@ func writeWorkflowIndex(outputDir string, manifest workflow.Manifest) error {
 		Manifest:   manifest,
 	})
 	if err != nil {
-		return fmt.Errorf("render workflow index: %w", err)
+		return clierr.Errorf(clierr.KindError, "render workflow index: %w", err)
 	}
 	indexPath := filepath.Join(outputDir, "index.html")
 	return os.WriteFile(indexPath, []byte(html), 0o644)
@@ -1168,7 +1171,7 @@ func runWorkflowAnalyzeWindow(
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
-		return rec, "", comparepkg.InputReport{}, fmt.Errorf("analyze window %q: %w", w.Name, err)
+		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindError, "analyze window %q: %w", w.Name, err)
 	}
 
 	// Resolve snapshot metadata
@@ -1179,7 +1182,7 @@ func runWorkflowAnalyzeWindow(
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
-		return rec, "", comparepkg.InputReport{}, fmt.Errorf("render analyze JSON for %q: %w", w.Name, err)
+		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindError, "render analyze JSON for %q: %w", w.Name, err)
 	}
 
 	// Write to artifact path
@@ -1187,7 +1190,7 @@ func runWorkflowAnalyzeWindow(
 	if err := os.WriteFile(artifactPath, []byte(payload), 0o644); err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
-		return rec, "", comparepkg.InputReport{}, fmt.Errorf("write analyze artifact for %q: %w", w.Name, err)
+		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindOutput, "write analyze artifact for %q: %w", w.Name, err)
 	}
 
 	// Save snapshot if configured (must succeed before marking step success)
@@ -1202,7 +1205,7 @@ func runWorkflowAnalyzeWindow(
 		if err != nil {
 			rec.Status = "failed"
 			rec.Error = err.Error()
-			return rec, "", comparepkg.InputReport{}, fmt.Errorf("save snapshot %q: %w", w.Name, err)
+			return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindOutput, "save snapshot %q: %w", w.Name, err)
 		}
 		rec.SnapshotName = w.Name
 		fmt.Fprintf(stderr, "  saved snapshot %q to %s\n", w.Name, savedPath)
@@ -1217,7 +1220,7 @@ func runWorkflowAnalyzeWindow(
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = fmt.Sprintf("decode generated report: %v", err)
-		return rec, payload, comparepkg.InputReport{}, fmt.Errorf("decode analyze report for %q: %w", w.Name, err)
+		return rec, payload, comparepkg.InputReport{}, clierr.Errorf(clierr.KindCorrupt, "decode analyze report for %q: %w", w.Name, err)
 	}
 
 	return rec, payload, reportInput, nil
@@ -1227,14 +1230,14 @@ func runWorkflowAnalyzeWindow(
 func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer) (*model.AnalysisResult, error) {
 	progress, err := newAggregateProgress(paths, stderr)
 	if err != nil {
-		return nil, fmt.Errorf("build parse progress: %w", err)
+		return nil, clierr.Errorf(clierr.KindError, "build parse progress: %w", err)
 	}
 
 	var a *analyzer.Analyzer
 	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
 		store, cleanup, _, err := createDuckDBTempStore("")
 		if err != nil {
-			return nil, fmt.Errorf("create temp store: %w", err)
+			return nil, clierr.Errorf(clierr.KindOutput, "create temp store: %w", err)
 		}
 		defer cleanup()
 		a = analyzer.NewWithStore(opts, store)
@@ -1246,13 +1249,13 @@ func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer)
 	handler := func(raw binlog.RawEvent) error {
 		normalized, err := binlog.NormalizeRawEvent(raw)
 		if err != nil {
-			return fmt.Errorf("normalize at position %d: %w", raw.Position, err)
+			return clierr.Errorf(clierr.KindError, "normalize at position %d: %w", raw.Position, err)
 		}
 		if normalized == nil {
 			return nil
 		}
 		if err := a.Consume(*normalized); err != nil {
-			return fmt.Errorf("consume: %w", err)
+			return clierr.Errorf(clierr.KindError, "consume: %w", err)
 		}
 		return nil
 	}
@@ -1261,14 +1264,14 @@ func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer)
 		if err := pp.ParseFilesWithProgress(paths, func(p binlog.ParseProgress) {
 			progress.Advance(p)
 		}, handler); err != nil {
-			return nil, fmt.Errorf("parse: %w", err)
+			return nil, clierr.Errorf(clierr.KindCorrupt, "parse: %w", err)
 		}
 		for i := range paths {
 			progress.FinishFile(i)
 		}
 	} else {
 		if err := parser.ParseFiles(paths, handler); err != nil {
-			return nil, fmt.Errorf("parse: %w", err)
+			return nil, clierr.Errorf(clierr.KindCorrupt, "parse: %w", err)
 		}
 	}
 	progress.FinishParse()
@@ -1276,7 +1279,7 @@ func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer)
 
 	result, err := a.Finalize()
 	if err != nil {
-		return nil, fmt.Errorf("finalize: %w", err)
+		return nil, clierr.Errorf(clierr.KindError, "finalize: %w", err)
 	}
 	return result, nil
 }
@@ -1293,14 +1296,14 @@ func runWorkflowCompareJob(
 
 	current, ok := windowReports[job.Current]
 	if !ok {
-		err := fmt.Errorf("compare %q: current window %q report not found", job.Name, job.Current)
+		err := clierr.Errorf(clierr.KindError, "compare %q: current window %q report not found", job.Name, job.Current)
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, err
 	}
 	baseline, ok := windowReports[job.Baseline]
 	if !ok {
-		err := fmt.Errorf("compare %q: baseline window %q report not found", job.Name, job.Baseline)
+		err := clierr.Errorf(clierr.KindError, "compare %q: baseline window %q report not found", job.Name, job.Baseline)
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, err
@@ -1317,19 +1320,19 @@ func runWorkflowCompareJob(
 		case "html":
 			output, err = comparepkg.RenderHTML(result)
 		default:
-			err = fmt.Errorf("unsupported format %q", format)
+			err = clierr.Errorf(clierr.KindUsage, "unsupported format %q", format)
 		}
 		if err != nil {
 			rec.Status = "failed"
 			rec.Error = err.Error()
-			return rec, fmt.Errorf("render compare %q (%s): %w", job.Name, format, err)
+			return rec, clierr.Errorf(clierr.KindError, "render compare %q (%s): %w", job.Name, format, err)
 		}
 
 		artifactPath := workflow.ArtifactPath(outputDir, "compare", job.Name, format)
 		if err := os.WriteFile(artifactPath, []byte(output), 0o644); err != nil {
 			rec.Status = "failed"
 			rec.Error = err.Error()
-			return rec, fmt.Errorf("write compare artifact %q: %w", job.Name, err)
+			return rec, clierr.Errorf(clierr.KindOutput, "write compare artifact %q: %w", job.Name, err)
 		}
 		rec.Artifacts = append(rec.Artifacts, "compare/"+job.Name+"."+format)
 	}
@@ -1353,7 +1356,7 @@ func runWorkflowTrendJob(
 	for _, snapName := range job.Snapshots {
 		reportInput, ok := windowReports[snapName]
 		if !ok {
-			err := fmt.Errorf("trend %q: snapshot %q report not found", job.Name, snapName)
+			err := clierr.Errorf(clierr.KindError, "trend %q: snapshot %q report not found", job.Name, snapName)
 			rec.Status = "failed"
 			rec.Error = err.Error()
 			return rec, err
@@ -1373,7 +1376,7 @@ func runWorkflowTrendJob(
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
-		return rec, fmt.Errorf("build trend %q: %w", job.Name, err)
+		return rec, clierr.Errorf(clierr.KindError, "build trend %q: %w", job.Name, err)
 	}
 
 	for _, format := range job.Formats {
@@ -1385,19 +1388,19 @@ func runWorkflowTrendJob(
 		case "html":
 			output, renderErr = trendpkg.RenderHTML(result)
 		default:
-			renderErr = fmt.Errorf("unsupported format %q", format)
+			renderErr = clierr.Errorf(clierr.KindUsage, "unsupported format %q", format)
 		}
 		if renderErr != nil {
 			rec.Status = "failed"
 			rec.Error = renderErr.Error()
-			return rec, fmt.Errorf("render trend %q (%s): %w", job.Name, format, renderErr)
+			return rec, clierr.Errorf(clierr.KindError, "render trend %q (%s): %w", job.Name, format, renderErr)
 		}
 
 		artifactPath := workflow.ArtifactPath(outputDir, "trend", job.Name, format)
 		if err := os.WriteFile(artifactPath, []byte(output), 0o644); err != nil {
 			rec.Status = "failed"
 			rec.Error = err.Error()
-			return rec, fmt.Errorf("write trend artifact %q: %w", job.Name, err)
+			return rec, clierr.Errorf(clierr.KindOutput, "write trend artifact %q: %w", job.Name, err)
 		}
 		rec.Artifacts = append(rec.Artifacts, "trend/"+job.Name+"."+format)
 	}

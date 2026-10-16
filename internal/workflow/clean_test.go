@@ -205,15 +205,15 @@ func createCleanOrphans(t *testing.T, outputDir, snapshotDir string) {
 func createCleanArtifactOrphans(t *testing.T, outputDir string) {
 	t.Helper()
 	for path, content := range map[string]string{
-		"compare/stale-report.json": "{}",
-		"compare/stale-report.html": "<html></html>",
-		"trend/stale-trend.json":   "{}",
-		"trend/stale-trend.html":   "<html></html>",
+		"compare/stale-report.json":  "{}",
+		"compare/stale-report.html":  "<html></html>",
+		"trend/stale-trend.json":     "{}",
+		"trend/stale-trend.html":     "<html></html>",
 		"analyze/stale-analyze.json": "{}",
-		"compare/ignored.txt":      "ignored",
-		"misc/unknown.json":        "{}",
-		"index.html":               "<html></html>",
-		"manifest.json":            "{}",
+		"compare/ignored.txt":        "ignored",
+		"misc/unknown.json":          "{}",
+		"index.html":                 "<html></html>",
+		"manifest.json":              "{}",
 	} {
 		fullPath := filepath.Join(outputDir, path)
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {

@@ -1,8 +1,8 @@
 package workflow
 
 import (
+	"binlogviz/internal/clierr"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,11 +28,11 @@ type PlannedStep struct {
 
 // ResumePlan is the output of the resume planner.
 type ResumePlan struct {
-	Plan             Plan
-	UpdatedManifest  Manifest // copy of the input manifest with mode/attempt updated
-	Steps            []PlannedStep
-	InputFiles       []string // reused from prior manifest
-	SnapshotDir      string
+	Plan            Plan
+	UpdatedManifest Manifest // copy of the input manifest with mode/attempt updated
+	Steps           []PlannedStep
+	InputFiles      []string // reused from prior manifest
+	SnapshotDir     string
 }
 
 // ParseRerunSelectors parses raw "--rerun kind:name" strings into selectors,
@@ -56,24 +56,24 @@ func ParseRerunSelectors(plan Plan, selectors []string) ([]RerunSelector, error)
 	for _, raw := range selectors {
 		parts := strings.SplitN(raw, ":", 2)
 		if len(parts) != 2 || parts[1] == "" {
-			return nil, fmt.Errorf("invalid rerun selector %q: expected format kind:name", raw)
+			return nil, clierr.Errorf(clierr.KindUsage, "invalid rerun selector %q: expected format kind:name", raw)
 		}
 		kind, name := parts[0], parts[1]
 		switch kind {
 		case "analyze":
 			if !analyzeNames[name] {
-				return nil, fmt.Errorf("unknown analyze window %q in rerun selector", name)
+				return nil, clierr.Errorf(clierr.KindUsage, "unknown analyze window %q in rerun selector", name)
 			}
 		case "compare":
 			if !compareNames[name] {
-				return nil, fmt.Errorf("unknown compare job %q in rerun selector", name)
+				return nil, clierr.Errorf(clierr.KindUsage, "unknown compare job %q in rerun selector", name)
 			}
 		case "trend":
 			if !trendNames[name] {
-				return nil, fmt.Errorf("unknown trend job %q in rerun selector", name)
+				return nil, clierr.Errorf(clierr.KindUsage, "unknown trend job %q in rerun selector", name)
 			}
 		default:
-			return nil, fmt.Errorf("invalid rerun selector kind %q: must be analyze, compare, or trend", kind)
+			return nil, clierr.Errorf(clierr.KindUsage, "invalid rerun selector kind %q: must be analyze, compare, or trend", kind)
 		}
 		result = append(result, RerunSelector{Kind: kind, Name: name})
 	}
@@ -85,32 +85,32 @@ func ParseRerunSelectors(plan Plan, selectors []string) ([]RerunSelector, error)
 // planPath and planSHA256 are the canonical plan path and its current hash.
 func ValidateResumableManifest(m Manifest, outputDir string, planPath string, planSHA256 string) error {
 	if m.ManifestVersion == 0 {
-		return fmt.Errorf("cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
+		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
 	}
 	if m.ManifestVersion != 2 {
-		return fmt.Errorf("cannot resume: manifest_version %d is not supported (only version 2 is supported)", m.ManifestVersion)
+		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest_version %d is not supported (only version 2 is supported)", m.ManifestVersion)
 	}
 	if m.PlanPath == "" {
-		return fmt.Errorf("cannot resume: manifest has no plan_path")
+		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no plan_path")
 	}
 	if outputDir != "" {
 		if _, err := ValidateWorkflowPlanPath(outputDir, m.PlanPath); err != nil {
-			return fmt.Errorf("cannot resume: %w", err)
+			return clierr.Errorf(clierr.KindInput, "cannot resume: %w", err)
 		}
 	}
 	if planPath != "" {
 		if _, err := os.Stat(planPath); err != nil {
-			return fmt.Errorf("cannot resume: plan file %q not found", planPath)
+			return clierr.Errorf(clierr.KindInput, "cannot resume: plan file %q not found", planPath)
 		}
 	}
 	if m.PlanSHA256 == "" {
-		return fmt.Errorf("cannot resume: manifest has no plan_sha256")
+		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no plan_sha256")
 	}
 	if planSHA256 != m.PlanSHA256 {
-		return fmt.Errorf("cannot resume: plan file has changed since the original run (hash mismatch)")
+		return clierr.Errorf(clierr.KindInput, "cannot resume: plan file has changed since the original run (hash mismatch)")
 	}
 	if len(m.ResolvedInputFiles) == 0 {
-		return fmt.Errorf("cannot resume: manifest has no resolved_input_files")
+		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no resolved_input_files")
 	}
 	return nil
 }

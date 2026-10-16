@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"archive/zip"
+	"binlogviz/internal/clierr"
 	"bytes"
 	"crypto/sha256"
 	"fmt"
@@ -47,21 +48,21 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 	manifestPath := filepath.Join(outputDir, "manifest.json")
 	insideManifest, err := pathWithinRoot(manifestPath, outputDir)
 	if err != nil {
-		return ExportResult{}, fmt.Errorf("validate manifest.json: %w", err)
+		return ExportResult{}, clierr.Errorf(clierr.KindInput, "validate manifest.json: %w", err)
 	}
 	if !insideManifest {
-		return ExportResult{}, fmt.Errorf("manifest.json resolves outside workflow root")
+		return ExportResult{}, clierr.Errorf(clierr.KindInput, "manifest.json resolves outside workflow root")
 	}
 	manifestEntry, err := readExportEntry(root, manifestPath, "manifest.json")
 	if err != nil {
-		return ExportResult{}, fmt.Errorf("read manifest.json: %w", err)
+		return ExportResult{}, clierr.Errorf(clierr.KindInput, "read manifest.json: %w", err)
 	}
 	result.Entries = append(result.Entries, manifestEntry)
 
 	indexPath := filepath.Join(outputDir, "index.html")
 	insideIndex, err := pathWithinRoot(indexPath, outputDir)
 	if err != nil {
-		return ExportResult{}, fmt.Errorf("validate index.html: %w", err)
+		return ExportResult{}, clierr.Errorf(clierr.KindInput, "validate index.html: %w", err)
 	}
 	if !insideIndex {
 		result.Warnings = append(result.Warnings, "skipping index.html because it resolves outside workflow root")
@@ -88,7 +89,7 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 			sourcePath := filepath.Join(outputDir, filepath.FromSlash(normalizedArtifact))
 			inside, err := pathWithinRoot(sourcePath, outputDir)
 			if err != nil {
-				return ExportResult{}, fmt.Errorf("validate artifact %q: %w", artifact, err)
+				return ExportResult{}, clierr.Errorf(clierr.KindInput, "validate artifact %q: %w", artifact, err)
 			}
 			if !inside {
 				result.Warnings = append(result.Warnings, "skipping manifest artifact outside workflow root: "+filepath.ToSlash(artifact))
@@ -100,7 +101,7 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 					result.Warnings = append(result.Warnings, "missing manifest artifact: "+filepath.ToSlash(artifact))
 					continue
 				}
-				return ExportResult{}, fmt.Errorf("read artifact %q: %w", artifact, err)
+				return ExportResult{}, clierr.Errorf(clierr.KindInput, "read artifact %q: %w", artifact, err)
 			}
 			result.Entries = append(result.Entries, entry)
 		}
@@ -131,7 +132,7 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 				sourcePath := filepath.Join(manifest.SnapshotDir, filepath.FromSlash(normalizedSnapshotName)+".json")
 				inside, err := pathWithinRoot(sourcePath, manifest.SnapshotDir)
 				if err != nil {
-					return ExportResult{}, fmt.Errorf("validate snapshot %q: %w", snapshotName, err)
+					return ExportResult{}, clierr.Errorf(clierr.KindInput, "validate snapshot %q: %w", snapshotName, err)
 				}
 				if !inside {
 					result.Warnings = append(result.Warnings, "skipping snapshot outside snapshot dir: "+filepath.ToSlash(snapshotName))
@@ -144,7 +145,7 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 						result.Warnings = append(result.Warnings, "missing snapshot: "+snapshotName)
 						continue
 					}
-					return ExportResult{}, fmt.Errorf("read snapshot %q: %w", snapshotName, err)
+					return ExportResult{}, clierr.Errorf(clierr.KindInput, "read snapshot %q: %w", snapshotName, err)
 				}
 				result.Entries = append(result.Entries, entry)
 			}
@@ -192,7 +193,7 @@ func referencedSnapshotNames(manifest Manifest) []string {
 
 func buildPlanExportEntry(root string, outputDir string, manifest Manifest) (ExportEntry, string, error) {
 	if manifest.PlanSHA256 == "" {
-		return ExportEntry{}, "missing plan.yaml from manifest plan path: "+manifest.PlanPath, nil
+		return ExportEntry{}, "missing plan.yaml from manifest plan path: " + manifest.PlanPath, nil
 	}
 
 	inside, err := pathWithinRoot(manifest.PlanPath, outputDir)
@@ -200,31 +201,31 @@ func buildPlanExportEntry(root string, outputDir string, manifest Manifest) (Exp
 		return ExportEntry{}, fmt.Sprintf("skipping plan.yaml because manifest plan path could not be validated against workflow root: %s", manifest.PlanPath), nil
 	}
 	if !inside {
-		return ExportEntry{}, "skipping plan.yaml because manifest plan path is outside workflow root: "+manifest.PlanPath, nil
+		return ExportEntry{}, "skipping plan.yaml because manifest plan path is outside workflow root: " + manifest.PlanPath, nil
 	}
 
 	data, err := os.ReadFile(manifest.PlanPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return ExportEntry{}, "missing plan.yaml from manifest plan path: "+manifest.PlanPath, nil
+			return ExportEntry{}, "missing plan.yaml from manifest plan path: " + manifest.PlanPath, nil
 		}
 		return ExportEntry{}, fmt.Sprintf("missing plan.yaml from manifest plan path: %s", manifest.PlanPath), nil
 	}
 
 	sum := sha256.Sum256(data)
 	if fmt.Sprintf("%x", sum[:]) != manifest.PlanSHA256 {
-		return ExportEntry{}, "skipping plan.yaml because manifest plan path no longer matches manifest plan_sha256: "+manifest.PlanPath, nil
+		return ExportEntry{}, "skipping plan.yaml because manifest plan path no longer matches manifest plan_sha256: " + manifest.PlanPath, nil
 	}
 
 	plan, err := LoadPlan(bytes.NewReader(data))
 	if err != nil {
-		return ExportEntry{}, "skipping plan.yaml because manifest plan path is not a valid workflow plan: "+manifest.PlanPath, nil
+		return ExportEntry{}, "skipping plan.yaml because manifest plan path is not a valid workflow plan: " + manifest.PlanPath, nil
 	}
 	if manifest.WorkflowName != "" && plan.Workflow.Name != manifest.WorkflowName {
-		return ExportEntry{}, "skipping plan.yaml because workflow name does not match manifest: "+manifest.PlanPath, nil
+		return ExportEntry{}, "skipping plan.yaml because workflow name does not match manifest: " + manifest.PlanPath, nil
 	}
 	if manifest.WorkflowPlanVersion != 0 && plan.Version != manifest.WorkflowPlanVersion {
-		return ExportEntry{}, "skipping plan.yaml because workflow plan version does not match manifest: "+manifest.PlanPath, nil
+		return ExportEntry{}, "skipping plan.yaml because workflow plan version does not match manifest: " + manifest.PlanPath, nil
 	}
 
 	return ExportEntry{
@@ -290,12 +291,12 @@ func WriteExportArchive(path string, result ExportResult) error {
 		return err
 	}
 	if inside {
-		return fmt.Errorf("archive output path %q is inside workflow root %q", path, result.OutputDir)
+		return clierr.Errorf(clierr.KindUsage, "archive output path %q is inside workflow root %q", path, result.OutputDir)
 	}
 
 	file, err := os.Create(path)
 	if err != nil {
-		return fmt.Errorf("create export archive: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "create export archive: %w", err)
 	}
 	defer file.Close()
 
@@ -312,15 +313,15 @@ func WriteExportArchive(path string, result ExportResult) error {
 		archiveEntry, err := writer.CreateHeader(header)
 		if err != nil {
 			writer.Close()
-			return fmt.Errorf("create archive entry %q: %w", entry.ArchivePath, err)
+			return clierr.Errorf(clierr.KindOutput, "create archive entry %q: %w", entry.ArchivePath, err)
 		}
 		if _, err := archiveEntry.Write(entry.Body); err != nil {
 			writer.Close()
-			return fmt.Errorf("write archive entry %q: %w", entry.ArchivePath, err)
+			return clierr.Errorf(clierr.KindOutput, "write archive entry %q: %w", entry.ArchivePath, err)
 		}
 	}
 	if err := writer.Close(); err != nil {
-		return fmt.Errorf("close export archive: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "close export archive: %w", err)
 	}
 	return nil
 }
@@ -328,15 +329,15 @@ func WriteExportArchive(path string, result ExportResult) error {
 func pathWithinRoot(targetPath string, root string) (bool, error) {
 	canonicalRoot, err := canonicalizePath(root)
 	if err != nil {
-		return false, fmt.Errorf("resolve workflow root: %w", err)
+		return false, clierr.Errorf(clierr.KindInput, "resolve workflow root: %w", err)
 	}
 	canonicalTarget, err := canonicalizePath(targetPath)
 	if err != nil {
-		return false, fmt.Errorf("resolve candidate path: %w", err)
+		return false, clierr.Errorf(clierr.KindInput, "resolve candidate path: %w", err)
 	}
 	rel, err := filepath.Rel(canonicalRoot, canonicalTarget)
 	if err != nil {
-		return false, fmt.Errorf("compare candidate path to workflow root: %w", err)
+		return false, clierr.Errorf(clierr.KindInput, "compare candidate path to workflow root: %w", err)
 	}
 	if rel == "." {
 		return true, nil

@@ -6,10 +6,10 @@
 package snapshot
 
 import (
+	"binlogviz/internal/clierr"
 	comparepkg "binlogviz/internal/compare"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -100,11 +100,11 @@ func DefaultSnapshotDir(home string) (string, error) {
 		var err error
 		home, err = os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return "", clierr.Wrap(clierr.KindError, err)
 		}
 	}
 	if home == "" {
-		return "", errors.New("snapshot home directory is empty")
+		return "", clierr.New(clierr.KindError, "snapshot home directory is empty")
 	}
 	return filepath.Join(home, defaultSnapshotRoot, snapshotDirName), nil
 }
@@ -120,22 +120,22 @@ func ResolveSnapshotDir(explicit string) (string, error) {
 // ValidateName ensures the snapshot name is safe to use as a single file stem.
 func ValidateName(name string) error {
 	if strings.TrimSpace(name) != name {
-		return fmt.Errorf("invalid snapshot name %q: must not contain leading or trailing spaces", name)
+		return clierr.Errorf(clierr.KindUsage, "invalid snapshot name %q: must not contain leading or trailing spaces", name)
 	}
 	if name == "" {
-		return errors.New("snapshot name is required")
+		return clierr.New(clierr.KindUsage, "snapshot name is required")
 	}
 	if name == "." || name == ".." {
-		return fmt.Errorf("invalid snapshot name %q: reserved path name", name)
+		return clierr.Errorf(clierr.KindUsage, "invalid snapshot name %q: reserved path name", name)
 	}
 	if filepath.Base(name) != name {
-		return fmt.Errorf("invalid snapshot name %q: must not contain path separators", name)
+		return clierr.Errorf(clierr.KindUsage, "invalid snapshot name %q: must not contain path separators", name)
 	}
 	for _, r := range name {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
 			continue
 		}
-		return fmt.Errorf("invalid snapshot name %q: contains unsupported character %q", name, r)
+		return clierr.Errorf(clierr.KindUsage, "invalid snapshot name %q: contains unsupported character %q", name, r)
 	}
 	return nil
 }
@@ -161,7 +161,7 @@ func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
 	}
 
 	if err := os.MkdirAll(resolvedDir, 0o755); err != nil {
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 
 	path := filepath.Join(resolvedDir, name+jsonExtension)
@@ -172,14 +172,14 @@ func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
 	file, err := os.OpenFile(path, flags, 0o644)
 	if err != nil {
 		if os.IsExist(err) && !overwrite {
-			return "", fmt.Errorf("snapshot file %q already exists", path)
+			return "", clierr.Errorf(clierr.KindUsage, "snapshot file %q already exists", path)
 		}
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	defer file.Close()
 
 	if _, err := file.Write(report); err != nil {
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 
 	return path, nil
@@ -197,7 +197,7 @@ func ListSnapshots(dir string) ([]Entry, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return []Entry{}, nil
 		}
-		return nil, err
+		return nil, clierr.Wrap(clierr.KindInput, err)
 	}
 
 	result := make([]Entry, 0, len(entries))
@@ -245,9 +245,9 @@ func LoadSnapshot(dir, name string) (string, []byte, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", nil, fmt.Errorf("snapshot %q not found", name)
+			return "", nil, clierr.Errorf(clierr.KindInput, "snapshot %q not found", name)
 		}
-		return "", nil, err
+		return "", nil, clierr.Wrap(clierr.KindInput, err)
 	}
 	return path, data, nil
 }
@@ -286,7 +286,7 @@ func RenameSnapshot(dir, oldName, newName string) (string, error) {
 	}
 	if err := os.Remove(oldPath); err != nil {
 		_ = os.Remove(newPath)
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	return newPath, nil
 }
@@ -305,21 +305,21 @@ func DeleteSnapshot(dir, name string) (string, error) {
 	path := filepath.Join(resolvedDir, name+jsonExtension)
 	if err := os.Remove(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return "", fmt.Errorf("snapshot %q not found", name)
+			return "", clierr.Errorf(clierr.KindInput, "snapshot %q not found", name)
 		}
-		return "", err
+		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
 	return path, nil
 }
 
 func decodeDescriptor(path string, data []byte, fallbackName string) (Descriptor, error) {
 	if _, err := comparepkg.DecodeReportJSON(data); err != nil {
-		return Descriptor{}, err
+		return Descriptor{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 
 	var stored storedSnapshot
 	if err := json.Unmarshal(data, &stored); err != nil {
-		return Descriptor{}, err
+		return Descriptor{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 
 	desc := Descriptor{
@@ -351,7 +351,7 @@ func decodeDescriptor(path string, data []byte, fallbackName string) (Descriptor
 func renameSnapshotPayload(data []byte, oldName, newName string) ([]byte, error) {
 	var payload map[string]any
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, err
+		return nil, clierr.Wrap(clierr.KindCorrupt, err)
 	}
 
 	snapshot, ok := payload["snapshot"].(map[string]any)

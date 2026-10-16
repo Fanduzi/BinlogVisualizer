@@ -6,7 +6,7 @@
 package binlogviz
 
 import (
-	"fmt"
+	"binlogviz/internal/clierr"
 	"os"
 
 	"binlogviz/internal/analyzer"
@@ -28,14 +28,14 @@ func newPositionBoundaryValidator(paths []string, opts analyzer.Options) (*posit
 		return nil, nil
 	}
 	if len(paths) != 1 {
-		return nil, fmt.Errorf("position selectors require exactly one explicit binlog file")
+		return nil, clierr.Errorf(clierr.KindUsage, "position selectors require exactly one explicit binlog file")
 	}
 	info, err := os.Stat(paths[0])
 	if err != nil {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("position selectors require exactly one explicit binlog file: %q is not a regular file", paths[0])
+		return nil, clierr.Errorf(clierr.KindUsage, "position selectors require exactly one explicit binlog file: %q is not a regular file", paths[0])
 	}
 	return &positionBoundaryValidator{
 		start:    opts.StartPosition,
@@ -71,10 +71,10 @@ func (v *positionBoundaryValidator) validatePosition(flag string, value *int64, 
 		return nil
 	}
 	if *value < binlogHeaderPosition || *value > v.fileSize {
-		return fmt.Errorf("%s %d is out of range [%d,%d]", flag, *value, binlogHeaderPosition, v.fileSize)
+		return clierr.Errorf(clierr.KindUsage, "%s %d is out of range [%d,%d]", flag, *value, binlogHeaderPosition, v.fileSize)
 	}
 	if observedBoundary || *value == v.fileSize {
 		return nil
 	}
-	return fmt.Errorf("%s %d is not an exact event boundary", flag, *value)
+	return clierr.Errorf(clierr.KindUsage, "%s %d is not an exact event boundary", flag, *value)
 }

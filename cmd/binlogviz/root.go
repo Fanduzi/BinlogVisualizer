@@ -56,6 +56,11 @@ func NewRootCommand() *cobra.Command {
 				// Fall back to English on error
 				_ = i18n.Init("en")
 			}
+			// #277: --error-format= (set but empty) is a usage error; only an
+			// unset flag falls back to BINLOGVIZ_ERROR_FORMAT or text.
+			if f := cmd.Flags().Lookup("error-format"); f != nil && f.Changed && strings.TrimSpace(errorFormat) == "" {
+				return clierr.Errorf(clierr.KindUsage, "invalid --error-format %q: expected text or json", errorFormat)
+			}
 			return validateErrorFormatFlag(errorFormat)
 		},
 	}

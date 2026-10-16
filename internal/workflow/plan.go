@@ -3,7 +3,7 @@
 package workflow
 
 import (
-	"fmt"
+	"binlogviz/internal/clierr"
 	"io"
 	"time"
 
@@ -12,12 +12,12 @@ import (
 
 // Plan is the top-level workflow plan decoded from YAML.
 type Plan struct {
-	Version  int           `yaml:"version"`
-	Workflow WorkflowMeta   `yaml:"workflow"`
-	Defaults Defaults       `yaml:"defaults"`
-	Windows  []Window       `yaml:"windows"`
-	Compare  []CompareJob   `yaml:"compare"`
-	Trend    []TrendJob     `yaml:"trend"`
+	Version  int          `yaml:"version"`
+	Workflow WorkflowMeta `yaml:"workflow"`
+	Defaults Defaults     `yaml:"defaults"`
+	Windows  []Window     `yaml:"windows"`
+	Compare  []CompareJob `yaml:"compare"`
+	Trend    []TrendJob   `yaml:"trend"`
 }
 
 // WorkflowMeta describes run-level metadata.
@@ -28,9 +28,9 @@ type WorkflowMeta struct {
 
 // Defaults holds shared configuration inherited by all steps.
 type Defaults struct {
-	Input   InputDefaults   `yaml:"input"`
-	Analyze AnalyzeDefaults `yaml:"analyze"`
-	Snapshot SnapshotConfig `yaml:"snapshot"`
+	Input    InputDefaults   `yaml:"input"`
+	Analyze  AnalyzeDefaults `yaml:"analyze"`
+	Snapshot SnapshotConfig  `yaml:"snapshot"`
 }
 
 // InputDefaults defines shared binlog input defaults.
@@ -91,7 +91,7 @@ func LoadPlan(r io.Reader) (Plan, error) {
 	dec := yaml.NewDecoder(r)
 	dec.KnownFields(true)
 	if err := dec.Decode(&plan); err != nil {
-		return Plan{}, fmt.Errorf("decode workflow plan: %w", err)
+		return Plan{}, clierr.Errorf(clierr.KindCorrupt, "decode workflow plan: %w", err)
 	}
 	if err := ValidatePlan(plan); err != nil {
 		return Plan{}, err

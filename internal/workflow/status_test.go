@@ -392,16 +392,16 @@ trend:
 
 	snapshotDir := filepath.Join(root, "snapshots")
 	manifest := Manifest{
-		ManifestVersion:    2,
-		Mode:               "run",
-		Attempt:            1,
-		WorkflowName:       plan.Workflow.Name,
+		ManifestVersion:     2,
+		Mode:                "run",
+		Attempt:             1,
+		WorkflowName:        plan.Workflow.Name,
 		WorkflowPlanVersion: plan.Version,
-		PlanPath:           planPath,
-		PlanSHA256:         sha256Hex([]byte(planYAML)),
-		ResolvedInputFiles: []string{"/tmp/mysql-bin.000001"},
-		SnapshotDir:        snapshotDir,
-		Status:             "success",
+		PlanPath:            planPath,
+		PlanSHA256:          sha256Hex([]byte(planYAML)),
+		ResolvedInputFiles:  []string{"/tmp/mysql-bin.000001"},
+		SnapshotDir:         snapshotDir,
+		Status:              "success",
 		Steps: []StepRecord{
 			{Kind: "analyze", Name: "week1", Status: "success", Execution: "executed", Artifacts: []string{"analyze/week1.json"}, SnapshotName: "week1"},
 			{Kind: "analyze", Name: "week2", Status: "success", Execution: "executed", Artifacts: []string{"analyze/week2.json"}, SnapshotName: "week2"},

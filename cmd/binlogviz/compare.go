@@ -40,11 +40,11 @@ func newCompareCommand() *cobra.Command {
 			hasBaselineSnapshot := strings.TrimSpace(opts.baselineSnapshot) != ""
 
 			if hasCurrentSnapshot != hasBaselineSnapshot {
-				return fmt.Errorf("current-snapshot and baseline-snapshot must be provided together")
+				return clierr.Errorf(clierr.KindUsage, "current-snapshot and baseline-snapshot must be provided together")
 			}
 			if hasCurrentSnapshot {
 				if len(args) > 0 {
-					return fmt.Errorf("cannot combine file and snapshot compare modes")
+					return clierr.Errorf(clierr.KindUsage, "cannot combine file and snapshot compare modes")
 				}
 				return nil
 			}
@@ -87,12 +87,12 @@ func runCompare(opts *compareOptions, args []string, out io.Writer) error {
 		output, err = comparepkg.RenderText(result)
 	}
 	if err != nil {
-		return fmt.Errorf("render compare output (%s): %w", opts.format, err)
+		return clierr.Errorf(clierr.KindError, "render compare output (%s): %w", opts.format, err)
 	}
 
 	_, err = fmt.Fprint(out, output)
 	if err != nil {
-		return fmt.Errorf("write compare output: %w", err)
+		return clierr.Errorf(clierr.KindOutput, "write compare output: %w", err)
 	}
 	return nil
 }
@@ -129,27 +129,30 @@ func loadCompareReport(side, path string) (comparepkg.InputReport, error) {
 
 	var syntaxErr *json.SyntaxError
 	if errors.As(err, &syntaxErr) {
-		return comparepkg.InputReport{}, errors.New("compare wants two JSON reports or --current-snapshot/--baseline-snapshot")
+		return comparepkg.InputReport{}, clierr.New(clierr.KindCorrupt, "compare wants two JSON reports or --current-snapshot/--baseline-snapshot")
 	}
-	err = fmt.Errorf("load %s report %s: %w", side, path, err)
 	// A report that cannot be opened or read (missing, permission, a
-	// directory) is an input error, exit 4, as for analyze (#268).
+	// directory) is an input error, exit 4, as for analyze (#268). One that
+	// reads but does not decode, or lacks required fields, is corrupt; a
+	// report_version from a newer build keeps its unsupported kind (#277).
+	kind := clierr.KindCorrupt
 	var pathErr *fs.PathError
-	if errors.As(err, &pathErr) {
-		return comparepkg.InputReport{}, clierr.Wrap(clierr.KindInput, err)
+	switch {
+	case errors.As(err, &pathErr):
+		kind = clierr.KindInput
 	}
-	return comparepkg.InputReport{}, err
+	return comparepkg.InputReport{}, clierr.Errorf(kind, "load %s report %s: %w", side, path, err)
 }
 
 func loadSnapshotCompareReport(side, dir, name string) (comparepkg.InputReport, error) {
 	_, data, err := snapshotpkg.LoadSnapshot(dir, name)
 	if err != nil {
-		return comparepkg.InputReport{}, fmt.Errorf("load %s snapshot %q: %w", side, name, err)
+		return comparepkg.InputReport{}, clierr.Errorf(clierr.KindInput, "load %s snapshot %q: %w", side, name, err)
 	}
 
 	report, err := comparepkg.DecodeReportJSON(data)
 	if err != nil {
-		return comparepkg.InputReport{}, fmt.Errorf("load %s snapshot %q: %w", side, name, err)
+		return comparepkg.InputReport{}, clierr.Errorf(clierr.KindCorrupt, "load %s snapshot %q: %w", side, name, err)
 	}
 	return report, nil
 }

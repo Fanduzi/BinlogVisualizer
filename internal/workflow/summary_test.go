@@ -181,7 +181,7 @@ func TestBuildWorkflowSummaryDeduplicatesCapsAndIgnoresFailedSteps(t *testing.T)
 	})
 
 	writeWorkflowSummaryArtifact(t, outputDir, "compare/failed_compare.json", map[string]any{
-		"key_findings": []map[string]any{{"kind": "failed_finding", "title": "Failed finding", "summary": "Should not appear"}},
+		"key_findings":    []map[string]any{{"kind": "failed_finding", "title": "Failed finding", "summary": "Should not appear"}},
 		"recommendations": []map[string]any{{"kind": "failed_rec", "priority": "high", "title": "Failed rec", "summary": "Should not appear", "related_finding_kinds": []string{"failed_finding"}}},
 	})
 
@@ -338,7 +338,7 @@ func TestBuildWorkflowSummaryDoesNotWarnOnPresentEmptyArrays(t *testing.T) {
 	outputDir := t.TempDir()
 
 	writeWorkflowSummaryArtifact(t, outputDir, "compare/compare_empty_arrays.json", map[string]any{
-		"key_findings":     []map[string]any{},
+		"key_findings":    []map[string]any{},
 		"recommendations": []map[string]any{},
 	})
 	writeWorkflowSummaryArtifact(t, outputDir, "trend/trend_empty_arrays.json", map[string]any{

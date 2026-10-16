@@ -7,7 +7,7 @@ func TestBuildCompareRecommendationsPatternDriverHighPriority(t *testing.T) {
 		Summary: SummaryDelta{
 			CurrentTotalRows:  2000,
 			BaselineTotalRows: 1000,
-			TotalRowsDelta:   1000,
+			TotalRowsDelta:    1000,
 		},
 		KeyFindings: []CompareFinding{{
 			Kind:    "pattern_driver",
@@ -53,7 +53,7 @@ func TestBuildCompareRecommendationsSuppressesGenericGrowthWhenSpecificDriverExi
 		Summary: SummaryDelta{
 			CurrentTotalRows:  3000,
 			BaselineTotalRows: 1000,
-			TotalRowsDelta:   2000,
+			TotalRowsDelta:    2000,
 		},
 		KeyFindings: []CompareFinding{
 			{
@@ -91,7 +91,7 @@ func TestBuildCompareRecommendationsVolumeDecline(t *testing.T) {
 		Summary: SummaryDelta{
 			CurrentTotalRows:  200,
 			BaselineTotalRows: 1000,
-			TotalRowsDelta:   -800,
+			TotalRowsDelta:    -800,
 		},
 		KeyFindings: []CompareFinding{{
 			Kind:    "volume_change",

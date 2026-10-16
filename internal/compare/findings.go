@@ -53,8 +53,8 @@ func buildKeyFindings(result CompareResult) []CompareFinding {
 				Title:   "Top pattern driver",
 				Summary: name + " drove most row " + driverDir,
 				Evidence: map[string]any{
-					"pattern_key":         top.PatternKey,
-					"delta_rows":          top.DeltaRows,
+					"pattern_key":          top.PatternKey,
+					"delta_rows":           top.DeltaRows,
 					"share_of_total_delta": shareOfAbs(float64(top.DeltaRows), absTotal),
 				},
 			})
@@ -70,8 +70,8 @@ func buildKeyFindings(result CompareResult) []CompareFinding {
 				Title:   "Top table driver",
 				Summary: top.Schema + "." + top.Table + " had the largest row change",
 				Evidence: map[string]any{
-					"table":               top.Schema + "." + top.Table,
-					"delta_rows":          top.DeltaRows,
+					"table":                top.Schema + "." + top.Table,
+					"delta_rows":           top.DeltaRows,
 					"share_of_total_delta": shareOfAbs(float64(top.DeltaRows), absTotal),
 				},
 			})

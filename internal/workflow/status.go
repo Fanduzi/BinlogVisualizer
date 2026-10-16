@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"binlogviz/internal/clierr"
 	"crypto/sha256"
 	"fmt"
 	"os"
@@ -159,12 +160,12 @@ func resumabilityError(outputDir string, manifest Manifest) error {
 	// Trust-boundary check before opening any file; use returned canonical path.
 	canonicalPlanPath, err := ValidateWorkflowPlanPath(outputDir, manifest.PlanPath)
 	if err != nil {
-		return fmt.Errorf("cannot resume: %w", err)
+		return clierr.Errorf(clierr.KindInput, "cannot resume: %w", err)
 	}
 
 	planSHA256, err := computeStatusPlanSHA256(canonicalPlanPath)
 	if err != nil {
-		return fmt.Errorf("cannot resume: plan file %q not found", canonicalPlanPath)
+		return clierr.Errorf(clierr.KindInput, "cannot resume: plan file %q not found", canonicalPlanPath)
 	}
 	return ValidateResumableManifest(manifest, outputDir, canonicalPlanPath, planSHA256)
 }

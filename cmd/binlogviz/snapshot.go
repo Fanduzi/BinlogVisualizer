@@ -1,6 +1,7 @@
 package binlogviz
 
 import (
+	"binlogviz/internal/clierr"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -51,20 +52,25 @@ func newSnapshotSaveCommand() *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// #277: a missing --name is a usage error (exit 3), not cobra's
+			// untyped required-flag error.
+			if opts.name == "" {
+				return clierr.Errorf(clierr.KindUsage, "required flag(s) \"name\" not set")
+			}
+			if err := snapshotpkg.ValidateName(opts.name); err != nil {
+				return err
+			}
 			data, err := os.ReadFile(args[0])
 			if err != nil {
-				return fmt.Errorf("read snapshot source %s: %w", args[0], err)
+				return clierr.Errorf(clierr.KindInput, "read snapshot source %s: %w", args[0], err)
 			}
 			if _, err := comparepkg.DecodeReportJSON(data); err != nil {
-				if isUnsupportedReportShape(err) {
-					return err
-				}
-				return fmt.Errorf("decode snapshot source %s: %w", args[0], err)
+				return clierr.Errorf(clierr.KindCorrupt, "decode snapshot source %s: %w", args[0], err)
 			}
 
 			normalized, err := normalizeSnapshotReport(data, opts.name, time.Now().UTC())
 			if err != nil {
-				return fmt.Errorf("normalize snapshot source %s: %w", args[0], err)
+				return clierr.Errorf(clierr.KindCorrupt, "normalize snapshot source %s: %w", args[0], err)
 			}
 
 			savedPath, err := snapshotpkg.SaveJSON(opts.dir, opts.name, normalized)
@@ -76,9 +82,8 @@ func newSnapshotSaveCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.name, "name", "", "Snapshot name")
+	cmd.Flags().StringVar(&opts.name, "name", "", "Snapshot name (required)")
 	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to save snapshots")
-	_ = cmd.MarkFlagRequired("name")
 
 	return cmd
 }
@@ -110,7 +115,7 @@ func newSnapshotListCommand() *cobra.Command {
 					"snapshots":    entries,
 				})
 			default:
-				return fmt.Errorf("unsupported snapshot list format: %s", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "unsupported snapshot list format: %s", opts.format)
 			}
 		},
 	}
@@ -133,7 +138,7 @@ func newSnapshotShowCommand() *cobra.Command {
 			switch opts.format {
 			case "text", "json":
 			default:
-				return fmt.Errorf("unsupported snapshot show format: %s", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "unsupported snapshot show format: %s", opts.format)
 			}
 
 			desc, err := snapshotpkg.DescribeSnapshot(opts.dir, args[0])
@@ -160,10 +165,6 @@ func newSnapshotShowCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to load snapshots from")
 	cmd.Flags().StringVar(&opts.format, "format", "text", "Snapshot show output format: text or json")
 	return cmd
-}
-
-func isUnsupportedReportShape(err error) bool {
-	return err != nil && err.Error() == "unsupported BinlogViz report shape"
 }
 
 func newSnapshotRenameCommand() *cobra.Command {

@@ -25,11 +25,15 @@ const (
 	KindRefused  Kind = "refused"  // 6
 	KindConflict Kind = "conflict" // 7
 	KindOutput   Kind = "output"   // 8
+	// KindUnsupported is valid input that binlogviz does not analyze, such as
+	// a STATEMENT or MIXED binlog with no ROW images (ADR 0009, #277).
+	KindUnsupported Kind = "unsupported" // 9
 )
 
 var codes = map[Kind]int{
 	KindError: 1, KindNoData: 2, KindUsage: 3, KindInput: 4,
 	KindCorrupt: 5, KindRefused: 6, KindConflict: 7, KindOutput: 8,
+	KindUnsupported: 9,
 }
 
 // Code is the process exit code for kind.
@@ -87,9 +91,16 @@ func WithDetails(kind Kind, err error, details map[string]any) error {
 	return &Error{Kind: kind, Err: err, Details: details}
 }
 
-// Errorf is Wrap(kind, fmt.Errorf(...)).
+// Errorf is Wrap(kind, fmt.Errorf(...)): a %w operand that already has a
+// kind keeps it, so context added on the way up never hides the innermost,
+// most specific classification.
 func Errorf(kind Kind, format string, args ...any) error {
-	return &Error{Kind: kind, Err: fmt.Errorf(format, args...)}
+	return Wrap(kind, fmt.Errorf(format, args...))
+}
+
+// New is Wrap(kind, errors.New(msg)).
+func New(kind Kind, msg string) error {
+	return &Error{Kind: kind, Err: errors.New(msg)}
 }
 
 // Of returns the kind of err, or KindError when it has none.

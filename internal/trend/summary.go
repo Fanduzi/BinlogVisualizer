@@ -72,11 +72,11 @@ func risingPatternFinding(trends []PatternTrend) *TrendFinding {
 		Title:   "Strongest rising pattern",
 		Summary: fmt.Sprintf("%s grew by %+d rows across the series", name, best.DeltaRows),
 		Evidence: map[string]any{
-			"pattern_key":   best.PatternKey,
-			"delta_rows":    best.DeltaRows,
-			"first_rows":    best.FirstRows,
-			"last_rows":     best.LastRows,
-			"share_delta":   best.DeltaShareOfRows,
+			"pattern_key": best.PatternKey,
+			"delta_rows":  best.DeltaRows,
+			"first_rows":  best.FirstRows,
+			"last_rows":   best.LastRows,
+			"share_delta": best.DeltaShareOfRows,
 		},
 	}
 }
@@ -104,11 +104,11 @@ func fallingPatternFinding(trends []PatternTrend) *TrendFinding {
 		Title:   "Strongest falling pattern",
 		Summary: fmt.Sprintf("%s declined by %+d rows across the series", name, best.DeltaRows),
 		Evidence: map[string]any{
-			"pattern_key":   best.PatternKey,
-			"delta_rows":    best.DeltaRows,
-			"first_rows":    best.FirstRows,
-			"last_rows":     best.LastRows,
-			"share_delta":   best.DeltaShareOfRows,
+			"pattern_key": best.PatternKey,
+			"delta_rows":  best.DeltaRows,
+			"first_rows":  best.FirstRows,
+			"last_rows":   best.LastRows,
+			"share_delta": best.DeltaShareOfRows,
 		},
 	}
 }
@@ -151,10 +151,10 @@ func concentrationFinding(trends []PatternTrend) *TrendFinding {
 				Title:   "Concentration shift",
 				Summary: fmt.Sprintf("%s became dominant at %.0f%% share", name, t.LastShareOfRows*100),
 				Evidence: map[string]any{
-					"pattern_key":     t.PatternKey,
-					"first_share":     t.FirstShareOfRows,
-					"last_share":      t.LastShareOfRows,
-					"share_delta":     t.DeltaShareOfRows,
+					"pattern_key": t.PatternKey,
+					"first_share": t.FirstShareOfRows,
+					"last_share":  t.LastShareOfRows,
+					"share_delta": t.DeltaShareOfRows,
 				},
 			}
 		}

@@ -6,9 +6,9 @@
 package trend
 
 import (
+	"binlogviz/internal/clierr"
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"html/template"
 	"strings"
 	"time"
@@ -103,7 +103,7 @@ func RenderHTML(result Result) (string, error) {
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("render trend html template: %w", err)
+		return "", clierr.Errorf(clierr.KindError, "render trend html template: %w", err)
 	}
 	return buf.String(), nil
 }
