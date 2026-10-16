@@ -4,6 +4,22 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.25.0
+
+Release date: 2026-10-17
+
+Highlights:
+
+- Breaking for scripts: every command error has a kind, exit 9 `unsupported` is new, and many failures moved off exit 1 (ADR 0009, #277, #284, #286).
+- `workflow clean` deletes only files its ledger attributes, moves them to `.trash`, and refuses untrusted manifests, failed runs and paths outside the root (#287, #288, #289, #290, #291).
+- `install.sh` fails closed on checksum problems and missing tools, and defaults to the latest release (#281, #283, #285, #292).
+- Real MySQL 8.0 compressed transactions of 16 MiB and up parse, with bounded streaming decompression (#278, #293).
+
+Related notes:
+
+- [v0.25.0 release notes](docs/releases/release-notes-v0.25.0.md)
+- [v0.25.0 中文发行说明](docs/releases/release-notes-v0.25.0.zh-CN.md)
+
 ### Install
 
 - **`install.sh` no longer fails silently or installs an unverified binary (#285).** A checksum mismatch now prints `checksum mismatch for <archive> (expected …, got …)` and an archive missing from `checksums.txt` prints `no checksum for <archive>`; both exit 1 and install nothing. With no `sha256sum`, `shasum`, or `openssl` the script refuses instead of warning and continuing; `--no-verify` skips the check on purpose. A release that does not exist names the URL and release instead of a bare `curl: (22)`. `--version 0.24.0` (no `v`) is accepted, `--bin-dir` with no value and a malformed `--version` get a clear message, `wget` works when `curl` is missing, replacing an existing install names the old version, and `--dry-run` prints `verify=`.
@@ -11,7 +27,8 @@ This file records user-visible changes for tagged releases.
 
 ### Fixed
 
-- A compressed transaction payload (`binlog_transaction_compression=ON`) that declares 1 GiB or more uncompressed now fails with `payload declares N uncompressed bytes, more than 1073741824` instead of the misleading `payload header field exceeds the event` (#278). MySQL writes sizes of 2^24 and up as a 9-byte field, which the header check refused. Either way the parse stops with exit 5; only the message changes.
+- **Real MySQL 8.0 compressed transactions of 16 MiB and up now parse (#278, #293).** With `binlog_transaction_compression=ON`, MySQL writes the uncompressed size of a payload of 16 MiB or more as a 9-byte field, which v0.24.0 refused with exit 5. Decompression is now streamed and bounded: each inner event is checked and released as it is decoded, a payload is handed to `analyze`/`flashback` only after it decodes cleanly (so a payload corrupt at its last event prints nothing and exits 5), and a payload may name at most 65536 distinct tables. On BinlogQA's runs a 33 KB zstd bomb and a 99 KB file declaring ~1 GiB of tiny events both exit 5 at about 30–44 MB peak memory; a 30 MB real MySQL 8.0.36 binlog parses at 95–160 MB. A valid ~1 GiB payload of tiny events takes about 45 s, because it is decompressed twice.
+- A compressed transaction payload (`binlog_transaction_compression=ON`) that declares more than 1 GiB uncompressed now fails with a message like `payload declares 1.0 GiB (1073741825 bytes) uncompressed, more than the limit 1.0 GiB (1073741824 bytes)` instead of the misleading `payload header field exceeds the event` (#278). MySQL writes sizes of 2^24 and up as a 9-byte field, which the header check refused. Either way the parse stops with exit 5; only the message changes.
 
 - **P2 (QA r2 on #290): `workflow clean --include-snapshots` trusted `manifest.snapshot_dir`.** Cleaning a restored export moved snapshots in the original snapshot dir, and a forged `snapshot_dir` could move files out of any directory. Clean now takes the snapshot dir only from the new `clean --snapshot-dir` flag or the default, and refuses with exit 6 (`snapshot_dir_mismatch`) when the manifest names a different one. `workflow export` writes `snapshot_dir` as the relative `snapshots`. A ledger snapshot entry must be recorded by its own step (`analyze:<name>` for `<name>.json`), else 5 `untrusted_ledger`.
 - `workflow clean --apply` checks every trash target on both sides (artifacts and snapshots) before moving anything, so a refusal leaves nothing half-moved. Exit 8 now names each file and the cause, and clean JSON gains `skip_reasons`.
