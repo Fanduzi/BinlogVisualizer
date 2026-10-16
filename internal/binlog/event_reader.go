@@ -139,8 +139,22 @@ func (r *eventReader) next(pos int64, onEvent replication.OnEventFunc) (int64, e
 		return 0, corrupt(err.Error())
 	}
 	if eventType == replication.TRANSACTION_PAYLOAD_EVENT {
-		if err := checkPayload(body, r.fde); err != nil {
+		// Checked here as a bounded stream; go-mysql would decompress the
+		// frame with no limit and keep every inner event. The consumer
+		// walks the inner events through payload.each.
+		payload, err := decodePayload(body, r.fde)
+		if err != nil {
 			return 0, corrupt(err.Error())
+		}
+		if payload != nil {
+			header := &replication.EventHeader{}
+			if err := header.Decode(raw); err != nil {
+				return 0, corrupt("event header: " + err.Error())
+			}
+			if err := onEvent(&replication.BinlogEvent{RawData: raw, Header: header, Event: payload}); err != nil {
+				return 0, err
+			}
+			return eventSize, nil
 		}
 	}
 	r.fault.err = nil

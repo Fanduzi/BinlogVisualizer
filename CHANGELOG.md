@@ -11,6 +11,8 @@ This file records user-visible changes for tagged releases.
 
 ### Fixed
 
+- A compressed transaction payload (`binlog_transaction_compression=ON`) that declares 1 GiB or more uncompressed now fails with `payload declares N uncompressed bytes, more than 1073741824` instead of the misleading `payload header field exceeds the event` (#278). MySQL writes sizes of 2^24 and up as a 9-byte field, which the header check refused. Either way the parse stops with exit 5; only the message changes.
+
 - **P2 (QA r2 on #290): `workflow clean --include-snapshots` trusted `manifest.snapshot_dir`.** Cleaning a restored export moved snapshots in the original snapshot dir, and a forged `snapshot_dir` could move files out of any directory. Clean now takes the snapshot dir only from the new `clean --snapshot-dir` flag or the default, and refuses with exit 6 (`snapshot_dir_mismatch`) when the manifest names a different one. `workflow export` writes `snapshot_dir` as the relative `snapshots`. A ledger snapshot entry must be recorded by its own step (`analyze:<name>` for `<name>.json`), else 5 `untrusted_ledger`.
 - `workflow clean --apply` checks every trash target on both sides (artifacts and snapshots) before moving anything, so a refusal leaves nothing half-moved. Exit 8 now names each file and the cause, and clean JSON gains `skip_reasons`.
 - The deletion guard test now covers `cmd/binlogviz`, `internal/workflow` and `internal/snapshot`, catches function-value and import aliases, `os.Root` methods and `os/exec`, and checks a reviewed allowlist.

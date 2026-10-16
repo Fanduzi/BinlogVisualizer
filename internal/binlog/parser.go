@@ -1,5 +1,5 @@
 // Package binlog extracts raw events and parse progress from local MySQL binlog files.
-// input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and decoded TransactionPayloadEvent inner events.
+// input: binlog file paths, go-mysql replication parser callbacks, optional progress consumers, and transaction payload inner events, streamed one at a time from a checked payload.
 // output: Parser implementations that emit RawEvent values with canonical kinds, expanded transaction-payload inner events stamped with the wrapper's file-relative span once, bounded SQL, producer/transaction provenance, MySQL 8 GTID commit timestamps when both are non-zero, and physical MariaDB XA identities plus monotonic per-input ParseProgress updates. TIMESTAMP row-image strings are the UTC wall clock of the stored instant, not the process zone. A full-file parse that stops before the last byte returns an unread-tail error. Event bytes are read and checked by readEvents (CRC32 with the in-use flag masked, size and count bounds) before go-mysql decodes them, and a mismatch, bounds failure or decoder panic returns a CorruptEventError naming the file and event start offset. rawEventFromHeader is the shared header projection used by the file loop and payload expand. QUERY text has its leading comments stripped (not executable /*! or /*M! ones), so MariaDB's verbatim "/* c */ CREATE USER" classifies like MySQL's. SetCaptureFlashback attaches exact undo literals and keeps binary JSON documents, including JSON inside a transaction payload; it stays off for analyze.
 // pos: parser adapter layer between on-disk binlog files and BinlogViz command/analyzer pipelines.
 // note: if this file changes, update this header and README.md.
@@ -137,6 +137,8 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 		// a bug in BinlogViz and keeps panicking; any other panic comes from
 		// decoding the event bytes and means the event is corrupt.
 		inHandler := false
+		// emittedAny is true once a payload has handed on its first inner event.
+		emittedAny := false
 		consume := func(raw RawEvent) error {
 			inHandler = true
 			err := handler(raw)
@@ -161,6 +163,30 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				onProgress(ParseProgress{Path: path, Index: index, Offset: lastOffset})
 			}
 
+			if payload, ok := ev.Event.(*streamedPayload); ok {
+				emitted, err := streamTransactionPayload(payload, path, serverVersion, tableNames, p.captureRows, p.captureFlash, func(inner RawEvent) error {
+					inner.PositionStart, inner.PositionEnd, inner.Position = raw.PositionStart, raw.PositionEnd, uint32(raw.PositionEnd)
+					inner.BinlogBytes = 0
+					if !emittedAny {
+						inner.BinlogBytes = raw.BinlogBytes
+					}
+					emittedAny = true
+					if inner.ServerVersion != "" {
+						serverVersion = inner.ServerVersion
+					}
+					return consume(inner)
+				})
+				emittedAny = false
+				if err != nil {
+					if cause, ok := err.(corruptCause); ok {
+						return &CorruptEventError{Path: path, Offset: raw.PositionStart, Cause: string(cause)}
+					}
+					return err
+				}
+				if emitted > 0 {
+					return nil
+				}
+			}
 			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows, p.captureFlash); ok {
 				assignPayloadWrapperFileSpan(inners, raw.PositionStart, raw.PositionEnd, raw.BinlogBytes)
 				for i := range inners {
@@ -207,7 +233,8 @@ func parseFileGuarded(bp *replication.BinlogParser, path string, offset int64, c
 		if *inHandler {
 			panic(r)
 		}
-		err = &CorruptEventError{Path: path, Offset: *consumed, Cause: fmt.Sprintf("event decoder failed: %v", r)}
+		// The panic text is Go runtime detail, not a fact about the file.
+		err = &CorruptEventError{Path: path, Offset: *consumed, Cause: "event decoder failed on malformed event bytes"}
 	}()
 	return readEvents(bp, path, offset, consumed, fault, onEvent)
 }
@@ -436,19 +463,41 @@ func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion s
 		if inner == nil || inner.Header == nil {
 			continue
 		}
-		raw := rawEventFromHeader(inner.Header, path, serverVersion)
-		// go-mysql v1.14 decodes payload inners on a fresh parser, so the UTC
-		// location above never reaches them, and neither does SetRowsEventDecodeFunc.
-		// Delete both rewrites when that parser inherits the outer parser.
-		if flash {
-			keepPayloadJSON(inner)
-		}
-		normalizePayloadTimestampCells(inner.Event, payloadTimestampLocation)
-		applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture, flash)
-		out = append(out, raw)
+		out = append(out, payloadInnerRaw(inner, path, serverVersion, tableNames, capture, flash))
 	}
 	assignPayloadWrapperFileSpan(out, wrapperStart, wrapperEnd, wrapperBytes)
 	return out, len(out) > 0
+}
+
+// streamTransactionPayload hands each inner event of a checked payload to
+// emit as a RawEvent built as expandTransactionPayload builds it, one at a
+// time, and returns how many it handed on. emit sets the file span. Every
+// inner RawEvent carries serverVersion as of the payload's start, as the
+// expanded slice did. A corruptCause comes back unwrapped.
+func streamTransactionPayload(payload *streamedPayload, path, serverVersion string, tableNames map[uint64]cachedTableName, capture, flash bool, emit func(RawEvent) error) (int, error) {
+	emitted := 0
+	err := payload.each(func(inner *replication.BinlogEvent) error {
+		if inner == nil || inner.Header == nil {
+			return nil
+		}
+		emitted++
+		return emit(payloadInnerRaw(inner, path, serverVersion, tableNames, capture, flash))
+	})
+	return emitted, err
+}
+
+// payloadInnerRaw builds the RawEvent of one decoded payload inner event.
+func payloadInnerRaw(inner *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName, capture, flash bool) RawEvent {
+	raw := rawEventFromHeader(inner.Header, path, serverVersion)
+	// go-mysql v1.14 decodes payload inners on a fresh parser, so the UTC
+	// location above never reaches them, and neither does SetRowsEventDecodeFunc.
+	// Delete both rewrites when that parser inherits the outer parser.
+	if flash {
+		keepPayloadJSON(inner)
+	}
+	normalizePayloadTimestampCells(inner.Event, payloadTimestampLocation)
+	applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture, flash)
+	return raw
 }
 
 // payloadTimestampLocation is the zone go-mysql used when it printed payload
