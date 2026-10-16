@@ -111,8 +111,8 @@ func TestPayloadNineByteSizeFieldReachesSizeChecks(t *testing.T) {
 		declared uint64
 		want     string
 	}{
-		{maxPayloadUncompressed + 1, "uncompressed bytes, more than"},
-		{2 << 30, "uncompressed bytes, more than"},
+		{maxPayloadUncompressed + 1, "uncompressed, more than the limit"},
+		{2 << 30, "uncompressed, more than the limit"},
 		{maxPayloadUncompressed, "not the declared"},
 	}
 	for _, c := range cases {
