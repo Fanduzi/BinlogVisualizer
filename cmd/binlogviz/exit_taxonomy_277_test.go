@@ -32,6 +32,7 @@ func TestExitTaxonomy277(t *testing.T) {
 	report := write("report.json", "{}")
 	bad := write("bad.json", "{bad")
 	empty := write("empty.binlog", "")
+	future := write("future.json", `{"report_version": 999}`)
 	snapDir := filepath.Join(dir, "snaps")
 	cases := []struct {
 		name string
@@ -50,6 +51,13 @@ func TestExitTaxonomy277(t *testing.T) {
 		{"analyze /dev/null", []string{"analyze", "/dev/null"}, 5},
 		{"workflow status missing dir", []string{"workflow", "status", filepath.Join(dir, "nowf")}, 4},
 		{"workflow status bad format", []string{"workflow", "status", dir, "--format", "xml"}, 3},
+		// QA round 1 on #284.
+		{"empty --error-format", []string{"--error-format=", "analyze", empty}, 3},
+		{"workflow describe missing plan", []string{"workflow", "describe", filepath.Join(dir, "nope.yaml")}, 4},
+		{"workflow validate missing plan", []string{"workflow", "validate", filepath.Join(dir, "nope.yaml")}, 4},
+		{"snapshot save report missing fields", []string{"snapshot", "save", report, "--name", "empty", "--snapshot-dir", snapDir}, 5},
+		{"compare reports missing fields", []string{"compare", report, report}, 5},
+		{"compare report from a newer build", []string{"compare", future, future}, 9},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -58,6 +66,27 @@ func TestExitTaxonomy277(t *testing.T) {
 				t.Fatalf("exit %d, want %d\n%s", code, tc.code, stderr)
 			}
 		})
+	}
+}
+
+func TestUnreadableSnapshotIsInput(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "locked.json")
+	if err := os.WriteFile(path, []byte("{}"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := os.Open(path); err == nil {
+		_ = f.Close()
+		t.Skip("running with permission to read a mode 000 file (root)")
+	}
+	for _, args := range [][]string{
+		{"snapshot", "show", "locked", "--snapshot-dir", dir},
+		{"compare", "--current-snapshot", "locked", "--baseline-snapshot", "locked", "--snapshot-dir", dir},
+	} {
+		if code, _, stderr := runRoot(t, args...); code != 4 {
+			t.Fatalf("%v: exit %d, want 4\n%s", args, code, stderr)
+		}
 	}
 }
 
@@ -79,13 +108,28 @@ func TestStatementBinlogIsUnsupported(t *testing.T) {
 	}
 }
 
-// TestNoUntypedErrors keeps #277 fixed: every error built in cmd/binlogviz
-// carries a clierr kind. fmt.Errorf and errors.New are allowed only for
-// package-level sentinels, which callers wrap with a kind where they return.
+// guardedPackages are the packages whose errors a command returns as-is.
+// analyzer, binlog and report errors cross the CLI boundary only through
+// cmd/binlogviz, which gives them a kind there (ADR 0009 §3).
+var guardedPackages = []string{
+	".",
+	"../../internal/snapshot",
+	"../../internal/workflow",
+	"../../internal/compare",
+	"../../internal/trend",
+}
+
+// TestNoUntypedErrors keeps #277 fixed: every error built in a guarded
+// package carries a clierr kind. fmt.Errorf and errors.New are allowed only
+// for package-level sentinels, which callers wrap with a kind where they return.
 func TestNoUntypedErrors(t *testing.T) {
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatal(err)
+	var files []string
+	for _, dir := range guardedPackages {
+		matches, err := filepath.Glob(filepath.Join(dir, "*.go"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, matches...)
 	}
 	fset := token.NewFileSet()
 	for _, name := range files {
