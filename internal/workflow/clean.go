@@ -17,6 +17,11 @@ type CleanOptions struct {
 	// ledger. It never deletes a snapshot the ledger does not attribute, and
 	// never overrides run_not_successful.
 	Force bool
+	// SnapshotDir is the snapshot dir the caller vouches for (--snapshot-dir
+	// or the default). With IncludeSnapshots, a manifest snapshot_dir that
+	// resolves elsewhere is refused (6, snapshot_dir_mismatch). Empty means
+	// the manifest's value, for library callers only.
+	SnapshotDir string
 }
 
 // CleanCounts summarizes cleanup candidate and action totals.
@@ -34,18 +39,19 @@ type CleanCounts struct {
 // in dry-run, would delete). KeptOrphans are files no current step owns that
 // clean keeps because the ledger does not attribute them (ADR 0009 §8).
 type CleanResult struct {
-	WorkflowName     string   `json:"workflow_name"`
-	OutputDir        string   `json:"output_dir"`
-	SnapshotDir      string   `json:"-"`
-	Mode             string   `json:"mode"`
-	IncludeSnapshots bool     `json:"include_snapshots"`
-	Force            bool     `json:"force"`
-	Ledger           string   `json:"ledger"`
-	ArtifactOrphans  []string `json:"artifact_orphans"`
-	SnapshotOrphans  []string `json:"snapshot_orphans"`
-	KeptOrphans      []string `json:"kept_orphans"`
-	Deleted          []string `json:"deleted"`
-	Skipped          []string `json:"skipped"`
+	WorkflowName     string            `json:"workflow_name"`
+	OutputDir        string            `json:"output_dir"`
+	SnapshotDir      string            `json:"-"`
+	Mode             string            `json:"mode"`
+	IncludeSnapshots bool              `json:"include_snapshots"`
+	Force            bool              `json:"force"`
+	Ledger           string            `json:"ledger"`
+	ArtifactOrphans  []string          `json:"artifact_orphans"`
+	SnapshotOrphans  []string          `json:"snapshot_orphans"`
+	KeptOrphans      []string          `json:"kept_orphans"`
+	Deleted          []string          `json:"deleted"`
+	Skipped          []string          `json:"skipped"`
+	SkipReasons      map[string]string `json:"skip_reasons,omitempty"`
 	// TrashDir and SnapshotTrashDir are where --apply moved deleted files
 	// (<root>/.trash/<id>, <snapshot-dir>/.trash/<id>). Clean never purges
 	// them; empty them by hand once you no longer need the files.
@@ -57,8 +63,9 @@ type CleanResult struct {
 
 // Clean refusal reasons (details.reason).
 const (
-	ReasonRunNotSuccessful = "run_not_successful"
-	ReasonNoLedger         = "no_ledger"
+	ReasonRunNotSuccessful    = "run_not_successful"
+	ReasonNoLedger            = "no_ledger"
+	ReasonSnapshotDirMismatch = "snapshot_dir_mismatch"
 )
 
 // DiscoverCleanCandidates is DiscoverCleanCandidatesWithOptions without --force.
@@ -161,6 +168,12 @@ func DiscoverCleanCandidatesWithOptions(outputDir string, manifest Manifest, opt
 	sort.Strings(result.KeptOrphans)
 
 	if opts.IncludeSnapshots && manifest.SnapshotDir != "" {
+		dir, err := trustedSnapshotDir(outputDir, manifest.SnapshotDir, opts.SnapshotDir)
+		if err != nil {
+			return CleanResult{}, err
+		}
+		result.SnapshotDir = dir
+		manifest.SnapshotDir = dir
 		liveSnaps := liveSnapshotNames(manifest)
 		for _, name := range ledger.Snapshots() {
 			// Ledger validation guarantees a bare <name>.json.
@@ -204,6 +217,42 @@ func liveArtifactSet(manifest Manifest) map[string]struct{} {
 	return live
 }
 
+// ResolveManifestSnapshotDir returns the manifest's snapshot_dir as an
+// absolute path; a relative value (as written by export) is relative to the
+// workflow root.
+func ResolveManifestSnapshotDir(outputDir, dir string) string {
+	if dir == "" || filepath.IsAbs(dir) {
+		return dir
+	}
+	return filepath.Join(outputDir, filepath.FromSlash(dir))
+}
+
+func canonicalDir(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return filepath.Clean(p)
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		return real
+	}
+	return abs
+}
+
+// trustedSnapshotDir takes the snapshot dir from the caller, never from the
+// manifest alone: the manifest is a file in the workflow dir and may be
+// forged or restored from another machine (ADR 0009 §8).
+func trustedSnapshotDir(outputDir, manifestDir, flagDir string) (string, error) {
+	recorded := ResolveManifestSnapshotDir(outputDir, manifestDir)
+	if flagDir == "" {
+		return recorded, nil
+	}
+	if canonicalDir(recorded) != canonicalDir(flagDir) {
+		return "", clierr.Reasonf(clierr.KindRefused, ReasonSnapshotDirMismatch,
+			"refusing to clean snapshots: the manifest records snapshot_dir %s but this clean uses %s (from --snapshot-dir or the default); clean only touches the snapshot dir you name, so pass --snapshot-dir %s if that is really this workflow's snapshot dir", recorded, flagDir, recorded)
+	}
+	return flagDir, nil
+}
+
 // liveSnapshotNames are the snapshot file names (relative to the snapshot
 // dir, the ledger's form) the current manifest's successful analyze steps own.
 func liveSnapshotNames(manifest Manifest) map[string]bool {
@@ -218,8 +267,11 @@ func liveSnapshotNames(manifest Manifest) map[string]bool {
 }
 
 // ApplyClean moves each candidate into the trash with TrashFile (the only
-// deletion primitive); nothing is unlinked. Failures are reported as skipped.
-func ApplyClean(result CleanResult) CleanResult {
+// deletion primitive); nothing is unlinked. Every target on both sides is
+// preflighted first, so a refusal (6) or an unusable trash (8) returns an
+// error with nothing moved. A move that still fails is reported in Skipped
+// and SkipReasons.
+func ApplyClean(result CleanResult) (CleanResult, error) {
 	applied := result
 	applied.Mode = "apply"
 	applied.Deleted = []string{}
@@ -228,27 +280,38 @@ func ApplyClean(result CleanResult) CleanResult {
 	if id == "" {
 		id = NewRunID(time.Now())
 	}
-
-	for _, relPath := range applied.ArtifactOrphans {
-		dir, err := TrashFile(applied.OutputDir, relPath, id)
-		if err != nil {
-			applied.Skipped = append(applied.Skipped, relPath)
-			continue
-		}
-		applied.TrashDir = dir
-		applied.Deleted = append(applied.Deleted, relPath)
+	type target struct{ root, rel string }
+	var targets []target
+	for _, rel := range applied.ArtifactOrphans {
+		targets = append(targets, target{applied.OutputDir, rel})
 	}
 	if applied.IncludeSnapshots {
 		for _, name := range applied.SnapshotOrphans {
-			dir, err := TrashFile(applied.SnapshotDir, name, id)
-			if err != nil {
-				applied.Skipped = append(applied.Skipped, name)
-				continue
-			}
-			applied.SnapshotTrashDir = dir
-			applied.Deleted = append(applied.Deleted, name)
+			targets = append(targets, target{applied.SnapshotDir, name})
 		}
 	}
+	for _, tg := range targets {
+		if err := PrepareTrash(tg.root, tg.rel, id); err != nil {
+			return CleanResult{}, clierr.Errorf(clierr.KindOutput, "nothing was moved: %w", err)
+		}
+	}
+	for i, tg := range targets {
+		dir, err := TrashFile(tg.root, tg.rel, id)
+		if err != nil {
+			applied.Skipped = append(applied.Skipped, tg.rel)
+			if applied.SkipReasons == nil {
+				applied.SkipReasons = map[string]string{}
+			}
+			applied.SkipReasons[tg.rel] = err.Error()
+			continue
+		}
+		if i < len(applied.ArtifactOrphans) {
+			applied.TrashDir = dir
+		} else {
+			applied.SnapshotTrashDir = dir
+		}
+		applied.Deleted = append(applied.Deleted, tg.rel)
+	}
 	applied.Counts = applied.counts()
-	return applied
+	return applied, nil
 }

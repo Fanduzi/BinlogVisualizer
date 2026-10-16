@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -85,7 +86,10 @@ func TestApplyCleanupDeletesArtifactOrphans(t *testing.T) {
 		t.Fatalf("discover cleanup: %v", err)
 	}
 
-	applied := ApplyClean(result)
+	applied, err := ApplyClean(result)
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
 
 	if applied.Mode != "apply" {
 		t.Fatalf("expected mode apply, got %q", applied.Mode)
@@ -128,7 +132,10 @@ func TestApplyCleanupDeletesSnapshotOrphansWhenIncluded(t *testing.T) {
 		t.Fatalf("discover cleanup: %v", err)
 	}
 
-	applied := ApplyClean(result)
+	applied, err := ApplyClean(result)
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
 
 	assertContains(t, baseNames(applied.Deleted), "stale-snapshot.json", "snapshot orphan should be deleted")
 	if _, err := os.Stat(filepath.Join(manifest.SnapshotDir, "stale-snapshot.json")); !os.IsNotExist(err) {
@@ -162,12 +169,15 @@ func TestApplyCleanupRecordsSkippedDeletionFailures(t *testing.T) {
 		t.Fatalf("write blocking file: %v", err)
 	}
 
-	applied := ApplyClean(result)
-
-	assertContains(t, applied.Skipped, "compare/stale-report.json", "failed deletion should be recorded in skipped")
-	assertNotContains(t, applied.Deleted, "compare/stale-report.json", "failed deletion must not be marked deleted")
+	// The preflight refuses before anything moves.
+	if _, err := ApplyClean(result); err == nil || !strings.Contains(err.Error(), "nothing was moved") {
+		t.Fatalf("expected a preflight refusal, got %v", err)
+	}
 	if _, err := os.Stat(blocked); err != nil {
 		t.Fatalf("expected blocked path to remain after failed delete: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "trend", "stale-trend.json")); err != nil {
+		t.Fatalf("a preflight refusal must leave every file in place: %v", err)
 	}
 }
 

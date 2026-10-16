@@ -5,6 +5,7 @@ import (
 	"binlogviz/internal/clierr"
 	"bytes"
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,6 +68,16 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 	manifestEntry, err := readExportEntry(root, manifestPath, "manifest.json")
 	if err != nil {
 		return ExportResult{}, clierr.Errorf(clierr.KindInput, "read manifest.json: %w", err)
+	}
+	// snapshot_dir is a machine-local path: the archive carries it relative
+	// to the workflow root, so a restored copy never points back at the
+	// original snapshot dir (ADR 0009 §8).
+	if manifest.SnapshotDir != "" {
+		if body, err := relativizeSnapshotDir(manifestEntry.Body); err != nil {
+			result.Warnings = append(result.Warnings, fmt.Sprintf("manifest.json snapshot_dir left as is: %v", err))
+		} else {
+			manifestEntry.Body = body
+		}
 	}
 	result.Entries = append(result.Entries, manifestEntry)
 
@@ -147,6 +158,7 @@ func BuildExport(outputDir string, manifest Manifest, opts ExportOptions) (Expor
 		result.Warnings = append(result.Warnings, result.PlanWarning)
 	}
 
+	manifest.SnapshotDir = ResolveManifestSnapshotDir(outputDir, manifest.SnapshotDir)
 	if opts.IncludeSnapshots {
 		if manifest.SnapshotDir == "" {
 			result.Warnings = append(result.Warnings, "skipping snapshots: manifest snapshot dir is empty")
@@ -401,4 +413,38 @@ func canonicalizePath(path string) (string, error) {
 		missingParts = append(missingParts, filepath.Base(existingPath))
 		existingPath = parentPath
 	}
+}
+
+// ExportSnapshotDir is the archive-relative snapshot dir written into an
+// exported manifest.
+const ExportSnapshotDir = "snapshots"
+
+// relativizeSnapshotDir rewrites only the snapshot_dir value of a manifest,
+// keeping every other byte, and checks the result.
+func relativizeSnapshotDir(body []byte) ([]byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, clierr.Errorf(clierr.KindCorrupt, "decode manifest.json for export: %w", err)
+	}
+	old, ok := fields["snapshot_dir"]
+	if !ok {
+		return body, nil
+	}
+	newValue, _ := json.Marshal(ExportSnapshotDir)
+	for _, sep := range []string{": ", ":"} {
+		needle := []byte(`"snapshot_dir"` + sep + string(old))
+		if bytes.Count(body, needle) == 1 {
+			out := bytes.Replace(body, needle, []byte(`"snapshot_dir"`+sep+string(newValue)), 1)
+			var check map[string]json.RawMessage
+			if json.Unmarshal(out, &check) == nil && string(check["snapshot_dir"]) == string(newValue) {
+				return out, nil
+			}
+		}
+	}
+	fields["snapshot_dir"] = newValue
+	out, err := json.MarshalIndent(fields, "", "  ")
+	if err != nil {
+		return nil, clierr.Errorf(clierr.KindOutput, "encode manifest.json for export: %w", err)
+	}
+	return append(out, '\n'), nil
 }

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"binlogviz/internal/clierr"
 )
@@ -115,46 +116,78 @@ func IsPlainFile(root, rel string) bool {
 	return lstatChain(real, rel) == nil
 }
 
-// TrashFile is the single deletion primitive: it moves root/rel to
-// root/.trash/<trashID>/rel with a same-filesystem rename inside os.Root,
-// after refusing absolute paths, "..", and symlinks at every component. It
-// returns the absolute trash directory (root/.trash/<trashID>).
-func TrashFile(root, rel, trashID string) (string, error) {
+// PrepareTrash runs every check TrashFile makes and creates the trash
+// directories, without moving anything: rel must be a plain relative path to
+// a regular file reached without symlinks, and root/.trash/<trashID>/<dir>
+// must be real directories on the same filesystem. Clean preflights every
+// candidate on both sides with it, so a refusal leaves nothing half-moved.
+func PrepareTrash(root, rel, trashID string) error {
+	_, _, err := prepareTrash(root, rel, trashID)
+	return err
+}
+
+func prepareTrash(root, rel, trashID string) (real, dstRel string, err error) {
 	if err := validateRelPath(rel); err != nil {
-		return "", trustErr("refusing to delete %q: %v", rel, err)
+		return "", "", trustErr("refusing to delete %q: %v", rel, err)
 	}
 	if err := validateRelPath(trashID); err != nil || strings.Contains(trashID, "/") {
-		return "", trustErr("invalid trash id %q", trashID)
+		return "", "", trustErr("invalid trash id %q", trashID)
 	}
-	real, err := realDir(root)
+	real, err = realDir(root)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	if err := lstatChain(real, rel); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", "", clierr.Errorf(clierr.KindOutput, "cannot move %s to trash: %w", filepath.Join(real, filepath.FromSlash(rel)), err)
+		}
+		return "", "", err
+	}
+	r, err := os.OpenRoot(real)
+	if err != nil {
+		return "", "", clierr.Errorf(clierr.KindOutput, "cannot open %s: %w", real, err)
+	}
+	defer r.Close()
+	dstRel = TrashDirName + "/" + trashID + "/" + rel
+	dir := ""
+	for _, part := range strings.Split(filepath.ToSlash(filepath.Dir(dstRel)), "/") {
+		dir = strings.TrimPrefix(dir+"/"+part, "/")
+		abs := filepath.Join(real, filepath.FromSlash(dir))
+		if fi, err := os.Lstat(abs); err == nil && (fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir()) {
+			return "", "", trustErr("refusing to delete %s: trash path %s is a symlink or not a directory", rel, abs)
+		}
+		if err := r.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return "", "", clierr.Errorf(clierr.KindOutput, "cannot create trash dir %s: %w", abs, err)
+		}
+		fi, err := r.Lstat(dir)
+		if err != nil {
+			return "", "", clierr.Errorf(clierr.KindOutput, "cannot inspect trash dir %s: %w", abs, err)
+		}
+		if fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
+			return "", "", trustErr("refusing to delete %s: trash path %s is a symlink or not a directory", rel, abs)
+		}
+	}
+	return real, dstRel, nil
+}
+
+// TrashFile is the single deletion primitive: after PrepareTrash's checks it
+// moves root/rel to root/.trash/<trashID>/rel with a rename inside os.Root,
+// which cannot leave the root. It returns the absolute trash directory.
+func TrashFile(root, rel, trashID string) (string, error) {
+	real, dstRel, err := prepareTrash(root, rel, trashID)
+	if err != nil {
 		return "", err
 	}
 	r, err := os.OpenRoot(real)
 	if err != nil {
-		return "", clierr.Errorf(clierr.KindOutput, "open %s: %w", real, err)
+		return "", clierr.Errorf(clierr.KindOutput, "cannot open %s: %w", real, err)
 	}
 	defer r.Close()
-	dstRel := TrashDirName + "/" + trashID + "/" + rel
-	dir := ""
-	for _, part := range strings.Split(filepath.ToSlash(filepath.Dir(dstRel)), "/") {
-		dir = strings.TrimPrefix(dir+"/"+part, "/")
-		if err := r.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
-			return "", clierr.Errorf(clierr.KindOutput, "create trash dir %s: %w", dir, err)
-		}
-		fi, err := r.Lstat(dir)
-		if err != nil {
-			return "", clierr.Errorf(clierr.KindOutput, "inspect trash dir %s: %w", dir, err)
-		}
-		if fi.Mode()&fs.ModeSymlink != 0 || !fi.IsDir() {
-			return "", trustErr("refusing to delete %s: trash path %s is a symlink or not a directory", rel, dir)
-		}
-	}
 	if err := r.Rename(rel, dstRel); err != nil {
-		return "", clierr.Errorf(clierr.KindOutput, "move %s to trash: %w", rel, err)
+		if errors.Is(err, syscall.EXDEV) {
+			return "", clierr.Errorf(clierr.KindOutput, "cannot move %s to trash: %s is on a different filesystem and clean only renames, never copies: %w", filepath.Join(real, filepath.FromSlash(rel)), filepath.Join(real, TrashDirName), err)
+		}
+		return "", clierr.Errorf(clierr.KindOutput, "cannot move %s to trash: %w", filepath.Join(real, filepath.FromSlash(rel)), err)
 	}
 	return filepath.Join(real, TrashDirName, trashID), nil
 }
