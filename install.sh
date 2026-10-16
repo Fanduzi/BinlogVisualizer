@@ -14,6 +14,7 @@ DRY_RUN=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --version)
+      [ $# -ge 2 ] || { echo "--version needs a value (vX.Y.Z or latest)" >&2; exit 1; }
       VERSION="$2"
       shift 2
       ;;
@@ -32,9 +33,23 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-if [ -z "$VERSION" ]; then
-  echo "--version is required, for example: ./install.sh --version v0.24.0" >&2
-  exit 1
+# Default to the newest published release so docs and this script can never
+# pin a stale version again (#281). Resolved from the releases/latest redirect,
+# which needs no API token and is not rate limited like api.github.com.
+if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
+  LATEST_URL="${BINLOGVIZ_LATEST_URL:-https://github.com/${REPO}/releases/latest}"
+  RESOLVED="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "$LATEST_URL")" || {
+    echo "could not resolve the latest release from $LATEST_URL; pass --version vX.Y.Z" >&2
+    exit 1
+  }
+  VERSION="${RESOLVED##*/}"
+  case "$VERSION" in
+    v[0-9]*) ;;
+    *)
+      echo "could not resolve the latest release (got: $RESOLVED); pass --version vX.Y.Z" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 case "$(uname -s)" in

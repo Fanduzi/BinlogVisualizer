@@ -328,8 +328,8 @@ This path installs the prebuilt release artifact and removes the macOS quarantin
 
 ```bash
 # install.sh (current release)
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.24.0/install.sh
-sh ./install.sh --version v0.24.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
+sh ./install.sh            # latest release; pin with --version v0.24.0
 
 # or linux/amd64 tarball
 curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_linux_amd64.tar.gz
@@ -356,14 +356,14 @@ install ./binlogviz /usr/local/bin/binlogviz
 Or fetch the install helper from the same release tag before running it:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.24.0/install.sh
-sh ./install.sh --version v0.24.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
+sh ./install.sh            # latest release; pin with --version v0.24.0
 ```
 
 To preview the resolved artifact without downloading:
 
 ```bash
-./install.sh --version v0.24.0 --dry-run
+./install.sh --dry-run
 ```
 
 ### Fallback: Build From Source

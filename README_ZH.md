@@ -307,8 +307,8 @@ brew install --cask binlogviz
 
 ```bash
 # install.sh（当前版本）
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.24.0/install.sh
-sh ./install.sh --version v0.24.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
+sh ./install.sh            # latest release; pin with --version v0.24.0
 
 # 或 linux/amd64 tarball
 curl -fsSLO https://github.com/Fanduzi/BinlogVisualizer/releases/download/v0.24.0/binlogviz_0.24.0_linux_amd64.tar.gz
@@ -335,14 +335,14 @@ install ./binlogviz /usr/local/bin/binlogviz
 也可以先从同一个 release tag 下载仓库内置安装脚本，再执行它：
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v0.24.0/install.sh
-sh ./install.sh --version v0.24.0
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
+sh ./install.sh            # latest release; pin with --version v0.24.0
 ```
 
 如果只想预览将要解析出的 artifact，而不实际下载：
 
 ```bash
-./install.sh --version v0.24.0 --dry-run
+./install.sh --dry-run
 ```
 
 ### 备选：从源码构建
