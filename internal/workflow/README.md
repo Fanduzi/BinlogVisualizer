@@ -15,7 +15,8 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>`, `binlogviz wo
 | `describe.go` | Static workflow preview model and deterministic description builder. |
 | `planref.go` | Plan-path trust validation: ensures `manifest.plan_path` resolves inside the workflow root before opening. |
 | `status.go` | Read-only runtime status model, artifact existence inspection, and dry resume preview builder. |
-| `clean.go` | Orphan discovery and apply-mode deletion for workflow-generated artifacts plus opt-in snapshot cleanup. |
+| `clean.go` | Orphan discovery and apply-mode deletion for workflow-generated artifacts plus opt-in snapshot cleanup. Runs `CheckCleanTrust` first and scans only kinds the manifest recorded, so preview and `--apply` never touch files they cannot attribute to a recorded step. |
+| `trust.go` | Manifest trust gate (ADR 0009 §8): `CheckManifestIntegrity` (missing workflow_name is corrupt 5, newer manifest_version is 9) and `CheckCleanTrust` (no recorded steps while artifacts exist is refused 6); both carry `details.reason: untrusted_manifest`. |
 | `export.go` | Manifest-driven, read-only export bundle assembly and deterministic zip archive writing. |
 
 ## Manifest Versioning

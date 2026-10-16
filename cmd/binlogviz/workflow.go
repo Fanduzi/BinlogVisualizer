@@ -205,6 +205,10 @@ func newWorkflowExportCommand() *cobra.Command {
 			if err := workflow.WriteExportArchive(archivePath, result); err != nil {
 				return err
 			}
+			if !result.PlanIncluded {
+				// Scripts that read only the exit code must still see this.
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: plan.yaml not included in export: %s\n", result.PlanWarning)
+			}
 
 			return writeWorkflowExportOutput(cmd.OutOrStdout(), opts.format, buildWorkflowExportOutput(manifest.WorkflowName, outputDir, archivePath, opts.format, result))
 		},
@@ -726,6 +730,7 @@ type workflowExportOutput struct {
 	Format            string   `json:"format"`
 	IncludedFiles     int      `json:"included_files"`
 	IncludedSnapshots int      `json:"included_snapshots"`
+	PlanIncluded      bool     `json:"plan_included"`
 	Warnings          []string `json:"warnings"`
 }
 
@@ -760,6 +765,7 @@ func buildWorkflowExportOutput(workflowName, outputDir, archivePath, format stri
 		Format:            "zip",
 		IncludedFiles:     len(result.Entries),
 		IncludedSnapshots: snapshotCount,
+		PlanIncluded:      result.PlanIncluded,
 		Warnings:          warnings,
 	}
 }
