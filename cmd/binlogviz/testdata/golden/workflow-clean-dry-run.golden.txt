@@ -17,6 +17,9 @@ Orphaned Artifacts
 Orphaned Snapshots
 - none
 
+Kept (not attributable to this workflow; --force deletes artifacts of recorded kinds)
+- none
+
 Deleted
 - none
 

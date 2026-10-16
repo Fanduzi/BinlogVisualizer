@@ -17,6 +17,9 @@ Orphaned Artifacts
 Orphaned Snapshots
 - stale-snapshot.json
 
+Kept (not attributable to this workflow; --force deletes artifacts of recorded kinds)
+- none
+
 Deleted
 - analyze/stale-analyze.json
 - compare/stale-report.html
@@ -24,6 +27,8 @@ Deleted
 - trend/stale-trend.html
 - trend/stale-trend.json
 - stale-snapshot.json
+Moved to trash: <output-dir>/.trash/<trash-id> (clean never empties it; delete it yourself when no longer needed)
+Moved to trash: <output-dir>/snapshots/.trash/<trash-id> (clean never empties it; delete it yourself when no longer needed)
 
 Skipped
 - none
