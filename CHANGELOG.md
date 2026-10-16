@@ -11,6 +11,7 @@ This file records user-visible changes for tagged releases.
 
 ### Fixed
 
+- A compressed transaction payload (`binlog_transaction_compression=ON`) that declares 1 GiB or more uncompressed now fails with `payload declares N uncompressed bytes, more than 1073741824` instead of the misleading `payload header field exceeds the event` (#278). MySQL writes sizes of 2^24 and up as a 9-byte field, which the header check refused. Either way the parse stops with exit 5; only the message changes.
 - **P1: `workflow clean --apply` deleted every output when the manifest was untrustworthy.** A `{}` manifest, or one with `steps` missing or `[]`, made clean treat every analyze/compare/trend output as orphaned, delete them all and exit 0. Clean (preview and `--apply`) now refuses and deletes nothing: a manifest missing required fields exits 5, and one that records no steps while artifacts exist exits 6, both with `details.reason: untrusted_manifest`. Clean also only considers files of kinds the manifest recorded steps for (ADR 0009 §8).
 - `workflow export` with a `{}` manifest exits 5 instead of writing an archive with only index.html and manifest.json. With no recorded steps it warns that artifacts are not included. When plan.yaml is not included it now warns on stderr too, and `--format json` reports `plan_included` (new field).
 

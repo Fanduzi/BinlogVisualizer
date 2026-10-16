@@ -263,7 +263,9 @@ func checkPayload(body []byte, fde []byte) error {
 		}
 		length := int(body[pos])
 		pos++
-		if length > 8 || pos+length > len(body) {
+		// net_store_length writes at most 9 bytes: 0xfe and 8 value bytes
+		// for values of 2^24 and up, which a 1 GiB size needs.
+		if length > 9 || pos+length > len(body) {
 			return corruptCause("payload header field exceeds the event")
 		}
 		// Field values are net_field_length encoded (MySQL's
