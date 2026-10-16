@@ -3,6 +3,8 @@
   "output_dir": "<output-dir>",
   "mode": "dry-run",
   "include_snapshots": false,
+  "force": false,
+  "ledger": "present",
   "artifact_orphans": [
     "analyze/stale-analyze.json",
     "compare/stale-report.html",
@@ -11,11 +13,13 @@
     "trend/stale-trend.json"
   ],
   "snapshot_orphans": [],
+  "kept_orphans": [],
   "deleted": [],
   "skipped": [],
   "counts": {
     "artifact_orphans": 5,
     "snapshot_orphans": 0,
+    "kept_orphans": 0,
     "deleted": 0,
     "skipped": 0
   }

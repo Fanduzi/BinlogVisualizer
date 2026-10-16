@@ -86,7 +86,9 @@ func TestWorkflowCleanOnlyDeletesAttributableKinds(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	dir := makeArtifactDir(t, `{"manifest_version":2,"workflow_name":"w","status":"success","steps":[
 		{"kind":"analyze","name":"week1","status":"success","artifacts":["analyze/week1.json"]}]}`)
-	if err := execRoot(t, "workflow", "clean", dir, "--apply"); err != nil {
+	// No ledger here: --force is the legacy-dir path, and it still only
+	// deletes outputs of kinds the manifest recorded.
+	if err := execRoot(t, "workflow", "clean", dir, "--apply", "--force"); err != nil {
 		t.Fatalf("clean: %v", err)
 	}
 	want := []string{"analyze/week1.json", "compare/w.html", "compare/w.json", "trend/t.html", "trend/t.json"}

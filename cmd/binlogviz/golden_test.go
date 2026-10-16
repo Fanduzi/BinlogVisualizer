@@ -20,6 +20,8 @@ var (
 	timestampPattern     = regexp.MustCompile(`"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"`)
 	manifestErrorPattern = regexp.MustCompile(`"error": "discover binlog files: .*"`)
 	planSHA256Pattern    = regexp.MustCompile(`"plan_sha256": "[0-9a-f]+"`)
+	runIDPattern         = regexp.MustCompile(`"run_id": "[^"]+"`)
+	trashIDPattern       = regexp.MustCompile(`/\.trash/\d{8}T\d{6}Z-[0-9a-f]{8}`)
 	resolvedFilesPattern = regexp.MustCompile(`(?s)"resolved_input_files": \[.*?\]`)
 )
 
@@ -486,6 +488,7 @@ func mustReadGolden(t *testing.T, name string) string {
 	t.Helper()
 
 	path := filepath.Join("testdata", "golden", name)
+	lastGoldenPath = path
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read golden %s: %v", path, err)
@@ -493,7 +496,15 @@ func mustReadGolden(t *testing.T, name string) string {
 	return string(data)
 }
 
+// lastGoldenPath is the golden file mustReadGolden read last; with
+// UPDATE_GOLDEN=1, diffGolden rewrites it with the new output.
+var lastGoldenPath string
+
 func diffGolden(want, got string) string {
+	if os.Getenv("UPDATE_GOLDEN") == "1" && lastGoldenPath != "" && strings.TrimSpace(want) != strings.TrimSpace(got) {
+		_ = os.WriteFile(lastGoldenPath, []byte(strings.TrimRight(got, "\n")+"\n"), 0o644)
+		return ""
+	}
 	if strings.TrimSpace(want) == strings.TrimSpace(got) {
 		return ""
 	}
@@ -788,6 +799,7 @@ func normalizeWorkflowManifest(raw, outputDir, snapshotDir string) string {
 	out = manifestErrorPattern.ReplaceAllString(out, `"error": "<discovery-error>"`)
 	// Normalize plan_sha256 (changes with plan content)
 	out = planSHA256Pattern.ReplaceAllString(out, `"plan_sha256": "<plan-sha>"`)
+	out = runIDPattern.ReplaceAllString(out, `"run_id": "<run-id>"`)
 	// Normalize resolved_input_files (contains temp paths)
 	out = resolvedFilesPattern.ReplaceAllString(out, `"resolved_input_files": ["<resolved-files>"]`)
 	return out
@@ -1071,7 +1083,7 @@ func TestWorkflowCleanTextGoldenApply(t *testing.T) {
 	outputDir := setupWorkflowCleanCommandFixture(t)
 
 	cmd := NewRootCommand()
-	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots"})
+	cmd.SetArgs([]string{"workflow", "clean", outputDir, "--apply", "--include-snapshots", "--snapshot-dir", filepath.Join(outputDir, "snapshots")})
 	cmd.SilenceUsage = true
 	cmd.SilenceErrors = true
 
@@ -1168,7 +1180,7 @@ func normalizeWorkflowCleanOutput(raw, outputDir string) string {
 	if testRoot != "" && testRoot != "." && testRoot != "/" {
 		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
 	}
-	return out
+	return trashIDPattern.ReplaceAllString(out, "/.trash/<trash-id>")
 }
 
 func normalizeWorkflowExportOutput(raw, outputDir, archivePath string) string {

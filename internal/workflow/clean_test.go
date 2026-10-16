@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -49,7 +50,7 @@ func TestDiscoverCleanupIncludesSnapshotsWhenRequested(t *testing.T) {
 	}
 
 	wantSnapshots := []string{"stale-snapshot.json"}
-	if !reflect.DeepEqual(result.SnapshotOrphans, wantSnapshots) {
+	if !reflect.DeepEqual(baseNames(result.SnapshotOrphans), wantSnapshots) {
 		t.Fatalf("snapshot orphans mismatch: got %v want %v", result.SnapshotOrphans, wantSnapshots)
 	}
 	assertNotContains(t, result.SnapshotOrphans, "week1.json", "live snapshot must not be orphaned")
@@ -63,6 +64,7 @@ func TestDiscoverCleanupIgnoresMissingSnapshotDirectory(t *testing.T) {
 		t.Fatalf("remove snapshot dir: %v", err)
 	}
 	createCleanArtifactOrphans(t, outputDir)
+	ledgerStale(t, outputDir, LedgerArtifact, "compare/stale-report.json")
 
 	result, err := DiscoverCleanCandidates(outputDir, manifest, true)
 	if err != nil {
@@ -84,7 +86,10 @@ func TestApplyCleanupDeletesArtifactOrphans(t *testing.T) {
 		t.Fatalf("discover cleanup: %v", err)
 	}
 
-	applied := ApplyClean(result)
+	applied, err := ApplyClean(result)
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
 
 	if applied.Mode != "apply" {
 		t.Fatalf("expected mode apply, got %q", applied.Mode)
@@ -127,9 +132,12 @@ func TestApplyCleanupDeletesSnapshotOrphansWhenIncluded(t *testing.T) {
 		t.Fatalf("discover cleanup: %v", err)
 	}
 
-	applied := ApplyClean(result)
+	applied, err := ApplyClean(result)
+	if err != nil {
+		t.Fatalf("apply: %v", err)
+	}
 
-	assertContains(t, applied.Deleted, "stale-snapshot.json", "snapshot orphan should be deleted")
+	assertContains(t, baseNames(applied.Deleted), "stale-snapshot.json", "snapshot orphan should be deleted")
 	if _, err := os.Stat(filepath.Join(manifest.SnapshotDir, "stale-snapshot.json")); !os.IsNotExist(err) {
 		t.Fatalf("expected stale snapshot to be deleted, stat err=%v", err)
 	}
@@ -161,12 +169,15 @@ func TestApplyCleanupRecordsSkippedDeletionFailures(t *testing.T) {
 		t.Fatalf("write blocking file: %v", err)
 	}
 
-	applied := ApplyClean(result)
-
-	assertContains(t, applied.Skipped, "compare/stale-report.json", "failed deletion should be recorded in skipped")
-	assertNotContains(t, applied.Deleted, "compare/stale-report.json", "failed deletion must not be marked deleted")
+	// The preflight refuses before anything moves.
+	if _, err := ApplyClean(result); err == nil || !strings.Contains(err.Error(), "nothing was moved") {
+		t.Fatalf("expected a preflight refusal, got %v", err)
+	}
 	if _, err := os.Stat(blocked); err != nil {
 		t.Fatalf("expected blocked path to remain after failed delete: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "trend", "stale-trend.json")); err != nil {
+		t.Fatalf("a preflight refusal must leave every file in place: %v", err)
 	}
 }
 
@@ -177,6 +188,7 @@ func makeCleanFixture(t *testing.T) (string, Manifest) {
 	snapshotDir := filepath.Join(t.TempDir(), "snapshots")
 	manifest := Manifest{
 		WorkflowName: "cleanup-test",
+		Status:       "success",
 		SnapshotDir:  snapshotDir,
 		Steps: []StepRecord{
 			{Kind: "analyze", Name: "week1", Status: "success", Artifacts: []string{"analyze/week1.json"}, SnapshotName: "week1"},
@@ -200,6 +212,48 @@ func createCleanOrphans(t *testing.T, outputDir, snapshotDir string) {
 	if err := os.WriteFile(filepath.Join(snapshotDir, "ignored.txt"), []byte("ignored"), 0o644); err != nil {
 		t.Fatalf("write ignored snapshot file: %v", err)
 	}
+	// The stale files were written by an earlier run of this workflow.
+	ledgerStale(t, outputDir, LedgerArtifact, "compare/stale-report.json", "compare/stale-report.html",
+		"trend/stale-trend.json", "trend/stale-trend.html", "analyze/stale-analyze.json")
+	ledgerStaleSnapshot(t, outputDir, snapshotDir, "stale-snapshot.json")
+}
+
+func ledgerStaleSnapshot(t *testing.T, outputDir, snapshotDir, name string) {
+	t.Helper()
+	sum, err := FileSHA256(filepath.Join(snapshotDir, name))
+	if err != nil {
+		t.Fatalf("hash %s: %v", name, err)
+	}
+	if err := AppendLedger(outputDir, []LedgerEntry{{Path: name, Kind: LedgerSnapshot, Step: "analyze:stale-snapshot", RunID: "r0", SHA256: sum}}); err != nil {
+		t.Fatalf("append ledger: %v", err)
+	}
+}
+
+func ledgerStale(t *testing.T, outputDir, kind string, paths ...string) {
+	t.Helper()
+	var entries []LedgerEntry
+	for _, p := range paths {
+		full := p
+		if kind == LedgerArtifact {
+			full = filepath.Join(outputDir, p)
+		}
+		sum, err := FileSHA256(full)
+		if err != nil {
+			t.Fatalf("hash %s: %v", p, err)
+		}
+		entries = append(entries, LedgerEntry{Path: p, Kind: kind, Step: "earlier", RunID: "r0", SHA256: sum})
+	}
+	if err := AppendLedger(outputDir, entries); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func baseNames(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, filepath.Base(p))
+	}
+	return out
 }
 
 func createCleanArtifactOrphans(t *testing.T, outputDir string) {

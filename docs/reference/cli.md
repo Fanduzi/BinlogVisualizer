@@ -760,7 +760,9 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--apply` | `false` | Delete discovered cleanup candidates instead of only previewing them. |
+| `--apply` | `false` | Move discovered cleanup candidates into `<output_dir>/.trash/<id>/` (snapshots: `<snapshot_dir>/.trash/<id>/`) instead of only previewing them. Clean never empties the trash; delete it yourself. |
+| `--snapshot-dir` | default snapshot dir | Snapshot directory used by `--include-snapshots`. Clean never takes it from the manifest alone: if `manifest.snapshot_dir` names another directory, clean exits 6 (`snapshot_dir_mismatch`). |
+| `--force` | `false` | Also delete unattributed outputs of recorded step kinds, and allow a directory without `ledger.jsonl`. Never reaches beyond the real `analyze/`, `compare/`, `trend/` dirs. |
 | `--include-snapshots` | `false` | Include orphaned snapshot JSON files from `manifest.snapshot_dir`. |
 | `--format` | `text` | Cleanup output format: `text` or `json`. |
 
@@ -776,6 +778,11 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 - it never deletes `index.html`
 - it never deletes plan files
 - it never deletes unknown files outside the deterministic workflow artifact set
+- it deletes only files recorded in `ledger.jsonl` with a matching sha256 (relative paths only; an absolute or `..` path makes the ledger untrusted, exit 5)
+- it refuses (exit 6, `trust_boundary`) when `analyze/`, `compare/` or `trend/` is a symlink, even with `--force`, and never follows a symlinked file
+- deletion is a rename into `.trash/<id>/` inside the same root, never an unlink; every target on both sides is checked before the first move, so a refusal leaves nothing half-moved
+- with `--include-snapshots`, the snapshot dir is `--snapshot-dir` or the default, and it must match the manifest's `snapshot_dir` (exit 6, `snapshot_dir_mismatch`); exports store `snapshot_dir` as the relative `snapshots`, so after restoring an archive pass `--snapshot-dir <restored>/snapshots`
+- `workflow run`, `resume` and `clean` hold an exclusive lock on `<output_dir>/.lock`; a concurrent one exits 6 (`locked`)
 
 Known generated extensions in scope:
 
