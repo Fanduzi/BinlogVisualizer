@@ -721,7 +721,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 		b.WriteByte('\n')
 	}
 	if postImage {
-		b.WriteString("-- --conflict guard: each undo matches the logged after image, so a row changed after the batch is left unchanged (0 rows affected).\n")
+		b.WriteString("-- --conflict guard: each undo matches the logged after image, so a row changed after the batch is left unchanged (0 rows affected). An undo that moves a primary key back changes no row when another row holds that key.\n")
 	}
 	b.WriteString("SET NAMES utf8mb4;\n")
 	b.WriteString("SET time_zone = '+00:00';\n")
@@ -803,7 +803,8 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}, cond strin
 
 // renderUndo is renderUndoStatement with the --conflict guard switch. With
 // postImage, an UPDATE or DELETE undo matches every logged after-image
-// column, and a DELETE undo inserts only when the key is still absent.
+// column, a DELETE undo inserts only when the key is still absent, and an
+// UPDATE undo that moves the key back runs only when no other row holds it.
 func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postImage bool) (string, error) {
 	table := quoteIdent(row.Schema) + "." + quoteIdent(row.Table)
 	var statement string
@@ -835,7 +836,11 @@ func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postIm
 		for i := range cols {
 			sets[i] = quoteIdent(cols[i]) + " = " + vals[i]
 		}
-		statement, err = undoWhereImage(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After, cond, postImage)
+		where := cond
+		if postImage {
+			where = joinConds(movedKeyFreeCond(row, table), cond)
+		}
+		statement, err = undoWhereImage(row, "UPDATE "+table+" SET "+strings.Join(sets, ", "), row.After, where, postImage)
 	default:
 		statement, err = undoWhereImage(row, "DELETE FROM "+table, row.After, cond, postImage)
 	}
@@ -846,6 +851,44 @@ func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postIm
 		statement = sqlModeWrap(statement, drops)
 	}
 	return statement, nil
+}
+
+// movedKeyFreeCond is the --conflict guard condition for an UPDATE undo that
+// moves the primary key back (#270). When another row holds the old key, the
+// move-back would fail with ERROR 1062 and roll back the whole block; with
+// this condition it changes no row, like any other row changed later. The row
+// being undone is excluded, so a key change the collation treats as equal
+// ('abc' to 'ABC') is still undone. The inner SELECT is a derived table with
+// LIMIT so MySQL materializes it: a plain subquery on the updated table is
+// ERROR 1093. It is "" when the key did not change or there is no key.
+func movedKeyFreeCond(row model.FlashRow, table string) string {
+	if row.NoPK || len(row.PK) == 0 || !keyMoved(row) {
+		return ""
+	}
+	return "NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM " + table + " WHERE " + keyMatch(row, row.Before) + " AND NOT (" + keyMatch(row, row.After) + ") LIMIT 1) AS binlogviz_key)"
+}
+
+// keyMoved reports whether an UPDATE logged a different primary-key value.
+func keyMoved(row model.FlashRow) bool {
+	for _, i := range row.PK {
+		if i < 0 || i >= len(row.Before) || i >= len(row.After) {
+			return false
+		}
+		if row.Before[i] != row.After[i] {
+			return true
+		}
+	}
+	return false
+}
+
+func joinConds(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return a + " AND " + b
 }
 
 // relaxedModes lists the sql_mode flags that would reject a value this row
