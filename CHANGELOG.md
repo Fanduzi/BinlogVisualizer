@@ -4,9 +4,22 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.26.1
+
+Release date: 2026-10-17
+
+Highlights:
+
+- `flashback --conflict guard` no longer fails with `ERROR 1062` when a primary key was moved and the old key reused later (#270, #299). No breaking changes.
+
+Related notes:
+
+- [v0.26.1 release notes](docs/releases/release-notes-v0.26.1.md)
+- [v0.26.1 中文发行说明](docs/releases/release-notes-v0.26.1.zh-CN.md)
+
 ### Fixed
 
-- `flashback --conflict guard` no longer fails with `ERROR 1062` when an UPDATE moved a primary key and a later row reused the old key. The move-back now changes no row, like any other row changed later, and the rest of the block applies; the default `--conflict refuse` still exits 7 for it (#270).
+- `flashback --conflict guard` no longer fails with `ERROR 1062` when an UPDATE moved a primary key and a later row reused the old key. The move-back now changes no row, like any other row changed later, and the rest of the block applies; the default `--conflict refuse` still exits 7 for it (#270, #299).
 
 ## v0.26.0
 
