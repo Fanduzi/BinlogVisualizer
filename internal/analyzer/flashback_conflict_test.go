@@ -131,6 +131,45 @@ func TestFlashbackConflictGuardMatchesPostImage(t *testing.T) {
 	}
 }
 
+// A key-moving UPDATE undo under --conflict guard skips the move-back when a
+// later row reuses the old key, instead of failing with ERROR 1062 (#270).
+// The default policy still refuses; an unmoved key gets no extra condition.
+func TestFlashbackConflictGuardKeyMoveSkipsReusedKey(t *testing.T) {
+	move := func(id, to string) model.FlashRow {
+		return model.FlashRow{Schema: "e", Table: "pk", Op: "UPDATE", Columns: []string{"id", "v"}, Before: []string{id, "0"}, After: []string{to, "0"}, PK: []int{0}}
+	}
+	same := model.FlashRow{Schema: "e", Table: "pk", Op: "UPDATE", Columns: []string{"id", "v"}, Before: []string{"9", "0"}, After: []string{"9", "1"}, PK: []int{0}}
+	reuse := model.FlashRow{Schema: "e", Table: "pk", Op: "INSERT", Columns: []string{"id", "v"}, After: []string{"2", "7"}, PK: []int{0}}
+	txns := []conflictTxn{
+		{"5", []model.FlashRow{move("1", "101"), move("2", "102"), same}},
+		{"6", []model.FlashRow{reuse}},
+	}
+	refuse := conflictRun(t, "", txns...)
+	if _, err := refuse.FlashbackSQL(); err == nil {
+		t.Fatal("default policy must refuse the reused key")
+	}
+	sql, err := conflictRun(t, "guard", txns...).FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"UPDATE `e`.`pk` SET `id` = 2, `v` = 0 WHERE `id` <=> 102 AND `v` <=> 0 AND NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM `e`.`pk` WHERE `id` <=> 2 AND NOT (`id` <=> 102) LIMIT 1) AS binlogviz_key);",
+		"UPDATE `e`.`pk` SET `id` = 1, `v` = 0 WHERE `id` <=> 101 AND `v` <=> 0 AND NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM `e`.`pk` WHERE `id` <=> 1 AND NOT (`id` <=> 101) LIMIT 1) AS binlogviz_key);",
+		"UPDATE `e`.`pk` SET `id` = 9, `v` = 0 WHERE `id` <=> 9 AND `v` <=> 1;",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("missing %s in:\n%s", want, sql)
+		}
+	}
+	plain, err := conflictRun(t, "", txns[0]).FlashbackSQL()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain, "binlogviz_key") {
+		t.Fatalf("default policy must not add the key check:\n%s", plain)
+	}
+}
+
 func TestFlashbackPlanReportsRowsAndConflicts(t *testing.T) {
 	a := conflictRun(t, "",
 		conflictTxn{"5", []model.FlashRow{orderUpdate("1014", "18.50", "17.50"), orderUpdate("1015", "1", "2")}},

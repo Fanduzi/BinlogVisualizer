@@ -522,6 +522,44 @@ COMMIT;`)
 	flashbackGeneratedLossE2E(t)
 	flashbackTargetGuardE2E(t)
 	flashbackDecimalGeneratedE2E(t)
+	flashbackGuardKeyMoveE2E(t)
+}
+
+// flashbackGuardKeyMoveE2E (#270): one transaction moves keys 1..3 to
+// 101..103, then a later one reuses key 2. The default policy refuses with
+// exit 7. --conflict guard applies on MySQL 8.0 without ERROR 1062 or
+// ERROR 1093: 101 and 103 move back, 102 stays, and the later row (2, 7) is
+// kept.
+func flashbackGuardKeyMoveE2E(t *testing.T) {
+	t.Helper()
+	const gtid = "b1a2c3d4-0270-4000-8000-000000000270:1"
+	e2eMySQL(t, `
+DROP TABLE IF EXISTS shop.pkmove;
+CREATE TABLE shop.pkmove (id INT NOT NULL, v INT NOT NULL, PRIMARY KEY (id));
+INSERT INTO shop.pkmove VALUES (1, 0), (2, 0), (3, 0);`)
+	e2eMySQL(t, "FLUSH LOGS")
+	e2eMySQL(t, "SET GTID_NEXT = '"+gtid+"';\nUPDATE shop.pkmove SET id = id + 100 WHERE id <= 3;\nSET GTID_NEXT = 'AUTOMATIC';")
+	e2eMySQL(t, "INSERT INTO shop.pkmove VALUES (2, 7)")
+	path := e2eIncidentBinlog(t)
+
+	stdout, stderr, err := executeFlashbackLikeMain(t, path, "--include-gtids", gtid)
+	if got := ExitCode(err); got != 7 || stdout != "" {
+		t.Fatalf("default policy: exit %d, want 7; err=%v\nstdout:\n%s\nstderr:\n%s", got, err, stdout, stderr)
+	}
+	sql, stderr, err := executeFlashbackLikeMain(t, path, "--include-gtids", gtid, "--conflict", "guard")
+	if err != nil {
+		t.Fatalf("guard: %v\n%s", err, stderr)
+	}
+	if strings.Count(sql, "AS binlogviz_key)") != 3 {
+		t.Fatalf("guard sql has no key check on every move-back:\n%s", sql)
+	}
+	if out, err := e2eMySQLResult(t, sql); err != nil {
+		t.Fatalf("guard apply: %v\n%s\nsql:\n%s", err, out, sql)
+	}
+	got := strings.TrimSpace(e2eMySQL(t, "SELECT id, v FROM shop.pkmove ORDER BY id"))
+	if want := "1\t0\n2\t7\n3\t0\n102\t0"; got != want {
+		t.Fatalf("pkmove rows\ngot:\n%s\nwant:\n%s\nsql:\n%s", got, want, sql)
+	}
 }
 
 // flashbackSchemaMatchE2E refuses a schema file that is newer than the incident table.
