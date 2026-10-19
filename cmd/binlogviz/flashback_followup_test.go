@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"binlogviz/internal/i18n"
 )
 
 // The least-privilege e2e grants this list on the data schema. Every place
@@ -160,7 +162,6 @@ func TestFlashbackRefusalJSONReasons(t *testing.T) {
 			name:   "ddl",
 			args:   []string{"flashback", mustFixturePath(t, "mysql-8.0.46-index-ddl.binlog")},
 			reason: "ddl_in_range",
-			table:  "idxbug",
 			msg:    "DDL in the selected range",
 		},
 		{
@@ -192,11 +193,40 @@ func TestFlashbackRefusalJSONReasons(t *testing.T) {
 			if tc.table != "" && body.Error.Details["table"] != tc.table {
 				t.Fatalf("table %v want %s", body.Error.Details["table"], tc.table)
 			}
+			if tc.reason == "ddl_in_range" {
+				if _, ok := body.Error.Details["table"]; ok {
+					t.Fatalf("ddl with no table put %v in details.table", body.Error.Details["table"])
+				}
+			}
 			if !strings.Contains(body.Error.Message, tc.msg) {
 				t.Fatalf("message %s", body.Error.Message)
 			}
-			if tc.reason == "row_metadata" && !strings.Contains(body.Error.Message, "--schema-file does not supply row metadata") {
+			if tc.reason == "row_metadata" && (!strings.Contains(body.Error.Message, "--schema-file does not supply row metadata") || !strings.Contains(body.Error.Message, "Restore the table from a backup")) {
 				t.Fatalf("metadata message is not actionable: %s", body.Error.Message)
+			}
+		})
+	}
+}
+
+func TestFlashbackHelpNamesCommitMarker(t *testing.T) {
+	for _, lang := range []string{"en", "zh-CN"} {
+		t.Run(lang, func(t *testing.T) {
+			t.Cleanup(func() {
+				langFlag = ""
+				i18n.ResetForTesting()
+			})
+			langFlag = lang
+			root := NewRootCommand()
+			var out strings.Builder
+			root.SetOut(&out)
+			root.SetErr(&out)
+			root.SetArgs([]string{"--lang", lang, "flashback", "--help"})
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			help := out.String()
+			if !strings.Contains(help, "binlogviz: undo committed") || !strings.Contains(help, "pipefail") {
+				t.Fatalf("--help does not say how to tell a commit:\n%s", help)
 			}
 		})
 	}

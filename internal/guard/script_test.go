@@ -324,12 +324,16 @@ func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
 	if !strings.Contains(UndoOpenSQL(), "SET @binlogviz_mode = 1;") {
 		t.Fatal("XA START must run inside the procedure")
 	}
+	if !strings.Contains(body, "ROW_COUNT()") || !strings.Contains(body, "MESSAGE_TEXT") || !strings.Contains(body, "1287") {
+		t.Fatal("mode 0 must count rows and keep the first real error, skipping 1287")
+	}
 	finish := finishBody(procedureName("0123456789abcdef"), 1)
 	drop := strings.Index(finish, "DROP PROCEDURE IF EXISTS")
+	mark := strings.Index(finish, "binlogviz: undo committed")
 	msg := strings.Index(finish, rollbackMessage)
-	bad := strings.Index(finish, "SELECT 1 UNION ALL SELECT 1")
-	if drop < 0 || msg < 0 || bad < 0 || !(drop < msg && msg < bad) {
-		t.Fatalf("client must drop, then say so, then fail\n%s", finish)
+	bad := strings.Index(finish, "SET SESSION sql_mode = @binlogviz_fail")
+	if drop < 0 || mark < 0 || msg < 0 || bad < 0 || !(drop < mark && mark < msg && msg < bad) {
+		t.Fatalf("client must drop, then mark a commit, then say so, then fail\n%s", finish)
 	}
 }
 

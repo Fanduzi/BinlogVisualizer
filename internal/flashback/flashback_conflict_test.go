@@ -236,6 +236,14 @@ func TestFlashbackPlanOnRefusalNamesReason(t *testing.T) {
 		plan.Rows != 0 || plan.Tables == nil || plan.Warnings == nil || plan.Conflicts.Listed == nil {
 		t.Fatalf("plan: %s", b.String())
 	}
+	var raw map[string]any
+	if err := json.Unmarshal([]byte(b.String()), &raw); err != nil {
+		t.Fatal(err)
+	}
+	refusal, _ := raw["refusal"].(map[string]any)
+	if refusal["reason"] != "row_capture" || refusal["table"] != "shop.orders" {
+		t.Fatalf("plan refusal reason: %s", b.String())
+	}
 }
 
 // A plan with nothing refused has refusal null and warnings as objects.
