@@ -47,6 +47,8 @@ The published finish calls the procedure with `@binlogviz_want = 0`, which is `X
 |---|---|---|---|---|
 | Intact script, every statement succeeds | trailer error, rollback, no change | exit 0 | restores the pre-change rows | restores the pre-change rows |
 | Intact script, a statement fails (missing table or column) | client stops, rollback, no change | exit 0 | client stops, rollback, no change | ERROR 1146 or 1054, then rollback, no change |
+| Intact script, a statement fails before `XA START` | client stops, no change | exit 0 | client stops, no change | the failure stays recorded; rollback or no commit; no change |
+| `CALL` cannot run | client stops, no change | exit 0 | client stops, no change | `XA COMMIT` is not reached; no change |
 | Edited value, deleted statement, or reordered statements | no commit | exit 6, `digest_mismatch` | not produced | not produced |
 | Appended statement, or bytes after the trailer | no commit | exit 6, `appended` | not produced | not produced |
 | File cut short | no commit; a following `BEGIN`, `START TRANSACTION`, DDL, or second script in the same session is ERROR 1399 and does not commit the prefix | exit 6, `truncated` or `missing_trailer` | not produced | not produced |
@@ -63,7 +65,7 @@ These refuse or leave the data unchanged when the tool can make them do that. Th
 - A hand-pasted `XA END '<token>'` and `XA COMMIT '<token>' ONE PHASE`, using the id printed in the file, commits the open undo. Plain `COMMIT` does not: inside the XA transaction it is ERROR 1399. The published file contains no `XA COMMIT` on the path `mysql` runs; the commit text is only in the procedure's branch that `verify` selects.
 - A non-transactional table (MyISAM and anything that does not join the XA transaction) makes the row change durable at the statement. `XA ROLLBACK` does not undo it. The tool cannot see the engine in a row event. Do not point a flashback at a non-transactional table.
 - A client that does not implement `DELIMITER` cannot apply the script. The documented client is stock `mysql`.
-- Without `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, `DROP PROCEDURE` or `CREATE PROCEDURE` fails before `XA START`. The undo does not run and nothing is committed. The amendment lists the grant and the privileges the script does not need.
+- Without `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, a statement before `XA START` fails. `mysql --force` continues. The failure stays recorded, so the finish rolls back or the commit never runs. No undo row is committed. The same holds when `CALL` cannot run. The second amendment states that invariant.
 - A cut file leaves its procedure behind and an `ACTIVE` XA transaction until the session disconnects. Disconnect rolls the XA back. Run the next script in a new session. `verify` creates a new procedure name each time and drops that procedure at the end, so a leftover does not collide with the next apply. Clean the schema with `DROP DATABASE binlogviz` as an account that can drop those routines.
 - Two concurrent applies whose scripts hash to the same token share an XA id. The second `XA START` fails. With `--force` the session is set read-only, so that second script does not autocommit the undo.
 - The undo holds locks until the finish and can exceed `max_binlog_cache_size`. The finish does not `XA PREPARE`. A failed finish does not leave a prepared transaction for another session to commit. There is no per-block resume.
@@ -90,7 +92,7 @@ Tracks #333 and #334. The seal, the digest, the exit codes, and `schema_version`
 
 Checked on MySQL 8.0.46 and MySQL 5.7.44, binary logging on, `binlog_format=ROW`.
 
-`DROP PROCEDURE IF EXISTS binlogviz.binlogviz_fb_end_<token>` returns ERROR 1370 (`alter routine command denied`) when the account has `CREATE` and `CREATE ROUTINE` but not `ALTER ROUTINE`. That includes a procedure that does not exist. The client stops before `XA START`. Nothing is committed.
+`DROP PROCEDURE IF EXISTS binlogviz.binlogviz_fb_end_<token>` returns ERROR 1370 (`alter routine command denied`) when the account has `CREATE` and `CREATE ROUTINE` but not `ALTER ROUTINE`. That includes a procedure that does not exist. Without `--force` the client stops before `XA START`. With `--force` it continues, and `CREATE PROCEDURE` can succeed. A check that reads `@@error_count` only after that success does not see the 1370. The second amendment records the failure where a later success cannot clear it. Nothing is committed.
 
 ```sql
 GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
@@ -133,3 +135,38 @@ Two concurrent applies whose scripts hash to the same token still share an XA id
 - **Keep the stable name and print a cleanup command on ERROR 1227.** The least-privilege apply still cannot run until an administrator drops the routine.
 - **Store a per-generation name in the file.** A newly generated file misses an older leftover. The same file an administrator already ran still collides.
 - **`SQL SECURITY INVOKER` as the fix for ERROR 1227.** It changes execution rights, not who can drop the routine. New scripts still use it so the body runs as the invoker. The XA transaction belongs to that session.
+
+## Amendment (2026-10-19): a pre-XA failure stays poisoned under `--force`
+
+Tracks the apply of the #333 grant set. The seal, the digest, the exit codes, `schema_version` 1, and `plan_version` 2 stay as above. This adds an invariant to decision 1.
+
+### Invariant
+
+Under `mysql --force`, any statement that fails before `XA START`, or while that XA transaction is open, ends in `XA ROLLBACK` or in no commit. The undo changes zero rows. A later statement that succeeds must not clear the failure.
+
+`@@error_count`, read by the next statement, is only the previous statement. A successful statement sets it back to 0. `--force` does not change that. It only sends the next statement.
+
+The procedure section is one raw piece: `CREATE DATABASE`, `DROP PROCEDURE`, then `CREATE PROCEDURE`. The check that used to run after the whole piece saw only `CREATE PROCEDURE`. An account missing `ALTER ROUTINE` fails the `DROP` with ERROR 1370. `--force` continues. `CREATE PROCEDURE` succeeds, `@@error_count` is 0, `@binlogviz_applied` stays 1, and the finish commits the undo. Without `--force` the client stops on the 1370 and nothing is committed. That part was already true.
+
+The same hole is any failure in that piece that is followed by a successful statement. Missing `CREATE`, missing `CREATE ROUTINE`, and an existing `binlogviz` schema with no privileges are the other pre-XA denials. `CALL` with `automatic_sp_privileges=0` and no `EXECUTE` fails later, at the finish, with ERROR 1370.
+
+### Decision
+
+After each server statement in the procedure section, record the same flag the undo already uses:
+
+```sql
+SET @binlogviz_applied = IF(@binlogviz_applied <=> 1 AND @@error_count = 0, 1, 0);
+```
+
+The three statements are `CREATE DATABASE IF NOT EXISTS binlogviz`, `DROP PROCEDURE IF EXISTS`, and `CREATE PROCEDURE`. The check sits after each one the server runs. It is after `DELIMITER ;` for the procedure, because `DELIMITER` is a client command and the body is one statement. The check after the raw piece stays. It cannot set the flag back to 1.
+
+`@binlogviz_applied` is set to 1 only in the digest init. No later statement assigns 1. A success after a failure leaves it 0. The finish commits only when the flag is still 1, together with the seal and `@binlogviz_want`. `verify` is still what sets `@binlogviz_want = 1`.
+
+`XA COMMIT` exists only inside that procedure, on the branch the flag selects. A `CALL` that the server rejects does not enter the body, so it does not commit. The following `DROP PROCEDURE`, while the XA transaction is `ACTIVE`, is ERROR 1399 and does not commit either. Disconnect rolls an `ACTIVE` XA transaction back.
+
+Reproduced on MySQL 8.0.36 and MySQL 5.7.44: missing `ALTER ROUTINE`, then `mysql --force`, and the undo committed. `schema_version` stays 1. `plan_version` stays 2. Regenerate the script. The SQL `verify` prints is still not byte-identical to the file: the finish procedure name and the trailer hex differ.
+
+### Not chosen
+
+- **A privilege precheck before the procedure section.** A precheck that errors is one more statement. `--force` continues, and a later success clears `@@error_count` unless a flag recorded the error. The precheck also only names the privileges we listed. It misses every other failure before `XA START`: a full disk, ERROR 1227, a read-only session, a rejected procedure. MySQL 5.7 and 8.0 do not share one privilege catalog, and a role or a partial revoke makes `SHOW GRANTS` a poor oracle.
+- **Skip each later statement unless the earlier one succeeded.** That is a chain. A failure that is not in the chain still reaches `XA COMMIT` when a later statement succeeds. The flag does not need the list. The finish already refuses to commit when the flag is 0.
