@@ -435,6 +435,14 @@
     "description": "Flashback default database for an unqualified schema file",
     "other": "Database for unqualified names in --schema-file when the file has no USE and no mysqldump Database header. Optional; flashback stays offline"
   },
+  "cmd.flashback.flag.sqlContext": {
+    "description": "Flashback SQL context flag. summary and full do not change the undo SQL. off is refused.",
+    "other": "summary (default) or full. Neither changes the undo SQL. off is refused: the script is the row values. This is not analyze query text, DDL statements, or --show-patterns"
+  },
+  "cmd.flashback.help.examples": {
+    "description": "Flashback help heading for examples",
+    "other": "Examples"
+  },
   "cmd.flashback.help.usage": {
     "description": "Flashback help heading for usage",
     "other": "Usage"

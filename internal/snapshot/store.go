@@ -31,6 +31,9 @@ type Entry struct {
 	CreatedAt string `json:"created_at"`
 	InputMode string `json:"input_mode"`
 	Window    Window `json:"window"`
+	// DiagnosticsMode is set when the file is a reduced analyze document
+	// (a diagnostics_mode string other than full). Omitted otherwise (ADR 0011 §3).
+	DiagnosticsMode string `json:"diagnostics_mode,omitempty"`
 }
 
 // Summary captures top-level analyze totals stored with a snapshot.
@@ -212,12 +215,18 @@ func ListSnapshots(dir string) ([]Entry, error) {
 			Path: path,
 		}
 		if data, err := os.ReadFile(path); err == nil {
+			mode := reducedDiagnosticsMarker(data)
 			desc, err := decodeDescriptor(path, data, name)
 			if err == nil {
-				resultEntry.Label = desc.Label
-				resultEntry.CreatedAt = desc.CreatedAt
-				resultEntry.InputMode = desc.InputMode
-				resultEntry.Window = desc.Window
+				applyListEntry(&resultEntry, desc)
+			} else if mode != "" {
+				// A reduced document fails decode on purpose. List still
+				// names it, and keeps snapshot metadata when the file has it.
+				resultEntry.DiagnosticsMode = mode
+				if meta, merr := descriptorFromStored(path, data, name); merr == nil && snapshotBlockPresent(data) {
+					applyListEntry(&resultEntry, meta)
+					resultEntry.DiagnosticsMode = mode
+				}
 			}
 		}
 		result = append(result, resultEntry)
@@ -312,11 +321,48 @@ func DeleteSnapshot(dir, name string) (string, error) {
 	return path, nil
 }
 
+func applyListEntry(entry *Entry, desc Descriptor) {
+	entry.Label = desc.Label
+	entry.CreatedAt = desc.CreatedAt
+	entry.InputMode = desc.InputMode
+	entry.Window = desc.Window
+}
+
+// reducedDiagnosticsMarker is the diagnostics_mode string when the file is
+// reduced. JSON null and a missing key are absent. A non-string is not a
+// marker: compare reports that as corrupt, exit 5 (ADR 0011 §3).
+func reducedDiagnosticsMarker(data []byte) string {
+	var raw struct {
+		Mode json.RawMessage `json:"diagnostics_mode"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil || len(raw.Mode) == 0 || string(raw.Mode) == "null" {
+		return ""
+	}
+	var mode string
+	if err := json.Unmarshal(raw.Mode, &mode); err != nil || mode == "" || mode == "full" {
+		return ""
+	}
+	return mode
+}
+
+func snapshotBlockPresent(data []byte) bool {
+	var raw struct {
+		Snapshot json.RawMessage `json:"snapshot"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil || len(raw.Snapshot) == 0 || string(raw.Snapshot) == "null" {
+		return false
+	}
+	return true
+}
+
 func decodeDescriptor(path string, data []byte, fallbackName string) (Descriptor, error) {
 	if _, err := comparepkg.DecodeReportJSON(data); err != nil {
 		return Descriptor{}, clierr.Wrap(clierr.KindCorrupt, err)
 	}
+	return descriptorFromStored(path, data, fallbackName)
+}
 
+func descriptorFromStored(path string, data []byte, fallbackName string) (Descriptor, error) {
 	var stored storedSnapshot
 	if err := json.Unmarshal(data, &stored); err != nil {
 		return Descriptor{}, clierr.Wrap(clierr.KindCorrupt, err)

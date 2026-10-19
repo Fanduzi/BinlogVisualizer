@@ -29,6 +29,10 @@ func newSnapshotCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot",
 		Short: "Manage snapshots",
+		Example: `  binlogviz snapshot save analyze.json --name incident-current
+  binlogviz snapshot list
+  binlogviz snapshot list --format json
+  binlogviz snapshot show incident-current`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -319,18 +323,19 @@ func writeSnapshotJSON(out io.Writer, payload any) error {
 
 func writeSnapshotListText(out io.Writer, entries []snapshotpkg.Entry) error {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "NAME\tLABEL\tCREATED_AT\tINPUT_MODE\tWINDOW"); err != nil {
+	if _, err := fmt.Fprintln(tw, "NAME\tLABEL\tCREATED_AT\tINPUT_MODE\tWINDOW\tDIAGNOSTICS"); err != nil {
 		return err
 	}
 	for _, entry := range entries {
 		if _, err := fmt.Fprintf(
 			tw,
-			"%s\t%s\t%s\t%s\t%s\n",
+			"%s\t%s\t%s\t%s\t%s\t%s\n",
 			entry.Name,
 			orDash(entry.Label),
 			orDash(entry.CreatedAt),
 			orDash(entry.InputMode),
 			formatSnapshotWindow(entry.Window),
+			orDash(entry.DiagnosticsMode),
 		); err != nil {
 			return err
 		}

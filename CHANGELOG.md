@@ -4,6 +4,21 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking for `--diagnostics summary` only (#308, ADR 0011).** `diagnostics.ddl_events` is the first `--top` events in timeline order (default 10), and `diagnostics.ddl_events_omitted` counts the rest, including 0. v0.28.0 listed every DDL event in summary. `report_version` stays 3: default and `--diagnostics full` JSON are byte-identical, and an added key on the opt-in summary document is not a `report_version` bump (ADR 0010). `full` still lists every DDL event and does not emit `ddl_events_omitted`.
+
+### Added
+
+- `snapshot list` marks a reduced document (`--diagnostics summary` or `off` copied into the snapshot dir) with a `DIAGNOSTICS` column and, in JSON, `diagnostics_mode` on that entry. List still exits 0. `schema_version` stays 1. `snapshot show`, compare, and trend still refuse the file with exit 9 (#308).
+- `analyze`, `flashback`, `snapshot`, `compare`, `trend`, and `workflow` `--help` include examples. The analyze and flashback examples are the spike, GTID, `flashback --plan`, `--conflict guard` recipe (#255).
+- `docs/agents/USING-BINLOGVIZ.md` (and zh-CN) is the operator and agent usage guide. Release archives include it, plus `README.md` and `README_ZH.md` (#255). The other files in `docs/agents/` stay internal delivery notes.
+
+### Fixed
+
+- An explicitly set `--diagnostics ""` is a usage error (exit 3). The library zero value is still `full` (#308).
+- `flashback --help` describes `--sql-context` as the undo-SQL flag. `summary` and `full` do not change the script. `off` is refused. The analyze wording about default text, DDL statements, and `--show-patterns` is gone (#255).
+
 ## v0.28.0
 
 Release date: 2026-10-19

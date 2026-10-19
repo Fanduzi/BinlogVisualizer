@@ -6,7 +6,7 @@ Filesystem-backed helpers for storing, listing, describing, renaming, deleting, 
 
 | File | Responsibility |
 |------|----------------|
-| `store.go` | Resolves default snapshot directories, validates names, saves JSON payloads, lists snapshots with metadata, loads saved snapshots, and performs rename/delete operations. |
+| `store.go` | Resolves default snapshot directories, validates names, saves JSON payloads, lists snapshots with metadata, flags a reduced `diagnostics_mode` on list entries, loads saved snapshots, and performs rename/delete operations. |
 | `store_test.go` | Covers directory resolution, name validation, overwrite rejection, listing, descriptor extraction, and rename/delete behavior. |
 
 ## Exports

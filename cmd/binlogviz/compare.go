@@ -31,8 +31,11 @@ func newCompareCommand() *cobra.Command {
 	opts := &compareOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "compare [<current.json> <baseline.json>]",
-		Short:         "Compare two BinlogViz JSON analysis reports",
+		Use:   "compare [<current.json> <baseline.json>]",
+		Short: "Compare two BinlogViz JSON analysis reports",
+		Example: `  binlogviz analyze mysql-bin.000001 --format json --snapshot-name current --snapshot-dir /tmp/snaps
+  binlogviz analyze mysql-bin.000002 --format json --snapshot-name baseline --snapshot-dir /tmp/snaps
+  binlogviz compare --current-snapshot current --baseline-snapshot baseline --snapshot-dir /tmp/snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {

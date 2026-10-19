@@ -1265,3 +1265,62 @@ func TestRenderJSONV3LabelsSafeFullTransactionReplay(t *testing.T) {
 		t.Fatalf("mysqlbinlog_cmd did not use the full observed span: %q", cmd)
 	}
 }
+
+func TestSummaryCapsDDLEvents(t *testing.T) {
+	events := make([]model.DDLEvent, 12)
+	for i := range events {
+		events[i] = model.DDLEvent{Operation: "CREATE", Object: "t" + string(rune('a'+i))}
+	}
+	result := model.AnalysisResult{Diagnostics: model.Diagnostics{DDLEvents: events}}
+	opts := Options{SQLContextMode: SQLContextSummary, TopN: 10}
+
+	full, err := RenderJSONWithOptions(result, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fullDiag := parseJSONMap(t, full)["diagnostics"].(map[string]any)
+	if n := len(fullDiag["ddl_events"].([]any)); n != 12 {
+		t.Fatalf("full ddl_events = %d, want 12", n)
+	}
+	if _, ok := fullDiag["ddl_events_omitted"]; ok {
+		t.Fatalf("full must omit ddl_events_omitted: %#v", fullDiag["ddl_events_omitted"])
+	}
+
+	opts.DiagnosticsMode = DiagnosticsSummary
+	summary, err := RenderJSONWithOptions(result, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sumDiag := parseJSONMap(t, summary)["diagnostics"].(map[string]any)
+	got := sumDiag["ddl_events"].([]any)
+	if len(got) != 10 || sumDiag["ddl_events_omitted"] != float64(2) {
+		t.Fatalf("summary ddl = %d omitted %#v, want 10 and 2", len(got), sumDiag["ddl_events_omitted"])
+	}
+	if got[0].(map[string]any)["object"] != "ta" || got[9].(map[string]any)["object"] != "tj" {
+		t.Fatalf("summary kept the wrong prefix: %#v", got)
+	}
+
+	opts.TopN = 3
+	summary, err = RenderJSONWithOptions(result, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sumDiag = parseJSONMap(t, summary)["diagnostics"].(map[string]any)
+	if n := len(sumDiag["ddl_events"].([]any)); n != 3 || sumDiag["ddl_events_omitted"] != float64(9) {
+		t.Fatalf("--top 3: len %d omitted %#v", n, sumDiag["ddl_events_omitted"])
+	}
+
+	short := model.AnalysisResult{Diagnostics: model.Diagnostics{DDLEvents: events[:2]}}
+	opts.TopN = 10
+	summary, err = RenderJSONWithOptions(short, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sumDiag = parseJSONMap(t, summary)["diagnostics"].(map[string]any)
+	if n := len(sumDiag["ddl_events"].([]any)); n != 2 || sumDiag["ddl_events_omitted"] != float64(0) {
+		t.Fatalf("short summary: len %d omitted %#v", n, sumDiag["ddl_events_omitted"])
+	}
+	if parseJSONMap(t, summary)["report_version"] != float64(3) {
+		t.Fatal("summary report_version must stay 3")
+	}
+}

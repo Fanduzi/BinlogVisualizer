@@ -17,9 +17,12 @@ import (
 func newFlashbackCommand() *cobra.Command {
 	opts := &analyzeOptions{}
 	cmd := &cobra.Command{
-		Use:           i18n.T("cmd.flashback.use"),
-		Short:         i18n.T("cmd.flashback.short"),
-		Long:          i18n.T("cmd.flashback.long"),
+		Use:   i18n.T("cmd.flashback.use"),
+		Short: i18n.T("cmd.flashback.short"),
+		Long:  i18n.T("cmd.flashback.long"),
+		Example: `  # After analyze names the GTID (alerts[].gtid or transactions[].gtid):
+  binlogviz flashback mysql-bin.000001 --include-gtids <gtid> --plan
+  binlogviz flashback mysql-bin.000001 --include-gtids <gtid> --conflict guard`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -126,7 +129,7 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, i18n.T("cmd.flashback.flag.excludeGtids"))
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
-	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
+	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.flashback.flag.sqlContext"))
 	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.flashback.flag.includeSchema"))
 	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.flashback.flag.excludeSchema"))
 	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.flashback.flag.includeTable"))
@@ -163,7 +166,7 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 		"exclude-gtids":  "cmd.flashback.flag.excludeGtids",
 		"from-dir":       "cmd.analyze.flag.fromDir",
 		"prefix":         "cmd.analyze.flag.prefix",
-		"sql-context":    "cmd.analyze.flag.sqlContext",
+		"sql-context":    "cmd.flashback.flag.sqlContext",
 		"include-schema": "cmd.flashback.flag.includeSchema",
 		"exclude-schema": "cmd.flashback.flag.excludeSchema",
 		"include-table":  "cmd.flashback.flag.includeTable",
@@ -187,7 +190,10 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 
 func flashbackUsageTemplate() string {
 	return i18n.T("cmd.flashback.help.usage") + `:{{if .Runnable}}
-  {{.UseLine}}{{end}}{{if .HasAvailableLocalFlags}}
+  {{.UseLine}}{{end}}{{if .HasExample}}
+
+` + i18n.T("cmd.flashback.help.examples") + `:
+{{.Example}}{{end}}{{if .HasAvailableLocalFlags}}
 
 ` + i18n.T("cmd.flashback.help.flags") + `:
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}

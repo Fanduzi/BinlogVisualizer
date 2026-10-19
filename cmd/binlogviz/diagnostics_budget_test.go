@@ -62,6 +62,12 @@ func TestAnalyzeDiagnosticsBudgetAndAlertGTID(t *testing.T) {
 			t.Fatalf("summary %s changed: got %#v want %#v", key, sumDiag[key], fullDiag[key])
 		}
 	}
+	if _, ok := fullDiag["ddl_events_omitted"]; ok {
+		t.Fatalf("full must omit ddl_events_omitted, got %#v", fullDiag["ddl_events_omitted"])
+	}
+	if sumDiag["ddl_events_omitted"] != float64(0) {
+		t.Fatalf("summary ddl_events_omitted = %#v, want 0 for this fixture", sumDiag["ddl_events_omitted"])
+	}
 	if len(summary) >= len(full) {
 		t.Fatalf("summary JSON is not smaller: summary=%d full=%d", len(summary), len(full))
 	}
@@ -217,6 +223,20 @@ func TestAnalyzeRejectsBadDiagnosticsMode(t *testing.T) {
 		t.Fatalf("stdout = %q", stdout)
 	}
 	if !strings.Contains(stderr, `invalid --diagnostics "nope" (allowed: full, summary, off)`) {
+		t.Fatalf("stderr = %s", stderr)
+	}
+}
+
+func TestAnalyzeRejectsExplicitEmptyDiagnostics(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	code, stdout, stderr := runRoot(t, "analyze", "dummy.binlog", "--diagnostics", "")
+	if code != 3 {
+		t.Fatalf("exit %d, want 3; stdout=%q stderr=%s", code, stdout, stderr)
+	}
+	if stdout != "" {
+		t.Fatalf("stdout = %q", stdout)
+	}
+	if !strings.Contains(stderr, `invalid --diagnostics "" (allowed: full, summary, off)`) {
 		t.Fatalf("stderr = %s", stderr)
 	}
 }

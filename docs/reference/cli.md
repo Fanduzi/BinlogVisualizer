@@ -107,7 +107,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
 | `--workload-id` | none | Explicit workload identity persisted in report v3. Use the same non-empty token only for snapshots of the same workload. |
 | `--sql-context` | `summary` | Query text in every format, including default text, DDL statements, and `--show-patterns`: `summary` (one bounded line), `off` (omit query text and `--show-rows` cell values), or `full` (stored SQL, including DDL statement text, capped at 4096 bytes and marked when cut). MySQL and MariaDB auth-DDL credential literals are redacted in every mode. |
-| `--diagnostics` | `full` | How much of `diagnostics` `analyze --format json` includes. `full` is today's object. `summary` keeps coverage, counts, the DDL timeline, open uncommitted groups, and duration buckets, and empties the transaction rankings, file segments, hot intervals, and findings (those are already `transactions`, `timeseries`, `minutes`, and `alerts`). `off` omits `diagnostics`. Text, Markdown, and HTML ignore this flag. A trimmed document carries `"diagnostics_mode": "summary"` or `"off"`. It is a stdout budget only: `--snapshot-name` always saves full diagnostics, and compare, trend, and `snapshot save` refuse a trimmed document (exit 9, `reduced_diagnostics`). |
+| `--diagnostics` | `full` | How much of `diagnostics` `analyze --format json` includes. `full` is today's object. `summary` keeps coverage, counts, open uncommitted groups, and duration buckets, caps `ddl_events` at `--top` (default 10) with `ddl_events_omitted`, and empties the transaction rankings, file segments, hot intervals, and findings (those are already `transactions`, `timeseries`, `minutes`, and `alerts`). `off` omits `diagnostics`. Text, Markdown, and HTML ignore this flag. An explicit empty value is a usage error (exit 3). A trimmed document carries `"diagnostics_mode": "summary"` or `"off"`. JSON `null` is absent. A non-string is corrupt (exit 5). It is a stdout budget only: `--snapshot-name` always saves full diagnostics, and compare, trend, and `snapshot save` refuse a trimmed document (exit 9, `reduced_diagnostics`). `snapshot list` marks one instead of refusing it. |
 | `--top-tables` | `10` | Number of top tables to display in human-readable reports; JSON retains all table aggregates. |
 | `--top-transactions` | `10` | Number of top transactions to include in the report; `0` is unlimited. |
 | `--top-threads` | inherits `--top` | Number of top threads or sessions in every format; `0` is unlimited. |
@@ -340,8 +340,8 @@ Accepted flags:
 
 `snapshot list` supports two output modes:
 
-- text mode (default): prints a human-readable table with `name`, `label`, `created_at`, `input_mode`, and `window`
-- JSON mode: prints a machine-readable object with `snapshot_dir` and `snapshots`
+- text mode (default): prints a human-readable table with `name`, `label`, `created_at`, `input_mode`, `window`, and `diagnostics` (`-`, or `summary` / `off` when that file is a trimmed analyze document)
+- JSON mode: prints a machine-readable object with `snapshot_dir` and `snapshots`. A trimmed file adds `diagnostics_mode` on its entry. `schema_version` stays 1. List exits 0 either way
 
 Accepted flags:
 

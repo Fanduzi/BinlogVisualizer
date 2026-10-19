@@ -33,8 +33,11 @@ import (
 
 func newWorkflowCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "workflow",
-		Short:         "Run multi-step BinlogViz investigation workflows",
+		Use:   "workflow",
+		Short: "Run multi-step BinlogViz investigation workflows",
+		Example: `  binlogviz workflow validate incident.yaml
+  binlogviz workflow run incident.yaml --output-dir /tmp/incident
+  binlogviz workflow status /tmp/incident`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Run: func(cmd *cobra.Command, args []string) {

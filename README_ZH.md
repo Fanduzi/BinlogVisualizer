@@ -37,7 +37,7 @@ curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/
 binlogviz analyze minimal.binlog
 ```
 
-同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。GitHub Release 的每个 tar.gz 也会带上这份文件（`testdata/minimal.binlog`）、discovery 布局副本 `testdata/sample-binlog/mysql-bin.000001`，以及 `from_dir` 指向该目录的 `incident.yaml`。解压后执行 `./binlogviz analyze testdata/minimal.binlog` 和 `./binlogviz workflow run incident.yaml`，不需要再 clone 仓库。
+同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。GitHub Release 的每个 tar.gz 也会带上这份文件（`testdata/minimal.binlog`）、discovery 布局副本 `testdata/sample-binlog/mysql-bin.000001`、`from_dir` 指向该目录的 `incident.yaml`、`README.md`、`README_ZH.md`，以及 `docs/agents/USING-BINLOGVIZ.md`（和中文指南）。解压后执行 `./binlogviz analyze testdata/minimal.binlog` 和 `./binlogviz workflow run incident.yaml`，不需要再 clone 仓库。给代理的用法从 `docs/agents/USING-BINLOGVIZ.md` 开始。
 
 ### 检查你自己的文件
 

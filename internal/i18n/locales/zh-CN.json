@@ -435,6 +435,14 @@
     "description": "未带库名的 schema 文件使用的库",
     "other": "给 --schema-file 里未带库名的表指定库。文件里没有 USE，转储头里也没有 Database 时使用。可选；flashback 始终离线"
   },
+  "cmd.flashback.flag.sqlContext": {
+    "description": "flashback 的 sql-context 说明。summary 和 full 不改变撤销 SQL。off 会被拒绝。",
+    "other": "summary（默认）或 full。两者都不改变撤销 SQL。off 会被拒绝：脚本就是行值。这不是 analyze 的查询文本、DDL 语句或 --show-patterns"
+  },
+  "cmd.flashback.help.examples": {
+    "description": "flashback 帮助里的示例标题",
+    "other": "示例"
+  },
   "cmd.flashback.help.usage": {
     "description": "flashback 帮助里的用法标题",
     "other": "用法"
