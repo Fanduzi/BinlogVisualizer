@@ -8,6 +8,14 @@ Report times are UTC. `--start` and `--end` accept RFC3339. An offset is the ins
 
 `flashback` does not connect to MySQL. Review the script, test it, and apply it yourself with `binlogviz flashback verify <file> | mysql`. `mysql < file` commits nothing. A failed statement, including under `mysql --force`, does not commit a prefix. The undo is one XA transaction (ADR 0014).
 
+Apply needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`:
+
+```sql
+GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
+```
+
+`CREATE` on that schema covers `CREATE DATABASE IF NOT EXISTS binlogviz`. With `automatic_sp_privileges=0`, also grant `EXECUTE` on `binlogviz.*`. `verify` names the finish procedure for that run and drops it at the end. Clean a leftover with `DROP DATABASE binlogviz`.
+
 ## Recipe 1: a write spike, then flashback
 
 Find the busy minute, name the transaction by GTID, preview the undo, then generate a guarded script.

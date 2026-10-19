@@ -8,6 +8,14 @@
 
 `flashback` 不连接 MySQL。先审阅脚本，再测试，然后由你自己用 `binlogviz flashback verify <file> | mysql` 执行。`mysql < file` 不会提交。某条语句失败时不会提交前缀，`mysql --force` 也一样。撤销是一个 XA 事务（ADR 0014）。
 
+在 `binlogviz.*` 上需要 `CREATE`、`CREATE ROUTINE` 和 `ALTER ROUTINE`：
+
+```sql
+GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
+```
+
+这个库上的 `CREATE` 覆盖 `CREATE DATABASE IF NOT EXISTS binlogviz`。`automatic_sp_privileges=0` 时，还要授予 `binlogviz.*` 上的 `EXECUTE`。`verify` 会为这一次执行命名结束过程，并在结束时删掉它。残留用 `DROP DATABASE binlogviz` 清理。
+
 ## 配方 1：写入尖峰，然后 flashback
 
 先找到繁忙的那一分钟，用 GTID 点名事务，预览撤销，再生成带 guard 的脚本。

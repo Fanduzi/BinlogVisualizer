@@ -35,7 +35,8 @@ const (
 	digestInitSQL = "SET @binlogviz_digest = SHA2('binlogviz-flashback-v1', 256), @binlogviz_applied = 1;"
 	digestStepSQL = "SET @binlogviz_digest = SHA2(CONCAT(@binlogviz_digest, @binlogviz_sql), 256);"
 	// appliedCheckSQL records the previous statement. A later success must not
-	// clear it: @@error_count is only the last statement.
+	// clear it: @@error_count is only the last statement, and the flag only
+	// moves from 1 to 0.
 	appliedCheckSQL = "SET @binlogviz_applied = IF(@binlogviz_applied <=> 1 AND @@error_count = 0, 1, 0);"
 
 	markerExec    = "-- binlogviz-exec"
@@ -161,10 +162,19 @@ func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) err
 // Write substitutes guardTokenMark. The stock mysql client is required
 // because the body uses DELIMITER. The procedure is schema-qualified so the
 // session needs no default database.
+//
+// The section is one raw piece, so the check after the piece sees only the
+// last statement. mysql --force keeps going, and a successful CREATE
+// PROCEDURE resets @@error_count. Each server statement records the flag
+// first. DELIMITER is a client command; the check for CREATE PROCEDURE is
+// after DELIMITER ;.
 func ProcedureSQL() string {
 	name := "binlogviz.binlogviz_fb_end_" + guardTokenMark
+	check := appliedCheckSQL + "\n"
 	return "CREATE DATABASE IF NOT EXISTS binlogviz;\n" +
+		check +
 		"DROP PROCEDURE IF EXISTS " + name + ";\n" +
+		check +
 		"DELIMITER $$\n" +
 		"CREATE PROCEDURE " + name + "()\n" +
 		"SQL SECURITY INVOKER\n" +
@@ -178,7 +188,8 @@ func ProcedureSQL() string {
 		"    XA ROLLBACK '" + guardTokenMark + "';\n" +
 		"  END IF;\n" +
 		"END$$\n" +
-		"DELIMITER ;\n"
+		"DELIMITER ;\n" +
+		check
 }
 
 // UndoOpenSQL opens the one undo transaction. If the open fails, the session
