@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/redact"
 )
 
 // TransactionBuilder reconstructs transactions from normalized events.
@@ -228,7 +229,7 @@ func (e *UnclassifiedQueryError) Error() string {
 }
 
 func unclassifiedQueryError(prefix string) error {
-	return &UnclassifiedQueryError{Prefix: messageStatement(prefix)}
+	return &UnclassifiedQueryError{Prefix: redact.Statement(prefix)}
 }
 
 const (

@@ -1,9 +1,9 @@
-// Package analyzer keeps flashback row images on disk, not in memory.
+// Package flashback keeps row images on disk, not in memory.
 // input: finished flashback transaction groups, in binlog order.
 // output: the same groups read forward or last-to-first, with binds restored from a small intern table.
-// pos: storage behind Analyzer flashback (ADR 0008). Resident memory is one group plus one distinct bind per table definition.
+// pos: storage behind Planner (ADR 0008). Resident memory is one group plus one distinct bind per table definition.
 // note: if this file changes, update this header and module README.md.
-package analyzer
+package flashback
 
 import (
 	"bufio"

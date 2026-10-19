@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/redact"
 )
 
 // DDLStatement is the normalized parse result of a supported DDL statement.
@@ -41,7 +42,7 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 		return DDLStatement{}, false
 	}
 
-	normalized := strings.Join(strings.Fields(sanitizeDisplaySQL(redactCredentials(trimmed))), " ")
+	normalized := strings.Join(strings.Fields(redact.Display(redact.Credentials(trimmed))), " ")
 	stored, truncated, originalBytes := boundDDLStatement(normalized)
 	tokens := strings.Fields(normalized)
 	if len(tokens) < 2 {

@@ -3,8 +3,6 @@ package analyzer
 import (
 	"strings"
 	"testing"
-
-	"binlogviz/internal/model"
 )
 
 // #250: every error that quotes a statement redacts credentials first,
@@ -18,15 +16,8 @@ func TestRefusalMessagesRedactCredentials(t *testing.T) {
 		"SET PASSWORD FOR 'app'@'%' = 'setSECRETHASH'",
 	}
 	for _, statement := range statements {
-		ddl := flashDDLError(model.NormalizedEvent{EventType: "DDL", QuerySQL: statement}, "'repl'@'%'").Error()
-		if strings.Contains(ddl, "SECRETHASH") || strings.Contains(ddl, "I48l") {
-			t.Fatalf("flashback DDL refusal leaks: %s", ddl)
-		}
-		if !strings.Contains(ddl, "<secret>") && strings.Contains(strings.SplitN(statement, "\n", 2)[0], "IDENTIFIED") {
-			t.Fatalf("no redaction marker: %s", ddl)
-		}
 		unclassified := unclassifiedQueryError(statement).Error()
-		if strings.Contains(unclassified, "SECRETHASH") {
+		if strings.Contains(unclassified, "SECRETHASH") || strings.Contains(unclassified, "I48l") {
 			t.Fatalf("unclassified QUERY leaks: %s", unclassified)
 		}
 	}

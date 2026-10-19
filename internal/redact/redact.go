@@ -1,4 +1,9 @@
-package analyzer
+// Package redact strips credential literals from SQL that an error or a report quotes.
+// input: a SQL statement that may contain IDENTIFIED BY / WITH … AS|BY or SET PASSWORD.
+// output: the same statement with each secret replaced by <secret>, and a display form with control bytes removed.
+// pos: shared by analyzer messages and the flashback planner so neither imports the other for this.
+// note: if this file changes, keep the credential cases covered by the analyzer and flashback tests.
+package redact
 
 import (
 	"strings"
@@ -6,10 +11,10 @@ import (
 	"unicode/utf8"
 )
 
-// redactCredentials replaces password and authentication-hash literals so a
+// Credentials replaces password and authentication-hash literals so a
 // report can be pasted into a ticket. The replacement matches MySQL's
 // rewritten general log: the secret becomes <secret>.
-func redactCredentials(sql string) string {
+func Credentials(sql string) string {
 	spans := credentialSpans(sql)
 	if len(spans) == 0 {
 		return sql
@@ -29,11 +34,11 @@ func redactCredentials(sql string) string {
 	return b.String()
 }
 
-// messageStatement is the one way an error message quotes SQL: credentials
+// Statement is the one way an error message quotes SQL: credentials
 // are redacted on the whole statement, before any cut to one line, so a
 // cut can never leave half a secret unrecognized (#250).
-func messageStatement(sql string) string {
-	return redactCredentials(sql)
+func Statement(sql string) string {
+	return Credentials(sql)
 }
 
 type credSpan struct{ start, end int }
@@ -294,8 +299,8 @@ func isIdentByte(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
-// sanitizeDisplaySQL drops bytes that are not safe to print on a terminal.
-func sanitizeDisplaySQL(s string) string {
+// Display drops bytes that are not safe to print on a terminal.
+func Display(s string) string {
 	if s == "" || (utf8.ValidString(s) && !hasControl(s)) {
 		return s
 	}

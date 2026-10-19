@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/flashback"
 	"binlogviz/internal/model"
-	"binlogviz/internal/schemacatalog"
 )
 
 // Analyzer orchestrates the complete binlog analysis pipeline.
@@ -46,29 +46,7 @@ type Analyzer struct {
 	inputGTIDFlavor    string
 	matchedGTIDs       map[string]struct{}
 
-	flashCur              *flashGroup
-	flashSpill            *flashSpill
-	flashKeys             map[uint64]uint64
-	flashConflicts        int
-	flashPending          map[conflictRef]pendingConflict
-	flashPendingSeq       int64
-	flashConflictsSettled bool
-	flashConflictList     []FlashbackConflict
-	flashGroupID          int64
-	flashSeq              int64
-	flashClearSeq         map[string]int64
-	flashPendingNames     map[string][]string
-	flashChecked          bool
-	flashErr              error
-	flashCat              *schemacatalog.Catalog
-	flashUnknown          []string
-	flashSchemaWarn       []model.FlashbackWarning
-	flashGenNotes         []string
-	flashReviewed         bool
-	flashReviewErr        error
-	flashSplit            map[string]*flashSplit
-	flashSplitOrder       []string
-	flashSplitDone        []string
+	flash *flashback.Planner
 }
 
 // New creates a new Analyzer with the given options.
@@ -272,23 +250,18 @@ func (a *Analyzer) observeGTIDFlavor(ev model.NormalizedEvent) error {
 // fan-out to other aggregators is stopped to prevent inconsistent state.
 func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) error {
 	ev = enrichDDLEvent(ev)
-	if a.opts.Flashback {
-		a.checkFlashConflict(ev)
-		dropped := a.flashCat.ObserveTable(ev.Schema, ev.Table)
-		if ev.EventType == "DDL" {
-			dropped = append(dropped, a.flashCat.ObserveDDL(ev.Schema, ev.QuerySQL)...)
-		}
-		for _, table := range dropped {
-			a.clearPendingUse(table)
-		}
+	if a.flash != nil {
+		gtid, _, _ := a.txnBuilder.touchLocation()
+		a.flash.Observe(ev, a.txnBuilder.CurrentTxnKey(), gtid)
 	}
 	if err := a.observeGTIDFlavor(ev); err != nil {
 		return err
 	}
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if relation == insideWindow && a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
-		if a.opts.Flashback && ev.EventType == "ROWS" {
-			a.noteFlashbackSkipped()
+		if a.flash != nil && ev.EventType == "ROWS" {
+			gtid, _, _ := a.txnBuilder.touchLocation()
+			a.flash.NoteSkipped(a.txnBuilder.CurrentTxnKey(), gtid)
 		}
 		a.txnBuilder.clearCurrentQueryContext()
 		if ev.EventType == "DDL" {
@@ -300,8 +273,9 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 		return nil
 	}
 	if relation == insideWindow && ev.EventType == "ROWS" && !a.filter.AllowOperation(ev.Operation) {
-		if a.opts.Flashback {
-			a.noteFlashbackSkipped()
+		if a.flash != nil {
+			gtid, _, _ := a.txnBuilder.touchLocation()
+			a.flash.NoteSkipped(a.txnBuilder.CurrentTxnKey(), gtid)
 		}
 		a.txnBuilder.clearCurrentQueryContext()
 		return nil
@@ -337,7 +311,9 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 }
 
 func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
-	a.noteFlashback(ev)
+	if a.flash != nil {
+		a.flash.Note(ev)
+	}
 	a.recordEffectivePosition(ev)
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if isWorkload {
@@ -459,30 +435,19 @@ func (a *Analyzer) reset() {
 	a.pendingGroupEvents = make(map[string][]model.NormalizedEvent)
 	a.inputGTIDFlavor = ""
 	a.matchedGTIDs = make(map[string]struct{})
-	a.closeFlashSpill()
-	a.flashSeq = 0
-	a.flashGroupID = 0
-	a.flashKeys = nil
-	a.flashConflicts = 0
-	a.flashPending = nil
-	a.flashPendingSeq = 0
-	a.flashConflictsSettled = false
-	a.flashConflictList = nil
-	a.flashClearSeq = nil
-	a.flashPendingNames = nil
-	a.flashChecked = false
-	a.flashErr = nil
-	a.flashCat = schemacatalog.New(a.opts.SchemaFileDB)
-	a.flashUnknown = nil
-	a.flashSchemaWarn = nil
-	a.flashGenNotes = nil
-	a.flashReviewed = false
-	a.flashReviewErr = nil
-	a.flashSplit = nil
-	a.flashSplitOrder = nil
-	a.flashSplitDone = nil
-	if a.opts.Flashback && strings.TrimSpace(a.opts.SchemaSQL) != "" {
-		a.flashCat.LoadFile(a.opts.SchemaSQL)
+	if a.flash != nil {
+		a.flash.Close()
+		a.flash = nil
+	}
+	if a.opts.Flashback {
+		limit := a.opts.FlashbackConflictLimit
+		a.flash = flashback.New(flashback.Options{
+			SchemaSQL:     a.opts.SchemaSQL,
+			SchemaFileDB:  a.opts.SchemaFileDB,
+			Conflict:      a.opts.FlashbackConflict,
+			Plan:          a.opts.FlashbackPlan,
+			ConflictLimit: limit,
+		})
 	}
 	if a.store != nil {
 		a.err = a.store.Reset()
@@ -568,6 +533,14 @@ func (a *Analyzer) recordEffectivePosition(ev model.NormalizedEvent) {
 	if a.selection.EffectiveStopPosition == nil || ev.PositionEnd > *a.selection.EffectiveStopPosition {
 		a.selection.EffectiveStopPosition = cloneInt64(&ev.PositionEnd)
 	}
+}
+
+// Planner is the flashback planner for this run, or nil when flashback is off.
+func (a *Analyzer) Planner() *flashback.Planner {
+	if a == nil {
+		return nil
+	}
+	return a.flash
 }
 
 func cloneInt64(value *int64) *int64 {

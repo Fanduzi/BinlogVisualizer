@@ -291,6 +291,10 @@
     "description": "Flashback refuses a row that has no base column to write",
     "other": "{{.Table}}: cannot undo a row whose columns are all generated"
   },
+  "error.flashbackResource": {
+    "description": "Flashback hit an enforced spill or memory ceiling",
+    "other": "flashback ran out of resources ({{.Reason}}: used {{.Used}} of {{.Limit}} bytes)"
+  },
   "cmd.flashback.flag.conflict": {
     "description": "Flashback --conflict help",
     "other": "What to do when a selected row was changed again later in the scanned binlogs: refuse (default; exit 7, no script) or guard (each undo matches the logged after image, so a row changed later is left alone)"

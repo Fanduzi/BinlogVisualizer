@@ -1,12 +1,13 @@
-package analyzer
+package flashback_test
 
 import (
+	"binlogviz/internal/analyzer"
+	"binlogviz/internal/guard"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
-	"binlogviz/internal/guard"
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
 )
@@ -527,6 +528,29 @@ func TestSchemaFileUnverifiedGeneratedWarns(t *testing.T) {
 	}
 }
 
+func quoteSQL(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 2)
+	b.WriteByte('\'')
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\', '\'':
+			b.WriteByte('\\')
+			b.WriteByte(s[i])
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case 0:
+			b.WriteString(`\0`)
+		default:
+			b.WriteByte(s[i])
+		}
+	}
+	b.WriteByte('\'')
+	return b.String()
+}
+
 func guardBeforeTransaction(sql string) bool {
 	guard := strings.Index(sql, "binlogviz_mismatch")
 	gtid := strings.Index(sql, "-- gtid:")
@@ -605,7 +629,7 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 		"binlogviz: target server is older than MySQL 5.7.0 or MariaDB 10.2 and is not supported for apply",
 		"binlogviz: generated-column guard did not run",
 	} {
-		if strings.Contains(msg, ",") || len(msg) > 200 || !strings.Contains(sql, sqlQuote(msg)) {
+		if strings.Contains(msg, ",") || len(msg) > 200 || !strings.Contains(sql, quoteSQL(msg)) {
 			t.Fatalf("message %q in:\n%s", msg, sql)
 		}
 	}
@@ -754,24 +778,12 @@ func TestGeneratedGuardTokenGatesEveryStatement(t *testing.T) {
 		t.Fatalf("two scripts share token %s", token)
 	}
 	for _, msg := range []string{"binlogviz: this session is already read-only so the script cannot write. Disconnect and apply the script again in a new session"} {
-		if strings.Contains(msg, ",") || len(msg) > 200 || !strings.Contains(sql, sqlQuote(msg)) {
+		if strings.Contains(msg, ",") || len(msg) > 200 || !strings.Contains(sql, quoteSQL(msg)) {
 			t.Fatalf("message %q in:\n%s", msg, sql)
 		}
 	}
-	if !strings.Contains(sql, sqlQuote(". This session is now read-only: disconnect, fix the schema file, and apply the script again in a new session.")) {
+	if !strings.Contains(sql, quoteSQL(". This session is now read-only: disconnect, fix the schema file, and apply the script again in a new session.")) {
 		t.Fatalf("mismatch hint missing:\n%s", sql)
-	}
-}
-
-func TestFlashbackWithoutGuardHasNoToken(t *testing.T) {
-	row := model.FlashRow{Schema: "shop", Table: "t", Op: "DELETE", Columns: []string{"id"},
-		Cols: []model.FlashCol{{Base: "int", HasSign: true}}, Before: []string{"1"}, PK: []int{0}}
-	sql, err := renderFlashbackSQL([]flashGroup{{rows: []model.FlashRow{row}, binds: []flashBind{{}}}}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(sql, "binlogviz_ok") || !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`) VALUES (1);") {
-		t.Fatalf("script without a guard changed:\n%s", sql)
 	}
 }
 
@@ -873,16 +885,16 @@ func TestSchemaFileLayoutsBindWithoutUSE(t *testing.T) {
 	}
 
 	batch := "gen\t" + strings.ReplaceAll(gen, "\n", "\\n") + "\nwide\t" + strings.ReplaceAll(wide, "\n", "\\n")
-	a := New(Options{Flashback: true, SchemaSQL: batch})
+	a := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: batch})
 	consumeFlash(t, a, flashEvent(genRow), flashEvent(wideRow))
-	sql, err = a.FlashbackSQL()
+	sql, err = a.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(sql, "`virt`") || !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) SELECT 1, 'a' FROM DUAL WHERE @binlogviz_ok <=> '") {
 		t.Fatalf("multi show create:\n%s", sql)
 	}
-	if warnings := a.FlashbackWarnings(); len(warnings) != 0 {
+	if warnings := a.Planner().Warnings(); len(warnings) != 0 {
 		t.Fatalf("warnings: %#v", warnings)
 	}
 }
@@ -897,36 +909,36 @@ func TestSchemaFileAmbiguousDoesNotGuess(t *testing.T) {
 		Columns: []string{"id", "virt"}, Cols: intCols(2),
 		Before: []string{"1", "2"}, PK: []int{0},
 	}
-	a := New(Options{
+	a := analyzer.New(analyzer.Options{
 		Flashback:    true,
 		SchemaSQL:    "-- Host: localhost    Database: shop\n" + gen,
 		SchemaFileDB: "other",
 	})
 	consumeFlash(t, a, flashEvent(row))
-	sql, err := a.FlashbackSQL()
+	sql, err := a.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(sql, "`virt`") {
 		t.Fatalf("ambiguous db omitted the column:\n%s", sql)
 	}
-	warnings := a.FlashbackWarnings()
+	warnings := a.Planner().Warnings()
 	if len(warnings) < 2 || !strings.Contains(warnings[0], "shop") || !strings.Contains(warnings[0], "other") || !strings.Contains(strings.Join(warnings, "\n"), "generated columns cannot be ruled out") {
 		t.Fatalf("warnings: %#v", warnings)
 	}
 
-	both := New(Options{Flashback: true, SchemaSQL: gen})
+	both := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: gen})
 	other := row
 	other.Schema = "other"
 	consumeFlash(t, both, flashEvent(row), flashEvent(other))
-	sql, err = both.FlashbackSQL()
+	sql, err = both.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Count(sql, "`virt`") != 2 {
 		t.Fatalf("two schemas guessed:\n%s", sql)
 	}
-	text := strings.Join(both.FlashbackWarnings(), "\n")
+	text := strings.Join(both.Planner().Warnings(), "\n")
 	if !strings.Contains(text, "gen") || !strings.Contains(text, "shop") || !strings.Contains(text, "other") || !strings.Contains(text, "was not used") {
 		t.Fatalf("warnings: %s", text)
 	}
@@ -935,11 +947,11 @@ func TestSchemaFileAmbiguousDoesNotGuess(t *testing.T) {
 func TestSchemaFileAlterUsesTheDefinitionInEffect(t *testing.T) {
 	const schema = "USE `shop`;\nCREATE TABLE `t` (\n  `id` int NOT NULL,\n  `a` int DEFAULT NULL,\n  PRIMARY KEY (`id`)\n);\n"
 	const gtid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-	selector, err := ParseGTIDSelector(nil, []string{gtid + ":2"})
+	selector, err := analyzer.ParseGTIDSelector(nil, []string{gtid + ":2"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := New(Options{Flashback: true, SchemaSQL: schema, GTIDSelector: selector})
+	a := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: schema, GTIDSelector: selector})
 	base := time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)
 	events := []model.NormalizedEvent{
 		{Timestamp: base, EventType: "GTID", GTID: gtid + ":1", BinlogPath: "mysql-bin.000001", PositionStart: 100, PositionEnd: 140},
@@ -960,7 +972,7 @@ func TestSchemaFileAlterUsesTheDefinitionInEffect(t *testing.T) {
 		{Timestamp: base.Add(2 * time.Second), EventType: "XID", BinlogPath: "mysql-bin.000001", PositionStart: 420, PositionEnd: 460},
 	}
 	consumeFlash(t, a, events...)
-	sql, err := a.FlashbackSQL()
+	sql, err := a.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -968,18 +980,18 @@ func TestSchemaFileAlterUsesTheDefinitionInEffect(t *testing.T) {
 		t.Fatalf("alter sql:\n%s", sql)
 	}
 
-	refused := New(Options{Flashback: true, SchemaSQL: schema})
+	refused := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: schema})
 	consumeFlash(t, refused, events...)
-	sql, err = refused.FlashbackSQL()
+	sql, err = refused.Planner().SQL()
 	if err == nil || sql != "" || !strings.Contains(err.Error(), "DDL in the selected range") {
 		t.Fatalf("sql %q err %v", sql, err)
 	}
 
-	badSel, err := ParseGTIDSelector(nil, []string{gtid + ":1"})
+	badSel, err := analyzer.ParseGTIDSelector(nil, []string{gtid + ":1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	bad := New(Options{Flashback: true, SchemaSQL: schema, GTIDSelector: badSel})
+	bad := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: schema, GTIDSelector: badSel})
 	badEvents := []model.NormalizedEvent{
 		{Timestamp: base, EventType: "GTID", GTID: gtid + ":1", BinlogPath: "mysql-bin.000001", PositionStart: 100, PositionEnd: 140},
 		{Timestamp: base, EventType: "DDL", Schema: "shop", Table: "t", QuerySQL: "ALTER TABLE shop.t ADD COLUMN", BinlogPath: "mysql-bin.000001", PositionStart: 140, PositionEnd: 180},
@@ -992,14 +1004,14 @@ func TestSchemaFileAlterUsesTheDefinitionInEffect(t *testing.T) {
 		{Timestamp: base.Add(time.Second), EventType: "XID", BinlogPath: "mysql-bin.000001", PositionStart: 280, PositionEnd: 300},
 	}
 	consumeFlash(t, bad, badEvents...)
-	sql, err = bad.FlashbackSQL()
+	sql, err = bad.Planner().SQL()
 	if err == nil || sql != "" || !strings.Contains(err.Error(), "shop.t: generated columns are unknown") {
 		t.Fatalf("sql %q err %v", sql, err)
 	}
 }
 
 func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
-	a := New(Options{Flashback: true})
+	a := analyzer.New(analyzer.Options{Flashback: true})
 	consumeFlash(t, a,
 		flashEvent(model.FlashRow{
 			Schema: "shop", Table: "ezero", Op: "DELETE",
@@ -1010,7 +1022,7 @@ func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
 			Columns: []string{"id", "e"}, Before: []string{"1", "0"}, PK: []int{0},
 		}),
 	)
-	sql, err := a.FlashbackSQL()
+	sql, err := a.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1027,34 +1039,6 @@ func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
 	}
 	if !strings.Contains(sql, "INSERT INTO `shop`.`ezero` (`id`, `e`) VALUES (2, 1);") {
 		t.Fatalf("missing strict row:\n%s", sql)
-	}
-}
-
-func TestRelaxedModesDropOnlyWhatTheRowNeeds(t *testing.T) {
-	gen := map[string]struct{}{"g": {}}
-	cases := []struct {
-		name string
-		row  model.FlashRow
-		gen  map[string]struct{}
-		want []string
-	}{
-		{"plain", model.FlashRow{Op: "DELETE", Columns: []string{"id"}, Before: []string{"1"}}, nil, nil},
-		{"enum0", model.FlashRow{Op: "DELETE", NonStrict: true, Columns: []string{"id"}, Before: []string{"1"}}, nil, []string{"STRICT_ALL_TABLES", "STRICT_TRANS_TABLES", "TRADITIONAL"}},
-		{"zerodate", model.FlashRow{Op: "UPDATE", ZeroDate: true, Columns: []string{"id"}, Before: []string{"1"}}, nil, []string{"NO_ZERO_DATE", "NO_ZERO_IN_DATE", "TRADITIONAL"}},
-		{"gen null", model.FlashRow{Op: "DELETE", Columns: []string{"id", "g"}, Before: []string{"1", "NULL"}}, gen, []string{"ERROR_FOR_DIVISION_BY_ZERO", "TRADITIONAL"}},
-		{"gen value", model.FlashRow{Op: "DELETE", Columns: []string{"id", "g"}, Before: []string{"1", "5"}}, gen, nil},
-		{"gen null kept", model.FlashRow{Op: "DELETE", Columns: []string{"id", "g"}, Before: []string{"1", "NULL"}}, nil, nil},
-		{"insert undo", model.FlashRow{Op: "INSERT", Columns: []string{"id", "g"}, After: []string{"1", "NULL"}}, gen, nil},
-	}
-	for _, c := range cases {
-		got := relaxedModes(c.row, c.gen)
-		if strings.Join(got, ",") != strings.Join(c.want, ",") {
-			t.Fatalf("%s: got %v want %v", c.name, got, c.want)
-		}
-	}
-	wrapped := sqlModeWrap("DELETE FROM t;", []string{"NO_ZERO_DATE", "TRADITIONAL"})
-	if strings.Contains(wrapped, "STRICT_TRANS_TABLES") || !strings.Contains(wrapped, "',NO_ZERO_DATE,'") || !strings.HasSuffix(wrapped, "SET SESSION sql_mode = @binlogviz_sql_mode;") {
-		t.Fatalf("wrap:\n%s", wrapped)
 	}
 }
 
@@ -1083,7 +1067,7 @@ func flashSchemaSQL(t *testing.T, schema, db string, rows ...model.FlashRow) (st
 
 func flashSchemaResult(t *testing.T, schema, db string, rows ...model.FlashRow) (string, []string, error) {
 	t.Helper()
-	a := New(Options{Flashback: true, SchemaSQL: schema, SchemaFileDB: db})
+	a := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: schema, SchemaFileDB: db})
 	events := make([]model.NormalizedEvent, len(rows))
 	for i, row := range rows {
 		events[i] = flashEvent(row)
@@ -1091,11 +1075,11 @@ func flashSchemaResult(t *testing.T, schema, db string, rows ...model.FlashRow) 
 		events[i].PositionEnd = events[i].PositionStart + 10
 	}
 	consumeFlash(t, a, events...)
-	sql, err := a.FlashbackSQL()
-	return sql, a.FlashbackWarnings(), err
+	sql, err := a.Planner().SQL()
+	return sql, a.Planner().Warnings(), err
 }
 
-func consumeFlash(t *testing.T, a *Analyzer, events ...model.NormalizedEvent) {
+func consumeFlash(t *testing.T, a *analyzer.Analyzer, events ...model.NormalizedEvent) {
 	t.Helper()
 	for _, ev := range events {
 		if err := a.Consume(ev); err != nil {
@@ -1142,16 +1126,16 @@ func TestSchemaFileLetterCaseFold(t *testing.T) {
 		Columns: []string{"id", "Gc"}, Cols: intCols(2),
 		Before: []string{"1", "2"}, PK: []int{0},
 	}
-	a := New(Options{Flashback: true, SchemaSQL: gen})
+	a := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: gen})
 	consumeFlash(t, a, flashEvent(row))
-	sql, err := a.FlashbackSQL()
+	sql, err := a.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(sql, "`Gc`") {
 		t.Fatalf("lower-case binlog name did not use the file definition:\n%s", sql)
 	}
-	text := strings.Join(a.FlashbackWarnings(), "\n")
+	text := strings.Join(a.Planner().Warnings(), "\n")
 	if !strings.Contains(text, "p185l.mixt") || !strings.Contains(text, "P185L.MixT") || strings.Contains(text, "generated columns cannot be ruled out") {
 		t.Fatalf("warnings: %s", text)
 	}
@@ -1160,16 +1144,16 @@ func TestSchemaFileLetterCaseFold(t *testing.T) {
 	// lower_case_table_names=0 server, so it is only named, not used.
 	upper := row
 	upper.Schema, upper.Table = "P185L", "mixt"
-	b := New(Options{Flashback: true, SchemaSQL: gen})
+	b := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: gen})
 	consumeFlash(t, b, flashEvent(upper))
-	sql, err = b.FlashbackSQL()
+	sql, err = b.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(sql, "`Gc`") {
 		t.Fatalf("mixed-case binlog name used a folded definition:\n%s", sql)
 	}
-	text = strings.Join(b.FlashbackWarnings(), "\n")
+	text = strings.Join(b.Planner().Warnings(), "\n")
 	if !strings.Contains(text, "P185L.MixT") || !strings.Contains(text, "was not used") || !strings.Contains(text, "generated columns cannot be ruled out") {
 		t.Fatalf("warnings: %s", text)
 	}
@@ -1179,27 +1163,27 @@ func TestSchemaFileLetterCaseFold(t *testing.T) {
 	const label = "p185l.mixt (schema file table P185L.MixT, letter case differs): "
 	bad := row
 	bad.Before = []string{"1", "5"}
-	d := New(Options{Flashback: true, SchemaSQL: gen})
+	d := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: gen})
 	consumeFlash(t, d, flashEvent(bad))
-	if _, err = d.FlashbackSQL(); err == nil || !strings.HasPrefix(err.Error(), label) {
+	if _, err = d.Planner().SQL(); err == nil || !strings.HasPrefix(err.Error(), label) {
 		t.Fatalf("generated refusal = %v", err)
 	}
 	extra := row
 	extra.Columns, extra.Cols, extra.Before = []string{"id", "Gc", "Z"}, intCols(3), []string{"1", "2", "3"}
-	e := New(Options{Flashback: true, SchemaSQL: gen})
+	e := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: gen})
 	consumeFlash(t, e, flashEvent(extra))
-	if _, err = e.FlashbackSQL(); err == nil || !strings.HasPrefix(err.Error(), label) || !strings.Contains(err.Error(), "does not match the binlog columns") {
+	if _, err = e.Planner().SQL(); err == nil || !strings.HasPrefix(err.Error(), label) || !strings.Contains(err.Error(), "does not match the binlog columns") {
 		t.Fatalf("column refusal = %v", err)
 	}
-	if text := strings.Join(a.FlashbackWarnings(), "\n"); !strings.Contains(text, "lower_case_table_names=0") {
+	if text := strings.Join(a.Planner().Warnings(), "\n"); !strings.Contains(text, "lower_case_table_names=0") {
 		t.Fatalf("fold warning does not state its assumption: %s", text)
 	}
 
 	// Two file tables that fold to the same name are not guessed between.
 	two := gen + "CREATE TABLE `mixT` (\n  `id` int NOT NULL,\n  PRIMARY KEY (`id`)\n);\n"
-	c := New(Options{Flashback: true, SchemaSQL: two})
+	c := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: two})
 	consumeFlash(t, c, flashEvent(row))
-	sql, err = c.FlashbackSQL()
+	sql, err = c.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}

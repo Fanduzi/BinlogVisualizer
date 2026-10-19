@@ -1,6 +1,8 @@
-package analyzer
+package flashback_test
 
 import (
+	"binlogviz/internal/analyzer"
+	"binlogviz/internal/flashback"
 	"fmt"
 	"runtime"
 	"strings"
@@ -12,7 +14,7 @@ import (
 
 // flashTxns feeds n committed transactions, each with one UPDATE row whose
 // images carry pad bytes, and finalizes the analyzer.
-func flashTxns(t testing.TB, a *Analyzer, n, pad int) {
+func flashTxns(t testing.TB, a *analyzer.Analyzer, n, pad int) {
 	t.Helper()
 	base := time.Date(2026, 10, 14, 6, 0, 0, 0, time.UTC)
 	pos := int64(4)
@@ -55,7 +57,7 @@ func heapAfterGC() uint64 {
 func TestFlashbackMemoryDoesNotGrowWithBinlog(t *testing.T) {
 	retained := func(flashback bool, n int) int64 {
 		before := heapAfterGC()
-		a := New(Options{Flashback: flashback})
+		a := analyzer.New(analyzer.Options{Flashback: flashback})
 		flashTxns(t, a, n, 2048)
 		after := heapAfterGC()
 		runtime.KeepAlive(a)
@@ -67,23 +69,23 @@ func TestFlashbackMemoryDoesNotGrowWithBinlog(t *testing.T) {
 	if extra > 4<<20 {
 		t.Fatalf("flashback retains %d KB for %d transactions", extra>>10, n)
 	}
-	a := New(Options{Flashback: true})
+	a := analyzer.New(analyzer.Options{Flashback: true})
 	flashTxns(t, a, n, 64)
-	if rows, err := a.WriteFlashback(&countWriter{}); err != nil || rows != n {
+	if rows, err := a.Planner().WriteFlashback(&countWriter{}); err != nil || rows != n {
 		t.Fatalf("rows %d err %v", rows, err)
 	}
 }
 
 // The streamed script is the same script FlashbackSQL renders.
 func TestWriteFlashbackMatchesFlashbackSQL(t *testing.T) {
-	a := New(Options{Flashback: true})
+	a := analyzer.New(analyzer.Options{Flashback: true})
 	flashTxns(t, a, 50, 8)
-	sql, err := a.FlashbackSQL()
+	sql, err := a.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	rows, err := a.WriteFlashback(&b)
+	rows, err := a.Planner().WriteFlashback(&b)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +104,7 @@ func (w *countWriter) Write(p []byte) (int, error) { w.n += len(p); return len(p
 // One transaction larger than a spill chunk is still one block, rows last first,
 // and its rows do not stay in memory either.
 func TestFlashbackLargeTransactionIsOneBlock(t *testing.T) {
-	a := New(Options{Flashback: true})
+	a := analyzer.New(analyzer.Options{Flashback: true})
 	base := time.Date(2026, 10, 14, 6, 0, 0, 0, time.UTC)
 	pos := int64(4)
 	ev := func(e model.NormalizedEvent) {
@@ -113,7 +115,7 @@ func TestFlashbackLargeTransactionIsOneBlock(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	const n = 3*flashChunkRows + 7
+	const n = 3*flashback.ChunkRows + 7
 	ev(model.NormalizedEvent{EventType: "GTID", GTID: "3e11fa47-71ca-11e1-9e33-c80aa9429562:9"})
 	ev(model.NormalizedEvent{EventType: "BEGIN"})
 	for i := 0; i < n; i++ {
@@ -121,15 +123,15 @@ func TestFlashbackLargeTransactionIsOneBlock(t *testing.T) {
 			FlashRows: []model.FlashRow{{Schema: "shop", Table: "orders", Op: "DELETE", Columns: []string{"id"},
 				Before: []string{fmt.Sprint(i)}, PK: []int{0}}}})
 	}
-	if a.flashCur != nil && len(a.flashCur.rows) >= flashChunkRows {
-		t.Fatalf("%d rows of the open transaction are in memory", len(a.flashCur.rows))
+	if a.Planner().HeldRows() >= flashback.ChunkRows {
+		t.Fatalf("%d rows of the open transaction are in memory", a.Planner().HeldRows())
 	}
 	ev(model.NormalizedEvent{EventType: "XID"})
 	if _, err := a.Finalize(); err != nil {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	rows, err := a.WriteFlashback(&b)
+	rows, err := a.Planner().WriteFlashback(&b)
 	if err != nil || rows != n {
 		t.Fatalf("rows %d err %v", rows, err)
 	}

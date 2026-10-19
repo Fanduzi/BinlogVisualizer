@@ -24,4 +24,4 @@ Generated-column checker and the CREATE/ALTER column parser. The schema catalog 
 ## Dependencies
 
 - Upstream: `internal/model` (`FlashbackWarning`, `FlashRow`) and `internal/i18n`.
-- Downstream: `internal/schemacatalog` and `internal/analyzer`.
+- Downstream: `internal/schemacatalog`, `internal/flashback`, and `internal/analyzer`.

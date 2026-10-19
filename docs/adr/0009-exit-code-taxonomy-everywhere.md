@@ -57,6 +57,7 @@ An agent cannot tell "fix your arguments" from "this file is bad" from "this too
 ## Consequences
 
 - Scripts that matched exit 1 for these cases must read the new codes; the JSON error `kind` is the stable contract (`docs/reference/exit-codes.md`).
+- ADR 0012 adds `resource`, exit 10, for an enforced flashback spill or memory ceiling. It is not a format limit (`unsupported`, 9) and not a full disk (`output`, 8). A Go runtime out-of-memory death is status 2 with no JSON; exit 10 exists so a ceiling the process can see is never reported as `no_data`.
 - `analyze /dev/null` now exits 5 like an empty file.
 - Position selectors that are out of range or not on an event boundary exit 3 (usage) instead of 1.
 - Adding a new error without a kind fails CI.
