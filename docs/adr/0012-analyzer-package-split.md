@@ -131,6 +131,25 @@ Each step is one PR. It ends with `go test ./...`, `go vet ./...`, and the flash
 
 Steps 1 and 2 are the first PR. They are the closed set with the smallest shared state: no `*Analyzer` receiver, and every test of the evaluator and the catalog already calls the functions above rather than the aggregator.
 
+## Generated-column memory and resource exhaustion
+
+The plain path spills row images and renders from that spill, so RSS stays flat as the script grows. The generated-column review used to copy every before-image and after-image into `GenImages` (the logged values and an evaluation environment per image) before it could refuse or warn. RSS then grew with the script: tens of megabytes of SQL held hundreds of megabytes, and a larger input died in the Go runtime. That fatal call is `exit(2)`, the same status as `no_data`, and it writes no JSON error, so a caller can treat an out-of-memory crash as an empty result (#317).
+
+The planner reviews from the row spill and does not retain images:
+
+1. One forward pass evaluates each generated column at the default `div_precision_increment`. It keeps the first mismatch example, an unverified flag, and the set of column names. The image is discarded.
+2. A column that needs the identical-inputs check writes `(bucket, column, sequence, reference key, literal)` records to a second unlinked temp file. Records are sorted in bounded chunks and merged at a fixed fan-in. The clash that is reported is the one `GenImages.dependencyClash` returns: the earliest contradicting image, the example from the first image of that key, and the later literal. The example is rebuilt from that one image on a replay. A column that already mismatched and only needs to know that a clash exists does not store the example.
+3. A third pass runs only when a column mismatched at the default, its expression contains `/`, and it did not clash. It evaluates increments 0 through 30. Which increments fit does not depend on order.
+
+Resident memory is one row-spill part plus one clash chunk, the same shape as the plain path, however large the script is.
+
+Two ceilings are `resource`, exit 10, with `details.reason` `spill_limit` or `memory_limit`. Stderr is the usual JSON error when `--error-format json` is set. Exit 10 is never 2.
+
+- `spill_limit`: `BINLOGVIZ_SPILL_BYTES` is a positive integer and the row spill plus the review spill grow past it. Unset means no byte ceiling. ENOSPC while writing a spill stays `output` (8). A full disk and a ceiling the operator set are different fixes.
+- `memory_limit`: `GOMEMLIMIT` is finite. If `HeapAlloc` is still above 90% of that limit after one GC, the planner returns before the runtime calls `exit(2)`.
+
+The innermost kind wins, so a later wrap does not turn this into `refused` or `error`. A resource failure writes no plan and no script.
+
 ## Considered options
 
 - **Export only `EvalGenExpr` and keep the column parser in `analyzer`.** The parser and the evaluator share `Scan` and `SchemaCol`. Leaving the parser behind means `mysqlexpr` cannot see `schemaCol`, or `analyzer` imports `mysqlexpr` while `mysqlexpr` imports `analyzer`.
@@ -143,5 +162,5 @@ Steps 1 and 2 are the first PR. They are the closed set with the smallest shared
 
 - Steps 1 and 2 do not change analyze or flashback output. `report_version` and `plan_version` stay. Golden files stay.
 - ADR 0005 and ADR 0007 still describe the binding rules and the evaluator. The file paths in those ADRs are historical; the packages in this ADR are the location. Step 3 moved the guard to `internal/guard` and added `SealWriter` (see the guard interface). ADR 0006's behaviour is unchanged; its path now names `internal/guard`.
-- Step 4 moved the planner. `*Analyzer` keeps one `*flashback.Planner` and no `flash*` fields. The event loop calls the planner directly (`Observe`, `Note`, `NoteSkipped`); `cmd` uses `Planner()` (`Prepare`, `WriteTo`, `Plan` / `WritePlan`). There is no forwarding wrapper on `Analyzer`. `Prepare` returns the undo row count as `(int, error)` because exit 2 is "no undo rows". `WriteTo` returns that count widened to `int64`, not a byte count. Spill chunk size is `ChunkRows`. The generated-column review in this step still holds images; bounding that memory is a later change to the planner, not a second move.
+- Step 4 moved the planner. `*Analyzer` keeps one `*flashback.Planner` and no `flash*` fields. The event loop calls the planner directly (`Observe`, `Note`, `NoteSkipped`); `cmd` uses `Planner()` (`Prepare`, `WriteTo`, `Plan` / `WritePlan`). There is no forwarding wrapper on `Analyzer`. `Prepare` returns the undo row count as `(int, error)` because exit 2 is "no undo rows". `WriteTo` returns that count widened to `int64`, not a byte count. Spill chunk size is `ChunkRows`. Generated-column review streams; see the section below.
 - A later step that wants the column parser to live inside `schemacatalog` moves those functions and keeps `SchemaCol` as the single column type. It does not add a parallel struct.

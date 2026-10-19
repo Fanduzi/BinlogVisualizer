@@ -205,10 +205,15 @@ func flashbackUsageTemplate() string {
 }
 
 // flashbackExit types a flashback refusal: a conflict (#259) is its own
-// kind, exit 7; any other refusal is exit 6 (ADR 0008).
+// kind, exit 7; a resource ceiling is exit 10 (ADR 0012); any other refusal
+// is exit 6 (ADR 0008).
 func flashbackExit(err error) error {
 	if err == nil {
 		return nil
+	}
+	var resource *flashback.ResourceError
+	if errors.As(err, &resource) {
+		return clierr.WithDetails(clierr.KindResource, err, map[string]any{"reason": resource.Reason})
 	}
 	var conflict *flashback.FlashbackConflictError
 	if errors.As(err, &conflict) {
@@ -246,7 +251,8 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 	out := bufio.NewWriterSize(os.Stdout, 1<<16)
 	if _, err := plan.WriteTo(out); err != nil {
 		var refusal *flashback.FlashbackConflictError
-		if errors.As(err, &refusal) {
+		var resource *flashback.ResourceError
+		if errors.As(err, &refusal) || errors.As(err, &resource) {
 			return flashbackExit(err)
 		}
 		return clierr.Wrap(clierr.KindOutput, err)

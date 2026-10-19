@@ -286,6 +286,10 @@ type FlashbackPlanCounts struct {
 func (a *Planner) WritePlan(w io.Writer) error {
 	plan, err := a.flashbackPlan()
 	if err != nil {
+		var resource *ResourceError
+		if errors.As(err, &resource) {
+			return err
+		}
 		kind := clierr.KindRefused
 		var conflict *FlashbackConflictError
 		if errors.As(err, &conflict) {

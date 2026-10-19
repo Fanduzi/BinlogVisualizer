@@ -2,7 +2,7 @@
 // input: an error and the kind of failure it is.
 // output: Kind, the exit code for that kind, and a one-line JSON form for stderr.
 // pos: stateless; commands return typed errors, the process boundary maps them to exit codes.
-// note: if this file changes, update this header, docs/reference/exit-codes.md and README.md.
+// note: if this file changes, update this header, docs/reference/exit-codes.md, docs/agents/USING-BINLOGVIZ.md and cmd/binlogviz/README.md.
 package clierr
 
 import (
@@ -28,12 +28,15 @@ const (
 	// KindUnsupported is valid input that binlogviz does not analyze, such as
 	// a STATEMENT or MIXED binlog with no ROW images (ADR 0009, #277).
 	KindUnsupported Kind = "unsupported" // 9
+	// KindResource is an enforced ceiling: a spill byte limit or a memory
+	// limit (GOMEMLIMIT). It is never "no data" (ADR 0012, #317).
+	KindResource Kind = "resource" // 10
 )
 
 var codes = map[Kind]int{
 	KindError: 1, KindNoData: 2, KindUsage: 3, KindInput: 4,
 	KindCorrupt: 5, KindRefused: 6, KindConflict: 7, KindOutput: 8,
-	KindUnsupported: 9,
+	KindUnsupported: 9, KindResource: 10,
 }
 
 // Code is the process exit code for kind.

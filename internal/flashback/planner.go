@@ -64,11 +64,16 @@ type Planner struct {
 	// runs, before that event is applied to the transaction builder.
 	conflictTxn  string
 	conflictGTID string
+
+	// spillLimit is BINLOGVIZ_SPILL_BYTES, or a test ceiling. 0 is unlimited.
+	// memLimit is a test ceiling. 0 consults GOMEMLIMIT when that is finite.
+	spillLimit int64
+	memLimit   int64
 }
 
 // New starts a planner. Schema SQL is loaded now, matching the analyzer reset.
 func New(opts Options) *Planner {
-	p := &Planner{opts: opts, flashCat: schemacatalog.New(opts.SchemaFileDB)}
+	p := &Planner{opts: opts, flashCat: schemacatalog.New(opts.SchemaFileDB), spillLimit: spillLimitFromEnv()}
 	if strings.TrimSpace(opts.SchemaSQL) != "" {
 		p.flashCat.LoadFile(opts.SchemaSQL)
 	}
@@ -425,7 +430,10 @@ func (a *Planner) spillCurrent() error {
 	if err := a.flashSpill.append(cur); err != nil {
 		return clierr.Wrap(clierr.KindOutput, fmt.Errorf("flashback: cannot write temp file: %w", err))
 	}
-	return nil
+	if err := a.overBudget(0); err != nil {
+		return err
+	}
+	return a.checkMemory()
 }
 
 func (a *Planner) closeFlashSpill() {
@@ -604,103 +612,6 @@ func (a *Planner) WriteFlashback(w io.Writer) (int, error) {
 		return 0, err
 	}
 	return rows, nil
-}
-
-// reviewGenerated checks schema-file generated columns against every logged image.
-// A contradiction refuses the script. An expression that cannot be checked exactly
-// is omitted, with a warning, when nothing contradicts it.
-func (a *Planner) reviewGenerated() error {
-	if a.flashReviewed {
-		return a.flashReviewErr
-	}
-	a.flashReviewed = true
-	a.flashReviewErr = a.collectGeneratedReview()
-	return a.flashReviewErr
-}
-
-func (a *Planner) collectGeneratedReview() error {
-	type bucket struct {
-		schema string
-		table  string
-		cols   []mysqlexpr.SchemaCol
-		images []mysqlexpr.LoggedImage
-	}
-	var order []string
-	groups := map[string]*bucket{}
-	err := a.eachFlashGroup(false, func(group *flashGroup) error {
-		for i, row := range group.rows {
-			if i >= len(group.binds) {
-				continue
-			}
-			cols := group.binds[i].cols
-			sig := generatedSig(cols)
-			if sig == "" {
-				continue
-			}
-			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + sig
-			b := groups[key]
-			if b == nil {
-				b = &bucket{schema: row.Schema, table: row.Table, cols: cols}
-				groups[key] = b
-				order = append(order, key)
-			}
-			if row.Before != nil {
-				b.images = append(b.images, mysqlexpr.LoggedImage{Columns: row.Columns, Values: row.Before})
-			}
-			if row.After != nil {
-				b.images = append(b.images, mysqlexpr.LoggedImage{Columns: row.Columns, Values: row.After})
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	var mismatches, notes []string
-	var warns []model.FlashbackWarning
-	hinted := false
-	for _, key := range order {
-		b := groups[key]
-		table := flashTable(b.schema, b.table)
-		label := a.refusalTable(b.schema, b.table)
-		var imgs *mysqlexpr.GenImages
-		for _, col := range b.cols {
-			if !col.Generated {
-				continue
-			}
-			if imgs == nil {
-				imgs = mysqlexpr.PrepareGenImages(b.images, b.cols)
-			}
-			example, unknown := imgs.Outcome(col)
-			if example != "" {
-				// Any fitting or unchecked increment gets the increment
-				// message: an unchecked one may be where the dump is right,
-				// so the dump is not called wrong (#243).
-				if fit, unchecked := imgs.DivIncrementFit(col); len(fit) > 0 || len(unchecked) > 0 {
-					line := mysqlexpr.DivIncrementMismatch(label, col, example, fit, unchecked).Error()
-					if !hinted {
-						hinted = true
-						line = joinHint(line, mysqlexpr.DivIncrementHint(mysqlexpr.SQLTableName(b.schema, b.table), fit, unchecked))
-					}
-					mismatches = append(mismatches, line)
-					continue
-				}
-				mismatches = append(mismatches, mysqlexpr.GeneratedMismatch(label, col, example).Error())
-				continue
-			}
-			if !unknown {
-				continue
-			}
-			notes = append(notes, mysqlexpr.UnverifiedGeneratedComment(table, col))
-			warns = append(warns, mysqlexpr.UnverifiedGeneratedWarning(table, col))
-		}
-	}
-	if len(mismatches) > 0 {
-		return fmt.Errorf("%s", strings.Join(mismatches, "\n"))
-	}
-	a.noteSchemaWarnings(warns)
-	a.flashGenNotes = append(a.flashGenNotes, notes...)
-	return nil
 }
 
 // joinHint appends the once-per-run hand-restore note to a refusal line,
