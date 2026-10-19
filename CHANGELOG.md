@@ -4,10 +4,26 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.28.0
+
+Release date: 2026-10-19
+
+Highlights:
+
+- `analyze --diagnostics full|summary|off` shrinks `analyze --format json` for agents. The default `full` is unchanged; on a 1.07 GB binlog, stdout is 63042 / 42759 / 22627 bytes (ADR 0011, #282, #307).
+- A transaction alert carries its `gtid`, ready for `flashback --include-gtids` (#282, #307).
+- Snapshots and workflow artifacts always keep full diagnostics. compare, trend, `snapshot save|show` and workflow resume/`--rerun` refuse a trimmed report with exit 9 (`reduced_diagnostics`) instead of comparing omitted lists as empty (#307).
+- No breaking changes: `report_version` 3 and `plan_version` 2 are unchanged. Known issues: Linux release archives still report an empty commit (#303); `--diagnostics` P3 follow-ups (#308).
+
+Related notes:
+
+- [v0.28.0 release notes](docs/releases/release-notes-v0.28.0.md)
+- [v0.28.0 中文发行说明](docs/releases/release-notes-v0.28.0.zh-CN.md)
+
 ### Added
 
-- `binlogviz analyze --diagnostics full|summary|off` (default `full`) shrinks `analyze --format json`. `summary` keeps coverage, counts, the DDL timeline, open uncommitted groups, and duration buckets, and empties the transaction rankings and the other diagnostics lists already present at the top level. `off` omits `diagnostics`. Text, Markdown, and HTML are unchanged. `report_version` stays 3 (ADR 0011, #282). The flag trims stdout only: a trimmed document carries `diagnostics_mode`, `--snapshot-name` and workflow artifacts always keep full diagnostics, and compare, trend, and `snapshot save` refuse a trimmed document with exit 9 (`reduced_diagnostics`) rather than reporting deltas against omitted lists.
-- A transaction alert in analyze JSON carries `gtid` when that transaction has one, the same string as `transactions[].gtid`, so an agent can pass it to `flashback --include-gtids` without joining on `txn_key`. `message` and `txn_key` are unchanged (ADR 0011, #282).
+- `binlogviz analyze --diagnostics full|summary|off` (default `full`) shrinks `analyze --format json`. `summary` keeps coverage, counts, the DDL timeline, open uncommitted groups, and duration buckets, and empties the transaction rankings and the other diagnostics lists already present at the top level. `off` omits `diagnostics`. Text, Markdown, and HTML are unchanged. `report_version` stays 3 (ADR 0011, #282). The flag trims stdout only: a trimmed document carries `diagnostics_mode`, `--snapshot-name` and workflow artifacts always keep full diagnostics, and a trimmed document is refused with exit 9 (`unsupported`, `details.reason: reduced_diagnostics`) by `compare` (files, either side, and snapshots), `trend` (named snapshots, `--baseline-snapshot`, `--from-snapshots`), `snapshot save` and `snapshot show`, and `workflow resume`/`--rerun` when they reuse an analyze artifact, rather than reporting deltas against omitted lists. A report without `diagnostics_mode` compares as before.
+- A transaction alert in analyze JSON carries `gtid` when that transaction has one, the same string as `transactions[].gtid`, so an agent can pass it to `flashback --include-gtids` without joining on `txn_key`. `message` and `txn_key` are unchanged. `--detail-store duckdb` keeps the alert GTID too (ADR 0011, #282).
 
 ## v0.27.0
 
