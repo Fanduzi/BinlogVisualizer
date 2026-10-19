@@ -63,18 +63,30 @@ func newInstallMirror(t *testing.T, version string) *installMirror {
 	m.payload = fakeReleaseArchive(t, "#!/bin/sh\necho \"binlogviz "+version+"\"\n")
 	sum := sha256.Sum256(m.payload)
 	m.checksum = hex.EncodeToString(sum[:]) + "  " + m.archive + "\n"
+	m.serve()
+	t.Cleanup(func() { m.srv.Close() })
+	return m
+}
+
+// serve snapshots the archive the handler will return. Tests that change
+// payload or checksum close the server, edit, and serve again, so the
+// handler does not read bytes the test is still writing.
+func (m *installMirror) serve() {
+	payload := append([]byte(nil), m.payload...)
+	checksum := m.checksum
+	archive := m.archive
+	version := m.version
+	stripped := strings.TrimPrefix(version, "v")
 	m.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/download/" + version + "/" + m.archive:
-			_, _ = w.Write(m.payload)
+		case "/download/" + version + "/" + archive:
+			_, _ = w.Write(payload)
 		case "/download/" + version + "/binlogviz_" + stripped + "_checksums.txt":
-			_, _ = w.Write([]byte(m.checksum))
+			_, _ = w.Write([]byte(checksum))
 		default:
 			http.NotFound(w, r)
 		}
 	}))
-	t.Cleanup(m.srv.Close)
-	return m
 }
 
 func (m *installMirror) run(t *testing.T, path string, args ...string) (string, error) {
@@ -137,7 +149,9 @@ func TestInstallScriptRefusesBadDownloads(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			m := newInstallMirror(t, "v9.8.7")
 			if tc.mutate != nil {
+				m.srv.Close()
 				tc.mutate(m)
+				m.serve()
 			}
 			bin := t.TempDir()
 			args := tc.args
