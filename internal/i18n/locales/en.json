@@ -301,7 +301,7 @@
   },
   "cmd.flashback.flag.plan": {
     "description": "Flashback --plan help",
-    "other": "Print a JSON plan (plan_version 2: transactions, rows per table, conflicts, guard, refusal, warning codes) instead of SQL; the exit code is what the real run would return, and a refusal (exit 6 or 7) still prints the plan"
+    "other": "Print a JSON plan (plan_version 2: transactions, rows per table, conflicts, guard, refusal, warning codes) instead of SQL; the exit code is what the real run would return, and a refusal (exit 6 or 7) still prints the plan; a resource ceiling (exit 10) prints nothing"
   },
   "cmd.flashback.flag.conflictLimit": {
     "description": "Flashback --conflict-limit help",
@@ -469,7 +469,7 @@
   },
   "cmd.flashback.long": {
     "description": "Flashback command long description",
-    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE, and must describe the table as it was at incident time. ENUM is the member index and SET is the bitmask. ENUM index 0, a zero date, and an omitted generated column logged as NULL are restored by dropping only the sql_mode flags that reject them, for that statement only. A logged value that contradicts a generated expression is refused. An expression that cannot be checked is omitted, and the script guard checks that each omitted generated column is generated on the target."
+    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE, and must describe the table as it was at incident time. ENUM is the member index and SET is the bitmask. ENUM index 0, a zero date, and an omitted generated column logged as NULL are restored by dropping only the sql_mode flags that reject them, for that statement only. A logged value that contradicts a generated expression is refused. An expression that cannot be checked is omitted, and the script guard checks that each omitted generated column is generated on the target. Exit 10 (kind resource) is a spill or memory ceiling: details.reason spill_limit when BINLOGVIZ_SPILL_BYTES is a positive byte count and the row plus review spills grow past it, or memory_limit when HeapAlloc stays above 90% of GOMEMLIMIT after one GC. Unset or non-positive / unparseable BINLOGVIZ_SPILL_BYTES means no byte ceiling. Exit 10 is never exit 2, and writes no plan and no script."
   },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",
