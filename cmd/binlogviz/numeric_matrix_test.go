@@ -685,12 +685,12 @@ func numericRoundTrip(t *testing.T, binlog, incident string, names []string, bef
 			}
 		}
 	}
-	numericMySQL(t, sql)
+	numericMySQL(t, committingFlashback(t, sql))
 	if got := numericChecksum(t, names); got != before {
 		t.Fatalf("strict checksum\nbefore:\n%s\nrestored:\n%s", before, got)
 	}
 	numericMySQL(t, incident)
-	numericMySQL(t, "SET SESSION sql_mode='';\n"+sql)
+	numericMySQL(t, "SET SESSION sql_mode='';\n"+committingFlashback(t, sql))
 	if got := numericChecksum(t, names); got != before {
 		t.Fatalf("non-strict checksum\nbefore:\n%s\nrestored:\n%s", before, got)
 	}

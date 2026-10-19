@@ -28,6 +28,26 @@ func TestSpillLimitIsResource(t *testing.T) {
 	}
 }
 
+func TestByteCeilingRejectsGarbage(t *testing.T) {
+	for _, v := range []string{"abc", "0", "-1", "1MB", ""} {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv("BINLOGVIZ_SPILL_BYTES", v)
+			if _, err := parseByteCeiling("BINLOGVIZ_SPILL_BYTES"); err == nil {
+				t.Fatalf("accepted %q", v)
+			}
+		})
+	}
+	n, err := parseByteCeiling("BINLOGVIZ_NOT_A_REAL_CEILING")
+	if err != nil || n != 0 {
+		t.Fatalf("unset = %d %v", n, err)
+	}
+	t.Setenv("BINLOGVIZ_MEMORY_BYTES", "4096")
+	n, err = parseByteCeiling("BINLOGVIZ_MEMORY_BYTES")
+	if err != nil || n != 4096 {
+		t.Fatalf("memory = %d %v", n, err)
+	}
+}
+
 func TestMemoryLimitIsResource(t *testing.T) {
 	p := New(Options{})
 	p.memLimit = 1

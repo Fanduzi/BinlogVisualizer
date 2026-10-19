@@ -1,15 +1,12 @@
 // Package guard: the flashback apply guard.
-// input: the generated columns an undo script omits (db, table, column).
-// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-block lock, the per-statement token condition, and the token seal of the finished script. A digest shorter than 8 bytes is an error. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (guard_test.go).
-// pos: flashback-only module. Analyze does not call it. The planner walks omitted columns and calls New.
-// note: if this file changes, update this header, CONTEXT.md (Apply guard) and docs/adr/0006-guard-module.md.
+// input: the generated columns an undo script omits (db, table, column), and the statement pieces the planner emits.
+// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-statement token condition, and Write, which seals one script (session token, running digest, trailer that does not commit). Verify checks that script. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (guard_test.go).
+// pos: flashback-only module. Analyze does not call it. The planner walks omitted columns and calls New, then Write.
+// note: if this file changes, update this header, CONTEXT.md (Apply guard), docs/adr/0006-guard-module.md and docs/adr/0013-flashback-apply-integrity.md.
 package guard
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -34,7 +31,9 @@ func New(cols []Col) Guard {
 // Header is the SQL printed once after the session SET lines.
 func (g Guard) Header() string { return g.header }
 
-// BlockLock is repeated before each transaction block.
+// BlockLock is the header lock (COMMIT, read-only, unlock only when the token
+// matches). It runs once, inside the header, before any undo. A later block
+// uses BlockGate: repeating this lock would COMMIT a prefix of the undo.
 func (g Guard) BlockLock() string {
 	if g.header == "" {
 		return ""
@@ -42,7 +41,22 @@ func (g Guard) BlockLock() string {
 	return guardLockSQL
 }
 
-// RowCond is added to every undo statement.
+// BlockGate is the per-block read-only gate. It does not COMMIT. A block that
+// is inside this script's transaction and holds the token runs DO 0, so the
+// header's unlock stands. Anything else runs SET SESSION TRANSACTION READ ONLY,
+// which names no server variable. Empty when the script has no guard.
+func (g Guard) BlockGate() string {
+	if g.header == "" {
+		return ""
+	}
+	return "SET @binlogviz_hold = IF(@binlogviz_txn <=> 1 AND @binlogviz_ok <=> '" + guardTokenMark + "', 'DO 0', 'SET SESSION TRANSACTION READ ONLY');\n" +
+		"PREPARE binlogviz_fb_gate_x9q FROM @binlogviz_hold;\n" +
+		"EXECUTE binlogviz_fb_gate_x9q;\n" +
+		"DEALLOCATE PREPARE binlogviz_fb_gate_x9q;\n"
+}
+
+// RowCond is added to every undo statement. A token that does not match this
+// session is ERROR 1242 and sets @binlogviz_bad, not a silent zero-row match.
 func (g Guard) RowCond() string {
 	if g.header == "" {
 		return ""
@@ -50,37 +64,13 @@ func (g Guard) RowCond() string {
 	return guardTokenCond
 }
 
-// Seal replaces the token placeholder with this script's token. The token is
-// a hash of the script with a fixed placeholder, so the same input always
-// prints the same script and two different scripts get different tokens.
-func (g Guard) Seal(script string) string {
-	if g.header == "" {
+// seal replaces the token placeholder. Tests of the header SQL call it. Write
+// is the script seal; this does not hash the script.
+func (g Guard) seal(script, token string) string {
+	if g.header == "" || token == "" {
 		return script
 	}
-	sum := sha256.Sum256([]byte(script))
-	return strings.ReplaceAll(script, guardTokenMark, hex.EncodeToString(sum[:8]))
-}
-
-// SealWriter writes through to w with the token placeholder replaced by the
-// token for sum, the sha256 of the whole script as Seal computes it. The
-// renderer never splits the placeholder across writes, so the writer is a
-// function of one string. A digest shorter than 8 bytes is an error. A zero
-// guard writes each string unchanged.
-func (g Guard) SealWriter(w io.Writer, sum []byte) (func(string) error, error) {
-	if len(sum) < 8 {
-		return nil, fmt.Errorf("guard: digest is %d bytes, need at least 8", len(sum))
-	}
-	if g.header == "" {
-		return func(s string) error {
-			_, err := io.WriteString(w, s)
-			return err
-		}, nil
-	}
-	token := hex.EncodeToString(sum[:8])
-	return func(s string) error {
-		_, err := io.WriteString(w, strings.ReplaceAll(s, guardTokenMark, token))
-		return err
-	}, nil
+	return strings.ReplaceAll(script, guardTokenMark, token)
 }
 
 const guardMismatchLead = "binlogviz: schema file does not match the target"
@@ -93,7 +83,12 @@ const guardMismatchHint = ". This session is now read-only: disconnect, fix the 
 // guard sets @binlogviz_ok to the token only when it ran in this session and
 // matched; every block and every undo statement checks it.
 const guardTokenMark = "\x00binlogviz-token\x00"
-const guardTokenCond = "@binlogviz_ok <=> '" + guardTokenMark + "'"
+
+// A match returns 1. MySQL runs only that branch, so the subquery is not
+// evaluated and a real row still matches. A mismatch assigns @binlogviz_bad
+// and then errors with 1242 (subquery returns more than one row). The
+// assignment survives --force, and the trailer rolls the transaction back.
+const guardTokenCond = "CASE WHEN @binlogviz_ok <=> '" + guardTokenMark + "' THEN 1 ELSE (SELECT @binlogviz_bad := 1 UNION ALL SELECT 1) END"
 const guardValueLimit = 200
 
 // Prepared statement names. The suffix keeps them apart from names a DBA
@@ -135,7 +130,7 @@ func guardServerCheckSQL() string {
 // ERROR 1792. A reconnect inside a block is covered by the token check in each
 // undo statement, not by this lock.
 const guardLockSQL = "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n" +
-	"SET @binlogviz_unlock_sql = IF(" + guardTokenCond + ", 'SET SESSION TRANSACTION READ WRITE', 'DO 0');\n" +
+	"SET @binlogviz_unlock_sql = IF(@binlogviz_ok <=> '" + guardTokenMark + "', 'SET SESSION TRANSACTION READ WRITE', 'DO 0');\n" +
 	"PREPARE " + guardStmtUnlock + " FROM @binlogviz_unlock_sql;\n" +
 	"EXECUTE " + guardStmtUnlock + ";\n" +
 	"DEALLOCATE PREPARE " + guardStmtUnlock + ";\n"

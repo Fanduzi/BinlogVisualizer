@@ -7,7 +7,6 @@
 package flashback
 
 import (
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -66,14 +65,22 @@ type Planner struct {
 	conflictGTID string
 
 	// spillLimit is BINLOGVIZ_SPILL_BYTES, or a test ceiling. 0 is unlimited.
-	// memLimit is a test ceiling. 0 consults GOMEMLIMIT when that is finite.
+	// memLimit is BINLOGVIZ_MEMORY_BYTES, or a test ceiling. 0 consults
+	// GOMEMLIMIT when that is finite (ADR 0013).
 	spillLimit int64
 	memLimit   int64
 }
 
 // New starts a planner. Schema SQL is loaded now, matching the analyzer reset.
 func New(opts Options) *Planner {
-	p := &Planner{opts: opts, flashCat: schemacatalog.New(opts.SchemaFileDB), spillLimit: spillLimitFromEnv()}
+	spill, spillErr := spillLimitFromEnv()
+	mem, memErr := memoryLimitFromEnv()
+	p := &Planner{opts: opts, flashCat: schemacatalog.New(opts.SchemaFileDB), spillLimit: spill, memLimit: mem}
+	if spillErr != nil {
+		p.flashErr = spillErr
+	} else if memErr != nil {
+		p.flashErr = memErr
+	}
 	if strings.TrimSpace(opts.SchemaSQL) != "" {
 		p.flashCat.LoadFile(opts.SchemaSQL)
 	}
@@ -124,10 +131,6 @@ func (a *Planner) NoteSkipped(txnKey, gtid string) {
 func (a *Planner) WriteTo(w io.Writer) (int64, error) {
 	n, err := a.WriteFlashback(w)
 	return int64(n), err
-}
-
-func sealOut(g guard.Guard, w io.Writer, sum []byte) (writerFunc, error) {
-	return g.SealWriter(w, sum)
 }
 
 // flashBind is the table definition in effect for one undo row.
@@ -708,55 +711,71 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 	return b.String(), nil
 }
 
-// writeFlashbackScript renders the script twice from backward (last group
-// first): into the guard hash, then to w with the token sealed in. Nothing
-// reaches w when a statement cannot be rendered.
+// writeFlashbackScript renders the script twice through guard.Write: once to
+// choose the session token, once to seal the digest. Nothing reaches w when
+// a statement cannot be rendered. The published script does not commit
+// (ADR 0013).
 func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) error, notes []string, cols []guard.Col, postImage bool) error {
-	guard := guard.New(cols)
-	h := sha256.New()
-	if err := renderFlashbackTo(toWriter(h), backward, notes, guard, postImage); err != nil {
-		return err
-	}
-	sealed, err := sealOut(guard, w, h.Sum(nil))
-	if err != nil {
-		return err
-	}
-	return renderFlashbackTo(sealed, backward, notes, guard, postImage)
+	g := guard.New(cols)
+	return g.Write(w, func(emit func(guard.Piece) error) error {
+		return renderFlashbackTo(emit, backward, notes, g, postImage)
+	})
 }
 
-func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, guard guard.Guard, postImage bool) error {
+func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGroup) error) error, notes []string, g guard.Guard, postImage bool) error {
 	var b strings.Builder
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
+	b.WriteString("-- This file does not commit. Apply it with: binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4\n")
 	for _, note := range notes {
 		b.WriteString(note)
-		b.WriteByte('\n')
+		if !strings.HasSuffix(note, "\n") {
+			b.WriteByte('\n')
+		}
 	}
 	if postImage {
 		b.WriteString("-- --conflict guard: each undo matches the logged after image, so a row changed after the batch is left unchanged (0 rows affected). An undo that moves a primary key back changes no row when another row holds that key.\n")
 	}
-	b.WriteString("SET NAMES utf8mb4;\n")
-	b.WriteString("SET time_zone = '+00:00';\n")
-	b.WriteString("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\n")
-	if guard.Header() != "" {
-		b.WriteByte('\n')
-		b.WriteString(guard.Header())
-	}
-	if err := out(b.String()); err != nil {
+	if err := emitComments(emit, b.String()); err != nil {
 		return err
 	}
-	// With a guard, every undo statement also checks this script's token, so
-	// a statement run in a session where this script's guard did not match
-	// (a reconnect inside a block, a block from another script) changes no row.
-	tokenCond := guard.RowCond()
-	// Parts of one transaction arrive last part first; the block opens at
-	// the first part seen and commits after part 0.
+	// The mode strip is first. Its payload is quoted without backslashes, so a
+	// session that already has NO_BACKSLASH_ESCAPES can parse it and execute
+	// it. Later payloads may use backslash escapes.
+	for _, stmt := range []string{
+		"SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '')",
+		"SET NAMES utf8mb4",
+		"SET time_zone = '+00:00'",
+		"SET @binlogviz_bad = NULL",
+		"SET @binlogviz_txn = 0",
+	} {
+		if err := emit(guard.Piece{Kind: guard.PieceStmt, Text: stmt}); err != nil {
+			return err
+		}
+	}
+	if h := g.Header(); h != "" {
+		if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: h}); err != nil {
+			return err
+		}
+	}
+	// START TRANSACTION cannot be prepared (ERROR 1295). One transaction for
+	// the whole undo: a prefix has no COMMIT, so a cut file rolls back.
+	if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: "START TRANSACTION;\n"}); err != nil {
+		return err
+	}
+	if err := emit(guard.Piece{Kind: guard.PieceStmt, Text: "SET @binlogviz_txn = 1"}); err != nil {
+		return err
+	}
+	tokenCond := g.RowCond()
+	// Parts of one transaction arrive last part first. The block comment
+	// opens at the first part seen. There is no per-block COMMIT.
 	open := int64(-1)
 	return backward(func(group *flashGroup) error {
-		b.Reset()
 		if group.id != open {
 			open = group.id
-			writeBlockHead(&b, group, guard)
+			if err := writeBlockHead(emit, group, g); err != nil {
+				return err
+			}
 		}
 		for j := len(group.rows) - 1; j >= 0; j-- {
 			var gen map[string]struct{}
@@ -767,48 +786,94 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 			if err != nil {
 				return err
 			}
-			b.WriteString(statement)
-			b.WriteByte('\n')
-			if b.Len() > 1<<20 {
-				if err := out(b.String()); err != nil {
-					return err
-				}
-				b.Reset()
+			if err := emitSQL(emit, statement); err != nil {
+				return err
 			}
 		}
-		if group.chunk == 0 {
-			b.WriteString("COMMIT;\n")
-		}
-		return out(b.String())
+		return nil
 	})
 }
 
-func writeBlockHead(b *strings.Builder, group *flashGroup, guard guard.Guard) {
-	b.WriteByte('\n')
+func emitComments(emit func(guard.Piece) error, text string) error {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if err := emit(guard.Piece{Kind: guard.PieceComment, Text: line + "\n"}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// emitSQL splits a renderer string into comments and statements. A statement
+// is one line or several, and ends at a semicolon that ends a line.
+func emitSQL(emit func(guard.Piece) error, sql string) error {
+	var b strings.Builder
+	flush := func() error {
+		s := strings.TrimSpace(b.String())
+		b.Reset()
+		if s == "" {
+			return nil
+		}
+		return emit(guard.Piece{Kind: guard.PieceStmt, Text: s})
+	}
+	for _, line := range strings.Split(sql, "\n") {
+		trim := strings.TrimSpace(line)
+		if trim == "" {
+			continue
+		}
+		if strings.HasPrefix(trim, "--") {
+			if err := flush(); err != nil {
+				return err
+			}
+			if err := emit(guard.Piece{Kind: guard.PieceComment, Text: trim + "\n"}); err != nil {
+				return err
+			}
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+		if strings.HasSuffix(strings.TrimRight(line, " \t"), ";") {
+			if err := flush(); err != nil {
+				return err
+			}
+		}
+	}
+	return flush()
+}
+
+func writeBlockHead(emit func(guard.Piece) error, group *flashGroup, g guard.Guard) error {
 	gtid := group.gtid
 	if gtid == "" {
 		gtid = "GTID unavailable"
 	}
-	fmt.Fprintf(b, "-- gtid: %s\n", mysqlexpr.OneLine(gtid, 0))
 	file := filepath.Base(group.path)
 	if file == "" || file == "." {
 		file = "binlog"
 	}
-	fmt.Fprintf(b, "-- binlog: %s:%d\n", mysqlexpr.OneLine(file, 0), group.pos)
-	if lock := guard.BlockLock(); lock != "" {
-		// SET sql_mode, COMMIT, START TRANSACTION, and SET GTID_NEXT do not
-		// clear this session flag. Repeat the same lock outside a
-		// transaction so this block cannot start writable: it is read-only
-		// unless the header guard ran in this session and matched.
-		b.WriteString(lock)
+	if err := emit(guard.Piece{Kind: guard.PieceComment, Text: "-- gtid: " + mysqlexpr.OneLine(gtid, 0) + "\n"}); err != nil {
+		return err
 	}
-	b.WriteString("START TRANSACTION;\n")
+	if err := emit(guard.Piece{Kind: guard.PieceComment, Text: fmt.Sprintf("-- binlog: %s:%d\n", mysqlexpr.OneLine(file, 0), group.pos)}); err != nil {
+		return err
+	}
+	gate := g.BlockGate()
+	if gate == "" {
+		return nil
+	}
+	// The old per-block lock began with COMMIT, which would persist a prefix.
+	// A block that is not inside this script's transaction (no header, a
+	// reconnect, another script's token) becomes read-only instead. The gate
+	// prepares its own statement, so it is raw: a prepared statement cannot
+	// contain PREPARE.
+	return emit(guard.Piece{Kind: guard.PieceRaw, Text: gate})
 }
 
 // renderUndoStatement prints one undo statement. A non-empty cond is added to
-// the statement so it changes no row unless cond is true: an INSERT becomes
-// INSERT ... SELECT ... FROM DUAL WHERE cond, and UPDATE and DELETE add
-// AND cond to the WHERE.
+// the statement: an INSERT becomes INSERT ... SELECT ... FROM DUAL WHERE cond,
+// and UPDATE and DELETE add AND cond to the WHERE. The token condition errors
+// with 1242 when it does not match. A conflict-guard condition matches no row.
 func renderUndoStatement(row model.FlashRow, gen map[string]struct{}, cond string) (string, error) {
 	return renderUndo(row, gen, cond, false)
 }

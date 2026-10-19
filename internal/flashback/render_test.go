@@ -38,15 +38,15 @@ func TestRenderFlashbackReversesTransactionsAndRows(t *testing.T) {
 	if !strings.Contains(sql, "-- binlog: mysql-bin.000123:400") || !strings.Contains(sql, "-- binlog: mysql-bin.000123:100") {
 		t.Fatalf("positions:\n%s", sql)
 	}
-	undoDelete := strings.Index(sql, "INSERT INTO `shop`.`wide` (`id`) VALUES (2);")
-	undoInsert := strings.Index(sql, "DELETE FROM `shop`.`wide` WHERE `id` <=> 1;")
+	undoDelete := strings.Index(sql, "INSERT INTO `shop`.`wide` (`id`) VALUES (2)")
+	undoInsert := strings.Index(sql, "DELETE FROM `shop`.`wide` WHERE `id` <=> 1")
 	if undoDelete < 0 || undoInsert < 0 || undoDelete > undoInsert {
 		t.Fatalf("row order:\n%s", sql)
 	}
-	if !strings.Contains(sql, "-- no primary key on shop.heap; this matches every column and LIMIT 1") || !strings.Contains(sql, "DELETE FROM `shop`.`heap` WHERE `id` <=> 3 AND `note` <=> 'a' LIMIT 1;") {
+	if !strings.Contains(sql, "-- no primary key on shop.heap; this matches every column and LIMIT 1") || !strings.Contains(sql, "DELETE FROM `shop`.`heap` WHERE `id` <=> 3 AND `note` <=> ''a'' LIMIT 1") {
 		t.Fatalf("no pk:\n%s", sql)
 	}
-	if !strings.Contains(sql, "SET time_zone = '+00:00';") || !strings.Contains(sql, "SET NAMES utf8mb4;") {
+	if !strings.Contains(sql, "SET time_zone = ''+00:00''") || !strings.Contains(sql, "SET NAMES utf8mb4") {
 		t.Fatalf("preamble:\n%s", sql)
 	}
 }
@@ -58,7 +58,7 @@ func TestFlashbackWithoutGuardHasNoToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "binlogviz_ok") || !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`) VALUES (1);") {
+	if strings.Contains(sql, "binlogviz_ok") || !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`) VALUES (1)") {
 		t.Fatalf("script without a guard changed:\n%s", sql)
 	}
 }

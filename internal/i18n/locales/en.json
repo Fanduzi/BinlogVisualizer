@@ -337,7 +337,7 @@
   },
   "warning.flashbackGenerated": {
     "description": "Flashback warns when a selected table has no CREATE in the binlog or schema file",
-    "other": "{{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and earlier transactions stay committed. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE). The file must match the table at incident time."
+    "other": "{{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and the undo rolls back. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE). The file must match the table at incident time."
   },
   "error.flashbackSchemaFile": {
     "description": "Flashback could not read --schema-file",
@@ -467,9 +467,45 @@
     "description": "Flashback command short description",
     "other": "Print SQL that undoes selected row changes"
   },
+  "cmd.flashback.verify.use": {
+    "description": "Flashback verify usage",
+    "other": "verify <file>"
+  },
+  "cmd.flashback.verify.short": {
+    "description": "Flashback verify short description",
+    "other": "Check a flashback script and print the SQL that can commit it"
+  },
+  "cmd.flashback.verify.long": {
+    "description": "Flashback verify long description",
+    "other": "Read a flashback script and recompute its digest. An edited, truncated, reordered, or extended script writes nothing to stdout and exits 6 (kind refused), with details.reason not_flashback, truncated, missing_trailer, appended, or digest_mismatch. This command does not connect to a database. --format sql (the default) prints the script with the no-commit trailer replaced by a prepared COMMIT or ROLLBACK chosen from @binlogviz_sealed. --format json prints one object whose first key is schema_version. An empty file is exit 5. A missing file is exit 4. A bad --format is exit 3."
+  },
+  "cmd.flashback.verify.flag.format": {
+    "description": "Flashback verify format flag",
+    "other": "Output format: sql or json"
+  },
+  "error.flashbackByteEnv": {
+    "description": "Spill or memory ceiling is set but not a positive integer",
+    "other": "{{.Name}} must be a positive base-10 integer, got {{.Value}}"
+  },
+  "error.flashbackVerify": {
+    "description": "Flashback script failed verification",
+    "other": "flashback script failed verification ({{.Reason}})"
+  },
+  "error.flashbackVerifyEmpty": {
+    "description": "Flashback script file is empty",
+    "other": "flashback script is empty"
+  },
+  "error.flashbackVerifyFormat": {
+    "description": "Flashback verify format is not sql or json",
+    "other": "invalid flashback verify format {{.Value}}: expected sql or json"
+  },
+  "error.flashbackVerifyOpen": {
+    "description": "Flashback script file could not be read",
+    "other": "open flashback script {{.Path}}: {{.Error}}"
+  },
   "cmd.flashback.long": {
     "description": "Flashback command long description",
-    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, one transaction at a time. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE, and must describe the table as it was at incident time. ENUM is the member index and SET is the bitmask. ENUM index 0, a zero date, and an omitted generated column logged as NULL are restored by dropping only the sql_mode flags that reject them, for that statement only. A logged value that contradicts a generated expression is refused. An expression that cannot be checked is omitted, and the script guard checks that each omitted generated column is generated on the target. Exit 10 (kind resource) is a spill or memory ceiling: details.reason spill_limit when BINLOGVIZ_SPILL_BYTES is a positive byte count and the row plus review spills grow past it, or memory_limit when HeapAlloc stays above 90% of GOMEMLIMIT after one GC. Unset or non-positive / unparseable BINLOGVIZ_SPILL_BYTES means no byte ceiling. Exit 10 is never exit 2, and writes no plan and no script."
+    "other": "Print SQL that reverses selected ROW changes: DELETE becomes INSERT of the before-image, INSERT becomes DELETE, and UPDATE returns the row to its before-image. Statements are in reverse binlog order, in one transaction. The file does not commit. Apply it with: binlogviz flashback verify FILE | mysql --default-character-set=utf8mb4. Select rows with the same table, schema, --dml, time, position, and GTID filters as analyze. The script goes to stdout. Review it before applying. This command does not connect to a database. --schema-file names generated columns when the binlog has no CREATE TABLE, and must describe the table as it was at incident time. ENUM is the member index and SET is the bitmask. ENUM index 0, a zero date, and an omitted generated column logged as NULL are restored by dropping only the sql_mode flags that reject them, for that statement only. A logged value that contradicts a generated expression is refused. An expression that cannot be checked is omitted, and the script guard checks that each omitted generated column is generated on the target. Exit 10 (kind resource) is a spill or memory ceiling: details.reason spill_limit when BINLOGVIZ_SPILL_BYTES is a positive byte count and the row plus review spills grow past it, or memory_limit when HeapAlloc stays above 90% of the heap ceiling (BINLOGVIZ_MEMORY_BYTES, or GOMEMLIMIT when that variable is unset) after one GC. BINLOGVIZ_SPILL_BYTES, when set, must be a positive base-10 integer; any other value is exit 3 before a binlog is read. Unset means no byte ceiling. BINLOGVIZ_MEMORY_BYTES uses the same rule and, when set, replaces GOMEMLIMIT as the heap ceiling. Exit 10 is never exit 2, and writes no plan and no script."
   },
   "error.prefixDotHint": {
     "description": "Hint when prefix matching finds no files and prefix has no trailing dot",

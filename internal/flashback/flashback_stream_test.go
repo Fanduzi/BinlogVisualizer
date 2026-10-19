@@ -136,12 +136,15 @@ func TestFlashbackLargeTransactionIsOneBlock(t *testing.T) {
 		t.Fatalf("rows %d err %v", rows, err)
 	}
 	sql := b.String()
-	if strings.Count(sql, "START TRANSACTION;") != 1 || strings.Count(sql, "COMMIT;") != 1 {
-		t.Fatalf("blocks: %d starts, %d commits", strings.Count(sql, "START TRANSACTION;"), strings.Count(sql, "COMMIT;"))
+	// One raw START TRANSACTION, plus the same text in its digest payload.
+	// A script with no generated-column guard has no COMMIT.
+	if strings.Count(sql, "START TRANSACTION;") != 2 || strings.Contains(sql, "COMMIT;") {
+		t.Fatalf("blocks: %d starts, commit=%v", strings.Count(sql, "START TRANSACTION;"), strings.Contains(sql, "COMMIT;"))
 	}
-	last := strings.Index(sql, fmt.Sprintf("VALUES (%d);", n-1))
-	first := strings.Index(sql, "VALUES (0);")
-	if last < 0 || first < 0 || last > first || strings.Index(sql, "COMMIT;") < first {
+	last := strings.Index(sql, fmt.Sprintf("VALUES (%d)", n-1))
+	first := strings.Index(sql, "VALUES (0)")
+	trailer := strings.Index(sql, "-- binlogviz-trailer")
+	if last < 0 || first < 0 || trailer < 0 || last > first || trailer < first {
 		t.Fatal("rows must be undone last first inside one block")
 	}
 }

@@ -21,6 +21,7 @@ Only two JSON outputs carry a contract version: `analyze --format json` (`report
    | `snapshot list --format json`, `snapshot show --format json` | `schema_version` | 1 |
    | `workflow validate|describe|status|clean|export --format json` | `schema_version` | 1 |
    | `version --format json` | `schema_version` | 1 |
+| `flashback verify --format json` | `schema_version` | 1 |
 
    `schema_version` is the first key of the object. Each output owns its number and bumps it independently, only for a breaking change (a key removed, renamed, or changed in type or meaning). Adding a key is not breaking. A bump is recorded in CHANGELOG as breaking.
 2. **One writer adds it.** `internal/jsonout.Marshal(version, payload)` encodes the payload, requires a JSON object that does not already have `schema_version`, and puts `schema_version` first. Commands do not add the key by hand. `TestEveryJSONOutputIsVersioned` runs each JSON-emitting command and fails if its stdout lacks the key, so a new output cannot ship without one.
