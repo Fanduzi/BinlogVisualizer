@@ -2,7 +2,7 @@
 
 // Package analyzer validates DuckDB-backed result persistence and finalize assembly.
 // input: temporary DuckDB paths, provenance/completeness/replay/SQL-bearing transactions, analyzer.Options, and persistence-threshold events.
-// output: regression coverage for schema initialization, transaction-evidence parity, batch flushing, query ordering, and DuckDB-backed Finalize semantics.
+// output: regression coverage for schema initialization, transaction-evidence parity, batch flushing, query ordering, alert GTID round-trip, and DuckDB-backed Finalize semantics.
 // pos: module-level persistence test suite for the analyzer's internal result store layer.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -743,5 +743,35 @@ func analyzerPersistenceFixture(base time.Time) []model.NormalizedEvent {
 		{Timestamp: base.Add(3 * time.Minute), EventType: "BEGIN"},
 		{Timestamp: base.Add(3*time.Minute + time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 80},
 		{Timestamp: base.Add(3*time.Minute + 2*time.Second), EventType: "XID"},
+	}
+}
+
+// #282 / ADR 0011: an alert's GTID survives the DuckDB alerts table, the same
+// as the in-memory store.
+func TestDuckDBStoreRoundTripsAlertGTID(t *testing.T) {
+	store := newTestDuckDBStore(t, 1)
+	alerts := []model.Alert{
+		{Type: "large_transaction", Severity: "warning", Message: "m1", TxnKey: "txn-1", GTID: "4d8275bc-c221-11f1-a25e-822b383dbcd0:7", Details: map[string]any{"rows": float64(5)}},
+		{Type: "spike", Severity: "info", Message: "m2", Minute: time.Date(2026, 3, 16, 10, 0, 0, 0, time.UTC), Details: map[string]any{}},
+	}
+	if err := store.RecordAlerts(alerts); err != nil {
+		t.Fatalf("RecordAlerts: %v", err)
+	}
+	if err := store.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	got, err := store.QueryAlerts()
+	if err != nil {
+		t.Fatalf("QueryAlerts: %v", err)
+	}
+	gtids := map[string]string{}
+	for _, alert := range got {
+		gtids[alert.Type] = alert.GTID
+	}
+	if gtids["large_transaction"] != "4d8275bc-c221-11f1-a25e-822b383dbcd0:7" {
+		t.Fatalf("large_transaction GTID = %q", gtids["large_transaction"])
+	}
+	if gtids["spike"] != "" {
+		t.Fatalf("spike GTID = %q, want empty", gtids["spike"])
 	}
 }
