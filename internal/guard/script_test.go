@@ -1,6 +1,7 @@
 package guard
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 )
@@ -56,6 +57,13 @@ func TestWriteVerifyRoundTrip(t *testing.T) {
 	}
 	if strings.Contains(apply, noCommitSQL) || !strings.Contains(apply, "SET @binlogviz_commit = IF(@binlogviz_sealed <=> 1, 'COMMIT', 'ROLLBACK');") {
 		t.Fatal("apply SQL did not replace the trailer")
+	}
+	var streamed bytes.Buffer
+	if err := CopyApply(&streamed, strings.NewReader(script), int64(len(script))); err != nil {
+		t.Fatal(err)
+	}
+	if streamed.String() != apply {
+		t.Fatal("CopyApply diverged from ApplySQL")
 	}
 	again := renderScript(t, g,
 		Piece{Kind: PieceComment, Text: "-- banner\n"},

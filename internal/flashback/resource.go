@@ -101,6 +101,23 @@ func (a *Planner) checkMemory() error {
 	if limit == 0 {
 		limit = debug.SetMemoryLimit(-1)
 	}
+	return heapOver(limit)
+}
+
+// CheckMemory is the flashback heap ceiling for paths that are not the planner,
+// including flashback verify. An invalid BINLOGVIZ_MEMORY_BYTES is a usage error.
+func CheckMemory() error {
+	limit, err := memoryLimitFromEnv()
+	if err != nil {
+		return err
+	}
+	if limit == 0 {
+		limit = debug.SetMemoryLimit(-1)
+	}
+	return heapOver(limit)
+}
+
+func heapOver(limit int64) error {
 	if limit <= 0 || limit > 1<<62 {
 		return nil
 	}

@@ -44,7 +44,7 @@ The first executed statement removes `NO_BACKSLASH_ESCAPES`. Its payload is quot
 
 ### 3. `binlogviz flashback verify` is the commit
 
-`verify <file>` reads the file and recomputes the digest from the payloads, in order. It does not connect to MySQL.
+`verify <file>` reads the file once and recomputes the digest from the payloads, in order. It does not buffer the script and it does not connect to MySQL. SQL output is copied from a temp file after the digest matches. A heap ceiling (`BINLOGVIZ_MEMORY_BYTES`, or `GOMEMLIMIT` when that is unset) is exit 10, `details.reason` `memory_limit`. A full disk while writing the temp file is exit 8. Neither is exit 2.
 
 | `--format` | stdout on success |
 |---|---|

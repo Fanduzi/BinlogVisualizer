@@ -221,251 +221,387 @@ func sha256hex(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Verify recomputes the apply digest. It does not connect to MySQL.
+// Verify recomputes the apply digest from r. It reads the script once
+// and does not buffer it. It does not connect to MySQL.
 func Verify(r io.Reader) (Result, error) {
-	body, err := io.ReadAll(r)
-	if err != nil {
-		return Result{}, err
-	}
-	return verifyText(string(body))
+	return verifyStream(r)
 }
 
 // ApplySQL is the script verify prints: the same bytes, with the no-commit
 // line replaced by the conditional COMMIT.
 func ApplySQL(script string) (string, error) {
-	if _, err := verifyText(script); err != nil {
+	if _, err := verifyStream(strings.NewReader(script)); err != nil {
 		return "", err
 	}
 	const line = noCommitSQL + "\n"
 	if !strings.HasSuffix(script, line) {
 		return "", &VerifyError{Reason: "missing_trailer"}
 	}
-	return strings.TrimSuffix(script, line) + commitBlock, nil
+	return script[:len(script)-len(line)] + commitBlock, nil
 }
 
-func verifyText(script string) (Result, error) {
-	if strings.TrimSpace(script) == "" {
-		return Result{}, &VerifyError{Reason: "not_flashback"}
+// CopyApply streams a verified script to w, replacing the no-commit line.
+// It writes nothing until that line is the suffix. n is the byte length of r.
+func CopyApply(w io.Writer, r io.ReadSeeker, n int64) error {
+	const line = noCommitSQL + "\n"
+	if n < int64(len(line)) {
+		return &VerifyError{Reason: "missing_trailer"}
 	}
-	p := &scrParser{s: script}
-	if !p.seekInit() {
-		if strings.Contains(script, "binlogviz-digest") || strings.Contains(script, markerExec) || strings.Contains(script, "-- flashback reverses") {
+	if _, err := r.Seek(n-int64(len(line)), io.SeekStart); err != nil {
+		return err
+	}
+	tail := make([]byte, len(line))
+	if _, err := io.ReadFull(r, tail); err != nil {
+		return err
+	}
+	if string(tail) != line {
+		return &VerifyError{Reason: "missing_trailer"}
+	}
+	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if _, err := io.CopyN(w, r, n-int64(len(line))); err != nil {
+		return err
+	}
+	_, err := io.WriteString(w, commitBlock)
+	return err
+}
+
+func verifyStream(r io.Reader) (Result, error) {
+	p := &scrReader{br: bufio.NewReaderSize(r, 64<<10), armed: true}
+	found, err := p.seekInit()
+	if err != nil {
+		return Result{}, err
+	}
+	if !found {
+		if err := p.drain(); err != nil {
+			return Result{}, err
+		}
+		if p.hint {
 			return Result{}, &VerifyError{Reason: "truncated"}
 		}
 		return Result{}, &VerifyError{Reason: "not_flashback"}
 	}
-	var payloads []string
+	p.armed = false
+	p.carry = ""
+	digest := sha256hex(digestDomain)
+	n := 0
 	for {
-		p.skipGaps()
-		if p.eof() {
+		if err := p.skipGaps(); err != nil {
+			return Result{}, err
+		}
+		if !p.lined {
 			return Result{}, &VerifyError{Reason: "missing_trailer"}
 		}
-		switch {
-		case p.hasLine(markerTrailer):
+		ok, err := p.hasLine(markerTrailer)
+		if err != nil {
+			return Result{}, err
+		}
+		if ok {
 			hexDigest, err := p.trailer()
 			if err != nil {
 				return Result{}, err
 			}
-			p.skipGaps()
-			if !p.hasLine(noCommitSQL) {
+			if err := p.skipGaps(); err != nil {
+				return Result{}, err
+			}
+			ok, err = p.hasLine(noCommitSQL)
+			if err != nil {
+				return Result{}, err
+			}
+			if !ok {
 				return Result{}, &VerifyError{Reason: "missing_trailer"}
 			}
-			p.skipGaps()
-			if !p.eof() {
+			if err := p.skipGaps(); err != nil {
+				return Result{}, err
+			}
+			if p.lined {
 				return Result{}, &VerifyError{Reason: "appended"}
 			}
-			got := chain(payloads)
+			got := chainStep(digest, trailerMark)
 			if got != hexDigest {
 				return Result{}, &VerifyError{Reason: "digest_mismatch"}
 			}
-			return Result{Statements: len(payloads), Digest: got}, nil
-		case p.hasLine(markerExec):
+			return Result{Statements: n, Digest: got}, nil
+		}
+		ok, err = p.hasLine(markerExec)
+		if err != nil {
+			return Result{}, err
+		}
+		if ok {
 			payload, err := p.execPiece()
 			if err != nil {
 				return Result{}, err
 			}
-			payloads = append(payloads, payload)
-		case p.hasLine(markerRaw):
+			digest = chainStep(digest, payload)
+			n++
+			continue
+		}
+		ok, err = p.hasLine(markerRaw)
+		if err != nil {
+			return Result{}, err
+		}
+		if ok {
 			payload, err := p.rawPiece()
 			if err != nil {
 				return Result{}, err
 			}
-			payloads = append(payloads, payload)
-		default:
-			return Result{}, &VerifyError{Reason: "appended"}
+			digest = chainStep(digest, payload)
+			n++
+			continue
+		}
+		return Result{}, &VerifyError{Reason: "appended"}
+	}
+}
+
+func chainStep(prev, payload string) string {
+	h := sha256.New()
+	_, _ = io.WriteString(h, prev)
+	_, _ = io.WriteString(h, payload)
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// scrReader walks a script forward. armed notes a few marker strings until
+// the digest init line is found, so a non-script is not buffered to decide
+// truncated versus not_flashback.
+type scrReader struct {
+	br      *bufio.Reader
+	line    string
+	lined   bool
+	eof     bool
+	readErr error
+	armed   bool
+	hint    bool
+	carry   string
+}
+
+func (p *scrReader) note(s string) {
+	if !p.armed || p.hint || s == "" {
+		return
+	}
+	const keep = 32
+	head := s
+	if len(head) > keep {
+		head = s[:keep]
+	}
+	buf := p.carry + head
+	for _, n := range []string{"binlogviz-digest", markerExec, "-- flashback reverses"} {
+		if strings.Contains(s, n) || strings.Contains(buf, n) {
+			p.hint = true
+			p.carry = ""
+			return
 		}
 	}
-}
-
-func chain(payloads []string) string {
-	d := sha256hex(digestDomain)
-	for _, payload := range payloads {
-		d = sha256hex(d + payload)
+	if len(s) >= keep {
+		p.carry = s[len(s)-keep:]
+		return
 	}
-	return sha256hex(d + trailerMark)
+	buf = p.carry + s
+	if len(buf) > keep {
+		p.carry = buf[len(buf)-keep:]
+	} else {
+		p.carry = buf
+	}
 }
 
-type scrParser struct {
-	s string
-	i int
+func (p *scrReader) readRaw() (string, error) {
+	if p.readErr != nil {
+		return "", p.readErr
+	}
+	s, err := p.br.ReadString('\n')
+	if len(s) > 0 {
+		p.note(s)
+	}
+	if err == io.EOF {
+		if len(s) == 0 {
+			p.eof = true
+			return "", io.EOF
+		}
+		return s, nil
+	}
+	if err != nil {
+		p.readErr = err
+		return "", err
+	}
+	return s, nil
 }
 
-func (p *scrParser) rest() string { return p.s[p.i:] }
+func (p *scrReader) fill() error {
+	if p.lined || p.eof {
+		return nil
+	}
+	raw, err := p.readRaw()
+	if err == io.EOF {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	p.line = strings.TrimSuffix(raw, "\n")
+	p.lined = true
+	return nil
+}
 
-func (p *scrParser) eof() bool { return p.i >= len(p.s) }
-
-func (p *scrParser) skipGaps() {
+func (p *scrReader) drain() error {
+	p.lined = false
+	p.line = ""
 	for {
-		p.skipSpaceLines()
-		if p.eof() {
-			return
+		_, err := p.readRaw()
+		if err == io.EOF {
+			return nil
 		}
-		line, ok := p.peekLine()
-		if !ok {
-			return
+		if err != nil {
+			return err
 		}
-		trim := strings.TrimSpace(line)
+	}
+}
+
+func (p *scrReader) hasLine(want string) (bool, error) {
+	if err := p.fill(); err != nil {
+		return false, err
+	}
+	if !p.lined || strings.TrimRight(p.line, "\r") != want {
+		return false, nil
+	}
+	p.lined = false
+	p.line = ""
+	return true, nil
+}
+
+func (p *scrReader) skipGaps() error {
+	for {
+		if err := p.fill(); err != nil {
+			return err
+		}
+		if !p.lined {
+			return nil
+		}
+		p.line = strings.TrimLeft(p.line, " \t\r")
+		if p.line == "" {
+			p.lined = false
+			continue
+		}
+		trim := strings.TrimSpace(p.line)
 		if strings.HasPrefix(trim, "--") && trim != markerExec && trim != markerRaw && trim != markerTrailer {
-			p.skipLine()
+			p.lined = false
+			p.line = ""
 			continue
 		}
-		return
+		return nil
 	}
 }
 
-func (p *scrParser) skipSpaceLines() {
-	for p.i < len(p.s) {
-		if p.s[p.i] == ' ' || p.s[p.i] == '\t' || p.s[p.i] == '\r' {
-			p.i++
-			continue
-		}
-		if p.s[p.i] == '\n' {
-			p.i++
-			continue
-		}
-		// a line of only spaces is consumed by the loop; a content line stops
-		// before its first non-space only if we haven't started the line.
-		// Restart at the line start if the line has content.
-		start := p.i
-		for p.i < len(p.s) && p.s[p.i] != '\n' && (p.s[p.i] == ' ' || p.s[p.i] == '\t' || p.s[p.i] == '\r') {
-			p.i++
-		}
-		if p.i < len(p.s) && p.s[p.i] != '\n' {
-			p.i = start
-			return
-		}
+func (p *scrReader) seekInit() (bool, error) {
+	if err := p.skipGaps(); err != nil {
+		return false, err
 	}
+	return p.hasLine(digestInitSQL)
 }
 
-func (p *scrParser) peekLine() (string, bool) {
-	if p.eof() {
-		return "", false
-	}
-	rest := p.rest()
-	n := strings.IndexByte(rest, '\n')
-	if n < 0 {
-		return rest, true
-	}
-	return rest[:n], true
-}
-
-func (p *scrParser) skipLine() {
-	rest := p.rest()
-	n := strings.IndexByte(rest, '\n')
-	if n < 0 {
-		p.i = len(p.s)
-		return
-	}
-	p.i += n + 1
-}
-
-func (p *scrParser) hasLine(want string) bool {
-	line, ok := p.peekLine()
-	if !ok || strings.TrimRight(line, "\r") != want {
-		return false
-	}
-	p.skipLine()
-	return true
-}
-
-func (p *scrParser) seekInit() bool {
-	for !p.eof() {
-		p.skipGaps()
-		if p.hasLine(digestInitSQL) {
-			return true
-		}
-		// skipGaps stopped on a non-comment. Not the init line.
-		return false
-	}
-	return false
-}
-
-func (p *scrParser) execPiece() (string, error) {
+func (p *scrReader) execPiece() (string, error) {
 	payload, err := p.sqlPayload()
 	if err != nil {
 		return "", err
 	}
 	for _, want := range []string{stmtPrepare, stmtExecute, stmtDealloc} {
-		if !p.hasLine(want) {
+		ok, err := p.hasLine(want)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
 			return "", &VerifyError{Reason: "truncated"}
 		}
 	}
 	return payload, nil
 }
 
-func (p *scrParser) rawPiece() (string, error) {
+func (p *scrReader) rawPiece() (string, error) {
 	payload, err := p.sqlPayload()
 	if err != nil {
 		return "", err
 	}
-	if len(p.rest()) < len(payload) {
-		return "", &VerifyError{Reason: "truncated"}
+	buf := make([]byte, len(payload))
+	if _, err := io.ReadFull(p.br, buf); err != nil {
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return "", &VerifyError{Reason: "truncated"}
+		}
+		p.readErr = err
+		return "", err
 	}
-	if p.rest()[:len(payload)] != payload {
+	if string(buf) != payload {
 		return "", &VerifyError{Reason: "digest_mismatch"}
 	}
-	p.i += len(payload)
 	return payload, nil
 }
 
-func (p *scrParser) sqlPayload() (string, error) {
-	line, ok := p.peekLine()
-	if !ok || !strings.HasPrefix(line, "SET @binlogviz_sql = ") {
+func (p *scrReader) sqlPayload() (string, error) {
+	if err := p.fill(); err != nil {
+		return "", err
+	}
+	if !p.lined || !strings.HasPrefix(p.line, "SET @binlogviz_sql = ") {
 		return "", &VerifyError{Reason: "truncated"}
 	}
-	lit := strings.TrimSuffix(strings.TrimPrefix(line, "SET @binlogviz_sql = "), ";")
+	lit := strings.TrimSuffix(strings.TrimPrefix(p.line, "SET @binlogviz_sql = "), ";")
 	payload, err := sqlUnquote(lit)
 	if err != nil {
 		return "", &VerifyError{Reason: "truncated"}
 	}
-	p.skipLine()
-	if !p.hasLine(digestStepSQL) {
+	p.lined = false
+	p.line = ""
+	ok, err := p.hasLine(digestStepSQL)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
 		return "", &VerifyError{Reason: "truncated"}
 	}
 	return payload, nil
 }
 
-func (p *scrParser) trailer() (string, error) {
-	if !p.hasLine(trailerStepSQL) {
+func (p *scrReader) trailer() (string, error) {
+	ok, err := p.hasLine(trailerStepSQL)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
 		return "", &VerifyError{Reason: "truncated"}
 	}
-	line, ok := p.peekLine()
+	if err := p.fill(); err != nil {
+		return "", err
+	}
+	if !p.lined {
+		return "", &VerifyError{Reason: "truncated"}
+	}
+	line := p.line
 	const prefix = "SET @binlogviz_sealed = IF(@binlogviz_digest = '"
 	const suffix = "' AND NOT (@binlogviz_bad <=> 1), 1, 0);"
-	if !ok || !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
 		return "", &VerifyError{Reason: "truncated"}
 	}
 	hexDigest := strings.TrimSuffix(strings.TrimPrefix(line, prefix), suffix)
 	if len(hexDigest) != 64 || strings.Trim(hexDigest, "0123456789abcdef") != "" {
 		return "", &VerifyError{Reason: "digest_mismatch"}
 	}
-	p.skipLine()
+	p.lined = false
+	p.line = ""
 	for _, want := range []string{finishMismatch, finishPrepare, finishExecute, finishDealloc} {
-		if !p.hasLine(want) {
+		ok, err := p.hasLine(want)
+		if err != nil {
+			return "", err
+		}
+		if !ok {
 			return "", &VerifyError{Reason: "truncated"}
 		}
 	}
 	return hexDigest, nil
+}
+
+func chain(payloads []string) string {
+	d := sha256hex(digestDomain)
+	for _, payload := range payloads {
+		d = chainStep(d, payload)
+	}
+	return chainStep(d, trailerMark)
 }
 
 // payloadQuote is safe for the client to parse before the script has changed

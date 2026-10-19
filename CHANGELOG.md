@@ -11,6 +11,7 @@ This file records user-visible changes for tagged releases.
 
 ### Fixed
 
+- `binlogviz flashback verify` hashes the undo while it reads and does not load the script into memory (#327). SQL output is emitted from a temp file after the digest matches. A heap ceiling is exit 10 (`memory_limit`). A full disk while writing that temp file is exit 8. Neither is exit 2.
 - A flashback script commits nothing unless it is complete and unmodified (#318, #321, ADR 0013). Edited values, a deleted undo statement, reordered statements, appended SQL, and a truncated file are refused by `binlogviz flashback verify` (exit 6) and commit nothing under `mysql`, including `--force`. A token that does not match inside one statement is ERROR 1242, not a silent zero-row update. Generation writes the script to a temp file and copies it to stdout only after that write succeeds, so exit 8 does not leave a prefix that applies.
 - `TestGeneratedReviewRSS` skips under `-race`. Its failure text says 64MB.
 
