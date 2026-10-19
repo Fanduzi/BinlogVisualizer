@@ -8,6 +8,7 @@
 
 ```bash
 binlogviz --version
+binlogviz version --format json
 binlogviz --lang zh-CN analyze <binlog files...>
 binlogviz analyze <binlog files...>
 binlogviz analyze --from-dir DIR --prefix PREFIX
@@ -47,7 +48,7 @@ binlogviz workflow describe <plan.yaml> --format json
 | Flag | 默认值 | 说明 |
 |------|--------|------|
 | `--lang` | 按环境变量检测 | 运行时输出语言，例如 `en` 或 `zh-CN`。 |
-| `--version`, `-v` | `false` | 仅输出版本号并退出。 |
+| `--version`, `-v` | `false` | 仅输出版本号并退出。`binlogviz version` 在构建带有 git 信息时还会输出 commit；`binlogviz version --format json` 输出 `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}`，供脚本和 agent 使用（没有 VCS 信息的构建 `commit` 为 `""`）。其他 `--format` 退出码为 3。 |
 
 ## `analyze` 命令语法
 

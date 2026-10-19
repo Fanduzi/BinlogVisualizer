@@ -8,6 +8,7 @@ If you want the fastest operator path instead of the full contract, start with [
 
 ```bash
 binlogviz --version
+binlogviz version --format json
 binlogviz --lang zh-CN analyze <binlog files...>
 binlogviz analyze <binlog files...>
 binlogviz analyze --from-dir DIR --prefix PREFIX
@@ -47,7 +48,7 @@ These flags are available on the root command and apply before subcommand execut
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--lang` | env-detected | Runtime output language, for example `en` or `zh-CN`. |
-| `--version`, `-v` | `false` | Print the version string and exit. |
+| `--version`, `-v` | `false` | Print the version string and exit. `binlogviz version` also prints the git commit when the build has one; `binlogviz version --format json` prints `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}` for scripts and agents (`commit` is `""` for a build without VCS info). Any other `--format` exits 3. |
 
 ## `analyze` Command Syntax
 

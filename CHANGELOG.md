@@ -4,6 +4,13 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Added
+
+- Every JSON output is versioned. `compare`, `trend`, `snapshot list|show` and `workflow validate|describe|status|clean|export` with `--format json` now start with `"schema_version": 1`; `analyze` keeps `report_version` and `flashback --plan` keeps `plan_version`, and their output is byte-identical. See "JSON Versioning" in docs/reference/output-format.md and ADR 0010 (#282).
+- `binlogviz version` prints the git commit of the build, and `binlogviz version --format json` prints `schema_version`, `version`, `commit`, `commit_time`, `modified` and `go_version`, so an agent can confirm which build it drives (#282).
+
+Not breaking: no key is removed or changed. A consumer that rejects unknown keys will see the new `schema_version`.
+
 ## v0.26.1
 
 Release date: 2026-10-17

@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "workflow_name": "export-test",
   "output_dir": "<output-dir>",
   "archive_path": "<archive-path>",

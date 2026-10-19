@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "workflow_name": "multi-window-test",
   "output_dir": "<output-dir>",
   "manifest_version": 2,

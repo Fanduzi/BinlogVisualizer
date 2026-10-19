@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "workflow_name": "legacy-run",
   "output_dir": "<output-dir>",
   "manifest_version": 0,

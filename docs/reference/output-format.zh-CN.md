@@ -29,6 +29,20 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 如果再加上 `--snapshot-name`，JSON 载荷仍然写到 `stdout`，同时 BinlogViz 会在 `stderr` 上打印类似 `Saved snapshot "incident_current" to /home/user/.binlogviz/snapshots/incident_current.json` 的保存确认。
 
+## JSON 版本
+
+`stdout` 上的每个 JSON 文档顶层都有一个整数版本字段（ADR 0010）。使用方应先读它，遇到不认识的版本就拒绝处理。
+
+| 输出 | 版本字段 | 当前 |
+|---|---|---|
+| `analyze --format json`、已保存的快照 | `report_version` | 3 |
+| `flashback --plan` | `plan_version` | 2 |
+| `compare`、`trend`、`snapshot list`、`snapshot show` 加 `--format json` | `schema_version` | 1 |
+| `workflow validate`、`describe`、`status`、`clean`、`export` 加 `--format json` | `schema_version` | 1 |
+| `version --format json` | `schema_version` | 1 |
+
+`schema_version` 总是第一个字段。每种输出只在不兼容变更（删除或改名字段、改变字段类型或含义）时提升自己的版本号，CHANGELOG 会把这次提升标为不兼容。新增字段不提升版本。`workflow run` 写出的 compare 和 trend 产物带同样的字段。`stderr` 上单行的 `{"error":…}` 和 `{"warning":…}` 不是带版本的文档，格式由 ADR 0009 固定。`workflow status` 另外报告 `manifest_version`，那是它读到的 manifest 的版本。
+
 ## 可用格式
 
 ### `analyze`

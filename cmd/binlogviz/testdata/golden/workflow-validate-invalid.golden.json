@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "valid": false,
   "error": "compare \"drift\" references unknown current window \"incident\""
 }

@@ -29,6 +29,20 @@ In the example above, the JSON report is written to `analyze.json`, while progre
 
 If you also pass `--snapshot-name`, the JSON payload still goes to `stdout`, and BinlogViz prints a save confirmation such as `Saved snapshot "incident_current" to /home/user/.binlogviz/snapshots/incident_current.json` on `stderr`.
 
+## JSON Versioning
+
+Every JSON document on `stdout` has a top-level integer version key (ADR 0010). A consumer should read it first and refuse a version it does not know.
+
+| Output | Version key | Current |
+|---|---|---|
+| `analyze --format json`, saved snapshots | `report_version` | 3 |
+| `flashback --plan` | `plan_version` | 2 |
+| `compare`, `trend`, `snapshot list`, `snapshot show` with `--format json` | `schema_version` | 1 |
+| `workflow validate`, `describe`, `status`, `clean`, `export` with `--format json` | `schema_version` | 1 |
+| `version --format json` | `schema_version` | 1 |
+
+`schema_version` is always the first key. Each output bumps its own number only for a breaking change (a key removed or renamed, or its type or meaning changed), and CHANGELOG marks the bump as breaking. New keys can appear without a bump. Compare and trend artifacts written by `workflow run` carry the same key. The one-line `{"error":…}` and `{"warning":…}` lines on `stderr` are not versioned documents; their shape is fixed by ADR 0009. `workflow status` also reports `manifest_version`, the version of the manifest it read.
+
 ## Available Formats
 
 ### `analyze`

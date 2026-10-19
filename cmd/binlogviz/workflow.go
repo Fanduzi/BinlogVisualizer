@@ -22,6 +22,7 @@ import (
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/jsonout"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 	"binlogviz/internal/snapshot"
@@ -433,7 +434,7 @@ func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Pl
 	}
 
 	if format == "json" {
-		data, err := json.MarshalIndent(payload, "", "  ")
+		data, err := jsonout.Marshal(workflowValidateSchemaVersion, payload)
 		if err != nil {
 			return clierr.Errorf(clierr.KindOutput, "encode workflow validate output: %w", err)
 		}
@@ -466,13 +467,13 @@ func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Pl
 
 func writeWorkflowValidateFailure(out io.Writer, format string, err error) {
 	if format == "json" {
-		data, marshalErr := json.MarshalIndent(struct {
+		data, marshalErr := jsonout.Marshal(workflowValidateSchemaVersion, struct {
 			Valid bool   `json:"valid"`
 			Error string `json:"error"`
 		}{
 			Valid: false,
 			Error: err.Error(),
-		}, "", "  ")
+		})
 		if marshalErr == nil {
 			_, _ = fmt.Fprintln(out, string(data))
 			return
@@ -483,7 +484,7 @@ func writeWorkflowValidateFailure(out io.Writer, format string, err error) {
 
 func writeWorkflowDescribeOutput(out io.Writer, format string, desc workflow.Description) error {
 	if format == "json" {
-		data, err := json.MarshalIndent(desc, "", "  ")
+		data, err := jsonout.Marshal(workflowDescribeSchemaVersion, desc)
 		if err != nil {
 			return clierr.Errorf(clierr.KindOutput, "encode workflow describe output: %w", err)
 		}
@@ -547,7 +548,7 @@ func writeWorkflowDescribeOutput(out io.Writer, format string, desc workflow.Des
 
 func writeWorkflowStatusOutput(out io.Writer, format string, status workflow.Status) error {
 	if format == "json" {
-		data, err := json.MarshalIndent(status, "", "  ")
+		data, err := jsonout.Marshal(workflowStatusSchemaVersion, status)
 		if err != nil {
 			return clierr.Errorf(clierr.KindOutput, "encode workflow status output: %w", err)
 		}
@@ -674,7 +675,7 @@ func writeWorkflowStatusOutput(out io.Writer, format string, status workflow.Sta
 
 func writeWorkflowCleanOutput(out io.Writer, format string, result workflow.CleanResult) error {
 	if format == "json" {
-		data, err := json.MarshalIndent(result, "", "  ")
+		data, err := jsonout.Marshal(workflowCleanSchemaVersion, result)
 		if err != nil {
 			return clierr.Errorf(clierr.KindOutput, "encode workflow clean output: %w", err)
 		}
@@ -829,7 +830,7 @@ func buildWorkflowExportOutput(workflowName, outputDir, archivePath, format stri
 
 func writeWorkflowExportOutput(out io.Writer, format string, payload workflowExportOutput) error {
 	if format == "json" {
-		data, err := json.MarshalIndent(payload, "", "  ")
+		data, err := jsonout.Marshal(workflowExportSchemaVersion, payload)
 		if err != nil {
 			return clierr.Errorf(clierr.KindOutput, "encode workflow export output: %w", err)
 		}

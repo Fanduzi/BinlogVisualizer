@@ -14,7 +14,7 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 | `recommendations.go` | Derives prioritized follow-up recommendations from trend findings. |
 | `drilldown.go` | Selects bounded pattern drilldowns for high-signal trend shifts. |
 | `text.go` | Renders human-readable trend output for terminal and file workflows, including pattern trend summaries. |
-| `json.go` | Serializes stable JSON trend output for automation, including `pattern_trends`. |
+| `json.go` | Serializes stable JSON trend output for automation, including `pattern_trends`, with `schema_version` (`SchemaVersion`, ADR 0010) first. |
 | `html.go` | Renders the self-contained HTML trend report with embedded ECharts charts, a Pattern Trends section, and transaction replay evidence. Theme tokens come from `internal/report` SharedHTMLThemeCSS. |
 | `*_test.go` | Covers ordering, completeness and baseline preservation, selector-aware comparability, findings, drilldowns, trusted replay diagnostics, i18n, and renderer anchors. |
 
