@@ -48,7 +48,7 @@ These flags are available on the root command and apply before subcommand execut
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--lang` | env-detected | Runtime output language, for example `en` or `zh-CN`. |
-| `--version`, `-v` | `false` | Print the version string and exit. `binlogviz version` also prints the git commit when the build has one; `binlogviz version --format json` prints `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}` for scripts and agents (`commit` is `""` for a build without VCS info). Any other `--format` exits 3. |
+| `--version`, `-v` | `false` | Print the version string and exit. `binlogviz version` also prints the git commit when the build has one; `binlogviz version --format json` prints `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}` for scripts and agents (`commit` comes from the Go build info, else from `-ldflags -X binlogviz/internal/version.Commit=…`/`CommitTime=…`, and is `""` for a build with neither). Any other `--format` exits 3. |
 
 ## `analyze` Command Syntax
 
@@ -741,6 +741,7 @@ Legacy manifests remain inspectable. When the manifest is from the pre-v2 format
 
 - supports `text` and `json` only
 - fails before rendering when `<output_dir>/manifest.json` cannot be read
+- exits 9 (`unsupported`, reason `unsupported_artifact_version`) with empty stdout when a recorded compare or trend JSON artifact has a `schema_version` this build does not know (ADR 0010)
 - keeps all output on `stdout`
 - does not use `stderr` for progress reporting
 - omits `resume_preview` when the plan is unavailable or cannot be loaded
@@ -784,6 +785,7 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 - deletion is a rename into `.trash/<id>/` inside the same root, never an unlink; every target on both sides is checked before the first move, so a refusal leaves nothing half-moved
 - with `--include-snapshots`, the snapshot dir is `--snapshot-dir` or the default, and it must match the manifest's `snapshot_dir` (exit 6, `snapshot_dir_mismatch`); exports store `snapshot_dir` as the relative `snapshots`, so after restoring an archive pass `--snapshot-dir <restored>/snapshots`
 - `workflow run`, `resume` and `clean` hold an exclusive lock on `<output_dir>/.lock`; a concurrent one exits 6 (`locked`)
+- it refuses (exit 9, `unsupported_artifact_version`) and deletes nothing when a recorded compare or trend JSON artifact has a `schema_version` this build does not know, so an older binlogviz never decides what a newer run owns (ADR 0010)
 
 Known generated extensions in scope:
 
@@ -979,6 +981,7 @@ Resume refuses to proceed when:
 - The manifest was produced by a legacy pre-v2 run (missing `manifest_version` field)
 - The plan file SHA-256 does not match the `plan_sha256` recorded in the manifest
 - The plan path recorded in the manifest resolves outside the workflow root or escapes via symlinks (trust-boundary hard fail)
+- A recorded compare or trend JSON artifact has a `schema_version` this build does not know: exit 9 (`unsupported`, reason `unsupported_artifact_version`), nothing is run or rewritten (ADR 0010)
 
 `ValidateWorkflowPlanPath(outputDir, planPath)` is called before the plan file is opened. Outside-root and symlink-escaped paths are rejected unconditionally. `ValidateResumableManifest` now takes four arguments `(m Manifest, outputDir string, planPath string, planSHA256 string)` to enforce the trust boundary during resume validation.
 

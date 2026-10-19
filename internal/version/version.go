@@ -2,7 +2,7 @@
 // input: ldflags from goreleaser or manual builds.
 // output: a single source of truth for the binlogviz version string.
 // pos: build-time version injection used by CLI commands and release artifacts.
-// note: if this file changes, update .goreleaser.yml ldflags and the version command.
+// note: if this file changes, update .goreleaser.yml ldflags and the version command. Commit/CommitTime fallbacks live in build.go (ADR 0010).
 package version
 
 // Version is the binlogviz version. It is injected at build time via ldflags.

@@ -891,6 +891,11 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	if mf.PlanPath == "" {
 		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no plan_path")
 	}
+	// A compare/trend artifact from a newer build would be reused or summarized
+	// without being understood (ADR 0010): unsupported (9).
+	if err := workflow.CheckArtifactVersions(outputDir, mf); err != nil {
+		return err
+	}
 
 	// Trust-boundary check: reject before opening any file; use canonical path.
 	canonicalPlanPath, err := workflow.ValidateWorkflowPlanPath(outputDir, mf.PlanPath)

@@ -36,8 +36,13 @@ func CheckManifestIntegrity(m Manifest) error {
 // CheckManifestIntegrity, a well-formed manifest that records no steps while
 // step artifacts exist on disk cannot attribute any of them, so clean
 // refuses (6) instead of treating "lists nothing" as "everything is orphaned".
+// A recorded artifact from a newer build (unknown schema_version) is
+// unsupported (9): this build must not decide what that run owns (ADR 0010).
 func CheckCleanTrust(outputDir string, m Manifest) error {
 	if err := CheckManifestIntegrity(m); err != nil {
+		return err
+	}
+	if err := CheckArtifactVersions(outputDir, m); err != nil {
 		return err
 	}
 	if len(m.Steps) == 0 && hasStepArtifacts(outputDir) {

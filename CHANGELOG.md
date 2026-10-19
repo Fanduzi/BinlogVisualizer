@@ -7,7 +7,9 @@ This file records user-visible changes for tagged releases.
 ### Added
 
 - Every JSON output is versioned. `compare`, `trend`, `snapshot list|show` and `workflow validate|describe|status|clean|export` with `--format json` now start with `"schema_version": 1`; `analyze` keeps `report_version` and `flashback --plan` keeps `plan_version`, and their output is byte-identical. See "JSON Versioning" in docs/reference/output-format.md and ADR 0010 (#282).
-- `binlogviz version` prints the git commit of the build, and `binlogviz version --format json` prints `schema_version`, `version`, `commit`, `commit_time`, `modified` and `go_version`, so an agent can confirm which build it drives (#282).
+- `binlogviz version` prints the git commit of the build, and `binlogviz version --format json` prints `schema_version`, `version`, `commit`, `commit_time`, `modified` and `go_version`, so an agent can confirm which build it drives (#282). The commit comes from the Go build info, or from `-X binlogviz/internal/version.Commit`/`CommitTime` ldflags when the build has none. macOS release archives and builds from a git checkout include it; Linux release archives report `commit: ""` until the release workflow passes those ldflags (ADR 0010 §5).
+- `workflow status`, `workflow resume` and `workflow clean` refuse a compare or trend artifact whose `schema_version` this build does not know: exit 9 (`unsupported`, `details.reason: unsupported_artifact_version`), empty stdout, nothing run or deleted. Artifacts without the key (written by v0.26.1 and earlier) still read (#282).
+- `scripts/release_smoke.sh` checks that `version --format json` is versioned, and with `BINLOGVIZ_SMOKE_EXPECT_COMMIT=<sha>` or `BINLOGVIZ_SMOKE_REQUIRE_COMMIT=1` fails when the binary does not report that commit (#282).
 
 Not breaking: no key is removed or changed. A consumer that rejects unknown keys will see the new `schema_version`.
 
