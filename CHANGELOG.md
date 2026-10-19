@@ -4,6 +4,14 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Breaking
+
+- Flashback SQL from v0.31.0 does not verify. Regenerate it. Apply creates the `binlogviz` database if it is absent and a procedure in it, and needs `CREATE` and `CREATE ROUTINE`. The stock `mysql` client is required (`DELIMITER`). `schema_version` stays 1 and `plan_version` stays 2 (#328, #329, ADR 0014).
+
+### Fixed
+
+- `binlogviz flashback verify | mysql --force` no longer commits a prefix of the undo when the target is missing a table or a column (#328). A truncated file followed by another script, `BEGIN`, `START TRANSACTION`, or DDL, and a complete file followed by those under `--force`, no longer commit the undo (#329). The undo is one XA transaction. The finish commits only when every statement succeeded. See ADR 0014.
+
 ## v0.31.0
 
 Release date: 2026-10-20

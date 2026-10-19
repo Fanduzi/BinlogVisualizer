@@ -6,7 +6,7 @@
 
 报告里的时间是 UTC。`--start` 和 `--end` 接受 RFC3339。带偏移量的值就是那个时刻：`2026-10-19T14:05:00+08:00` 等于 `2026-10-19T06:05:00Z`。`YYYY-MM-DD HH:MM:SS` 按运行 `binlogviz` 的机器的本地时区解释。跨机器时请带偏移量。
 
-`flashback` 不连接 MySQL。先审阅脚本，再测试，然后由你自己执行。
+`flashback` 不连接 MySQL。先审阅脚本，再测试，然后由你自己用 `binlogviz flashback verify <file> | mysql` 执行。`mysql < file` 不会提交。某条语句失败时不会提交前缀，`mysql --force` 也一样。撤销是一个 XA 事务（ADR 0014）。
 
 ## 配方 1：写入尖峰，然后 flashback
 

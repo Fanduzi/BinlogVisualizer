@@ -1,6 +1,6 @@
 # ADR 0013: A flashback script commits nothing unless it is complete and unmodified
 
-Status: accepted (2026-10-19). Tracks #318 and #321. Supersedes the seal half of ADR 0006 and the "unparseable `BINLOGVIZ_SPILL_BYTES` means no ceiling" sentence of ADR 0012. The generated-column check in ADR 0006 is unchanged.
+Status: accepted (2026-10-19). Tracks #318 and #321. Supersedes the seal half of ADR 0006 and the "unparseable `BINLOGVIZ_SPILL_BYTES` means no ceiling" sentence of ADR 0012. The generated-column check in ADR 0006 is unchanged. The commit and implicit-commit rows of the guarantee below are superseded by ADR 0014 (#328, #329). The seal, the digest, and the exit codes stay.
 
 ## Context
 
@@ -101,7 +101,7 @@ A failure while copying the finished temp file to a shell redirect can still lea
 | `--force` on any of the above | still no commit | unchanged | rollback when the file is intact but the session token is wrong |
 | Generation exited 8 | no script bytes were written | | |
 
-These are not guaranteed, and the docs say so:
+These are not guaranteed, and the docs say so. ADR 0014 supersedes the commit and implicit-commit items in this list. The live guarantee is there.
 
 - An edit that recomputes the payloads and the trailer hex is a new script. `verify` accepts it.
 - A raw section (the guard header and `START TRANSACTION`) is bound by `verify`'s byte check. A hand edit that changes the raw SQL and not its digest payload is invisible to the in-SQL chain. `verify` rejects it. `mysql < file` still commits nothing, because the file has no `COMMIT`.

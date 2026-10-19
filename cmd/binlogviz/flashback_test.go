@@ -47,7 +47,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 		"LIMIT 1",
 		"-- gtid: ",
 		"-- binlog: mysql-8.0.46-flashback-full.binlog:",
-		"START TRANSACTION;",
+		"XA START",
 		"-- binlogviz-trailer",
 	} {
 		if !flashbackScriptHas(stdout, want) {
@@ -55,7 +55,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 		}
 	}
 	// One transaction for the whole undo: the raw statement and its digest payload.
-	if strings.Count(stdout, "START TRANSACTION;") != 2 || strings.Contains(stdout, "\nCOMMIT;\n") {
+	if strings.Count(stdout, "XA START") != 2 || strings.Contains(stdout, "\nCOMMIT;\n") {
 		t.Fatalf("transactions:\n%s", stdout)
 	}
 	undoLast := strings.Index(stdout, "DELETE FROM `shop`.`heap` WHERE `id` <=> 5")
@@ -63,7 +63,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 	if undoLast < 0 || undoDelete < 0 || undoLast > undoDelete {
 		t.Fatalf("reverse order:\n%s", stdout)
 	}
-	if strings.Contains(stdout, "CREATE ") || strings.Contains(stdout, "ALTER ") || strings.Contains(stdout, "DROP ") {
+	if strings.Contains(stdout, "CREATE TABLE") || strings.Contains(stdout, "ALTER ") || strings.Contains(stdout, "DROP TABLE") {
 		t.Fatalf("emitted DDL:\n%s", stdout)
 	}
 
@@ -71,7 +71,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dml delete: %v", err)
 	}
-	if strings.Count(onlyDelete, "START TRANSACTION;") != 2 || !strings.Contains(onlyDelete, "18446744073709551615") || strings.Contains(onlyDelete, "`id` <=> 10") {
+	if strings.Count(onlyDelete, "XA START") != 2 || !strings.Contains(onlyDelete, "18446744073709551615") || strings.Contains(onlyDelete, "`id` <=> 10") {
 		t.Fatalf("dml delete kept the wrong rows:\n%s", onlyDelete)
 	}
 	if strings.Contains(deleteErr, "only partly undone") {
@@ -94,7 +94,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("position: %v", err)
 	}
-	if strings.Count(narrow, "START TRANSACTION;") != 2 || !strings.Contains(narrow, "`id` <=> 5") || strings.Contains(narrow, "18446744073709551615") {
+	if strings.Count(narrow, "XA START") != 2 || !strings.Contains(narrow, "`id` <=> 5") || strings.Contains(narrow, "18446744073709551615") {
 		t.Fatalf("position window:\n%s", narrow)
 	}
 }

@@ -136,10 +136,10 @@ func TestFlashbackLargeTransactionIsOneBlock(t *testing.T) {
 		t.Fatalf("rows %d err %v", rows, err)
 	}
 	sql := b.String()
-	// One raw START TRANSACTION, plus the same text in its digest payload.
-	// A script with no generated-column guard has no COMMIT.
-	if strings.Count(sql, "START TRANSACTION;") != 2 || strings.Contains(sql, "COMMIT;") {
-		t.Fatalf("blocks: %d starts, commit=%v", strings.Count(sql, "START TRANSACTION;"), strings.Contains(sql, "COMMIT;"))
+	// One raw XA START, plus the same text in its digest payload.
+	// A script with no generated-column guard has no plain COMMIT.
+	if strings.Count(sql, "XA START") != 2 || strings.Contains(sql, "\nCOMMIT;\n") {
+		t.Fatalf("blocks: %d starts, commit=%v", strings.Count(sql, "XA START"), strings.Contains(sql, "\nCOMMIT;\n"))
 	}
 	last := strings.Index(sql, fmt.Sprintf("VALUES (%d)", n-1))
 	first := strings.Index(sql, "VALUES (0)")

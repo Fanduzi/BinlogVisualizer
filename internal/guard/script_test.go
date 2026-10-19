@@ -55,7 +55,7 @@ func TestWriteVerifyRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(apply, noCommitSQL) || !strings.Contains(apply, "SET @binlogviz_commit = IF(@binlogviz_sealed <=> 1, 'COMMIT', 'ROLLBACK');") {
+	if strings.Contains(apply, noCommitSQL) || !strings.Contains(apply, "SET @binlogviz_want = 1;") || strings.Contains(apply, "SET @binlogviz_want = 0;") {
 		t.Fatal("apply SQL did not replace the trailer")
 	}
 	var streamed bytes.Buffer

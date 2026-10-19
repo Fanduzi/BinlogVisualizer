@@ -33,7 +33,7 @@ func TestFlashbackVerifyJSONAndRefusals(t *testing.T) {
 		t.Fatalf("json exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
 	}
 	code, stdout, stderr = runRoot(t, "flashback", "verify", path)
-	if code != 0 || !strings.Contains(stdout, "SET @binlogviz_commit = IF(@binlogviz_sealed <=> 1, 'COMMIT', 'ROLLBACK');") || strings.Contains(stdout, "has no commit trailer") {
+	if code != 0 || !strings.Contains(stdout, "SET @binlogviz_want = 1;") || strings.Contains(stdout, "has no commit trailer") {
 		t.Fatalf("sql exit %d\n%s\n%s", code, stdout, stderr)
 	}
 

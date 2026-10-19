@@ -714,7 +714,7 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 // writeFlashbackScript renders the script twice through guard.Write: once to
 // choose the session token, once to seal the digest. Nothing reaches w when
 // a statement cannot be rendered. The published script does not commit
-// (ADR 0013).
+// (ADR 0013, ADR 0014).
 func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) error, notes []string, cols []guard.Col, postImage bool) error {
 	g := guard.New(cols)
 	return g.Write(w, func(emit func(guard.Piece) error) error {
@@ -727,6 +727,7 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
 	b.WriteString("-- This file does not commit. Apply it with: binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4\n")
+	b.WriteString("-- The undo is one XA transaction. BEGIN, START TRANSACTION, and DDL while it is open error and do not commit. Apply needs CREATE and CREATE ROUTINE, and the stock mysql client (DELIMITER).\n")
 	for _, note := range notes {
 		b.WriteString(note)
 		if !strings.HasSuffix(note, "\n") {
@@ -758,9 +759,13 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 			return err
 		}
 	}
-	// START TRANSACTION cannot be prepared (ERROR 1295). One transaction for
-	// the whole undo: a prefix has no COMMIT, so a cut file rolls back.
-	if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: "START TRANSACTION;\n"}); err != nil {
+	// One XA transaction for the whole undo (ADR 0014). XA START and the
+	// finish procedure cannot be prepared. A later BEGIN, START TRANSACTION,
+	// or DDL errors inside the XA and does not commit it.
+	if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: guard.ProcedureSQL()}); err != nil {
+		return err
+	}
+	if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: guard.UndoOpenSQL()}); err != nil {
 		return err
 	}
 	if err := emit(guard.Piece{Kind: guard.PieceStmt, Text: "SET @binlogviz_txn = 1"}); err != nil {

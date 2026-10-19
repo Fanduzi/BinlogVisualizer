@@ -11,8 +11,8 @@ import (
 
 // Piece is one unit of a flashback script. Comment lines are not digested.
 // Stmt is prepared from the same string that is hashed. Raw is executed as
-// written; the bytes are also the digest payload, because START TRANSACTION
-// and the guard header cannot be prepared.
+// written; the bytes are also the digest payload, because XA START, the
+// finish procedure, and the guard header cannot be prepared.
 type PieceKind int
 
 const (
@@ -31,8 +31,11 @@ const (
 	digestDomain = "binlogviz-flashback-v1"
 	trailerMark  = "binlogviz-trailer-v1"
 
-	digestInitSQL = "SET @binlogviz_digest = SHA2('binlogviz-flashback-v1', 256);"
+	digestInitSQL = "SET @binlogviz_digest = SHA2('binlogviz-flashback-v1', 256), @binlogviz_applied = 1;"
 	digestStepSQL = "SET @binlogviz_digest = SHA2(CONCAT(@binlogviz_digest, @binlogviz_sql), 256);"
+	// appliedCheckSQL records the previous statement. A later success must not
+	// clear it: @@error_count is only the last statement.
+	appliedCheckSQL = "SET @binlogviz_applied = IF(@binlogviz_applied <=> 1 AND @@error_count = 0, 1, 0);"
 
 	markerExec    = "-- binlogviz-exec"
 	markerRaw     = "-- binlogviz-raw"
@@ -47,16 +50,11 @@ const (
 	finishDealloc = "DEALLOCATE PREPARE binlogviz_fb_finish_x9q;"
 
 	// noCommitSQL is the last line of a published script. It errors so a
-	// client that skips verify cannot commit. verify replaces it.
+	// client that skips verify cannot treat the run as success. The XA is
+	// already rolled back by then. verify replaces the finish through this line.
 	noCommitSQL = "SET SESSION sql_mode = 'binlogviz: flashback script has no commit trailer; run binlogviz flashback verify';"
 
-	finishMismatch = "SET @binlogviz_finish = IF(@binlogviz_sealed <=> 1, 'DO 0', 'SET SESSION sql_mode = ''binlogviz: flashback script was modified or truncated or its guard token does not match''');"
 	trailerStepSQL = "SET @binlogviz_digest = SHA2(CONCAT(@binlogviz_digest, 'binlogviz-trailer-v1'), 256);"
-
-	commitBlock = "SET @binlogviz_commit = IF(@binlogviz_sealed <=> 1, 'COMMIT', 'ROLLBACK');\n" +
-		"PREPARE binlogviz_fb_commit_x9q FROM @binlogviz_commit;\n" +
-		"EXECUTE binlogviz_fb_commit_x9q;\n" +
-		"DEALLOCATE PREPARE binlogviz_fb_commit_x9q;\n"
 )
 
 // VerifyError is a script verify will not commit. Reason is the stable
@@ -79,28 +77,23 @@ type Result struct {
 }
 
 // Write seals a script. render is called twice and must emit the same pieces
-// in the same order. The published script does not commit.
+// in the same order. The published script does not commit. The token names
+// the XA id and the finish procedure. It is the guard session token when the
+// script has a guard.
 func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) error {
-	var token string
-	if g.header != "" {
-		h := sha256.New()
-		if err := render(func(p Piece) error {
-			if p.Kind == PieceComment {
-				return nil
-			}
-			_, _ = h.Write([]byte(p.Text))
-			_, _ = h.Write([]byte{0})
+	h := sha256.New()
+	if err := render(func(p Piece) error {
+		if p.Kind == PieceComment {
 			return nil
-		}); err != nil {
-			return err
 		}
-		sum := h.Sum(nil)
-		token = hex.EncodeToString(sum[:8])
+		_, _ = h.Write([]byte(p.Text))
+		_, _ = h.Write([]byte{0})
+		return nil
+	}); err != nil {
+		return err
 	}
+	token := hex.EncodeToString(h.Sum(nil)[:8])
 	sub := func(s string) string {
-		if token == "" {
-			return s
-		}
 		return strings.ReplaceAll(s, guardTokenMark, token)
 	}
 
@@ -157,10 +150,81 @@ func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) err
 			return err
 		}
 	}
-	if err := writeTrailer(write, digest); err != nil {
+	if err := writeTrailer(write, digest, token); err != nil {
 		return err
 	}
 	return bw.Flush()
+}
+
+// ProcedureSQL creates the finish procedure before the undo transaction.
+// Write substitutes guardTokenMark. The stock mysql client is required
+// because the body uses DELIMITER. The procedure is schema-qualified so the
+// session needs no default database.
+func ProcedureSQL() string {
+	name := "binlogviz.binlogviz_fb_end_" + guardTokenMark
+	return "CREATE DATABASE IF NOT EXISTS binlogviz;\n" +
+		"DROP PROCEDURE IF EXISTS " + name + ";\n" +
+		"DELIMITER $$\n" +
+		"CREATE PROCEDURE " + name + "()\n" +
+		"BEGIN\n" +
+		"  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN RESIGNAL; END;\n" +
+		"  IF @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN\n" +
+		"    XA END '" + guardTokenMark + "';\n" +
+		"    XA COMMIT '" + guardTokenMark + "' ONE PHASE;\n" +
+		"  ELSE\n" +
+		"    XA END '" + guardTokenMark + "';\n" +
+		"    XA ROLLBACK '" + guardTokenMark + "';\n" +
+		"  END IF;\n" +
+		"END$$\n" +
+		"DELIMITER ;\n"
+}
+
+// UndoOpenSQL opens the one undo transaction. If the open fails, the session
+// is read-only, so a client that continues cannot autocommit the undo.
+func UndoOpenSQL() string {
+	return "XA START '" + guardTokenMark + "';\n" +
+		appliedCheckSQL + "\n" +
+		"SET @binlogviz_hold = IF(@binlogviz_applied <=> 1, 'DO 0', 'SET SESSION TRANSACTION READ ONLY');\n" +
+		"PREPARE binlogviz_fb_open_x9q FROM @binlogviz_hold;\n" +
+		"EXECUTE binlogviz_fb_open_x9q;\n" +
+		"DEALLOCATE PREPARE binlogviz_fb_open_x9q;\n"
+}
+
+func procedureName(token string) string {
+	return "binlogviz.binlogviz_fb_end_" + token
+}
+
+func finishBody(token string, want int) string {
+	name := procedureName(token)
+	return fmt.Sprintf("SET @binlogviz_want = %d;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n", want, name, name)
+}
+
+func publishedSuffix(token string) string {
+	return finishBody(token, 0) + noCommitSQL + "\n"
+}
+
+func applySuffix(token string) string {
+	return finishBody(token, 1)
+}
+
+func suffixLen() int {
+	return len(publishedSuffix(strings.Repeat("0", 16)))
+}
+
+func parsePublishedSuffix(s string) (string, bool) {
+	const head = "SET @binlogviz_want = 0;\nCALL binlogviz.binlogviz_fb_end_"
+	if !strings.HasPrefix(s, head) || len(s) != suffixLen() {
+		return "", false
+	}
+	token := s[len(head) : len(head)+16]
+	if strings.Trim(token, "0123456789abcdef") != "" {
+		return "", false
+	}
+	rest := "();\nDROP PROCEDURE IF EXISTS " + procedureName(token) + ";\n" + noCommitSQL + "\n"
+	if s[len(head)+16:] != rest {
+		return "", false
+	}
+	return token, true
 }
 
 func writeExec(write func(string) error, digest *string, stmt string) error {
@@ -174,7 +238,7 @@ func writeExec(write func(string) error, digest *string, stmt string) error {
 		return err
 	}
 	*digest = sha256hex(*digest + stmt)
-	for _, line := range []string{stmtPrepare, stmtExecute, stmtDealloc} {
+	for _, line := range []string{stmtPrepare, appliedCheckSQL, stmtExecute, appliedCheckSQL, stmtDealloc} {
 		if err := write(line + "\n"); err != nil {
 			return err
 		}
@@ -193,27 +257,21 @@ func writeRaw(write func(string) error, digest *string, raw string) error {
 		return err
 	}
 	*digest = sha256hex(*digest + raw)
-	return write(raw)
+	if err := write(raw); err != nil {
+		return err
+	}
+	return write(appliedCheckSQL + "\n")
 }
 
-func writeTrailer(write func(string) error, digest string) error {
+func writeTrailer(write func(string) error, digest, token string) error {
 	final := sha256hex(digest + trailerMark)
 	sealed := "SET @binlogviz_sealed = IF(@binlogviz_digest = '" + final + "' AND NOT (@binlogviz_bad <=> 1), 1, 0);"
-	for _, line := range []string{
-		markerTrailer,
-		trailerStepSQL,
-		sealed,
-		finishMismatch,
-		finishPrepare,
-		finishExecute,
-		finishDealloc,
-		noCommitSQL,
-	} {
+	for _, line := range []string{markerTrailer, trailerStepSQL, sealed} {
 		if err := write(line + "\n"); err != nil {
 			return err
 		}
 	}
-	return nil
+	return write(publishedSuffix(token))
 }
 
 func sha256hex(s string) string {
@@ -227,43 +285,48 @@ func Verify(r io.Reader) (Result, error) {
 	return verifyStream(r)
 }
 
-// ApplySQL is the script verify prints: the same bytes, with the no-commit
-// line replaced by the conditional COMMIT.
+// ApplySQL is the script verify prints: the same bytes, with the finish
+// allowed to commit when every statement succeeded and the digest matches.
 func ApplySQL(script string) (string, error) {
 	if _, err := verifyStream(strings.NewReader(script)); err != nil {
 		return "", err
 	}
-	const line = noCommitSQL + "\n"
-	if !strings.HasSuffix(script, line) {
+	n := suffixLen()
+	if len(script) < n {
 		return "", &VerifyError{Reason: "missing_trailer"}
 	}
-	return script[:len(script)-len(line)] + commitBlock, nil
+	token, ok := parsePublishedSuffix(script[len(script)-n:])
+	if !ok {
+		return "", &VerifyError{Reason: "missing_trailer"}
+	}
+	return script[:len(script)-n] + applySuffix(token), nil
 }
 
-// CopyApply streams a verified script to w, replacing the no-commit line.
-// It writes nothing until that line is the suffix. n is the byte length of r.
+// CopyApply streams a verified script to w, replacing the no-commit finish.
+// It writes nothing until that suffix matches. n is the byte length of r.
 func CopyApply(w io.Writer, r io.ReadSeeker, n int64) error {
-	const line = noCommitSQL + "\n"
-	if n < int64(len(line)) {
+	nSuffix := int64(suffixLen())
+	if n < nSuffix {
 		return &VerifyError{Reason: "missing_trailer"}
 	}
-	if _, err := r.Seek(n-int64(len(line)), io.SeekStart); err != nil {
+	if _, err := r.Seek(n-nSuffix, io.SeekStart); err != nil {
 		return err
 	}
-	tail := make([]byte, len(line))
+	tail := make([]byte, nSuffix)
 	if _, err := io.ReadFull(r, tail); err != nil {
 		return err
 	}
-	if string(tail) != line {
+	token, ok := parsePublishedSuffix(string(tail))
+	if !ok {
 		return &VerifyError{Reason: "missing_trailer"}
 	}
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	if _, err := io.CopyN(w, r, n-int64(len(line))); err != nil {
+	if _, err := io.CopyN(w, r, n-nSuffix); err != nil {
 		return err
 	}
-	_, err := io.WriteString(w, commitBlock)
+	_, err := io.WriteString(w, applySuffix(token))
 	return err
 }
 
@@ -503,7 +566,7 @@ func (p *scrReader) execPiece() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, want := range []string{stmtPrepare, stmtExecute, stmtDealloc} {
+	for _, want := range []string{stmtPrepare, appliedCheckSQL, stmtExecute, appliedCheckSQL, stmtDealloc} {
 		ok, err := p.hasLine(want)
 		if err != nil {
 			return "", err
@@ -530,6 +593,13 @@ func (p *scrReader) rawPiece() (string, error) {
 	}
 	if string(buf) != payload {
 		return "", &VerifyError{Reason: "digest_mismatch"}
+	}
+	ok, err := p.hasLine(appliedCheckSQL)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", &VerifyError{Reason: "truncated"}
 	}
 	return payload, nil
 }
@@ -584,16 +654,45 @@ func (p *scrReader) trailer() (string, error) {
 	}
 	p.lined = false
 	p.line = ""
-	for _, want := range []string{finishMismatch, finishPrepare, finishExecute, finishDealloc} {
-		ok, err := p.hasLine(want)
-		if err != nil {
-			return "", err
-		}
-		if !ok {
-			return "", &VerifyError{Reason: "truncated"}
-		}
+	if err := p.publishedFinish(); err != nil {
+		return "", err
 	}
 	return hexDigest, nil
+}
+
+func (p *scrReader) publishedFinish() error {
+	ok, err := p.hasLine("SET @binlogviz_want = 0;")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &VerifyError{Reason: "truncated"}
+	}
+	if err := p.fill(); err != nil {
+		return err
+	}
+	if !p.lined {
+		return &VerifyError{Reason: "truncated"}
+	}
+	const prefix = "CALL binlogviz.binlogviz_fb_end_"
+	const suffix = "();"
+	if !strings.HasPrefix(p.line, prefix) || !strings.HasSuffix(p.line, suffix) {
+		return &VerifyError{Reason: "truncated"}
+	}
+	token := strings.TrimSuffix(strings.TrimPrefix(p.line, prefix), suffix)
+	if len(token) != 16 || strings.Trim(token, "0123456789abcdef") != "" {
+		return &VerifyError{Reason: "truncated"}
+	}
+	p.lined = false
+	p.line = ""
+	ok, err = p.hasLine("DROP PROCEDURE IF EXISTS " + procedureName(token) + ";")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &VerifyError{Reason: "truncated"}
+	}
+	return nil
 }
 
 func chain(payloads []string) string {

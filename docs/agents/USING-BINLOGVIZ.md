@@ -6,7 +6,7 @@ A release archive contains this file, `docs/agents/USING-BINLOGVIZ.zh-CN.md`, `R
 
 Report times are UTC. `--start` and `--end` accept RFC3339. An offset is the instant: `2026-10-19T14:05:00+08:00` is `2026-10-19T06:05:00Z`. `YYYY-MM-DD HH:MM:SS` uses the machine's local timezone. Prefer an offset across machines.
 
-`flashback` does not connect to MySQL. Review the script, test it, and apply it yourself.
+`flashback` does not connect to MySQL. Review the script, test it, and apply it yourself with `binlogviz flashback verify <file> | mysql`. `mysql < file` commits nothing. A failed statement, including under `mysql --force`, does not commit a prefix. The undo is one XA transaction (ADR 0014).
 
 ## Recipe 1: a write spike, then flashback
 

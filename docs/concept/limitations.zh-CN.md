@@ -76,7 +76,7 @@ SQL 上下文是有界的，而且面向展示。
 
 `binlogviz flashback` 打印撤销选定行变更的 SQL。它只读本地 binlog，不连接数据库。先审阅并测试脚本，再在主库的同一个会话里执行。
 
-DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，`WHERE` 用后镜像的主键。语句按 binlog 逆序。整个撤销是一个事务，文件本身不会提交。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`（文件名和该事务起点字节）。
+DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，`WHERE` 用后镜像的主键。语句按 binlog 逆序。整个撤销是一个 XA 事务，文件本身不会提交。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`（文件名和该事务起点字节）。
 
 表、schema、`--dml`、时间、位点、GTID 与 `analyze` 是同一套选择条件。binlog 必须带列名（`binlog_row_metadata=FULL`）和完整行镜像（`binlog_row_image=FULL`）。脚本会设置 `utf8mb4`、`time_zone='+00:00'`，并在该会话去掉 `NO_BACKSLASH_ESCAPES`。`TIMESTAMP` 字面量是存储时刻的 UTC 墙钟。
 
@@ -94,14 +94,14 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 - 撤销执行时，表上的触发器会触发。
 - 匹配只用主键，或每一列加 `LIMIT 1`。没有冲突检查。脚本会覆盖事故之后的修改。
 - 表过滤或 `--dml` 可能只撤销一个事务里的一部分行变更。这时 stderr 打出警告，stdout 仍是保留行的 SQL。时间、位点、GTID 选择丢掉的是整个事务，不警告。
-- 先审阅并测试脚本。在主库的同一个会话里执行，并保持 `sql_log_bin=1`，副本才会在新 GTID 下跟上。不要在副本上执行。某条语句失败时，撤销会回滚。请用 `binlogviz flashback verify` 应用。
+- 先审阅并测试脚本。在主库的同一个会话里执行，并保持 `sql_log_bin=1`，副本才会在新 GTID 下跟上。不要在副本上执行。某条语句失败时，撤销会回滚，`mysql --force` 也一样。请用 `binlogviz flashback verify` 应用。
 
 ### 已知限制
 
-先审阅并测试脚本，再在主库的同一个会话里执行。某条语句失败时，撤销会回滚。请用 `binlogviz flashback verify` 应用。
+先审阅并测试脚本，再在主库的同一个会话里用 `binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4` 执行。文件本身不会提交。某条语句失败时，撤销会回滚，`mysql --force` 也一样。执行需要 `CREATE`、`CREATE ROUTINE` 和官方 `mysql` 客户端。
 
-- `--schema-file` 把真实列标成生成列时，若记下的值恰好等于 binlogviz 能核对的表达式，或者表达式无法核对且没有矛盾（`c` 一直被写成 `a + 1`、`UPPER(x)`，或 `first` 与 `last` 拼出来的名字），这一列仍会被省略，命令以退出码 0 结束（[#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)）。MySQL 8 的行元数据不标记生成列，flashback 当时分不开这种情况和正确的转储。脚本会在三条 `SET` 之后、第一个事务之前放一个守卫。目标上 `information_schema.COLUMNS.EXTRA` 不是 `STORED GENERATED` 或 `VIRTUAL GENERATED` 时，执行在任何事务之前失败。错误说明 schema 文件和目标对不上，错误行会列出每一个对不上的 `库.表.列`，不是只列出第一个。名单太长时给出个数和前几个列名。目标上这一列是 `GENERATED`、但表达式和 schema 文件不同时，守卫会放过：它只看 `EXTRA`，值由目标重新计算，还原结果仍然正确。`mysql --force`、在 mysql 提示符里 `source` 或粘贴、`mysqlsh --force`、`mysqlsh --interactive`，以及设成遇错继续的图形工具，都会在这条错误之后接着往下跑。守卫会先把这个会话改成只读，所以后面的每一条写入都报 `ERROR 1792`，行不会被改掉。断开连接。新会话不是只读的。改好 schema 文件后再执行脚本。加锁用的是 `SET SESSION TRANSACTION READ ONLY`，它不引用任何服务器变量，所以在 MySQL 5.6.5 及以上、MariaDB 10.0 及以上效果一样，包括没有 `transaction_read_only` 的 MariaDB 10.x–11.0。守卫先加锁，只有在同一个会话里检查确实跑过、每一列都匹配、而且服务器受支持时，才把会话改回可写。守卫的某一步失败时，例如服务器拒绝 `PREPARE`（`max_prepared_stmt_count` 用满或为 0），会话保持只读，之后每一条写入都报 `ERROR 1792`。后面的每个块都留在这同一个事务里。块开头的门会准备 `SET SESSION TRANSACTION READ ONLY`，除非 `@binlogviz_txn` 为 1 且会话持有这份脚本的令牌，那时它准备 `DO 0`，文件头里的解锁保持有效。这个门不会 `COMMIT`。守卫只有在同一个会话里检查确实跑过并且匹配时，才把 `@binlogviz_ok` 设成这个令牌；令牌由脚本自身的内容算出。每一条撤销语句也会检查令牌。条件是 `CASE WHEN @binlogviz_ok <=> '<令牌>' THEN 1 ELSE (SELECT @binlogviz_bad := 1 UNION ALL SELECT 1) END`。匹配时返回 1。不匹配是 `ERROR 1242`，并设置 `@binlogviz_bad`，`--force` 也清不掉这个标记。去掉文件头单独执行的事务块、在已经正确执行过一份脚本的会话里粘贴的另一份脚本的事务块、重连之后执行的事务块，都会变成只读，写入报 `ERROR 1792` 或 `ERROR 1242`。撤销是一个事务，所以执行到一半时重连，还没提交的语句全部回滚。没有按块续跑。对原来的文件跑 `binlogviz flashback verify`，把输出在新会话里执行（[#197](https://github.com/Fanduzi/BinlogVisualizer/issues/197)、[#318](https://github.com/Fanduzi/BinlogVisualizer/issues/318)）。`XA START` 事务里也一样，那里加锁本身会报 `ERROR 1399`。如果会话在执行脚本前已经是只读的，例如前一份脚本的守卫没通过，这份脚本会停在自己的守卫，提示 `binlogviz: this session is already read-only so the script cannot write. Disconnect and apply the script again in a new session`，而不是每条写入都只报一个 `ERROR 1792`（[#191](https://github.com/Fanduzi/BinlogVisualizer/issues/191)）。截取脚本执行时，务必带上文件头，并在新会话里执行。目标正确时，如果 `PREPARE` 失败，脚本停在 `ERROR 1461`，什么都不还原；调大 `max_prepared_stmt_count` 后重新执行。执行前就是只读的会话，执行后仍是只读。支持执行的服务器是 MySQL 5.7 及以上、MariaDB 10.2 及以上；守卫已在 MySQL 5.7.19、5.7.44、8.0 和 MariaDB 10.6、10.11、11.0、11.4 上实测。更老的服务器（MySQL 5.6、MariaDB 10.1）会停在 `binlogviz: target server is older than MySQL 5.7.0 or MariaDB 10.2 and is not supported for apply`，并且保持只读，所以 `mysql --force` 在那里也写不进去。MySQL 5.6.5 之前和 MariaDB 10.0 之前没有只读会话模式：遇错即停的客户端会停在守卫，但遇错继续的客户端不会被锁住。在同一个会话里关掉只读再继续，会把错误的行写进去。这能拦住环境不对的转储，以及表达式恰好等于记下的值的转储，也包括没有主键时把 `INSERT` 撤回去却删到另一行重复数据。记下的值与表达式矛盾时，包括只改了这个所谓生成列的 `UPDATE`，退出 1，并且不打印 SQL。表里确实有生成列时，不传 `--schema-file` 解决不了问题：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，撤销会回滚。
-- 事故之后如果把普通列改成了生成列，原来的值写不回去。`ALTER` 之后的转储，在记下的值和这个新表达式矛盾时会被拒绝。事故当时的转储仍把这一列当成普通列去赋值，执行停在 `ERROR 3105`，因为目标上这一列已经是生成列。要还原其他列，从事故当时的脚本里把这一列从 `INSERT` 清单和 `SET` 清单中删掉。MySQL 会重新计算它。算出来的值和当初存下的值不一样时，这不是原来的值。不要加 `--force` 执行：客户端会跳过这条错误，继续跑后面的事务。
+- `--schema-file` 把真实列标成生成列时，若记下的值恰好等于 binlogviz 能核对的表达式，或者表达式无法核对且没有矛盾（`c` 一直被写成 `a + 1`、`UPPER(x)`，或 `first` 与 `last` 拼出来的名字），这一列仍会被省略，命令以退出码 0 结束（[#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)）。MySQL 8 的行元数据不标记生成列，flashback 当时分不开这种情况和正确的转储。脚本会在三条 `SET` 之后、第一个事务之前放一个守卫。目标上 `information_schema.COLUMNS.EXTRA` 不是 `STORED GENERATED` 或 `VIRTUAL GENERATED` 时，执行在任何事务之前失败。错误说明 schema 文件和目标对不上，错误行会列出每一个对不上的 `库.表.列`，不是只列出第一个。名单太长时给出个数和前几个列名。目标上这一列是 `GENERATED`、但表达式和 schema 文件不同时，守卫会放过：它只看 `EXTRA`，值由目标重新计算，还原结果仍然正确。`mysql --force`、在 mysql 提示符里 `source` 或粘贴、`mysqlsh --force`、`mysqlsh --interactive`，以及设成遇错继续的图形工具，都会在这条错误之后接着往下跑。守卫会先把这个会话改成只读，所以后面的每一条写入都报 `ERROR 1792`，行不会被改掉。断开连接。新会话不是只读的。改好 schema 文件后再执行脚本。加锁用的是 `SET SESSION TRANSACTION READ ONLY`，它不引用任何服务器变量，所以在 MySQL 5.6.5 及以上、MariaDB 10.0 及以上效果一样，包括没有 `transaction_read_only` 的 MariaDB 10.x–11.0。守卫先加锁，只有在同一个会话里检查确实跑过、每一列都匹配、而且服务器受支持时，才把会话改回可写。守卫的某一步失败时，例如服务器拒绝 `PREPARE`（`max_prepared_stmt_count` 用满或为 0），会话保持只读，之后每一条写入都报 `ERROR 1792`。后面的每个块都留在这同一个事务里。块开头的门会准备 `SET SESSION TRANSACTION READ ONLY`，除非 `@binlogviz_txn` 为 1 且会话持有这份脚本的令牌，那时它准备 `DO 0`，文件头里的解锁保持有效。这个门不会 `COMMIT`。守卫只有在同一个会话里检查确实跑过并且匹配时，才把 `@binlogviz_ok` 设成这个令牌；令牌由脚本自身的内容算出。每一条撤销语句也会检查令牌。条件是 `CASE WHEN @binlogviz_ok <=> '<令牌>' THEN 1 ELSE (SELECT @binlogviz_bad := 1 UNION ALL SELECT 1) END`。匹配时返回 1。不匹配是 `ERROR 1242`，并设置 `@binlogviz_bad`，`--force` 也清不掉这个标记。去掉文件头单独执行的事务块、在已经正确执行过一份脚本的会话里粘贴的另一份脚本的事务块、重连之后执行的事务块，都会变成只读，写入报 `ERROR 1792` 或 `ERROR 1242`。撤销是一个事务，所以执行到一半时重连，还没提交的语句全部回滚。没有按块续跑。对原来的文件跑 `binlogviz flashback verify`，把输出在新会话里执行（[#197](https://github.com/Fanduzi/BinlogVisualizer/issues/197)、[#318](https://github.com/Fanduzi/BinlogVisualizer/issues/318)）。撤销本身是一个 XA 事务（ADR 0014）。在这个 XA 事务里执行 `SET SESSION TRANSACTION READ ONLY` 不会失败，也不会把当前事务改成只读，它作用于下一个事务。XA 事务还开着的时候，`BEGIN`、`START TRANSACTION` 和 DDL 会报 ERROR 1399，不会把撤销提交掉。如果会话在执行脚本前已经是只读的，例如前一份脚本的守卫没通过，这份脚本会停在自己的守卫，提示 `binlogviz: this session is already read-only so the script cannot write. Disconnect and apply the script again in a new session`，而不是每条写入都只报一个 `ERROR 1792`（[#191](https://github.com/Fanduzi/BinlogVisualizer/issues/191)）。截取脚本执行时，务必带上文件头，并在新会话里执行。目标正确时，如果 `PREPARE` 失败，脚本停在 `ERROR 1461`，什么都不还原；调大 `max_prepared_stmt_count` 后重新执行。执行前就是只读的会话，执行后仍是只读。支持执行的服务器是 MySQL 5.7 及以上、MariaDB 10.2 及以上；守卫已在 MySQL 5.7.19、5.7.44、8.0 和 MariaDB 10.6、10.11、11.0、11.4 上实测。更老的服务器（MySQL 5.6、MariaDB 10.1）会停在 `binlogviz: target server is older than MySQL 5.7.0 or MariaDB 10.2 and is not supported for apply`，并且保持只读，所以 `mysql --force` 在那里也写不进去。MySQL 5.6.5 之前和 MariaDB 10.0 之前没有只读会话模式：遇错即停的客户端会停在守卫，但遇错继续的客户端不会被锁住。在同一个会话里关掉只读再继续，会把错误的行写进去。这能拦住环境不对的转储，以及表达式恰好等于记下的值的转储，也包括没有主键时把 `INSERT` 撤回去却删到另一行重复数据。记下的值与表达式矛盾时，包括只改了这个所谓生成列的 `UPDATE`，退出 1，并且不打印 SQL。表里确实有生成列时，不传 `--schema-file` 解决不了问题：脚本仍会给这些列赋值，执行停在 `ERROR 3105`，撤销会回滚。
+- 事故之后如果把普通列改成了生成列，原来的值写不回去。`ALTER` 之后的转储，在记下的值和这个新表达式矛盾时会被拒绝。事故当时的转储仍把这一列当成普通列去赋值，执行停在 `ERROR 3105`，因为目标上这一列已经是生成列。要还原其他列，从事故当时的脚本里把这一列从 `INSERT` 清单和 `SET` 清单中删掉。MySQL 会重新计算它。算出来的值和当初存下的值不一样时，这不是原来的值。不加修改、直接加 `--force` 执行，仍然不会提交前缀：ERROR 3105 会把 `@binlogviz_applied` 设成 0，结束过程回滚这个 XA 事务（ADR 0014）。
 - 非严格会话写下的行，在严格会话里也能还原（[#180](https://github.com/Fanduzi/BinlogVisualizer/issues/180)）。flashback 离线就能看出这些值，只给那一条语句包一层保存再恢复的 `@@SESSION.sql_mode`，只去掉会拒绝这个存下的值的那几个标志，外加 `TRADITIONAL`：`DATE`、`DATETIME`、`TIMESTAMP` 的月或日为零（`'0000-00-00'`、`'2026-00-15'`）时去掉 `NO_ZERO_DATE` 和 `NO_ZERO_IN_DATE`；脚本略去的生成列记下的值是 `NULL` 时去掉 `ERROR_FOR_DIVISION_BY_ZERO`，这样 `b` 为 0 时 `a/b`、`DIV`、`%` 重新算出来还是 `NULL`。这些语句仍是严格模式，其他放不进目标列的值照样报错。其他只有非严格会话才接受的值（被截断的字符串、超范围的数）不会出现在 binlog 里，因为服务器存的是截断后的值。脚本不知道的生成列仍会被赋值，执行停在 `ERROR 3105`，见上文。
 - 守卫报错那一行里，列名中的 `|` 显示为 `/`，所以 `a|b` 和 `a/b` 在那里看起来一样（[#208](https://github.com/Fanduzi/BinlogVisualizer/issues/208)）。守卫在 stdout 上的 `SELECT` 和 SQL 里仍是真实列名。
 - 某一列在解析到的 binlog 里先被加上（`ADD COLUMN`），之后又在其中被修改或改名（`MODIFY`、`CHANGE`、`RENAME COLUMN`）时，正确的事故当时转储仍会失败：flashback 退出 1，报 `reordered (schema file ...; binlog ...)`，同一列出现两次（`c, c`）。会安全失败，不打印 SQL。只解析包含事故的那个 binlog，或者用在 `ADD` 之后、后一次 `ALTER` 之前导出的转储。
@@ -110,7 +110,7 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 
 ### 执行失败之后
 
-发布的脚本不会提交撤销。所有撤销语句在同一个事务里。`mysql < flashback.sql` 会停在结尾，客户端断开时服务器回滚这个事务。`--force` 也一样：文件里没有撤销的 `COMMIT`。截断的文件、改过的值、删掉的语句、重排的语句、结尾之后追加的 SQL，都是这样。`binlogviz flashback verify` 拒绝它们（退出码 6，`details.reason` 为 `truncated`、`missing_trailer`、`digest_mismatch`、`appended` 或 `not_flashback`），直接交给 `mysql` 也不会提交。
+发布的脚本不会提交撤销。撤销是一个 XA 事务。`mysql < flashback.sql` 以 `@binlogviz_want = 0` 调用结束过程，也就是 `XA END` 和 `XA ROLLBACK`，然后停在结尾。`--force` 会跳过结尾的报错，但仍然不会提交：结束过程已经把 XA 事务回滚了。某条语句失败，包括缺表（ERROR 1146）或缺列（ERROR 1054），会把 `@binlogviz_applied` 设成 0，所以即使 `verify` 允许提交，结束过程也会回滚。截断的文件让 XA 事务停在 `ACTIVE`。同一个会话里后面的 `BEGIN`、`START TRANSACTION`、DDL 或第二份脚本会报 ERROR 1399，不会把这个前缀提交。断开连接会回滚 `ACTIVE` 或 `IDLE` 的 XA 事务。改过的值、删掉的语句、重排的语句、结尾之后追加的 SQL，`binlogviz flashback verify` 都会拒绝（退出码 6，`details.reason` 为 `truncated`、`missing_trailer`、`digest_mismatch`、`appended` 或 `not_flashback`），直接交给 `mysql` 也不会提交。
 
 应用方式：
 
@@ -118,13 +118,15 @@ JSON 按二进制文档重建（`JSON_OBJECT` / `JSON_ARRAY`，标量则用 `CAS
 binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 ```
 
-失败的一次应用没有提交前缀。对原来的文件再执行上面的命令。不要把文件切成块。verify 会拒绝缺了片段或结尾的文件。没有按块续跑。
+执行需要 `CREATE` 和 `CREATE ROUTINE`。脚本会在需要时创建 `binlogviz` 库，并在其中创建一个过程。必须使用官方 `mysql` 客户端（脚本使用 `DELIMITER`）。不实现 `DELIMITER` 的客户端无法执行。
 
-生成失败（退出码 8，或溢出、内存上限的退出码 10）不会写出脚本字节。拷贝到 shell 重定向的中途失败可能留下前缀；这个前缀没有提交结尾，什么也不会提交。
+失败的一次应用没有提交事务表上的前缀。在新会话里对原来的文件再执行上面的命令。不要把文件切成块。verify 会拒绝缺了片段或结尾的文件。没有按块续跑。
 
-撤销会一直持有锁，直到结束语句，并且可能超过 `max_binlog_cache_size`。失败的 `COMMIT` 会回滚。
+拷贝到 shell 重定向的中途失败可能留下前缀；这个前缀没有提交结尾，后面的 `BEGIN` 或 DDL 也不会把它提交。生成失败（退出码 8，或溢出、内存上限的退出码 10）不会写出脚本字节。
 
-下面这些没有保证。重新计算了载荷和结尾十六进制的修改是一份新脚本，verify 会接受。只改守卫头或 `START TRANSACTION`、不改摘要载荷行的手工修改，MySQL 里的摘要链看不见；verify 会拒绝，直接 `mysql < file` 仍然不会提交。有人把结尾扔掉、再在打开的事务里粘贴一条 `COMMIT`，普通 SQL 拦不住。
+撤销会一直持有锁，直到结束，并且可能超过 `max_binlog_cache_size`。结束过程不会 `XA PREPARE`。失败的结束不会留下一份已准备、可供其他会话提交的事务。
+
+下面这些没有保证。重新计算了载荷和结尾十六进制的修改是一份新脚本，verify 会接受。只改守卫头或 `XA START`、不改摘要载荷的手工修改，MySQL 里的摘要链看不见；verify 会拒绝，直接 `mysql < file` 仍然不会提交。按文件里印出的 id 手工粘贴 `XA END '<token>'` 和 `XA COMMIT '<token>' ONE PHASE` 会提交还开着的撤销。在 XA 事务里粘贴普通 `COMMIT` 是 ERROR 1399，不会提交。非事务表（MyISAM）在语句执行时就把行改掉了，`XA ROLLBACK` 撤不回去。不要对非事务表做 flashback。两份哈希出同一个令牌的脚本同时执行会共用一个 XA id：后一次 `XA START` 失败，加了 `--force` 时那个会话会被设成只读。完整的表在 ADR 0014。
 
 无法精确还原时拒绝，不猜测。退出 1，一行 `Error:` 点名表和原因，stdout 没有 SQL，出现在：
 
