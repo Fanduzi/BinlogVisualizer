@@ -1,0 +1,144 @@
+# ADR 0012: Split `internal/analyzer` into deep modules, one seam at a time
+
+Status: accepted (2026-10-19). Tracks #257. ADR 0008 named these moves and left them until the behaviour fixes landed. Those fixes are in (streaming spill, conflict detection, `internal/clierr`). This ADR is the package layout and the order of the moves. It does not change output.
+
+## Context
+
+At `4cb6cc2`, `internal/analyzer` is 36 non-test files and about 15.4k lines. One package still holds the report aggregator, the transaction model, flashback SQL, the expression evaluator (ADR 0007), the schema catalog (ADR 0005), the apply guard (ADR 0006), and the DuckDB detail store. They compile together, so they share unexported types and the flashback fields on `*Analyzer`.
+
+Those fields, in `analyzer.go`, are the spill, the conflict key set and the pending conflict list, the catalog pointer, the split-transaction map, and the generated-column review flags: `flashCur`, `flashSpill`, `flashKeys`, `flashConflicts`, `flashPending`, `flashPendingSeq`, `flashConflictsSettled`, `flashConflictList`, `flashGroupID`, `flashSeq`, `flashClearSeq`, `flashPendingNames`, `flashChecked`, `flashErr`, `flashCat`, `flashUnknown`, `flashSchemaWarn`, `flashGenNotes`, `flashReviewed`, `flashReviewErr`, `flashSplit`, `flashSplitOrder`, `flashSplitDone`. Conflict detection added keys and pending state on `*Analyzer` instead of a planner that owns them. The October 16 recheck on #257 asked for that planner before more flashback features land.
+
+The expression evaluator and the schema catalog are not fields. They are functions and a `schemaCatalog` value. They still cannot be imported by a second caller, because `sqlScan`, `schemaCol`, and `intVal` are unexported and the files that use them sit in `analyzer`. `sqlScan` is the one SQL cursor. Methods on it live in `flashback_generated.go`, `flashback_eval.go`, and `flashback_expr.go`, and the column parser in `flashback_schema.go` reads `sc.i` and `sc.s` directly. A Go method has to live in the type's package, so those files are one closed set. The catalog walker (`note`, `noteCreate`, `noteAlter`, `noteDrop`, `noteRename`) walks that same cursor. The generated-column review reads `schemaCol` fields and calls `evalGenExpr` / `evalDecExprInc`.
+
+`internal/clierr` already exists (ADR 0008 step 4, ADR 0009). `flashGroups` is gone; rows sit in the spill. Per-format transaction selection is still separate (`renderTopTransactions` in `internal/report/text.go`, `mdTopTransactions` in `internal/report/markdown.go`), and the format switch still lives in `cmd/binlogviz/analyze.go`.
+
+## Decision
+
+Leaf packages do not import `internal/analyzer`. `analyzer` orchestrates: it calls the leaves, and later a flashback planner. No package in the graph imports a package that imports it. No compatibility wrapper stays behind in `analyzer`; a step moves the callers and deletes the old file in the same change.
+
+`FlashbackWarning` (the `code` + `message` value on `flashback --plan`) moves to `internal/model`. The catalog, the evaluator, and the planner all build one, and none of those leaves may import `analyzer` to share it. `model` does not import them. JSON field names stay `code` and `message`.
+
+### Target layout
+
+| Package | Owns | Does not own |
+|---|---|---|
+| `internal/mysqlexpr` | The expression evaluator (ADR 0007): one grammar, one cached tree, `EvalGenExpr` and `EvalDecExprInc`. The value rules (`genVal`, `decVal`, JSON, charset, integer and DECIMAL arithmetic, including `intVal` / `applyMulOp` / `applyIntDiv`). The SQL cursor `Scan` and every method on it. The column value `SchemaCol` and the CREATE/ALTER column parser, row check, and generated-column review, because they share that cursor and those fields. | Which `db.table` a definition binds to. Undo SQL. The guard. Reports. |
+| `internal/schemacatalog` | The schema catalog (ADR 0005): load a schema file, observe table maps and DDL, resolve or peek `db.table`, return warnings. Binding rules stay here. | Parsing a column list or evaluating an expression. It calls `mysqlexpr` for both. |
+| `internal/guard` | The apply guard (ADR 0006): `New(cols)`, `Header`, `BlockLock`, `RowCond`, `Seal`. The zero value returns `""` or its input unchanged. | Walking spilled row groups to collect omitted columns. The planner does that and passes `[]Col`. |
+| `internal/flashback` | The planner: selection, refusals, spill, conflict set, review flags, streaming writer, `--plan`. | The grammar, the binding rules, the guard SQL. |
+| `internal/report/view` | One ordered, bounded view of an `AnalysisResult`. | SQL text, HTML chrome, JSON encoding. The existing renderers stay, and they read the view. |
+| `internal/detailstore` | The DuckDB adapter (`store_duckdb.go` / `store_nocgo.go`) behind the existing `detailStore` interface. `cmd` wires it. | Aggregation. The default `none` store can stay a tiny type in `analyzer` or move with the interface; either way `analyzer` does not import `go-duckdb`. |
+| `internal/rowstream` | An iterator of committed transactions with row images, selected or not. | Aggregation and undo SQL. Extract it when a second consumer needs it (redo, split output). One caller is not a seam (ADR 0008). |
+| `internal/analyzer` | Streaming aggregation: transactions, tables, minutes, DDL, alerts, spikes, diagnostics, the report aggregator. It holds a `*schemacatalog.Catalog` and, until the planner step, the flashback fields. After that step it holds one planner. | The leaves above. |
+| `internal/clierr` | Already shipped. Not moved again here. | |
+
+`internal/model`, `internal/i18n`, `internal/binlog`, `internal/jsonout`, `internal/snapshot`, `internal/compare`, `internal/trend`, `internal/workflow`, and `internal/version` stay where they are.
+
+### Dependency direction
+
+```
+cmd
+ └─ analyzer ─┬─ schemacatalog ── mysqlexpr ── model, i18n
+              ├─ flashback ─┬─ schemacatalog
+              │             ├─ mysqlexpr
+              │             └─ guard
+              ├─ detailstore (cmd injects the DuckDB store; analyzer sees the interface)
+              ├─ report ── report/view
+              └─ model, clierr
+
+rowstream ── model
+flashback and analyzer both consume rowstream once it exists
+```
+
+`mysqlexpr` imports `model` and `i18n` only. It does not import `schemacatalog`, `analyzer`, `flashback`, or `guard`. `schemacatalog` imports `mysqlexpr`, `model`, and `i18n`. `guard` imports the standard library only. Nothing imports `analyzer` except `cmd`, tests, and the packages that already depend on the analysis result through `model` rather than through `analyzer`.
+
+### Public interface at each seam
+
+`mysqlexpr`, evaluator (ADR 0007, unchanged behaviour):
+
+- `EvalGenExpr(expr string, env map[string]GenVal) (GenVal, bool)`
+- `EvalDecExprInc(expr string, env map[string]GenVal, inc int) (DecVal, bool)`
+
+`GenVal` and `DecVal` are `genVal` and `decVal` with an exported name. Callers outside the package do not touch the cached tree. The review helpers below build the environment from logged literals; a caller does not assemble `GenVal` by hand.
+
+`mysqlexpr`, column model. `SchemaCol` is the one column type (name, generated flag, expression, base type, unsigned, charset, ENUM/SET members, precision, scale). The parser, the review, and the catalog all use it. There is no second struct and no mapper. `Name`, `Generated`, and `Expr` are exported because the planner reads them when it omits a generated column and when it builds the guard column list. The other fields stay unexported next to the parser.
+
+- `ParseSchemaColumns`, `CloneSchemaCols`, `ApplyTableCharset`, `AlterSlice`, `AlterNoColumnChange`, `GeneratedNameSet`, `ValidateSchemaRow`, `DumpSegments`, `DumpDatabase`, `SchemaColNames`
+- Generated review, called by the planner: `PrepareGenImages`, `(*GenImages).Outcome`, `(*GenImages).DivIncrementFit`, `DivIncrementMismatch`, `DivIncrementHint`, `GeneratedMismatch`, `SQLTableName`, `UnverifiedGeneratedComment`, `UnverifiedGeneratedWarning`
+
+`mysqlexpr`, cursor. The catalog walker is the other caller. Exported surface is the type plus the operations that walker already uses, not a new parser:
+
+- `NewScan(s string) *Scan`
+- `Skip`, `Word`, `WordIs`, `Ident`, `Rest`, `UnreadWord`, `Qualified`, `ParenBody`, `PeekWord`, `PeekByte`
+- `S` and `I`, the text and the index. The walker compares the current byte with `,` in two places. Exporting those two fields keeps that code as it is. `SplitSQL`, `SplitComma`, `IndexCreateTable`, and `CopyNames` live here for the same reason: the walker and the column parser both call them.
+
+`schemacatalog` (ADR 0005):
+
+- `New(flagDB string) *Catalog`
+- `LoadFile(sql string)`
+- `ObserveTable(schema, table string) (abandoned []string)`
+- `ObserveDDL(session, sql string) (abandoned []string)`
+- `Resolve(schema, table string) Resolution`
+- `Peek(schema, table string) Resolution`
+- `Warnings() []model.FlashbackWarning`
+
+`Resolution` carries `Kind` (`Missing`, `Exact`, `Fold`, `Ambiguous`, `Refused`), `Cols []mysqlexpr.SchemaCol`, `CheckRows`, `Deferred`, `FileTable`, `Candidates`, and `Reason` (`UnreadableCreate`, `CreateSelect`, `LikeSource`, `AlterUnknown`, `AlterUnreadable`). Callers still build every message from that value. The catalog does not rewrite error text.
+
+`guard`:
+
+- `type Col struct { Schema, Table, Column string }`
+- `New(cols []Col) Guard`
+- `Header() string`, `BlockLock() string`, `RowCond() string`, `Seal(script string) string`
+
+`flashback.Planner` (the type that takes the `flash*` fields off `*Analyzer`):
+
+- `Note(ev model.NormalizedEvent)` records one retained event
+- `Prepare() error` runs every refusal and the generated-column review before any byte is written
+- `WriteTo(w io.Writer) (int64, error)` renders from the spill
+- `Plan() Plan` is the `--plan` document (`plan_version` stays 2)
+
+The analyzer calls those four. Spill layout, conflict hashes, and guard sealing stay inside the planner.
+
+`report/view`: one function from `model.AnalysisResult` plus render limits to a view the text, Markdown, JSON, and HTML renderers share. Selection of top transactions happens once, in the view.
+
+`detailstore`: the existing `NewDuckDBStore` moves with the adapter. `analyzer.NewWithStore` keeps its signature until the call site in `cmd` passes the interface; the signature change is part of that step, not a second wrapper.
+
+### What leaves `*Analyzer`
+
+| Step | State |
+|---|---|
+| `mysqlexpr` | Nothing on the struct. The evaluator is functions plus the process-wide expression cache. The column parser's maps are not analyzer fields. |
+| `schemacatalog` | The catalog's own maps (`defs`, pending binds, fold notes) already sit inside the catalog value. The step changes `flashCat` from `*schemaCatalog` to `*schemacatalog.Catalog`. The pointer stays on `*Analyzer` until the planner step. |
+| `guard` | No new analyzer field. The planner, still in `analyzer` until the next step, builds the guard from omitted columns. |
+| `flashback` planner | Every `flash*` field above moves onto `Planner`. `*Analyzer` keeps one `*flashback.Planner`. |
+| `detailstore` | `store detailStore` stays. The DuckDB struct type leaves the package. |
+| `rowstream` | Transaction-boundary state moves when the second consumer exists. Not before. |
+
+### Migration steps
+
+Each step is one PR. It ends with `go test ./...`, `go vet ./...`, and the flashback e2e green, and with analyze JSON, the text report, and flashback SQL / `--plan` byte-identical on the repo's testdata binlogs. No golden file is edited to make a test pass. No wrapper package is added.
+
+1. **`internal/mysqlexpr`.** Move `flashback_eval.go`, `flashback_expr.go`, `flashback_schema.go`, `flashback_generated.go`, and the tests that only call those files. Export the surface above. `analyzer` calls it. The catalog file still lives in `analyzer` and is the first caller of `Scan` and the column parser.
+2. **`internal/schemacatalog`.** Move `schema_catalog.go` and the catalog tests. `flashCat` becomes `*schemacatalog.Catalog`. Delete the old file.
+3. **`internal/guard`.** Move `flashback_guard.go` except the walk over `flashGroup` that collects omitted columns. That walk stays with the planner and calls `guard.New`.
+4. **`internal/flashback`.** Move `flashback.go`, `flashback_spill.go`, `flashback_conflict.go`, and the `flash*` fields onto `Planner`. `analyzer` holds the planner and forwards `Note` / `Prepare` / `WriteTo` / `Plan`. This is the step the October 16 recheck asked to do before more flashback features.
+5. **`internal/report/view`.** Build the view once. Point text, Markdown, JSON, and HTML at it, including `renderTopTransactions` and `mdTopTransactions`. Move the format switch out of `cmd/binlogviz/analyze.go` so an unknown `--format` cannot skip the view.
+6. **`internal/detailstore`.** Move the DuckDB adapter out of `analyzer` behind `detailStore`. `CGO_ENABLED=0` still builds.
+7. **`internal/rowstream`.** Extract only when redo SQL or split flashback output is the second consumer.
+
+Steps 1 and 2 are the first PR. They are the closed set with the smallest shared state: no `*Analyzer` receiver, and every test of the evaluator and the catalog already calls the functions above rather than the aggregator.
+
+## Considered options
+
+- **Export only `EvalGenExpr` and keep the column parser in `analyzer`.** The parser and the evaluator share `Scan` and `SchemaCol`. Leaving the parser behind means `mysqlexpr` cannot see `schemaCol`, or `analyzer` imports `mysqlexpr` while `mysqlexpr` imports `analyzer`.
+- **Put the column parser in `schemacatalog` and export every cursor field.** That also works, and it puts CREATE/ALTER parsing next to the binding rules. It makes `Scan.S` and `Scan.I` a public cursor for a package that does not need to own parsing. Keeping the parser next to the cursor, with the catalog calling `ParseSchemaColumns` and `AlterSlice`, leaves the catalog's interface as the six methods from ADR 0005 plus the resolution. The walker still uses `Scan`, because that walk is the binding logic (USE, qualified names, LIKE, RENAME), not the column grammar.
+- **One `internal/flashsql` package for the evaluator and the catalog.** It compiles, and it is still a grab bag. Two packages with one import arrow are the point of the split.
+- **Leave forwarding funcs in `analyzer` (`func evalGenExpr(...) { return mysqlexpr.EvalGenExpr(...) }`).** Callers would keep compiling without moving. The old names would rot. Each step updates the callers and deletes the old code.
+- **Extract `rowstream` first.** ADR 0008 already rejected a seam with one caller. Flashback still reads the analyzer's own event loop.
+
+## Consequences
+
+- Steps 1 and 2 do not change analyze or flashback output. `report_version` and `plan_version` stay. Golden files stay.
+- ADR 0005 and ADR 0007 still describe the binding rules and the evaluator. The file paths in those ADRs are historical; the packages in this ADR are the location. ADR 0006's guard behaviour is unchanged until step 3 moves the file.
+- After step 2, `*Analyzer` still has the `flash*` fields. Step 4 is what removes them. New flashback features should wait for that type, as the October 16 recheck said.
+- A later step that wants the column parser to live inside `schemacatalog` moves those functions and keeps `SchemaCol` as the single column type. It does not add a parallel struct.
