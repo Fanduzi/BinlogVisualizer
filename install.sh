@@ -37,6 +37,18 @@ while [ $# -gt 0 ]; do
       DRY_RUN=1
       shift
       ;;
+    -h|--help)
+      cat <<'EOF'
+usage: install.sh [--version vX.Y.Z|latest] [--bin-dir DIR] [--no-verify] [--dry-run] [--help]
+
+  --version vX.Y.Z|latest   release to install (default: latest)
+  --bin-dir DIR             directory to install the binary (default: /usr/local/bin)
+  --no-verify               skip the sha256 checksum
+  --dry-run                 print the download plan and do not install
+  --help                    print this help and exit
+EOF
+      exit 0
+      ;;
     *)
       die "unknown argument: $1"
       ;;

@@ -93,6 +93,8 @@ func (a *Planner) collectGeneratedReview() error {
 	var mismatches, notes []string
 	var warns []model.FlashbackWarning
 	hinted := false
+	var mismatchTable string
+	multiTable := false
 	for _, key := range order {
 		b := groups[key]
 		table := flashTable(b.schema, b.table)
@@ -101,6 +103,11 @@ func (a *Planner) collectGeneratedReview() error {
 			col := b.rev.Col(i)
 			example, unknown := b.rev.Outcome(i)
 			if example != "" {
+				if mismatchTable == "" {
+					mismatchTable = label
+				} else if mismatchTable != label {
+					multiTable = true
+				}
 				if fit, unchecked := b.rev.DivIncrementFit(i); len(fit) > 0 || len(unchecked) > 0 {
 					line := mysqlexpr.DivIncrementMismatch(label, col, example, fit, unchecked).Error()
 					if !hinted {
@@ -121,7 +128,11 @@ func (a *Planner) collectGeneratedReview() error {
 		}
 	}
 	if len(mismatches) > 0 {
-		return fmt.Errorf("%s", strings.Join(mismatches, "\n"))
+		table := mismatchTable
+		if multiTable {
+			table = ""
+		}
+		return refuse("generated_mismatch", table, fmt.Errorf("%s", strings.Join(mismatches, "\n")))
 	}
 	a.noteSchemaWarnings(warns)
 	a.flashGenNotes = append(a.flashGenNotes, notes...)

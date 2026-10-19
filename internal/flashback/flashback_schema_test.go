@@ -592,7 +592,7 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 	if strings.Count(sql, lock) != 1 {
 		t.Fatalf("header lock count %d, want 1:\n%s", strings.Count(sql, lock), sql)
 	}
-	start := strings.Index(sql, "\nXA START '")
+	start := strings.Index(sql, "XA START '")
 	if start < 0 || start < strings.Index(sql, lock) {
 		t.Fatalf("START TRANSACTION is not after the header lock:\n%s", sql)
 	}
@@ -670,7 +670,7 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	if !strings.HasPrefix(lock, "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n"+gated+"\nPREPARE binlogviz_fb_unlock_x9q FROM @binlogviz_unlock_sql;\n") {
 		t.Fatalf("lock: %q", lock)
 	}
-	start := strings.Index(sql, "\nXA START '")
+	start := strings.Index(sql, "XA START '")
 	if start < 0 || start < strings.Index(sql, lock) || strings.Contains(sql[start:], lock) {
 		t.Fatalf("per-transaction lock:\n%s", sql)
 	}

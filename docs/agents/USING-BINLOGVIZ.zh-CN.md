@@ -8,13 +8,14 @@
 
 `flashback` 不连接 MySQL。先审阅脚本，再测试，然后由你自己用 `binlogviz flashback verify <file> | mysql` 执行。`mysql < file` 不会提交。某条语句失败时不会提交前缀，`mysql --force` 也一样。撤销是一个 XA 事务（ADR 0014）。
 
-在 `binlogviz.*` 上需要 `CREATE`、`CREATE ROUTINE` 和 `ALTER ROUTINE`：
+在 `binlogviz.*` 上需要 `CREATE`、`CREATE ROUTINE` 和 `ALTER ROUTINE`，在撤销改动的表上需要 `SELECT, INSERT, UPDATE, DELETE`：
 
 ```sql
 GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `app`.* TO 'account'@'host';
 ```
 
-这个库上的 `CREATE` 覆盖 `CREATE DATABASE IF NOT EXISTS binlogviz`。`automatic_sp_privileges=0` 时，还要授予 `binlogviz.*` 上的 `EXECUTE`。`verify` 会为这一次执行命名结束过程，并在结束时删掉它。残留用 `DROP DATABASE binlogviz` 清理。
+`UPDATE` 和 `DELETE ... WHERE` 需要 `SELECT`（没有时是 ERROR 1143）。这个库上的 `CREATE` 覆盖 `CREATE DATABASE IF NOT EXISTS binlogviz`。`automatic_sp_privileges=0` 时，还要授予 `binlogviz.*` 上的 `EXECUTE`。`verify` 会为这一次执行命名结束过程，回滚之后也会删掉它。回滚的执行会打印 `binlogviz: undo rolled back, no rows changed`。不加 `--force` 时 mysql 退出码为 1。加了 `--force` 时退出码 0 不算成功：成功是退出码 0 且没有这一行。`CREATE PROCEDURE` 之后、收尾 `CALL` 之前被杀掉，或者 `CALL` 进不了过程体，会留下这一次的过程。残留用 `DROP DATABASE binlogviz` 清理。
 
 ## 配方 1：写入尖峰，然后 flashback
 
@@ -87,7 +88,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 | 3 | `usage` | 标志或参数错误，包括 `--diagnostics ""` 或 `nope` |
 | 4 | `input` | 文件或快照不存在 |
 | 5 | `corrupt` | 不是 binlog，或 JSON 不符合报告形状，包括非字符串的 `diagnostics_mode` |
-| 6 | `refused` | flashback 不会输出 SQL。`flashback verify` 的 `details.reason` 为 `not_flashback`、`truncated`、`missing_trailer`、`appended` 或 `digest_mismatch`，stdout 为空 |
+| 6 | `refused` | flashback 不会输出 SQL，或 `flashback verify` 不会打印脚本。生成时的 `details.reason`：`row_metadata`、`row_image`、`column_type`、`row_capture`、`ddl_in_range`、`generated_unknown`、`generated_mismatch`、`generated_row`、`schema_mismatch`、`sql_context_off`。点名了一张表时带 `details.table`。verify 的 `details.reason`：`not_flashback`、`truncated`、`missing_trailer`、`appended`、`digest_mismatch`、`old_format`（v0.31 或 v0.32.0 的脚本需要重新生成）。verify 的 stdout 为空 |
 | 7 | `conflict` | 选中的行后来又被修改 |
 | 8 | `output` | 写不出报告或脚本 |
 | 9 | `unsupported` | 没有 ROW 镜像的 STATEMENT/MIXED、未知版本，或裁剪过的 diagnostics 文档 |

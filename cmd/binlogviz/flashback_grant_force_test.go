@@ -1,6 +1,7 @@
 package binlogviz
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,7 +115,7 @@ func writePreXAGrantScript(t *testing.T) string {
 			"SET @binlogviz_bad = NULL",
 			"SET @binlogviz_txn = 0",
 		} {
-			if err := emit(guard.Piece{Kind: guard.PieceStmt, Text: stmt}); err != nil {
+			if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: stmt + ";\n"}); err != nil {
 				return err
 			}
 		}
@@ -178,6 +179,168 @@ func mysqlBatchValue(out string) string {
 		lines = append(lines, line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+// TestFlashbackFailedApplyDropsAndSignals is the #338/#343 contract on a real
+// server. A statement error, with or without --force, rolls the undo back,
+// drops the finish procedure, and prints the rollback line. Success does not
+// print that line and does not leave the procedure.
+func TestFlashbackFailedApplyDropsAndSignals(t *testing.T) {
+	if os.Getenv("BINLOGVIZ_FLASHBACK_E2E") == "" {
+		t.Skip("set BINLOGVIZ_FLASHBACK_E2E=1 to round-trip on a local MySQL server")
+	}
+	forceEnglishRuntimeOutput(t)
+	const user = "bv338"
+	const pass = "bv338pw"
+	const rollback = "binlogviz: undo rolled back, no rows changed"
+	e2eMySQL(t, `
+DROP DATABASE IF EXISTS n316;
+DROP DATABASE IF EXISTS binlogviz;
+CREATE DATABASE n316;
+CREATE TABLE n316.t (id INT NOT NULL PRIMARY KEY, v INT NOT NULL);
+INSERT INTO n316.t VALUES (1, 1);
+DROP USER IF EXISTS 'bv338'@'localhost';
+DROP USER IF EXISTS 'bv338'@'%';
+CREATE USER 'bv338'@'localhost' IDENTIFIED BY 'bv338pw';
+CREATE USER 'bv338'@'%' IDENTIFIED BY 'bv338pw';
+SET GLOBAL automatic_sp_privileges = 1;`)
+	t.Cleanup(func() {
+		_, _ = e2eMySQLResult(t, `
+DROP DATABASE IF EXISTS n316;
+DROP DATABASE IF EXISTS binlogviz;
+DROP USER IF EXISTS 'bv338'@'localhost';
+DROP USER IF EXISTS 'bv338'@'%';`)
+	})
+
+	update := writeApplyScript(t, "UPDATE `n316`.`t` SET `v` = 0 WHERE `id` = 1")
+	dup := writeApplyScript(t, "INSERT INTO `n316`.`t` (`id`, `v`) VALUES (1, 1)")
+
+	apply := func(t *testing.T, script, grants, data string, force bool) (string, error) {
+		t.Helper()
+		e2eMySQL(t, "DROP DATABASE IF EXISTS binlogviz; UPDATE n316.t SET v = 1 WHERE id = 1;")
+		grantPreXAAccount(t, user, grants)
+		if data != "" {
+			var b strings.Builder
+			for _, host := range []string{"localhost", "%"} {
+				acct := "'" + user + "'@'" + host + "'"
+				b.WriteString("REVOKE SELECT, INSERT, UPDATE, DELETE ON n316.* FROM " + acct + ";\n")
+				b.WriteString("GRANT " + data + " ON n316.* TO " + acct + ";\n")
+			}
+			e2eMySQL(t, b.String())
+		}
+		code, sql, stderr := runRoot(t, "flashback", "verify", writeTempScript(t, script))
+		if code != 0 {
+			t.Fatalf("verify exit %d\n%s", code, stderr)
+		}
+		out, err := e2eMySQLAs(t, user, pass, force, sql)
+		return out, err
+	}
+	routines := func(t *testing.T) string {
+		t.Helper()
+		return mysqlBatchValue(e2eMySQL(t, "SELECT COUNT(*) FROM information_schema.routines WHERE routine_schema = 'binlogviz'"))
+	}
+	rows := func(t *testing.T) string {
+		t.Helper()
+		return mysqlBatchValue(e2eMySQL(t, "SELECT CONCAT(id, ':', v) FROM n316.t ORDER BY id"))
+	}
+
+	t.Run("success", func(t *testing.T) {
+		out, err := apply(t, update, "CREATE, CREATE ROUTINE, ALTER ROUTINE", "", false)
+		if err != nil {
+			t.Fatalf("apply: %v\n%s", err, out)
+		}
+		if strings.Contains(out, rollback) {
+			t.Fatalf("success printed a rollback\n%s", out)
+		}
+		if rows(t) != "1:0" || routines(t) != "0" {
+			t.Fatalf("rows %s routines %s\n%s", rows(t), routines(t), out)
+		}
+	})
+
+	for _, force := range []bool{false, true} {
+		force := force
+		t.Run(fmt.Sprintf("duplicate_force_%v", force), func(t *testing.T) {
+			out, err := apply(t, dup, "CREATE, CREATE ROUTINE, ALTER ROUTINE", "", force)
+			if !strings.Contains(out, rollback) || !strings.Contains(out, "1062") {
+				t.Fatalf("force %v err %v\n%s", force, err, out)
+			}
+			if force && err == nil {
+				t.Logf("mysql --force exited 0; the rollback line is the failure signal")
+			}
+			if !force && err == nil {
+				t.Fatal("mysql without --force exited 0")
+			}
+			if rows(t) != "1:1" || routines(t) != "0" {
+				t.Fatalf("rows %s routines %s", rows(t), routines(t))
+			}
+			xa := mysqlBatchValue(e2eMySQL(t, "XA RECOVER"))
+			if xa != "" {
+				t.Fatalf("XA RECOVER:\n%s", xa)
+			}
+		})
+	}
+
+	t.Run("missing_select", func(t *testing.T) {
+		out, err := apply(t, update, "CREATE, CREATE ROUTINE, ALTER ROUTINE", "INSERT, UPDATE, DELETE", false)
+		if err == nil || !strings.Contains(out, rollback) || !strings.Contains(out, "1143") {
+			t.Fatalf("err %v\n%s", err, out)
+		}
+		if rows(t) != "1:1" || routines(t) != "0" {
+			t.Fatalf("rows %s routines %s", rows(t), routines(t))
+		}
+	})
+
+	t.Run("missing_alter_force", func(t *testing.T) {
+		out, err := apply(t, update, "CREATE, CREATE ROUTINE", "", true)
+		if !strings.Contains(out, rollback) || !strings.Contains(out, "1370") {
+			t.Fatalf("err %v\n%s", err, out)
+		}
+		if rows(t) != "1:1" || routines(t) != "0" {
+			t.Fatalf("rows %s routines %s\n%s", rows(t), routines(t), out)
+		}
+	})
+}
+
+func writeApplyScript(t *testing.T, stmt string) string {
+	t.Helper()
+	var b strings.Builder
+	g := guard.New(nil)
+	err := g.Write(&b, func(emit func(guard.Piece) error) error {
+		for _, s := range []string{
+			"SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '')",
+			"SET NAMES utf8mb4",
+			"SET time_zone = '+00:00'",
+			"SET @binlogviz_bad = NULL",
+			"SET @binlogviz_txn = 0",
+		} {
+			if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: s + ";\n"}); err != nil {
+				return err
+			}
+		}
+		if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: guard.ProcedureSQL()}); err != nil {
+			return err
+		}
+		if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: guard.UndoOpenSQL()}); err != nil {
+			return err
+		}
+		if err := emit(guard.Piece{Kind: guard.PieceStmt, Text: "SET @binlogviz_txn = 1"}); err != nil {
+			return err
+		}
+		return emit(guard.Piece{Kind: guard.PieceStmt, Text: stmt})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}
+
+func writeTempScript(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "flashback.sql")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func grantClientArgs(user, pass string, force bool) []string {

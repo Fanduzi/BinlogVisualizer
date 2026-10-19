@@ -113,7 +113,13 @@ func TestVerifyRefusesTamperedScripts(t *testing.T) {
 			return s[:start] + s[second:third] + s[start:second] + s[third:]
 		}, "digest_mismatch"},
 		{"appended", func(s string) string { return s + "DELETE FROM t;\n" }, "appended"},
-		{"truncated", func(s string) string { return s[:len(s)/2] }, "truncated"},
+		{"truncated", func(s string) string {
+			i := strings.Index(s, "UPDATE t SET v = 1")
+			if i < 0 {
+				t.Fatal("statement")
+			}
+			return s[:i+8]
+		}, "truncated"},
 		{"missing trailer", func(s string) string {
 			i := strings.Index(s, markerTrailer)
 			return s[:i]
@@ -146,8 +152,11 @@ func TestTokenMismatchIsAnErrorCondition(t *testing.T) {
 		t.Fatalf("row condition: %s", g.RowCond())
 	}
 	gate := g.BlockGate()
-	if !strings.Contains(gate, guardTokenMark) || !strings.Contains(gate, "SET SESSION TRANSACTION READ ONLY") || strings.Contains(gate, "transaction_read_only") {
+	if !strings.Contains(gate, guardTokenMark) || !strings.Contains(gate, "SET @binlogviz_mode = 3;") || strings.Contains(gate, "COMMIT") {
 		t.Fatalf("gate %q", gate)
+	}
+	if !strings.Contains(ProcedureSQL(), "SET SESSION TRANSACTION READ ONLY") || strings.Contains(ProcedureSQL(), "transaction_read_only") {
+		t.Fatal("read-only gate moved out of the procedure")
 	}
 	if strings.Contains(gate, "COMMIT") {
 		t.Fatal("block gate commits")
@@ -280,17 +289,23 @@ func TestPayloadQuoteRoundTrip(t *testing.T) {
 
 func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
 	body := ProcedureSQL()
-	const msg = "binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again"
-	drop := strings.LastIndex(body, "DROP PROCEDURE IF EXISTS binlogviz.binlogviz_fb_end_")
-	sig := strings.Index(body, "SIGNAL SQLSTATE '45000'")
-	if !strings.Contains(body, msg) || drop < 0 || sig < 0 || drop > sig {
-		t.Fatalf("rollback must drop the procedure before SIGNAL %q\n%s", msg, body)
+	// ERROR 1357: a procedure cannot drop itself. The opening DROP is the
+	// one before CREATE. The finish returns, and the client drops it.
+	if strings.Contains(body, "SIGNAL SQLSTATE") || strings.Count(body, "DROP PROCEDURE") != 1 {
+		t.Fatalf("procedure body must not drop itself or SIGNAL\n%s", body)
 	}
 	if !strings.Contains(body, "CONTINUE HANDLER FOR SQLEXCEPTION") || !strings.Contains(body, "XA ROLLBACK '"+guardTokenMark+"'") {
 		t.Fatal("statement errors must be handled, and rollback stays on the token")
 	}
 	if !strings.Contains(UndoOpenSQL(), "SET @binlogviz_mode = 1;") {
 		t.Fatal("XA START must run inside the procedure")
+	}
+	finish := finishBody(procedureName("0123456789abcdef"), 1)
+	drop := strings.Index(finish, "DROP PROCEDURE IF EXISTS")
+	msg := strings.Index(finish, rollbackMessage)
+	bad := strings.Index(finish, "SELECT 1 UNION ALL SELECT 1")
+	if drop < 0 || msg < 0 || bad < 0 || !(drop < msg && msg < bad) {
+		t.Fatalf("client must drop, then say so, then fail\n%s", finish)
 	}
 }
 

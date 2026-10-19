@@ -2,6 +2,10 @@
 
 Release date: 2026-10-20
 
+## Correction
+
+The grant list in this document omitted `SELECT` on the tables the undo changes. `UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143). The data grant is `SELECT, INSERT, UPDATE, DELETE`, in addition to `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`.
+
 ## Overview
 
 v0.32.0 implements ADR 0014: a flashback apply that fails never commits part of the undo. The undo runs in one XA transaction, so a `BEGIN`, `START TRANSACTION`, or DDL in the script or after it cannot commit it, and the finish commits only when every statement succeeded (#328, #329, #332). The apply grants are now documented and minimal, each run gets its own finish procedure, and a failure before `XA START` stays recorded under `mysql --force` (#333, #334, #335, #337).
@@ -19,7 +23,7 @@ Apply is still `binlogviz flashback verify flashback.sql | mysql --default-chara
 ## Breaking
 
 - **Flashback SQL from v0.31.0 does not verify. Regenerate it with v0.32.0 (ADR 0014).**
-  - Apply creates the `binlogviz` schema if it is absent and a finish procedure in it. The applying account needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, plus `EXECUTE` on `binlogviz.*` when `automatic_sp_privileges=0`. It still needs `INSERT`, `UPDATE`, and `DELETE` on the tables the undo changes.
+  - Apply creates the `binlogviz` schema if it is absent and a finish procedure in it. The applying account needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, plus `EXECUTE` on `binlogviz.*` when `automatic_sp_privileges=0`. It needs `SELECT, INSERT, UPDATE, DELETE` on the tables the undo changes. `UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143).
   - `XA_RECOVER_ADMIN` is not required on 8.0, and `SUPER` is not required on 5.7. `DROP` on the schema is not required to apply.
   - The stock `mysql` client is required (`DELIMITER`).
   - `schema_version` stays 1 and `plan_version` stays 2.

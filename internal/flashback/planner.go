@@ -170,16 +170,18 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 		return
 	}
 	if ev.EventType == "DDL" {
-		a.flashErr = flashDDLError(ev, a.refusalTable(ev.Schema, ev.Table))
+		table := a.refusalTable(ev.Schema, ev.Table)
+		a.flashErr = refuse("ddl_in_range", table, flashDDLError(ev, table))
 		return
 	}
 	if ev.EventType != "ROWS" {
 		return
 	}
 	if len(ev.FlashRows) == 0 {
-		a.flashErr = fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{
-			"Table": a.refusalTable(ev.Schema, ev.Table),
-		}))
+		table := a.refusalTable(ev.Schema, ev.Table)
+		a.flashErr = refuse("row_capture", table, fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{
+			"Table": table,
+		})))
 		return
 	}
 	for _, row := range ev.FlashRows {
@@ -193,9 +195,9 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 	bind := flashBind{}
 	switch res.Kind {
 	case schemacatalog.Refused:
-		a.flashErr = fmt.Errorf("%s", i18n.Tf("error.flashbackGenerated", map[string]any{
+		a.flashErr = refuse("generated_unknown", label, fmt.Errorf("%s", i18n.Tf("error.flashbackGenerated", map[string]any{
 			"Table": label,
-		}))
+		})))
 		return
 	case schemacatalog.Missing, schemacatalog.Ambiguous:
 		a.noteFlashUnknown(flashTable(ev.Schema, ev.Table))
@@ -232,7 +234,7 @@ func (a *Planner) acceptSchemaRows(label string, rows []model.FlashRow, cols []m
 func (a *Planner) acceptSchema(label string, row model.FlashRow, cols []mysqlexpr.SchemaCol) error {
 	warns, err := mysqlexpr.ValidateSchemaRow(label, row, cols)
 	if err != nil {
-		return err
+		return refuse("schema_mismatch", label, err)
 	}
 	a.noteSchemaWarnings(warns)
 	return nil
@@ -571,7 +573,7 @@ func (a *Planner) Prepare() (int, error) {
 // prepareChecks is PrepareFlashback without the conflict refusal.
 func (a *Planner) prepareChecks() (int, error) {
 	if a == nil {
-		return 0, fmt.Errorf("%s", i18n.T("error.flashbackCapture", map[string]any{"Table": "selected range"}))
+		return 0, refuse("row_capture", "selected range", fmt.Errorf("%s", i18n.T("error.flashbackCapture", map[string]any{"Table": "selected range"})))
 	}
 	if a.flashErr != nil {
 		return 0, a.flashErr
@@ -648,22 +650,23 @@ func generatedSig(cols []mysqlexpr.SchemaCol) string {
 func flashRowError(row model.FlashRow, table string) error {
 	switch row.ProblemKind {
 	case model.FlashProblemNames:
-		return fmt.Errorf("%s", i18n.Tf("error.flashbackNames", map[string]any{"Table": table}))
+		return refuse("row_metadata", table, fmt.Errorf("%s", i18n.Tf("error.flashbackNames", map[string]any{"Table": table})))
 	case model.FlashProblemImage:
-		return fmt.Errorf("%s", i18n.Tf("error.flashbackImage", map[string]any{"Table": table}))
+		return refuse("row_image", table, fmt.Errorf("%s", i18n.Tf("error.flashbackImage", map[string]any{"Table": table})))
 	case model.FlashProblemType:
 		column := row.ProblemColumn
 		if column == "" {
 			column = "?"
 		}
 		// The column follows the table name, so the plain binlog name is kept.
-		return fmt.Errorf("%s", i18n.Tf("error.flashbackType", map[string]any{
-			"Table":  flashTable(row.Schema, row.Table),
+		named := flashTable(row.Schema, row.Table)
+		return refuse("column_type", named, fmt.Errorf("%s", i18n.Tf("error.flashbackType", map[string]any{
+			"Table":  named,
 			"Column": column,
 			"Type":   row.ProblemType,
-		}))
+		})))
 	default:
-		return fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": table}))
+		return refuse("row_capture", table, fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": table})))
 	}
 }
 
@@ -677,6 +680,16 @@ func flashDDLError(ev model.NormalizedEvent, table string) error {
 		"Table":     table,
 		"Statement": statement,
 	}))
+}
+
+func (e *generatedRowRefusal) shownTable() string {
+	if e == nil {
+		return ""
+	}
+	if e.label != "" {
+		return e.label
+	}
+	return flashTable(e.schema, e.table)
 }
 
 func flashTable(schema, table string) string {
@@ -727,7 +740,7 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
 	b.WriteString("-- This file does not commit. Apply it with: binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4\n")
-	b.WriteString("-- The undo is one XA transaction. BEGIN, START TRANSACTION, and DDL while it is open error and do not commit. Apply needs CREATE, CREATE ROUTINE, and the ALTER-ROUTINE privilege on binlogviz.*, and the stock mysql client (DELIMITER).\n")
+	b.WriteString("-- The undo is one XA transaction. BEGIN, START TRANSACTION, and DDL while it is open error and do not commit. Apply needs CREATE, CREATE ROUTINE, and the ALTER-ROUTINE privilege on binlogviz.*, SELECT, INSERT, UPDATE, DELETE on the tables the undo changes, and the stock mysql client (DELIMITER).\n")
 	b.WriteString("-- verify names the finish procedure for that run and drops it at the end. Drop leftover helpers with DROP DATABASE binlogviz.\n")
 	for _, note := range notes {
 		b.WriteString(note)
@@ -744,6 +757,8 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 	// The mode strip is first. Its payload is quoted without backslashes, so a
 	// session that already has NO_BACKSLASH_ESCAPES can parse it and execute
 	// it. Later payloads may use backslash escapes.
+	// These run before CREATE PROCEDURE, so they cannot CALL it. A failure
+	// here leaves no procedure.
 	for _, stmt := range []string{
 		"SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '')",
 		"SET NAMES utf8mb4",
@@ -751,7 +766,7 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 		"SET @binlogviz_bad = NULL",
 		"SET @binlogviz_txn = 0",
 	} {
-		if err := emit(guard.Piece{Kind: guard.PieceStmt, Text: stmt}); err != nil {
+		if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: stmt + ";\n"}); err != nil {
 			return err
 		}
 	}

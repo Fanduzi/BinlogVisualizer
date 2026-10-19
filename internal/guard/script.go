@@ -33,7 +33,16 @@ const (
 	trailerMark  = "binlogviz-trailer-v1"
 
 	digestInitSQL = "SET @binlogviz_digest = SHA2('binlogviz-flashback-v1', 256), @binlogviz_applied = 1;"
-	digestStepSQL = "SET @binlogviz_digest = SHA2(CONCAT(@binlogviz_digest, @binlogviz_sql), 256);"
+	// digestInitV031 is the v0.31.0 init line: the same domain, no applied flag.
+	digestInitV031 = "SET @binlogviz_digest = SHA2('binlogviz-flashback-v1', 256);"
+	digestStepSQL  = "SET @binlogviz_digest = SHA2(CONCAT(@binlogviz_digest, @binlogviz_sql), 256);"
+	// rollbackMessage is the line a rolled-back apply prints. A procedure cannot
+	// drop itself (ERROR 1357), so the client prints this after DROP PROCEDURE.
+	rollbackMessage = "binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again"
+	rollbackSelect  = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (errno ', @binlogviz_errno, ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
+	// rollbackError makes mysql exit 1 without --force. CASE evaluates only
+	// the taken branch, so a commit does not run the subquery.
+	rollbackError = "SET @binlogviz_apply_rc = CASE WHEN @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN 0 ELSE (SELECT 1 UNION ALL SELECT 1) END;"
 	// appliedCheckSQL records the previous statement. A later success must not
 	// clear it: @@error_count is only the last statement, and the flag only
 	// moves from 1 to 0.
@@ -60,9 +69,11 @@ const (
 )
 
 // VerifyError is a script verify will not commit. Reason is the stable
-// details.reason value.
+// details.reason value. Version is set for old_format and names the release
+// that wrote the script.
 type VerifyError struct {
-	Reason string
+	Reason  string
+	Version string
 }
 
 func (e *VerifyError) Error() string {
@@ -130,7 +141,7 @@ func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) err
 			}
 			stmt := strings.TrimSpace(sub(p.Text))
 			stmt = strings.TrimSuffix(stmt, ";")
-			return writeExec(write, &digest, stmt)
+			return writeExec(write, &digest, stmt, token)
 		case PieceRaw:
 			if err := ensure(); err != nil {
 				return err
@@ -171,6 +182,10 @@ func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) err
 func ProcedureSQL() string {
 	name := "binlogviz.binlogviz_fb_end_" + guardTokenMark
 	check := appliedCheckSQL + "\n"
+	// One procedure, four modes (ADR 0014). Mode 0 swallows a statement error
+	// so the client reaches the finish. Mode 2 returns after commit or
+	// rollback. It does not drop itself: that is ERROR 1357. The client
+	// statement after the CALL drops it. The XA id is the token.
 	return "CREATE DATABASE IF NOT EXISTS binlogviz;\n" +
 		check +
 		"DROP PROCEDURE IF EXISTS " + name + ";\n" +
@@ -179,46 +194,97 @@ func ProcedureSQL() string {
 		"CREATE PROCEDURE " + name + "()\n" +
 		"SQL SECURITY INVOKER\n" +
 		"BEGIN\n" +
-		"  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN RESIGNAL; END;\n" +
-		"  IF @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN\n" +
-		"    XA END '" + guardTokenMark + "';\n" +
-		"    XA COMMIT '" + guardTokenMark + "' ONE PHASE;\n" +
+		"  IF @binlogviz_mode <=> 0 THEN\n" +
+		"    BEGIN\n" +
+		"      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION\n" +
+		"      BEGIN\n" +
+		"        GET DIAGNOSTICS CONDITION 1 @binlogviz_seen_errno = MYSQL_ERRNO;\n" +
+		"        SET @binlogviz_errno = IFNULL(@binlogviz_errno, @binlogviz_seen_errno);\n" +
+		"        SET @binlogviz_applied = 0;\n" +
+		"      END;\n" +
+		"      PREPARE binlogviz_fb_stmt_x9q FROM @binlogviz_sql;\n" +
+		"      EXECUTE binlogviz_fb_stmt_x9q;\n" +
+		"      DEALLOCATE PREPARE binlogviz_fb_stmt_x9q;\n" +
+		"    END;\n" +
+		"  ELSEIF @binlogviz_mode <=> 1 THEN\n" +
+		"    BEGIN\n" +
+		"      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION\n" +
+		"      BEGIN\n" +
+		"        SET @binlogviz_applied = 0;\n" +
+		"        SET @binlogviz_xa = 0;\n" +
+		"      END;\n" +
+		"      XA START '" + guardTokenMark + "';\n" +
+		"      SET @binlogviz_xa = 1;\n" +
+		"    END;\n" +
+		"    IF NOT (@binlogviz_xa <=> 1) THEN\n" +
+		"      SET SESSION TRANSACTION READ ONLY;\n" +
+		"    END IF;\n" +
+		"  ELSEIF @binlogviz_mode <=> 3 THEN\n" +
+		"    BEGIN\n" +
+		"      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION\n" +
+		"      BEGIN\n" +
+		"        SET @binlogviz_applied = 0;\n" +
+		"      END;\n" +
+		"      IF @binlogviz_txn <=> 1 AND @binlogviz_ok <=> '" + guardTokenMark + "' THEN\n" +
+		"        DO 0;\n" +
+		"      ELSE\n" +
+		"        SET SESSION TRANSACTION READ ONLY;\n" +
+		"      END IF;\n" +
+		"    END;\n" +
 		"  ELSE\n" +
-		"    XA END '" + guardTokenMark + "';\n" +
-		"    XA ROLLBACK '" + guardTokenMark + "';\n" +
+		"    IF @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN\n" +
+		"      BEGIN\n" +
+		"        DECLARE EXIT HANDLER FOR SQLEXCEPTION\n" +
+		"        BEGIN\n" +
+		"          SET @binlogviz_applied = 0;\n" +
+		"          BEGIN\n" +
+		"            DECLARE CONTINUE HANDLER FOR SQLEXCEPTION BEGIN END;\n" +
+		"            XA END '" + guardTokenMark + "';\n" +
+		"            XA ROLLBACK '" + guardTokenMark + "';\n" +
+		"          END;\n" +
+		"        END;\n" +
+		"        XA END '" + guardTokenMark + "';\n" +
+		"        XA COMMIT '" + guardTokenMark + "' ONE PHASE;\n" +
+		"      END;\n" +
+		"    ELSE\n" +
+		"      BEGIN\n" +
+		"        DECLARE CONTINUE HANDLER FOR SQLEXCEPTION\n" +
+		"        BEGIN\n" +
+		"          SET @binlogviz_applied = 0;\n" +
+		"        END;\n" +
+		"        XA END '" + guardTokenMark + "';\n" +
+		"        XA ROLLBACK '" + guardTokenMark + "';\n" +
+		"      END;\n" +
+		"    END IF;\n" +
 		"  END IF;\n" +
 		"END$$\n" +
 		"DELIMITER ;\n" +
 		check
 }
 
-// UndoOpenSQL opens the one undo transaction. If the open fails, the session
-// is read-only, so a client that continues cannot autocommit the undo.
+// UndoOpenSQL opens the one undo transaction inside the finish procedure.
+// If XA START fails, that procedure sets the session read-only, so a later
+// statement cannot autocommit the undo.
 func UndoOpenSQL() string {
-	return "XA START '" + guardTokenMark + "';\n" +
-		appliedCheckSQL + "\n" +
-		"SET @binlogviz_hold = IF(@binlogviz_applied <=> 1, 'DO 0', 'SET SESSION TRANSACTION READ ONLY');\n" +
-		"PREPARE binlogviz_fb_open_x9q FROM @binlogviz_hold;\n" +
-		"EXECUTE binlogviz_fb_open_x9q;\n" +
-		"DEALLOCATE PREPARE binlogviz_fb_open_x9q;\n"
+	return "SET @binlogviz_mode = 1;\n" +
+		"CALL binlogviz.binlogviz_fb_end_" + guardTokenMark + "();\n" +
+		appliedCheckSQL + "\n"
 }
 
 func procedureName(token string) string {
 	return "binlogviz.binlogviz_fb_end_" + token
 }
 
-func finishBody(token string, want int) string {
-	name := procedureName(token)
-	return fmt.Sprintf("SET @binlogviz_want = %d;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n", want, name, name)
+func finishBody(name string, want int) string {
+	return fmt.Sprintf("SET @binlogviz_want = %d;\nSET @binlogviz_mode = 2;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n%s\n%s\n", want, name, name, rollbackSelect, rollbackError)
 }
 
 func publishedSuffix(token string) string {
-	return finishBody(token, 0) + noCommitSQL + "\n"
+	return finishBody(procedureName(token), 0) + noCommitSQL + "\n"
 }
 
 func applySuffix(token, nonce string) string {
-	name := procedureName(token) + "_" + nonce
-	return fmt.Sprintf("SET @binlogviz_want = 1;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n", name, name)
+	return finishBody(procedureName(token)+"_"+nonce, 1)
 }
 
 // newApplyNonce is 16 hex characters, one per verify. Tests pin it.
@@ -235,7 +301,7 @@ func suffixLen() int {
 }
 
 func parsePublishedSuffix(s string) (string, bool) {
-	const head = "SET @binlogviz_want = 0;\nCALL binlogviz.binlogviz_fb_end_"
+	const head = "SET @binlogviz_want = 0;\nSET @binlogviz_mode = 2;\nCALL binlogviz.binlogviz_fb_end_"
 	if !strings.HasPrefix(s, head) || len(s) != suffixLen() {
 		return "", false
 	}
@@ -243,14 +309,14 @@ func parsePublishedSuffix(s string) (string, bool) {
 	if strings.Trim(token, "0123456789abcdef") != "" {
 		return "", false
 	}
-	rest := "();\nDROP PROCEDURE IF EXISTS " + procedureName(token) + ";\n" + noCommitSQL + "\n"
+	rest := "();\nDROP PROCEDURE IF EXISTS " + procedureName(token) + ";\n" + rollbackSelect + "\n" + rollbackError + "\n" + noCommitSQL + "\n"
 	if s[len(head)+16:] != rest {
 		return "", false
 	}
 	return token, true
 }
 
-func writeExec(write func(string) error, digest *string, stmt string) error {
+func writeExec(write func(string) error, digest *string, stmt, token string) error {
 	if err := write(markerExec + "\n"); err != nil {
 		return err
 	}
@@ -261,7 +327,8 @@ func writeExec(write func(string) error, digest *string, stmt string) error {
 		return err
 	}
 	*digest = sha256hex(*digest + stmt)
-	for _, line := range []string{stmtPrepare, appliedCheckSQL, stmtExecute, appliedCheckSQL, stmtDealloc} {
+	call := "CALL " + procedureName(token) + "();"
+	for _, line := range []string{"SET @binlogviz_mode = 0;", call, appliedCheckSQL} {
 		if err := write(line + "\n"); err != nil {
 			return err
 		}
@@ -381,7 +448,7 @@ func rewriteApply(w io.Writer, r io.Reader, token, nonce string) error {
 			if err := writeScriptLine(bw, line); err != nil {
 				return err
 			}
-			payload, err := copyExecPiece(bw, br)
+			payload, err := copyExecPiece(bw, br, token, nonce)
 			if err != nil {
 				return err
 			}
@@ -432,7 +499,7 @@ func unquoteSQLLine(line string) (string, error) {
 	return sqlUnquote(strings.TrimSuffix(strings.TrimPrefix(line, pfx), ";"))
 }
 
-func copyExecPiece(w io.Writer, br *bufio.Reader) (string, error) {
+func copyExecPiece(w io.Writer, br *bufio.Reader, token, nonce string) (string, error) {
 	sqlLine, err := readScriptLine(br)
 	if err != nil {
 		return "", err
@@ -454,17 +521,36 @@ func copyExecPiece(w io.Writer, br *bufio.Reader) (string, error) {
 	if err := writeScriptLine(w, step); err != nil {
 		return "", err
 	}
-	for _, want := range []string{stmtPrepare, appliedCheckSQL, stmtExecute, appliedCheckSQL, stmtDealloc} {
-		line, err := readScriptLine(br)
-		if err != nil {
-			return "", err
-		}
-		if line != want {
-			return "", fmt.Errorf("guard: apply exec piece")
-		}
-		if err := writeScriptLine(w, line); err != nil {
-			return "", err
-		}
+	mode, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	if mode != "SET @binlogviz_mode = 0;" {
+		return "", fmt.Errorf("guard: apply exec piece")
+	}
+	if err := writeScriptLine(w, mode); err != nil {
+		return "", err
+	}
+	call, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	if _, ok := procedureCallToken(call); !ok || call != "CALL "+procedureName(token)+"();" {
+		return "", fmt.Errorf("guard: apply exec piece")
+	}
+	renamed := "CALL " + procedureName(token) + "_" + nonce + "();"
+	if err := writeScriptLine(w, renamed); err != nil {
+		return "", err
+	}
+	applied, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	if applied != appliedCheckSQL {
+		return "", fmt.Errorf("guard: apply exec piece")
+	}
+	if err := writeScriptLine(w, applied); err != nil {
+		return "", err
 	}
 	return payload, nil
 }
@@ -490,7 +576,7 @@ func rewriteRawPiece(w io.Writer, br *bufio.Reader, token, nonce string) (string
 	}
 	name := procedureName(token)
 	rewritten := payload
-	if strings.HasPrefix(payload, "CREATE DATABASE IF NOT EXISTS binlogviz;\n") && strings.Contains(payload, "CREATE PROCEDURE "+name+"()") {
+	if strings.Contains(payload, name) {
 		rewritten = strings.ReplaceAll(payload, name, name+"_"+nonce)
 	}
 	if rewritten != payload {
@@ -766,7 +852,14 @@ func (p *scrReader) seekInit() (bool, error) {
 	if err := p.skipGaps(); err != nil {
 		return false, err
 	}
-	return p.hasLine(digestInitSQL)
+	ok, err := p.hasLine(digestInitSQL)
+	if err != nil || ok {
+		return ok, err
+	}
+	if p.lined && strings.TrimRight(p.line, "\r") == digestInitV031 {
+		return false, &VerifyError{Reason: "old_format", Version: "v0.31.0 or earlier"}
+	}
+	return false, nil
 }
 
 func (p *scrReader) execPiece() (string, error) {
@@ -774,16 +867,49 @@ func (p *scrReader) execPiece() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	for _, want := range []string{stmtPrepare, appliedCheckSQL, stmtExecute, appliedCheckSQL, stmtDealloc} {
-		ok, err := p.hasLine(want)
-		if err != nil {
-			return "", err
+	ok, err := p.hasLine("SET @binlogviz_mode = 0;")
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		if p.lined && strings.TrimRight(p.line, "\r") == stmtPrepare {
+			return "", &VerifyError{Reason: "old_format", Version: "v0.32.0"}
 		}
-		if !ok {
-			return "", &VerifyError{Reason: "truncated"}
-		}
+		return "", &VerifyError{Reason: "truncated"}
+	}
+	if err := p.fill(); err != nil {
+		return "", err
+	}
+	if !p.lined {
+		return "", &VerifyError{Reason: "truncated"}
+	}
+	if _, ok := procedureCallToken(p.line); !ok {
+		return "", &VerifyError{Reason: "truncated"}
+	}
+	p.lined = false
+	p.line = ""
+	ok, err = p.hasLine(appliedCheckSQL)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		return "", &VerifyError{Reason: "truncated"}
 	}
 	return payload, nil
+}
+
+// procedureCallToken parses CALL binlogviz.binlogviz_fb_end_<16 hex>();.
+func procedureCallToken(line string) (string, bool) {
+	const prefix = "CALL binlogviz.binlogviz_fb_end_"
+	const suffix = "();"
+	if !strings.HasPrefix(line, prefix) || !strings.HasSuffix(line, suffix) {
+		return "", false
+	}
+	token := strings.TrimSuffix(strings.TrimPrefix(line, prefix), suffix)
+	if len(token) != 16 || strings.Trim(token, "0123456789abcdef") != "" {
+		return "", false
+	}
+	return token, true
 }
 
 func (p *scrReader) rawPiece() (string, error) {
@@ -876,24 +1002,45 @@ func (p *scrReader) publishedFinish() error {
 	if !ok {
 		return &VerifyError{Reason: "truncated"}
 	}
+	ok, err = p.hasLine("SET @binlogviz_mode = 2;")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		if p.lined {
+			if _, call := procedureCallToken(strings.TrimRight(p.line, "\r")); call {
+				return &VerifyError{Reason: "old_format", Version: "v0.32.0"}
+			}
+		}
+		return &VerifyError{Reason: "truncated"}
+	}
 	if err := p.fill(); err != nil {
 		return err
 	}
 	if !p.lined {
 		return &VerifyError{Reason: "truncated"}
 	}
-	const prefix = "CALL binlogviz.binlogviz_fb_end_"
-	const suffix = "();"
-	if !strings.HasPrefix(p.line, prefix) || !strings.HasSuffix(p.line, suffix) {
-		return &VerifyError{Reason: "truncated"}
-	}
-	token := strings.TrimSuffix(strings.TrimPrefix(p.line, prefix), suffix)
-	if len(token) != 16 || strings.Trim(token, "0123456789abcdef") != "" {
+	token, call := procedureCallToken(p.line)
+	if !call {
 		return &VerifyError{Reason: "truncated"}
 	}
 	p.lined = false
 	p.line = ""
 	ok, err = p.hasLine("DROP PROCEDURE IF EXISTS " + procedureName(token) + ";")
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &VerifyError{Reason: "truncated"}
+	}
+	ok, err = p.hasLine(rollbackSelect)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &VerifyError{Reason: "truncated"}
+	}
+	ok, err = p.hasLine(rollbackError)
 	if err != nil {
 		return err
 	}

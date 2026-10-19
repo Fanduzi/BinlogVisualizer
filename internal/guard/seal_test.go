@@ -27,7 +27,7 @@ func TestWriteDigestsTheExecutedString(t *testing.T) {
 	}
 	script := b.String()
 	const want = "SET @binlogviz_sql = 'UPDATE t SET v = 1 WHERE id = 1';"
-	if !strings.Contains(script, want) || !strings.Contains(script, stmtPrepare) {
+	if !strings.Contains(script, want) || !strings.Contains(script, "SET @binlogviz_mode = 0;") {
 		t.Fatalf("prepared statement:\n%s", script)
 	}
 	res, err := Verify(strings.NewReader(script))

@@ -62,7 +62,7 @@ func newFlashbackCommand() *cobra.Command {
 				return err
 			}
 			if mode == report.SQLContextOff {
-				return clierr.Errorf(clierr.KindRefused, "%s", i18n.T("error.flashbackSQLContext"))
+				return clierr.WithDetails(clierr.KindRefused, clierr.Errorf(clierr.KindRefused, "%s", i18n.T("error.flashbackSQLContext")), map[string]any{"reason": "sql_context_off"})
 			}
 			if opts.schemaFile != "" {
 				body, err := os.ReadFile(opts.schemaFile)
@@ -248,6 +248,13 @@ func flashbackExit(err error) error {
 	var conflict *flashback.FlashbackConflictError
 	if errors.As(err, &conflict) {
 		return clierr.WithDetails(clierr.KindConflict, err, map[string]any{"count": conflict.Count, "listed": conflict.Listed})
+	}
+	if reason, table, ok := flashback.RefusalDetails(err); ok {
+		details := map[string]any{"reason": reason}
+		if table != "" && table != "selected range" {
+			details["table"] = table
+		}
+		return clierr.WithDetails(clierr.KindRefused, err, details)
 	}
 	return clierr.Wrap(clierr.KindRefused, err)
 }

@@ -233,3 +233,13 @@ DROP DATABASE IF EXISTS binlogviz;
 - **`SIGNAL` before `DROP`.** Without `--force` the client stops on the signal and the drop never runs. The leftover would be every rollback, including a successful read of a script that must not commit (`@binlogviz_want = 0`).
 - **A second procedure whose only job is the signal.** It is another routine to create, grant, and drop, and it has the same self-drop question. One procedure is enough.
 - **Rely on `mysql --force` exiting 1.** It does not, on the servers this ADR is checked against. The line is the check that works with and without `--force`.
+
+## Amendment (2026-10-19): the procedure cannot drop itself
+
+Probed on MySQL 5.7.44 and MySQL 8.0.46: `DROP PROCEDURE` of the procedure that is running is ERROR 1357 (`Can't drop or alter a PROCEDURE from within another stored routine`). A `SIGNAL` from that procedure is a statement error on the `CALL`. Without `--force` the client then stops before the trailing `DROP`. This replaces the self-drop and the `SIGNAL` in the previous amendment. The seal, the digest, tamper exit 6, `schema_version` 1, `plan_version` 2, the sticky `@binlogviz_applied` flag, and the per-run nonce stay.
+
+**Decision.** Mode 2 swallows an `XA END` / `XA COMMIT` / `XA ROLLBACK` error and returns. It does not `DROP` and it does not `SIGNAL`. The next client statement is `DROP PROCEDURE IF EXISTS`. Because the `CALL` returned, that drop runs without `--force`. The statement after the drop prints `binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again` when sealed, applied, and want are not all 1, and appends ` (errno N)` when a statement error was captured. The statement after that is `SET @binlogviz_apply_rc = CASE WHEN ... THEN 0 ELSE (SELECT 1 UNION ALL SELECT 1) END`, which is ERROR 1242 on a rollback and is not evaluated on a commit. A successful apply prints no rollback line. A rolled-back apply prints the line, and without `--force` the mysql client exits 1. With `--force`, exit 0 is still not success: success is exit 0 and that line absent.
+
+Statements before `CREATE PROCEDURE` are executed as themselves, not through `CALL`. A failure there leaves no procedure.
+
+The paths that still cannot drop are unchanged: a kill after `CREATE PROCEDURE` and before the finish `CALL`, a `CALL` that never enters the body, and ERROR 1227 for a `SYSTEM_USER` definer on 8.0. Clean up with `DROP DATABASE IF EXISTS binlogviz`.

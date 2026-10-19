@@ -46,7 +46,7 @@ func TestRenderFlashbackReversesTransactionsAndRows(t *testing.T) {
 	if !strings.Contains(sql, "-- no primary key on shop.heap; this matches every column and LIMIT 1") || !strings.Contains(sql, "DELETE FROM `shop`.`heap` WHERE `id` <=> 3 AND `note` <=> ''a'' LIMIT 1") {
 		t.Fatalf("no pk:\n%s", sql)
 	}
-	if !strings.Contains(sql, "SET time_zone = ''+00:00''") || !strings.Contains(sql, "SET NAMES utf8mb4") {
+	if !strings.Contains(sql, "SET time_zone = '+00:00'") || !strings.Contains(sql, "SET NAMES utf8mb4") {
 		t.Fatalf("preamble:\n%s", sql)
 	}
 }
@@ -58,7 +58,8 @@ func TestFlashbackWithoutGuardHasNoToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "binlogviz_ok") || !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`) VALUES (1)") {
+	const insert = "INSERT INTO `shop`.`t` (`id`) VALUES (1)"
+	if !strings.Contains(sql, insert) || strings.Contains(sql, insert+" WHERE") {
 		t.Fatalf("script without a guard changed:\n%s", sql)
 	}
 }

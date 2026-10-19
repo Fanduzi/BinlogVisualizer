@@ -8,13 +8,14 @@ Report times are UTC. `--start` and `--end` accept RFC3339. An offset is the ins
 
 `flashback` does not connect to MySQL. Review the script, test it, and apply it yourself with `binlogviz flashback verify <file> | mysql`. `mysql < file` commits nothing. A failed statement, including under `mysql --force`, does not commit a prefix. The undo is one XA transaction (ADR 0014).
 
-Apply needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`:
+Apply needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, and `SELECT, INSERT, UPDATE, DELETE` on the tables the undo changes:
 
 ```sql
 GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `app`.* TO 'account'@'host';
 ```
 
-`CREATE` on that schema covers `CREATE DATABASE IF NOT EXISTS binlogviz`. With `automatic_sp_privileges=0`, also grant `EXECUTE` on `binlogviz.*`. `verify` names the finish procedure for that run and drops it at the end. Clean a leftover with `DROP DATABASE binlogviz`.
+`UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143 without it). `CREATE` on `binlogviz.*` covers `CREATE DATABASE IF NOT EXISTS binlogviz`. With `automatic_sp_privileges=0`, also grant `EXECUTE` on `binlogviz.*`. `verify` names the finish procedure for that run and drops it at the end, including after a rollback. A rolled-back apply prints `binlogviz: undo rolled back, no rows changed`. Without `--force` the mysql client exits 1. With `--force`, exit 0 is not success: success is exit 0 and that line absent. A kill after `CREATE PROCEDURE` and before the finish `CALL`, or a `CALL` that never enters the body, can leave that run's procedure. Clean a leftover with `DROP DATABASE binlogviz`.
 
 ## Recipe 1: a write spike, then flashback
 
@@ -87,7 +88,7 @@ The kind string does not change with `--lang`. `--error-format json` prints one 
 | 3 | `usage` | Bad flag or arguments, including `--diagnostics ""` or `nope` |
 | 4 | `input` | File or snapshot missing |
 | 5 | `corrupt` | Not a binlog, or JSON that does not match the report shape, including a non-string `diagnostics_mode` |
-| 6 | `refused` | Flashback will not emit SQL. `flashback verify` uses `details.reason` `not_flashback`, `truncated`, `missing_trailer`, `appended`, or `digest_mismatch`, and writes nothing to stdout |
+| 6 | `refused` | Flashback will not emit SQL, or `flashback verify` will not print a script. Generation `details.reason`: `row_metadata`, `row_image`, `column_type`, `row_capture`, `ddl_in_range`, `generated_unknown`, `generated_mismatch`, `generated_row`, `schema_mismatch`, `sql_context_off`. `details.table` is set when one table is named. Verify `details.reason`: `not_flashback`, `truncated`, `missing_trailer`, `appended`, `digest_mismatch`, `old_format` (regenerate a v0.31 or v0.32.0 script). Verify writes nothing to stdout |
 | 7 | `conflict` | A selected row changed again later |
 | 8 | `output` | Could not write the report or the script |
 | 9 | `unsupported` | STATEMENT/MIXED with no ROW images, an unknown version, or a trimmed diagnostics document |

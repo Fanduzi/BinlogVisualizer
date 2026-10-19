@@ -107,6 +107,13 @@ func verifyFailure(err error, nonspace bool) error {
 		if ve.Reason == "not_flashback" && !nonspace {
 			return clierr.Errorf(clierr.KindCorrupt, "%s", i18n.T("error.flashbackVerifyEmpty"))
 		}
+		if ve.Reason == "old_format" {
+			version := ve.Version
+			if version == "" {
+				version = "an older release"
+			}
+			return clierr.WithDetails(clierr.KindRefused, clierr.Errorf(clierr.KindRefused, "%s", i18n.Tf("error.flashbackVerifyOld", map[string]any{"Version": version})), map[string]any{"reason": "old_format"})
+		}
 		return clierr.WithDetails(clierr.KindRefused, clierr.Errorf(clierr.KindRefused, "%s", i18n.Tf("error.flashbackVerify", map[string]any{"Reason": ve.Reason})), map[string]any{"reason": ve.Reason})
 	}
 	var resource *flashback.ResourceError

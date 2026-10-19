@@ -2,6 +2,10 @@
 
 发布日期：2026-10-20
 
+## 更正
+
+这份说明漏写了撤销改动的表上的 `SELECT`。`UPDATE` 和 `DELETE ... WHERE` 需要 `SELECT`（ERROR 1143）。数据权限是 `SELECT, INSERT, UPDATE, DELETE`，另外还需要 `binlogviz.*` 上的 `CREATE`、`CREATE ROUTINE` 和 `ALTER ROUTINE`。
+
 ## 概述
 
 v0.32.0 实现了 ADR 0014：flashback 执行失败时，永远不会提交撤销的一部分。撤销在一个 XA 事务里执行，脚本里或脚本之后的 `BEGIN`、`START TRANSACTION`、DDL 都无法把它提交；只有每条语句都成功，收尾才会提交（#328、#329、#332）。执行所需的权限写进了文档并降到最小，每次执行使用独立的收尾存储过程，`XA START` 之前的失败在 `mysql --force` 下也会一直记着（#333、#334、#335、#337）。
@@ -19,7 +23,7 @@ GRANT EXECUTE ON `binlogviz`.* TO 'account'@'host';
 ## 不兼容变更
 
 - **v0.31.0 生成的 flashback SQL 无法通过 verify，请用 v0.32.0 重新生成（ADR 0014）。**
-  - 执行时如果 `binlogviz` 库不存在会先创建，并在其中创建收尾存储过程。执行账号需要 `binlogviz.*` 上的 `CREATE`、`CREATE ROUTINE`、`ALTER ROUTINE`；`automatic_sp_privileges=0` 时还需要 `binlogviz.*` 上的 `EXECUTE`。撤销改动的表仍需要 `INSERT`、`UPDATE`、`DELETE`。
+  - 执行时如果 `binlogviz` 库不存在会先创建，并在其中创建收尾存储过程。执行账号需要 `binlogviz.*` 上的 `CREATE`、`CREATE ROUTINE`、`ALTER ROUTINE`；`automatic_sp_privileges=0` 时还需要 `binlogviz.*` 上的 `EXECUTE`。撤销改动的表需要 `SELECT, INSERT, UPDATE, DELETE`。`UPDATE` 和 `DELETE ... WHERE` 需要 `SELECT`（ERROR 1143）。
   - 8.0 上不需要 `XA_RECOVER_ADMIN`，5.7 上不需要 `SUPER`。执行不需要该库的 `DROP` 权限。
   - 必须使用官方 `mysql` 客户端（`DELIMITER`）。
   - `schema_version` 仍为 1，`plan_version` 仍为 2。
