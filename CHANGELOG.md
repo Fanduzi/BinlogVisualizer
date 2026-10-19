@@ -4,10 +4,26 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.27.0
+
+Release date: 2026-10-19
+
+Highlights:
+
+- Every JSON output is versioned: `compare`, `trend`, `snapshot` and `workflow` JSON start with `"schema_version": 1`; `analyze` and `flashback --plan` output is unchanged (ADR 0010, #282, #302).
+- `workflow status`, `resume` and `clean` refuse a compare or trend artifact with an unknown `schema_version` with exit 9 (#282, #302).
+- `binlogviz version` prints the build's git commit, and `version --format json` prints it for agents (#282, #302).
+- No breaking changes. Known issue: Linux release archives report an empty commit until the release workflow is updated (#303).
+
+Related notes:
+
+- [v0.27.0 release notes](docs/releases/release-notes-v0.27.0.md)
+- [v0.27.0 中文发行说明](docs/releases/release-notes-v0.27.0.zh-CN.md)
+
 ### Added
 
 - Every JSON output is versioned. `compare`, `trend`, `snapshot list|show` and `workflow validate|describe|status|clean|export` with `--format json` now start with `"schema_version": 1`; `analyze` keeps `report_version` and `flashback --plan` keeps `plan_version`, and their output is byte-identical. See "JSON Versioning" in docs/reference/output-format.md and ADR 0010 (#282).
-- `binlogviz version` prints the git commit of the build, and `binlogviz version --format json` prints `schema_version`, `version`, `commit`, `commit_time`, `modified` and `go_version`, so an agent can confirm which build it drives (#282). The commit comes from the Go build info, or from `-X binlogviz/internal/version.Commit`/`CommitTime` ldflags when the build has none. macOS release archives and builds from a git checkout include it; Linux release archives report `commit: ""` until the release workflow passes those ldflags (ADR 0010 §5).
+- `binlogviz version` prints the git commit of the build, and `binlogviz version --format json` prints `schema_version`, `version`, `commit`, `commit_time`, `modified` and `go_version`, so an agent can confirm which build it drives (#282). The commit comes from the Go build info, or from `-X binlogviz/internal/version.Commit`/`CommitTime` ldflags when the build has none. macOS release archives and builds from a git checkout include it; Linux release archives report `commit: ""` until the release workflow passes those ldflags (ADR 0010 §5, #303).
 - `workflow status`, `workflow resume` and `workflow clean` refuse a compare or trend artifact whose `schema_version` this build does not know: exit 9 (`unsupported`, `details.reason: unsupported_artifact_version`), empty stdout, nothing run or deleted. Artifacts without the key (written by v0.26.1 and earlier) still read (#282).
 - `scripts/release_smoke.sh` checks that `version --format json` is versioned, and with `BINLOGVIZ_SMOKE_EXPECT_COMMIT=<sha>` or `BINLOGVIZ_SMOKE_REQUIRE_COMMIT=1` fails when the binary does not report that commit (#282).
 
