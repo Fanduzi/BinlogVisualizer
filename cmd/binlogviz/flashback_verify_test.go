@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"binlogviz/internal/guard"
 )
 
@@ -23,6 +25,63 @@ func writeVerifyFixture(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func TestFlashbackVerifyHelpUsage(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	code, stdout, stderr := runRoot(t, "flashback", "verify", "--help")
+	out := stdout + stderr
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	const usage = "Usage:\n  binlogviz flashback verify <file>"
+	if !strings.Contains(out, usage) || strings.Contains(out, "flashback flashback") {
+		t.Fatalf("verify help usage:\n%s", out)
+	}
+	if !strings.Contains(out, "ALTER ROUTINE") {
+		t.Fatalf("verify help omits ALTER ROUTINE:\n%s", out)
+	}
+}
+
+func TestSubcommandHelpUsageMatchesCommandPath(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	root := NewRootCommand()
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		for _, child := range c.Commands() {
+			if !child.IsAvailableCommand() {
+				continue
+			}
+			path := child.CommandPath()
+			var buf strings.Builder
+			child.SetOut(&buf)
+			child.SetErr(&buf)
+			if err := child.Help(); err != nil {
+				t.Fatalf("%s help: %v", path, err)
+			}
+			help := buf.String()
+			if !strings.Contains(help, "Usage:\n  "+path+" ") && !strings.Contains(help, "Usage:\n  "+path+"\n") {
+				t.Errorf("%s help usage is not %q:\n%s", path, path, help)
+			}
+			if parent := child.Parent(); parent != nil {
+				dup := parent.Name() + " " + parent.Name()
+				if strings.Contains(help, dup) {
+					t.Errorf("%s help repeats %q:\n%s", path, dup, help)
+				}
+			}
+			walk(child)
+		}
+	}
+	walk(root)
+}
+
+func TestFlashbackHelpListsAlterRoutine(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	code, stdout, stderr := runRoot(t, "flashback", "--help")
+	out := stdout + stderr
+	if code != 0 || !strings.Contains(out, "ALTER ROUTINE") {
+		t.Fatalf("flashback help exit %d, ALTER ROUTINE missing:\n%s", code, out)
+	}
 }
 
 func TestFlashbackVerifyJSONAndRefusals(t *testing.T) {

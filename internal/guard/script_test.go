@@ -151,6 +151,64 @@ func TestTokenMismatchIsAnErrorCondition(t *testing.T) {
 	}
 }
 
+func TestApplySQLRenamesTheFinishProcedure(t *testing.T) {
+	g := New(nil)
+	script := renderScript(t, g, Piece{Kind: PieceRaw, Text: ProcedureSQL()})
+	if !strings.Contains(script, "SQL SECURITY INVOKER") {
+		t.Fatal("published procedure is not SQL SECURITY INVOKER")
+	}
+	first, err := ApplySQL(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ApplySQL(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("two applies reused one procedure name")
+	}
+	for _, apply := range []string{first, second} {
+		if strings.Contains(apply, noCommitSQL) || !strings.Contains(apply, "SET @binlogviz_want = 1;") {
+			t.Fatal("apply SQL did not replace the trailer")
+		}
+		if !applyProcedureRenamed(script, apply) {
+			t.Fatalf("apply SQL did not rename the finish procedure:\n%s", apply)
+		}
+	}
+}
+
+// applyProcedureRenamed reports whether apply calls a procedure whose name
+// is the published name plus a 16-hex nonce, and drops that same name.
+func applyProcedureRenamed(script, apply string) bool {
+	const marker = "CREATE PROCEDURE binlogviz.binlogviz_fb_end_"
+	i := strings.Index(script, marker)
+	if i < 0 {
+		return false
+	}
+	rest := script[i+len(marker):]
+	token := rest[:16]
+	if strings.Trim(token, "0123456789abcdef") != "" {
+		return false
+	}
+	published := "binlogviz.binlogviz_fb_end_" + token
+	call := strings.Index(apply, "CALL "+published+"_")
+	if call < 0 {
+		return false
+	}
+	nonce := apply[call+len("CALL "+published+"_"):]
+	if len(nonce) < 16 || strings.Trim(nonce[:16], "0123456789abcdef") != "" {
+		return false
+	}
+	nonce = nonce[:16]
+	name := published + "_" + nonce
+	return strings.Contains(apply, "CREATE PROCEDURE "+name+"()") &&
+		strings.Contains(apply, "DROP PROCEDURE IF EXISTS "+name+";") &&
+		strings.Contains(apply, "CALL "+name+"();") &&
+		strings.Contains(script, "CREATE PROCEDURE "+published+"()") &&
+		!strings.Contains(script, name)
+}
+
 func TestPayloadQuoteRoundTrip(t *testing.T) {
 	mode := "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '')"
 	quoted := payloadQuote(mode)
