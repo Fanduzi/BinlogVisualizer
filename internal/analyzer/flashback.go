@@ -17,13 +17,15 @@ import (
 
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
+	"binlogviz/internal/schemacatalog"
 )
 
 // flashBind is the table definition in effect for one undo row.
 // deferCheck waits until every schema of an unqualified table has been seen.
 type flashBind struct {
 	gen         map[string]struct{}
-	cols        []schemaCol
+	cols        []mysqlexpr.SchemaCol
 	deferCheck  bool
 	fromPending bool
 }
@@ -74,39 +76,39 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 			return
 		}
 	}
-	res := a.flashCat.resolve(ev.Schema, ev.Table)
+	res := a.flashCat.Resolve(ev.Schema, ev.Table)
 	label := refusalLabel(res, ev.Schema, ev.Table)
 	bind := flashBind{}
-	switch res.kind {
-	case resolveRefused:
+	switch res.Kind {
+	case schemacatalog.Refused:
 		a.flashErr = fmt.Errorf("%s", i18n.Tf("error.flashbackGenerated", map[string]any{
 			"Table": label,
 		}))
 		return
-	case resolveMissing, resolveAmbiguous:
+	case schemacatalog.Missing, schemacatalog.Ambiguous:
 		a.noteFlashUnknown(flashTable(ev.Schema, ev.Table))
-	default: // resolveExact, resolveFold
-		if !res.checkRows {
-			bind.gen = generatedNameSet(res.cols)
+	default: // schemacatalog.Exact, schemacatalog.Fold
+		if !res.CheckRows {
+			bind.gen = mysqlexpr.GeneratedNameSet(res.Cols)
 			break
 		}
-		bind.cols = res.cols
-		bind.fromPending = res.deferred
-		bind.deferCheck = res.deferred
-		if res.deferred {
+		bind.cols = res.Cols
+		bind.fromPending = res.Deferred
+		bind.deferCheck = res.Deferred
+		if res.Deferred {
 			// The schema is not final until every table map for this name is seen.
-		} else if err := a.acceptSchemaRows(label, ev.FlashRows, res.cols); err != nil {
+		} else if err := a.acceptSchemaRows(label, ev.FlashRows, res.Cols); err != nil {
 			a.flashErr = err
 			return
 		} else {
-			bind.gen = generatedNameSet(res.cols)
+			bind.gen = mysqlexpr.GeneratedNameSet(res.Cols)
 		}
 	}
 	a.appendFlashRows(ev, ev.FlashRows, bind)
 	a.noteFlashbackKept(ev)
 }
 
-func (a *Analyzer) acceptSchemaRows(label string, rows []model.FlashRow, cols []schemaCol) error {
+func (a *Analyzer) acceptSchemaRows(label string, rows []model.FlashRow, cols []mysqlexpr.SchemaCol) error {
 	for _, row := range rows {
 		if err := a.acceptSchema(label, row, cols); err != nil {
 			return err
@@ -115,8 +117,8 @@ func (a *Analyzer) acceptSchemaRows(label string, rows []model.FlashRow, cols []
 	return nil
 }
 
-func (a *Analyzer) acceptSchema(label string, row model.FlashRow, cols []schemaCol) error {
-	warns, err := validateSchemaRow(label, row, cols)
+func (a *Analyzer) acceptSchema(label string, row model.FlashRow, cols []mysqlexpr.SchemaCol) error {
+	warns, err := mysqlexpr.ValidateSchemaRow(label, row, cols)
 	if err != nil {
 		return err
 	}
@@ -124,7 +126,17 @@ func (a *Analyzer) acceptSchema(label string, row model.FlashRow, cols []schemaC
 	return nil
 }
 
-func (a *Analyzer) noteSchemaWarnings(warns []FlashbackWarning) {
+// appendWarningOnce appends w unless an equal warning is already in list.
+func appendWarningOnce(list []model.FlashbackWarning, w model.FlashbackWarning) []model.FlashbackWarning {
+	for _, have := range list {
+		if have == w {
+			return list
+		}
+	}
+	return append(list, w)
+}
+
+func (a *Analyzer) noteSchemaWarnings(warns []model.FlashbackWarning) {
 	for _, warn := range warns {
 		a.flashSchemaWarn = appendWarningOnce(a.flashSchemaWarn, warn)
 	}
@@ -161,7 +173,7 @@ func (a *Analyzer) settleBinds(group *flashGroup) {
 			}
 		}
 		if bind.deferCheck && a.flashChecked {
-			bind.gen = generatedNameSet(bind.cols)
+			bind.gen = mysqlexpr.GeneratedNameSet(bind.cols)
 			bind.deferCheck = false
 		}
 	}
@@ -224,10 +236,10 @@ func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashR
 	for i := range binds {
 		binds[i] = bind
 		if bind.gen != nil {
-			binds[i].gen = copyNames(bind.gen)
+			binds[i].gen = mysqlexpr.CopyNames(bind.gen)
 		}
 		if bind.cols != nil {
-			binds[i].cols = cloneSchemaCols(bind.cols)
+			binds[i].cols = mysqlexpr.CloneSchemaCols(bind.cols)
 		}
 		seqs[i] = a.flashSeq
 		a.flashSeq++
@@ -397,15 +409,15 @@ func (a *Analyzer) FlashbackWarnings() []string {
 // FlashbackWarningList reports schema-file notes, tables whose definitions
 // were not seen, then transactions a table or --dml filter undid only in part.
 // Empty when flashback has nothing to print.
-func (a *Analyzer) FlashbackWarningList() []FlashbackWarning {
+func (a *Analyzer) FlashbackWarningList() []model.FlashbackWarning {
 	if a == nil {
 		return nil
 	}
-	var out []FlashbackWarning
-	out = append(out, a.flashCat.warnings()...)
+	var out []model.FlashbackWarning
+	out = append(out, a.flashCat.Warnings()...)
 	out = append(out, a.flashSchemaWarn...)
 	for _, table := range a.flashUnknown {
-		out = append(out, newFlashWarning(WarnTableDefinitionMissing, "warning.flashbackGenerated", map[string]any{"Table": table}))
+		out = append(out, model.NewFlashWarning(model.WarnTableDefinitionMissing, "warning.flashbackGenerated", map[string]any{"Table": table}))
 	}
 	gtids := append([]string(nil), a.flashSplitDone...)
 	for _, key := range a.flashSplitOrder {
@@ -419,7 +431,7 @@ func (a *Analyzer) FlashbackWarningList() []FlashbackWarning {
 		if gtid == "" {
 			gtid = "GTID unavailable"
 		}
-		out = append(out, newFlashWarning(WarnPartialTransaction, "warning.flashbackSplit", map[string]any{"GTID": gtid}))
+		out = append(out, model.NewFlashWarning(model.WarnPartialTransaction, "warning.flashbackSplit", map[string]any{"GTID": gtid}))
 	}
 	return out
 }
@@ -514,8 +526,8 @@ func (a *Analyzer) collectGeneratedReview() error {
 	type bucket struct {
 		schema string
 		table  string
-		cols   []schemaCol
-		images []loggedImage
+		cols   []mysqlexpr.SchemaCol
+		images []mysqlexpr.LoggedImage
 	}
 	var order []string
 	groups := map[string]*bucket{}
@@ -537,10 +549,10 @@ func (a *Analyzer) collectGeneratedReview() error {
 				order = append(order, key)
 			}
 			if row.Before != nil {
-				b.images = append(b.images, loggedImage{columns: row.Columns, values: row.Before})
+				b.images = append(b.images, mysqlexpr.LoggedImage{Columns: row.Columns, Values: row.Before})
 			}
 			if row.After != nil {
-				b.images = append(b.images, loggedImage{columns: row.Columns, values: row.After})
+				b.images = append(b.images, mysqlexpr.LoggedImage{Columns: row.Columns, Values: row.After})
 			}
 		}
 		return nil
@@ -549,42 +561,42 @@ func (a *Analyzer) collectGeneratedReview() error {
 		return err
 	}
 	var mismatches, notes []string
-	var warns []FlashbackWarning
+	var warns []model.FlashbackWarning
 	hinted := false
 	for _, key := range order {
 		b := groups[key]
 		table := flashTable(b.schema, b.table)
 		label := a.refusalTable(b.schema, b.table)
-		var imgs *genImages
+		var imgs *mysqlexpr.GenImages
 		for _, col := range b.cols {
-			if !col.generated {
+			if !col.Generated {
 				continue
 			}
 			if imgs == nil {
-				imgs = prepareGenImages(b.images, b.cols)
+				imgs = mysqlexpr.PrepareGenImages(b.images, b.cols)
 			}
-			example, unknown := imgs.outcome(col)
+			example, unknown := imgs.Outcome(col)
 			if example != "" {
 				// Any fitting or unchecked increment gets the increment
 				// message: an unchecked one may be where the dump is right,
 				// so the dump is not called wrong (#243).
-				if fit, unchecked := imgs.divIncrementFit(col); len(fit) > 0 || len(unchecked) > 0 {
-					line := divIncrementMismatch(label, col, example, fit, unchecked).Error()
+				if fit, unchecked := imgs.DivIncrementFit(col); len(fit) > 0 || len(unchecked) > 0 {
+					line := mysqlexpr.DivIncrementMismatch(label, col, example, fit, unchecked).Error()
 					if !hinted {
 						hinted = true
-						line = joinHint(line, divIncrementHint(sqlTableName(b.schema, b.table), fit, unchecked))
+						line = joinHint(line, mysqlexpr.DivIncrementHint(mysqlexpr.SQLTableName(b.schema, b.table), fit, unchecked))
 					}
 					mismatches = append(mismatches, line)
 					continue
 				}
-				mismatches = append(mismatches, generatedMismatch(label, col, example).Error())
+				mismatches = append(mismatches, mysqlexpr.GeneratedMismatch(label, col, example).Error())
 				continue
 			}
 			if !unknown {
 				continue
 			}
-			notes = append(notes, unverifiedGeneratedComment(table, col))
-			warns = append(warns, unverifiedGeneratedWarning(table, col))
+			notes = append(notes, mysqlexpr.UnverifiedGeneratedComment(table, col))
+			warns = append(warns, mysqlexpr.UnverifiedGeneratedWarning(table, col))
 		}
 	}
 	if len(mismatches) > 0 {
@@ -604,17 +616,17 @@ func joinHint(line, hint string) string {
 	return line + " " + hint
 }
 
-func generatedSig(cols []schemaCol) string {
+func generatedSig(cols []mysqlexpr.SchemaCol) string {
 	var b strings.Builder
 	found := false
 	for _, col := range cols {
-		if !col.generated {
+		if !col.Generated {
 			continue
 		}
 		found = true
-		b.WriteString(strings.ToLower(col.name))
+		b.WriteString(strings.ToLower(col.Name))
 		b.WriteByte(0)
-		b.WriteString(col.expr)
+		b.WriteString(col.Expr)
 		b.WriteByte(0)
 	}
 	if !found {
@@ -650,7 +662,7 @@ func flashDDLError(ev model.NormalizedEvent, table string) error {
 	if statement == "" {
 		statement = "DDL"
 	}
-	statement = oneLine(statement, 120)
+	statement = mysqlexpr.OneLine(statement, 120)
 	return fmt.Errorf("%s", i18n.Tf("error.flashbackDDL", map[string]any{
 		"Table":     table,
 		"Statement": statement,
@@ -668,17 +680,6 @@ func flashTable(schema, table string) string {
 	default:
 		return "selected range"
 	}
-}
-
-func oneLine(value string, limit int) string {
-	value = strings.TrimSpace(value)
-	if i := strings.IndexAny(value, "\r\n"); i >= 0 {
-		value = strings.TrimSpace(value[:i])
-	}
-	if limit > 0 && len(value) > limit {
-		value = value[:limit] + "..."
-	}
-	return value
 }
 
 // renderFlashbackSQL renders groups held in memory (tests and small inputs).
@@ -777,12 +778,12 @@ func writeBlockHead(b *strings.Builder, group *flashGroup, guard flashGuard) {
 	if gtid == "" {
 		gtid = "GTID unavailable"
 	}
-	fmt.Fprintf(b, "-- gtid: %s\n", oneLine(gtid, 0))
+	fmt.Fprintf(b, "-- gtid: %s\n", mysqlexpr.OneLine(gtid, 0))
 	file := filepath.Base(group.path)
 	if file == "" || file == "." {
 		file = "binlog"
 	}
-	fmt.Fprintf(b, "-- binlog: %s:%d\n", oneLine(file, 0), group.pos)
+	fmt.Fprintf(b, "-- binlog: %s:%d\n", mysqlexpr.OneLine(file, 0), group.pos)
 	if lock := guard.BlockLock(); lock != "" {
 		// SET sql_mode, COMMIT, START TRANSACTION, and SET GTID_NEXT do not
 		// clear this session flag. Repeat the same lock outside a
@@ -998,18 +999,18 @@ func (e *generatedRowRefusal) named(label string) error {
 
 // refusalTable names schema.table in a refusal, from its current catalog binding.
 func (a *Analyzer) refusalTable(schema, table string) string {
-	return refusalLabel(a.flashCat.peek(schema, table), schema, table)
+	return refusalLabel(a.flashCat.Peek(schema, table), schema, table)
 }
 
 // refusalLabel is the table name every refusal prints. A table bound by a
 // letter-case fold also names the schema-file table, in every language and on
 // every refusal line (#225).
-func refusalLabel(res resolution, schema, table string) string {
+func refusalLabel(res schemacatalog.Resolution, schema, table string) string {
 	name := flashTable(schema, table)
-	if res.fileTable == "" {
+	if res.FileTable == "" {
 		return name
 	}
-	return i18n.Tf("error.flashbackSchemaFoldLabel", map[string]any{"Binlog": name, "File": res.fileTable})
+	return i18n.Tf("error.flashbackSchemaFoldLabel", map[string]any{"Binlog": name, "File": res.FileTable})
 }
 
 func undoWhere(row model.FlashRow, head string, image []string, cond string) (string, error) {

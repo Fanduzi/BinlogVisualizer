@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/schemacatalog"
 )
 
 // Analyzer orchestrates the complete binlog analysis pipeline.
@@ -59,9 +60,9 @@ type Analyzer struct {
 	flashPendingNames     map[string][]string
 	flashChecked          bool
 	flashErr              error
-	flashCat              *schemaCatalog
+	flashCat              *schemacatalog.Catalog
 	flashUnknown          []string
-	flashSchemaWarn       []FlashbackWarning
+	flashSchemaWarn       []model.FlashbackWarning
 	flashGenNotes         []string
 	flashReviewed         bool
 	flashReviewErr        error
@@ -273,9 +274,9 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 	ev = enrichDDLEvent(ev)
 	if a.opts.Flashback {
 		a.checkFlashConflict(ev)
-		dropped := a.flashCat.observeTable(ev.Schema, ev.Table)
+		dropped := a.flashCat.ObserveTable(ev.Schema, ev.Table)
 		if ev.EventType == "DDL" {
-			dropped = append(dropped, a.flashCat.observeDDL(ev.Schema, ev.QuerySQL)...)
+			dropped = append(dropped, a.flashCat.ObserveDDL(ev.Schema, ev.QuerySQL)...)
 		}
 		for _, table := range dropped {
 			a.clearPendingUse(table)
@@ -471,7 +472,7 @@ func (a *Analyzer) reset() {
 	a.flashPendingNames = nil
 	a.flashChecked = false
 	a.flashErr = nil
-	a.flashCat = newSchemaCatalog(a.opts.SchemaFileDB)
+	a.flashCat = schemacatalog.New(a.opts.SchemaFileDB)
 	a.flashUnknown = nil
 	a.flashSchemaWarn = nil
 	a.flashGenNotes = nil
@@ -481,7 +482,7 @@ func (a *Analyzer) reset() {
 	a.flashSplitOrder = nil
 	a.flashSplitDone = nil
 	if a.opts.Flashback && strings.TrimSpace(a.opts.SchemaSQL) != "" {
-		a.flashCat.loadFile(a.opts.SchemaSQL)
+		a.flashCat.LoadFile(a.opts.SchemaSQL)
 	}
 	if a.store != nil {
 		a.err = a.store.Reset()

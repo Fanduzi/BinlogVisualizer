@@ -8,6 +8,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 |------|----------------|
 | `event.go` | Defines normalized binlog events with optional producer/transaction provenance, XA identity, LOAD_DATA intent, and optional flashback rows. |
 | `flash.go` | Defines `FlashRow`, TABLE_MAP column metadata used to check a schema file, the ENUM index-0 marker, and the reasons a selected row cannot be rendered as undo SQL. |
+| `flash_warning.go` | `FlashbackWarning`: a stable code plus the localized message for every flashback warning; `Line` adds the localized `warning:` prefix for stderr, the plan prints the code and message (#270, #282). |
 | `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, bounded SQL context, optional bounded row images, and optional MySQL 8 commit timestamps plus the transaction-start byte. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs, including per-table primary-key presence. |
 | `pattern.go` | Defines top-pattern summary contracts for repeated write shapes. |

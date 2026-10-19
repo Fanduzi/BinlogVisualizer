@@ -1,9 +1,9 @@
-// Package analyzer: the generated-column expression evaluator.
+// Package mysqlexpr: the generated-column expression evaluator.
 // input: a generated-column expression from a schema file, logged column values, and (for DECIMAL arithmetic) a div_precision_increment.
-// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; evalGenExpr) or the exact-DECIMAL domain (evalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237).
-// pos: flashback-only module. Analyze does not call it. Value helpers (genVal, decVal, apply*) live in flashback_expr.go and flashback_schema.go.
+// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; EvalGenExpr) or the exact-DECIMAL domain (EvalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237).
+// pos: flashback-only module. Analyze does not call it. Value helpers (GenVal, DecVal, apply*) live in expr.go and schema.go.
 // note: if this file changes, update this header, CONTEXT.md (Expression evaluator) and docs/adr/0007-expression-evaluator.md.
-package analyzer
+package mysqlexpr
 
 import (
 	"math"
@@ -36,7 +36,7 @@ type exprNode struct {
 	l, r, x *exprNode
 	path    string
 	unquote bool
-	lit     genVal
+	lit     GenVal
 	num     string
 	truth   bool
 	name    string
@@ -63,34 +63,34 @@ func parseExprTree(expr string) (*exprNode, bool) {
 }
 
 func parseExprText(expr string) (*exprNode, bool) {
-	sc := &sqlScan{s: expr}
+	sc := &Scan{S: expr}
 	n, ok := pexAdd(sc)
 	if !ok {
 		return nil, false
 	}
-	sc.skip()
-	if sc.i != len(sc.s) {
+	sc.Skip()
+	if sc.I != len(sc.S) {
 		return nil, false
 	}
 	return n, true
 }
 
-func pexAdd(sc *sqlScan) (*exprNode, bool) {
+func pexAdd(sc *Scan) (*exprNode, bool) {
 	left, ok := pexMul(sc)
 	if !ok {
 		return nil, false
 	}
 	for {
-		sc.skip()
-		if sc.i >= len(sc.s) || (sc.s[sc.i] != '+' && sc.s[sc.i] != '-') {
+		sc.Skip()
+		if sc.I >= len(sc.S) || (sc.S[sc.I] != '+' && sc.S[sc.I] != '-') {
 			return left, true
 		}
 		// `->` and `->>` belong to a primary. A following arrow is not subtraction.
 		if sc.startsArrow() {
 			return left, true
 		}
-		op := sc.s[sc.i]
-		sc.i++
+		op := sc.S[sc.I]
+		sc.I++
 		right, ok := pexMul(sc)
 		if !ok {
 			return nil, false
@@ -99,7 +99,7 @@ func pexAdd(sc *sqlScan) (*exprNode, bool) {
 	}
 }
 
-func pexMul(sc *sqlScan) (*exprNode, bool) {
+func pexMul(sc *Scan) (*exprNode, bool) {
 	left, ok := pexUnary(sc)
 	if !ok {
 		return nil, false
@@ -117,11 +117,11 @@ func pexMul(sc *sqlScan) (*exprNode, bool) {
 	}
 }
 
-func pexUnary(sc *sqlScan) (*exprNode, bool) {
-	sc.skip()
-	if sc.i < len(sc.s) && (sc.s[sc.i] == '-' || sc.s[sc.i] == '+') && !sc.startsArrow() {
-		op := sc.s[sc.i]
-		sc.i++
+func pexUnary(sc *Scan) (*exprNode, bool) {
+	sc.Skip()
+	if sc.I < len(sc.S) && (sc.S[sc.I] == '-' || sc.S[sc.I] == '+') && !sc.startsArrow() {
+		op := sc.S[sc.I]
+		sc.I++
 		x, ok := pexUnary(sc)
 		if !ok {
 			return nil, false
@@ -131,7 +131,7 @@ func pexUnary(sc *sqlScan) (*exprNode, bool) {
 	return pexPrimary(sc)
 }
 
-func pexPrimary(sc *sqlScan) (*exprNode, bool) {
+func pexPrimary(sc *Scan) (*exprNode, bool) {
 	n, ok := pexAtom(sc)
 	if !ok {
 		return nil, false
@@ -149,14 +149,14 @@ func pexPrimary(sc *sqlScan) (*exprNode, bool) {
 	}
 }
 
-func pexAtom(sc *sqlScan) (*exprNode, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) {
+func pexAtom(sc *Scan) (*exprNode, bool) {
+	sc.Skip()
+	if sc.I >= len(sc.S) {
 		return nil, false
 	}
-	switch sc.s[sc.i] {
+	switch sc.S[sc.I] {
 	case '(':
-		body, ok := sc.parenBody()
+		body, ok := sc.ParenBody()
 		if !ok {
 			return nil, false
 		}
@@ -168,7 +168,7 @@ func pexAtom(sc *sqlScan) (*exprNode, bool) {
 		}
 		return &exprNode{kind: exLit, lit: v}, true
 	}
-	if sc.s[sc.i] == 'X' || sc.s[sc.i] == 'x' {
+	if sc.S[sc.I] == 'X' || sc.S[sc.I] == 'x' {
 		if v, ok, parsed := sc.hexBinary(); parsed {
 			if !ok {
 				return nil, false
@@ -176,18 +176,18 @@ func pexAtom(sc *sqlScan) (*exprNode, bool) {
 			return &exprNode{kind: exLit, lit: v}, true
 		}
 	}
-	if sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
-		start := sc.i
-		for sc.i < len(sc.s) && sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
-			sc.i++
+	if sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
+		start := sc.I
+		for sc.I < len(sc.S) && sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
+			sc.I++
 		}
-		if sc.i < len(sc.s) && (sc.s[sc.i] == '.' || sc.s[sc.i] == 'e' || sc.s[sc.i] == 'E') {
+		if sc.I < len(sc.S) && (sc.S[sc.I] == '.' || sc.S[sc.I] == 'e' || sc.S[sc.I] == 'E') {
 			return nil, false
 		}
-		return &exprNode{kind: exNum, num: sc.s[start:sc.i]}, true
+		return &exprNode{kind: exNum, num: sc.S[start:sc.I]}, true
 	}
-	quoted := sc.s[sc.i] == '`'
-	name, ok := sc.ident()
+	quoted := sc.S[sc.I] == '`'
+	name, ok := sc.Ident()
 	if !ok {
 		return nil, false
 	}
@@ -199,14 +199,14 @@ func pexAtom(sc *sqlScan) (*exprNode, bool) {
 			return &exprNode{kind: exLit, lit: v}, true
 		}
 	}
-	if sc.peekByte() == '(' {
-		body, ok := sc.parenBody()
+	if sc.PeekByte() == '(' {
+		body, ok := sc.ParenBody()
 		if !ok {
 			return nil, false
 		}
 		call := &exprNode{kind: exCall, name: name, quoted: quoted}
 		if strings.TrimSpace(body) != "" {
-			parts := splitComma(body)
+			parts := SplitComma(body)
 			call.nparts = len(parts)
 			for _, part := range parts {
 				arg, ok := parseExprText(part)
@@ -218,9 +218,9 @@ func pexAtom(sc *sqlScan) (*exprNode, bool) {
 		}
 		return call, true
 	}
-	save := sc.i
+	save := sc.I
 	sc.skipCollate()
-	collate := sc.i != save
+	collate := sc.I != save
 	if !quoted && isNullWord(name) {
 		return &exprNode{kind: exNull, collate: collate}, true
 	}
@@ -230,54 +230,54 @@ func pexAtom(sc *sqlScan) (*exprNode, bool) {
 	return &exprNode{kind: exCol, name: strings.ToLower(name), collate: collate}, true
 }
 
-// evalGenExpr evaluates expr with logged column values.
+// EvalGenExpr evaluates expr with logged column values.
 // ok is false when the expression uses something this checker does not evaluate.
-func evalGenExpr(expr string, env map[string]genVal) (genVal, bool) {
+func EvalGenExpr(expr string, env map[string]GenVal) (GenVal, bool) {
 	n, ok := parseExprTree(expr)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	v, ok := n.evalGen(env)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	return v, true
 }
 
-func (n *exprNode) evalGen(env map[string]genVal) (genVal, bool) {
+func (n *exprNode) evalGen(env map[string]GenVal) (GenVal, bool) {
 	switch n.kind {
 	case exAdd:
 		left, ok := n.l.evalGen(env)
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		right, ok := n.r.evalGen(env)
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		return applyGenAdd(left, right, n.op)
 	case exMul:
 		left, ok := n.l.evalGen(env)
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		right, ok := n.r.evalGen(env)
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		li, ok1 := left.asInt()
 		ri, ok2 := right.asInt()
 		if !ok1 || !ok2 {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		next, ok := applyMulOp(li, ri, n.mulOp)
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		if next.null {
 			return genNullVal(), true
 		}
-		return genVal{kind: genNum, n: next.n}, true
+		return GenVal{kind: genNum, n: next.n}, true
 	case exUnary:
 		v, ok := n.x.evalGen(env)
 		if !ok || v.kind == genNull || n.op == '+' {
@@ -287,11 +287,11 @@ func (n *exprNode) evalGen(env map[string]genVal) (genVal, bool) {
 		if !ok || iv.null {
 			return v, ok
 		}
-		return genVal{kind: genNum, n: new(big.Rat).Neg(iv.n)}, true
+		return GenVal{kind: genNum, n: new(big.Rat).Neg(iv.n)}, true
 	case exArrow:
 		v, ok := n.x.evalGen(env)
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		return applyJSONArrow(v, n.path, n.unquote)
 	case exLit:
@@ -308,25 +308,25 @@ func (n *exprNode) evalGen(env map[string]genVal) (genVal, bool) {
 	case exCol:
 		v, ok := env[n.name]
 		if !ok || v.kind == genBad {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		return v, true
 	case exCall:
-		var args []genVal
+		var args []GenVal
 		for _, arg := range n.args {
 			v, ok := arg.evalGen(env)
 			if !ok {
-				return genVal{}, false
+				return GenVal{}, false
 			}
 			args = append(args, v)
 		}
 		return evalGenCall(n.name, args)
 	}
-	return genVal{}, false
+	return GenVal{}, false
 }
 
 // clone copies a parsed literal so an evaluation cannot change the tree.
-func (v genVal) clone() genVal {
+func (v GenVal) clone() GenVal {
 	if v.n != nil {
 		v.n = new(big.Rat).Set(v.n)
 	}
@@ -339,52 +339,52 @@ func (v genVal) clone() genVal {
 	return v
 }
 
-func evalDecExpr(expr string, env map[string]genVal) (decVal, bool) {
-	return evalDecExprInc(expr, env, mysqlDefaultDivPrecIncrement)
+func evalDecExpr(expr string, env map[string]GenVal) (DecVal, bool) {
+	return EvalDecExprInc(expr, env, mysqlDefaultDivPrecIncrement)
 }
 
-// evalDecExprInc evaluates expr exactly as DECIMAL, with / at
+// EvalDecExprInc evaluates expr exactly as DECIMAL, with / at
 // div_precision_increment inc.
-func evalDecExprInc(expr string, env map[string]genVal, inc int) (decVal, bool) {
+func EvalDecExprInc(expr string, env map[string]GenVal, inc int) (DecVal, bool) {
 	if inc+1 == 0 {
 		inc = mysqlDefaultDivPrecIncrement
 	}
 	n, ok := parseExprTree(expr)
 	if !ok {
-		return decVal{}, false
+		return DecVal{}, false
 	}
 	v, ok := n.evalDec(env, inc)
 	if !ok {
-		return decVal{}, false
+		return DecVal{}, false
 	}
 	return v, true
 }
 
-func (n *exprNode) evalDec(env map[string]genVal, inc int) (decVal, bool) {
+func (n *exprNode) evalDec(env map[string]GenVal, inc int) (DecVal, bool) {
 	switch n.kind {
 	case exAdd:
 		left, ok := n.l.evalDec(env, inc)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		right, ok := n.r.evalDec(env, inc)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		return decZeroScale(applyDecAdd(left, right, n.op))
 	case exMul:
 		left, ok := n.l.evalDec(env, inc)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		right, ok := n.r.evalDec(env, inc)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		if n.mulOp == "/" && decIsZero(left) && right.mode == decClaim && right.n != nil && right.n.Sign() != 0 {
 			// MySQL's decimal_div returns a plain 0 for a zero dividend
 			// before it sizes the quotient.
-			return decVal{n: new(big.Rat), scale: 0}, true
+			return DecVal{n: new(big.Rat), scale: 0}, true
 		}
 		return decZeroScale(applyDecMul(left, right, n.mulOp, inc))
 	case exUnary:
@@ -394,63 +394,63 @@ func (n *exprNode) evalDec(env map[string]genVal, inc int) (decVal, bool) {
 		}
 		if v.mode == decOmit || v.n == nil {
 			if v.mode == decOmit {
-				return decVal{mode: decOmit}, true
+				return DecVal{mode: decOmit}, true
 			}
-			return decVal{}, false
+			return DecVal{}, false
 		}
-		return decVal{n: new(big.Rat).Neg(v.n), scale: v.scale, mode: v.mode}, true
+		return DecVal{n: new(big.Rat).Neg(v.n), scale: v.scale, mode: v.mode}, true
 	case exNum:
 		i, ok := new(big.Int).SetString(n.num, 10)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
-		return decVal{n: new(big.Rat).SetInt(i), scale: 0}, true
+		return DecVal{n: new(big.Rat).SetInt(i), scale: 0}, true
 	case exNull:
 		if n.collate {
-			return decVal{}, false
+			return DecVal{}, false
 		}
-		return decVal{null: true}, true
+		return DecVal{null: true}, true
 	case exBool:
 		if n.collate {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		if n.truth {
-			return decVal{n: big.NewRat(1, 1), scale: 0}, true
+			return DecVal{n: big.NewRat(1, 1), scale: 0}, true
 		}
-		return decVal{n: new(big.Rat), scale: 0}, true
+		return DecVal{n: new(big.Rat), scale: 0}, true
 	case exCol:
 		if n.collate {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		v, ok := env[n.name]
 		if !ok || v.kind == genBad {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		return decFromGen(v)
 	case exCall:
 		if n.quoted || !strings.EqualFold(n.name, "MOD") || n.nparts != 2 {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		left, ok := n.args[0].evalDec(env, inc)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		right, ok := n.args[1].evalDec(env, inc)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		return decZeroScale(decIntOp(left, right, true))
 	}
 	// exArrow, exLit: not DECIMAL arithmetic.
-	return decVal{}, false
+	return DecVal{}, false
 }
 
 // evalAtom reads one atom at sc (a literal, number, call, or parenthesis)
 // and evaluates it with no columns. Used for JSON paths and logged literals.
-func (sc *sqlScan) evalAtom() (genVal, bool) {
+func (sc *Scan) evalAtom() (GenVal, bool) {
 	n, ok := pexAtom(sc)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	return n.evalGen(nil)
 }
@@ -501,23 +501,23 @@ func (n *jNode) walk(steps []jStep) (*jNode, bool) {
 // follows that rounding (#238). DIV truncates the exact quotient toward
 // zero; a quotient outside BIGINT is not claimed. % is exact, takes the
 // dividend's sign and the larger operand scale (scale 0 when it is zero). A zero divisor is NULL.
-func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
+func decIntOp(left, right DecVal, remainder bool) (DecVal, bool) {
 	if left.null || right.null {
-		return decVal{null: true}, true
+		return DecVal{null: true}, true
 	}
 	if right.mode == decClaim && right.n != nil && right.n.Sign() == 0 {
-		return decVal{null: true}, true // whatever the dividend is
+		return DecVal{null: true}, true // whatever the dividend is
 	}
 	if left.scale == 0 && right.scale == 0 {
 		if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil {
-			return decVal{mode: decOmit}, true
+			return DecVal{mode: decOmit}, true
 		}
 		next, ok := applyIntDiv(intVal{n: left.n}, intVal{n: right.n}, remainder)
 		if !ok {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 		if next.null {
-			return decVal{null: true}, true
+			return DecVal{null: true}, true
 		}
 		return placeDec(next.n, 0, false), true
 	}
@@ -526,13 +526,13 @@ func decIntOp(left, right decVal, remainder bool) (decVal, bool) {
 	// before this was modelled.
 	if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil ||
 		decDigits(left.n, left.scale) > decIntOpMaxDigits || decDigits(right.n, right.scale) > decIntOpMaxDigits {
-		return decVal{}, false
+		return DecVal{}, false
 	}
 	q := new(big.Rat).Quo(left.n, right.n)
 	t := new(big.Int).Quo(q.Num(), q.Denom()) // toward zero
 	if !remainder {
 		if t.Cmp(maxInt64Big) > 0 || t.Cmp(minInt64Big) < 0 {
-			return decVal{mode: decOmit}, true
+			return DecVal{mode: decOmit}, true
 		}
 		return placeDec(new(big.Rat).SetInt(t), 0, false), true
 	}
@@ -561,13 +561,13 @@ var (
 // plain 0 with scale 0 (decimal_make_zero), which a later / sees: for
 // example 1.0000/((x - x) - 7) has 9 digits, not 9 + x's scale (#238). A
 // literal zero keeps its scale; this is only applied to operator results.
-func decZeroScale(v decVal, ok bool) (decVal, bool) {
+func decZeroScale(v DecVal, ok bool) (DecVal, bool) {
 	if ok && !v.null && v.mode == decClaim && v.n != nil && v.n.Sign() == 0 {
 		v.scale = 0
 	}
 	return v, ok
 }
 
-func decIsZero(v decVal) bool {
+func decIsZero(v DecVal) bool {
 	return !v.null && v.mode == decClaim && v.n != nil && v.n.Sign() == 0
 }

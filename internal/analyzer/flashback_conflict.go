@@ -18,6 +18,7 @@ import (
 	"binlogviz/internal/clierr"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 )
 
 // Flashback conflict policies (--conflict).
@@ -121,7 +122,7 @@ func rowKeyLabel(row *model.FlashRow, image []string) string {
 	parts := make([]string, 0, len(row.PK))
 	for _, i := range row.PK {
 		if i >= 0 && i < len(image) && i < len(row.Columns) {
-			parts = append(parts, row.Columns[i]+"="+oneLine(image[i], 64))
+			parts = append(parts, row.Columns[i]+"="+mysqlexpr.OneLine(image[i], 64))
 		}
 	}
 	return strings.Join(parts, ",")
@@ -243,16 +244,16 @@ const FlashbackPlanVersion = 2
 // FlashbackPlan is the --plan output: what the script would undo, and why it
 // would be refused.
 type FlashbackPlan struct {
-	PlanVersion       int                   `json:"plan_version"`
-	Transactions      int                   `json:"transactions"`
-	Rows              int                   `json:"rows"`
-	Tables            []FlashbackPlanTable  `json:"tables"`
-	ConflictPolicy    string                `json:"conflict_policy"`
-	Conflicts         FlashbackPlanCounts   `json:"conflicts"`
-	GuardedStatements int                   `json:"guarded_statements"`
-	WouldRefuse       bool                  `json:"would_refuse"`
-	Refusal           *FlashbackPlanRefusal `json:"refusal"`
-	Warnings          []FlashbackWarning    `json:"warnings"`
+	PlanVersion       int                      `json:"plan_version"`
+	Transactions      int                      `json:"transactions"`
+	Rows              int                      `json:"rows"`
+	Tables            []FlashbackPlanTable     `json:"tables"`
+	ConflictPolicy    string                   `json:"conflict_policy"`
+	Conflicts         FlashbackPlanCounts      `json:"conflicts"`
+	GuardedStatements int                      `json:"guarded_statements"`
+	WouldRefuse       bool                     `json:"would_refuse"`
+	Refusal           *FlashbackPlanRefusal    `json:"refusal"`
+	Warnings          []model.FlashbackWarning `json:"warnings"`
 }
 
 // FlashbackPlanRefusal is why the real run would print no script. Kind is
@@ -315,7 +316,7 @@ func (a *Analyzer) flashbackPlan() (plan FlashbackPlan, err error) {
 		Conflicts:      FlashbackPlanCounts{Listed: []FlashbackConflict{}},
 	}
 	defer func() {
-		plan.Warnings = append([]FlashbackWarning{}, a.FlashbackWarningList()...)
+		plan.Warnings = append([]model.FlashbackWarning{}, a.FlashbackWarningList()...)
 	}()
 	if _, err = a.prepareChecks(); err != nil {
 		return plan, err
