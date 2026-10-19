@@ -720,7 +720,7 @@ COMMIT;`)
 	}{
 		{name: "strict", restore: true},
 		{name: "empty", prefix: "SET SESSION sql_mode='';\n", restore: true},
-		{name: "no-backslash", prefix: "SET SESSION sql_mode='NO_BACKSLASH_ESCAPES';\n"},
+		{name: "no-backslash", prefix: "SET SESSION sql_mode='NO_BACKSLASH_ESCAPES';\n", restore: true},
 		{name: "traditional", prefix: "SET SESSION sql_mode='TRADITIONAL';\n", restore: true},
 	} {
 		baseline := e2eSessionMode(t, mode.prefix+"DO 0;")
@@ -1145,8 +1145,12 @@ COMMIT;`)
 			if !ok {
 				continue
 			}
-			if strings.HasPrefix(payload, "INSERT ") || strings.HasPrefix(payload, "UPDATE ") || strings.HasPrefix(payload, "DELETE ") {
-				dml.WriteString(payload + ";\n")
+			body := payload
+			if strings.HasPrefix(body, "E\n") || strings.HasPrefix(body, "T\n") {
+				body = body[2:]
+			}
+			if strings.HasPrefix(body, "INSERT ") || strings.HasPrefix(body, "UPDATE ") || strings.HasPrefix(body, "DELETE ") {
+				dml.WriteString(body + ";\n")
 			}
 		}
 		if dml.Len() == 0 {

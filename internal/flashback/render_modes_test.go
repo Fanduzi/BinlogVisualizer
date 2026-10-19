@@ -19,7 +19,7 @@ func TestRenderUndoOmitsGeneratedColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sql != "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (2, 20);" {
+	if sql != "T\nINSERT INTO `shop`.`gen` (`id`, `base`) VALUES (2, 20);" {
 		t.Fatalf("insert: %s", sql)
 	}
 
@@ -34,7 +34,7 @@ func TestRenderUndoOmitsGeneratedColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sql != "UPDATE `shop`.`gen` SET `id` = 1, `base` = 10 WHERE `id` <=> 1;" {
+	if sql != "E\nUPDATE `shop`.`gen` SET `id` = 1, `base` = 10 WHERE `id` <=> 1;" {
 		t.Fatalf("update: %s", sql)
 	}
 
@@ -68,7 +68,7 @@ func TestRenderUndoOmitsGeneratedColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sql != "DELETE FROM `shop`.`g` WHERE `g` <=> 11;" {
+	if sql != "E\nDELETE FROM `shop`.`g` WHERE `g` <=> 11;" {
 		t.Fatalf("generated pk: %s", sql)
 	}
 

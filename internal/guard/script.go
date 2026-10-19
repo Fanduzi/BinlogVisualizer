@@ -39,10 +39,16 @@ const (
 	// rollbackMessage is the line a rolled-back apply prints. A procedure cannot
 	// drop itself (ERROR 1357), so the client prints this after DROP PROCEDURE.
 	rollbackMessage = "binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again"
-	rollbackSelect  = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (ERROR ', @binlogviz_errno, ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
-	// rollbackError makes mysql exit 1 without --force. CASE evaluates only
-	// the taken branch, so a commit does not run the subquery.
-	rollbackError = "SET @binlogviz_apply_rc = CASE WHEN @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN 0 ELSE (SELECT 1 UNION ALL SELECT 1) END;"
+	rollbackSelect  = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (ERROR ', @binlogviz_errno, IF(@binlogviz_errmsg IS NULL, '', CONCAT(': ', @binlogviz_errmsg)), ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
+	// commitSelect is the success line. Exit 0 without it is not success.
+	commitSelect = "SELECT CONCAT('binlogviz: undo committed, ', IFNULL(@binlogviz_n, 0), ' statements') FROM DUAL WHERE @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1;"
+	// failAssign picks the saved sql_mode on success and a rejected value on
+	// failure. failApply is ERROR 1231 on that rejected value, and its text
+	// includes the real errno and message. A commit restores the saved mode.
+	// Commas would split the value into sql_mode flags, so the 1231 text would
+	// keep only the first piece. Semicolons keep the whole message.
+	failAssign = "SET @binlogviz_fail = IF(@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1, IFNULL(@binlogviz_saved_mode, @@SESSION.sql_mode), CONCAT('ERROR ', IFNULL(@binlogviz_errno, 0), ': ', REPLACE(IFNULL(@binlogviz_errmsg, 'undo rolled back'), ',', ';')));"
+	failApply  = "SET SESSION sql_mode = @binlogviz_fail;"
 	// appliedCheckSQL records the previous statement. A later success must not
 	// clear it: @@error_count is only the last statement, and the flag only
 	// moves from 1 to 0.
@@ -194,8 +200,14 @@ func ProcedureSQL() string {
 		"    BEGIN\n" +
 		"      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION\n" +
 		"      BEGIN\n" +
-		"        GET DIAGNOSTICS CONDITION 1 @binlogviz_seen_errno = MYSQL_ERRNO;\n" +
-		"        SET @binlogviz_errno = IFNULL(@binlogviz_errno, @binlogviz_seen_errno);\n" +
+		"        GET DIAGNOSTICS @binlogviz_ncond = NUMBER;\n" +
+		captureCondition(1) +
+		"        IF @binlogviz_ncond >= 2 THEN\n" +
+		captureCondition(2) +
+		"        END IF;\n" +
+		"        IF @binlogviz_ncond >= 3 THEN\n" +
+		captureCondition(3) +
+		"        END IF;\n" +
 		"        SET @binlogviz_applied = 0;\n" +
 		"      END;\n" +
 		"      SET @binlogviz_use_mode = @binlogviz_next_mode;\n" +
@@ -203,9 +215,26 @@ func ProcedureSQL() string {
 		"      IF @binlogviz_use_mode IS NOT NULL THEN\n" +
 		"        SET SESSION sql_mode = @binlogviz_use_mode;\n" +
 		"      END IF;\n" +
+		"      SET @binlogviz_expect = NULL, @binlogviz_tally = NULL;\n" +
+		"      IF LEFT(@binlogviz_sql, 2) = CONCAT('E', CHAR(10)) THEN\n" +
+		"        SET @binlogviz_expect = 1, @binlogviz_tally = 1;\n" +
+		"        SET @binlogviz_sql = SUBSTRING(@binlogviz_sql, 3);\n" +
+		"      ELSEIF LEFT(@binlogviz_sql, 2) = CONCAT('T', CHAR(10)) THEN\n" +
+		"        SET @binlogviz_tally = 1;\n" +
+		"        SET @binlogviz_sql = SUBSTRING(@binlogviz_sql, 3);\n" +
+		"      END IF;\n" +
 		"      PREPARE binlogviz_fb_stmt_x9q FROM @binlogviz_sql;\n" +
 		"      EXECUTE binlogviz_fb_stmt_x9q;\n" +
+		"      SET @binlogviz_rows = ROW_COUNT();\n" +
 		"      DEALLOCATE PREPARE binlogviz_fb_stmt_x9q;\n" +
+		"      IF @binlogviz_expect <=> 1 AND @binlogviz_applied <=> 1 AND NOT (@binlogviz_rows <=> 1) THEN\n" +
+		"        SET @binlogviz_applied = 0;\n" +
+		"        SET @binlogviz_errno = IFNULL(@binlogviz_errno, 45000);\n" +
+		"        SET @binlogviz_errmsg = IFNULL(@binlogviz_errmsg, CONCAT('keyed undo affected ', IFNULL(@binlogviz_rows, 0), ' rows, expected 1'));\n" +
+		"      END IF;\n" +
+		"      IF @binlogviz_tally <=> 1 AND @binlogviz_applied <=> 1 THEN\n" +
+		"        SET @binlogviz_n = IFNULL(@binlogviz_n, 0) + 1;\n" +
+		"      END IF;\n" +
 		"    END;\n" +
 		"  ELSEIF @binlogviz_mode <=> 1 THEN\n" +
 		"    BEGIN\n" +
@@ -265,7 +294,7 @@ func procedureName(token string) string {
 }
 
 func finishBody(name string, want int) string {
-	return fmt.Sprintf("SET @binlogviz_want = %d;\nSET @binlogviz_mode = 2;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n%s\n%s\n", want, name, name, rollbackSelect, rollbackError)
+	return fmt.Sprintf("SET @binlogviz_want = %d;\nSET @binlogviz_mode = 2;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n%s\n%s\n%s\n%s\n", want, name, name, commitSelect, rollbackSelect, failAssign, failApply)
 }
 
 func publishedSuffix(token string) string {
@@ -298,7 +327,7 @@ func parsePublishedSuffix(s string) (string, bool) {
 	if strings.Trim(token, "0123456789abcdef") != "" {
 		return "", false
 	}
-	rest := "();\nDROP PROCEDURE IF EXISTS " + procedureName(token) + ";\n" + rollbackSelect + "\n" + rollbackError + "\n" + noCommitSQL + "\n"
+	rest := "();\nDROP PROCEDURE IF EXISTS " + procedureName(token) + ";\n" + commitSelect + "\n" + rollbackSelect + "\n" + failAssign + "\n" + failApply + "\n" + noCommitSQL + "\n"
 	if s[len(head)+16:] != rest {
 		return "", false
 	}
@@ -1063,21 +1092,28 @@ func (p *scrReader) publishedFinish() error {
 	if !ok {
 		return &VerifyError{Reason: "truncated"}
 	}
-	ok, err = p.hasLine(rollbackSelect)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return &VerifyError{Reason: "truncated"}
-	}
-	ok, err = p.hasLine(rollbackError)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return &VerifyError{Reason: "truncated"}
+	for _, line := range []string{commitSelect, rollbackSelect, failAssign, failApply} {
+		ok, err = p.hasLine(line)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return &VerifyError{Reason: "truncated"}
+		}
 	}
 	return nil
+}
+
+// captureCondition keeps the first diagnostics condition that is a real
+// error. Condition numbers are literals: MySQL 5.7 rejects a variable.
+// Errno 1287 is the deprecation warning from assigning a user variable
+// inside an expression, and SQLSTATE class 00/01 is success or a warning.
+// ponytail: three conditions; the statement error has been 1 or 2.
+func captureCondition(n int) string {
+	return fmt.Sprintf("        GET DIAGNOSTICS CONDITION %d @binlogviz_seen_errno = MYSQL_ERRNO, @binlogviz_seen_sqlstate = RETURNED_SQLSTATE, @binlogviz_seen_msg = MESSAGE_TEXT;\n"+
+		"        IF @binlogviz_errno IS NULL AND @binlogviz_seen_errno IS NOT NULL AND NOT (@binlogviz_seen_errno <=> 1287) AND LEFT(IFNULL(@binlogviz_seen_sqlstate, ''), 2) NOT IN ('00', '01') THEN\n"+
+		"          SET @binlogviz_errno = @binlogviz_seen_errno, @binlogviz_errmsg = @binlogviz_seen_msg;\n"+
+		"        END IF;\n", n)
 }
 
 func chain(payloads []string) string {

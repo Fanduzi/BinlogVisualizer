@@ -15,7 +15,7 @@ GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host'
 GRANT SELECT, INSERT, UPDATE, DELETE ON `app`.* TO 'account'@'host';
 ```
 
-`UPDATE` 和 `DELETE ... WHERE` 需要 `SELECT`（没有时是 ERROR 1143）。这个库上的 `CREATE` 覆盖 `CREATE DATABASE IF NOT EXISTS binlogviz`。`automatic_sp_privileges=0` 时，还要授予 `binlogviz.*` 上的 `EXECUTE`。`verify` 会为这一次执行命名结束过程，回滚之后也会删掉它。回滚的执行会打印 `binlogviz: undo rolled back, no rows changed`。不加 `--force` 时 mysql 退出码为 1。加了 `--force` 时退出码 0 不算成功：成功是退出码 0 且没有这一行。`CREATE PROCEDURE` 之后、收尾 `CALL` 之前被杀掉，或者 `CALL` 进不了过程体，会留下这一次的过程。残留用 `DROP DATABASE binlogviz` 清理。
+`UPDATE` 和 `DELETE ... WHERE` 需要 `SELECT`（没有时是 ERROR 1143）。这个库上的 `CREATE` 覆盖 `CREATE DATABASE IF NOT EXISTS binlogviz`。`automatic_sp_privileges=0` 时，还要授予 `binlogviz.*` 上的 `EXECUTE`。`verify` 会为这一次执行命名结束过程，回滚之后也会删掉它。回滚的执行会打印 `binlogviz: undo rolled back, no rows changed`。不加 `--force` 时 mysql 退出码为 1。成功是这一行 `binlogviz: undo committed, N statements`。退出码 0 但没有这一行不算成功。自动化用 `set -o pipefail`，并 grep 这一行。`CREATE PROCEDURE` 之后、收尾 `CALL` 之前被杀掉，或者 `CALL` 进不了过程体，会留下这一次的过程。残留用 `DROP DATABASE binlogviz` 清理。
 
 ## 配方 1：写入尖峰，然后 flashback
 

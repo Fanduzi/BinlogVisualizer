@@ -262,6 +262,8 @@ type FlashbackPlan struct {
 type FlashbackPlanRefusal struct {
 	Kind    string `json:"kind"`
 	Message string `json:"message"`
+	Reason  string `json:"reason,omitempty"`
+	Table   string `json:"table,omitempty"`
 }
 
 // FlashbackPlanTable counts the logged operations an undo reverses, per table.
@@ -299,6 +301,12 @@ func (a *Planner) WritePlan(w io.Writer) error {
 		}
 		plan.WouldRefuse = true
 		plan.Refusal = &FlashbackPlanRefusal{Kind: string(kind), Message: err.Error()}
+		if reason, table, ok := RefusalDetails(err); ok {
+			plan.Refusal.Reason = reason
+			if table != "" && table != "selected range" {
+				plan.Refusal.Table = table
+			}
+		}
 	}
 	body, jerr := json.MarshalIndent(plan, "", "  ")
 	if jerr != nil {

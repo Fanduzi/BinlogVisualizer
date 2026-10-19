@@ -14,6 +14,7 @@ v0.32.0 实现了 ADR 0014：flashback 执行失败时，永远不会提交撤�
 
 ```sql
 GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `schema`.* TO 'account'@'host';
 -- 仅当 automatic_sp_privileges=0 时：
 GRANT EXECUTE ON `binlogviz`.* TO 'account'@'host';
 ```
@@ -53,9 +54,9 @@ BinlogQA 对 #332 的 PR QA（`68c32d52`，MySQL 8.0.36）和对 main `68c32d52`
 ## 兼容性
 
 - **升级步骤：**
-  1. 给执行账号授予 `binlogviz.*` 上的 `CREATE`、`CREATE ROUTINE`、`ALTER ROUTINE`；如果 `automatic_sp_privileges=0`，再授予 `binlogviz.*` 上的 `EXECUTE`。
+  1. 给执行账号授予 `binlogviz.*` 上的 `CREATE`、`CREATE ROUTINE`、`ALTER ROUTINE`，以及撤销改动的表上的 `SELECT`、`INSERT`、`UPDATE`、`DELETE`；如果 `automatic_sp_privileges=0`，再授予 `binlogviz.*` 上的 `EXECUTE`。
   2. 重新生成 v0.31.0 及更早版本写出的 flashback 脚本，`verify` 会拒绝旧脚本。
-  3. 如有遗留的收尾存储过程，用能删除它们的账号清理（8.0 上定义者带 `SYSTEM_USER` 时，清理账号也需要 `SYSTEM_USER`；`DROP DATABASE` 需要 `DROP` 权限）：`DROP DATABASE IF EXISTS binlogviz;`。下一次执行会重新建库，库里只有这些辅助对象。
+  3. 如有遗留的收尾存储过程，用 `binlogviz.*` 上的 `DROP` 清理。`DROP DATABASE` 不需要 `SYSTEM_USER`，也不需要 `ALTER ROUTINE`：`DROP DATABASE IF EXISTS binlogviz;`。下一次执行会重新建库，库里只有这些辅助对象。
 - `report_version` 仍为 3，`plan_version` 仍为 2，`flashback verify --format json` 的 `schema_version` 仍为 1。analyze 输出不变。
 - `verify` 输出的 SQL 与文件不逐字节相同：每次执行的收尾过程名和结尾 hex 都不同。
 - `flashback` 和 `flashback verify` 都从不连接 MySQL。每个会话只执行一个脚本，在主库上、`sql_log_bin=1` 执行。

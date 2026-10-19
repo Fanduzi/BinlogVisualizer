@@ -43,7 +43,7 @@ func TestRenderFlashbackReversesTransactionsAndRows(t *testing.T) {
 	if undoDelete < 0 || undoInsert < 0 || undoDelete > undoInsert {
 		t.Fatalf("row order:\n%s", sql)
 	}
-	if !strings.Contains(sql, "-- no primary key on shop.heap; this matches every column and LIMIT 1") || !strings.Contains(sql, "DELETE FROM `shop`.`heap` WHERE `id` <=> 3 AND `note` <=> ''a'' LIMIT 1") {
+	if !strings.Contains(sql, "-- no primary key on shop.heap; this matches every column and LIMIT 1") || !strings.Contains(sql, "DELETE FROM `shop`.`heap` WHERE `id` <=> 3 AND `note` <=> \\'a\\' LIMIT 1") {
 		t.Fatalf("no pk:\n%s", sql)
 	}
 	if !strings.Contains(sql, "SET time_zone = '+00:00'") || !strings.Contains(sql, "SET NAMES utf8mb4") {

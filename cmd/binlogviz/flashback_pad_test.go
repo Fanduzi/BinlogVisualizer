@@ -10,16 +10,17 @@ import (
 	"binlogviz/internal/guard"
 )
 
-// TestFlashbackPadCharModes is #347. A session that has PAD_CHAR_TO_FULL_LENGTH
-// must still restore CHAR keys under NO PAD collations, and a keyed undo that
-// matches anything but one row must roll back. MySQL 5.7 has no utf8mb4_0900
-// collation, so that server uses utf8mb4_general_ci and utf8mb4_bin.
-func TestFlashbackPadCharModes(t *testing.T) {
+// TestFlashbackRoundTripMySQL80PadCharModes is #347. A session that has
+// PAD_CHAR_TO_FULL_LENGTH must still restore CHAR keys under NO PAD
+// collations, and a keyed undo that matches anything but one row must roll
+// back. MySQL 5.7 has no utf8mb4_0900 collation, so that server uses
+// utf8mb4_general_ci and utf8mb4_bin. The name matches the 8.0 e2e filter.
+func TestFlashbackRoundTripMySQL80PadCharModes(t *testing.T) {
 	if os.Getenv("BINLOGVIZ_FLASHBACK_E2E") == "" {
 		t.Skip("set BINLOGVIZ_FLASHBACK_E2E=1 to apply on a local MySQL server")
 	}
 	forceEnglishRuntimeOutput(t)
-	ver := strings.TrimSpace(e2eMySQL(t, "SELECT @@version"))
+	ver := mysqlVersion(e2eMySQL(t, "SELECT @@version"))
 	switch {
 	case strings.HasPrefix(ver, "8.0"):
 		flashbackPadMySQL80(t)
@@ -115,7 +116,7 @@ func applyPadMatrix(t *testing.T, script string, tables []string, statements str
 		t.Run(mode, func(t *testing.T) {
 			resetPadIncident(t, tables)
 			canon := canonicalSQLMode(t, mode)
-			out, err := e2eMySQLResult(t, "SET SESSION sql_mode='"+mode+"';\n"+apply+"\nSELECT @@SESSION.sql_mode")
+			out, err := e2eMySQLResult(t, "SET SESSION sql_mode='"+mode+"';\n"+apply+"\nSELECT CONCAT('MODE=[', @@SESSION.sql_mode, ']')")
 			if err != nil {
 				t.Fatalf("apply: %v\n%s", err, out)
 			}
@@ -125,10 +126,10 @@ func applyPadMatrix(t *testing.T, script string, tables []string, statements str
 			if strings.Contains(out, "undo rolled back") {
 				t.Fatalf("commit also rolled back\n%s", out)
 			}
-			if got := lastDataLine(out); got != canon {
+			if got := modeBetween(out); got != canon {
 				t.Fatalf("sql_mode %q want %q\n%s", got, canon, out)
 			}
-			if got := strings.TrimSpace(e2eMySQL(t, padSelect(tables))); got != want {
+			if got := mysqlBatchValue(e2eMySQL(t, padSelect(tables))); got != want {
 				t.Fatalf("rows\n%s\nwant\n%s", got, want)
 			}
 		})
@@ -146,7 +147,7 @@ func applyPadMatrix(t *testing.T, script string, tables []string, statements str
 			t.Fatalf("poison output:\n%s", out)
 		}
 		want := padRows(tables, [][2]string{{"k6", "6"}})
-		if got := strings.TrimSpace(e2eMySQL(t, padSelect(tables))); got != want {
+		if got := mysqlBatchValue(e2eMySQL(t, padSelect(tables))); got != want {
 			t.Fatalf("rows\n%s\nwant\n%s", got, want)
 		}
 	})
@@ -187,28 +188,36 @@ func padRows(tables []string, rows [][2]string) string {
 
 func canonicalSQLMode(t *testing.T, mode string) string {
 	t.Helper()
-	out := e2eMySQL(t, "SET SESSION sql_mode='"+mode+"';\nSELECT @@SESSION.sql_mode")
-	return lastDataLine(out)
+	out := e2eMySQL(t, "SET SESSION sql_mode='"+mode+"';\nSELECT CONCAT('MODE=[', @@SESSION.sql_mode, ']')")
+	return modeBetween(out)
 }
 
-func lastDataLine(out string) string {
-	lines := dataLines(out)
-	if len(lines) == 0 {
-		return ""
-	}
-	return lines[len(lines)-1]
-}
-
-func dataLines(out string) []string {
-	var lines []string
+// mysqlVersion returns the server version. The 5.7 client prints a password
+// warning on stderr before the version line.
+func mysqlVersion(out string) string {
+	ver := ""
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "mysql: [Warning]") {
+		if line == "" || strings.HasPrefix(line, "mysql:") {
 			continue
 		}
-		lines = append(lines, line)
+		ver = line
 	}
-	return lines
+	return ver
+}
+
+func modeBetween(out string) string {
+	const marker = "MODE=["
+	i := strings.LastIndex(out, marker)
+	if i < 0 {
+		return ""
+	}
+	rest := out[i+len(marker):]
+	j := strings.IndexByte(rest, ']')
+	if j < 0 {
+		return ""
+	}
+	return rest[:j]
 }
 
 // writePadUndoScript is the 5.7 apply. 5.7 cannot generate a flashback from

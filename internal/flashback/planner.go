@@ -170,8 +170,12 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 		return
 	}
 	if ev.EventType == "DDL" {
-		table := a.refusalTable(ev.Schema, ev.Table)
-		a.flashErr = refuse("ddl_in_range", table, flashDDLError(ev, table))
+		label := a.refusalTable(ev.Schema, ev.Table)
+		table := ""
+		if ev.Table != "" {
+			table = label
+		}
+		a.flashErr = refuse("ddl_in_range", table, flashDDLError(ev, label))
 		return
 	}
 	if ev.EventType != "ROWS" {
@@ -760,7 +764,10 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 	// These run before CREATE PROCEDURE, so they cannot CALL it. A failure
 	// here leaves no procedure.
 	for i, stmt := range []string{
-		"SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '')",
+		// Saved here, before CREATE PROCEDURE, and restored after the finish.
+		// PAD_CHAR_TO_FULL_LENGTH makes CHAR equality pad under NO PAD
+		// collations, so a keyed undo matches 0 rows and still commits (#347).
+		"SET @binlogviz_saved_mode = @@SESSION.sql_mode, SESSION sql_mode = REPLACE(REPLACE(@@SESSION.sql_mode, 'PAD_CHAR_TO_FULL_LENGTH', ''), 'NO_BACKSLASH_ESCAPES', '')",
 		"SET NAMES utf8mb4",
 		"SET time_zone = '+00:00'",
 		"SET @binlogviz_bad = NULL",
@@ -964,7 +971,27 @@ func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postIm
 	if drops := relaxedModes(row, gen); len(drops) > 0 {
 		statement = sqlModeWrap(statement, drops)
 	}
-	return statement, nil
+	return tagUndo(statement, expectOneRow(row, postImage)), nil
+}
+
+// expectOneRow is a keyed UPDATE or DELETE undo. An INSERT undo (the undo of
+// a DELETE), a no-PK LIMIT 1 match, and --conflict guard may affect 0 rows.
+func expectOneRow(row model.FlashRow, postImage bool) bool {
+	return !postImage && !row.NoPK && len(row.PK) > 0 && row.Op != "DELETE"
+}
+
+// tagUndo marks the digested statement. E requires ROW_COUNT() = 1. T only
+// counts the statement in the commit marker. The mark is two characters, so
+// deleting it changes the digest.
+func tagUndo(statement string, expect bool) string {
+	tag := "T\n"
+	if expect {
+		tag = "E\n"
+	}
+	if i := strings.LastIndex(statement, "\n"); i >= 0 {
+		return statement[:i+1] + tag + statement[i+1:]
+	}
+	return tag + statement
 }
 
 // movedKeyFreeCond is the --conflict guard condition for an UPDATE undo that

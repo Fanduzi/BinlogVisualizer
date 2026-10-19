@@ -14,6 +14,7 @@ v0.32.0 implements ADR 0014: a flashback apply that fails never commits part of 
 
 ```sql
 GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `schema`.* TO 'account'@'host';
 -- only when automatic_sp_privileges=0:
 GRANT EXECUTE ON `binlogviz`.* TO 'account'@'host';
 ```
@@ -53,9 +54,9 @@ BinlogQA's PR QA on #332 (`68c32d52`, MySQL 8.0.36) and tip QA on main `68c32d52
 ## Compatibility
 
 - **Upgrade steps:**
-  1. Grant the applying account `CREATE`, `CREATE ROUTINE`, `ALTER ROUTINE` on `binlogviz.*`, and `EXECUTE` on `binlogviz.*` if `automatic_sp_privileges=0`.
+  1. Grant the applying account `CREATE`, `CREATE ROUTINE`, `ALTER ROUTINE` on `binlogviz.*`, `SELECT`, `INSERT`, `UPDATE`, `DELETE` on the tables the undo changes, and `EXECUTE` on `binlogviz.*` if `automatic_sp_privileges=0`.
   2. Regenerate any flashback script written by v0.31.0 or earlier. `verify` refuses it.
-  3. Clean leftover finish procedures, if any, as an account that can drop them (on 8.0, a `SYSTEM_USER` definer means the cleaner needs `SYSTEM_USER`; `DROP DATABASE` needs `DROP`): `DROP DATABASE IF EXISTS binlogviz;`. The next apply creates the schema again; it holds only these helpers.
+  3. Clean leftover finish procedures, if any, with `DROP` on `binlogviz.*`. `DROP DATABASE` does not need `SYSTEM_USER` or `ALTER ROUTINE`: `DROP DATABASE IF EXISTS binlogviz;`. The next apply creates the schema again; it holds only these helpers.
 - `report_version` stays 3, `plan_version` stays 2, `flashback verify --format json` `schema_version` stays 1. Analyze output is unchanged.
 - The SQL `verify` prints is not byte-identical to the file: the finish procedure name and the trailer hex differ on each run.
 - `flashback` and `flashback verify` never connect to MySQL. Apply one script per session, on the primary, with `sql_log_bin=1`.

@@ -121,7 +121,7 @@ The SQL `verify` prints renames only the finish procedure to `binlogviz.binlogvi
 
 The finish drops the procedure that invocation created. A successful apply leaves none. A crash after `CREATE PROCEDURE` and before that `DROP` leaves one procedure under that nonce. The next `verify` picks another nonce. Successful applies do not accumulate procedures.
 
-Clean the schema as an account that can drop what is there. On 8.0, a definer with `SYSTEM_USER` means the cleaner also needs `SYSTEM_USER`. Otherwise `ALTER ROUTINE` is enough. `DROP DATABASE` needs the `DROP` privilege:
+`DROP PROCEDURE` of a `SYSTEM_USER` definer can be ERROR 1227. `DROP DATABASE IF EXISTS binlogviz` needs `DROP` on `binlogviz.*` and does not need `SYSTEM_USER` or `ALTER ROUTINE`:
 
 ```sql
 DROP DATABASE IF EXISTS binlogviz;
@@ -280,4 +280,4 @@ After a commit the client prints `binlogviz: undo committed, N statements`. Succ
 
 The mode-0 handler reads diagnostics conditions 1, 2, and 3. MySQL 5.7 requires a literal condition number. It skips SQLSTATE class `00` and `01`, and errno 1287 (`Setting user variables within expressions is deprecated`, from the token guard). It keeps the first remaining `MYSQL_ERRNO` and `MESSAGE_TEXT`. A later condition does not overwrite them. On MySQL 8.0, condition 1 can be 1287 while the statement error is 1143, 1146, or 1054. MySQL 5.7 reports that statement error as condition 1. 1062 is the statement error on both.
 
-On failure the client sets `SESSION sql_mode` to `ERROR <n>: <message>`. MySQL rejects it with ERROR 1231, and the text of 1231 includes that value, so stderr shows the real number and the message. On success the same statement sets the saved mode and does not error. ERROR 1242 is not the failure signal. A zero-row keyed undo has no server message; stderr shows `ERROR 45000: keyed undo affected N rows, expected 1`.
+On failure the client sets `SESSION sql_mode` to `ERROR <n>: <message>`, with commas in the message written as semicolons so MySQL does not split the value into flags. MySQL rejects it with ERROR 1231, and the text of 1231 includes that value, so stderr shows the real number and the message. The rollback line on stdout also appends `(ERROR N: message)`. On success the same statement sets the saved mode and does not error. ERROR 1242 is not the failure signal. A zero-row keyed undo has no server message; the line and stderr show `ERROR 45000: keyed undo affected N rows, expected 1`.

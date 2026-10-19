@@ -15,7 +15,7 @@ GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host'
 GRANT SELECT, INSERT, UPDATE, DELETE ON `app`.* TO 'account'@'host';
 ```
 
-`UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143 without it). `CREATE` on `binlogviz.*` covers `CREATE DATABASE IF NOT EXISTS binlogviz`. With `automatic_sp_privileges=0`, also grant `EXECUTE` on `binlogviz.*`. `verify` names the finish procedure for that run and drops it at the end, including after a rollback. A rolled-back apply prints `binlogviz: undo rolled back, no rows changed`. Without `--force` the mysql client exits 1. With `--force`, exit 0 is not success: success is exit 0 and that line absent. A kill after `CREATE PROCEDURE` and before the finish `CALL`, or a `CALL` that never enters the body, can leave that run's procedure. Clean a leftover with `DROP DATABASE binlogviz`.
+`UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143 without it). `CREATE` on `binlogviz.*` covers `CREATE DATABASE IF NOT EXISTS binlogviz`. With `automatic_sp_privileges=0`, also grant `EXECUTE` on `binlogviz.*`. `verify` names the finish procedure for that run and drops it at the end, including after a rollback. A rolled-back apply prints `binlogviz: undo rolled back, no rows changed`. Without `--force` the mysql client exits 1. Success is the line `binlogviz: undo committed, N statements`. Exit 0 without that line is not success. Automation uses `set -o pipefail` and greps for the line. A kill after `CREATE PROCEDURE` and before the finish `CALL`, or a `CALL` that never enters the body, can leave that run's procedure. Clean a leftover with `DROP DATABASE binlogviz`.
 
 ## Recipe 1: a write spike, then flashback
 
