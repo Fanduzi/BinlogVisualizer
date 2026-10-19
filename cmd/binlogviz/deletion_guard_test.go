@@ -77,15 +77,16 @@ func deletionSites(fset *token.FileSet, f *ast.File) []string {
 // guardAllowlist is every reviewed removal outside the clean primitive.
 // Each entry is a file:function:expr site and must say why it is safe.
 var guardAllowlist = map[string]string{
-	"safefs.go:TrashFile:.Rename":                        "the clean primitive: rename into <root>/.trash inside os.Root",
-	"safefs.go:releaseLockFile:os.Remove":                "non-unix lock file, only <root>/.lock",
-	"analyze.go:createDuckDBTempStore:os.RemoveAll":      "removes the os.MkdirTemp dir it just created",
-	"analyze_output.go:writeHTMLAtomically:os.Remove":    "removes its own temp file after a failed write",
-	"analyze_output.go:writeHTMLAtomically:os.Rename":    "atomic replace of the user-named output file",
-	"interrupt.go:releaseStdinTemp:os.RemoveAll":         "removes the stdin spool temp dir binlogviz created",
-	"interrupt.go:cleanupTrackedStdinTemps:os.RemoveAll": "removes tracked stdin spool temp dirs on interrupt",
-	"store.go:RenameSnapshot:os.Remove":                  "snapshot rename: drops the old name (or the new copy on failure) after ValidateName, inside the snapshot dir",
-	"store.go:DeleteSnapshot:os.Remove":                  "user-invoked `snapshot delete` of a ValidateName-checked name inside the snapshot dir",
+	"safefs.go:TrashFile:.Rename":                             "the clean primitive: rename into <root>/.trash inside os.Root",
+	"safefs.go:releaseLockFile:os.Remove":                     "non-unix lock file, only <root>/.lock",
+	"analyze.go:createDuckDBTempStore:os.RemoveAll":           "removes the os.MkdirTemp dir it just created",
+	"analyze_output.go:writeHTMLAtomically:os.Remove":         "removes its own temp file after a failed write",
+	"analyze_output.go:writeHTMLAtomically:os.Rename":         "atomic replace of the user-named output file",
+	"flashback_verify.go:newFlashbackVerifyCommand:os.Remove": "removes the os.CreateTemp spool file verify just created",
+	"interrupt.go:releaseStdinTemp:os.RemoveAll":              "removes the stdin spool temp dir binlogviz created",
+	"interrupt.go:cleanupTrackedStdinTemps:os.RemoveAll":      "removes tracked stdin spool temp dirs on interrupt",
+	"store.go:RenameSnapshot:os.Remove":                       "snapshot rename: drops the old name (or the new copy on failure) after ValidateName, inside the snapshot dir",
+	"store.go:DeleteSnapshot:os.Remove":                       "user-invoked `snapshot delete` of a ValidateName-checked name inside the snapshot dir",
 }
 
 func TestDeletionGuardCatchesMutants(t *testing.T) {
