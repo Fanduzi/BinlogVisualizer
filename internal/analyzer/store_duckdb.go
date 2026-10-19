@@ -2,7 +2,7 @@
 
 // Package analyzer persists high-cardinality analysis results in DuckDB batches.
 // input: completed transactions with provenance, minute buckets, alerts, and an owned DuckDB path.
-// output: batched DuckDB reconstruction of transaction evidence, minutes, alerts, and on-demand SQL.
+// output: batched DuckDB reconstruction of transaction evidence, minutes, alerts with their GTID, and on-demand SQL.
 // pos: CGO-only DuckDB adapter behind NewDuckDBStore.
 // note: if this file changes, keep this header and module README.md synchronized.
 package analyzer
@@ -230,8 +230,9 @@ func (s *DuckDBStore) RecordAlerts(alerts []model.Alert) error {
 			Minute:      alert.Minute,
 			Message:     alert.Message,
 			DetailsJSON: string(detailsJSON),
+			GTID:        alert.GTID,
 		})
-		s.bufferTopLevelRow(estimateStringBytes(alert.Type) + estimateStringBytes(alert.Severity) + estimateStringBytes(alert.TxnKey) + estimateStringBytes(alert.Message) + len(detailsJSON) + 16)
+		s.bufferTopLevelRow(estimateStringBytes(alert.Type) + estimateStringBytes(alert.Severity) + estimateStringBytes(alert.TxnKey) + estimateStringBytes(alert.Message) + estimateStringBytes(alert.GTID) + len(detailsJSON) + 16)
 	}
 	return s.flushIfNeeded()
 }
@@ -318,7 +319,7 @@ func (s *DuckDBStore) Flush() error {
 	if len(s.alertsBatch) > 0 {
 		if err := s.appendRows("alerts", func(app *duckdb.Appender) error {
 			for _, row := range s.alertsBatch {
-				if err := app.AppendRow(row.Type, row.Severity, row.TxnKey, zeroTimeToNil(row.Minute), row.Message, row.DetailsJSON); err != nil {
+				if err := app.AppendRow(row.Type, row.Severity, row.TxnKey, zeroTimeToNil(row.Minute), row.Message, row.DetailsJSON, row.GTID); err != nil {
 					return err
 				}
 			}
@@ -473,7 +474,7 @@ ORDER BY minute ASC, table_key ASC`)
 
 func (s *DuckDBStore) QueryAlerts() ([]model.Alert, error) {
 	rows, err := s.db.Query(`
-SELECT type, severity, txn_key, minute, message, details_json
+SELECT type, severity, txn_key, minute, message, details_json, gtid
 FROM alerts`)
 	if err != nil {
 		return nil, err
@@ -484,13 +485,14 @@ FROM alerts`)
 	for rows.Next() {
 		var row alertRow
 		var minute sql.NullTime
-		if err := rows.Scan(&row.Type, &row.Severity, &row.TxnKey, &minute, &row.Message, &row.DetailsJSON); err != nil {
+		if err := rows.Scan(&row.Type, &row.Severity, &row.TxnKey, &minute, &row.Message, &row.DetailsJSON, &row.GTID); err != nil {
 			return nil, err
 		}
 		alert := model.Alert{
 			Type:     row.Type,
 			Severity: row.Severity,
 			TxnKey:   row.TxnKey,
+			GTID:     row.GTID,
 			Message:  row.Message,
 			Details:  map[string]any{},
 		}
@@ -621,7 +623,8 @@ func (s *DuckDBStore) initSchema() error {
 			txn_key VARCHAR,
 			minute TIMESTAMP,
 			message VARCHAR,
-			details_json VARCHAR
+			details_json VARCHAR,
+			gtid VARCHAR
 		)`,
 	} {
 		if _, err := s.db.Exec(stmt); err != nil {

@@ -36,6 +36,7 @@ func DetectLargeTransactionAlerts(transactions []model.Transaction, opts Options
 			Type:     i18n.T("alert.largeTransaction.type"),
 			Severity: i18n.T("alert.largeTransaction.severity"),
 			TxnKey:   txn.TxnKey,
+			GTID:     txn.GTID,
 			Details: map[string]any{
 				"rows":        txn.TotalRows,
 				"duration_ms": txn.Duration.Milliseconds(),
@@ -116,6 +117,7 @@ func OpenDMLAlerts(groups []model.OpenDMLGroup, threshold time.Duration) []model
 			Type:     "open_dml_group",
 			Severity: severity,
 			TxnKey:   group.TxnKey,
+			GTID:     group.GTID,
 			Message: i18n.Tf("alert.openDML.message", map[string]any{
 				"TxnKey":   group.TxnKey,
 				"Duration": group.Duration.Truncate(time.Millisecond).String(),

@@ -51,6 +51,10 @@
     "description": "SQL 上下文标志描述",
     "other": "所有格式里的查询文本，包括默认文本、DDL 语句和 --show-patterns：summary（一行有界摘要）、off（不输出查询文本）或 full（存储 SQL 上限 4096 字节，截断时带标记）。任何模式下 DDL 里的口令材料都会打码"
   },
+  "cmd.analyze.flag.diagnostics": {
+    "description": "JSON 诊断体积标志描述",
+    "other": "JSON 里 diagnostics 的体积：full（默认，与现在相同）、summary（去掉已经在顶层出现的事务排行和其他列表）或 off（不输出 diagnostics）。文本、Markdown 和 HTML 忽略此标志"
+  },
   "cmd.analyze.flag.top": {
     "description": "默认排序项数量标志描述",
     "other": "默认显示的排行项数量"

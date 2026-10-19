@@ -149,6 +149,7 @@ type alertRow struct {
 	Minute      time.Time
 	Message     string
 	DetailsJSON string
+	GTID        string
 }
 
 func estimateStringBytes(v string) int {
@@ -429,6 +430,7 @@ func cloneAlert(alert model.Alert) model.Alert {
 		Severity: alert.Severity,
 		Message:  alert.Message,
 		TxnKey:   alert.TxnKey,
+		GTID:     alert.GTID,
 		Minute:   alert.Minute,
 		Details:  cloneStringAnyMap(alert.Details),
 	}

@@ -385,6 +385,8 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。`diagnostics.open_explicit_groups` 在出现时，统计输入结束时仍没有 `COMMIT` 或 plain `ROLLBACK` 的 `BEGIN` 组；计数为 0 时省略。这种未关闭的 `BEGIN` 如果后面又来了 GTID，不会产出报告：analyze 以 exit 1 失败，错误是「显式 BEGIN 未关闭」。
 
+`--diagnostics`（默认 `full`）只改变这个 JSON 对象。`summary` 保留 `file_coverage`、`counted_event_bytes`、`ddl_events`、`open_dml_groups`、`duration_buckets`、`input_format_guess`，以及 ignored-query、未关闭组和 unmapped 计数，并把 `largest_transactions`、`longest_transactions`、`widest_transactions`、`file_segments`、`hot_intervals`、`findings` 写成空数组（`largest_byte_transactions` 为空时仍然省略）。`off` 省略 `diagnostics` 键。文本、Markdown 和 HTML 忽略此标志。`report_version` 仍是 3。`summary` 或 `off` 的文档在顶层带 `diagnostics_mode`（`"summary"` 或 `"off"`），完整文档没有这个键。此标志只裁剪 stdout：`--snapshot-name` 保存的快照和所有 workflow 产物都保留完整 diagnostics。`compare`、`trend`、`snapshot save` 和 workflow resume 遇到 `diagnostics_mode` 不是 `full` 的报告时以 exit 9 拒绝（`unsupported`，`details.reason: reduced_diagnostics`，`details.diagnostics_mode`），不会把省略的列表当成空列表比较。没有 `diagnostics_mode` 的报告照旧比较。见 ADR 0011 §3。
+
 `diagnostics.counted_event_bytes` 是 schema/table 过滤后保留的 ROW/DDL 事件字节总数。`diagnostics.file_coverage.selected[].size` 是输入文件的物理大小；人类可读报告中缺少大小元数据时显示为不可用，而不是 0。`diagnostics.ddl_events` 是 DDL 发生时间线（时间、操作、对象、语句、位置，以及 binlog 里有 GTID 时、持有这条 DDL 的事务的 GTID），不是 MDL 或锁等待时长。`diagnostics.open_dml_groups` 在出现时，列出写过行镜像、并且到输入结束仍没有 `COMMIT` 或 plain `ROLLBACK` 的显式 `BEGIN` 组。每条的 `note` 说明该组在本文件/窗口内仍未提交，不是锁冲突证明。`diagnostics.duration_buckets` 统计已提交事务落在 `<1s`、`1s-10s`、`10s-30s`、`>=30s` 的数量。`diagnostics.largest_byte_transactions` 按 binlog 字节排列已提交事务。这三项为空时省略。
 
 默认文本会打印 DDL 时间线、未提交的开放 DML、最多三条最长已提交事务、时长分桶、字节贡献，以及选中多个文件时的单文件大小和时间跨度。`--large-trx-duration` 仍对超过该时长的已提交事务告警，并对超过同一阈值的开放 DML 给出 warning。开放 `BEGIN` 之后又来了 GTID 仍是 exit 1、stdout 为空；如果该组写过行，Error 行会带上时长、行数、表和位置。只有 DDL 的输入 exit 0。只有 ADMIN 的输入仍是 exit 2。`FLUSH TABLES WITH READ LOCK` 仍是未分类 QUERY（exit 1），不会进入 admin/lock 列表。
@@ -578,10 +580,11 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | `large_transaction`、`open_dml_group`、`spike`、`input_format`、`partial_transaction` 或 `unknown_transaction` |
+| `type` | string | yes | `large_transaction`、`open_dml_group`、`spike`、`input_format`、`partial_transaction`、`unknown_transaction` 或 `no_primary_key` |
 | `severity` | string | yes | 当前告警严重级别字符串 |
-| `message` | string | yes | 面向人的告警消息 |
+| `message` | string | yes | 面向人的告警消息。它仍然写内部 `txn_key`，不写 GTID。 |
 | `txn_key` | string | no | 事务级告警时出现 |
+| `gtid` | string | no | 该事务有 GTID 时出现（MySQL `uuid:seq` 或 MariaDB `domain-server-seq`）。与 `transactions[].gtid` 是同一个字符串。匿名事务，以及不针对单个事务的告警（`spike`、`input_format`、`no_primary_key`）省略。可直接传给 `flashback --include-gtids`。 |
 | `minute` | string | no | 分钟级告警时出现；出现时为 RFC3339 |
 | `details` | object | no | 包含结构化告警细节的 JSON 对象；没有结构化细节时省略 |
 
