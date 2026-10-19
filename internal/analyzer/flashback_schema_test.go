@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"binlogviz/internal/guard"
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
 )
@@ -557,7 +558,7 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	execAt := strings.Index(sql, "EXECUTE "+guardStmtMsg+";")
+	execAt := strings.Index(sql, "EXECUTE binlogviz_fb_msg_x9q;")
 	lockAt := strings.Index(sql, "SET SESSION TRANSACTION READ ONLY;")
 	modeAt := strings.Index(sql, "SET SESSION sql_mode = @binlogviz_mode;")
 	if execAt < 0 || lockAt < 0 || modeAt < 0 || execAt > lockAt || lockAt > modeAt {
@@ -600,8 +601,11 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, msg := range []string{guardOldServerMsg, guardNotRunMsg} {
-		if strings.Contains(msg, ",") || len(msg) > guardValueLimit || !strings.Contains(sql, sqlQuote(msg)) {
+	for _, msg := range []string{
+		"binlogviz: target server is older than MySQL 5.7.0 or MariaDB 10.2 and is not supported for apply",
+		"binlogviz: generated-column guard did not run",
+	} {
+		if strings.Contains(msg, ",") || len(msg) > 200 || !strings.Contains(sql, sqlQuote(msg)) {
 			t.Fatalf("message %q in:\n%s", msg, sql)
 		}
 	}
@@ -614,8 +618,8 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	}
 	resetAt := strings.Index(sql, "SET @binlogviz_checked = 0;")
 	checkAt := strings.Index(sql, "INTO @binlogviz_mismatch, @binlogviz_safe, @binlogviz_n, @binlogviz_checked")
-	verAt := strings.Index(sql, guardServerCheckSQL())
-	roAt := strings.Index(sql, "PREPARE "+guardStmtRO+" FROM @binlogviz_ro_sql;")
+	verAt := strings.Index(sql, "SET @binlogviz_maria = IF(LOCATE('MariaDB', @@version) > 0, 1, 0);\n")
+	roAt := strings.Index(sql, "PREPARE binlogviz_fb_ro_x9q FROM @binlogviz_ro_sql;")
 	token := guardToken(t, sql)
 	okSet := "SET @binlogviz_ok = IF(@binlogviz_old <=> 0 AND @binlogviz_checked <=> 1 AND @binlogviz_mismatch IS NULL AND NOT (@binlogviz_ro_was <=> 1), '" + token + "', NULL);"
 	unlockAt := strings.Index(sql, okSet)
@@ -637,7 +641,7 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	if strings.Count(sql, "READ WRITE") != strings.Count(sql, gated) || strings.Count(sql, gated) != 2 {
 		t.Fatalf("unlock outside the token-gated lock:\n%s", sql)
 	}
-	if !strings.HasPrefix(lock, "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n"+gated+"\nPREPARE "+guardStmtUnlock+" FROM @binlogviz_unlock_sql;\n") {
+	if !strings.HasPrefix(lock, "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n"+gated+"\nPREPARE binlogviz_fb_unlock_x9q FROM @binlogviz_unlock_sql;\n") {
 		t.Fatalf("lock: %q", lock)
 	}
 	start := strings.Index(sql, "START TRANSACTION;")
@@ -657,11 +661,6 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 			t.Fatalf("missing %q\n%s", want, sql)
 		}
 	}
-	for _, name := range []string{guardStmtMsg, guardStmtRO, guardStmtUnlock} {
-		if !strings.HasPrefix(name, "binlogviz_fb_") || !strings.HasSuffix(name, "_x9q") {
-			t.Fatalf("statement name %q", name)
-		}
-	}
 	if !guardBeforeTransaction(sql) {
 		t.Fatalf("guard is not in the header:\n%s", sql)
 	}
@@ -676,15 +675,29 @@ func guardToken(t *testing.T, sql string) string {
 	if len(m) != 1 {
 		t.Fatalf("want one token assignment, got %d:\n%s", len(m), sql)
 	}
-	if strings.Contains(sql, guardTokenMark) {
+	mark := guardTokenMark(t)
+	if strings.Contains(sql, mark) {
 		t.Fatalf("token placeholder left in the script:\n%s", sql)
 	}
 	return m[0][1]
 }
 
+// guardTokenMark is the placeholder RowCond quotes. The planner never sees it;
+// the test uses it only to prove Seal replaced every copy.
+func guardTokenMark(t *testing.T) string {
+	t.Helper()
+	raw := guard.New([]guard.Col{{Schema: "s", Table: "t", Column: "c"}}).RowCond()
+	const pfx = "@binlogviz_ok <=> '"
+	if !strings.HasPrefix(raw, pfx) || !strings.HasSuffix(raw, "'") {
+		t.Fatalf("row condition: %q", raw)
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(raw, pfx), "'")
+}
+
 func renderedGuardLock(t *testing.T, sql string) string {
 	t.Helper()
-	return strings.ReplaceAll(guardLockSQL, guardTokenMark, guardToken(t, sql))
+	raw := guard.New([]guard.Col{{Schema: "s", Table: "t", Column: "c"}}).BlockLock()
+	return strings.ReplaceAll(raw, guardTokenMark(t), guardToken(t, sql))
 }
 
 // #197/#191: every undo statement checks this script's token, so a block
@@ -740,12 +753,12 @@ func TestGeneratedGuardTokenGatesEveryStatement(t *testing.T) {
 	if guardToken(t, other) == token {
 		t.Fatalf("two scripts share token %s", token)
 	}
-	for _, msg := range []string{guardReadOnlyMsg} {
-		if strings.Contains(msg, ",") || len(msg) > guardValueLimit || !strings.Contains(sql, sqlQuote(msg)) {
+	for _, msg := range []string{"binlogviz: this session is already read-only so the script cannot write. Disconnect and apply the script again in a new session"} {
+		if strings.Contains(msg, ",") || len(msg) > 200 || !strings.Contains(sql, sqlQuote(msg)) {
 			t.Fatalf("message %q in:\n%s", msg, sql)
 		}
 	}
-	if !strings.Contains(sql, sqlQuote(guardMismatchHint)) {
+	if !strings.Contains(sql, sqlQuote(". This session is now read-only: disconnect, fix the schema file, and apply the script again in a new session.")) {
 		t.Fatalf("mismatch hint missing:\n%s", sql)
 	}
 }
@@ -759,25 +772,6 @@ func TestFlashbackWithoutGuardHasNoToken(t *testing.T) {
 	}
 	if strings.Contains(sql, "binlogviz_ok") || !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`) VALUES (1);") {
 		t.Fatalf("script without a guard changed:\n%s", sql)
-	}
-}
-
-func TestGuardSafeLabel(t *testing.T) {
-	if got := guardSafeLabel("db.t.a,b"); got != "db.t.a;b" {
-		t.Fatalf("comma: %q", got)
-	}
-	if got := guardSafeLabel("db.t.c | d"); got != "db.t.c / d" {
-		t.Fatalf("separator: %q", got)
-	}
-	if got := guardSafeLabel("shop.t.c"); got != "shop.t.c" {
-		t.Fatalf("plain: %q", got)
-	}
-	// #208: a name ending in " |" or starting with "| " must not form a separator.
-	if got := guardSafeLabel("db.t.x |"); got != "db.t.x /" {
-		t.Fatalf("suffix: %q", got)
-	}
-	if got := guardSafeLabel("db.t.| y"); got != "db.t./ y" {
-		t.Fatalf("prefix: %q", got)
 	}
 }
 

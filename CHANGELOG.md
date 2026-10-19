@@ -7,6 +7,7 @@ This file records user-visible changes for tagged releases.
 ### Changed
 
 - Internal: the expression evaluator and the schema catalog moved out of `internal/analyzer` into `internal/mysqlexpr` and `internal/schemacatalog` (ADR 0012, #257). Analyze and flashback output are unchanged. `report_version` and `plan_version` stay.
+- Internal: the apply guard moved out of `internal/analyzer` into `internal/guard` (ADR 0012 step 3, #257). The planner still collects omitted columns. Analyze and flashback output are unchanged. `report_version` and `plan_version` stay.
 
 ## v0.29.0
 

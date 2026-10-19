@@ -1,9 +1,9 @@
-// Package analyzer: the flashback apply guard.
+// Package guard: the flashback apply guard.
 // input: the generated columns an undo script omits (db, table, column).
-// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-block lock, the per-statement token condition, and the token seal of the finished script. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (flashback_guard_test.go).
-// pos: flashback-only module. Analyze does not call it.
+// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-block lock, the per-statement token condition, and the token seal of the finished script. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (guard_test.go).
+// pos: flashback-only module. Analyze does not call it. The planner walks omitted columns and calls New.
 // note: if this file changes, update this header, CONTEXT.md (Apply guard) and docs/adr/0006-guard-module.md.
-package analyzer
+package guard
 
 import (
 	"crypto/sha256"
@@ -13,22 +13,29 @@ import (
 	"strings"
 )
 
-// flashGuard is the apply guard of one script. The zero value is no guard:
+// Col is one generated column an undo script omits.
+type Col struct {
+	Schema string
+	Table  string
+	Column string
+}
+
+// Guard is the apply guard of one script. The zero value is no guard:
 // every method then returns "" or its input unchanged.
-type flashGuard struct {
+type Guard struct {
 	header string
 }
 
-// newFlashGuard builds the guard for the omitted generated columns, in order.
-func newFlashGuard(cols []guardCol) flashGuard {
-	return flashGuard{header: renderGeneratedGuard(cols)}
+// New builds the guard for the omitted generated columns, in order.
+func New(cols []Col) Guard {
+	return Guard{header: renderGeneratedGuard(cols)}
 }
 
 // Header is the SQL printed once after the session SET lines.
-func (g flashGuard) Header() string { return g.header }
+func (g Guard) Header() string { return g.header }
 
 // BlockLock is repeated before each transaction block.
-func (g flashGuard) BlockLock() string {
+func (g Guard) BlockLock() string {
 	if g.header == "" {
 		return ""
 	}
@@ -36,7 +43,7 @@ func (g flashGuard) BlockLock() string {
 }
 
 // RowCond is added to every undo statement.
-func (g flashGuard) RowCond() string {
+func (g Guard) RowCond() string {
 	if g.header == "" {
 		return ""
 	}
@@ -46,7 +53,7 @@ func (g flashGuard) RowCond() string {
 // Seal replaces the token placeholder with this script's token. The token is
 // a hash of the script with a fixed placeholder, so the same input always
 // prints the same script and two different scripts get different tokens.
-func (g flashGuard) Seal(script string) string {
+func (g Guard) Seal(script string) string {
 	if g.header == "" {
 		return script
 	}
@@ -54,24 +61,22 @@ func (g flashGuard) Seal(script string) string {
 	return strings.ReplaceAll(script, guardTokenMark, hex.EncodeToString(sum[:8]))
 }
 
-// sealWriter writes through to w with the token placeholder replaced by the
+// SealWriter writes through to w with the token placeholder replaced by the
 // token for sum, the sha256 of the whole script as Seal computes it. The
-// renderer never splits the placeholder across writes.
-func (g flashGuard) sealWriter(w io.Writer, sum []byte) writerFunc {
+// renderer never splits the placeholder across writes. A zero guard writes
+// each string unchanged.
+func (g Guard) SealWriter(w io.Writer, sum []byte) func(string) error {
 	if g.header == "" {
-		return toWriter(w)
+		return func(s string) error {
+			_, err := io.WriteString(w, s)
+			return err
+		}
 	}
 	token := hex.EncodeToString(sum[:8])
 	return func(s string) error {
 		_, err := io.WriteString(w, strings.ReplaceAll(s, guardTokenMark, token))
 		return err
 	}
-}
-
-type guardCol struct {
-	schema string
-	table  string
-	column string
 }
 
 const guardMismatchLead = "binlogviz: schema file does not match the target"
@@ -146,16 +151,16 @@ func guardSafeLabel(name string) string {
 // supported server switches it back, so sql_mode and the read-only flag end
 // unchanged. A mismatch, an unsupported server, or a guard step that failed
 // prints the reason, stays read-only, then fails SET sql_mode.
-func renderGeneratedGuard(cols []guardCol) string {
+func renderGeneratedGuard(cols []Col) string {
 	if len(cols) == 0 {
 		return ""
 	}
 	var arms []string
 	for i, col := range cols {
-		name := flashTable(col.schema, col.table) + "." + col.column
+		name := guardTable(col.Schema, col.Table) + "." + col.Column
 		arms = append(arms, fmt.Sprintf(
 			"SELECT %d AS n, %s AS q, %s AS safe_q FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s AND COLUMN_NAME = %s AND (EXTRA LIKE '%%STORED GENERATED%%' OR EXTRA LIKE '%%VIRTUAL GENERATED%%'))",
-			i+1, sqlQuote(name), sqlQuote(guardSafeLabel(name)), sqlQuote(col.schema), sqlQuote(col.table), sqlQuote(col.column),
+			i+1, sqlQuote(name), sqlQuote(guardSafeLabel(name)), sqlQuote(col.Schema), sqlQuote(col.Table), sqlQuote(col.Column),
 		))
 	}
 	lead := sqlQuote(guardMismatchLead)
@@ -206,32 +211,41 @@ func renderGeneratedGuard(cols []guardCol) string {
 	return b.String()
 }
 
-func omittedGeneratedCols(groups []flashGroup) []guardCol {
-	var out []guardCol
-	seen := map[string]struct{}{}
-	for _, group := range groups {
-		out = appendGuardCols(out, seen, group)
+// guardTable is the db.table label in the mismatch list. Same empty cases as
+// the planner's table label, so a row with a blank schema or table prints the
+// same name it did before the package split.
+func guardTable(schema, table string) string {
+	switch {
+	case schema != "" && table != "":
+		return schema + "." + table
+	case table != "":
+		return table
+	case schema != "":
+		return schema
+	default:
+		return "selected range"
 	}
-	return out
 }
 
-// appendGuardCols adds the generated columns of one group not yet in seen.
-func appendGuardCols(out []guardCol, seen map[string]struct{}, group flashGroup) []guardCol {
-	for i, row := range group.rows {
-		if i >= len(group.binds) {
-			continue
-		}
-		for _, col := range group.binds[i].cols {
-			if !col.Generated {
-				continue
-			}
-			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.Name)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, guardCol{schema: row.Schema, table: row.Table, column: col.Name})
+func sqlQuote(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 2)
+	b.WriteByte('\'')
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\', '\'':
+			b.WriteByte('\\')
+			b.WriteByte(s[i])
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case 0:
+			b.WriteString(`\0`)
+		default:
+			b.WriteByte(s[i])
 		}
 	}
-	return out
+	b.WriteByte('\'')
+	return b.String()
 }
