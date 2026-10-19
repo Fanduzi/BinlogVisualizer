@@ -104,7 +104,7 @@ func TestRelaxedModesDropOnlyWhatTheRowNeeds(t *testing.T) {
 		}
 	}
 	wrapped := sqlModeWrap("DELETE FROM t;", []string{"NO_ZERO_DATE", "TRADITIONAL"})
-	if strings.Contains(wrapped, "STRICT_TRANS_TABLES") || !strings.Contains(wrapped, "',NO_ZERO_DATE,'") || !strings.HasSuffix(wrapped, "SET SESSION sql_mode = @binlogviz_sql_mode;") {
+	if strings.Contains(wrapped, "STRICT_TRANS_TABLES") || strings.Contains(wrapped, "SET SESSION sql_mode") || !strings.Contains(wrapped, "',NO_ZERO_DATE,'") || !strings.HasPrefix(wrapped, "SET @binlogviz_next_mode =") || !strings.HasSuffix(wrapped, "\nDELETE FROM t;") {
 		t.Fatalf("wrap:\n%s", wrapped)
 	}
 }

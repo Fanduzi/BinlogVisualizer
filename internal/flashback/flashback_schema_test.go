@@ -1037,15 +1037,15 @@ func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode"
-	const restore = "SET SESSION sql_mode = @binlogviz_sql_mode"
-	if strings.Count(sql, save) != 1 || strings.Count(sql, restore) != 1 || !strings.Contains(sql, "STRICT_TRANS_TABLES") || !strings.Contains(sql, "STRICT_ALL_TABLES") || !strings.Contains(sql, ",TRADITIONAL,") {
+	const relax = "\nSET @binlogviz_next_mode = TRIM"
+	// Quoted into the digest payload, and written again as the client statement.
+	if strings.Count(sql, "SET @binlogviz_next_mode = TRIM") != 2 || !strings.Contains(sql, relax) || !strings.Contains(sql, "STRICT_TRANS_TABLES") || !strings.Contains(sql, "STRICT_ALL_TABLES") || !strings.Contains(sql, ",TRADITIONAL,") {
 		t.Fatalf("wrap:\n%s", sql)
 	}
-	i := strings.Index(sql, save)
-	j := strings.Index(sql, restore)
-	mid := sql[i:j]
-	if !strings.Contains(mid, "VALUES (1, 0)") || strings.Contains(mid, "VALUES (2, 1)") {
+	rest := sql[strings.Index(sql, relax):]
+	zero := strings.Index(rest, "VALUES (1, 0)")
+	one := strings.Index(rest, "VALUES (2, 1)")
+	if zero < 0 || one < 0 || zero > one || strings.Contains(rest[zero:one], "SET @binlogviz_next_mode = TRIM") {
 		t.Fatalf("wrapped the wrong statement:\n%s", sql)
 	}
 	if !scriptHas(sql, "INSERT INTO `shop`.`ezero` (`id`, `e`) VALUES (2, 1)") {

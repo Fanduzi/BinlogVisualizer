@@ -703,15 +703,14 @@ COMMIT;`)
 	if err != nil {
 		t.Fatalf("enum 0: %v\n%s", err, stderr)
 	}
-	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode"
-	const restoreMode = "SET SESSION sql_mode = @binlogviz_sql_mode"
-	if strings.Count(sql, save) != 1 || strings.Count(sql, restoreMode) != 1 {
+	const relax = "\nSET @binlogviz_next_mode = TRIM"
+	if strings.Count(sql, "SET @binlogviz_next_mode = TRIM") != 2 || !strings.Contains(sql, relax) {
 		t.Fatalf("enum 0 sql:\n%s", sql)
 	}
-	i := strings.Index(sql, save)
-	j := strings.Index(sql, restoreMode)
-	mid := sql[i:j]
-	if !strings.Contains(mid, "(1, 0)") || strings.Contains(mid, "(2, 1)") || !strings.Contains(sql, "(2, 1)") {
+	rest := sql[strings.Index(sql, relax):]
+	zero := strings.Index(rest, "(1, 0)")
+	one := strings.Index(rest, "(2, 1)")
+	if zero < 0 || one < 0 || zero > one || strings.Contains(rest[zero:one], "SET @binlogviz_next_mode = TRIM") {
 		t.Fatalf("enum 0 wrap:\n%s", sql)
 	}
 	for _, mode := range []struct {
@@ -1122,7 +1121,10 @@ COMMIT;`)
 	assertGuardVersionChoice(t, sql)
 	// #196: a block cut off from the header stays read-only.
 	if cut := strings.Index(sql, "-- gtid:"); cut > 0 {
-		assertGuardForceKeepsRows(t, "HEADERLESS", sql[cut:], matchSum, matchAfter, func(out string) {
+		// The fragment has no procedure. The gate sets the session read-only,
+		// and a following write is ERROR 1792.
+		probe := "INSERT INTO p183.t (id, x) VALUES (999, 'x');\n"
+		assertGuardForceKeepsRows(t, "HEADERLESS", sql[cut:]+probe, matchSum, matchAfter, func(out string) {
 			if mysqlErrorLine(out, "1792") == "" {
 				t.Fatalf("header-less block was not read-only\n%s", out)
 			}
@@ -1130,7 +1132,7 @@ COMMIT;`)
 		// #197: a stale unlock and another script's token left in the
 		// session do not unlock this script's blocks.
 		stale := "SET @binlogviz_unlock_sql = 'SET SESSION TRANSACTION READ WRITE';\nSET @binlogviz_ok = '0123456789abcdef';\n"
-		assertGuardForceKeepsRows(t, "STALE_TOKEN", stale+sql[cut:], matchSum, matchAfter, func(out string) {
+		assertGuardForceKeepsRows(t, "STALE_TOKEN", stale+sql[cut:]+probe, matchSum, matchAfter, func(out string) {
 			if mysqlErrorLine(out, "1792") == "" {
 				t.Fatalf("stale token unlocked a block\n%s", out)
 			}

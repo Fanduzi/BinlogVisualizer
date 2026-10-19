@@ -39,7 +39,7 @@ const (
 	// rollbackMessage is the line a rolled-back apply prints. A procedure cannot
 	// drop itself (ERROR 1357), so the client prints this after DROP PROCEDURE.
 	rollbackMessage = "binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again"
-	rollbackSelect  = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (errno ', @binlogviz_errno, ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
+	rollbackSelect  = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (ERROR ', @binlogviz_errno, ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
 	// rollbackError makes mysql exit 1 without --force. CASE evaluates only
 	// the taken branch, so a commit does not run the subquery.
 	rollbackError = "SET @binlogviz_apply_rc = CASE WHEN @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN 0 ELSE (SELECT 1 UNION ALL SELECT 1) END;"
@@ -146,11 +146,7 @@ func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) err
 			if err := ensure(); err != nil {
 				return err
 			}
-			raw := sub(p.Text)
-			if !strings.HasSuffix(raw, "\n") {
-				raw += "\n"
-			}
-			return writeRaw(write, &digest, raw)
+			return writeRaw(write, &digest, sub(p.Text))
 		default:
 			return fmt.Errorf("guard: unknown piece")
 		}
@@ -182,7 +178,7 @@ func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) err
 func ProcedureSQL() string {
 	name := "binlogviz.binlogviz_fb_end_" + guardTokenMark
 	check := appliedCheckSQL + "\n"
-	// One procedure, four modes (ADR 0014). Mode 0 swallows a statement error
+	// One procedure, three modes (ADR 0014). Mode 0 swallows a statement error
 	// so the client reaches the finish. Mode 2 returns after commit or
 	// rollback. It does not drop itself: that is ERROR 1357. The client
 	// statement after the CALL drops it. The XA id is the token.
@@ -202,6 +198,11 @@ func ProcedureSQL() string {
 		"        SET @binlogviz_errno = IFNULL(@binlogviz_errno, @binlogviz_seen_errno);\n" +
 		"        SET @binlogviz_applied = 0;\n" +
 		"      END;\n" +
+		"      SET @binlogviz_use_mode = @binlogviz_next_mode;\n" +
+		"      SET @binlogviz_next_mode = NULL;\n" +
+		"      IF @binlogviz_use_mode IS NOT NULL THEN\n" +
+		"        SET SESSION sql_mode = @binlogviz_use_mode;\n" +
+		"      END IF;\n" +
 		"      PREPARE binlogviz_fb_stmt_x9q FROM @binlogviz_sql;\n" +
 		"      EXECUTE binlogviz_fb_stmt_x9q;\n" +
 		"      DEALLOCATE PREPARE binlogviz_fb_stmt_x9q;\n" +
@@ -219,18 +220,6 @@ func ProcedureSQL() string {
 		"    IF NOT (@binlogviz_xa <=> 1) THEN\n" +
 		"      SET SESSION TRANSACTION READ ONLY;\n" +
 		"    END IF;\n" +
-		"  ELSEIF @binlogviz_mode <=> 3 THEN\n" +
-		"    BEGIN\n" +
-		"      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION\n" +
-		"      BEGIN\n" +
-		"        SET @binlogviz_applied = 0;\n" +
-		"      END;\n" +
-		"      IF @binlogviz_txn <=> 1 AND @binlogviz_ok <=> '" + guardTokenMark + "' THEN\n" +
-		"        DO 0;\n" +
-		"      ELSE\n" +
-		"        SET SESSION TRANSACTION READ ONLY;\n" +
-		"      END IF;\n" +
-		"    END;\n" +
 		"  ELSE\n" +
 		"    IF @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN\n" +
 		"      BEGIN\n" +
@@ -349,6 +338,14 @@ func writeRaw(write func(string) error, digest *string, raw string) error {
 	*digest = sha256hex(*digest + raw)
 	if err := write(raw); err != nil {
 		return err
+	}
+	// A payload with no newline is one physical line. The break after it is
+	// not part of the payload, so the quote needs no backslash. The mode
+	// strip is parsed while NO_BACKSLASH_ESCAPES may still be on.
+	if !strings.HasSuffix(raw, "\n") {
+		if err := write("\n"); err != nil {
+			return err
+		}
 	}
 	return write(appliedCheckSQL + "\n")
 }
@@ -593,11 +590,24 @@ func rewriteRawPiece(w io.Writer, br *bufio.Reader, token, nonce string) (string
 		if _, err := io.WriteString(w, rewritten); err != nil {
 			return "", err
 		}
+		if !strings.HasSuffix(rewritten, "\n") {
+			if _, err := io.WriteString(w, "\n"); err != nil {
+				return "", err
+			}
+		}
 		if _, err := io.CopyN(io.Discard, br, int64(len(payload))); err != nil {
 			return "", err
 		}
-	} else if _, err := io.CopyN(w, br, int64(len(payload))); err != nil {
-		return "", err
+		if err := copyRawBreak(io.Discard, br, payload); err != nil {
+			return "", err
+		}
+	} else {
+		if _, err := io.CopyN(w, br, int64(len(payload))); err != nil {
+			return "", err
+		}
+		if err := copyRawBreak(w, br, payload); err != nil {
+			return "", err
+		}
 	}
 	applied, err := readScriptLine(br)
 	if err != nil {
@@ -610,6 +620,20 @@ func rewriteRawPiece(w io.Writer, br *bufio.Reader, token, nonce string) (string
 		return "", err
 	}
 	return rewritten, nil
+}
+
+// copyRawBreak copies the line break that writeRaw adds after a payload
+// that does not itself end in a newline. That break is not part of the digest.
+func copyRawBreak(w io.Writer, br *bufio.Reader, payload string) error {
+	if strings.HasSuffix(payload, "\n") {
+		return nil
+	}
+	b, err := br.ReadByte()
+	if err != nil || b != '\n' {
+		return fmt.Errorf("guard: apply raw piece")
+	}
+	_, err = w.Write([]byte{'\n'})
+	return err
 }
 
 func writeApplyTrailer(w io.Writer, digest, token, nonce string) error {
@@ -927,6 +951,12 @@ func (p *scrReader) rawPiece() (string, error) {
 	}
 	if string(buf) != payload {
 		return "", &VerifyError{Reason: "digest_mismatch"}
+	}
+	if !strings.HasSuffix(payload, "\n") {
+		b, err := p.br.ReadByte()
+		if err != nil || b != '\n' {
+			return "", &VerifyError{Reason: "truncated"}
+		}
 	}
 	ok, err := p.hasLine(appliedCheckSQL)
 	if err != nil {

@@ -152,7 +152,7 @@ func TestTokenMismatchIsAnErrorCondition(t *testing.T) {
 		t.Fatalf("row condition: %s", g.RowCond())
 	}
 	gate := g.BlockGate()
-	if !strings.Contains(gate, guardTokenMark) || !strings.Contains(gate, "SET @binlogviz_mode = 3;") || strings.Contains(gate, "COMMIT") {
+	if !strings.Contains(gate, guardTokenMark) || !strings.Contains(gate, "SET SESSION TRANSACTION READ ONLY") || strings.Contains(gate, "COMMIT") || strings.Contains(gate, "CALL ") {
 		t.Fatalf("gate %q", gate)
 	}
 	if !strings.Contains(ProcedureSQL(), "SET SESSION TRANSACTION READ ONLY") || strings.Contains(ProcedureSQL(), "transaction_read_only") {
@@ -287,6 +287,27 @@ func TestPayloadQuoteRoundTrip(t *testing.T) {
 	}
 }
 
+func TestModeStripPayloadHasNoBackslash(t *testing.T) {
+	const stmt = "SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');"
+	script := renderScript(t, New(nil), Piece{Kind: PieceRaw, Text: stmt})
+	if strings.Contains(script, `\`) {
+		t.Fatalf("mode strip payload uses a backslash:\n%s", script)
+	}
+	if !strings.Contains(script, "''NO_BACKSLASH_ESCAPES''") {
+		t.Fatalf("mode strip payload:\n%s", script)
+	}
+	if _, err := Verify(strings.NewReader(script)); err != nil {
+		t.Fatal(err)
+	}
+	applied, err := ApplySQL(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(applied, `\`) {
+		t.Fatalf("applied mode strip uses a backslash:\n%s", applied)
+	}
+}
+
 func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
 	body := ProcedureSQL()
 	// ERROR 1357: a procedure cannot drop itself. The opening DROP is the
@@ -296,6 +317,9 @@ func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
 	}
 	if !strings.Contains(body, "CONTINUE HANDLER FOR SQLEXCEPTION") || !strings.Contains(body, "XA ROLLBACK '"+guardTokenMark+"'") {
 		t.Fatal("statement errors must be handled, and rollback stays on the token")
+	}
+	if !strings.Contains(body, "SET SESSION sql_mode = @binlogviz_use_mode;") || !strings.Contains(body, "SET @binlogviz_next_mode = NULL;") {
+		t.Fatal("mode 0 must apply a client-computed sql_mode and then clear it")
 	}
 	if !strings.Contains(UndoOpenSQL(), "SET @binlogviz_mode = 1;") {
 		t.Fatal("XA START must run inside the procedure")

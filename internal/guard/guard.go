@@ -49,10 +49,13 @@ func (g Guard) BlockGate() string {
 	if g.header == "" {
 		return ""
 	}
-	// Mode 3 of the finish procedure. PREPARE cannot wrap this, and a second
-	// routine would be another leftover. The procedure drops itself only on
-	// the rollback path; this call does not.
-	return "SET @binlogviz_mode = 3;\nCALL binlogviz.binlogviz_fb_end_" + guardTokenMark + "();\n" + appliedCheckSQL + "\n"
+	// Client SQL, not a CALL. A block cut off from the header has no procedure,
+	// and the session must still be read-only. PREPARE cannot wrap this.
+	return "SET @binlogviz_gate_sql = IF(@binlogviz_txn <=> 1 AND @binlogviz_ok <=> '" + guardTokenMark + "', 'DO 0', 'SET SESSION TRANSACTION READ ONLY');\n" +
+		"PREPARE binlogviz_fb_gate FROM @binlogviz_gate_sql;\n" +
+		"EXECUTE binlogviz_fb_gate;\n" +
+		"DEALLOCATE PREPARE binlogviz_fb_gate;\n" +
+		appliedCheckSQL + "\n"
 }
 
 // RowCond is added to every undo statement. A token that does not match this

@@ -759,14 +759,21 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 	// it. Later payloads may use backslash escapes.
 	// These run before CREATE PROCEDURE, so they cannot CALL it. A failure
 	// here leaves no procedure.
-	for _, stmt := range []string{
+	for i, stmt := range []string{
 		"SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '')",
 		"SET NAMES utf8mb4",
 		"SET time_zone = '+00:00'",
 		"SET @binlogviz_bad = NULL",
 		"SET @binlogviz_txn = 0",
+		"SET @binlogviz_next_mode = NULL",
 	} {
-		if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: stmt + ";\n"}); err != nil {
+		text := stmt + ";\n"
+		// A newline in this payload is quoted with a backslash. The mode
+		// strip is first and may run while NO_BACKSLASH_ESCAPES is still on.
+		if i == 0 {
+			text = stmt + ";"
+		}
+		if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: text}); err != nil {
 			return err
 		}
 	}
@@ -836,6 +843,15 @@ func emitSQL(emit func(guard.Piece) error, sql string) error {
 		b.Reset()
 		if s == "" {
 			return nil
+		}
+		// A routine runs with the sql_mode stored at CREATE PROCEDURE, so a
+		// SET of sql_mode has to read @@SESSION.sql_mode here, at the client.
+		// Mode 0 applies @binlogviz_next_mode inside the same CALL as the undo.
+		if strings.HasPrefix(s, "SET ") && strings.Contains(s, "sql_mode") {
+			if !strings.HasSuffix(s, ";") {
+				s += ";"
+			}
+			return emit(guard.Piece{Kind: guard.PieceRaw, Text: s + "\n"})
 		}
 		return emit(guard.Piece{Kind: guard.PieceStmt, Text: s})
 	}
@@ -1029,19 +1045,16 @@ func omittedGeneratedNull(columns, values []string, gen map[string]struct{}) boo
 	return false
 }
 
-// sqlModeWrap runs one statement with the listed sql_mode flags removed and
-// restores the session mode immediately after it. @binlogviz_sql_mode holds
-// the mode that was in effect, including the script's earlier
-// NO_BACKSLASH_ESCAPES removal.
+// sqlModeWrap names the sql_mode for one statement. The client computes it
+// from the real session mode. Mode 0 applies @binlogviz_next_mode for that
+// CALL only: a routine ignores a session sql_mode set before CALL, and MySQL
+// restores the session mode when the routine returns.
 func sqlModeWrap(statement string, drops []string) string {
 	expr := "CONCAT(',', @@SESSION.sql_mode, ',')"
 	for _, flag := range drops {
 		expr = "REPLACE(" + expr + ", '," + flag + ",', ',')"
 	}
-	return "SET @binlogviz_sql_mode = @@SESSION.sql_mode;\n" +
-		"SET SESSION sql_mode = TRIM(BOTH ',' FROM " + expr + ");\n" +
-		statement + "\n" +
-		"SET SESSION sql_mode = @binlogviz_sql_mode;"
+	return "SET @binlogviz_next_mode = TRIM(BOTH ',' FROM " + expr + ");\n" + statement
 }
 
 func assignColumns(columns, values []string, gen map[string]struct{}) ([]string, []string) {
