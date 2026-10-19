@@ -6,7 +6,7 @@ This file records user-visible changes for tagged releases.
 
 ### Added
 
-- `binlogviz analyze --diagnostics full|summary|off` (default `full`) shrinks `analyze --format json`. `summary` keeps coverage, counts, the DDL timeline, open uncommitted groups, and duration buckets, and empties the transaction rankings and the other diagnostics lists already present at the top level. `off` omits `diagnostics`. Text, Markdown, and HTML are unchanged. `report_version` stays 3 (ADR 0011, #282).
+- `binlogviz analyze --diagnostics full|summary|off` (default `full`) shrinks `analyze --format json`. `summary` keeps coverage, counts, the DDL timeline, open uncommitted groups, and duration buckets, and empties the transaction rankings and the other diagnostics lists already present at the top level. `off` omits `diagnostics`. Text, Markdown, and HTML are unchanged. `report_version` stays 3 (ADR 0011, #282). The flag trims stdout only: a trimmed document carries `diagnostics_mode`, `--snapshot-name` and workflow artifacts always keep full diagnostics, and compare, trend, and `snapshot save` refuse a trimmed document with exit 9 (`reduced_diagnostics`) rather than reporting deltas against omitted lists.
 - A transaction alert in analyze JSON carries `gtid` when that transaction has one, the same string as `transactions[].gtid`, so an agent can pass it to `flashback --include-gtids` without joining on `txn_key`. `message` and `txn_key` are unchanged (ADR 0011, #282).
 
 ## v0.27.0

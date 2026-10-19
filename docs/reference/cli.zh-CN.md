@@ -106,7 +106,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本，也不输出 `--show-rows` 的单元格）或 `full`（存储 SQL，含 DDL 语句文本，上限 4096 字节，截断时带标记）。MySQL 和 MariaDB 账号 DDL 里的口令字面量在任何模式下都会打码。 |
-| `--diagnostics` | `full` | `analyze --format json` 里 `diagnostics` 写多少。`full` 是现在的对象。`summary` 保留覆盖、计数、DDL 时间线、未提交组和时长分桶，并把事务排行、文件分段、热点时段和 findings 置空（这些已经在 `transactions`、`timeseries`、`minutes` 和 `alerts` 里）。`off` 省略 `diagnostics`。文本、Markdown 和 HTML 忽略此标志。保存的快照就是写出的那份 JSON。 |
+| `--diagnostics` | `full` | `analyze --format json` 里 `diagnostics` 写多少。`full` 是现在的对象。`summary` 保留覆盖、计数、DDL 时间线、未提交组和时长分桶，并把事务排行、文件分段、热点时段和 findings 置空（这些已经在 `transactions`、`timeseries`、`minutes` 和 `alerts` 里）。`off` 省略 `diagnostics`。文本、Markdown 和 HTML 忽略此标志。裁剪后的文档带 `"diagnostics_mode": "summary"` 或 `"off"`。它只限制 stdout 的大小：`--snapshot-name` 保存的快照始终是完整的 diagnostics；compare、trend 和 `snapshot save` 会拒绝裁剪过的文档（exit 9，`reduced_diagnostics`）。 |
 | `--top-tables` | `10` | 人类可读报告中显示的 Top 表数量；JSON 保留全部表聚合结果。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量；`0` 表示不限制。 |
 | `--top-threads` | 继承 `--top` | 所有格式中的热点线程或会话数量；`0` 表示不限制。 |

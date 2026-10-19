@@ -1,6 +1,6 @@
 // Package compare loads and validates compare input reports.
 // input: filesystem paths or bytes containing BinlogViz report-v0-v3 JSON.
-// output: validated InputReport values with legacy missing completeness normalized to unknown, or explicit read/decode/shape errors.
+// output: validated InputReport values with legacy missing completeness normalized to unknown, or explicit read/decode/shape errors; a report marked diagnostics_mode summary|off is unsupported (9, reduced_diagnostics).
 // pos: compare command ingress before diff construction and rendering.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -15,12 +15,13 @@ import (
 const currentSupportedReportVersion = 3
 
 type rawInputReport struct {
-	ReportVersion *int                   `json:"report_version"`
-	Summary       *rawInputSummary       `json:"summary"`
-	Tables        *[]rawInputTable       `json:"tables"`
-	Transactions  *[]rawInputTransaction `json:"transactions"`
-	Alerts        *[]json.RawMessage     `json:"alerts"`
-	Warnings      *int                   `json:"warnings"`
+	ReportVersion   *int                   `json:"report_version"`
+	DiagnosticsMode *string                `json:"diagnostics_mode"`
+	Summary         *rawInputSummary       `json:"summary"`
+	Tables          *[]rawInputTable       `json:"tables"`
+	Transactions    *[]rawInputTransaction `json:"transactions"`
+	Alerts          *[]json.RawMessage     `json:"alerts"`
+	Warnings        *int                   `json:"warnings"`
 }
 
 type rawInputSummary struct {
@@ -88,10 +89,24 @@ func reportVersion(report rawInputReport) int {
 	return *report.ReportVersion
 }
 
+// ReasonReducedDiagnostics is details.reason when a report was trimmed by
+// analyze --diagnostics summary|off (ADR 0011 §3).
+const ReasonReducedDiagnostics = "reduced_diagnostics"
+
 func validateRawInputReport(report rawInputReport) error {
 	version := reportVersion(report)
 	if version < 0 || version > currentSupportedReportVersion {
 		return clierr.Errorf(clierr.KindUnsupported, "unsupported report_version %d: this BinlogViz build supports up to %d", version, currentSupportedReportVersion)
+	}
+	// A document analyze marked as reduced lacks diagnostics only because of
+	// the stdout size budget. Comparing it would read omitted lists as empty
+	// and report deltas that are not real, so it is refused. A report without
+	// the marker keeps the old behaviour: missing or empty lists are empty.
+	if report.DiagnosticsMode != nil && *report.DiagnosticsMode != "full" {
+		mode := *report.DiagnosticsMode
+		refused := clierr.Errorf(clierr.KindUnsupported, "report has diagnostics_mode %q: analyze --diagnostics trimmed it, and compare, trend and snapshots need full diagnostics. Re-run analyze without --diagnostics, or use a snapshot saved with --snapshot-name", mode).(*clierr.Error)
+		refused.Details = map[string]any{"reason": ReasonReducedDiagnostics, "diagnostics_mode": mode}
+		return refused
 	}
 	if report.Summary == nil || report.Tables == nil || report.Alerts == nil || report.Warnings == nil {
 		return clierr.New(clierr.KindCorrupt, "corrupt BinlogViz report: missing required fields")

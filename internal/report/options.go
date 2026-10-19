@@ -1,6 +1,6 @@
 // Package report defines presentation controls for text, JSON, markdown, and HTML analysis output.
 // input: CLI-selected presentation options and analyzer-produced complete analysis results.
-// output: normalized report rendering options with validated SQL context modes, diagnostics modes, and output formats.
+// output: normalized report rendering options with validated SQL context modes, diagnostics modes, output formats, and full-diagnostics archive options.
 // pos: renderer configuration layer between command flag parsing and text/JSON/markdown/HTML serializers.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -77,6 +77,14 @@ type Options struct {
 // DefaultOptions returns the backwards-compatible report presentation defaults.
 func DefaultOptions() Options {
 	return Options{SQLContextMode: SQLContextSummary, DiagnosticsMode: DiagnosticsFull, TopN: DefaultTopN, TopTables: DefaultTopN}
+}
+
+// ArchiveOptions returns opts with full diagnostics. A snapshot or workflow
+// artifact is an archive that compare and trend read later, so it never
+// takes the stdout --diagnostics budget (ADR 0011 §3).
+func ArchiveOptions(opts Options) Options {
+	opts.DiagnosticsMode = DiagnosticsFull
+	return opts
 }
 
 // ParseDiagnosticsMode validates a CLI-provided diagnostics mode.

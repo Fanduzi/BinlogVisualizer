@@ -1276,7 +1276,8 @@ func runWorkflowAnalyzeWindow(
 	result.Snapshot = resolveAnalyzeSnapshotMetadata(snapshotMeta, result.Summary)
 
 	// Render to JSON
-	payload, err := report.RenderJSONWithOptions(*result, reportOpts)
+	// Workflow artifacts and snapshots are archives: always full diagnostics (ADR 0011 §3).
+	payload, err := report.RenderJSONWithOptions(*result, report.ArchiveOptions(reportOpts))
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()

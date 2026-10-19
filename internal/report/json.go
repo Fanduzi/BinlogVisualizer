@@ -1,6 +1,6 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with explicit workload identity, canonical scope, provenance/selector evidence, SQL context, and snapshot presentation controls.
-// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional replica apply delay, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, snapshots, alerts[].gtid when a transaction has one, and diagnostics omitted or reduced when --diagnostics says so.
+// output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional replica apply delay, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, snapshots, alerts[].gtid when a transaction has one, and diagnostics omitted or reduced, with a diagnostics_mode marker, when --diagnostics says so.
 // pos: JSON serializer for the CLI output path after analyzer Finalize.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -29,6 +29,7 @@ type jsonAnalysisResult struct {
 	SQLContext          jsonSQLContext         `json:"sql_context"`
 	Summary             jsonSummary            `json:"summary"`
 	Timeseries          jsonTimeseries         `json:"timeseries"`
+	DiagnosticsMode     DiagnosticsMode        `json:"diagnostics_mode,omitempty"`
 	Diagnostics         *jsonDiagnostics       `json:"diagnostics,omitempty"`
 	Tables              []jsonTableStats       `json:"tables"`
 	Threads             []jsonThreadStats      `json:"threads"`
@@ -495,6 +496,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		SQLContext:          jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
 		Summary:             convertSummary(result.Summary),
 		Timeseries:          convertTimeseries(result.Timeseries),
+		DiagnosticsMode:     reducedDiagnosticsMode(opts.DiagnosticsMode),
 		Diagnostics:         convertDiagnostics(result.Diagnostics, opts),
 		Tables:              convertTables(result.Tables),
 		Threads:             convertThreads(threads),
@@ -620,6 +622,15 @@ func convertTxnSizeBuckets(buckets []model.TxnSizeBucket) []jsonTxnSizeBucket {
 		}
 	}
 	return result
+}
+
+// reducedDiagnosticsMode is the diagnostics_mode marker: set only for
+// summary and off, so a full document stays byte-identical (ADR 0011 §3).
+func reducedDiagnosticsMode(mode DiagnosticsMode) DiagnosticsMode {
+	if mode == DiagnosticsFull || mode == "" {
+		return ""
+	}
+	return mode
 }
 
 func convertDiagnostics(diagnostics model.Diagnostics, opts Options) *jsonDiagnostics {

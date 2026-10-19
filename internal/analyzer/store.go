@@ -149,6 +149,7 @@ type alertRow struct {
 	Minute      time.Time
 	Message     string
 	DetailsJSON string
+	GTID        string
 }
 
 func estimateStringBytes(v string) int {
