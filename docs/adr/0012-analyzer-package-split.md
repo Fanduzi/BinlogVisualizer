@@ -89,9 +89,9 @@ flashback and analyzer both consume rowstream once it exists
 - `type Col struct { Schema, Table, Column string }`
 - `New(cols []Col) Guard`
 - `Header() string`, `BlockLock() string`, `RowCond() string`, `Seal(script string) string`
-- `SealWriter(w io.Writer, sum []byte) func(string) error`
+- `SealWriter(w io.Writer, sum []byte) (func(string) error, error)`
 
-`Seal` replaces the placeholder in a finished script. The planner does not call it. It renders twice (ADR 0008): once into a sha256, then once through `SealWriter`, so the script is not buffered. `sum` is that digest, the same one `Seal` computes. The placeholder stays inside the guard. The first draft of this list had only `Seal`, which would make the planner buffer the script or learn the placeholder.
+`Seal` replaces the placeholder in a finished script. The planner does not call it. It renders twice (ADR 0008): once into a sha256, then once through `SealWriter`, so the script is not buffered. `sum` is that digest, the same one `Seal` computes. A digest shorter than 8 bytes is an error (#319). The placeholder stays inside the guard. The first draft of this list had only `Seal`, which would make the planner buffer the script or learn the placeholder.
 
 `flashback.Planner` (the type that takes the `flash*` fields off `*Analyzer`):
 

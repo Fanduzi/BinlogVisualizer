@@ -126,7 +126,7 @@ func (a *Planner) WriteTo(w io.Writer) (int64, error) {
 	return int64(n), err
 }
 
-func sealOut(g guard.Guard, w io.Writer, sum []byte) writerFunc {
+func sealOut(g guard.Guard, w io.Writer, sum []byte) (writerFunc, error) {
 	return g.SealWriter(w, sum)
 }
 
@@ -717,7 +717,11 @@ func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) er
 	if err := renderFlashbackTo(toWriter(h), backward, notes, guard, postImage); err != nil {
 		return err
 	}
-	return renderFlashbackTo(sealOut(guard, w, h.Sum(nil)), backward, notes, guard, postImage)
+	sealed, err := sealOut(guard, w, h.Sum(nil))
+	if err != nil {
+		return err
+	}
+	return renderFlashbackTo(sealed, backward, notes, guard, postImage)
 }
 
 func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, guard guard.Guard, postImage bool) error {

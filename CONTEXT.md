@@ -61,7 +61,7 @@ The flashback module that answers which table definition applies to a binlog `db
 _Avoid_: generatedTables (its old name), schema binding, label rewrite
 
 **Apply guard**:
-The SQL a flashback script runs before its first transaction when it omits generated columns: it checks those columns are GENERATED on the target, cuts the mismatch message to whole names within MySQL's 200-byte sql_mode value, and leaves the session read-only unless the check matched; each block repeats the lock and each undo statement checks the script's token. One module, `internal/guard` (`New`, header, block lock, row condition, token seal, streaming seal); the planner in `internal/flashback` walks spilled rows and passes the omitted columns. The message cut exists only in the emitted SQL and is tested by running it on MySQL. See ADR-0006 and ADR-0012.
+The SQL a flashback script runs before its first transaction when it omits generated columns: it checks those columns are GENERATED on the target, cuts the mismatch message to whole names within MySQL's 200-byte sql_mode value, and leaves the session read-only unless the check matched; each block repeats the lock and each undo statement checks the script's token. One module, `internal/guard` (`New`, header, block lock, row condition, token seal, streaming seal). A digest shorter than 8 bytes is an error. The planner in `internal/flashback` walks spilled rows and passes the omitted columns. The message cut exists only in the emitted SQL and is tested by running it on MySQL. See ADR-0006 and ADR-0012.
 _Avoid_: guard twin, guardErrorValue (removed Go copy of the cut)
 
 **Expression evaluator**:
