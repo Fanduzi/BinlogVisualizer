@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.30.0 — streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.31.0 — flashback scripts commit only through binlogviz flashback verify, streaming verify</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.30.0</div>
+                  <div class="release-version">v0.31.0</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">minor release</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split</div>
-                <div class="release-copy" data-i18n="releases.items.v0300">ADR 0012 steps 1-4 move mysqlexpr, schemacatalog, guard, and the flashback planner into their own packages (#315, #316, #320); analyze and flashback output stay byte-identical to v0.29.0 on the tip-QA corpora. Generated-column review with --schema-file streams: on a 1.07 GB binlog that produced a 1.13 GB script, tip RSS is about 128 MB where v0.29.0 OOMed with exit 2 (#317). Exit 10 resource (details.reason spill_limit / memory_limit) and BINLOGVIZ_SPILL_BYTES never report a ceiling as exit 2. guard.Seal refuses a digest under 8 bytes (#319). Known issues: #303 (Linux empty commit), #321 (truncated exit-8 script can partially apply), #318 (guard token does not detect content edits).</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.30.0/docs/releases/release-notes-v0.30.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">flashback scripts commit only through binlogviz flashback verify, streaming verify</div>
+                <div class="release-copy" data-i18n="releases.items.v0310">Breaking for flashback apply: ADR 0013 makes the published undo one transaction that never commits by itself; apply with binlogviz flashback verify file.sql | mysql, not mysql &lt; file (#318, #321). verify checks the digest and emits the conditional COMMIT; partial, edited, appended, or truncated scripts exit 6 and commit nothing, and generation exit 8 leaves no applyable prefix. Invalid BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES exit 3. verify streams: RSS about 34-41 MB on 400 MB+ scripts, heap ceiling exit 10 (#327). The SQL is the new sealed format; plan_version 2 and analyze output are unchanged. Known issues: #328 (verify | mysql --force can commit partial undo on a missing table or column), #329 (implicit commit after the script), #303 (Linux empty commit).</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.31.0/docs/releases/release-notes-v0.31.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.30.0</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0300">streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0300">ADR 0012 steps 1-4 move mysqlexpr, schemacatalog, guard, and the flashback planner into their own packages (#315, #316, #320); analyze and flashback output stay byte-identical to v0.29.0 on the tip-QA corpora. Generated-column review with --schema-file streams: on a 1.07 GB binlog that produced a 1.13 GB script, tip RSS is about 128 MB where v0.29.0 OOMed with exit 2 (#317). Exit 10 resource (details.reason spill_limit / memory_limit) and BINLOGVIZ_SPILL_BYTES never report a ceiling as exit 2. guard.Seal refuses a digest under 8 bytes (#319). Known issues: #303 (Linux empty commit), #321 (truncated exit-8 script can partially apply), #318 (guard token does not detect content edits).</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.30.0/docs/releases/release-notes-v0.30.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0300">Open v0.30.0 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.29.0</div>
@@ -1933,7 +1941,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.30.0 — streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split',
+            badge: 'v0.31.0 — flashback scripts commit only through binlogviz flashback verify, streaming verify',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'Fast ROW-binlog summary: hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.\nSTATEMENT or MIXED files come back empty or undercounted. Printed positions are file evidence — use them as mysqlbinlog --start-position only when the span covers the transaction events, not an XID-only interval.',
             primary: 'Install BinlogViz',
@@ -2037,9 +2045,10 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
             currentFocus: 'minor release',
-            currentTitle: 'streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split',
+            currentTitle: 'flashback scripts commit only through binlogviz flashback verify, streaming verify',
             currentLink: 'Read release notes →',
             labels: {
+              v0300: 'streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split',
               v0290: 'summary DDL cap, snapshot list flags trimmed files, --help examples and an agent guide in the archive',
               v0280: 'analyze --diagnostics budget for agents, GTID on transaction alerts, trimmed reports refused',
               v0270: 'every JSON output versioned, workflow refuses unknown artifacts, version shows the commit',
@@ -2094,6 +2103,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: 'Trust boundary'
             },
             links: {
+              v0300: 'Open v0.30.0 notes →',
               v0290: 'Open v0.29.0 notes →',
               v0280: 'Open v0.28.0 notes →',
               v0270: 'Open v0.27.0 notes →',
@@ -2152,6 +2162,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v0310: 'Breaking for flashback apply: ADR 0013 makes the published undo one transaction that never commits by itself; apply with binlogviz flashback verify file.sql | mysql, not mysql < file (#318, #321). verify checks the digest and emits the conditional COMMIT; partial, edited, appended, or truncated scripts exit 6 and commit nothing, and generation exit 8 leaves no applyable prefix. Invalid BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES exit 3. verify streams: RSS about 34-41 MB on 400 MB+ scripts, heap ceiling exit 10 (#327). The SQL is the new sealed format; plan_version 2 and analyze output are unchanged. Known issues: #328 (verify | mysql --force can commit partial undo on a missing table or column), #329 (implicit commit after the script), #303 (Linux empty commit).',
               v0300: 'ADR 0012 steps 1-4 move mysqlexpr, schemacatalog, guard, and the flashback planner into their own packages (#315, #316, #320); analyze and flashback output stay byte-identical to v0.29.0 on the tip-QA corpora. Generated-column review with --schema-file streams: on a 1.07 GB binlog that produced a 1.13 GB script, tip RSS is about 128 MB where v0.29.0 OOMed with exit 2 (#317). Exit 10 resource (details.reason spill_limit / memory_limit) and BINLOGVIZ_SPILL_BYTES never report a ceiling as exit 2. guard.Seal refuses a digest under 8 bytes (#319). Known issues: #303 (Linux empty commit), #321 (truncated exit-8 script can partially apply), #318 (guard token does not detect content edits).',
               v0290: 'Breaking for --diagnostics summary only: diagnostics.ddl_events is the first --top events and ddl_events_omitted counts the rest; on a 1.07 GB binlog summary drops from 42759 to 32632 bytes. Default and full output is byte-identical, report_version 3 (ADR 0011, #308, #311). snapshot list marks a trimmed file with a DIAGNOSTICS column and diagnostics_mode in JSON, diagnostics_mode edge values are pinned, and --diagnostics "" exits 3. Six commands have --help examples, flashback --sql-context help is rewritten, and release archives ship the agent usage guide and both READMEs. Known issues: #303 (Linux binaries report an empty commit) and #312.',
               v0280: 'analyze --diagnostics full|summary|off shrinks analyze JSON for agents; the default full is unchanged, and on a 1.07 GB binlog stdout is 63042, 42759 and 22627 bytes (ADR 0011, #282, #307). A transaction alert carries its gtid, ready for flashback --include-gtids. Snapshots and workflow artifacts always keep full diagnostics, and compare, trend, snapshot save and show, and workflow resume refuse a trimmed report with exit 9 (reduced_diagnostics) instead of comparing omitted lists as empty. No breaking changes: report_version 3 and plan_version 2. Known issues: #303 (Linux binaries report an empty commit) and #308.',
@@ -2270,7 +2281,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.30.0 —— 流式生成列 flashback、退出码 10 资源上限、ADR 0012 包拆分',
+            badge: 'v0.31.0 —— flashback 脚本只能经 binlogviz flashback verify 提交、流式 verify',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'ROW binlog 的快速摘要：热表、写入形态、上线前后 compare。510 MB 级大约数秒。\nSTATEMENT / MIXED 会空或少计。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 mysqlbinlog --start-position。',
             primary: '安装 BinlogViz',
@@ -2374,9 +2385,10 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
             currentFocus: '次版本',
-            currentTitle: '流式生成列 flashback、退出码 10 资源上限、ADR 0012 包拆分',
+            currentTitle: 'flashback 脚本只能经 binlogviz flashback verify 提交、流式 verify',
             currentLink: '查看发布说明 →',
             labels: {
+              v0300: '流式生成列 flashback、退出码 10 资源上限、ADR 0012 包拆分',
               v0290: 'summary 的 DDL 上限、snapshot list 标出裁剪过的文件、--help 示例和归档内的 agent 指南',
               v0280: 'analyze --diagnostics 为 agent 限制输出大小、事务告警带 GTID、拒绝裁剪过的报告',
               v0270: '所有 JSON 输出带版本号、workflow 拒绝未知产物、version 显示 commit',
@@ -2431,6 +2443,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: '信任边界'
             },
             links: {
+              v0300: '打开 v0.30.0 说明 →',
               v0290: '打开 v0.29.0 说明 →',
               v0280: '打开 v0.28.0 说明 →',
               v0270: '打开 v0.27.0 说明 →',
@@ -2489,6 +2502,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v0310: 'flashback 执行方式不兼容：ADR 0013 让发布的撤销脚本成为一个永不自行提交的事务；请用 binlogviz flashback verify file.sql | mysql 执行，而不是 mysql < file（#318、#321）。verify 校验 digest 并输出条件 COMMIT；截断、篡改、追加的脚本以退出码 6 拒绝且什么也不提交，生成时退出码 8 不留可执行前缀。无效的 BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES 退出码 3。verify 改为流式：400 MB 以上脚本 RSS 约 34–41 MB，堆上限退出码 10（#327）。SQL 是新的封印格式；plan_version 2 和 analyze 输出不变。已知问题：#328（目标缺表或缺列时 verify | mysql --force 可能提交部分撤销）、#329（脚本后的隐式提交）、#303（Linux commit 为空）。',
               v0300: 'ADR 0012 第 1–4 步把 mysqlexpr、schemacatalog、guard 和 flashback 规划器拆到独立包（#315、#316、#320）；在 tip QA 语料上 analyze 和 flashback 输出与 v0.29.0 逐字节一致。带 --schema-file 的生成列审阅改为流式：在会生成 1.13 GB 脚本的 1.07 GB binlog 上，tip RSS 约 128 MB，而 v0.29.0 以退出码 2 OOM（#317）。退出码 10 resource（details.reason 为 spill_limit / memory_limit）和 BINLOGVIZ_SPILL_BYTES，不会再把上限报成退出码 2。guard.Seal 拒绝短于 8 字节的 digest（#319）。已知问题：#303（Linux commit 为空）、#321（退出码 8 截断的脚本仍可能部分执行）、#318（守卫 token 不检测内容篡改）。',
               v0290: '仅对 --diagnostics summary 不兼容：diagnostics.ddl_events 只保留前 --top 条，ddl_events_omitted 统计其余条数；在 1.07 GB 的 binlog 上 summary 从 42759 字节降到 32632 字节。默认和 full 输出逐字节不变，report_version 3（ADR 0011、#308、#311）。snapshot list 用 DIAGNOSTICS 列和 JSON 中的 diagnostics_mode 标出裁剪过的文件，diagnostics_mode 的异常取值有了明确处理，--diagnostics "" 以退出码 3 结束。六个命令的 --help 带示例，flashback --sql-context 的帮助重写，release 归档附带 agent 使用指南和两份 README。已知问题：#303（Linux 二进制报告的 commit 为空）和 #312。',
               v0280: 'analyze --diagnostics full|summary|off 为 agent 缩小 analyze 的 JSON；默认 full 不变，在 1.07 GB 的 binlog 上 stdout 分别是 63042、42759 和 22627 字节（ADR 0011、#282、#307）。事务告警带上 gtid，可以直接交给 flashback --include-gtids。快照和 workflow 产物始终保留完整 diagnostics；compare、trend、snapshot save 和 show 以及 workflow resume 遇到裁剪过的报告时以退出码 9（reduced_diagnostics）拒绝，不会把省略的列表当成空列表比较。没有不兼容变更：report_version 3、plan_version 2。已知问题：#303（Linux 二进制报告的 commit 为空）和 #308。',
