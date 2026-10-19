@@ -1,4 +1,4 @@
-package analyzer
+package mysqlexpr
 
 import (
 	"strings"
@@ -45,7 +45,7 @@ func TestEvalGenExprStringsAndJSON(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := evalGenExpr(tc.expr, loggedEnv(nil, nil))
+			got, ok := EvalGenExpr(tc.expr, loggedEnv(nil, nil))
 			if tc.env != nil {
 				cols := make([]string, 0, len(tc.env))
 				vals := make([]string, 0, len(tc.env))
@@ -53,7 +53,7 @@ func TestEvalGenExprStringsAndJSON(t *testing.T) {
 					cols = append(cols, name)
 					vals = append(vals, lit)
 				}
-				got, ok = evalGenExpr(tc.expr, loggedEnv(cols, vals))
+				got, ok = EvalGenExpr(tc.expr, loggedEnv(cols, vals))
 			}
 			if ok != tc.ok {
 				t.Fatalf("ok=%v want %v (%#v)", ok, tc.ok, got)
@@ -79,35 +79,35 @@ func TestEvalGenExprStringsAndJSON(t *testing.T) {
 }
 
 func TestGeneratedExactTypesAndJSONKinds(t *testing.T) {
-	meta := []schemaCol{
-		{name: "e", base: "enum", members: []string{"red", "blue"}, charset: "utf8mb4"},
-		{name: "s", base: "set", members: []string{"a", "b", "c"}, charset: "utf8mb4"},
-		{name: "d", base: "decimal", prec: 10, scale: 2, hasPrec: true},
-		{name: "tm", base: "time", prec: 2, hasPrec: true},
-		{name: "ts", base: "timestamp"},
-		{name: "bin", base: "binary", prec: 8, hasPrec: true},
+	meta := []SchemaCol{
+		{Name: "e", base: "enum", members: []string{"red", "blue"}, charset: "utf8mb4"},
+		{Name: "s", base: "set", members: []string{"a", "b", "c"}, charset: "utf8mb4"},
+		{Name: "d", base: "decimal", prec: 10, scale: 2, hasPrec: true},
+		{Name: "tm", base: "time", prec: 2, hasPrec: true},
+		{Name: "ts", base: "timestamp"},
+		{Name: "bin", base: "binary", prec: 8, hasPrec: true},
 	}
 	env := loggedEnv(
 		[]string{"e", "s", "d", "tm", "ts", "bin"},
 		[]string{"2", "5", "2.00", "'12:00:00.5'", "'2020-01-01 00:00:00'", "X'41'"},
 		meta,
 	)
-	got, ok := evalGenExpr("CONCAT(e, ':', s)", env)
+	got, ok := EvalGenExpr("CONCAT(e, ':', s)", env)
 	if !ok || got.text != "blue:a,c" {
 		t.Fatalf("enum/set concat ok=%v text=%q", ok, got.text)
 	}
-	got, ok = evalGenExpr("CONCAT(d)", env)
+	got, ok = EvalGenExpr("CONCAT(d)", env)
 	if !ok || got.text != "2.00" {
 		t.Fatalf("decimal concat ok=%v text=%q", ok, got.text)
 	}
-	got, ok = evalGenExpr("CONCAT(tm)", env)
+	got, ok = EvalGenExpr("CONCAT(tm)", env)
 	if !ok || got.text != "12:00:00.50" {
 		t.Fatalf("time concat ok=%v text=%q", ok, got.text)
 	}
-	if _, ok = evalGenExpr("CONCAT(ts)", env); ok {
+	if _, ok = EvalGenExpr("CONCAT(ts)", env); ok {
 		t.Fatal("timestamp concat was treated as exact")
 	}
-	got, ok = evalGenExpr("LENGTH(bin)", env)
+	got, ok = EvalGenExpr("LENGTH(bin)", env)
 	if !ok || got.n == nil || got.n.FloatString(0) != "8" {
 		t.Fatalf("binary length ok=%v num=%v", ok, got.n)
 	}
@@ -135,7 +135,7 @@ func TestGeneratedExactTypesAndJSONKinds(t *testing.T) {
 			if !ok || node.nkind != jnDec {
 				t.Fatalf("%s kind %v", tc.in, node)
 			}
-			text, ok := jsonUnquote(genVal{kind: genJSON, j: node})
+			text, ok := jsonUnquote(GenVal{kind: genJSON, j: node})
 			if !ok || text.text != tc.want {
 				t.Fatalf("%s unquote %q ok=%v", tc.in, text.text, ok)
 			}
@@ -151,28 +151,28 @@ func TestGeneratedExactTypesAndJSONKinds(t *testing.T) {
 }
 
 func TestIssue182ListedCases(t *testing.T) {
-	check := func(t *testing.T, col schemaCol, meta []schemaCol, columns, values []string, contradict, unverified bool) {
+	check := func(t *testing.T, col SchemaCol, meta []SchemaCol, columns, values []string, contradict, unverified bool) {
 		t.Helper()
-		example, unknown := generatedColumnOutcome(col, []loggedImage{{columns: columns, values: values}}, meta)
+		example, unknown := generatedColumnOutcome(col, []LoggedImage{{Columns: columns, Values: values}}, meta)
 		if contradict {
 			if example == "" {
-				t.Fatalf("%s: expected a contradiction, unverified=%v", col.expr, unknown)
+				t.Fatalf("%s: expected a contradiction, unverified=%v", col.Expr, unknown)
 			}
 			return
 		}
 		if example != "" {
-			t.Fatalf("%s: false refusal: %s", col.expr, example)
+			t.Fatalf("%s: false refusal: %s", col.Expr, example)
 		}
 		if unknown != unverified {
-			t.Fatalf("%s: unverified=%v want %v", col.expr, unknown, unverified)
+			t.Fatalf("%s: unverified=%v want %v", col.Expr, unknown, unverified)
 		}
 	}
-	varchar := func(name, expr string, prec int) schemaCol {
-		return schemaCol{name: name, base: "varchar", expr: expr, charset: "utf8mb4", prec: prec, hasPrec: prec > 0}
+	varchar := func(name, expr string, prec int) SchemaCol {
+		return SchemaCol{Name: name, base: "varchar", Expr: expr, charset: "utf8mb4", prec: prec, hasPrec: prec > 0}
 	}
-	jsonNull := []schemaCol{{name: "j", base: "json"}, varchar("g", "j->>'$.v'", 64)}
+	jsonNull := []SchemaCol{{Name: "j", base: "json"}, varchar("g", "j->>'$.v'", 64)}
 	check(t, jsonNull[1], jsonNull, []string{"j", "g"}, []string{"JSON_OBJECT('v', NULL)", "'null'"}, false, false)
-	jsonBig := []schemaCol{{name: "j", base: "json"}, {name: "g", base: "bigint", expr: "j->>'$.v'"}}
+	jsonBig := []SchemaCol{{Name: "j", base: "json"}, {Name: "g", base: "bigint", Expr: "j->>'$.v'"}}
 	check(t, jsonBig[1], jsonBig, []string{"j", "g"}, []string{"JSON_OBJECT('v', NULL)", "0"}, false, true)
 
 	for _, tc := range []struct{ lit, stored string }{
@@ -187,63 +187,63 @@ func TestIssue182ListedCases(t *testing.T) {
 		{"1.5e300", "1.5e300"},
 		{"3.14159265358979e+00", "3.14159265358979"},
 	} {
-		meta := []schemaCol{{name: "j", base: "json"}, varchar("g", "j->>'$.v'", 64)}
+		meta := []SchemaCol{{Name: "j", base: "json"}, varchar("g", "j->>'$.v'", 64)}
 		check(t, meta[1], meta, []string{"j", "g"}, []string{"JSON_OBJECT('v', " + tc.lit + ")", "'" + tc.stored + "'"}, false, false)
 	}
 
-	enumMeta := []schemaCol{
-		{name: "e", base: "enum", members: []string{"low", "Mid"}, charset: "utf8mb4"},
+	enumMeta := []SchemaCol{
+		{Name: "e", base: "enum", members: []string{"low", "Mid"}, charset: "utf8mb4"},
 		varchar("g", "UPPER(e)", 20),
 	}
 	check(t, enumMeta[1], enumMeta, []string{"e", "g"}, []string{"1", "'LOW'"}, false, false)
-	enumLen := []schemaCol{
-		{name: "e", base: "enum", members: []string{"low", "Mid"}, charset: "utf8mb4"},
-		{name: "g", base: "int", expr: "LENGTH(e)"},
+	enumLen := []SchemaCol{
+		{Name: "e", base: "enum", members: []string{"low", "Mid"}, charset: "utf8mb4"},
+		{Name: "g", base: "int", Expr: "LENGTH(e)"},
 	}
 	check(t, enumLen[1], enumLen, []string{"e", "g"}, []string{"1", "3"}, false, false)
-	setMeta := []schemaCol{
-		{name: "st", base: "set", members: []string{"x", "y", "z"}, charset: "utf8mb4"},
+	setMeta := []SchemaCol{
+		{Name: "st", base: "set", members: []string{"x", "y", "z"}, charset: "utf8mb4"},
 		varchar("g", "CONCAT(st)", 20),
 	}
 	check(t, setMeta[1], setMeta, []string{"st", "g"}, []string{"5", "'x,z'"}, false, false)
 
-	ascii := schemaCol{name: "country", base: "char", charset: "ascii", prec: 2, hasPrec: true}
-	upperASCII := []schemaCol{ascii, varchar("g", "UPPER(country)", 8)}
+	ascii := SchemaCol{Name: "country", base: "char", charset: "ascii", prec: 2, hasPrec: true}
+	upperASCII := []SchemaCol{ascii, varchar("g", "UPPER(country)", 8)}
 	check(t, upperASCII[1], upperASCII, []string{"country", "g"}, []string{"_ascii 0x636E", "'CN'"}, false, false)
-	lenASCII := []schemaCol{ascii, {name: "g", base: "int", expr: "CHAR_LENGTH(country)"}}
+	lenASCII := []SchemaCol{ascii, {Name: "g", base: "int", Expr: "CHAR_LENGTH(country)"}}
 	check(t, lenASCII[1], lenASCII, []string{"country", "g"}, []string{"_ascii 0x636E", "2"}, false, false)
-	badASCII := []schemaCol{
-		{name: "code", base: "varchar", charset: "ascii", prec: 10, hasPrec: true},
-		{name: "c", base: "varchar", charset: "ascii", prec: 20, hasPrec: true, expr: "UPPER(code)"},
+	badASCII := []SchemaCol{
+		{Name: "code", base: "varchar", charset: "ascii", prec: 10, hasPrec: true},
+		{Name: "c", base: "varchar", charset: "ascii", prec: 20, hasPrec: true, Expr: "UPPER(code)"},
 	}
 	check(t, badASCII[1], badASCII, []string{"code", "c"}, []string{"_ascii 0x6162", "_ascii 0x6E6F74652D31"}, true, false)
 
-	dec := schemaCol{name: "d", base: "decimal", prec: 10, scale: 2, hasPrec: true}
+	dec := SchemaCol{Name: "d", base: "decimal", prec: 10, scale: 2, hasPrec: true}
 	for _, tc := range []struct{ lit, stored string }{
 		{"2.00", "2.00"},
 		{"7", "7.00"},
 		{"-0.00", "0.00"},
 	} {
-		meta := []schemaCol{dec, varchar("g", "CONCAT(d)", 20)}
+		meta := []SchemaCol{dec, varchar("g", "CONCAT(d)", 20)}
 		check(t, meta[1], meta, []string{"d", "g"}, []string{tc.lit, "'" + tc.stored + "'"}, false, false)
 	}
-	tm := schemaCol{name: "tm", base: "time", prec: 2, hasPrec: true}
+	tm := SchemaCol{Name: "tm", base: "time", prec: 2, hasPrec: true}
 	for _, tc := range []struct{ lit, stored string }{
 		{"'00:00:00'", "00:00:00.00"},
 		{"'-838:59:59'", "-838:59:59.00"},
 	} {
-		meta := []schemaCol{tm, varchar("g", "CONCAT(tm)", 20)}
+		meta := []SchemaCol{tm, varchar("g", "CONCAT(tm)", 20)}
 		check(t, meta[1], meta, []string{"tm", "g"}, []string{tc.lit, "'" + tc.stored + "'"}, false, false)
 	}
-	ts := []schemaCol{{name: "ts", base: "timestamp"}, varchar("g", "CONCAT(ts)", 32)}
+	ts := []SchemaCol{{Name: "ts", base: "timestamp"}, varchar("g", "CONCAT(ts)", 32)}
 	check(t, ts[1], ts, []string{"ts", "g"}, []string{"'2026-10-08 02:00:00'", "'2026-10-08 10:00:00'"}, false, true)
-	bin := []schemaCol{{name: "s", base: "binary", prec: 8, hasPrec: true}, {name: "g", base: "int", expr: "LENGTH(s)"}}
+	bin := []SchemaCol{{Name: "s", base: "binary", prec: 8, hasPrec: true}, {Name: "g", base: "int", Expr: "LENGTH(s)"}}
 	check(t, bin[1], bin, []string{"s", "g"}, []string{"X'616263'", "8"}, false, false)
-	micro := []schemaCol{{name: "s", base: "varchar", charset: "utf8mb4"}, varchar("g", "UPPER(s)", 8)}
+	micro := []SchemaCol{{Name: "s", base: "varchar", charset: "utf8mb4"}, varchar("g", "UPPER(s)", 8)}
 	check(t, micro[1], micro, []string{"s", "g"}, []string{"'µ'", "'\u039c'"}, false, false)
-	wide := []schemaCol{{name: "s", base: "varchar", charset: "utf8mb4"}, varchar("g", "CONCAT(s, s)", 3)}
+	wide := []SchemaCol{{Name: "s", base: "varchar", charset: "utf8mb4"}, varchar("g", "CONCAT(s, s)", 3)}
 	check(t, wide[1], wide, []string{"s", "g"}, []string{"'ab'", "'aba'"}, false, true)
-	kinds := []schemaCol{{name: "j", base: "json"}, {name: "g", base: "json", expr: "j->'$.v'"}}
+	kinds := []SchemaCol{{Name: "j", base: "json"}, {Name: "g", base: "json", Expr: "j->'$.v'"}}
 	check(t, kinds[1], kinds, []string{"j", "g"}, []string{"JSON_OBJECT('v', 1.0)", "CAST(1 AS JSON)"}, true, false)
 }
 
@@ -272,33 +272,33 @@ func TestExampleLiteral(t *testing.T) {
 }
 
 func TestExampleEnumSetLabels(t *testing.T) {
-	meta := []schemaCol{
-		{name: "id", base: "int"},
-		{name: "e", base: "enum", members: []string{"a", "b"}},
-		{name: "s", base: "set", members: []string{"x", "y"}},
-		{name: "c", base: "varchar"},
+	meta := []SchemaCol{
+		{Name: "id", base: "int"},
+		{Name: "e", base: "enum", members: []string{"a", "b"}},
+		{Name: "s", base: "set", members: []string{"x", "y"}},
+		{Name: "c", base: "varchar"},
 	}
-	got := exampleImage(loggedImage{
-		columns: []string{"id", "e", "s", "c"},
-		values:  []string{"1", "1", "3", "'1'"},
+	got := exampleImage(LoggedImage{
+		Columns: []string{"id", "e", "s", "c"},
+		Values:  []string{"1", "1", "3", "'1'"},
 	}, meta)
 	if got != "id=1, e='a', s='x,y', c='1'" {
 		t.Fatalf("labels: %q", got)
 	}
-	bare := []schemaCol{{name: "e", base: "enum"}}
-	if got := exampleImage(loggedImage{columns: []string{"e"}, values: []string{"1"}}, bare); got != "e=1" {
+	bare := []SchemaCol{{Name: "e", base: "enum"}}
+	if got := exampleImage(LoggedImage{Columns: []string{"e"}, Values: []string{"1"}}, bare); got != "e=1" {
 		t.Fatalf("no members: %q", got)
 	}
-	if got := exampleImage(loggedImage{columns: []string{"e"}, values: []string{"0"}}, meta); got != "e=''" {
+	if got := exampleImage(LoggedImage{Columns: []string{"e"}, Values: []string{"0"}}, meta); got != "e=''" {
 		t.Fatalf("index 0: %q", got)
 	}
-	if got := exampleImage(loggedImage{columns: []string{"e"}, values: []string{"9"}}, meta); got != "e=9" {
+	if got := exampleImage(LoggedImage{Columns: []string{"e"}, Values: []string{"9"}}, meta); got != "e=9" {
 		t.Fatalf("out of range: %q", got)
 	}
-	if got := exampleImage(loggedImage{columns: []string{"e", "s"}, values: []string{"NULL", "0"}}, meta); got != "e=NULL, s=''" {
+	if got := exampleImage(LoggedImage{Columns: []string{"e", "s"}, Values: []string{"NULL", "0"}}, meta); got != "e=NULL, s=''" {
 		t.Fatalf("null and empty set: %q", got)
 	}
-	if got := exampleImage(loggedImage{columns: []string{"s"}, values: []string{"4"}}, meta); got != "s=4" {
+	if got := exampleImage(LoggedImage{Columns: []string{"s"}, Values: []string{"4"}}, meta); got != "s=4" {
 		t.Fatalf("bit above members: %q", got)
 	}
 }

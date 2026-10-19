@@ -1,9 +1,9 @@
-// Package analyzer evaluates generated-column expressions against logged row images.
+// Package mysqlexpr evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
 // output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. ENUM and SET print the schema-file member labels when the file lists them; an index of 0 is an empty label, and a value with no member list stays the raw index or bitmask. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
-package analyzer
+package mysqlexpr
 
 import (
 	"bytes"
@@ -24,6 +24,7 @@ import (
 	xunicode "golang.org/x/text/encoding/unicode"
 
 	"binlogviz/internal/i18n"
+	"binlogviz/internal/model"
 )
 
 // genKind is the value of one generated-expression result or logged literal.
@@ -37,11 +38,11 @@ const (
 	genJSON
 )
 
-// genVal is a logged literal or an expression result.
+// GenVal is a logged literal or an expression result.
 // text is Unicode when decoded is set. An undecoded charset is unverifiable.
 // raw is the original bytes when known. base and the precision fields are the
 // schema column the literal came from, so string functions can use that type.
-type genVal struct {
+type GenVal struct {
 	kind    genKind
 	n       *big.Rat
 	numText string
@@ -98,29 +99,29 @@ type jStep struct {
 	isIdx bool
 }
 
-type loggedImage struct {
-	columns []string
-	values  []string
+type LoggedImage struct {
+	Columns []string
+	Values  []string
 }
 
-func genNullVal() genVal { return genVal{kind: genNull} }
+func genNullVal() GenVal { return GenVal{kind: genNull} }
 
-func genNumVal(text string) (genVal, bool) {
+func genNumVal(text string) (GenVal, bool) {
 	r, ok := new(big.Rat).SetString(text)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
-	return genVal{kind: genNum, n: r, numText: text}, true
+	return GenVal{kind: genNum, n: r, numText: text}, true
 }
 
-func genTextVal(text, charset string) genVal {
+func genTextVal(text, charset string) GenVal {
 	if charset == "" {
 		charset = "utf8mb4"
 	}
-	return genVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: charset, decoded: true}
+	return GenVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: charset, decoded: true}
 }
 
-func (v genVal) asInt() (intVal, bool) {
+func (v GenVal) asInt() (intVal, bool) {
 	switch v.kind {
 	case genNull:
 		return intVal{null: true}, true
@@ -134,11 +135,11 @@ func (v genVal) asInt() (intVal, bool) {
 	}
 }
 
-func applyGenAdd(left, right genVal, op byte) (genVal, bool) {
+func applyGenAdd(left, right GenVal, op byte) (GenVal, bool) {
 	li, ok1 := left.asInt()
 	ri, ok2 := right.asInt()
 	if !ok1 || !ok2 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	if li.null || ri.null {
 		return genNullVal(), true
@@ -149,27 +150,27 @@ func applyGenAdd(left, right genVal, op byte) (genVal, bool) {
 	} else {
 		n.Sub(li.n, ri.n)
 	}
-	return genVal{kind: genNum, n: n}, true
+	return GenVal{kind: genNum, n: n}, true
 }
 
-func (sc *sqlScan) startsArrow() bool {
-	return sc.i+1 < len(sc.s) && sc.s[sc.i] == '-' && sc.s[sc.i+1] == '>'
+func (sc *Scan) startsArrow() bool {
+	return sc.I+1 < len(sc.S) && sc.S[sc.I] == '-' && sc.S[sc.I+1] == '>'
 }
 
-func (sc *sqlScan) consumeArrow() (unquote, ok bool) {
-	sc.skip()
+func (sc *Scan) consumeArrow() (unquote, ok bool) {
+	sc.Skip()
 	if !sc.startsArrow() {
 		return false, false
 	}
-	sc.i += 2
-	if sc.i < len(sc.s) && sc.s[sc.i] == '>' {
-		sc.i++
+	sc.I += 2
+	if sc.I < len(sc.S) && sc.S[sc.I] == '>' {
+		sc.I++
 		return true, true
 	}
 	return false, true
 }
 
-func evalGenCall(name string, args []genVal) (genVal, bool) {
+func evalGenCall(name string, args []GenVal) (GenVal, bool) {
 	switch strings.ToUpper(name) {
 	case "UPPER":
 		return evalCaseFunc(args, true)
@@ -189,29 +190,29 @@ func evalGenCall(name string, args []genVal) (genVal, bool) {
 		return evalJSONUnquote(args)
 	case "MOD":
 		if len(args) != 2 {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		li, ok1 := args[0].asInt()
 		ri, ok2 := args[1].asInt()
 		if !ok1 || !ok2 {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		next, ok := applyIntDiv(li, ri, true)
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		if next.null {
 			return genNullVal(), true
 		}
-		return genVal{kind: genNum, n: next.n}, true
+		return GenVal{kind: genNum, n: next.n}, true
 	default:
-		return genVal{}, false
+		return GenVal{}, false
 	}
 }
 
-func evalCaseFunc(args []genVal, upper bool) (genVal, bool) {
+func evalCaseFunc(args []GenVal, upper bool) (GenVal, bool) {
 	if len(args) != 1 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	v := args[0]
 	if v.kind == genNull {
@@ -219,7 +220,7 @@ func evalCaseFunc(args []genVal, upper bool) (genVal, bool) {
 	}
 	src, ok := v.coerceText()
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	if src.kind == genNull {
 		return genNullVal(), true
@@ -229,14 +230,14 @@ func evalCaseFunc(args []genVal, upper bool) (genVal, bool) {
 	}
 	folded, ok := foldText(src.text, src.charset, upper)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	return genTextVal(folded, src.charset), true
 }
 
-func evalConcat(args []genVal) (genVal, bool) {
+func evalConcat(args []GenVal) (GenVal, bool) {
 	if len(args) == 0 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	var b strings.Builder
 	charset := "utf8mb4"
@@ -246,10 +247,10 @@ func evalConcat(args []genVal) (genVal, bool) {
 		}
 		piece, ok := arg.coerceText()
 		if !ok || piece.kind == genNull {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		if piece.charset == "binary" || !singleCharset(charset, piece.charset) {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		if piece.charset != "ascii" && piece.charset != "" {
 			charset = piece.charset
@@ -272,16 +273,16 @@ func singleCharset(have, next string) bool {
 	return have == next
 }
 
-func evalConcatWS(args []genVal) (genVal, bool) {
+func evalConcatWS(args []GenVal) (GenVal, bool) {
 	if len(args) < 1 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	if args[0].kind == genNull {
 		return genNullVal(), true
 	}
 	sep, ok := args[0].coerceText()
 	if !ok || sep.kind == genNull {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	var b strings.Builder
 	n := 0
@@ -291,10 +292,10 @@ func evalConcatWS(args []genVal) (genVal, bool) {
 		}
 		piece, ok := arg.coerceText()
 		if !ok || piece.kind == genNull {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		if piece.charset == "binary" {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		if n > 0 {
 			b.WriteString(sep.text)
@@ -305,9 +306,9 @@ func evalConcatWS(args []genVal) (genVal, bool) {
 	return genTextVal(b.String(), "utf8mb4"), true
 }
 
-func evalLength(args []genVal, chars bool) (genVal, bool) {
+func evalLength(args []GenVal, chars bool) (GenVal, bool) {
 	if len(args) != 1 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	v := args[0]
 	if v.kind == genNull {
@@ -328,7 +329,7 @@ func evalLength(args []genVal, chars bool) (genVal, bool) {
 	}
 	src, ok := v.coerceText()
 	if !ok || src.kind == genNull {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	var n int
 	switch src.charset {
@@ -340,43 +341,43 @@ func evalLength(args []genVal, chars bool) (genVal, bool) {
 		}
 	case "latin1", "binary":
 		if !src.haveRaw {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		n = len(src.raw)
 	default:
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	return genNumVal(strconv.Itoa(n))
 }
 
-func evalJSONExtract(args []genVal) (genVal, bool) {
+func evalJSONExtract(args []GenVal) (GenVal, bool) {
 	if len(args) != 2 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	if args[0].kind == genNull || args[1].kind == genNull {
 		return genNullVal(), true
 	}
 	pathText, ok := args[1].pathText()
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	return jsonAtPath(args[0], pathText, false)
 }
 
-func evalJSONUnquote(args []genVal) (genVal, bool) {
+func evalJSONUnquote(args []GenVal) (GenVal, bool) {
 	if len(args) != 1 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	return jsonUnquote(args[0])
 }
 
-func applyJSONArrow(v genVal, path string, unquote bool) (genVal, bool) {
+func applyJSONArrow(v GenVal, path string, unquote bool) (GenVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
 	got, ok := jsonAtPath(v, path, unquote)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	if unquote {
 		return jsonUnquote(got)
@@ -384,27 +385,27 @@ func applyJSONArrow(v genVal, path string, unquote bool) (genVal, bool) {
 	return got, true
 }
 
-func jsonAtPath(v genVal, path string, _ bool) (genVal, bool) {
+func jsonAtPath(v GenVal, path string, _ bool) (GenVal, bool) {
 	if v.kind != genJSON || v.j == nil {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	steps, ok := parseJSONPath(path)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	node, found := v.j.walk(steps)
 	if !found {
 		return genNullVal(), true
 	}
-	return genVal{kind: genJSON, j: node}, true
+	return GenVal{kind: genJSON, j: node}, true
 }
 
-func jsonUnquote(v genVal) (genVal, bool) {
+func jsonUnquote(v GenVal) (GenVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
 	if v.kind != genJSON || v.j == nil {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	switch v.j.kind {
 	case jNull:
@@ -422,7 +423,7 @@ func jsonUnquote(v genVal) (genVal, bool) {
 		case jnFloat:
 			f, ok := parseJSONFloat(v.j.num)
 			if !ok {
-				return genVal{}, false
+				return GenVal{}, false
 			}
 			return genTextVal(mysqlJSONFloatString(f), "utf8mb4"), true
 		default:
@@ -431,18 +432,18 @@ func jsonUnquote(v genVal) (genVal, bool) {
 		}
 	default:
 		// Object and array text depends on spacing MySQL chooses. Do not guess.
-		return genVal{}, false
+		return GenVal{}, false
 	}
 }
 
-func (v genVal) pathText() (string, bool) {
+func (v GenVal) pathText() (string, bool) {
 	if v.kind != genText {
 		return "", false
 	}
 	return v.text, true
 }
 
-func (v genVal) coerceText() (genVal, bool) {
+func (v GenVal) coerceText() (GenVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
@@ -454,7 +455,7 @@ func (v genVal) coerceText() (genVal, bool) {
 	case "decimal":
 		return v.decimalAsText()
 	case "float", "double", "timestamp":
-		return genVal{}, false
+		return GenVal{}, false
 	case "time", "datetime":
 		return v.temporalAsText()
 	}
@@ -463,21 +464,21 @@ func (v genVal) coerceText() (genVal, bool) {
 		return genNullVal(), true
 	case genText:
 		if !v.decoded {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		switch v.charset {
 		case "binary", "utf8mb4", "utf8", "ascii", "latin1", "":
 			return v, true
 		default:
-			return genVal{}, false
+			return GenVal{}, false
 		}
 	case genNum:
 		if v.n == nil || !v.n.IsInt() {
-			return genVal{}, false
+			return GenVal{}, false
 		}
 		return genTextVal(v.n.Num().String(), "ascii"), true
 	default:
-		return genVal{}, false
+		return GenVal{}, false
 	}
 }
 
@@ -553,21 +554,21 @@ func latin1Case(b byte, upper bool) byte {
 	}
 }
 
-func (sc *sqlScan) numberAtom() (genVal, bool) {
-	start := sc.i
-	for sc.i < len(sc.s) && sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9' {
-		sc.i++
+func (sc *Scan) numberAtom() (GenVal, bool) {
+	start := sc.I
+	for sc.I < len(sc.S) && sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
+		sc.I++
 	}
-	if sc.i < len(sc.s) && (sc.s[sc.i] == '.' || sc.s[sc.i] == 'e' || sc.s[sc.i] == 'E') {
-		return genVal{}, false
+	if sc.I < len(sc.S) && (sc.S[sc.I] == '.' || sc.S[sc.I] == 'e' || sc.S[sc.I] == 'E') {
+		return GenVal{}, false
 	}
-	return genNumVal(sc.s[start:sc.i])
+	return genNumVal(sc.S[start:sc.I])
 }
 
-func (sc *sqlScan) quotedText(charset string) (genVal, bool) {
+func (sc *Scan) quotedText(charset string) (GenVal, bool) {
 	text, ok := sc.decodeQuoted()
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	sc.skipCollate()
 	switch charset {
@@ -575,49 +576,49 @@ func (sc *sqlScan) quotedText(charset string) (genVal, bool) {
 		raw := make([]byte, 0, len(text))
 		for _, r := range text {
 			if r > 0xFF {
-				return genVal{}, false
+				return GenVal{}, false
 			}
 			raw = append(raw, byte(r))
 		}
-		return genVal{kind: genText, text: text, raw: raw, haveRaw: true, charset: "latin1", decoded: true}, true
+		return GenVal{kind: genText, text: text, raw: raw, haveRaw: true, charset: "latin1", decoded: true}, true
 	case "binary":
-		return genVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: "binary", decoded: true}, true
+		return GenVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: "binary", decoded: true}, true
 	case "utf8mb4", "utf8", "ascii", "":
 		return genTextVal(text, "utf8mb4"), true
 	default:
-		return genVal{kind: genText, charset: charset}, true
+		return GenVal{kind: genText, charset: charset}, true
 	}
 }
 
-func (sc *sqlScan) decodeQuoted() (string, bool) {
-	if sc.i >= len(sc.s) {
+func (sc *Scan) decodeQuoted() (string, bool) {
+	if sc.I >= len(sc.S) {
 		return "", false
 	}
-	q := sc.s[sc.i]
+	q := sc.S[sc.I]
 	if q != '\'' && q != '"' {
 		return "", false
 	}
-	sc.i++
+	sc.I++
 	var b strings.Builder
-	for sc.i < len(sc.s) {
-		c := sc.s[sc.i]
+	for sc.I < len(sc.S) {
+		c := sc.S[sc.I]
 		if c == q {
-			if sc.i+1 < len(sc.s) && sc.s[sc.i+1] == q {
+			if sc.I+1 < len(sc.S) && sc.S[sc.I+1] == q {
 				b.WriteByte(q)
-				sc.i += 2
+				sc.I += 2
 				continue
 			}
-			sc.i++
+			sc.I++
 			return b.String(), true
 		}
-		if c == '\\' && sc.i+1 < len(sc.s) {
-			sc.i++
-			b.WriteByte(decodeSQLEscape(sc.s[sc.i]))
-			sc.i++
+		if c == '\\' && sc.I+1 < len(sc.S) {
+			sc.I++
+			b.WriteByte(decodeSQLEscape(sc.S[sc.I]))
+			sc.I++
 			continue
 		}
 		b.WriteByte(c)
-		sc.i++
+		sc.I++
 	}
 	return "", false
 }
@@ -641,7 +642,7 @@ func decodeSQLEscape(c byte) byte {
 	}
 }
 
-func (sc *sqlScan) constString() (string, bool) {
+func (sc *Scan) constString() (string, bool) {
 	v, ok := sc.evalAtom()
 	if !ok || v.kind != genText {
 		return "", false
@@ -649,26 +650,26 @@ func (sc *sqlScan) constString() (string, bool) {
 	return v.text, true
 }
 
-func (sc *sqlScan) introducedLiteral(name string) (genVal, bool, bool) {
+func (sc *Scan) introducedLiteral(name string) (GenVal, bool, bool) {
 	charset := strings.ToLower(strings.TrimPrefix(name, "_"))
 	save := *sc
-	sc.skip()
-	if sc.i >= len(sc.s) {
+	sc.Skip()
+	if sc.I >= len(sc.S) {
 		*sc = save
-		return genVal{}, false, false
+		return GenVal{}, false, false
 	}
-	if sc.s[sc.i] == '\'' || sc.s[sc.i] == '"' {
+	if sc.S[sc.I] == '\'' || sc.S[sc.I] == '"' {
 		v, ok := sc.quotedText(normalizeIntroCharset(charset))
 		return v, ok, true
 	}
 	if v, ok, parsed := sc.hexBinary(); parsed {
 		if !ok {
-			return genVal{}, false, true
+			return GenVal{}, false, true
 		}
 		return tagCharset(v, normalizeIntroCharset(charset)), true, true
 	}
 	*sc = save
-	return genVal{}, false, false
+	return GenVal{}, false, false
 }
 
 func normalizeIntroCharset(charset string) string {
@@ -686,7 +687,7 @@ func normalizeIntroCharset(charset string) string {
 	}
 }
 
-func tagCharset(v genVal, charset string) genVal {
+func tagCharset(v GenVal, charset string) GenVal {
 	v.decoded = false
 	v.text = ""
 	v.charset = charset
@@ -740,40 +741,40 @@ func latin1ToUTF8(raw []byte) string {
 	return b.String()
 }
 
-func (sc *sqlScan) hexBinary() (genVal, bool, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) {
-		return genVal{}, false, false
+func (sc *Scan) hexBinary() (GenVal, bool, bool) {
+	sc.Skip()
+	if sc.I >= len(sc.S) {
+		return GenVal{}, false, false
 	}
-	if sc.s[sc.i] == '0' && sc.i+1 < len(sc.s) && (sc.s[sc.i+1] == 'x' || sc.s[sc.i+1] == 'X') {
-		sc.i += 2
-		start := sc.i
-		for sc.i < len(sc.s) && isHex(sc.s[sc.i]) {
-			sc.i++
+	if sc.S[sc.I] == '0' && sc.I+1 < len(sc.S) && (sc.S[sc.I+1] == 'x' || sc.S[sc.I+1] == 'X') {
+		sc.I += 2
+		start := sc.I
+		for sc.I < len(sc.S) && isHex(sc.S[sc.I]) {
+			sc.I++
 		}
-		raw, ok := decodeHex(sc.s[start:sc.i])
+		raw, ok := decodeHex(sc.S[start:sc.I])
 		if !ok {
-			return genVal{}, false, true
+			return GenVal{}, false, true
 		}
-		return genVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw), decoded: true}, true, true
+		return GenVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw), decoded: true}, true, true
 	}
-	if (sc.s[sc.i] == 'X' || sc.s[sc.i] == 'x') && sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '\'' {
-		sc.i += 2
-		start := sc.i
-		for sc.i < len(sc.s) && sc.s[sc.i] != '\'' {
-			sc.i++
+	if (sc.S[sc.I] == 'X' || sc.S[sc.I] == 'x') && sc.I+1 < len(sc.S) && sc.S[sc.I+1] == '\'' {
+		sc.I += 2
+		start := sc.I
+		for sc.I < len(sc.S) && sc.S[sc.I] != '\'' {
+			sc.I++
 		}
-		if sc.i >= len(sc.s) {
-			return genVal{}, false, true
+		if sc.I >= len(sc.S) {
+			return GenVal{}, false, true
 		}
-		raw, ok := decodeHex(sc.s[start:sc.i])
-		sc.i++
+		raw, ok := decodeHex(sc.S[start:sc.I])
+		sc.I++
 		if !ok {
-			return genVal{}, false, true
+			return GenVal{}, false, true
 		}
-		return genVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw), decoded: true}, true, true
+		return GenVal{kind: genText, raw: raw, haveRaw: true, charset: "binary", text: string(raw), decoded: true}, true, true
 	}
-	return genVal{}, false, false
+	return GenVal{}, false, false
 }
 
 func isHex(b byte) bool {
@@ -809,9 +810,9 @@ func fromHex(b byte) (byte, bool) {
 	}
 }
 
-func (sc *sqlScan) skipCollate() {
-	if sc.wordIs("COLLATE") {
-		_, _ = sc.ident()
+func (sc *Scan) skipCollate() {
+	if sc.WordIs("COLLATE") {
+		_, _ = sc.Ident()
 	}
 }
 
@@ -842,36 +843,36 @@ func generatedRefs(expr string, columns []string) (refs []string, ok bool) {
 	for _, name := range columns {
 		known[strings.ToLower(name)] = struct{}{}
 	}
-	sc := &sqlScan{s: expr}
+	sc := &Scan{S: expr}
 	seen := map[string]struct{}{}
-	for sc.i < len(sc.s) {
-		sc.skip()
-		if sc.i >= len(sc.s) {
+	for sc.I < len(sc.S) {
+		sc.Skip()
+		if sc.I >= len(sc.S) {
 			break
 		}
-		switch sc.s[sc.i] {
+		switch sc.S[sc.I] {
 		case '\'', '"':
 			if _, ok := sc.decodeQuoted(); !ok {
 				return nil, false
 			}
 		default:
-			if sc.s[sc.i] == '0' && sc.i+1 < len(sc.s) && (sc.s[sc.i+1] == 'x' || sc.s[sc.i+1] == 'X') {
+			if sc.S[sc.I] == '0' && sc.I+1 < len(sc.S) && (sc.S[sc.I+1] == 'x' || sc.S[sc.I+1] == 'X') {
 				if _, _, parsed := sc.hexBinary(); !parsed {
-					sc.i++
+					sc.I++
 				}
 				continue
 			}
-			if sc.s[sc.i] == 'X' || sc.s[sc.i] == 'x' {
+			if sc.S[sc.I] == 'X' || sc.S[sc.I] == 'x' {
 				if _, _, parsed := sc.hexBinary(); parsed {
 					continue
 				}
 			}
-			if sc.s[sc.i] != '`' && !identStart(sc.s[sc.i]) {
-				sc.i++
+			if sc.S[sc.I] != '`' && !identStart(sc.S[sc.I]) {
+				sc.I++
 				continue
 			}
-			quoted := sc.s[sc.i] == '`'
-			name, ok := sc.ident()
+			quoted := sc.S[sc.I] == '`'
+			name, ok := sc.Ident()
 			if !ok {
 				return nil, false
 			}
@@ -880,7 +881,7 @@ func generatedRefs(expr string, columns []string) (refs []string, ok bool) {
 					continue
 				}
 			}
-			if sc.peekByte() == '(' {
+			if sc.PeekByte() == '(' {
 				continue
 			}
 			if !quoted && bareSyntaxWord(name) {
@@ -900,33 +901,33 @@ func generatedRefs(expr string, columns []string) (refs []string, ok bool) {
 	return refs, true
 }
 
-func parseLoggedValue(lit string) (genVal, bool) {
+func parseLoggedValue(lit string) (GenVal, bool) {
 	s := strings.TrimSpace(lit)
 	switch {
 	case s == "":
-		return genVal{}, false
+		return GenVal{}, false
 	case strings.EqualFold(s, "NULL"):
 		return genNullVal(), true
 	case s[0] == '\'' || s[0] == '"':
-		sc := &sqlScan{s: s}
+		sc := &Scan{S: s}
 		v, ok := sc.quotedText("utf8mb4")
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
-		sc.skip()
-		if sc.i != len(sc.s) {
-			return genVal{}, false
+		sc.Skip()
+		if sc.I != len(sc.S) {
+			return GenVal{}, false
 		}
 		return v, true
 	case s[0] == '_' || s[0] == 'X' || s[0] == 'x' || strings.HasPrefix(strings.ToLower(s), "0x"):
-		sc := &sqlScan{s: s}
+		sc := &Scan{S: s}
 		v, ok := sc.evalAtom()
 		if !ok {
-			return genVal{}, false
+			return GenVal{}, false
 		}
-		sc.skip()
-		if sc.i != len(sc.s) {
-			return genVal{}, false
+		sc.Skip()
+		if sc.I != len(sc.S) {
+			return GenVal{}, false
 		}
 		return v, true
 	case strings.HasPrefix(strings.ToUpper(s), "JSON_") || strings.HasPrefix(strings.ToUpper(s), "CAST(") || strings.HasPrefix(strings.ToUpper(s), "CAST "):
@@ -935,20 +936,20 @@ func parseLoggedValue(lit string) (genVal, bool) {
 		if v, ok := genNumVal(s); ok {
 			return v, true
 		}
-		return genVal{}, false
+		return GenVal{}, false
 	}
 }
 
-func loggedEnv(columns, values []string, meta ...[]schemaCol) map[string]genVal {
-	var cols []schemaCol
+func loggedEnv(columns, values []string, meta ...[]SchemaCol) map[string]GenVal {
+	var cols []SchemaCol
 	if len(meta) > 0 {
 		cols = meta[0]
 	}
-	byName := make(map[string]schemaCol, len(cols))
+	byName := make(map[string]SchemaCol, len(cols))
 	for _, col := range cols {
-		byName[strings.ToLower(col.name)] = col
+		byName[strings.ToLower(col.Name)] = col
 	}
-	env := make(map[string]genVal, len(columns))
+	env := make(map[string]GenVal, len(columns))
 	for i, name := range columns {
 		lit := "NULL"
 		if i < len(values) {
@@ -956,7 +957,7 @@ func loggedEnv(columns, values []string, meta ...[]schemaCol) map[string]genVal 
 		}
 		v, ok := parseLoggedValue(lit)
 		if !ok {
-			env[strings.ToLower(name)] = genVal{kind: genBad}
+			env[strings.ToLower(name)] = GenVal{kind: genBad}
 			continue
 		}
 		if col, found := byName[strings.ToLower(name)]; found {
@@ -967,7 +968,7 @@ func loggedEnv(columns, values []string, meta ...[]schemaCol) map[string]genVal 
 	return env
 }
 
-func attachColMeta(v genVal, col schemaCol) genVal {
+func attachColMeta(v GenVal, col SchemaCol) GenVal {
 	v.base = col.base
 	if len(col.members) > 0 {
 		v.members = append([]string(nil), col.members...)
@@ -983,7 +984,7 @@ func attachColMeta(v genVal, col schemaCol) genVal {
 
 // matchGenerated reports whether got is the logged literal after assignment to col.
 // confident is false when the checker will not claim a match or a mismatch.
-func matchGenerated(got genVal, lit string, col schemaCol) (match, confident bool) {
+func matchGenerated(got GenVal, lit string, col SchemaCol) (match, confident bool) {
 	logged, ok := parseLoggedValue(lit)
 	if !ok {
 		return false, false
@@ -1044,7 +1045,7 @@ func literalNumber(lit string) string {
 	return strings.TrimSpace(lit)
 }
 
-func textToInt(v genVal) (intVal, bool) {
+func textToInt(v GenVal) (intVal, bool) {
 	if v.kind != genText {
 		return intVal{}, false
 	}
@@ -1082,7 +1083,7 @@ func stringAssign(base string) bool {
 	}
 }
 
-func assignText(v genVal, col schemaCol) (string, bool) {
+func assignText(v GenVal, col SchemaCol) (string, bool) {
 	src, ok := v.coerceText()
 	if !ok || src.kind == genNull {
 		return "", false
@@ -1260,34 +1261,34 @@ func parseJSONPath(path string) ([]jStep, bool) {
 	return steps, true
 }
 
-func parseJSONLogged(lit string) (genVal, bool) {
+func parseJSONLogged(lit string) (GenVal, bool) {
 	node, ok := parseJSONSQLString(lit)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
-	return genVal{kind: genJSON, j: node}, true
+	return GenVal{kind: genJSON, j: node}, true
 }
 
 func parseJSONSQLString(s string) (*jNode, bool) {
-	sc := &sqlScan{s: s}
+	sc := &Scan{S: s}
 	node, ok := parseJSONNode(sc)
 	if !ok {
 		return nil, false
 	}
-	sc.skip()
-	if sc.i != len(sc.s) {
+	sc.Skip()
+	if sc.I != len(sc.S) {
 		return nil, false
 	}
 	return node, true
 }
 
-func parseJSONNode(sc *sqlScan) (*jNode, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) {
+func parseJSONNode(sc *Scan) (*jNode, bool) {
+	sc.Skip()
+	if sc.I >= len(sc.S) {
 		return nil, false
 	}
-	if sc.wordIs("JSON_OBJECT") {
-		body, ok := sc.parenBody()
+	if sc.WordIs("JSON_OBJECT") {
+		body, ok := sc.ParenBody()
 		if !ok {
 			return nil, false
 		}
@@ -1295,7 +1296,7 @@ func parseJSONNode(sc *sqlScan) (*jNode, bool) {
 		if strings.TrimSpace(body) == "" {
 			return node, true
 		}
-		parts := splitComma(body)
+		parts := SplitComma(body)
 		if len(parts)%2 != 0 {
 			return nil, false
 		}
@@ -1312,8 +1313,8 @@ func parseJSONNode(sc *sqlScan) (*jNode, bool) {
 		}
 		return node, true
 	}
-	if sc.wordIs("JSON_ARRAY") {
-		body, ok := sc.parenBody()
+	if sc.WordIs("JSON_ARRAY") {
+		body, ok := sc.ParenBody()
 		if !ok {
 			return nil, false
 		}
@@ -1321,7 +1322,7 @@ func parseJSONNode(sc *sqlScan) (*jNode, bool) {
 		if strings.TrimSpace(body) == "" {
 			return node, true
 		}
-		for _, part := range splitComma(body) {
+		for _, part := range SplitComma(body) {
 			val, ok := parseJSONSQLString(part)
 			if !ok {
 				return nil, false
@@ -1330,34 +1331,34 @@ func parseJSONNode(sc *sqlScan) (*jNode, bool) {
 		}
 		return node, true
 	}
-	if sc.wordIs("CAST") {
+	if sc.WordIs("CAST") {
 		return parseJSONCast(sc)
 	}
-	if sc.wordIs("NULL") {
+	if sc.WordIs("NULL") {
 		return &jNode{kind: jNull}, true
 	}
-	if sc.wordIs("TRUE") {
+	if sc.WordIs("TRUE") {
 		return &jNode{kind: jBool, b: true}, true
 	}
-	if sc.wordIs("FALSE") {
+	if sc.WordIs("FALSE") {
 		return &jNode{kind: jBool, b: false}, true
 	}
-	if sc.s[sc.i] == '\'' || sc.s[sc.i] == '"' {
+	if sc.S[sc.I] == '\'' || sc.S[sc.I] == '"' {
 		text, ok := sc.decodeQuoted()
 		if !ok {
 			return nil, false
 		}
 		return &jNode{kind: jStr, str: text}, true
 	}
-	if sc.s[sc.i] == '-' || (sc.s[sc.i] >= '0' && sc.s[sc.i] <= '9') {
-		start := sc.i
-		if sc.s[sc.i] == '-' {
-			sc.i++
+	if sc.S[sc.I] == '-' || (sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9') {
+		start := sc.I
+		if sc.S[sc.I] == '-' {
+			sc.I++
 		}
-		for sc.i < len(sc.s) && (isNumChar(sc.s[sc.i])) {
-			sc.i++
+		for sc.I < len(sc.S) && (isNumChar(sc.S[sc.I])) {
+			sc.I++
 		}
-		text := sc.s[start:sc.i]
+		text := sc.S[start:sc.I]
 		if text == "" || text == "-" {
 			return nil, false
 		}
@@ -1370,8 +1371,8 @@ func isNumChar(b byte) bool {
 	return (b >= '0' && b <= '9') || b == '.' || b == 'e' || b == 'E' || b == '+' || b == '-'
 }
 
-func parseJSONCast(sc *sqlScan) (*jNode, bool) {
-	body, ok := sc.parenBody()
+func parseJSONCast(sc *Scan) (*jNode, bool) {
+	body, ok := sc.ParenBody()
 	if !ok {
 		return nil, false
 	}
@@ -1414,47 +1415,47 @@ func parseJSONCast(sc *sqlScan) (*jNode, bool) {
 }
 
 func splitAsType(body string) (inner, typ string, ok bool) {
-	sc := &sqlScan{s: body}
+	sc := &Scan{S: body}
 	depth := 0
 	inString := byte(0)
-	for sc.i < len(sc.s) {
-		c := sc.s[sc.i]
+	for sc.I < len(sc.S) {
+		c := sc.S[sc.I]
 		if inString != 0 {
 			if c == inString {
-				if sc.i+1 < len(sc.s) && sc.s[sc.i+1] == inString {
-					sc.i += 2
+				if sc.I+1 < len(sc.S) && sc.S[sc.I+1] == inString {
+					sc.I += 2
 					continue
 				}
 				inString = 0
-			} else if c == '\\' && sc.i+1 < len(sc.s) {
-				sc.i += 2
+			} else if c == '\\' && sc.I+1 < len(sc.S) {
+				sc.I += 2
 				continue
 			}
-			sc.i++
+			sc.I++
 			continue
 		}
 		switch c {
 		case '\'', '"', '`':
 			inString = c
-			sc.i++
+			sc.I++
 		case '(':
 			depth++
-			sc.i++
+			sc.I++
 		case ')':
 			if depth > 0 {
 				depth--
 			}
-			sc.i++
+			sc.I++
 		default:
 			if depth == 0 && identStart(c) {
-				start := sc.i
+				start := sc.I
 				word := sc.bare()
 				if strings.EqualFold(word, "AS") {
-					return strings.TrimSpace(body[:start]), strings.TrimSpace(sc.s[sc.i:]), true
+					return strings.TrimSpace(body[:start]), strings.TrimSpace(sc.S[sc.I:]), true
 				}
 				continue
 			}
-			sc.i++
+			sc.I++
 		}
 	}
 	return "", "", false
@@ -1465,13 +1466,13 @@ func sqlConstString(s string) (string, bool) {
 }
 
 func decodeQuotedSQL(s string) (string, bool) {
-	sc := &sqlScan{s: s}
+	sc := &Scan{S: s}
 	text, ok := sc.decodeQuoted()
 	if !ok {
 		return "", false
 	}
-	sc.skip()
-	if sc.i != len(sc.s) {
+	sc.Skip()
+	if sc.I != len(sc.S) {
 		return "", false
 	}
 	return text, true
@@ -1649,29 +1650,29 @@ func parseJSONString(s string, i int) (string, int, bool) {
 	return "", i, false
 }
 
-func exampleImage(im loggedImage, meta []schemaCol) string {
-	parts := make([]string, 0, len(im.columns))
-	for i, name := range im.columns {
+func exampleImage(im LoggedImage, meta []SchemaCol) string {
+	parts := make([]string, 0, len(im.Columns))
+	for i, name := range im.Columns {
 		lit := "NULL"
-		if i < len(im.values) {
-			lit = im.values[i]
+		if i < len(im.Values) {
+			lit = im.Values[i]
 		}
 		col, found := schemaColByName(meta, name)
 		parts = append(parts, name+"="+exampleCell(lit, col, found))
 	}
-	return oneLine(strings.Join(parts, ", "), 180)
+	return OneLine(strings.Join(parts, ", "), 180)
 }
 
-func schemaColByName(meta []schemaCol, name string) (schemaCol, bool) {
+func schemaColByName(meta []SchemaCol, name string) (SchemaCol, bool) {
 	for _, col := range meta {
-		if strings.EqualFold(col.name, name) {
+		if strings.EqualFold(col.Name, name) {
 			return col, true
 		}
 	}
-	return schemaCol{}, false
+	return SchemaCol{}, false
 }
 
-func exampleCell(lit string, col schemaCol, found bool) string {
+func exampleCell(lit string, col SchemaCol, found bool) string {
 	if found {
 		if text, ok := exampleMember(lit, col); ok {
 			return text
@@ -1682,7 +1683,7 @@ func exampleCell(lit string, col schemaCol, found bool) string {
 
 // exampleMember prints an ENUM index or SET bitmask as schema-file labels.
 // ok is false when the column has no member list or the literal is not one.
-func exampleMember(lit string, col schemaCol) (string, bool) {
+func exampleMember(lit string, col SchemaCol) (string, bool) {
 	base := strings.ToLower(col.base)
 	if (base != "enum" && base != "set") || len(col.members) == 0 {
 		return "", false
@@ -1922,16 +1923,16 @@ func quoteExampleText(s string) string {
 	return b.String()
 }
 
-func columnLit(im loggedImage, name string) (string, bool) {
-	for i, col := range im.columns {
-		if strings.EqualFold(col, name) && i < len(im.values) {
-			return im.values[i], true
+func columnLit(im LoggedImage, name string) (string, bool) {
+	for i, col := range im.Columns {
+		if strings.EqualFold(col, name) && i < len(im.Values) {
+			return im.Values[i], true
 		}
 	}
 	return "", false
 }
 
-func refKey(im loggedImage, refs []string) (string, bool) {
+func refKey(im LoggedImage, refs []string) (string, bool) {
 	var b strings.Builder
 	for _, name := range refs {
 		lit, ok := columnLit(im, name)
@@ -1943,23 +1944,23 @@ func refKey(im loggedImage, refs []string) (string, bool) {
 	return b.String(), true
 }
 
-// genImages is one table's logged images. Each image's evaluation
+// GenImages is one table's logged images. Each image's evaluation
 // environment is built once and shared by every generated column and every
 // div_precision_increment: it depends only on the logged values and the
 // schema-file columns.
-type genImages struct {
-	images []loggedImage
-	envs   []map[string]genVal
+type GenImages struct {
+	images []LoggedImage
+	envs   []map[string]GenVal
 	names  []string
-	meta   []schemaCol
+	meta   []SchemaCol
 }
 
-func prepareGenImages(rows []loggedImage, meta []schemaCol) *genImages {
-	g := &genImages{images: rows, envs: make([]map[string]genVal, len(rows)), meta: meta}
+func PrepareGenImages(rows []LoggedImage, meta []SchemaCol) *GenImages {
+	g := &GenImages{images: rows, envs: make([]map[string]GenVal, len(rows)), meta: meta}
 	seen := map[string]struct{}{}
 	for i, row := range rows {
-		g.envs[i] = loggedEnv(row.columns, row.values, meta)
-		for _, name := range row.columns {
+		g.envs[i] = loggedEnv(row.Columns, row.Values, meta)
+		for _, name := range row.Columns {
 			key := strings.ToLower(name)
 			if _, ok := seen[key]; ok {
 				continue
@@ -1974,12 +1975,12 @@ func prepareGenImages(rows []loggedImage, meta []schemaCol) *genImages {
 // generatedColumnOutcome checks one generated column against every logged image.
 // mismatch is set when a value contradicts the expression. unverified is set when
 // nothing contradicted it and at least one image could not be evaluated.
-func generatedColumnOutcome(col schemaCol, rows []loggedImage, meta []schemaCol) (example string, unverified bool) {
-	return prepareGenImages(rows, meta).outcome(col)
+func generatedColumnOutcome(col SchemaCol, rows []LoggedImage, meta []SchemaCol) (example string, unverified bool) {
+	return PrepareGenImages(rows, meta).Outcome(col)
 }
 
-func (g *genImages) outcome(col schemaCol) (example string, unverified bool) {
-	if strings.TrimSpace(col.expr) == "" || len(g.images) == 0 {
+func (g *GenImages) Outcome(col SchemaCol) (example string, unverified bool) {
+	if strings.TrimSpace(col.Expr) == "" || len(g.images) == 0 {
 		return "", true
 	}
 	bad, unknown := g.checkInc(col, mysqlDefaultDivPrecIncrement, -1)
@@ -1995,7 +1996,7 @@ func (g *genImages) outcome(col schemaCol) (example string, unverified bool) {
 // mysqlMaxDivPrecIncrement is the largest div_precision_increment MySQL accepts.
 const mysqlMaxDivPrecIncrement = 30
 
-// divIncrementFit sorts the non-default div_precision_increment values for a
+// DivIncrementFit sorts the non-default div_precision_increment values for a
 // column refused at the default. fit lists the increments at which every
 // logged image is a confident match. unchecked lists the increments where no
 // image contradicted the expression but at least one could not be evaluated,
@@ -2003,11 +2004,11 @@ const mysqlMaxDivPrecIncrement = 30
 // does not record the variable, so a column that fits another increment
 // points at the server setting, not at the dump. It is only a hint for the
 // error message: the column is still refused.
-func (g *genImages) divIncrementFit(col schemaCol) (fit, unchecked []int) {
-	if !strings.Contains(col.expr, "/") || (col.base != "decimal" && !integerAssign(col.base)) {
+func (g *GenImages) DivIncrementFit(col SchemaCol) (fit, unchecked []int) {
+	if !strings.Contains(col.Expr, "/") || (col.base != "decimal" && !integerAssign(col.base)) {
 		return nil, nil
 	}
-	if strings.TrimSpace(col.expr) == "" || len(g.images) == 0 {
+	if strings.TrimSpace(col.Expr) == "" || len(g.images) == 0 {
 		return nil, nil
 	}
 	// Two images with the same inputs and different stored values fit no
@@ -2039,7 +2040,7 @@ func (g *genImages) divIncrementFit(col schemaCol) (fit, unchecked []int) {
 // an image that contradicts the expression, or -1. unknown is set when no
 // image contradicted it and at least one could not be evaluated. first, when
 // not -1, is checked before the others; the result does not depend on order.
-func (g *genImages) checkInc(col schemaCol, inc, first int) (bad int, unknown bool) {
+func (g *GenImages) checkInc(col SchemaCol, inc, first int) (bad int, unknown bool) {
 	if first >= 0 && first < len(g.images) {
 		res := g.checkImage(col, inc, first)
 		if res == imageMismatch {
@@ -2071,15 +2072,15 @@ const (
 	imageUnknown
 )
 
-func (g *genImages) checkImage(col schemaCol, inc, i int) imageResult {
+func (g *GenImages) checkImage(col SchemaCol, inc, i int) imageResult {
 	im := g.images[i]
 	env := g.envs[i]
-	lit, found := columnLit(im, col.name)
+	lit, found := columnLit(im, col.Name)
 	if !found {
 		return imageUnknown
 	}
 	if col.base == "decimal" || integerAssign(col.base) {
-		if dec, ok := evalDecExprInc(col.expr, env, inc); ok {
+		if dec, ok := EvalDecExprInc(col.Expr, env, inc); ok {
 			// decOmit was parsed and must not fall through to a different
 			// arithmetic. decIntOnly is an exact product whose scale is past
 			// 30: a DECIMAL target must not claim it, and an integer target
@@ -2102,7 +2103,7 @@ func (g *genImages) checkImage(col schemaCol, inc, i int) imageResult {
 			return imageMatch
 		}
 	}
-	got, ok := evalGenExpr(col.expr, env)
+	got, ok := EvalGenExpr(col.Expr, env)
 	if !ok {
 		return imageUnknown
 	}
@@ -2116,8 +2117,8 @@ func (g *genImages) checkImage(col schemaCol, inc, i int) imageResult {
 	return imageMatch
 }
 
-func (g *genImages) dependencyClash(col schemaCol) string {
-	refs, ok := generatedRefs(col.expr, g.names)
+func (g *GenImages) dependencyClash(col SchemaCol) string {
+	refs, ok := generatedRefs(col.Expr, g.names)
 	if !ok {
 		return ""
 	}
@@ -2131,13 +2132,13 @@ func (g *genImages) dependencyClash(col schemaCol) string {
 		if !ok {
 			continue
 		}
-		lit, found := columnLit(im, col.name)
+		lit, found := columnLit(im, col.Name)
 		if !found {
 			continue
 		}
 		if prev, ok := seen[key]; ok {
 			if prev.lit != lit {
-				return oneLine(exampleImage(g.images[prev.idx], g.meta)+i18n.T("error.flashbackSchemaSameInputs")+col.name+"="+exampleCell(lit, col, true), 220)
+				return OneLine(exampleImage(g.images[prev.idx], g.meta)+i18n.T("error.flashbackSchemaSameInputs")+col.Name+"="+exampleCell(lit, col, true), 220)
 			}
 			continue
 		}
@@ -2146,19 +2147,19 @@ func (g *genImages) dependencyClash(col schemaCol) string {
 	return ""
 }
 
-func generatedMismatch(table string, col schemaCol, example string) error {
+func GeneratedMismatch(table string, col SchemaCol, example string) error {
 	return schemaMismatch(table, []string{i18n.Tf("error.flashbackSchemaGenerated", map[string]any{
-		"Column":  col.name,
-		"Expr":    exprText(col.expr),
+		"Column":  col.Name,
+		"Expr":    exprText(col.Expr),
 		"Example": example,
 	})})
 }
 
-// divIncrementMismatch replaces the usual schema-file advice: the dump is
+// DivIncrementMismatch replaces the usual schema-file advice: the dump is
 // probably right and the server ran with a non-default div_precision_increment.
 // unchecked increments are named so a partial fit does not read as exact.
-// The long hand-restore note is not part of it; see divIncrementHint.
-func divIncrementMismatch(table string, col schemaCol, example string, fit, unchecked []int) error {
+// The long hand-restore note is not part of it; see DivIncrementHint.
+func DivIncrementMismatch(table string, col SchemaCol, example string, fit, unchecked []int) error {
 	var clause string
 	switch {
 	case len(unchecked) == 0:
@@ -2170,18 +2171,18 @@ func divIncrementMismatch(table string, col schemaCol, example string, fit, unch
 	}
 	return fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaDivInc", map[string]any{
 		"Table":   table,
-		"Column":  col.name,
-		"Expr":    exprText(col.expr),
+		"Column":  col.Name,
+		"Expr":    exprText(col.Expr),
 		"Fit":     clause,
 		"Example": example,
 	}))
 }
 
-// divIncrementHint is the hand-restore note (SET SESSION, FLUSH TABLES and
+// DivIncrementHint is the hand-restore note (SET SESSION, FLUSH TABLES and
 // its cost, the fresh-connection route). It is printed once per run, on the
 // first increment refusal line, not once per column (#246). name is that
 // table as SQL (`db`.`tbl`).
-func divIncrementHint(name string, fit, unchecked []int) string {
+func DivIncrementHint(name string, fit, unchecked []int) string {
 	vals := fit
 	if len(vals) == 0 {
 		vals = unchecked
@@ -2211,9 +2212,9 @@ func exampleIncrement(vals []int) int {
 	return 0
 }
 
-// sqlTableName is schema.table with backtick quoting, as an operator would
+// SQLTableName is schema.table with backtick quoting, as an operator would
 // type it after FLUSH TABLES.
-func sqlTableName(schema, table string) string {
+func SQLTableName(schema, table string) string {
 	q := func(s string) string { return "`" + strings.ReplaceAll(s, "`", "``") + "`" }
 	if schema == "" {
 		return q(table)
@@ -2239,17 +2240,17 @@ func intRanges(vals []int) string {
 	return strings.Join(parts, ", ")
 }
 
-func unverifiedGeneratedWarning(table string, col schemaCol) FlashbackWarning {
-	return newFlashWarning(WarnGeneratedColumnUnverified, "warning.flashbackSchemaUnchecked", map[string]any{
+func UnverifiedGeneratedWarning(table string, col SchemaCol) model.FlashbackWarning {
+	return model.NewFlashWarning(model.WarnGeneratedColumnUnverified, "warning.flashbackSchemaUnchecked", map[string]any{
 		"Table":  table,
-		"Column": col.name,
-		"Expr":   exprText(col.expr),
+		"Column": col.Name,
+		"Expr":   exprText(col.Expr),
 	})
 }
 
-// unverifiedGeneratedComment is the script-header line. It stays English, like the other script comments.
-func unverifiedGeneratedComment(table string, col schemaCol) string {
-	return "-- WARNING: generated column " + table + "." + col.name + " not verified (" + exprText(col.expr) + "); it is left out of the script. The guard below checks that this column is generated on the target."
+// UnverifiedGeneratedComment is the script-header line. It stays English, like the other script comments.
+func UnverifiedGeneratedComment(table string, col SchemaCol) string {
+	return "-- WARNING: generated column " + table + "." + col.Name + " not verified (" + exprText(col.Expr) + "); it is left out of the script. The guard below checks that this column is generated on the target."
 }
 
 func newJNum(text string) *jNode {
@@ -2348,16 +2349,16 @@ func writeJSONFixed(b *strings.Builder, digits string, decpt int) {
 	b.WriteString(digits[decpt:])
 }
 
-func (v genVal) enumAsText() (genVal, bool) {
+func (v GenVal) enumAsText() (GenVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
 	if !knownTextCharset(v.charset) {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	idx, ok := v.exactInt()
 	if !ok || idx < 0 || idx > int64(len(v.members)) {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	if idx == 0 {
 		return genTextVal("", textCharset(v.charset)), true
@@ -2365,19 +2366,19 @@ func (v genVal) enumAsText() (genVal, bool) {
 	return genTextVal(v.members[idx-1], textCharset(v.charset)), true
 }
 
-func (v genVal) setAsText() (genVal, bool) {
+func (v GenVal) setAsText() (GenVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
 	if !knownTextCharset(v.charset) || len(v.members) > 64 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	bits, ok := v.exactUint()
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	if len(v.members) < 64 && bits>>uint(len(v.members)) != 0 {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	var parts []string
 	for i, member := range v.members {
@@ -2388,12 +2389,12 @@ func (v genVal) setAsText() (genVal, bool) {
 	return genTextVal(strings.Join(parts, ","), textCharset(v.charset)), true
 }
 
-func (v genVal) decimalAsText() (genVal, bool) {
+func (v GenVal) decimalAsText() (GenVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
 	if v.kind != genNum || v.n == nil {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	scale := 0
 	if v.hasPrec {
@@ -2453,12 +2454,12 @@ func formatRatScale(r *big.Rat, scale int) string {
 	return s
 }
 
-func (v genVal) temporalAsText() (genVal, bool) {
+func (v GenVal) temporalAsText() (GenVal, bool) {
 	if v.kind == genNull {
 		return genNullVal(), true
 	}
 	if v.kind != genText || !v.decoded {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	fsp := 0
 	if v.hasPrec {
@@ -2466,7 +2467,7 @@ func (v genVal) temporalAsText() (genVal, bool) {
 	}
 	text, ok := padFractional(v.text, fsp)
 	if !ok {
-		return genVal{}, false
+		return GenVal{}, false
 	}
 	return genTextVal(text, "ascii"), true
 }
@@ -2497,7 +2498,7 @@ func padFractional(text string, fsp int) (string, bool) {
 	return base + "." + frac, true
 }
 
-func (v genVal) exactInt() (int64, bool) {
+func (v GenVal) exactInt() (int64, bool) {
 	if v.kind != genNum || v.n == nil || !v.n.IsInt() {
 		return 0, false
 	}
@@ -2508,7 +2509,7 @@ func (v genVal) exactInt() (int64, bool) {
 	return num.Int64(), true
 }
 
-func (v genVal) exactUint() (uint64, bool) {
+func (v GenVal) exactUint() (uint64, bool) {
 	if v.kind != genNum || v.n == nil || !v.n.IsInt() || v.n.Sign() < 0 {
 		return 0, false
 	}
@@ -2562,17 +2563,17 @@ const (
 	decOmit
 )
 
-// decVal is one decimal result. scale is the fractional digits of an exact
+// DecVal is one decimal result. scale is the fractional digits of an exact
 // product or sum, or the division width MySQL cuts to. mode says whether a
 // target may compare the value after one assignment round.
-type decVal struct {
+type DecVal struct {
 	null  bool
 	n     *big.Rat
 	scale int
 	mode  uint8
 }
 
-func integerClip(v intVal, col schemaCol) (*big.Int, bool) {
+func integerClip(v intVal, col SchemaCol) (*big.Int, bool) {
 	if v.null || v.n == nil {
 		return nil, false
 	}
@@ -2590,7 +2591,7 @@ func integerClip(v intVal, col schemaCol) (*big.Int, bool) {
 	return max, true
 }
 
-func integerBounds(col schemaCol) (min, max *big.Int, ok bool) {
+func integerBounds(col SchemaCol) (min, max *big.Int, ok bool) {
 	bits := 0
 	switch col.base {
 	case "tinyint":
@@ -2712,7 +2713,7 @@ func decimalClip(r *big.Rat, prec, scale int) *big.Rat {
 // matchDecAsInt assigns a decimal result to an integer column.
 // The quotient was already cut to MySQL's division width, so (a/b)*b is not
 // brought back to a when that cut drops digits. 1/10000000000*10000000000 is 0.
-func matchDecAsInt(v decVal, lit string, col schemaCol) (match, confident bool) {
+func matchDecAsInt(v DecVal, lit string, col SchemaCol) (match, confident bool) {
 	logged, ok := parseLoggedValue(lit)
 	if !ok {
 		return false, false
@@ -2733,7 +2734,7 @@ func matchDecAsInt(v decVal, lit string, col schemaCol) (match, confident bool) 
 	return intValMatches(iv, literalNumber(lit)), true
 }
 
-func matchDecLiteral(v decVal, lit string, col schemaCol) (match, confident bool) {
+func matchDecLiteral(v DecVal, lit string, col SchemaCol) (match, confident bool) {
 	logged, ok := parseLoggedValue(lit)
 	if !ok {
 		return false, false
@@ -2758,42 +2759,42 @@ func matchDecLiteral(v decVal, lit string, col schemaCol) (match, confident bool
 	return rounded.Cmp(logged.n) == 0, true
 }
 
-func decFromGen(v genVal) (decVal, bool) {
+func decFromGen(v GenVal) (DecVal, bool) {
 	if v.kind == genNull {
-		return decVal{null: true}, true
+		return DecVal{null: true}, true
 	}
 	if v.kind != genNum || v.n == nil {
-		return decVal{}, false
+		return DecVal{}, false
 	}
 	scale := 0
 	switch v.base {
 	case "":
 		if !v.n.IsInt() {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 	case "decimal":
 		if v.hasPrec {
 			scale = v.scale
 		}
 		if scale < 0 || scale > mysqlDecMaxScale || !ratAtScale(v.n, scale) {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 	case "tinyint", "smallint", "mediumint", "int", "bigint", "year":
 		if !v.n.IsInt() {
-			return decVal{}, false
+			return DecVal{}, false
 		}
 	default:
-		return decVal{}, false
+		return DecVal{}, false
 	}
-	return decVal{n: new(big.Rat).Set(v.n), scale: scale}, true
+	return DecVal{n: new(big.Rat).Set(v.n), scale: scale}, true
 }
 
-func applyDecAdd(left, right decVal, op byte) (decVal, bool) {
+func applyDecAdd(left, right DecVal, op byte) (DecVal, bool) {
 	if left.null || right.null {
-		return decVal{null: true}, true
+		return DecVal{null: true}, true
 	}
 	if left.mode != decClaim || right.mode != decClaim || left.n == nil || right.n == nil {
-		return decVal{mode: decOmit}, true
+		return DecVal{mode: decOmit}, true
 	}
 	n := new(big.Rat)
 	if op == '+' {
@@ -2810,20 +2811,20 @@ func applyDecAdd(left, right decVal, op byte) (decVal, bool) {
 	return placeDec(n, scale, false), true
 }
 
-func applyDecMul(left, right decVal, op string, inc int) (decVal, bool) {
+func applyDecMul(left, right DecVal, op string, inc int) (DecVal, bool) {
 	if left.null || right.null {
-		return decVal{null: true}, true
+		return DecVal{null: true}, true
 	}
 	if left.mode == decOmit || right.mode == decOmit {
-		return decVal{mode: decOmit}, true
+		return DecVal{mode: decOmit}, true
 	}
 	if left.n == nil || right.n == nil {
-		return decVal{}, false
+		return DecVal{}, false
 	}
 	switch op {
 	case "*":
 		if left.mode != decClaim || right.mode != decClaim {
-			return decVal{mode: decOmit}, true
+			return DecVal{mode: decOmit}, true
 		}
 		// MySQL keeps this product and rounds once, on store. Rounding to
 		// 30 places here and again on store can carry into the stored digit.
@@ -2833,12 +2834,12 @@ func applyDecMul(left, right decVal, op string, inc int) (decVal, bool) {
 	case "/":
 		if right.n.Sign() == 0 {
 			if right.mode != decClaim {
-				return decVal{mode: decOmit}, true
+				return DecVal{mode: decOmit}, true
 			}
-			return decVal{null: true}, true
+			return DecVal{null: true}, true
 		}
 		if left.mode != decClaim || right.mode != decClaim {
-			return decVal{mode: decOmit}, true
+			return DecVal{mode: decOmit}, true
 		}
 		scale := mysqlDivFrac(left.scale, right.scale, inc)
 		q := truncRatToScale(new(big.Rat).Quo(left.n, right.n), scale)
@@ -2850,7 +2851,7 @@ func applyDecMul(left, right decVal, op string, inc int) (decVal, bool) {
 	case "%", "MOD":
 		return decIntOp(left, right, true)
 	default:
-		return decVal{}, false
+		return DecVal{}, false
 	}
 }
 
@@ -2858,17 +2859,17 @@ func applyDecMul(left, right decVal, op string, inc int) (decVal, bool) {
 // scale above 30 stays exact so an integer target can round once, and a
 // DECIMAL target does not claim it. Every other too-wide or too-long result
 // is omitted.
-func placeDec(n *big.Rat, scale int, product bool) decVal {
+func placeDec(n *big.Rat, scale int, product bool) DecVal {
 	if n == nil || scale < 0 || !ratAtScale(n, scale) || decDigits(n, scale) > mysqlDecMaxPrec {
-		return decVal{mode: decOmit}
+		return DecVal{mode: decOmit}
 	}
 	if scale > mysqlDecMaxScale {
 		if product {
-			return decVal{n: n, scale: scale, mode: decIntOnly}
+			return DecVal{n: n, scale: scale, mode: decIntOnly}
 		}
-		return decVal{mode: decOmit}
+		return DecVal{mode: decOmit}
 	}
-	return decVal{n: n, scale: scale}
+	return DecVal{n: n, scale: scale}
 }
 
 // decDigits is the precision of n written with exactly scale fractional digits.

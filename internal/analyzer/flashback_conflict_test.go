@@ -249,13 +249,13 @@ func TestFlashbackPlanCleanRunHasNullRefusal(t *testing.T) {
 	if err := json.Unmarshal([]byte(b.String()), &raw); err != nil {
 		t.Fatal(err)
 	}
-	var warnings []FlashbackWarning
+	var warnings []model.FlashbackWarning
 	if err := json.Unmarshal(raw["warnings"], &warnings); err != nil {
 		t.Fatal(err)
 	}
 	// No CREATE TABLE was logged: one coded warning, no "warning:" prefix.
 	if string(raw["refusal"]) != "null" || string(raw["would_refuse"]) != "false" || len(warnings) != 1 ||
-		warnings[0].Code != WarnTableDefinitionMissing || !strings.HasPrefix(warnings[0].Message, "shop.orders: ") {
+		warnings[0].Code != model.WarnTableDefinitionMissing || !strings.HasPrefix(warnings[0].Message, "shop.orders: ") {
 		t.Fatalf("plan: %s", b.String())
 	}
 	// Stderr keeps the v0.25.0 text.

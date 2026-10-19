@@ -1,9 +1,9 @@
-// Package analyzer types flashback warnings.
+// Package model types flashback warnings.
 // input: a warning code, its i18n message key, and the message arguments.
 // output: FlashbackWarning, a stable code plus the localized message; Line is the stderr form with the localized "warning:" prefix.
 // pos: every flashback warning source (schema catalog, schema file review, unknown tables, split transactions) builds one; the plan prints them as JSON (#270, #282).
 // note: if this file changes, update this header, module README.md and docs/reference/cli.md (--plan warning codes).
-package analyzer
+package model
 
 import "binlogviz/internal/i18n"
 
@@ -26,21 +26,11 @@ type FlashbackWarning struct {
 	Message string `json:"message"`
 }
 
-func newFlashWarning(code, key string, args map[string]any) FlashbackWarning {
+func NewFlashWarning(code, key string, args map[string]any) FlashbackWarning {
 	return FlashbackWarning{Code: code, Message: i18n.Tf(key, args)}
 }
 
 // Line is the warning as flashback prints it on stderr.
 func (w FlashbackWarning) Line() string {
 	return i18n.Tf("warning.flashbackLine", map[string]any{"Message": w.Message})
-}
-
-// appendWarningOnce appends w unless an equal warning is already in list.
-func appendWarningOnce(list []FlashbackWarning, w FlashbackWarning) []FlashbackWarning {
-	for _, have := range list {
-		if have == w {
-			return list
-		}
-	}
-	return append(list, w)
 }

@@ -1,4 +1,4 @@
-package analyzer
+package model
 
 import (
 	"strings"
@@ -22,7 +22,7 @@ func TestFlashbackWarningLineKeepsLocalizedPrefix(t *testing.T) {
 		if err := i18n.Init(tc.lang); err != nil {
 			t.Fatal(err)
 		}
-		w := newFlashWarning(WarnPartialTransaction, "warning.flashbackSplit", map[string]any{"GTID": "u:7"})
+		w := NewFlashWarning(WarnPartialTransaction, "warning.flashbackSplit", map[string]any{"GTID": "u:7"})
 		if w.Code != "partial_transaction" || strings.HasPrefix(w.Message, tc.prefix) || !strings.Contains(w.Message, "u:7") {
 			t.Fatalf("%s: warning = %+v", tc.lang, w)
 		}

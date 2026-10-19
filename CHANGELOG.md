@@ -4,6 +4,10 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Changed
+
+- Internal: the expression evaluator and the schema catalog moved out of `internal/analyzer` into `internal/mysqlexpr` and `internal/schemacatalog` (ADR 0012, #257). Analyze and flashback output are unchanged. `report_version` and `plan_version` stay.
+
 ## v0.29.0
 
 Release date: 2026-10-19

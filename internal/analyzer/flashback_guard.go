@@ -222,15 +222,15 @@ func appendGuardCols(out []guardCol, seen map[string]struct{}, group flashGroup)
 			continue
 		}
 		for _, col := range group.binds[i].cols {
-			if !col.generated {
+			if !col.Generated {
 				continue
 			}
-			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.name)
+			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.Name)
 			if _, ok := seen[key]; ok {
 				continue
 			}
 			seen[key] = struct{}{}
-			out = append(out, guardCol{schema: row.Schema, table: row.Table, column: col.name})
+			out = append(out, guardCol{schema: row.Schema, table: row.Table, column: col.Name})
 		}
 	}
 	return out
