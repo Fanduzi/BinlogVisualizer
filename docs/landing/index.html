@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.26.1 — flashback --conflict guard skips a primary key moved back onto a reused key</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.27.0 — every JSON output versioned, workflow refuses unknown artifacts, version shows the commit</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.26.1</div>
-                  <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">patch release</span>
+                  <div class="release-version">v0.27.0</div>
+                  <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">minor release</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">flashback --conflict guard skips a primary key moved back onto a reused key</div>
-                <div class="release-copy" data-i18n="releases.items.v0261">binlogviz flashback --conflict guard no longer fails with ERROR 1062 when an UPDATE moved a primary key and a later row reused the old key: the move-back changes no row, like any other row changed later, and the rest of the block applies (#270, #299). The default --conflict refuse still exits 7. No breaking changes: exit codes, plan_version 2, analyze output and flashback SQL outside the guard are unchanged.</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.26.1/docs/releases/release-notes-v0.26.1.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">every JSON output versioned, workflow refuses unknown artifacts, version shows the commit</div>
+                <div class="release-copy" data-i18n="releases.items.v0270">Every JSON output is versioned: compare, trend, snapshot and workflow JSON start with schema_version 1, while analyze (report_version 3) and flashback --plan (plan_version 2) output is byte-identical (ADR 0010, #282, #302). workflow status, resume and clean refuse a compare or trend artifact with an unknown schema_version with exit 9 and touch nothing. binlogviz version prints the build's git commit, and version --format json prints it for agents. No breaking changes. Known issue: Linux release binaries report an empty commit until #303 is fixed; macOS archives and checkout builds report it.</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.27.0/docs/releases/release-notes-v0.27.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.26.1</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0261">flashback --conflict guard skips a primary key moved back onto a reused key</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0261">binlogviz flashback --conflict guard no longer fails with ERROR 1062 when an UPDATE moved a primary key and a later row reused the old key: the move-back changes no row, like any other row changed later, and the rest of the block applies (#270, #299). The default --conflict refuse still exits 7. No breaking changes: exit codes, plan_version 2, analyze output and flashback SQL outside the guard are unchanged.</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.26.1/docs/releases/release-notes-v0.26.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0261">Open v0.26.1 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.26.0</div>
@@ -1901,7 +1909,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.26.1 — flashback --conflict guard skips a primary key moved back onto a reused key',
+            badge: 'v0.27.0 — every JSON output versioned, workflow refuses unknown artifacts, version shows the commit',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'Fast ROW-binlog summary: hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.\nSTATEMENT or MIXED files come back empty or undercounted. Printed positions are file evidence — use them as mysqlbinlog --start-position only when the span covers the transaction events, not an XID-only interval.',
             primary: 'Install BinlogViz',
@@ -2004,10 +2012,11 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             title: 'Release focus and recent milestones',
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
-            currentFocus: 'patch release',
-            currentTitle: 'flashback --conflict guard skips a primary key moved back onto a reused key',
+            currentFocus: 'minor release',
+            currentTitle: 'every JSON output versioned, workflow refuses unknown artifacts, version shows the commit',
             currentLink: 'Read release notes →',
             labels: {
+              v0261: 'flashback --conflict guard skips a primary key moved back onto a reused key',
               v0260: 'flashback --plan v2: a plan on every refusal, coded warnings, --conflict-limit',
               v0250: 'exit-code taxonomy everywhere, ledger-based workflow clean, fail-closed install.sh, 16 MiB+ compressed transactions',
               v0240: 'streaming flashback, conflict refusal, typed exit codes, hardened parsing',
@@ -2058,6 +2067,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: 'Trust boundary'
             },
             links: {
+              v0261: 'Open v0.26.1 notes →',
               v0260: 'Open v0.26.0 notes →',
               v0250: 'Open v0.25.0 notes →',
               v0240: 'Open v0.24.0 notes →',
@@ -2112,6 +2122,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v0270: 'Every JSON output is versioned: compare, trend, snapshot and workflow JSON start with schema_version 1, while analyze (report_version 3) and flashback --plan (plan_version 2) output is byte-identical (ADR 0010, #282, #302). workflow status, resume and clean refuse a compare or trend artifact with an unknown schema_version with exit 9 and touch nothing. binlogviz version prints the build's git commit, and version --format json prints it for agents. No breaking changes. Known issue: Linux release binaries report an empty commit until #303 is fixed; macOS archives and checkout builds report it.',
               v0261: 'binlogviz flashback --conflict guard no longer fails with ERROR 1062 when an UPDATE moved a primary key and a later row reused the old key: the move-back changes no row, like any other row changed later, and the rest of the block applies (#270, #299). The default --conflict refuse still exits 7. No breaking changes: exit codes, plan_version 2, analyze output and flashback SQL outside the guard are unchanged.',
               v0260: 'Breaking for scripts: flashback --plan is plan_version 2 (#270, #282, #296). Warnings are {code, message} with a code that does not change with --lang, and exit 6 and exit 7 refusals now print the plan with would_refuse and a refusal {kind, message}, so the JSON alone tells ok, refused and conflict apart. flashback --conflict-limit N (default 20, 0 for all) sets how many conflicts the plan and the exit 7 details list; count stays the full count. Analyze output, flashback SQL, stderr and exit codes are unchanged.',
               v0250: 'Breaking for scripts: every command error has a kind, exit 9 unsupported is new, and many failures moved off exit 1 (ADR 0009, #277, #284, #286). workflow clean deletes only files its ledger.jsonl attributes, moves them to .trash, and refuses untrusted manifests, failed runs and paths outside the root (#287-#291). install.sh fails closed on bad checksums or missing tools and defaults to the latest release (#283, #292). Real MySQL 8.0 compressed transactions of 16 MiB and up now parse, with bounded streaming decompression (#278, #293).',
@@ -2226,7 +2237,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.26.1 —— flashback --conflict guard 跳过改回已被重新使用的主键',
+            badge: 'v0.27.0 —— 所有 JSON 输出带版本号、workflow 拒绝未知产物、version 显示 commit',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'ROW binlog 的快速摘要：热表、写入形态、上线前后 compare。510 MB 级大约数秒。\nSTATEMENT / MIXED 会空或少计。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 mysqlbinlog --start-position。',
             primary: '安装 BinlogViz',
@@ -2329,10 +2340,11 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             title: '当前版本与最近里程碑',
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
-            currentFocus: '补丁版本',
-            currentTitle: 'flashback --conflict guard 跳过改回已被重新使用的主键',
+            currentFocus: '次版本',
+            currentTitle: '所有 JSON 输出带版本号、workflow 拒绝未知产物、version 显示 commit',
             currentLink: '查看发布说明 →',
             labels: {
+              v0261: 'flashback --conflict guard 跳过改回已被重新使用的主键',
               v0260: 'flashback --plan v2：每次拒绝都输出 plan、带 code 的警告、--conflict-limit',
               v0250: '退出码分类覆盖所有命令、基于 ledger 的 workflow clean、出错即拒绝的 install.sh、16 MiB 以上的压缩事务',
               v0240: '流式 flashback、冲突拒绝、分类退出码、加固的解析',
@@ -2383,6 +2395,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: '信任边界'
             },
             links: {
+              v0261: '打开 v0.26.1 说明 →',
               v0260: '打开 v0.26.0 说明 →',
               v0250: '打开 v0.25.0 说明 →',
               v0240: '打开 v0.24.0 说明 →',
@@ -2437,6 +2450,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v0270: '所有 JSON 输出都带版本号：compare、trend、snapshot 和 workflow 的 JSON 以 schema_version 1 开头，analyze（report_version 3）和 flashback --plan（plan_version 2）的输出逐字节不变（ADR 0010、#282、#302）。workflow status、resume 和 clean 遇到 schema_version 未知的 compare 或 trend 产物时以退出码 9 拒绝，不改动任何东西。binlogviz version 输出构建的 git commit，version --format json 供 agent 读取。没有不兼容变更。已知问题：#303 修复之前，Linux 发布版二进制报告的 commit 为空；macOS 归档和从 checkout 构建的二进制正常。',
               v0261: 'binlogviz flashback --conflict guard 在 UPDATE 修改了主键、旧主键后来又被其他行使用时，不再报 ERROR 1062：改回主键的语句和其他后来被修改过的行一样不改变任何行，块中其余语句照常执行（#270、#299）。默认的 --conflict refuse 仍以退出码 7 拒绝。没有不兼容变更：退出码、plan_version 2、analyze 输出以及 guard 之外的 flashback SQL 都不变。',
               v0260: '对脚本不兼容：flashback --plan 升级为 plan_version 2（#270、#282、#296）。警告改为 {code, message}，code 不随 --lang 变化；退出码 6 和 7 的拒绝现在也输出 plan，带 would_refuse 和 refusal {kind, message}，只看 JSON 就能区分正常、拒绝和冲突。flashback --conflict-limit N（默认 20，0 表示全部）设置 plan 和退出码 7 详情中列出的冲突条数，count 始终是完整数量。analyze 输出、flashback SQL、stderr 和退出码不变。',
               v0250: '对脚本不兼容：每个命令错误都有类别，新增退出码 9 unsupported，很多失败不再是退出码 1（ADR 0009、#277、#284、#286）。workflow clean 只删除 ledger.jsonl 记录的文件，移到 .trash，并拒绝不可信的 manifest、失败的运行和根目录之外的路径（#287–#291）。install.sh 在校验和错误或缺少工具时拒绝安装，默认安装最新版本（#283、#292）。真实 MySQL 8.0 中 16 MiB 及以上的压缩事务现在可以解析，解压是有界的流式处理（#278、#293）。',
