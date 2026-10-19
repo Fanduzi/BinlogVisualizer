@@ -14,6 +14,7 @@ Every command maps a failure to one **kind**. The exit code is a function of the
 | 7 | `conflict` | flashback: a selected row was changed again later in the scanned binlogs (`--conflict refuse`, the default; #259) |
 | 8 | `output` | writing the report, the script or the flashback temp file failed (for example ENOSPC). SIGPIPE stays 141 |
 | 9 | `unsupported` | format and version limits only: a STATEMENT or MIXED binlog with no ROW images, a `report_version` newer than this build, a report trimmed by `analyze --diagnostics summary|off` given to compare, trend, or `snapshot save` (`details.reason: reduced_diagnostics`), a workflow plan version, or a legacy or newer `manifest_version`, this build cannot run or resume (#277). Valid JSON missing required fields is 5, not 9 |
+| 10 | `resource` | flashback hit an enforced ceiling (#317, ADR 0012). `details.reason` is `spill_limit` when `BINLOGVIZ_SPILL_BYTES` is a positive byte count and the row spill plus the generated-column review spill grow past it, or `memory_limit` when `HeapAlloc` stays above 90% of `GOMEMLIMIT` after one GC. Unset `BINLOGVIZ_SPILL_BYTES` means no byte ceiling. A full disk (ENOSPC) stays 8. This is never 2: a runtime out-of-memory exit is not an empty result |
 
 Signals keep their shell codes: SIGHUP 129, SIGINT 130, SIGQUIT 131, SIGTERM 143.
 
@@ -26,7 +27,7 @@ Signals keep their shell codes: SIGHUP 129, SIGINT 130, SIGQUIT 131, SIGTERM 143
 ```
 
 - `kind` and `code` are stable; `message` is localized.
-- `details` is present only when there is something machine-readable: a `reason` (`invalid_plan`, `plan_changed`, `trust_boundary`, `untrusted_manifest`, `run_not_successful`, `no_ledger`, `untrusted_ledger`, `locked`, `snapshot_dir_mismatch`); a corrupt event's `event_type`, `end_position`, `event_size` and `cause`; a flashback conflict's `count` and `listed` (table, key, later GTID and position).
+- `details` is present only when there is something machine-readable: a `reason` (`invalid_plan`, `plan_changed`, `trust_boundary`, `untrusted_manifest`, `run_not_successful`, `no_ledger`, `untrusted_ledger`, `locked`, `snapshot_dir_mismatch`, `spill_limit`, `memory_limit`); a corrupt event's `event_type`, `end_position`, `event_size` and `cause`; a flashback conflict's `count` and `listed` (table, key, later GTID and position).
 - A corrupt event never prints the parser's Go struct or raw event bytes (#254).
 
 ## Progress and quiet mode

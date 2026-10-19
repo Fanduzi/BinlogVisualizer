@@ -1,4 +1,4 @@
-package analyzer
+package flashback_test
 
 import (
 	"strings"

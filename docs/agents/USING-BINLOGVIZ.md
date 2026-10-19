@@ -83,6 +83,7 @@ The kind string does not change with `--lang`. `--error-format json` prints one 
 | 7 | `conflict` | A selected row changed again later |
 | 8 | `output` | Could not write the report or the script |
 | 9 | `unsupported` | STATEMENT/MIXED with no ROW images, an unknown version, or a trimmed diagnostics document |
+| 10 | `resource` | Flashback hit a spill ceiling (`BINLOGVIZ_SPILL_BYTES`) or the process memory limit (`GOMEMLIMIT`). Not an empty result |
 
 ## JSON versions
 

@@ -291,6 +291,10 @@
     "description": "一行里没有可写的基列时拒绝",
     "other": "{{.Table}}：无法撤销所有列都是生成列的行"
   },
+  "error.flashbackResource": {
+    "description": "flashback 达到了溢出文件或内存上限",
+    "other": "flashback 资源不足（{{.Reason}}：已用 {{.Used}}，上限 {{.Limit}} 字节）"
+  },
   "cmd.flashback.flag.conflict": {
     "description": "Flashback --conflict 帮助",
     "other": "选中的行在扫描的 binlog 中之后又被修改时怎么办：refuse（默认；退出码 7，不输出脚本）或 guard（每条撤销语句匹配日志里的后镜像，之后被改过的行保持不动）"

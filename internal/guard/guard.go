@@ -1,6 +1,6 @@
 // Package guard: the flashback apply guard.
 // input: the generated columns an undo script omits (db, table, column).
-// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-block lock, the per-statement token condition, and the token seal of the finished script. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (guard_test.go).
+// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-block lock, the per-statement token condition, and the token seal of the finished script. A digest shorter than 8 bytes is an error. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (guard_test.go).
 // pos: flashback-only module. Analyze does not call it. The planner walks omitted columns and calls New.
 // note: if this file changes, update this header, CONTEXT.md (Apply guard) and docs/adr/0006-guard-module.md.
 package guard
@@ -63,20 +63,24 @@ func (g Guard) Seal(script string) string {
 
 // SealWriter writes through to w with the token placeholder replaced by the
 // token for sum, the sha256 of the whole script as Seal computes it. The
-// renderer never splits the placeholder across writes. A zero guard writes
-// each string unchanged.
-func (g Guard) SealWriter(w io.Writer, sum []byte) func(string) error {
+// renderer never splits the placeholder across writes, so the writer is a
+// function of one string. A digest shorter than 8 bytes is an error. A zero
+// guard writes each string unchanged.
+func (g Guard) SealWriter(w io.Writer, sum []byte) (func(string) error, error) {
+	if len(sum) < 8 {
+		return nil, fmt.Errorf("guard: digest is %d bytes, need at least 8", len(sum))
+	}
 	if g.header == "" {
 		return func(s string) error {
 			_, err := io.WriteString(w, s)
 			return err
-		}
+		}, nil
 	}
 	token := hex.EncodeToString(sum[:8])
 	return func(s string) error {
 		_, err := io.WriteString(w, strings.ReplaceAll(s, guardTokenMark, token))
 		return err
-	}
+	}, nil
 }
 
 const guardMismatchLead = "binlogviz: schema file does not match the target"
