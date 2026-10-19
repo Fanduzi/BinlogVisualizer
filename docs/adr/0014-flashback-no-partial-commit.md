@@ -65,7 +65,7 @@ These refuse or leave the data unchanged when the tool can make them do that. Th
 - A hand-pasted `XA END '<token>'` and `XA COMMIT '<token>' ONE PHASE`, using the id printed in the file, commits the open undo. Plain `COMMIT` does not: inside the XA transaction it is ERROR 1399. The published file contains no `XA COMMIT` on the path `mysql` runs; the commit text is only in the procedure's branch that `verify` selects.
 - A non-transactional table (MyISAM and anything that does not join the XA transaction) makes the row change durable at the statement. `XA ROLLBACK` does not undo it. The tool cannot see the engine in a row event. Do not point a flashback at a non-transactional table.
 - A client that does not implement `DELIMITER` cannot apply the script. The documented client is stock `mysql`.
-- Without `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, a statement before `XA START` fails. `mysql --force` continues. The failure stays recorded, so the finish rolls back or the commit never runs. No undo row is committed. The same holds when `CALL` cannot run. The second amendment states that invariant.
+- Without `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, a statement before `XA START` fails. `mysql --force` continues. The failure stays recorded, so the finish rolls back or the commit never runs. No undo row is committed. The same holds when `CALL` cannot run. The second amendment states that invariant. The undo also needs `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on the tables it changes. When `automatic_sp_privileges` is 0, `CALL` also needs `EXECUTE` on `binlogviz.*`.
 - A cut file leaves its procedure behind and an `ACTIVE` XA transaction until the session disconnects. Disconnect rolls the XA back. Run the next script in a new session. `verify` creates a new procedure name each time and drops that procedure at the end, so a leftover does not collide with the next apply. Clean the schema with `DROP DATABASE binlogviz` as an account that can drop those routines.
 - Two concurrent applies whose scripts hash to the same token share an XA id. The second `XA START` fails. With `--force` the session is set read-only, so that second script does not autocommit the undo.
 - The undo holds locks until the finish and can exceed `max_binlog_cache_size`. The finish does not `XA PREPARE`. A failed finish does not leave a prepared transaction for another session to commit. There is no per-block resume.
@@ -80,7 +80,7 @@ These refuse or leave the data unchanged when the tool can make them do that. Th
 ## Consequences
 
 - Applying still goes through `binlogviz flashback verify`. `mysql < file` still changes nothing.
-- The session needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`. The script creates the `binlogviz` database if it is absent. `verify` creates a procedure there under a per-invocation name and drops that procedure after the finish. `CREATE DATABASE`, `CREATE PROCEDURE`, and `DROP PROCEDURE` are their own binlog transactions. The undo is the `XA COMMIT`.
+- The session needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, and `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on the tables the undo changes. When `automatic_sp_privileges` is 0, it also needs `EXECUTE` on `binlogviz.*`. The script creates the `binlogviz` database if it is absent. `verify` creates a procedure there under a per-invocation name and drops that procedure after the finish. `CREATE DATABASE`, `CREATE PROCEDURE`, and `DROP PROCEDURE` are their own binlog transactions. The undo is the `XA COMMIT`.
 - v0.31.0 scripts do not verify. Regenerate them.
 - `plan_version` stays 2. `flashback verify --format json` stays `schema_version` 1. A script sealed by this ADR still verifies. The SQL `verify` prints is not byte-identical to the file: the finish procedure name and the trailer hex differ.
 
@@ -96,6 +96,7 @@ Checked on MySQL 8.0.46 and MySQL 5.7.44, binary logging on, `binlog_format=ROW`
 
 ```sql
 GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `schema`.* TO 'account'@'host';
 ```
 
 `CREATE` on `binlogviz.*` covers `CREATE DATABASE IF NOT EXISTS binlogviz`, including when the schema does not exist yet. A global `CREATE ON *.*` is not required. `CREATE ROUTINE` covers `CREATE PROCEDURE`. `ALTER ROUTINE` covers both `DROP PROCEDURE` statements.
@@ -104,7 +105,7 @@ GRANT CREATE, CREATE ROUTINE, ALTER ROUTINE ON `binlogviz`.* TO 'account'@'host'
 
 The script does not run `XA RECOVER`. `XA_RECOVER_ADMIN` is not required on 8.0, and `SUPER` is not required for the XA statements on 5.7. `XA START`, `XA END`, `XA COMMIT ... ONE PHASE`, and `XA ROLLBACK` need no extra privilege. `CREATE PROCEDURE` with binary logging on does not need `SUPER`, `SET_USER_ID`, or `log_bin_trust_function_creators`. That restriction is for stored functions. `DROP` on the schema is not required to apply.
 
-The undo still needs `INSERT`, `UPDATE`, and `DELETE` on the tables it changes. A generated-column guard reads `information_schema.COLUMNS`, which lists a column only when the account can see that table.
+The undo needs `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on the tables it changes. `UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143 without it). A generated-column guard reads `information_schema.COLUMNS`, which lists a column only when the account can see that table.
 
 On both servers, `@@error_count` read by the next statement is the error count of the statement that just ran, and a successful statement sets it back to 0, including under `mysql --force`. `BEGIN` inside an `ACTIVE` XA transaction is ERROR 1399. `XA END`, `XA COMMIT ... ONE PHASE`, and `XA ROLLBACK` run inside a `SQL SECURITY INVOKER` procedure.
 
@@ -173,6 +174,8 @@ Reproduced on MySQL 8.0.36 and MySQL 5.7.44: missing `ALTER ROUTINE`, then `mysq
 
 ## Amendment (2026-10-19): a failed apply drops its procedure, then says so
 
+Superseded. The self-drop and the `SIGNAL` below do not run. The next amendment replaces both: `DROP PROCEDURE` of the procedure that is running is ERROR 1357, so the client drops the routine after the `CALL` returns, and the procedure does not `SIGNAL`.
+
 Tracks #338 and #343. The seal, the digest, tamper detection (exit 6), `schema_version` 1, `plan_version` 2, the sticky `@binlogviz_applied` flag, and the per-run nonce stay as above. This replaces the sentence that the trailing `DROP PROCEDURE` is what removes the procedure the run created.
 
 ### Why the procedure stays
@@ -238,8 +241,43 @@ DROP DATABASE IF EXISTS binlogviz;
 
 Probed on MySQL 5.7.44 and MySQL 8.0.46: `DROP PROCEDURE` of the procedure that is running is ERROR 1357 (`Can't drop or alter a PROCEDURE from within another stored routine`). A `SIGNAL` from that procedure is a statement error on the `CALL`. Without `--force` the client then stops before the trailing `DROP`. This replaces the self-drop and the `SIGNAL` in the previous amendment. The seal, the digest, tamper exit 6, `schema_version` 1, `plan_version` 2, the sticky `@binlogviz_applied` flag, and the per-run nonce stay.
 
-**Decision.** Mode 2 swallows an `XA END` / `XA COMMIT` / `XA ROLLBACK` error and returns. It does not `DROP` and it does not `SIGNAL`. The next client statement is `DROP PROCEDURE IF EXISTS`. Because the `CALL` returned, that drop runs without `--force`. The statement after the drop prints `binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again` when sealed, applied, and want are not all 1, and appends ` (ERROR N)` when a statement error was captured. The statement after that is `SET @binlogviz_apply_rc = CASE WHEN ... THEN 0 ELSE (SELECT 1 UNION ALL SELECT 1) END`, which is ERROR 1242 on a rollback and is not evaluated on a commit. A successful apply prints no rollback line. A rolled-back apply prints the line, and without `--force` the mysql client exits 1. With `--force`, exit 0 is still not success: success is exit 0 and that line absent.
+**Decision.** Mode 2 swallows an `XA END` / `XA COMMIT` / `XA ROLLBACK` error and returns. It does not `DROP` and it does not `SIGNAL`. The next client statement is `DROP PROCEDURE IF EXISTS`. Because the `CALL` returned, that drop runs without `--force`. The statement after the drop prints `binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again` when sealed, applied, and want are not all 1, and appends ` (ERROR N)` when a statement error was captured. The statement after that was ERROR 1242. The next amendment replaces it: success is the line `binlogviz: undo committed, N statements`, and a failure sets `sql_mode` to a value MySQL rejects so stderr carries the real errno and message. A rolled-back apply still prints the rollback line, and without `--force` the mysql client exits 1.
 
-Statements before `CREATE PROCEDURE` are executed as themselves, not through `CALL`. A failure there leaves no procedure. A routine runs with the `sql_mode` stored when it was created, so a client `SET SESSION sql_mode` before `CALL` does not affect the undo. When one statement must drop flags (`ENUM` index 0, a zero date, a generated `NULL`), the client stores that mode in `@binlogviz_next_mode` and mode 0 applies it for that `EXECUTE` only, then clears it. MySQL restores the session `sql_mode` when the routine returns.
+Statements before `CREATE PROCEDURE` are executed as themselves, not through `CALL`. A failure there leaves no procedure. A routine runs with the `sql_mode` stored when it was created. A `SET SESSION sql_mode` after `CREATE PROCEDURE` and before `CALL` does not affect the undo. A mode that is already set when `CREATE PROCEDURE` runs is the mode the undo uses, including a mode the operator set before `mysql` read the file. The next amendment strips the flags that change matching, and it is the one that applies. When one statement must drop flags (`ENUM` index 0, a zero date, a generated `NULL`), the client stores that mode in `@binlogviz_next_mode` and mode 0 applies it for that `EXECUTE` only, then clears it. MySQL restores the session `sql_mode` when the routine returns.
 
-The paths that still cannot drop are unchanged: a kill after `CREATE PROCEDURE` and before the finish `CALL`, a `CALL` that never enters the body, and ERROR 1227 for a `SYSTEM_USER` definer on 8.0. Clean up with `DROP DATABASE IF EXISTS binlogviz`.
+The paths that still cannot drop are unchanged: a kill after `CREATE PROCEDURE` and before the finish `CALL`, and a `CALL` that never enters the body. `DROP PROCEDURE` of a `SYSTEM_USER` definer can still be ERROR 1227 on 8.0. `DROP DATABASE IF EXISTS binlogviz` needs `DROP` on `binlogviz.*` and does not need `SYSTEM_USER` or `ALTER ROUTINE`.
+
+## Amendment (2026-10-19): the session mode at CREATE PROCEDURE is the undo mode
+
+Tracks #347. The seal, the digest, tamper exit 6, `schema_version` 1, `plan_version` 2, the sticky `@binlogviz_applied` flag, and the per-run nonce stay. This corrects the sentence that a client `sql_mode` change does not affect the undo, replaces the success rule "exit 0 and the rollback line absent", and replaces ERROR 1242 as the only failure signal.
+
+### The mode the procedure stores
+
+`CREATE PROCEDURE` stores `@@SESSION.sql_mode`. The body runs with that mode. A change after `CREATE` and before `CALL` does not change it, except mode 0 applying `@binlogviz_next_mode` for one statement. A change before `CREATE` is inherited. That includes `PAD_CHAR_TO_FULL_LENGTH` in the session that starts the script.
+
+On MySQL 8.0, `utf8mb4_0900_ai_ci` and `utf8mb4_0900_bin` do not pad `CHAR`. With `PAD_CHAR_TO_FULL_LENGTH`, a keyed `UPDATE` or `DELETE` compares the key as padded and matches 0 rows. The `INSERT` undos still run. The flag stays 1, the finish commits, and the client exits 0 with no rollback line. The restored rows are wrong. `utf8mb4_general_ci` and `utf8mb4_bin` pad already, so the same mode does not change their match. MySQL 5.7 has no `utf8mb4_0900_*` collation.
+
+The first statement of the script saves `@@SESSION.sql_mode` and removes `PAD_CHAR_TO_FULL_LENGTH` and `NO_BACKSLASH_ESCAPES` before `CREATE PROCEDURE`. Its payload has no backslash and no newline, so it parses while `NO_BACKSLASH_ESCAPES` is still on. The procedure is created with the stripped mode. After the finish `CALL` returns, a successful apply sets the session back to the saved mode. `@binlogviz_next_mode` is computed from the stripped session, so one row does not put `PAD_CHAR_TO_FULL_LENGTH` back. The published file still ends by setting a rejected `sql_mode`, so `mysql < file` does not commit.
+
+Flags that are not stripped for the whole script:
+
+- `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES`, `TRADITIONAL`, `NO_ZERO_DATE`, `NO_ZERO_IN_DATE`, and `ERROR_FOR_DIVISION_BY_ZERO` stay. The one statement that must drop them already does, through `@binlogviz_next_mode`.
+- `NO_AUTO_VALUE_ON_ZERO` stays. Stripping it turns a logged `AUTO_INCREMENT` 0 into a new value.
+- `ANSI_QUOTES`, `PIPES_AS_CONCAT`, `HIGH_NOT_PRECEDENCE`, and `IGNORE_SPACE` stay. The generated SQL uses backticks and single quotes, and it has no `||` and no ambiguous `NOT`.
+- `ONLY_FULL_GROUP_BY`, `NO_ENGINE_SUBSTITUTION`, `NO_UNSIGNED_SUBTRACTION`, `REAL_AS_FLOAT`, `NO_DIR_IN_CREATE`, `ALLOW_INVALID_DATES`, and `TIME_TRUNCATE_FRACTIONAL` stay. They do not change equality of a stored key. `TIME_TRUNCATE_FRACTIONAL` matters when a literal is more precise than the column. The binlog literal is the stored value.
+
+### A keyed undo matches one row
+
+Mode 0 reads `ROW_COUNT()` immediately after `EXECUTE`, before `DEALLOCATE PREPARE`. A keyed `UPDATE` or `DELETE` undo (a primary key, not a no-PK `LIMIT 1` match, not `--conflict guard`) must affect exactly one row. Any other count sets `@binlogviz_applied = 0`, records errno 45000, and records `keyed undo affected N rows, expected 1`. The check runs only when the statement handler did not already poison the run. An `INSERT` undo (the undo of a `DELETE`) is not a keyed match. `--conflict guard` may affect 0 rows. The marker that selects the check is inside the digested statement text, so deleting it is a digest mismatch.
+
+`@binlogviz_n` counts the undo statements that ran while the flag was still 1. The bookkeeping `SET @binlogviz_txn = 1` is not counted.
+
+### What success is
+
+After a commit the client prints `binlogviz: undo committed, N statements`. Success is that line present. Exit 0 with the line absent is not success. A truncated stream or a killed session also exits 0 and prints nothing, and nothing was committed. The rollback line still prints on stdout when the undo rolls back. Automation uses `set -o pipefail` and greps for the commit line. With `--force`, exit 0 is still not success.
+
+### The real error
+
+The mode-0 handler reads diagnostics conditions 1, 2, and 3. MySQL 5.7 requires a literal condition number. It skips SQLSTATE class `00` and `01`, and errno 1287 (`Setting user variables within expressions is deprecated`, from the token guard). It keeps the first remaining `MYSQL_ERRNO` and `MESSAGE_TEXT`. A later condition does not overwrite them. On MySQL 8.0, condition 1 can be 1287 while the statement error is 1143, 1146, or 1054. MySQL 5.7 reports that statement error as condition 1. 1062 is the statement error on both.
+
+On failure the client sets `SESSION sql_mode` to `ERROR <n>: <message>`. MySQL rejects it with ERROR 1231, and the text of 1231 includes that value, so stderr shows the real number and the message. On success the same statement sets the saved mode and does not error. ERROR 1242 is not the failure signal. A zero-row keyed undo has no server message; stderr shows `ERROR 45000: keyed undo affected N rows, expected 1`.
