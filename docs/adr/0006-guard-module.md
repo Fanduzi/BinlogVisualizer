@@ -1,6 +1,6 @@
 # The flashback apply guard is one module whose message cut exists only in SQL
 
-`internal/analyzer/flashback_guard.go` owns the apply guard. Its interface is `newFlashGuard(cols)` and four methods: `Header` (printed once after the session SET lines), `BlockLock` (before each transaction), `RowCond` (added to each undo statement), and `Seal` (replaces the token placeholder with a hash of the finished script). The zero guard returns "" or its input unchanged. The renderer no longer knows the lock SQL, the token condition or how the token is made.
+`internal/guard` owns the apply guard (ADR 0012 step 3; this used to be `internal/analyzer/flashback_guard.go`). Its interface is `New(cols)` and five methods: `Header` (printed once after the session SET lines), `BlockLock` (before each transaction), `RowCond` (added to each undo statement), `Seal` (replaces the token placeholder with a hash of the finished script), and `SealWriter` (the same replacement while the planner streams the script). The zero guard returns "" or its input unchanged. The renderer no longer knows the lock SQL, the token condition or how the token is made. The walk that collects omitted columns stays in the planner and passes `[]Col`.
 
 The 200-byte cut of the mismatch message (whole names, by bytes, `|` shown as `/`) is implemented once, in the SQL that `Header` emits. The Go copy (`trimGuardList`, `guardErrorValue`) was called only by tests and is deleted.
 
@@ -15,5 +15,5 @@ The unit tests exercised the Go copy, while production shipped the SQL. #192 and
 
 ## Consequences
 
-- The guard tests (`flashback_guard_test.go`) run the emitted header on real servers named by `BINLOGVIZ_GUARD_MYSQL` (one or more client commands separated by `|`, for example MySQL 8.0 and 5.7). They check the exact ERROR 1231 value for the #192/#208 cases, sweep the cut point, and check that a matching target stays writable. Without that variable they are skipped. The offline tests check the zero guard and the token seal.
+- The guard tests (`internal/guard/guard_test.go`) run the emitted header on real servers named by `BINLOGVIZ_GUARD_MYSQL` (one or more client commands separated by `|`, for example MySQL 8.0 and 5.7). They check the exact ERROR 1231 value for the #192/#208 cases, sweep the cut point, and check that a matching target stays writable. Without that variable they are skipped. The offline tests check the zero guard and the token seal.
 - The script output is unchanged byte for byte.

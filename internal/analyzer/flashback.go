@@ -1,6 +1,6 @@
 // Package analyzer collects selected row images for undo SQL.
 // input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by a guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. The lock is SET SESSION TRANSACTION READ ONLY, which names no server variable, and a prepared READ WRITE undoes it only when @binlogviz_ok holds this script's token, which the guard sets only after the check ran and matched on MySQL 5.7+ or MariaDB 10.2+ in a writable session, so a failed step, including PREPARE, a header-less block, another script's block, or a reconnect leaves the session read-only. Every undo statement also checks the token, so statements run in a session without it change no row. The token is a hash of the rendered script. A match in a session that is already read-only fails the guard with a disconnect hint. Older servers fail that guard with a clear message and stay read-only. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0, a zero month or day, and an omitted generated column logged as NULL are each wrapped in a sql_mode save and restore that drops only the flags that would reject the stored value, plus TRADITIONAL.
+// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by internal/guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. The lock is SET SESSION TRANSACTION READ ONLY, which names no server variable, and a prepared READ WRITE undoes it only when @binlogviz_ok holds this script's token, which the guard sets only after the check ran and matched on MySQL 5.7+ or MariaDB 10.2+ in a writable session, so a failed step, including PREPARE, a header-less block, another script's block, or a reconnect leaves the session read-only. Every undo statement also checks the token, so statements run in a session without it change no row. The token is a hash of the rendered script. A match in a session that is already read-only fails the guard with a disconnect hint. Older servers fail that guard with a clear message and stay read-only. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0, a zero month or day, and an omitted generated column logged as NULL are each wrapped in a sql_mode save and restore that drops only the flags that would reject the stored value, plus TRADITIONAL.
 // stream: rows are spilled per transaction part (flashback_spill.go); the script is rendered twice from the spill, into the guard hash and then to the writer, so memory does not grow with the binlog and nothing is written before every check passes (ADR-0008).
 // pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
 // note: if this file changes, update this header and module README.md.
@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"binlogviz/internal/guard"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
@@ -489,7 +490,7 @@ func (a *Analyzer) WriteFlashback(w io.Writer) (int, error) {
 	if err != nil || rows == 0 {
 		return 0, err
 	}
-	var cols []guardCol
+	var cols []guard.Col
 	seen := map[string]struct{}{}
 	if err := a.eachFlashGroup(false, func(g *flashGroup) error {
 		cols = appendGuardCols(cols, seen, *g)
@@ -682,6 +683,37 @@ func flashTable(schema, table string) string {
 	}
 }
 
+// omittedGeneratedCols lists the generated columns a script omits, in first-seen order.
+func omittedGeneratedCols(groups []flashGroup) []guard.Col {
+	var out []guard.Col
+	seen := map[string]struct{}{}
+	for _, group := range groups {
+		out = appendGuardCols(out, seen, group)
+	}
+	return out
+}
+
+// appendGuardCols adds the generated columns of one group not yet in seen.
+func appendGuardCols(out []guard.Col, seen map[string]struct{}, group flashGroup) []guard.Col {
+	for i, row := range group.rows {
+		if i >= len(group.binds) {
+			continue
+		}
+		for _, col := range group.binds[i].cols {
+			if !col.Generated {
+				continue
+			}
+			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.Name)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, guard.Col{Schema: row.Schema, Table: row.Table, Column: col.Name})
+		}
+	}
+	return out
+}
+
 // renderFlashbackSQL renders groups held in memory (tests and small inputs).
 func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 	var b strings.Builder
@@ -704,16 +736,16 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 // writeFlashbackScript renders the script twice from backward (last group
 // first): into the guard hash, then to w with the token sealed in. Nothing
 // reaches w when a statement cannot be rendered.
-func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) error, notes []string, cols []guardCol, postImage bool) error {
-	guard := newFlashGuard(cols)
+func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) error, notes []string, cols []guard.Col, postImage bool) error {
+	g := guard.New(cols)
 	h := sha256.New()
-	if err := renderFlashbackTo(toWriter(h), backward, notes, guard, postImage); err != nil {
+	if err := renderFlashbackTo(toWriter(h), backward, notes, g, postImage); err != nil {
 		return err
 	}
-	return renderFlashbackTo(guard.sealWriter(w, h.Sum(nil)), backward, notes, guard, postImage)
+	return renderFlashbackTo(g.SealWriter(w, h.Sum(nil)), backward, notes, g, postImage)
 }
 
-func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, guard flashGuard, postImage bool) error {
+func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, g guard.Guard, postImage bool) error {
 	var b strings.Builder
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
@@ -727,9 +759,9 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 	b.WriteString("SET NAMES utf8mb4;\n")
 	b.WriteString("SET time_zone = '+00:00';\n")
 	b.WriteString("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\n")
-	if guard.Header() != "" {
+	if g.Header() != "" {
 		b.WriteByte('\n')
-		b.WriteString(guard.Header())
+		b.WriteString(g.Header())
 	}
 	if err := out(b.String()); err != nil {
 		return err
@@ -737,7 +769,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 	// With a guard, every undo statement also checks this script's token, so
 	// a statement run in a session where this script's guard did not match
 	// (a reconnect inside a block, a block from another script) changes no row.
-	tokenCond := guard.RowCond()
+	tokenCond := g.RowCond()
 	// Parts of one transaction arrive last part first; the block opens at
 	// the first part seen and commits after part 0.
 	open := int64(-1)
@@ -745,7 +777,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 		b.Reset()
 		if group.id != open {
 			open = group.id
-			writeBlockHead(&b, group, guard)
+			writeBlockHead(&b, group, g)
 		}
 		for j := len(group.rows) - 1; j >= 0; j-- {
 			var gen map[string]struct{}
@@ -772,7 +804,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 	})
 }
 
-func writeBlockHead(b *strings.Builder, group *flashGroup, guard flashGuard) {
+func writeBlockHead(b *strings.Builder, group *flashGroup, g guard.Guard) {
 	b.WriteByte('\n')
 	gtid := group.gtid
 	if gtid == "" {
@@ -784,7 +816,7 @@ func writeBlockHead(b *strings.Builder, group *flashGroup, guard flashGuard) {
 		file = "binlog"
 	}
 	fmt.Fprintf(b, "-- binlog: %s:%d\n", mysqlexpr.OneLine(file, 0), group.pos)
-	if lock := guard.BlockLock(); lock != "" {
+	if lock := g.BlockLock(); lock != "" {
 		// SET sql_mode, COMMIT, START TRANSACTION, and SET GTID_NEXT do not
 		// clear this session flag. Repeat the same lock outside a
 		// transaction so this block cannot start writable: it is read-only
