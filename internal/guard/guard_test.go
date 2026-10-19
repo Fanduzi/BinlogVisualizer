@@ -1,4 +1,4 @@
-package analyzer
+package guard
 
 import (
 	"fmt"
@@ -10,17 +10,17 @@ import (
 	"unicode/utf8"
 )
 
-// Guard tests go through the guard's interface (newFlashGuard and its
-// methods). The message cut exists only in the emitted SQL, so the cut tests
-// run that SQL on a real server. Set BINLOGVIZ_GUARD_MYSQL to one or more
-// client commands separated by "|", for example
+// Guard tests go through the guard's interface (New and its methods). The
+// message cut exists only in the emitted SQL, so the cut tests run that SQL
+// on a real server. Set BINLOGVIZ_GUARD_MYSQL to one or more client commands
+// separated by "|", for example
 //
 //	BINLOGVIZ_GUARD_MYSQL='docker exec -i -e MYSQL_PWD=root m80 mysql -uroot|docker exec -i -e MYSQL_PWD=root m57 mysql -uroot'
 //
 // Without it the server tests are skipped; the offline tests still run.
 
 func TestFlashGuardZeroValueIsNoGuard(t *testing.T) {
-	g := newFlashGuard(nil)
+	g := New(nil)
 	if g.Header() != "" || g.BlockLock() != "" || g.RowCond() != "" {
 		t.Fatalf("no columns must mean no guard: %+v", g)
 	}
@@ -30,7 +30,7 @@ func TestFlashGuardZeroValueIsNoGuard(t *testing.T) {
 }
 
 func TestFlashGuardSealsOneToken(t *testing.T) {
-	g := newFlashGuard([]guardCol{{schema: "d", table: "t", column: "g"}})
+	g := New([]Col{{Schema: "d", Table: "t", Column: "g"}})
 	if !strings.Contains(g.Header(), guardTokenMark) || g.BlockLock() != guardLockSQL || g.RowCond() != guardTokenCond {
 		t.Fatal("guard parts missing")
 	}
@@ -50,6 +50,46 @@ func TestFlashGuardSealsOneToken(t *testing.T) {
 	}
 	if g.Seal(script+"-- other\n") == a {
 		t.Fatal("different scripts must get different tokens")
+	}
+}
+
+func TestGuardSQLShape(t *testing.T) {
+	g := New([]Col{{Schema: "shop", Table: "t", Column: "c"}})
+	h := g.Header()
+	if !strings.Contains(h, guardServerCheckSQL()) {
+		t.Fatal("header missing version check")
+	}
+	for _, name := range []string{guardStmtMsg, guardStmtRO, guardStmtUnlock} {
+		if !strings.HasPrefix(name, "binlogviz_fb_") || !strings.HasSuffix(name, "_x9q") || !strings.Contains(h, name) {
+			t.Fatalf("statement name %q", name)
+		}
+	}
+	for _, msg := range []string{guardOldServerMsg, guardNotRunMsg, guardReadOnlyMsg} {
+		if strings.Contains(msg, ",") || len(msg) > guardValueLimit || !strings.Contains(h, sqlQuote(msg)) {
+			t.Fatalf("message %q", msg)
+		}
+	}
+	if !strings.Contains(h, sqlQuote(guardMismatchHint)) {
+		t.Fatal("mismatch hint missing")
+	}
+}
+
+func TestGuardSafeLabel(t *testing.T) {
+	if got := guardSafeLabel("db.t.a,b"); got != "db.t.a;b" {
+		t.Fatalf("comma: %q", got)
+	}
+	if got := guardSafeLabel("db.t.c | d"); got != "db.t.c / d" {
+		t.Fatalf("separator: %q", got)
+	}
+	if got := guardSafeLabel("shop.t.c"); got != "shop.t.c" {
+		t.Fatalf("plain: %q", got)
+	}
+	// #208: a name ending in " |" or starting with "| " must not form a separator.
+	if got := guardSafeLabel("db.t.x |"); got != "db.t.x /" {
+		t.Fatalf("suffix: %q", got)
+	}
+	if got := guardSafeLabel("db.t.| y"); got != "db.t./ y" {
+		t.Fatalf("prefix: %q", got)
 	}
 }
 
@@ -84,9 +124,9 @@ var guardValueRE = regexp.MustCompile(`(?s)Variable 'sql_mode' can't be set to t
 // applyGuard runs the sealed guard header for cols on a fresh session of a
 // server that has none of these columns, and returns the sql_mode value the
 // guard failed with.
-func applyGuard(t *testing.T, s guardServer, cols []guardCol) string {
+func applyGuard(t *testing.T, s guardServer, cols []Col) string {
 	t.Helper()
-	g := newFlashGuard(cols)
+	g := New(cols)
 	out, err := s.run(t, g.Seal("SET NAMES utf8mb4;\n"+g.Header()+"SELECT 'binlogviz-test-continued';\n"))
 	if err == nil || strings.Contains(out, "binlogviz-test-continued\n") && !strings.Contains(out, "ERROR 1231") {
 		t.Fatalf("guard did not stop the apply:\n%s", out)
@@ -102,11 +142,11 @@ func applyGuard(t *testing.T, s guardServer, cols []guardCol) string {
 	return v
 }
 
-func cols3(names ...string) []guardCol {
-	out := make([]guardCol, len(names))
+func cols3(names ...string) []Col {
+	out := make([]Col, len(names))
 	for i, n := range names {
 		p := strings.SplitN(n, ".", 3)
-		out[i] = guardCol{schema: p[0], table: p[1], column: p[2]}
+		out[i] = Col{Schema: p[0], Table: p[1], Column: p[2]}
 	}
 	return out
 }
@@ -182,7 +222,7 @@ func TestGuardMatchOnServer(t *testing.T) {
 		if out, err := s.run(t, "DROP DATABASE IF EXISTS bvguard_ok;\nCREATE DATABASE bvguard_ok;\nCREATE TABLE bvguard_ok.t (id INT PRIMARY KEY, g INT AS (id + 1) VIRTUAL);\n"); err != nil {
 			t.Fatalf("setup: %v\n%s", err, out)
 		}
-		g := newFlashGuard(cols3("bvguard_ok.t.g"))
+		g := New(cols3("bvguard_ok.t.g"))
 		out, err := s.run(t, g.Seal("SET NAMES utf8mb4;\n"+g.Header()+g.BlockLock()+"INSERT INTO bvguard_ok.t (id) SELECT 7 FROM DUAL WHERE "+g.RowCond()+";\nSELECT COUNT(*) AS n FROM bvguard_ok.t;\n"))
 		if err != nil || !strings.Contains(out, "n\n1\n") {
 			t.Fatalf("matching target: %v\n%s", err, out)

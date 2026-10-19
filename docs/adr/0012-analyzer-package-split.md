@@ -24,7 +24,7 @@ Leaf packages do not import `internal/analyzer`. `analyzer` orchestrates: it cal
 |---|---|---|
 | `internal/mysqlexpr` | The expression evaluator (ADR 0007): one grammar, one cached tree, `EvalGenExpr` and `EvalDecExprInc`. The value rules (`genVal`, `decVal`, JSON, charset, integer and DECIMAL arithmetic, including `intVal` / `applyMulOp` / `applyIntDiv`). The SQL cursor `Scan` and every method on it. The column value `SchemaCol` and the CREATE/ALTER column parser, row check, and generated-column review, because they share that cursor and those fields. | Which `db.table` a definition binds to. Undo SQL. The guard. Reports. |
 | `internal/schemacatalog` | The schema catalog (ADR 0005): load a schema file, observe table maps and DDL, resolve or peek `db.table`, return warnings. Binding rules stay here. | Parsing a column list or evaluating an expression. It calls `mysqlexpr` for both. |
-| `internal/guard` | The apply guard (ADR 0006): `New(cols)`, `Header`, `BlockLock`, `RowCond`, `Seal`. The zero value returns `""` or its input unchanged. | Walking spilled row groups to collect omitted columns. The planner does that and passes `[]Col`. |
+| `internal/guard` | The apply guard (ADR 0006): `New(cols)`, `Header`, `BlockLock`, `RowCond`, `Seal`, `SealWriter`. The zero value returns `""` or its input unchanged. | Walking spilled row groups to collect omitted columns. The planner does that and passes `[]Col`. |
 | `internal/flashback` | The planner: selection, refusals, spill, conflict set, review flags, streaming writer, `--plan`. | The grammar, the binding rules, the guard SQL. |
 | `internal/report/view` | One ordered, bounded view of an `AnalysisResult`. | SQL text, HTML chrome, JSON encoding. The existing renderers stay, and they read the view. |
 | `internal/detailstore` | The DuckDB adapter (`store_duckdb.go` / `store_nocgo.go`) behind the existing `detailStore` interface. `cmd` wires it. | Aggregation. The default `none` store can stay a tiny type in `analyzer` or move with the interface; either way `analyzer` does not import `go-duckdb`. |
@@ -89,6 +89,9 @@ flashback and analyzer both consume rowstream once it exists
 - `type Col struct { Schema, Table, Column string }`
 - `New(cols []Col) Guard`
 - `Header() string`, `BlockLock() string`, `RowCond() string`, `Seal(script string) string`
+- `SealWriter(w io.Writer, sum []byte) func(string) error`
+
+`Seal` replaces the placeholder in a finished script. The planner does not call it. It renders twice (ADR 0008): once into a sha256, then once through `SealWriter`, so the script is not buffered. `sum` is that digest, the same one `Seal` computes. The placeholder stays inside the guard. The first draft of this list had only `Seal`, which would make the planner buffer the script or learn the placeholder.
 
 `flashback.Planner` (the type that takes the `flash*` fields off `*Analyzer`):
 
@@ -139,6 +142,6 @@ Steps 1 and 2 are the first PR. They are the closed set with the smallest shared
 ## Consequences
 
 - Steps 1 and 2 do not change analyze or flashback output. `report_version` and `plan_version` stay. Golden files stay.
-- ADR 0005 and ADR 0007 still describe the binding rules and the evaluator. The file paths in those ADRs are historical; the packages in this ADR are the location. ADR 0006's guard behaviour is unchanged until step 3 moves the file.
+- ADR 0005 and ADR 0007 still describe the binding rules and the evaluator. The file paths in those ADRs are historical; the packages in this ADR are the location. Step 3 moves the guard to `internal/guard` and adds `SealWriter` (see the guard interface). ADR 0006's behaviour is unchanged; its path now names `internal/guard`.
 - After step 2, `*Analyzer` still has the `flash*` fields. Step 4 is what removes them. New flashback features should wait for that type, as the October 16 recheck said.
 - A later step that wants the column parser to live inside `schemacatalog` moves those functions and keeps `SchemaCol` as the single column type. It does not add a parallel struct.
