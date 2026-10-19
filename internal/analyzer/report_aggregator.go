@@ -409,6 +409,7 @@ func incompleteTransactionAlert(txn model.Transaction) model.Alert {
 		Severity: "warning",
 		Message:  "Transaction " + txn.TxnKey + " has " + string(status) + " evidence; whole-transaction conclusions are suppressed",
 		TxnKey:   txn.TxnKey,
+		GTID:     txn.GTID,
 		Details: map[string]any{
 			"completeness": status,
 			"retained_span": map[string]any{

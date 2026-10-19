@@ -391,6 +391,8 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 
 `diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images. `diagnostics.open_explicit_groups`, when present, counts `BEGIN` groups that reached end of input without `COMMIT` or plain `ROLLBACK`. It is omitted when zero. A later GTID after that open `BEGIN` does not produce a report: analyze exits 1 with `open BEGIN without close`.
 
+`--diagnostics` (default `full`) changes only this JSON object. `summary` keeps `file_coverage`, `counted_event_bytes`, `ddl_events`, `open_dml_groups`, `duration_buckets`, `input_format_guess`, and the ignored-query, open-group, and unmapped counts, and emits empty arrays for `largest_transactions`, `longest_transactions`, `widest_transactions`, `file_segments`, `hot_intervals`, and `findings` (`largest_byte_transactions` stays omitted when empty). `off` omits the `diagnostics` key. Text, Markdown, and HTML ignore the flag. `report_version` stays 3. See ADR 0011.
+
 `diagnostics.counted_event_bytes` is the sum of retained row/DDL event bytes after schema/table filtering. `diagnostics.file_coverage.selected[].size` is physical input-file size; missing size metadata is unavailable rather than zero in human-readable reports. `diagnostics.ddl_events` is the DDL occurrence timeline (time, operation, object, statement, positions, and, when the binlog has one, the GTID of the transaction that holds that DDL). It does not measure MDL or lock-wait duration. `diagnostics.open_dml_groups`, when present, lists explicit `BEGIN` groups that wrote row images and reached end of input without `COMMIT` or plain `ROLLBACK`. Each entry's `note` says the group is still uncommitted in this file/window and is not lock-contention proof. `diagnostics.duration_buckets` counts committed transactions in `<1s`, `1s-10s`, `10s-30s`, and `>=30s`. `diagnostics.largest_byte_transactions` ranks committed transactions by binlog bytes. Those three fields are omitted when empty.
 
 Default text prints the DDL timeline, open uncommitted DML, up to three longest committed transactions, the duration buckets, byte contributors, and a per-file size/span when more than one file is selected. `--large-trx-duration` still alerts on committed transactions over that duration and also warns on open DML groups over the same threshold. A later GTID after an open `BEGIN` still exits 1 with an empty stdout; if that group wrote rows, the Error line includes duration, rows, tables, and position. DDL-only input exits 0. ADMIN-only input still exits 2. `FLUSH TABLES WITH READ LOCK` stays Unclassified QUERY (exit 1) and is not listed as an admin or lock statement.
@@ -584,10 +586,11 @@ Each entry contains:
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `type` | string | yes | `large_transaction`, `open_dml_group`, `spike`, `input_format`, `partial_transaction`, or `unknown_transaction` |
+| `type` | string | yes | `large_transaction`, `open_dml_group`, `spike`, `input_format`, `partial_transaction`, `unknown_transaction`, or `no_primary_key` |
 | `severity` | string | yes | Current alert severity string |
-| `message` | string | yes | Human-readable alert message |
+| `message` | string | yes | Human-readable alert message. It still names the internal `txn_key`, not the GTID. |
 | `txn_key` | string | no | Present for transaction-scoped alerts |
+| `gtid` | string | no | Present when that transaction has a GTID (MySQL `uuid:seq` or MariaDB `domain-server-seq`). Same string as `transactions[].gtid`. Omitted for an anonymous group and for alerts that are not about one transaction (`spike`, `input_format`, `no_primary_key`). Pass it to `flashback --include-gtids`. |
 | `minute` | string | no | Present for minute-scoped alerts; RFC3339 when present |
 | `details` | object | no | JSON object containing structured alert details; omitted when no structured detail payload exists |
 

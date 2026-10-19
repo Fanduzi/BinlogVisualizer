@@ -429,6 +429,7 @@ func cloneAlert(alert model.Alert) model.Alert {
 		Severity: alert.Severity,
 		Message:  alert.Message,
 		TxnKey:   alert.TxnKey,
+		GTID:     alert.GTID,
 		Minute:   alert.Minute,
 		Details:  cloneStringAnyMap(alert.Details),
 	}

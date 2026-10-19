@@ -21,12 +21,15 @@ type WorkloadSummary struct {
 
 // Alert represents a detected anomaly or threshold breach.
 type Alert struct {
-	Type     string // "large_transaction", "spike", "input_format", "partial_transaction", "unknown_transaction"
+	Type     string // "large_transaction", "spike", "input_format", "partial_transaction", "unknown_transaction", "open_dml_group", "no_primary_key"
 	Severity string // "info", "warning", "critical"
 	Message  string
 	TxnKey   string
-	Minute   time.Time
-	Details  map[string]any // supports int, float64, string, time.Duration, etc.
+	// GTID is the transaction's GTID when this alert names one and the binlog has one.
+	// Empty for anonymous groups and for alerts that are not about one transaction.
+	GTID    string
+	Minute  time.Time
+	Details map[string]any // supports int, float64, string, time.Duration, etc.
 }
 
 // Snapshot describes the top-level analyze report envelope.

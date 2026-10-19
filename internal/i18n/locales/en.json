@@ -51,6 +51,10 @@
     "description": "SQL context flag description",
     "other": "Query text in every format, including default text, DDL statements, and --show-patterns: summary (one bounded line), off (omit query text), or full (stored SQL capped at 4096 bytes and marked when cut). Credential material in DDL is redacted in every mode"
   },
+  "cmd.analyze.flag.diagnostics": {
+    "description": "Diagnostics JSON budget flag description",
+    "other": "JSON diagnostics size: full (default, unchanged), summary (drop transaction rankings and other lists already at the top level), or off (omit diagnostics). Text, Markdown, and HTML ignore this flag"
+  },
   "cmd.analyze.flag.top": {
     "description": "Default ranked items flag description",
     "other": "Default number of ranked items to show"

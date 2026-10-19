@@ -5,7 +5,10 @@
 // note: if this file changes, update this header and module README.md.
 package report
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseFormatAcceptsSupportedFormatsAndDefault(t *testing.T) {
 	tests := []struct {
@@ -37,6 +40,26 @@ func TestParseFormatRejectsUnknownFormat(t *testing.T) {
 	got, err := ParseFormat("binary")
 	if err == nil {
 		t.Fatalf("expected error, got format %q", got)
+	}
+}
+
+func TestParseDiagnosticsMode(t *testing.T) {
+	for _, raw := range []string{"", "full"} {
+		got, err := ParseDiagnosticsMode(raw)
+		if err != nil || got != DiagnosticsFull {
+			t.Fatalf("ParseDiagnosticsMode(%q) = %q, %v", raw, got, err)
+		}
+	}
+	got, err := ParseDiagnosticsMode("summary")
+	if err != nil || got != DiagnosticsSummary {
+		t.Fatalf("summary = %q, %v", got, err)
+	}
+	got, err = ParseDiagnosticsMode("off")
+	if err != nil || got != DiagnosticsOff {
+		t.Fatalf("off = %q, %v", got, err)
+	}
+	if _, err := ParseDiagnosticsMode("nope"); err == nil || !strings.Contains(err.Error(), "invalid --diagnostics") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

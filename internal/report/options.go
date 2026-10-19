@@ -1,6 +1,6 @@
 // Package report defines presentation controls for text, JSON, markdown, and HTML analysis output.
 // input: CLI-selected presentation options and analyzer-produced complete analysis results.
-// output: normalized report rendering options with validated SQL context modes and output formats.
+// output: normalized report rendering options with validated SQL context modes, diagnostics modes, and output formats.
 // pos: renderer configuration layer between command flag parsing and text/JSON/markdown/HTML serializers.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -14,6 +14,16 @@ const (
 	SQLContextSummary SQLContextMode = "summary"
 	SQLContextOff     SQLContextMode = "off"
 	SQLContextFull    SQLContextMode = "full"
+)
+
+// DiagnosticsMode controls how much of diagnostics analyze JSON includes.
+// Text, Markdown, and HTML ignore it.
+type DiagnosticsMode string
+
+const (
+	DiagnosticsFull    DiagnosticsMode = "full"
+	DiagnosticsSummary DiagnosticsMode = "summary"
+	DiagnosticsOff     DiagnosticsMode = "off"
 )
 
 // Format controls the output format of the report.
@@ -40,8 +50,10 @@ func ParseFormat(raw string) (Format, error) {
 // Options controls report presentation without changing analysis semantics.
 type Options struct {
 	SQLContextMode SQLContextMode
-	Format         Format
-	TopN           int
+	// DiagnosticsMode caps analyze JSON diagnostics. Zero means full.
+	DiagnosticsMode DiagnosticsMode
+	Format          Format
+	TopN            int
 	// TopTables limits human-readable table sections; zero is unlimited when TopTablesSet is true.
 	TopTables int
 	// TopTablesSet distinguishes an explicit zero limit from an omitted value.
@@ -64,7 +76,22 @@ type Options struct {
 
 // DefaultOptions returns the backwards-compatible report presentation defaults.
 func DefaultOptions() Options {
-	return Options{SQLContextMode: SQLContextSummary, TopN: DefaultTopN, TopTables: DefaultTopN}
+	return Options{SQLContextMode: SQLContextSummary, DiagnosticsMode: DiagnosticsFull, TopN: DefaultTopN, TopTables: DefaultTopN}
+}
+
+// ParseDiagnosticsMode validates a CLI-provided diagnostics mode.
+// Empty is full, the historical analyze JSON shape.
+func ParseDiagnosticsMode(raw string) (DiagnosticsMode, error) {
+	switch DiagnosticsMode(raw) {
+	case "", DiagnosticsFull:
+		return DiagnosticsFull, nil
+	case DiagnosticsSummary:
+		return DiagnosticsSummary, nil
+	case DiagnosticsOff:
+		return DiagnosticsOff, nil
+	default:
+		return "", fmt.Errorf("invalid --diagnostics %q (allowed: full, summary, off)", raw)
+	}
 }
 
 // ParseSQLContextMode validates a CLI-provided sql-context mode.
@@ -88,6 +115,12 @@ func normalizeOptions(opts Options) Options {
 		opts.SQLContextMode = SQLContextSummary
 	} else {
 		opts.SQLContextMode = mode
+	}
+	diagnostics, err := ParseDiagnosticsMode(string(opts.DiagnosticsMode))
+	if err != nil {
+		opts.DiagnosticsMode = DiagnosticsFull
+	} else {
+		opts.DiagnosticsMode = diagnostics
 	}
 	if opts.TopN <= 0 {
 		opts.TopN = DefaultTopN
