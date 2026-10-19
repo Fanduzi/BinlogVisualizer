@@ -102,6 +102,9 @@ func validateRawInputReport(report rawInputReport) error {
 	// the stdout size budget. Comparing it would read omitted lists as empty
 	// and report deltas that are not real, so it is refused. A report without
 	// the marker keeps the old behaviour: missing or empty lists are empty.
+	// JSON null unmarshals as a nil pointer, so it is absent (ADR 0011 §3).
+	// A non-string never reaches here: Unmarshal into *string fails first
+	// and the caller reports corrupt (exit 5), not reduced_diagnostics.
 	if report.DiagnosticsMode != nil && *report.DiagnosticsMode != "full" {
 		mode := *report.DiagnosticsMode
 		refused := clierr.Errorf(clierr.KindUnsupported, "report has diagnostics_mode %q: analyze --diagnostics trimmed it, and compare, trend and snapshots need full diagnostics. Re-run analyze without --diagnostics, or use a snapshot saved with --snapshot-name", mode).(*clierr.Error)

@@ -12,17 +12,21 @@ An alert that is about a transaction names it as `txn-207` in `message` and `txn
 
 ## Decision
 
-1. **`--diagnostics full|summary|off` on `analyze`.** Default `full`. An empty value is `full`. Anything else is a usage error (exit 3): `invalid --diagnostics %q (allowed: full, summary, off)`.
+1. **`--diagnostics full|summary|off` on `analyze`.** Default `full`. The library treats an empty string as `full` (§5). The CLI rejects an explicitly set `--diagnostics ""` with exit 3. Any other unknown value is the same usage error: `invalid --diagnostics %q (allowed: full, summary, off)`.
 
    The flag changes only the JSON document `analyze` writes to stdout (or `--output`). It is a size budget for that one document, not a property of the analysis. Text, Markdown, and HTML ignore it and stay byte-identical. Snapshots and workflow artifacts always hold full diagnostics (§4).
 
    | Mode | `diagnostics` |
    |---|---|
    | `full` | Today's object. Byte-identical. |
-   | `summary` | Keeps what is not already at the top level: `file_coverage`, `counted_event_bytes`, `ddl_events`, `open_dml_groups`, `duration_buckets`, `input_format_guess`, and the ignored-query / open-group / unmapped counts. The four transaction rankings, `file_segments`, `hot_intervals`, and `findings` are empty arrays (the omitempty rankings are omitted). Those lists are already `transactions`, `timeseries`, `minutes`, and `alerts`. |
+   | `summary` | Keeps what is not already at the top level: `file_coverage`, `counted_event_bytes`, `open_dml_groups`, `duration_buckets`, `input_format_guess`, and the ignored-query / open-group / unmapped counts. `ddl_events` is the first `--top` events in timeline order (default 10), the same cap as the text DDL timeline. `ddl_events_omitted` counts the rest and is present even when it is 0. The four transaction rankings, `file_segments`, `hot_intervals`, and `findings` are empty arrays (the omitempty rankings are omitted). Those lists are already `transactions`, `timeseries`, `minutes`, and `alerts`. |
    | `off` | The key is omitted. |
 
-   `report_version` stays 3. `full` removes nothing. `summary` and `off` are opt-in, so a consumer that did not pass the flag still sees the v3 object. A `summary` or `off` document carries a top-level `"diagnostics_mode": "summary"` or `"off"` next to `diagnostics`. A `full` document has no `diagnostics_mode` key, so default output stays byte-identical.
+   `report_version` stays 3. `full` removes nothing, including every `ddl_events` entry, and does not emit `ddl_events_omitted`, so default output stays byte-identical. `summary` and `off` are opt-in, so a consumer that did not pass the flag still sees the v3 object. A `summary` or `off` document carries a top-level `"diagnostics_mode": "summary"` or `"off"` next to `diagnostics`. A `full` document has no `diagnostics_mode` key.
+
+   **Summary DDL cap (amended 2026-10-19, #308).** v0.28.0 `summary` kept every `ddl_events` entry. On a DDL-heavy window that list was almost all of `diagnostics`, so the budget did not shrink. `summary` now caps it. This changes the meaning of `ddl_events` only when `diagnostics_mode` is `summary`: it is a prefix of the timeline, not the whole timeline. `ddl_events_omitted` is a new key on that opt-in document.
+
+   **Version (ADR 0010).** A bump is for a key removed, renamed, or changed in type or meaning on that versioned document. Adding a key is not a bump. The default and `full` document does not change, so `report_version` stays 3. Bumping it would change every default JSON document, which did not break. The summary break is recorded in CHANGELOG as breaking for `--diagnostics summary` only. A summary consumer tells the list is capped by reading `ddl_events_omitted` (always present there, including 0). `snapshot list` JSON gains an optional `diagnostics_mode` on each entry. That is an added key, so its `schema_version` stays 1.
 
 2. **`alerts[].gtid`.** When the alert has a `txn_key` and that transaction has a GTID, the alert carries the same GTID string `transactions[].gtid` and `diagnostics.open_dml_groups[].gtid` already use (MySQL `uuid:seq` or MariaDB `domain-server-seq`). An empty identity, including an anonymous GTID, omits the key. `message` and `txn_key` stay, so text, Markdown, and HTML stay byte-identical. The key is additive, so `report_version` stays 3 (ADR 0010: adding a key is not a bump). Default JSON is therefore not byte-identical only for an alert that has a GTID: one extra key. Alerts with no GTID are unchanged.
 
@@ -34,12 +38,26 @@ An alert that is about a transaction names it as `txn-207` in `message` and `txn
    - `compare`, `trend`, `snapshot save <file>`, and workflow resume refuse a report whose `diagnostics_mode` is present and not `full`. The error is `unsupported` (exit 9) with `details.reason: reduced_diagnostics` and `details.diagnostics_mode`. The message says to re-run `analyze` without `--diagnostics`, or to use a snapshot saved with `--snapshot-name`.
    - `diagnostics_mode` is how the two cases are told apart. A report without the key keeps today's behaviour: an older or hand-written report with missing or empty diagnostics lists compares as empty, as before. Only a document `analyze` marked as reduced is refused. We do not refuse every v3 report without `diagnostics`, because existing fixtures and older hand-built inputs have none and compare them as empty today.
 
-4. **Not in scope.** `plan_version` stays 2. Warning codes stay as #296 shipped them. `schema_version` is unchanged. No workflow or release file changes.
+   **Marker edges (amended 2026-10-19, #308).** The field is a JSON string when `analyze` writes it. Readers treat the other shapes as follows, and tests pin both:
+
+   - JSON `null`, and a missing key, are absent. The Go field is a nil `*string`. compare runs and `snapshot save` writes the file. Null is not a mode, so it is not `reduced_diagnostics`.
+   - A non-string, such as `1`, does not decode into that `*string`. The document is corrupt (exit 5), not unsupported (exit 9). It is not a reduced report and not a full one. It is malformed, and `details.reason` is not `reduced_diagnostics`.
+   - A string other than `full`, including `summary`, `off`, and `""`, is reduced (exit 9, `details.diagnostics_mode` set to that string). The string `full` is accepted, the same as a missing key.
+
+   **`snapshot list` flags a reduced file (amended 2026-10-19, #308).** List stays exit 0. It does not wait for `snapshot show`, compare, or trend to fail. Text adds a `DIAGNOSTICS` column: `-` when the marker is absent, null, `full`, or not a string; otherwise the mode string. JSON adds `diagnostics_mode` on that snapshot entry, omitted when empty. `schema_version` stays 1. Show, compare, trend, and `snapshot save` still refuse the file.
+
+4. **Not in scope.** `plan_version` stays 2. Warning codes stay as #296 shipped them. `schema_version` is unchanged. No workflow file changes.
+
+5. **Empty flag and help text (amended 2026-10-19, #308).**
+
+   - `ParseDiagnosticsMode("")` stays `full`. That is the `report.Options` zero value, and `normalizeOptions` relies on it. The CLI rejects an explicitly set `--diagnostics ""` with exit 3 and `invalid --diagnostics "" (allowed: full, summary, off)`. An omitted flag stays `full`. `FULL`, `Summary`, and `" full"` were already exit 3.
+   - Locale files have en and zh-CN strings for the flag. `analyze --help` still prints the English flag text: cobra usage is filled when the command is built, before `--lang` (`internal/i18n`). Only `flashback` refreshes flag help. Translating every command's `--help` is a different change from this flag. This ADR does not claim that `--help` prints the zh-CN strings. JSON keys, `gtid`, and warning codes are not translated.
 
 ## Consequences
 
 - A snapshot or workflow artifact can always be compared and trended. A trimmed stdout document cannot: it fails with exit 9 instead of producing deltas against data that was only omitted.
 
-- An agent passes `--diagnostics summary` or `off` and still has `alerts`, `transactions`, and the coverage counts. With `summary`, the DDL timeline and open uncommitted groups remain, because they are not copied elsewhere.
+- An agent passes `--diagnostics summary` or `off` and still has `alerts`, `transactions`, and the coverage counts. With `summary`, open uncommitted groups remain, and the DDL timeline remains as the first `--top` events plus `ddl_events_omitted`, because that timeline is not copied elsewhere.
 - An agent reads `alerts[].gtid` and passes it to `flashback --include-gtids` without joining on `txn_key`.
-- en and zh-CN: the flag help is translated. JSON keys, `gtid`, and warning codes are not. Alert and warning messages stay translated, as they are today.
+- `snapshot list` shows a reduced file before show, compare, or trend refuse it.
+- Alert and warning messages stay translated, as they are today. Flag help on `analyze --help` stays English; see §5.

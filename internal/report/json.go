@@ -144,9 +144,12 @@ type jsonTxnSizeBucket struct {
 }
 
 type jsonDiagnostics struct {
-	FileCoverage            jsonFileCoverage     `json:"file_coverage"`
-	CountedEventBytes       int64                `json:"counted_event_bytes"`
-	DDLEvents               []jsonDDLEvent       `json:"ddl_events"`
+	FileCoverage      jsonFileCoverage `json:"file_coverage"`
+	CountedEventBytes int64            `json:"counted_event_bytes"`
+	DDLEvents         []jsonDDLEvent   `json:"ddl_events"`
+	// DDLEventsOmitted is set only for --diagnostics summary (ADR 0011, #308).
+	// Full omits the key, including when the count would be 0.
+	DDLEventsOmitted        *int                 `json:"ddl_events_omitted,omitempty"`
 	LargestTransactions     []jsonTransaction    `json:"largest_transactions"`
 	LongestTransactions     []jsonTransaction    `json:"longest_transactions"`
 	WidestTransactions      []jsonTransaction    `json:"widest_transactions"`
@@ -637,6 +640,8 @@ func convertDiagnostics(diagnostics model.Diagnostics, opts Options) *jsonDiagno
 	if opts.DiagnosticsMode == DiagnosticsOff {
 		return nil
 	}
+	events := diagnostics.DDLEvents
+	var ddlOmitted *int
 	if opts.DiagnosticsMode == DiagnosticsSummary {
 		// These lists are already at the top level (transactions, timeseries,
 		// minutes, alerts). Dropping the copies is what --diagnostics summary is for.
@@ -647,12 +652,17 @@ func convertDiagnostics(diagnostics model.Diagnostics, opts Options) *jsonDiagno
 		diagnostics.FileSegments = nil
 		diagnostics.HotIntervals = nil
 		diagnostics.Findings = nil
+		// ddl_events is not copied elsewhere. Cap it like the text timeline (ADR 0011, #308).
+		var extra int
+		events, extra = limitDDLEvents(events, opts.TopN)
+		ddlOmitted = &extra
 	}
 	mode := opts.SQLContextMode
 	out := jsonDiagnostics{
 		FileCoverage:            convertFileCoverage(diagnostics.FileCoverage),
 		CountedEventBytes:       diagnostics.CountedEventBytes,
-		DDLEvents:               convertDDLEvents(diagnostics.DDLEvents, mode, diagnostics.ServerVersion),
+		DDLEvents:               convertDDLEvents(events, mode, diagnostics.ServerVersion),
+		DDLEventsOmitted:        ddlOmitted,
 		LargestTransactions:     convertTransactions(diagnostics.LargestTransactions, opts, diagnostics.ServerVersion),
 		LongestTransactions:     convertTransactions(diagnostics.LongestTransactions, opts, diagnostics.ServerVersion),
 		WidestTransactions:      convertTransactions(diagnostics.WidestTransactions, opts, diagnostics.ServerVersion),
@@ -693,6 +703,15 @@ func convertFileCoverageItems(items []model.FileCoverageItem) []jsonFileCoverage
 		}
 	}
 	return result
+}
+
+// limitDDLEvents keeps the first limit events in timeline order.
+// A non-positive limit keeps every event. The omitted count is the rest.
+func limitDDLEvents(events []model.DDLEvent, limit int) ([]model.DDLEvent, int) {
+	if limit <= 0 || len(events) <= limit {
+		return events, 0
+	}
+	return events[:limit], len(events) - limit
 }
 
 func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode, serverVersion string) []jsonDDLEvent {

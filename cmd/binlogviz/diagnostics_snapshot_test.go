@@ -146,6 +146,145 @@ func asList(v any) []any {
 	return list
 }
 
+// ADR 0011 §3 (#308): null is absent; a non-string is corrupt (exit 5), not reduced (exit 9).
+func TestDiagnosticsModeMarkerEdges(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	path := mustFixturePath(t, "mysql-8.0.46-dml-full.binlog")
+	dir := t.TempDir()
+	code, full, stderr := runRoot(t, "analyze", path, "--format", "json", "-q")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	fullPath := filepath.Join(dir, "full.json")
+	writeTestFile(t, fullPath, full)
+
+	nullPath := filepath.Join(dir, "null-mode.json")
+	writeTestFile(t, nullPath, withDiagnosticsMode(t, full, nil))
+	code, stdout, stderr := runRoot(t, "compare", nullPath, fullPath, "--format", "json")
+	if code != 0 {
+		t.Fatalf("null marker compare: exit %d\n%s\n%s", code, stdout, stderr)
+	}
+	if strings.Contains(stderr, "reduced_diagnostics") {
+		t.Fatalf("null marker was treated as reduced: %s", stderr)
+	}
+	code, stdout, stderr = runRoot(t, "snapshot", "save", nullPath, "--name", "from-null", "--snapshot-dir", dir)
+	if code != 0 {
+		t.Fatalf("null marker snapshot save: exit %d\n%s", code, stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "from-null.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	badPath := filepath.Join(dir, "number-mode.json")
+	writeTestFile(t, badPath, withDiagnosticsMode(t, full, 1))
+	for _, args := range [][]string{
+		{"compare", badPath, fullPath, "--format", "json"},
+		{"snapshot", "save", badPath, "--name", "from-number", "--snapshot-dir", dir},
+	} {
+		code, stdout, stderr = runRoot(t, append([]string{"--error-format", "json"}, args...)...)
+		if code != 5 {
+			t.Fatalf("%v: exit %d, want 5\nstdout=%s\nstderr=%s", args, code, stdout, stderr)
+		}
+		if stdout != "" {
+			t.Fatalf("%v: stdout = %q", args, stdout)
+		}
+		if strings.Contains(stderr, "reduced_diagnostics") || strings.Contains(stderr, `"kind":"unsupported"`) {
+			t.Fatalf("%v: non-string marker must be corrupt, not reduced: %s", args, stderr)
+		}
+		if !strings.Contains(stderr, `"kind":"corrupt"`) {
+			t.Fatalf("%v: stderr = %s", args, stderr)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "from-number.json")); !os.IsNotExist(err) {
+		t.Fatal("corrupt snapshot save must not write the file")
+	}
+}
+
+// #308: snapshot list marks a reduced document instead of waiting for show/compare.
+func TestSnapshotListFlagsReducedDocument(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	path := mustFixturePath(t, "mysql-8.0.46-dml-full.binlog")
+	dir := t.TempDir()
+	if code, _, stderr := runRoot(t, "analyze", path, "--format", "json", "-q", "--snapshot-name", "base", "--snapshot-dir", dir); code != 0 {
+		t.Fatalf("save base: exit %d\n%s", code, stderr)
+	}
+	for _, mode := range []string{"summary", "off"} {
+		code, trimmed, stderr := runRoot(t, "analyze", path, "--format", "json", "-q", "--diagnostics", mode, "--snapshot-name", "kept-"+mode, "--snapshot-dir", dir)
+		if code != 0 {
+			t.Fatalf("%s: exit %d\n%s", mode, code, stderr)
+		}
+		writeTestFile(t, filepath.Join(dir, "copied-"+mode+".json"), trimmed)
+	}
+
+	code, text, stderr := runRoot(t, "snapshot", "list", "--snapshot-dir", dir)
+	if code != 0 {
+		t.Fatalf("list: exit %d\n%s", code, stderr)
+	}
+	if !strings.Contains(text, "DIAGNOSTICS") {
+		t.Fatalf("list text missing DIAGNOSTICS column:\n%s", text)
+	}
+	for _, mode := range []string{"summary", "off"} {
+		line := snapshotListLine(t, text, "copied-"+mode)
+		if !strings.HasSuffix(strings.TrimSpace(line), mode) {
+			t.Fatalf("list line for copied-%s = %q", mode, line)
+		}
+		kept := snapshotListLine(t, text, "kept-"+mode)
+		if strings.HasSuffix(strings.TrimSpace(kept), mode) {
+			t.Fatalf("archive snapshot kept-%s must not be marked reduced: %q", mode, kept)
+		}
+	}
+
+	code, raw, stderr := runRoot(t, "snapshot", "list", "--snapshot-dir", dir, "--format", "json")
+	if code != 0 {
+		t.Fatalf("list json: exit %d\n%s", code, stderr)
+	}
+	doc := decodeObject(t, raw)
+	if doc["schema_version"] != float64(1) {
+		t.Fatalf("schema_version = %#v, want 1", doc["schema_version"])
+	}
+	modes := map[string]string{}
+	for _, item := range doc["snapshots"].([]any) {
+		entry := item.(map[string]any)
+		mode, _ := entry["diagnostics_mode"].(string)
+		modes[entry["name"].(string)] = mode
+	}
+	if modes["copied-summary"] != "summary" || modes["copied-off"] != "off" {
+		t.Fatalf("json modes = %#v", modes)
+	}
+	if _, ok := modes["base"]; ok && modes["base"] != "" {
+		t.Fatalf("full snapshot marked reduced: %#v", modes["base"])
+	}
+	if modes["kept-summary"] != "" || modes["kept-off"] != "" {
+		t.Fatalf("archive snapshots marked reduced: %#v", modes)
+	}
+}
+
+func snapshotListLine(t *testing.T, text, name string) string {
+	t.Helper()
+	for _, line := range strings.Split(text, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == name {
+			return line
+		}
+	}
+	t.Fatalf("no list line for %s:\n%s", name, text)
+	return ""
+}
+
+func withDiagnosticsMode(t *testing.T, doc string, mode any) string {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(doc), &payload); err != nil {
+		t.Fatal(err)
+	}
+	payload["diagnostics_mode"] = mode
+	out, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
 func writeTestFile(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {

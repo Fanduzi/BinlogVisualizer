@@ -106,7 +106,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本，也不输出 `--show-rows` 的单元格）或 `full`（存储 SQL，含 DDL 语句文本，上限 4096 字节，截断时带标记）。MySQL 和 MariaDB 账号 DDL 里的口令字面量在任何模式下都会打码。 |
-| `--diagnostics` | `full` | `analyze --format json` 里 `diagnostics` 写多少。`full` 是现在的对象。`summary` 保留覆盖、计数、DDL 时间线、未提交组和时长分桶，并把事务排行、文件分段、热点时段和 findings 置空（这些已经在 `transactions`、`timeseries`、`minutes` 和 `alerts` 里）。`off` 省略 `diagnostics`。文本、Markdown 和 HTML 忽略此标志。裁剪后的文档带 `"diagnostics_mode": "summary"` 或 `"off"`。它只限制 stdout 的大小：`--snapshot-name` 保存的快照始终是完整的 diagnostics；compare、trend 和 `snapshot save` 会拒绝裁剪过的文档（exit 9，`reduced_diagnostics`）。 |
+| `--diagnostics` | `full` | `analyze --format json` 里 `diagnostics` 写多少。`full` 是现在的对象。`summary` 保留覆盖、计数、未提交组和时长分桶，把 `ddl_events` 限制为前 `--top` 条（默认 10）并写出 `ddl_events_omitted`，并把事务排行、文件分段、热点时段和 findings 置空（这些已经在 `transactions`、`timeseries`、`minutes` 和 `alerts` 里）。`off` 省略 `diagnostics`。文本、Markdown 和 HTML 忽略此标志。显式传入空字符串是用法错误（exit 3）。裁剪后的文档带 `"diagnostics_mode": "summary"` 或 `"off"`。JSON `null` 视为没有该字段。非字符串是损坏文档（exit 5）。它只限制 stdout 的大小：`--snapshot-name` 保存的快照始终是完整的 diagnostics；compare、trend 和 `snapshot save` 会拒绝裁剪过的文档（exit 9，`reduced_diagnostics`）。`snapshot list` 会标出这种文件，而不是拒绝它。 |
 | `--top-tables` | `10` | 人类可读报告中显示的 Top 表数量；JSON 保留全部表聚合结果。 |
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量；`0` 表示不限制。 |
 | `--top-threads` | 继承 `--top` | 所有格式中的热点线程或会话数量；`0` 表示不限制。 |
@@ -331,8 +331,8 @@ binlogviz snapshot delete <name>
 
 `snapshot list` 支持两种输出模式：
 
-- text 模式（默认）：输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode` 和 `window`
-- JSON 模式：输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象
+- text 模式（默认）：输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode`、`window` 和 `diagnostics`（`-`，或者该文件是裁剪过的 analyze 文档时为 `summary` / `off`）
+- JSON 模式：输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象。裁剪过的文件在该条目上带 `diagnostics_mode`。`schema_version` 仍是 1。两种模式 list 都以 exit 0 结束
 
 可用参数：
 

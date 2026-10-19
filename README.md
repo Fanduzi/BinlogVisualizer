@@ -57,7 +57,7 @@ curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/
 binlogviz analyze minimal.binlog
 ```
 
-The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in the repo. Each GitHub Release tar.gz also includes that file as `testdata/minimal.binlog`, a discovery-layout copy at `testdata/sample-binlog/mysql-bin.000001`, and an `incident.yaml` whose `from_dir` points at that directory. After extract, `./binlogviz analyze testdata/minimal.binlog` and `./binlogviz workflow run incident.yaml` do not need a clone.
+The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in the repo. Each GitHub Release tar.gz also includes that file as `testdata/minimal.binlog`, a discovery-layout copy at `testdata/sample-binlog/mysql-bin.000001`, an `incident.yaml` whose `from_dir` points at that directory, `README.md`, `README_ZH.md`, and `docs/agents/USING-BINLOGVIZ.md` (plus the zh-CN guide). After extract, `./binlogviz analyze testdata/minimal.binlog` and `./binlogviz workflow run incident.yaml` do not need a clone. Agents start at `docs/agents/USING-BINLOGVIZ.md`.
 
 ### Inspect one of your own files
 
@@ -401,7 +401,7 @@ Pull requests and release builds now validate packaged artifacts, not only sourc
 The maintainer-facing smoke path verifies that one built archive can:
 
 - extract successfully
-- include the binary, `testdata/minimal.binlog`, `testdata/sample-binlog/`, and `incident.yaml`
+- include the binary, `testdata/minimal.binlog`, `testdata/sample-binlog/`, `incident.yaml`, `README.md`, `README_ZH.md`, and `docs/agents/USING-BINLOGVIZ.md`
 - run `--version`
 - execute `analyze` on the bundled sample
 - save snapshots

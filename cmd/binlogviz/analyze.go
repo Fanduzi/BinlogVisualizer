@@ -107,9 +107,15 @@ func newAnalyzeCommand() *cobra.Command {
 	opts := &analyzeOptions{}
 
 	cmd := &cobra.Command{
-		Use:           i18n.T("cmd.analyze.use"),
-		Short:         i18n.T("cmd.analyze.short"),
-		Long:          i18n.T("cmd.analyze.long"),
+		Use:   i18n.T("cmd.analyze.use"),
+		Short: i18n.T("cmd.analyze.short"),
+		Long:  i18n.T("cmd.analyze.long"),
+		Example: `  # Write spike in a UTC window, then the transaction, then a guarded flashback.
+  # 14:05 at +08:00 is 06:05Z. Report times are UTC. Filters accept an offset.
+  binlogviz analyze mysql-bin.000001 --start 2026-10-19T06:00:00Z --end 2026-10-19T06:10:00Z --detect-spikes
+  binlogviz analyze mysql-bin.000001 --start 2026-10-19T06:05:00Z --end 2026-10-19T06:06:00Z --format json --diagnostics summary
+  binlogviz flashback mysql-bin.000001 --include-gtids <gtid-from-alerts> --plan
+  binlogviz flashback mysql-bin.000001 --include-gtids <gtid-from-alerts> --conflict guard`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -153,6 +159,11 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
+			// An explicit empty flag is a usage error. ParseDiagnosticsMode
+			// still maps "" to full for the report.Options zero value (#308).
+			if cmd.Flags().Changed("diagnostics") && opts.diagnostics == "" {
+				return clierr.Errorf(clierr.KindUsage, "invalid --diagnostics %q (allowed: full, summary, off)", opts.diagnostics)
+			}
 			reportOpts, err := buildReportOptions(opts)
 			if err != nil {
 				return err

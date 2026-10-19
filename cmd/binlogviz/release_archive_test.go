@@ -1,6 +1,6 @@
 // Package binlogviz tests the GitHub release archive packing contract.
 // input: scripts/pack_release_archive.sh and the extra files it copies from the repository.
-// output: a tar.gz listing that includes the binary, the 1500-byte sample ROW binlog, and a workflow plan whose from_dir exists inside the archive.
+// output: a tar.gz listing that includes the binary, the 1500-byte sample ROW binlog, a workflow plan whose from_dir exists inside the archive, the READMEs, and the agent usage guide.
 // pos: operator-facing packing check so a downloaded GitHub Release tarball is not binary-only.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -45,6 +45,10 @@ func TestReleaseArchiveListsBinarySampleAndWorkflowPlan(t *testing.T) {
 		"testdata/minimal.binlog",
 		"testdata/sample-binlog/mysql-bin.000001",
 		"incident.yaml",
+		"README.md",
+		"README_ZH.md",
+		"docs/agents/USING-BINLOGVIZ.md",
+		"docs/agents/USING-BINLOGVIZ.zh-CN.md",
 	}
 	for _, name := range required {
 		if !tarListingContains(listing, name) {

@@ -171,6 +171,49 @@ func TestListSnapshotsReturnsSortedJSONEntries(t *testing.T) {
 	}
 }
 
+func TestListSnapshotsFlagsReducedMarkerOnly(t *testing.T) {
+	dir := t.TempDir()
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(minimalSnapshotStoreReportJSON("ignored", "label", 1, 0)), &doc); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, mode any) {
+		t.Helper()
+		doc["diagnostics_mode"] = mode
+		snap := doc["snapshot"].(map[string]any)
+		snap["name"] = name
+		snap["label"] = name
+		raw, err := json.Marshal(doc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name+".json"), raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("absent", nil)
+	write("number", float64(1))
+	write("summary", "summary")
+
+	entries, err := ListSnapshots(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]Entry{}
+	for _, entry := range entries {
+		got[entry.Name] = entry
+	}
+	if got["absent"].DiagnosticsMode != "" || got["absent"].Label != "absent" {
+		t.Fatalf("null marker = %+v", got["absent"])
+	}
+	if got["number"].DiagnosticsMode != "" || got["number"].Label != "" {
+		t.Fatalf("non-string marker = %+v", got["number"])
+	}
+	if got["summary"].DiagnosticsMode != "summary" || got["summary"].Label != "summary" {
+		t.Fatalf("summary marker = %+v", got["summary"])
+	}
+}
+
 func TestLoadSnapshotReadsNamedSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	path, err := SaveJSON(dir, "daily", []byte(`{"summary":{"total_rows":1},"tables":[],"alerts":[],"warnings":0}`))

@@ -87,8 +87,10 @@ func ArchiveOptions(opts Options) Options {
 	return opts
 }
 
-// ParseDiagnosticsMode validates a CLI-provided diagnostics mode.
-// Empty is full, the historical analyze JSON shape.
+// ParseDiagnosticsMode validates a diagnostics mode.
+// Empty is full, the report.Options zero value and the historical analyze
+// JSON shape. The CLI rejects an explicitly set --diagnostics "" before
+// calling this (exit 3); do not map "" to an error here.
 func ParseDiagnosticsMode(raw string) (DiagnosticsMode, error) {
 	switch DiagnosticsMode(raw) {
 	case "", DiagnosticsFull:
