@@ -337,7 +337,7 @@
   },
   "warning.flashbackGenerated": {
     "description": "binlog 和 schema 文件都没有这张表的 CREATE 时警告",
-    "other": "{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，更早的事务已经提交。请用 --schema-file 传入 mysqldump --no-data 或 SHOW CREATE TABLE 的输出。文件必须是事故当时的表结构。"
+    "other": "{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，撤销会回滚。请用 --schema-file 传入 mysqldump --no-data 或 SHOW CREATE TABLE 的输出。文件必须是事故当时的表结构。"
   },
   "error.flashbackSchemaFile": {
     "description": "读不到 --schema-file",
@@ -467,9 +467,45 @@
     "description": "flashback 命令短说明",
     "other": "打印撤销所选行变更的 SQL"
   },
+  "cmd.flashback.verify.use": {
+    "description": "flashback verify 用法",
+    "other": "verify <file>"
+  },
+  "cmd.flashback.verify.short": {
+    "description": "flashback verify 短说明",
+    "other": "检查 flashback 脚本，并打印可以提交它的 SQL"
+  },
+  "cmd.flashback.verify.long": {
+    "description": "flashback verify 长说明",
+    "other": "读取 flashback 脚本并重算摘要。被改过、截断、重排或追加的脚本不会向 stdout 写任何内容，并以退出码 6（kind refused）结束。details.reason 为 not_flashback、truncated、missing_trailer、appended 或 digest_mismatch。此命令不连接数据库。--format sql（默认）打印脚本，并把不会提交的结尾换成由 @binlogviz_sealed 选择的 PREPARE COMMIT 或 ROLLBACK。--format json 打印一个对象，第一个键是 schema_version。空文件是退出码 5。文件不存在是退出码 4。错误的 --format 是退出码 3。"
+  },
+  "cmd.flashback.verify.flag.format": {
+    "description": "flashback verify 的 format 选项",
+    "other": "输出格式：sql 或 json"
+  },
+  "error.flashbackByteEnv": {
+    "description": "溢出或内存上限已设置但不是正整数",
+    "other": "{{.Name}} 必须是正的十进制整数，当前值是 {{.Value}}"
+  },
+  "error.flashbackVerify": {
+    "description": "flashback 脚本校验失败",
+    "other": "flashback 脚本校验失败（{{.Reason}}）"
+  },
+  "error.flashbackVerifyEmpty": {
+    "description": "flashback 脚本文件是空的",
+    "other": "flashback 脚本是空的"
+  },
+  "error.flashbackVerifyFormat": {
+    "description": "flashback verify 的格式不是 sql 或 json",
+    "other": "无效的 flashback verify 格式 {{.Value}}：应为 sql 或 json"
+  },
+  "error.flashbackVerifyOpen": {
+    "description": "无法读取 flashback 脚本文件",
+    "other": "打开 flashback 脚本 {{.Path}}：{{.Error}}"
+  },
   "cmd.flashback.long": {
     "description": "flashback 命令长说明",
-    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列，并且文件必须是事故当时的表结构。ENUM 和 SET 写成成员序号 / 位掩码。ENUM 序号 0、零日期、以及记下值为 NULL 而被略去的生成列，只在该语句前后暂时去掉会拒绝它们的 sql_mode 标志。记下的值与生成列表达式矛盾时拒绝。无法计算生成列表达式时省略该列，脚本里的守卫会检查目标上被省略的每一列是不是生成列。 退出码 10（kind resource）表示溢出或内存上限：当 BINLOGVIZ_SPILL_BYTES 是正整数且行溢出加上审阅溢出超过该值时，details.reason 为 spill_limit；当一次 GC 之后 HeapAlloc 仍高于 GOMEMLIMIT 的 90% 时，为 memory_limit。未设置、非正数或无法解析的 BINLOGVIZ_SPILL_BYTES 表示没有字节上限。退出码 10 绝不是 2，也不会写出 plan 或脚本。"
+    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，整个撤销是一个事务。文件本身不会提交。应用方式：binlogviz flashback verify 文件 | mysql --default-character-set=utf8mb4。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列，并且文件必须是事故当时的表结构。ENUM 和 SET 写成成员序号 / 位掩码。ENUM 序号 0、零日期、以及记下值为 NULL 而被略去的生成列，只在该语句前后暂时去掉会拒绝它们的 sql_mode 标志。记下的值与生成列表达式矛盾时拒绝。无法计算生成列表达式时省略该列，脚本里的守卫会检查目标上被省略的每一列是不是生成列。 退出码 10（kind resource）表示溢出或内存上限：当 BINLOGVIZ_SPILL_BYTES 是正整数且行溢出加上审阅溢出超过该值时，details.reason 为 spill_limit；当一次 GC 之后 HeapAlloc 仍高于堆上限的 90% 时，为 memory_limit。堆上限是 BINLOGVIZ_MEMORY_BYTES；未设置该变量时才用 GOMEMLIMIT。BINLOGVIZ_SPILL_BYTES 一旦设置就必须是正的十进制整数，其它值在读取 binlog 之前以退出码 3 拒绝。未设置表示没有字节上限。BINLOGVIZ_MEMORY_BYTES 使用同一规则，设置后代替 GOMEMLIMIT 作为堆上限。退出码 10 绝不是 2，也不会写出 plan 或脚本。"
   },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",

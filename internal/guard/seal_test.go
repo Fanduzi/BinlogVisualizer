@@ -1,56 +1,48 @@
 package guard
 
 import (
-	"crypto/sha256"
-	"io"
 	"strings"
 	"testing"
 )
 
-func TestSealWriterMatchesSeal(t *testing.T) {
-	g := New([]Col{{Schema: "shop", Table: "t", Column: "g"}})
-	script := "SET NAMES utf8mb4;\n" + g.Header() + "INSERT INTO `shop`.`t` (`id`) SELECT 1 FROM DUAL WHERE " + g.RowCond() + ";\n"
-	if !strings.Contains(script, guardTokenMark) {
-		t.Fatal("script has no token placeholder")
+// The public seal is Write. A zero guard still publishes a digest and a
+// trailer, and it does not invent a session token.
+func TestZeroGuardWriteHasDigestAndNoToken(t *testing.T) {
+	script := renderScript(t, New(nil), Piece{Kind: PieceStmt, Text: "INSERT INTO t VALUES (1)"})
+	if strings.Contains(script, "binlogviz_ok") || !strings.Contains(script, digestInitSQL) {
+		t.Fatalf("zero guard:\n%s", script)
 	}
-	sum := sha256.Sum256([]byte(script))
-	var b strings.Builder
-	write, err := g.SealWriter(&b, sum[:])
-	if err != nil {
+	if _, err := Verify(strings.NewReader(script)); err != nil {
 		t.Fatal(err)
-	}
-	if err := write(script); err != nil {
-		t.Fatal(err)
-	}
-	if b.String() != g.Seal(script) {
-		t.Fatalf("SealWriter:\n%s\nSeal:\n%s", b.String(), g.Seal(script))
-	}
-
-	zero := New(nil)
-	plain := "INSERT INTO t VALUES (1);\n"
-	zsum := sha256.Sum256([]byte(plain))
-	b.Reset()
-	write, err = zero.SealWriter(&b, zsum[:])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := write(plain); err != nil {
-		t.Fatal(err)
-	}
-	if b.String() != zero.Seal(plain) {
-		t.Fatalf("zero guard SealWriter %q Seal %q", b.String(), zero.Seal(plain))
 	}
 }
 
-func TestSealWriterRejectsShortDigest(t *testing.T) {
-	g := New([]Col{{Schema: "shop", Table: "t", Column: "g"}})
-	for _, n := range []int{0, 7} {
-		if _, err := g.SealWriter(io.Discard, make([]byte, n)); err == nil {
-			t.Fatalf("%d-byte digest was accepted", n)
-		}
-	}
-	sum := sha256.Sum256([]byte("x"))
-	if _, err := g.SealWriter(io.Discard, sum[:8]); err != nil {
+func TestWriteDigestsTheExecutedString(t *testing.T) {
+	g := New(nil)
+	var b strings.Builder
+	if err := g.Write(&b, func(emit func(Piece) error) error {
+		return emit(Piece{Kind: PieceStmt, Text: "UPDATE t SET v = 1 WHERE id = 1"})
+	}); err != nil {
 		t.Fatal(err)
+	}
+	script := b.String()
+	const want = "SET @binlogviz_sql = 'UPDATE t SET v = 1 WHERE id = 1';"
+	if !strings.Contains(script, want) || !strings.Contains(script, stmtPrepare) {
+		t.Fatalf("prepared statement:\n%s", script)
+	}
+	res, err := Verify(strings.NewReader(script))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// SHA2('binlogviz-flashback-v1', 256) then the statement then the trailer.
+	// The vector is pinned so a MySQL SHA2 mismatch is obvious in the e2e.
+	if res.Digest != chain([]string{"UPDATE t SET v = 1 WHERE id = 1"}) {
+		t.Fatalf("digest %s", res.Digest)
+	}
+	if res.Statements != 1 {
+		t.Fatalf("statements %d", res.Statements)
+	}
+	if res.Digest != "b1f2050e8124ec1c6603e431137b678ba587dff45284756a7505c908ce55cd45" {
+		t.Fatalf("digest %s", res.Digest)
 	}
 }

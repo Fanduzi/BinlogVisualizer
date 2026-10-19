@@ -24,7 +24,7 @@ func TestFlashGuardZeroValueIsNoGuard(t *testing.T) {
 	if g.Header() != "" || g.BlockLock() != "" || g.RowCond() != "" {
 		t.Fatalf("no columns must mean no guard: %+v", g)
 	}
-	if got := g.Seal("x" + guardTokenMark); got != "x"+guardTokenMark {
+	if got := g.seal("x"+guardTokenMark, "0123456789abcdef"); got != "x"+guardTokenMark {
 		t.Fatalf("no guard must not seal: %q", got)
 	}
 }
@@ -34,8 +34,11 @@ func TestFlashGuardSealsOneToken(t *testing.T) {
 	if !strings.Contains(g.Header(), guardTokenMark) || g.BlockLock() != guardLockSQL || g.RowCond() != guardTokenCond {
 		t.Fatal("guard parts missing")
 	}
-	script := g.Header() + g.BlockLock() + "DELETE FROM d.t WHERE " + g.RowCond() + ";\n"
-	a, b := g.Seal(script), g.Seal(script)
+	script := g.Header() + "DELETE FROM d.t WHERE " + g.RowCond() + ";\n"
+	seal := func(text string) string {
+		return renderScript(t, g, Piece{Kind: PieceRaw, Text: text})
+	}
+	a, b := seal(script), seal(script)
 	if a != b || strings.Contains(a, guardTokenMark) {
 		t.Fatal("seal must be deterministic and replace every placeholder")
 	}
@@ -48,7 +51,7 @@ func TestFlashGuardSealsOneToken(t *testing.T) {
 			t.Fatal("one script, one token")
 		}
 	}
-	if g.Seal(script+"-- other\n") == a {
+	if seal(script+"-- other\n") == a {
 		t.Fatal("different scripts must get different tokens")
 	}
 }
@@ -127,7 +130,7 @@ var guardValueRE = regexp.MustCompile(`(?s)Variable 'sql_mode' can't be set to t
 func applyGuard(t *testing.T, s guardServer, cols []Col) string {
 	t.Helper()
 	g := New(cols)
-	out, err := s.run(t, g.Seal("SET NAMES utf8mb4;\n"+g.Header()+"SELECT 'binlogviz-test-continued';\n"))
+	out, err := s.run(t, g.seal("SET NAMES utf8mb4;\n"+g.Header()+"SELECT 'binlogviz-test-continued';\n", "0123456789abcdef"))
 	if err == nil || strings.Contains(out, "binlogviz-test-continued\n") && !strings.Contains(out, "ERROR 1231") {
 		t.Fatalf("guard did not stop the apply:\n%s", out)
 	}
@@ -223,7 +226,7 @@ func TestGuardMatchOnServer(t *testing.T) {
 			t.Fatalf("setup: %v\n%s", err, out)
 		}
 		g := New(cols3("bvguard_ok.t.g"))
-		out, err := s.run(t, g.Seal("SET NAMES utf8mb4;\n"+g.Header()+g.BlockLock()+"INSERT INTO bvguard_ok.t (id) SELECT 7 FROM DUAL WHERE "+g.RowCond()+";\nSELECT COUNT(*) AS n FROM bvguard_ok.t;\n"))
+		out, err := s.run(t, g.seal("SET NAMES utf8mb4;\n"+g.Header()+g.BlockLock()+"INSERT INTO bvguard_ok.t (id) SELECT 7 FROM DUAL WHERE "+g.RowCond()+";\nSELECT COUNT(*) AS n FROM bvguard_ok.t;\n", "0123456789abcdef"))
 		if err != nil || !strings.Contains(out, "n\n1\n") {
 			t.Fatalf("matching target: %v\n%s", err, out)
 		}

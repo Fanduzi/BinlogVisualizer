@@ -222,7 +222,7 @@ func TestSchemaFileVerifiesJSONAndUpper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "`jv`") || strings.Contains(sql, "`v`") || strings.Contains(sql, "`full_name`") || !strings.Contains(sql, "INSERT INTO `p160`.`gen` (`id`, `j`)") || !strings.Contains(sql, "SELECT 2, 'Grace', NULL FROM DUAL WHERE ") {
+	if strings.Contains(sql, "`jv`") || strings.Contains(sql, "`v`") || strings.Contains(sql, "`full_name`") || !scriptHas(sql, "INSERT INTO `p160`.`gen` (`id`, `j`)") || !scriptHas(sql, "SELECT 2, 'Grace', NULL FROM DUAL WHERE ") {
 		t.Fatalf("sql:\n%s", sql)
 	}
 	if len(warnings) != 0 {
@@ -481,7 +481,7 @@ func TestEscapedQuoteGeneratedExpr(t *testing.T) {
 	if len(warnings) != 0 || strings.Contains(sql, "`g`") && strings.Contains(sql, "VALUES") && strings.Contains(sql, "`g`,") {
 		t.Fatalf("warnings %#v sql:\n%s", warnings, sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`, `s`) SELECT 1, 'a' FROM DUAL WHERE @binlogviz_ok <=> '") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`t` (`id`, `s`) SELECT 1, 'a' FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") {
 		t.Fatalf("sql:\n%s", sql)
 	}
 	if !strings.Contains(sql, "'shop.t.g'") {
@@ -554,7 +554,7 @@ func quoteSQL(s string) string {
 func guardBeforeTransaction(sql string) bool {
 	guard := strings.Index(sql, "binlogviz_mismatch")
 	gtid := strings.Index(sql, "-- gtid:")
-	sets := strings.Index(sql, "SET NAMES utf8mb4;")
+	sets := strings.Index(sql, "SET NAMES utf8mb4")
 	return guard > sets && (gtid < 0 || guard < gtid)
 }
 
@@ -589,12 +589,12 @@ func TestGeneratedGuardReadOnlyText(t *testing.T) {
 		t.Fatalf("message, lock, then sql_mode:\n%s", sql)
 	}
 	lock := renderedGuardLock(t, sql)
-	if strings.Count(sql, lock) < 2 {
-		t.Fatalf("lock is not repeated before the transaction:\n%s", sql)
+	if strings.Count(sql, lock) != 1 {
+		t.Fatalf("header lock count %d, want 1:\n%s", strings.Count(sql, lock), sql)
 	}
-	start := strings.Index(sql, "START TRANSACTION;")
-	if start < 0 || !strings.HasSuffix(sql[:start], lock) {
-		t.Fatalf("lock is not immediately before START TRANSACTION:\n%s", sql)
+	start := strings.Index(sql, "\nSTART TRANSACTION;\n")
+	if start < 0 || start < strings.Index(sql, lock) {
+		t.Fatalf("START TRANSACTION is not after the header lock:\n%s", sql)
 	}
 	for _, want := range []string{"SEPARATOR ', '", "SEPARATOR ' | '", "200", "columns)", "COMMIT;"} {
 		if !strings.Contains(sql, want) {
@@ -640,16 +640,16 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 	if strings.Contains(sql, "PREPARE binlogviz_lock ") || strings.Contains(sql, "PREPARE binlogviz_guard ") {
 		t.Fatalf("old statement names:\n%s", sql)
 	}
-	resetAt := strings.Index(sql, "SET @binlogviz_checked = 0;")
-	checkAt := strings.Index(sql, "INTO @binlogviz_mismatch, @binlogviz_safe, @binlogviz_n, @binlogviz_checked")
-	verAt := strings.Index(sql, "SET @binlogviz_maria = IF(LOCATE('MariaDB', @@version) > 0, 1, 0);\n")
-	roAt := strings.Index(sql, "PREPARE binlogviz_fb_ro_x9q FROM @binlogviz_ro_sql;")
+	resetAt := indexStmt(sql, "SET @binlogviz_checked = 0;")
+	checkAt := indexStmt(sql, "INTO @binlogviz_mismatch, @binlogviz_safe, @binlogviz_n, @binlogviz_checked")
+	verAt := indexStmt(sql, "SET @binlogviz_maria = IF(LOCATE('MariaDB', @@version) > 0, 1, 0);\n")
+	roAt := indexStmt(sql, "PREPARE binlogviz_fb_ro_x9q FROM @binlogviz_ro_sql;")
 	token := guardToken(t, sql)
 	okSet := "SET @binlogviz_ok = IF(@binlogviz_old <=> 0 AND @binlogviz_checked <=> 1 AND @binlogviz_mismatch IS NULL AND NOT (@binlogviz_ro_was <=> 1), '" + token + "', NULL);"
 	unlockAt := strings.Index(sql, okSet)
 	lock := renderedGuardLock(t, sql)
-	lockAt := strings.Index(sql, lock)
-	modeAt := strings.Index(sql, "SET SESSION sql_mode = @binlogviz_mode;")
+	lockAt := indexStmt(sql, lock)
+	modeAt := indexStmt(sql, "SET SESSION sql_mode = @binlogviz_mode;")
 	order := []int{resetAt, checkAt, verAt, roAt, unlockAt, lockAt, modeAt}
 	for i, at := range order {
 		if at < 0 || (i > 0 && order[i-1] > at) {
@@ -657,19 +657,21 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 		}
 	}
 	// The read-only flag is read before the first lock.
-	if roAt > strings.Index(sql, "SET SESSION TRANSACTION READ ONLY;") {
+	if roAt > indexStmt(sql, "SET SESSION TRANSACTION READ ONLY;") {
 		t.Fatalf("flag read after the lock:\n%s", sql)
 	}
 	// READ WRITE appears only in the token-gated lock; nothing else unlocks.
 	gated := "SET @binlogviz_unlock_sql = IF(@binlogviz_ok <=> '" + token + "', 'SET SESSION TRANSACTION READ WRITE', 'DO 0');"
-	if strings.Count(sql, "READ WRITE") != strings.Count(sql, gated) || strings.Count(sql, gated) != 2 {
+	// The executable lock is once. The digest payload of the header quotes the
+	// same READ WRITE text a second time and does not repeat the lock.
+	if strings.Count(sql, gated) != 1 || strings.Count(sql, lock) != 1 {
 		t.Fatalf("unlock outside the token-gated lock:\n%s", sql)
 	}
 	if !strings.HasPrefix(lock, "COMMIT;\nSET SESSION TRANSACTION READ ONLY;\n"+gated+"\nPREPARE binlogviz_fb_unlock_x9q FROM @binlogviz_unlock_sql;\n") {
 		t.Fatalf("lock: %q", lock)
 	}
-	start := strings.Index(sql, "START TRANSACTION;")
-	if start < 0 || !strings.HasSuffix(sql[:start], lock) || strings.Count(sql, lock) != 2 {
+	start := strings.Index(sql, "\nSTART TRANSACTION;\n")
+	if start < 0 || start < strings.Index(sql, lock) || strings.Contains(sql[start:], lock) {
 		t.Fatalf("per-transaction lock:\n%s", sql)
 	}
 	for _, want := range []string{
@@ -696,8 +698,13 @@ var guardTokenRe = regexp.MustCompile(`SET @binlogviz_ok = IF\(.*, '([0-9a-f]{16
 func guardToken(t *testing.T, sql string) string {
 	t.Helper()
 	m := guardTokenRe.FindAllStringSubmatch(sql, -1)
-	if len(m) != 1 {
-		t.Fatalf("want one token assignment, got %d:\n%s", len(m), sql)
+	if len(m) == 0 {
+		t.Fatalf("want a token assignment:\n%s", sql)
+	}
+	for _, one := range m[1:] {
+		if one[1] != m[0][1] {
+			t.Fatalf("two tokens %s and %s", m[0][1], one[1])
+		}
 	}
 	mark := guardTokenMark(t)
 	if strings.Contains(sql, mark) {
@@ -711,11 +718,15 @@ func guardToken(t *testing.T, sql string) string {
 func guardTokenMark(t *testing.T) string {
 	t.Helper()
 	raw := guard.New([]guard.Col{{Schema: "s", Table: "t", Column: "c"}}).RowCond()
-	const pfx = "@binlogviz_ok <=> '"
-	if !strings.HasPrefix(raw, pfx) || !strings.HasSuffix(raw, "'") {
+	i := strings.IndexByte(raw, '\'')
+	if i < 0 {
 		t.Fatalf("row condition: %q", raw)
 	}
-	return strings.TrimSuffix(strings.TrimPrefix(raw, pfx), "'")
+	j := strings.IndexByte(raw[i+1:], '\'')
+	if j <= 0 {
+		t.Fatalf("row condition: %q", raw)
+	}
+	return raw[i+1 : i+1+j]
 }
 
 func renderedGuardLock(t *testing.T, sql string) string {
@@ -753,13 +764,13 @@ func TestGeneratedGuardTokenGatesEveryStatement(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := guardToken(t, sql)
-	cond := "@binlogviz_ok <=> '" + token + "'"
+	cond := "CASE WHEN @binlogviz_ok <=> '" + token + "' THEN 1 ELSE (SELECT @binlogviz_bad := 1 UNION ALL SELECT 1) END"
 	for _, want := range []string{
-		"INSERT INTO `shop`.`t` (`id`, `x`) SELECT 1, 'ab' FROM DUAL WHERE " + cond + ";",
-		"UPDATE `shop`.`t` SET `id` = 7, `x` = 'ab' WHERE `id` <=> 7 AND " + cond + ";",
-		"DELETE FROM `shop`.`t` WHERE `id` <=> 8 AND " + cond + ";",
+		"INSERT INTO `shop`.`t` (`id`, `x`) SELECT 1, 'ab' FROM DUAL WHERE " + cond,
+		"UPDATE `shop`.`t` SET `id` = 7, `x` = 'ab' WHERE `id` <=> 7 AND " + cond,
+		"DELETE FROM `shop`.`t` WHERE `id` <=> 8 AND " + cond,
 	} {
-		if !strings.Contains(sql, want) {
+		if !scriptHas(sql, want) {
 			t.Fatalf("missing %q\n%s", want, sql)
 		}
 	}
@@ -830,10 +841,10 @@ func TestSchemaFileAcceptsMatchingGeneratedAndSkipsIncomparableEnums(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 3, NULL FROM DUAL WHERE @binlogviz_ok <=> '") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 3, NULL FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
 		t.Fatalf("generated sql:\n%s", sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`es` (`id`, `e`) SELECT 1, 2 FROM DUAL WHERE @binlogviz_ok <=> '") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`es` (`id`, `e`) SELECT 1, 2 FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") {
 		t.Fatalf("enum sql:\n%s", sql)
 	}
 }
@@ -891,7 +902,7 @@ func TestSchemaFileLayoutsBindWithoutUSE(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(sql, "`virt`") || !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) SELECT 1, 'a' FROM DUAL WHERE @binlogviz_ok <=> '") {
+	if strings.Contains(sql, "`virt`") || !scriptHas(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) SELECT 1, 'a' FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") {
 		t.Fatalf("multi show create:\n%s", sql)
 	}
 	if warnings := a.Planner().Warnings(); len(warnings) != 0 {
@@ -976,7 +987,7 @@ func TestSchemaFileAlterUsesTheDefinitionInEffect(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`, `a`) VALUES (1, 10);") || !strings.Contains(sql, "INSERT INTO `shop`.`t` (`id`, `b`, `a`) VALUES (2, 7, 20);") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`t` (`id`, `a`) VALUES (1, 10)") || !scriptHas(sql, "INSERT INTO `shop`.`t` (`id`, `b`, `a`) VALUES (2, 7, 20)") {
 		t.Fatalf("alter sql:\n%s", sql)
 	}
 
@@ -1026,8 +1037,8 @@ func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode;"
-	const restore = "SET SESSION sql_mode = @binlogviz_sql_mode;"
+	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode"
+	const restore = "SET SESSION sql_mode = @binlogviz_sql_mode"
 	if strings.Count(sql, save) != 1 || strings.Count(sql, restore) != 1 || !strings.Contains(sql, "STRICT_TRANS_TABLES") || !strings.Contains(sql, "STRICT_ALL_TABLES") || !strings.Contains(sql, ",TRADITIONAL,") {
 		t.Fatalf("wrap:\n%s", sql)
 	}
@@ -1037,7 +1048,7 @@ func TestEnumIndexZeroWrapsOnlyThatStatement(t *testing.T) {
 	if !strings.Contains(mid, "VALUES (1, 0)") || strings.Contains(mid, "VALUES (2, 1)") {
 		t.Fatalf("wrapped the wrong statement:\n%s", sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`ezero` (`id`, `e`) VALUES (2, 1);") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`ezero` (`id`, `e`) VALUES (2, 1)") {
 		t.Fatalf("missing strict row:\n%s", sql)
 	}
 }

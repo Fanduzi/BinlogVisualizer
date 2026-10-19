@@ -7,9 +7,12 @@ package binlogviz
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"binlogviz/internal/guard"
 )
 
 func TestEveryJSONOutputIsVersioned(t *testing.T) {
@@ -33,6 +36,16 @@ func TestEveryJSONOutputIsVersioned(t *testing.T) {
 	}
 	a, b := list.Snapshots[0].Name, list.Snapshots[1].Name
 	binlog := filepath.Join("testdata", "minimal.binlog")
+	verifyFile := filepath.Join(t.TempDir(), "flashback.sql")
+	var sealed strings.Builder
+	if err := guard.New(nil).Write(&sealed, func(emit func(guard.Piece) error) error {
+		return emit(guard.Piece{Kind: guard.PieceStmt, Text: "DO 0"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(verifyFile, []byte(sealed.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cases := []struct {
 		name string
@@ -54,6 +67,7 @@ func TestEveryJSONOutputIsVersioned(t *testing.T) {
 		{"workflow clean", "schema_version", 1, []string{"workflow", "clean", outputDir, "--format", "json"}, 0},
 		{"workflow export", "schema_version", 1, []string{"workflow", "export", outputDir, "--output", filepath.Join(t.TempDir(), "out.zip"), "--format", "json"}, 0},
 		{"version", "schema_version", 1, []string{"version", "--format", "json"}, 0},
+		{"flashback verify", "schema_version", 1, []string{"flashback", "verify", verifyFile, "--format", "json"}, 0},
 	}
 	for _, tc := range cases {
 		code, stdout, stderr := runRoot(t, tc.args...)
