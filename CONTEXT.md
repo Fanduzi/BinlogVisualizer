@@ -57,7 +57,7 @@ A binlog event that wraps a transaction group's inner events, optionally compres
 _Avoid_: compressed binlog (MariaDB compressed row events are a different physical kind)
 
 **Schema catalog**:
-The flashback module that answers which table definition applies to a binlog `db.table`, and why. It loads `--schema-file` text (USE, `Database:` headers, `--schema-file-db`), replays binlog DDL and table maps, and resolves a name to one typed result: exact, case-fold (naming the schema-file table), ambiguous, missing, or refused with a reason. Refusal and warning text is built by callers from that result. Lives in `internal/analyzer/schema_catalog.go`; see ADR-0005.
+The flashback module that answers which table definition applies to a binlog `db.table`, and why. It loads `--schema-file` text (USE, `Database:` headers, `--schema-file-db`), replays binlog DDL and table maps, and resolves a name to one typed result: exact, case-fold (naming the schema-file table), ambiguous, missing, or refused with a reason. Refusal and warning text is built by callers from that result. Lives in `internal/schemacatalog`; see ADR-0005 and ADR-0012.
 _Avoid_: generatedTables (its old name), schema binding, label rewrite
 
 **Apply guard**:
@@ -65,5 +65,5 @@ The SQL a flashback script runs before its first transaction when it omits gener
 _Avoid_: guard twin, guardErrorValue (removed Go copy of the cut)
 
 **Expression evaluator**:
-The code that computes a schema-file generated-column expression from logged values, to check the logged generated value. One grammar parsed once per expression text into a cached tree; one walk in the general domain (`evalGenExpr`: integers, text, JSON) or the exact-DECIMAL domain (`evalDecExprInc`, which takes div_precision_increment and accepts only numbers, columns, NULL/TRUE/FALSE, arithmetic, MOD and parentheses). One module, `internal/analyzer/flashback_eval.go`. See ADR-0007.
+The code that computes a schema-file generated-column expression from logged values, to check the logged generated value. One grammar parsed once per expression text into a cached tree; one walk in the general domain (`EvalGenExpr`: integers, text, JSON) or the exact-DECIMAL domain (`EvalDecExprInc`, which takes div_precision_increment and accepts only numbers, columns, NULL/TRUE/FALSE, arithmetic, MOD and parentheses). One module, `internal/mysqlexpr`. See ADR-0007 and ADR-0012.
 _Avoid_: gen parser, dec parser, evalIntExpr (removed integer evaluator)

@@ -1,9 +1,9 @@
-// Package analyzer: parsing helpers for CREATE and ALTER text used by the schema catalog (schema_catalog.go).
+// Package mysqlexpr: parsing helpers for CREATE and ALTER text used by the schema catalog (internal/schemacatalog).
 // input: one CREATE/ALTER statement or a whole schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n. A plain mysqldump header and several SHOW CREATE rows without ';' are read too. A backslash inside a quoted string, including \', is part of that string.
 // output: dump segments, statements, column lists, and ALTER replays; or false when a definition cannot be read. The schema catalog decides what that means for a table.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
-package analyzer
+package mysqlexpr
 
 import (
 	"strings"
@@ -11,7 +11,7 @@ import (
 )
 
 func isTableConstraint(def string) bool {
-	switch strings.ToUpper((&sqlScan{s: def}).word()) {
+	switch strings.ToUpper((&Scan{S: def}).Word()) {
 	case "PRIMARY", "UNIQUE", "KEY", "INDEX", "FULLTEXT", "SPATIAL", "CONSTRAINT", "CHECK", "FOREIGN":
 		return true
 	default:
@@ -19,7 +19,7 @@ func isTableConstraint(def string) bool {
 	}
 }
 
-func copyNames(src map[string]struct{}) map[string]struct{} {
+func CopyNames(src map[string]struct{}) map[string]struct{} {
 	dst := make(map[string]struct{}, len(src))
 	for name := range src {
 		dst[name] = struct{}{}
@@ -30,62 +30,62 @@ func copyNames(src map[string]struct{}) map[string]struct{} {
 // createTableHead reports whether CREATE TABLE is followed by a table name
 // and a definition. The mysql batch header is the words "Create Table" and
 // then the next row, which is not a definition.
-func createTableHead(sc *sqlScan) bool {
-	save, have, last := sc.i, sc.have, sc.last
+func createTableHead(sc *Scan) bool {
+	save, have, last := sc.I, sc.have, sc.last
 	defer func() {
-		sc.i, sc.have, sc.last = save, have, last
+		sc.I, sc.have, sc.last = save, have, last
 	}()
-	if sc.wordIs("IF") {
-		sc.wordIs("NOT")
-		sc.wordIs("EXISTS")
+	if sc.WordIs("IF") {
+		sc.WordIs("NOT")
+		sc.WordIs("EXISTS")
 	}
-	if _, ok := sc.ident(); !ok {
+	if _, ok := sc.Ident(); !ok {
 		return false
 	}
-	sc.skip()
-	if sc.i < len(sc.s) && sc.s[sc.i] == '.' {
-		sc.i++
-		if _, ok := sc.ident(); !ok {
+	sc.Skip()
+	if sc.I < len(sc.S) && sc.S[sc.I] == '.' {
+		sc.I++
+		if _, ok := sc.Ident(); !ok {
 			return false
 		}
-		sc.skip()
+		sc.Skip()
 	}
-	if sc.i >= len(sc.s) {
+	if sc.I >= len(sc.S) {
 		return false
 	}
-	if sc.s[sc.i] == '(' {
+	if sc.S[sc.I] == '(' {
 		return true
 	}
-	word := sc.peekWord()
+	word := sc.PeekWord()
 	return strings.EqualFold(word, "LIKE") || strings.EqualFold(word, "AS") || strings.EqualFold(word, "SELECT")
 }
 
-func indexCreateTable(s string) int {
-	sc := &sqlScan{s: s}
-	for sc.i < len(sc.s) {
-		sc.skip()
-		if sc.i >= len(sc.s) {
+func IndexCreateTable(s string) int {
+	sc := &Scan{S: s}
+	for sc.I < len(sc.S) {
+		sc.Skip()
+		if sc.I >= len(sc.S) {
 			return -1
 		}
-		switch sc.s[sc.i] {
+		switch sc.S[sc.I] {
 		case '\'', '"', '`':
-			sc.skipString(sc.s[sc.i])
+			sc.skipString(sc.S[sc.I])
 			continue
 		}
-		if !identStart(sc.s[sc.i]) {
-			sc.i++
+		if !identStart(sc.S[sc.I]) {
+			sc.I++
 			continue
 		}
-		start := sc.i
+		start := sc.I
 		w := sc.bare()
-		if strings.EqualFold(w, "CREATE") && sc.wordIs("TABLE") && createTableHead(sc) {
+		if strings.EqualFold(w, "CREATE") && sc.WordIs("TABLE") && createTableHead(sc) {
 			return start
 		}
 	}
 	return -1
 }
 
-func splitSQL(s string) []string {
+func SplitSQL(s string) []string {
 	var parts []string
 	start := 0
 	inString := byte(0)
@@ -137,7 +137,7 @@ func splitSQL(s string) []string {
 	return parts
 }
 
-func splitComma(s string) []string {
+func SplitComma(s string) []string {
 	var parts []string
 	start := 0
 	depth := 0
@@ -178,49 +178,49 @@ func splitComma(s string) []string {
 	return parts
 }
 
-type sqlScan struct {
-	s    string
-	i    int
+type Scan struct {
+	S    string
+	I    int
 	last int
 	have bool
 }
 
-func (sc *sqlScan) skip() {
-	for sc.i < len(sc.s) {
-		switch sc.s[sc.i] {
+func (sc *Scan) Skip() {
+	for sc.I < len(sc.S) {
+		switch sc.S[sc.I] {
 		case ' ', '\t', '\n', '\r':
-			sc.i++
+			sc.I++
 		case '\\':
 			// mysql --batch escapes a newline, tab, CR, or NUL inside a field as
 			// \n, \t, \r, or \0. Those are whitespace in SHOW CREATE TABLE text.
-			if sc.i+1 < len(sc.s) {
-				switch sc.s[sc.i+1] {
+			if sc.I+1 < len(sc.S) {
+				switch sc.S[sc.I+1] {
 				case 'n', 't', 'r', '0':
-					sc.i += 2
+					sc.I += 2
 					continue
 				}
 			}
 			return
 		case '#':
-			for sc.i < len(sc.s) && sc.s[sc.i] != '\n' {
-				sc.i++
+			for sc.I < len(sc.S) && sc.S[sc.I] != '\n' {
+				sc.I++
 			}
 		case '-':
-			if sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '-' {
-				for sc.i < len(sc.s) && sc.s[sc.i] != '\n' {
-					sc.i++
+			if sc.I+1 < len(sc.S) && sc.S[sc.I+1] == '-' {
+				for sc.I < len(sc.S) && sc.S[sc.I] != '\n' {
+					sc.I++
 				}
 				continue
 			}
 			return
 		case '/':
-			if sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '*' {
-				sc.i += 2
-				for sc.i+1 < len(sc.s) && !(sc.s[sc.i] == '*' && sc.s[sc.i+1] == '/') {
-					sc.i++
+			if sc.I+1 < len(sc.S) && sc.S[sc.I+1] == '*' {
+				sc.I += 2
+				for sc.I+1 < len(sc.S) && !(sc.S[sc.I] == '*' && sc.S[sc.I+1] == '/') {
+					sc.I++
 				}
-				if sc.i+1 < len(sc.s) {
-					sc.i += 2
+				if sc.I+1 < len(sc.S) {
+					sc.I += 2
 				}
 				continue
 			}
@@ -231,101 +231,101 @@ func (sc *sqlScan) skip() {
 	}
 }
 
-func (sc *sqlScan) peekByte() byte {
-	sc.skip()
-	if sc.i >= len(sc.s) {
+func (sc *Scan) PeekByte() byte {
+	sc.Skip()
+	if sc.I >= len(sc.S) {
 		return 0
 	}
-	return sc.s[sc.i]
+	return sc.S[sc.I]
 }
 
-func (sc *sqlScan) rest() string {
-	sc.skip()
-	return sc.s[sc.i:]
+func (sc *Scan) Rest() string {
+	sc.Skip()
+	return sc.S[sc.I:]
 }
 
-func (sc *sqlScan) word() string {
-	w, _ := sc.ident()
+func (sc *Scan) Word() string {
+	w, _ := sc.Ident()
 	return w
 }
 
-func (sc *sqlScan) peekWord() string {
-	save, have, last := sc.i, sc.have, sc.last
-	w := sc.word()
-	sc.i, sc.have, sc.last = save, have, last
+func (sc *Scan) PeekWord() string {
+	save, have, last := sc.I, sc.have, sc.last
+	w := sc.Word()
+	sc.I, sc.have, sc.last = save, have, last
 	return w
 }
 
-func (sc *sqlScan) unreadWord() {
+func (sc *Scan) UnreadWord() {
 	if sc.have {
-		sc.i = sc.last
+		sc.I = sc.last
 		sc.have = false
 	}
 }
 
-func (sc *sqlScan) wordIs(want string) bool {
-	save := sc.i
-	w, ok := sc.ident()
+func (sc *Scan) WordIs(want string) bool {
+	save := sc.I
+	w, ok := sc.Ident()
 	if ok && strings.EqualFold(w, want) {
 		return true
 	}
-	sc.i = save
+	sc.I = save
 	sc.have = false
 	return false
 }
 
-func (sc *sqlScan) ident() (string, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) {
+func (sc *Scan) Ident() (string, bool) {
+	sc.Skip()
+	if sc.I >= len(sc.S) {
 		return "", false
 	}
-	sc.last = sc.i
+	sc.last = sc.I
 	sc.have = true
-	if sc.s[sc.i] == '`' {
-		sc.i++
-		start := sc.i
+	if sc.S[sc.I] == '`' {
+		sc.I++
+		start := sc.I
 		var b strings.Builder
-		for sc.i < len(sc.s) {
-			if sc.s[sc.i] == '`' {
-				if sc.i+1 < len(sc.s) && sc.s[sc.i+1] == '`' {
-					b.WriteString(sc.s[start:sc.i])
+		for sc.I < len(sc.S) {
+			if sc.S[sc.I] == '`' {
+				if sc.I+1 < len(sc.S) && sc.S[sc.I+1] == '`' {
+					b.WriteString(sc.S[start:sc.I])
 					b.WriteByte('`')
-					sc.i += 2
-					start = sc.i
+					sc.I += 2
+					start = sc.I
 					continue
 				}
-				b.WriteString(sc.s[start:sc.i])
-				sc.i++
+				b.WriteString(sc.S[start:sc.I])
+				sc.I++
 				return b.String(), true
 			}
-			sc.i++
+			sc.I++
 		}
 		return "", false
 	}
-	if !identStart(sc.s[sc.i]) {
+	if !identStart(sc.S[sc.I]) {
 		sc.have = false
 		return "", false
 	}
 	return sc.bare(), true
 }
 
-func (sc *sqlScan) bare() string {
-	start := sc.i
-	for sc.i < len(sc.s) && identPart(sc.s[sc.i]) {
-		sc.i++
+func (sc *Scan) bare() string {
+	start := sc.I
+	for sc.I < len(sc.S) && identPart(sc.S[sc.I]) {
+		sc.I++
 	}
-	return sc.s[start:sc.i]
+	return sc.S[start:sc.I]
 }
 
-func (sc *sqlScan) qualified(session string) (schema, table string, ok bool) {
-	first, ok := sc.ident()
+func (sc *Scan) Qualified(session string) (schema, table string, ok bool) {
+	first, ok := sc.Ident()
 	if !ok {
 		return "", "", false
 	}
-	sc.skip()
-	if sc.i < len(sc.s) && sc.s[sc.i] == '.' {
-		sc.i++
-		second, ok := sc.ident()
+	sc.Skip()
+	if sc.I < len(sc.S) && sc.S[sc.I] == '.' {
+		sc.I++
+		second, ok := sc.Ident()
 		if !ok {
 			return "", "", false
 		}
@@ -334,23 +334,23 @@ func (sc *sqlScan) qualified(session string) (schema, table string, ok bool) {
 	return session, first, true
 }
 
-func (sc *sqlScan) parenBody() (string, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) || sc.s[sc.i] != '(' {
+func (sc *Scan) ParenBody() (string, bool) {
+	sc.Skip()
+	if sc.I >= len(sc.S) || sc.S[sc.I] != '(' {
 		return "", false
 	}
-	start := sc.i + 1
+	start := sc.I + 1
 	depth := 1
 	inString := byte(0)
-	for i := start; i < len(sc.s); i++ {
-		c := sc.s[i]
+	for i := start; i < len(sc.S); i++ {
+		c := sc.S[i]
 		if inString != 0 {
-			if c == '\\' && inString != '`' && i+1 < len(sc.s) {
+			if c == '\\' && inString != '`' && i+1 < len(sc.S) {
 				i++
 				continue
 			}
 			if c == inString {
-				if i+1 < len(sc.s) && sc.s[i+1] == inString {
+				if i+1 < len(sc.S) && sc.S[i+1] == inString {
 					i++
 					continue
 				}
@@ -366,8 +366,8 @@ func (sc *sqlScan) parenBody() (string, bool) {
 		case ')':
 			depth--
 			if depth == 0 {
-				body := sc.s[start:i]
-				sc.i = i + 1
+				body := sc.S[start:i]
+				sc.I = i + 1
 				return body, true
 			}
 		}
@@ -375,22 +375,22 @@ func (sc *sqlScan) parenBody() (string, bool) {
 	return "", false
 }
 
-func (sc *sqlScan) skipString(quote byte) {
-	sc.i++
-	for sc.i < len(sc.s) {
-		if quote != '`' && sc.s[sc.i] == '\\' && sc.i+1 < len(sc.s) {
-			sc.i += 2
+func (sc *Scan) skipString(quote byte) {
+	sc.I++
+	for sc.I < len(sc.S) {
+		if quote != '`' && sc.S[sc.I] == '\\' && sc.I+1 < len(sc.S) {
+			sc.I += 2
 			continue
 		}
-		if sc.s[sc.i] == quote {
-			sc.i++
-			if sc.i < len(sc.s) && sc.s[sc.i] == quote {
-				sc.i++
+		if sc.S[sc.I] == quote {
+			sc.I++
+			if sc.I < len(sc.S) && sc.S[sc.I] == quote {
+				sc.I++
 				continue
 			}
 			return
 		}
-		sc.i++
+		sc.I++
 	}
 }
 
@@ -401,3 +401,6 @@ func identStart(b byte) bool {
 func identPart(b byte) bool {
 	return identStart(b) || (b >= '0' && b <= '9')
 }
+
+// NewScan starts a scan at the beginning of s.
+func NewScan(s string) *Scan { return &Scan{S: s} }

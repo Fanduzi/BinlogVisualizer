@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 )
 
 func TestSchemaFileRefusesMismatches(t *testing.T) {
@@ -782,66 +783,6 @@ func TestGuardSafeLabel(t *testing.T) {
 
 // Integer assignment through the one evaluator (the separate integer
 // evaluator was removed): an exact result, rounded half away from zero.
-func TestEvalGenExprIntegerAssignment(t *testing.T) {
-	cases := []struct {
-		expr string
-		env  map[string]string
-		want string
-		ok   bool
-	}{
-		{expr: "(a + b) * 3 - 1", env: map[string]string{"a": "5", "b": "7"}, want: "35", ok: true},
-		{expr: "a / 2", env: map[string]string{"a": "5"}, want: "3", ok: true},
-		{expr: "a / 2", env: map[string]string{"a": "-5"}, want: "-3", ok: true},
-		{expr: "-a * b", env: map[string]string{"a": "5", "b": "7"}, want: "-35", ok: true},
-		{expr: "a DIV 2", env: map[string]string{"a": "5"}, want: "2", ok: true},
-		{expr: "a div 2", env: map[string]string{"a": "-5"}, want: "-2", ok: true},
-		{expr: "a % 2", env: map[string]string{"a": "5"}, want: "1", ok: true},
-		{expr: "a MOD 2", env: map[string]string{"a": "-5"}, want: "-1", ok: true},
-		{expr: "MOD(a, 2)", env: map[string]string{"a": "5"}, want: "1", ok: true},
-		{expr: "5 % -2", want: "1", ok: true},
-		{expr: "-5 DIV -2", want: "2", ok: true},
-		{expr: "1/2", want: "1", ok: true},
-		{expr: "-1/2", want: "-1", ok: true},
-		{expr: "2/3", want: "1", ok: true},
-		{expr: "1/3", want: "0", ok: true},
-		{expr: "-2/3", want: "-1", ok: true},
-		{expr: "7/2", want: "4", ok: true},
-		{expr: "-7/2", want: "-4", ok: true},
-		{expr: "(a + b) * 3 - 1", env: map[string]string{"a": "-5", "b": "NULL"}, want: "NULL", ok: true},
-		{expr: "-a * b", env: map[string]string{"a": "-5", "b": "NULL"}, want: "NULL", ok: true},
-		{expr: "(a + b) * 3 - 1", env: map[string]string{"a": "4", "b": "0"}, want: "11", ok: true},
-		{expr: "-a * b", env: map[string]string{"a": "4", "b": "0"}, want: "0", ok: true},
-		{expr: "a % b", env: map[string]string{"a": "4", "b": "0"}, want: "NULL", ok: true},
-		{expr: "a / 0", env: map[string]string{"a": "4"}, want: "NULL", ok: true},
-		{expr: "UPPER(a)", env: map[string]string{"a": "1"}, ok: false},
-		{expr: "j->>'$.k'", env: map[string]string{"j": "1"}, ok: false},
-		{expr: "CONCAT(a, b)", env: map[string]string{"a": "1", "b": "2"}, ok: false},
-	}
-	for _, tc := range cases {
-		var cols, vals []string
-		for name, val := range tc.env {
-			cols, vals = append(cols, name), append(vals, val)
-		}
-		v, ok := evalGenExpr(tc.expr, loggedEnv(cols, vals))
-		if !tc.ok {
-			// Not integer arithmetic: the evaluator must not claim a number.
-			if ok && v.kind == genNum {
-				t.Fatalf("%s: claimed a number", tc.expr)
-			}
-			continue
-		}
-		if !ok {
-			t.Fatalf("%s: not evaluated", tc.expr)
-		}
-		got := "NULL"
-		if v.kind != genNull {
-			got = roundRatHalfAway(v.n).String()
-		}
-		if got != tc.want {
-			t.Fatalf("%s = %s, want %s", tc.expr, got, tc.want)
-		}
-	}
-}
 
 func TestSchemaFileAcceptsMatchingGeneratedAndSkipsIncomparableEnums(t *testing.T) {
 	const schema = "USE `shop`;\nCREATE TABLE `gen` (\n" +
@@ -1173,10 +1114,10 @@ func consumeFlash(t *testing.T, a *Analyzer, events ...model.NormalizedEvent) {
 }
 
 func TestSchemaFileDatabaseHeaderWithSpace(t *testing.T) {
-	if got := dumpDatabase("-- Host: localhost    Database: p185 q\n"); got != "p185 q" {
+	if got := mysqlexpr.DumpDatabase("-- Host: localhost    Database: p185 q\n"); got != "p185 q" {
 		t.Fatalf("header db = %q", got)
 	}
-	if got := dumpDatabase("-- Host: localhost    Database: shop  \r\n"); got != "shop" {
+	if got := mysqlexpr.DumpDatabase("-- Host: localhost    Database: shop  \r\n"); got != "shop" {
 		t.Fatalf("header db = %q", got)
 	}
 	const gen = "CREATE TABLE `we'ird` (\n" +

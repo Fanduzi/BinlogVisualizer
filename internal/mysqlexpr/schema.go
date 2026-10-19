@@ -1,9 +1,9 @@
-// Package analyzer checks a schema file against TABLE_MAP metadata.
+// Package mysqlexpr checks a schema file against TABLE_MAP metadata.
 // input: CREATE/ALTER text from --schema-file or the binlog, plus flashback rows that carry column metadata.
-// output: an error that names the table (as the caller labels it) and the columns that differ. Generated values are checked later, against every logged image. Which definition applies to a table is decided by the schema catalog (schema_catalog.go).
+// output: an error that names the table (as the caller labels it) and the columns that differ. Generated values are checked later, against every logged image. Which definition applies to a table is decided by the schema catalog (internal/schemacatalog).
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
-package analyzer
+package mysqlexpr
 
 import (
 	"fmt"
@@ -18,11 +18,11 @@ import (
 	"binlogviz/internal/model"
 )
 
-// schemaCol is one column of a CREATE or ALTER definition, in table order.
-type schemaCol struct {
-	name      string
-	generated bool
-	expr      string
+// SchemaCol is one column of a CREATE or ALTER definition, in table order.
+type SchemaCol struct {
+	Name      string
+	Generated bool
+	Expr      string
 	base      string
 	unsigned  bool
 	charset   string
@@ -32,11 +32,11 @@ type schemaCol struct {
 	hasPrec   bool
 }
 
-func cloneSchemaCols(cols []schemaCol) []schemaCol {
+func CloneSchemaCols(cols []SchemaCol) []SchemaCol {
 	if cols == nil {
 		return nil
 	}
-	out := make([]schemaCol, len(cols))
+	out := make([]SchemaCol, len(cols))
 	for i, col := range cols {
 		out[i] = col
 		if col.members != nil {
@@ -46,19 +46,19 @@ func cloneSchemaCols(cols []schemaCol) []schemaCol {
 	return out
 }
 
-func generatedNameSet(cols []schemaCol) map[string]struct{} {
+func GeneratedNameSet(cols []SchemaCol) map[string]struct{} {
 	out := map[string]struct{}{}
 	for _, col := range cols {
-		if col.generated {
-			out[strings.ToLower(col.name)] = struct{}{}
+		if col.Generated {
+			out[strings.ToLower(col.Name)] = struct{}{}
 		}
 	}
 	return out
 }
 
-func parseSchemaColumns(body string) ([]schemaCol, bool) {
-	var cols []schemaCol
-	for _, part := range splitComma(body) {
+func ParseSchemaColumns(body string) ([]SchemaCol, bool) {
+	var cols []SchemaCol
+	for _, part := range SplitComma(body) {
 		if strings.TrimSpace(part) == "" || isTableConstraint(part) {
 			continue
 		}
@@ -71,34 +71,34 @@ func parseSchemaColumns(body string) ([]schemaCol, bool) {
 	return cols, true
 }
 
-func parseSchemaColumn(def string) (schemaCol, bool) {
-	sc := &sqlScan{s: strings.TrimSpace(def)}
-	name, ok := sc.ident()
+func parseSchemaColumn(def string) (SchemaCol, bool) {
+	sc := &Scan{S: strings.TrimSpace(def)}
+	name, ok := sc.Ident()
 	if !ok || isTableConstraint(name) {
-		return schemaCol{}, false
+		return SchemaCol{}, false
 	}
-	col := schemaCol{name: name}
+	col := SchemaCol{Name: name}
 	if !parseSchemaType(&col, sc) {
-		return schemaCol{}, false
+		return SchemaCol{}, false
 	}
 	annotateSchemaColumn(&col, def)
 	return col, true
 }
 
-func parseSchemaType(col *schemaCol, sc *sqlScan) bool {
-	word := sc.word()
+func parseSchemaType(col *SchemaCol, sc *Scan) bool {
+	word := sc.Word()
 	if word == "" {
 		return false
 	}
 	base := strings.ToUpper(word)
 	switch base {
 	case "NATIONAL":
-		next := strings.ToUpper(sc.word())
+		next := strings.ToUpper(sc.Word())
 		switch next {
 		case "VARCHAR":
 			base = "VARCHAR"
 		case "CHAR", "CHARACTER":
-			if sc.wordIs("VARYING") {
+			if sc.WordIs("VARYING") {
 				base = "VARCHAR"
 			} else {
 				base = "CHAR"
@@ -107,13 +107,13 @@ func parseSchemaType(col *schemaCol, sc *sqlScan) bool {
 			return false
 		}
 	case "CHARACTER":
-		if sc.wordIs("VARYING") {
+		if sc.WordIs("VARYING") {
 			base = "VARCHAR"
 		} else {
 			base = "CHAR"
 		}
 	case "CHAR":
-		if sc.wordIs("VARYING") {
+		if sc.WordIs("VARYING") {
 			base = "VARCHAR"
 		}
 	case "INTEGER":
@@ -123,7 +123,7 @@ func parseSchemaType(col *schemaCol, sc *sqlScan) bool {
 	case "NUMERIC", "DEC", "FIXED":
 		base = "DECIMAL"
 	case "DOUBLE":
-		sc.wordIs("PRECISION")
+		sc.WordIs("PRECISION")
 	case "REAL":
 		base = "DOUBLE"
 	}
@@ -146,15 +146,15 @@ func parseSchemaType(col *schemaCol, sc *sqlScan) bool {
 	}
 }
 
-func parseSchemaPrecision(col *schemaCol, sc *sqlScan) {
-	if sc.peekByte() != '(' {
+func parseSchemaPrecision(col *SchemaCol, sc *Scan) {
+	if sc.PeekByte() != '(' {
 		return
 	}
-	body, ok := sc.parenBody()
+	body, ok := sc.ParenBody()
 	if !ok {
 		return
 	}
-	parts := splitComma(body)
+	parts := SplitComma(body)
 	if len(parts) >= 1 {
 		n, err := strconv.Atoi(strings.TrimSpace(parts[0]))
 		if err == nil {
@@ -170,13 +170,13 @@ func parseSchemaPrecision(col *schemaCol, sc *sqlScan) {
 	}
 }
 
-func parseMemberList(sc *sqlScan) ([]string, bool) {
-	body, ok := sc.parenBody()
+func parseMemberList(sc *Scan) ([]string, bool) {
+	body, ok := sc.ParenBody()
 	if !ok {
 		return nil, false
 	}
 	var members []string
-	for _, part := range splitComma(body) {
+	for _, part := range SplitComma(body) {
 		member, ok := sqlStringLiteral(strings.TrimSpace(part))
 		if !ok {
 			return nil, false
@@ -217,28 +217,28 @@ func sqlStringLiteral(s string) (string, bool) {
 	return "", false
 }
 
-func annotateSchemaColumn(col *schemaCol, def string) {
-	sc := &sqlScan{s: def}
+func annotateSchemaColumn(col *SchemaCol, def string) {
+	sc := &Scan{S: def}
 	depth := 0
-	for sc.i < len(sc.s) {
-		sc.skip()
-		if sc.i >= len(sc.s) {
+	for sc.I < len(sc.S) {
+		sc.Skip()
+		if sc.I >= len(sc.S) {
 			return
 		}
-		switch sc.s[sc.i] {
+		switch sc.S[sc.I] {
 		case '(':
 			depth++
-			sc.i++
+			sc.I++
 		case ')':
 			if depth > 0 {
 				depth--
 			}
-			sc.i++
+			sc.I++
 		case '\'', '"', '`':
-			sc.skipString(sc.s[sc.i])
+			sc.skipString(sc.S[sc.I])
 		default:
-			if !identStart(sc.s[sc.i]) {
-				sc.i++
+			if !identStart(sc.S[sc.I]) {
+				sc.I++
 				continue
 			}
 			word := sc.bare()
@@ -249,27 +249,27 @@ func annotateSchemaColumn(col *schemaCol, def string) {
 			case "UNSIGNED":
 				col.unsigned = true
 			case "CHARSET":
-				if name, ok := sc.ident(); ok {
+				if name, ok := sc.Ident(); ok {
 					col.charset = strings.ToLower(strings.Trim(name, "`"))
 				}
 			case "CHARACTER":
-				if sc.wordIs("SET") {
-					if name, ok := sc.ident(); ok {
+				if sc.WordIs("SET") {
+					if name, ok := sc.Ident(); ok {
 						col.charset = strings.ToLower(strings.Trim(name, "`"))
 					}
 				}
 			case "COLLATE":
-				if name, ok := sc.ident(); ok && col.charset == "" {
+				if name, ok := sc.Ident(); ok && col.charset == "" {
 					if charset := charsetOfCollationName(name); charset != "" {
 						col.charset = charset
 					}
 				}
 			case "AS":
-				if sc.peekByte() == '(' {
-					body, ok := sc.parenBody()
+				if sc.PeekByte() == '(' {
+					body, ok := sc.ParenBody()
 					if ok {
-						col.generated = true
-						col.expr = body
+						col.Generated = true
+						col.Expr = body
 					}
 				}
 			}
@@ -277,7 +277,7 @@ func annotateSchemaColumn(col *schemaCol, def string) {
 	}
 }
 
-func applyTableCharset(cols []schemaCol, tail string) []schemaCol {
+func ApplyTableCharset(cols []SchemaCol, tail string) []SchemaCol {
 	charset := tableDefaultCharset(tail)
 	if charset == "" {
 		return cols
@@ -291,29 +291,29 @@ func applyTableCharset(cols []schemaCol, tail string) []schemaCol {
 }
 
 func tableDefaultCharset(tail string) string {
-	sc := &sqlScan{s: tail}
+	sc := &Scan{S: tail}
 	depth := 0
-	for sc.i < len(sc.s) {
-		sc.skip()
-		if sc.i >= len(sc.s) {
+	for sc.I < len(sc.S) {
+		sc.Skip()
+		if sc.I >= len(sc.S) {
 			return ""
 		}
-		switch sc.s[sc.i] {
+		switch sc.S[sc.I] {
 		case '(':
 			depth++
-			sc.i++
+			sc.I++
 		case ')':
 			if depth > 0 {
 				depth--
 			}
-			sc.i++
+			sc.I++
 		case '\'', '"', '`':
-			sc.skipString(sc.s[sc.i])
+			sc.skipString(sc.S[sc.I])
 		case '=':
-			sc.i++
+			sc.I++
 		default:
-			if !identStart(sc.s[sc.i]) {
-				sc.i++
+			if !identStart(sc.S[sc.I]) {
+				sc.I++
 				continue
 			}
 			word := sc.bare()
@@ -321,12 +321,12 @@ func tableDefaultCharset(tail string) string {
 				continue
 			}
 			upper := strings.ToUpper(word)
-			if upper == "CHARSET" || (upper == "CHARACTER" && sc.wordIs("SET")) {
-				sc.skip()
-				if sc.i < len(sc.s) && sc.s[sc.i] == '=' {
-					sc.i++
+			if upper == "CHARSET" || (upper == "CHARACTER" && sc.WordIs("SET")) {
+				sc.Skip()
+				if sc.I < len(sc.S) && sc.S[sc.I] == '=' {
+					sc.I++
 				}
-				name, ok := sc.ident()
+				name, ok := sc.Ident()
 				if ok {
 					return strings.ToLower(strings.Trim(name, "`"))
 				}
@@ -377,39 +377,39 @@ func normalizeCharset(charset string) string {
 	}
 }
 
-// dumpSegment is the part of a schema file that follows one mysqldump
+// DumpSegment is the part of a schema file that follows one mysqldump
 // "-- Host: ... Database:" header, up to the next header. db is empty for text
 // before the first header.
-type dumpSegment struct {
-	db  string
-	sql string
+type DumpSegment struct {
+	DB  string
+	SQL string
 }
 
-// dumpSegments splits concatenated single-database dumps so each header sets
+// DumpSegments splits concatenated single-database dumps so each header sets
 // the schema for the dump that follows it, as USE does.
-func dumpSegments(sql string) []dumpSegment {
+func DumpSegments(sql string) []DumpSegment {
 	lines := strings.SplitAfter(sql, "\n")
-	var out []dumpSegment
-	cur := dumpSegment{}
+	var out []DumpSegment
+	cur := DumpSegment{}
 	var b strings.Builder
 	for _, line := range lines {
-		if db := dumpDatabase(line); db != "" {
-			cur.sql = b.String()
-			if strings.TrimSpace(cur.sql) != "" || cur.db != "" {
+		if db := DumpDatabase(line); db != "" {
+			cur.SQL = b.String()
+			if strings.TrimSpace(cur.SQL) != "" || cur.DB != "" {
 				out = append(out, cur)
 			}
-			cur = dumpSegment{db: db}
+			cur = DumpSegment{DB: db}
 			b.Reset()
 		}
 		b.WriteString(line)
 	}
-	cur.sql = b.String()
+	cur.SQL = b.String()
 	out = append(out, cur)
 	return out
 }
 
-// dumpDatabase reads the mysqldump header "-- Host: ... Database: <db>".
-func dumpDatabase(sql string) string {
+// DumpDatabase reads the mysqldump header "-- Host: ... Database: <db>".
+func DumpDatabase(sql string) string {
 	for _, line := range strings.Split(sql, "\n") {
 		line = strings.TrimSpace(strings.TrimRight(line, "\r"))
 		if !strings.HasPrefix(line, "--") {
@@ -442,9 +442,9 @@ func dumpDatabase(sql string) string {
 	return ""
 }
 
-// validateSchemaRow checks one row's metadata against cols. table is the
+// ValidateSchemaRow checks one row's metadata against cols. table is the
 // name refusals print (refusalLabel).
-func validateSchemaRow(table string, row model.FlashRow, cols []schemaCol) (warns []FlashbackWarning, err error) {
+func ValidateSchemaRow(table string, row model.FlashRow, cols []SchemaCol) (warns []model.FlashbackWarning, err error) {
 	if len(row.Cols) == 0 {
 		return nil, nil
 	}
@@ -464,14 +464,14 @@ func validateSchemaRow(table string, row model.FlashRow, cols []schemaCol) (warn
 	}
 	var reordered bool
 	for i := range cols {
-		if !strings.EqualFold(cols[i].name, row.Columns[i]) {
+		if !strings.EqualFold(cols[i].Name, row.Columns[i]) {
 			reordered = true
 			break
 		}
 	}
 	if reordered {
 		return nil, schemaMismatch(table, []string{i18n.Tf("error.flashbackSchemaOrder", map[string]any{
-			"File":   schemaColNames(cols),
+			"File":   SchemaColNames(cols),
 			"Binlog": strings.Join(row.Columns, ", "),
 		})})
 	}
@@ -490,12 +490,12 @@ func schemaMismatch(table string, parts []string) error {
 	}))
 }
 
-func columnCountDiff(cols []schemaCol, binlog []string) []string {
+func columnCountDiff(cols []SchemaCol, binlog []string) []string {
 	extra, missing := columnNameDiff(cols, binlog)
 	if len(extra) == 0 && len(missing) == 0 {
 		// Same names, different width is still a count problem. Name the positions.
 		return []string{i18n.Tf("error.flashbackSchemaOrder", map[string]any{
-			"File":   schemaColNames(cols),
+			"File":   SchemaColNames(cols),
 			"Binlog": strings.Join(binlog, ", "),
 		})}
 	}
@@ -509,10 +509,10 @@ func columnCountDiff(cols []schemaCol, binlog []string) []string {
 	return parts
 }
 
-func columnNameDiff(cols []schemaCol, binlog []string) (extra, missing []string) {
+func columnNameDiff(cols []SchemaCol, binlog []string) (extra, missing []string) {
 	file := map[string]string{}
 	for _, col := range cols {
-		file[strings.ToLower(col.name)] = col.name
+		file[strings.ToLower(col.Name)] = col.Name
 	}
 	bin := map[string]string{}
 	for _, name := range binlog {
@@ -533,21 +533,21 @@ func columnNameDiff(cols []schemaCol, binlog []string) (extra, missing []string)
 	return extra, missing
 }
 
-func schemaColNames(cols []schemaCol) string {
+func SchemaColNames(cols []SchemaCol) string {
 	names := make([]string, len(cols))
 	for i, col := range cols {
-		names[i] = col.name
+		names[i] = col.Name
 	}
 	return strings.Join(names, ", ")
 }
 
-func schemaTypeDiff(col schemaCol, meta model.FlashCol) string {
+func schemaTypeDiff(col SchemaCol, meta model.FlashCol) string {
 	if col.base == "" || meta.Base == "" {
 		return ""
 	}
 	if col.base != meta.Base {
 		return i18n.Tf("error.flashbackSchemaType", map[string]any{
-			"Column": col.name,
+			"Column": col.Name,
 			"File":   col.base,
 			"Binlog": meta.Base,
 		})
@@ -561,14 +561,14 @@ func schemaTypeDiff(col schemaCol, meta model.FlashCol) string {
 			bin = "unsigned"
 		}
 		return i18n.Tf("error.flashbackSchemaType", map[string]any{
-			"Column": col.name,
+			"Column": col.Name,
 			"File":   file,
 			"Binlog": bin,
 		})
 	}
 	if charsetApplies(col.base) && col.charset != "" && meta.Charset != "" && normalizeCharset(col.charset) != normalizeCharset(meta.Charset) {
 		return i18n.Tf("error.flashbackSchemaType", map[string]any{
-			"Column": col.name,
+			"Column": col.Name,
 			"File":   col.charset,
 			"Binlog": meta.Charset,
 		})
@@ -577,7 +577,7 @@ func schemaTypeDiff(col schemaCol, meta model.FlashCol) string {
 		same, comparable := membersEqual(col.members, meta.Members)
 		if comparable && !same {
 			return i18n.Tf("error.flashbackSchemaType", map[string]any{
-				"Column": col.name,
+				"Column": col.Name,
 				"File":   memberList(col.members),
 				"Binlog": memberList(meta.Members),
 			})
@@ -585,14 +585,14 @@ func schemaTypeDiff(col schemaCol, meta model.FlashCol) string {
 	}
 	if col.base == "decimal" && col.hasPrec && meta.HasPrec && (col.prec != meta.Prec || col.scale != meta.Scale) {
 		return i18n.Tf("error.flashbackSchemaType", map[string]any{
-			"Column": col.name,
+			"Column": col.Name,
 			"File":   fmt.Sprintf("decimal(%d,%d)", col.prec, col.scale),
 			"Binlog": fmt.Sprintf("decimal(%d,%d)", meta.Prec, meta.Scale),
 		})
 	}
 	if schemaFSP(col.base) && col.hasPrec && meta.HasFSP && col.prec != meta.FSP {
 		return i18n.Tf("error.flashbackSchemaType", map[string]any{
-			"Column": col.name,
+			"Column": col.Name,
 			"File":   fmt.Sprintf("%s(%d)", col.base, col.prec),
 			"Binlog": fmt.Sprintf("%s(%d)", meta.Base, meta.FSP),
 		})
@@ -643,8 +643,20 @@ func memberList(members []string) string {
 	return strings.Join(quoted, ",")
 }
 
+// OneLine returns the first line of value, trimmed, cut to limit bytes when limit is positive.
+func OneLine(value string, limit int) string {
+	value = strings.TrimSpace(value)
+	if i := strings.IndexAny(value, "\r\n"); i >= 0 {
+		value = strings.TrimSpace(value[:i])
+	}
+	if limit > 0 && len(value) > limit {
+		value = value[:limit] + "..."
+	}
+	return value
+}
+
 func exprText(expr string) string {
-	text := oneLine(expr, 80)
+	text := OneLine(expr, 80)
 	if text == "" {
 		return "(empty)"
 	}
@@ -698,18 +710,18 @@ func roundRatHalfAway(r *big.Rat) *big.Int {
 	return q
 }
 
-func consumeMulOp(sc *sqlScan) (string, bool) {
-	sc.skip()
-	if sc.i >= len(sc.s) {
+func consumeMulOp(sc *Scan) (string, bool) {
+	sc.Skip()
+	if sc.I >= len(sc.S) {
 		return "", false
 	}
-	switch sc.s[sc.i] {
+	switch sc.S[sc.I] {
 	case '*', '/', '%':
-		op := string(sc.s[sc.i])
-		sc.i++
+		op := string(sc.S[sc.I])
+		sc.I++
 		return op, true
 	}
-	if !identStart(sc.s[sc.i]) {
+	if !identStart(sc.S[sc.I]) {
 		return "", false
 	}
 	save := *sc
@@ -773,16 +785,16 @@ func ratAsInt(r *big.Rat) (*big.Int, bool) {
 	return new(big.Int).Set(r.Num()), true
 }
 
-func schemaColIndex(cols []schemaCol, name string) int {
+func schemaColIndex(cols []SchemaCol, name string) int {
 	for i, col := range cols {
-		if strings.EqualFold(col.name, name) {
+		if strings.EqualFold(col.Name, name) {
 			return i
 		}
 	}
 	return -1
 }
 
-func removeSchemaCol(cols []schemaCol, name string) []schemaCol {
+func removeSchemaCol(cols []SchemaCol, name string) []SchemaCol {
 	idx := schemaColIndex(cols, name)
 	if idx < 0 {
 		return cols
@@ -790,46 +802,46 @@ func removeSchemaCol(cols []schemaCol, name string) []schemaCol {
 	return removeSchemaColAt(cols, idx)
 }
 
-func removeSchemaColAt(cols []schemaCol, idx int) []schemaCol {
-	out := make([]schemaCol, 0, len(cols)-1)
+func removeSchemaColAt(cols []SchemaCol, idx int) []SchemaCol {
+	out := make([]SchemaCol, 0, len(cols)-1)
 	out = append(out, cols[:idx]...)
 	out = append(out, cols[idx+1:]...)
 	return out
 }
 
-func insertSchemaCol(cols []schemaCol, pos int, col schemaCol) []schemaCol {
+func insertSchemaCol(cols []SchemaCol, pos int, col SchemaCol) []SchemaCol {
 	if pos < 0 || pos > len(cols) {
 		pos = len(cols)
 	}
-	out := make([]schemaCol, 0, len(cols)+1)
+	out := make([]SchemaCol, 0, len(cols)+1)
 	out = append(out, cols[:pos]...)
 	out = append(out, col)
 	out = append(out, cols[pos:]...)
 	return out
 }
 
-func columnInsertPos(cols []schemaCol, def string) int {
-	sc := &sqlScan{s: def}
+func columnInsertPos(cols []SchemaCol, def string) int {
+	sc := &Scan{S: def}
 	depth := 0
-	for sc.i < len(sc.s) {
-		sc.skip()
-		if sc.i >= len(sc.s) {
+	for sc.I < len(sc.S) {
+		sc.Skip()
+		if sc.I >= len(sc.S) {
 			break
 		}
-		switch sc.s[sc.i] {
+		switch sc.S[sc.I] {
 		case '(':
 			depth++
-			sc.i++
+			sc.I++
 		case ')':
 			if depth > 0 {
 				depth--
 			}
-			sc.i++
+			sc.I++
 		case '\'', '"', '`':
-			sc.skipString(sc.s[sc.i])
+			sc.skipString(sc.S[sc.I])
 		default:
-			if !identStart(sc.s[sc.i]) {
-				sc.i++
+			if !identStart(sc.S[sc.I]) {
+				sc.I++
 				continue
 			}
 			word := sc.bare()
@@ -840,7 +852,7 @@ func columnInsertPos(cols []schemaCol, def string) int {
 				return 0
 			}
 			if strings.EqualFold(word, "AFTER") {
-				name, ok := sc.ident()
+				name, ok := sc.Ident()
 				if !ok {
 					return len(cols)
 				}
@@ -855,10 +867,10 @@ func columnInsertPos(cols []schemaCol, def string) int {
 	return len(cols)
 }
 
-func alterNoColumnChange(action string) bool {
-	sc := &sqlScan{s: strings.TrimSpace(action)}
-	verb := strings.ToUpper(sc.word())
-	kind := strings.ToUpper(sc.peekWord())
+func AlterNoColumnChange(action string) bool {
+	sc := &Scan{S: strings.TrimSpace(action)}
+	verb := strings.ToUpper(sc.Word())
+	kind := strings.ToUpper(sc.PeekWord())
 	switch verb {
 	case "ADD":
 		switch kind {
@@ -878,66 +890,66 @@ func alterNoColumnChange(action string) bool {
 	return false
 }
 
-func alterSlice(cols *[]schemaCol, action string) bool {
-	if alterNoColumnChange(action) {
+func AlterSlice(cols *[]SchemaCol, action string) bool {
+	if AlterNoColumnChange(action) {
 		return true
 	}
-	sc := &sqlScan{s: strings.TrimSpace(action)}
-	verb := strings.ToUpper(sc.word())
+	sc := &Scan{S: strings.TrimSpace(action)}
+	verb := strings.ToUpper(sc.Word())
 	switch verb {
 	case "ADD":
-		if strings.EqualFold(sc.peekWord(), "COLUMN") {
-			sc.word()
+		if strings.EqualFold(sc.PeekWord(), "COLUMN") {
+			sc.Word()
 		}
-		if sc.wordIs("IF") {
-			sc.wordIs("NOT")
-			sc.wordIs("EXISTS")
+		if sc.WordIs("IF") {
+			sc.WordIs("NOT")
+			sc.WordIs("EXISTS")
 		}
-		if sc.peekByte() == '(' {
-			body, ok := sc.parenBody()
+		if sc.PeekByte() == '(' {
+			body, ok := sc.ParenBody()
 			if !ok {
 				return false
 			}
-			added, ok := parseSchemaColumns(body)
+			added, ok := ParseSchemaColumns(body)
 			if !ok {
 				return false
 			}
 			*cols = append(*cols, added...)
 			return true
 		}
-		return addOneColumn(cols, sc.rest())
+		return addOneColumn(cols, sc.Rest())
 	case "DROP":
-		if strings.EqualFold(sc.peekWord(), "COLUMN") {
-			sc.word()
+		if strings.EqualFold(sc.PeekWord(), "COLUMN") {
+			sc.Word()
 		}
-		if sc.wordIs("IF") {
-			sc.wordIs("EXISTS")
+		if sc.WordIs("IF") {
+			sc.WordIs("EXISTS")
 		}
-		name, ok := sc.ident()
+		name, ok := sc.Ident()
 		if !ok {
 			return false
 		}
 		*cols = removeSchemaCol(*cols, name)
 		return true
 	case "MODIFY":
-		sc.wordIs("COLUMN")
-		return replaceSchemaColumn(cols, sc.rest(), "")
+		sc.WordIs("COLUMN")
+		return replaceSchemaColumn(cols, sc.Rest(), "")
 	case "CHANGE":
-		sc.wordIs("COLUMN")
-		old, ok := sc.ident()
+		sc.WordIs("COLUMN")
+		old, ok := sc.Ident()
 		if !ok {
 			return false
 		}
-		return replaceSchemaColumn(cols, sc.rest(), old)
+		return replaceSchemaColumn(cols, sc.Rest(), old)
 	case "RENAME":
-		if !sc.wordIs("COLUMN") {
+		if !sc.WordIs("COLUMN") {
 			return true
 		}
-		old, ok := sc.ident()
-		if !ok || !sc.wordIs("TO") {
+		old, ok := sc.Ident()
+		if !ok || !sc.WordIs("TO") {
 			return false
 		}
-		next, ok := sc.ident()
+		next, ok := sc.Ident()
 		if !ok {
 			return false
 		}
@@ -945,14 +957,14 @@ func alterSlice(cols *[]schemaCol, action string) bool {
 		if idx < 0 {
 			return true
 		}
-		(*cols)[idx].name = next
+		(*cols)[idx].Name = next
 		return true
 	default:
 		return true
 	}
 }
 
-func addOneColumn(cols *[]schemaCol, def string) bool {
+func addOneColumn(cols *[]SchemaCol, def string) bool {
 	col, ok := parseSchemaColumn(def)
 	if !ok {
 		return false
@@ -960,7 +972,7 @@ func addOneColumn(cols *[]schemaCol, def string) bool {
 	// A schema file taken after this ALTER already has the column. MySQL
 	// rejects a duplicate ADD, so an identical column means the file
 	// includes the ALTER and the definition is already in effect.
-	if idx := schemaColIndex(*cols, col.name); idx >= 0 && sameSchemaCol((*cols)[idx], col) {
+	if idx := schemaColIndex(*cols, col.Name); idx >= 0 && sameSchemaCol((*cols)[idx], col) {
 		return true
 	}
 	pos := columnInsertPos(*cols, def)
@@ -972,12 +984,12 @@ func addOneColumn(cols *[]schemaCol, def string) bool {
 // and generation expression. Quoting, spacing and outer parentheses in the
 // expression are ignored because mysqldump rewrites them. A charset counts
 // only when both sides name one, since a file applies the table default.
-func sameSchemaCol(a, b schemaCol) bool {
-	if !strings.EqualFold(a.name, b.name) || a.generated != b.generated ||
+func sameSchemaCol(a, b SchemaCol) bool {
+	if !strings.EqualFold(a.Name, b.Name) || a.Generated != b.Generated ||
 		!strings.EqualFold(a.base, b.base) || a.unsigned != b.unsigned {
 		return false
 	}
-	if a.generated && normalizeGenExpr(a.expr) != normalizeGenExpr(b.expr) {
+	if a.Generated && normalizeGenExpr(a.Expr) != normalizeGenExpr(b.Expr) {
 		return false
 	}
 	if a.charset != "" && b.charset != "" && normalizeCharset(a.charset) != normalizeCharset(b.charset) {
@@ -1029,14 +1041,14 @@ func outerParen(s string) bool {
 	return depth == 0
 }
 
-func replaceSchemaColumn(cols *[]schemaCol, def, old string) bool {
+func replaceSchemaColumn(cols *[]SchemaCol, def, old string) bool {
 	col, ok := parseSchemaColumn(def)
 	if !ok {
 		return false
 	}
 	name := old
 	if name == "" {
-		name = col.name
+		name = col.Name
 	}
 	idx := schemaColIndex(*cols, name)
 	if idx < 0 {
@@ -1053,27 +1065,27 @@ func replaceSchemaColumn(cols *[]schemaCol, def, old string) bool {
 }
 
 func columnMoves(def string) bool {
-	sc := &sqlScan{s: def}
+	sc := &Scan{S: def}
 	depth := 0
-	for sc.i < len(sc.s) {
-		sc.skip()
-		if sc.i >= len(sc.s) {
+	for sc.I < len(sc.S) {
+		sc.Skip()
+		if sc.I >= len(sc.S) {
 			return false
 		}
-		switch sc.s[sc.i] {
+		switch sc.S[sc.I] {
 		case '(':
 			depth++
-			sc.i++
+			sc.I++
 		case ')':
 			if depth > 0 {
 				depth--
 			}
-			sc.i++
+			sc.I++
 		case '\'', '"', '`':
-			sc.skipString(sc.s[sc.i])
+			sc.skipString(sc.S[sc.I])
 		default:
-			if !identStart(sc.s[sc.i]) {
-				sc.i++
+			if !identStart(sc.S[sc.I]) {
+				sc.I++
 				continue
 			}
 			word := sc.bare()

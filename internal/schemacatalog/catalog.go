@@ -1,85 +1,88 @@
-// Package analyzer: the schema catalog answers "which definition does flashback use for db.table, and why".
+// Package schemacatalog: the schema catalog answers "which definition does flashback use for db.table, and why".
 // input: --schema-file text (mysqldump --no-data, SHOW CREATE TABLE, mysql --batch rows; USE, Database: headers and --schema-file-db), then every table map and DDL statement of the parsed binlogs in order, including ones later excluded by GTID or time.
 // output: a typed resolution per db.table (exact, case-fold, ambiguous, missing, refused with a reason) plus the schema warnings to print. Callers build every message from the resolution; the catalog never rewrites error text.
-// pos: flashback-only module. Analyze does not call it. Parsing helpers live in flashback_generated.go and flashback_schema.go.
+// pos: flashback-only module. Analyze does not call it. Parsing helpers live in internal/mysqlexpr.
 // note: if this file changes, update this header, CONTEXT.md (Schema catalog) and docs/adr/0005-schema-catalog.md.
-package analyzer
+package schemacatalog
 
 import (
 	"sort"
 	"strings"
+
+	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 )
 
-// resolveKind says how a binlog db.table was bound to a definition.
-type resolveKind int
+// Kind says how a binlog db.table was bound to a definition.
+type Kind int
 
 const (
-	// resolveMissing: no definition in the schema file or the parsed binlogs.
-	resolveMissing resolveKind = iota
-	// resolveExact: a definition under the same name (schema file, binlog DDL,
+	// Missing: no definition in the schema file or the parsed binlogs.
+	Missing Kind = iota
+	// Exact: a definition under the same name (schema file, binlog DDL,
 	// or an unqualified schema-file table bound to its only schema).
-	resolveExact
-	// resolveFold: the schema-file table differs only in letter case and was
+	Exact
+	// Fold: the schema-file table differs only in letter case and was
 	// used because the binlog name is all lower case and the match is unique.
-	resolveFold
-	// resolveAmbiguous: candidates exist but none was used (an unqualified
+	Fold
+	// Ambiguous: candidates exist but none was used (an unqualified
 	// schema-file table seen in several schemas, or several / non-folded
 	// letter-case near misses).
-	resolveAmbiguous
-	// resolveRefused: a definition was seen and cannot be used.
-	resolveRefused
+	Ambiguous
+	// Refused: a definition was seen and cannot be used.
+	Refused
 )
 
-// refuseReason says why a definition was refused.
-type refuseReason int
+// RefuseReason says why a definition was refused.
+type RefuseReason int
 
 const (
-	refuseNone refuseReason = iota
-	// refuseUnreadableCreate: CREATE TABLE had no readable column list.
-	refuseUnreadableCreate
-	// refuseCreateSelect: CREATE TABLE ... AS SELECT; columns are not stated.
-	refuseCreateSelect
-	// refuseLikeSource: CREATE TABLE ... LIKE a table with no usable definition.
-	refuseLikeSource
-	// refuseAlterUnknown: ALTER TABLE on a table with no definition.
-	refuseAlterUnknown
-	// refuseAlterUnreadable: an ALTER action that could not be replayed.
-	refuseAlterUnreadable
+	RefuseNone RefuseReason = iota
+	// UnreadableCreate: CREATE TABLE had no readable column list.
+	UnreadableCreate
+	// CreateSelect: CREATE TABLE ... AS SELECT; columns are not stated.
+	CreateSelect
+	// LikeSource: CREATE TABLE ... LIKE a table with no usable definition.
+	LikeSource
+	// AlterUnknown: ALTER TABLE on a table with no definition.
+	AlterUnknown
+	// AlterUnreadable: an ALTER action that could not be replayed.
+	AlterUnreadable
 )
 
 // resolution is the catalog's answer for one binlog db.table.
-type resolution struct {
-	kind resolveKind
-	// cols is the column list in effect (resolveExact, resolveFold).
-	cols []schemaCol
+type Resolution struct {
+	Kind Kind
+	// cols is the column list in effect (Exact, Fold).
+	Cols []mysqlexpr.SchemaCol
 	// checkRows: the list came from --schema-file and must be checked
 	// against the logged rows before it is trusted.
-	checkRows bool
+	CheckRows bool
 	// deferred: bound from an unqualified schema-file name; the check waits
 	// until every schema of that table has been seen.
-	deferred bool
+	Deferred bool
 	// fileTable names the schema-file table (db.tbl) this binlog name was
-	// case-folded to. Set for resolveFold, and kept afterwards so a later
+	// case-folded to. Set for Fold, and kept afterwards so a later
 	// refusal of the same table still names it.
-	fileTable string
-	// candidates are the unused near matches of resolveAmbiguous.
-	candidates []string
-	// reason is set for resolveRefused.
-	reason refuseReason
+	FileTable string
+	// candidates are the unused near matches of Ambiguous.
+	Candidates []string
+	// reason is set for Refused.
+	Reason RefuseReason
 }
 
-// newSchemaCatalog returns an empty catalog. flagDB is --schema-file-db.
-func newSchemaCatalog(flagDB string) *schemaCatalog {
-	return &schemaCatalog{flagDB: strings.Trim(strings.TrimSpace(flagDB), "`")}
+// New returns an empty catalog. flagDB is --schema-file-db.
+func New(flagDB string) *Catalog {
+	return &Catalog{flagDB: strings.Trim(strings.TrimSpace(flagDB), "`")}
 }
 
 // loadFile reads one --schema-file. Call it before any observe call.
-func (g *schemaCatalog) loadFile(sql string) { g.noteScript(sql) }
+func (g *Catalog) LoadFile(sql string) { g.noteScript(sql) }
 
 // observeTable records that the binlog has a table map for schema.table.
 // It returns tables whose unqualified schema-file binding was dropped by this
 // call because the name is now seen in a second schema.
-func (g *schemaCatalog) observeTable(schema, table string) []string {
+func (g *Catalog) ObserveTable(schema, table string) []string {
 	if schema == "" || table == "" {
 		return nil
 	}
@@ -90,13 +93,13 @@ func (g *schemaCatalog) observeTable(schema, table string) []string {
 
 // observeDDL replays one binlog DDL statement run with session schema.
 // It returns tables whose unqualified binding was dropped, as observeTable.
-func (g *schemaCatalog) observeDDL(session, sql string) []string {
+func (g *Catalog) ObserveDDL(session, sql string) []string {
 	before := len(g.abandoned)
 	g.note(session, sql)
 	return g.abandonedSince(before)
 }
 
-func (g *schemaCatalog) abandonedSince(before int) []string {
+func (g *Catalog) abandonedSince(before int) []string {
 	var out []string
 	for _, item := range g.abandoned[before:] {
 		out = append(out, item.table)
@@ -107,36 +110,36 @@ func (g *schemaCatalog) abandonedSince(before int) []string {
 // resolve binds schema.table for a selected row event. The first call for a
 // name may bind a letter-case match from the schema file; later calls and
 // peek return the same binding.
-func (g *schemaCatalog) resolve(schema, table string) resolution {
+func (g *Catalog) Resolve(schema, table string) Resolution {
 	g.foldCase(schema, table)
-	return g.peek(schema, table)
+	return g.Peek(schema, table)
 }
 
 // peek reports the current binding of schema.table without binding anything.
-func (g *schemaCatalog) peek(schema, table string) resolution {
+func (g *Catalog) Peek(schema, table string) Resolution {
 	if g == nil {
-		return resolution{}
+		return Resolution{}
 	}
 	key := generatedKey(schema, table)
-	res := resolution{fileTable: g.foldFrom[key]}
+	res := Resolution{FileTable: g.foldFrom[key]}
 	if why, bad := g.bad[key]; bad {
-		res.kind = resolveRefused
-		res.reason = why
+		res.Kind = Refused
+		res.Reason = why
 		return res
 	}
 	if cols, ok := g.defs[key]; ok {
-		res.kind = resolveExact
-		if res.fileTable != "" {
-			res.kind = resolveFold
+		res.Kind = Exact
+		if res.FileTable != "" {
+			res.Kind = Fold
 		}
-		res.cols = cloneSchemaCols(cols)
-		res.checkRows = g.fromFile[key]
-		res.deferred = g.pendingBound[key]
+		res.Cols = mysqlexpr.CloneSchemaCols(cols)
+		res.CheckRows = g.fromFile[key]
+		res.Deferred = g.pendingBound[key]
 		return res
 	}
 	if miss := g.foldMiss[key]; len(miss) > 0 {
-		res.kind = resolveAmbiguous
-		res.candidates = append([]string(nil), miss...)
+		res.Kind = Ambiguous
+		res.Candidates = append([]string(nil), miss...)
 		return res
 	}
 	for _, item := range g.abandoned {
@@ -145,32 +148,32 @@ func (g *schemaCatalog) peek(schema, table string) resolution {
 		}
 		for _, s := range item.schemas {
 			if s == schema {
-				res.kind = resolveAmbiguous
+				res.Kind = Ambiguous
 				for _, other := range item.schemas {
-					res.candidates = append(res.candidates, other+"."+table)
+					res.Candidates = append(res.Candidates, other+"."+table)
 				}
 				return res
 			}
 		}
 	}
-	res.kind = resolveMissing
+	res.Kind = Missing
 	return res
 }
 
 // warnings returns the schema warnings in print order: letter-case notes,
 // the header/--schema-file-db conflict, then unqualified tables not used.
-func (g *schemaCatalog) warnings() []FlashbackWarning { return g.schemaWarnings() }
+func (g *Catalog) Warnings() []model.FlashbackWarning { return g.schemaWarnings() }
 
-// schemaCatalog records generated column names learned from CREATE and ALTER
+// Catalog records generated column names learned from CREATE and ALTER
 // statements in the parsed binlog. A table missing from cols was not defined
 // in this input. bad means a definition was seen and could not be read, so
 // undo SQL must refuse that table instead of assigning a generated column.
-type schemaCatalog struct {
+type Catalog struct {
 	cols           map[string]map[string]struct{}
-	defs           map[string][]schemaCol
+	defs           map[string][]mysqlexpr.SchemaCol
 	fromFile       map[string]bool
 	pendingBound   map[string]bool
-	bad            map[string]refuseReason
+	bad            map[string]RefuseReason
 	pending        map[string]*pendingDef
 	seen           map[string]map[string]struct{}
 	abandoned      []abandonedTable
@@ -180,7 +183,7 @@ type schemaCatalog struct {
 	sawUnqualified bool
 	readingFile    bool
 	folded         map[string]bool
-	foldNotes      []FlashbackWarning
+	foldNotes      []model.FlashbackWarning
 	// foldFrom maps a folded binlog key to the schema-file table (db.tbl) it used.
 	foldFrom map[string]string
 	// foldMiss maps a binlog key to schema-file tables that differ only in
@@ -195,43 +198,43 @@ type schemaCatalog struct {
 // A row of "name<TAB>CREATE TABLE ..." is the mysql batch format. Several of
 // those rows may sit in one file with no ';' between them. mysql --batch
 // writes each newline inside a field as the two characters \ n.
-func (g *schemaCatalog) noteScript(sql string) {
+func (g *Catalog) noteScript(sql string) {
 	if g == nil || strings.TrimSpace(sql) == "" {
 		return
 	}
 	g.readingFile = true
 	defer func() { g.readingFile = false }()
-	g.headerDB = dumpDatabase(sql)
-	for _, seg := range dumpSegments(sql) {
+	g.headerDB = mysqlexpr.DumpDatabase(sql)
+	for _, seg := range mysqlexpr.DumpSegments(sql) {
 		session := ""
 		switch {
-		case seg.db != "" && g.flagDB != "" && !strings.EqualFold(seg.db, g.flagDB):
+		case seg.DB != "" && g.flagDB != "" && !strings.EqualFold(seg.DB, g.flagDB):
 			g.ambiguousDB = true
-			g.headerDB = seg.db
-		case seg.db != "":
-			session = seg.db
+			g.headerDB = seg.DB
+		case seg.DB != "":
+			session = seg.DB
 		case g.headerDB == "" && g.flagDB != "":
 			session = g.flagDB
 		}
-		for _, stmt := range splitSQL(seg.sql) {
+		for _, stmt := range mysqlexpr.SplitSQL(seg.SQL) {
 			g.noteChunk(&session, stmt)
 		}
 	}
 }
 
-func (g *schemaCatalog) noteChunk(session *string, stmt string) {
+func (g *Catalog) noteChunk(session *string, stmt string) {
 	stmt = strings.TrimSpace(stmt)
 	for stmt != "" {
-		sc := &sqlScan{s: stmt}
-		if sc.wordIs("USE") {
-			name, ok := sc.ident()
+		sc := mysqlexpr.NewScan(stmt)
+		if sc.WordIs("USE") {
+			name, ok := sc.Ident()
 			if ok {
 				*session = name
 			}
-			stmt = strings.TrimSpace(sc.rest())
+			stmt = strings.TrimSpace(sc.Rest())
 			continue
 		}
-		at := indexCreateTable(stmt)
+		at := mysqlexpr.IndexCreateTable(stmt)
 		if at < 0 {
 			g.note(*session, stmt)
 			return
@@ -239,7 +242,7 @@ func (g *schemaCatalog) noteChunk(session *string, stmt string) {
 		rest := stmt[at:]
 		next := -1
 		if len(rest) > 1 {
-			next = indexCreateTable(rest[1:])
+			next = mysqlexpr.IndexCreateTable(rest[1:])
 		}
 		if next < 0 {
 			g.note(*session, rest)
@@ -251,12 +254,12 @@ func (g *schemaCatalog) noteChunk(session *string, stmt string) {
 	}
 }
 
-func (g *schemaCatalog) note(sessionSchema, sql string) {
+func (g *Catalog) note(sessionSchema, sql string) {
 	if g == nil {
 		return
 	}
-	sc := &sqlScan{s: strings.TrimSpace(sql)}
-	verb := strings.ToUpper(sc.word())
+	sc := mysqlexpr.NewScan(strings.TrimSpace(sql))
+	verb := strings.ToUpper(sc.Word())
 	switch verb {
 	case "CREATE":
 		g.noteCreate(sessionSchema, sc)
@@ -269,7 +272,7 @@ func (g *schemaCatalog) note(sessionSchema, sql string) {
 	}
 }
 
-func (g *schemaCatalog) unknown(schema, table string) bool {
+func (g *Catalog) unknown(schema, table string) bool {
 	if g == nil || g.bad == nil {
 		return false
 	}
@@ -281,94 +284,94 @@ func generatedKey(schema, table string) string {
 	return schema + "\x00" + table
 }
 
-func (g *schemaCatalog) ensure() {
+func (g *Catalog) ensure() {
 	if g.cols == nil {
 		g.cols = map[string]map[string]struct{}{}
 	}
 	if g.bad == nil {
-		g.bad = map[string]refuseReason{}
+		g.bad = map[string]RefuseReason{}
 	}
 }
 
-func (g *schemaCatalog) noteCreate(session string, sc *sqlScan) {
-	if strings.EqualFold(sc.word(), "TEMPORARY") {
+func (g *Catalog) noteCreate(session string, sc *mysqlexpr.Scan) {
+	if strings.EqualFold(sc.Word(), "TEMPORARY") {
 		// consumed
 	} else {
-		sc.unreadWord()
+		sc.UnreadWord()
 	}
-	if !sc.wordIs("TABLE") {
+	if !sc.WordIs("TABLE") {
 		return
 	}
-	if sc.wordIs("IF") {
-		sc.wordIs("NOT")
-		sc.wordIs("EXISTS")
+	if sc.WordIs("IF") {
+		sc.WordIs("NOT")
+		sc.WordIs("EXISTS")
 	}
-	schema, table, ok := sc.qualified(session)
+	schema, table, ok := sc.Qualified(session)
 	if !ok {
 		return
 	}
 	key := generatedKey(schema, table)
 	g.ensure()
-	if sc.wordIs("LIKE") {
-		srcSchema, src, ok := sc.qualified(session)
+	if sc.WordIs("LIKE") {
+		srcSchema, src, ok := sc.Qualified(session)
 		if !ok {
-			g.markBad(key, refuseLikeSource)
+			g.markBad(key, LikeSource)
 			return
 		}
 		if srcSchema == "" {
 			if p := g.pending[src]; p != nil && !p.abandoned && !p.bad {
-				g.installCreate(schema, table, cloneSchemaCols(p.cols), true)
+				g.installCreate(schema, table, mysqlexpr.CloneSchemaCols(p.cols), true)
 				return
 			}
 			if schema == "" {
-				g.putPendingBad(table, refuseLikeSource)
+				g.putPendingBad(table, LikeSource)
 				return
 			}
-			g.markBad(key, refuseLikeSource)
+			g.markBad(key, LikeSource)
 			return
 		}
 		srcKey := generatedKey(srcSchema, src)
 		if _, bad := g.bad[srcKey]; bad {
-			g.markBad(key, refuseLikeSource)
+			g.markBad(key, LikeSource)
 			return
 		}
 		if cols, known := g.defs[srcKey]; known {
 			g.installCreate(schema, table, cols, g.fromFile[srcKey] || g.readingFile)
 			return
 		}
-		g.markBad(key, refuseLikeSource)
+		g.markBad(key, LikeSource)
 		return
 	}
-	if sc.wordIs("AS") || sc.wordIs("SELECT") {
+	if sc.WordIs("AS") || sc.WordIs("SELECT") {
 		if schema == "" {
-			g.putPendingBad(table, refuseCreateSelect)
+			g.putPendingBad(table, CreateSelect)
 			return
 		}
-		g.markBad(key, refuseCreateSelect)
+		g.markBad(key, CreateSelect)
 		return
 	}
-	body, ok := sc.parenBody()
+	body, ok := sc.ParenBody()
 	if !ok {
 		if schema == "" {
-			g.putPendingBad(table, refuseUnreadableCreate)
+			g.putPendingBad(table, UnreadableCreate)
 			return
 		}
-		g.markBad(key, refuseUnreadableCreate)
+		g.markBad(key, UnreadableCreate)
 		return
 	}
-	cols, ok := parseSchemaColumns(body)
+	cols, ok := mysqlexpr.ParseSchemaColumns(body)
 	if !ok {
 		if schema == "" {
-			g.putPendingBad(table, refuseUnreadableCreate)
+			g.putPendingBad(table, UnreadableCreate)
 			return
 		}
-		g.markBad(key, refuseUnreadableCreate)
+		g.markBad(key, UnreadableCreate)
 		return
 	}
-	g.installCreate(schema, table, applyTableCharset(cols, sc.rest()), g.readingFile)
+	g.installCreate(schema, table, mysqlexpr.ApplyTableCharset(cols, sc.Rest()), g.readingFile)
 }
 
-func (g *schemaCatalog) installCreate(schema, table string, cols []schemaCol, fromFile bool) {
+func (g *Catalog) installCreate(schema, table string, cols []mysqlexpr.SchemaCol, fromFile bool) {
 	if schema == "" {
 		g.sawUnqualified = true
 		if g.ambiguousDB {
@@ -383,16 +386,16 @@ func (g *schemaCatalog) installCreate(schema, table string, cols []schemaCol, fr
 	g.setDef(key, cols, fromFile)
 }
 
-func (g *schemaCatalog) noteAlter(session string, sc *sqlScan) {
-	if !sc.wordIs("TABLE") {
+func (g *Catalog) noteAlter(session string, sc *mysqlexpr.Scan) {
+	if !sc.WordIs("TABLE") {
 		return
 	}
-	schema, table, ok := sc.qualified(session)
+	schema, table, ok := sc.Qualified(session)
 	if !ok {
 		return
 	}
 	if schema == "" {
-		g.alterPending(table, sc.rest())
+		g.alterPending(table, sc.Rest())
 		return
 	}
 	if !g.readingFile {
@@ -403,66 +406,66 @@ func (g *schemaCatalog) noteAlter(session string, sc *sqlScan) {
 	}
 	key := generatedKey(schema, table)
 	g.ensure()
-	for _, action := range splitComma(sc.rest()) {
+	for _, action := range mysqlexpr.SplitComma(sc.Rest()) {
 		g.applyAlter(key, action)
 	}
 }
 
-func (g *schemaCatalog) alterPending(table, rest string) {
+func (g *Catalog) alterPending(table, rest string) {
 	g.sawUnqualified = true
 	if g.ambiguousDB {
 		return
 	}
 	p := g.pending[table]
 	if p == nil || p.abandoned {
-		g.putPendingBad(table, refuseAlterUnknown)
+		g.putPendingBad(table, AlterUnknown)
 		return
 	}
 	if p.bad {
 		return
 	}
-	for _, action := range splitComma(rest) {
-		if !alterSlice(&p.cols, action) {
+	for _, action := range mysqlexpr.SplitComma(rest) {
+		if !mysqlexpr.AlterSlice(&p.cols, action) {
 			p.bad = true
-			p.why = refuseAlterUnreadable
+			p.why = AlterUnreadable
 			p.cols = nil
 			return
 		}
 	}
 }
 
-func (g *schemaCatalog) applyAlter(key, action string) {
-	if alterNoColumnChange(action) {
+func (g *Catalog) applyAlter(key, action string) {
+	if mysqlexpr.AlterNoColumnChange(action) {
 		return
 	}
 	cols, ok := g.defs[key]
 	if !ok {
-		g.markBad(key, refuseAlterUnknown)
+		g.markBad(key, AlterUnknown)
 		return
 	}
-	next := cloneSchemaCols(cols)
-	if !alterSlice(&next, action) {
-		g.markBad(key, refuseAlterUnreadable)
+	next := mysqlexpr.CloneSchemaCols(cols)
+	if !mysqlexpr.AlterSlice(&next, action) {
+		g.markBad(key, AlterUnreadable)
 		return
 	}
 	g.setDef(key, next, g.fromFile[key])
 }
 
-func (g *schemaCatalog) known(key string) bool {
+func (g *Catalog) known(key string) bool {
 	_, ok := g.cols[key]
 	return ok
 }
 
-func (g *schemaCatalog) noteDrop(session string, sc *sqlScan) {
-	if !sc.wordIs("TABLE") {
+func (g *Catalog) noteDrop(session string, sc *mysqlexpr.Scan) {
+	if !sc.WordIs("TABLE") {
 		return
 	}
-	sc.wordIs("IF")
-	if strings.EqualFold(sc.peekWord(), "EXISTS") {
-		sc.word()
+	sc.WordIs("IF")
+	if strings.EqualFold(sc.PeekWord(), "EXISTS") {
+		sc.Word()
 	}
 	for {
-		schema, table, ok := sc.qualified(session)
+		schema, table, ok := sc.Qualified(session)
 		if !ok {
 			return
 		}
@@ -473,10 +476,10 @@ func (g *schemaCatalog) noteDrop(session string, sc *sqlScan) {
 		delete(g.fromFile, key)
 		delete(g.pendingBound, key)
 		delete(g.pending, table)
-		if !sc.wordIs(",") && sc.peekByte() != ',' {
-			sc.skip()
-			if sc.i < len(sc.s) && sc.s[sc.i] == ',' {
-				sc.i++
+		if !sc.WordIs(",") && sc.PeekByte() != ',' {
+			sc.Skip()
+			if sc.I < len(sc.S) && sc.S[sc.I] == ',' {
+				sc.I++
 				continue
 			}
 			return
@@ -484,16 +487,16 @@ func (g *schemaCatalog) noteDrop(session string, sc *sqlScan) {
 	}
 }
 
-func (g *schemaCatalog) noteRename(session string, sc *sqlScan) {
-	if !sc.wordIs("TABLE") {
+func (g *Catalog) noteRename(session string, sc *mysqlexpr.Scan) {
+	if !sc.WordIs("TABLE") {
 		return
 	}
 	for {
-		srcSchema, src, ok := sc.qualified(session)
-		if !ok || !sc.wordIs("TO") {
+		srcSchema, src, ok := sc.Qualified(session)
+		if !ok || !sc.WordIs("TO") {
 			return
 		}
-		dstSchema, dst, ok := sc.qualified(session)
+		dstSchema, dst, ok := sc.Qualified(session)
 		if !ok {
 			return
 		}
@@ -526,23 +529,23 @@ func (g *schemaCatalog) noteRename(session string, sc *sqlScan) {
 			g.bad[dstKey] = g.bad[srcKey]
 			delete(g.bad, srcKey)
 		}
-		if !sc.wordIs(",") && sc.peekByte() != ',' {
+		if !sc.WordIs(",") && sc.PeekByte() != ',' {
 			return
 		}
-		sc.skip()
-		if sc.i < len(sc.s) && sc.s[sc.i] == ',' {
-			sc.i++
+		sc.Skip()
+		if sc.I < len(sc.S) && sc.S[sc.I] == ',' {
+			sc.I++
 		}
 	}
 }
 
 type pendingDef struct {
 	table       string
-	cols        []schemaCol
+	cols        []mysqlexpr.SchemaCol
 	bad         bool
 	abandoned   bool
 	boundSchema string
-	why         refuseReason
+	why         RefuseReason
 }
 
 type abandonedTable struct {
@@ -550,14 +553,14 @@ type abandonedTable struct {
 	schemas []string
 }
 
-func (g *schemaCatalog) setDef(key string, cols []schemaCol, fromFile bool) {
+func (g *Catalog) setDef(key string, cols []mysqlexpr.SchemaCol, fromFile bool) {
 	g.ensure()
 	if g.defs == nil {
-		g.defs = map[string][]schemaCol{}
+		g.defs = map[string][]mysqlexpr.SchemaCol{}
 	}
-	copied := cloneSchemaCols(cols)
+	copied := mysqlexpr.CloneSchemaCols(cols)
 	g.defs[key] = copied
-	g.cols[key] = generatedNameSet(copied)
+	g.cols[key] = mysqlexpr.GeneratedNameSet(copied)
 	delete(g.bad, key)
 	if fromFile {
 		if g.fromFile == nil {
@@ -570,7 +573,7 @@ func (g *schemaCatalog) setDef(key string, cols []schemaCol, fromFile bool) {
 	delete(g.pendingBound, key)
 }
 
-func (g *schemaCatalog) markBad(key string, why refuseReason) {
+func (g *Catalog) markBad(key string, why RefuseReason) {
 	g.ensure()
 	g.bad[key] = why
 	delete(g.cols, key)
@@ -579,14 +582,14 @@ func (g *schemaCatalog) markBad(key string, why refuseReason) {
 	delete(g.pendingBound, key)
 }
 
-func (g *schemaCatalog) putPending(table string, cols []schemaCol) {
+func (g *Catalog) putPending(table string, cols []mysqlexpr.SchemaCol) {
 	if g.pending == nil {
 		g.pending = map[string]*pendingDef{}
 	}
-	g.pending[table] = &pendingDef{table: table, cols: cloneSchemaCols(cols)}
+	g.pending[table] = &pendingDef{table: table, cols: mysqlexpr.CloneSchemaCols(cols)}
 }
 
-func (g *schemaCatalog) putPendingBad(table string, why refuseReason) {
+func (g *Catalog) putPendingBad(table string, why RefuseReason) {
 	g.sawUnqualified = true
 	if g.ambiguousDB {
 		return
@@ -601,7 +604,7 @@ func (g *schemaCatalog) putPendingBad(table string, why refuseReason) {
 // that was unqualified is bound to that schema when it is the only one.
 // A second schema abandons the binding so the definition is not guessed.
 // abandoned is true only on the call that drops the binding.
-func (g *schemaCatalog) observe(schema, table string) bool {
+func (g *Catalog) observe(schema, table string) bool {
 	if g == nil || schema == "" || table == "" {
 		return false
 	}
@@ -625,7 +628,7 @@ func (g *schemaCatalog) observe(schema, table string) bool {
 	return false
 }
 
-func (g *schemaCatalog) bindPending(schema, table string) {
+func (g *Catalog) bindPending(schema, table string) {
 	p := g.pending[table]
 	if p == nil || p.abandoned || p.boundSchema != "" {
 		return
@@ -652,7 +655,7 @@ func (g *schemaCatalog) bindPending(schema, table string) {
 	p.boundSchema = schema
 }
 
-func (g *schemaCatalog) abandon(table string) bool {
+func (g *Catalog) abandon(table string) bool {
 	p := g.pending[table]
 	if p == nil || p.abandoned {
 		return false
@@ -684,7 +687,7 @@ func (g *schemaCatalog) abandon(table string) bool {
 // binlog names are all lower case, because a server that folds names logs
 // them that way; the match is then checked against the rows like any other
 // schema-file table. Otherwise the near miss is only named in a warning.
-func (g *schemaCatalog) foldCase(schema, table string) {
+func (g *Catalog) foldCase(schema, table string) {
 	if g == nil || g.defs == nil || schema == "" {
 		return
 	}
@@ -727,7 +730,7 @@ func (g *schemaCatalog) foldCase(schema, table string) {
 			g.foldFrom = map[string]string{}
 		}
 		g.foldFrom[key] = names[0]
-		g.foldNotes = append(g.foldNotes, newFlashWarning(WarnSchemaFileCaseFolded, "warning.flashbackSchemaFold", map[string]any{
+		g.foldNotes = append(g.foldNotes, model.NewFlashWarning(model.WarnSchemaFileCaseFolded, "warning.flashbackSchemaFold", map[string]any{
 			"Binlog": binlog,
 			"File":   names[0],
 		}))
@@ -737,26 +740,26 @@ func (g *schemaCatalog) foldCase(schema, table string) {
 		g.foldMiss = map[string][]string{}
 	}
 	g.foldMiss[key] = names
-	g.foldNotes = append(g.foldNotes, newFlashWarning(WarnSchemaFileCaseMismatch, "warning.flashbackSchemaFoldMiss", map[string]any{
+	g.foldNotes = append(g.foldNotes, model.NewFlashWarning(model.WarnSchemaFileCaseMismatch, "warning.flashbackSchemaFoldMiss", map[string]any{
 		"Binlog": binlog,
 		"File":   strings.Join(names, ", "),
 	}))
 }
 
-func (g *schemaCatalog) schemaWarnings() []FlashbackWarning {
+func (g *Catalog) schemaWarnings() []model.FlashbackWarning {
 	if g == nil {
 		return nil
 	}
-	var out []FlashbackWarning
+	var out []model.FlashbackWarning
 	out = append(out, g.foldNotes...)
 	if g.ambiguousDB && g.sawUnqualified {
-		out = append(out, newFlashWarning(WarnSchemaFileDBMismatch, "warning.flashbackSchemaDB", map[string]any{
+		out = append(out, model.NewFlashWarning(model.WarnSchemaFileDBMismatch, "warning.flashbackSchemaDB", map[string]any{
 			"Header": g.headerDB,
 			"Flag":   g.flagDB,
 		}))
 	}
 	for _, item := range g.abandoned {
-		out = append(out, newFlashWarning(WarnSchemaFileTableAmbiguous, "warning.flashbackSchemaTable", map[string]any{
+		out = append(out, model.NewFlashWarning(model.WarnSchemaFileTableAmbiguous, "warning.flashbackSchemaTable", map[string]any{
 			"Table":   item.table,
 			"Schemas": strings.Join(item.schemas, ", "),
 		}))

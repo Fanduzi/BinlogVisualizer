@@ -35,6 +35,8 @@ The Cobra command layer streams normalized binlog events into the analyzer, then
 | `cmd/binlogviz` | CLI commands and end-to-end orchestration | [README](cmd/binlogviz/README.md) |
 | `internal/binlog` | Binlog parsing, probing, and normalization | [README](internal/binlog/README.md) |
 | `internal/analyzer` | Streaming aggregation and diagnostics | [README](internal/analyzer/README.md) |
+| `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](internal/mysqlexpr/README.md) |
+| `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](internal/schemacatalog/README.md) |
 | `internal/model` | Shared analysis and evidence types | [README](internal/model/README.md) |
 | `internal/report` | Analyze text, JSON, Markdown, and HTML renderers | [README](internal/report/README.md) |
 | `internal/i18n` | Embedded English and Simplified Chinese presentation messages | [README](internal/i18n/README.md) |
@@ -573,6 +575,8 @@ The Cobra command layer streams parser output through normalization and transact
 | `cmd/binlogviz` | CLI commands and analyze orchestration | [README](cmd/binlogviz/README.md) |
 | `internal/binlog` | Binlog parsing, probing, and normalization | [README](internal/binlog/README.md) |
 | `internal/analyzer` | Transaction reconstruction and workload aggregation | [README](internal/analyzer/README.md) |
+| `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](internal/mysqlexpr/README.md) |
+| `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](internal/schemacatalog/README.md) |
 | `internal/model` | Shared event, transaction, and report contracts | [README](internal/model/README.md) |
 | `internal/report` | Text, JSON, Markdown, and HTML renderers | [README](internal/report/README.md) |
 | `internal/compare` | Analyze-report loading and comparison | [README](internal/compare/README.md) |
