@@ -4,6 +4,22 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.31.0
+
+Release date: 2026-10-20
+
+Highlights:
+
+- **Breaking for flashback apply:** ADR 0013 apply-time integrity (#318, #321). The published undo is one transaction that never commits by itself. `binlogviz flashback verify` checks the digest and emits the conditional `COMMIT`; apply with `binlogviz flashback verify file.sql | mysql`, not `mysql < file`. The SQL is the new sealed format, not byte-compatible with v0.30.0; `plan_version` stays 2.
+- Partial, edited, reordered, appended, or truncated scripts are refused by `verify` with exit 6 and commit nothing. Generation exit 8 leaves no applyable prefix. Invalid `BINLOGVIZ_SPILL_BYTES` / `BINLOGVIZ_MEMORY_BYTES` are exit 3.
+- `flashback verify` streams: RSS about 34–41 MB on 400 MB+ scripts; a heap ceiling is exit 10 `memory_limit` (#327).
+- Known issues: `verify | mysql --force` can commit partial undo when the target lacks a table or column (#328); an implicit commit after a truncated or complete file can commit (#329); Linux release archives still report an empty commit (#303).
+
+Related notes:
+
+- [v0.31.0 release notes](docs/releases/release-notes-v0.31.0.md)
+- [v0.31.0 中文发行说明](docs/releases/release-notes-v0.31.0.zh-CN.md)
+
 ### Breaking
 
 - Applying a flashback script is a new command (ADR 0013, #318, #321). `mysql < flashback.sql` no longer changes data, including when the file is intact. Apply with `binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4`. The undo is one transaction, not one per original transaction. The SQL is not byte-compatible with v0.30.0. `plan_version` stays 2.
