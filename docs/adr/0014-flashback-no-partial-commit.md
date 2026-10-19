@@ -170,3 +170,66 @@ Reproduced on MySQL 8.0.36 and MySQL 5.7.44: missing `ALTER ROUTINE`, then `mysq
 
 - **A privilege precheck before the procedure section.** A precheck that errors is one more statement. `--force` continues, and a later success clears `@@error_count` unless a flag recorded the error. The precheck also only names the privileges we listed. It misses every other failure before `XA START`: a full disk, ERROR 1227, a read-only session, a rejected procedure. MySQL 5.7 and 8.0 do not share one privilege catalog, and a role or a partial revoke makes `SHOW GRANTS` a poor oracle.
 - **Skip each later statement unless the earlier one succeeded.** That is a chain. A failure that is not in the chain still reaches `XA COMMIT` when a later statement succeeds. The flag does not need the list. The finish already refuses to commit when the flag is 0.
+
+## Amendment (2026-10-19): a failed apply drops its procedure, then says so
+
+Tracks #338 and #343. The seal, the digest, tamper detection (exit 6), `schema_version` 1, `plan_version` 2, the sticky `@binlogviz_applied` flag, and the per-run nonce stay as above. This replaces the sentence that the trailing `DROP PROCEDURE` is what removes the procedure the run created.
+
+### Why the procedure stays
+
+The finish procedure is created before `XA START`, because `CREATE PROCEDURE` is an implicit commit. The script drops it only in a later statement. `mysql` without `--force` stops at the first statement error and never sends that drop. That is every failed undo statement, not only a missing grant: ERROR 1062 on a second apply, ERROR 1143 when `UPDATE` or `DELETE` cannot read the `WHERE` columns, and the same shape for any other statement error. Disconnect rolls the XA transaction back. The procedure remains.
+
+With `--force` the client does reach the finish. The finish rolls the XA back and prints nothing. The following `DROP PROCEDURE` then runs while the XA transaction is still `ACTIVE` (the `CALL` never entered the body, ERROR 1399) or the session is read-only (ERROR 1792), so the drop does not land. `mysql --force` on MySQL 5.7 and 8.0 exits 0 after statement errors. A wrapper that only checks `$?` treats the apply as success. Nothing was committed.
+
+### Decision
+
+The procedure takes its work from `@binlogviz_mode`. The published name is still `binlogviz.binlogviz_fb_end_<token>`. `verify` still renames only that procedure to `binlogviz.binlogviz_fb_end_<token>_<nonce>`. The XA id stays `<token>`.
+
+- **Mode 0** executes one undo statement from `@binlogviz_sql`. A `CONTINUE HANDLER FOR SQLEXCEPTION` sets `@binlogviz_applied = 0` and keeps the first `MYSQL_ERRNO`. It does not set the flag back to 1. The `CALL` itself succeeds, so the client keeps reading the script. The check after the `CALL` still uses `@@error_count`. A handled error leaves that count at 0 and the flag at 0. A later success cannot clear it.
+- **Mode 1** is `XA START '<token>'`, with the same kind of handler. If the XA transaction did not start, the procedure runs `SET SESSION TRANSACTION READ ONLY`, so a later mode 0 does not autocommit. If it did start, the procedure does not change the session. A flag that was already 0 still reaches `XA ROLLBACK`.
+- **Mode 2** is the finish. It runs `XA COMMIT '<token>' ONE PHASE` only when `@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1`. Otherwise it runs `XA END` and `XA ROLLBACK`. It does not `XA PREPARE`. `@binlogviz_applied` is set to 1 only in the digest init.
+
+The rollback branch drops this procedure and then raises:
+
+```sql
+SIGNAL SQLSTATE '45000'
+  SET MESSAGE_TEXT = 'binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again';
+```
+
+`MESSAGE_TEXT` is at most 128 characters on 5.7 and 8.0. The drop is inside the procedure, before the signal, so a client that stops on the signal has already dropped the routine. An `EXIT HANDLER` on a failure of `XA END` or `XA COMMIT` does the same drop and then `RESIGNAL`. The signal's own handler does not drop again in a loop: the drop sits in a nested block whose handler swallows a second drop error, and `RESIGNAL` is outside that block.
+
+The success branch does not signal and does not drop itself. The next statement is `DROP PROCEDURE IF EXISTS`, which removes it. A successful apply prints no rollback line and leaves no procedure.
+
+The procedure section still records `CREATE DATABASE`, the opening `DROP PROCEDURE`, and `CREATE PROCEDURE` with the `@@error_count` check after each one. A missing `ALTER ROUTINE` under `--force` stays poisoned. The finish then rolls back, drops, and signals.
+
+A per-block gate is mode 3 of the same procedure (`DO 0` when this script's token is held, otherwise `SET SESSION TRANSACTION READ ONLY`). It is not a second routine.
+
+### What automation checks
+
+The failure line is `binlogviz: undo rolled back, no rows changed`. It is the last MySQL error of a failed apply.
+
+- Without `--force`, `mysql` exits 1.
+- With `--force`, `mysql` on 5.7 and 8.0 still exits 0: `--force` continues after a statement error, and `SIGNAL` is a statement error. Exit 0 under `--force` is not success. Success is exit 0 and that line absent. Failure is exit 1, or exit 0 with that line present. The undo of a failure is not committed either way.
+
+### What still cannot drop the procedure
+
+These leave the nonce procedure behind. Data is unchanged. The next `verify` uses a new nonce, so the leftover does not block. Clean it as an account that can drop it:
+
+```sql
+DROP DATABASE IF EXISTS binlogviz;
+```
+
+- The session is killed or disconnects after `CREATE PROCEDURE` and before the finish `CALL`. Disconnect rolls an `ACTIVE` XA transaction back.
+- `CALL` never enters the body. Missing `EXECUTE` (`automatic_sp_privileges=0` and no `EXECUTE` grant) is ERROR 1370 on the first `CALL`. Without `--force` the client stops there. With `--force` the trailing `DROP` runs; it succeeds when the account has `ALTER ROUTINE` and no XA transaction is open, and it fails with ERROR 1370 when `ALTER ROUTINE` is missing too.
+- `DROP PROCEDURE` of a routine whose definer has `SYSTEM_USER` is ERROR 1227 on MySQL 8.0 for an account without that privilege. The signal still runs. MySQL 5.7 has no `SYSTEM_USER` privilege.
+
+### Scripts
+
+`verify` of a script whose digest init is the v0.31.0 line (no `@binlogviz_applied`) exits 6 with `details.reason` `old_format` and tells the operator to regenerate it. It does not say the file was truncated. A script sealed by the previous amendment (v0.32.0: `PREPARE`/`EXECUTE` wrappers, `CALL` with no mode) is the same reason and names v0.32.0. `schema_version` stays 1. Regenerate the script. The SQL `verify` prints is still not byte-identical to the file.
+
+### Not chosen
+
+- **Drop only in the trailing statement, and document every client-stop as a leftover.** That is the behavior #338 reports. The client can be kept reading until the drop by handling the statement error inside the procedure.
+- **`SIGNAL` before `DROP`.** Without `--force` the client stops on the signal and the drop never runs. The leftover would be every rollback, including a successful read of a script that must not commit (`@binlogviz_want = 0`).
+- **A second procedure whose only job is the signal.** It is another routine to create, grant, and drop, and it has the same self-drop question. One procedure is enough.
+- **Rely on `mysql --force` exiting 1.** It does not, on the servers this ADR is checked against. The line is the check that works with and without `--force`.
