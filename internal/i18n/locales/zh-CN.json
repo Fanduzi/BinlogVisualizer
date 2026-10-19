@@ -301,7 +301,7 @@
   },
   "cmd.flashback.flag.plan": {
     "description": "Flashback --plan 帮助",
-    "other": "输出 JSON 计划（plan_version 2：事务数、每张表的行数、冲突、guard、拒绝原因、警告代码）而不是 SQL；退出码与真正执行时一致，被拒绝时（退出码 6 或 7）也输出计划"
+    "other": "输出 JSON 计划（plan_version 2：事务数、每张表的行数、冲突、guard、拒绝原因、警告代码）而不是 SQL；退出码与真正执行时一致，被拒绝时（退出码 6 或 7）也输出计划；资源上限（退出码 10）不输出任何内容"
   },
   "cmd.flashback.flag.conflictLimit": {
     "description": "Flashback --conflict-limit 帮助",
@@ -469,7 +469,7 @@
   },
   "cmd.flashback.long": {
     "description": "flashback 命令长说明",
-    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列，并且文件必须是事故当时的表结构。ENUM 和 SET 写成成员序号 / 位掩码。ENUM 序号 0、零日期、以及记下值为 NULL 而被略去的生成列，只在该语句前后暂时去掉会拒绝它们的 sql_mode 标志。记下的值与生成列表达式矛盾时拒绝。无法计算生成列表达式时省略该列，脚本里的守卫会检查目标上被省略的每一列是不是生成列。"
+    "other": "打印 SQL，把选中的 ROW 变更撤回去：DELETE 变成插入前镜像，INSERT 变成 DELETE，UPDATE 把行改回前镜像。语句按 binlog 逆序输出，每个事务单独提交。表、schema、--dml、时间、位点和 GTID 过滤与 analyze 相同。脚本写到 stdout。执行前先审阅。此命令不连接数据库。binlog 里没有 CREATE TABLE 时，用 --schema-file 标出生成列，并且文件必须是事故当时的表结构。ENUM 和 SET 写成成员序号 / 位掩码。ENUM 序号 0、零日期、以及记下值为 NULL 而被略去的生成列，只在该语句前后暂时去掉会拒绝它们的 sql_mode 标志。记下的值与生成列表达式矛盾时拒绝。无法计算生成列表达式时省略该列，脚本里的守卫会检查目标上被省略的每一列是不是生成列。 退出码 10（kind resource）表示溢出或内存上限：当 BINLOGVIZ_SPILL_BYTES 是正整数且行溢出加上审阅溢出超过该值时，details.reason 为 spill_limit；当一次 GC 之后 HeapAlloc 仍高于 GOMEMLIMIT 的 90% 时，为 memory_limit。未设置、非正数或无法解析的 BINLOGVIZ_SPILL_BYTES 表示没有字节上限。退出码 10 绝不是 2，也不会写出 plan 或脚本。"
   },
   "error.prefixDotHint": {
     "description": "前缀匹配到 0 个文件且前缀没有尾随点时的提示",

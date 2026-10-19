@@ -4,10 +4,37 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.30.0
+
+Release date: 2026-10-19
+
+Highlights:
+
+- ADR 0012 steps 1–4: `mysqlexpr`, `schemacatalog`, `guard`, and the flashback planner each live in their own package (#257, #315, #316, #320). Analyze and flashback output stay byte-identical to v0.29.0 on the tip-QA corpora; `report_version` 3 and `plan_version` 2 stay.
+- Exit 10 `resource` for flashback spill and memory ceilings (`details.reason` `spill_limit` / `memory_limit`), with `BINLOGVIZ_SPILL_BYTES` (#317, #320). Never exit 2.
+- Generated-column review with `--schema-file` streams: on a 1.07 GB binlog that produced a 1.13 GB script, tip RSS is about 128 MB where v0.29.0 OOMed with exit 2 (#317).
+- `guard.Seal` / `SealWriter` refuse a digest shorter than 8 bytes instead of panicking (#319).
+- Known issues: Linux release archives still report an empty commit (#303); a script truncated by disk full (exit 8) can still partially apply (#321); the guard token does not detect content edits (#318).
+
+Related notes:
+
+- [v0.30.0 release notes](docs/releases/release-notes-v0.30.0.md)
+- [v0.30.0 中文发行说明](docs/releases/release-notes-v0.30.0.zh-CN.md)
+
 ### Changed
 
-- Internal: the expression evaluator and the schema catalog moved out of `internal/analyzer` into `internal/mysqlexpr` and `internal/schemacatalog` (ADR 0012, #257). Analyze and flashback output are unchanged. `report_version` and `plan_version` stay.
-- Internal: the apply guard moved out of `internal/analyzer` into `internal/guard` (ADR 0012 step 3, #257). The planner still collects omitted columns. Analyze and flashback output are unchanged. `report_version` and `plan_version` stay.
+- Internal: the expression evaluator and the schema catalog moved out of `internal/analyzer` into `internal/mysqlexpr` and `internal/schemacatalog` (ADR 0012 steps 1–2, #257, #315). Analyze and flashback output are unchanged. `report_version` and `plan_version` stay.
+- Internal: the apply guard moved out of `internal/analyzer` into `internal/guard` (ADR 0012 step 3, #257, #316). Analyze and flashback output are unchanged. `report_version` and `plan_version` stay.
+- Internal: the flashback planner moved out of `internal/analyzer` into `internal/flashback` (ADR 0012 step 4, #257, #320). Analyze and flashback output on the tip-QA corpora are byte-identical to v0.29.0, apart from cases that formerly crashed. `report_version` and `plan_version` stay.
+
+### Added
+
+- Flashback exit 10 `resource` (#317, #320, ADR 0012). `details.reason` is `spill_limit` when `BINLOGVIZ_SPILL_BYTES` is a positive byte count and the row spill plus the generated-column review spill grow past it, or `memory_limit` when `HeapAlloc` stays above 90% of `GOMEMLIMIT` after one GC. Unset or non-positive / unparseable `BINLOGVIZ_SPILL_BYTES` means no byte ceiling. A full disk stays exit 8. Exit 10 writes no plan and no script, and is never exit 2. `flashback --help` and the agent usage guide document exit 10, the reason values, and `BINLOGVIZ_SPILL_BYTES` (#322).
+
+### Fixed
+
+- Generated-column review with `--schema-file` streams row images instead of holding them all in memory (#317, #320). On a 1.07 GB binlog that produced a 1.13 GB undo script, tip RSS is about 128 MB; v0.29.0 OOMed with exit 2 around 813 MB. Scripts that completed under v0.29.0 stay byte-identical.
+- `guard.Seal` and `guard.SealWriter` return an error for a digest shorter than 8 bytes instead of panicking (#319, #320).
 
 ## v0.29.0
 
