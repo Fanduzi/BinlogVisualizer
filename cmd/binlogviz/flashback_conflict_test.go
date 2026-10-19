@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"binlogviz/internal/analyzer"
+	"binlogviz/internal/flashback"
 )
 
 // #259: a conflict refusal has its own exit code; other errors keep theirs.
 func TestFlashbackConflictExitCode(t *testing.T) {
-	err := flashbackExit(&analyzer.FlashbackConflictError{Count: 1})
+	err := flashbackExit(&flashback.FlashbackConflictError{Count: 1})
 	if ExitCode(err) != 7 {
 		t.Fatalf("conflict exit %d", ExitCode(err))
 	}

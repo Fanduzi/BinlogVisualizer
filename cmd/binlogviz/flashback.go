@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/analyzer"
+	"binlogviz/internal/flashback"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
 )
@@ -69,7 +70,7 @@ func newFlashbackCommand() *cobra.Command {
 				}
 				opts.schemaSQL = string(body)
 			}
-			if !analyzer.ValidFlashbackConflict(opts.conflict) {
+			if !flashback.ValidFlashbackConflict(opts.conflict) {
 				return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.flashbackConflictFlag", map[string]any{"Value": opts.conflict}))
 			}
 			if opts.conflictLimit < 0 {
@@ -137,7 +138,7 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.flashback.flag.schemaFile"))
 	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.flashback.flag.schemaFileDB"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
-	cmd.Flags().StringVar(&opts.conflict, "conflict", analyzer.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
+	cmd.Flags().StringVar(&opts.conflict, "conflict", flashback.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
 	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
 	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
 	help := cmd.HelpFunc()
@@ -209,7 +210,7 @@ func flashbackExit(err error) error {
 	if err == nil {
 		return nil
 	}
-	var conflict *analyzer.FlashbackConflictError
+	var conflict *flashback.FlashbackConflictError
 	if errors.As(err, &conflict) {
 		return clierr.WithDetails(clierr.KindConflict, err, map[string]any{"count": conflict.Count, "listed": conflict.Listed})
 	}
@@ -218,32 +219,33 @@ func flashbackExit(err error) error {
 
 func writeFlashbackSQL(stream commandAnalyzer) error {
 	src, ok := stream.(*analyzer.Analyzer)
-	if !ok || src == nil {
+	if !ok || src == nil || src.Planner() == nil {
 		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
-	if src.FlashbackPlanMode() {
+	plan := src.Planner()
+	if plan.PlanMode() {
 		out := bufio.NewWriter(os.Stdout)
-		err := src.WriteFlashbackPlan(out)
+		err := plan.WritePlan(out)
 		if ferr := out.Flush(); err == nil && ferr != nil {
 			return clierr.Wrap(clierr.KindOutput, ferr)
 		}
 		return flashbackExit(err)
 	}
 	// Every refusal happens here, before any SQL is written.
-	rows, err := src.PrepareFlashback()
+	rows, err := plan.Prepare()
 	if err != nil {
 		return flashbackExit(err)
 	}
 	if rows == 0 {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
-	for _, warning := range src.FlashbackWarnings() {
+	for _, warning := range plan.Warnings() {
 		fmt.Fprintln(os.Stderr, warning)
 	}
 	// The script streams from a temp file: memory does not grow with the binlog (#258).
 	out := bufio.NewWriterSize(os.Stdout, 1<<16)
-	if _, err := src.WriteFlashback(out); err != nil {
-		var refusal *analyzer.FlashbackConflictError
+	if _, err := plan.WriteTo(out); err != nil {
+		var refusal *flashback.FlashbackConflictError
 		if errors.As(err, &refusal) {
 			return flashbackExit(err)
 		}

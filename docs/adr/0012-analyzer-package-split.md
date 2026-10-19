@@ -95,12 +95,12 @@ flashback and analyzer both consume rowstream once it exists
 
 `flashback.Planner` (the type that takes the `flash*` fields off `*Analyzer`):
 
-- `Note(ev model.NormalizedEvent)` records one retained event
-- `Prepare() error` runs every refusal and the generated-column review before any byte is written
-- `WriteTo(w io.Writer) (int64, error)` renders from the spill
-- `Plan() Plan` is the `--plan` document (`plan_version` stays 2)
+- `Observe`, `Note`, `NoteSkipped` are what the event loop calls
+- `Prepare() (int, error)` runs every refusal and the generated-column review before any byte is written, and returns the undo row count
+- `WriteTo(w io.Writer) (int64, error)` renders from the spill. The count is undo rows, not bytes
+- `Plan() Plan` / `WritePlan` is the `--plan` document (`plan_version` stays 2)
 
-The analyzer calls those four. Spill layout, conflict hashes, and guard sealing stay inside the planner.
+`cmd` uses `Planner()` for `Prepare`, `WriteTo`, and `Plan`. Spill layout, conflict hashes, and guard sealing stay inside the planner. Sealing calls `guard.SealWriter`.
 
 `report/view`: one function from `model.AnalysisResult` plus render limits to a view the text, Markdown, JSON, and HTML renderers share. Selection of top transactions happens once, in the view.
 
@@ -124,7 +124,7 @@ Each step is one PR. It ends with `go test ./...`, `go vet ./...`, and the flash
 1. **`internal/mysqlexpr`.** Move `flashback_eval.go`, `flashback_expr.go`, `flashback_schema.go`, `flashback_generated.go`, and the tests that only call those files. Export the surface above. `analyzer` calls it. The catalog file still lives in `analyzer` and is the first caller of `Scan` and the column parser.
 2. **`internal/schemacatalog`.** Move `schema_catalog.go` and the catalog tests. `flashCat` becomes `*schemacatalog.Catalog`. Delete the old file.
 3. **`internal/guard`.** Move `flashback_guard.go` except the walk over `flashGroup` that collects omitted columns. That walk stays with the planner and calls `guard.New`.
-4. **`internal/flashback`.** Move `flashback.go`, `flashback_spill.go`, `flashback_conflict.go`, and the `flash*` fields onto `Planner`. `analyzer` holds the planner and forwards `Note` / `Prepare` / `WriteTo` / `Plan`. This is the step the October 16 recheck asked to do before more flashback features.
+4. **`internal/flashback`.** Move `flashback.go`, `flashback_spill.go`, `flashback_conflict.go`, and the `flash*` fields onto `Planner`. `analyzer` holds one planner and calls it from the event loop. `cmd` uses `Planner()`. There is no forwarding wrapper. This is the step the October 16 recheck asked to do before more flashback features.
 5. **`internal/report/view`.** Build the view once. Point text, Markdown, JSON, and HTML at it, including `renderTopTransactions` and `mdTopTransactions`. Move the format switch out of `cmd/binlogviz/analyze.go` so an unknown `--format` cannot skip the view.
 6. **`internal/detailstore`.** Move the DuckDB adapter out of `analyzer` behind `detailStore`. `CGO_ENABLED=0` still builds.
 7. **`internal/rowstream`.** Extract only when redo SQL or split flashback output is the second consumer.
@@ -142,6 +142,6 @@ Steps 1 and 2 are the first PR. They are the closed set with the smallest shared
 ## Consequences
 
 - Steps 1 and 2 do not change analyze or flashback output. `report_version` and `plan_version` stay. Golden files stay.
-- ADR 0005 and ADR 0007 still describe the binding rules and the evaluator. The file paths in those ADRs are historical; the packages in this ADR are the location. Step 3 moves the guard to `internal/guard` and adds `SealWriter` (see the guard interface). ADR 0006's behaviour is unchanged; its path now names `internal/guard`.
-- After step 2, `*Analyzer` still has the `flash*` fields. Step 4 is what removes them. New flashback features should wait for that type, as the October 16 recheck said.
+- ADR 0005 and ADR 0007 still describe the binding rules and the evaluator. The file paths in those ADRs are historical; the packages in this ADR are the location. Step 3 moved the guard to `internal/guard` and added `SealWriter` (see the guard interface). ADR 0006's behaviour is unchanged; its path now names `internal/guard`.
+- Step 4 moved the planner. `*Analyzer` keeps one `*flashback.Planner` and no `flash*` fields. The event loop calls the planner directly (`Observe`, `Note`, `NoteSkipped`); `cmd` uses `Planner()` (`Prepare`, `WriteTo`, `Plan` / `WritePlan`). There is no forwarding wrapper on `Analyzer`. `Prepare` returns the undo row count as `(int, error)` because exit 2 is "no undo rows". `WriteTo` returns that count widened to `int64`, not a byte count. Spill chunk size is `ChunkRows`. The generated-column review in this step still holds images; bounding that memory is a later change to the planner, not a second move.
 - A later step that wants the column parser to live inside `schemacatalog` moves those functions and keeps `SchemaCol` as the single column type. It does not add a parallel struct.

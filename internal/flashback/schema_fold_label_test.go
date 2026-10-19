@@ -1,28 +1,13 @@
-package analyzer
+package flashback_test
 
 import (
+	"binlogviz/internal/analyzer"
 	"strings"
 	"testing"
 
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
-	"binlogviz/internal/schemacatalog"
 )
-
-func TestRefusalLabelNamesFoldedFileTable(t *testing.T) {
-	c := schemacatalog.New("")
-	c.LoadFile("USE `P185L`;\nCREATE TABLE `MixT` (\n" +
-		"  `id` int NOT NULL,\n" +
-		"  `Gc` int GENERATED ALWAYS AS ((`id` + 1)) VIRTUAL,\n" +
-		"  PRIMARY KEY (`id`)\n);\n")
-	res := c.Resolve("p185l", "mixt")
-	if got := refusalLabel(res, "p185l", "mixt"); got != "p185l.mixt (schema file table P185L.MixT, letter case differs)" {
-		t.Fatalf("label = %q", got)
-	}
-	if got := refusalLabel(c.Peek("p185l", "other"), "p185l", "other"); got != "p185l.other" {
-		t.Fatalf("plain label = %q", got)
-	}
-}
 
 // #225: every refusal of a folded table carries the label, in every language
 // and on every refusal line, not only the first English one.
@@ -41,9 +26,9 @@ func TestSchemaCatalogFoldLabelOnEveryRefusal(t *testing.T) {
 		{"zh-CN", "p225.mixa（schema file 中的表为 P225.MixA，仅大小写不同）：", "p225.mixb（schema file 中的表为 P225.MixB，仅大小写不同）："},
 	} {
 		i18n.SetLanguage(tc.lang)
-		a := New(Options{Flashback: true, SchemaSQL: file})
+		a := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: file})
 		consumeFlash(t, a, flashEvent(mk("mixa", "Ga")), flashEvent(mk("mixb", "Gb")))
-		_, err := a.FlashbackSQL()
+		_, err := a.Planner().SQL()
 		i18n.SetLanguage("en")
 		if err == nil {
 			t.Fatalf("%s: wrong generated values were accepted", tc.lang)

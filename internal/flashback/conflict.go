@@ -1,9 +1,9 @@
-// Package analyzer detects flashback conflicts: later changes to selected rows.
+// Package flashback detects conflicts: later changes to selected rows.
 // input: every row event in the scanned range (selected or not) and the selected rows.
 // output: a FlashbackConflictError that refuses the script by default (#259), the post-image guard switch, and the JSON plan (plan_version 2; a refusal still prints it, #270).
-// pos: flashback collector on Analyzer (ADR 0008). Memory is one 8-byte hash per selected row key plus one candidate per later change to a selected key, not the binlog. A candidate whose own change is selected is dropped (#267).
+// pos: conflict set on Planner (ADR 0008). Memory is one 8-byte hash per selected row key plus one candidate per later change to a selected key, not the binlog. A candidate whose own change is selected is dropped (#267).
 // note: if this file changes, update this header and module README.md.
-package analyzer
+package flashback
 
 import (
 	"encoding/json"
@@ -32,11 +32,11 @@ const (
 const flashConflictListed = 20
 
 // conflictLimit is how many conflicts to list; negative lists all.
-func (a *Analyzer) conflictLimit() int {
-	if a.opts.FlashbackConflictLimit == 0 {
+func (a *Planner) conflictLimit() int {
+	if a.opts.ConflictLimit == 0 {
 		return flashConflictListed
 	}
-	return a.opts.FlashbackConflictLimit
+	return a.opts.ConflictLimit
 }
 
 // FlashbackConflict is one later change to a selected row.
@@ -72,14 +72,14 @@ func ValidFlashbackConflict(policy string) bool {
 	return false
 }
 
-func (a *Analyzer) conflictPolicy() string {
-	if a.opts.FlashbackConflict == FlashbackConflictGuard {
+func (a *Planner) conflictPolicy() string {
+	if a.opts.Conflict == FlashbackConflictGuard {
 		return FlashbackConflictGuard
 	}
 	return FlashbackConflictRefuse
 }
 
-func (a *Analyzer) postImageGuard() bool {
+func (a *Planner) postImageGuard() bool {
 	return a.conflictPolicy() == FlashbackConflictGuard
 }
 
@@ -141,7 +141,7 @@ type pendingConflict struct {
 // noteSelectedKeys remembers the row keys an undo will write, and resolves
 // candidates from this same transaction: a selected change is undone by
 // this script, so it is not a later change the script would overwrite.
-func (a *Analyzer) noteSelectedKeys(txnKey string, rows []model.FlashRow) {
+func (a *Planner) noteSelectedKeys(txnKey string, rows []model.FlashRow) {
 	if a.flashKeys == nil {
 		a.flashKeys = map[uint64]uint64{}
 	}
@@ -158,7 +158,7 @@ func (a *Analyzer) noteSelectedKeys(txnKey string, rows []model.FlashRow) {
 
 // checkFlashConflict runs on every row event before any filter. A selected
 // key touched by another, later transaction is a conflict.
-func (a *Analyzer) checkFlashConflict(ev model.NormalizedEvent) {
+func (a *Planner) checkFlashConflict(ev model.NormalizedEvent) {
 	if len(a.flashKeys) == 0 || ev.EventType != "ROWS" || len(ev.FlashRows) == 0 {
 		return
 	}
@@ -179,7 +179,7 @@ func (a *Analyzer) checkFlashConflict(ev model.NormalizedEvent) {
 				continue
 			}
 			if !haveTxn {
-				txn, haveTxn = txnHash(a.txnBuilder.CurrentTxnKey()), true
+				txn, haveTxn = txnHash(a.conflictTxn), true
 			}
 			if owner == txn {
 				continue
@@ -191,7 +191,7 @@ func (a *Analyzer) checkFlashConflict(ev model.NormalizedEvent) {
 			if a.flashPending == nil {
 				a.flashPending = map[conflictRef]pendingConflict{}
 			}
-			gtid, _, _ := a.txnBuilder.touchLocation()
+			gtid := a.conflictGTID
 			if gtid == "" {
 				gtid = "GTID unavailable"
 			}
@@ -210,7 +210,7 @@ func (a *Analyzer) checkFlashConflict(ev model.NormalizedEvent) {
 
 // settleConflicts turns the candidates left after the run into the
 // conflict count and the first listed conflicts, in binlog order.
-func (a *Analyzer) settleConflicts() {
+func (a *Planner) settleConflicts() {
 	if a.flashConflictsSettled {
 		return
 	}
@@ -228,7 +228,7 @@ func (a *Analyzer) settleConflicts() {
 	}
 }
 
-func (a *Analyzer) conflictError() error {
+func (a *Planner) conflictError() error {
 	a.settleConflicts()
 	if a.flashConflicts == 0 || a.postImageGuard() {
 		return nil
@@ -283,7 +283,7 @@ type FlashbackPlanCounts struct {
 // error a real run would return after writing the plan, so the exit code
 // matches. A refusal (exit 6) or a conflict (exit 7) still writes a plan,
 // with would_refuse and refusal set; any other failure writes none.
-func (a *Analyzer) WriteFlashbackPlan(w io.Writer) error {
+func (a *Planner) WritePlan(w io.Writer) error {
 	plan, err := a.flashbackPlan()
 	if err != nil {
 		kind := clierr.KindRefused
@@ -308,7 +308,7 @@ func (a *Analyzer) WriteFlashbackPlan(w io.Writer) error {
 
 // flashbackPlan counts what the script would undo. The error is the one the
 // real run would return; the plan holds what was known when it stopped.
-func (a *Analyzer) flashbackPlan() (plan FlashbackPlan, err error) {
+func (a *Planner) flashbackPlan() (plan FlashbackPlan, err error) {
 	plan = FlashbackPlan{
 		PlanVersion:    FlashbackPlanVersion,
 		ConflictPolicy: a.conflictPolicy(),
@@ -316,7 +316,7 @@ func (a *Analyzer) flashbackPlan() (plan FlashbackPlan, err error) {
 		Conflicts:      FlashbackPlanCounts{Listed: []FlashbackConflict{}},
 	}
 	defer func() {
-		plan.Warnings = append([]model.FlashbackWarning{}, a.FlashbackWarningList()...)
+		plan.Warnings = append([]model.FlashbackWarning{}, a.WarningList()...)
 	}()
 	if _, err = a.prepareChecks(); err != nil {
 		return plan, err
@@ -376,4 +376,4 @@ func postImageGuarded(row *model.FlashRow) bool {
 }
 
 // FlashbackPlanMode reports whether --plan replaces the SQL with the JSON plan.
-func (a *Analyzer) FlashbackPlanMode() bool { return a != nil && a.opts.FlashbackPlan }
+func (a *Planner) PlanMode() bool { return a != nil && a.opts.Plan }

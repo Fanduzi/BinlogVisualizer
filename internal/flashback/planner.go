@@ -1,13 +1,12 @@
-// Package analyzer collects selected row images for undo SQL.
-// input: retained normalized events that already passed time, position, GTID, schema, table, and DML filters, plus flashback images captured by the parser.
-// output: one SQL script that reverses those row changes, or one error and no script when a selected row cannot be rendered exactly, a seen table definition cannot be read, a schema file does not match the binlog columns, a schema-file generated value contradicts the expression, or the selected range contains DDL. Generated columns learned from schema SQL or parsed CREATE/ALTER are omitted from INSERT and UPDATE SET. A schema-file omission is checked by internal/guard after the session SET lines: apply fails before any transaction when that column is not generated on the target. A mismatch commits and sets the session read-only, and that lock is repeated before each transaction, so a client that continues cannot write. The lock is SET SESSION TRANSACTION READ ONLY, which names no server variable, and a prepared READ WRITE undoes it only when @binlogviz_ok holds this script's token, which the guard sets only after the check ran and matched on MySQL 5.7+ or MariaDB 10.2+ in a writable session, so a failed step, including PREPARE, a header-less block, another script's block, or a reconnect leaves the session read-only. Every undo statement also checks the token, so statements run in a session without it change no row. The token is a hash of the rendered script. A match in a session that is already read-only fails the guard with a disconnect hint. Older servers fail that guard with a clear message and stay read-only. The failing sql_mode value names every mismatched column without a comma, and a long list keeps the count and the first names. Each guard arm is SELECT ... FROM DUAL, which MySQL 5.7 accepts. An expression that cannot be checked exactly is omitted with one stderr warning and a header comment when nothing contradicts it. A no-primary-key WHERE keeps generated columns. A selected table with no definition is warned and still printed. An ENUM index of 0, a zero month or day, and an omitted generated column logged as NULL are each wrapped in a sql_mode save and restore that drops only the flags that would reject the stored value, plus TRADITIONAL.
-// stream: rows are spilled per transaction part (flashback_spill.go); the script is rendered twice from the spill, into the guard hash and then to the writer, so memory does not grow with the binlog and nothing is written before every check passes (ADR-0008).
-// pos: optional collector on Analyzer. It runs only when Options.Flashback is set.
-// note: if this file changes, update this header and module README.md.
-package analyzer
+// Package flashback plans undo SQL: selection, refusals, the spill, conflict
+// hashes, generated-column review, and the streaming writer (ADR 0012 step 4).
+// input: normalized events from the analyzer, schema SQL, and the conflict policy.
+// output: a script streamed from the spill, or one refusal and no script; --plan JSON at plan_version 2.
+// pos: the planner. Analyzer holds one *Planner and does not keep flashback fields.
+// note: if this file changes, update this header and README.md.
+package flashback
 
 import (
-	"binlogviz/internal/clierr"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -15,12 +14,116 @@ import (
 	"path/filepath"
 	"strings"
 
+	"binlogviz/internal/clierr"
 	"binlogviz/internal/guard"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
+	"binlogviz/internal/redact"
 	"binlogviz/internal/schemacatalog"
 )
+
+// Options is the flashback half of an analyzer run.
+type Options struct {
+	SchemaSQL     string
+	SchemaFileDB  string
+	Conflict      string
+	Plan          bool
+	ConflictLimit int
+}
+
+// Planner owns every flashback field that used to sit on *analyzer.Analyzer.
+type Planner struct {
+	opts Options
+
+	flashCur              *flashGroup
+	flashSpill            *flashSpill
+	flashKeys             map[uint64]uint64
+	flashConflicts        int
+	flashPending          map[conflictRef]pendingConflict
+	flashPendingSeq       int64
+	flashConflictsSettled bool
+	flashConflictList     []FlashbackConflict
+	flashGroupID          int64
+	flashSeq              int64
+	flashClearSeq         map[string]int64
+	flashPendingNames     map[string][]string
+	flashChecked          bool
+	flashErr              error
+	flashCat              *schemacatalog.Catalog
+	flashUnknown          []string
+	flashSchemaWarn       []model.FlashbackWarning
+	flashGenNotes         []string
+	flashReviewed         bool
+	flashReviewErr        error
+	flashSplit            map[string]*flashSplit
+	flashSplitOrder       []string
+	flashSplitDone        []string
+
+	// conflictTxn and conflictGTID are the open transaction while Observe
+	// runs, before that event is applied to the transaction builder.
+	conflictTxn  string
+	conflictGTID string
+}
+
+// New starts a planner. Schema SQL is loaded now, matching the analyzer reset.
+func New(opts Options) *Planner {
+	p := &Planner{opts: opts, flashCat: schemacatalog.New(opts.SchemaFileDB)}
+	if strings.TrimSpace(opts.SchemaSQL) != "" {
+		p.flashCat.LoadFile(opts.SchemaSQL)
+	}
+	return p
+}
+
+// Close removes the spill. The analyzer calls it on reset.
+func (a *Planner) Close() { a.closeFlashSpill() }
+
+// HeldRows is how many rows of the open transaction are still in memory.
+func (a *Planner) HeldRows() int {
+	if a == nil || a.flashCur == nil {
+		return 0
+	}
+	return len(a.flashCur.rows)
+}
+
+// Observe records schema changes and conflict candidates for one scanned
+// event, selected or not. txnKey and gtid are the transaction that is open
+// before this event is applied.
+func (a *Planner) Observe(ev model.NormalizedEvent, txnKey, gtid string) {
+	if a == nil {
+		return
+	}
+	a.conflictTxn, a.conflictGTID = txnKey, gtid
+	a.checkFlashConflict(ev)
+	dropped := a.flashCat.ObserveTable(ev.Schema, ev.Table)
+	if ev.EventType == "DDL" {
+		dropped = append(dropped, a.flashCat.ObserveDDL(ev.Schema, ev.QuerySQL)...)
+	}
+	for _, table := range dropped {
+		a.clearPendingUse(table)
+	}
+}
+
+// Note records one retained event.
+func (a *Planner) Note(ev model.NormalizedEvent) { a.noteFlashback(ev) }
+
+// NoteSkipped records that the open transaction dropped a row event.
+func (a *Planner) NoteSkipped(txnKey, gtid string) {
+	if a == nil {
+		return
+	}
+	a.noteFlashSplit(txnKey, gtid, false)
+}
+
+// WriteTo renders the script. The count is the undo row count.
+func (a *Planner) WriteTo(w io.Writer) (int64, error) {
+	n, err := a.WriteFlashback(w)
+	return int64(n), err
+}
+
+func sealOut(g guard.Guard, w io.Writer, sum []byte) writerFunc {
+	return g.SealWriter(w, sum)
+}
 
 // flashBind is the table definition in effect for one undo row.
 // deferCheck waits until every schema of an unqualified table has been seen.
@@ -40,13 +143,13 @@ type flashGroup struct {
 	binds []flashBind
 	seqs  []int64
 	// id names the transaction group; chunk numbers its parts. A large
-	// transaction is spilled in parts of flashChunkRows rows (#258).
+	// transaction is spilled in parts of ChunkRows rows (#258).
 	id    int64
 	chunk int
 }
 
-// flashChunkRows bounds the rows of one transaction held in memory.
-const flashChunkRows = 2048
+// ChunkRows bounds the rows of one transaction held in memory.
+const ChunkRows = 2048
 
 type flashSplit struct {
 	gtid    string
@@ -54,8 +157,8 @@ type flashSplit struct {
 	skipped bool
 }
 
-func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
-	if a == nil || !a.opts.Flashback || a.flashErr != nil {
+func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
+	if a == nil || a.flashErr != nil {
 		return
 	}
 	if ev.EventType == "DDL" {
@@ -109,7 +212,7 @@ func (a *Analyzer) noteFlashback(ev model.NormalizedEvent) {
 	a.noteFlashbackKept(ev)
 }
 
-func (a *Analyzer) acceptSchemaRows(label string, rows []model.FlashRow, cols []mysqlexpr.SchemaCol) error {
+func (a *Planner) acceptSchemaRows(label string, rows []model.FlashRow, cols []mysqlexpr.SchemaCol) error {
 	for _, row := range rows {
 		if err := a.acceptSchema(label, row, cols); err != nil {
 			return err
@@ -118,7 +221,7 @@ func (a *Analyzer) acceptSchemaRows(label string, rows []model.FlashRow, cols []
 	return nil
 }
 
-func (a *Analyzer) acceptSchema(label string, row model.FlashRow, cols []mysqlexpr.SchemaCol) error {
+func (a *Planner) acceptSchema(label string, row model.FlashRow, cols []mysqlexpr.SchemaCol) error {
 	warns, err := mysqlexpr.ValidateSchemaRow(label, row, cols)
 	if err != nil {
 		return err
@@ -137,7 +240,7 @@ func appendWarningOnce(list []model.FlashbackWarning, w model.FlashbackWarning) 
 	return append(list, w)
 }
 
-func (a *Analyzer) noteSchemaWarnings(warns []model.FlashbackWarning) {
+func (a *Planner) noteSchemaWarnings(warns []model.FlashbackWarning) {
 	for _, warn := range warns {
 		a.flashSchemaWarn = appendWarningOnce(a.flashSchemaWarn, warn)
 	}
@@ -146,7 +249,7 @@ func (a *Analyzer) noteSchemaWarnings(warns []model.FlashbackWarning) {
 // clearPendingUse drops the deferred definition from every row recorded so
 // far for table. Spilled rows cannot be edited, so the cut-off is a row
 // sequence number that settleBinds applies when a group is read back.
-func (a *Analyzer) clearPendingUse(table string) {
+func (a *Planner) clearPendingUse(table string) {
 	key := strings.ToLower(table)
 	names := a.flashPendingNames[key]
 	if len(names) == 0 {
@@ -164,7 +267,7 @@ func (a *Analyzer) clearPendingUse(table string) {
 
 // settleBinds applies table clears and finished deferred checks to a group
 // read from the spill or held in memory. It is idempotent.
-func (a *Analyzer) settleBinds(group *flashGroup) {
+func (a *Planner) settleBinds(group *flashGroup) {
 	for i := range group.binds {
 		bind := &group.binds[i]
 		if bind.fromPending && i < len(group.seqs) && i < len(group.rows) {
@@ -182,7 +285,7 @@ func (a *Analyzer) settleBinds(group *flashGroup) {
 
 // eachFlashGroup visits every kept group, in binlog order or last first.
 // Resident memory is one group: the rest are read back from the spill.
-func (a *Analyzer) eachFlashGroup(backward bool, fn func(*flashGroup) error) error {
+func (a *Planner) eachFlashGroup(backward bool, fn func(*flashGroup) error) error {
 	visit := func(g *flashGroup) error {
 		if len(g.rows) == 0 {
 			return nil
@@ -207,7 +310,7 @@ func (a *Analyzer) eachFlashGroup(backward bool, fn func(*flashGroup) error) err
 	return nil
 }
 
-func (a *Analyzer) finishSchema() error {
+func (a *Planner) finishSchema() error {
 	if !a.flashChecked {
 		err := a.eachFlashGroup(false, func(group *flashGroup) error {
 			for i := range group.binds {
@@ -230,7 +333,7 @@ func (a *Analyzer) finishSchema() error {
 
 // appendFlashRows adds rows to the open group. A new transaction key spills
 // the previous group, so only one transaction stays in memory (#258).
-func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashRow, bind flashBind) {
+func (a *Planner) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashRow, bind flashBind) {
 	copied := append([]model.FlashRow(nil), rows...)
 	binds := make([]flashBind, len(copied))
 	seqs := make([]int64, len(copied))
@@ -254,7 +357,7 @@ func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashR
 		cur.rows = append(cur.rows, copied...)
 		cur.binds = append(cur.binds, binds...)
 		cur.seqs = append(cur.seqs, seqs...)
-		if len(cur.rows) >= flashChunkRows {
+		if len(cur.rows) >= ChunkRows {
 			next := &flashGroup{key: cur.key, gtid: cur.gtid, path: cur.path, pos: cur.pos, id: cur.id, chunk: cur.chunk + 1}
 			if err := a.spillCurrent(); err != nil {
 				a.flashErr = err
@@ -289,7 +392,7 @@ func (a *Analyzer) appendFlashRows(ev model.NormalizedEvent, rows []model.FlashR
 	}
 }
 
-func (a *Analyzer) notePendingName(row model.FlashRow) {
+func (a *Planner) notePendingName(row model.FlashRow) {
 	key := strings.ToLower(row.Table)
 	name := flashTable(row.Schema, row.Table)
 	for _, have := range a.flashPendingNames[key] {
@@ -303,7 +406,7 @@ func (a *Analyzer) notePendingName(row model.FlashRow) {
 	a.flashPendingNames[key] = append(a.flashPendingNames[key], name)
 }
 
-func (a *Analyzer) spillCurrent() error {
+func (a *Planner) spillCurrent() error {
 	cur := a.flashCur
 	if cur == nil {
 		return nil
@@ -325,25 +428,17 @@ func (a *Analyzer) spillCurrent() error {
 	return nil
 }
 
-func (a *Analyzer) closeFlashSpill() {
+func (a *Planner) closeFlashSpill() {
 	a.flashSpill.close()
 	a.flashSpill = nil
 	a.flashCur = nil
 }
 
-func (a *Analyzer) noteFlashbackKept(ev model.NormalizedEvent) {
+func (a *Planner) noteFlashbackKept(ev model.NormalizedEvent) {
 	a.noteFlashSplit(ev.TxnKey, ev.TxnGTID, true)
 }
 
-func (a *Analyzer) noteFlashbackSkipped() {
-	if a == nil || a.txnBuilder == nil {
-		return
-	}
-	gtid, _, _ := a.txnBuilder.touchLocation()
-	a.noteFlashSplit(a.txnBuilder.CurrentTxnKey(), gtid, false)
-}
-
-func (a *Analyzer) noteFlashSplit(key, gtid string, kept bool) {
+func (a *Planner) noteFlashSplit(key, gtid string, kept bool) {
 	if a == nil || key == "" {
 		return
 	}
@@ -374,7 +469,7 @@ func (a *Analyzer) noteFlashSplit(key, gtid string, kept bool) {
 // this bookkeeping does not grow with the binlog (#258).
 const flashSplitWindow = 64
 
-func (a *Analyzer) evictFlashSplits() {
+func (a *Planner) evictFlashSplits() {
 	for len(a.flashSplitOrder) >= flashSplitWindow {
 		key := a.flashSplitOrder[0]
 		a.flashSplitOrder = a.flashSplitOrder[1:]
@@ -385,7 +480,7 @@ func (a *Analyzer) evictFlashSplits() {
 	}
 }
 
-func (a *Analyzer) noteFlashUnknown(table string) {
+func (a *Planner) noteFlashUnknown(table string) {
 	for _, have := range a.flashUnknown {
 		if have == table {
 			return
@@ -395,8 +490,8 @@ func (a *Analyzer) noteFlashUnknown(table string) {
 }
 
 // FlashbackWarnings is FlashbackWarningList as the stderr lines flashback prints.
-func (a *Analyzer) FlashbackWarnings() []string {
-	list := a.FlashbackWarningList()
+func (a *Planner) Warnings() []string {
+	list := a.WarningList()
 	if list == nil {
 		return nil
 	}
@@ -410,7 +505,7 @@ func (a *Analyzer) FlashbackWarnings() []string {
 // FlashbackWarningList reports schema-file notes, tables whose definitions
 // were not seen, then transactions a table or --dml filter undid only in part.
 // Empty when flashback has nothing to print.
-func (a *Analyzer) FlashbackWarningList() []model.FlashbackWarning {
+func (a *Planner) WarningList() []model.FlashbackWarning {
 	if a == nil {
 		return nil
 	}
@@ -440,7 +535,7 @@ func (a *Analyzer) FlashbackWarningList() []model.FlashbackWarning {
 // FlashbackSQL returns undo SQL for the selected row changes.
 // A non-nil error means the script must not be applied; the string is empty.
 // It holds the whole script in memory; the CLI uses WriteFlashback.
-func (a *Analyzer) FlashbackSQL() (string, error) {
+func (a *Planner) SQL() (string, error) {
 	var b strings.Builder
 	if _, err := a.WriteFlashback(&b); err != nil {
 		return "", err
@@ -451,7 +546,7 @@ func (a *Analyzer) FlashbackSQL() (string, error) {
 // PrepareFlashback runs every check that can refuse the script and returns
 // the number of undo rows. Zero rows means there is nothing to print.
 // FlashbackWarnings is complete after it returns.
-func (a *Analyzer) PrepareFlashback() (int, error) {
+func (a *Planner) Prepare() (int, error) {
 	rows, err := a.prepareChecks()
 	if err != nil {
 		return 0, err
@@ -463,7 +558,7 @@ func (a *Analyzer) PrepareFlashback() (int, error) {
 }
 
 // prepareChecks is PrepareFlashback without the conflict refusal.
-func (a *Analyzer) prepareChecks() (int, error) {
+func (a *Planner) prepareChecks() (int, error) {
 	if a == nil {
 		return 0, fmt.Errorf("%s", i18n.T("error.flashbackCapture", map[string]any{"Table": "selected range"}))
 	}
@@ -485,8 +580,8 @@ func (a *Analyzer) prepareChecks() (int, error) {
 // Every refusal happens before the first byte is written: the script is
 // rendered once into the guard hash, which also proves every statement
 // renders, and then once to w. Memory does not grow with the binlog (#258).
-func (a *Analyzer) WriteFlashback(w io.Writer) (int, error) {
-	rows, err := a.PrepareFlashback()
+func (a *Planner) WriteFlashback(w io.Writer) (int, error) {
+	rows, err := a.Prepare()
 	if err != nil || rows == 0 {
 		return 0, err
 	}
@@ -514,7 +609,7 @@ func (a *Analyzer) WriteFlashback(w io.Writer) (int, error) {
 // reviewGenerated checks schema-file generated columns against every logged image.
 // A contradiction refuses the script. An expression that cannot be checked exactly
 // is omitted, with a warning, when nothing contradicts it.
-func (a *Analyzer) reviewGenerated() error {
+func (a *Planner) reviewGenerated() error {
 	if a.flashReviewed {
 		return a.flashReviewErr
 	}
@@ -523,7 +618,7 @@ func (a *Analyzer) reviewGenerated() error {
 	return a.flashReviewErr
 }
 
-func (a *Analyzer) collectGeneratedReview() error {
+func (a *Planner) collectGeneratedReview() error {
 	type bucket struct {
 		schema string
 		table  string
@@ -659,7 +754,7 @@ func flashRowError(row model.FlashRow, table string) error {
 }
 
 func flashDDLError(ev model.NormalizedEvent, table string) error {
-	statement := strings.TrimSpace(messageStatement(ev.QuerySQL))
+	statement := strings.TrimSpace(redact.Statement(ev.QuerySQL))
 	if statement == "" {
 		statement = "DDL"
 	}
@@ -681,37 +776,6 @@ func flashTable(schema, table string) string {
 	default:
 		return "selected range"
 	}
-}
-
-// omittedGeneratedCols lists the generated columns a script omits, in first-seen order.
-func omittedGeneratedCols(groups []flashGroup) []guard.Col {
-	var out []guard.Col
-	seen := map[string]struct{}{}
-	for _, group := range groups {
-		out = appendGuardCols(out, seen, group)
-	}
-	return out
-}
-
-// appendGuardCols adds the generated columns of one group not yet in seen.
-func appendGuardCols(out []guard.Col, seen map[string]struct{}, group flashGroup) []guard.Col {
-	for i, row := range group.rows {
-		if i >= len(group.binds) {
-			continue
-		}
-		for _, col := range group.binds[i].cols {
-			if !col.Generated {
-				continue
-			}
-			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.Name)
-			if _, ok := seen[key]; ok {
-				continue
-			}
-			seen[key] = struct{}{}
-			out = append(out, guard.Col{Schema: row.Schema, Table: row.Table, Column: col.Name})
-		}
-	}
-	return out
 }
 
 // renderFlashbackSQL renders groups held in memory (tests and small inputs).
@@ -737,15 +801,15 @@ func renderFlashbackSQL(groups []flashGroup, notes []string) (string, error) {
 // first): into the guard hash, then to w with the token sealed in. Nothing
 // reaches w when a statement cannot be rendered.
 func writeFlashbackScript(w io.Writer, backward func(func(*flashGroup) error) error, notes []string, cols []guard.Col, postImage bool) error {
-	g := guard.New(cols)
+	guard := guard.New(cols)
 	h := sha256.New()
-	if err := renderFlashbackTo(toWriter(h), backward, notes, g, postImage); err != nil {
+	if err := renderFlashbackTo(toWriter(h), backward, notes, guard, postImage); err != nil {
 		return err
 	}
-	return renderFlashbackTo(g.SealWriter(w, h.Sum(nil)), backward, notes, g, postImage)
+	return renderFlashbackTo(sealOut(guard, w, h.Sum(nil)), backward, notes, guard, postImage)
 }
 
-func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, g guard.Guard, postImage bool) error {
+func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) error, notes []string, guard guard.Guard, postImage bool) error {
 	var b strings.Builder
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
@@ -759,9 +823,9 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 	b.WriteString("SET NAMES utf8mb4;\n")
 	b.WriteString("SET time_zone = '+00:00';\n")
 	b.WriteString("SET SESSION sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_BACKSLASH_ESCAPES', '');\n")
-	if g.Header() != "" {
+	if guard.Header() != "" {
 		b.WriteByte('\n')
-		b.WriteString(g.Header())
+		b.WriteString(guard.Header())
 	}
 	if err := out(b.String()); err != nil {
 		return err
@@ -769,7 +833,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 	// With a guard, every undo statement also checks this script's token, so
 	// a statement run in a session where this script's guard did not match
 	// (a reconnect inside a block, a block from another script) changes no row.
-	tokenCond := g.RowCond()
+	tokenCond := guard.RowCond()
 	// Parts of one transaction arrive last part first; the block opens at
 	// the first part seen and commits after part 0.
 	open := int64(-1)
@@ -777,7 +841,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 		b.Reset()
 		if group.id != open {
 			open = group.id
-			writeBlockHead(&b, group, g)
+			writeBlockHead(&b, group, guard)
 		}
 		for j := len(group.rows) - 1; j >= 0; j-- {
 			var gen map[string]struct{}
@@ -804,7 +868,7 @@ func renderFlashbackTo(out writerFunc, backward func(func(*flashGroup) error) er
 	})
 }
 
-func writeBlockHead(b *strings.Builder, group *flashGroup, g guard.Guard) {
+func writeBlockHead(b *strings.Builder, group *flashGroup, guard guard.Guard) {
 	b.WriteByte('\n')
 	gtid := group.gtid
 	if gtid == "" {
@@ -816,7 +880,7 @@ func writeBlockHead(b *strings.Builder, group *flashGroup, g guard.Guard) {
 		file = "binlog"
 	}
 	fmt.Fprintf(b, "-- binlog: %s:%d\n", mysqlexpr.OneLine(file, 0), group.pos)
-	if lock := g.BlockLock(); lock != "" {
+	if lock := guard.BlockLock(); lock != "" {
 		// SET sql_mode, COMMIT, START TRANSACTION, and SET GTID_NEXT do not
 		// clear this session flag. Repeat the same lock outside a
 		// transaction so this block cannot start writable: it is read-only
@@ -1030,7 +1094,7 @@ func (e *generatedRowRefusal) named(label string) error {
 }
 
 // refusalTable names schema.table in a refusal, from its current catalog binding.
-func (a *Analyzer) refusalTable(schema, table string) string {
+func (a *Planner) refusalTable(schema, table string) string {
 	return refusalLabel(a.flashCat.Peek(schema, table), schema, table)
 }
 
@@ -1125,4 +1189,34 @@ func quoteColumnList(columns []string) string {
 
 func quoteIdent(name string) string {
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
+func omittedGeneratedCols(groups []flashGroup) []guard.Col {
+	var out []guard.Col
+	seen := map[string]struct{}{}
+	for _, group := range groups {
+		out = appendGuardCols(out, seen, group)
+	}
+	return out
+}
+
+// appendGuardCols adds the generated columns of one group not yet in seen.
+func appendGuardCols(out []guard.Col, seen map[string]struct{}, group flashGroup) []guard.Col {
+	for i, row := range group.rows {
+		if i >= len(group.binds) {
+			continue
+		}
+		for _, col := range group.binds[i].cols {
+			if !col.Generated {
+				continue
+			}
+			key := strings.ToLower(row.Schema) + "\x00" + strings.ToLower(row.Table) + "\x00" + strings.ToLower(col.Name)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			out = append(out, guard.Col{Schema: row.Schema, Table: row.Table, Column: col.Name})
+		}
+	}
+	return out
 }

@@ -1,6 +1,8 @@
-package analyzer
+package flashback_test
 
 import (
+	"binlogviz/internal/analyzer"
+	"binlogviz/internal/flashback"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -24,19 +26,19 @@ func orderUpdate(id, before, after string) model.FlashRow {
 }
 
 // conflictRun selects GTID :5 and feeds every transaction in order.
-func conflictRun(t *testing.T, policy string, txns ...conflictTxn) *Analyzer {
+func conflictRun(t *testing.T, policy string, txns ...conflictTxn) *analyzer.Analyzer {
 	t.Helper()
-	return conflictRunOpts(t, Options{FlashbackConflict: policy}, txns...)
+	return conflictRunOpts(t, analyzer.Options{FlashbackConflict: policy}, txns...)
 }
 
-func conflictRunOpts(t *testing.T, opts Options, txns ...conflictTxn) *Analyzer {
+func conflictRunOpts(t *testing.T, opts analyzer.Options, txns ...conflictTxn) *analyzer.Analyzer {
 	t.Helper()
-	selector, err := ParseGTIDSelector([]string{conflictUUID + ":5"}, nil)
+	selector, err := analyzer.ParseGTIDSelector([]string{conflictUUID + ":5"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	opts.Flashback, opts.GTIDSelector = true, selector
-	a := New(opts)
+	a := analyzer.New(opts)
 	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
 	pos := int64(4)
 	ev := func(e model.NormalizedEvent) {
@@ -69,8 +71,8 @@ func TestFlashbackRefusesLaterChangeToSameRow(t *testing.T) {
 		conflictTxn{"6", []model.FlashRow{orderUpdate("1014", "17.50", "18.50")}},
 	)
 	var b strings.Builder
-	_, err := a.WriteFlashback(&b)
-	var conflict *FlashbackConflictError
+	_, err := a.Planner().WriteFlashback(&b)
+	var conflict *flashback.FlashbackConflictError
 	if !errors.As(err, &conflict) {
 		t.Fatalf("want a conflict refusal, got %v", err)
 	}
@@ -91,7 +93,7 @@ func TestFlashbackNoConflictForOtherRowsOrSameTransaction(t *testing.T) {
 		conflictTxn{"5", []model.FlashRow{orderUpdate("1", "1", "2"), orderUpdate("1", "2", "3")}},
 		conflictTxn{"6", []model.FlashRow{orderUpdate("2", "1", "2")}},
 	)
-	if _, err := a.WriteFlashback(&countWriter{}); err != nil {
+	if _, err := a.Planner().WriteFlashback(&countWriter{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -102,7 +104,7 @@ func TestFlashbackEarlierChangeIsNotConflict(t *testing.T) {
 		conflictTxn{"4", []model.FlashRow{orderUpdate("1", "0", "1")}},
 		conflictTxn{"5", []model.FlashRow{orderUpdate("1", "1", "2")}},
 	)
-	if _, err := a.WriteFlashback(&countWriter{}); err != nil {
+	if _, err := a.Planner().WriteFlashback(&countWriter{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -116,7 +118,7 @@ func TestFlashbackConflictGuardMatchesPostImage(t *testing.T) {
 		conflictTxn{"5", []model.FlashRow{orderUpdate("1014", "18.50", "17.50"), del, ins}},
 		conflictTxn{"6", []model.FlashRow{orderUpdate("1014", "17.50", "18.50")}},
 	)
-	sql, err := a.FlashbackSQL()
+	sql, err := a.Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,10 +147,10 @@ func TestFlashbackConflictGuardKeyMoveSkipsReusedKey(t *testing.T) {
 		{"6", []model.FlashRow{reuse}},
 	}
 	refuse := conflictRun(t, "", txns...)
-	if _, err := refuse.FlashbackSQL(); err == nil {
+	if _, err := refuse.Planner().SQL(); err == nil {
 		t.Fatal("default policy must refuse the reused key")
 	}
-	sql, err := conflictRun(t, "guard", txns...).FlashbackSQL()
+	sql, err := conflictRun(t, "guard", txns...).Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +163,7 @@ func TestFlashbackConflictGuardKeyMoveSkipsReusedKey(t *testing.T) {
 			t.Fatalf("missing %s in:\n%s", want, sql)
 		}
 	}
-	plain, err := conflictRun(t, "", txns[0]).FlashbackSQL()
+	plain, err := conflictRun(t, "", txns[0]).Planner().SQL()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,12 +178,12 @@ func TestFlashbackPlanReportsRowsAndConflicts(t *testing.T) {
 		conflictTxn{"6", []model.FlashRow{orderUpdate("1014", "17.50", "18.50")}},
 	)
 	var b strings.Builder
-	err := a.WriteFlashbackPlan(&b)
-	var conflict *FlashbackConflictError
+	err := a.Planner().WritePlan(&b)
+	var conflict *flashback.FlashbackConflictError
 	if !errors.As(err, &conflict) {
 		t.Fatalf("the plan keeps the refusal exit: %v", err)
 	}
-	var plan FlashbackPlan
+	var plan flashback.FlashbackPlan
 	if jerr := json.Unmarshal([]byte(b.String()), &plan); jerr != nil {
 		t.Fatalf("%v: %s", jerr, b.String())
 	}
@@ -197,11 +199,11 @@ func TestFlashbackPlanReportsRowsAndConflicts(t *testing.T) {
 // #270 item 2: a refusal other than a conflict (exit 6) still prints the
 // plan, so a script gets JSON for every refusal.
 func TestFlashbackPlanOnRefusalNamesReason(t *testing.T) {
-	selector, err := ParseGTIDSelector([]string{conflictUUID + ":5"}, nil)
+	selector, err := analyzer.ParseGTIDSelector([]string{conflictUUID + ":5"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := New(Options{Flashback: true, FlashbackPlan: true, GTIDSelector: selector})
+	a := analyzer.New(analyzer.Options{Flashback: true, FlashbackPlan: true, GTIDSelector: selector})
 	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
 	pos := int64(4)
 	for _, e := range []model.NormalizedEvent{
@@ -222,11 +224,11 @@ func TestFlashbackPlanOnRefusalNamesReason(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b strings.Builder
-	perr := a.WriteFlashbackPlan(&b)
+	perr := a.Planner().WritePlan(&b)
 	if perr == nil {
 		t.Fatal("the plan keeps the refusal error")
 	}
-	var plan FlashbackPlan
+	var plan flashback.FlashbackPlan
 	if jerr := json.Unmarshal([]byte(b.String()), &plan); jerr != nil {
 		t.Fatalf("a refusal must still print the plan: %v: %q", jerr, b.String())
 	}
@@ -238,11 +240,11 @@ func TestFlashbackPlanOnRefusalNamesReason(t *testing.T) {
 
 // A plan with nothing refused has refusal null and warnings as objects.
 func TestFlashbackPlanCleanRunHasNullRefusal(t *testing.T) {
-	a := conflictRunOpts(t, Options{FlashbackPlan: true},
+	a := conflictRunOpts(t, analyzer.Options{FlashbackPlan: true},
 		conflictTxn{"5", []model.FlashRow{orderUpdate("1", "1", "2")}},
 	)
 	var b strings.Builder
-	if err := a.WriteFlashbackPlan(&b); err != nil {
+	if err := a.Planner().WritePlan(&b); err != nil {
 		t.Fatal(err)
 	}
 	var raw map[string]json.RawMessage
@@ -259,7 +261,7 @@ func TestFlashbackPlanCleanRunHasNullRefusal(t *testing.T) {
 		t.Fatalf("plan: %s", b.String())
 	}
 	// Stderr keeps the v0.25.0 text.
-	if lines := a.FlashbackWarnings(); len(lines) != 1 || lines[0] != "warning: "+warnings[0].Message {
+	if lines := a.Planner().Warnings(); len(lines) != 1 || lines[0] != "warning: "+warnings[0].Message {
 		t.Fatalf("stderr lines: %q", lines)
 	}
 }
@@ -273,18 +275,18 @@ func TestFlashbackConflictLimit(t *testing.T) {
 		later = append(later, orderUpdate(id, "2", "3"))
 	}
 	for _, tc := range []struct{ limit, listed int }{{0, 20}, {3, 3}, {-1, 25}} {
-		a := conflictRunOpts(t, Options{FlashbackConflictLimit: tc.limit}, conflictTxn{"5", sel}, conflictTxn{"6", later})
+		a := conflictRunOpts(t, analyzer.Options{FlashbackConflictLimit: tc.limit}, conflictTxn{"5", sel}, conflictTxn{"6", later})
 		var b strings.Builder
-		_ = a.WriteFlashbackPlan(&b)
-		var plan FlashbackPlan
+		_ = a.Planner().WritePlan(&b)
+		var plan flashback.FlashbackPlan
 		if err := json.Unmarshal([]byte(b.String()), &plan); err != nil {
 			t.Fatal(err)
 		}
 		if plan.Conflicts.Count != 25 || len(plan.Conflicts.Listed) != tc.listed || plan.Conflicts.Omitted != 25-tc.listed {
 			t.Fatalf("limit %d: count %d listed %d omitted %d", tc.limit, plan.Conflicts.Count, len(plan.Conflicts.Listed), plan.Conflicts.Omitted)
 		}
-		var conflict *FlashbackConflictError
-		if _, err := a.WriteFlashback(&countWriter{}); !errors.As(err, &conflict) || len(conflict.Listed) != tc.listed {
+		var conflict *flashback.FlashbackConflictError
+		if _, err := a.Planner().WriteFlashback(&countWriter{}); !errors.As(err, &conflict) || len(conflict.Listed) != tc.listed {
 			t.Fatalf("limit %d: exit 7 details list %v", tc.limit, err)
 		}
 	}
@@ -293,11 +295,11 @@ func TestFlashbackConflictLimit(t *testing.T) {
 // #267: a later change that is itself selected is undone by the same
 // script, so it is not a conflict. Only unselected later changes count.
 func TestFlashbackSelectedLaterChangeIsNotConflict(t *testing.T) {
-	selector, err := ParseGTIDSelector([]string{conflictUUID + ":5-6"}, nil)
+	selector, err := analyzer.ParseGTIDSelector([]string{conflictUUID + ":5-6"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := New(Options{Flashback: true, GTIDSelector: selector})
+	a := analyzer.New(analyzer.Options{Flashback: true, GTIDSelector: selector})
 	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
 	pos := int64(4)
 	ev := func(e model.NormalizedEvent) {
@@ -323,8 +325,8 @@ func TestFlashbackSelectedLaterChangeIsNotConflict(t *testing.T) {
 	if _, err := a.Finalize(); err != nil {
 		t.Fatal(err)
 	}
-	_, err = a.WriteFlashback(&countWriter{})
-	var conflict *FlashbackConflictError
+	_, err = a.Planner().WriteFlashback(&countWriter{})
+	var conflict *flashback.FlashbackConflictError
 	if !errors.As(err, &conflict) || conflict.Count != 1 || conflict.Listed[0].Key != "id=2" || conflict.Listed[0].LaterGTID != conflictUUID+":7" {
 		t.Fatalf("want only the unselected :7 change, got %v %+v", err, conflict)
 	}
@@ -332,7 +334,7 @@ func TestFlashbackSelectedLaterChangeIsNotConflict(t *testing.T) {
 
 // A whole-file undo (no selectors) has no conflicts: every later change is selected.
 func TestFlashbackWholeRangeHasNoConflict(t *testing.T) {
-	a := New(Options{Flashback: true})
+	a := analyzer.New(analyzer.Options{Flashback: true})
 	base := time.Date(2026, 10, 14, 6, 5, 6, 0, time.UTC)
 	pos := int64(4)
 	for i, gno := range []string{"1", "2", "3"} {
@@ -353,7 +355,7 @@ func TestFlashbackWholeRangeHasNoConflict(t *testing.T) {
 	if _, err := a.Finalize(); err != nil {
 		t.Fatal(err)
 	}
-	if rows, err := a.WriteFlashback(&countWriter{}); err != nil || rows != 3 {
+	if rows, err := a.Planner().WriteFlashback(&countWriter{}); err != nil || rows != 3 {
 		t.Fatalf("rows %d err %v", rows, err)
 	}
 }
