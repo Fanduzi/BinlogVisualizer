@@ -83,7 +83,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 | 7 | `conflict` | 选中的行后来又被修改 |
 | 8 | `output` | 写不出报告或脚本 |
 | 9 | `unsupported` | 没有 ROW 镜像的 STATEMENT/MIXED、未知版本，或裁剪过的 diagnostics 文档 |
-| 10 | `resource` | flashback 达到溢出上限（`BINLOGVIZ_SPILL_BYTES`）或进程内存上限（`GOMEMLIMIT`）。不是空结果 |
+| 10 | `resource` | flashback 达到溢出上限（`BINLOGVIZ_SPILL_BYTES`，`details.reason` 为 `spill_limit`）或进程内存上限（`GOMEMLIMIT`，`details.reason` 为 `memory_limit`）。未设置、非正数或无法解析的 `BINLOGVIZ_SPILL_BYTES` 表示没有字节上限。不是空结果 |
 
 ## JSON 版本
 
