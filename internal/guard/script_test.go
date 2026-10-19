@@ -277,3 +277,42 @@ func TestPayloadQuoteRoundTrip(t *testing.T) {
 		t.Fatalf("raw unquote %q err %v", got, err)
 	}
 }
+
+func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
+	body := ProcedureSQL()
+	const msg = "binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again"
+	drop := strings.LastIndex(body, "DROP PROCEDURE IF EXISTS binlogviz.binlogviz_fb_end_")
+	sig := strings.Index(body, "SIGNAL SQLSTATE '45000'")
+	if !strings.Contains(body, msg) || drop < 0 || sig < 0 || drop > sig {
+		t.Fatalf("rollback must drop the procedure before SIGNAL %q\n%s", msg, body)
+	}
+	if !strings.Contains(body, "CONTINUE HANDLER FOR SQLEXCEPTION") || !strings.Contains(body, "XA ROLLBACK '"+guardTokenMark+"'") {
+		t.Fatal("statement errors must be handled, and rollback stays on the token")
+	}
+	if !strings.Contains(UndoOpenSQL(), "SET @binlogviz_mode = 1;") {
+		t.Fatal("XA START must run inside the procedure")
+	}
+}
+
+func TestVerifyV031InitIsOldFormat(t *testing.T) {
+	script := "-- banner\nSET @binlogviz_digest = SHA2('binlogviz-flashback-v1', 256);\n-- binlogviz-exec\n"
+	_, err := Verify(strings.NewReader(script))
+	ve, ok := err.(*VerifyError)
+	if !ok || ve.Reason != "old_format" {
+		t.Fatalf("got %#v", err)
+	}
+}
+
+func TestVerifyV032PrepareWrapperIsOldFormat(t *testing.T) {
+	script := "" +
+		"SET @binlogviz_digest = SHA2('binlogviz-flashback-v1', 256), @binlogviz_applied = 1;\n" +
+		"-- binlogviz-exec\n" +
+		"SET @binlogviz_sql = 'DO 0';\n" +
+		"SET @binlogviz_digest = SHA2(CONCAT(@binlogviz_digest, @binlogviz_sql), 256);\n" +
+		"PREPARE binlogviz_fb_stmt_x9q FROM @binlogviz_sql;\n"
+	_, err := Verify(strings.NewReader(script))
+	ve, ok := err.(*VerifyError)
+	if !ok || ve.Reason != "old_format" {
+		t.Fatalf("got %#v", err)
+	}
+}
