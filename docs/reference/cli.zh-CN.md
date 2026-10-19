@@ -8,6 +8,7 @@
 
 ```bash
 binlogviz --version
+binlogviz version --format json
 binlogviz --lang zh-CN analyze <binlog files...>
 binlogviz analyze <binlog files...>
 binlogviz analyze --from-dir DIR --prefix PREFIX
@@ -47,7 +48,7 @@ binlogviz workflow describe <plan.yaml> --format json
 | Flag | 默认值 | 说明 |
 |------|--------|------|
 | `--lang` | 按环境变量检测 | 运行时输出语言，例如 `en` 或 `zh-CN`。 |
-| `--version`, `-v` | `false` | 仅输出版本号并退出。 |
+| `--version`, `-v` | `false` | 仅输出版本号并退出。`binlogviz version` 在构建带有 git 信息时还会输出 commit；`binlogviz version --format json` 输出 `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}`，供脚本和 agent 使用（`commit` 优先取 Go 构建信息，其次取 `-ldflags -X binlogviz/internal/version.Commit=…`/`CommitTime=…` 注入的值，两者都没有时为 `""`）。其他 `--format` 退出码为 3。 |
 
 ## `analyze` 命令语法
 
@@ -731,6 +732,7 @@ Legacy manifest 仍然可被检查。对于 pre-v2 格式的 manifest，该命�
 
 - 只支持 `text` 和 `json`
 - 当 `<output_dir>/manifest.json` 无法读取时，会在渲染前直接失败
+- manifest 记录的 compare 或 trend JSON 产物带有本构建不认识的 `schema_version` 时，以退出码 9 退出（`unsupported`，reason 为 `unsupported_artifact_version`），stdout 为空（ADR 0010）
 - 所有输出都写到 `stdout`
 - 不使用 `stderr` 输出进度
 - 当 plan 不可用或无法加载时，省略 `resume_preview`
@@ -781,6 +783,7 @@ binlogviz workflow clean <output_dir> --apply --include-snapshots
 - `<output_dir>/manifest.json` 缺失
 - manifest 不可读或非法
 - 某个 workflow artifact 目录不可读
+- manifest 记录的 compare 或 trend JSON 产物带有本构建不认识的 `schema_version`：退出码 9（`unsupported`，reason 为 `unsupported_artifact_version`），不删除任何文件，避免旧版 binlogviz 替新版的运行判断哪些文件属于它（ADR 0010）
 
 补充规则：
 
@@ -962,6 +965,7 @@ Resume 会在以下情况拒绝执行：
 - manifest 是旧版 pre-v2 产物（缺少 `manifest_version` 字段）
 - plan 文件 SHA-256 与 manifest 中记录的 `plan_sha256` 不匹配
 - manifest 中记录的 plan 路径解析到 workflow root 之外或通过符号链接逃逸（信任边界硬拒绝）
+- manifest 记录的 compare 或 trend JSON 产物带有本构建不认识的 `schema_version`：退出码 9（`unsupported`，reason 为 `unsupported_artifact_version`），不执行也不改写任何文件（ADR 0010）
 
 `ValidateWorkflowPlanPath(outputDir, planPath)` 会在 plan 文件打开前被调用。位于 root 之外和符号链接逃逸的路径会被无条件拒绝。`ValidateResumableManifest` 现在接受四个参数 `(m Manifest, outputDir string, planPath string, planSHA256 string)`，以在 resume 校验期间强制执行信任边界。
 

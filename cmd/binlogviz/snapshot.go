@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/jsonout"
 	snapshotpkg "binlogviz/internal/snapshot"
 	"binlogviz/internal/version"
 )
@@ -308,7 +309,7 @@ func buildSnapshotShowLines(desc snapshotpkg.Descriptor) []string {
 }
 
 func writeSnapshotJSON(out io.Writer, payload any) error {
-	data, err := json.MarshalIndent(payload, "", "  ")
+	data, err := jsonout.Marshal(snapshotSchemaVersion, payload)
 	if err != nil {
 		return err
 	}

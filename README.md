@@ -42,6 +42,7 @@ The Cobra command layer streams normalized binlog events into the analyzer, then
 | `internal/trend` | Ordered multi-snapshot trend analysis and rendering | [README](internal/trend/README.md) |
 | `internal/snapshot` | Named analyze snapshot persistence | [README](internal/snapshot/README.md) |
 | `internal/workflow` | Multi-step investigation plans and manifests | [README](internal/workflow/README.md) |
+| `internal/jsonout` | Versioned JSON writer: `schema_version` first on every JSON output without its own key (ADR 0010) | [ADR 0010](docs/adr/0010-every-json-output-is-versioned.md) |
 
 ## Start Here
 

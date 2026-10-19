@@ -24,7 +24,7 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w -X binlogviz/internal/version.Version={{ .Version }}
+      - -s -w -X binlogviz/internal/version.Version={{ .Version }} -X binlogviz/internal/version.Commit={{ .FullCommit }} -X binlogviz/internal/version.CommitTime={{ .CommitDate }}
 
 archives:
   - id: release-archive

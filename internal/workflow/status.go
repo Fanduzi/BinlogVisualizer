@@ -47,7 +47,12 @@ type ResumePreviewStep struct {
 }
 
 // BuildStatus builds a read-only runtime status model from a manifest and optional plan.
+// A recorded compare/trend artifact with an unknown schema_version is
+// unsupported (9): its findings cannot be read reliably (ADR 0010).
 func BuildStatus(outputDir string, manifest Manifest, plan *Plan) (Status, error) {
+	if err := CheckArtifactVersions(outputDir, manifest); err != nil {
+		return Status{}, err
+	}
 	status := Status{
 		WorkflowName:    manifest.WorkflowName,
 		OutputDir:       outputDir,

@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "workflow_name": "cleanup-test",
   "output_dir": "<output-dir>",
   "mode": "dry-run",

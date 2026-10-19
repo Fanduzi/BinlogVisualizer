@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "comparability": {
     "verdict": "unknown",
     "reason_codes": [

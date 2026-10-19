@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "snapshot": {
     "name": "incident_window",
     "label": "current",
