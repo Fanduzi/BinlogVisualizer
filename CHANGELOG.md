@@ -4,6 +4,22 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.29.0
+
+Release date: 2026-10-19
+
+Highlights:
+
+- **Breaking for `--diagnostics summary` only:** `diagnostics.ddl_events` is capped at the first `--top` events, and `ddl_events_omitted` counts the rest. Default and `--diagnostics full` output is byte-identical to v0.28.0, and `report_version` stays 3. On a 1.07 GB binlog, summary is 32632 B, down from 42759 B in v0.28.0 (ADR 0011, #308, #311).
+- `snapshot list` marks a reduced file, with a new `DIAGNOSTICS` text column and `diagnostics_mode` in JSON. `diagnostics_mode` edge values are pinned, and `--diagnostics ""` exits 3 (#308, #311).
+- `--help` examples on six commands, rewritten `flashback --sql-context` help, and an operator and agent usage guide. Release archives now ship both guides plus `README.md` and `README_ZH.md` (#255, #311).
+- Known issues: Linux release archives still report an empty commit (#303); #311 P3 follow-ups, including dead relative README links inside the archive (#312); `.github/workflows/README.md` lists the old archive file set until a workflow-scoped fix lands.
+
+Related notes:
+
+- [v0.29.0 release notes](docs/releases/release-notes-v0.29.0.md)
+- [v0.29.0 中文发行说明](docs/releases/release-notes-v0.29.0.zh-CN.md)
+
 ### Changed
 
 - **Breaking for `--diagnostics summary` only (#308, ADR 0011).** `diagnostics.ddl_events` is the first `--top` events in timeline order (default 10), and `diagnostics.ddl_events_omitted` counts the rest, including 0. v0.28.0 listed every DDL event in summary. `report_version` stays 3: default and `--diagnostics full` JSON are byte-identical, and an added key on the opt-in summary document is not a `report_version` bump (ADR 0010). `full` still lists every DDL event and does not emit `ddl_events_omitted`.
@@ -17,6 +33,7 @@ This file records user-visible changes for tagged releases.
 ### Fixed
 
 - An explicitly set `--diagnostics ""` is a usage error (exit 3). The library zero value is still `full` (#308).
+- `diagnostics_mode` edge values are pinned and documented: JSON `null` is the same as a missing key, `"full"` is accepted, any other string (including `""`) is refused with exit 9 (`reduced_diagnostics`), and a non-string such as `1` is corrupt (exit 5) (#308).
 - `flashback --help` describes `--sql-context` as the undo-SQL flag. `summary` and `full` do not change the script. `off` is refused. The analyze wording about default text, DDL statements, and `--show-patterns` is gone (#255).
 
 ## v0.28.0
