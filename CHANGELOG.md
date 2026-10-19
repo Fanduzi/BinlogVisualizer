@@ -4,6 +4,22 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.32.0
+
+Release date: 2026-10-20
+
+Highlights:
+
+- **Breaking for flashback apply:** ADR 0014 (#332, #337). A failed apply never commits a prefix of the undo: the undo is one XA transaction, so script `BEGIN` / `START TRANSACTION` / DDL cannot commit it, and the finish commits only when every statement succeeded (#328, #329). v0.31.0 scripts do not verify; regenerate them.
+- Apply needs `CREATE`, `CREATE ROUTINE`, `ALTER ROUTINE` on `binlogviz.*`, plus `EXECUTE` when `automatic_sp_privileges=0`; `XA_RECOVER_ADMIN` is not needed (#333). A failure before `XA START` stays recorded under `mysql --force`. Each run gets its own `SQL SECURITY INVOKER` finish procedure, so leftovers do not block (#334). `flashback verify --help` usage is fixed (#335). Clean leftovers with `DROP DATABASE IF EXISTS binlogviz`.
+- `schema_version` 1, `plan_version` 2, `report_version` 3, and analyze output are unchanged.
+- Known issues: some missing-grant paths leave the per-run finish procedure behind (#338); Linux release archives still report an empty commit (#303).
+
+Related notes:
+
+- [v0.32.0 release notes](docs/releases/release-notes-v0.32.0.md)
+- [v0.32.0 中文发行说明](docs/releases/release-notes-v0.32.0.zh-CN.md)
+
 ### Breaking
 
 - Flashback SQL from v0.31.0 does not verify. Regenerate it. Apply creates the `binlogviz` database if it is absent and a procedure in it, and needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`. The stock `mysql` client is required (`DELIMITER`). `schema_version` stays 1 and `plan_version` stays 2 (#328, #329, #333, ADR 0014).
