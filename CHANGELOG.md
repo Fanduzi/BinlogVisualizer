@@ -6,11 +6,14 @@ This file records user-visible changes for tagged releases.
 
 ### Breaking
 
-- Flashback SQL from v0.31.0 does not verify. Regenerate it. Apply creates the `binlogviz` database if it is absent and a procedure in it, and needs `CREATE` and `CREATE ROUTINE`. The stock `mysql` client is required (`DELIMITER`). `schema_version` stays 1 and `plan_version` stays 2 (#328, #329, ADR 0014).
+- Flashback SQL from v0.31.0 does not verify. Regenerate it. Apply creates the `binlogviz` database if it is absent and a procedure in it, and needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`. The stock `mysql` client is required (`DELIMITER`). `schema_version` stays 1 and `plan_version` stays 2 (#328, #329, #333, ADR 0014).
 
 ### Fixed
 
 - `binlogviz flashback verify | mysql --force` no longer commits a prefix of the undo when the target is missing a table or a column (#328). A truncated file followed by another script, `BEGIN`, `START TRANSACTION`, or DDL, and a complete file followed by those under `--force`, no longer commit the undo (#329). The undo is one XA transaction. The finish commits only when every statement succeeded. See ADR 0014.
+- The XA apply grant on `binlogviz.*` is `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE`. `DROP PROCEDURE IF EXISTS` needs `ALTER ROUTINE` even when the procedure does not exist (ERROR 1370). `CREATE` on that schema covers `CREATE DATABASE IF NOT EXISTS binlogviz`. `XA RECOVER` is not used, so `XA_RECOVER_ADMIN` is not required. With `automatic_sp_privileges=0`, `CALL` also needs `EXECUTE` on `binlogviz.*`. The same grant works on MySQL 5.7 and 8.0 (#333, ADR 0014).
+- `binlogviz flashback verify` gives each apply its own finish procedure, `binlogviz.binlogviz_fb_end_<token>_<nonce>`, and drops that procedure at the end. A leftover routine owned by a `SYSTEM_USER` account (ERROR 1227 on MySQL 8.0) does not block the next apply. MySQL 5.7 has no `SYSTEM_USER` privilege. Clean leftovers with `DROP DATABASE binlogviz`. New scripts create the procedure `SQL SECURITY INVOKER`. `schema_version` stays 1 and `plan_version` stays 2 (#334, ADR 0014).
+- `binlogviz flashback verify --help` prints that command's usage. Sibling subcommands were already correct (#335).
 
 ## v0.31.0
 

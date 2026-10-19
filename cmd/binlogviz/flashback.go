@@ -146,12 +146,17 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
 	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
 	help := cmd.HelpFunc()
-	cmd.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		if langFlag != "" {
 			_ = i18n.Init(langFlag)
 		}
-		refreshFlashbackHelp(cmd)
-		help(cmd, args)
+		if c == cmd {
+			refreshFlashbackHelp(c)
+		} else {
+			refreshFlashbackChildHelp(c)
+		}
+		c.SetUsageTemplate(flashbackUsageTemplate())
+		help(c, args)
 	})
 	cmd.AddCommand(newFlashbackVerifyCommand())
 	refreshFlashbackHelp(cmd)
@@ -189,6 +194,23 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 	}
 	if cmd.Parent() != nil {
 		if flag := cmd.Parent().PersistentFlags().Lookup("lang"); flag != nil {
+			flag.Usage = i18n.T("cmd.root.flag.lang")
+		}
+	}
+}
+
+func refreshFlashbackChildHelp(cmd *cobra.Command) {
+	switch cmd.Name() {
+	case "verify":
+		cmd.Use = i18n.T("cmd.flashback.verify.use")
+		cmd.Short = i18n.T("cmd.flashback.verify.short")
+		cmd.Long = i18n.T("cmd.flashback.verify.long")
+		if flag := cmd.Flags().Lookup("format"); flag != nil {
+			flag.Usage = i18n.T("cmd.flashback.verify.flag.format")
+		}
+	}
+	if cmd.Parent() != nil && cmd.Parent().Parent() != nil {
+		if flag := cmd.Parent().Parent().PersistentFlags().Lookup("lang"); flag != nil {
 			flag.Usage = i18n.T("cmd.root.flag.lang")
 		}
 	}

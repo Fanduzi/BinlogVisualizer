@@ -24,6 +24,9 @@ func renderScript(t *testing.T, g Guard, pieces ...Piece) string {
 }
 
 func TestWriteVerifyRoundTrip(t *testing.T) {
+	orig := newApplyNonce
+	newApplyNonce = func() (string, error) { return "0123456789abcdef", nil }
+	t.Cleanup(func() { newApplyNonce = orig })
 	g := New([]Col{{Schema: "shop", Table: "t", Column: "g"}})
 	script := renderScript(t, g,
 		Piece{Kind: PieceComment, Text: "-- banner\n"},
@@ -175,7 +178,56 @@ func TestApplySQLRenamesTheFinishProcedure(t *testing.T) {
 		if !applyProcedureRenamed(script, apply) {
 			t.Fatalf("apply SQL did not rename the finish procedure:\n%s", apply)
 		}
+		got, err := chainQuotedPayloads(apply)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seal := sealedHex(apply)
+		if seal == "" || got != seal {
+			t.Fatalf("trailer hex %s, chain %s", seal, got)
+		}
+		if strings.Contains(apply, "XA END '"+tokenOf(script)+"_") || strings.Contains(apply, "XA COMMIT '"+tokenOf(script)+"_") {
+			t.Fatal("XA id was renamed with the procedure")
+		}
 	}
+}
+
+func tokenOf(script string) string {
+	const marker = "CREATE PROCEDURE binlogviz.binlogviz_fb_end_"
+	i := strings.Index(script, marker)
+	if i < 0 || len(script) < i+len(marker)+16 {
+		return ""
+	}
+	return script[i+len(marker) : i+len(marker)+16]
+}
+
+func sealedHex(script string) string {
+	const prefix = "SET @binlogviz_sealed = IF(@binlogviz_digest = '"
+	i := strings.Index(script, prefix)
+	if i < 0 {
+		return ""
+	}
+	rest := script[i+len(prefix):]
+	j := strings.Index(rest, "'")
+	if j != 64 {
+		return ""
+	}
+	return rest[:j]
+}
+
+func chainQuotedPayloads(script string) (string, error) {
+	d := sha256hex(digestDomain)
+	for _, line := range strings.Split(script, "\n") {
+		if !strings.HasPrefix(line, "SET @binlogviz_sql = ") {
+			continue
+		}
+		payload, err := unquoteSQLLine(line)
+		if err != nil {
+			return "", err
+		}
+		d = chainStep(d, payload)
+	}
+	return chainStep(d, trailerMark), nil
 }
 
 // applyProcedureRenamed reports whether apply calls a procedure whose name

@@ -2,6 +2,7 @@ package guard
 
 import (
 	"bufio"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -166,6 +167,7 @@ func ProcedureSQL() string {
 		"DROP PROCEDURE IF EXISTS " + name + ";\n" +
 		"DELIMITER $$\n" +
 		"CREATE PROCEDURE " + name + "()\n" +
+		"SQL SECURITY INVOKER\n" +
 		"BEGIN\n" +
 		"  DECLARE EXIT HANDLER FOR SQLEXCEPTION BEGIN RESIGNAL; END;\n" +
 		"  IF @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 THEN\n" +
@@ -203,8 +205,18 @@ func publishedSuffix(token string) string {
 	return finishBody(token, 0) + noCommitSQL + "\n"
 }
 
-func applySuffix(token string) string {
-	return finishBody(token, 1)
+func applySuffix(token, nonce string) string {
+	name := procedureName(token) + "_" + nonce
+	return fmt.Sprintf("SET @binlogviz_want = 1;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n", name, name)
+}
+
+// newApplyNonce is 16 hex characters, one per verify. Tests pin it.
+var newApplyNonce = func() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 func suffixLen() int {
@@ -285,8 +297,9 @@ func Verify(r io.Reader) (Result, error) {
 	return verifyStream(r)
 }
 
-// ApplySQL is the script verify prints: the same bytes, with the finish
-// allowed to commit when every statement succeeded and the digest matches.
+// ApplySQL is the script verify prints. The file is checked first. The finish
+// may commit, and the procedure name is unique to this call so a leftover
+// routine is not dropped. The XA id stays the session token.
 func ApplySQL(script string) (string, error) {
 	if _, err := verifyStream(strings.NewReader(script)); err != nil {
 		return "", err
@@ -299,11 +312,20 @@ func ApplySQL(script string) (string, error) {
 	if !ok {
 		return "", &VerifyError{Reason: "missing_trailer"}
 	}
-	return script[:len(script)-n] + applySuffix(token), nil
+	nonce, err := newApplyNonce()
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	if err := rewriteApply(&b, strings.NewReader(script), token, nonce); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
-// CopyApply streams a verified script to w, replacing the no-commit finish.
-// It writes nothing until that suffix matches. n is the byte length of r.
+// CopyApply streams a verified script to w. It writes nothing until the
+// no-commit suffix matches, then renames the finish procedure the same way
+// ApplySQL does. n is the byte length of r.
 func CopyApply(w io.Writer, r io.ReadSeeker, n int64) error {
 	nSuffix := int64(suffixLen())
 	if n < nSuffix {
@@ -320,13 +342,188 @@ func CopyApply(w io.Writer, r io.ReadSeeker, n int64) error {
 	if !ok {
 		return &VerifyError{Reason: "missing_trailer"}
 	}
+	nonce, err := newApplyNonce()
+	if err != nil {
+		return err
+	}
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
-	if _, err := io.CopyN(w, r, n-nSuffix); err != nil {
-		return err
+	return rewriteApply(w, io.LimitReader(r, n), token, nonce)
+}
+
+// rewriteApply copies a verified script. The finish procedure payload is
+// renamed to procedureName(token)_nonce and the trailer hex is recomputed
+// from that payload. Every other payload is copied unchanged. The XA id is
+// the token and is not renamed.
+func rewriteApply(w io.Writer, r io.Reader, token, nonce string) error {
+	br := bufio.NewReaderSize(r, 64<<10)
+	bw := bufio.NewWriter(w)
+	digest := sha256hex(digestDomain)
+	for {
+		line, err := readScriptLine(br)
+		if err != nil {
+			return err
+		}
+		switch line {
+		case markerExec:
+			if err := writeScriptLine(bw, line); err != nil {
+				return err
+			}
+			payload, err := copyExecPiece(bw, br)
+			if err != nil {
+				return err
+			}
+			digest = chainStep(digest, payload)
+		case markerRaw:
+			payload, err := rewriteRawPiece(bw, br, token, nonce)
+			if err != nil {
+				return err
+			}
+			digest = chainStep(digest, payload)
+		case markerTrailer:
+			if err := writeApplyTrailer(bw, digest, token, nonce); err != nil {
+				return err
+			}
+			return bw.Flush()
+		default:
+			if err := writeScriptLine(bw, line); err != nil {
+				return err
+			}
+		}
 	}
-	_, err := io.WriteString(w, applySuffix(token))
+}
+
+func readScriptLine(br *bufio.Reader) (string, error) {
+	s, err := br.ReadString('\n')
+	if len(s) == 0 && err != nil {
+		return "", err
+	}
+	if err != nil && err != io.EOF {
+		return "", err
+	}
+	if !strings.HasSuffix(s, "\n") {
+		return "", io.ErrUnexpectedEOF
+	}
+	return strings.TrimSuffix(s, "\n"), nil
+}
+
+func writeScriptLine(w io.Writer, line string) error {
+	_, err := io.WriteString(w, line+"\n")
+	return err
+}
+
+func unquoteSQLLine(line string) (string, error) {
+	const pfx = "SET @binlogviz_sql = "
+	if !strings.HasPrefix(line, pfx) || !strings.HasSuffix(line, ";") {
+		return "", fmt.Errorf("guard: apply payload")
+	}
+	return sqlUnquote(strings.TrimSuffix(strings.TrimPrefix(line, pfx), ";"))
+}
+
+func copyExecPiece(w io.Writer, br *bufio.Reader) (string, error) {
+	sqlLine, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	if err := writeScriptLine(w, sqlLine); err != nil {
+		return "", err
+	}
+	payload, err := unquoteSQLLine(sqlLine)
+	if err != nil {
+		return "", err
+	}
+	step, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	if step != digestStepSQL {
+		return "", fmt.Errorf("guard: apply digest step")
+	}
+	if err := writeScriptLine(w, step); err != nil {
+		return "", err
+	}
+	for _, want := range []string{stmtPrepare, appliedCheckSQL, stmtExecute, appliedCheckSQL, stmtDealloc} {
+		line, err := readScriptLine(br)
+		if err != nil {
+			return "", err
+		}
+		if line != want {
+			return "", fmt.Errorf("guard: apply exec piece")
+		}
+		if err := writeScriptLine(w, line); err != nil {
+			return "", err
+		}
+	}
+	return payload, nil
+}
+
+func rewriteRawPiece(w io.Writer, br *bufio.Reader, token, nonce string) (string, error) {
+	if err := writeScriptLine(w, markerRaw); err != nil {
+		return "", err
+	}
+	sqlLine, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	payload, err := unquoteSQLLine(sqlLine)
+	if err != nil {
+		return "", err
+	}
+	step, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	if step != digestStepSQL {
+		return "", fmt.Errorf("guard: apply digest step")
+	}
+	name := procedureName(token)
+	rewritten := payload
+	if strings.HasPrefix(payload, "CREATE DATABASE IF NOT EXISTS binlogviz;\n") && strings.Contains(payload, "CREATE PROCEDURE "+name+"()") {
+		rewritten = strings.ReplaceAll(payload, name, name+"_"+nonce)
+	}
+	if rewritten != payload {
+		if err := writeScriptLine(w, "SET @binlogviz_sql = "+payloadQuote(rewritten)+";"); err != nil {
+			return "", err
+		}
+	} else if err := writeScriptLine(w, sqlLine); err != nil {
+		return "", err
+	}
+	if err := writeScriptLine(w, step); err != nil {
+		return "", err
+	}
+	if rewritten != payload {
+		if _, err := io.WriteString(w, rewritten); err != nil {
+			return "", err
+		}
+		if _, err := io.CopyN(io.Discard, br, int64(len(payload))); err != nil {
+			return "", err
+		}
+	} else if _, err := io.CopyN(w, br, int64(len(payload))); err != nil {
+		return "", err
+	}
+	applied, err := readScriptLine(br)
+	if err != nil {
+		return "", err
+	}
+	if applied != appliedCheckSQL {
+		return "", fmt.Errorf("guard: apply raw piece")
+	}
+	if err := writeScriptLine(w, applied); err != nil {
+		return "", err
+	}
+	return rewritten, nil
+}
+
+func writeApplyTrailer(w io.Writer, digest, token, nonce string) error {
+	final := chainStep(digest, trailerMark)
+	sealed := "SET @binlogviz_sealed = IF(@binlogviz_digest = '" + final + "' AND NOT (@binlogviz_bad <=> 1), 1, 0);"
+	for _, line := range []string{markerTrailer, trailerStepSQL, sealed} {
+		if err := writeScriptLine(w, line); err != nil {
+			return err
+		}
+	}
+	_, err := io.WriteString(w, applySuffix(token, nonce))
 	return err
 }
 

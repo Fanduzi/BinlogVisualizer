@@ -727,7 +727,8 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 	b.WriteString("-- flashback reverses the selected row changes, last transaction first.\n")
 	b.WriteString("-- TIMESTAMP literals are the UTC wall clock of the stored instant. Review this script before applying it.\n")
 	b.WriteString("-- This file does not commit. Apply it with: binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4\n")
-	b.WriteString("-- The undo is one XA transaction. BEGIN, START TRANSACTION, and DDL while it is open error and do not commit. Apply needs CREATE and CREATE ROUTINE, and the stock mysql client (DELIMITER).\n")
+	b.WriteString("-- The undo is one XA transaction. BEGIN, START TRANSACTION, and DDL while it is open error and do not commit. Apply needs CREATE, CREATE ROUTINE, and the ALTER-ROUTINE privilege on binlogviz.*, and the stock mysql client (DELIMITER).\n")
+	b.WriteString("-- verify names the finish procedure for that run and drops it at the end. Drop leftover helpers with DROP DATABASE binlogviz.\n")
 	for _, note := range notes {
 		b.WriteString(note)
 		if !strings.HasSuffix(note, "\n") {

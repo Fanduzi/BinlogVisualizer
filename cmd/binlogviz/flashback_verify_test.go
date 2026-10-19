@@ -11,6 +11,20 @@ import (
 	"binlogviz/internal/guard"
 )
 
+func procedureCall(sql string) string {
+	const marker = "CALL binlogviz.binlogviz_fb_end_"
+	i := strings.LastIndex(sql, marker)
+	if i < 0 {
+		return ""
+	}
+	rest := sql[i+len("CALL "):]
+	end := strings.Index(rest, "()")
+	if end < 0 {
+		return ""
+	}
+	return rest[:end]
+}
+
 func writeVerifyFixture(t *testing.T) string {
 	t.Helper()
 	var b strings.Builder
@@ -142,17 +156,18 @@ func TestFlashbackVerifyMatchesGeneratedScript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("flashback: %v\n%s", err, stderr)
 	}
-	want, err := guard.ApplySQL(stdout)
-	if err != nil {
-		t.Fatal(err)
-	}
 	script := filepath.Join(t.TempDir(), "flashback.sql")
 	if err := os.WriteFile(script, []byte(stdout), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, out, errOut := runRoot(t, "flashback", "verify", script)
-	if code != 0 || out != want || strings.Contains(out, "has no commit trailer") {
-		t.Fatalf("verify exit %d\nstderr %s\nout bytes %d want %d", code, errOut, len(out), len(want))
+	if code != 0 || strings.Contains(out, "has no commit trailer") || !strings.Contains(out, "SET @binlogviz_want = 1;") {
+		t.Fatalf("verify exit %d\nstderr %s\nout bytes %d", code, errOut, len(out))
+	}
+	fileCall := procedureCall(stdout)
+	applyCall := procedureCall(out)
+	if fileCall == "" || applyCall == "" || applyCall == fileCall || !strings.HasPrefix(applyCall, fileCall+"_") {
+		t.Fatalf("procedure call file %q apply %q", fileCall, applyCall)
 	}
 	code, jout, errOut := runRoot(t, "--error-format", "json", "flashback", "verify", script, "--format", "json")
 	if code != 0 || !strings.Contains(jout, `"ok": true`) || !strings.Contains(jout, `"statements":`) {
