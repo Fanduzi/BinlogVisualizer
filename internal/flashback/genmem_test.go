@@ -18,6 +18,9 @@ import (
 // The child asserts VmHWM stays under 64MB, which the old review misses, and
 // runs with GOMEMLIMIT set. BINLOGVIZ_GENMEM=measure only prints VmHWM.
 func TestGeneratedReviewRSS(t *testing.T) {
+	if reviewRSSRace() {
+		t.Skip("race detector puts this workload above the 64MB VmHWM check")
+	}
 	mode := os.Getenv("BINLOGVIZ_GENMEM")
 	if mode == "child" || mode == "measure" {
 		n, _ := strconv.Atoi(os.Getenv("GENMEM_N"))
@@ -42,7 +45,7 @@ func TestGeneratedReviewRSS(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	t.Logf("%s", out)
 	if err != nil {
-		t.Fatalf("generated-column review exceeded 192MiB: %v\n%s", err, out)
+		t.Fatalf("generated-column review exceeded 64MB: %v\n%s", err, out)
 	}
 	if !strings.Contains(string(out), "rss_kb=") {
 		t.Fatalf("child printed no rss:\n%s", out)

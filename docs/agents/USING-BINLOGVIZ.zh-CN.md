@@ -79,11 +79,11 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 | 3 | `usage` | 标志或参数错误，包括 `--diagnostics ""` 或 `nope` |
 | 4 | `input` | 文件或快照不存在 |
 | 5 | `corrupt` | 不是 binlog，或 JSON 不符合报告形状，包括非字符串的 `diagnostics_mode` |
-| 6 | `refused` | flashback 不会输出 SQL |
+| 6 | `refused` | flashback 不会输出 SQL。`flashback verify` 的 `details.reason` 为 `not_flashback`、`truncated`、`missing_trailer`、`appended` 或 `digest_mismatch`，stdout 为空 |
 | 7 | `conflict` | 选中的行后来又被修改 |
 | 8 | `output` | 写不出报告或脚本 |
 | 9 | `unsupported` | 没有 ROW 镜像的 STATEMENT/MIXED、未知版本，或裁剪过的 diagnostics 文档 |
-| 10 | `resource` | flashback 达到溢出上限（`BINLOGVIZ_SPILL_BYTES`，`details.reason` 为 `spill_limit`）或进程内存上限（`GOMEMLIMIT`，`details.reason` 为 `memory_limit`）。未设置、非正数或无法解析的 `BINLOGVIZ_SPILL_BYTES` 表示没有字节上限。不是空结果 |
+| 10 | `resource` | flashback 达到溢出上限（`BINLOGVIZ_SPILL_BYTES`，`details.reason` 为 `spill_limit`）或堆上限（`BINLOGVIZ_MEMORY_BYTES`，未设置时才用 `GOMEMLIMIT`；`details.reason` 为 `memory_limit`）。`BINLOGVIZ_SPILL_BYTES` 或 `BINLOGVIZ_MEMORY_BYTES` 已设置但不是正的十进制整数时是退出码 3。未设置 `BINLOGVIZ_SPILL_BYTES` 表示没有字节上限。不是空结果 |
 
 ## JSON 版本
 
@@ -93,6 +93,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 |---|---|---|
 | `analyze --format json`、保存的快照 | `report_version` | 3 |
 | `flashback --plan` | `plan_version` | 2 |
+| `flashback verify --format json` | `schema_version` | 1 |
 | `compare`、`trend`、`snapshot list`、`snapshot show` 的 `--format json` | `schema_version` | 1 |
 | `workflow validate`、`describe`、`status`、`clean`、`export` 的 `--format json` | `schema_version` | 1 |
 | `version --format json` | `schema_version` | 1 |

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -44,6 +45,9 @@ func newFlashbackCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			stage := clierr.KindUsage
 			defer func() { err = clierr.Wrap(stage, err) }()
+			if err := flashback.ValidateResourceEnv(); err != nil {
+				return err
+			}
 			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
 			if err != nil {
 				return err
@@ -149,6 +153,7 @@ func newFlashbackCommand() *cobra.Command {
 		refreshFlashbackHelp(cmd)
 		help(cmd, args)
 	})
+	cmd.AddCommand(newFlashbackVerifyCommand())
 	refreshFlashbackHelp(cmd)
 	return cmd
 }
@@ -200,7 +205,10 @@ func flashbackUsageTemplate() string {
 {{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
 
 ` + i18n.T("cmd.flashback.help.globalFlags") + `:
-{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableSubCommands}}
+
+{{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
+{{end}}{{end}}{{end}}
 `
 }
 
@@ -247,9 +255,13 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 	for _, warning := range plan.Warnings() {
 		fmt.Fprintln(os.Stderr, warning)
 	}
-	// The script streams from a temp file: memory does not grow with the binlog (#258).
-	out := bufio.NewWriterSize(os.Stdout, 1<<16)
-	if _, err := plan.WriteTo(out); err != nil {
+	// The sealed script is written to a temp file and copied to stdout only
+	// after that write succeeds, so exit 8 does not leave a prefix (ADR 0013).
+	err = flashback.Publish(os.Stdout, func(w io.Writer) error {
+		_, werr := plan.WriteTo(w)
+		return werr
+	})
+	if err != nil {
 		var refusal *flashback.FlashbackConflictError
 		var resource *flashback.ResourceError
 		if errors.As(err, &refusal) || errors.As(err, &resource) {
@@ -257,5 +269,5 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 		}
 		return clierr.Wrap(clierr.KindOutput, err)
 	}
-	return clierr.Wrap(clierr.KindOutput, out.Flush())
+	return nil
 }

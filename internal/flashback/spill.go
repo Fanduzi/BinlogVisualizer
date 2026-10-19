@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"sort"
 	"strings"
@@ -383,14 +382,4 @@ func (d *spillDec) row(r *model.FlashRow) {
 	r.ProblemKind = d.str()
 	r.ProblemColumn = d.str()
 	r.ProblemType = d.str()
-}
-
-// writerFunc lets the renderer target a hash or the output with one code path.
-type writerFunc func(string) error
-
-func toWriter(w io.Writer) writerFunc {
-	return func(s string) error {
-		_, err := io.WriteString(w, s)
-		return err
-	}
 }

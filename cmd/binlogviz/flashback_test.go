@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"binlogviz/internal/guard"
 )
 
 func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
@@ -26,8 +28,8 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 		t.Fatalf("incident fixture warning:\n%s", stderr)
 	}
 	for _, want := range []string{
-		"SET NAMES utf8mb4;",
-		"SET time_zone = '+00:00';",
+		"SET NAMES utf8mb4",
+		"SET time_zone = '+00:00'",
 		"-9223372036854775808",
 		"18446744073709551615",
 		"4294967295",
@@ -42,17 +44,18 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 		", 2, 5)",
 		"WHERE `id` <=> 30 AND `bucket` <=> 9",
 		"-- no primary key on shop.heap; this matches every column and LIMIT 1",
-		"LIMIT 1;",
+		"LIMIT 1",
 		"-- gtid: ",
 		"-- binlog: mysql-8.0.46-flashback-full.binlog:",
 		"START TRANSACTION;",
-		"COMMIT;",
+		"-- binlogviz-trailer",
 	} {
-		if !strings.Contains(stdout, want) {
+		if !flashbackScriptHas(stdout, want) {
 			t.Fatalf("missing %q\n%s", want, stdout)
 		}
 	}
-	if strings.Count(stdout, "START TRANSACTION;") != 3 {
+	// One transaction for the whole undo: the raw statement and its digest payload.
+	if strings.Count(stdout, "START TRANSACTION;") != 2 || strings.Contains(stdout, "\nCOMMIT;\n") {
 		t.Fatalf("transactions:\n%s", stdout)
 	}
 	undoLast := strings.Index(stdout, "DELETE FROM `shop`.`heap` WHERE `id` <=> 5")
@@ -68,7 +71,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dml delete: %v", err)
 	}
-	if strings.Count(onlyDelete, "START TRANSACTION;") != 1 || !strings.Contains(onlyDelete, "18446744073709551615") || strings.Contains(onlyDelete, "`id` <=> 10") {
+	if strings.Count(onlyDelete, "START TRANSACTION;") != 2 || !strings.Contains(onlyDelete, "18446744073709551615") || strings.Contains(onlyDelete, "`id` <=> 10") {
 		t.Fatalf("dml delete kept the wrong rows:\n%s", onlyDelete)
 	}
 	if strings.Contains(deleteErr, "only partly undone") {
@@ -91,7 +94,7 @@ func TestFlashbackSQLOnMySQL80FullFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("position: %v", err)
 	}
-	if strings.Count(narrow, "START TRANSACTION;") != 1 || !strings.Contains(narrow, "`id` <=> 5") || strings.Contains(narrow, "18446744073709551615") {
+	if strings.Count(narrow, "START TRANSACTION;") != 2 || !strings.Contains(narrow, "`id` <=> 5") || strings.Contains(narrow, "18446744073709551615") {
 		t.Fatalf("position window:\n%s", narrow)
 	}
 }
@@ -441,7 +444,7 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 	if strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
 		t.Fatalf("wrote generated columns:\n%s", sql)
 	}
-	e2eMySQL(t, sql)
+	e2eMySQL(t, committingFlashback(t, sql))
 	restored := e2eMySQL(t, checksumSQL)
 	if restored != beforeSum {
 		t.Fatalf("checksum\nbefore:\n%s\nafter incident:\n%s\nrestored:\n%s", beforeSum, afterSum, restored)
@@ -457,24 +460,24 @@ UPDATE shop.gen SET base = 11 WHERE id = 1;
 DELETE FROM shop.gen WHERE id = 2;
 INSERT INTO shop.gen (id, base) VALUES (4, 40);
 COMMIT;`)
-	e2eMySQL(t, genSQL)
+	e2eMySQL(t, committingFlashback(t, genSQL))
 	if got := e2eMySQL(t, "CHECKSUM TABLE shop.gen"); got != genBefore {
 		t.Fatalf("gen checksum\nbefore:\n%s\nrestored:\n%s", genBefore, got)
 	}
 
 	e2eMySQL(t, "DELETE FROM shop.cj")
-	e2eMySQL(t, cjSQL)
+	e2eMySQL(t, committingFlashback(t, cjSQL))
 	if got := e2eMySQL(t, "CHECKSUM TABLE shop.cj"); got != cjBefore {
 		t.Fatalf("cj checksum\nbefore:\n%s\nrestored:\n%s", cjBefore, got)
 	}
 
 	e2eMySQL(t, "DELETE FROM shop.es")
-	e2eMySQL(t, esSQL)
+	e2eMySQL(t, committingFlashback(t, esSQL))
 	if got := e2eMySQL(t, "CHECKSUM TABLE shop.es"); got != esBefore {
 		t.Fatalf("strict es checksum\nbefore:\n%s\nrestored:\n%s", esBefore, got)
 	}
 	e2eMySQL(t, "DELETE FROM shop.es")
-	e2eMySQL(t, "SET SESSION sql_mode='';\n"+esSQL)
+	e2eMySQL(t, "SET SESSION sql_mode='';\n"+committingFlashback(t, esSQL))
 	if got := e2eMySQL(t, "CHECKSUM TABLE shop.es"); got != esBefore {
 		t.Fatalf("non-strict es checksum\nbefore:\n%s\nrestored:\n%s", esBefore, got)
 	}
@@ -509,7 +512,7 @@ COMMIT;`)
 		if got := e2eMySQL(t, "CHECKSUM TABLE shop.yearnum"); got == yearBefore {
 			t.Fatalf("%s year incident did not change checksum:\n%s", mode.name, got)
 		}
-		e2eMySQL(t, mode.prefix+yearSQL)
+		e2eMySQL(t, mode.prefix+committingFlashback(t, yearSQL))
 		if got := e2eMySQL(t, "CHECKSUM TABLE shop.yearnum"); got != yearBefore {
 			t.Fatalf("%s year checksum\nbefore:\n%s\nrestored:\n%s\nsql:\n%s", mode.name, yearBefore, got, yearSQL)
 		}
@@ -553,7 +556,7 @@ INSERT INTO shop.pkmove VALUES (1, 0), (2, 0), (3, 0);`)
 	if strings.Count(sql, "AS binlogviz_key)") != 3 {
 		t.Fatalf("guard sql has no key check on every move-back:\n%s", sql)
 	}
-	if out, err := e2eMySQLResult(t, sql); err != nil {
+	if out, err := e2eMySQLResult(t, committingFlashback(t, sql)); err != nil {
 		t.Fatalf("guard apply: %v\n%s\nsql:\n%s", err, out, sql)
 	}
 	got := strings.TrimSpace(e2eMySQL(t, "SELECT id, v FROM shop.pkmove ORDER BY id"))
@@ -647,7 +650,7 @@ COMMIT;`
 		if strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") || !strings.Contains(sql, "shop`.`wide") {
 			t.Fatalf("%s sql:\n%s\nstderr:\n%s", label, sql, stderr)
 		}
-		e2eMySQL(t, sql)
+		e2eMySQL(t, committingFlashback(t, sql))
 		if got := e2eMySQL(t, sumSQL); got != before {
 			t.Fatalf("%s checksum\nbefore:\n%s\nrestored:\n%s", label, before, got)
 		}
@@ -700,8 +703,8 @@ COMMIT;`)
 	if err != nil {
 		t.Fatalf("enum 0: %v\n%s", err, stderr)
 	}
-	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode;"
-	const restoreMode = "SET SESSION sql_mode = @binlogviz_sql_mode;"
+	const save = "SET @binlogviz_sql_mode = @@SESSION.sql_mode"
+	const restoreMode = "SET SESSION sql_mode = @binlogviz_sql_mode"
 	if strings.Count(sql, save) != 1 || strings.Count(sql, restoreMode) != 1 {
 		t.Fatalf("enum 0 sql:\n%s", sql)
 	}
@@ -723,7 +726,7 @@ COMMIT;`)
 	} {
 		baseline := e2eSessionMode(t, mode.prefix+"DO 0;")
 		e2eMySQL(t, "DELETE FROM shop.ezero")
-		gotMode := e2eSessionMode(t, mode.prefix+sql)
+		gotMode := e2eSessionMode(t, mode.prefix+committingFlashback(t, sql))
 		if got := e2eMySQL(t, "CHECKSUM TABLE shop.ezero"); got != before {
 			t.Fatalf("%s enum 0 checksum\nbefore:\n%s\nrestored:\n%s", mode.name, before, got)
 		}
@@ -859,7 +862,7 @@ COMMIT;`)
 	if !strings.Contains(sql, "schema file does not match the target") || !strings.Contains(sql, "p160.gen.jv") || !guardBeforeFirstGTID(sql) {
 		t.Fatalf("missing generated-column guard:\n%s", sql)
 	}
-	e2eMySQL(t, sql)
+	e2eMySQL(t, committingFlashback(t, sql))
 	if got := e2eMySQL(t, sumSQL); got != before {
 		t.Fatalf("generated checksum\nbefore:\n%s\nrestored:\n%s\nsql:\n%s", before, got, sql)
 	}
@@ -969,6 +972,7 @@ DROP DATABASE IF EXISTS p178a;
 DROP DATABASE IF EXISTS p183;
 DROP DATABASE IF EXISTS p183ok;
 DROP DATABASE IF EXISTS p182;
+DROP DATABASE IF EXISTS p186;
 CREATE DATABASE p178a;
 CREATE DATABASE p183;
 CREATE DATABASE p183ok;
@@ -1079,7 +1083,7 @@ COMMIT;`)
 	if !strings.Contains(sql, "schema file does not match the target") || !guardBeforeFirstGTID(sql) {
 		t.Fatalf("guard:\n%s", sql)
 	}
-	if !strings.Contains(sql, "`note` <=> 'DUP'") {
+	if !flashbackScriptHas(sql, "`note` <=> 'DUP'") {
 		t.Fatalf("no-pk WHERE dropped the generated column:\n%s", sql)
 	}
 	if sqlAssignsColumn(sql, "`c`") || sqlAssignsColumn(sql, "`note`") {
@@ -1135,16 +1139,20 @@ COMMIT;`)
 		// interactive client that reconnected inside the block) change no row.
 		var dml strings.Builder
 		for _, line := range strings.Split(sql[cut:], "\n") {
-			if strings.HasPrefix(line, "INSERT INTO ") || strings.HasPrefix(line, "UPDATE ") || strings.HasPrefix(line, "DELETE FROM ") {
-				dml.WriteString(line + "\n")
+			payload, ok := flashbackPayload(line)
+			if !ok {
+				continue
+			}
+			if strings.HasPrefix(payload, "INSERT ") || strings.HasPrefix(payload, "UPDATE ") || strings.HasPrefix(payload, "DELETE ") {
+				dml.WriteString(payload + ";\n")
 			}
 		}
 		if dml.Len() == 0 {
 			t.Fatalf("no undo statements in:\n%s", sql)
 		}
 		assertGuardForceKeepsRows(t, "RECONNECT_DML", dml.String(), matchSum, matchAfter, func(out string) {
-			if mysqlErrorLine(out, "1792") != "" {
-				t.Fatalf("writable session refused the statements instead of skipping them\n%s", out)
+			if mysqlErrorLine(out, "1242") == "" {
+				t.Fatalf("token mismatch was not an error\n%s", out)
 			}
 		})
 	}
@@ -1154,7 +1162,7 @@ COMMIT;`)
 	restorePrep := func() { e2eMySQL(t, "SET GLOBAL max_prepared_stmt_count = "+prevPrep) }
 	t.Cleanup(func() { _, _ = e2eMySQLResult(t, "SET GLOBAL max_prepared_stmt_count = "+prevPrep) })
 	assertGuardForceKeepsRows(t, "NOPREPARE", sql, matchSum, matchAfter, func(out string) {
-		if mysqlErrorLine(out, "1461") == "" || mysqlErrorLine(out, "1792") == "" {
+		if mysqlErrorLine(out, "1461") == "" {
 			t.Fatalf("max_prepared_stmt_count=0 guard:\n%s", out)
 		}
 	})
@@ -1181,7 +1189,7 @@ COMMIT;`)
 	if !strings.Contains(sql, "schema file does not match the target") || !strings.Contains(sql, "'p183ok.t.c'") {
 		t.Fatalf("post-alter guard:\n%s", sql)
 	}
-	probe := e2eMySQL(t, sql+"SELECT CONCAT('RO=', @@SESSION.transaction_read_only, ' AC=', @@SESSION.autocommit);\n")
+	probe := e2eMySQL(t, committingFlashback(t, sql)+"SELECT CONCAT('RO=', @@SESSION.transaction_read_only, ' AC=', @@SESSION.autocommit);\n")
 	if !strings.Contains(probe, "RO=0") || !strings.Contains(probe, "AC=1") {
 		t.Fatalf("matching guard changed the session: %q", probe)
 	}
@@ -1203,7 +1211,7 @@ COMMIT;`)
 	if strings.Contains(stderr, "does not match") {
 		t.Fatalf("json contradiction:\n%s\nstored:\n%s\nsql:\n%s", stderr, stored, sql)
 	}
-	e2eMySQL(t, sql)
+	e2eMySQL(t, committingFlashback(t, sql))
 	if got := e2eMySQL(t, "SELECT id, v FROM p182.j ORDER BY id"); got != stored {
 		t.Fatalf("json restored\nwant:\n%s\ngot:\n%s\nsql:\n%s", stored, got, sql)
 	}
@@ -1255,10 +1263,27 @@ func wideGuardVals() string {
 // assertGuardVersionChoice runs the guard's own version check from script on
 // this server with @@version replaced by each string, and checks which servers
 // are refused and which read-only variable is read.
+func lineStartIndex(sql, fragment string) int {
+	from := 0
+	for {
+		i := strings.Index(sql[from:], fragment)
+		if i < 0 {
+			return -1
+		}
+		at := from + i
+		if at == 0 || sql[at-1] == '\n' {
+			return at
+		}
+		from = at + 1
+	}
+}
+
 func assertGuardVersionChoice(t *testing.T, script string) {
 	t.Helper()
-	start := strings.Index(script, "SET @binlogviz_maria = ")
-	roAt := strings.Index(script, "SET @binlogviz_ro = ")
+	// The digest payload quotes the same text mid-line. The check is the copy
+	// that starts a line, which is the SQL the server runs.
+	start := lineStartIndex(script, "SET @binlogviz_maria = ")
+	roAt := lineStartIndex(script, "SET @binlogviz_ro = ")
 	if start < 0 || roAt < start {
 		t.Fatalf("version check not found:\n%s", script)
 	}
@@ -1499,7 +1524,7 @@ COMMIT;`)
 	if !strings.Contains(sql, "p179.qd.g") || !guardBeforeFirstGTID(sql) {
 		t.Fatalf("missing generated-column guard:\n%s", sql)
 	}
-	e2eMySQL(t, sql)
+	e2eMySQL(t, committingFlashback(t, sql))
 	if got := e2eMySQL(t, sumSQL); got != before {
 		t.Fatalf("decimal checksum\nbefore:\n%s\nrestored:\n%s\nsql:\n%s", before, got, sql)
 	}
@@ -1740,6 +1765,85 @@ func e2eGTIDSet(raw string) string {
 		}
 	}
 	return strings.Join(parts, ",")
+}
+
+// committingFlashback is the SQL verify prints: the script plus the
+// conditional COMMIT. mysql of the file itself rolls the undo back.
+func committingFlashback(t *testing.T, sql string) string {
+	t.Helper()
+	out, err := guard.ApplySQL(sql)
+	if err != nil {
+		t.Fatalf("flashback verify: %v", err)
+	}
+	return out
+}
+
+func flashbackScriptHas(sql, fragment string) bool {
+	if strings.Contains(sql, fragment) {
+		return true
+	}
+	var b strings.Builder
+	for i := 0; i < len(fragment); i++ {
+		switch fragment[i] {
+		case '\\', '\'':
+			b.WriteByte('\\')
+			b.WriteByte(fragment[i])
+		case '\n':
+			b.WriteString(`\n`)
+		case '\r':
+			b.WriteString(`\r`)
+		case 0:
+			b.WriteString(`\0`)
+		default:
+			b.WriteByte(fragment[i])
+		}
+	}
+	if strings.Contains(sql, b.String()) {
+		return true
+	}
+	return strings.Contains(sql, strings.ReplaceAll(fragment, "'", "''"))
+}
+
+// flashbackPayload reads one SET @binlogviz_sql line. The literal is a MySQL
+// string: backslash escapes, or doubled quotes when the payload has none.
+func flashbackPayload(line string) (string, bool) {
+	const pfx = "SET @binlogviz_sql = "
+	if !strings.HasPrefix(line, pfx) || !strings.HasSuffix(line, ";") {
+		return "", false
+	}
+	lit := strings.TrimSuffix(line[len(pfx):], ";")
+	if len(lit) < 2 || lit[0] != '\'' || lit[len(lit)-1] != '\'' {
+		return "", false
+	}
+	var b strings.Builder
+	for i := 1; i < len(lit)-1; i++ {
+		if lit[i] == '\'' && i+1 < len(lit)-1 && lit[i+1] == '\'' {
+			b.WriteByte('\'')
+			i++
+			continue
+		}
+		if lit[i] != '\\' {
+			b.WriteByte(lit[i])
+			continue
+		}
+		if i+1 >= len(lit)-1 {
+			return "", false
+		}
+		i++
+		switch lit[i] {
+		case '\\', '\'', '"':
+			b.WriteByte(lit[i])
+		case 'n':
+			b.WriteByte('\n')
+		case 'r':
+			b.WriteByte('\r')
+		case '0':
+			b.WriteByte(0)
+		default:
+			b.WriteByte(lit[i])
+		}
+	}
+	return b.String(), true
 }
 
 func e2eMySQL(t *testing.T, stdin string) string {

@@ -123,9 +123,9 @@ func TestFlashbackConflictGuardMatchesPostImage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"UPDATE `shop`.`orders` SET `id` = 1014, `amount` = 18.50 WHERE `id` <=> 1014 AND `amount` <=> 17.50;",
-		"DELETE FROM `shop`.`orders` WHERE `id` <=> 8 AND `amount` <=> 2.00;",
-		"INSERT INTO `shop`.`orders` (`id`, `amount`) SELECT 7, 1.00 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `shop`.`orders` WHERE `id` <=> 7);",
+		"UPDATE `shop`.`orders` SET `id` = 1014, `amount` = 18.50 WHERE `id` <=> 1014 AND `amount` <=> 17.50",
+		"DELETE FROM `shop`.`orders` WHERE `id` <=> 8 AND `amount` <=> 2.00",
+		"INSERT INTO `shop`.`orders` (`id`, `amount`) SELECT 7, 1.00 FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM `shop`.`orders` WHERE `id` <=> 7)",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("missing %s in:\n%s", want, sql)
@@ -155,9 +155,9 @@ func TestFlashbackConflictGuardKeyMoveSkipsReusedKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"UPDATE `e`.`pk` SET `id` = 2, `v` = 0 WHERE `id` <=> 102 AND `v` <=> 0 AND NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM `e`.`pk` WHERE `id` <=> 2 AND NOT (`id` <=> 102) LIMIT 1) AS binlogviz_key);",
-		"UPDATE `e`.`pk` SET `id` = 1, `v` = 0 WHERE `id` <=> 101 AND `v` <=> 0 AND NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM `e`.`pk` WHERE `id` <=> 1 AND NOT (`id` <=> 101) LIMIT 1) AS binlogviz_key);",
-		"UPDATE `e`.`pk` SET `id` = 9, `v` = 0 WHERE `id` <=> 9 AND `v` <=> 1;",
+		"UPDATE `e`.`pk` SET `id` = 2, `v` = 0 WHERE `id` <=> 102 AND `v` <=> 0 AND NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM `e`.`pk` WHERE `id` <=> 2 AND NOT (`id` <=> 102) LIMIT 1) AS binlogviz_key)",
+		"UPDATE `e`.`pk` SET `id` = 1, `v` = 0 WHERE `id` <=> 101 AND `v` <=> 0 AND NOT EXISTS (SELECT 1 FROM (SELECT 1 FROM `e`.`pk` WHERE `id` <=> 1 AND NOT (`id` <=> 101) LIMIT 1) AS binlogviz_key)",
+		"UPDATE `e`.`pk` SET `id` = 9, `v` = 0 WHERE `id` <=> 9 AND `v` <=> 1",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("missing %s in:\n%s", want, sql)

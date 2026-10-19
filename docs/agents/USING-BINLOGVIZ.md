@@ -79,11 +79,11 @@ The kind string does not change with `--lang`. `--error-format json` prints one 
 | 3 | `usage` | Bad flag or arguments, including `--diagnostics ""` or `nope` |
 | 4 | `input` | File or snapshot missing |
 | 5 | `corrupt` | Not a binlog, or JSON that does not match the report shape, including a non-string `diagnostics_mode` |
-| 6 | `refused` | Flashback will not emit SQL |
+| 6 | `refused` | Flashback will not emit SQL. `flashback verify` uses `details.reason` `not_flashback`, `truncated`, `missing_trailer`, `appended`, or `digest_mismatch`, and writes nothing to stdout |
 | 7 | `conflict` | A selected row changed again later |
 | 8 | `output` | Could not write the report or the script |
 | 9 | `unsupported` | STATEMENT/MIXED with no ROW images, an unknown version, or a trimmed diagnostics document |
-| 10 | `resource` | Flashback hit a spill ceiling (`BINLOGVIZ_SPILL_BYTES`, `details.reason` `spill_limit`) or the process memory limit (`GOMEMLIMIT`, `details.reason` `memory_limit`). Unset or non-positive / unparseable `BINLOGVIZ_SPILL_BYTES` means no byte ceiling. Not an empty result |
+| 10 | `resource` | Flashback hit a spill ceiling (`BINLOGVIZ_SPILL_BYTES`, `details.reason` `spill_limit`) or the heap ceiling (`BINLOGVIZ_MEMORY_BYTES`, or `GOMEMLIMIT` when that is unset; `details.reason` `memory_limit`). A set `BINLOGVIZ_SPILL_BYTES` or `BINLOGVIZ_MEMORY_BYTES` that is not a positive base-10 integer is exit 3. Unset `BINLOGVIZ_SPILL_BYTES` means no byte ceiling. Not an empty result |
 
 ## JSON versions
 
@@ -93,6 +93,7 @@ Read the version key first. Adding a key does not bump the number. Removing, ren
 |---|---|---|
 | `analyze --format json`, saved snapshots | `report_version` | 3 |
 | `flashback --plan` | `plan_version` | 2 |
+| `flashback verify --format json` | `schema_version` | 1 |
 | `compare`, `trend`, `snapshot list`, `snapshot show` `--format json` | `schema_version` | 1 |
 | `workflow validate`, `describe`, `status`, `clean`, `export` `--format json` | `schema_version` | 1 |
 | `version --format json` | `schema_version` | 1 |

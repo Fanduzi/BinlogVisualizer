@@ -100,7 +100,7 @@ func TestFlashbackLearnsExcludedCreateAndWarnsOnSplit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (2, 20);") || strings.Contains(sql, "virt") || strings.Contains(sql, "shop`.`wide") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) VALUES (2, 20)") || strings.Contains(sql, "virt") || strings.Contains(sql, "shop`.`wide") {
 		t.Fatalf("sql:\n%s", sql)
 	}
 	warnings := a.Planner().Warnings()
@@ -231,13 +231,13 @@ func TestSchemaFileOmitsGeneratedColumns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 1, 10 FROM DUAL WHERE @binlogviz_ok <=> '") || strings.Contains(sql, "`stor`") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 1, 10 FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") || strings.Contains(sql, "`stor`") {
 		t.Fatalf("schema file sql:\n%s", sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) SELECT 1, 'a' FROM DUAL WHERE @binlogviz_ok <=> '") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`wide` (`id`, `note`) SELECT 1, 'a' FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") {
 		t.Fatalf("show create sql:\n%s", sql)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`other` (`id`, `virt`) SELECT 1, 2 FROM DUAL WHERE @binlogviz_ok <=> '") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`other` (`id`, `virt`) SELECT 1, 2 FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") {
 		t.Fatalf("unknown table sql:\n%s", sql)
 	}
 	warnings := a.Planner().Warnings()
@@ -339,7 +339,7 @@ func assertBatchShowCreate(t *testing.T, batch string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 1, 10 FROM DUAL WHERE @binlogviz_ok <=> '") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
+	if !scriptHas(sql, "INSERT INTO `shop`.`gen` (`id`, `base`) SELECT 1, 10 FROM DUAL WHERE CASE WHEN @binlogviz_ok <=> '") || strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
 		t.Fatalf("batch show create:\n%s", sql)
 	}
 	if warnings := a.Planner().Warnings(); len(warnings) != 0 {

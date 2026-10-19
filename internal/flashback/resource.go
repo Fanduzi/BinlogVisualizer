@@ -6,6 +6,7 @@ import (
 	"runtime/debug"
 	"strconv"
 
+	"binlogviz/internal/clierr"
 	"binlogviz/internal/i18n"
 )
 
@@ -28,16 +29,45 @@ func (e *ResourceError) Error() string {
 	})
 }
 
-func spillLimitFromEnv() int64 {
-	v := os.Getenv("BINLOGVIZ_SPILL_BYTES")
-	if v == "" {
-		return 0
+// ValidateResourceEnv rejects a set-but-unusable ceiling before any binlog is
+// read. Unset means no spill ceiling, and the memory ceiling stays GOMEMLIMIT
+// (ADR 0013).
+func ValidateResourceEnv() error {
+	if _, err := parseByteCeiling("BINLOGVIZ_SPILL_BYTES"); err != nil {
+		return err
+	}
+	_, err := parseByteCeiling("BINLOGVIZ_MEMORY_BYTES")
+	return err
+}
+
+func spillLimitFromEnv() (int64, error) {
+	return parseByteCeiling("BINLOGVIZ_SPILL_BYTES")
+}
+
+func memoryLimitFromEnv() (int64, error) {
+	return parseByteCeiling("BINLOGVIZ_MEMORY_BYTES")
+}
+
+// parseByteCeiling returns 0 when name is unset. A set value must be a
+// positive base-10 integer: empty, 0, negative, and unit suffixes are usage
+// errors.
+func parseByteCeiling(name string) (int64, error) {
+	v, ok := os.LookupEnv(name)
+	if !ok {
+		return 0, nil
 	}
 	n, err := strconv.ParseInt(v, 10, 64)
 	if err != nil || n <= 0 {
-		return 0
+		shown := v
+		if shown == "" {
+			shown = "empty"
+		}
+		return 0, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.flashbackByteEnv", map[string]any{
+			"Name":  name,
+			"Value": shown,
+		}))
 	}
-	return n
+	return n, nil
 }
 
 // reviewBudget fails when the row spill plus the review spill pass the ceiling.
@@ -61,7 +91,8 @@ func (a *Planner) overBudget(extra int64) error {
 }
 
 // checkMemory fails when HeapAlloc stays above 90% of the ceiling after one GC.
-// The ceiling is the planner limit, or GOMEMLIMIT when that is finite.
+// The ceiling is BINLOGVIZ_MEMORY_BYTES when that is set, otherwise a finite
+// GOMEMLIMIT (ADR 0013). A value above GOMEMLIMIT does not raise the runtime limit.
 func (a *Planner) checkMemory() error {
 	if a == nil {
 		return nil
