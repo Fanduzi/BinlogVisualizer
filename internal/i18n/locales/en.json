@@ -29,11 +29,11 @@
   },
   "cmd.analyze.flag.start": {
     "description": "Start time flag description",
-    "other": "Start time (inclusive; RFC3339 or YYYY-MM-DD HH:MM:SS with an optional ±HH:MM or a trailing UTC; explicit offsets define the instant; a value with no zone uses this machine's local timezone, or the --tz zone when --tz is set; binlog timestamps are UTC)"
+    "other": "Start time (inclusive; RFC3339 or YYYY-MM-DD HH:MM:SS with an optional ±HH:MM or a trailing UTC; explicit offsets define the instant; binlog timestamps are UTC). A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set."
   },
   "cmd.analyze.flag.end": {
     "description": "End time flag description",
-    "other": "End time (inclusive; RFC3339 or YYYY-MM-DD HH:MM:SS with an optional ±HH:MM or a trailing UTC; explicit offsets define the instant; a value with no zone uses this machine's local timezone, or the --tz zone when --tz is set; binlog timestamps are UTC)"
+    "other": "End time (inclusive; RFC3339 or YYYY-MM-DD HH:MM:SS with an optional ±HH:MM or a trailing UTC; explicit offsets define the instant; binlog timestamps are UTC). A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set."
   },
   "cmd.analyze.flag.fromDir": {
     "description": "From-dir flag description",

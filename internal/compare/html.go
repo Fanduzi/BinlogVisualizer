@@ -79,6 +79,9 @@ func RenderHTMLIn(result CompareResult, loc *time.Location) (string, error) {
 		"compareLabel":          localizedCompareLabel,
 		"compareSource":         localizedCompareSource,
 		"comparabilityEvidence": FormatComparabilityEvidence,
+		"displayStored": func(value string) string {
+			return displaytz.Stored(value, loc)
+		},
 	})
 	if err != nil {
 		return "", err
@@ -102,7 +105,7 @@ func RenderHTMLIn(result CompareResult, loc *time.Location) (string, error) {
 		RecommendationsJSON:   mustHTMLJSON(result.Recommendations),
 		DDLChangesJSON:        mustHTMLJSON(buildDDLChangeData(result.DiagnosticsDelta)),
 		TxnDiagnosticsJSON:    mustHTMLJSON(buildTxnDiagnosticData(result.DiagnosticsDelta)),
-		HotIntervalsJSON:      mustHTMLJSON(buildHotIntervalData(result.DiagnosticsDelta)),
+		HotIntervalsJSON:      mustHTMLJSON(buildHotIntervalData(result.DiagnosticsDelta, loc)),
 		EventMixDeltaJSON:     mustHTMLJSON(result.DiagnosticsDelta.EventMixDelta),
 	}
 
@@ -306,11 +309,11 @@ func buildTxnDiagnosticData(delta DiagnosticsDelta) htmlTxnDiagnosticData {
 	}
 }
 
-func buildHotIntervalData(delta DiagnosticsDelta) htmlHotIntervalData {
+func buildHotIntervalData(delta DiagnosticsDelta, loc *time.Location) htmlHotIntervalData {
 	items := make([]htmlHotIntervalItem, 0, len(delta.HotIntervalDelta.TopItems))
 	for _, item := range delta.HotIntervalDelta.TopItems {
 		items = append(items, htmlHotIntervalItem{
-			Minute:    item.Minute,
+			Minute:    displaytz.Stored(item.Minute, loc),
 			Source:    localizedCompareSource(item.Source),
 			TotalRows: item.TotalRows,
 			TxnCount:  item.TxnCount,
@@ -1203,7 +1206,7 @@ const compareHTMLTemplateTail = `
           <tbody>
             {{range .Result.DiagnosticsDelta.HotIntervalDelta.TopItems}}
             <tr>
-              <td>{{.Minute}}</td>
+              <td>{{displayStored .Minute}}</td>
               <td>{{compareSource .Source}}</td>
               <td class="num">{{.TotalRows}}</td>
               <td class="num">{{.TxnCount}}</td>

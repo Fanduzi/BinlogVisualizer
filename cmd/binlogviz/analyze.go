@@ -1,5 +1,5 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
-// input: CLI workload-identity, RFC3339 or local YYYY-MM-DD HH:MM:SS time flags, position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, command-owned temporary directory roots, and flashback --schema-file SQL.
+// input: CLI workload-identity, RFC3339 or YYYY-MM-DD HH:MM:SS time flags (a zoneless value uses the --tz zone when --tz is set, including UTC, otherwise the machine zone; a DST gap or overlap, or an offset past 14:00 or with minutes other than 00, 30, or 45, is a usage error), position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, command-owned temporary directory roots, and flashback --schema-file SQL.
 // output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, a Top Threads session ranking, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; when Options.Flashback is set, undo SQL is written instead of a report; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, user@host, --sql-context, --diagnostics, and stdin `-`; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/object filter that matches nothing exits 2 with its own Error line, a filter that matches a view, event, routine, or trigger exits 0 even with zero rows, other valid no-data (including ADMIN-only) exits 2, a terminal or empty stdin `-` fails before parsing, --snapshot-name without json fails before rendering, a saved snapshot always keeps full diagnostics whatever --diagnostics says, DuckDB temp state is cleaned, and the analyze command does not register --schema-file or --schema-file-db.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering. report.Write owns the format switch. An unknown --format is still a usage error before any input is read.
 // note: if this file changes, update this header and module README.md.
@@ -145,7 +145,7 @@ func newAnalyzeCommand() *cobra.Command {
 			if _, ferr := report.ParseFormat(opts.format); ferr != nil {
 				return ferr
 			}
-			// A zoneless --start/--end uses the display zone when --tz set one.
+			// A zoneless --start/--end uses this zone when --tz is set, including UTC.
 			opts.display = displaytz.From(cmd.Context())
 			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime, opts.display)
 			if err != nil {
@@ -920,7 +920,8 @@ func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Optio
 	// The snapshot is an archive and always keeps full diagnostics; only the
 	// stdout document takes the --diagnostics budget (ADR 0011 §3).
 	// The file is an archive other commands read later. It stays UTC.
-	// --tz changes only the stdout copy (ADR 0017).
+	// --tz changes only the stdout copy (ADR 0017). time.UTC (--tz UTC)
+	// keeps the historical spelling, so it uses this same render.
 	archiveOpts := report.ArchiveOptions(reportOpts)
 	archiveOpts.Display = nil
 	archive, err := report.RenderJSONWithOptions(result, archiveOpts)
@@ -928,7 +929,7 @@ func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Optio
 		return err
 	}
 	payload := archive
-	if reportOpts.Display != nil || (reportOpts.DiagnosticsMode != report.DiagnosticsFull && reportOpts.DiagnosticsMode != "") {
+	if (reportOpts.Display != nil && reportOpts.Display != time.UTC) || (reportOpts.DiagnosticsMode != report.DiagnosticsFull && reportOpts.DiagnosticsMode != "") {
 		payload, err = report.RenderJSONWithOptions(result, reportOpts)
 		if err != nil {
 			return err
@@ -988,15 +989,17 @@ const (
 	analyzeLocalFracLayout = "2006-01-02 15:04:05.000000"
 )
 
-// parseTimeRange parses start and end. loc is the --tz zone. Nil means a
-// zoneless value uses the machine zone. An explicit offset or a trailing
+// parseTimeRange parses start and end for every command that takes them.
+// loc is the --tz zone. Nil means the flag was not set and a zoneless value
+// uses the machine zone. time.UTC (--tz UTC) and any other location, including
+// Etc/UTC, are the zone of a zoneless value. An explicit offset or a trailing
 // " UTC" is that instant either way.
 func parseTimeRange(startStr, endStr string, loc *time.Location) (time.Time, time.Time, error) {
-	startTime, err := parseAnalyzeTimeInLocation(startStr, filterLocation(loc))
+	startTime, err := parseAnalyzeTimeInLocation(startStr, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.invalidStartTime", map[string]any{"Error": err.Error()}))
 	}
-	endTime, err := parseAnalyzeTimeInLocation(endStr, filterLocation(loc))
+	endTime, err := parseAnalyzeTimeInLocation(endStr, loc)
 	if err != nil {
 		return time.Time{}, time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.invalidEndTime", map[string]any{"Error": err.Error()}))
 	}
@@ -1006,28 +1009,20 @@ func parseTimeRange(startStr, endStr string, loc *time.Location) (time.Time, tim
 	return startTime, endTime, nil
 }
 
-// filterLocation is the zone of a zoneless --start/--end. A nil location is
-// the historical machine zone, including absent --tz and --tz UTC.
-func filterLocation(loc *time.Location) *time.Location {
-	if loc == nil || loc == time.UTC {
-		return time.Local
-	}
-	return loc
-}
-
 func parseAnalyzeTimeInLocation(value string, loc *time.Location) (time.Time, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return time.Time{}, nil
 	}
-	if loc == nil {
-		loc = time.Local
+	zone := loc
+	if zone == nil {
+		zone = time.Local
 	}
 	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
-		return parsed, nil
+		return rejectUTCOffset(value, parsed)
 	}
 	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
-		return parsed, nil
+		return rejectUTCOffset(value, parsed)
 	}
 	if bare, ok := strings.CutSuffix(value, " UTC"); ok {
 		for _, layout := range []string{analyzeLocalFracLayout, analyzeLocalTimeLayout} {
@@ -1038,15 +1033,99 @@ func parseAnalyzeTimeInLocation(value string, loc *time.Location) (time.Time, er
 	}
 	for _, layout := range []string{analyzeLocalFracLayout + " -07:00", analyzeLocalTimeLayout + " -07:00"} {
 		if parsed, err := time.Parse(layout, value); err == nil {
-			return parsed, nil
+			return rejectUTCOffset(value, parsed)
 		}
 	}
-	if parsed, err := time.ParseInLocation(analyzeLocalFracLayout, value, loc); err == nil {
-		return parsed, nil
+	if parsed, err := time.ParseInLocation(analyzeLocalFracLayout, value, zone); err == nil {
+		return rejectZoneCivil(value, analyzeLocalFracLayout, parsed, zone)
 	}
 	// The last attempt's *time.ParseError is the usage detail. It is not an
 	// untyped fmt.Errorf (ADR 0009).
-	return time.ParseInLocation(analyzeLocalTimeLayout, value, loc)
+	parsed, err := time.ParseInLocation(analyzeLocalTimeLayout, value, zone)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return rejectZoneCivil(value, analyzeLocalTimeLayout, parsed, zone)
+}
+
+// rejectUTCOffset refuses an offset that is not a real UTC offset.
+// |offset| > 14:00 (so +24:00 and +14:30) and a minutes part other than
+// 00, 30, or 45 are usage errors. The caller wraps the error.
+func rejectUTCOffset(value string, parsed time.Time) (time.Time, error) {
+	_, seconds := parsed.Zone()
+	abs := time.Duration(seconds) * time.Second
+	if abs < 0 {
+		abs = -abs
+	}
+	minutes := int((abs % time.Hour) / time.Minute)
+	if abs > 14*time.Hour || abs%time.Minute != 0 || (minutes != 0 && minutes != 30 && minutes != 45) {
+		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s is not a valid UTC offset", value)
+	}
+	return parsed, nil
+}
+
+// rejectZoneCivil refuses a zoneless wall time that does not exist once in
+// loc. A DST gap is a time the zone skipped. A DST overlap is a time the
+// zone repeated. Neither is resolved to an instant.
+func rejectZoneCivil(value, layout string, parsed time.Time, loc *time.Location) (time.Time, error) {
+	requested, err := time.ParseInLocation(layout, value, time.UTC)
+	if err != nil {
+		return parsed, nil
+	}
+	if !sameWallClock(parsed, requested) {
+		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s does not exist in %s (DST gap); add an explicit offset", value, zoneName(loc))
+	}
+	if ambiguousWall(parsed) {
+		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s is ambiguous in %s (DST overlap); add an explicit offset", value, zoneName(loc))
+	}
+	return parsed, nil
+}
+
+func zoneName(loc *time.Location) string {
+	if loc == nil || loc == time.Local {
+		if tz := strings.TrimSpace(os.Getenv("TZ")); tz != "" {
+			return tz
+		}
+		return "Local"
+	}
+	return loc.String()
+}
+
+func sameWallClock(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	if ay != by || am != bm || ad != bd || a.Nanosecond() != b.Nanosecond() {
+		return false
+	}
+	ah, amin, as := a.Clock()
+	bh, bmin, bs := b.Clock()
+	return ah == bh && amin == bmin && as == bs
+}
+
+// ambiguousWall reports whether another instant in the same location has the
+// same wall clock. Real folds are at most a couple of hours, so three hours
+// of minute steps covers them.
+func ambiguousWall(t time.Time) bool {
+	y, m, d := t.Date()
+	h, min, s := t.Clock()
+	nsec := t.Nanosecond()
+	_, off := t.Zone()
+	for delta := -3 * time.Hour; delta <= 3*time.Hour; delta += time.Minute {
+		if delta == 0 {
+			continue
+		}
+		other := t.Add(delta)
+		oy, om, od := other.Date()
+		oh, omin, os := other.Clock()
+		if oy != y || om != m || od != d || oh != h || omin != min || os != s || other.Nanosecond() != nsec {
+			continue
+		}
+		_, ooff := other.Zone()
+		if ooff != off {
+			return true
+		}
+	}
+	return false
 }
 
 // buildAnalyzerOptions converts CLI options to analyzer.Options.

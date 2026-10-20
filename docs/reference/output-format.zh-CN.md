@@ -43,6 +43,14 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 `schema_version` 总是第一个字段。每种输出只在不兼容变更（删除或改名字段、改变字段类型或含义）时提升自己的版本号，CHANGELOG 会把这次提升标为不兼容。新增字段不提升版本。`workflow run` 写出的 compare 和 trend 产物带同样的字段。`workflow status`、`resume` 和 `clean` 对这些产物遵守同一规则：manifest 记录的 compare 或 trend JSON 产物，如果 `schema_version` 不是 1 到本构建所写版本之间的整数，就以退出码 9 退出（`unsupported`，`details.reason` 为 `unsupported_artifact_version`，并带 `artifact`、`step_kind`、`step_name`、`schema_version` 和 `supported_version`），stdout 不输出，磁盘上不做任何改动。没有这个字段的产物是 ADR 0010 之前写的，仍然可以读取。`stderr` 上单行的 `{"error":…}` 和 `{"warning":…}` 不是带版本的文档，格式由 ADR 0009 固定。`workflow status` 另外报告 `manifest_version`，那是它读到的 manifest 的版本。
 
+## 显示时区
+
+不传 `--tz`，或 `--tz UTC`，渲染出的时间保持原来的写法：文本、Markdown 和 HTML 以 ` UTC` 结尾，JSON 使用带 `Z` 的 RFC3339。`--tz` 接受 IANA 名，例如 `Asia/Shanghai`。其他时区使用数字偏移，不用缩写。时间戳行写出这个 IANA 名。
+
+`--tz` 作用于 analyze 的文本、Markdown、HTML 和 JSON，compare 与 trend HTML 的生成时间、Current/Baseline 窗口、trend 起点，以及 compare HTML 里 hot-interval 的 Minute 单元格，snapshot list/show 的 `created_at` 和窗口时间，workflow describe 的窗口时间，能解析为 RFC3339 的 `version` `commit_time`，以及 `workflow run` 和 `workflow resume` 写出的 analyze 产物与 compare/trend HTML。它不改写 compare 或 trend 的 JSON 与文本，workflow status/clean/export 的簿记时间，行单元格里的 `TIMESTAMP` 或 `DATETIME`，以及 flashback SQL。快照文件始终写成 UTC，包括把一份带 `--tz` 的报告交给 `snapshot save`。list 和 show 只改打印出来的那一份。空的、不认识的或 `Local` 的 `--tz` 退出码是 3，kind 是 `usage`。
+
+`--start` 和 `--end` 接受 RFC3339、`YYYY-MM-DD HH:MM:SS`、带 `±HH:MM` 的空格形式，以及结尾的 ` UTC`。偏移量或结尾 ` UTC` 就是那个时刻。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。`--tz UTC` 和 `--tz Etc/UTC` 把这个值解析成同一个时刻。没有时区、又落在夏令时空档或重叠时段的值，退出码是 3：错误会写出该值、时区和原因，并要求补上显式偏移。绝对值大于 14:00 的偏移，或分钟不是 00、30、45 的偏移，同样是这个退出码。
+
 ## 可用格式
 
 ### `analyze`

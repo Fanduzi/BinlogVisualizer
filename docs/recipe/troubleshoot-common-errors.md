@@ -137,7 +137,7 @@ binlogviz analyze mysql-bin.000123 \
   --end "2026-09-14T15:00:00+08:00"
 ```
 
-`YYYY-MM-DD HH:MM:SS` is also accepted and is interpreted in the local timezone of the machine running `binlogviz`. Do not assume Beijing time unless that machine's timezone is `Asia/Shanghai`.
+`YYYY-MM-DD HH:MM:SS` is also accepted. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. Do not assume Beijing time unless that zone is `Asia/Shanghai`. A value in a DST gap or overlap is refused; add an explicit offset. `+24:00` and `+14:30` are not valid offsets.
 
 ## `end time must be after start time`
 

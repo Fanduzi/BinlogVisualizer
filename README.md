@@ -90,7 +90,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-`--start`/`--end` also accept `YYYY-MM-DD HH:MM:SS` in the local timezone of the machine running `binlogviz`. Prefer RFC3339 with an explicit offset across machines.
+`--start`/`--end` also accept `YYYY-MM-DD HH:MM:SS`. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. Prefer RFC3339 with an explicit offset across machines.
 
 ### Start from `SHOW MASTER STATUS` position or GTID
 

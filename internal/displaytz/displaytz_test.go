@@ -64,4 +64,12 @@ func TestParseRejectsLocal(t *testing.T) {
 	if err != nil || loc == nil || loc.String() != "Asia/Shanghai" {
 		t.Fatalf("Asia/Shanghai: %v %v", loc, err)
 	}
+	utc, err := Parse(true, "UTC")
+	if err != nil || utc != time.UTC {
+		t.Fatalf("UTC = %v %v, want time.UTC", utc, err)
+	}
+	unset, err := Parse(false, "")
+	if err != nil || unset != nil {
+		t.Fatalf("unset = %v %v, want nil", unset, err)
+	}
 }
