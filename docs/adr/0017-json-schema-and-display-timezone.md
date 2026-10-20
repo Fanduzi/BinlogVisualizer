@@ -1,0 +1,33 @@
+# ADR 0017: JSON Schema for every JSON output, and a display timezone
+
+Status: accepted (2026-10-20). Tracks production-readiness D5 and issue #255 items 3 and 7.
+
+## Context
+
+Every JSON document on stdout already carries a version key (ADR 0010). The shape of each document was described in prose in `docs/reference/output-format.md`. An agent could not load a schema and check a document against it.
+
+Report times were rendered in UTC. An operator who had a wall time of `14:05 +08:00` had to convert it to `06:05Z` before reading a report. `--start` and `--end` already accept an RFC3339 offset; the display did not.
+
+## Decision
+
+1. **Schemas are derived from the Go types `encoding/json` marshals.** `internal/jsonschema` walks those types and emits a Draft 2020-12 document with `additionalProperties: false` on every struct. A nil slice or map, and a nil pointer that is not `omitempty`, is allowed to be `null`, because that is what `encoding/json` writes. `workflow validate` is one schema that is the union of the success object and the failure object; the required keys are the ones both shapes carry (`valid`), plus `schema_version`. Hand-written schemas would drift from the analyze struct tree. The generator is the field list.
+
+2. **Published files and a command.** `binlogviz schema` prints one name per line. `binlogviz schema <name>` prints the schema. The same bytes are checked in as `docs/schema/<name>.json` and copied into the release archive next to the agent guide (the G1 file list). An unknown name is exit 3, kind `usage`. The schema command's stdout is a JSON Schema document (`$schema`, `$id`), not a versioned result, so it is not in the ADR 0010 inventory and it does not carry `schema_version`. The name list is text.
+
+3. **One catalog.** `schemaOutputs()` is the list of versioned JSON documents. `TestEveryJSONOutputIsVersioned` and `TestJSONOutputMatchesSchema` both run that list. A name with no command runner, a runner whose name is not in the catalog, or a catalog name with no `docs/schema` file fails the test. `TestPublishedSchemaMatchesGenerator` fails when a file differs from the generator or from `binlogviz schema <name>`. `TestSchemaRejectsDroppedProperty` deletes `summary` from the analyze schema and requires validation of a real analyze document to fail. `TestSchemaRejectsUnknownField` adds a key the schema does not name and requires the same.
+
+4. **No version bump.** `report_version` stays 3, `plan_version` stays 2, and every `schema_version` stays 1. With no `--tz`, every existing output is byte-identical to the previous spelling: human times end in ` UTC`, JSON times use `Z`. `--tz` changes only the lexical offset of timestamp strings. The instant and the JSON type stay the same. A consumer that requires a trailing `Z` sees a different spelling only when the operator passed `--tz`. That is not a key removed, renamed, or changed in type or meaning (ADR 0010), so the version does not move. Adding a `timezone` key on the default document would have changed every JSON output, so the default document does not gain one.
+
+5. **`--tz` is a root flag.** It takes an IANA name (`Asia/Shanghai`). An absent flag, or `UTC` (`time.UTC`), keeps the historical spelling. Any other zone, including `Etc/UTC`, renders a numeric offset and never an abbreviation: text, Markdown, and HTML use `2006-01-02 15:04:05 -07:00` (the chart tick layout keeps its `15:04` and gains the same suffix); JSON uses RFC3339, which is `Z` only when that instant's offset is zero. The Timestamps line names the IANA zone, because a single abbreviation cannot cover a DST change. Apply-delay fractional times follow the same rule (`2006-01-02 15:04:05.000000 -07:00`, JSON `RFC3339Nano`).
+
+   It applies to analyze text, Markdown, HTML, and JSON, including generated-at; to compare and trend HTML generated-at; to snapshot list and show `created_at` and window start/end (a display rewrite of a stored RFC3339 string; an unparsable string is left as stored; the file on disk is not rewritten); to workflow describe window start and end; to `version` `commit_time` when that string parses as RFC3339; and to analyze reports and compare/trend HTML written by `workflow run` and `workflow resume`. Compare and trend JSON and text repeat timestamps already stored in snapshots and are not rewritten. Workflow status, clean, and export bookkeeping times stay the stored UTC strings. Row-cell `TIMESTAMP` and `DATETIME` values, and flashback SQL, stay the UTC wall clock stored in the binlog.
+
+6. **Time filters do not follow `--tz`.** `--start` and `--end` are unchanged: an RFC3339 offset is the instant, and `YYYY-MM-DD HH:MM:SS` is the local zone of the machine running binlogviz, not the display zone.
+
+7. **An empty or unknown `--tz` is exit 3, kind `usage`**, the same class as an invalid `--format`. The message is `invalid --tz ...`. There is no prompt.
+
+## Consequences
+
+- An agent discovers the contract with `binlogviz schema` or by reading `docs/schema/` from a git checkout or a release archive.
+- A new JSON output fails CI until it is in the catalog, has a runner, and has a generated file.
+- Default output, including saved snapshots written without `--tz`, stays byte-identical. `TestDefaultOutputByteIdentical` re-runs analyze under `TZ=UTC` and `TZ=America/New_York` with no `--tz` and requires the JSON, text, and Markdown to match and to keep `Z` / ` UTC`.

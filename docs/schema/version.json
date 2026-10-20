@@ -1,0 +1,36 @@
+{
+  "$id": "binlogviz:schema/version",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "commit": {
+      "type": "string"
+    },
+    "commit_time": {
+      "type": "string"
+    },
+    "go_version": {
+      "type": "string"
+    },
+    "modified": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "version": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "commit",
+    "commit_time",
+    "go_version",
+    "modified",
+    "schema_version",
+    "version"
+  ],
+  "title": "version",
+  "type": "object"
+}

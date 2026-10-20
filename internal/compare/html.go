@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
 )
@@ -53,6 +54,12 @@ type htmlAlertDatum struct {
 }
 
 func RenderHTML(result CompareResult) (string, error) {
+	return RenderHTMLIn(result, nil)
+}
+
+// RenderHTMLIn is RenderHTML with a display zone. A nil loc keeps the
+// historical " UTC" spelling of the generated-at line (ADR 0017).
+func RenderHTMLIn(result CompareResult, loc *time.Location) (string, error) {
 	echartsJS, err := report.ReadEmbeddedECharts()
 	if err != nil {
 		return "", err
@@ -81,7 +88,7 @@ func RenderHTML(result CompareResult) (string, error) {
 		GuardTitle:            ComparabilityGuardTitle(),
 		GuardSummary:          ComparabilityGuardSummary(result.Comparability.Verdict),
 		ReasonCodesLabel:      ComparabilityReasonCodesLabel(),
-		GeneratedAt:           time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		GeneratedAt:           displaytz.Wall(time.Now(), "2006-01-02 15:04:05", loc),
 		EChartsJS:             template.JS(echartsJS), //nolint:gosec
 		SummaryPairsJSON:      mustHTMLJSON(buildSummaryPairs(result)),
 		TopTablesJSON:         mustHTMLJSON(buildTopTableSeries(result.TableChanges)),

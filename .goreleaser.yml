@@ -46,6 +46,32 @@ archives:
         dst: testdata/sample-binlog/mysql-bin.000001
       - src: scripts/release-incident.yaml
         dst: incident.yaml
+      - src: docs/schema/analyze.json
+        dst: docs/schema/analyze.json
+      - src: docs/schema/flashback-plan.json
+        dst: docs/schema/flashback-plan.json
+      - src: docs/schema/compare.json
+        dst: docs/schema/compare.json
+      - src: docs/schema/trend.json
+        dst: docs/schema/trend.json
+      - src: docs/schema/snapshot-list.json
+        dst: docs/schema/snapshot-list.json
+      - src: docs/schema/snapshot-show.json
+        dst: docs/schema/snapshot-show.json
+      - src: docs/schema/workflow-validate.json
+        dst: docs/schema/workflow-validate.json
+      - src: docs/schema/workflow-describe.json
+        dst: docs/schema/workflow-describe.json
+      - src: docs/schema/workflow-status.json
+        dst: docs/schema/workflow-status.json
+      - src: docs/schema/workflow-clean.json
+        dst: docs/schema/workflow-clean.json
+      - src: docs/schema/workflow-export.json
+        dst: docs/schema/workflow-export.json
+      - src: docs/schema/version.json
+        dst: docs/schema/version.json
+      - src: docs/schema/flashback-verify.json
+        dst: docs/schema/flashback-verify.json
 
 checksum:
   name_template: "{{ .ProjectName }}_{{ .Version }}_checksums.txt"

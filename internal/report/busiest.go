@@ -84,7 +84,7 @@ func formatDrivingTables(rows map[string]int, limit int) string {
 	return line
 }
 
-func renderBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+func renderBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
 	shown := rowBearingMinutes(minutes)
 	if len(shown) == 0 {
 		return
@@ -98,7 +98,7 @@ func renderBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, to
 	}
 	for _, minute := range shown {
 		buf.WriteString(fmt.Sprintf("  %s  rows=%d  txns=%d\n",
-			formatTime(minute.Minute), minute.TotalRows, minute.TxnCount))
+			opts.formatTime(minute.Minute), minute.TotalRows, minute.TxnCount))
 		tables, omitted := limitMinuteTables(rankedMinuteTables(minute.TableRows), topN)
 		for _, table := range tables {
 			buf.WriteString(fmt.Sprintf("    %s  %d\n", table.name, table.rows))

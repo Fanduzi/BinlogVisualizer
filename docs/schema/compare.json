@@ -1,0 +1,1313 @@
+{
+  "$id": "binlogviz:schema/compare",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "alert_changes": {
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "details": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "minute": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "txn_key": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "severity",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "removed": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "details": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "minute": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "txn_key": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "severity",
+              "type"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "added",
+        "removed"
+      ],
+      "type": "object"
+    },
+    "baseline_label": {
+      "type": "string"
+    },
+    "baseline_snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "binlogviz_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "dml": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "exclude_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "exclude_schema",
+            "exclude_table",
+            "include_schema",
+            "include_table"
+          ],
+          "type": "object"
+        },
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "from_dir": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "files",
+            "from_dir",
+            "prefix"
+          ],
+          "type": "object"
+        },
+        "input_mode": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "window": {
+          "additionalProperties": false,
+          "properties": {
+            "end_time": {
+              "type": "string"
+            },
+            "start_time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "end_time",
+            "start_time"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "binlogviz_version",
+        "created_at",
+        "filters",
+        "input",
+        "input_mode",
+        "label",
+        "name",
+        "window"
+      ],
+      "type": "object"
+    },
+    "comparability": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "mixed_producers": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "partial_transactions": {
+                "type": "integer"
+              },
+              "report_version": {
+                "type": "integer"
+              },
+              "role": {
+                "type": "string"
+              },
+              "schemas": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "scope": {
+                "additionalProperties": false,
+                "properties": {
+                  "dml": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "exclude_schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "exclude_table": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "include_schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "include_table": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "exclude_schema",
+                  "exclude_table",
+                  "include_schema",
+                  "include_table"
+                ],
+                "type": "object"
+              },
+              "selection": {
+                "additionalProperties": false,
+                "properties": {
+                  "effective_start_position": {
+                    "type": "integer"
+                  },
+                  "effective_stop_position": {
+                    "type": "integer"
+                  },
+                  "exclude_gtids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "include_gtids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "matched_gtids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "requested_start_position": {
+                    "type": "integer"
+                  },
+                  "requested_stop_position": {
+                    "type": "integer"
+                  },
+                  "resolved_gtid_flavor": {
+                    "type": "string"
+                  }
+                },
+                "required": null,
+                "type": "object"
+              },
+              "server_flavors": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "server_ids": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "server_versions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "total_transactions": {
+                "type": "integer"
+              },
+              "unknown_transactions": {
+                "type": "integer"
+              },
+              "workload_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mixed_producers",
+              "role",
+              "total_transactions"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "verdict": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence",
+        "reason_codes",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "current_label": {
+      "type": "string"
+    },
+    "current_snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "binlogviz_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "dml": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "exclude_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "exclude_schema",
+            "exclude_table",
+            "include_schema",
+            "include_table"
+          ],
+          "type": "object"
+        },
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "from_dir": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "files",
+            "from_dir",
+            "prefix"
+          ],
+          "type": "object"
+        },
+        "input_mode": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "window": {
+          "additionalProperties": false,
+          "properties": {
+            "end_time": {
+              "type": "string"
+            },
+            "start_time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "end_time",
+            "start_time"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "binlogviz_version",
+        "created_at",
+        "filters",
+        "input",
+        "input_mode",
+        "label",
+        "name",
+        "window"
+      ],
+      "type": "object"
+    },
+    "diagnostics_delta": {
+      "additionalProperties": false,
+      "properties": {
+        "ddl_changes": {
+          "additionalProperties": false,
+          "properties": {
+            "added": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "operation": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "statement": {
+                    "type": "string"
+                  },
+                  "table": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operation",
+                  "schema",
+                  "table",
+                  "timestamp"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "baseline_count": {
+              "type": "integer"
+            },
+            "current_count": {
+              "type": "integer"
+            },
+            "delta": {
+              "type": "integer"
+            },
+            "removed": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "operation": {
+                    "type": "string"
+                  },
+                  "schema": {
+                    "type": "string"
+                  },
+                  "statement": {
+                    "type": "string"
+                  },
+                  "table": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operation",
+                  "schema",
+                  "table",
+                  "timestamp"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "added",
+            "baseline_count",
+            "current_count",
+            "delta",
+            "removed"
+          ],
+          "type": "object"
+        },
+        "event_mix_delta": {
+          "additionalProperties": false,
+          "properties": {
+            "ddl_delta": {
+              "type": "integer"
+            },
+            "delete_delta": {
+              "type": "integer"
+            },
+            "insert_delta": {
+              "type": "integer"
+            },
+            "update_delta": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "ddl_delta",
+            "delete_delta",
+            "insert_delta",
+            "update_delta"
+          ],
+          "type": "object"
+        },
+        "hot_interval_delta": {
+          "additionalProperties": false,
+          "properties": {
+            "baseline_count": {
+              "type": "integer"
+            },
+            "baseline_top_rows": {
+              "type": "integer"
+            },
+            "current_count": {
+              "type": "integer"
+            },
+            "current_top_rows": {
+              "type": "integer"
+            },
+            "delta_top_rows": {
+              "type": "integer"
+            },
+            "top_items": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_bytes": {
+                    "type": "integer"
+                  },
+                  "minute": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "total_rows": {
+                    "type": "integer"
+                  },
+                  "txn_count": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "binlog_bytes",
+                  "minute",
+                  "source",
+                  "total_rows",
+                  "txn_count"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "baseline_count",
+            "baseline_top_rows",
+            "current_count",
+            "current_top_rows",
+            "delta_top_rows",
+            "top_items"
+          ],
+          "type": "object"
+        },
+        "txn_diagnostics": {
+          "additionalProperties": false,
+          "properties": {
+            "largest_txn_delta": {
+              "additionalProperties": false,
+              "properties": {
+                "baseline_key": {
+                  "type": "string"
+                },
+                "baseline_op": {
+                  "type": "string"
+                },
+                "baseline_rows": {
+                  "type": "integer"
+                },
+                "baseline_table": {
+                  "type": "string"
+                },
+                "current_evidence": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "binlog_file_end": {
+                      "type": "string"
+                    },
+                    "binlog_file_start": {
+                      "type": "string"
+                    },
+                    "binlog_span": {
+                      "type": "string"
+                    },
+                    "completeness": {
+                      "type": "string"
+                    },
+                    "mysqlbinlog_cmd": {
+                      "type": "string"
+                    },
+                    "pos_end": {
+                      "type": "integer"
+                    },
+                    "pos_start": {
+                      "type": "integer"
+                    },
+                    "replay_available": {
+                      "type": "boolean"
+                    },
+                    "replay_scope": {
+                      "type": "string"
+                    },
+                    "txn_key": {
+                      "type": "string"
+                    }
+                  },
+                  "required": null,
+                  "type": "object"
+                },
+                "current_key": {
+                  "type": "string"
+                },
+                "current_op": {
+                  "type": "string"
+                },
+                "current_rows": {
+                  "type": "integer"
+                },
+                "current_table": {
+                  "type": "string"
+                },
+                "delta_rows": {
+                  "type": "integer"
+                },
+                "identity_new": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "baseline_rows",
+                "current_rows",
+                "delta_rows"
+              ],
+              "type": "object"
+            },
+            "longest_txn_delta": {
+              "additionalProperties": false,
+              "properties": {
+                "baseline_duration": {
+                  "type": "string"
+                },
+                "baseline_key": {
+                  "type": "string"
+                },
+                "current_duration": {
+                  "type": "string"
+                },
+                "current_evidence": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "binlog_file_end": {
+                      "type": "string"
+                    },
+                    "binlog_file_start": {
+                      "type": "string"
+                    },
+                    "binlog_span": {
+                      "type": "string"
+                    },
+                    "completeness": {
+                      "type": "string"
+                    },
+                    "mysqlbinlog_cmd": {
+                      "type": "string"
+                    },
+                    "pos_end": {
+                      "type": "integer"
+                    },
+                    "pos_start": {
+                      "type": "integer"
+                    },
+                    "replay_available": {
+                      "type": "boolean"
+                    },
+                    "replay_scope": {
+                      "type": "string"
+                    },
+                    "txn_key": {
+                      "type": "string"
+                    }
+                  },
+                  "required": null,
+                  "type": "object"
+                },
+                "current_key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "baseline_duration",
+                "current_duration"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "largest_txn_delta",
+            "longest_txn_delta"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "ddl_changes",
+        "event_mix_delta",
+        "hot_interval_delta",
+        "txn_diagnostics"
+      ],
+      "type": "object"
+    },
+    "key_findings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "section": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "anchor",
+                "label",
+                "section"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence",
+          "kind",
+          "summary",
+          "title"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "operation_mix": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline": {
+            "type": "integer"
+          },
+          "current": {
+            "type": "integer"
+          },
+          "delta": {
+            "type": "integer"
+          },
+          "operation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseline",
+          "current",
+          "delta",
+          "operation"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "pattern_changes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_rows": {
+            "type": "integer"
+          },
+          "baseline_txn_count": {
+            "type": "integer"
+          },
+          "current_rows": {
+            "type": "integer"
+          },
+          "current_txn_count": {
+            "type": "integer"
+          },
+          "delta_percent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "delta_rows": {
+            "type": "integer"
+          },
+          "delta_txn_count": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "operations": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "pattern_key": {
+            "type": "string"
+          },
+          "sample_query_summary": {
+            "type": "string"
+          },
+          "tables": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "baseline_rows",
+          "baseline_txn_count",
+          "current_rows",
+          "current_txn_count",
+          "delta_percent",
+          "delta_rows",
+          "delta_txn_count",
+          "label",
+          "operations",
+          "pattern_key",
+          "tables"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "pattern_drilldowns": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_rows": {
+            "type": "integer"
+          },
+          "baseline_txns": {
+            "type": "integer"
+          },
+          "current_rows": {
+            "type": "integer"
+          },
+          "current_txns": {
+            "type": "integer"
+          },
+          "delta_rows": {
+            "type": "integer"
+          },
+          "delta_txns": {
+            "type": "integer"
+          },
+          "key_points": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "summary"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "pattern_key": {
+            "type": "string"
+          },
+          "signal_flags": {
+            "additionalProperties": false,
+            "properties": {
+              "disappeared": {
+                "type": "boolean"
+              },
+              "dominant_delta": {
+                "type": "boolean"
+              },
+              "new_pattern": {
+                "type": "boolean"
+              },
+              "txn_rows_diverged": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "disappeared",
+              "dominant_delta",
+              "new_pattern",
+              "txn_rows_diverged"
+            ],
+            "type": "object"
+          },
+          "why_selected": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseline_rows",
+          "baseline_txns",
+          "current_rows",
+          "current_txns",
+          "delta_rows",
+          "delta_txns",
+          "key_points",
+          "label",
+          "pattern_key",
+          "signal_flags",
+          "why_selected"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "recommendations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "section": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "anchor",
+                "label",
+                "section"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "related_finding_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "priority",
+          "rationale",
+          "related_finding_kinds",
+          "summary",
+          "title"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_partial_transactions": {
+          "type": "integer"
+        },
+        "baseline_total_rows": {
+          "type": "integer"
+        },
+        "baseline_total_transactions": {
+          "type": "integer"
+        },
+        "baseline_unknown_transactions": {
+          "type": "integer"
+        },
+        "baseline_warnings": {
+          "type": "integer"
+        },
+        "current_partial_transactions": {
+          "type": "integer"
+        },
+        "current_total_rows": {
+          "type": "integer"
+        },
+        "current_total_transactions": {
+          "type": "integer"
+        },
+        "current_unknown_transactions": {
+          "type": "integer"
+        },
+        "current_warnings": {
+          "type": "integer"
+        },
+        "total_rows_delta": {
+          "type": "integer"
+        },
+        "total_transactions_delta": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "baseline_total_rows",
+        "baseline_total_transactions",
+        "baseline_warnings",
+        "current_total_rows",
+        "current_total_transactions",
+        "current_warnings",
+        "total_rows_delta",
+        "total_transactions_delta"
+      ],
+      "type": "object"
+    },
+    "table_changes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "baseline_rows": {
+            "type": "integer"
+          },
+          "current_rows": {
+            "type": "integer"
+          },
+          "delta_percent": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "delta_rows": {
+            "type": "integer"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseline_rows",
+          "current_rows",
+          "delta_percent",
+          "delta_rows",
+          "schema",
+          "table"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "alert_changes",
+    "baseline_label",
+    "comparability",
+    "current_label",
+    "diagnostics_delta",
+    "key_findings",
+    "operation_mix",
+    "pattern_changes",
+    "pattern_drilldowns",
+    "recommendations",
+    "schema_version",
+    "summary",
+    "table_changes"
+  ],
+  "title": "compare",
+  "type": "object"
+}

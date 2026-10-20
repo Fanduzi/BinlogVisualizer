@@ -7,9 +7,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/version"
 )
+
+// tzFlag is the --tz value. Empty and unchanged means historical UTC output.
+var tzFlag string
 
 // langFlag holds the value of --lang flag.
 var langFlag string
@@ -63,7 +67,19 @@ func NewRootCommand() *cobra.Command {
 			if f := cmd.Flags().Lookup("error-format"); f != nil && f.Changed && strings.TrimSpace(errorFormat) == "" {
 				return clierr.Errorf(clierr.KindUsage, "invalid --error-format %q: expected text or json", errorFormat)
 			}
-			return validateErrorFormatFlag(errorFormat)
+			if err := validateErrorFormatFlag(errorFormat); err != nil {
+				return err
+			}
+			changed := false
+			if f := cmd.Flags().Lookup("tz"); f != nil {
+				changed = f.Changed
+			}
+			loc, err := displaytz.Parse(changed, tzFlag)
+			if err != nil {
+				return err
+			}
+			cmd.SetContext(displaytz.With(cmd.Context(), loc))
+			return nil
 		},
 	}
 	cmd.AddCommand(newAnalyzeCommand())
@@ -73,11 +89,13 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newSnapshotCommand())
 	cmd.AddCommand(newVersionCommand())
 	cmd.AddCommand(newWorkflowCommand())
+	cmd.AddCommand(newSchemaCommand())
 
 	// Add global flags
 	cmd.PersistentFlags().StringVar(&langFlag, "lang", "", "Language for output (e.g., en, zh-CN)")
 	cmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, i18n.T("cmd.root.flag.quiet"))
 	cmd.PersistentFlags().StringVar(&errorFormat, "error-format", "", i18n.T("cmd.root.flag.errorFormat"))
+	cmd.PersistentFlags().StringVar(&tzFlag, "tz", "", "Display time zone for rendered timestamps (IANA name, for example Asia/Shanghai). Absent or UTC keeps the historical UTC spelling. Does not change --start or --end.")
 	// Flag, argument and command-name mistakes are usage errors, exit 3 (ADR 0008).
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return clierr.Wrap(clierr.KindUsage, err)

@@ -1,0 +1,75 @@
+{
+  "$id": "binlogviz:schema/snapshot-list",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "snapshot_dir": {
+      "type": "string"
+    },
+    "snapshots": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "diagnostics_mode": {
+            "type": "string"
+          },
+          "input_mode": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "window": {
+            "additionalProperties": false,
+            "properties": {
+              "end_time": {
+                "type": "string"
+              },
+              "start_time": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "end_time",
+              "start_time"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "created_at",
+          "input_mode",
+          "label",
+          "name",
+          "path",
+          "window"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "snapshot_dir",
+    "snapshots"
+  ],
+  "title": "snapshot-list",
+  "type": "object"
+}
