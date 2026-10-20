@@ -29,6 +29,10 @@ func TestMergeMariaDB(t *testing.T) {
 	if got, ok := MergeMariaDB([]string{"0-7-18446744073709551614..18446744073709551615", "0-7-1"}); !ok || !reflect.DeepEqual(got, []string{"0-7-1", "0-7-18446744073709551614..18446744073709551615"}) {
 		t.Fatalf("max seq: %v %v", got, ok)
 	}
+	// A range inside an earlier one keeps the outer end (#384 QA F1).
+	if got, ok := MergeMariaDB([]string{"0-7-1..10,0-7-3..4", "0-7-2"}); !ok || !reflect.DeepEqual(got, []string{"0-7-1..10"}) {
+		t.Fatalf("contained range: %v %v", got, ok)
+	}
 	if _, ok := MergeMariaDB([]string{"0-7-1", "3E11FA47-71CA-11E1-9E33-C80AA9429562:1"}); ok {
 		t.Fatal("MySQL token parsed as MariaDB")
 	}

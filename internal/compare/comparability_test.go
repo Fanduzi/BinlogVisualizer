@@ -383,6 +383,7 @@ func TestComparabilityMergesMariaDBSelectors(t *testing.T) {
 		{{"0-7-1", "0-7-2", "0-7-3", "0-8-5"}, {"0-7-2"}},
 		{{"0-8-5", "0-7-2..3", "0-7-1..2"}, {" 0-7-2 "}},
 		{{"0-7-1..3,0-8-5"}, {"0-7-2..2"}},
+		{{"0-7-1..3", "0-7-2..2", "0-8-5"}, {"0-7-2"}}, // a range inside another
 	} {
 		if got := scope(same[0], same[1]); got != base {
 			t.Fatalf("%v: scope %s, want %s", same, got, base)
@@ -397,5 +398,10 @@ func TestComparabilityMergesMariaDBSelectors(t *testing.T) {
 		if got := scope(other[0], other[1]); got == base {
 			t.Fatalf("%v: same scope as base", other)
 		}
+	}
+	// #384 QA F1: a contained range keeps the outer end, so 1..10 with 3..4
+	// inside is not the narrower 1..4.
+	if scope([]string{"0-7-1..10", "0-7-3..4"}, nil) == scope([]string{"0-7-1..4"}, nil) {
+		t.Fatal("0-7-1..10,0-7-3..4 has the scope of 0-7-1..4")
 	}
 }
