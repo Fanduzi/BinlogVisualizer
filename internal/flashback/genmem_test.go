@@ -26,9 +26,13 @@ import (
 // under maxRetainedBytesPerRow. That bound sits above the key map and below
 // image retention, and it does not move with VmHWM, GOMAXPROCS, or the runner.
 // BINLOGVIZ_GENMEM=measure only prints one size, so the test skips there.
+//
+// CI's verify job runs plain `go test ./...`, not -race, so it always runs
+// this test (TestEveryMemoryTestRunsInCIVerify in cmd/binlogviz checks
+// that). A -race build skips it with a reason, visible in `go test -race -v`.
 func TestGeneratedReviewRSS(t *testing.T) {
 	if reviewRSSRace() {
-		t.Skip("race detector puts this workload above the retained-heap check")
+		t.Skip("-race build: maxRetainedBytesPerRow is calibrated on non-race builds and the 100k-row run is slow under the race detector; CI's verify job (plain go test ./...) runs this check")
 	}
 	mode := os.Getenv("BINLOGVIZ_GENMEM")
 	if mode == "child" || mode == "measure" {
