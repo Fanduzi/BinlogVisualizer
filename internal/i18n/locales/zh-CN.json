@@ -267,6 +267,10 @@
     "description": "binlog 里没有列名时 flashback 拒绝",
     "other": "{{.Table}}：列名不可用（binlog_row_metadata 不是 FULL）；flashback 需要 binlog_row_metadata=FULL（MySQL 8.0.14+）。MySQL 5.7 的 binlog 无法用 flashback 撤销，--schema-file 也不提供行元数据。请从备份或按时间点恢复（PITR）还原这张表。以后的事故请在 MySQL 8.0.14+ 上把 binlog_row_metadata 设为 FULL"
   },
+  "error.flashbackNamesMariaDB": {
+    "description": "MariaDB binlog 的行没有列名时 flashback 拒绝",
+    "other": "{{.Table}}：列名不可用（binlog_row_metadata 不是 FULL）；flashback 需要 binlog_row_metadata=FULL，MariaDB 从 10.5 起才有这个设置（默认是 NO_LOG）。--schema-file 也不提供行元数据。请从备份或按时间点恢复（PITR）还原这张表。以后的事故请在 MariaDB 10.5+ 上把 binlog_row_metadata 和 binlog_row_image 都设为 FULL"
+  },
   "error.flashbackImage": {
     "description": "前镜像或后镜像不完整时 flashback 拒绝",
     "other": "{{.Table}}：行镜像不是 FULL（前镜像或后镜像不完整）"

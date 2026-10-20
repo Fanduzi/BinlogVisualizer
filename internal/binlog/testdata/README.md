@@ -422,6 +422,18 @@ bash ./create_mysql_8.0.46_replica_apply.sh
 
 Uses Docker (`mysql:8.0.46`) when the daemon answers. Otherwise two local mysqld 8.0 datadirs. The checked-in files were recorded on mysqld 8.0.46-0ubuntu0.24.04.4. A regeneration gets a new GTID UUID and new delays; update the pins in `cmd/binlogviz/replica_apply_test.go` from the new dump.
 
+## mariadb-10.11.19-nolog.binlog, mariadb-11.8.9-nolog.binlog, mysql-8.4.11-minimal-delete-only.binlog
+
+BinlogQA's live binlogs from the PR #366 QA (`ev/refuse/live/ma1011-nolog.binlog`, `ma118-nolog.binlog`, `my84-minimal-delete-only.binlog`), copied byte for byte. Official MariaDB bintar 10.11.19 / 11.8.9 with the global `binlog_row_metadata=NO_LOG` (MariaDB's default) and one `UPDATE qa.a`; MySQL 8.4.11 server-core with `binlog_row_image=MINIMAL` and one `DELETE` on `qa.a`. Each `.mysqlbinlog.txt` is `TZ=UTC mariadb-binlog -vv` of the matching version, or `mysqlbinlog -vv` 8.4.11.
+
+| file | sha256 |
+|---|---|
+| `mariadb-10.11.19-nolog.binlog` | `1e6036025f3881935c936935149071dc27813a2f9c3df102db9bbf53d9f1f72c` |
+| `mariadb-11.8.9-nolog.binlog` | `df518cc5d35ffaadce4cdf5ca0a06b51ffb662e0b7db88660a85bcf5950f0aee` |
+| `mysql-8.4.11-minimal-delete-only.binlog` | `a2c7e18bc6b485efbd7033da35f19e99072ad2371998899952c9406329d48260` |
+
+`TestVersionMatrixFlashbackBoundary` expects the NO_LOG files to refuse with the MariaDB 10.5+ `binlog_row_metadata=FULL` message, and the DELETE-only file to refuse as an incomplete before-image. A planner that ignored before-image skips printed `INSERT INTO qa.a (id, v, n) VALUES (2, NULL, NULL)` for it.
+
 ## Stage 5 Coverage Notes
 
 - Multi-file command-path coverage reuses `minimal.binlog` twice in ordered input tests and benchmarks to exercise the real parser over more than one file without duplicating fixture assets.

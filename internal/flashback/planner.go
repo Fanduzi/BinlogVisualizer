@@ -190,7 +190,7 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 	}
 	for _, row := range ev.FlashRows {
 		if row.ProblemKind != "" {
-			a.flashErr = flashRowError(row, a.refusalTable(row.Schema, row.Table))
+			a.flashErr = flashRowError(row, a.refusalTable(row.Schema, row.Table), ev.ServerFlavor)
 			return
 		}
 	}
@@ -651,10 +651,17 @@ func generatedSig(cols []mysqlexpr.SchemaCol) string {
 	return b.String()
 }
 
-func flashRowError(row model.FlashRow, table string) error {
+// flashRowError is the refusal for one row the binlog layer could not
+// capture. flavor is the binlog's server flavor; a MariaDB binlog names the
+// MariaDB setting.
+func flashRowError(row model.FlashRow, table, flavor string) error {
 	switch row.ProblemKind {
 	case model.FlashProblemNames:
-		return refuse("row_metadata", table, fmt.Errorf("%s", i18n.Tf("error.flashbackNames", map[string]any{"Table": table})))
+		key := "error.flashbackNames"
+		if strings.EqualFold(strings.TrimSpace(flavor), "mariadb") {
+			key = "error.flashbackNamesMariaDB"
+		}
+		return refuse("row_metadata", table, fmt.Errorf("%s", i18n.Tf(key, map[string]any{"Table": table})))
 	case model.FlashProblemImage:
 		return refuse("row_image", table, fmt.Errorf("%s", i18n.Tf("error.flashbackImage", map[string]any{"Table": table})))
 	case model.FlashProblemType:

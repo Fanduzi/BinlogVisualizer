@@ -45,7 +45,7 @@ func TestVersionMatrixAnalyzeMatchesDecode(t *testing.T) {
 				t.Fatalf("rows viz=%d mysqlbinlog=%d", len(viz), len(mb))
 			}
 			for i := range viz {
-				if !indexedRowAgrees(viz[i], mb[i]) {
+				if !indexedRowAgrees(viz[i], mb[i], strings.Contains(name, "5.7.44")) {
 					t.Fatalf("row %d\nviz=%+v\nmysqlbinlog=%+v", i, viz[i], mb[i])
 				}
 			}
@@ -122,14 +122,29 @@ func TestVersionMatrixFlashbackBoundary(t *testing.T) {
 		{"mariadb-11.8.9-wide-full.binlog", nil, "row image is not FULL"},
 		{"mariadb-11.8.9-wide-minimal.binlog", nil, "row image is not FULL"},
 		{"mariadb-11.8.9-ddl.binlog", nil, "DDL in the selected range"},
+		// DELETE-only selections exercise the before-image check alone: every
+		// other minimal case also has an UPDATE, whose after-image refuses.
+		{"mysql-8.4.11-wide-minimal.binlog", []string{"--dml", "delete"}, "row image is not FULL"},
+		{"mysql-9.7.2-wide-minimal.binlog", []string{"--dml", "delete"}, "row image is not FULL"},
+		{"mariadb-10.11.19-wide-minimal.binlog", []string{"--dml", "delete"}, "row image is not FULL"},
+		{"mariadb-11.8.9-wide-full.binlog", []string{"--dml", "delete"}, "row image is not FULL"},
+		{"mariadb-11.8.9-wide-full.binlog", []string{"--dml", "delete", "--include-table", "shop.wide"}, "row image is not FULL"},
+		{"mysql-8.4.11-minimal-delete-only.binlog", nil, "row image is not FULL"},
+		// MariaDB's default binlog_row_metadata is NO_LOG. The refusal names
+		// the MariaDB setting, not MySQL 8.0.14 or 5.7.
+		{"mariadb-10.11.19-nolog.binlog", nil, "which MariaDB has from 10.5"},
+		{"mariadb-11.8.9-nolog.binlog", nil, "which MariaDB has from 10.5"},
 	}
 	for _, tc := range refusals {
-		t.Run(tc.file, func(t *testing.T) {
+		t.Run(strings.Join(append([]string{tc.file}, tc.args...), " "), func(t *testing.T) {
 			path := mustFixturePath(t, tc.file)
 			stdout, stderr, err := executeFlashbackLikeMain(t, append([]string{path}, tc.args...)...)
 			assertFlashbackRefused(t, stdout, stderr, err, tc.want)
 			if strings.Contains(tc.file, "5.7.44-wide") && !strings.Contains(err.Error(), "MySQL 5.7") {
 				t.Fatalf("5.7 refusal did not name MySQL 5.7: %v", err)
+			}
+			if strings.Contains(tc.file, "-nolog") && (strings.Contains(err.Error(), "MySQL") || !strings.Contains(err.Error(), "binlog_row_metadata=FULL")) {
+				t.Fatalf("MariaDB metadata refusal names MySQL or not the setting: %v", err)
 			}
 		})
 	}
@@ -300,8 +315,26 @@ type mbCell struct {
 
 type mbRow struct {
 	op     string
+	table  string
 	before []mbCell
 	after  []mbCell
+}
+
+// versionMatrixUnsigned names the UNSIGNED integer columns that
+// create_version_matrix.sh creates, by table and 1-based position. For such
+// a column mysqlbinlog -vv prints the signed reading first and the unsigned
+// one in parentheses.
+var versionMatrixUnsigned = map[string]map[int]bool{
+	"shop.wide": {2: true}, // qty INT UNSIGNED
+}
+
+// mbTable reads `db`.`tbl` after the row verb of a mysqlbinlog -vv line.
+func mbTable(line string) string {
+	i := strings.IndexByte(line, '`')
+	if i < 0 {
+		return ""
+	}
+	return strings.ReplaceAll(strings.TrimSpace(line[i:]), "`", "")
 }
 
 func parseIndexedMysqlbinlogRows(text string) []mbRow {
@@ -318,15 +351,15 @@ func parseIndexedMysqlbinlogRows(text string) []mbRow {
 		switch {
 		case strings.HasPrefix(line, "### INSERT INTO"):
 			flush()
-			cur = &mbRow{op: "INSERT"}
+			cur = &mbRow{op: "INSERT", table: mbTable(line)}
 			section = "after"
 		case strings.HasPrefix(line, "### UPDATE "):
 			flush()
-			cur = &mbRow{op: "UPDATE"}
+			cur = &mbRow{op: "UPDATE", table: mbTable(line)}
 			section = "before"
 		case strings.HasPrefix(line, "### DELETE FROM"):
 			flush()
-			cur = &mbRow{op: "DELETE"}
+			cur = &mbRow{op: "DELETE", table: mbTable(line)}
 			section = "before"
 		case strings.HasPrefix(line, "### WHERE"):
 			section = "before"
@@ -366,33 +399,55 @@ func splitMysqlbinlogCell(line string) (int, string, bool) {
 	return col, raw, true
 }
 
-func indexedRowAgrees(viz vizImage, mb mbRow) bool {
+// indexedRowAgrees compares one analyze row with mysqlbinlog's. positional
+// is a binlog without row metadata (5.7), where analyze cannot know
+// signedness and prints mysqlbinlog's signed/unsigned pair as is.
+func indexedRowAgrees(viz vizImage, mb mbRow, positional bool) bool {
 	if viz.Op != mb.op {
 		return false
 	}
+	unsigned := versionMatrixUnsigned[mb.table]
 	switch viz.Op {
 	case "DELETE":
-		return sideAgrees(viz.Before, mb.before)
+		return sideAgrees(viz.Before, mb.before, unsigned, positional)
 	case "UPDATE":
-		return sideAgrees(viz.Before, mb.before) && sideAgrees(viz.After, mb.after)
+		return sideAgrees(viz.Before, mb.before, unsigned, positional) && sideAgrees(viz.After, mb.after, unsigned, positional)
 	default:
-		return sideAgrees(viz.After, mb.after)
+		return sideAgrees(viz.After, mb.after, unsigned, positional)
 	}
 }
 
-func sideAgrees(viz []any, cells []mbCell) bool {
+func sideAgrees(viz []any, cells []mbCell, unsigned map[int]bool, positional bool) bool {
 	if len(cells) == 0 {
 		return false
 	}
 	for _, cell := range cells {
-		if cell.col > len(viz) || !cellAgrees(viz[cell.col-1], cell.raw) {
+		if cell.col > len(viz) || !cellAgrees(viz[cell.col-1], cell.raw, unsigned[cell.col], positional) {
 			return false
 		}
 	}
 	return true
 }
 
-func cellAgrees(viz any, raw string) bool {
+// cellAgrees compares one cell. A signed/unsigned pair from mysqlbinlog
+// ("-1294967296 (3000000000)") must match exactly one reading: the unsigned
+// one for an UNSIGNED column, the signed one otherwise, and the pair as
+// printed when the binlog has no signedness. Accepting either half would
+// hide a signedness bug.
+func cellAgrees(viz any, raw string, unsigned, positional bool) bool {
+	if left, right, ok := splitSignedPair(raw); ok && !strings.HasPrefix(raw, "'") {
+		text, isText := viz.(string)
+		switch {
+		case !isText:
+			return false
+		case positional:
+			return text == raw
+		case unsigned:
+			return text == right
+		default:
+			return text == left
+		}
+	}
 	if cellMatch(viz, raw) {
 		return true
 	}
