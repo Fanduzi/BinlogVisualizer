@@ -1,7 +1,7 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
 // output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, and opt-in minute/pattern detail.
-// pos: text renderer for the CLI output path after analyzer Finalize.
+// pos: text renderer for the CLI output path after analyzer Finalize. Transaction lists come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
 
@@ -15,6 +15,7 @@ import (
 
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/report/view"
 )
 
 type tableRow struct {
@@ -37,16 +38,20 @@ func RenderText(result model.AnalysisResult) (string, error) {
 // RenderTextWithOptions renders an AnalysisResult with explicit presentation controls.
 func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, error) {
 	opts = normalizeOptions(opts)
+	return renderText(result, opts, newView(result, opts))
+}
+
+func renderText(result model.AnalysisResult, opts Options, built view.View) (string, error) {
 	var buf strings.Builder
 
-	renderDiagnosticSummary(&buf, result, opts)
+	renderDiagnosticSummary(&buf, result, opts, built.Text.ByteLeaders)
 	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode, result.Diagnostics.ServerVersion)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderNoPrimaryKey(&buf, result.Tables)
 	renderHotRows(&buf, result.HotRows, opts)
 	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
-	renderTopTransactions(&buf, result, opts)
+	renderTopTransactions(&buf, result, opts, built)
 	renderTopFindings(&buf, result, opts)
 	renderActivitySection(&buf, result)
 	renderBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
@@ -63,7 +68,7 @@ func RenderTextWithOptions(result model.AnalysisResult, opts Options) (string, e
 	return buf.String(), nil
 }
 
-func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, opts Options) {
+func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, opts Options, byteLeaders []model.Transaction) {
 	topN := opts.TopN
 	summary := result.Summary
 	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
@@ -98,7 +103,7 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, 
 	if bytes := largestTxnBytes(result); bytes > 0 {
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.largestTxnBytes"), formatByteSize(bytes)))
 	}
-	renderByteContributors(buf, result, topN)
+	renderByteContributors(buf, result, byteLeaders, topN)
 	renderSelectedFileLines(buf, result.Diagnostics.FileCoverage)
 	buf.WriteString("\n")
 }
@@ -272,17 +277,11 @@ func maxInt(a, b int) int {
 	return b
 }
 
-func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, opts Options) {
+func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, opts Options, built view.View) {
 	buf.WriteString("=== " + i18n.T("report.text.topTransactions") + " ===\n")
-	topN := opts.TopN
 	mode := opts.SQLContextMode
-
-	largestLimit := minInt(3, topN)
-	longestLimit := largestLimit
-	otherLimit := minInt(1, topN)
-	lines := make([]string, 0, largestLimit+longestLimit+otherLimit)
-	printedQuery := false
-	for _, txn := range limitTransactions(result.Diagnostics.LargestTransactions, largestLimit) {
+	lines := make([]string, 0, len(built.Text.Largest)+len(built.Text.Longest)+len(built.Text.Widest)+2)
+	for _, txn := range built.Text.Largest {
 		line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
 			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
 		if table := dominantTableName(txn.Tables); table != "" {
@@ -293,42 +292,31 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, op
 		}
 		line = appendTxnIdentity(line, txn)
 		lines = append(lines, line)
-		if appendTextQueryLine(&lines, txn, mode) {
-			printedQuery = true
-		}
+		appendTextQueryLine(&lines, txn, mode)
 		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
 		appendRowImageLines(&lines, txn, opts)
 	}
 	if line := formatCommittedDurationLine(result.Diagnostics.DurationBuckets); line != "" {
 		lines = append(lines, "  "+line)
 	}
-	for _, txn := range limitTransactions(result.Diagnostics.LongestTransactions, longestLimit) {
+	for _, txn := range built.Text.Longest {
 		line := fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
 			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn))
 		lines = append(lines, appendTxnIdentity(line, txn))
-		if appendTextQueryLine(&lines, txn, mode) {
-			printedQuery = true
-		}
+		appendTextQueryLine(&lines, txn, mode)
 		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
 		appendRowImageLines(&lines, txn, opts)
 	}
-	for _, txn := range limitTransactions(result.Diagnostics.WidestTransactions, otherLimit) {
+	for _, txn := range built.Text.Widest {
 		line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
 			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn))
 		lines = append(lines, appendTxnIdentity(line, txn))
-		if appendTextQueryLine(&lines, txn, mode) {
-			printedQuery = true
-		}
+		appendTextQueryLine(&lines, txn, mode)
 		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
 		appendRowImageLines(&lines, txn, opts)
 	}
-
-	if !printedQuery {
-		for _, txn := range result.Transactions {
-			if appendTextQueryLine(&lines, txn, mode) {
-				break
-			}
-		}
+	if built.Text.QueryFallback != nil {
+		appendTextQueryLine(&lines, *built.Text.QueryFallback, mode)
 	}
 	if len(lines) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noTransactions") + "\n\n")
@@ -945,13 +933,10 @@ func formatCommittedDurationLine(buckets []model.DurationBucket) string {
 	return i18n.T("report.text.committedDuration") + ": " + strings.Join(parts, " ")
 }
 
-func renderByteContributors(buf *strings.Builder, result model.AnalysisResult, topN int) {
+func renderByteContributors(buf *strings.Builder, result model.AnalysisResult, leaders []model.Transaction, topN int) {
 	limit := minInt(3, topN)
 	var txnParts []string
-	for i, txn := range result.Diagnostics.LargestByteTransactions {
-		if i >= limit || txn.BinlogBytes <= 0 {
-			break
-		}
+	for _, txn := range leaders {
 		txnParts = append(txnParts, txn.TxnKey+" "+formatByteSize(txn.BinlogBytes))
 	}
 	if len(txnParts) > 0 {

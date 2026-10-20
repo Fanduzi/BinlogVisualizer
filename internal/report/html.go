@@ -1,7 +1,7 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
 // output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, replica apply delay after activity, and labelled trusted full-transaction replay commands.
-// pos: HTML renderer for the CLI output path after analyzer Finalize.
+// pos: HTML renderer for the CLI output path after analyzer Finalize. Transaction lookup and evidence come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
 
@@ -16,6 +16,7 @@ import (
 
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/report/view"
 )
 
 const (
@@ -31,7 +32,10 @@ func RenderHTML(result model.AnalysisResult) (string, error) {
 // RenderHTMLWithOptions renders an AnalysisResult as HTML with explicit presentation controls.
 func RenderHTMLWithOptions(result model.AnalysisResult, opts Options) (string, error) {
 	opts = normalizeOptions(opts)
+	return renderHTML(result, opts, newView(result, opts))
+}
 
+func renderHTML(result model.AnalysisResult, opts Options, built view.View) (string, error) {
 	echartJS, err := ReadEmbeddedECharts()
 	if err != nil {
 		return "", err
@@ -47,7 +51,7 @@ func RenderHTMLWithOptions(result model.AnalysisResult, opts Options) (string, e
 		return "", err
 	}
 
-	data := buildHTMLData(result, opts, echartJS)
+	data := buildHTMLData(result, opts, echartJS, built)
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
@@ -315,7 +319,7 @@ type htmlTableActivitySeries struct {
 	DeleteRows []int    `json:"delete_rows"`
 }
 
-func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) htmlReportData {
+func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string, built view.View) htmlReportData {
 	opts = normalizeOptions(opts)
 	d := htmlReportData{
 		GeneratedAt:       formatTime(time.Now()),
@@ -332,7 +336,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 		d.InputFileSize = formatFileSize(bytes)
 		d.HasInputFileSize = true
 	}
-	for _, txn := range result.Transactions {
+	for _, txn := range built.Listed {
 		d.Transactions = append(d.Transactions, htmlTransactionLookup{
 			TxnKey:   txn.TxnKey,
 			Rows:     txn.TotalRows,
@@ -531,7 +535,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	} else if showRowValues(opts) {
 		d.ColumnNamesNote = columnNamesNote(result)
 	}
-	d.TransactionEvidence = buildHTMLTransactionEvidence(result.Diagnostics, result.Diagnostics.ServerVersion, opts)
+	d.TransactionEvidence = buildHTMLTransactionEvidence(built.Evidence, result.Diagnostics.ServerVersion, opts)
 	d.HasTransactionEvidence = len(d.TransactionEvidence) > 0
 
 	for _, interval := range result.Diagnostics.HotIntervals {
@@ -697,40 +701,30 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string) 
 	return d
 }
 
-func buildHTMLTransactionEvidence(diagnostics model.Diagnostics, serverVersion string, opts Options) []htmlTxnDiagnostic {
+func buildHTMLTransactionEvidence(evidence []view.Evidence, serverVersion string, opts Options) []htmlTxnDiagnostic {
 	mode := opts.SQLContextMode
-	evidence := make([]htmlTxnDiagnostic, 0, 3)
-	evidenceIndexByTxnKey := make(map[string]int, 3)
-	addChampion := func(txn model.Transaction, reason string) {
-		if txn.TxnKey != "" {
-			if index, ok := evidenceIndexByTxnKey[txn.TxnKey]; ok {
-				evidence[index].Reasons = append(evidence[index].Reasons, reason)
-				return
-			}
-			evidenceIndexByTxnKey[txn.TxnKey] = len(evidence)
+	out := make([]htmlTxnDiagnostic, 0, len(evidence))
+	for _, item := range evidence {
+		diagnostic := buildHTMLTxnDiagnostic(item.Txn, serverVersion, mode)
+		diagnostic.RowText = strings.TrimPrefix(formatRowImageBlock(item.Txn, opts), "    ")
+		diagnostic.Reasons = make([]string, len(item.Reasons))
+		for i, reason := range item.Reasons {
+			diagnostic.Reasons[i] = evidenceReasonLabel(reason)
 		}
-		diagnostic := buildHTMLTxnDiagnostic(txn, serverVersion, mode)
-		diagnostic.RowText = strings.TrimPrefix(formatRowImageBlock(txn, opts), "    ")
-		diagnostic.Reasons = []string{reason}
-		evidence = append(evidence, diagnostic)
+		out = append(out, diagnostic)
 	}
-	if len(diagnostics.LargestTransactions) > 0 {
-		addChampion(diagnostics.LargestTransactions[0], i18n.T("report.html.analyze.largestTransactionsByRows"))
-	}
-	if len(diagnostics.LongestTransactions) > 0 {
-		addChampion(diagnostics.LongestTransactions[0], i18n.T("report.html.analyze.longestTransactionsByDuration"))
-	}
-	if len(diagnostics.WidestTransactions) > 0 {
-		addChampion(diagnostics.WidestTransactions[0], i18n.T("report.html.analyze.widestTransactionsByTouchedTables"))
-	}
-	return evidence
+	return out
 }
 
-func limitTransactions(txns []model.Transaction, limit int) []model.Transaction {
-	if limit <= 0 || len(txns) <= limit {
-		return txns
+func evidenceReasonLabel(reason view.Reason) string {
+	switch reason {
+	case view.ReasonLongest:
+		return i18n.T("report.html.analyze.longestTransactionsByDuration")
+	case view.ReasonWidest:
+		return i18n.T("report.html.analyze.widestTransactionsByTouchedTables")
+	default:
+		return i18n.T("report.html.analyze.largestTransactionsByRows")
 	}
-	return txns[:limit]
 }
 
 func mustJSON(v any) template.JS {

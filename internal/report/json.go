@@ -1,7 +1,7 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with explicit workload identity, canonical scope, provenance/selector evidence, SQL context, and snapshot presentation controls.
 // output: report-v3 JSON with workload identity/scope, RFC3339 UTC timestamps, selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional replica apply delay, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, snapshots, alerts[].gtid when a transaction has one, and diagnostics omitted or reduced, with a diagnostics_mode marker, when --diagnostics says so.
-// pos: JSON serializer for the CLI output path after analyzer Finalize.
+// pos: JSON serializer for the CLI output path after analyzer Finalize. Transaction lists come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
 
@@ -14,6 +14,7 @@ import (
 
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/report/view"
 )
 
 const currentReportVersion = 3
@@ -449,7 +450,8 @@ func RenderJSON(result model.AnalysisResult) (string, error) {
 
 // RenderJSONWithOptions serializes an AnalysisResult with explicit presentation controls.
 func RenderJSONWithOptions(result model.AnalysisResult, opts Options) (string, error) {
-	jr := convertToJSON(result, normalizeOptions(opts))
+	opts = normalizeOptions(opts)
+	jr := convertToJSON(result, opts, newView(result, opts))
 
 	data, err := json.MarshalIndent(jr, "", "  ")
 	if err != nil {
@@ -465,11 +467,14 @@ func RenderJSONTo(result model.AnalysisResult, w io.Writer) error {
 
 // RenderJSONToWithOptions writes the JSON output with explicit presentation controls.
 func RenderJSONToWithOptions(result model.AnalysisResult, w io.Writer, opts Options) error {
-	jr := convertToJSON(result, normalizeOptions(opts))
+	opts = normalizeOptions(opts)
+	return writeJSON(w, result, opts, newView(result, opts))
+}
 
+func writeJSON(w io.Writer, result model.AnalysisResult, opts Options, built view.View) error {
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(jr)
+	return encoder.Encode(convertToJSON(result, opts, built))
 }
 
 // RenderJSONToStdout writes the JSON output to stdout.
@@ -482,12 +487,7 @@ func RenderJSONToStdoutWithOptions(result model.AnalysisResult, opts Options) er
 	return RenderJSONToWithOptions(result, os.Stdout, opts)
 }
 
-func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult {
-	transactionsListed := len(result.Transactions)
-	transactionsOmitted := result.Summary.TotalTransactions - transactionsListed
-	if transactionsOmitted < 0 {
-		transactionsOmitted = 0
-	}
+func convertToJSON(result model.AnalysisResult, opts Options, built view.View) jsonAnalysisResult {
 	threads, threadsOmitted := limitThreads(result.Threads, opts.TopThreads)
 	hotRows, hotOmitted := limitHotRows(result.HotRows.Rows, opts.TopRows)
 	converted := jsonAnalysisResult{
@@ -500,7 +500,7 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		Summary:             convertSummary(result.Summary),
 		Timeseries:          convertTimeseries(result.Timeseries),
 		DiagnosticsMode:     reducedDiagnosticsMode(opts.DiagnosticsMode),
-		Diagnostics:         convertDiagnostics(result.Diagnostics, opts),
+		Diagnostics:         convertDiagnostics(result.Diagnostics, opts, built),
 		Tables:              convertTables(result.Tables),
 		Threads:             convertThreads(threads),
 		ThreadsListed:       len(threads),
@@ -513,9 +513,9 @@ func convertToJSON(result model.AnalysisResult, opts Options) jsonAnalysisResult
 		HotRowsOverflow:     result.HotRows.Overflow,
 		HotRowsNote:         hotRowsNote(result.HotRows),
 		HotRowUnavailable:   convertHotRowGaps(result.HotRows.Unavailable),
-		Transactions:        convertTransactions(result.Transactions, opts, result.Diagnostics.ServerVersion),
-		TransactionsListed:  transactionsListed,
-		TransactionsOmitted: transactionsOmitted,
+		Transactions:        convertTransactions(built.Listed, opts, result.Diagnostics.ServerVersion),
+		TransactionsListed:  len(built.Listed),
+		TransactionsOmitted: built.Omitted,
 		Patterns:            convertPatterns(result.Patterns, opts.SQLContextMode),
 		Minutes:             convertMinutes(result.Minutes),
 		Alerts:              convertAlerts(result.Alerts),
@@ -636,7 +636,7 @@ func reducedDiagnosticsMode(mode DiagnosticsMode) DiagnosticsMode {
 	return mode
 }
 
-func convertDiagnostics(diagnostics model.Diagnostics, opts Options) *jsonDiagnostics {
+func convertDiagnostics(diagnostics model.Diagnostics, opts Options, built view.View) *jsonDiagnostics {
 	if opts.DiagnosticsMode == DiagnosticsOff {
 		return nil
 	}
@@ -645,10 +645,7 @@ func convertDiagnostics(diagnostics model.Diagnostics, opts Options) *jsonDiagno
 	if opts.DiagnosticsMode == DiagnosticsSummary {
 		// These lists are already at the top level (transactions, timeseries,
 		// minutes, alerts). Dropping the copies is what --diagnostics summary is for.
-		diagnostics.LargestTransactions = nil
-		diagnostics.LongestTransactions = nil
-		diagnostics.WidestTransactions = nil
-		diagnostics.LargestByteTransactions = nil
+		// The transaction lists come from the view, which is nil in this mode.
 		diagnostics.FileSegments = nil
 		diagnostics.HotIntervals = nil
 		diagnostics.Findings = nil
@@ -663,10 +660,10 @@ func convertDiagnostics(diagnostics model.Diagnostics, opts Options) *jsonDiagno
 		CountedEventBytes:       diagnostics.CountedEventBytes,
 		DDLEvents:               convertDDLEvents(events, mode, diagnostics.ServerVersion),
 		DDLEventsOmitted:        ddlOmitted,
-		LargestTransactions:     convertTransactions(diagnostics.LargestTransactions, opts, diagnostics.ServerVersion),
-		LongestTransactions:     convertTransactions(diagnostics.LongestTransactions, opts, diagnostics.ServerVersion),
-		WidestTransactions:      convertTransactions(diagnostics.WidestTransactions, opts, diagnostics.ServerVersion),
-		LargestByteTransactions: convertOptionalTransactions(diagnostics.LargestByteTransactions, opts, diagnostics.ServerVersion),
+		LargestTransactions:     convertTransactions(built.Largest, opts, diagnostics.ServerVersion),
+		LongestTransactions:     convertTransactions(built.Longest, opts, diagnostics.ServerVersion),
+		WidestTransactions:      convertTransactions(built.Widest, opts, diagnostics.ServerVersion),
+		LargestByteTransactions: convertOptionalTransactions(built.LargestBytes, opts, diagnostics.ServerVersion),
 		OpenDMLGroups:           convertOpenDMLGroups(diagnostics.OpenDMLGroups),
 		DurationBuckets:         convertDurationBuckets(diagnostics.DurationBuckets),
 		FileSegments:            convertFileSegments(diagnostics.FileSegments),

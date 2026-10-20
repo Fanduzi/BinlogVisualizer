@@ -1,7 +1,7 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
 // output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
-// pos: Markdown renderer for the CLI output path after analyzer Finalize.
+// pos: Markdown renderer for the CLI output path after analyzer Finalize. Transaction rows come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
 
@@ -13,6 +13,7 @@ import (
 
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/report/view"
 )
 
 // RenderMarkdown renders an AnalysisResult as GitHub-flavored Markdown.
@@ -23,6 +24,10 @@ func RenderMarkdown(result model.AnalysisResult) (string, error) {
 // RenderMarkdownWithOptions renders an AnalysisResult as Markdown with explicit presentation controls.
 func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (string, error) {
 	opts = normalizeOptions(opts)
+	return renderMarkdown(result, opts, newView(result, opts))
+}
+
+func renderMarkdown(result model.AnalysisResult, opts Options, built view.View) (string, error) {
 	var buf strings.Builder
 
 	buf.WriteString("# BinlogViz Report\n\n")
@@ -32,7 +37,7 @@ func RenderMarkdownWithOptions(result model.AnalysisResult, opts Options) (strin
 	mdNoPrimaryKey(&buf, result.Tables)
 	mdHotRows(&buf, result.HotRows, opts)
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
-	mdTopTransactions(&buf, result.Transactions, opts, result.Diagnostics.ServerVersion)
+	mdTopTransactions(&buf, built.Listed, opts, result.Diagnostics.ServerVersion)
 	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
 	mdApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN)
 	mdMinuteActivity(&buf, result.Minutes, opts.TopN)
