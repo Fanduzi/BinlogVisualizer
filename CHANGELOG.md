@@ -4,8 +4,32 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.32.1
+
+Release date: 2026-10-20
+
+Highlights:
+
+- Flashback apply fixes on top of ADR 0014 (#346; fixes #338, #341, #342, #343, #344, #345, #347, #348). The undo still runs in one XA transaction.
+- **Regenerate scripts:** a flashback script written by v0.32.0 or earlier must be regenerated with v0.32.1. `flashback verify` exits 6 with `details.reason` `old_format` (#342).
+- Success is a line, not exit 0: `^binlogviz: undo committed, [0-9]+ statements$`, or `^binlogviz: undo committed with skips, [0-9]+ applied, [0-9]+ skipped$` when `--conflict guard` skipped rows. A failed apply prints `binlogviz: undo rolled back, no rows changed` with the real errno and drops its finish procedure (#338, #343). Control characters in a server message are replaced with spaces, so a row value cannot forge the commit line. On MySQL 8.0 `GET STACKED DIAGNOSTICS` reports the real errno (1143, 1146, 1054), not 1243.
+- `PAD_CHAR_TO_FULL_LENGTH` and `NO_BACKSLASH_ESCAPES` are stripped before `CREATE PROCEDURE`, and a keyed `UPDATE` or `DELETE` undo must affect exactly one row or the apply rolls back (#347). `BINARY(n)` values are padded to n bytes with `0x00` (#348). Under `--conflict guard` a no-PK `INSERT` undo is idempotent.
+- Apply grants on the changed tables are `SELECT, INSERT, UPDATE, DELETE` (#341). Generation refusals carry `details.reason` and `details.table` (#344). README exit codes, `trend` order, and `install.sh --help` are fixed (#345).
+- `schema_version` 1, `plan_version` 2, `report_version` 3, and analyze output are unchanged.
+- Known issue: Linux release archives may still report an empty commit (#303).
+
+Related notes:
+
+- [v0.32.1 release notes](docs/releases/release-notes-v0.32.1.md)
+- [v0.32.1 中文发行说明](docs/releases/release-notes-v0.32.1.zh-CN.md)
+
+### Breaking
+
+- A flashback script written by v0.32.0 or earlier must be regenerated. `flashback verify` exits 6 with `details.reason` `old_format` (#342).
+
+### Fixed
+
 - Flashback apply grants on the tables the undo changes are `SELECT, INSERT, UPDATE, DELETE`. v0.32.0 omitted `SELECT`; `UPDATE` and `DELETE ... WHERE` then fail with ERROR 1143 (#341).
-- **Breaking:** a flashback script written by v0.32.0 must be regenerated. `flashback verify` exits 6 with `details.reason` `old_format` (#342).
 - A failed apply drops the finish procedure it created. Success is `binlogviz: undo committed, N statements` when nothing was skipped, and `binlogviz: undo committed with skips, N applied, M skipped` otherwise. Exit 0 without the matching line is not success. A rolled-back apply prints `binlogviz: undo rolled back, no rows changed` and stderr shows the real errno and message (#338, #343, #347). A kill before the finish `CALL`, or a `CALL` that never enters, can still leave the procedure. `DROP DATABASE IF EXISTS binlogviz` needs `DROP` on `binlogviz.*`.
 - `PAD_CHAR_TO_FULL_LENGTH` is removed before `CREATE PROCEDURE`, and a keyed `UPDATE` or `DELETE` undo that does not affect exactly one row rolls the apply back (#347). That includes a no-PK `LIMIT 1` match. The saved `sql_mode` is restored after the apply, including when it fails.
 - `BINARY(n)` values in a flashback are padded to n bytes with `0x00`, in `WHERE`, `SET`, and `INSERT`. v0.32.0 wrote the short value, so a keyed undo matched 0 rows (#348). `VARBINARY`, `BLOB`, and `CHAR` are not padded.
