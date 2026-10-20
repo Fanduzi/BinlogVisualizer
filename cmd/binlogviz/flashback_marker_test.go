@@ -139,7 +139,7 @@ INSERT INTO nmark.p VALUES (1, 1);`)
 	}
 }
 
-func TestFlashbackRoundTripMySQL80DeprecatedMode(t *testing.T) {
+func TestFlashbackMySQL57DeprecatedMode(t *testing.T) {
 	if os.Getenv("BINLOGVIZ_FLASHBACK_E2E") == "" {
 		t.Skip("set BINLOGVIZ_FLASHBACK_E2E=1 to round-trip on a local MySQL server")
 	}
