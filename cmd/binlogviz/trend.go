@@ -29,8 +29,11 @@ func newTrendCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "trend [<snapshot...>]",
 		Short: "Analyze multiple snapshots as an ordered trend",
-		Example: `  binlogviz trend before during after --snapshot-dir /tmp/snaps
-  binlogviz trend --from-snapshots 'incident-*' --snapshot-dir /tmp/snaps --format json`,
+		Example: `  binlogviz analyze mysql-bin.000001 --format json --snapshot-name before --snapshot-dir snaps
+  binlogviz analyze mysql-bin.000002 --format json --snapshot-name during --snapshot-dir snaps
+  binlogviz analyze mysql-bin.000001 --format json --snapshot-name after --snapshot-dir snaps
+  binlogviz trend before during after --snapshot-dir snaps
+  binlogviz trend --from-snapshots '*' --snapshot-dir snaps --format json`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {

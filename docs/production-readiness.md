@@ -46,8 +46,8 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 |---|---|---|---|---|
 | D1 | 每个 JSON 输出都带 `schema_version`，遇到不认识的版本就拒绝 | `TestEveryJSONOutputIsVersioned`、`internal/jsonout` 单测、`TestWorkflowRefusesUnknownArtifactSchemaVersion` | MET | — |
 | D2 | 退出码按种类结构化，没有不带类型的错误 | `TestExitTaxonomy277`、`TestNoUntypedErrors`、`exit_kinds*_test.go`；`docs/reference/exit-codes.md` | MET | — |
-| D3 | 每个子命令的 `--help` 都能自解释，并带 Example | 有措辞测试（`TestFlashbackHelpWording`、`TestSubcommandHelpUsageMatchesCommandPath`），但 22 个命令里只有 6 个顶层命令有 Example，也没有测试强制每个命令都有 | PARTIAL | #255 |
-| D4 | 没有交互提示；默认安全；有 dry-run | flashback 不连 MySQL，有 `--plan`；`install.sh --dry-run`；有非 TTY 输出的测试。缺：一个确保所有命令都不读 stdin、不等确认的守卫测试；`--plan` 在 exit 6 时什么都不打印 | PARTIAL | #270 |
+| D3 | 每个子命令的 `--help` 都能自解释，并带 Example | `TestEveryCommandHasExample` 走命令树（不写死名单），缺 Example、Example 里没有该命令的可执行行，或 `--help` 没印出来，就失败。`TestCommandExamplesRun` 在仓库夹具上执行每条 Example | MET | — |
+| D4 | 没有交互提示；默认安全；有 dry-run | `TestCommandsDoNotPrompt`：每个命令在非 TTY、stdin 阻塞时限时返回，输出里没有确认提示；用法里把 `-` 写成 stdin 时，stdin 已关闭则立刻报没有数据，不提问。`TestNoInteractivePromptAPI` 禁止提示库、`fmt.Scan` 和 `ReadPassword`（读 stdin 只允许 `analyze_stdin.go`）。`TestFlashbackPlanRefusalPrintsReasons`：exit 6 时 `--plan` 的 stdout 仍是带 `plan_version` 的 JSON，里面有 `would_refuse` 和 `refusal`；`--error-format text` 与 `json` 的 stderr 写同一条原因。`install.sh --dry-run`；`workflow clean` 默认只预览 | MET | — |
 | D5 | 有机器可读的输出 schema（JSON Schema 或 describe 命令），显示时区可选（`--tz`） | 没有 | NOT MET | #255（第 3、7 项） |
 
 ## E. 大输入与资源上界
@@ -74,7 +74,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 12 / PARTIAL 5 / NOT MET 7**。
+共 24 项：**MET 14 / PARTIAL 3 / NOT MET 7**。
 
 ## 最卡生产级的 5 项
 

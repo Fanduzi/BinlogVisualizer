@@ -44,6 +44,8 @@ func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "binlogviz",
 		Short: i18n.T("cmd.root.short"),
+		Example: `  binlogviz version
+  binlogviz analyze mysql-bin.000001`,
 		// main prints the one error line (text or JSON); cobra prints
 		// neither the error nor the usage text, so a JSON error is the only
 		// stderr line (#268). The error says to run --help.
@@ -82,6 +84,11 @@ func NewRootCommand() *cobra.Command {
 	})
 	cmd.Args = rejectUnknownSubcommand
 	typeUsageArgs(cmd)
+	// Help and completion exist only after these calls. ExecuteC calls them
+	// again and keeps the same command values, including Example.
+	cmd.InitDefaultHelpCmd()
+	cmd.InitDefaultCompletionCmd()
+	setGeneratedExamples(cmd)
 	cmd.Flags().BoolP("version", "v", false, i18n.T("cmd.root.flag.version"))
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		if v, _ := cmd.Flags().GetBool("version"); v {
@@ -92,6 +99,35 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	return cmd
+}
+
+// setGeneratedExamples fills Example on cobra's help and completion commands.
+// Product commands set their own. An empty Example is left empty so the tree
+// test can see it.
+func setGeneratedExamples(root *cobra.Command) {
+	var walk func(*cobra.Command)
+	walk = func(c *cobra.Command) {
+		if c.Example == "" {
+			switch c.CommandPath() {
+			case "binlogviz help":
+				c.Example = "  binlogviz help analyze\n  binlogviz help flashback"
+			case "binlogviz completion":
+				c.Example = "  binlogviz completion bash\n  binlogviz completion zsh"
+			case "binlogviz completion bash":
+				c.Example = "  binlogviz completion bash"
+			case "binlogviz completion zsh":
+				c.Example = "  binlogviz completion zsh"
+			case "binlogviz completion fish":
+				c.Example = "  binlogviz completion fish"
+			case "binlogviz completion powershell":
+				c.Example = "  binlogviz completion powershell"
+			}
+		}
+		for _, child := range c.Commands() {
+			walk(child)
+		}
+	}
+	walk(root)
 }
 
 // validateErrorFormatFlag accepts "", text and json (any case). Anything

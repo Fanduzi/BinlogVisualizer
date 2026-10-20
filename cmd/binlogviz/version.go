@@ -29,8 +29,10 @@ const asciiLogo = ` ________  ___  ________   ___       ________  ________  ___ 
 func newVersionCommand() *cobra.Command {
 	var format string
 	cmd := &cobra.Command{
-		Use:           "version",
-		Short:         i18n.T("cmd.version.short"),
+		Use:   "version",
+		Short: i18n.T("cmd.version.short"),
+		Example: `  binlogviz version
+  binlogviz version --format json`,
 		Args:          cobra.NoArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,

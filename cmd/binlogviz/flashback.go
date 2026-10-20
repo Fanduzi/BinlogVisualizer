@@ -23,9 +23,9 @@ func newFlashbackCommand() *cobra.Command {
 		Use:   i18n.T("cmd.flashback.use"),
 		Short: i18n.T("cmd.flashback.short"),
 		Long:  i18n.T("cmd.flashback.long"),
-		Example: `  # After analyze names the GTID (alerts[].gtid or transactions[].gtid):
-  binlogviz flashback mysql-bin.000001 --include-gtids <gtid> --plan
-  binlogviz flashback mysql-bin.000001 --include-gtids <gtid> --conflict guard`,
+		Example: `  # After analyze names the GTID (alerts[].gtid or transactions[].gtid), pass it with --include-gtids.
+  binlogviz flashback mysql-bin.000001 --plan
+  binlogviz flashback mysql-bin.000001 --conflict guard`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {

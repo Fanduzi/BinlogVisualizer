@@ -4,6 +4,10 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Added
+
+- Every command's `--help` includes a runnable example (#255).
+
 ## v0.34.0
 
 Release date: 2026-10-20

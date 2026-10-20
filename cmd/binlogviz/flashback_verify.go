@@ -29,9 +29,11 @@ type flashbackVerifyJSON struct {
 func newFlashbackVerifyCommand() *cobra.Command {
 	var format string
 	cmd := &cobra.Command{
-		Use:           i18n.T("cmd.flashback.verify.use"),
-		Short:         i18n.T("cmd.flashback.verify.short"),
-		Long:          i18n.T("cmd.flashback.verify.long"),
+		Use:   i18n.T("cmd.flashback.verify.use"),
+		Short: i18n.T("cmd.flashback.verify.short"),
+		Long:  i18n.T("cmd.flashback.verify.long"),
+		Example: `  binlogviz flashback verify undo.sql
+  binlogviz flashback verify undo.sql --format json`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),

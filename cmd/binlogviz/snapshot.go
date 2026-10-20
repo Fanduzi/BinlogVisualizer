@@ -29,10 +29,9 @@ func newSnapshotCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot",
 		Short: "Manage snapshots",
-		Example: `  binlogviz snapshot save analyze.json --name incident-current
-  binlogviz snapshot list
-  binlogviz snapshot list --format json
-  binlogviz snapshot show incident-current`,
+		Example: `  binlogviz analyze mysql-bin.000001 --format json --snapshot-name incident-listed --snapshot-dir snaps
+  binlogviz snapshot list --snapshot-dir snaps
+  binlogviz snapshot show incident-listed --snapshot-dir snaps`,
 		Run: func(cmd *cobra.Command, args []string) {
 			_ = cmd.Help()
 		},
@@ -53,6 +52,7 @@ func newSnapshotSaveCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "save <report.json>",
 		Short:         "Save an analyze JSON report as a named snapshot",
+		Example:       `  binlogviz snapshot save analyze.json --name incident-saved --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -97,8 +97,10 @@ func newSnapshotListCommand() *cobra.Command {
 	opts := &snapshotOptions{format: "text"}
 
 	cmd := &cobra.Command{
-		Use:           "list",
-		Short:         "List saved snapshots",
+		Use:   "list",
+		Short: "List saved snapshots",
+		Example: `  binlogviz snapshot list --snapshot-dir snaps
+  binlogviz snapshot list --format json --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
@@ -134,8 +136,10 @@ func newSnapshotShowCommand() *cobra.Command {
 	opts := &snapshotOptions{format: "text"}
 
 	cmd := &cobra.Command{
-		Use:           "show <name>",
-		Short:         "Show snapshot metadata and summary",
+		Use:   "show <name>",
+		Short: "Show snapshot metadata and summary",
+		Example: `  binlogviz snapshot show incident-current --snapshot-dir snaps
+  binlogviz snapshot show incident-current --format json --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -178,6 +182,7 @@ func newSnapshotRenameCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "rename <old-name> <new-name>",
 		Short:         "Rename a stored snapshot",
+		Example:       `  binlogviz snapshot rename incident-current incident-renamed --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(2),
@@ -201,6 +206,7 @@ func newSnapshotDeleteCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "delete <name>",
 		Short:         "Delete a stored snapshot",
+		Example:       `  binlogviz snapshot delete incident-current --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),

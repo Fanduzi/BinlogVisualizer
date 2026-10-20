@@ -36,8 +36,8 @@ func newWorkflowCommand() *cobra.Command {
 		Use:   "workflow",
 		Short: "Run multi-step BinlogViz investigation workflows",
 		Example: `  binlogviz workflow validate incident.yaml
-  binlogviz workflow run incident.yaml --output-dir /tmp/incident
-  binlogviz workflow status /tmp/incident`,
+  binlogviz workflow run incident.yaml --output-dir incident-out
+  binlogviz workflow status incident-out`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Run: func(cmd *cobra.Command, args []string) {
@@ -80,8 +80,10 @@ func newWorkflowStatusCommand() *cobra.Command {
 	opts := &workflowStatusOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "status <output_dir>",
-		Short:         "Inspect workflow runtime state without modifying it",
+		Use:   "status <output_dir>",
+		Short: "Inspect workflow runtime state without modifying it",
+		Example: `  binlogviz workflow status incident-out
+  binlogviz workflow status incident-out --format json`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -137,8 +139,10 @@ func newWorkflowCleanCommand() *cobra.Command {
 	opts := &workflowCleanOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "clean <output_dir>",
-		Short:         "Preview or delete orphaned workflow artifacts safely",
+		Use:   "clean <output_dir>",
+		Short: "Preview or delete orphaned workflow artifacts safely",
+		Example: `  binlogviz workflow clean incident-out
+  binlogviz workflow clean incident-out --format json`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -209,8 +213,10 @@ func newWorkflowExportCommand() *cobra.Command {
 	opts := &workflowExportOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "export <output_dir>",
-		Short:         "Bundle workflow artifacts into a read-only archive",
+		Use:   "export <output_dir>",
+		Short: "Bundle workflow artifacts into a read-only archive",
+		Example: `  binlogviz workflow export incident-out --output incident.zip
+  binlogviz workflow export incident-out --format json --output incident.zip`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -264,8 +270,10 @@ func newWorkflowDescribeCommand() *cobra.Command {
 	opts := &workflowDescribeOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "describe <plan.yaml>",
-		Short:         "Describe a workflow plan without executing it",
+		Use:   "describe <plan.yaml>",
+		Short: "Describe a workflow plan without executing it",
+		Example: `  binlogviz workflow describe incident.yaml
+  binlogviz workflow describe incident.yaml --format json`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -307,8 +315,10 @@ func newWorkflowValidateCommand() *cobra.Command {
 	opts := &workflowValidateOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "validate <plan.yaml>",
-		Short:         "Validate a workflow plan without executing it",
+		Use:   "validate <plan.yaml>",
+		Short: "Validate a workflow plan without executing it",
+		Example: `  binlogviz workflow validate incident.yaml
+  binlogviz workflow validate incident.yaml --format json`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -352,6 +362,7 @@ func newWorkflowRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "run <plan.yaml>",
 		Short:         "Execute a workflow plan",
+		Example:       `  binlogviz workflow run incident.yaml --output-dir incident-run`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
@@ -397,6 +408,7 @@ func newWorkflowResumeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "resume <output_dir>",
 		Short:         "Resume a previously run workflow from its output directory",
+		Example:       `  binlogviz workflow resume incident-out`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
