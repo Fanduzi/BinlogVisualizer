@@ -1,7 +1,7 @@
 // Package displaytz parses the --tz flag and renders a timestamp in that zone.
 // input: the flag value, and a time.Time plus the layout the report already uses.
 // output: an IANA location, or the historical UTC spelling when the flag is absent or UTC.
-// pos: display-only timezone for text, Markdown, HTML, and JSON. It does not parse --start or --end.
+// pos: display-only timezone for text, Markdown, HTML, and JSON. The CLI also uses the location as the zone of a zoneless --start or --end.
 // note: if this file changes, update docs/adr/0017-json-schema-and-display-timezone.md.
 package displaytz
 
@@ -25,7 +25,7 @@ func Parse(changed bool, value string) (*time.Location, error) {
 		return nil, nil
 	}
 	value = strings.TrimSpace(value)
-	if value == "" {
+	if value == "" || strings.EqualFold(value, "Local") {
 		return nil, clierr.Errorf(clierr.KindUsage, "invalid --tz %q: expected an IANA time zone name such as Asia/Shanghai", value)
 	}
 	loc, err := time.LoadLocation(value)

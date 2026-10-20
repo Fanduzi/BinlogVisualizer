@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/analyzer"
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/flashback"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
@@ -49,7 +50,8 @@ func newFlashbackCommand() *cobra.Command {
 			if err := flashback.ValidateResourceEnv(); err != nil {
 				return err
 			}
-			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
+			opts.display = displaytz.From(cmd.Context())
+			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime, opts.display)
 			if err != nil {
 				return err
 			}

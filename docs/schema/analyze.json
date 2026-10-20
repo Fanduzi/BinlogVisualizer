@@ -65,7 +65,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "binlog_bytes": {
@@ -370,7 +369,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "binlog_bytes": {
@@ -548,7 +546,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "binlog_bytes": {
@@ -729,7 +726,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "binlog_bytes": {
@@ -972,7 +968,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "binlog_bytes": {
@@ -1675,7 +1670,6 @@
           "type": "string"
         }
       },
-      "required": null,
       "type": "object"
     },
     "snapshot": {
@@ -1924,7 +1918,6 @@
                 "type": "string"
               }
             },
-            "required": null,
             "type": "object"
           },
           "binlog_bytes": {
@@ -2230,7 +2223,6 @@
                 "type": "string"
               }
             },
-            "required": null,
             "type": "object"
           },
           "binlog_bytes": {
