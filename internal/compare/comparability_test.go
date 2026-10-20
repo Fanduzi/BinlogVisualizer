@@ -367,3 +367,35 @@ func containsReason(reasons []string, want string) bool {
 	}
 	return false
 }
+
+// MariaDB selectors are merged before the scope check: a v3 report records
+// matched identities one by one, a newer one as ranges (#383 QA).
+func TestComparabilityMergesMariaDBSelectors(t *testing.T) {
+	scope := func(include, exclude []string) string {
+		return canonicalScopeKey(InputSnapshotFilters{}, &InputSelection{
+			ResolvedGTIDFlavor: "mariadb",
+			IncludeGTIDs:       include,
+			ExcludeGTIDs:       exclude,
+		})
+	}
+	base := scope([]string{"0-7-1..3", "0-8-5"}, []string{"0-7-2"})
+	for _, same := range [][2][]string{
+		{{"0-7-1", "0-7-2", "0-7-3", "0-8-5"}, {"0-7-2"}},
+		{{"0-8-5", "0-7-2..3", "0-7-1..2"}, {" 0-7-2 "}},
+		{{"0-7-1..3,0-8-5"}, {"0-7-2..2"}},
+	} {
+		if got := scope(same[0], same[1]); got != base {
+			t.Fatalf("%v: scope %s, want %s", same, got, base)
+		}
+	}
+	for _, other := range [][2][]string{
+		{{"0-7-1..4", "0-8-5"}, {"0-7-2"}},
+		{{"0-7-1..3", "0-9-5"}, {"0-7-2"}},
+		{{"0-7-1..3", "0-8-5"}, nil},
+		{{"0-7-1 ..3", "0-8-5"}, {"0-7-2"}},
+	} {
+		if got := scope(other[0], other[1]); got == base {
+			t.Fatalf("%v: same scope as base", other)
+		}
+	}
+}

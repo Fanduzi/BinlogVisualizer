@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"binlogviz/internal/gtidtoken"
 	"binlogviz/internal/i18n"
 )
 
@@ -313,27 +314,12 @@ func parseMariaDBGTIDs(values []string) (map[string][]sequenceRange, []string, e
 }
 
 func parseMariaDBGTIDToken(value string) (source string, rng sequenceRange, canonical string, err error) {
-	trimmed := strings.TrimSpace(value)
-	first, last, isRange := strings.Cut(trimmed, "..")
-	identity, err := parseMariaDBGTID(first)
-	if err != nil {
+	token, ok := gtidtoken.ParseMariaDB(value)
+	if !ok {
 		return "", sequenceRange{}, "", errors.New(i18n.Tf("error.invalidMariaDBGTID", map[string]any{"Value": strconv.Quote(value)}))
 	}
-	cut := strings.LastIndexByte(identity, '-')
-	source = identity[:cut]
-	start, _ := strconv.ParseUint(identity[cut+1:], 10, 64)
-	end := start
-	if isRange {
-		end, err = strconv.ParseUint(last, 10, 64)
-		if err != nil || end < start {
-			return "", sequenceRange{}, "", errors.New(i18n.Tf("error.invalidMariaDBGTID", map[string]any{"Value": strconv.Quote(value)}))
-		}
-	}
-	canonical = identity
-	if end != start {
-		canonical += ".." + strconv.FormatUint(end, 10)
-	}
-	return source, sequenceRange{start: start, end: end}, canonical, nil
+	source = strconv.FormatUint(token.Domain, 10) + "-" + strconv.FormatUint(token.Server, 10)
+	return source, sequenceRange{start: token.Start, end: token.End}, token.String(), nil
 }
 
 func parseMariaDBGTID(value string) (string, error) {

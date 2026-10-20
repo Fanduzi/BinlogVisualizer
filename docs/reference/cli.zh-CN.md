@@ -97,7 +97,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--end` | none | 结束时间，包含边界。格式与 `--start` 相同。 |
 | `--start-position` | none | 单个显式 binlog 文件上的精确事件起始边界（包含）。 |
 | `--stop-position` | none | 单个显式 binlog 文件上的精确事件结束边界（不包含），也可为 EOF。 |
-| `--include-gtids` | none | 包含匹配 MySQL UUID range set，或 MariaDB 身份 `domain-server-seq` 与区间 `domain-server-first..last` 的完整事务组。报告里的 `selection.matched_gtid_set` 可以直接作为输入。 |
+| `--include-gtids` | none | 包含匹配 MySQL UUID range set，或 MariaDB 身份 `domain-server-seq` 与区间 `domain-server-first..last`（`..` 两侧不能有空白）的完整事务组。报告里的 `selection.matched_gtid_set` 可以直接作为输入。 |
 | `--exclude-gtids` | none | 在 include 之后排除匹配的完整事务组；exclude 优先。 |
 | `--from-dir` | none | 从该目录自动发现 binlog 文件。必须与 `--prefix` 一起使用。 |
 | `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。数字后缀前可省略 `.`；完整文件名只匹配该文件；单文件请直接传路径。 |

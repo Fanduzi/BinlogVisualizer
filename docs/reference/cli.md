@@ -97,7 +97,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--end` | none | End time, inclusive. Same formats as `--start`. |
 | `--start-position` | none | Exact inclusive event boundary on one explicit binlog file. |
 | `--stop-position` | none | Exact exclusive event boundary, or EOF, on one explicit binlog file. |
-| `--include-gtids` | none | Include complete groups matching a MySQL UUID range set, or MariaDB identities `domain-server-seq` and ranges `domain-server-first..last`. A report's `selection.matched_gtid_set` is valid input. |
+| `--include-gtids` | none | Include complete groups matching a MySQL UUID range set, or MariaDB identities `domain-server-seq` and ranges `domain-server-first..last` (no whitespace next to `..`). A report's `selection.matched_gtid_set` is valid input. |
 | `--exclude-gtids` | none | Exclude matching complete groups after include; exclusion wins. |
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
 | `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. Optional `.` before the numeric suffix; a complete filename selects that file; for one file, pass the path. |
