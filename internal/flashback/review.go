@@ -8,6 +8,12 @@ import (
 	"binlogviz/internal/mysqlexpr"
 )
 
+// reviewSample, when set by tests, runs once the review has finished.
+// held keeps the review result reachable across the call, so a same-goroutine
+// GC inside the hook still sees images the review retained. Production leaves
+// it nil.
+var reviewSample func(held any)
+
 // reviewGenerated checks schema-file generated columns against every logged image.
 // A contradiction refuses the script. An expression that cannot be checked exactly
 // is omitted, with a warning, when nothing contradicts it. Images are not retained:
@@ -136,6 +142,9 @@ func (a *Planner) collectGeneratedReview() error {
 	}
 	a.noteSchemaWarnings(warns)
 	a.flashGenNotes = append(a.flashGenNotes, notes...)
+	if reviewSample != nil {
+		reviewSample(groups)
+	}
 	return nil
 }
 

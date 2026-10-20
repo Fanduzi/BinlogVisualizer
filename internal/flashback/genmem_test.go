@@ -5,37 +5,37 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"runtime/metrics"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"binlogviz/internal/analyzer"
+	"binlogviz/internal/flashback"
 	"binlogviz/internal/model"
 )
 
 // TestGeneratedReviewRSS is the #317 regression. An in-memory generated-column
-// review retained every image, so heap grew by kilobytes per row (about 500MB
-// at 100k rows). Streaming spill keeps a small conflict-key map instead, and
-// resident memory stays flat as the script grows.
+// review retained every image, so heap grew by hundreds of bytes per row.
+// Streaming spill keeps a small conflict-key map instead.
 //
-// The child measures post-GC HeapAlloc at 25k and 100k rows. The extra bytes
-// per extra row must stay under maxRetainedBytesPerRow. That bound sits above
-// the key map and below image retention, and it does not move with VmHWM,
-// GOMAXPROCS, or the runner. BINLOGVIZ_GENMEM=measure only prints one size.
+// The child samples live heap once the review finishes inside Prepare, on
+// that same goroutine, and once more after the script write. Extra bytes per
+// extra row must stay under maxRetainedBytesPerRow. A background sampler is
+// the wrong instrument: at GOMAXPROCS=1 the writer allocates between the
+// sampler's GC and its read, and the test kept the max.
 func TestGeneratedReviewRSS(t *testing.T) {
 	if reviewRSSRace() {
 		t.Skip("race detector puts this workload above the retained-heap check")
 	}
-	mode := os.Getenv("BINLOGVIZ_GENMEM")
-	if mode == "child" || mode == "measure" {
-		runGenMem(t, mode)
+	if os.Getenv("BINLOGVIZ_GENMEM") == "child" {
+		runGenMem(t)
 		return
 	}
 
 	cmd := exec.Command(os.Args[0], "-test.run=^TestGeneratedReviewRSS$", "-test.count=1", "-test.v")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(withoutEnv("BINLOGVIZ_GENMEM"),
 		"BINLOGVIZ_GENMEM=child",
 		"GOMEMLIMIT=256MiB",
 	)
@@ -49,30 +49,35 @@ func TestGeneratedReviewRSS(t *testing.T) {
 	}
 }
 
-// maxRetainedBytesPerRow is the extra post-GC heap per extra row between the
-// 25k and 100k runs. Streaming measured about 120–145 bytes/row (the
-// conflict-key map). Keeping every logged image measured about 520. 400 sits
-// between those; it is not a process RSS cap.
-const maxRetainedBytesPerRow int64 = 400
+// maxRetainedBytesPerRow is the extra live heap per extra row between the
+// 25k and 100k runs. Streaming keeps a conflict-key map of 74 bytes/row.
+// Retaining a quarter of the logged images is 168, and half is 260.
+// 140 sits between the map and a quarter of the images.
+const maxRetainedBytesPerRow int64 = 140
 
-func runGenMem(t *testing.T, mode string) {
-	t.Helper()
-	plain := os.Getenv("GENMEM_PLAIN") == "1"
-	if mode == "measure" {
-		n, _ := strconv.Atoi(os.Getenv("GENMEM_N"))
-		if n <= 0 {
-			n = 100000
+func withoutEnv(key string) []string {
+	prefix := key + "="
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, e := range env {
+		if strings.HasPrefix(e, prefix) {
+			continue
 		}
-		heap, rss, sql := genCorpus(t, n, plain)
-		fmt.Printf("n=%d plain=%v sql=%d heap_bytes=%d rss_kb=%d\n", n, plain, sql, heap, rss)
-		return
+		out = append(out, e)
 	}
+	return out
+}
 
+func runGenMem(t *testing.T) {
+	t.Helper()
 	const smallN, largeN = 25000, 100000
-	smallHeap, smallRSS, smallSQL := genCorpus(t, smallN, plain)
-	largeHeap, largeRSS, largeSQL := genCorpus(t, largeN, plain)
-	fmt.Printf("n=%d plain=%v sql=%d heap_bytes=%d rss_kb=%d\n", smallN, plain, smallSQL, smallHeap, smallRSS)
-	fmt.Printf("n=%d plain=%v sql=%d heap_bytes=%d rss_kb=%d\n", largeN, plain, largeSQL, largeHeap, largeRSS)
+	smallHeap, smallRSS, smallSQL := genCorpus(t, smallN)
+	largeHeap, largeRSS, largeSQL := genCorpus(t, largeN)
+	fmt.Printf("n=%d sql=%d heap_bytes=%d rss_kb=%d\n", smallN, smallSQL, smallHeap, smallRSS)
+	fmt.Printf("n=%d sql=%d heap_bytes=%d rss_kb=%d\n", largeN, largeSQL, largeHeap, largeRSS)
+	if smallHeap <= 0 || largeHeap <= 0 {
+		t.Fatalf("live heap was not sampled: %d -> %d", smallHeap, largeHeap)
+	}
 	if smallSQL <= 0 || largeSQL < smallSQL*3 {
 		t.Fatalf("sql did not scale with rows: %d -> %d", smallSQL, largeSQL)
 	}
@@ -81,25 +86,19 @@ func runGenMem(t *testing.T, mode string) {
 		extraHeap = 0
 	}
 	extraRows := int64(largeN - smallN)
+	fmt.Printf("retained_bytes_per_row=%d\n", extraHeap/extraRows)
 	if extraHeap > extraRows*maxRetainedBytesPerRow {
 		t.Fatalf("retained heap grew %d bytes/row from %d to %d rows (%d -> %d bytes)", extraHeap/extraRows, smallN, largeN, smallHeap, largeHeap)
 	}
 }
 
-func genCorpus(t *testing.T, n int, plain bool) (heap int64, rssKB int64, sqlBytes int) {
+func genCorpus(t *testing.T, n int) (heap int64, rssKB int64, sqlBytes int) {
 	t.Helper()
 	schema := "CREATE TABLE `t` (\n" +
 		"  `id` int NOT NULL,\n" +
 		"  `note` varchar(255) DEFAULT NULL,\n" +
 		"  `g` int GENERATED ALWAYS AS ((`id` + 1)) STORED,\n" +
 		"  PRIMARY KEY (`id`)\n);\n"
-	if plain {
-		schema = "CREATE TABLE `t` (\n" +
-			"  `id` int NOT NULL,\n" +
-			"  `note` varchar(255) DEFAULT NULL,\n" +
-			"  `g` int DEFAULT NULL,\n" +
-			"  PRIMARY KEY (`id`)\n);\n"
-	}
 	a := analyzer.New(analyzer.Options{Flashback: true, SchemaSQL: schema})
 	cols := []model.FlashCol{
 		{Base: "int", HasSign: true},
@@ -127,37 +126,19 @@ func genCorpus(t *testing.T, n int, plain bool) (heap int64, rssKB int64, sqlByt
 			t.Fatal(err)
 		}
 	}
-	// HeapAlloc after a GC, sampled while the review and the write run. Images
-	// the review still holds are reachable from that stack. Garbage from the
-	// script bytes is not, which is what made a whole-process VmHWM cap flake.
-	var peak atomic.Uint64
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		var m runtime.MemStats
-		tick := time.NewTicker(10 * time.Millisecond)
-		defer tick.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-tick.C:
-				runtime.GC()
-				runtime.ReadMemStats(&m)
-				for {
-					old := peak.Load()
-					if m.HeapAlloc <= old || peak.CompareAndSwap(old, m.HeapAlloc) {
-						break
-					}
-				}
-			}
+	// Prepare runs the review before the first Write. Sample there, while a
+	// retained image is still reachable, then again after the write so the
+	// peak cannot stay 0 when the write itself retains memory.
+	var peak uint64
+	sawReview := false
+	flashback.SetReviewSample(func(held any) {
+		sawReview = true
+		if n := liveHeap(); n > peak {
+			peak = n
 		}
-	}()
-	defer func() {
-		close(stop)
-		<-done
-	}()
+		runtime.KeepAlive(held)
+	})
+	defer flashback.SetReviewSample(nil)
 	if _, err := a.Finalize(); err != nil {
 		t.Fatal(err)
 	}
@@ -165,8 +146,29 @@ func genCorpus(t *testing.T, n int, plain bool) (heap int64, rssKB int64, sqlByt
 	if _, err := a.Planner().WriteFlashback(&sink); err != nil {
 		t.Fatal(err)
 	}
+	if n := liveHeap(); n > peak {
+		peak = n
+	}
 	runtime.KeepAlive(a)
-	return int64(peak.Load()), vmHWM(), sink.n
+	if !sawReview {
+		t.Fatal("generated-column review finished without a live-heap sample")
+	}
+	if peak == 0 {
+		t.Fatal("live heap sample was 0")
+	}
+	return int64(peak), vmHWM(), sink.n
+}
+
+// liveHeap is the heap the last GC marked. Reading it after runtime.GC in
+// this goroutine does not race a writer the way HeapAlloc does.
+func liveHeap() uint64 {
+	runtime.GC()
+	sample := []metrics.Sample{{Name: "/gc/heap/live:bytes"}}
+	metrics.Read(sample)
+	if sample[0].Value.Kind() != metrics.KindUint64 {
+		return 0
+	}
+	return sample[0].Value.Uint64()
 }
 
 type countingWriter struct{ n int }

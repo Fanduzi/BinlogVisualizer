@@ -16,9 +16,11 @@ import (
 // TestVerifyDoesNotBufferTheScript is the streaming-verify guard. A buffered
 // read keeps the script live, so post-GC heap during Read grows with the
 // file. A line reader does not. The child compares a script to one four
-// times larger and requires the extra peak to stay under half the extra
-// bytes. GC runs inside Read, so the number is live heap, not a 1ms sample
-// of whatever GOGC has not reclaimed yet.
+// times larger. The extra peak must stay under a tenth of the extra bytes,
+// and the small run's peak must stay under about 1 MiB. A fixed multi-megabyte
+// reader fails the cap even when both runs buffer the same amount. GC runs
+// inside Read, so the number is live heap, not a 1ms sample of whatever
+// GOGC has not reclaimed yet.
 func TestVerifyDoesNotBufferTheScript(t *testing.T) {
 	if os.Getenv("BINLOGVIZ_GUARDMEM") == "child" {
 		guardMemChild(t)
@@ -51,8 +53,12 @@ func guardMemChild(t *testing.T) {
 	if extraPeak < 0 {
 		extraPeak = 0
 	}
-	if extraPeak*2 >= extraSize {
-		t.Fatalf("verify peak grew %d bytes for %d extra script bytes", extraPeak, extraSize)
+	// Streaming peaks sit around 80 KB. A tenth of the extra file is a few
+	// megabytes, and 1 MiB is more than 10x the small-run noise, so a quarter
+	// of the script or a 16 MiB reader cannot hide under either bound.
+	const maxSmallPeak uint64 = 1 << 20
+	if smallPeak > maxSmallPeak || extraPeak*10 >= extraSize {
+		t.Fatalf("verify peak %d then %d (extra %d for %d extra script bytes)", smallPeak, largePeak, extraPeak, extraSize)
 	}
 }
 
