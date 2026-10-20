@@ -3,17 +3,19 @@ package binlogviz
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"os"
 	"os/exec"
 	"runtime"
 	"runtime/metrics"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
@@ -23,14 +25,20 @@ import (
 )
 
 // TestLargeInputBaseline is the E2 gate: a generated binlog of at least
-// 100MB has a scaling baseline for memory and CPU, and a super-linear
-// regression fails CI. The design is docs/large-input-baseline.md.
+// 100MB has a baseline for time and memory, and a regression fails CI.
+// The design is docs/large-input-baseline.md.
 //
 // The child writes two MySQL 8.0 binlogs from the hot-rows transaction
 // template (about 12.5MB and at least 100MB, eight times as many
 // transactions) and runs analyze, then flashback generate, on each. Analyze
 // goes through the real parser and aggregator and writes json, text,
 // markdown, and html. Nothing is committed as a fixture.
+//
+// Ratio gates catch super-linear growth. Absolute gates on the large run
+// (live heap after GC, bytes allocated per event, process CPU per event)
+// catch a uniform slowdown and a fixed retained buffer, which a large/small
+// ratio accepts. Process CPU is getrusage user+sys, not
+// /cpu/classes/total:cpu-seconds (that metric is GOMAXPROCS times wall time).
 //
 // It runs in the plain `go test ./...` of CI's verify job. A -race build
 // skips it: parsing two files this size under the race detector is too slow
@@ -47,13 +55,22 @@ func TestLargeInputBaseline(t *testing.T) {
 	default:
 		t.Fatalf("BINLOGVIZ_LARGE_INPUT=%q: only this test sets it, to child", mode)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^TestLargeInputBaseline$", "-test.count=1", "-test.v")
+	// The parent owns the directory. The child's t.TempDir would be left
+	// behind (~118MB) if a go test timeout killed this process first.
+	dir := t.TempDir()
+	ctx, cancel := largeInputChildContext(t)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLargeInputBaseline$", "-test.count=1", "-test.v")
 	cmd.Env = append(os.Environ(),
 		"BINLOGVIZ_LARGE_INPUT=child",
-		// Above the passing heap (~8MB) so GC stays on the unlimited path.
-		// High enough that the retain fault still reaches the assertion.
+		"BINLOGVIZ_LARGE_INPUT_DIR="+dir,
+		// Above the passing heap (~9MB analyze, ~17MB flashback) so GC stays
+		// on the unlimited path. High enough that a retained buffer still
+		// reaches the absolute heap assertion.
 		"GOMEMLIMIT=2GiB",
 	)
+	cmd.WaitDelay = 3 * time.Second
+	setChildDeathSignal(cmd)
 	out, err := cmd.CombinedOutput()
 	t.Logf("%s", out)
 	if err != nil {
@@ -77,6 +94,21 @@ func TestLargeInputBaseline(t *testing.T) {
 	}
 }
 
+// largeInputChildContext stops the child a few seconds before t.Deadline so
+// this test can return and remove the temp dir. go test's timeout kills the
+// parent without running cleanup.
+func largeInputChildContext(t *testing.T) (context.Context, context.CancelFunc) {
+	t.Helper()
+	if d, ok := t.Deadline(); ok {
+		stop := d.Add(-5 * time.Second)
+		if !stop.After(time.Now()) {
+			stop = time.Now().Add(time.Second)
+		}
+		return context.WithDeadline(context.Background(), stop)
+	}
+	return context.WithCancel(context.Background())
+}
+
 // largeInputMinBytes is the E2 floor. 100 << 20, not 100e6.
 const largeInputMinBytes = 100 << 20
 
@@ -88,22 +120,37 @@ const largeInputSampleEvery = 20000
 
 // maxLargeInputExtraHeap is how many more live-heap bytes the large run may
 // peak at than the small run, in the same process, after a warmup.
-// Measured while choosing the gate: about 45KB to 54KB at GOMAXPROCS 4 and 159KB at
-// GOMAXPROCS 1 (docs/large-input-baseline.md). Retaining a 1KB copy of every
-// event is about 1.3GB over this span and fails. 1MiB is about 6x the higher
-// measurement.
+// Retaining a 1KB copy of every event is about 1.3GB over this span and fails.
+// A fixed buffer held on both runs does not move this gap; the absolute caps
+// below catch that.
 const maxLargeInputExtraHeap int64 = 1 << 20
 
-// largeInputCPUSlack multiplies the input-size ratio to cap CPU-seconds.
-// Measured ratio was 7.6 at GOMAXPROCS 4 and 8.1 at GOMAXPROCS 1, against an
-// 8x size ratio. Twice that linear extrapolation still fails an O(n^2) step
-// (about 64x the size ratio; a step of 32 on this input measured 44x). It is
-// not a wall-clock cap.
+// largeInputCPUSlack multiplies the input-size ratio to cap process CPU.
+// The ratio gate fails when the large run's process CPU exceeds this times
+// the linear extrapolation from the small run (slack × small × byte ratio).
+// A uniform slowdown stays near the size ratio and does not trip it; the
+// per-event cap does. An O(n^2) step moves the ratio toward the square of
+// the size ratio.
 const largeInputCPUSlack = 2.0
 
 // largeInputAllocSlack caps (bytes allocated per event on the large run)
-// divided by the same figure on the small run. Measured about 0.99.
+// divided by the same figure on the small run.
 const largeInputAllocSlack = 1.5
+
+// Absolute caps are the large run alone, after GC. Headroom over a clean
+// run is several times the measurement and still far under a 256MiB retain
+// or an ~11× per-event slowdown. Values are filled from the measurement
+// table in docs/large-input-baseline.md; the constants below are the gates.
+//
+// CPU is seconds of process user+sys per event (getrusage RUSAGE_SELF).
+const (
+	maxAnalyzeLiveHeap        uint64 = 32 << 20
+	maxFlashbackLiveHeap      uint64 = 64 << 20
+	maxAnalyzeAllocPerEvent          = 8000.0
+	maxFlashbackAllocPerEvent        = 20000.0
+	maxAnalyzeCPUPerEvent            = 20e-6
+	maxFlashbackCPUPerEvent          = 50e-6
+)
 
 // maxDelaySpillPerTxn caps the analyze apply-delay temp file. The file is 8
 // bytes per spilled transaction. 64 still fails a spill of the row image.
@@ -115,13 +162,18 @@ const maxDelaySpillPerTxn = 64.0
 // that and sits above the measured map.
 const maxFlashbackBytesPerTxn = 100.0
 
+// slowFaultIters is fixed extra CPU per event for the slow fault. It is
+// enough that analyze's process CPU per event clears maxAnalyzeCPUPerEvent
+// while the large/small ratio stays near the size ratio.
+const slowFaultIters = 170000
+
 func largeInputChild(t *testing.T) {
 	t.Helper()
 	fault := os.Getenv("BINLOGVIZ_LARGE_INPUT_FAULT")
 	switch fault {
-	case "", "retain", "quadratic":
+	case "", "retain", "quadratic", "slow", "retain256", "pause":
 	default:
-		t.Fatalf("BINLOGVIZ_LARGE_INPUT_FAULT=%q, want retain, quadratic, or unset", fault)
+		t.Fatalf("BINLOGVIZ_LARGE_INPUT_FAULT=%q, want retain, quadratic, slow, retain256, pause, or unset", fault)
 	}
 	if fault != "" {
 		fmt.Printf("large-input fault=%s\n", fault)
@@ -129,7 +181,10 @@ func largeInputChild(t *testing.T) {
 
 	tp := loadSyntheticTemplate(t)
 	smallN, largeN := scaledTxnCounts(t, tp)
-	dir := t.TempDir()
+	dir := os.Getenv("BINLOGVIZ_LARGE_INPUT_DIR")
+	if dir == "" {
+		dir = t.TempDir()
+	}
 	warm := writeScaledBinlog(t, tp, dir+"/warm.bin", 2000)
 	smallPath := dir + "/small.bin"
 	largePath := dir + "/large.bin"
@@ -151,6 +206,7 @@ func largeInputChild(t *testing.T) {
 	printAnalyze("large", large)
 	checkScale(t, "analyze", small, large, byteRatio, true, 0)
 
+	measureFlashback(t, dir+"/warm.bin") // same warmup, on the flashback path
 	smallFlash := measureFlashback(t, smallPath)
 	largeFlash := measureFlashback(t, largePath)
 	smallFlash.run.txns = smallN
@@ -159,15 +215,20 @@ func largeInputChild(t *testing.T) {
 	printFlash("large", largeFlash)
 	checkScale(t, "flashback", smallFlash.run, largeFlash.run, byteRatio, false, maxFlashbackBytesPerTxn)
 	sqlRatio := float64(largeFlash.sql) / float64(smallFlash.sql)
-	fmt.Printf("large-input flashback sql_ratio=%.2f spill_per_byte=%.3f\n", sqlRatio, float64(largeFlash.run.spill)/float64(largeFlash.run.file))
+	fmt.Printf("large-input flashback sql_ratio=%.2f\n", sqlRatio)
 	if sqlRatio < byteRatio/2 || sqlRatio > byteRatio*2 {
 		t.Fatalf("flashback SQL scaled %.2f from the small file to the large one, want between %.2f and %.2f (bytes %d -> %d)",
 			sqlRatio, byteRatio/2, byteRatio*2, smallFlash.sql, largeFlash.sql)
+	}
+	if !spillStatAvailable() {
+		fmt.Printf("large-input flashback spill skipped: /proc/self/fd is not available\n")
+		return
 	}
 	if largeFlash.run.spill <= 0 || smallFlash.run.spill <= 0 {
 		t.Fatalf("flashback spill missing (small %d, large %d)", smallFlash.run.spill, largeFlash.run.spill)
 	}
 	perByte := func(r largeRun) float64 { return float64(r.spill) / float64(r.file) }
+	fmt.Printf("large-input flashback spill_per_byte=%.3f\n", perByte(largeFlash.run))
 	if perByte(largeFlash.run) > perByte(smallFlash.run)*2 {
 		t.Fatalf("flashback spill grew super-linearly: %.3f bytes of spill per input byte, small run %.3f",
 			perByte(largeFlash.run), perByte(smallFlash.run))
@@ -199,6 +260,13 @@ func printFlash(scale string, r flashRun) {
 		scale, r.run.events, r.run.file, r.run.peak, r.run.cpu, r.run.alloc, r.run.spill, r.sql)
 }
 
+func absoluteCaps(what string) (maxHeap uint64, maxAlloc, maxCPU float64) {
+	if what == "analyze" {
+		return maxAnalyzeLiveHeap, maxAnalyzeAllocPerEvent, maxAnalyzeCPUPerEvent
+	}
+	return maxFlashbackLiveHeap, maxFlashbackAllocPerEvent, maxFlashbackCPUPerEvent
+}
+
 func checkScale(t *testing.T, what string, small, large largeRun, byteRatio float64, analyzeSpill bool, heapPerTxn float64) {
 	t.Helper()
 	extra := int64(large.peak) - int64(small.peak)
@@ -206,8 +274,13 @@ func checkScale(t *testing.T, what string, small, large largeRun, byteRatio floa
 	smallPer := float64(small.alloc) / float64(small.events)
 	largePer := float64(large.alloc) / float64(large.events)
 	allocRatio := largePer / smallPer
-	fmt.Printf("large-input %s extra_heap=%d cpu_ratio=%.2f limit_cpu=%.2f alloc_event_ratio=%.3f\n",
-		what, extra, cpuRatio, byteRatio*largeInputCPUSlack, allocRatio)
+	limitCPU := byteRatio * largeInputCPUSlack
+	// floor_vs_linear is the slack: the ratio gate fails only when large
+	// process CPU exceeds this multiple of (small CPU × byte ratio).
+	// floor_vs_measured is that limit divided by the measured ratio.
+	floorMeasured := limitCPU / cpuRatio
+	fmt.Printf("large-input %s extra_heap=%d cpu_ratio=%.2f linear=%.2f limit_cpu=%.2f floor_vs_linear=%.2f floor_vs_measured=%.2f alloc_event_ratio=%.3f\n",
+		what, extra, cpuRatio, byteRatio, limitCPU, largeInputCPUSlack, floorMeasured, allocRatio)
 	if heapPerTxn == 0 {
 		if extra > maxLargeInputExtraHeap {
 			t.Fatalf("%s live heap grew %d bytes (%d -> %d); limit %d", what, extra, small.peak, large.peak, maxLargeInputExtraHeap)
@@ -221,15 +294,35 @@ func checkScale(t *testing.T, what string, small, large largeRun, byteRatio floa
 				what, per, small.peak, large.peak, extraTxns, heapPerTxn)
 		}
 	}
-	if cpuRatio > byteRatio*largeInputCPUSlack {
-		t.Fatalf("%s CPU ratio %.2f exceeds %.2f (%.2fx the %.2f size ratio); small %.3fs large %.3fs",
-			what, cpuRatio, byteRatio*largeInputCPUSlack, largeInputCPUSlack, byteRatio, small.cpu, large.cpu)
+	if cpuRatio > limitCPU {
+		t.Fatalf("%s process CPU ratio %.2f exceeds %.2f (%.2fx the %.2f size ratio; fails only above %.2fx the linear extrapolation from the small run); small %.3fs large %.3fs",
+			what, cpuRatio, limitCPU, largeInputCPUSlack, byteRatio, largeInputCPUSlack, small.cpu, large.cpu)
 	}
 	if allocRatio > largeInputAllocSlack {
 		t.Fatalf("%s allocated %.0f bytes/event on the large run and %.0f on the small one (ratio %.2f, limit %.2f)",
 			what, largePer, smallPer, allocRatio, largeInputAllocSlack)
 	}
+
+	maxHeap, maxAlloc, maxCPU := absoluteCaps(what)
+	cpuPer := large.cpu / float64(large.events)
+	fmt.Printf("large-input %s absolute peak=%d limit_peak=%d alloc_per_event=%.0f limit_alloc=%.0f cpu_ns_per_event=%.0f limit_cpu_ns=%.0f\n",
+		what, large.peak, maxHeap, largePer, maxAlloc, cpuPer*1e9, maxCPU*1e9)
+	if large.peak > maxHeap {
+		t.Fatalf("%s live heap after GC is %d bytes; limit %d", what, large.peak, maxHeap)
+	}
+	if largePer > maxAlloc {
+		t.Fatalf("%s allocated %.0f bytes/event; limit %.0f", what, largePer, maxAlloc)
+	}
+	if cpuPer > maxCPU {
+		t.Fatalf("%s process CPU is %.0f ns/event (getrusage user+sys, %.3fs over %d events); limit %.0f ns/event",
+			what, cpuPer*1e9, large.cpu, large.events, maxCPU*1e9)
+	}
+
 	if !analyzeSpill {
+		return
+	}
+	if !spillStatAvailable() {
+		fmt.Printf("large-input %s spill skipped: /proc/self/fd is not available\n", what)
 		return
 	}
 	if small.spill <= 0 || large.spill <= 0 {
@@ -344,8 +437,7 @@ func measureFlashback(t *testing.T, path string) flashRun {
 	opts := analyzer.DefaultOptions()
 	opts.Flashback = true
 	opts.FlashbackConflict = flashback.FlashbackConflictRefuse
-	var sql []byte
-	sql = captureStdout(t, func() {
+	sqlN, hasShop := streamStdout(t, []byte("shop"), func() {
 		factory := func(opts analyzer.Options, _ *analyzer.DuckDBStore) commandAnalyzer {
 			return analyzer.New(opts)
 		}
@@ -353,23 +445,25 @@ func measureFlashback(t *testing.T, path string) flashRun {
 			t.Fatalf("flashback %s: %v", path, err)
 		}
 	})
-	// hp.peak was taken on the parse goroutine, before this test buffered
-	// stdout. Sampling again would count that buffer as flashback's heap.
+	// hp.peak was taken on the parse goroutine. The SQL is counted and
+	// discarded as it is written, so it is not part of this heap.
 	cpu := processCPUSeconds(t) - cpu0
 	var after runtime.MemStats
 	runtime.ReadMemStats(&after)
-	if hp.events < 1 || hp.peak == 0 || hp.spill <= 0 {
-		t.Fatalf("flashback %s: events %d peak %d spill %d", path, hp.events, hp.peak, hp.spill)
+	if hp.events < 1 || hp.peak == 0 {
+		t.Fatalf("flashback %s: events %d peak %d", path, hp.events, hp.peak)
 	}
-	if !bytes.Contains(sql, []byte("shop")) {
-		t.Fatalf("flashback %s SQL does not mention shop (%d bytes)", path, len(sql))
+	// A short warmup stays under ChunkRows and never opens the row spill.
+	// The measured runs check the spill themselves.
+	if !hasShop {
+		t.Fatalf("flashback %s SQL does not mention shop (%d bytes)", path, sqlN)
 	}
 	return flashRun{
 		run: largeRun{
 			events: hp.events, file: fi.Size(), peak: hp.peak, cpu: cpu,
 			alloc: after.TotalAlloc - before.TotalAlloc, spill: hp.spill,
 		},
-		sql: int64(len(sql)),
+		sql: sqlN,
 	}
 }
 
@@ -385,7 +479,9 @@ type largeInputAnalyzer struct {
 	finalizeSampled bool
 	result          *model.AnalysisResult
 	kept            [][]byte
+	pad             []byte
 	sink            int
+	paused          bool
 }
 
 func (s *largeInputAnalyzer) Consume(ev model.NormalizedEvent) error {
@@ -399,9 +495,29 @@ func (s *largeInputAnalyzer) Consume(ev model.NormalizedEvent) error {
 		// every event. The copy is the point: a pointer into a reused parser
 		// buffer would not grow the heap.
 		s.kept = append(s.kept, bytes.Repeat([]byte{1}, 1024))
+	case "retain256":
+		// One buffer for the whole run. Both sizes hold it, so large−small
+		// stays flat and only the absolute heap cap fails.
+		if s.pad == nil {
+			s.pad = make([]byte, 256<<20)
+			s.pad[0] = 1
+		}
 	case "quadratic":
 		for i := 0; i < s.consumed; i += 32 {
 			s.sink += i
+		}
+	case "slow":
+		acc := s.sink
+		for i := 0; i < slowFaultIters; i++ {
+			acc += i
+		}
+		s.sink = acc
+	case "pause":
+		// Once, on the large file only (the small file stays under this
+		// event count). Sleep is not process CPU.
+		if !s.paused && s.consumed == 500_000 {
+			s.paused = true
+			time.Sleep(7 * time.Second)
 		}
 	}
 	if s.consumed%s.every == 0 {
@@ -421,6 +537,7 @@ func (s *largeInputAnalyzer) Finalize() (*model.AnalysisResult, error) {
 	s.finalizeSampled = true
 	s.result = res
 	runtime.KeepAlive(s.kept)
+	runtime.KeepAlive(s.pad)
 	runtime.KeepAlive(s.sink)
 	return res, nil
 }
@@ -495,14 +612,30 @@ func (p *heapParser) finishParse() {
 	}
 }
 
+// processCPUSeconds is this process's user+sys time. /cpu/classes/total:cpu-seconds
+// is GOMAXPROCS times wall time, so a pause during the run moves it.
 func processCPUSeconds(t *testing.T) float64 {
 	t.Helper()
-	m := []metrics.Sample{{Name: "/cpu/classes/total:cpu-seconds"}}
-	metrics.Read(m)
-	if m[0].Value.Kind() != metrics.KindFloat64 {
-		t.Fatalf("/cpu/classes/total:cpu-seconds unsupported: kind %v", m[0].Value.Kind())
+	var ru syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+		t.Fatal(err)
 	}
-	return m[0].Value.Float64()
+	return float64(ru.Utime.Nano()+ru.Stime.Nano()) / 1e9
+}
+
+// spillStatAvailable reports whether deleted temp files can be sized.
+// The check reads /proc/self/fd. Off Linux that directory is absent and the
+// spill assertions are skipped; heap and CPU gates still run.
+func spillStatAvailable() bool {
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	f, err := os.Open("/proc/self/fd")
+	if err != nil {
+		return false
+	}
+	f.Close()
+	return true
 }
 
 func deletedTempBytes(substr string) int64 {
@@ -533,29 +666,80 @@ func deletedTempBytes(substr string) int64 {
 
 func captureStdout(t *testing.T, fn func()) []byte {
 	t.Helper()
+	body, _ := readStdout(t, nil, fn)
+	return body
+}
+
+// streamStdout counts what the command writes and reports whether needle
+// appears. The body is not retained (a large flashback script is ~140MB).
+func streamStdout(t *testing.T, needle []byte, fn func()) (n int64, found bool) {
+	t.Helper()
+	_, st := readStdout(t, needle, fn)
+	return st.n, st.found
+}
+
+type stdoutStat struct {
+	n     int64
+	found bool
+	body  []byte
+}
+
+func readStdout(t *testing.T, needle []byte, fn func()) ([]byte, stdoutStat) {
+	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	old := os.Stdout
 	os.Stdout = w
-	done := make(chan []byte, 1)
-	go func() {
-		body, readErr := io.ReadAll(r)
-		if readErr != nil {
-			body = append(body, []byte("\nread stdout: "+readErr.Error())...)
-		}
-		done <- body
-	}()
 	defer func() {
 		os.Stdout = old
 		_ = w.Close()
 		_ = r.Close()
 	}()
+	done := make(chan stdoutStat, 1)
+	go func() {
+		var st stdoutStat
+		buf := make([]byte, 256<<10)
+		hold := 0
+		if needle != nil {
+			hold = len(needle) - 1
+		}
+		var prev []byte
+		for {
+			nr, readErr := r.Read(buf)
+			if nr > 0 {
+				chunk := buf[:nr]
+				st.n += int64(nr)
+				if needle == nil {
+					st.body = append(st.body, chunk...)
+				} else if !st.found {
+					if bytes.Contains(chunk, needle) || (len(prev) > 0 && bytes.Contains(append(append([]byte{}, prev...), chunk...), needle)) {
+						st.found = true
+					}
+					if hold > 0 {
+						if nr >= hold {
+							prev = append(prev[:0], chunk[nr-hold:]...)
+						} else {
+							prev = append(prev, chunk...)
+							if len(prev) > hold {
+								prev = append([]byte(nil), prev[len(prev)-hold:]...)
+							}
+						}
+					}
+				}
+			}
+			if readErr != nil {
+				break
+			}
+		}
+		done <- st
+	}()
 	fn()
-	_ = w.Close()
 	os.Stdout = old
-	return <-done
+	_ = w.Close()
+	st := <-done
+	return st.body, st
 }
 
 func scaledTxnCounts(t *testing.T, tp syntheticTemplate) (smallN, largeN int) {
