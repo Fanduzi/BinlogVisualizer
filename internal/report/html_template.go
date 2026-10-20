@@ -957,7 +957,7 @@ const htmlReportTemplateTail = `
           <div class="card-value" style="font-size:13.5px;margin-top:4px;line-height:1.4">{{.StartTime}}</div>
           <div class="card-sub">→ {{.EndTime}}</div>
           <div class="card-sub" style="font-weight:600;color:var(--text)">{{t "report.html.common.duration"}}: {{.Duration}}</div>
-          <div class="card-sub">{{t "report.label.timestamps"}}: {{t "report.value.binlogUTC"}}</div>
+          <div class="card-sub">{{t "report.label.timestamps"}}: {{.TimestampBasis}}</div>
         </div>
         {{else}}
         <div class="card">
@@ -2214,7 +2214,7 @@ const htmlReportTemplateTail = `
         "- Affected Rows: {{.TotalRows}}\n" +
         "- Events: {{.TotalEvents}}\n" +
         "{{if .StartTime}}- Time Window: {{.StartTime}} -> {{.EndTime}} ({{.Duration}})\n{{end}}" +
-        "- {{t "report.label.timestamps"}}: {{t "report.value.binlogUTC"}}\n" +
+        "- {{t "report.label.timestamps"}}: {{.TimestampBasis}}\n" +
         "- Generated: {{.GeneratedAt}}\n";
       if (navigator.clipboard) {
         navigator.clipboard.writeText(summaryText).then(function() {

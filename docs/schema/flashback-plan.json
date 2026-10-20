@@ -1,0 +1,168 @@
+{
+  "$id": "binlogviz:schema/flashback-plan",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "conflict_policy": {
+      "type": "string"
+    },
+    "conflicts": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "listed": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "later_gtid": {
+                "type": "string"
+              },
+              "later_op": {
+                "type": "string"
+              },
+              "later_position": {
+                "type": "string"
+              },
+              "table": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "key",
+              "later_gtid",
+              "later_op",
+              "later_position",
+              "table"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "omitted": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count",
+        "listed",
+        "omitted"
+      ],
+      "type": "object"
+    },
+    "guarded_statements": {
+      "type": "integer"
+    },
+    "plan_version": {
+      "const": 2,
+      "type": "integer"
+    },
+    "refusal": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "table": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "message"
+      ],
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "rows": {
+      "type": "integer"
+    },
+    "tables": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "delete": {
+            "type": "integer"
+          },
+          "insert": {
+            "type": "integer"
+          },
+          "table": {
+            "type": "string"
+          },
+          "update": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "delete",
+          "insert",
+          "table",
+          "update"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "transactions": {
+      "type": "integer"
+    },
+    "warnings": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "would_refuse": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "conflict_policy",
+    "conflicts",
+    "guarded_statements",
+    "plan_version",
+    "refusal",
+    "rows",
+    "tables",
+    "transactions",
+    "warnings",
+    "would_refuse"
+  ],
+  "title": "flashback-plan",
+  "type": "object"
+}

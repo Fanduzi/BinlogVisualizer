@@ -4,7 +4,7 @@ This is the usage guide for operators and for an agent driving the `binlogviz` C
 
 A release archive contains this file, `docs/agents/USING-BINLOGVIZ.zh-CN.md`, `README.md`, `README_ZH.md`, `binlogviz`, `incident.yaml`, and `testdata/`. Commands below use those archive paths. In a git checkout, `testdata/minimal.binlog` is `cmd/binlogviz/testdata/minimal.binlog`.
 
-Report times are UTC. `--start` and `--end` accept RFC3339. An offset is the instant: `2026-10-19T14:05:00+08:00` is `2026-10-19T06:05:00Z`. `YYYY-MM-DD HH:MM:SS` uses the machine's local timezone. Prefer an offset across machines.
+Report times are UTC unless you pass `--tz`. `--tz Asia/Shanghai` prints the same instants with a numeric offset (`+08:00`), in text, Markdown, HTML, and JSON. Absent or `--tz UTC` keeps the ` UTC` / `Z` spelling. `--start` and `--end` do not follow `--tz`. An offset is the instant: `2026-10-19T14:05:00+08:00` is `2026-10-19T06:05:00Z`. `YYYY-MM-DD HH:MM:SS` uses the machine's local timezone. Prefer an offset across machines. An unknown `--tz` exits 3.
 
 `flashback` does not connect to MySQL. Review the script, test it, and apply it yourself with `binlogviz flashback verify <file> | mysql`. `mysql < file` commits nothing. A failed statement, including under `mysql --force`, does not commit a prefix. The undo is one XA transaction (ADR 0014).
 
@@ -108,5 +108,7 @@ Read the version key first. Adding a key does not bump the number. Removing, ren
 | `version --format json` | `schema_version` | 1 |
 
 `binlogviz version --format json` also prints `version`, `commit`, `commit_time`, `modified`, and `go_version`.
+
+The machine-readable schema for each row is `binlogviz schema <name>` and `docs/schema/<name>.json` in a checkout or a release archive (`analyze`, `flashback-plan`, `compare`, `trend`, `snapshot-list`, `snapshot-show`, `workflow-validate`, `workflow-describe`, `workflow-status`, `workflow-clean`, `workflow-export`, `version`, `flashback-verify`). `binlogviz schema` lists the names. Passing `--tz` does not bump these version numbers.
 
 `report_version` stays 3 for `--diagnostics summary` and `off`. The summary DDL list is capped; `ddl_events_omitted` is how you see that. Default `full` JSON does not have that key.

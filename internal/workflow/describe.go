@@ -1,5 +1,11 @@
 package workflow
 
+import (
+	"time"
+
+	"binlogviz/internal/displaytz"
+)
+
 // Description is a static preview of how a workflow plan will execute.
 type Description struct {
 	WorkflowName string               `json:"workflow_name"`
@@ -35,7 +41,14 @@ type TrendDescription struct {
 }
 
 // BuildDescription derives a static execution preview from a validated workflow plan.
+// Window times use the historical UTC spelling.
 func BuildDescription(plan Plan) Description {
+	return BuildDescriptionIn(plan, nil)
+}
+
+// BuildDescriptionIn is BuildDescription with a display zone for window
+// start and end. A nil loc keeps 2006-01-02T15:04:05Z (ADR 0017).
+func BuildDescriptionIn(plan Plan, loc *time.Location) Description {
 	desc := Description{
 		WorkflowName: plan.Workflow.Name,
 		OutputDir:    plan.Workflow.OutputDir,
@@ -48,8 +61,8 @@ func BuildDescription(plan Plan) Description {
 	for _, window := range plan.Windows {
 		windowDesc := WindowDescription{
 			Name:      window.Name,
-			Start:     window.Start.UTC().Format("2006-01-02T15:04:05Z"),
-			End:       window.End.UTC().Format("2006-01-02T15:04:05Z"),
+			Start:     displaytz.RFC3339(window.Start, loc),
+			End:       displaytz.RFC3339(window.End, loc),
 			Artifacts: []string{"analyze/" + window.Name + ".json"},
 		}
 		if plan.Defaults.Snapshot.Save {

@@ -15,7 +15,16 @@ import (
 	"binlogviz/internal/guard"
 )
 
-func TestEveryJSONOutputIsVersioned(t *testing.T) {
+// jsonOutputRun is one command that prints a versioned JSON document.
+// Names are the schema catalog (schemaOutputs), not a second list.
+type jsonOutputRun struct {
+	name string
+	args []string
+	exit int
+}
+
+func prepareJSONOutputRuns(t *testing.T) []jsonOutputRun {
+	t.Helper()
 	forceEnglishRuntimeOutput(t)
 	_, outputDir, planPath, snapshotDir := setupWorkflowTestWithSnapshots(t, "basic-plan.yaml")
 	if code, _, stderr := runRoot(t, "workflow", "run", planPath, "--output-dir", outputDir, "--snapshot-dir", snapshotDir); code != 0 {
@@ -47,44 +56,71 @@ func TestEveryJSONOutputIsVersioned(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cases := []struct {
-		name string
-		key  string
-		want float64
-		args []string
-		exit int
-	}{
-		{"analyze", "report_version", 3, []string{"analyze", binlog, "--format", "json", "-q"}, 0},
+	return []jsonOutputRun{
+		{name: "analyze", args: []string{"analyze", binlog, "--format", "json", "-q"}, exit: 0},
 		// The fixture holds a CREATE TABLE, so the real run refuses (exit 6); --plan still prints the plan.
-		{"flashback --plan", "plan_version", 2, []string{"flashback", binlog, "--plan"}, 6},
-		{"compare", "schema_version", 1, []string{"compare", "--snapshot-dir", snapshotDir, "--current-snapshot", b, "--baseline-snapshot", a, "--format", "json"}, 0},
-		{"trend", "schema_version", 1, []string{"trend", a, b, "--snapshot-dir", snapshotDir, "--format", "json"}, 0},
-		{"snapshot list", "schema_version", 1, []string{"snapshot", "list", "--snapshot-dir", snapshotDir, "--format", "json"}, 0},
-		{"snapshot show", "schema_version", 1, []string{"snapshot", "show", a, "--snapshot-dir", snapshotDir, "--format", "json"}, 0},
-		{"workflow validate", "schema_version", 1, []string{"workflow", "validate", planPath, "--format", "json"}, 0},
-		{"workflow describe", "schema_version", 1, []string{"workflow", "describe", planPath, "--format", "json"}, 0},
-		{"workflow status", "schema_version", 1, []string{"workflow", "status", outputDir, "--format", "json"}, 0},
-		{"workflow clean", "schema_version", 1, []string{"workflow", "clean", outputDir, "--format", "json"}, 0},
-		{"workflow export", "schema_version", 1, []string{"workflow", "export", outputDir, "--output", filepath.Join(t.TempDir(), "out.zip"), "--format", "json"}, 0},
-		{"version", "schema_version", 1, []string{"version", "--format", "json"}, 0},
-		{"flashback verify", "schema_version", 1, []string{"flashback", "verify", verifyFile, "--format", "json"}, 0},
+		{name: "flashback-plan", args: []string{"flashback", binlog, "--plan"}, exit: 6},
+		{name: "compare", args: []string{"compare", "--snapshot-dir", snapshotDir, "--current-snapshot", b, "--baseline-snapshot", a, "--format", "json"}, exit: 0},
+		{name: "trend", args: []string{"trend", a, b, "--snapshot-dir", snapshotDir, "--format", "json"}, exit: 0},
+		{name: "snapshot-list", args: []string{"snapshot", "list", "--snapshot-dir", snapshotDir, "--format", "json"}, exit: 0},
+		{name: "snapshot-show", args: []string{"snapshot", "show", a, "--snapshot-dir", snapshotDir, "--format", "json"}, exit: 0},
+		{name: "workflow-validate", args: []string{"workflow", "validate", planPath, "--format", "json"}, exit: 0},
+		{name: "workflow-describe", args: []string{"workflow", "describe", planPath, "--format", "json"}, exit: 0},
+		{name: "workflow-status", args: []string{"workflow", "status", outputDir, "--format", "json"}, exit: 0},
+		{name: "workflow-clean", args: []string{"workflow", "clean", outputDir, "--format", "json"}, exit: 0},
+		{name: "workflow-export", args: []string{"workflow", "export", outputDir, "--output", filepath.Join(t.TempDir(), "out.zip"), "--format", "json"}, exit: 0},
+		{name: "version", args: []string{"version", "--format", "json"}, exit: 0},
+		{name: "flashback-verify", args: []string{"flashback", "verify", verifyFile, "--format", "json"}, exit: 0},
 	}
-	for _, tc := range cases {
-		code, stdout, stderr := runRoot(t, tc.args...)
-		if code != tc.exit {
-			t.Errorf("%s: exit %d, want %d: %s", tc.name, code, tc.exit, stderr)
+}
+
+func schemaCatalogByName(t *testing.T) map[string]schemaOutput {
+	t.Helper()
+	byName := map[string]schemaOutput{}
+	for _, out := range schemaOutputs() {
+		if _, dup := byName[out.Name]; dup {
+			t.Fatalf("duplicate schema name %q", out.Name)
+		}
+		byName[out.Name] = out
+	}
+	return byName
+}
+
+func TestEveryJSONOutputIsVersioned(t *testing.T) {
+	runs := prepareJSONOutputRuns(t)
+	byName := schemaCatalogByName(t)
+	if len(runs) != len(byName) {
+		t.Fatalf("JSON runners %d, schema catalog %d", len(runs), len(byName))
+	}
+	seen := map[string]bool{}
+	for _, run := range runs {
+		out, ok := byName[run.name]
+		if !ok {
+			t.Errorf("runner %s is not in schemaOutputs()", run.name)
+			continue
+		}
+		seen[run.name] = true
+		code, stdout, stderr := runRoot(t, run.args...)
+		if code != run.exit {
+			t.Errorf("%s: exit %d, want %d: %s", run.name, code, run.exit, stderr)
 			continue
 		}
 		var doc map[string]any
 		if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
-			t.Errorf("%s: stdout is not one JSON object: %v\n%s", tc.name, err, stdout)
+			t.Errorf("%s: stdout is not one JSON object: %v\n%s", run.name, err, stdout)
 			continue
 		}
-		if got, ok := doc[tc.key].(float64); !ok || got != tc.want {
-			t.Errorf("%s: %s = %v, want %v", tc.name, tc.key, doc[tc.key], tc.want)
+		got, ok := doc[out.VersionKey].(float64)
+		if !ok || got != float64(out.Version) {
+			t.Errorf("%s: %s = %v, want %d", run.name, out.VersionKey, doc[out.VersionKey], out.Version)
 		}
-		if tc.key == "schema_version" && !strings.HasPrefix(strings.TrimSpace(stdout), "{\n  \"schema_version\":") {
-			t.Errorf("%s: schema_version is not the first key:\n%.200s", tc.name, stdout)
+		if out.VersionKey == "schema_version" && !strings.HasPrefix(strings.TrimSpace(stdout), "{\n  \"schema_version\":") {
+			t.Errorf("%s: schema_version is not the first key:\n%.200s", run.name, stdout)
+		}
+	}
+	for name := range byName {
+		if !seen[name] {
+			t.Errorf("schema %s has no JSON runner", name)
 		}
 	}
 }

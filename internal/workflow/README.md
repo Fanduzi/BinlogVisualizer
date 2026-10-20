@@ -83,7 +83,7 @@ When `plan_path` is untrusted:
 - `ValidatePlan(Plan) error` — Checks structural and cross-reference rules, including duplicate window, compare-job, and trend-job names.
 - `PlanInputWarnings(Plan) []string` — Non-fatal warnings for placeholder or missing `defaults.input.from_dir`.
 - `ArtifactPath(root, kind, name, format string) string` — Resolves deterministic artifact file paths.
-- `BuildDescription(plan Plan) Description` — Builds a static workflow preview from plan-only data using deterministic artifact naming.
+- `BuildDescription(plan Plan) Description` — Builds a static workflow preview from plan-only data using deterministic artifact naming. `BuildDescriptionIn` is the same preview with a display zone for window times; a nil zone keeps the UTC `Z` spelling.
 - `Description` / `WindowDescription` / `CompareDescription` / `TrendDescription` — Structured static preview model for text/json rendering.
 - `BuildStatus(outputDir string, manifest Manifest, plan *Plan) (Status, error)` — Builds a read-only runtime inspection model from manifest data, artifact presence checks, and dry resume planning.
 - `Status` / `StepStatus` / `ArtifactStatus` / `ResumePreviewStep` — Structured runtime status model for text/json rendering.

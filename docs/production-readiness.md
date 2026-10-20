@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `385e5ae`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3）加上 #364（analyze 内存不随事务数增长；E1 仍是 PARTIAL，GTID 过滤下无上界，#376），2026-10-20 核对。
+基线：main `385e5ae`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3）加上 #364（analyze 内存不随事务数增长；E1 仍是 PARTIAL，GTID 过滤下无上界，#376），2026-10-20 核对。D5 在这次核对里改为 MET（JSON Schema 与 `--tz`，#255 第 3、7 项）。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -48,7 +48,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 | D2 | 退出码按种类结构化，没有不带类型的错误 | `TestExitTaxonomy277`、`TestNoUntypedErrors`、`exit_kinds*_test.go`；`docs/reference/exit-codes.md` | MET | — |
 | D3 | 每个子命令的 `--help` 都能自解释，并带 Example | `TestEveryCommandHasExample` 走命令树（不写死名单），缺 Example、Example 里没有该命令的可执行行，或 `--help` 没印出来，就失败。`TestCommandExamplesRun` 在仓库夹具上执行每条 Example | MET | — |
 | D4 | 没有交互提示；默认安全；有 dry-run | `TestCommandsDoNotPrompt`：每个命令在非 TTY、stdin 阻塞时限时返回，输出里没有确认提示；用法里把 `-` 写成 stdin 时，stdin 已关闭则立刻报没有数据，不提问。`TestNoInteractivePromptAPI` 禁止提示库、`fmt.Scan` 和 `ReadPassword`（读 stdin 只允许 `analyze_stdin.go`）。`TestFlashbackPlanRefusalPrintsReasons`：exit 6 时 `--plan` 的 stdout 仍是带 `plan_version` 的 JSON，里面有 `would_refuse` 和 `refusal`；`--error-format text` 与 `json` 的 stderr 写同一条原因。`install.sh --dry-run`；`workflow clean` 默认只预览 | MET | — |
-| D5 | 有机器可读的输出 schema（JSON Schema 或 describe 命令），显示时区可选（`--tz`） | 没有 | NOT MET | #255（第 3、7 项） |
+| D5 | 有机器可读的输出 schema（JSON Schema 或 describe 命令），显示时区可选（`--tz`） | `TestJSONOutputMatchesSchema` 用 `schemaOutputs()`（与 `TestEveryJSONOutputIsVersioned` 同一份名单）跑每条 JSON 命令，拿 stdout 对 `docs/schema/<name>.json` 做校验；名单里多一个名字、少一个 runner 或少一个文件就失败。`TestPublishedSchemaMatchesGenerator` 要求文件、生成器和 `binlogviz schema <name>` 的字节一致。`TestSchemaRejectsDroppedProperty` 从 analyze schema 删掉 `summary` 后真实输出必须校验失败。`TestSchemaRejectsUnknownField` 给输出加一个 schema 里没有的字段必须失败。`TestDisplayTimezone` 用 `Asia/Kolkata`（+05:30）、`America/New_York`（夏令时）和 `Etc/UTC` 跑 analyze 的 JSON/文本/Markdown/HTML，时刻不变、偏移正确，并检查 snapshot list/show、workflow describe、compare/trend HTML；非法或空的 `--tz` 退出码 3、kind `usage`。`TestDefaultOutputByteIdentical` 在不传 `--tz` 时比较 `TZ=UTC` 与 `TZ=America/New_York` 的 analyze JSON/文本/Markdown，必须逐字节相同且仍是 `Z` / ` UTC`。`TestTimeFilterIgnoresDisplayTimezone` 证明 `YYYY-MM-DD HH:MM:SS` 的 `--start`/`--end` 仍按机器本地时区，不按 `--tz`。都在 `go test ./...`（verify）里跑 | MET | — |
 
 ## E. 大输入与资源上界
 
@@ -74,14 +74,13 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 17 / PARTIAL 2 / NOT MET 5**，还剩 7 项。
+共 24 项：**MET 18 / PARTIAL 2 / NOT MET 4**，还剩 6 项。
 
-## 最卡生产级的 5 项
+## 最卡生产级的 4 项
 
 1. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
 2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 3. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
 4. **E1、E2，内存与大文件**：加 GTID 过滤时 analyze 把当前事务整个缓存在内存里，大事务会 OOM（#376）；≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（不加 GTID 过滤时，#364 已让 analyze 内存不随事务数增长，`TestAnalyzeRetainedHeap` 在 CI 里跑；#351 的偶发失败由 #358、#361 修复。）
-5. **D5，机器可读的输出 schema 和 `--tz`**：没有 JSON Schema 或 describe 命令，显示时区不可选（#255 第 3、7 项）。
 
 A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。

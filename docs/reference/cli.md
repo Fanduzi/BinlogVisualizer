@@ -48,6 +48,7 @@ These flags are available on the root command and apply before subcommand execut
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--lang` | env-detected | Runtime output language, for example `en` or `zh-CN`. |
+| `--tz` | historical UTC spelling | IANA display zone for rendered timestamps, for example `Asia/Shanghai`. Absent or `UTC` keeps ` UTC` in text, Markdown, and HTML and `Z` in JSON. Does not change `--start` or `--end`. An empty or unknown name is exit 3. See [output-format.md](output-format.md). |
 | `--version`, `-v` | `false` | Print the version string and exit. `binlogviz version` also prints the git commit when the build has one; `binlogviz version --format json` prints `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}` for scripts and agents (`commit` comes from the Go build info, else from `-ldflags -X binlogviz/internal/version.Commit=…`/`CommitTime=…`, and is `""` for a build with neither). Any other `--format` exits 3. |
 
 ## `analyze` Command Syntax
@@ -387,7 +388,7 @@ Rules:
 
 ### Time filters
 
-`--start` and `--end` accept RFC3339 (recommended across machines) or `YYYY-MM-DD HH:MM:SS`. Space format is the local timezone of the machine running `binlogviz`. Explicit offsets such as `Z` or `+08:00` define the instant. Report timestamps stay UTC.
+`--start` and `--end` accept RFC3339 (recommended across machines) or `YYYY-MM-DD HH:MM:SS`. Space format is the local timezone of the machine running `binlogviz`, not `--tz`. Explicit offsets such as `Z` or `+08:00` define the instant. With no `--tz`, report timestamps stay UTC. `--tz Asia/Shanghai` renders those same instants with a numeric offset.
 
 ```bash
 binlogviz analyze mysql-bin.000123 \

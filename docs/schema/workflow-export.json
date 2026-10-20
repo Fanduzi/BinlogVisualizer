@@ -1,0 +1,54 @@
+{
+  "$id": "binlogviz:schema/workflow-export",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "archive_path": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string"
+    },
+    "included_files": {
+      "type": "integer"
+    },
+    "included_snapshots": {
+      "type": "integer"
+    },
+    "output_dir": {
+      "type": "string"
+    },
+    "plan_included": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "workflow_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "archive_path",
+    "format",
+    "included_files",
+    "included_snapshots",
+    "output_dir",
+    "plan_included",
+    "schema_version",
+    "warnings",
+    "workflow_name"
+  ],
+  "title": "workflow-export",
+  "type": "object"
+}

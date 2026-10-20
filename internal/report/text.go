@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report/view"
@@ -45,7 +46,7 @@ func renderText(result model.AnalysisResult, opts Options, built view.View) (str
 	var buf strings.Builder
 
 	renderDiagnosticSummary(&buf, result, opts, built.Text.ByteLeaders)
-	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode, result.Diagnostics.ServerVersion)
+	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode, result.Diagnostics.ServerVersion, opts)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
 	renderNoPrimaryKey(&buf, result.Tables)
@@ -53,16 +54,16 @@ func renderText(result model.AnalysisResult, opts Options, built view.View) (str
 	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	renderTopTransactions(&buf, result, opts, built)
 	renderTopFindings(&buf, result, opts)
-	renderActivitySection(&buf, result)
-	renderBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
-	renderApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN)
+	renderActivitySection(&buf, result, opts)
+	renderBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN, opts)
+	renderApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN, opts)
 	renderNextActions(&buf, result)
 
 	if opts.ShowMinutes {
-		renderMinuteDetails(&buf, result.Minutes, opts.TopN)
+		renderMinuteDetails(&buf, result.Minutes, opts.TopN, opts)
 	}
 	if opts.ShowPatterns {
-		renderWriteShapePatterns(&buf, result.Patterns, result.PatternDrilldowns, opts.TopN, opts.SQLContextMode)
+		renderWriteShapePatterns(&buf, result.Patterns, result.PatternDrilldowns, opts.TopN, opts.SQLContextMode, opts)
 	}
 
 	return buf.String(), nil
@@ -72,8 +73,8 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, 
 	topN := opts.TopN
 	summary := result.Summary
 	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
-	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.timestamps"), i18n.T("report.value.binlogUTC")))
+	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), opts.formatTime(summary.StartTime), opts.formatTime(summary.EndTime)))
+	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.timestamps"), opts.timestampBasis()))
 	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary")))
 	if label := dmlFilterLabel(result.Scope); label != "" {
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.dmlFilter"), label))
@@ -104,17 +105,17 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, 
 		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.largestTxnBytes"), formatByteSize(bytes)))
 	}
 	renderByteContributors(buf, result, byteLeaders, topN)
-	renderSelectedFileLines(buf, result.Diagnostics.FileCoverage)
+	renderSelectedFileLines(buf, result.Diagnostics.FileCoverage, opts)
 	buf.WriteString("\n")
 }
 
-func renderActivitySection(buf *strings.Builder, result model.AnalysisResult) {
+func renderActivitySection(buf *strings.Builder, result model.AnalysisResult, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.activity") + " ===\n")
 	tpsSpark := formatSparkline(result.Timeseries.TPSSeries)
 	rowsSpark := formatSparkline(result.Timeseries.RowsSeries)
 	resolution := formatSparklineResolution(len(result.Timeseries.TPSSeries))
-	buf.WriteString(fmt.Sprintf("  %-8s %s  %s  %s\n", i18n.T("report.text.tpsShort")+":", tpsSpark, formatTPSPeak(result.Summary, result.Timeseries.TPSSeries), resolution))
-	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", rowsSpark, formatPeakSeries(result.Timeseries.RowsSeries)))
+	buf.WriteString(fmt.Sprintf("  %-8s %s  %s  %s\n", i18n.T("report.text.tpsShort")+":", tpsSpark, formatTPSPeak(result.Summary, result.Timeseries.TPSSeries, opts), resolution))
+	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", rowsSpark, formatPeakSeries(result.Timeseries.RowsSeries, opts)))
 	buf.WriteString("\n")
 }
 
@@ -373,7 +374,7 @@ func shouldSuggestOpenHTML(result model.AnalysisResult) bool {
 	return true
 }
 
-func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.minuteDetails") + " ===\n")
 	if len(minutes) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noMinuteActivity") + "\n\n")
@@ -384,7 +385,7 @@ func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, top
 			break
 		}
 		line := i18n.Tf("report.format.minuteActivity", map[string]any{
-			"Minute":    formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"),
+			"Minute":    opts.formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"),
 			"TotalRows": minute.TotalRows,
 			"TxnCount":  minute.TxnCount,
 		})
@@ -396,7 +397,7 @@ func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, top
 	buf.WriteString("\n")
 }
 
-func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStats, drilldowns []model.PatternDrilldown, topN int, mode SQLContextMode) {
+func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStats, drilldowns []model.PatternDrilldown, topN int, mode SQLContextMode, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.writeShapePatterns") + " ===\n")
 	if len(patterns) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noPatterns") + "\n\n")
@@ -417,13 +418,13 @@ func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStat
 			buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), pattern.SampleQuerySummary))
 		}
 		if drilldown, ok := ddMap[pattern.PatternKey]; ok {
-			renderDrilldownBlock(buf, drilldown)
+			renderDrilldownBlock(buf, drilldown, opts)
 		}
 	}
 	buf.WriteString("\n")
 }
 
-func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown) {
+func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown, opts Options) {
 	buf.WriteString("    drilldown:\n")
 	buf.WriteString(fmt.Sprintf("      why: %s\n", dd.WhySelected))
 
@@ -432,7 +433,7 @@ func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown) {
 			break
 		}
 		buf.WriteString(fmt.Sprintf("      workload minute: %s rows=%d txns=%d\n",
-			formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"), minute.TotalRows, minute.TxnCount))
+			opts.formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"), minute.TotalRows, minute.TxnCount))
 	}
 
 	for i, txn := range dd.RepresentativeTransactions {
@@ -665,14 +666,14 @@ func formatThreadSchemas(thread model.ThreadStats) string {
 	return fmt.Sprintf("%s +%d", thread.Schemas[0], len(thread.Schemas)-1)
 }
 
-func formatTPSPeak(summary model.WorkloadSummary, points []model.TimeseriesPoint) string {
+func formatTPSPeak(summary model.WorkloadSummary, points []model.TimeseriesPoint, opts Options) string {
 	if summary.Duration < time.Second && summary.TotalTransactions >= 1 {
 		return i18n.T("report.text.tpsSubSecond")
 	}
-	return formatPeakSeries(points)
+	return formatPeakSeries(points, opts)
 }
 
-func formatPeakSeries(points []model.TimeseriesPoint) string {
+func formatPeakSeries(points []model.TimeseriesPoint, opts Options) string {
 	if len(points) == 0 {
 		return i18n.T("time.notAvailable")
 	}
@@ -682,7 +683,7 @@ func formatPeakSeries(points []model.TimeseriesPoint) string {
 			peak = point
 		}
 	}
-	return fmt.Sprintf("%.1f at %s", peak.Value, formatTimeWithLayout(peak.Minute, "2006-01-02 15:04"))
+	return fmt.Sprintf("%.1f at %s", peak.Value, opts.formatTimeWithLayout(peak.Minute, "2006-01-02 15:04"))
 }
 
 func formatSparkline(points []model.TimeseriesPoint) string {
@@ -867,7 +868,7 @@ func formatSuspiciousLocation(txn model.Transaction) string {
 	return formatBinlogLocationWithEnd(txn.BinlogPathStart, txn.PositionStart, txn.BinlogPathEnd, txn.PositionEnd)
 }
 
-func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int, mode SQLContextMode, serverVersion string) {
+func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int, mode SQLContextMode, serverVersion string, opts Options) {
 	if len(events) == 0 {
 		return
 	}
@@ -885,7 +886,7 @@ func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int,
 			location = i18n.T("time.notAvailable")
 		}
 		buf.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
-			formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location))
+			opts.formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location))
 		writeDDLStopLines(buf, event, serverVersion, "    ")
 		if stmt := ddlStatementForMode(event, mode); stmt != "" {
 			buf.WriteString("    " + stmt + "\n")
@@ -1001,7 +1002,7 @@ func topTablesByBytes(tables []model.TableStats, limit int) []model.TableStats {
 	return ranked
 }
 
-func renderSelectedFileLines(buf *strings.Builder, coverage model.FileCoverage) {
+func renderSelectedFileLines(buf *strings.Builder, coverage model.FileCoverage, opts Options) {
 	if len(coverage.Selected) < 2 {
 		return
 	}
@@ -1019,7 +1020,7 @@ func renderSelectedFileLines(buf *strings.Builder, coverage model.FileCoverage) 
 		if name == "" {
 			name = i18n.T("time.notAvailable")
 		}
-		buf.WriteString(fmt.Sprintf("    %s  %s  %s\n", name, size, formatFileSpan(item)))
+		buf.WriteString(fmt.Sprintf("    %s  %s  %s\n", name, size, formatFileSpan(item, opts)))
 		if !item.FirstEventAt.IsZero() && !item.LastEventAt.IsZero() {
 			timed++
 			if earliest.IsZero() || item.FirstEventAt.Before(earliest) {
@@ -1039,11 +1040,11 @@ func renderSelectedFileLines(buf *strings.Builder, coverage model.FileCoverage) 
 	}
 }
 
-func formatFileSpan(item model.FileCoverageItem) string {
+func formatFileSpan(item model.FileCoverageItem, opts Options) string {
 	if item.FirstEventAt.IsZero() && item.LastEventAt.IsZero() {
 		return i18n.T("time.notAvailable")
 	}
-	return formatTime(item.FirstEventAt) + " - " + formatTime(item.LastEventAt)
+	return opts.formatTime(item.FirstEventAt) + " - " + opts.formatTime(item.LastEventAt)
 }
 
 func joinedSortedTables(tables map[string]int) string {
@@ -1088,15 +1089,25 @@ func minInt(a, b int) int {
 	return b
 }
 
-func formatTime(t time.Time) string {
-	return formatTimeWithLayout(t, "2006-01-02 15:04:05")
+func (o Options) formatTime(t time.Time) string {
+	return o.formatTimeWithLayout(t, "2006-01-02 15:04:05")
 }
 
-func formatTimeWithLayout(t time.Time, layout string) string {
+func (o Options) formatTimeWithLayout(t time.Time, layout string) string {
 	if t.IsZero() {
 		return i18n.T("time.notAvailable")
 	}
-	return t.UTC().Format(layout + " UTC")
+	return displaytz.Wall(t, layout, o.Display)
+}
+
+// timestampBasis is the Timestamps line. Nil and UTC keep the localized
+// "UTC (binlog)" text. Any other zone prints the IANA name; each timestamp
+// carries that instant's numeric offset.
+func (o Options) timestampBasis() string {
+	if o.Display == nil || o.Display == time.UTC {
+		return i18n.T("report.value.binlogUTC")
+	}
+	return o.Display.String()
 }
 
 func formatDuration(d time.Duration) string {

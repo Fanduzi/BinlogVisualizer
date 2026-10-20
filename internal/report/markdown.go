@@ -38,11 +38,11 @@ func renderMarkdown(result model.AnalysisResult, opts Options, built view.View) 
 	mdHotRows(&buf, result.HotRows, opts)
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, built.Key, opts, result.Diagnostics.ServerVersion)
-	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN)
-	mdApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN)
-	mdMinuteActivity(&buf, result.Minutes, opts.TopN)
-	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode, result.Diagnostics.ServerVersion)
-	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts)
+	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN, opts)
+	mdApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN, opts)
+	mdMinuteActivity(&buf, result.Minutes, opts.TopN, opts)
+	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode, result.Diagnostics.ServerVersion, opts)
+	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts, opts)
 
 	return buf.String(), nil
 }
@@ -58,8 +58,8 @@ func mdWorkloadSummary(buf *strings.Builder, result model.AnalysisResult, opts O
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.unknownTransactions"), formatInt(summary.UnknownTransactions)))
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalRows"), formatInt(summary.TotalRows)))
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalEvents"), formatInt(summary.TotalEvents)))
-	buf.WriteString(fmt.Sprintf("| %s | %s — %s |\n", i18n.T("report.label.timeRange"), formatTime(summary.StartTime), formatTime(summary.EndTime)))
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.timestamps"), i18n.T("report.value.binlogUTC")))
+	buf.WriteString(fmt.Sprintf("| %s | %s — %s |\n", i18n.T("report.label.timeRange"), opts.formatTime(summary.StartTime), opts.formatTime(summary.EndTime)))
+	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.timestamps"), opts.timestampBasis()))
 	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.duration"), formatDuration(summary.Duration)))
 	format := diagnostics.InputFormatGuess
 	if format == "" {
@@ -194,7 +194,7 @@ func mdTopThreads(buf *strings.Builder, threads []model.ThreadStats, rankedBy st
 	buf.WriteString("\n")
 }
 
-func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContextMode, serverVersion string) {
+func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContextMode, serverVersion string, opts Options) {
 	if len(events) == 0 {
 		return
 	}
@@ -215,7 +215,7 @@ func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContex
 			statement = i18n.T("time.notAvailable")
 		}
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
-			formatTime(event.Timestamp),
+			opts.formatTime(event.Timestamp),
 			mdCell(event.Operation),
 			mdCell(object),
 			mdCell(statement),
@@ -314,7 +314,7 @@ func mdReplayCommand(buf *strings.Builder, txnKey, cmd string) {
 	buf.WriteString("```\n\n")
 }
 
-func mdBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+func mdBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
 	shown := rowBearingMinutes(minutes)
 	if len(shown) == 0 {
 		return
@@ -326,24 +326,24 @@ func mdBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, topN i
 	if minutesHaveTables(shown) {
 		buf.WriteString(i18n.T("report.text.busiestMinutesLead") + "\n\n")
 	}
-	writeMinuteTable(buf, shown, topN)
+	writeMinuteTable(buf, shown, topN, opts)
 }
 
-func mdMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+func mdMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
 	buf.WriteString("## " + i18n.T("report.section.minutes") + "\n\n")
 	if len(minutes) == 0 {
 		buf.WriteString("_" + i18n.T("report.placeholder.noMinuteActivity") + "_\n\n")
 		return
 	}
-	writeMinuteTable(buf, minutes, topN)
+	writeMinuteTable(buf, minutes, topN, opts)
 }
 
-func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, topN int) {
+func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
 	buf.WriteString("| Time | Rows | Transactions | " + i18n.T("report.label.drivingTables") + " |\n")
 	buf.WriteString("|---|---:|---:|---|\n")
 	for _, m := range minutes {
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
-			formatTime(m.Minute),
+			opts.formatTime(m.Minute),
 			formatInt(m.TotalRows),
 			formatInt(m.TxnCount),
 			escapeMD(formatDrivingTables(m.TableRows, topN)),
@@ -352,7 +352,7 @@ func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, topN i
 	buf.WriteString("\n")
 }
 
-func mdFindings(buf *strings.Builder, findings []model.Finding, alerts []model.Alert) {
+func mdFindings(buf *strings.Builder, findings []model.Finding, alerts []model.Alert, opts Options) {
 	if len(findings) == 0 && len(alerts) == 0 {
 		return
 	}
@@ -398,7 +398,7 @@ func mdFindings(buf *strings.Builder, findings []model.Finding, alerts []model.A
 			mdCell(finding.Kind),
 			mdCell(finding.Message),
 			mdCell(txnKey),
-			formatTime(finding.Minute),
+			opts.formatTime(finding.Minute),
 			mdCell(evidence),
 		))
 	}

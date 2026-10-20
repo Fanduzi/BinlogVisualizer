@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report/view"
@@ -497,8 +498,8 @@ func convertToJSON(result model.AnalysisResult, opts Options, built view.View) j
 		Provenance:          convertProvenance(result.Provenance),
 		Selection:           convertSelection(result.Selection),
 		SQLContext:          jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
-		Summary:             convertSummary(result.Summary),
-		Timeseries:          convertTimeseries(result.Timeseries),
+		Summary:             convertSummary(result.Summary, opts),
+		Timeseries:          convertTimeseries(result.Timeseries, opts),
 		DiagnosticsMode:     reducedDiagnosticsMode(opts.DiagnosticsMode),
 		Diagnostics:         convertDiagnostics(result.Diagnostics, opts, built),
 		Tables:              convertTables(result.Tables),
@@ -517,12 +518,12 @@ func convertToJSON(result model.AnalysisResult, opts Options, built view.View) j
 		TransactionsListed:  len(built.Key),
 		TransactionsOmitted: built.Omitted,
 		Patterns:            convertPatterns(result.Patterns, opts.SQLContextMode),
-		Minutes:             convertMinutes(result.Minutes),
-		Alerts:              convertAlerts(result.Alerts),
+		Minutes:             convertMinutes(result.Minutes, opts),
+		Alerts:              convertAlerts(result.Alerts, opts),
 		Warnings:            result.Warnings,
-		PatternDrilldowns:   convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode),
-		ReplicaApplyDelay:   convertApplyDelay(result.Diagnostics.ApplyDelay, opts.TopN),
-		Snapshot:            convertSnapshot(result.Snapshot),
+		PatternDrilldowns:   convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode, opts),
+		ReplicaApplyDelay:   convertApplyDelay(result.Diagnostics.ApplyDelay, opts.TopN, opts),
+		Snapshot:            convertSnapshot(result.Snapshot, opts),
 	}
 	if rowValuesSuppressed(opts) {
 		converted.RowValuesNote = i18n.T("report.text.rowValuesSuppressed")
@@ -577,28 +578,28 @@ func convertProvenance(provenance model.ReportProvenance) *jsonProvenance {
 	}
 }
 
-func convertTimeseries(ts model.Timeseries) jsonTimeseries {
+func convertTimeseries(ts model.Timeseries, opts Options) jsonTimeseries {
 	return jsonTimeseries{
-		TPSSeries:            convertTimeseriesPoints(ts.TPSSeries),
-		RowsSeries:           convertTimeseriesPoints(ts.RowsSeries),
-		EventsSeries:         convertTimeseriesPoints(ts.EventsSeries),
-		InsertEventSeries:    convertTimeseriesPoints(ts.InsertEventSeries),
-		UpdateEventSeries:    convertTimeseriesPoints(ts.UpdateEventSeries),
-		DeleteEventSeries:    convertTimeseriesPoints(ts.DeleteEventSeries),
-		DDLEventSeries:       convertTimeseriesPoints(ts.DDLEventSeries),
-		BinlogBytesSeries:    convertTimeseriesPoints(ts.BinlogBytesSeries),
+		TPSSeries:            convertTimeseriesPoints(ts.TPSSeries, opts),
+		RowsSeries:           convertTimeseriesPoints(ts.RowsSeries, opts),
+		EventsSeries:         convertTimeseriesPoints(ts.EventsSeries, opts),
+		InsertEventSeries:    convertTimeseriesPoints(ts.InsertEventSeries, opts),
+		UpdateEventSeries:    convertTimeseriesPoints(ts.UpdateEventSeries, opts),
+		DeleteEventSeries:    convertTimeseriesPoints(ts.DeleteEventSeries, opts),
+		DDLEventSeries:       convertTimeseriesPoints(ts.DDLEventSeries, opts),
+		BinlogBytesSeries:    convertTimeseriesPoints(ts.BinlogBytesSeries, opts),
 		TxnSizeSeriesSummary: convertTxnSizeSeriesSummary(ts.TxnSizeSeriesSummary),
 	}
 }
 
-func convertTimeseriesPoints(points []model.TimeseriesPoint) []jsonTimeseriesPoint {
+func convertTimeseriesPoints(points []model.TimeseriesPoint, opts Options) []jsonTimeseriesPoint {
 	if points == nil {
 		return []jsonTimeseriesPoint{}
 	}
 	result := make([]jsonTimeseriesPoint, len(points))
 	for i, point := range points {
 		result[i] = jsonTimeseriesPoint{
-			Minute: formatJSONTime(point.Minute),
+			Minute: opts.formatJSONTime(point.Minute),
 			Value:  point.Value,
 		}
 	}
@@ -656,19 +657,19 @@ func convertDiagnostics(diagnostics model.Diagnostics, opts Options, built view.
 	}
 	mode := opts.SQLContextMode
 	out := jsonDiagnostics{
-		FileCoverage:            convertFileCoverage(diagnostics.FileCoverage),
+		FileCoverage:            convertFileCoverage(diagnostics.FileCoverage, opts),
 		CountedEventBytes:       diagnostics.CountedEventBytes,
-		DDLEvents:               convertDDLEvents(events, mode, diagnostics.ServerVersion),
+		DDLEvents:               convertDDLEvents(events, mode, diagnostics.ServerVersion, opts),
 		DDLEventsOmitted:        ddlOmitted,
 		LargestTransactions:     convertTransactions(built.Largest, opts, diagnostics.ServerVersion),
 		LongestTransactions:     convertTransactions(built.Longest, opts, diagnostics.ServerVersion),
 		WidestTransactions:      convertTransactions(built.Widest, opts, diagnostics.ServerVersion),
 		LargestByteTransactions: convertOptionalTransactions(built.LargestBytes, opts, diagnostics.ServerVersion),
-		OpenDMLGroups:           convertOpenDMLGroups(diagnostics.OpenDMLGroups),
+		OpenDMLGroups:           convertOpenDMLGroups(diagnostics.OpenDMLGroups, opts),
 		DurationBuckets:         convertDurationBuckets(diagnostics.DurationBuckets),
-		FileSegments:            convertFileSegments(diagnostics.FileSegments),
-		HotIntervals:            convertHotIntervals(diagnostics.HotIntervals),
-		Findings:                convertFindings(diagnostics.Findings),
+		FileSegments:            convertFileSegments(diagnostics.FileSegments, opts),
+		HotIntervals:            convertHotIntervals(diagnostics.HotIntervals, opts),
+		Findings:                convertFindings(diagnostics.Findings, opts),
 		InputFormatGuess:        diagnostics.InputFormatGuess,
 		IgnoredQueryDMLEvents:   diagnostics.IgnoredQueryDMLEvents,
 		IgnoredQueryEvents:      diagnostics.IgnoredQueryEvents,
@@ -678,14 +679,14 @@ func convertDiagnostics(diagnostics model.Diagnostics, opts Options, built view.
 	return &out
 }
 
-func convertFileCoverage(coverage model.FileCoverage) jsonFileCoverage {
+func convertFileCoverage(coverage model.FileCoverage, opts Options) jsonFileCoverage {
 	return jsonFileCoverage{
-		Selected: convertFileCoverageItems(coverage.Selected),
-		Skipped:  convertFileCoverageItems(coverage.Skipped),
+		Selected: convertFileCoverageItems(coverage.Selected, opts),
+		Skipped:  convertFileCoverageItems(coverage.Skipped, opts),
 	}
 }
 
-func convertFileCoverageItems(items []model.FileCoverageItem) []jsonFileCoverageItem {
+func convertFileCoverageItems(items []model.FileCoverageItem, opts Options) []jsonFileCoverageItem {
 	if items == nil {
 		return []jsonFileCoverageItem{}
 	}
@@ -695,8 +696,8 @@ func convertFileCoverageItems(items []model.FileCoverageItem) []jsonFileCoverage
 			BinlogPath:   item.BinlogPath,
 			Reason:       item.Reason,
 			Size:         item.Size,
-			FirstEventAt: formatJSONTime(item.FirstEventAt),
-			LastEventAt:  formatJSONTime(item.LastEventAt),
+			FirstEventAt: opts.formatJSONTime(item.FirstEventAt),
+			LastEventAt:  opts.formatJSONTime(item.LastEventAt),
 		}
 	}
 	return result
@@ -713,7 +714,7 @@ func limitDDLEvents(events []model.DDLEvent, limit int) ([]model.DDLEvent, int) 
 	return events[:limit], len(events) - limit
 }
 
-func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode, serverVersion string) []jsonDDLEvent {
+func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode, serverVersion string, opts Options) []jsonDDLEvent {
 	if events == nil {
 		return []jsonDDLEvent{}
 	}
@@ -722,7 +723,7 @@ func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode, serverVersio
 		path, pos := ddlTxnAnchor(event)
 		item := jsonDDLEvent{
 			BinlogPath:      event.BinlogPath,
-			Timestamp:       formatJSONTime(event.Timestamp),
+			Timestamp:       opts.formatJSONTime(event.Timestamp),
 			Schema:          event.Schema,
 			Table:           event.Table,
 			Operation:       event.Operation,
@@ -753,7 +754,7 @@ func convertDDLEvents(events []model.DDLEvent, mode SQLContextMode, serverVersio
 	return result
 }
 
-func convertApplyDelay(delay *model.ApplyDelay, topN int) *jsonApplyDelay {
+func convertApplyDelay(delay *model.ApplyDelay, topN int, opts Options) *jsonApplyDelay {
 	shown := visibleApplyDelay(delay, topN)
 	if shown == nil {
 		return nil
@@ -762,7 +763,7 @@ func convertApplyDelay(delay *model.ApplyDelay, topN int) *jsonApplyDelay {
 		Origin:     string(shown.Origin),
 		MaxDelayUs: shown.Max.Microseconds(),
 		P95DelayUs: shown.P95.Microseconds(),
-		PeakMinute: formatJSONTime(shown.PeakMinute),
+		PeakMinute: opts.formatJSONTime(shown.PeakMinute),
 	}
 	if len(shown.Transactions) == 0 {
 		return out
@@ -775,8 +776,8 @@ func convertApplyDelay(delay *model.ApplyDelay, topN int) *jsonApplyDelay {
 			TxnStartPos:         txn.TxnStartPos,
 			OriginalCommitUs:    commitMicros(txn.OriginalCommit),
 			ImmediateCommitUs:   commitMicros(txn.ImmediateCommit),
-			OriginalCommitTime:  formatCommitJSON(txn.OriginalCommit),
-			ImmediateCommitTime: formatCommitJSON(txn.ImmediateCommit),
+			OriginalCommitTime:  opts.formatCommitJSON(txn.OriginalCommit),
+			ImmediateCommitTime: opts.formatCommitJSON(txn.ImmediateCommit),
 			DelayUs:             txn.Delay.Microseconds(),
 			Tables:              copyStringIntMap(txn.Tables),
 		}
@@ -784,14 +785,14 @@ func convertApplyDelay(delay *model.ApplyDelay, topN int) *jsonApplyDelay {
 	return out
 }
 
-func convertHotIntervals(intervals []model.MinuteBucket) []jsonHotInterval {
+func convertHotIntervals(intervals []model.MinuteBucket, opts Options) []jsonHotInterval {
 	if intervals == nil {
 		return []jsonHotInterval{}
 	}
 	result := make([]jsonHotInterval, len(intervals))
 	for i, interval := range intervals {
 		result[i] = jsonHotInterval{
-			Minute:      formatJSONTime(interval.Minute),
+			Minute:      opts.formatJSONTime(interval.Minute),
 			TotalRows:   interval.TotalRows,
 			TxnCount:    interval.TxnCount,
 			EventCount:  interval.EventCount,
@@ -803,7 +804,7 @@ func convertHotIntervals(intervals []model.MinuteBucket) []jsonHotInterval {
 	return result
 }
 
-func convertFindings(findings []model.Finding) []jsonFinding {
+func convertFindings(findings []model.Finding, opts Options) []jsonFinding {
 	if findings == nil {
 		return []jsonFinding{}
 	}
@@ -814,22 +815,22 @@ func convertFindings(findings []model.Finding) []jsonFinding {
 			Severity:     finding.Severity,
 			Message:      finding.Message,
 			TxnKey:       finding.TxnKey,
-			Minute:       formatJSONTime(finding.Minute),
+			Minute:       opts.formatJSONTime(finding.Minute),
 			EvidenceRefs: copyStringSlice(finding.EvidenceRefs),
 		}
 	}
 	return result
 }
 
-func convertFileSegments(segments []model.FileSegment) []jsonFileSegment {
+func convertFileSegments(segments []model.FileSegment, opts Options) []jsonFileSegment {
 	if segments == nil {
 		return []jsonFileSegment{}
 	}
 	result := make([]jsonFileSegment, len(segments))
 	for i, seg := range segments {
 		result[i] = jsonFileSegment{
-			StartTime:   formatJSONTime(seg.StartTime),
-			EndTime:     formatJSONTime(seg.EndTime),
+			StartTime:   opts.formatJSONTime(seg.StartTime),
+			EndTime:     opts.formatJSONTime(seg.EndTime),
 			BinlogBytes: seg.BinlogBytes,
 			Rows:        seg.Rows,
 			Events:      seg.Events,
@@ -838,15 +839,15 @@ func convertFileSegments(segments []model.FileSegment) []jsonFileSegment {
 	return result
 }
 
-func convertSummary(s model.WorkloadSummary) jsonSummary {
+func convertSummary(s model.WorkloadSummary, opts Options) jsonSummary {
 	return jsonSummary{
 		TotalTransactions:   s.TotalTransactions,
 		PartialTransactions: s.PartialTransactions,
 		UnknownTransactions: s.UnknownTransactions,
 		TotalRows:           s.TotalRows,
 		TotalEvents:         s.TotalEvents,
-		StartTime:           formatJSONTime(s.StartTime),
-		EndTime:             formatJSONTime(s.EndTime),
+		StartTime:           opts.formatJSONTime(s.StartTime),
+		EndTime:             opts.formatJSONTime(s.EndTime),
 		Duration:            s.Duration.String(),
 	}
 }
@@ -879,7 +880,7 @@ func convertOptionalTransactions(txns []model.Transaction, opts Options, serverV
 	return convertTransactions(txns, opts, serverVersion)
 }
 
-func convertOpenDMLGroups(groups []model.OpenDMLGroup) []jsonOpenDMLGroup {
+func convertOpenDMLGroups(groups []model.OpenDMLGroup, opts Options) []jsonOpenDMLGroup {
 	if len(groups) == 0 {
 		return nil
 	}
@@ -888,8 +889,8 @@ func convertOpenDMLGroups(groups []model.OpenDMLGroup) []jsonOpenDMLGroup {
 		out[i] = jsonOpenDMLGroup{
 			TxnKey:          group.TxnKey,
 			GTID:            group.GTID,
-			StartTime:       formatJSONTime(group.StartTime),
-			EndTime:         formatJSONTime(group.EndTime),
+			StartTime:       opts.formatJSONTime(group.StartTime),
+			EndTime:         opts.formatJSONTime(group.EndTime),
 			Duration:        group.Duration.String(),
 			TotalRows:       group.TotalRows,
 			Tables:          copyStringIntMap(group.Tables),
@@ -930,8 +931,8 @@ func convertTransactions(txns []model.Transaction, opts Options, serverVersion s
 			GTID:            t.GTID,
 			ThreadID:        t.ThreadID,
 			XID:             t.XID,
-			StartTime:       formatJSONTime(t.StartTime),
-			EndTime:         formatJSONTime(t.EndTime),
+			StartTime:       opts.formatJSONTime(t.StartTime),
+			EndTime:         opts.formatJSONTime(t.EndTime),
 			Duration:        t.Duration.String(),
 			TotalRows:       t.TotalRows,
 			EventCount:      t.EventCount,
@@ -1000,8 +1001,8 @@ func convertHotRows(rows []model.HotRow, opts Options) []jsonHotRow {
 			Table:        row.Table,
 			Touches:      row.Touches,
 			Transactions: row.Transactions,
-			FirstTime:    formatJSONTime(row.FirstTime),
-			LastTime:     formatJSONTime(row.LastTime),
+			FirstTime:    opts.formatJSONTime(row.FirstTime),
+			LastTime:     opts.formatJSONTime(row.LastTime),
 			FirstGTID:    row.FirstGTID,
 			FirstFile:    hotRowFile(row.FirstFile),
 			FirstPos:     row.FirstPos,
@@ -1096,14 +1097,14 @@ func convertPatterns(patterns []model.PatternStats, mode SQLContextMode) []jsonP
 	return result
 }
 
-func convertMinutes(minutes []model.MinuteBucket) []jsonMinuteBucket {
+func convertMinutes(minutes []model.MinuteBucket, opts Options) []jsonMinuteBucket {
 	if minutes == nil {
 		return []jsonMinuteBucket{}
 	}
 	result := make([]jsonMinuteBucket, len(minutes))
 	for i, m := range minutes {
 		result[i] = jsonMinuteBucket{
-			Minute:    formatJSONTime(m.Minute),
+			Minute:    opts.formatJSONTime(m.Minute),
 			TotalRows: m.TotalRows,
 			TxnCount:  m.TxnCount,
 			TableRows: copyStringIntMap(m.TableRows),
@@ -1112,7 +1113,7 @@ func convertMinutes(minutes []model.MinuteBucket) []jsonMinuteBucket {
 	return result
 }
 
-func convertAlerts(alerts []model.Alert) []jsonAlert {
+func convertAlerts(alerts []model.Alert, opts Options) []jsonAlert {
 	if alerts == nil {
 		return []jsonAlert{}
 	}
@@ -1124,25 +1125,25 @@ func convertAlerts(alerts []model.Alert) []jsonAlert {
 			Message:  a.Message,
 			TxnKey:   a.TxnKey,
 			GTID:     a.GTID,
-			Minute:   formatJSONTime(a.Minute),
-			Details:  copyStringAnyMap(a.Details),
+			Minute:   opts.formatJSONTime(a.Minute),
+			Details:  copyStringAnyMap(a.Details, opts),
 		}
 	}
 	return result
 }
 
-func convertSnapshot(snapshot *model.Snapshot) *jsonSnapshot {
+func convertSnapshot(snapshot *model.Snapshot, opts Options) *jsonSnapshot {
 	if snapshot == nil {
 		return nil
 	}
 	return &jsonSnapshot{
 		Name:             snapshot.Name,
 		Label:            snapshot.Label,
-		CreatedAt:        formatJSONTime(snapshot.CreatedAt),
+		CreatedAt:        opts.formatJSONTime(snapshot.CreatedAt),
 		BinlogvizVersion: snapshot.BinlogvizVersion,
 		InputMode:        snapshot.InputMode,
 		Input:            convertSnapshotInput(snapshot.Input),
-		Window:           convertSnapshotWindow(snapshot.Window),
+		Window:           convertSnapshotWindow(snapshot.Window, opts),
 		Filters:          convertSnapshotFilters(snapshot.Filters),
 	}
 }
@@ -1155,10 +1156,10 @@ func convertSnapshotInput(input model.SnapshotInput) jsonSnapshotInput {
 	}
 }
 
-func convertSnapshotWindow(window model.SnapshotWindow) jsonSnapshotWindow {
+func convertSnapshotWindow(window model.SnapshotWindow, opts Options) jsonSnapshotWindow {
 	return jsonSnapshotWindow{
-		StartTime: formatJSONTime(window.StartTime),
-		EndTime:   formatJSONTime(window.EndTime),
+		StartTime: opts.formatJSONTime(window.StartTime),
+		EndTime:   opts.formatJSONTime(window.EndTime),
 	}
 }
 
@@ -1207,7 +1208,7 @@ func jsonCells(cells []model.RowCell) []any {
 	return out
 }
 
-func convertDrilldowns(drilldowns []model.PatternDrilldown, mode SQLContextMode) []jsonPatternDrilldown {
+func convertDrilldowns(drilldowns []model.PatternDrilldown, mode SQLContextMode, opts Options) []jsonPatternDrilldown {
 	if drilldowns == nil {
 		return []jsonPatternDrilldown{}
 	}
@@ -1224,7 +1225,7 @@ func convertDrilldowns(drilldowns []model.PatternDrilldown, mode SQLContextMode)
 				Dominance: d.SignalFlags.Dominance,
 				Anomaly:   d.SignalFlags.Anomaly,
 			},
-			BusiestMinutes:             convertPeakMinutes(d.BusiestMinutes),
+			BusiestMinutes:             convertPeakMinutes(d.BusiestMinutes, opts),
 			RepresentativeTransactions: convertRepresentativeTxns(d.RepresentativeTransactions, mode),
 		}
 		// Enforce hard caps at render boundary as a safety net
@@ -1238,14 +1239,14 @@ func convertDrilldowns(drilldowns []model.PatternDrilldown, mode SQLContextMode)
 	return result
 }
 
-func convertPeakMinutes(minutes []model.PatternPeakMinute) []jsonPeakMinute {
+func convertPeakMinutes(minutes []model.PatternPeakMinute, opts Options) []jsonPeakMinute {
 	if minutes == nil {
 		return []jsonPeakMinute{}
 	}
 	result := make([]jsonPeakMinute, len(minutes))
 	for i, m := range minutes {
 		result[i] = jsonPeakMinute{
-			Minute:    formatJSONTime(m.Minute),
+			Minute:    opts.formatJSONTime(m.Minute),
 			TotalRows: m.TotalRows,
 			TxnCount:  m.TxnCount,
 		}
@@ -1287,27 +1288,27 @@ func copyStringIntMap(m map[string]int) map[string]int {
 	return result
 }
 
-func copyStringAnyMap(m map[string]any) map[string]any {
+func copyStringAnyMap(m map[string]any, opts Options) map[string]any {
 	if m == nil {
 		return nil
 	}
 	result := make(map[string]any, len(m))
 	for k, v := range m {
-		result[k] = normalizeJSONTimeValue(v)
+		result[k] = normalizeJSONTimeValue(v, opts)
 	}
 	return result
 }
 
-func normalizeJSONTimeValue(value any) any {
+func normalizeJSONTimeValue(value any, opts Options) any {
 	switch value := value.(type) {
 	case time.Time:
-		return formatJSONTime(value)
+		return opts.formatJSONTime(value)
 	case map[string]any:
-		return copyStringAnyMap(value)
+		return copyStringAnyMap(value, opts)
 	case []any:
 		result := make([]any, len(value))
 		for i, item := range value {
-			result[i] = normalizeJSONTimeValue(item)
+			result[i] = normalizeJSONTimeValue(item, opts)
 		}
 		return result
 	default:
@@ -1315,11 +1316,11 @@ func normalizeJSONTimeValue(value any) any {
 	}
 }
 
-func formatJSONTime(t time.Time) string {
+func (o Options) formatJSONTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.UTC().Format(time.RFC3339)
+	return displaytz.RFC3339(t, o.Display)
 }
 
 func boolPtr(v bool) *bool {

@@ -24,6 +24,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
@@ -98,6 +99,7 @@ type analyzeOptions struct {
 	dml                    []string
 	dmlKinds               []string
 	showRows               bool
+	display                *time.Location
 	topTablesChanged       bool
 	topTransactionsChanged bool
 	detailStore            string
@@ -164,6 +166,7 @@ func newAnalyzeCommand() *cobra.Command {
 			if cmd.Flags().Changed("diagnostics") && opts.diagnostics == "" {
 				return clierr.Errorf(clierr.KindUsage, "invalid --diagnostics %q (allowed: full, summary, off)", opts.diagnostics)
 			}
+			opts.display = displaytz.From(cmd.Context())
 			reportOpts, err := buildReportOptions(opts)
 			if err != nil {
 				return err
@@ -172,6 +175,7 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 			reportOpts.ShowRows = opts.showRows
+			reportOpts.Display = opts.display
 			gtidSelector, err := buildGTIDSelector(opts)
 			if err != nil {
 				return err

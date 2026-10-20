@@ -4,7 +4,7 @@
 
 发布归档里有本文件、`docs/agents/USING-BINLOGVIZ.md`、`README.md`、`README_ZH.md`、`binlogviz`、`incident.yaml` 和 `testdata/`。下面的命令用的是归档里的路径。在 git 检出里，`testdata/minimal.binlog` 对应 `cmd/binlogviz/testdata/minimal.binlog`。
 
-报告里的时间是 UTC。`--start` 和 `--end` 接受 RFC3339。带偏移量的值就是那个时刻：`2026-10-19T14:05:00+08:00` 等于 `2026-10-19T06:05:00Z`。`YYYY-MM-DD HH:MM:SS` 按运行 `binlogviz` 的机器的本地时区解释。跨机器时请带偏移量。
+报告里的时间默认是 UTC。`--tz Asia/Shanghai` 把同一时刻印成数字偏移（`+08:00`），文本、Markdown、HTML 和 JSON 都一样。不传 `--tz`，或 `--tz UTC`，仍是 ` UTC` / `Z`。`--start` 和 `--end` 不跟着 `--tz` 走。带偏移量的值就是那个时刻：`2026-10-19T14:05:00+08:00` 等于 `2026-10-19T06:05:00Z`。`YYYY-MM-DD HH:MM:SS` 按运行 `binlogviz` 的机器的本地时区解释。跨机器时请带偏移量。不认识的 `--tz` 退出码是 3。
 
 `flashback` 不连接 MySQL。先审阅脚本，再测试，然后由你自己用 `binlogviz flashback verify <file> | mysql` 执行。`mysql < file` 不会提交。某条语句失败时不会提交前缀，`mysql --force` 也一样。撤销是一个 XA 事务（ADR 0014）。
 
@@ -108,5 +108,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 | `version --format json` | `schema_version` | 1 |
 
 `binlogviz version --format json` 还会打印 `version`、`commit`、`commit_time`、`modified` 和 `go_version`。
+
+每一行的机器可读 schema 是 `binlogviz schema <name>`，以及检出或发布包里的 `docs/schema/<name>.json`（`analyze`、`flashback-plan`、`compare`、`trend`、`snapshot-list`、`snapshot-show`、`workflow-validate`、`workflow-describe`、`workflow-status`、`workflow-clean`、`workflow-export`、`version`、`flashback-verify`）。`binlogviz schema` 列出这些名字。`--tz` 不抬这些版本号。
 
 `--diagnostics summary` 和 `off` 的 `report_version` 仍是 3。summary 的 DDL 列表有上限；看 `ddl_events_omitted`。默认的 `full` JSON 没有这个键。

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/jsonout"
 	snapshotpkg "binlogviz/internal/snapshot"
 	"binlogviz/internal/version"
@@ -109,6 +110,7 @@ func newSnapshotListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			entries = displaySnapshotEntries(entries, displaytz.From(cmd.Context()))
 			switch opts.format {
 			case "text":
 				return writeSnapshotListText(cmd.OutOrStdout(), entries)
@@ -117,9 +119,9 @@ func newSnapshotListCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return writeSnapshotJSON(cmd.OutOrStdout(), map[string]any{
-					"snapshot_dir": resolvedDir,
-					"snapshots":    entries,
+				return writeSnapshotJSON(cmd.OutOrStdout(), snapshotListJSON{
+					SnapshotDir: resolvedDir,
+					Snapshots:   entries,
 				})
 			default:
 				return clierr.Errorf(clierr.KindUsage, "unsupported snapshot list format: %s", opts.format)
@@ -154,6 +156,7 @@ func newSnapshotShowCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			desc = displaySnapshotDescriptor(desc, displaytz.From(cmd.Context()))
 			switch opts.format {
 			case "text":
 				for _, line := range buildSnapshotShowLines(desc) {
@@ -163,9 +166,7 @@ func newSnapshotShowCommand() *cobra.Command {
 				}
 				return nil
 			case "json":
-				return writeSnapshotJSON(cmd.OutOrStdout(), map[string]any{
-					"snapshot": desc,
-				})
+				return writeSnapshotJSON(cmd.OutOrStdout(), snapshotShowJSON{Snapshot: desc})
 			}
 			return nil
 		},
@@ -316,6 +317,43 @@ func buildSnapshotShowLines(desc snapshotpkg.Descriptor) []string {
 		fmt.Sprintf("warnings: %d", desc.Warnings),
 	)
 	return lines
+}
+
+// snapshotListJSON is snapshot list --format json. Field order matches the
+// alphabetical order encoding/json used when this object was a map.
+type snapshotListJSON struct {
+	SnapshotDir string              `json:"snapshot_dir"`
+	Snapshots   []snapshotpkg.Entry `json:"snapshots"`
+}
+
+// snapshotShowJSON is snapshot show --format json.
+type snapshotShowJSON struct {
+	Snapshot snapshotpkg.Descriptor `json:"snapshot"`
+}
+
+// displaySnapshotEntries rewrites stored RFC3339 timestamps for display.
+// A nil location returns the same slice, so the default JSON stays byte-identical.
+func displaySnapshotEntries(entries []snapshotpkg.Entry, loc *time.Location) []snapshotpkg.Entry {
+	if loc == nil || loc == time.UTC {
+		return entries
+	}
+	out := append([]snapshotpkg.Entry(nil), entries...)
+	for i := range out {
+		out[i].CreatedAt = displaytz.Stored(out[i].CreatedAt, loc)
+		out[i].Window.StartTime = displaytz.Stored(out[i].Window.StartTime, loc)
+		out[i].Window.EndTime = displaytz.Stored(out[i].Window.EndTime, loc)
+	}
+	return out
+}
+
+func displaySnapshotDescriptor(desc snapshotpkg.Descriptor, loc *time.Location) snapshotpkg.Descriptor {
+	if loc == nil || loc == time.UTC {
+		return desc
+	}
+	desc.CreatedAt = displaytz.Stored(desc.CreatedAt, loc)
+	desc.Window.StartTime = displaytz.Stored(desc.Window.StartTime, loc)
+	desc.Window.EndTime = displaytz.Stored(desc.Window.EndTime, loc)
+	return desc
 }
 
 func writeSnapshotJSON(out io.Writer, payload any) error {
