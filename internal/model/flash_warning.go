@@ -1,7 +1,7 @@
 // Package model types flashback warnings.
 // input: a warning code, its i18n message key, and the message arguments.
 // output: FlashbackWarning, a stable code plus the localized message; Line is the stderr form with the localized "warning:" prefix.
-// pos: every flashback warning source (schema catalog, schema file review, unknown tables, split transactions) builds one; the plan prints them as JSON (#270, #282).
+// pos: every flashback warning source (schema catalog, schema file review, unknown tables, split transactions, MariaDB binlogs) builds one; the plan prints them as JSON (#270, #282).
 // note: if this file changes, update this header, module README.md and docs/reference/cli.md (--plan warning codes).
 package model
 
@@ -17,6 +17,9 @@ const (
 	WarnSchemaFileTableAmbiguous  = "schema_file_table_ambiguous"
 	WarnSchemaFileCaseFolded      = "schema_file_case_folded"
 	WarnSchemaFileCaseMismatch    = "schema_file_case_mismatch"
+	// WarnMariaDBApplyUnsupported: the binlog is from MariaDB. The undo
+	// values are exact, but the script stops on a MariaDB server.
+	WarnMariaDBApplyUnsupported = "mariadb_apply_unsupported"
 )
 
 // FlashbackWarning is one flashback warning. Message is localized and has

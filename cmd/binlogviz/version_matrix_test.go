@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"binlogviz/internal/guard"
 )
 
 // Offline checks for the MySQL 5.7 / 8.4 / 9.x and MariaDB fixtures in
@@ -171,6 +173,7 @@ func TestVersionMatrixFlashbackBoundary(t *testing.T) {
 				t.Fatalf("stderr:\n%s", stderr)
 			}
 			assertVersionMatrixUndo(t, stdout)
+			assertMariaDBStop(t, stdout, stderr, strings.HasPrefix(tc.file, "mariadb-"))
 		})
 	}
 
@@ -189,7 +192,29 @@ func TestVersionMatrixFlashbackBoundary(t *testing.T) {
 		if strings.Contains(stdout, "CREATE TABLE") || strings.Contains(stdout, "ALTER ") || strings.Contains(stdout, "DROP TABLE") {
 			t.Fatalf("emitted DDL:\n%s", stdout)
 		}
+		assertMariaDBStop(t, stdout, stderr, true)
 	})
+}
+
+// assertMariaDBStop checks the MariaDB stop (guard.MariaDBStopSQL): every
+// script carries it right after the mode strip, before the finish
+// procedure, and a MariaDB binlog also warns at generation. On MySQL the
+// stop runs DO 0.
+func assertMariaDBStop(t *testing.T, sql, stderr string, mariadb bool) {
+	t.Helper()
+	stop := strings.Index(sql, guard.MariaDBStopSQL())
+	strip := strings.Index(sql, "PAD_CHAR_TO_FULL_LENGTH")
+	proc := strings.Index(sql, "CREATE PROCEDURE")
+	if stop < 0 || strip < 0 || proc < 0 || strip > stop || stop > proc {
+		t.Fatalf("MariaDB stop missing or misplaced (strip %d, stop %d, procedure %d)", strip, stop, proc)
+	}
+	if n := strings.Count(sql[strip:stop], "-- binlogviz-raw"); n != 1 {
+		t.Fatalf("%d pieces between the mode strip and the MariaDB stop, want 1", n)
+	}
+	warned := strings.Contains(stderr, "cannot be applied on a MariaDB server")
+	if warned != mariadb {
+		t.Fatalf("MariaDB warning = %v, want %v; stderr:\n%s", warned, mariadb, stderr)
+	}
 }
 
 func assertVersionMatrixUndo(t *testing.T, sql string) {

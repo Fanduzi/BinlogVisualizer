@@ -218,6 +218,30 @@ func (g Guard) Write(w io.Writer, render func(emit func(Piece) error) error) err
 	return bw.Flush()
 }
 
+// MariaDBStopMessage is the error a MariaDB session gets from a flashback
+// script. It is a sql_mode value, so it has no commas.
+const MariaDBStopMessage = "binlogviz: flashback apply does not support MariaDB; no rows were changed; see docs/concept/limitations.md"
+
+// MariaDBStopSQL stops a script on MariaDB before anything else runs. The
+// finish procedure and the client checks are MySQL syntax (GET STACKED
+// DIAGNOSTICS, and GET DIAGNOSTICS reads that MariaDB answers differently),
+// so on MariaDB the script used to stop at an unrelated ERROR 1064, or with
+// --force roll back with ERROR 1758. This piece marks the run failed with
+// its own reason, then raises ERROR 1231 with the message above. On MySQL
+// it runs DO 0. It is one raw piece: the check lines after it read only
+// DEALLOCATE, and on MariaDB they cannot be trusted, so the flag is set
+// here directly.
+func MariaDBStopSQL() string {
+	maria := "LOCATE('MariaDB', @@version) > 0"
+	return "SET @binlogviz_applied = IF(" + maria + ", 0, @binlogviz_applied), " +
+		"@binlogviz_errmsg = IF(" + maria + " AND @binlogviz_errno IS NULL, '" + MariaDBStopMessage + "', @binlogviz_errmsg), " +
+		"@binlogviz_errno = IF(" + maria + " AND @binlogviz_errno IS NULL, 1235, @binlogviz_errno);\n" +
+		"SET @binlogviz_maria_sql = IF(" + maria + ", 'SET SESSION sql_mode = ''" + MariaDBStopMessage + "''', 'DO 0');\n" +
+		"PREPARE binlogviz_fb_maria_x9q FROM @binlogviz_maria_sql;\n" +
+		"EXECUTE binlogviz_fb_maria_x9q;\n" +
+		"DEALLOCATE PREPARE binlogviz_fb_maria_x9q;\n"
+}
+
 // ProcedureSQL creates the finish procedure before the undo transaction.
 // Write substitutes guardTokenMark. The stock mysql client is required
 // because the body uses DELIMITER. The procedure is schema-qualified so the
