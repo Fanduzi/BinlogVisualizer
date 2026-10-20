@@ -4,6 +4,24 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.33.0
+
+Release date: 2026-10-20
+
+Highlights:
+
+- **Breaking for flashback apply:** v0.32.0 scripts must be regenerated; `flashback verify` exits 6 with `details.reason` `old_format` (#342). Success is the anchored line `binlogviz: undo committed, N statements` (or `... with skips, N applied, M skipped`), not the `mysql` exit code.
+- Apply grants on the undo tables are `SELECT, INSERT, UPDATE, DELETE` (#341). Under `PAD_CHAR_TO_FULL_LENGTH` and with `BINARY(n)` keys a keyed undo now matches; one that does not change exactly one row rolls back (#347, #348). A failed apply drops its procedure and prints the real error (#338, #343). Refusals carry `details.reason` (#344).
+- `schema_version` 1, `plan_version` 2, `report_version` 3, and analyze output are unchanged.
+- Known issue: Linux release archives still report an empty commit (#303).
+
+Related notes:
+
+- [v0.33.0 release notes](docs/releases/release-notes-v0.33.0.md)
+- [v0.33.0 中文发行说明](docs/releases/release-notes-v0.33.0.zh-CN.md)
+
+### Changed
+
 - Flashback apply grants on the tables the undo changes are `SELECT, INSERT, UPDATE, DELETE`. v0.32.0 omitted `SELECT`; `UPDATE` and `DELETE ... WHERE` then fail with ERROR 1143 (#341).
 - **Breaking:** a flashback script written by v0.32.0 must be regenerated. `flashback verify` exits 6 with `details.reason` `old_format` (#342).
 - A failed apply drops the finish procedure it created. Success is `binlogviz: undo committed, N statements` when nothing was skipped, and `binlogviz: undo committed with skips, N applied, M skipped` otherwise. Exit 0 without the matching line is not success. A rolled-back apply prints `binlogviz: undo rolled back, no rows changed` and stderr shows the real errno and message (#338, #343, #347). A kill before the finish `CALL`, or a `CALL` that never enters, can still leave the procedure. `DROP DATABASE IF EXISTS binlogviz` needs `DROP` on `binlogviz.*`.
