@@ -68,7 +68,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-`--start`/`--end` 也接受运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。跨机器请优先使用带显式偏移的 RFC3339。
+`--start`/`--end` 也接受 `YYYY-MM-DD HH:MM:SS`。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。跨机器请优先使用带显式偏移的 RFC3339。
 
 ### 从 `SHOW MASTER STATUS` 位点或 GTID 起
 

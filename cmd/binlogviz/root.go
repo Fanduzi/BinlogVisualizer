@@ -95,7 +95,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.PersistentFlags().StringVar(&langFlag, "lang", "", "Language for output (e.g., en, zh-CN)")
 	cmd.PersistentFlags().BoolVarP(&quietFlag, "quiet", "q", false, i18n.T("cmd.root.flag.quiet"))
 	cmd.PersistentFlags().StringVar(&errorFormat, "error-format", "", i18n.T("cmd.root.flag.errorFormat"))
-	cmd.PersistentFlags().StringVar(&tzFlag, "tz", "", "Display time zone for rendered timestamps (IANA name, for example Asia/Shanghai). Absent or UTC keeps the historical UTC spelling. Local is rejected. A --start or --end value with no zone uses this zone when it is set.")
+	cmd.PersistentFlags().StringVar(&tzFlag, "tz", "", "Display time zone for rendered timestamps (IANA name, for example Asia/Shanghai). Absent or UTC keeps the historical UTC spelling. Local is rejected. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set.")
 	// Flag, argument and command-name mistakes are usage errors, exit 3 (ADR 0008).
 	cmd.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
 		return clierr.Wrap(clierr.KindUsage, err)

@@ -1,7 +1,7 @@
 // Package displaytz parses the --tz flag and renders a timestamp in that zone.
 // input: the flag value, and a time.Time plus the layout the report already uses.
 // output: an IANA location, or the historical UTC spelling when the flag is absent or UTC.
-// pos: display-only timezone for text, Markdown, HTML, and JSON. The CLI also uses the location as the zone of a zoneless --start or --end.
+// pos: display timezone for text, Markdown, HTML, and JSON. Nil keeps the historical UTC spelling. time.UTC (--tz UTC) does too, and it is the zone of a zoneless --start or --end. Etc/UTC is a different location with the same offset.
 // note: if this file changes, update docs/adr/0017-json-schema-and-display-timezone.md.
 package displaytz
 
@@ -17,9 +17,11 @@ import (
 
 type ctxKey struct{}
 
-// Parse validates --tz. An unchanged flag is the historical UTC rendering
-// (a nil location). UTC is that same rendering. Any other IANA name is a
-// location. An empty or unknown name is a usage error.
+// Parse validates --tz. An unchanged flag is a nil location: historical UTC
+// spelling, and a zoneless --start or --end uses the machine zone. The name
+// UTC is time.UTC. That keeps the historical spelling, and a zoneless value
+// is read in UTC, the same instant as Etc/UTC. Any other IANA name is that
+// location. An empty or unknown name, or Local, is a usage error.
 func Parse(changed bool, value string) (*time.Location, error) {
 	if !changed {
 		return nil, nil
@@ -31,9 +33,6 @@ func Parse(changed bool, value string) (*time.Location, error) {
 	loc, err := time.LoadLocation(value)
 	if err != nil {
 		return nil, clierr.Errorf(clierr.KindUsage, "invalid --tz %q: %v", value, err)
-	}
-	if loc == time.UTC {
-		return nil, nil
 	}
 	return loc, nil
 }

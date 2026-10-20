@@ -2,7 +2,9 @@ package binlogviz
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/version"
 )
 
@@ -419,6 +422,286 @@ func readNamedSnapshot(t *testing.T, dir, name string) string {
 		t.Fatal(err)
 	}
 	return string(body)
+}
+
+func TestZonelessWindowAcrossHosts(t *testing.T) {
+	if os.Getenv("BINLOGVIZ_WINDOW_CHILD") == "1" {
+		var args []string
+		if err := json.Unmarshal([]byte(os.Getenv("BINLOGVIZ_WINDOW_ARGS")), &args); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(2)
+		}
+		code, stdout, stderr := runRoot(t, args...)
+		fmt.Fprint(os.Stderr, stderr)
+		if err := json.NewEncoder(os.Stdout).Encode(filterResult{Code: code, Stdout: stdout}); err != nil {
+			os.Exit(2)
+		}
+		os.Exit(0)
+	}
+	forceEnglishRuntimeOutput(t)
+	binlog, err := filepath.Abs(filepath.Join("testdata", "minimal.binlog"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runRoot(t, "analyze", binlog, "--format", "json", "-q", "--lang", "en")
+	if code != 0 {
+		t.Fatalf("analyze exit %d: %s", code, stderr)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(stdout), &doc); err != nil {
+		t.Fatal(err)
+	}
+	summary := doc["summary"].(map[string]any)
+	dataStart := parseRFC3339(t, summary["start_time"].(string)).Truncate(time.Second)
+	dataEnd := parseRFC3339(t, summary["end_time"].(string)).Truncate(time.Second).Add(time.Second)
+	kolkata, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	utcStart := dataStart.UTC().Format("2006-01-02 15:04:05")
+	utcEnd := dataEnd.UTC().Format("2006-01-02 15:04:05")
+	kolStart := dataStart.In(kolkata).Format("2006-01-02 15:04:05")
+	kolEnd := dataEnd.In(kolkata).Format("2006-01-02 15:04:05")
+	offStart := dataStart.In(kolkata).Format("2006-01-02 15:04:05 -07:00")
+	offEnd := dataEnd.In(kolkata).Format("2006-01-02 15:04:05 -07:00")
+	modes := []struct {
+		name, tz, start, end string
+	}{
+		{name: "UTC", tz: "UTC", start: utcStart, end: utcEnd},
+		{name: "Etc/UTC", tz: "Etc/UTC", start: utcStart, end: utcEnd},
+		{name: "Asia/Kolkata", tz: "Asia/Kolkata", start: kolStart, end: kolEnd},
+		{name: "offset", tz: "America/New_York", start: offStart, end: offEnd},
+	}
+	ref := windowChild(t, "UTC", []string{"--lang", "en", "flashback", binlog, "-q", "--start", dataStart.UTC().Format(time.RFC3339), "--end", dataEnd.UTC().Format(time.RFC3339)})
+	if ref.Stdout == "" && ref.Code == 0 {
+		t.Fatal("reference flashback wrote no undo")
+	}
+	hosts := []string{"Atlantic/Azores", "Asia/Shanghai", "America/New_York"}
+	for _, host := range hosts {
+		for _, mode := range modes {
+			dir := t.TempDir()
+			analyze := windowChild(t, host, []string{
+				"--lang", "en", "--tz", mode.tz, "analyze", binlog, "--format", "json", "-q",
+				"--start", mode.start, "--end", mode.end,
+				"--snapshot-name", "w", "--snapshot-dir", dir,
+			})
+			if analyze.Code != 0 {
+				t.Fatalf("TZ=%s --tz %s analyze exit %d\n%s", host, mode.tz, analyze.Code, analyze.Stdout)
+			}
+			gotStart, gotEnd := snapshotWindow(t, readNamedSnapshot(t, dir, "w"))
+			if !gotStart.Equal(dataStart) || !gotEnd.Equal(dataEnd) {
+				t.Fatalf("TZ=%s --tz %s window %s .. %s, want %s .. %s", host, mode.tz, gotStart.UTC().Format(time.RFC3339), gotEnd.UTC().Format(time.RFC3339), dataStart.UTC().Format(time.RFC3339), dataEnd.UTC().Format(time.RFC3339))
+			}
+			flash := windowChild(t, host, []string{
+				"--lang", "en", "--tz", mode.tz, "flashback", binlog, "-q",
+				"--start", mode.start, "--end", mode.end,
+			})
+			if flash.Code != ref.Code || flash.Stdout != ref.Stdout {
+				t.Fatalf("TZ=%s --tz %s flashback exit %d (reference %d); undo does not cover %s .. %s", host, mode.tz, flash.Code, ref.Code, dataStart.UTC().Format(time.RFC3339), dataEnd.UTC().Format(time.RFC3339))
+			}
+		}
+	}
+}
+
+func TestDSTGapAndOverlapRefused(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	binlog := filepath.Join("testdata", "minimal.binlog")
+	cases := []struct {
+		flag, value, why string
+	}{
+		{flag: "--start", value: "2026-03-08 02:30:00", why: "DST gap"},
+		{flag: "--end", value: "2026-03-08 02:30:00", why: "DST gap"},
+		{flag: "--start", value: "2026-11-01 01:30:00", why: "DST overlap"},
+		{flag: "--end", value: "2026-11-01 01:30:00", why: "DST overlap"},
+	}
+	for _, command := range []string{"analyze", "flashback"} {
+		for _, tc := range cases {
+			args := []string{"--lang", "en", "--tz", "America/New_York", command, binlog, "--start", "2026-06-15 12:00:00", "--end", "2026-06-15 13:00:00"}
+			for i, arg := range args {
+				if arg == tc.flag {
+					args[i+1] = tc.value
+				}
+			}
+			code, stdout, stderr := runRoot(t, args...)
+			if code != 3 || stdout != "" || !strings.Contains(stderr, tc.value) || !strings.Contains(stderr, "America/New_York") || !strings.Contains(stderr, tc.why) || !strings.Contains(stderr, "add an explicit offset") {
+				t.Fatalf("%s %s %s: exit %d stdout %q stderr %q", command, tc.flag, tc.value, code, stdout, stderr)
+			}
+		}
+	}
+}
+
+func TestInvalidUTCOffsetRefused(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	binlog := filepath.Join("testdata", "minimal.binlog")
+	for _, command := range []string{"analyze", "flashback"} {
+		for _, value := range []string{"2026-11-01 05:00:00 +24:00", "2026-11-01 05:00:00 +14:30", "2026-11-01T05:00:00+08:15"} {
+			code, stdout, stderr := runRoot(t, "--lang", "en", command, binlog, "--start", value, "--end", "2026-11-01 06:00:00 +00:00")
+			if code != 3 || stdout != "" || !strings.Contains(stderr, value) || !strings.Contains(stderr, "not a valid UTC offset") {
+				t.Fatalf("%s %s: exit %d stdout %q stderr %q", command, value, code, stdout, stderr)
+			}
+		}
+	}
+}
+
+func TestSnapshotSaveStoresUTC(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	t.Cleanup(func() { tzFlag = "" })
+	binlog := filepath.Join("testdata", "minimal.binlog")
+	code, stdout, stderr := runRoot(t, "analyze", binlog, "--format", "json", "-q", "--tz", "Pacific/Kiritimati")
+	if code != 0 {
+		t.Fatalf("analyze exit %d: %s", code, stderr)
+	}
+	if !strings.Contains(stdout, "+14:00") {
+		t.Fatal("report did not render +14:00")
+	}
+	report := filepath.Join(t.TempDir(), "report.json")
+	if err := os.WriteFile(report, []byte(stdout), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	for _, name := range []string{"plus14a", "plus14b"} {
+		code, _, stderr = runRoot(t, "snapshot", "save", report, "--name", name, "--snapshot-dir", dir)
+		if code != 0 {
+			t.Fatalf("snapshot save %s exit %d: %s", name, code, stderr)
+		}
+	}
+	file := readNamedSnapshot(t, dir, "plus14a")
+	assertOnlyUTCOffsets(t, file)
+	want := firstOffsetInstant(t, stdout, "+14:00").UTC().Format(time.RFC3339)
+	if !strings.Contains(file, want) {
+		t.Fatalf("snapshot missing UTC instant %s", want)
+	}
+	code, compareOut, stderr := runRoot(t, "compare", "--current-snapshot", "plus14b", "--baseline-snapshot", "plus14a", "--snapshot-dir", dir, "--format", "json")
+	if code != 0 {
+		t.Fatalf("compare exit %d: %s", code, stderr)
+	}
+	assertOnlyUTCOffsets(t, compareOut)
+	if !strings.Contains(compareOut, want) {
+		t.Fatalf("compare did not round-trip %s", want)
+	}
+	code, trendOut, stderr := runRoot(t, "trend", "plus14a", "plus14b", "--snapshot-dir", dir, "--format", "json")
+	if code != 0 {
+		t.Fatalf("trend exit %d: %s", code, stderr)
+	}
+	assertOnlyUTCOffsets(t, trendOut)
+	if !strings.Contains(trendOut, want) {
+		t.Fatalf("trend did not round-trip %s", want)
+	}
+}
+
+func TestSnapshotListWindowFollowsTimezone(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	t.Cleanup(func() { tzFlag = "" })
+	binlog := filepath.Join("testdata", "minimal.binlog")
+	dir := t.TempDir()
+	code, _, stderr := runRoot(t, "analyze", binlog, "--format", "json", "-q", "--snapshot-name", "w", "--snapshot-dir", dir)
+	if code != 0 {
+		t.Fatalf("save exit %d: %s", code, stderr)
+	}
+	_, window := snapshotObject(t, readNamedSnapshot(t, dir, "w"))
+	start, _ := window["start_time"].(string)
+	end, _ := window["end_time"].(string)
+	if start == "" || end == "" {
+		t.Fatalf("stored window start %q end %q", start, end)
+	}
+	kolkata, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, listed, stderr := runRoot(t, "snapshot", "list", "--snapshot-dir", dir, "--format", "json", "--tz", "Asia/Kolkata")
+	if code != 0 {
+		t.Fatalf("list exit %d: %s", code, stderr)
+	}
+	var doc struct {
+		Snapshots []struct {
+			CreatedAt string `json:"created_at"`
+			Window    struct {
+				StartTime string `json:"start_time"`
+				EndTime   string `json:"end_time"`
+			} `json:"window"`
+		} `json:"snapshots"`
+	}
+	if err := json.Unmarshal([]byte(listed), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Snapshots) != 1 {
+		t.Fatalf("snapshots: %+v", doc.Snapshots)
+	}
+	got := doc.Snapshots[0].Window.StartTime
+	want := displaytz.Stored(start, kolkata)
+	if got != want {
+		t.Fatalf("list window start %s, want %s", got, want)
+	}
+	if got == doc.Snapshots[0].CreatedAt || strings.HasSuffix(got, "Z") {
+		t.Fatalf("window start was not rewritten: %s created %s", got, doc.Snapshots[0].CreatedAt)
+	}
+	if doc.Snapshots[0].Window.EndTime != displaytz.Stored(end, kolkata) {
+		t.Fatalf("list window end %s", doc.Snapshots[0].Window.EndTime)
+	}
+}
+
+func windowChild(t *testing.T, tz string, args []string) filterResult {
+	t.Helper()
+	raw, err := json.Marshal(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestZonelessWindowAcrossHosts$")
+	cmd.Env = append(os.Environ(), "BINLOGVIZ_WINDOW_CHILD=1", "TZ="+tz, "BINLOGVIZ_WINDOW_ARGS="+string(raw))
+	out, err := cmd.Output()
+	if err != nil {
+		stderr := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			stderr = string(ee.Stderr)
+		}
+		t.Fatalf("window child TZ=%s: %v\n%s", tz, err, stderr)
+	}
+	var got filterResult
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("window child output: %v\n%s", err, out)
+	}
+	return got
+}
+
+func snapshotWindow(t *testing.T, file string) (time.Time, time.Time) {
+	t.Helper()
+	_, window := snapshotObject(t, file)
+	start, _ := window["start_time"].(string)
+	end, _ := window["end_time"].(string)
+	return parseRFC3339(t, start), parseRFC3339(t, end)
+}
+
+func snapshotObject(t *testing.T, file string) (map[string]any, map[string]any) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(file), &doc); err != nil {
+		t.Fatal(err)
+	}
+	snap, _ := doc["snapshot"].(map[string]any)
+	window, _ := snap["window"].(map[string]any)
+	if window == nil {
+		t.Fatalf("snapshot has no window:\n%s", file)
+	}
+	return snap, window
+}
+
+func assertOnlyUTCOffsets(t *testing.T, body string) {
+	t.Helper()
+	for _, off := range regexp.MustCompile(`[+-]\d{2}:\d{2}`).FindAllString(body, -1) {
+		if off != "+00:00" && off != "-00:00" {
+			t.Fatalf("offset %s remains", off)
+		}
+	}
+}
+
+func firstOffsetInstant(t *testing.T, body, offset string) time.Time {
+	t.Helper()
+	re := regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?` + regexp.QuoteMeta(offset))
+	found := re.FindString(body)
+	if found == "" {
+		t.Fatalf("no %s timestamp in report", offset)
+	}
+	return parseRFC3339(t, found)
 }
 
 func lineContaining(body, needle string) string {

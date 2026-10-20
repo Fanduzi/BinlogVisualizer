@@ -137,7 +137,7 @@ binlogviz analyze mysql-bin.000123 \
   --end "2026-09-14T15:00:00+08:00"
 ```
 
-也接受 `YYYY-MM-DD HH:MM:SS`，并按运行 `binlogviz` 的机器本地时区解释。不要默认当成北京时间，除非该机器时区就是 `Asia/Shanghai`。
+也接受 `YYYY-MM-DD HH:MM:SS`。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。不要默认当成北京时间，除非那个时区是 `Asia/Shanghai`。落在夏令时空档或重叠时段的值会被拒绝，需要补上显式偏移。`+24:00` 和 `+14:30` 不是合法偏移。
 
 ## `end time must be after start time`
 

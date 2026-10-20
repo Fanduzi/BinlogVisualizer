@@ -265,7 +265,51 @@ func normalizeSnapshotReport(data []byte, name string, now time.Time) ([]byte, e
 	}
 
 	payload["snapshot"] = snapshot
+	// A report rendered with --tz carries numeric offsets. The file other
+	// commands read later stays UTC (ADR 0017), same as --snapshot-name.
+	rewriteSnapshotTimesUTC(payload)
 	return json.MarshalIndent(payload, "", "  ")
+}
+
+// rewriteSnapshotTimesUTC rewrites every RFC3339 timestamp in the document
+// to UTC with a Z suffix. Other strings, including row cells, stay as stored.
+func rewriteSnapshotTimesUTC(v any) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, child := range x {
+			if s, ok := child.(string); ok {
+				if utc, ok := utcTimestamp(s); ok {
+					x[k] = utc
+					continue
+				}
+			}
+			rewriteSnapshotTimesUTC(child)
+		}
+	case []any:
+		for i, child := range x {
+			if s, ok := child.(string); ok {
+				if utc, ok := utcTimestamp(s); ok {
+					x[i] = utc
+					continue
+				}
+			}
+			rewriteSnapshotTimesUTC(child)
+		}
+	}
+}
+
+func utcTimestamp(value string) (string, bool) {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339, value)
+		if err != nil {
+			return "", false
+		}
+	}
+	if strings.Contains(value, ".") {
+		return parsed.UTC().Format(time.RFC3339Nano), true
+	}
+	return parsed.UTC().Format(time.RFC3339), true
 }
 
 func deriveSnapshotWindow(summaryValue any) map[string]any {

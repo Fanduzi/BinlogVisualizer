@@ -48,7 +48,7 @@ These flags are available on the root command and apply before subcommand execut
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--lang` | env-detected | Runtime output language, for example `en` or `zh-CN`. |
-| `--tz` | historical UTC spelling | IANA display zone for rendered timestamps, for example `Asia/Shanghai`. Absent or `UTC` keeps ` UTC` in text, Markdown, and HTML and `Z` in JSON. A `--start` or `--end` value with no zone uses this zone when it is set. An empty, unknown, or `Local` name is exit 3. See [output-format.md](output-format.md). |
+| `--tz` | historical UTC spelling | IANA display zone for rendered timestamps, for example `Asia/Shanghai`. Absent or `UTC` keeps ` UTC` in text, Markdown, and HTML and `Z` in JSON. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. An empty, unknown, or `Local` name is exit 3. See [output-format.md](output-format.md). |
 | `--version`, `-v` | `false` | Print the version string and exit. `binlogviz version` also prints the git commit when the build has one; `binlogviz version --format json` prints `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}` for scripts and agents (`commit` comes from the Go build info, else from `-ldflags -X binlogviz/internal/version.Commit=…`/`CommitTime=…`, and is `""` for a build with neither). Any other `--format` exits 3. |
 
 ## `analyze` Command Syntax
@@ -94,8 +94,8 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--start` | none | Start time, inclusive. RFC3339, or `YYYY-MM-DD HH:MM:SS` in the local timezone of the machine running `binlogviz`. Explicit offsets define the instant; prefer RFC3339 with offset across machines. |
-| `--end` | none | End time, inclusive. Same formats as `--start`. |
+| `--start` | none | Start time, inclusive. RFC3339, or `YYYY-MM-DD HH:MM:SS`, with an optional `±HH:MM` or a trailing ` UTC`. Explicit offsets define the instant. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. |
+| `--end` | none | End time, inclusive. Same formats as `--start`. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. |
 | `--start-position` | none | Exact inclusive event boundary on one explicit binlog file. |
 | `--stop-position` | none | Exact exclusive event boundary, or EOF, on one explicit binlog file. |
 | `--include-gtids` | none | Include complete groups matching a MySQL UUID range set, or MariaDB identities `domain-server-seq` and ranges `domain-server-first..last`. A report's `selection.matched_gtid_set` is valid input. |
@@ -388,7 +388,9 @@ Rules:
 
 ### Time filters
 
-`--start` and `--end` accept RFC3339 (recommended across machines), `YYYY-MM-DD HH:MM:SS`, that form plus `±HH:MM`, and a trailing ` UTC`. An offset or a trailing ` UTC` is the instant. A value with no zone uses the `--tz` zone when `--tz` selected one, and otherwise the local timezone of the machine running `binlogviz`. With no `--tz`, report timestamps stay UTC. `--tz Asia/Shanghai` renders those same instants with a numeric offset. Snapshot files stay UTC.
+`--start` and `--end` accept RFC3339 (recommended across machines), `YYYY-MM-DD HH:MM:SS`, that form plus `±HH:MM`, and a trailing ` UTC`. An offset or a trailing ` UTC` is the instant. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. `--tz UTC` and `--tz Etc/UTC` resolve that value to the same instant. With no `--tz`, report timestamps stay UTC. `--tz Asia/Shanghai` renders those same instants with a numeric offset. `--tz UTC` keeps the ` UTC` / `Z` spelling. Snapshot files stay UTC, including `snapshot save` of a report that was rendered with `--tz`.
+
+A zoneless value that falls in a DST gap or an overlap in that zone is exit 3. The error names the value, the zone, and why, and tells you to add an explicit offset. An offset whose absolute value is greater than 14:00, such as `+24:00` or `+14:30`, or whose minutes are not 00, 30, or 45, is the same exit. `+14:00`, `+05:30`, and `+05:45` are valid.
 
 ```bash
 binlogviz analyze mysql-bin.000123 \

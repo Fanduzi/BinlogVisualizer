@@ -210,6 +210,71 @@ func TestParseAnalyzeTimeAcceptsPrintedOffsetAndUTC(t *testing.T) {
 	if _, err := parseAnalyzeTimeInLocation("2026-11-01 13:00:00 +99:00", nil); err == nil {
 		t.Fatal("an impossible offset was accepted")
 	}
+	utcGot, err := parseAnalyzeTimeInLocation("2026-11-01 05:00:00", time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !utcGot.Equal(want) {
+		t.Fatalf("--tz UTC zoneless = %s, want %s", utcGot, want)
+	}
+	etc, err := time.LoadLocation("Etc/UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	etcGot, err := parseAnalyzeTimeInLocation("2026-11-01 05:00:00", etc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !etcGot.Equal(utcGot) {
+		t.Fatalf("Etc/UTC zoneless = %s, UTC zoneless = %s", etcGot, utcGot)
+	}
+}
+
+func TestParseAnalyzeTimeRejectsDSTGapOverlapAndBadOffset(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gap, err := parseAnalyzeTimeInLocation("2026-03-08 02:30:00", ny)
+	if err == nil {
+		t.Fatalf("DST gap resolved to %s", gap)
+	}
+	if !strings.Contains(err.Error(), "2026-03-08 02:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "DST gap") || !strings.Contains(err.Error(), "add an explicit offset") {
+		t.Fatalf("gap error: %v", err)
+	}
+	overlap, err := parseAnalyzeTimeInLocation("2026-11-01 01:30:00", ny)
+	if err == nil {
+		t.Fatalf("DST overlap resolved to %s", overlap)
+	}
+	if !strings.Contains(err.Error(), "2026-11-01 01:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "DST overlap") || !strings.Contains(err.Error(), "add an explicit offset") {
+		t.Fatalf("overlap error: %v", err)
+	}
+	// The spring-forward morning before the gap, and the hour after it, exist.
+	for _, value := range []string{"2026-03-08 01:30:00", "2026-03-08 03:30:00"} {
+		if _, err := parseAnalyzeTimeInLocation(value, ny); err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
+	}
+	for _, value := range []string{
+		"2026-11-01T05:00:00+24:00",
+		"2026-11-01T05:00:00+14:30",
+		"2026-11-01 05:00:00 +08:15",
+		"2026-11-01 05:00:00 -14:30",
+	} {
+		if _, err := parseAnalyzeTimeInLocation(value, nil); err == nil {
+			t.Fatalf("%s was accepted", value)
+		}
+	}
+	for _, value := range []string{
+		"2026-11-01T05:00:00+14:00",
+		"2026-11-01T05:00:00+05:45",
+		"2026-11-01 05:00:00 +05:30",
+		"2026-11-01 05:00:00 -12:00",
+	} {
+		if _, err := parseAnalyzeTimeInLocation(value, nil); err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
+	}
 }
 
 func TestParseAnalyzeTimeSpaceFormatInShanghaiEqualsRFC3339Offset(t *testing.T) {

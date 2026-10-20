@@ -1309,7 +1309,7 @@ func runWorkflowAnalyzeWindow(
 		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindError, "render analyze JSON for %q: %w", w.Name, err)
 	}
 	artifact := archive
-	if reportOpts.Display != nil {
+	if reportOpts.Display != nil && reportOpts.Display != time.UTC {
 		artifact, err = report.RenderJSONWithOptions(*result, report.ArchiveOptions(reportOpts))
 		if err != nil {
 			rec.Status = "failed"
