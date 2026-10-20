@@ -23,14 +23,18 @@ type NormalizedEvent struct {
 	GTID          string
 	// OriginalCommitUs and ImmediateCommitUs are MySQL 8 GTID commit timestamps
 	// in microseconds since the Unix epoch. Zero means the event did not carry them.
-	OriginalCommitUs   uint64
-	ImmediateCommitUs  uint64
-	ThreadID           uint32
-	XID                string
-	ActorUser          string
-	ActorHost          string
-	Schema             string
-	Table              string
+	OriginalCommitUs  uint64
+	ImmediateCommitUs uint64
+	ThreadID          uint32
+	XID               string
+	ActorUser         string
+	ActorHost         string
+	Schema            string
+	Table             string
+	// QuerySchema is the default database of a QUERY event. The analyzer
+	// keeps it when a DDL's first qualified name replaces Schema, so an
+	// unqualified name later in the statement still resolves (ADR 0015).
+	QuerySchema        string
 	Operation          string // INSERT, UPDATE, DELETE, LOAD_DATA
 	RowCount           int
 	KeyStatus          string // has_pk, no_pk, or unknown; set on ROW events from TABLE_MAP metadata

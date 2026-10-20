@@ -150,10 +150,10 @@ DROP DATABASE IF EXISTS binlogviz;
 - 某一列无法精确写成字面量（`FLOAT`、`DOUBLE`、`GEOMETRY`、`VECTOR`、不完整的 JSON、无法精确表示的 JSON、`utf8mb4` 列里的非法 UTF-8、未知校对，或缺少有无符号、字符集、ENUM/SET 成员）。`BIT` 是列宽的 `b'...'` 字面量。MySQL 无法转回的 `FLOAT` 或 `DOUBLE` 在 `--show-rows` 里写成 `<FLOAT>` 或 `<DOUBLE>`，而不是一个错误的数。
 - binlog 或 `--schema-file` 里出现过 `CREATE` 或 `ALTER`，但语句读不出来
 - `--schema-file` 和某个选中事件的 binlog 列不一致
-- 选定范围内有 DDL（不生成反向 DDL）
+- 选定范围内有 DDL（不生成反向 DDL）。使用 `--include-table`、`--exclude-table`、`--include-schema` 或 `--exclude-schema` 时，范围内的 DDL 只要点名的任何一张表（不论作为源还是目标）可能是被选中的表，仍然拒绝：`RENAME TABLE` 列表里的每一对、多表 `DROP TABLE` 的每个表名、`ALTER TABLE ... RENAME TO`、`REFERENCES` 和 `CREATE TABLE ... LIKE`；不带库名的表按会话的默认库解析，大小写不敏感。`CREATE`、`ALTER` 或 `DROP DATABASE` 在被选中的表可能位于该库时拒绝。读不完整的语句（视图、触发器、存储过程、`EXCHANGE PARTITION`、`CREATE TABLE ... SELECT`、可执行注释 `/*! */`，或被截断的语句文本）同样拒绝，报错会说明原因。只点名被过滤掉的表的 DDL 放行。账号和权限语句（`GRANT`、`REVOKE`、`CREATE USER`、`SET PASSWORD`）不改任何表，在表或库过滤下放行（ADR 0015）。
 - 使用了 `--sql-context off`，因为脚本就是行值
 
-什么都没选中时，退出码和 `Error:` 与 `analyze` 相同（`schema/table filter matched no events`、`dml filter matched no events` 或 `window matched 0 events`），stdout 为空。选定范围内的账号 DDL 按 DDL 拒绝，密钥不会被抄进脚本。单元格的值不打码。不使用 flashback 时，analyze 的文本、Markdown、JSON 和 HTML 不变。
+什么都没选中时，退出码和 `Error:` 与 `analyze` 相同（`schema/table filter matched no events`、`dml filter matched no events` 或 `window matched 0 events`），stdout 为空。没有表或库过滤时，选定范围内的账号 DDL 按 DDL 拒绝。flashback 从不抄写语句文本，所以两种情况下密钥都不会进入脚本。单元格的值不打码。不使用 flashback 时，analyze 的文本、Markdown、JSON 和 HTML 不变。
 
 ## 输出与契约边界
 

@@ -1,0 +1,130 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261020  9:17:09 server id 1  end_log_pos 127 CRC32 0x8bc4ec99 	Start: binlog v 4, server v 8.4.11 created 261020  9:17:09
+BINLOG '
+lTHXag8BAAAAewAAAH8AAAAAAAQAOC40LjExAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAEwANAAgAAAAABAAEAAAAYwAEGggAAAAAAAACAAAACgoKKioAEjQA
+CigAAAGZ7MSL
+'/*!*/;
+# at 127
+#261020  9:17:09 server id 1  end_log_pos 238 CRC32 0x46fe4ada 	Previous-GTIDs
+# 007efb60-cc62-11f1-95a5-deffe0eaf8ff:8,
+# 84ab694c-cc66-11f1-b6dd-822b383dbcd0:1-70
+# at 238
+#261020  9:17:09 server id 1  end_log_pos 317 CRC32 0x5ecb6a0d 	GTID	last_committed=0	sequence_number=1	rbr_only=yes	original_committed_timestamp=1792487829207864	immediate_commit_timestamp=1792487829207864	transaction_length=347
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1792487829207864 (2026-10-20 09:17:09.207864 UTC)
+# immediate_commit_timestamp=1792487829207864 (2026-10-20 09:17:09.207864 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1792487829207864*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= '84ab694c-cc66-11f1-b6dd-822b383dbcd0:71'/*!*/;
+# at 317
+#261020  9:17:09 server id 1  end_log_pos 388 CRC32 0x620d03b0 	Query	thread_id=92	exec_time=0	error_code=0
+SET TIMESTAMP=1792487829/*!*/;
+SET @@session.pseudo_thread_id=92/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+BEGIN
+/*!*/;
+# at 388
+#261020  9:17:09 server id 1  end_log_pos 440 CRC32 0xa8c9db36 	Rows_query
+# DELETE FROM rn.t1 WHERE id=1
+# at 440
+#261020  9:17:09 server id 1  end_log_pos 507 CRC32 0xb246e660 	Table_map: `rn`.`t1` mapped to number 183
+# has_generated_invisible_primary_key=0
+# at 507
+#261020  9:17:09 server id 1  end_log_pos 554 CRC32 0xed11757d 	Delete_rows: table id 183 flags: STMT_END_F
+
+BINLOG '
+lTHXah0BAAAANAAAALgBAACAABxERUxFVEUgRlJPTSBybi50MSBXSEVSRSBpZD0xNtvJqA==
+lTHXahMBAAAAQwAAAPsBAAAAALcAAAAAAAEAAnJuAAJ0MQACAw8CUAACAQEAAgP8/wAEBQJpZAF2
+CAEADAHAYOZGsg==
+lTHXaiABAAAALwAAACoCAAAAALcAAAAAAAEAAgAC/wABAAAABnQxLW9uZX11Ee0=
+'/*!*/;
+### DELETE FROM `rn`.`t1`
+### WHERE
+###   @1=1 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='t1-one' /* VARSTRING(80) meta=80 nullable=1 is_null=0 */
+# at 554
+#261020  9:17:09 server id 1  end_log_pos 585 CRC32 0x31dd61ac 	Xid = 952
+COMMIT/*!*/;
+# at 585
+#261020  9:17:09 server id 1  end_log_pos 662 CRC32 0x61b8275f 	GTID	last_committed=1	sequence_number=2	rbr_only=no	original_committed_timestamp=1792487829216250	immediate_commit_timestamp=1792487829216250	transaction_length=218
+# original_commit_timestamp=1792487829216250 (2026-10-20 09:17:09.216250 UTC)
+# immediate_commit_timestamp=1792487829216250 (2026-10-20 09:17:09.216250 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1792487829216250*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= '84ab694c-cc66-11f1-b6dd-822b383dbcd0:72'/*!*/;
+# at 662
+#261020  9:17:09 server id 1  end_log_pos 803 CRC32 0x2ff716c0 	Query	thread_id=92	exec_time=0	error_code=0	Xid = 953
+SET TIMESTAMP=1792487829/*!*/;
+RENAME TABLE rn.t2 TO rn.tmp, rn.t1 TO rn.t2, rn.tmp TO rn.t1
+/*!*/;
+# at 803
+#261020  9:17:09 server id 1  end_log_pos 882 CRC32 0x10e120ac 	GTID	last_committed=2	sequence_number=3	rbr_only=yes	original_committed_timestamp=1792487829217841	immediate_commit_timestamp=1792487829217841	transaction_length=348
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1792487829217841 (2026-10-20 09:17:09.217841 UTC)
+# immediate_commit_timestamp=1792487829217841 (2026-10-20 09:17:09.217841 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1792487829217841*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= '84ab694c-cc66-11f1-b6dd-822b383dbcd0:73'/*!*/;
+# at 882
+#261020  9:17:09 server id 1  end_log_pos 953 CRC32 0xbb4d8c4c 	Query	thread_id=92	exec_time=0	error_code=0
+SET TIMESTAMP=1792487829/*!*/;
+BEGIN
+/*!*/;
+# at 953
+#261020  9:17:09 server id 1  end_log_pos 1005 CRC32 0x0ac6aa0f 	Rows_query
+# DELETE FROM rn.t1 WHERE id=5
+# at 1005
+#261020  9:17:09 server id 1  end_log_pos 1072 CRC32 0xa4078060 	Table_map: `rn`.`t1` mapped to number 185
+# has_generated_invisible_primary_key=0
+# at 1072
+#261020  9:17:09 server id 1  end_log_pos 1120 CRC32 0xbc9fa540 	Delete_rows: table id 185 flags: STMT_END_F
+
+BINLOG '
+lTHXah0BAAAANAAAAO0DAACAABxERUxFVEUgRlJPTSBybi50MSBXSEVSRSBpZD01D6rGCg==
+lTHXahMBAAAAQwAAADAEAAAAALkAAAAAAAEAAnJuAAJ0MQACAw8CUAACAQEAAgP8/wAEBQJpZAF2
+CAEADAHAYIAHpA==
+lTHXaiABAAAAMAAAAGAEAAAAALkAAAAAAAEAAgAC/wAFAAAAB3QyLWZpdmVApZ+8
+'/*!*/;
+### DELETE FROM `rn`.`t1`
+### WHERE
+###   @1=5 /* INT meta=0 nullable=0 is_null=0 */
+###   @2='t2-five' /* VARSTRING(80) meta=80 nullable=1 is_null=0 */
+# at 1120
+#261020  9:17:09 server id 1  end_log_pos 1151 CRC32 0x8009b60e 	Xid = 954
+COMMIT/*!*/;
+# at 1151
+#261020  9:17:09 server id 1  end_log_pos 1228 CRC32 0x574fba67 	GTID	last_committed=3	sequence_number=4	rbr_only=no	original_committed_timestamp=1792487829223974	immediate_commit_timestamp=1792487829223974	transaction_length=218
+# original_commit_timestamp=1792487829223974 (2026-10-20 09:17:09.223974 UTC)
+# immediate_commit_timestamp=1792487829223974 (2026-10-20 09:17:09.223974 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1792487829223974*//*!*/;
+/*!80014 SET @@session.original_server_version=80411*//*!*/;
+/*!80014 SET @@session.immediate_server_version=80411*//*!*/;
+SET @@SESSION.GTID_NEXT= '84ab694c-cc66-11f1-b6dd-822b383dbcd0:74'/*!*/;
+# at 1228
+#261020  9:17:09 server id 1  end_log_pos 1369 CRC32 0x2186b9b9 	Query	thread_id=92	exec_time=0	error_code=0	Xid = 955
+SET TIMESTAMP=1792487829/*!*/;
+RENAME TABLE rn.t2 TO rn.tmp, rn.t1 TO rn.t2, rn.tmp TO rn.t1
+/*!*/;
+# at 1369
+#261020  9:17:09 server id 1  end_log_pos 1416 CRC32 0x2e0fae99 	Rotate to mysql-bin.000019  pos: 4
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

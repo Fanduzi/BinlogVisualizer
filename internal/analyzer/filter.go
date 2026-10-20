@@ -1,11 +1,15 @@
 // Package analyzer matches schema/table include and exclude filters against event identities.
 // input: analyzer.Options include/exclude schema and table lists, including SCHEMA.TABLE tokens.
-// output: EventFilter.Allow decisions used by streaming analysis before aggregation.
+// output: EventFilter.Allow decisions used by streaming analysis before aggregation, and MayHoldTable / MayHoldSchema, the case-folding superset the flashback DDL refusal reads (ADR 0015).
 // pos: analyzer object-filter helper shared by Consume and tests.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
-import "strings"
+import (
+	"strings"
+
+	"binlogviz/internal/flashback"
+)
 
 // EventFilter decides whether a schema/table combination should be analyzed.
 // Empty include lists mean "allow all"; non-empty means only those listed.
@@ -110,4 +114,81 @@ func (f *EventFilter) Allow(schema, table string) bool {
 		return false
 	}
 	return true
+}
+
+// flashSelection is the filter as the flashback planner reads it, or nil
+// when no table or schema filter is set (ADR 0015).
+func (a *Analyzer) flashSelection() flashback.Selection {
+	if !a.opts.HasObjectFilters() || a.filter == nil {
+		return nil
+	}
+	return a.filter
+}
+
+// MayHoldTable reports whether schema.table, as a DDL names it, could be a
+// table whose rows the filter selects. It leans to true: an include list
+// matches with letter case folded, an exclude list only on the exact name,
+// and an empty schema (an unqualified name with no session schema) matches
+// any schema.
+func (f *EventFilter) MayHoldTable(schema, table string) bool {
+	if schema != "" {
+		if _, excluded := f.excludeSchemas[schema]; excluded {
+			return false
+		}
+		if len(f.includeSchemas) > 0 && !foldMember(f.includeSchemas, schema) {
+			return false
+		}
+		for _, sel := range f.excludeTables {
+			if sel.table == table && (sel.schema == "" || sel.schema == schema) {
+				return false
+			}
+		}
+	} else {
+		for _, sel := range f.excludeTables {
+			if sel.schema == "" && sel.table == table {
+				return false
+			}
+		}
+	}
+	if len(f.includeTables) == 0 {
+		return true
+	}
+	for _, sel := range f.includeTables {
+		if strings.EqualFold(sel.table, table) && (sel.schema == "" || schema == "" || strings.EqualFold(sel.schema, schema)) {
+			return true
+		}
+	}
+	return false
+}
+
+// MayHoldSchema reports whether a DDL on a whole schema (CREATE, ALTER, or
+// DROP DATABASE) could touch a selected table. It leans to true the same way.
+func (f *EventFilter) MayHoldSchema(schema string) bool {
+	if schema == "" {
+		return true
+	}
+	if _, excluded := f.excludeSchemas[schema]; excluded {
+		return false
+	}
+	if len(f.includeSchemas) > 0 && !foldMember(f.includeSchemas, schema) {
+		return false
+	}
+	if len(f.includeTables) == 0 {
+		return true
+	}
+	for _, sel := range f.includeTables {
+		if sel.schema == "" || strings.EqualFold(sel.schema, schema) {
+			return true
+		}
+	}
+	return false
+}
+
+func foldMember(set map[string]struct{}, name string) bool {
+	for have := range set {
+		if strings.EqualFold(have, name) {
+			return true
+		}
+	}
+	return false
 }

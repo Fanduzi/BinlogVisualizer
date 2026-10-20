@@ -29,6 +29,17 @@ type Options struct {
 	Conflict      string
 	Plan          bool
 	ConflictLimit int
+	// Selection is the table and schema filter of the run, or nil when no
+	// such filter is set. It decides which DDL in range refuses (ADR 0015).
+	Selection Selection
+}
+
+// Selection answers whether a table or a schema named by a DDL could hold a
+// selected row. Both answers lean to true: letter case is folded for
+// inclusion and an empty schema means the schema is not known.
+type Selection interface {
+	MayHoldTable(schema, table string) bool
+	MayHoldSchema(schema string) bool
 }
 
 // Planner owns every flashback field that used to sit on *analyzer.Analyzer.
@@ -109,7 +120,11 @@ func (a *Planner) Observe(ev model.NormalizedEvent, txnKey, gtid string) {
 	a.checkFlashConflict(ev)
 	dropped := a.flashCat.ObserveTable(ev.Schema, ev.Table)
 	if ev.EventType == "DDL" {
-		dropped = append(dropped, a.flashCat.ObserveDDL(ev.Schema, ev.QuerySQL)...)
+		session := ev.QuerySchema
+		if session == "" {
+			session = ev.Schema
+		}
+		dropped = append(dropped, a.flashCat.ObserveDDL(session, ev.QuerySQL)...)
 	}
 	for _, table := range dropped {
 		a.clearPendingUse(table)
@@ -170,12 +185,7 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 		return
 	}
 	if ev.EventType == "DDL" {
-		label := a.refusalTable(ev.Schema, ev.Table)
-		table := ""
-		if ev.Table != "" {
-			table = label
-		}
-		a.flashErr = refuse("ddl_in_range", table, flashDDLError(ev, label))
+		a.flashErr = a.ddlRefusal(ev)
 		return
 	}
 	if ev.EventType != "ROWS" {
@@ -672,6 +682,61 @@ func flashRowError(row model.FlashRow, table string) error {
 	default:
 		return refuse("row_capture", table, fmt.Errorf("%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": table})))
 	}
+}
+
+// ddlRefusal decides a DDL inside the selected range (ADR 0015). With no
+// table or schema filter every DDL refuses. With a filter, the DDL refuses
+// unless its whole text was read and none of the tables or schemas it names,
+// as a source or a target, could hold a selected row.
+func (a *Planner) ddlRefusal(ev model.NormalizedEvent) error {
+	sel := a.opts.Selection
+	if sel == nil {
+		label := a.refusalTable(ev.Schema, ev.Table)
+		table := ""
+		if ev.Table != "" {
+			table = label
+		}
+		return refuse("ddl_in_range", table, flashDDLError(ev, label))
+	}
+	// QuerySchema is the default database of the query event. Empty means
+	// it is not known, and an unqualified name then matches any schema.
+	session := ev.QuerySchema
+	var refs []ddlRef
+	ok := !ev.QueryTruncated
+	if ok {
+		refs, ok = ddlReferences(ev.QuerySQL, session)
+	}
+	if !ok {
+		return refuse("ddl_in_range", "", flashDDLUnreadError(ev))
+	}
+	for _, ref := range refs {
+		if ref.table == "" {
+			if sel.MayHoldSchema(ref.schema) {
+				label := ref.schema
+				if label == "" {
+					label = "?"
+				}
+				return refuse("ddl_in_range", "", flashDDLError(ev, label))
+			}
+			continue
+		}
+		if sel.MayHoldTable(ref.schema, ref.table) {
+			label := a.refusalTable(ref.schema, ref.table)
+			return refuse("ddl_in_range", label, flashDDLError(ev, label))
+		}
+	}
+	return nil
+}
+
+func flashDDLUnreadError(ev model.NormalizedEvent) error {
+	statement := strings.TrimSpace(redact.Statement(ev.QuerySQL))
+	if statement == "" {
+		statement = "DDL"
+	}
+	statement = mysqlexpr.OneLine(statement, 120)
+	return fmt.Errorf("%s", i18n.Tf("error.flashbackDDLUnread", map[string]any{
+		"Statement": statement,
+	}))
 }
 
 func flashDDLError(ev model.NormalizedEvent, table string) error {

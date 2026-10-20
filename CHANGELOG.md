@@ -8,6 +8,10 @@ This file records user-visible changes for tagged releases.
 
 - Every command's `--help` includes a runnable example (#255).
 
+### Fixed
+
+- Flashback under `--include-table`, `--exclude-table`, `--include-schema`, or `--exclude-schema` no longer misses a DDL in range whose selected table is not its first name. `RENAME TABLE rn.t2 TO rn.tmp, rn.t1 TO rn.t2, rn.tmp TO rn.t1` or `DROP TABLE rn.z, rn.t1` with `--include-table rn.t1` exited 0 and the undo wrote the other table's rows into rn.t1 (v0.34.0 and earlier). Every name a DDL uses as a source or a target is now checked, and a DDL the reader cannot read completely refuses (exit 6, `ddl_in_range`). With no table or schema filter the refusal is unchanged (ADR 0015).
+
 ## v0.34.0
 
 Release date: 2026-10-20

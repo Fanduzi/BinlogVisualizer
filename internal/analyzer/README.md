@@ -6,9 +6,9 @@ The expression evaluator and the schema catalog are `internal/mysqlexpr` and `in
 
 | File | Responsibility |
 |------|----------------|
-| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly from ReportAggregator plus table totals. When `Options.Flashback` is set, retained events go to `internal/flashback.Planner` (`Planner()`); this package keeps no flashback fields. |
+| `analyzer.go` | Public analyzer entrypoint, intersected time/position windows, deferred complete-group GTID filtering, filter-excluded DDL boundary forwarding, streaming lifecycle, selector evidence, and final result assembly from ReportAggregator plus table totals. When `Options.Flashback` is set, retained events go to `internal/flashback.Planner` (`Planner()`); an in-range DDL the object filter leaves out goes there too (held for the GTID match under GTID selectors), and the planner reads every name in it (ADR 0015). A DDL event keeps the query event's default database as `QuerySchema`. This package keeps no flashback fields. |
 | `gtid_selector.go` | Parses canonical MySQL UUID sequence/range sets and exact MariaDB identities, resolves one selector flavor, applies exclude-wins matching, and rejects anonymous groups while a selector is active. |
-| `filter.go` | Applies schema/object include and exclude filters, including `SCHEMA.TABLE` tokens for tables, views, events, routines, and triggers, plus an optional INSERT/UPDATE/DELETE kind filter. |
+| `filter.go` | Applies schema/object include and exclude filters, including `SCHEMA.TABLE` tokens for tables, views, events, routines, and triggers, plus an optional INSERT/UPDATE/DELETE kind filter. `MayHoldTable` / `MayHoldSchema` are the flashback DDL refusal's view of the same filter: include lists fold letter case, exclude lists match exactly, and an unknown schema matches any (ADR 0015). |
 | `store.go` | Shared detail DTOs and the in-memory store used by default analyze. |
 | `store_duckdb.go` | CGO DuckDB adapter: `NewDuckDBStore`, batch append, and query helpers; the alerts table keeps each alert's GTID. |
 | `store_nocgo.go` | `!cgo` stub so `NewDuckDBStore` fails with `ErrDuckDBRequiresCGO` without importing go-duckdb. |

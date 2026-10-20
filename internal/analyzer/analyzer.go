@@ -43,8 +43,11 @@ type Analyzer struct {
 	selection model.AnalysisSelection
 
 	pendingGroupEvents map[string][]model.NormalizedEvent
-	inputGTIDFlavor    string
-	matchedGTIDs       map[string]struct{}
+	// pendingFlashDDL holds filtered-out DDL of an open group until its GTID
+	// match is known. Only the flashback planner reads it.
+	pendingFlashDDL map[string][]model.NormalizedEvent
+	inputGTIDFlavor string
+	matchedGTIDs    map[string]struct{}
 
 	flash *flashback.Planner
 }
@@ -268,6 +271,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 			if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
 				return err
 			}
+			a.noteFilteredDDL(ev)
 			return a.persistCompletedTransactions()
 		}
 		return nil
@@ -308,6 +312,26 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 		return err
 	}
 	return a.persistCompletedTransactions()
+}
+
+// noteFilteredDDL hands the planner an in-range DDL that the table or schema
+// filter left out of the report. The filter judges a DDL by its first name
+// only; the planner reads every name (ADR 0015). Under GTID selectors the DDL
+// waits for its group's match, like a retained event.
+func (a *Analyzer) noteFilteredDDL(ev model.NormalizedEvent) {
+	if a.flash == nil {
+		return
+	}
+	ev = a.withDDLHold(ev)
+	ev.RowImages = nil
+	ev = a.withCurrentTxnKey(ev)
+	if !a.opts.HasGTIDSelectors() {
+		a.flash.Note(ev)
+		return
+	}
+	if ev.TxnKey != "" {
+		a.pendingFlashDDL[ev.TxnKey] = append(a.pendingFlashDDL[ev.TxnKey], ev)
+	}
 }
 
 func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
@@ -400,6 +424,9 @@ func withDDLIdentity(ev model.NormalizedEvent) (model.NormalizedEvent, bool) {
 		return ev, false
 	}
 	ev.EventType = "DDL"
+	if ev.QuerySchema == "" {
+		ev.QuerySchema = ev.Schema
+	}
 	if ddl.Schema != "" {
 		ev.Schema = ddl.Schema
 	}
@@ -433,6 +460,7 @@ func (a *Analyzer) reset() {
 		a.selection.ExcludeGTIDs = a.opts.GTIDSelector.Exclude()
 	}
 	a.pendingGroupEvents = make(map[string][]model.NormalizedEvent)
+	a.pendingFlashDDL = make(map[string][]model.NormalizedEvent)
 	a.inputGTIDFlavor = ""
 	a.matchedGTIDs = make(map[string]struct{})
 	if a.flash != nil {
@@ -447,6 +475,7 @@ func (a *Analyzer) reset() {
 			Conflict:      a.opts.FlashbackConflict,
 			Plan:          a.opts.FlashbackPlan,
 			ConflictLimit: limit,
+			Selection:     a.flashSelection(),
 		})
 	}
 	if a.store != nil {
@@ -590,6 +619,8 @@ func (a *Analyzer) persistCompletedTransactions() error {
 		if a.opts.HasGTIDSelectors() {
 			events := a.pendingGroupEvents[txn.TxnKey]
 			delete(a.pendingGroupEvents, txn.TxnKey)
+			filteredDDL := a.pendingFlashDDL[txn.TxnKey]
+			delete(a.pendingFlashDDL, txn.TxnKey)
 			if txn.EffectiveCompleteness() == model.TransactionUnknown {
 				return fmt.Errorf("cannot apply GTID selectors: transaction %s has unresolved boundaries", txn.TxnKey)
 			}
@@ -599,6 +630,9 @@ func (a *Analyzer) persistCompletedTransactions() error {
 			}
 			if !matched {
 				continue
+			}
+			for _, ev := range filteredDDL {
+				a.flash.Note(ev)
 			}
 			for _, ev := range events {
 				if err := a.aggregateRetainedEvent(ev); err != nil {

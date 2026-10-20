@@ -279,6 +279,10 @@
     "description": "Flashback refuses DDL inside the selected range",
     "other": "{{.Table}}: DDL in the selected range ({{.Statement}}); flashback does not undo schema changes"
   },
+  "error.flashbackDDLUnread": {
+    "description": "Flashback refuses a DDL in range that a table or schema filter cannot rule out",
+    "other": "DDL in the selected range ({{.Statement}}) could not be read completely, so a table or schema filter cannot rule out that it renames, drops, or changes a selected table; flashback refuses. Narrow the range with --start-position, --stop-position, or --exclude-gtids so it leaves out this DDL"
+  },
   "error.flashbackCapture": {
     "description": "Flashback had a selected row event with no image",
     "other": "{{.Table}}: row image was not captured"
