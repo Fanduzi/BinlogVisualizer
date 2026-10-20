@@ -63,7 +63,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-Both flags accept RFC3339 (recommended across machines; explicit offsets define the instant) or `YYYY-MM-DD HH:MM:SS` in the local timezone of the machine running `binlogviz`. Binlog timestamps and report display stay UTC.
+Both flags accept RFC3339 (recommended across machines; explicit offsets define the instant) or `YYYY-MM-DD HH:MM:SS`. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. Binlog timestamps and report display stay UTC unless `--tz` is set.
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \

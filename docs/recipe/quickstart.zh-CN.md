@@ -63,7 +63,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-这两个参数接受 RFC3339（跨机器推荐；显式偏移量定义该时刻），或运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。binlog 时间戳和报告展示仍为 UTC。
+这两个参数接受 RFC3339（跨机器推荐；显式偏移量定义该时刻），或 `YYYY-MM-DD HH:MM:SS`。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。不传 `--tz` 时，binlog 时间戳和报告展示仍为 UTC。
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
