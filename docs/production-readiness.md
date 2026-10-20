@@ -54,7 +54,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
-| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | analyze：`TestAnalyzeRetainedHeap`（25k 和 100k 个事务的合成 MySQL 8.0 binlog 走完整 analyze 流程，在固定点测 live heap，每多一个事务多留的堆要小于 95 字节；现在约 76，主要是每张表按事务去重的集合）；flashback generate：`TestFlashbackSpillLimitOnFixture`、`TestGeneratedReviewRSS`；verify：`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`。都在 CI `verify` 的 `go test ./...` 里跑。`TestGeneratedReviewRSS`、`TestVerifyDoesNotBufferTheScript` 在 -race 下用 `t.Skip` 跳过并写明原因；`TestEveryMemoryTestRunsInCIVerify` 保证 `verify` 一直是非 -race 的 `go test ./...`，这些测试也不会被 build tag 静默排除 | MET | — |
+| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | analyze：`TestAnalyzeRetainedHeap`（10 万和 20 万个事务的合成 MySQL 8.0 binlog 走完整 analyze 流程，在固定点测 live heap；20 万比 10 万多出的堆要小于 512KiB，外加每个事务 16 字节的 apply-delay 余量）。#364 去掉了按表、按分钟保存全部事务 key 的集合（每个事务约 64 字节），输出不变；flashback generate：`TestFlashbackSpillLimitOnFixture`、`TestGeneratedReviewRSS`；verify：`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`。都在 CI `verify` 的 `go test ./...` 里跑；`TestGeneratedReviewRSS`、`TestVerifyDoesNotBufferTheScript` 在 -race 下用 `t.Skip` 跳过并写明原因，`TestEveryMemoryTestRunsInCIVerify` 保证 `verify` 一直是非 -race 的 `go test ./...`。缺：analyze 为了算精确的 apply-delay P95（nearest-rank），每个事务还留一个 int64（约 8 字节，5000 万个事务约 400MB），内存仍随事务数线性增长；要么落盘后选择（输出不变），要么改成分桶或 sketch（P95 会变），还没定 | PARTIAL | apply-delay P95 的取舍（#364） |
 | E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `benchmark_test.go` 要 `BINLOGVIZ_REAL_BINLOG` 才跑，CI 不设；大语料只在 QA 机器上 | NOT MET | — |
 
 ## F. 安装与发布完整性
@@ -74,7 +74,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 12 / PARTIAL 5 / NOT MET 7**。
+共 24 项：**MET 11 / PARTIAL 6 / NOT MET 7**。
 
 ## 最卡生产级的 5 项
 
@@ -82,4 +82,4 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 2. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
 3. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 4. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
-5. **E2，大文件基准不在 CI**：≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复，analyze 的内存测试由 #364 补上。）
+5. **E2，大文件基准不在 CI**：≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复；#364 补了 analyze 的内存测试，去掉了按事务增长的 key 集合，但 apply-delay P95 还按事务留值，E1 仍是 PARTIAL。）
