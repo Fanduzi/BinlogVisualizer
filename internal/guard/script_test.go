@@ -416,3 +416,28 @@ func TestVerifyV032PrepareWrapperIsOldFormat(t *testing.T) {
 		t.Fatalf("got %#v", err)
 	}
 }
+
+func TestMariaDBStopSQL(t *testing.T) {
+	// A sql_mode value is split at commas; the error would name only the
+	// first part.
+	if strings.Contains(MariaDBStopMessage, ",") {
+		t.Fatalf("message has a comma: %q", MariaDBStopMessage)
+	}
+	sql := MariaDBStopSQL()
+	for _, want := range []string{
+		"SET @binlogviz_applied = IF(LOCATE('MariaDB', @@version) > 0, 0, @binlogviz_applied)",
+		"@binlogviz_errno IS NULL, 1235, @binlogviz_errno)",
+		"'SET SESSION sql_mode = ''" + MariaDBStopMessage + "''', 'DO 0')",
+		"EXECUTE binlogviz_fb_maria_x9q;\n",
+		"DEALLOCATE PREPARE binlogviz_fb_maria_x9q;\n",
+	} {
+		if !strings.Contains(sql, want) {
+			t.Fatalf("MariaDBStopSQL lacks %q:\n%s", want, sql)
+		}
+	}
+	// The applied flag is cleared before the error, so mysql --force cannot
+	// commit even though the check lines after this piece are MySQL syntax.
+	if strings.Index(sql, "@binlogviz_applied = IF") > strings.Index(sql, "EXECUTE") {
+		t.Fatalf("flag cleared after the stop:\n%s", sql)
+	}
+}

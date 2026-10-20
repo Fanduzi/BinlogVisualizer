@@ -681,7 +681,7 @@ func TestGeneratedGuardFailClosedSQL(t *testing.T) {
 		"@binlogviz_major = 10 AND @binlogviz_minor >= 2",
 		"@binlogviz_minor >= 7",
 		"@binlogviz_patch >= 20",
-		"Apply requires MySQL 5.7 or MariaDB 10.2 or newer.",
+		"Apply requires MySQL 5.7 or newer; on MariaDB the script stops before this guard.",
 	} {
 		if !strings.Contains(sql, want) {
 			t.Fatalf("missing %q\n%s", want, sql)

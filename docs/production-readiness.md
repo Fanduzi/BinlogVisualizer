@@ -38,7 +38,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 | C1 | MySQL 8.0 上 analyze 和 flashback 端到端正确 | `flashback e2e` job。注意：用的是 runner 镜像里预装的 8.0.x，小版本跟着镜像变，没有固定 | MET | — |
 | C2 | MySQL 5.7：analyze 正确；flashback 明确拒绝（exit 6），不产出脚本 | `TestVersionMatrixAnalyzeMatchesDecode`、`TestVersionMatrixFlashbackBoundary`（`go test ./...`）。夹具 `mysql-5.7.44-wide-full`、`wide-minimal`、`ddl`，对照提交的 `mysqlbinlog -vv` 解码。行和 DDL 与解码一致；列名是位置序号，文本报告写提交时间戳不可用。flashback 以退出码 6 拒绝（没有列名），stdout 为空。`TestFlashbackMySQL57DeprecatedMode` 仍要活的 5.7，测的是在 5.7 上执行脚本时的 3090 警告，不属于本项 | MET | — |
 | C3 | MySQL 8.4 LTS（以及 9.x）支持或明确拒绝 | 同上，夹具 `mysql-8.4.11`、`mysql-9.7.2` 的 wide-full、wide-minimal、ddl。FULL 镜像加 `--schema-file` 生成脚本：前镜像（无符号、DECIMAL、DATETIME(6)、TIMESTAMP(6)、TEXT、BLOB、JSON、ENUM、SET）在 SQL 里，后镜像不在，生成列不写入。MINIMAL 镜像和范围内的 DDL 以退出码 6 拒绝，不产出 SQL。在 8.4 / 9.x 上执行脚本的往返不在本项，和 C1 的 8.0 e2e 分开 | MET | 要在 8.4 / 9.x 上做 apply 往返，需要改 workflow |
-| C4 | MariaDB：analyze 正确；flashback 的支持边界写清楚并且有测试 | 同上，夹具 `mariadb-10.11.19`、`mariadb-11.8.9`，对照提交的 `mariadb-binlog -vv` 解码。analyze 一致，文本报告写提交时间戳不可用。10.11 的 FULL 镜像加 schema 文件（JSON 列在 binlog 里是 longtext）生成脚本。MINIMAL 和 DDL 拒绝。11.8 即使 `binlog_row_image=FULL` 也不把生成列写入行镜像，整文件以退出码 6 拒绝；`--include-table shop.heap` 只撤销没有生成列的表。apply 不在本项 | MET | 要在 MariaDB 上做 apply 往返，需要改 workflow |
+| C4 | MariaDB：analyze 正确；flashback 的支持边界写清楚并且有测试 | 同上，夹具 `mariadb-10.11.19`、`mariadb-11.8.9`，对照提交的 `mariadb-binlog -vv` 解码。analyze 一致，文本报告写提交时间戳不可用。10.11 的 FULL 镜像加 schema 文件（JSON 列在 binlog 里是 longtext）生成脚本。MINIMAL 和 DDL 拒绝。11.8 即使 `binlog_row_image=FULL` 也不把生成列写入行镜像，整文件以退出码 6 拒绝；`--include-table shop.heap` 只撤销没有生成列的表。MariaDB 上不能执行脚本：脚本开头检查 `@@version`，在 MariaDB 上以 ERROR 1231 明确停下、不改数据（`--force` 也一样），生成时给出 `mariadb_apply_unsupported` 警告；已在 10.11.19 / 11.8.9 上实测。MariaDB 的 apply 路径不在本项 | MET | MariaDB 的 apply 方言（不用 `GET STACKED DIAGNOSTICS` 的检查行和收尾过程）是后续工作 |
 
 ## D. Agent 使用契约
 
@@ -82,4 +82,4 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 3. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
 4. **E1、E2，内存与大文件**：analyze 的内存上界还没有测试（#364）；≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复。）
-5. **A3，四种格式的重点事务**：text、Markdown、JSON、HTML 没有断言选出的是同一批事务（#352）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x / MariaDB 上执行脚本的往返仍要改 workflow，不在这三项里。
+5. **A3，四种格式的重点事务**：text、Markdown、JSON、HTML 没有断言选出的是同一批事务（#352）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。

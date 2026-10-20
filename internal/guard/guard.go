@@ -167,7 +167,7 @@ func renderGeneratedGuard(cols []Col) string {
 	}
 	lead := sqlQuote(guardMismatchLead)
 	var b strings.Builder
-	b.WriteString("-- Guard: every generated column omitted below must be GENERATED on the target. Apply stops here when the schema file does not match. A client that continues is left read-only, so later writes fail. Apply requires MySQL 5.7 or MariaDB 10.2 or newer. Each transaction below is read-only unless this guard ran in the same session and matched.\n")
+	b.WriteString("-- Guard: every generated column omitted below must be GENERATED on the target. Apply stops here when the schema file does not match. A client that continues is left read-only, so later writes fail. Apply requires MySQL 5.7 or newer; on MariaDB the script stops before this guard. Each transaction below is read-only unless this guard ran in the same session and matched.\n")
 	b.WriteString("SET @binlogviz_checked = 0;\n")
 	b.WriteString("SET @binlogviz_group_concat_max_len = @@SESSION.group_concat_max_len;\n")
 	b.WriteString("SET SESSION group_concat_max_len = 1048576;\n")

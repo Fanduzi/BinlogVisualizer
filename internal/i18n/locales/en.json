@@ -331,6 +331,10 @@
     "description": "Flashback refuses when selected rows were changed later",
     "other": "flashback refused: {{.Count}} selected row change(s) were changed again later in the scanned binlogs, and undoing them would overwrite those later changes. First: {{.First}}. Rerun with --conflict guard to skip rows that no longer match the logged after image, narrow the range, or see --plan."
   },
+  "warning.flashbackMariaDB": {
+    "description": "Flashback warns that a script from a MariaDB binlog cannot be applied on MariaDB",
+    "other": "the binlog is from MariaDB. The undo values are exact, but the script cannot be applied on a MariaDB server: it stops at its first statements with ERROR 1231 and changes nothing. Review the statements as a record of the change, and restore from a backup or PITR"
+  },
   "warning.flashbackSplit": {
     "description": "Flashback warns when a table or DML filter undoes only part of a transaction",
     "other": "transaction {{.GTID}} is only partly undone; a table or --dml selection skipped other row changes in that transaction"

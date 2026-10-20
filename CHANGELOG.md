@@ -7,6 +7,13 @@ This file records user-visible changes for tagged releases.
 ### Added
 
 - Every command's `--help` includes a runnable example (#255).
+- Version-matrix fixtures for MySQL 5.7.44, 8.4.11, 9.7.2 and MariaDB 10.11.19, 11.8.9: `analyze` is compared with each server's own `mysqlbinlog -vv` decode, and the flashback boundary (FULL undone, MINIMAL, DDL, missing row metadata and 11.8 generated columns refused) is tested (#366).
+- `flashback` warns `mariadb_apply_unsupported` for a MariaDB binlog.
+
+### Changed
+
+- A flashback script stops on a MariaDB server at its first statements with ERROR 1231 `binlogviz: flashback apply does not support MariaDB; no rows were changed; ...` and changes nothing, also under `mysql --force`. It used to stop at an unrelated `ERROR 1064` while creating the finish procedure, or with `--force` roll back with `ERROR 1758`. The undo statements from a MariaDB binlog are exact; applying them on MariaDB is not supported.
+- The missing-row-metadata refusal on a MariaDB binlog names MariaDB 10.5+ `binlog_row_metadata=FULL` (default `NO_LOG`) instead of MySQL 8.0.14.
 
 ## v0.34.0
 

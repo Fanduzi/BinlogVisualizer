@@ -331,6 +331,10 @@
     "description": "选中的行之后又被修改时 flashback 拒绝",
     "other": "flashback 已拒绝：{{.Count}} 处选中的行在扫描的 binlog 中之后又被修改过，撤销会覆盖这些后续修改。第一处：{{.First}}。可以加 --conflict guard 只撤销仍与日志后镜像一致的行，或缩小范围，或用 --plan 查看。"
   },
+  "warning.flashbackMariaDB": {
+    "description": "MariaDB binlog 生成的脚本不能在 MariaDB 上执行时警告",
+    "other": "binlog 来自 MariaDB。撤销语句里的值是准确的，但脚本不能在 MariaDB 服务器上执行：开头几条语句就会以 ERROR 1231 停下，不改任何数据。可以把这些语句当作变更记录来审阅，用备份或 PITR 恢复"
+  },
   "warning.flashbackSplit": {
     "description": "表过滤或 --dml 只撤销事务的一部分时警告",
     "other": "事务 {{.GTID}} 只撤销了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"

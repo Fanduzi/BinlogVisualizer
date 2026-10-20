@@ -52,12 +52,14 @@ type Planner struct {
 	flashCat              *schemacatalog.Catalog
 	flashUnknown          []string
 	flashSchemaWarn       []model.FlashbackWarning
-	flashGenNotes         []string
-	flashReviewed         bool
-	flashReviewErr        error
-	flashSplit            map[string]*flashSplit
-	flashSplitOrder       []string
-	flashSplitDone        []string
+	// flashMariaDB is set when a planned row event came from MariaDB.
+	flashMariaDB    bool
+	flashGenNotes   []string
+	flashReviewed   bool
+	flashReviewErr  error
+	flashSplit      map[string]*flashSplit
+	flashSplitOrder []string
+	flashSplitDone  []string
 
 	// conflictTxn and conflictGTID are the open transaction while Observe
 	// runs, before that event is applied to the transaction builder.
@@ -193,6 +195,9 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 			a.flashErr = flashRowError(row, a.refusalTable(row.Schema, row.Table), ev.ServerFlavor)
 			return
 		}
+	}
+	if ev.ServerFlavor == "mariadb" {
+		a.flashMariaDB = true
 	}
 	res := a.flashCat.Resolve(ev.Schema, ev.Table)
 	label := refusalLabel(res, ev.Schema, ev.Table)
@@ -520,7 +525,8 @@ func (a *Planner) Warnings() []string {
 }
 
 // FlashbackWarningList reports schema-file notes, tables whose definitions
-// were not seen, then transactions a table or --dml filter undid only in part.
+// were not seen, transactions a table or --dml filter undid only in part,
+// then a MariaDB binlog (the script does not apply on MariaDB).
 // Empty when flashback has nothing to print.
 func (a *Planner) WarningList() []model.FlashbackWarning {
 	if a == nil {
@@ -545,6 +551,9 @@ func (a *Planner) WarningList() []model.FlashbackWarning {
 			gtid = "GTID unavailable"
 		}
 		out = append(out, model.NewFlashWarning(model.WarnPartialTransaction, "warning.flashbackSplit", map[string]any{"GTID": gtid}))
+	}
+	if a.flashMariaDB {
+		out = append(out, model.NewFlashWarning(model.WarnMariaDBApplyUnsupported, "warning.flashbackMariaDB", nil))
 	}
 	return out
 }
@@ -789,6 +798,12 @@ func renderFlashbackTo(emit func(guard.Piece) error, backward func(func(*flashGr
 		}
 		if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: text}); err != nil {
 			return err
+		}
+		if i == 0 {
+			// Right after the mode strip, so its quoting can use backslashes.
+			if err := emit(guard.Piece{Kind: guard.PieceRaw, Text: guard.MariaDBStopSQL()}); err != nil {
+				return err
+			}
 		}
 	}
 	if h := g.Header(); h != "" {
