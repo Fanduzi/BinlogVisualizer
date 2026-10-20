@@ -4,6 +4,21 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.33.1
+
+Release date: 2026-10-20
+
+Highlights:
+
+- Patch release that closes the #312 follow-ups: `snapshot list` shows an empty `diagnostics_mode` as `(empty)`, `analyze --help` documents the summary DDL cap, README links outside the archive are absolute, and zh-CN `flashback --help` is complete.
+- No breaking changes. `schema_version` 1, `plan_version` 2, `report_version` 3, analyze output, and flashback scripts are unchanged from v0.33.0.
+- Known issue: Linux release archives still report an empty commit (#303).
+
+Related notes:
+
+- [v0.33.1 release notes](docs/releases/release-notes-v0.33.1.md)
+- [v0.33.1 中文发行说明](docs/releases/release-notes-v0.33.1.zh-CN.md)
+
 ### Fixed
 
 - `snapshot list` shows a file with `diagnostics_mode` `""` as `(empty)`, keeps its label, created_at, and window, and includes `"diagnostics_mode": ""` in JSON. Readers still refuse that file with exit 9 (#312, ADR 0011).
