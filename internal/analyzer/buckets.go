@@ -1,7 +1,7 @@
 // Package analyzer aggregates row activity into minute buckets that can later be persisted and queried.
 // input: normalized row events with timestamps, transaction keys, and schema/table identifiers.
 // output: deterministic minute-level aggregates and per-table minute rows for spike detection and activity reporting.
-// pos: live bounded minute aggregation layer that lets Analyzer drain finalized buckets to DuckDB as time advances.
+// pos: live minute map keyed by truncated minute. The analyzer keeps every minute until Finalize, so an earlier timestamp updates the existing bucket. Memory is one bucket per minute, not per transaction.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
@@ -117,6 +117,9 @@ func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 }
 
 // DrainBefore returns and removes buckets older than cutoffMinute.
+// Streaming analysis does not call this. The event timestamp is not a
+// high-water mark: a later event can belong to an earlier minute, and
+// dropping that minute would open a second bucket for it.
 func (a *MinuteAggregator) DrainBefore(cutoffMinute time.Time) []model.MinuteBucket {
 	if len(a.buckets) == 0 {
 		return nil
