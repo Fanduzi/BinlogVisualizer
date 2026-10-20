@@ -924,8 +924,9 @@ func renderUndoStatement(row model.FlashRow, gen map[string]struct{}, cond strin
 
 // renderUndo is renderUndoStatement with the --conflict guard switch. With
 // postImage, an UPDATE or DELETE undo matches every logged after-image
-// column, a DELETE undo inserts only when the key is still absent, and an
-// UPDATE undo that moves the key back runs only when no other row holds it.
+// column, a DELETE undo inserts only when that row is still absent (the key,
+// or every inserted column when there is no key), and an UPDATE undo that
+// moves the key back runs only when no other row holds it.
 func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postImage bool) (string, error) {
 	table := quoteIdent(row.Schema) + "." + quoteIdent(row.Table)
 	var statement string
@@ -937,8 +938,16 @@ func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postIm
 			return "", generatedRowError(row)
 		}
 		var conds []string
-		if postImage && !row.NoPK && len(row.PK) > 0 {
-			conds = append(conds, "NOT EXISTS (SELECT 1 FROM "+table+" WHERE "+keyMatch(row, row.Before)+")")
+		if postImage {
+			// A no-PK insert has no key. Match the inserted image so a second
+			// apply finds the row and skips, instead of inserting it again.
+			match := keyMatch(row, row.Before)
+			if row.NoPK || len(row.PK) == 0 {
+				match = insertedImageMatch(cols, vals)
+			}
+			if match != "" {
+				conds = append(conds, "NOT EXISTS (SELECT 1 FROM "+table+" WHERE "+match+")")
+			}
 		}
 		if cond != "" {
 			conds = append(conds, cond)
@@ -1156,6 +1165,19 @@ func refusalLabel(res schemacatalog.Resolution, schema, table string) string {
 
 func undoWhere(row model.FlashRow, head string, image []string, cond string) (string, error) {
 	return undoWhereImage(row, head, image, cond, false)
+}
+
+// insertedImageMatch is every column the INSERT writes. A no-PK guard undo
+// uses it so a re-run matches the row it already put back.
+func insertedImageMatch(cols, vals []string) string {
+	parts := make([]string, 0, len(cols))
+	for i := range cols {
+		if i >= len(vals) {
+			break
+		}
+		parts = append(parts, quoteIdent(cols[i])+" <=> "+vals[i])
+	}
+	return strings.Join(parts, " AND ")
 }
 
 // keyMatch is the primary-key match for image.

@@ -315,3 +315,19 @@ The mode-0 handler reads `GET STACKED DIAGNOSTICS`. On MySQL 8.0, `GET DIAGNOSTI
 A failure outside the procedure (`CREATE DATABASE`, `DROP PROCEDURE`, `CREATE PROCEDURE`, or a `CALL` that never enters) is read by `GET DIAGNOSTICS` as the next client statement. A later `SET` would clear that condition area. SQLSTATE class `00` and `01` are not failures, and neither is errno 1287 or 3135: those warnings use another SQLSTATE and the statement still succeeds. The first errno is kept, so 1370 and 1044 are not reported as 0. `sql_notes` is off for the apply and restored with the saved mode: `CREATE DATABASE IF NOT EXISTS` (1007, `HY000`) and `DROP PROCEDURE IF EXISTS` (1305, `42000`) are warnings, and without that they would be read as errors.
 
 `--plan` does not print row SQL, so `--plan --sql-context off` prints the plan. `--sql-context off` without `--plan` still refuses.
+
+## Amendment (2026-10-20): a skip is not a clean commit, and a value cannot forge one
+
+The seal, the digest, tamper exit 6, `schema_version` 1, and `plan_version` 2 stay.
+
+A guard apply that changed N rows and skipped M rows prints `binlogviz: undo committed with skips, N applied, M skipped`. It does not print `binlogviz: undo committed, N statements`. That clean line prints only when N is greater than 0 and M is 0. Both lines are `CONCAT` pieces. The checks are `grep -E '^binlogviz: undo committed, [0-9]+ statements$'` and `grep -E '^binlogviz: undo committed with skips, [0-9]+ applied, [0-9]+ skipped$'`, with `set -o pipefail`. An apply that only skipped still prints `binlogviz: undo skipped, M rows` and no success line.
+
+A no-PK `INSERT` undo under `--conflict guard` inserts only when the inserted image is absent (`NOT EXISTS` on every inserted column). A second apply matches that row, changes 0 rows, and counts a skip. Refuse-mode `INSERT` undos stay `T` and do not add that check.
+
+The rollback line and the stderr copy replace C0 controls and DEL in the server message with spaces. A duplicate-key value that contains a newline followed by the commit text cannot become its own result line. When no statement failed, the stderr copy is not set, so a published file applied without `verify` errors on the no-commit trailer and does not report `ERROR 0`.
+
+MySQL 5.7 warning 3090, from `SET sql_mode` in a deprecated combination mode, is skipped like 1287 and 3135. A session whose mode is only the 5.7 default, including `NO_AUTO_CREATE_USER`, does not warn and is unchanged.
+
+An undo `CALL` is followed by one `@@error_count` check. The three diagnostics lines stay after a raw piece, and after a `CALL` whose statement sets `sql_mode` inside the procedure. An intact script from an unreleased build (the `@@error_count` line on a raw piece, three diagnostics lines on an undo, or the old commit line) is `old_format`. Editing `@binlogviz_mode = 2` in the published suffix is still `truncated`.
+
+`--plan --sql-context off` writes the plan with `would_refuse` true and `refusal.reason` `sql_context_off`, and exits 6, the same as a run without `--plan`. The counts are zero: the binlog is not read.

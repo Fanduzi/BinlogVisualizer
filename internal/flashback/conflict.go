@@ -281,6 +281,27 @@ type FlashbackPlanCounts struct {
 	Omitted int                 `json:"omitted"`
 }
 
+// SQLContextOffPlan is the --plan body when --sql-context off refuses before
+// any row is read. Counts stay zero. The message is the refusal text.
+func SQLContextOffPlan(policy, message string) FlashbackPlan {
+	if policy == "" {
+		policy = FlashbackConflictRefuse
+	}
+	return FlashbackPlan{
+		PlanVersion:    FlashbackPlanVersion,
+		ConflictPolicy: policy,
+		Tables:         []FlashbackPlanTable{},
+		Conflicts:      FlashbackPlanCounts{Listed: []FlashbackConflict{}},
+		Warnings:       []model.FlashbackWarning{},
+		WouldRefuse:    true,
+		Refusal: &FlashbackPlanRefusal{
+			Kind:    "refused",
+			Message: message,
+			Reason:  "sql_context_off",
+		},
+	}
+}
+
 // WriteFlashbackPlan writes the JSON plan instead of SQL. It returns the
 // error a real run would return after writing the plan, so the exit code
 // matches. A refusal (exit 6) or a conflict (exit 7) still writes a plan,
@@ -378,13 +399,10 @@ func (a *Planner) flashbackPlan() (plan FlashbackPlan, err error) {
 }
 
 // postImageGuarded reports whether --conflict guard changes this row's undo.
-func postImageGuarded(row *model.FlashRow) bool {
-	switch row.Op {
-	case "UPDATE", "INSERT":
-		return true
-	default:
-		return !row.NoPK && len(row.PK) > 0
-	}
+// Every undo is guarded, including a no-PK INSERT, which matches the inserted
+// image before inserting.
+func postImageGuarded(_ *model.FlashRow) bool {
+	return true
 }
 
 // FlashbackPlanMode reports whether --plan replaces the SQL with the JSON plan.

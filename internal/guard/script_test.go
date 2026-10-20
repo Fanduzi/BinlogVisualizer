@@ -344,6 +344,46 @@ func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
 	}
 }
 
+func TestVerifyModeWrappedExecRoundTrips(t *testing.T) {
+	script := renderScript(t, New(nil), Piece{Kind: PieceStmt, Text: "SET @binlogviz_next_mode = @@SESSION.sql_mode;\nDO 0"})
+	if _, err := Verify(strings.NewReader(script)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplySQL(script); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyErrorCountRawPieceIsOldFormat(t *testing.T) {
+	script := renderScript(t, New(nil), Piece{Kind: PieceRaw, Text: "DO 0;\n"})
+	script = strings.Replace(script, appliedRecordSQL(), execCheckSQL+"\n", 1)
+	_, err := Verify(strings.NewReader(script))
+	ve, ok := err.(*VerifyError)
+	if !ok || ve.Reason != "old_format" || ve.Version != "an unreleased build" {
+		t.Fatalf("got %#v", err)
+	}
+}
+
+func TestVerifyDiagnosticsOnExecIsOldFormat(t *testing.T) {
+	script := renderScript(t, New(nil), Piece{Kind: PieceStmt, Text: "DO 0"})
+	script = strings.Replace(script, execCheckSQL, clientDiagSQL+"\n"+clientFlagSQL+"\n"+appliedCheckSQL, 1)
+	_, err := Verify(strings.NewReader(script))
+	ve, ok := err.(*VerifyError)
+	if !ok || ve.Reason != "old_format" || ve.Version != "an unreleased build" {
+		t.Fatalf("got %#v", err)
+	}
+}
+
+func TestVerifyUnreleasedCommitLineIsOldFormat(t *testing.T) {
+	script := renderScript(t, New(nil), Piece{Kind: PieceStmt, Text: "DO 0"})
+	script = strings.Replace(script, commitSelect, commitSelectUnreleased, 1)
+	_, err := Verify(strings.NewReader(script))
+	ve, ok := err.(*VerifyError)
+	if !ok || ve.Reason != "old_format" || ve.Version != "an unreleased build" {
+		t.Fatalf("got %#v", err)
+	}
+}
+
 func TestVerifyUnreleasedRollbackLineIsOldFormat(t *testing.T) {
 	script := renderScript(t, New(nil), Piece{Kind: PieceStmt, Text: "DO 0"})
 	script = strings.Replace(script, commitSelect, rollbackSelectUnreleased, 1)

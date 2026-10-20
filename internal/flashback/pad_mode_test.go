@@ -42,6 +42,14 @@ func TestFlashbackStripsPadAndMarksKeyedUndos(t *testing.T) {
 	if !strings.Contains(noPK, `E\nUPDATE`) || strings.Contains(noPK, `T\nUPDATE`) {
 		t.Fatal("a no-PK UPDATE undo must affect exactly one row")
 	}
+	guardInsert := flashSQL(t, analyzer.Options{FlashbackConflict: "guard"}, flashRow("DELETE", true, nil))
+	if !strings.Contains(guardInsert, "NOT EXISTS (SELECT 1 FROM `shop`.`c` WHERE `k` <=> \\'k4\\' AND `v` <=> 4)") || !strings.Contains(guardInsert, `G\nINSERT`) {
+		t.Fatalf("a no-PK guard insert must check the image before inserting:\n%s", guardInsert)
+	}
+	plainInsert := flashSQL(t, analyzer.Options{}, flashRow("DELETE", true, nil))
+	if strings.Contains(plainInsert, "FROM DUAL WHERE NOT EXISTS") {
+		t.Fatal("a refuse no-PK insert is not a guard check")
+	}
 }
 
 func flashRow(op string, noPK bool, pk []int) model.FlashRow {

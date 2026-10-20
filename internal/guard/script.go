@@ -39,22 +39,18 @@ const (
 	// rollbackMessage is the line a rolled-back apply prints. A procedure cannot
 	// drop itself (ERROR 1357), so the client prints this after DROP PROCEDURE.
 	rollbackMessage = "binlogviz: undo rolled back, no rows changed; fix the cause and apply verify output again"
-	rollbackSelect  = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (ERROR ', @binlogviz_errno, IF(@binlogviz_errmsg IS NULL, '', CONCAT(': ', @binlogviz_errmsg)), ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
-	// commitSelect is the success line. The pieces are separate so the
-	// literal is not in the statement text: mysql --force -v echoes that
-	// text, and a plain grep would then match a rollback. N is the number
-	// of undo statements that changed a row. Zero does not print the line.
-	commitSelect = "SELECT CONCAT('binlog', 'viz: ', 'undo committed, ', IFNULL(@binlogviz_n, 0), ' statements') FROM DUAL WHERE @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 AND @binlogviz_n > 0;"
+	// commitSelect is the success line when nothing was skipped. The pieces
+	// are separate so the literal is not in the statement text. mysql
+	// --force -v echoes that text; a plain grep of the echo is not a commit.
+	// N is the number of undo statements that changed a row. Zero does not
+	// print the line, and neither does a run that skipped any row.
+	commitSelect = "SELECT CONCAT('binlog', 'viz: ', 'undo committed, ', IFNULL(@binlogviz_n, 0), ' statements') FROM DUAL WHERE @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 AND @binlogviz_n > 0 AND IFNULL(@binlogviz_m, 0) = 0;"
+	// skipCommitSelect is the success line when some guard undos were skipped
+	// and some changed a row. It does not match the clean-line regex.
+	skipCommitSelect = "SELECT CONCAT('binlog', 'viz: ', 'undo committed with skips, ', IFNULL(@binlogviz_n, 0), ' applied, ', IFNULL(@binlogviz_m, 0), ' skipped') FROM DUAL WHERE @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 AND @binlogviz_n > 0 AND @binlogviz_m > 0;"
 	// skipSelect counts --conflict guard undos that matched nothing. It is
 	// not the success line.
 	skipSelect = "SELECT CONCAT('binlog', 'viz: ', 'undo skipped, ', IFNULL(@binlogviz_m, 0), ' rows') FROM DUAL WHERE @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 AND @binlogviz_m > 0;"
-	// failAssign stores a rejected sql_mode on failure and NULL on success.
-	// failRestore puts the saved mode back first, including after --force,
-	// because a failed SET leaves the previous mode in place. failApply is
-	// then ERROR 1231 on the rejected value, and its text includes the real
-	// errno and message. Commas would split the value into flags, so the
-	// 1231 text would keep only the first piece. Semicolons keep the message.
-	failAssign = "SET @binlogviz_fail = IF(@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1, NULL, CONCAT('ERROR ', IFNULL(@binlogviz_errno, 0), ': ', REPLACE(IFNULL(@binlogviz_errmsg, 'undo rolled back'), ',', ';')));"
 	// sql_notes is restored with the mode. It is off during the apply so
 	// CREATE DATABASE IF NOT EXISTS (1007) and DROP PROCEDURE IF EXISTS (1305)
 	// stay warnings. Those warnings use SQLSTATE HY000 and 42000, so a
@@ -70,12 +66,21 @@ const (
 	clientDiagSQL = "GET DIAGNOSTICS CONDITION 1 @binlogviz_seen_errno = MYSQL_ERRNO, @binlogviz_seen_sqlstate = RETURNED_SQLSTATE, @binlogviz_seen_msg = MESSAGE_TEXT;"
 	// 1287 is the user-variable deprecation warning. 3135 is the warning from
 	// setting a strict sql_mode without the modes MySQL wants folded into it.
-	// Both use a SQLSTATE outside class 01 and the statement still succeeds.
-	clientFlagSQL   = "SET @binlogviz_client_err = IF(@binlogviz_seen_errno IS NOT NULL AND NOT (@binlogviz_seen_errno <=> 1287 OR @binlogviz_seen_errno <=> 3135) AND LEFT(IFNULL(@binlogviz_seen_sqlstate, ''), 2) NOT IN ('00', '01'), 1, 0);"
+	// 3090 is the MySQL 5.7 warning for a deprecated combination mode
+	// (MYSQL40, POSTGRESQL). All three use a SQLSTATE outside class 01 and
+	// the statement still succeeds.
+	clientFlagSQL   = "SET @binlogviz_client_err = IF(@binlogviz_seen_errno IS NOT NULL AND NOT (@binlogviz_seen_errno <=> 1287 OR @binlogviz_seen_errno <=> 3135 OR @binlogviz_seen_errno <=> 3090) AND LEFT(IFNULL(@binlogviz_seen_sqlstate, ''), 2) NOT IN ('00', '01'), 1, 0);"
 	appliedCheckSQL = "SET @binlogviz_applied = IF(@binlogviz_applied <=> 1 AND @binlogviz_client_err <=> 0, 1, 0), @binlogviz_errmsg = IF(@binlogviz_errno IS NULL AND @binlogviz_client_err <=> 1, @binlogviz_seen_msg, @binlogviz_errmsg), @binlogviz_errno = IF(@binlogviz_errno IS NULL AND @binlogviz_client_err <=> 1, @binlogviz_seen_errno, @binlogviz_errno);"
+	// execCheckSQL is the line after an undo CALL. The handler already kept a
+	// statement error, and that CALL does not leave a client warning. The
+	// three-line check stays on raw pieces (SET sql_mode, CREATE, DROP).
+	execCheckSQL = "SET @binlogviz_applied = IF(@binlogviz_applied <=> 1 AND @@error_count = 0, 1, 0);"
 	// rollbackSelectUnreleased is the finish line of a script sealed by an
 	// unreleased build. It was never shipped. verify names it old_format.
 	rollbackSelectUnreleased = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (ERROR ', @binlogviz_errno, ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
+	// commitSelectUnreleased is that build's success line: one contiguous
+	// literal, and it printed even when every undo had been skipped.
+	commitSelectUnreleased = "SELECT CONCAT('binlogviz: undo committed, ', IFNULL(@binlogviz_n, 0), ' statements') FROM DUAL WHERE @binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1;"
 
 	markerExec    = "-- binlogviz-exec"
 	markerRaw     = "-- binlogviz-raw"
@@ -95,6 +100,25 @@ const (
 	noCommitSQL = "SET SESSION sql_mode = 'binlogviz: flashback script has no commit trailer; run binlogviz flashback verify';"
 
 	trailerStepSQL = "SET @binlogviz_digest = SHA2(CONCAT(@binlogviz_digest, 'binlogviz-trailer-v1'), 256);"
+)
+
+// scrubMsg replaces C0 controls and DEL with a space. A duplicate-key message
+// can contain the row value, including a newline, and the rollback line and
+// the stderr copy would otherwise print that as its own line.
+func scrubMsg(expr string) string {
+	for c := 0; c <= 31; c++ {
+		expr = fmt.Sprintf("REPLACE(%s,CHAR(%d),' ')", expr, c)
+	}
+	return fmt.Sprintf("REPLACE(%s,CHAR(127),' ')", expr)
+}
+
+// rollbackSelect prints the rollback line. failAssign stores the same text
+// for stderr (ERROR 1231) and NULL when nothing failed, including a published
+// file whose only error is the no-commit trailer. Commas would split the
+// sql_mode value, so they become semicolons.
+var (
+	rollbackSelect = "SELECT CONCAT('" + rollbackMessage + "', IF(@binlogviz_errno IS NULL, '', CONCAT(' (ERROR ', @binlogviz_errno, IF(@binlogviz_errmsg IS NULL, '', CONCAT(': ', " + scrubMsg("@binlogviz_errmsg") + ")), ')'))) FROM DUAL WHERE NOT (@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1);"
+	failAssign     = "SET @binlogviz_fail = IF(@binlogviz_sealed <=> 1 AND @binlogviz_applied <=> 1 AND @binlogviz_want <=> 1 OR @binlogviz_errno IS NULL, NULL, CONCAT('ERROR ', @binlogviz_errno, ': ', " + scrubMsg("REPLACE(IFNULL(@binlogviz_errmsg, 'undo rolled back'), ',', ';')") + "));"
 )
 
 // VerifyError is a script verify will not commit. Reason is the stable
@@ -327,7 +351,7 @@ func procedureName(token string) string {
 }
 
 func finishBody(name string, want int) string {
-	return fmt.Sprintf("SET @binlogviz_want = %d;\nSET @binlogviz_mode = 2;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n%s\n%s\n%s\n%s\n%s\n%s\n", want, name, name, commitSelect, skipSelect, rollbackSelect, failAssign, failRestore, failApply)
+	return fmt.Sprintf("SET @binlogviz_want = %d;\nSET @binlogviz_mode = 2;\nCALL %s();\nDROP PROCEDURE IF EXISTS %s;\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n", want, name, name, commitSelect, skipCommitSelect, skipSelect, rollbackSelect, failAssign, failRestore, failApply)
 }
 
 func appliedRecordSQL() string {
@@ -364,7 +388,7 @@ func parsePublishedSuffix(s string) (string, bool) {
 	if strings.Trim(token, "0123456789abcdef") != "" {
 		return "", false
 	}
-	rest := "();\nDROP PROCEDURE IF EXISTS " + procedureName(token) + ";\n" + commitSelect + "\n" + skipSelect + "\n" + rollbackSelect + "\n" + failAssign + "\n" + failRestore + "\n" + failApply + "\n" + noCommitSQL + "\n"
+	rest := "();\nDROP PROCEDURE IF EXISTS " + procedureName(token) + ";\n" + commitSelect + "\n" + skipCommitSelect + "\n" + skipSelect + "\n" + rollbackSelect + "\n" + failAssign + "\n" + failRestore + "\n" + failApply + "\n" + noCommitSQL + "\n"
 	if s[len(head)+16:] != rest {
 		return "", false
 	}
@@ -383,7 +407,13 @@ func writeExec(write func(string) error, digest *string, stmt, token string) err
 	}
 	*digest = sha256hex(*digest + stmt)
 	call := "CALL " + procedureName(token) + "();"
-	for _, line := range []string{"SET @binlogviz_mode = 0;", call, clientDiagSQL, clientFlagSQL, appliedCheckSQL} {
+	lines := []string{"SET @binlogviz_mode = 0;", call, execCheckSQL}
+	// A statement that sets sql_mode inside the procedure can return warning
+	// 3090 on MySQL 5.7. @@error_count would treat that as a failure.
+	if strings.Contains(stmt, "@binlogviz_next_mode") {
+		lines = []string{"SET @binlogviz_mode = 0;", call, clientDiagSQL, clientFlagSQL, appliedCheckSQL}
+	}
+	for _, line := range lines {
 		if err := write(line + "\n"); err != nil {
 			return err
 		}
@@ -605,7 +635,17 @@ func copyExecPiece(w io.Writer, br *bufio.Reader, token, nonce string) (string, 
 	if err := writeScriptLine(w, renamed); err != nil {
 		return "", err
 	}
-	if err := copyApplied(w, br); err != nil {
+	if strings.Contains(payload, "@binlogviz_next_mode") {
+		if err := copyApplied(w, br); err != nil {
+			return "", err
+		}
+		return payload, nil
+	}
+	line, err := readScriptLine(br)
+	if err != nil || line != execCheckSQL {
+		return "", fmt.Errorf("guard: apply exec piece")
+	}
+	if err := writeScriptLine(w, line); err != nil {
 		return "", err
 	}
 	return payload, nil
@@ -987,11 +1027,26 @@ func (p *scrReader) execPiece() (string, error) {
 	}
 	p.lined = false
 	p.line = ""
-	ok, err = p.hasApplied()
+	if strings.Contains(payload, "@binlogviz_next_mode") {
+		ok, err = p.hasApplied()
+		if err != nil {
+			return "", err
+		}
+		if !ok {
+			return "", &VerifyError{Reason: "truncated"}
+		}
+		return payload, nil
+	}
+	ok, err = p.hasLine(execCheckSQL)
 	if err != nil {
 		return "", err
 	}
 	if !ok {
+		// An intact script from the build that wrote three diagnostics lines
+		// after every undo is old, not cut off.
+		if p.lined && strings.TrimRight(p.line, "\r") == clientDiagSQL {
+			return "", &VerifyError{Reason: "old_format", Version: "an unreleased build"}
+		}
 		return "", &VerifyError{Reason: "truncated"}
 	}
 	return payload, nil
@@ -1038,6 +1093,11 @@ func (p *scrReader) rawPiece() (string, error) {
 		return "", err
 	}
 	if !ok {
+		// r1 and r2 end every raw piece with the @@error_count line. The file
+		// is intact. A cut file does not have that line.
+		if p.lined && strings.TrimRight(p.line, "\r") == execCheckSQL {
+			return "", &VerifyError{Reason: "old_format", Version: "an unreleased build"}
+		}
 		return "", &VerifyError{Reason: "truncated"}
 	}
 	return payload, nil
@@ -1138,14 +1198,17 @@ func (p *scrReader) publishedFinish() error {
 	if !ok {
 		return &VerifyError{Reason: "truncated"}
 	}
-	for i, line := range []string{commitSelect, skipSelect, rollbackSelect, failAssign, failRestore, failApply} {
+	for i, line := range []string{commitSelect, skipCommitSelect, skipSelect, rollbackSelect, failAssign, failRestore, failApply} {
 		ok, err = p.hasLine(line)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			if i == 0 && p.lined && strings.TrimRight(p.line, "\r") == rollbackSelectUnreleased {
-				return &VerifyError{Reason: "old_format", Version: "an unreleased build"}
+			if i == 0 && p.lined {
+				got := strings.TrimRight(p.line, "\r")
+				if got == rollbackSelectUnreleased || got == commitSelectUnreleased {
+					return &VerifyError{Reason: "old_format", Version: "an unreleased build"}
+				}
 			}
 			return &VerifyError{Reason: "truncated"}
 		}

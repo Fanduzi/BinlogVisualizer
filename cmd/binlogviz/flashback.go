@@ -3,6 +3,7 @@ package binlogviz
 import (
 	"binlogviz/internal/clierr"
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -61,8 +62,20 @@ func newFlashbackCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if mode == report.SQLContextOff && !opts.plan {
-				return clierr.WithDetails(clierr.KindRefused, clierr.Errorf(clierr.KindRefused, "%s", i18n.T("error.flashbackSQLContext")), map[string]any{"reason": "sql_context_off"})
+			if mode == report.SQLContextOff {
+				msg := i18n.T("error.flashbackSQLContext")
+				err := clierr.WithDetails(clierr.KindRefused, clierr.Errorf(clierr.KindRefused, "%s", msg), map[string]any{"reason": "sql_context_off"})
+				if !opts.plan {
+					return err
+				}
+				body, jerr := json.MarshalIndent(flashback.SQLContextOffPlan(opts.conflict, msg), "", "  ")
+				if jerr != nil {
+					return jerr
+				}
+				if _, werr := os.Stdout.Write(append(body, '\n')); werr != nil {
+					return werr
+				}
+				return err
 			}
 			if opts.schemaFile != "" {
 				body, err := os.ReadFile(opts.schemaFile)

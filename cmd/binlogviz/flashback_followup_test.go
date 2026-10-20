@@ -208,10 +208,22 @@ func TestFlashbackRefusalJSONReasons(t *testing.T) {
 	}
 }
 
-func TestFlashbackPlanIgnoresSQLContextOff(t *testing.T) {
+func TestFlashbackPlanSQLContextOffMatchesRealRun(t *testing.T) {
 	code, stdout, stderr := runRoot(t, "--error-format", "json", "flashback", filepath.Join("testdata", "minimal.binlog"), "--sql-context", "off", "--plan")
-	if code != 6 || !strings.Contains(stdout, "plan_version") || strings.Contains(stderr, "sql_context_off") {
+	if code != 6 || !strings.Contains(stdout, "plan_version") {
 		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	var plan struct {
+		WouldRefuse bool `json:"would_refuse"`
+		Refusal     struct {
+			Reason string `json:"reason"`
+		} `json:"refusal"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &plan); err != nil {
+		t.Fatalf("plan json: %v\n%s", err, stdout)
+	}
+	if !plan.WouldRefuse || plan.Refusal.Reason != "sql_context_off" || !strings.Contains(stderr, "sql_context_off") {
+		t.Fatalf("plan does not match the real refusal\nstdout:\n%s\nstderr:\n%s", stdout, stderr)
 	}
 }
 
@@ -232,7 +244,7 @@ func TestFlashbackHelpNamesCommitMarker(t *testing.T) {
 				t.Fatal(err)
 			}
 			help := out.String()
-			if !strings.Contains(help, "binlogviz: undo committed") || !strings.Contains(help, "pipefail") || !strings.Contains(help, `^binlogviz: undo committed, [0-9]+ statements$`) {
+			if !strings.Contains(help, "binlogviz: undo committed") || !strings.Contains(help, "pipefail") || !strings.Contains(help, `^binlogviz: undo committed, [0-9]+ statements$`) || !strings.Contains(help, `^binlogviz: undo committed with skips, [0-9]+ applied, [0-9]+ skipped$`) {
 				t.Fatalf("--help does not say how to tell a commit:\n%s", help)
 			}
 		})

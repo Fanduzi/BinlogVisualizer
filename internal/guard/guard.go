@@ -1,6 +1,6 @@
 // Package guard: the flashback apply guard.
 // input: the generated columns an undo script omits (db, table, column), and the statement pieces the planner emits.
-// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-statement token condition, and Write, which seals one script (session token, running digest, trailer that does not commit). Verify checks that script. The next client statement after each piece reads GET DIAGNOSTICS, so a failure outside the procedure is kept. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (guard_test.go).
+// output: the guard header (version check, information_schema check, the one 200-byte message cut, read-only lock and token), the per-statement token condition, and Write, which seals one script (session token, running digest, trailer that does not commit). Verify checks that script. A raw piece is followed by GET DIAGNOSTICS, so a failure outside the procedure is kept. An undo CALL is followed by an @@error_count check; the handler already kept the statement error. The message cut exists only in the emitted SQL; its tests run that SQL on MySQL 8.0 and 5.7 (guard_test.go).
 // pos: flashback-only module. Analyze does not call it. The planner walks omitted columns and calls New, then Write.
 // note: if this file changes, update this header, CONTEXT.md (Apply guard), docs/adr/0006-guard-module.md and docs/adr/0013-flashback-apply-integrity.md.
 package guard
