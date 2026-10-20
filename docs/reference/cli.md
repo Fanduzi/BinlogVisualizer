@@ -97,7 +97,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--end` | none | End time, inclusive. Same formats as `--start`. |
 | `--start-position` | none | Exact inclusive event boundary on one explicit binlog file. |
 | `--stop-position` | none | Exact exclusive event boundary, or EOF, on one explicit binlog file. |
-| `--include-gtids` | none | Include complete groups matching a MySQL UUID range set or exact MariaDB identities. |
+| `--include-gtids` | none | Include complete groups matching a MySQL UUID range set, or MariaDB identities `domain-server-seq` and ranges `domain-server-first..last`. A report's `selection.matched_gtid_set` is valid input. |
 | `--exclude-gtids` | none | Exclude matching complete groups after include; exclusion wins. |
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
 | `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. Optional `.` before the numeric suffix; a complete filename selects that file; for one file, pass the path. |
@@ -105,7 +105,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--output`, `-o` | auto | HTML output file path. Only supported with `--format html`. Default: derived cwd file on a TTY; stdout when stdout is redirected. Use `-` to force stdout. |
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
 | `--snapshot-dir` | home-based default | Directory used when saving a snapshot. Default: `~/.binlogviz/snapshots`. |
-| `--workload-id` | none | Explicit workload identity persisted in report v3. Use the same non-empty token only for snapshots of the same workload. |
+| `--workload-id` | none | Explicit workload identity persisted in the analyze report (since report v3). Use the same non-empty token only for snapshots of the same workload. |
 | `--sql-context` | `summary` | Query text in every format, including default text, DDL statements, and `--show-patterns`: `summary` (one bounded line), `off` (omit query text and `--show-rows` cell values), or `full` (stored SQL, including DDL statement text, capped at 4096 bytes and marked when cut). MySQL and MariaDB auth-DDL credential literals are redacted in every mode. |
 | `--diagnostics` | `full` | How much of `diagnostics` `analyze --format json` includes. `full` is today's object. `summary` keeps coverage, counts, open uncommitted groups, and duration buckets, caps `ddl_events` at `--top` (default 10) with `ddl_events_omitted`, and empties the transaction rankings, file segments, hot intervals, and findings (those are already `transactions`, `timeseries`, `minutes`, and `alerts`). `off` omits `diagnostics`. Text, Markdown, and HTML ignore this flag. An explicit empty value is a usage error (exit 3). A trimmed document carries `"diagnostics_mode": "summary"` or `"off"`. JSON `null` is absent. A non-string is corrupt (exit 5). It is a stdout budget only: `--snapshot-name` always saves full diagnostics, and compare, trend, and `snapshot save` refuse a trimmed document (exit 9, `reduced_diagnostics`). `snapshot list` marks one instead of refusing it. |
 | `--top-tables` | `10` | Number of top tables to display in human-readable reports; JSON retains all table aggregates. |

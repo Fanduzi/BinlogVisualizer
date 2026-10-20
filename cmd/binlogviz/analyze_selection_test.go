@@ -18,6 +18,7 @@ import (
 	"binlogviz/internal/binlog"
 	"binlogviz/internal/clierr"
 	"binlogviz/internal/compare"
+	"binlogviz/internal/i18n"
 )
 
 func TestAnalyzePositionSelectorsRequireOneExplicitFile(t *testing.T) {
@@ -123,6 +124,19 @@ func TestAnalyzePositionWindowKeepsPartialTransactionContext(t *testing.T) {
 		got.Selection.EffectiveStartPosition == nil || *got.Selection.EffectiveStartPosition != start ||
 		got.Selection.EffectiveStopPosition == nil || *got.Selection.EffectiveStopPosition != stop {
 		t.Fatalf("selection evidence = %+v", got.Selection)
+	}
+	// Position selectors alone are not GTID selectors: the selection has no
+	// matched GTID evidence, not matched_transactions 0 (#381 QA F4).
+	var raw struct {
+		Selection map[string]json.RawMessage `json:"selection"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"matched_transactions", "matched_gtid_set", "include_gtids", "exclude_gtids"} {
+		if value, ok := raw.Selection[key]; ok {
+			t.Fatalf("position-only selection has %s=%s", key, value)
+		}
 	}
 }
 
@@ -288,5 +302,19 @@ func TestAnalyzeMatchedGTIDIntervalCeilingExitsTen(t *testing.T) {
 		if !strings.Contains(err.Error(), "--include-gtids/--exclude-gtids") {
 			t.Fatalf("error does not say how to narrow the run: %v", err)
 		}
+	}
+	// The message is localized (#381 QA F3).
+	i18n.ResetForTesting()
+	t.Cleanup(i18n.ResetForTesting)
+	if err := i18n.Init("zh-CN"); err != nil {
+		t.Fatal(err)
+	}
+	opts := analyzer.DefaultOptions()
+	opts.GTIDSelector = selector
+	_, err = captureStdoutRun(t, func() error {
+		return runAnalysisWithParser([]string{"synthetic.bin"}, opts, "json", &mockParser{events: events})
+	})
+	if ExitCode(err) != 10 || !strings.Contains(err.Error(), "个独立的 GTID 区间") {
+		t.Fatalf("zh-CN: exit=%d err=%v", ExitCode(err), err)
 	}
 }
