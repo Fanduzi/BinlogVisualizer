@@ -24,8 +24,8 @@ import (
 // heap must not grow with the number of transactions.
 //
 // The child writes synthetic MySQL 8.0 binlogs (one-row UPDATE transactions,
-// a distinct primary key per transaction, built from a transaction in the
-// hot-rows fixture) and runs each through the analyze pipeline: the real
+// a distinct primary key and a replica apply delay per transaction, built
+// from a transaction in the hot-rows fixture) and runs each through the analyze pipeline: the real
 // parser, analyzer and JSON report. Live heap is read on the analyze
 // goroutine itself, every analyzeMemSampleEvery events and at both sides of
 // Finalize, after a forced GC (see sampledAnalyzer). There is no background
@@ -201,8 +201,8 @@ func (s *sampledAnalyzer) Finalize() (*model.AnalysisResult, error) {
 // transactions on shop.counters. It copies the header events and one
 // GTID/BEGIN/TABLE_MAP/UPDATE_ROWS/XID transaction from the hot-rows
 // fixture, then gives each copy its own GNO, sequence number, commit
-// timestamps (10ms apart), thread id, primary key and xid, fixes end_log_pos
-// and recomputes the CRC32.
+// timestamps (10ms apart, each with a replica apply delay of 0-3s), thread
+// id, primary key and xid, fixes end_log_pos and recomputes the CRC32.
 func writeSyntheticBinlog(t *testing.T, path string, n int) int64 {
 	t.Helper()
 	raw, err := os.ReadFile(mustFixturePath(t, "mysql-8.0.46-hot-rows-full.binlog"))
@@ -249,6 +249,21 @@ func writeSyntheticBinlog(t *testing.T, path string, n int) int64 {
 			t.Fatalf("template event %d has type %d, want %d", i, ev[4], wantTypes[i])
 		}
 	}
+	// The fixture GTID event has one commit timestamp (a source). Give it an
+	// original_commit_timestamp, as a replica writes, so apply delay varies
+	// per transaction: set the flag bit in the immediate timestamp, insert 7
+	// bytes, and grow the event size and the packed transaction_length (0xfc
+	// plus 2 bytes) by 7.
+	gtid := tmpl[0]
+	if gtid[19+48]&0x80 != 0 || gtid[19+49] != 0xfc {
+		t.Fatalf("GTID template already has an original timestamp or an unexpected length: %x", gtid)
+	}
+	gtid = append(append(append([]byte(nil), gtid[:19+49]...), make([]byte, 7)...), gtid[19+49:]...)
+	binary.LittleEndian.PutUint32(gtid[9:], uint32(len(gtid)))
+	txnLen := gtid[19+57:]
+	binary.LittleEndian.PutUint16(txnLen, binary.LittleEndian.Uint16(txnLen)+7)
+	tmpl[0] = gtid
+
 	// 'hot' then id=7 (INT UNSIGNED), in the before and the after image.
 	idMarker := []byte{3, 'h', 'o', 't', 7, 0, 0, 0}
 	rows := tmpl[3]
@@ -287,16 +302,13 @@ func writeSyntheticBinlog(t *testing.T, path string, n int) int64 {
 			binary.LittleEndian.PutUint32(ev[0:], ts)
 			body := ev[19:]
 			switch j {
-			case 0: // GTID
+			case 0: // GTID: replica-style, the original commit 0-3s earlier
 				binary.LittleEndian.PutUint64(body[17:], uint64(i+1))
 				binary.LittleEndian.PutUint64(body[26:], uint64(i))
 				binary.LittleEndian.PutUint64(body[34:], uint64(i+1))
-				flag := body[48] & 0x80
 				put7(body[42:], micros)
-				body[48] |= flag
-				if flag != 0 {
-					put7(body[49:], micros)
-				}
+				body[48] |= 0x80
+				put7(body[49:], micros-uint64(i*7919%3_000_000))
 			case 1: // BEGIN: thread id
 				binary.LittleEndian.PutUint32(body[0:], uint32(i%32+1))
 			case 3: // UPDATE_ROWS: primary key, before and after
