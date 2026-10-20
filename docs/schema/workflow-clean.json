@@ -1,0 +1,131 @@
+{
+  "$id": "binlogviz:schema/workflow-clean",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_orphans": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "counts": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_orphans": {
+          "type": "integer"
+        },
+        "deleted": {
+          "type": "integer"
+        },
+        "kept_orphans": {
+          "type": "integer"
+        },
+        "skipped": {
+          "type": "integer"
+        },
+        "snapshot_orphans": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact_orphans",
+        "deleted",
+        "kept_orphans",
+        "skipped",
+        "snapshot_orphans"
+      ],
+      "type": "object"
+    },
+    "deleted": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "force": {
+      "type": "boolean"
+    },
+    "include_snapshots": {
+      "type": "boolean"
+    },
+    "kept_orphans": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "ledger": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "output_dir": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "skip_reasons": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "skipped": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "snapshot_orphans": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "snapshot_trash_dir": {
+      "type": "string"
+    },
+    "trash_dir": {
+      "type": "string"
+    },
+    "workflow_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_orphans",
+    "counts",
+    "deleted",
+    "force",
+    "include_snapshots",
+    "kept_orphans",
+    "ledger",
+    "mode",
+    "output_dir",
+    "schema_version",
+    "skipped",
+    "snapshot_orphans",
+    "workflow_name"
+  ],
+  "title": "workflow-clean",
+  "type": "object"
+}

@@ -1,0 +1,47 @@
+{
+  "$id": "binlogviz:schema/workflow-validate",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "compare_jobs": {
+      "type": "integer"
+    },
+    "error": {
+      "type": "string"
+    },
+    "output_dir": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "trend_jobs": {
+      "type": "integer"
+    },
+    "valid": {
+      "type": "boolean"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "windows": {
+      "type": "integer"
+    },
+    "workflow_name": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "valid"
+  ],
+  "title": "workflow-validate",
+  "type": "object"
+}

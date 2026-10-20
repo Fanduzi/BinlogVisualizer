@@ -5,7 +5,10 @@
 // note: if this file changes, update this header and module README.md.
 package report
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // SQLContextMode controls how transaction SQL context is rendered.
 type SQLContextMode string
@@ -83,6 +86,10 @@ type Options struct {
 	// ShowRows prints bounded row images for listed transactions.
 	// --sql-context off suppresses the values and says so.
 	ShowRows bool
+	// Display is the zone for rendered timestamps. Nil means the historical
+	// UTC spelling (a trailing " UTC", or Z in JSON), so a report with no
+	// --tz flag stays byte-identical. It does not change row-cell values.
+	Display *time.Location
 }
 
 // DefaultOptions returns the backwards-compatible report presentation defaults.

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 )
@@ -25,7 +26,7 @@ func visibleApplyDelay(delay *model.ApplyDelay, topN int) *model.ApplyDelay {
 	return &trimmed
 }
 
-func renderApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int) {
+func renderApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.replicaApplyDelay") + " ===\n")
 	shown := visibleApplyDelay(delay, topN)
 	if shown == nil {
@@ -38,9 +39,9 @@ func renderApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int) {
 		return
 	}
 	buf.WriteString("  " + i18n.T("report.text.replicaApplyDelayReplica") + "\n")
-	buf.WriteString("  " + applyDelayStatsLine(shown) + "\n")
+	buf.WriteString("  " + applyDelayStatsLine(shown, opts) + "\n")
 	for _, txn := range shown.Transactions {
-		buf.WriteString("  " + formatApplyDelayTxn(txn) + "\n")
+		buf.WriteString("  " + formatApplyDelayTxn(txn, opts) + "\n")
 		for _, table := range rankedMinuteTables(txn.Tables) {
 			buf.WriteString(fmt.Sprintf("    %s  %d\n", table.name, table.rows))
 		}
@@ -48,7 +49,7 @@ func renderApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int) {
 	buf.WriteString("\n")
 }
 
-func mdApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int) {
+func mdApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int, opts Options) {
 	buf.WriteString("## " + i18n.T("report.text.replicaApplyDelay") + "\n\n")
 	shown := visibleApplyDelay(delay, topN)
 	if shown == nil {
@@ -61,15 +62,15 @@ func mdApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int) {
 		return
 	}
 	buf.WriteString(i18n.T("report.text.replicaApplyDelayReplica") + "\n\n")
-	buf.WriteString(applyDelayStatsLine(shown) + "\n\n")
+	buf.WriteString(applyDelayStatsLine(shown, opts) + "\n\n")
 	buf.WriteString("| GTID | " + i18n.T("report.text.ddlTxnStart") + " | " + i18n.T("report.text.replicaApplyDelayOriginal") + " | " + i18n.T("report.text.replicaApplyDelayImmediate") + " | " + i18n.T("report.text.replicaApplyDelayDelay") + " | " + i18n.T("report.label.drivingTables") + " |\n")
 	buf.WriteString("|---|---|---|---|---|---|\n")
 	for _, txn := range shown.Transactions {
 		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s |\n",
 			escapeMD(txn.GTID),
 			escapeMD(ddlTxnStartText(txn.TxnStartPath, txn.TxnStartPos)),
-			escapeMD(formatCommitMicros(txn.OriginalCommit)),
-			escapeMD(formatCommitMicros(txn.ImmediateCommit)),
+			escapeMD(opts.formatCommitMicros(txn.OriginalCommit)),
+			escapeMD(opts.formatCommitMicros(txn.ImmediateCommit)),
 			escapeMD(txn.Delay.String()),
 			escapeMD(formatDrivingTables(txn.Tables, topN)),
 		))
@@ -77,18 +78,18 @@ func mdApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int) {
 	buf.WriteString("\n")
 }
 
-func applyDelayStatsLine(delay *model.ApplyDelay) string {
+func applyDelayStatsLine(delay *model.ApplyDelay, opts Options) string {
 	if delay == nil {
 		return ""
 	}
 	return i18n.Tf("report.text.replicaApplyDelayStats", map[string]any{
 		"Max":  delay.Max.String(),
 		"P95":  delay.P95.String(),
-		"Peak": formatTime(delay.PeakMinute),
+		"Peak": opts.formatTime(delay.PeakMinute),
 	})
 }
 
-func formatApplyDelayTxn(txn model.ApplyDelayTxn) string {
+func formatApplyDelayTxn(txn model.ApplyDelayTxn, opts Options) string {
 	parts := make([]string, 0, 5)
 	if txn.GTID != "" {
 		parts = append(parts, "gtid="+txn.GTID)
@@ -97,25 +98,28 @@ func formatApplyDelayTxn(txn model.ApplyDelayTxn) string {
 		parts = append(parts, start)
 	}
 	parts = append(parts,
-		"original="+formatCommitMicros(txn.OriginalCommit),
-		"immediate="+formatCommitMicros(txn.ImmediateCommit),
+		"original="+opts.formatCommitMicros(txn.OriginalCommit),
+		"immediate="+opts.formatCommitMicros(txn.ImmediateCommit),
 		"delay="+txn.Delay.String(),
 	)
 	return strings.Join(parts, "  ")
 }
 
-func formatCommitMicros(t time.Time) string {
+func (o Options) formatCommitMicros(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.UTC().Format("2006-01-02 15:04:05.000000 UTC")
+	if o.Display == nil || o.Display == time.UTC {
+		return t.UTC().Format("2006-01-02 15:04:05.000000 UTC")
+	}
+	return t.In(o.Display).Format("2006-01-02 15:04:05.000000 -07:00")
 }
 
-func formatCommitJSON(t time.Time) string {
+func (o Options) formatCommitJSON(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.UTC().Format(time.RFC3339Nano)
+	return displaytz.RFC3339Nano(t, o.Display)
 }
 
 func commitMicros(t time.Time) uint64 {
@@ -134,7 +138,7 @@ type htmlApplyDelayTxn struct {
 	Tables    []htmlTxnTable
 }
 
-func buildHTMLApplyDelay(delay *model.ApplyDelay, topN int) (unavailable, source bool, stats string, txns []htmlApplyDelayTxn) {
+func buildHTMLApplyDelay(delay *model.ApplyDelay, topN int, opts Options) (unavailable, source bool, stats string, txns []htmlApplyDelayTxn) {
 	shown := visibleApplyDelay(delay, topN)
 	if shown == nil {
 		return true, false, "", nil
@@ -147,8 +151,8 @@ func buildHTMLApplyDelay(delay *model.ApplyDelay, topN int) (unavailable, source
 		item := htmlApplyDelayTxn{
 			GTID:      txn.GTID,
 			Start:     ddlTxnStartText(txn.TxnStartPath, txn.TxnStartPos),
-			Original:  formatCommitMicros(txn.OriginalCommit),
-			Immediate: formatCommitMicros(txn.ImmediateCommit),
+			Original:  opts.formatCommitMicros(txn.OriginalCommit),
+			Immediate: opts.formatCommitMicros(txn.ImmediateCommit),
 			Delay:     txn.Delay.String(),
 		}
 		for _, table := range rankedMinuteTables(txn.Tables) {
@@ -156,5 +160,5 @@ func buildHTMLApplyDelay(delay *model.ApplyDelay, topN int) (unavailable, source
 		}
 		out = append(out, item)
 	}
-	return false, false, applyDelayStatsLine(shown), out
+	return false, false, applyDelayStatsLine(shown, opts), out
 }

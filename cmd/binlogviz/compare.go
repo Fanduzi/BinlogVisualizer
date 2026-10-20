@@ -13,10 +13,12 @@ import (
 	"io"
 	"io/fs"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/displaytz"
 	snapshotpkg "binlogviz/internal/snapshot"
 )
 
@@ -54,7 +56,7 @@ func newCompareCommand() *cobra.Command {
 			return cobra.ExactArgs(2)(cmd, args)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runCompare(opts, args, cmd.OutOrStdout())
+			return runCompare(opts, args, cmd.OutOrStdout(), displaytz.From(cmd.Context()))
 		},
 	}
 
@@ -66,7 +68,7 @@ func newCompareCommand() *cobra.Command {
 	return cmd
 }
 
-func runCompare(opts *compareOptions, args []string, out io.Writer) error {
+func runCompare(opts *compareOptions, args []string, out io.Writer, loc *time.Location) error {
 	switch opts.format {
 	case "text", "json", "html":
 	default:
@@ -85,7 +87,7 @@ func runCompare(opts *compareOptions, args []string, out io.Writer) error {
 	case "json":
 		output, err = comparepkg.RenderJSON(result)
 	case "html":
-		output, err = comparepkg.RenderHTML(result)
+		output, err = comparepkg.RenderHTMLIn(result, loc)
 	default:
 		output, err = comparepkg.RenderText(result)
 	}

@@ -1,0 +1,1461 @@
+{
+  "$id": "binlogviz:schema/trend",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "baseline_snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "dml": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "exclude_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "exclude_schema",
+            "exclude_table",
+            "include_schema",
+            "include_table"
+          ],
+          "type": "object"
+        },
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "from_dir": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "files",
+            "from_dir",
+            "prefix"
+          ],
+          "type": "object"
+        },
+        "input_mode": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "window": {
+          "additionalProperties": false,
+          "properties": {
+            "end_time": {
+              "type": "string"
+            },
+            "start_time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "end_time",
+            "start_time"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "created_at",
+        "filters",
+        "input",
+        "input_mode",
+        "label",
+        "name",
+        "path",
+        "window"
+      ],
+      "type": "object"
+    },
+    "comparability": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "mixed_producers": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "partial_transactions": {
+                "type": "integer"
+              },
+              "report_version": {
+                "type": "integer"
+              },
+              "role": {
+                "type": "string"
+              },
+              "schemas": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "scope": {
+                "additionalProperties": false,
+                "properties": {
+                  "dml": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "exclude_schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "exclude_table": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "include_schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "include_table": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "exclude_schema",
+                  "exclude_table",
+                  "include_schema",
+                  "include_table"
+                ],
+                "type": "object"
+              },
+              "selection": {
+                "additionalProperties": false,
+                "properties": {
+                  "effective_start_position": {
+                    "type": "integer"
+                  },
+                  "effective_stop_position": {
+                    "type": "integer"
+                  },
+                  "exclude_gtids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "include_gtids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "matched_gtids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "requested_start_position": {
+                    "type": "integer"
+                  },
+                  "requested_stop_position": {
+                    "type": "integer"
+                  },
+                  "resolved_gtid_flavor": {
+                    "type": "string"
+                  }
+                },
+                "required": null,
+                "type": "object"
+              },
+              "server_flavors": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "server_ids": {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              "server_versions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "total_transactions": {
+                "type": "integer"
+              },
+              "unknown_transactions": {
+                "type": "integer"
+              },
+              "workload_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mixed_producers",
+              "role",
+              "total_transactions"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "verdict": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence",
+        "reason_codes",
+        "verdict"
+      ],
+      "type": "object"
+    },
+    "diagnostics_trends": {
+      "additionalProperties": false,
+      "properties": {
+        "ddl_trends": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_file_end": {
+                    "type": "string"
+                  },
+                  "binlog_file_start": {
+                    "type": "string"
+                  },
+                  "binlog_span": {
+                    "type": "string"
+                  },
+                  "completeness": {
+                    "type": "string"
+                  },
+                  "mysqlbinlog_cmd": {
+                    "type": "string"
+                  },
+                  "pos_end": {
+                    "type": "integer"
+                  },
+                  "pos_start": {
+                    "type": "integer"
+                  },
+                  "replay_available": {
+                    "type": "boolean"
+                  },
+                  "replay_scope": {
+                    "type": "string"
+                  },
+                  "txn_key": {
+                    "type": "string"
+                  }
+                },
+                "required": null,
+                "type": "object"
+              },
+              "snapshot_name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "snapshot_name",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "event_mix_trends": {
+          "additionalProperties": false,
+          "properties": {
+            "snapshots": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "ddl": {
+                    "type": "number"
+                  },
+                  "deletes": {
+                    "type": "number"
+                  },
+                  "inserts": {
+                    "type": "number"
+                  },
+                  "snapshot_name": {
+                    "type": "string"
+                  },
+                  "updates": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "ddl",
+                  "deletes",
+                  "inserts",
+                  "snapshot_name",
+                  "updates"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "snapshots"
+          ],
+          "type": "object"
+        },
+        "hot_interval_summary": {
+          "additionalProperties": false,
+          "properties": {
+            "hot_count_series": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidence": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "binlog_file_end": {
+                        "type": "string"
+                      },
+                      "binlog_file_start": {
+                        "type": "string"
+                      },
+                      "binlog_span": {
+                        "type": "string"
+                      },
+                      "completeness": {
+                        "type": "string"
+                      },
+                      "mysqlbinlog_cmd": {
+                        "type": "string"
+                      },
+                      "pos_end": {
+                        "type": "integer"
+                      },
+                      "pos_start": {
+                        "type": "integer"
+                      },
+                      "replay_available": {
+                        "type": "boolean"
+                      },
+                      "replay_scope": {
+                        "type": "string"
+                      },
+                      "txn_key": {
+                        "type": "string"
+                      }
+                    },
+                    "required": null,
+                    "type": "object"
+                  },
+                  "snapshot_name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "snapshot_name",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "max_hot_rows": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "evidence": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "binlog_file_end": {
+                        "type": "string"
+                      },
+                      "binlog_file_start": {
+                        "type": "string"
+                      },
+                      "binlog_span": {
+                        "type": "string"
+                      },
+                      "completeness": {
+                        "type": "string"
+                      },
+                      "mysqlbinlog_cmd": {
+                        "type": "string"
+                      },
+                      "pos_end": {
+                        "type": "integer"
+                      },
+                      "pos_start": {
+                        "type": "integer"
+                      },
+                      "replay_available": {
+                        "type": "boolean"
+                      },
+                      "replay_scope": {
+                        "type": "string"
+                      },
+                      "txn_key": {
+                        "type": "string"
+                      }
+                    },
+                    "required": null,
+                    "type": "object"
+                  },
+                  "snapshot_name": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "snapshot_name",
+                  "value"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "hot_count_series",
+            "max_hot_rows"
+          ],
+          "type": "object"
+        },
+        "tps_trends": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_file_end": {
+                    "type": "string"
+                  },
+                  "binlog_file_start": {
+                    "type": "string"
+                  },
+                  "binlog_span": {
+                    "type": "string"
+                  },
+                  "completeness": {
+                    "type": "string"
+                  },
+                  "mysqlbinlog_cmd": {
+                    "type": "string"
+                  },
+                  "pos_end": {
+                    "type": "integer"
+                  },
+                  "pos_start": {
+                    "type": "integer"
+                  },
+                  "replay_available": {
+                    "type": "boolean"
+                  },
+                  "replay_scope": {
+                    "type": "string"
+                  },
+                  "txn_key": {
+                    "type": "string"
+                  }
+                },
+                "required": null,
+                "type": "object"
+              },
+              "snapshot_name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "snapshot_name",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "txn_duration_trends": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_file_end": {
+                    "type": "string"
+                  },
+                  "binlog_file_start": {
+                    "type": "string"
+                  },
+                  "binlog_span": {
+                    "type": "string"
+                  },
+                  "completeness": {
+                    "type": "string"
+                  },
+                  "mysqlbinlog_cmd": {
+                    "type": "string"
+                  },
+                  "pos_end": {
+                    "type": "integer"
+                  },
+                  "pos_start": {
+                    "type": "integer"
+                  },
+                  "replay_available": {
+                    "type": "boolean"
+                  },
+                  "replay_scope": {
+                    "type": "string"
+                  },
+                  "txn_key": {
+                    "type": "string"
+                  }
+                },
+                "required": null,
+                "type": "object"
+              },
+              "snapshot_name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "snapshot_name",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "txn_size_trends": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_file_end": {
+                    "type": "string"
+                  },
+                  "binlog_file_start": {
+                    "type": "string"
+                  },
+                  "binlog_span": {
+                    "type": "string"
+                  },
+                  "completeness": {
+                    "type": "string"
+                  },
+                  "mysqlbinlog_cmd": {
+                    "type": "string"
+                  },
+                  "pos_end": {
+                    "type": "integer"
+                  },
+                  "pos_start": {
+                    "type": "integer"
+                  },
+                  "replay_available": {
+                    "type": "boolean"
+                  },
+                  "replay_scope": {
+                    "type": "string"
+                  },
+                  "txn_key": {
+                    "type": "string"
+                  }
+                },
+                "required": null,
+                "type": "object"
+              },
+              "snapshot_name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "snapshot_name",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "ddl_trends",
+        "event_mix_trends",
+        "hot_interval_summary",
+        "tps_trends",
+        "txn_duration_trends",
+        "txn_size_trends"
+      ],
+      "type": "object"
+    },
+    "input_mode": {
+      "type": "string"
+    },
+    "insights": {
+      "additionalProperties": false,
+      "properties": {
+        "alert_count_delta": {
+          "type": "integer"
+        },
+        "events_delta": {
+          "type": "integer"
+        },
+        "first_snapshot": {
+          "type": "string"
+        },
+        "last_snapshot": {
+          "type": "string"
+        },
+        "rows_delta": {
+          "type": "integer"
+        },
+        "transactions_delta": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "alert_count_delta",
+        "events_delta",
+        "first_snapshot",
+        "last_snapshot",
+        "rows_delta",
+        "transactions_delta"
+      ],
+      "type": "object"
+    },
+    "order": {
+      "type": "string"
+    },
+    "pattern_drilldowns": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "end_rows": {
+            "type": "integer"
+          },
+          "end_share": {
+            "type": "number"
+          },
+          "key_points": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "summary": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "label",
+                "summary"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "pattern_key": {
+            "type": "string"
+          },
+          "rows_delta": {
+            "type": "integer"
+          },
+          "share_delta": {
+            "type": "number"
+          },
+          "signal_flags": {
+            "additionalProperties": false,
+            "properties": {
+              "concentrated_jump": {
+                "type": "boolean"
+              },
+              "dominant_share_shift": {
+                "type": "boolean"
+              },
+              "steady_fall": {
+                "type": "boolean"
+              },
+              "steady_rise": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "concentrated_jump",
+              "dominant_share_shift",
+              "steady_fall",
+              "steady_rise"
+            ],
+            "type": "object"
+          },
+          "start_rows": {
+            "type": "integer"
+          },
+          "start_share": {
+            "type": "number"
+          },
+          "why_selected": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "end_rows",
+          "end_share",
+          "key_points",
+          "label",
+          "pattern_key",
+          "rows_delta",
+          "share_delta",
+          "signal_flags",
+          "start_rows",
+          "start_share",
+          "why_selected"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "pattern_trends": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "delta_rows": {
+            "type": "integer"
+          },
+          "delta_share_of_rows": {
+            "type": "number"
+          },
+          "first_rows": {
+            "type": "integer"
+          },
+          "first_share_of_rows": {
+            "type": "number"
+          },
+          "label": {
+            "type": "string"
+          },
+          "last_rows": {
+            "type": "integer"
+          },
+          "last_share_of_rows": {
+            "type": "number"
+          },
+          "pattern_key": {
+            "type": "string"
+          },
+          "rows_series": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "rows": {
+                  "type": "integer"
+                },
+                "snapshot_name": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "rows",
+                "snapshot_name",
+                "start_time"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "sample_query_summary": {
+            "type": "string"
+          },
+          "share_of_rows_series": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "share_of_rows": {
+                  "type": "number"
+                },
+                "snapshot_name": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "share_of_rows",
+                "snapshot_name",
+                "start_time"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "delta_rows",
+          "delta_share_of_rows",
+          "first_rows",
+          "first_share_of_rows",
+          "label",
+          "last_rows",
+          "last_share_of_rows",
+          "pattern_key",
+          "rows_series",
+          "share_of_rows_series"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "points": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "alert_count": {
+            "type": "integer"
+          },
+          "baseline_delta": {
+            "additionalProperties": false,
+            "properties": {
+              "alert_delta": {
+                "type": "integer"
+              },
+              "alerts_percent": {
+                "type": "number"
+              },
+              "events_delta": {
+                "type": "integer"
+              },
+              "events_percent": {
+                "type": "number"
+              },
+              "rows_delta": {
+                "type": "integer"
+              },
+              "rows_percent": {
+                "type": "number"
+              },
+              "transactions_delta": {
+                "type": "integer"
+              },
+              "transactions_percent": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "alert_delta",
+              "alerts_percent",
+              "events_delta",
+              "events_percent",
+              "rows_delta",
+              "rows_percent",
+              "transactions_delta",
+              "transactions_percent"
+            ],
+            "type": "object"
+          },
+          "operations": {
+            "additionalProperties": false,
+            "properties": {
+              "delete_share": {
+                "type": "number"
+              },
+              "deletes": {
+                "type": "integer"
+              },
+              "insert_share": {
+                "type": "number"
+              },
+              "inserts": {
+                "type": "integer"
+              },
+              "update_share": {
+                "type": "number"
+              },
+              "updates": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "delete_share",
+              "deletes",
+              "insert_share",
+              "inserts",
+              "update_share",
+              "updates"
+            ],
+            "type": "object"
+          },
+          "snapshot": {
+            "additionalProperties": false,
+            "properties": {
+              "created_at": {
+                "type": "string"
+              },
+              "filters": {
+                "additionalProperties": false,
+                "properties": {
+                  "dml": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "exclude_schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "exclude_table": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "include_schema": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "include_table": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "exclude_schema",
+                  "exclude_table",
+                  "include_schema",
+                  "include_table"
+                ],
+                "type": "object"
+              },
+              "input": {
+                "additionalProperties": false,
+                "properties": {
+                  "files": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": [
+                      "array",
+                      "null"
+                    ]
+                  },
+                  "from_dir": {
+                    "type": "string"
+                  },
+                  "prefix": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "files",
+                  "from_dir",
+                  "prefix"
+                ],
+                "type": "object"
+              },
+              "input_mode": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "window": {
+                "additionalProperties": false,
+                "properties": {
+                  "end_time": {
+                    "type": "string"
+                  },
+                  "start_time": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "end_time",
+                  "start_time"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "created_at",
+              "filters",
+              "input",
+              "input_mode",
+              "label",
+              "name",
+              "path",
+              "window"
+            ],
+            "type": "object"
+          },
+          "summary": {
+            "additionalProperties": false,
+            "properties": {
+              "partial_transactions": {
+                "type": "integer"
+              },
+              "total_events": {
+                "type": "integer"
+              },
+              "total_rows": {
+                "type": "integer"
+              },
+              "total_transactions": {
+                "type": "integer"
+              },
+              "unknown_transactions": {
+                "type": "integer"
+              },
+              "warnings": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total_events",
+              "total_rows",
+              "total_transactions",
+              "warnings"
+            ],
+            "type": "object"
+          },
+          "window": {
+            "additionalProperties": false,
+            "properties": {
+              "end_time": {
+                "type": "string"
+              },
+              "start_time": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "end_time",
+              "start_time"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "alert_count",
+          "operations",
+          "snapshot",
+          "summary",
+          "window"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "recommendations": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "section": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "anchor",
+                "label",
+                "section"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "rationale": {
+            "type": "string"
+          },
+          "related_finding_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "priority",
+          "rationale",
+          "related_finding_kinds",
+          "summary",
+          "title"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "reordered": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "snapshot_dir": {
+      "type": "string"
+    },
+    "table_trends": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "delta_rows": {
+            "type": "integer"
+          },
+          "first_rows": {
+            "type": "integer"
+          },
+          "last_rows": {
+            "type": "integer"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "series": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "rows": {
+                  "type": "integer"
+                },
+                "snapshot_name": {
+                  "type": "string"
+                },
+                "start_time": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "rows",
+                "snapshot_name",
+                "start_time"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "delta_rows",
+          "first_rows",
+          "last_rows",
+          "schema",
+          "series",
+          "table"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "trend_summary": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "additionalProperties": true,
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "evidence_refs": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "anchor": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "section": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "anchor",
+                "label",
+                "section"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence",
+          "kind",
+          "summary",
+          "title"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "comparability",
+    "diagnostics_trends",
+    "input_mode",
+    "insights",
+    "order",
+    "pattern_drilldowns",
+    "pattern_trends",
+    "points",
+    "recommendations",
+    "schema_version",
+    "snapshot_dir",
+    "table_trends",
+    "trend_summary"
+  ],
+  "title": "trend",
+  "type": "object"
+}

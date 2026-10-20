@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/clierr"
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/jsonout"
 	"binlogviz/internal/version"
@@ -38,6 +39,9 @@ func newVersionCommand() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			build := version.Current()
+			if loc := displaytz.From(cmd.Context()); loc != nil {
+				build.CommitTime = displaytz.Stored(build.CommitTime, loc)
+			}
 			out := cmd.OutOrStdout()
 			switch format {
 			case "json":

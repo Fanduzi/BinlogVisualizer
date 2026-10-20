@@ -6,6 +6,7 @@ This file records user-visible changes for tagged releases.
 
 ### Added
 
+- `binlogviz schema` prints the JSON Schema of every versioned JSON output. The same documents are `docs/schema/*.json` and are packed into the release archive. `--tz` selects an IANA display zone for rendered timestamps. Absent or `UTC` keeps the previous ` UTC` / `Z` spelling, so existing output is unchanged. `report_version` stays 3, `plan_version` stays 2, and `schema_version` stays 1. `--start` and `--end` do not follow `--tz`. An unknown zone is exit 3 (ADR 0017, #255).
 - Version-matrix fixtures for MySQL 5.7.44, 8.4.11, 9.7.2 and MariaDB 10.11.19, 11.8.9: `analyze` is compared with each server's own `mysqlbinlog -vv` decode, and the flashback boundary (FULL undone, MINIMAL, DDL, missing row metadata and 11.8 generated columns refused) is tested (#366).
 - `flashback` warns `mariadb_apply_unsupported` for a MariaDB binlog.
 
