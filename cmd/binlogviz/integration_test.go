@@ -9,9 +9,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -163,12 +165,21 @@ func TestResolveAnalyzePathsExplicitArgsRemainUnchanged(t *testing.T) {
 func TestRunAnalysisParsesMultipleFilesConcurrentlyAndConsumesInOrder(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	paths := []string{"mysql-bin.000044", "mysql-bin.000045", "mysql-bin.000046"}
-	delays := map[string]time.Duration{
-		paths[0]: 60 * time.Millisecond,
-		paths[1]: 5 * time.Millisecond,
-		paths[2]: 5 * time.Millisecond,
-	}
+	// Analyze sizes its parse pool from GOMAXPROCS, so a one-CPU runner gets
+	// one worker by design. Give it one per file so the pool, not the
+	// runner, decides whether files overlap.
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(len(paths)))
 
+	// The later files do not emit until the first file is open, and the
+	// first file does not emit until the later files have emitted, so the
+	// run finishes only if their parses overlapped. Consumption must still
+	// follow file order. No sleeps: a serial parse blocks here and fails at
+	// the timeout instead of passing by luck.
+	firstOpen := make(chan struct{})
+	laterDone := make(chan struct{}, len(paths)-1)
+	timeout := make(chan struct{})
+	stopTimer := time.AfterFunc(10*time.Second, func() { close(timeout) })
+	defer stopTimer.Stop()
 	var mu sync.Mutex
 	activeParses := 0
 	peakParses := 0
@@ -177,7 +188,7 @@ func TestRunAnalysisParsesMultipleFilesConcurrentlyAndConsumesInOrder(t *testing
 			for _, path := range parsePaths {
 				index := slices.Index(paths, path)
 				if index < 0 {
-					t.Fatalf("unexpected path %q", path)
+					return fmt.Errorf("unexpected path %q", path)
 				}
 				mu.Lock()
 				activeParses++
@@ -186,7 +197,22 @@ func TestRunAnalysisParsesMultipleFilesConcurrentlyAndConsumesInOrder(t *testing
 				}
 				mu.Unlock()
 
-				time.Sleep(delays[path])
+				if index == 0 {
+					close(firstOpen)
+					for i := 1; i < len(paths); i++ {
+						select {
+						case <-laterDone:
+						case <-timeout:
+							return fmt.Errorf("%s: later files were not parsed while it was open", path)
+						}
+					}
+				} else {
+					select {
+					case <-firstOpen:
+					case <-timeout:
+						return fmt.Errorf("%s: parsed before or after %s, not alongside it", path, paths[0])
+					}
+				}
 				if onProgress != nil {
 					onProgress(binlog.ParseProgress{Path: path, Index: index, Offset: 1})
 				}
@@ -199,6 +225,9 @@ func TestRunAnalysisParsesMultipleFilesConcurrentlyAndConsumesInOrder(t *testing
 					RowCount:   1,
 				}); err != nil {
 					return err
+				}
+				if index > 0 {
+					laterDone <- struct{}{}
 				}
 
 				mu.Lock()
