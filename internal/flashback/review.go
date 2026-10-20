@@ -2,6 +2,7 @@ package flashback
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"binlogviz/internal/model"
@@ -20,6 +21,10 @@ func (a *Planner) reviewGenerated() error {
 	a.flashReviewErr = a.collectGeneratedReview()
 	return a.flashReviewErr
 }
+
+// reviewProbe is nil outside tests. A test sets it to run at the end of the
+// generated-column review, in the review's goroutine, before its state is freed.
+var reviewProbe func()
 
 type reviewBucket struct {
 	schema string
@@ -126,6 +131,12 @@ func (a *Planner) collectGeneratedReview() error {
 			notes = append(notes, mysqlexpr.UnverifiedGeneratedComment(table, col))
 			warns = append(warns, mysqlexpr.UnverifiedGeneratedWarning(table, col))
 		}
+	}
+	if reviewProbe != nil {
+		// The per-table review state is still reachable here, so a test that
+		// measures live heap sees anything the review retained (#317).
+		reviewProbe()
+		runtime.KeepAlive(groups)
 	}
 	if len(mismatches) > 0 {
 		table := mismatchTable

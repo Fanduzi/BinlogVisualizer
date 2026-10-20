@@ -16,9 +16,10 @@ import (
 // TestVerifyDoesNotBufferTheScript is the streaming-verify guard. A buffered
 // read keeps the script live, so post-GC heap during Read grows with the
 // file. A line reader does not. The child compares a script to one four
-// times larger and requires the extra peak to stay under half the extra
-// bytes. GC runs inside Read, so the number is live heap, not a 1ms sample
-// of whatever GOGC has not reclaimed yet.
+// times larger and requires the extra peak to stay under a tenth of the
+// extra bytes, and the small run's peak under maxVerifyPeak. GC runs inside
+// Read, so the number is live heap, not a 1ms sample of whatever GOGC has not
+// reclaimed yet.
 func TestVerifyDoesNotBufferTheScript(t *testing.T) {
 	if os.Getenv("BINLOGVIZ_GUARDMEM") == "child" {
 		guardMemChild(t)
@@ -51,20 +52,30 @@ func guardMemChild(t *testing.T) {
 	if extraPeak < 0 {
 		extraPeak = 0
 	}
-	if extraPeak*2 >= extraSize {
+	if extraPeak*10 >= extraSize {
 		t.Fatalf("verify peak grew %d bytes for %d extra script bytes", extraPeak, extraSize)
 	}
+	if smallPeak >= maxVerifyPeak {
+		t.Fatalf("verify held %d bytes reading a %d-byte script; a line reader needs under %d", smallPeak, smallSize, maxVerifyPeak)
+	}
 }
+
+// maxVerifyPeak caps the live heap Verify may add while reading the small
+// script. Streaming measures about 70KB (the 64KiB line buffer). A 16MiB or
+// 64MiB read buffer does not grow with the file, so only this cap sees it.
+const maxVerifyPeak = 1 << 20
 
 // heapReader records the high post-GC HeapAlloc seen while Verify reads.
 // The buffer a slurp retains is still reachable at the return from Read.
 type heapReader struct {
-	r    io.Reader
-	peak uint64
+	r     io.Reader
+	peak  uint64
+	reads int
 }
 
 func (h *heapReader) Read(p []byte) (int, error) {
 	n, err := h.r.Read(p)
+	h.reads++
 	runtime.GC()
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
@@ -116,6 +127,9 @@ func verifyLivePeak(t *testing.T, n int) (size int64, growth uint64) {
 	}
 	if res.Statements != n || len(res.Digest) != 64 {
 		t.Fatalf("result %+v", res)
+	}
+	if hr.reads == 0 {
+		t.Fatal("Verify never read the script, so nothing was measured")
 	}
 	if hr.peak <= base.HeapAlloc {
 		return info.Size(), 0
