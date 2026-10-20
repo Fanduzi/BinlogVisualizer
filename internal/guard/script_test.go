@@ -324,16 +324,33 @@ func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
 	if !strings.Contains(UndoOpenSQL(), "SET @binlogviz_mode = 1;") {
 		t.Fatal("XA START must run inside the procedure")
 	}
-	if !strings.Contains(body, "ROW_COUNT()") || !strings.Contains(body, "MESSAGE_TEXT") || !strings.Contains(body, "1287") {
-		t.Fatal("mode 0 must count rows and keep the first real error, skipping 1287")
+	if !strings.Contains(body, "GET STACKED DIAGNOSTICS") || !strings.Contains(body, "ROW_COUNT()") || !strings.Contains(body, "MESSAGE_TEXT") || !strings.Contains(body, "1287") {
+		t.Fatal("mode 0 must read stacked diagnostics, count rows, and keep the first real error, skipping 1287")
+	}
+	if !strings.Contains(body, "expected 0 or 1") {
+		t.Fatal("guard must reject a row count other than 0 or 1")
 	}
 	finish := finishBody(procedureName("0123456789abcdef"), 1)
+	if strings.Contains(finish, "binlogviz: undo committed") {
+		t.Fatal("the commit marker literal must not be in the SQL")
+	}
 	drop := strings.Index(finish, "DROP PROCEDURE IF EXISTS")
-	mark := strings.Index(finish, "binlogviz: undo committed")
+	mark := strings.Index(finish, `'undo committed, '`)
 	msg := strings.Index(finish, rollbackMessage)
-	bad := strings.Index(finish, "SET SESSION sql_mode = @binlogviz_fail")
-	if drop < 0 || mark < 0 || msg < 0 || bad < 0 || !(drop < mark && mark < msg && msg < bad) {
-		t.Fatalf("client must drop, then mark a commit, then say so, then fail\n%s", finish)
+	restore := strings.Index(finish, "SET SESSION sql_mode = IFNULL(@binlogviz_saved_mode")
+	bad := strings.Index(finish, "SET SESSION sql_mode = IFNULL(@binlogviz_fail")
+	if drop < 0 || mark < 0 || msg < 0 || restore < 0 || bad < 0 || !(drop < mark && mark < msg && msg < restore && restore < bad) {
+		t.Fatalf("client must drop, then mark a commit, then say so, then restore the mode, then fail\n%s", finish)
+	}
+}
+
+func TestVerifyUnreleasedRollbackLineIsOldFormat(t *testing.T) {
+	script := renderScript(t, New(nil), Piece{Kind: PieceStmt, Text: "DO 0"})
+	script = strings.Replace(script, commitSelect, rollbackSelectUnreleased, 1)
+	_, err := Verify(strings.NewReader(script))
+	ve, ok := err.(*VerifyError)
+	if !ok || ve.Reason != "old_format" || ve.Version != "an unreleased build" {
+		t.Fatalf("got %#v", err)
 	}
 }
 

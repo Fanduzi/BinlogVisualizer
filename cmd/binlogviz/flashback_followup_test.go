@@ -208,6 +208,13 @@ func TestFlashbackRefusalJSONReasons(t *testing.T) {
 	}
 }
 
+func TestFlashbackPlanIgnoresSQLContextOff(t *testing.T) {
+	code, stdout, stderr := runRoot(t, "--error-format", "json", "flashback", filepath.Join("testdata", "minimal.binlog"), "--sql-context", "off", "--plan")
+	if code != 6 || !strings.Contains(stdout, "plan_version") || strings.Contains(stderr, "sql_context_off") {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+}
+
 func TestFlashbackHelpNamesCommitMarker(t *testing.T) {
 	for _, lang := range []string{"en", "zh-CN"} {
 		t.Run(lang, func(t *testing.T) {
@@ -225,7 +232,7 @@ func TestFlashbackHelpNamesCommitMarker(t *testing.T) {
 				t.Fatal(err)
 			}
 			help := out.String()
-			if !strings.Contains(help, "binlogviz: undo committed") || !strings.Contains(help, "pipefail") {
+			if !strings.Contains(help, "binlogviz: undo committed") || !strings.Contains(help, "pipefail") || !strings.Contains(help, `^binlogviz: undo committed, [0-9]+ statements$`) {
 				t.Fatalf("--help does not say how to tell a commit:\n%s", help)
 			}
 		})

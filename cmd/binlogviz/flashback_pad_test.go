@@ -151,6 +151,20 @@ func applyPadMatrix(t *testing.T, script string, tables []string, statements str
 			t.Fatalf("rows\n%s\nwant\n%s", got, want)
 		}
 	})
+	t.Run("force restores mode", func(t *testing.T) {
+		resetPadIncident(t, tables)
+		for _, table := range tables {
+			e2eMySQL(t, "DELETE FROM "+table+" WHERE k = 'k4'")
+		}
+		canon := canonicalSQLMode(t, "PAD_CHAR_TO_FULL_LENGTH")
+		out, _ := e2eMySQLForce(t, "SET SESSION sql_mode='PAD_CHAR_TO_FULL_LENGTH';\n"+apply+"\nSELECT CONCAT('MODE=[', @@SESSION.sql_mode, ']')")
+		if strings.Contains(out, "binlogviz: undo committed") || !strings.Contains(out, "undo rolled back") {
+			t.Fatalf("force output:\n%s", out)
+		}
+		if got := modeBetween(out); got != canon {
+			t.Fatalf("sql_mode %q want %q\n%s", got, canon, out)
+		}
+	})
 }
 
 func resetPadIncident(t *testing.T, tables []string) {

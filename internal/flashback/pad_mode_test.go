@@ -21,8 +21,8 @@ func TestFlashbackStripsPadAndMarksKeyedUndos(t *testing.T) {
 	if !strings.Contains(sql, strip) {
 		t.Fatalf("header does not strip PAD_CHAR_TO_FULL_LENGTH:\n%s", sql)
 	}
-	if !strings.Contains(sql, "binlogviz: undo committed") {
-		t.Fatal("script has no commit marker")
+	if strings.Contains(sql, "binlogviz: undo committed") || !strings.Contains(sql, `'undo committed, '`) {
+		t.Fatal("commit marker must be assembled from pieces")
 	}
 	if !strings.Contains(sql, `E\nUPDATE`) || !strings.Contains(sql, `E\nDELETE`) {
 		t.Fatalf("keyed UPDATE/DELETE undo is not required to affect one row:\n%s", sql)
@@ -35,12 +35,12 @@ func TestFlashbackStripsPadAndMarksKeyedUndos(t *testing.T) {
 	}
 
 	guarded := flashSQL(t, analyzer.Options{FlashbackConflict: "guard"}, flashRow("UPDATE", false, []int{0}))
-	if strings.Contains(guarded, `E\nUPDATE`) || !strings.Contains(guarded, `T\nUPDATE`) {
-		t.Fatal("--conflict guard may affect 0 rows")
+	if strings.Contains(guarded, `E\nUPDATE`) || strings.Contains(guarded, `T\nUPDATE`) || !strings.Contains(guarded, `G\nUPDATE`) {
+		t.Fatal("--conflict guard must be its own row check")
 	}
 	noPK := flashSQL(t, analyzer.Options{}, flashRow("UPDATE", true, nil))
-	if strings.Contains(noPK, `E\nUPDATE`) || !strings.Contains(noPK, `T\nUPDATE`) {
-		t.Fatal("a no-PK undo may affect 0 rows")
+	if !strings.Contains(noPK, `E\nUPDATE`) || strings.Contains(noPK, `T\nUPDATE`) {
+		t.Fatal("a no-PK UPDATE undo must affect exactly one row")
 	}
 }
 

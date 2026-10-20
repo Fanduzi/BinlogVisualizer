@@ -1,6 +1,6 @@
 // Package binlog formats exact SQL literals from an already-decoded rows event.
 // input: go-mysql RowsEvent values, the binary JSON documents captured beside that decode, and FULL row metadata (names, the SIGNEDNESS bitmap, collation, enum/set members, primary key). Signedness counts YEAR, which go-mysql v1.14 UnsignedMap skips.
-// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes; the charset comes from the MySQL or MariaDB collation id (charsetOfCollation). ENUM is the member index and SET is the bitmask. MEDIUMINT unsigned is the low 24 bits. BIT is a b'...' literal of the column width. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
+// output: model.FlashRow values for undo SQL, or a problem that names why a row cannot be rendered exactly. JSON is rebuilt from the binary document. Character columns that are not utf8mb4 use a charset introducer and hex bytes; the charset comes from the MySQL or MariaDB collation id (charsetOfCollation). BINARY(n) hex is padded to n bytes with 0x00; VARBINARY, BLOB, and CHAR are not. ENUM is the member index and SET is the bitmask. MEDIUMINT unsigned is the low 24 bits. BIT is a b'...' literal of the column width. Each row carries TABLE_MAP column metadata for a schema-file check, and NonStrict when an ENUM value is index 0.
 // pos: parser helper used only when flashback capture is on. It reuses the decoded row images from the same RowsEvent as display capture.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -433,7 +433,7 @@ func flashLiteral(table *replication.TableMapEvent, col int, value any, cell jso
 		}
 		return text, ""
 	case mysql.MYSQL_TYPE_VARCHAR, mysql.MYSQL_TYPE_VAR_STRING, mysql.MYSQL_TYPE_STRING, mysql.MYSQL_TYPE_BLOB:
-		return sqlCharacter(typ, col, value, collation)
+		return sqlCharacter(typ, col, value, collation, columnMeta(table, col))
 	default:
 		return "", typeName(typ)
 	}
@@ -590,7 +590,7 @@ func sqlTemporal(value any) (string, bool) {
 	return quoteSQLString(text), true
 }
 
-func sqlCharacter(typ byte, col int, value any, collation map[int]uint64) (string, string) {
+func sqlCharacter(typ byte, col int, value any, collation map[int]uint64, meta uint16) (string, string) {
 	name := typeName(typ)
 	if collation == nil {
 		return "", name + " (collation is unavailable)"
@@ -604,7 +604,7 @@ func sqlCharacter(typ byte, col int, value any, collation map[int]uint64) (strin
 		return "", name
 	}
 	if id == mysqlCollationBinary {
-		return hexLiteral(raw), ""
+		return hexLiteral(padBinary(typ, meta, raw)), ""
 	}
 	charset, known := charsetOfCollation(id)
 	if !known {
@@ -635,6 +635,35 @@ func charsetHexLiteral(charset string, value []byte) string {
 		return "_" + charset + " X''"
 	}
 	return "_" + charset + " 0x" + strings.ToUpper(hex.EncodeToString(value))
+}
+
+// padBinary restores the 0x00 bytes MySQL strips from BINARY(n) before the
+// binlog. VARBINARY and BLOB stay as logged. A value already at n bytes, or
+// longer, is left alone.
+func padBinary(typ byte, meta uint16, raw []byte) []byte {
+	if typ != mysql.MYSQL_TYPE_STRING {
+		return raw
+	}
+	n := binaryStringWidth(meta)
+	if n <= len(raw) {
+		return raw
+	}
+	padded := make([]byte, n)
+	copy(padded, raw)
+	return padded
+}
+
+// binaryStringWidth is the STRING metadata length cellSize uses.
+func binaryStringWidth(meta uint16) int {
+	if meta < 256 {
+		return int(meta)
+	}
+	b0 := uint8(meta >> 8)
+	b1 := uint8(meta & 0xFF)
+	if b0&0x30 != 0x30 {
+		return int(uint16(b1) | (uint16((b0&0x30)^0x30) << 4))
+	}
+	return int(meta & 0xFF)
 }
 
 func hexLiteral(value []byte) string {

@@ -61,7 +61,7 @@ func newFlashbackCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if mode == report.SQLContextOff {
+			if mode == report.SQLContextOff && !opts.plan {
 				return clierr.WithDetails(clierr.KindRefused, clierr.Errorf(clierr.KindRefused, "%s", i18n.T("error.flashbackSQLContext")), map[string]any{"reason": "sql_context_off"})
 			}
 			if opts.schemaFile != "" {

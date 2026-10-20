@@ -64,14 +64,14 @@ CREATE USER 'bv337'@'%' IDENTIFIED BY 'bv337pw';`)
 	}{
 		{"full", "CREATE, CREATE ROUTINE, ALTER ROUTINE", false, "1", false, "0", ""},
 		{"full_force", "CREATE, CREATE ROUTINE, ALTER ROUTINE", false, "1", true, "0", ""},
-		{"missing_alter", "CREATE, CREATE ROUTINE", false, "1", false, "1", "1370"},
-		{"missing_alter_force", "CREATE, CREATE ROUTINE", false, "1", true, "1", "1370"},
+		{"missing_alter", "CREATE, CREATE ROUTINE", false, "1", false, "1", "ERROR 1370"},
+		{"missing_alter_force", "CREATE, CREATE ROUTINE", false, "1", true, "1", "(ERROR 1370"},
 		{"missing_create", "CREATE ROUTINE, ALTER ROUTINE", false, "1", false, "1", "ERROR"},
 		{"missing_create_force", "CREATE ROUTINE, ALTER ROUTINE", false, "1", true, "1", "ERROR"},
 		{"missing_create_routine", "CREATE, ALTER ROUTINE", false, "1", false, "1", "ERROR"},
 		{"missing_create_routine_force", "CREATE, ALTER ROUTINE", false, "1", true, "1", "ERROR"},
-		{"missing_execute", "CREATE, CREATE ROUTINE, ALTER ROUTINE", false, "0", false, "1", "1370"},
-		{"missing_execute_force", "CREATE, CREATE ROUTINE, ALTER ROUTINE", false, "0", true, "1", "1370"},
+		{"missing_execute", "CREATE, CREATE ROUTINE, ALTER ROUTINE", false, "0", false, "1", "ERROR 1370"},
+		{"missing_execute_force", "CREATE, CREATE ROUTINE, ALTER ROUTINE", false, "0", true, "1", "(ERROR 1370"},
 		{"schema_no_rights", "", true, "1", false, "1", "ERROR"},
 		{"schema_no_rights_force", "", true, "1", true, "1", "ERROR"},
 	}
@@ -292,7 +292,7 @@ DROP USER IF EXISTS 'bv338'@'%';`)
 
 	t.Run("missing_alter_force", func(t *testing.T) {
 		out, err := apply(t, update, "CREATE, CREATE ROUTINE", "", true)
-		if !strings.Contains(out, rollback) || !strings.Contains(out, "1370") {
+		if !strings.Contains(out, rollback) || !strings.Contains(out, "(ERROR 1370") {
 			t.Fatalf("err %v\n%s", err, out)
 		}
 		if rows(t) != "1:1" || routines(t) != "0" {

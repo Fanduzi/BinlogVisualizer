@@ -1146,7 +1146,7 @@ COMMIT;`)
 				continue
 			}
 			body := payload
-			if strings.HasPrefix(body, "E\n") || strings.HasPrefix(body, "T\n") {
+			if strings.HasPrefix(body, "E\n") || strings.HasPrefix(body, "T\n") || strings.HasPrefix(body, "G\n") {
 				body = body[2:]
 			}
 			if strings.HasPrefix(body, "INSERT ") || strings.HasPrefix(body, "UPDATE ") || strings.HasPrefix(body, "DELETE ") {

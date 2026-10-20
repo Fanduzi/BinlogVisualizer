@@ -281,3 +281,37 @@ After a commit the client prints `binlogviz: undo committed, N statements`. Succ
 The mode-0 handler reads diagnostics conditions 1, 2, and 3. MySQL 5.7 requires a literal condition number. It skips SQLSTATE class `00` and `01`, and errno 1287 (`Setting user variables within expressions is deprecated`, from the token guard). It keeps the first remaining `MYSQL_ERRNO` and `MESSAGE_TEXT`. A later condition does not overwrite them. On MySQL 8.0, condition 1 can be 1287 while the statement error is 1143, 1146, or 1054. MySQL 5.7 reports that statement error as condition 1. 1062 is the statement error on both.
 
 On failure the client sets `SESSION sql_mode` to `ERROR <n>: <message>`, with commas in the message written as semicolons so MySQL does not split the value into flags. MySQL rejects it with ERROR 1231, and the text of 1231 includes that value, so stderr shows the real number and the message. The rollback line on stdout also appends `(ERROR N: message)`. On success the same statement sets the saved mode and does not error. ERROR 1242 is not the failure signal. A zero-row keyed undo has no server message; the line and stderr show `ERROR 45000: keyed undo affected N rows, expected 1`.
+
+## Amendment (2026-10-19): BINARY padding, a guard that changed nothing, and the real stacked errno
+
+Tracks #348. The seal, the digest, tamper exit 6, `schema_version` 1, and `plan_version` 2 stay. This replaces the no-PK exemption, the "plain grep of the commit line" check, and the claim that `GET DIAGNOSTICS` sees the statement errno on MySQL 8.0.
+
+### BINARY(n)
+
+MySQL strips trailing `0x00` from a `BINARY(n)` value before writing the binlog. The stored value is still n bytes. v0.32.0 wrote the short hex, so `WHERE k <=> X'6B31'` matches 0 rows when the column holds `6B3100000000`. A keyed undo then rolls back under `--conflict refuse`, and under `--conflict guard` it used to print the commit marker while changing nothing. `VARBINARY`, `BLOB`, and `CHAR` are not padded.
+
+A `BINARY(n)` literal is padded with `0x00` up to n bytes in `WHERE`, `SET`, and `INSERT`. A value that is already n bytes, or longer, is left as logged. A full value whose trailing `0x00` was stripped comes back short and is padded, so a UUID that ends in `0x00` round-trips.
+
+### What guard counts as applied
+
+`E` is a refuse `UPDATE` or `DELETE`, including a no-PK `LIMIT 1` match. `ROW_COUNT()` must be 1. Any other count poisons the run with `keyed undo affected N rows, expected 1`. An `INSERT` undo (the undo of a `DELETE`) stays `T`: it is counted, and a statement error such as a duplicate key rolls the undo back.
+
+`G` is every `--conflict guard` undo, including the `INSERT`. Applied (N) is a statement whose `ROW_COUNT()` is 1. Skipped (M) is a statement whose `ROW_COUNT()` is 0: the after-image no longer matches, or the `INSERT` undo's `NOT EXISTS` is false. Any other count poisons the run with `guard undo affected N rows, expected 0 or 1`.
+
+The success line prints only when N is greater than 0. An apply that only skipped rows commits an empty transaction, prints `binlogviz: undo skipped, M rows`, and does not print the success line. Exit 0 without the success line is not success.
+
+### The marker and the mode
+
+The success text is `CONCAT('binlog', 'viz: ', 'undo committed, ', N, ' statements')`. The literal `binlogviz: undo committed` is not in the SQL, so `mysql --force -v` cannot echo it. The check is `grep -E '^binlogviz: undo committed, [0-9]+ statements$'`, with `set -o pipefail`. The same split builds the skip line. That line is not the success check.
+
+The client restores `@binlogviz_saved_mode` before the statement that sets `sql_mode` to the failure text. A failed `SET` leaves the previous mode, so a `--force` failure does not keep the stripped mode. On success the failure value is NULL and the second `SET` does not change the restored mode.
+
+A stream cut after `COMMIT` and before the marker leaves the undo committed and prints nothing. That is a missed success, not a false one. Editing `@binlogviz_mode = 2` in the published suffix is still `truncated`: that line is outside the digest.
+
+### Diagnostics
+
+The mode-0 handler reads `GET STACKED DIAGNOSTICS`. On MySQL 8.0, `GET DIAGNOSTICS` (current) is already cleared when `PREPARE` fails, and the following `DEALLOCATE PREPARE` is then ERROR 1243. Stacked condition 2 holds 1143, 1146, or 1054. The first real errno is kept, so 1243 does not replace it. MySQL 5.7 already reported the statement errno as condition 1. 1062 is unchanged on both.
+
+A failure outside the procedure (`CREATE DATABASE`, `DROP PROCEDURE`, `CREATE PROCEDURE`, or a `CALL` that never enters) is read by `GET DIAGNOSTICS` as the next client statement. A later `SET` would clear that condition area. SQLSTATE class `00` and `01` are not failures, and neither is errno 1287 or 3135: those warnings use another SQLSTATE and the statement still succeeds. The first errno is kept, so 1370 and 1044 are not reported as 0. `sql_notes` is off for the apply and restored with the saved mode: `CREATE DATABASE IF NOT EXISTS` (1007, `HY000`) and `DROP PROCEDURE IF EXISTS` (1305, `42000`) are warnings, and without that they would be read as errors.
+
+`--plan` does not print row SQL, so `--plan --sql-context off` prints the plan. `--sql-context off` without `--plan` still refuses.

@@ -971,23 +971,27 @@ func renderUndo(row model.FlashRow, gen map[string]struct{}, cond string, postIm
 	if drops := relaxedModes(row, gen); len(drops) > 0 {
 		statement = sqlModeWrap(statement, drops)
 	}
-	return tagUndo(statement, expectOneRow(row, postImage)), nil
+	return tagUndo(statement, undoMark(row, postImage)), nil
 }
 
-// expectOneRow is a keyed UPDATE or DELETE undo. An INSERT undo (the undo of
-// a DELETE), a no-PK LIMIT 1 match, and --conflict guard may affect 0 rows.
-func expectOneRow(row model.FlashRow, postImage bool) bool {
-	return !postImage && !row.NoPK && len(row.PK) > 0 && row.Op != "DELETE"
-}
-
-// tagUndo marks the digested statement. E requires ROW_COUNT() = 1. T only
-// counts the statement in the commit marker. The mark is two characters, so
-// deleting it changes the digest.
-func tagUndo(statement string, expect bool) string {
-	tag := "T\n"
-	if expect {
-		tag = "E\n"
+// undoMark is the two-character tag inside the digested statement. E requires
+// ROW_COUNT() = 1, including a no-PK LIMIT 1 UPDATE or DELETE. T counts an
+// INSERT undo without a row check. G is --conflict guard: 1 row counts, 0
+// rows is a skip, any other count rolls the undo back.
+func undoMark(row model.FlashRow, postImage bool) string {
+	if postImage {
+		return "G"
 	}
+	if row.Op == "DELETE" {
+		return "T"
+	}
+	return "E"
+}
+
+// tagUndo marks the digested statement. The mark is two characters, so
+// deleting it changes the digest.
+func tagUndo(statement, mark string) string {
+	tag := mark + "\n"
 	if i := strings.LastIndex(statement, "\n"); i >= 0 {
 		return statement[:i+1] + tag + statement[i+1:]
 	}

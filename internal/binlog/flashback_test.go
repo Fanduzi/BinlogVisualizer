@@ -1,6 +1,7 @@
 package binlog
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"hash/crc32"
@@ -168,38 +169,62 @@ func TestSQLJSONExactAndRefused(t *testing.T) {
 }
 
 func TestSQLCharacterCharsets(t *testing.T) {
-	lit, problem := sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 8})
+	lit, problem := sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 8}, 0)
 	if problem != "" || lit != "_latin1 0xE9" {
 		t.Fatalf("latin1 e9: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xC3, 0xA9}, map[int]uint64{0: 8})
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xC3, 0xA9}, map[int]uint64{0: 8}, 0)
 	if problem != "" || lit != "_latin1 0xC3A9" {
 		t.Fatalf("latin1 c3a9: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x00, 0x41, 0x00, 0x42}, map[int]uint64{0: 54})
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x00, 0x41, 0x00, 0x42}, map[int]uint64{0: 54}, 0)
 	if problem != "" || lit != "_utf16 0x00410042" {
 		t.Fatalf("utf16: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{}, map[int]uint64{0: 8})
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{}, map[int]uint64{0: 8}, 0)
 	if problem != "" || lit != "_latin1 X''" {
 		t.Fatalf("empty: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte("雪"), map[int]uint64{0: 255})
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte("雪"), map[int]uint64{0: 255}, 0)
 	if problem != "" || lit != "'雪'" {
 		t.Fatalf("utf8mb4: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_BLOB, 0, []byte{0xE9}, map[int]uint64{0: 63})
+	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_BLOB, 0, []byte{0xE9}, map[int]uint64{0: 63}, 0)
 	if problem != "" || lit != "X'E9'" {
 		t.Fatalf("binary: %s %s", lit, problem)
 	}
-	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x61}, map[int]uint64{0: 99999})
+	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x61}, map[int]uint64{0: 99999}, 0)
 	if !strings.Contains(problem, "charset for collation 99999 is unknown") {
 		t.Fatalf("unknown: %s", problem)
 	}
-	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 255})
+	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 255}, 0)
 	if problem != "VARCHAR" {
 		t.Fatalf("invalid utf8: %s", problem)
 	}
+}
+
+func TestBinaryColumnPadsToWidth(t *testing.T) {
+	meta16 := uint16(mysql.MYSQL_TYPE_STRING)<<8 | 16
+	meta4 := uint16(mysql.MYSQL_TYPE_STRING)<<8 | 4
+	table := &replication.TableMapEvent{
+		ColumnType: []byte{mysql.MYSQL_TYPE_STRING, mysql.MYSQL_TYPE_STRING, mysql.MYSQL_TYPE_VARCHAR, mysql.MYSQL_TYPE_BLOB},
+		ColumnMeta: []uint16{meta16, meta4, 4, 1},
+	}
+	coll := map[int]uint64{0: mysqlCollationBinary, 1: mysqlCollationBinary, 2: mysqlCollationBinary, 3: mysqlCollationBinary}
+	check := func(col int, value []byte, want string) {
+		t.Helper()
+		lit, problem := flashLiteral(table, col, value, jsonCell{}, nil, nil, nil, coll)
+		if problem != "" || lit != want {
+			t.Fatalf("col %d %q: got %s (%s), want %s", col, value, lit, problem, want)
+		}
+	}
+	check(0, []byte("k1"), "X'6B310000000000000000000000000000'")
+	check(0, []byte{0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88}, "X'AABBCCDDEEFF00112233445566778800'")
+	check(0, bytes.Repeat([]byte{0x11}, 16), "X'11111111111111111111111111111111'")
+	check(0, bytes.Repeat([]byte{0x22}, 17), "X'"+strings.Repeat("22", 17)+"'")
+	check(1, []byte{}, "X'00000000'")
+	check(2, []byte("k1"), "X'6B31'")
+	check(3, []byte{0x61}, "X'61'")
 }
 
 func TestFlashbackFixtureJSONAndCharsetsRoundTripLiterals(t *testing.T) {
