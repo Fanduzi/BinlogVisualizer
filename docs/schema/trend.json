@@ -233,11 +233,20 @@
                     },
                     "type": "array"
                   },
+                  "matched_gtid_set": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
                   "matched_gtids": {
                     "items": {
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "matched_transactions": {
+                    "type": "integer"
                   },
                   "requested_start_position": {
                     "type": "integer"
