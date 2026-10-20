@@ -250,6 +250,9 @@ type syntheticTemplate struct {
 	tmpl       [][]byte
 	idOffsets  []int
 	baseMicros uint64
+	// stepMicros is the commit-time gap between transactions. Zero is
+	// 10ms, which the memory tests use.
+	stepMicros uint64
 }
 
 // sid is the server UUID of the template's GTID.
@@ -277,7 +280,7 @@ func (tp syntheticTemplate) writer(out io.Writer) func([]byte) {
 
 // event is template event j (0 GTID, 1 BEGIN, 2 TABLE_MAP, 3 UPDATE_ROWS,
 // 4 XID) for transaction i, with row i as its primary key: GNO i+1,
-// sequence numbers, commit timestamps 10ms apart with a replica apply delay
+// sequence numbers, commit timestamps 10ms (or stepMicros) apart with a replica apply delay
 // of 0-3s, thread id, primary key and xid.
 func (tp syntheticTemplate) event(j, i, row int) []byte {
 	put7 := func(b []byte, v uint64) {
@@ -285,7 +288,11 @@ func (tp syntheticTemplate) event(j, i, row int) []byte {
 			b[k] = byte(v >> (8 * k))
 		}
 	}
-	micros := tp.baseMicros + uint64(i)*10_000
+	step := tp.stepMicros
+	if step == 0 {
+		step = 10_000
+	}
+	micros := tp.baseMicros + uint64(i)*step
 	ev := append([]byte(nil), tp.tmpl[j]...)
 	binary.LittleEndian.PutUint32(ev[0:], uint32(micros/1_000_000))
 	body := ev[19:]
