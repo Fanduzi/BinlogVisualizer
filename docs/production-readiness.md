@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `942a4b1`（v0.34.1，#365、#368 已合入）加上 #369（版本矩阵，C2–C4），2026-10-20 核对。
+基线：main `013a436`（v0.34.1 加上 #369 版本矩阵，C2–C4）加上 #370（四种格式共用重点事务，A3），2026-10-20 核对。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -19,7 +19,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 |---|---|---|---|---|
 | A1 | analyze 在固定语料上的统计和报告输出稳定；遇到 STATEMENT/MIXED 格式时报警并以非 0 退出 | `golden_test.go`、`analyze_corpus_rich_test.go`、`TestStatementBinlogIsUnsupported`，用 `internal/binlog/testdata` 下的 MySQL 8.0.46 夹具（都小于 10KB） | MET | 注意：QA 用的 37 个真实 binlog（含 105MB 的 rt325）只在 QA 机器上，不在仓库也不在 CI |
 | A2 | 解析结果和独立实现（mysqlbinlog）交叉校验 | `dml_rows_test.go`、`replica_apply_test.go`、`drop_table_gtid_test.go`，对照仓库里提交的 `.mysqlbinlog.txt` 解码 | MET | — |
-| A3 | text、Markdown、JSON、HTML 选出的「重点事务」是同一批 | `TestAnalyzeFormatsShareKeyTransactions`（`go test ./...`，verify）。夹具是 `internal/binlog/testdata` 里的 `mysql-8.0.46-busiest-minute.binlog`、`mysql-8.0.46-committed-duration.binlog`、`mysql-8.0.46-dml-full.binlog` | MET | — |
+| A3 | text、Markdown、JSON、HTML 选出的「重点事务」是同一批 | `TestAnalyzeFormatsShareKeyTransactions`（`go test ./...`，verify）比较四种格式的**有序**事务序列（顺序不同也算失败），并检查 HTML 证据不越出这一批。夹具是 `internal/binlog/testdata` 里的 `mysql-8.0.46-busiest-minute.binlog`、`mysql-8.0.46-committed-duration.binlog`、`mysql-8.0.46-dml-full.binlog`，另加一例 `busiest-minute --start-position 384 --top-transactions 0`：txn-1 被窗口截成 `partial_start`，排在完整事务之后，测试要求列表里确有不完整证据的事务。变异检查：某一格式倒序、丢掉不完整事务、只列冠军、截断、多列、丢首行，都会让测试失败 | MET | — |
 
 ## B. Flashback 安全（绝不写错数据）
 
@@ -82,4 +82,6 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 3. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
 4. **E1、E2，内存与大文件**：analyze 的内存上界还没有测试（#364）；≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复。）
-5. **A3，四种格式的重点事务**：text、Markdown、JSON、HTML 没有断言选出的是同一批事务（#352）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。
+5. **D5，机器可读的输出 schema 和 `--tz`**：没有 JSON Schema 或 describe 命令，显示时区不可选（#255 第 3、7 项）。
+
+A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。
