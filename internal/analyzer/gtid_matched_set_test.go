@@ -352,3 +352,22 @@ func TestSharedRangesCountPerServerRanges(t *testing.T) {
 		}
 	}
 }
+
+// Once the per-server form is dropped for every domain, a repeat in another
+// domain fails safe with a count below the limit; the message says the form
+// was dropped instead of claiming the limit was passed (#383 QA).
+func TestMatchedGTIDSetDroppedFormReportsRealCount(t *testing.T) {
+	old := MatchedGTIDIntervalLimit
+	MatchedGTIDIntervalLimit = 4
+	defer func() { MatchedGTIDIntervalLimit = old }()
+	all := []string{"1-7-1", "1-8-2", "1-7-3", "1-8-4", "1-7-5", "0-7-1", "0-8-1"}
+	matched := map[string]bool{"1-7-1": true, "1-8-2": true, "1-7-3": true, "1-8-4": true, "1-7-5": true, "0-7-1": true}
+	var limit *MatchedGTIDLimitError
+	_, err := matchedSetFrom(t, all, matched)
+	if !errors.As(err, &limit) || limit.Intervals != 3 || limit.Limit != 4 {
+		t.Fatalf("repeat after the drop: %v", err)
+	}
+	if !strings.Contains(err.Error(), "at least 3 ") || !strings.Contains(err.Error(), "dropped when all domains together passed 4") {
+		t.Fatalf("message: %v", err)
+	}
+}

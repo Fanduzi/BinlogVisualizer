@@ -314,7 +314,7 @@ func TestAnalyzeMatchedGTIDIntervalCeilingExitsTen(t *testing.T) {
 	_, err = captureStdoutRun(t, func() error {
 		return runAnalysisWithParser([]string{"synthetic.bin"}, opts, "json", &mockParser{events: events})
 	})
-	if ExitCode(err) != 10 || !strings.Contains(err.Error(), "需要 3 个独立的 GTID 区间，最多只能跟踪 2 个") {
+	if ExitCode(err) != 10 || !strings.Contains(err.Error(), "至少需要 3 个独立的 GTID 区间，最多只能跟踪 2 个") {
 		t.Fatalf("zh-CN: exit=%d err=%v", ExitCode(err), err)
 	}
 }

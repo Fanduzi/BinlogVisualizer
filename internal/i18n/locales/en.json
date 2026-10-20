@@ -1893,7 +1893,11 @@
   },
   "error.matchedGTIDIntervals": {
     "description": "GTID selectors matched transactions whose GTIDs need more intervals than the matched_gtid_set ceiling (exit 10)",
-    "other": "GTID selectors matched transactions that need {{.Intervals}} separate GTID intervals; at most {{.Limit}} can be tracked. Narrow --include-gtids/--exclude-gtids or split the input"
+    "other": "GTID selectors matched transactions that need at least {{.Intervals}} separate GTID intervals; at most {{.Limit}} can be tracked. Narrow --include-gtids/--exclude-gtids or split the input"
+  },
+  "error.matchedGTIDIntervalsDropped": {
+    "description": "GTID selectors matched MariaDB transactions whose repeated sequence numbers need the per-server form after it was dropped for every domain",
+    "other": "GTID selectors matched MariaDB transactions that need at least {{.Intervals}} separate GTID intervals kept per server, because a sequence number repeats; that form was dropped when all domains together passed {{.Limit}}. Narrow --include-gtids/--exclude-gtids or split the input"
   },
   "error.invalidMariaDBGTID": {
     "description": "A MariaDB GTID argument is not domain-server-sequence",
