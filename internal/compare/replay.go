@@ -13,7 +13,7 @@ import (
 )
 
 // TransactionEvidenceFor converts analyze transaction fields into report evidence.
-// A supplied command is preserved only when report v3 says it was built from a
+// A supplied command is preserved only when report v3 or later says it was built from a
 // trusted FullReplaySpan; retained or legacy spans are evidence, not replay input.
 func TransactionEvidenceFor(txn InputTransaction) *TransactionEvidence {
 	modelTxn := model.Transaction{

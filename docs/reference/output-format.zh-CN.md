@@ -591,7 +591,7 @@ report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会�
 | `minute` | string | no | 分钟级告警时出现；出现时为 RFC3339 |
 | `details` | object | no | 包含结构化告警细节的 JSON 对象；没有结构化细节时省略 |
 
-`partial_transaction` 和 `unknown_transaction` 的 details 包含 `completeness`、逐事件窗口内的 `retained_span` 以及 `replay_available`。仅有 XID 的证据不能回放；跨文件端点也不能回放，因为 report v3 不携带完整且有序的中间文件列表。
+`partial_transaction` 和 `unknown_transaction` 的 details 包含 `completeness`、逐事件窗口内的 `retained_span` 以及 `replay_available`。仅有 XID 的证据不能回放；跨文件端点也不能回放，因为 报告（v3 及以后）不携带完整且有序的中间文件列表。
 
 ### `warnings`
 

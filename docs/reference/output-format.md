@@ -597,7 +597,7 @@ Each entry contains:
 | `minute` | string | no | Present for minute-scoped alerts; RFC3339 when present |
 | `details` | object | no | JSON object containing structured alert details; omitted when no structured detail payload exists |
 
-`partial_transaction` and `unknown_transaction` details contain `completeness`, a retained event-window `retained_span`, and `replay_available`. Replay is unavailable for XID-only evidence and for cross-file endpoints because report v3 does not carry the full ordered intermediate-file list.
+`partial_transaction` and `unknown_transaction` details contain `completeness`, a retained event-window `retained_span`, and `replay_available`. Replay is unavailable for XID-only evidence and for cross-file endpoints because the report (v3 and later) does not carry the full ordered intermediate-file list.
 
 ### `warnings`
 

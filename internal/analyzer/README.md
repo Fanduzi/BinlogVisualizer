@@ -40,7 +40,7 @@ The expression evaluator and the schema catalog are `internal/mysqlexpr` and `in
 | `(Options).HasObjectFilters() bool` | Reports whether any schema or table include/exclude filter is configured. |
 | `(Options).HasPositionSelectors() bool`, `(Options).HasGTIDSelectors() bool` | Report active exact-position or complete-group GTID selectors. |
 | `ParseGTIDSelector(include, exclude []string) (*GTIDSelector, error)` | Parses and canonicalizes one explicit MySQL or MariaDB selector flavor. |
-| `Options.WorkloadID` | Carries the optional operator-provided workload token into report v3 without inference. |
+| `Options.WorkloadID` | Carries the optional operator-provided workload token into the report (since v3) without inference. |
 | `(*Analyzer).Consume(ev model.NormalizedEvent) error` | Incrementally consumes one normalized event. Workload totals remain inclusive, filtered, and event-window scoped while adjacent physical events may supply transaction-boundary evidence only. |
 | `(*Analyzer).Finalize() (*model.AnalysisResult, error)` | Flushes in-flight grouping, writes optional detail-store batches, and assembles the report from `ReportAggregator.Snapshot()` plus table totals. Successful calls are idempotent. DuckDB is not queried on the default path. |
 | `(*Analyzer).Analyze(events []model.NormalizedEvent) (*model.AnalysisResult, error)` | Compatibility wrapper that resets state, streams the slice through `Consume`, then calls `Finalize`. |
