@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `741928c`（#354 已合入），最新发布 v0.33.1（2026-10-20 12:18 北京时间）。2026-10-20 核对。
+基线：main `14bd41b`（#358、#361 已合入，#351 已关闭），即 v0.34.0 发布的代码（2026-10-20）。2026-10-20 核对。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -54,7 +54,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
-| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | `TestFlashbackSpillLimitOnFixture`、`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`、`TestGeneratedReviewRSS`。后两个按固定 RSS 上限判，会偶发失败，CI 里已经红过一次 | PARTIAL | #351，PR #358 待合（取代 #355） |
+| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | `TestFlashbackSpillLimitOnFixture`、`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`、`TestGeneratedReviewRSS`。后两个原来按固定 RSS 上限判、会偶发失败（#351）；#358、#361 改为在固定点测 live heap，`GOMAXPROCS=1` 下也稳定 | MET | — |
 | E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `benchmark_test.go` 要 `BINLOGVIZ_REAL_BINLOG` 才跑，CI 不设；大语料只在 QA 机器上 | NOT MET | — |
 
 ## F. 安装与发布完整性
@@ -74,7 +74,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 11 / PARTIAL 6 / NOT MET 7**。
+共 24 项：**MET 12 / PARTIAL 5 / NOT MET 7**。
 
 ## 最卡生产级的 5 项
 
@@ -82,4 +82,4 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 2. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
 3. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 4. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
-5. **E1、E2，大输入的资源上界不在 CI**：内存测试会偶发失败（#351），大语料只在 QA 机器上。
+5. **E2，大文件基准不在 CI**：≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复。）
