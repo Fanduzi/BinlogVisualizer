@@ -1893,7 +1893,7 @@
   },
   "error.matchedGTIDIntervals": {
     "description": "GTID 选择器匹配到的事务需要的区间数超过 matched_gtid_set 上限（退出码 10）",
-    "other": "GTID 选择器匹配到的事务需要超过 {{.Limit}} 个独立的 GTID 区间；请收窄 --include-gtids/--exclude-gtids，或拆分输入"
+    "other": "GTID 选择器匹配到的事务需要 {{.Intervals}} 个独立的 GTID 区间，最多只能跟踪 {{.Limit}} 个；请收窄 --include-gtids/--exclude-gtids，或拆分输入"
   },
   "error.invalidMariaDBGTID": {
     "description": "MariaDB GTID 参数不是 domain-server-sequence 形式",

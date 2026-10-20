@@ -25,7 +25,7 @@ type MatchedGTIDLimitError struct {
 }
 
 func (e *MatchedGTIDLimitError) Error() string {
-	return fmt.Sprintf("GTID selectors matched transactions that need more than %d separate GTID intervals; narrow --include-gtids/--exclude-gtids or split the input", e.Limit)
+	return fmt.Sprintf("GTID selectors matched transactions that need %d separate GTID intervals; at most %d can be tracked. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit)
 }
 
 // matchedGTIDSet keeps the GTIDs of matched transactions with retained
@@ -55,8 +55,10 @@ type matchedGTIDSet struct {
 	maria  map[uint64]*mariaDomain
 	// count is the number of matched transactions added, repeats included.
 	count int
-	// cost is the number of rendered entries (intervals) of the set.
-	cost int
+	// cost is the number of rendered entries (intervals) of the set;
+	// mysqlCost is the MySQL part of it.
+	cost      int
+	mysqlCost int
 
 	exactTotal  int
 	sharedTotal int
@@ -123,7 +125,7 @@ func (m *matchedGTIDSet) add(identity string) error {
 			m.exactTotal += delta
 		}
 		if !m.sharedOff {
-			delta, _ := d.shared.add(seq)
+			delta, _ := d.shared.addLabeled(seq, server)
 			d.servers[server] = struct{}{}
 			m.sharedTotal += delta
 		}
@@ -150,6 +152,7 @@ func (m *matchedGTIDSet) add(identity string) error {
 	}
 	delta, _ := ranges.add(seq)
 	m.cost += delta
+	m.mysqlCost += delta
 	if m.cost > MatchedGTIDIntervalLimit {
 		return m.limitError(m.cost)
 	}
@@ -159,7 +162,10 @@ func (m *matchedGTIDSet) add(identity string) error {
 func (m *matchedGTIDSet) domain(domain uint64) *mariaDomain {
 	d := m.maria[domain]
 	if d == nil {
-		d = &mariaDomain{exact: make(map[uint64]*rangeList), servers: make(map[uint64]struct{})}
+		d = &mariaDomain{servers: make(map[uint64]struct{})}
+		if !m.exactOff {
+			d.exact = make(map[uint64]*rangeList)
+		}
 		m.maria[domain] = d
 	}
 	return d
@@ -182,10 +188,36 @@ func (m *matchedGTIDSet) form(d *mariaDomain) (useShared bool, cost int, ok bool
 	return false, 0, false
 }
 
+// perServer is the number of per-server ranges domain d needs: counted
+// directly while that form is kept, otherwise derived from the shared ranges
+// labeled by server (ranges plus server changes inside them), which is exact
+// while no sequence number of the domain repeated.
+func (m *matchedGTIDSet) perServer(d *mariaDomain) int {
+	if d.exact != nil {
+		return d.exactN
+	}
+	return d.shared.n + d.shared.changes
+}
+
+// needed is the number of entries the set needs: each domain's rendered form,
+// or its per-server count when it has no form left. It is what a
+// MatchedGTIDLimitError reports, never a placeholder.
+func (m *matchedGTIDSet) needed() int {
+	total := m.mysqlCost
+	for _, d := range m.maria {
+		if _, cost, ok := m.form(d); ok {
+			total += cost
+		} else {
+			total += m.perServer(d)
+		}
+	}
+	return total
+}
+
 func (m *matchedGTIDSet) recost(d *mariaDomain) error {
 	_, cost, ok := m.form(d)
 	if !ok {
-		return m.limitError(MatchedGTIDIntervalLimit + 1)
+		return m.limitError(m.needed())
 	}
 	m.cost += cost - d.cost
 	d.cost = cost
@@ -204,17 +236,45 @@ func (m *matchedGTIDSet) recostAll() error {
 	return nil
 }
 
+// dropExact frees the per-server form of every MariaDB domain at once, when
+// the per-server ranges of all domains together pass the limit. A domain
+// that already needs that form (a sequence number repeated), or comes to need
+// it later, then fails with exit 10 even if its own per-server ranges would
+// fit: dropping per domain would be finer, but this fails safe (no wrong set)
+// and keeps memory bounded. The error reports the per-server count, taken
+// before the ranges are freed or derived from the shared ranges after.
 func (m *matchedGTIDSet) dropExact() error {
 	m.exactOff = true
+	var err error
+	for _, d := range m.maria {
+		if _, _, ok := m.form(d); !ok {
+			err = m.limitError(m.needed())
+			break
+		}
+	}
 	for _, d := range m.maria {
 		d.exact, d.exactN = nil, 0
 	}
 	m.exactTotal = 0
+	if err != nil {
+		return err
+	}
 	return m.recostAll()
 }
 
+// dropShared frees the shared form (and the repeat check) of every domain;
+// domains then need the per-server form. The error count is taken first.
 func (m *matchedGTIDSet) dropShared() error {
 	m.sharedOff = true
+	for _, d := range m.maria {
+		if _, _, ok := m.form(d); !ok {
+			err := m.limitError(m.needed())
+			for _, d := range m.maria {
+				d.shared, d.seen = rangeList{}, rangeList{}
+			}
+			return err
+		}
+	}
 	for _, d := range m.maria {
 		d.shared, d.seen = rangeList{}, rangeList{}
 	}

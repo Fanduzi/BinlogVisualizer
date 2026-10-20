@@ -1326,7 +1326,7 @@ func analyzerResourceError(err error) error {
 	if !errors.As(err, &limit) {
 		return nil
 	}
-	msg := i18n.Tf("error.matchedGTIDIntervals", map[string]any{"Limit": limit.Limit})
+	msg := i18n.Tf("error.matchedGTIDIntervals", map[string]any{"Limit": limit.Limit, "Intervals": limit.Intervals})
 	return clierr.WithDetails(clierr.KindResource, &localizedCause{msg: msg, cause: limit}, map[string]any{
 		"reason":    "matched_gtid_intervals",
 		"limit":     limit.Limit,
