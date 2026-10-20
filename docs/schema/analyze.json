@@ -1575,7 +1575,7 @@
       "type": "object"
     },
     "report_version": {
-      "const": 3,
+      "const": 4,
       "type": "integer"
     },
     "row_values_note": {
@@ -1656,11 +1656,14 @@
           },
           "type": "array"
         },
-        "matched_gtids": {
+        "matched_gtid_set": {
           "items": {
             "type": "string"
           },
           "type": "array"
+        },
+        "matched_transactions": {
+          "type": "integer"
         },
         "requested_start_position": {
           "type": "integer"

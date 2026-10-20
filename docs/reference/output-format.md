@@ -47,7 +47,7 @@ Every JSON document on `stdout` has a top-level integer version key (ADR 0010). 
 
 Every versioned JSON document has a Draft 2020-12 schema derived from the Go type the command marshals (ADR 0017). `binlogviz schema` prints the names. `binlogviz schema analyze` prints the schema for that name. The same documents are files under `docs/schema/` (`analyze.json`, `flashback-plan.json`, `compare.json`, `trend.json`, `snapshot-list.json`, `snapshot-show.json`, `workflow-validate.json`, `workflow-describe.json`, `workflow-status.json`, `workflow-clean.json`, `workflow-export.json`, `version.json`, `flashback-verify.json`) and are in the release archive at those paths. `workflow validate` is one schema covering the success object and the failure object. The schema command's own stdout is a JSON Schema document, not a versioned result, so it has no `schema_version`. An unknown name is exit 3.
 
-`report_version` stays 3, `plan_version` stays 2, and every `schema_version` stays 1. Passing `--tz` changes the offset spelling of timestamp strings. It does not add or remove a key, and it does not change a value's type.
+`report_version` stays 4, `plan_version` stays 2, and every `schema_version` stays 1. Passing `--tz` changes the offset spelling of timestamp strings. It does not add or remove a key, and it does not change a value's type.
 
 ## Display timezone
 
