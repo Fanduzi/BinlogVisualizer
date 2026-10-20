@@ -1,0 +1,126 @@
+# The proper term is pseudo_replica_mode, but we use this compatibility alias
+# to make the statement usable on server versions 8.0.24 and older.
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261020  8:41:25 server id 1  end_log_pos 127 CRC32 0x93ce8f7e 	Start: binlog v 4, server v 9.7.2 created 261020  8:41:25
+# at 127
+#261020  8:41:25 server id 1  end_log_pos 198 CRC32 0xa9cadab7 	Previous-GTIDs
+# 0588053a-cc62-11f1-bfe2-ee21a882a038:1-15
+# at 198
+#261020  8:41:25 server id 1  end_log_pos 277 CRC32 0x4512c18c 	GTID	last_committed=0	sequence_number=1	rbr_only=yes	original_committed_timestamp=1792485685771152	immediate_commit_timestamp=1792485685771152	transaction_length=1943
+/*!50718 SET TRANSACTION ISOLATION LEVEL READ COMMITTED*//*!*/;
+# original_commit_timestamp=1792485685771152 (2026-10-20 08:41:25.771152 UTC)
+# immediate_commit_timestamp=1792485685771152 (2026-10-20 08:41:25.771152 UTC)
+/*!80001 SET @@session.original_commit_timestamp=1792485685771152*//*!*/;
+/*!80014 SET @@session.original_server_version=90702*//*!*/;
+/*!80014 SET @@session.immediate_server_version=90702*//*!*/;
+SET @@SESSION.GTID_NEXT= '0588053a-cc62-11f1-bfe2-ee21a882a038:16'/*!*/;
+# at 277
+#261020  8:41:25 server id 1  end_log_pos 365 CRC32 0x24cc37f9 	Query	thread_id=24	exec_time=0	error_code=0
+SET TIMESTAMP=1792485685/*!*/;
+SET @@session.pseudo_thread_id=24/*!*/;
+SET @@session.foreign_key_checks=1, @@session.sql_auto_is_null=0, @@session.unique_checks=1, @@session.autocommit=1/*!*/;
+SET @@session.sql_mode=1168113696/*!*/;
+SET @@session.auto_increment_increment=1, @@session.auto_increment_offset=1/*!*/;
+/*!\C utf8mb4 *//*!*/;
+SET @@session.character_set_client=255,@@session.collation_connection=255,@@session.collation_server=255/*!*/;
+SET @@session.time_zone='+00:00'/*!*/;
+SET @@session.lc_time_names=0/*!*/;
+SET @@session.collation_database=DEFAULT/*!*/;
+/*!80011 SET @@session.default_collation_for_utf8mb4=255*//*!*/;
+BEGIN
+/*!*/;
+# at 365
+#261020  8:41:25 server id 1  end_log_pos 723 CRC32 0xbbb2ecab 	Rows_query
+# UPDATE shop.wide
+#   SET qty = 7,
+#       price = -12.34,
+#       created_at = '2026-10-06 14:05:01.123456',
+#       updated_at = '2026-10-06 14:05:01.500000',
+#       note = 'it''s "bad" \\\\ é›ª',
+#       raw = x'DEADBEEF',
+#       payload = JSON_OBJECT('sku', 'Q', 'n', 2),
+#       color = 'blue',
+#       flags = 'a,b',
+#       base = 11
+#   WHERE id = 1
+# at 723
+#261020  8:41:25 server id 1  end_log_pos 923 CRC32 0x1e5999a0 	Table_map: `shop`.`wide` mapped to number 106
+# has_generated_invisible_primary_key=0
+# at 923
+#261020  8:41:25 server id 1  end_log_pos 1059 CRC32 0x1df0c87a 	Update_rows: table id 106 flags: STMT_END_F USE_SQL_FOREIGN_KEY_F
+### UPDATE `shop`.`wide`
+### WHERE
+###   @1=1 /* INT meta=0 nullable=0 is_null=0 */
+### SET
+###   @2=7 /* INT meta=0 nullable=1 is_null=0 */
+###   @3=-12.34 /* DECIMAL(10,2) meta=2562 nullable=1 is_null=0 */
+###   @4='2026-10-06 14:05:01.123456' /* DATETIME(6) meta=6 nullable=1 is_null=0 */
+###   @5=1791295501.500000 /* TIMESTAMP(6) meta=6 nullable=1 is_null=0 */
+###   @6='it\'s "bad" \\ é›ª' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @7='Þ­¾ï' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @8='{"n": 2, "sku": "Q"}' /* JSON meta=4 nullable=1 is_null=0 */
+###   @9=2 /* ENUM(1 byte) meta=63233 nullable=1 is_null=0 */
+###   @10=b'00000011' /* SET(1 bytes) meta=63489 nullable=1 is_null=0 */
+###   @11=11 /* INT meta=0 nullable=1 is_null=0 */
+###   @12=12 /* INT meta=0 nullable=1 is_null=0 */
+###   @13=22 /* INT meta=0 nullable=1 is_null=0 */
+# at 1059
+#261020  8:41:25 server id 1  end_log_pos 1117 CRC32 0xf8b1ebb9 	Rows_query
+# DELETE FROM shop.wide WHERE id = 2
+# at 1117
+#261020  8:41:25 server id 1  end_log_pos 1317 CRC32 0x0d170f38 	Table_map: `shop`.`wide` mapped to number 106
+# has_generated_invisible_primary_key=0
+# at 1317
+#261020  8:41:25 server id 1  end_log_pos 1358 CRC32 0xcc8ad549 	Delete_rows: table id 106 flags: STMT_END_F USE_SQL_FOREIGN_KEY_F
+### DELETE FROM `shop`.`wide`
+### WHERE
+###   @1=2 /* INT meta=0 nullable=0 is_null=0 */
+# at 1358
+#261020  8:41:25 server id 1  end_log_pos 1624 CRC32 0x1d6336a5 	Rows_query
+# INSERT INTO shop.wide (id, qty, price, created_at, updated_at, note, raw, payload, color, flags, base)
+# VALUES (3, 1, 2.50, '2026-10-07 01:02:03.000456', '2026-10-07 01:02:03.000789', 'batch', x'00FF', JSON_OBJECT('sku', 'Z'), 'green', 'c', 7)
+# at 1624
+#261020  8:41:25 server id 1  end_log_pos 1824 CRC32 0x7056493b 	Table_map: `shop`.`wide` mapped to number 106
+# has_generated_invisible_primary_key=0
+# at 1824
+#261020  8:41:25 server id 1  end_log_pos 1936 CRC32 0xd44fa29e 	Write_rows: table id 106 flags: STMT_END_F USE_SQL_FOREIGN_KEY_F
+### INSERT INTO `shop`.`wide`
+### SET
+###   @1=3 /* INT meta=0 nullable=0 is_null=0 */
+###   @2=1 /* INT meta=0 nullable=1 is_null=0 */
+###   @3=2.50 /* DECIMAL(10,2) meta=2562 nullable=1 is_null=0 */
+###   @4='2026-10-07 01:02:03.000456' /* DATETIME(6) meta=6 nullable=1 is_null=0 */
+###   @5=1791334923.000789 /* TIMESTAMP(6) meta=6 nullable=1 is_null=0 */
+###   @6='batch' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @7='\x00ÿ' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @8='{"sku": "Z"}' /* JSON meta=4 nullable=1 is_null=0 */
+###   @9=3 /* ENUM(1 byte) meta=63233 nullable=1 is_null=0 */
+###   @10=b'00000100' /* SET(1 bytes) meta=63489 nullable=1 is_null=0 */
+###   @11=7 /* INT meta=0 nullable=1 is_null=0 */
+###   @12=8 /* INT meta=0 nullable=1 is_null=0 */
+###   @13=14 /* INT meta=0 nullable=1 is_null=0 */
+# at 1936
+#261020  8:41:25 server id 1  end_log_pos 1994 CRC32 0xf97d94de 	Rows_query
+# DELETE FROM shop.heap WHERE id = 1
+# at 1994
+#261020  8:41:25 server id 1  end_log_pos 2065 CRC32 0x07448983 	Table_map: `shop`.`heap` mapped to number 107
+# has_generated_invisible_primary_key=0
+# at 2065
+#261020  8:41:25 server id 1  end_log_pos 2110 CRC32 0xdef5dac2 	Delete_rows: table id 107 flags: STMT_END_F USE_SQL_FOREIGN_KEY_F
+### DELETE FROM `shop`.`heap`
+### WHERE
+###   @1=1 /* INT meta=0 nullable=1 is_null=0 */
+###   @2='gone' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# at 2110
+#261020  8:41:25 server id 1  end_log_pos 2141 CRC32 0x0e8ae936 	Xid = 86
+COMMIT/*!*/;
+# at 2141
+#261020  8:41:25 server id 1  end_log_pos 2188 CRC32 0x09ef1dbd 	Rotate to mysql-bin.000006  pos: 4
+SET @@SESSION.GTID_NEXT= 'AUTOMATIC' /* added by mysqlbinlog */ /*!*/;
+DELIMITER ;
+# End of log file
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;

@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `14bd41b`（#358、#361 已合入，#351 已关闭），即 v0.34.0 发布的代码（2026-10-20）。2026-10-20 核对。
+基线：main `a1c7114`（v0.34.0 之后，#365 已合入），2026-10-20 核对。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -36,9 +36,9 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
 | C1 | MySQL 8.0 上 analyze 和 flashback 端到端正确 | `flashback e2e` job。注意：用的是 runner 镜像里预装的 8.0.x，小版本跟着镜像变，没有固定 | MET | — |
-| C2 | MySQL 5.7：analyze 正确；flashback 明确拒绝（exit 6），不产出脚本 | 只有 QA 手工在 5.7.44 上测过；`TestFlashbackMySQL57DeprecatedMode` 要 5.7 服务器，CI 不跑；仓库里没有 5.7 的 binlog 夹具 | PARTIAL | — |
-| C3 | MySQL 8.4 LTS（以及 9.x）支持或明确拒绝 | 没有夹具，也没有 CI | NOT MET | — |
-| C4 | MariaDB：analyze 正确；flashback 的支持边界写清楚并且有测试 | 只有 `mariadb-10.11.14-dml.binlog` 的解析测试，flashback 和 apply 都没测 | PARTIAL | — |
+| C2 | MySQL 5.7：analyze 正确；flashback 明确拒绝（exit 6），不产出脚本 | `TestVersionMatrixAnalyzeMatchesDecode`、`TestVersionMatrixFlashbackBoundary`（`go test ./...`）。夹具 `mysql-5.7.44-wide-full`、`wide-minimal`、`ddl`，对照提交的 `mysqlbinlog -vv` 解码。行和 DDL 与解码一致；列名是位置序号，文本报告写提交时间戳不可用。flashback 以退出码 6 拒绝（没有列名），stdout 为空。`TestFlashbackMySQL57DeprecatedMode` 仍要活的 5.7，测的是在 5.7 上执行脚本时的 3090 警告，不属于本项 | MET | — |
+| C3 | MySQL 8.4 LTS（以及 9.x）支持或明确拒绝 | 同上，夹具 `mysql-8.4.11`、`mysql-9.7.2` 的 wide-full、wide-minimal、ddl。FULL 镜像加 `--schema-file` 生成脚本：前镜像（无符号、DECIMAL、DATETIME(6)、TIMESTAMP(6)、TEXT、BLOB、JSON、ENUM、SET）在 SQL 里，后镜像不在，生成列不写入。MINIMAL 镜像和范围内的 DDL 以退出码 6 拒绝，不产出 SQL。在 8.4 / 9.x 上执行脚本的往返不在本项，和 C1 的 8.0 e2e 分开 | MET | 要在 8.4 / 9.x 上做 apply 往返，需要改 workflow |
+| C4 | MariaDB：analyze 正确；flashback 的支持边界写清楚并且有测试 | 同上，夹具 `mariadb-10.11.19`、`mariadb-11.8.9`，对照提交的 `mariadb-binlog -vv` 解码。analyze 一致，文本报告写提交时间戳不可用。10.11 的 FULL 镜像加 schema 文件（JSON 列在 binlog 里是 longtext）生成脚本。MINIMAL 和 DDL 拒绝。11.8 即使 `binlog_row_image=FULL` 也不把生成列写入行镜像，整文件以退出码 6 拒绝；`--include-table shop.heap` 只撤销没有生成列的表。apply 不在本项 | MET | 要在 MariaDB 上做 apply 往返，需要改 workflow |
 
 ## D. Agent 使用契约
 
@@ -54,7 +54,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
-| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | `TestFlashbackSpillLimitOnFixture`、`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`、`TestGeneratedReviewRSS`。后两个原来按固定 RSS 上限判、会偶发失败（#351）；#358、#361 改为在固定点测 live heap，`GOMAXPROCS=1` 下也稳定 | MET | — |
+| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | `TestFlashbackSpillLimitOnFixture`、`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`、`TestGeneratedReviewRSS`。后两个原来按固定 RSS 上限判、会偶发失败（#351）；#358、#361 改为在固定点测 live heap，`GOMAXPROCS=1` 下也稳定。这些只覆盖 flashback 生成和 verify；analyze 的内存上界还没有测试 | PARTIAL | #364（analyze 内存上界，#367） |
 | E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `benchmark_test.go` 要 `BINLOGVIZ_REAL_BINLOG` 才跑，CI 不设；大语料只在 QA 机器上 | NOT MET | — |
 
 ## F. 安装与发布完整性
@@ -74,12 +74,12 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 14 / PARTIAL 3 / NOT MET 7**。
+共 24 项：**MET 16 / PARTIAL 2 / NOT MET 6**。
 
 ## 最卡生产级的 5 项
 
-1. **C2–C4，版本矩阵**：「flashback 绝不写错数据」只在 MySQL 8.0 上有 CI 证据。5.7 的拒绝路径、8.4 LTS、MariaDB 都没有自动检查。
-2. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
-3. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
-4. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
-5. **E2，大文件基准不在 CI**：≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复。）
+1. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
+2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
+3. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
+4. **E1、E2，内存与大文件**：analyze 的内存上界还没有测试（#364）；≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复。）
+5. **A3，四种格式的重点事务**：text、Markdown、JSON、HTML 没有断言选出的是同一批事务（#352）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x / MariaDB 上执行脚本的往返仍要改 workflow，不在这三项里。

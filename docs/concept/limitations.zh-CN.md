@@ -78,7 +78,7 @@ SQL 上下文是有界的，而且面向展示。
 
 DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，`WHERE` 用后镜像的主键。语句按 binlog 逆序。整个撤销是一个 XA 事务，文件本身不会提交。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`（文件名和该事务起点字节）。
 
-表、schema、`--dml`、时间、位点、GTID 与 `analyze` 是同一套选择条件。binlog 必须带列名（`binlog_row_metadata=FULL`）和完整行镜像（`binlog_row_image=FULL`）。脚本会设置 `utf8mb4`、`time_zone='+00:00'`，并在创建收尾过程之前去掉 `PAD_CHAR_TO_FULL_LENGTH` 和 `NO_BACKSLASH_ESCAPES`，成功执行后再把保存的模式设回去。`TIMESTAMP` 字面量是存储时刻的 UTC 墙钟。
+表、schema、`--dml`、时间、位点、GTID 与 `analyze` 是同一套选择条件。binlog 必须带列名（`binlog_row_metadata=FULL`）和完整行镜像（`binlog_row_image=FULL`）。MySQL 5.7 没有行元数据，flashback 以退出码 6 拒绝，不打印 SQL。MySQL 8.4 LTS 和 9.x 与 8.0 相同。MariaDB 10.11 在两项都是 FULL 时同样可以撤销；JSON 列在 binlog 里记成 `LONGTEXT`。MariaDB 11.8 即使 `binlog_row_image=FULL` 也不把生成列写入行镜像，有生成列的表按镜像不全拒绝，除非 `--include-table` 把这张表排除。脚本会设置 `utf8mb4`、`time_zone='+00:00'`，并在创建收尾过程之前去掉 `PAD_CHAR_TO_FULL_LENGTH` 和 `NO_BACKSLASH_ESCAPES`，成功执行后再把保存的模式设回去。`TIMESTAMP` 字面量是存储时刻的 UTC 墙钟。
 
 没有主键的表仍然可以撤销：`DELETE` 或 `UPDATE` 匹配每一列并加 `LIMIT 1`，注释会说明。把被删行插回去的 `INSERT` 不用 `LIMIT 1`。
 
