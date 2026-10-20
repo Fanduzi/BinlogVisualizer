@@ -1118,7 +1118,7 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.32.0 — a failed flashback apply never commits a prefix, one XA transaction, documented apply grants</span>
+              <span class="eyebrow" data-i18n="hero.badge">v0.33.0 — flashback apply fixes: SELECT grant, CHAR/BINARY keys, an anchored commit line</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
@@ -1383,15 +1383,23 @@ It has published docs, explicit output contracts, release notes around HTML and 
               <article class="release-spotlight">
                 <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
                 <div class="release-version-row">
-                  <div class="release-version">v0.32.0</div>
+                  <div class="release-version">v0.33.0</div>
                   <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">minor release</span>
                 </div>
-                <div class="release-title" data-i18n="releases.currentTitle">a failed flashback apply never commits a prefix, one XA transaction, documented apply grants</div>
-                <div class="release-copy" data-i18n="releases.items.v0320">Breaking for flashback apply: ADR 0014 runs the undo in one XA transaction, so a failed apply never commits a prefix and script BEGIN, START TRANSACTION, or DDL cannot commit it; the finish commits only when every statement succeeded (#328, #329, #332). Apply needs CREATE, CREATE ROUTINE, ALTER ROUTINE on binlogviz.*, plus EXECUTE when automatic_sp_privileges=0; XA_RECOVER_ADMIN is not needed (#333). A pre-XA failure stays poisoned under mysql --force. Each run gets its own SQL SECURITY INVOKER finish procedure, so leftovers do not block; clean them with DROP DATABASE IF EXISTS binlogviz (#334). flashback verify --help usage is fixed (#335). v0.31.0 scripts do not verify; regenerate them. schema_version 1, plan_version 2 and analyze output are unchanged. Known issues: #338 (some missing-grant paths leave the per-run procedure behind), #303 (Linux empty commit).</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.32.0/docs/releases/release-notes-v0.32.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
+                <div class="release-title" data-i18n="releases.currentTitle">flashback apply fixes: SELECT grant, CHAR/BINARY keys, an anchored commit line</div>
+                <div class="release-copy" data-i18n="releases.items.v0330">Breaking for flashback apply: v0.32.0 scripts must be regenerated; verify exits 6 with details.reason old_format (#342). Apply grants on the undo tables are SELECT, INSERT, UPDATE, DELETE (#341). PAD_CHAR_TO_FULL_LENGTH is removed before the undo and BINARY(n) keys are 0x00-padded, and a keyed undo that does not change exactly one row rolls the apply back (#347, #348). A failed apply drops its procedure and prints the real error (#338, #343). Success is the anchored line binlogviz: undo committed, N statements (or ... with skips), not the mysql exit code. Refusals carry details.reason and details.table (#344). schema_version 1, plan_version 2 and analyze output are unchanged. Known issue: #303 (Linux empty commit).</div>
+                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.33.0/docs/releases/release-notes-v0.33.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
               </article>
 
               <div class="release-grid">
+                <article class="release-card">
+                  <div class="release-card-head">
+                    <div class="release-card-version">v0.32.0</div>
+                    <div class="release-card-label" data-i18n="releases.labels.v0320">a failed flashback apply never commits a prefix, one XA transaction, documented apply grants</div>
+                  </div>
+                  <div class="release-card-copy" data-i18n="releases.items.v0320">Breaking for flashback apply: ADR 0014 runs the undo in one XA transaction, so a failed apply never commits a prefix and script BEGIN, START TRANSACTION, or DDL cannot commit it; the finish commits only when every statement succeeded (#328, #329, #332). Apply needs CREATE, CREATE ROUTINE, ALTER ROUTINE on binlogviz.*, plus EXECUTE when automatic_sp_privileges=0; XA_RECOVER_ADMIN is not needed (#333). A pre-XA failure stays poisoned under mysql --force. Each run gets its own SQL SECURITY INVOKER finish procedure, so leftovers do not block; clean them with DROP DATABASE IF EXISTS binlogviz (#334). flashback verify --help usage is fixed (#335). v0.31.0 scripts do not verify; regenerate them. schema_version 1, plan_version 2 and analyze output are unchanged. Known issues: #338 (some missing-grant paths leave the per-run procedure behind), #303 (Linux empty commit).</div>
+                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.32.0/docs/releases/release-notes-v0.32.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0320">Open v0.32.0 notes →</a>
+                </article>
                 <article class="release-card">
                   <div class="release-card-head">
                     <div class="release-card-version">v0.31.0</div>
@@ -1949,7 +1957,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.32.0 — a failed flashback apply never commits a prefix, one XA transaction, documented apply grants',
+            badge: 'v0.33.0 — flashback apply fixes: SELECT grant, CHAR/BINARY keys, an anchored commit line',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
             sub: 'Fast ROW-binlog summary: hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.\nSTATEMENT or MIXED files come back empty or undercounted. Printed positions are file evidence — use them as mysqlbinlog --start-position only when the span covers the transaction events, not an XID-only interval.',
             primary: 'Install BinlogViz',
@@ -2053,9 +2061,10 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
             currentLabel: 'Current release',
             currentFocus: 'minor release',
-            currentTitle: 'a failed flashback apply never commits a prefix, one XA transaction, documented apply grants',
+            currentTitle: 'flashback apply fixes: SELECT grant, CHAR/BINARY keys, an anchored commit line',
             currentLink: 'Read release notes →',
             labels: {
+              v0320: 'a failed flashback apply never commits a prefix, one XA transaction, documented apply grants',
               v0310: 'flashback scripts commit only through binlogviz flashback verify, streaming verify',
               v0300: 'streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split',
               v0290: 'summary DDL cap, snapshot list flags trimmed files, --help examples and an agent guide in the archive',
@@ -2112,6 +2121,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: 'Trust boundary'
             },
             links: {
+              v0320: 'Open v0.32.0 notes →',
               v0310: 'Open v0.31.0 notes →',
               v0300: 'Open v0.30.0 notes →',
               v0290: 'Open v0.29.0 notes →',
@@ -2172,6 +2182,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
             archiveLink: 'View all release notes →',
             items: {
+              v0330: 'Breaking for flashback apply: v0.32.0 scripts must be regenerated; verify exits 6 with details.reason old_format (#342). Apply grants on the undo tables are SELECT, INSERT, UPDATE, DELETE (#341). PAD_CHAR_TO_FULL_LENGTH is removed before the undo and BINARY(n) keys are 0x00-padded, and a keyed undo that does not change exactly one row rolls the apply back (#347, #348). A failed apply drops its procedure and prints the real error (#338, #343). Success is the anchored line binlogviz: undo committed, N statements (or ... with skips), not the mysql exit code. Refusals carry details.reason and details.table (#344). schema_version 1, plan_version 2 and analyze output are unchanged. Known issue: #303 (Linux empty commit).',
               v0320: 'Breaking for flashback apply: ADR 0014 runs the undo in one XA transaction, so a failed apply never commits a prefix and script BEGIN, START TRANSACTION, or DDL cannot commit it; the finish commits only when every statement succeeded (#328, #329, #332). Apply needs CREATE, CREATE ROUTINE, ALTER ROUTINE on binlogviz.*, plus EXECUTE when automatic_sp_privileges=0; XA_RECOVER_ADMIN is not needed (#333). A pre-XA failure stays poisoned under mysql --force. Each run gets its own SQL SECURITY INVOKER finish procedure, so leftovers do not block; clean them with DROP DATABASE IF EXISTS binlogviz (#334). flashback verify --help usage is fixed (#335). v0.31.0 scripts do not verify; regenerate them. schema_version 1, plan_version 2 and analyze output are unchanged. Known issues: #338 (some missing-grant paths leave the per-run procedure behind), #303 (Linux empty commit).',
               v0310: 'Breaking for flashback apply: ADR 0013 makes the published undo one transaction that never commits by itself; apply with binlogviz flashback verify file.sql | mysql, not mysql < file (#318, #321). verify checks the digest and emits the conditional COMMIT; partial, edited, appended, or truncated scripts exit 6 and commit nothing, and generation exit 8 leaves no applyable prefix. Invalid BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES exit 3. verify streams: RSS about 34-41 MB on 400 MB+ scripts, heap ceiling exit 10 (#327). The SQL is the new sealed format; plan_version 2 and analyze output are unchanged. Known issues: #328 (verify | mysql --force can commit partial undo on a missing table or column), #329 (implicit commit after the script), #303 (Linux empty commit).',
               v0300: 'ADR 0012 steps 1-4 move mysqlexpr, schemacatalog, guard, and the flashback planner into their own packages (#315, #316, #320); analyze and flashback output stay byte-identical to v0.29.0 on the tip-QA corpora. Generated-column review with --schema-file streams: on a 1.07 GB binlog that produced a 1.13 GB script, tip RSS is about 128 MB where v0.29.0 OOMed with exit 2 (#317). Exit 10 resource (details.reason spill_limit / memory_limit) and BINLOGVIZ_SPILL_BYTES never report a ceiling as exit 2. guard.Seal refuses a digest under 8 bytes (#319). Known issues: #303 (Linux empty commit), #321 (truncated exit-8 script can partially apply), #318 (guard token does not detect content edits).',
@@ -2292,7 +2303,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.32.0 —— flashback 执行失败绝不提交前缀、单个 XA 事务、执行权限写进文档',
+            badge: 'v0.33.0 —— flashback 执行修复：补上 SELECT 权限、CHAR/BINARY 键、带锚点的提交行',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
             sub: 'ROW binlog 的快速摘要：热表、写入形态、上线前后 compare。510 MB 级大约数秒。\nSTATEMENT / MIXED 会空或少计。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 mysqlbinlog --start-position。',
             primary: '安装 BinlogViz',
@@ -2396,9 +2407,10 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
             currentLabel: '当前版本',
             currentFocus: '次版本',
-            currentTitle: 'flashback 执行失败绝不提交前缀、单个 XA 事务、执行权限写进文档',
+            currentTitle: 'flashback 执行修复：补上 SELECT 权限、CHAR/BINARY 键、带锚点的提交行',
             currentLink: '查看发布说明 →',
             labels: {
+              v0320: 'flashback 执行失败绝不提交前缀、单个 XA 事务、执行权限写进文档',
               v0310: 'flashback 脚本只能经 binlogviz flashback verify 提交、流式 verify',
               v0300: '流式生成列 flashback、退出码 10 资源上限、ADR 0012 包拆分',
               v0290: 'summary 的 DDL 上限、snapshot list 标出裁剪过的文件、--help 示例和归档内的 agent 指南',
@@ -2455,6 +2467,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               v0150: '信任边界'
             },
             links: {
+              v0320: '打开 v0.32.0 说明 →',
               v0310: '打开 v0.31.0 说明 →',
               v0300: '打开 v0.30.0 说明 →',
               v0290: '打开 v0.29.0 说明 →',
@@ -2515,6 +2528,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
             archiveLink: '查看全部发布说明 →',
             items: {
+              v0330: 'flashback 执行方式不兼容：v0.32.0 的脚本必须重新生成，verify 以退出码 6、details.reason old_format 拒绝（#342）。撤销改动的表需要 SELECT, INSERT, UPDATE, DELETE 权限（#341）。撤销前去掉 PAD_CHAR_TO_FULL_LENGTH，BINARY(n) 键用 0x00 补齐，按键撤销没有恰好改动一行时整次执行回滚（#347、#348）。执行失败会删除存储过程并给出真实错误（#338、#343）。成功以带锚点的 binlogviz: undo committed, N statements（或 with skips）行为准，而不是 mysql 的退出码。拒绝会带上 details.reason 和 details.table（#344）。schema_version 1、plan_version 2 与 analyze 输出不变。已知问题：#303（Linux 版 commit 为空）。',
               v0320: 'flashback 执行方式不兼容：ADR 0014 把撤销放进一个 XA 事务，执行失败绝不提交前缀，脚本里的 BEGIN、START TRANSACTION 或 DDL 也无法提交；只有每条语句都成功，收尾才提交（#328、#329、#332）。执行需要 binlogviz.* 上的 CREATE、CREATE ROUTINE、ALTER ROUTINE，automatic_sp_privileges=0 时还需要 EXECUTE；不需要 XA_RECOVER_ADMIN（#333）。XA START 之前的失败在 mysql --force 下也会一直记着。每次执行使用独立的 SQL SECURITY INVOKER 收尾过程，遗留过程不会挡住执行；用 DROP DATABASE IF EXISTS binlogviz 清理（#334）。flashback verify --help 用法已修复（#335）。v0.31.0 的脚本无法通过 verify，请重新生成。schema_version 1、plan_version 2 和 analyze 输出不变。已知问题：#338（部分缺权限路径会留下本次执行的过程）、#303（Linux commit 为空）。',
               v0310: 'flashback 执行方式不兼容：ADR 0013 让发布的撤销脚本成为一个永不自行提交的事务；请用 binlogviz flashback verify file.sql | mysql 执行，而不是 mysql < file（#318、#321）。verify 校验 digest 并输出条件 COMMIT；截断、篡改、追加的脚本以退出码 6 拒绝且什么也不提交，生成时退出码 8 不留可执行前缀。无效的 BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES 退出码 3。verify 改为流式：400 MB 以上脚本 RSS 约 34–41 MB，堆上限退出码 10（#327）。SQL 是新的封印格式；plan_version 2 和 analyze 输出不变。已知问题：#328（目标缺表或缺列时 verify | mysql --force 可能提交部分撤销）、#329（脚本后的隐式提交）、#303（Linux commit 为空）。',
               v0300: 'ADR 0012 第 1–4 步把 mysqlexpr、schemacatalog、guard 和 flashback 规划器拆到独立包（#315、#316、#320）；在 tip QA 语料上 analyze 和 flashback 输出与 v0.29.0 逐字节一致。带 --schema-file 的生成列审阅改为流式：在会生成 1.13 GB 脚本的 1.07 GB binlog 上，tip RSS 约 128 MB，而 v0.29.0 以退出码 2 OOM（#317）。退出码 10 resource（details.reason 为 spill_limit / memory_limit）和 BINLOGVIZ_SPILL_BYTES，不会再把上限报成退出码 2。guard.Seal 拒绝短于 8 字节的 digest（#319）。已知问题：#303（Linux commit 为空）、#321（退出码 8 截断的脚本仍可能部分执行）、#318（守卫 token 不检测内容篡改）。',
