@@ -9,6 +9,9 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
+
+	"binlogviz/internal/displaytz"
 )
 
 func RenderText(result CompareResult) (string, error) {
@@ -198,12 +201,16 @@ func formatTxnSide(table, op string, rows int) string {
 }
 
 func formatSnapshotWindow(snapshot *InputSnapshot) string {
+	return formatSnapshotWindowIn(snapshot, nil)
+}
+
+func formatSnapshotWindowIn(snapshot *InputSnapshot, loc *time.Location) string {
 	if snapshot == nil {
 		return ""
 	}
 
-	start := strings.TrimSpace(snapshot.Window.StartTime)
-	end := strings.TrimSpace(snapshot.Window.EndTime)
+	start := displaytz.Stored(strings.TrimSpace(snapshot.Window.StartTime), loc)
+	end := displaytz.Stored(strings.TrimSpace(snapshot.Window.EndTime), loc)
 
 	switch {
 	case start != "" && end != "":

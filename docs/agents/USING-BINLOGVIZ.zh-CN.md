@@ -2,9 +2,9 @@
 
 这是给操作者和驱动 `binlogviz` 的代理看的用法说明。`docs/agents/` 里的其他文件是过去交付的内部笔记，不是运行这个工具的说明。
 
-发布归档里有本文件、`docs/agents/USING-BINLOGVIZ.md`、`README.md`、`README_ZH.md`、`binlogviz`、`incident.yaml` 和 `testdata/`。下面的命令用的是归档里的路径。在 git 检出里，`testdata/minimal.binlog` 对应 `cmd/binlogviz/testdata/minimal.binlog`。
+发布归档里有本文件、`docs/agents/USING-BINLOGVIZ.md`、`README.md`、`README_ZH.md`、`binlogviz`、`incident.yaml`、`testdata/` 和 `docs/schema/`。下面的命令用的是归档里的路径。在 git 检出里，`testdata/minimal.binlog` 对应 `cmd/binlogviz/testdata/minimal.binlog`。
 
-报告里的时间默认是 UTC。`--tz Asia/Shanghai` 把同一时刻印成数字偏移（`+08:00`），文本、Markdown、HTML 和 JSON 都一样。不传 `--tz`，或 `--tz UTC`，仍是 ` UTC` / `Z`。`--start` 和 `--end` 不跟着 `--tz` 走。带偏移量的值就是那个时刻：`2026-10-19T14:05:00+08:00` 等于 `2026-10-19T06:05:00Z`。`YYYY-MM-DD HH:MM:SS` 按运行 `binlogviz` 的机器的本地时区解释。跨机器时请带偏移量。不认识的 `--tz` 退出码是 3。
+报告里的时间默认是 UTC。`--tz Asia/Shanghai` 把同一时刻印成数字偏移（`+08:00`），文本、Markdown、HTML 和 JSON 都一样。不传 `--tz`，或 `--tz UTC`，仍是 ` UTC` / `Z`。快照文件始终是 UTC。`--start` 和 `--end` 接受 RFC3339、`YYYY-MM-DD HH:MM:SS`、带 `±HH:MM` 的空格形式，以及结尾的 ` UTC`。带偏移量或结尾 ` UTC` 的值就是那个时刻：`2026-10-19T14:05:00+08:00` 等于 `2026-10-19T06:05:00Z`。没有时区的值，在设置了 `--tz` 时按 `--tz` 解释，否则按运行 `binlogviz` 的机器的本地时区解释。不认识的 `--tz` 或 `Local` 退出码是 3。
 
 `flashback` 不连接 MySQL。先审阅脚本，再测试，然后由你自己用 `binlogviz flashback verify <file> | mysql` 执行。`mysql < file` 不会提交。某条语句失败时不会提交前缀，`mysql --force` 也一样。撤销是一个 XA 事务（ADR 0014）。
 

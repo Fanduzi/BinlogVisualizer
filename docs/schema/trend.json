@@ -258,7 +258,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "server_flavors": {
@@ -362,7 +361,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "snapshot_name": {
@@ -467,7 +465,6 @@
                         "type": "string"
                       }
                     },
-                    "required": null,
                     "type": "object"
                   },
                   "snapshot_name": {
@@ -526,7 +523,6 @@
                         "type": "string"
                       }
                     },
-                    "required": null,
                     "type": "object"
                   },
                   "snapshot_name": {
@@ -592,7 +588,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "snapshot_name": {
@@ -651,7 +646,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "snapshot_name": {
@@ -710,7 +704,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "snapshot_name": {

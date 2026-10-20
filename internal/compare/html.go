@@ -66,11 +66,13 @@ func RenderHTMLIn(result CompareResult, loc *time.Location) (string, error) {
 	}
 
 	tmpl, err := report.NewHTMLTemplate("compare", compareHTMLTemplate, template.FuncMap{
-		"formatDelta":           formatHTMLDelta,
-		"formatPercent":         formatHTMLPercent,
-		"formatBytes":           formatCompareFileSize,
-		"formatOptionalBytes":   formatOptionalCompareFileSize,
-		"snapshotWindow":        formatSnapshotWindow,
+		"formatDelta":         formatHTMLDelta,
+		"formatPercent":       formatHTMLPercent,
+		"formatBytes":         formatCompareFileSize,
+		"formatOptionalBytes": formatOptionalCompareFileSize,
+		"snapshotWindow": func(snapshot *InputSnapshot) string {
+			return formatSnapshotWindowIn(snapshot, loc)
+		},
 		"snapshotInputMode":     formatSnapshotInputMode,
 		"snapshotSource":        formatSnapshotSource,
 		"snapshotFilters":       formatSnapshotFilters,

@@ -397,7 +397,7 @@ func execByteChild(t *testing.T, tz, format, binlog string) string {
 	return string(out)
 }
 
-func TestTimeFilterIgnoresDisplayTimezone(t *testing.T) {
+func TestStartEndTimezone(t *testing.T) {
 	if os.Getenv("BINLOGVIZ_FILTER_CHILD") == "1" {
 		var args []string
 		if err := json.Unmarshal([]byte(os.Getenv("BINLOGVIZ_FILTER_ARGS")), &args); err != nil {
@@ -432,20 +432,40 @@ func TestTimeFilterIgnoresDisplayTimezone(t *testing.T) {
 	spaceEnd := windowStart.Add(time.Second).Format("2006-01-02 15:04:05")
 	baseArgs := []string{"analyze", binlog, "--format", "json", "-q", "--start", spaceStart, "--end", spaceEnd}
 
+	sh, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	shStart := windowStart.In(sh).Format("2006-01-02 15:04:05")
+	shEnd := windowStart.Add(time.Second).In(sh).Format("2006-01-02 15:04:05")
+	utcSuffixStart := windowStart.Format("2006-01-02 15:04:05") + " UTC"
+	utcSuffixEnd := windowStart.Add(time.Second).Format("2006-01-02 15:04:05") + " UTC"
+	offStart := windowStart.In(sh).Format("2006-01-02 15:04:05 -07:00")
+	offEnd := windowStart.Add(time.Second).In(sh).Format("2006-01-02 15:04:05 -07:00")
+
 	utc := filterChild(t, "UTC", baseArgs)
-	withTZ := filterChild(t, "UTC", append([]string{"--tz", "Asia/Shanghai"}, baseArgs...))
-	shanghai := filterChild(t, "Asia/Shanghai", baseArgs)
+	machineShanghai := filterChild(t, "Asia/Shanghai", baseArgs)
+	displayReadsUTCWall := filterChild(t, "UTC", append([]string{"--tz", "Asia/Shanghai"}, baseArgs...))
+	displayReadsShanghaiWall := filterChild(t, "America/New_York", []string{"analyze", binlog, "--format", "json", "-q", "--tz", "Asia/Shanghai", "--start", shStart, "--end", shEnd})
+	pastedUTC := filterChild(t, "America/New_York", []string{"analyze", binlog, "--format", "json", "-q", "--tz", "Asia/Shanghai", "--start", utcSuffixStart, "--end", utcSuffixEnd})
+	pastedOffset := filterChild(t, "America/New_York", []string{"analyze", binlog, "--format", "json", "-q", "--start", offStart, "--end", offEnd})
 	if utc.Code != 0 {
 		t.Fatalf("TZ=UTC window %s..%s exit %d\n%s", spaceStart, spaceEnd, utc.Code, utc.Stdout)
 	}
-	if withTZ.Code != 0 || txnCount(t, withTZ.Stdout) != txnCount(t, utc.Stdout) {
-		t.Fatalf("--tz changed the time filter: utc exit %d txns %d, --tz exit %d txns %d", utc.Code, txnCount(t, utc.Stdout), withTZ.Code, txnCount(t, withTZ.Stdout))
+	if machineShanghai.Code != 2 {
+		t.Fatalf("without --tz, TZ=Asia/Shanghai should treat %q as local, exit %d\n%s", spaceStart, machineShanghai.Code, machineShanghai.Stdout)
 	}
-	if !strings.Contains(withTZ.Stdout, "+08:00") {
-		t.Fatal("--tz Asia/Shanghai did not render +08:00; the flag was ignored")
+	if displayReadsUTCWall.Code != 2 {
+		t.Fatalf("--tz Asia/Shanghai should read %q in Shanghai, not as the UTC machine zone, exit %d\n%s", spaceStart, displayReadsUTCWall.Code, displayReadsUTCWall.Stdout)
 	}
-	if shanghai.Code != 2 {
-		t.Fatalf("TZ=Asia/Shanghai should treat %q as local and exclude the UTC instant, exit %d\n%s", spaceStart, shanghai.Code, shanghai.Stdout)
+	if displayReadsShanghaiWall.Code != 0 || !strings.Contains(displayReadsShanghaiWall.Stdout, "+08:00") {
+		t.Fatalf("zoneless Shanghai wall with --tz on a New York machine: exit %d\n%s", displayReadsShanghaiWall.Code, displayReadsShanghaiWall.Stdout)
+	}
+	if pastedUTC.Code != 0 || txnCount(t, pastedUTC.Stdout) != txnCount(t, utc.Stdout) {
+		t.Fatalf("trailing UTC was not that instant: exit %d\n%s", pastedUTC.Code, pastedUTC.Stdout)
+	}
+	if pastedOffset.Code != 0 || txnCount(t, pastedOffset.Stdout) != txnCount(t, utc.Stdout) {
+		t.Fatalf("space offset was not that instant: exit %d\n%s", pastedOffset.Code, pastedOffset.Stdout)
 	}
 }
 
@@ -460,7 +480,7 @@ func filterChild(t *testing.T, tz string, args []string) filterResult {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^TestTimeFilterIgnoresDisplayTimezone$")
+	cmd := exec.Command(os.Args[0], "-test.run=^TestStartEndTimezone$")
 	cmd.Env = append(os.Environ(), "BINLOGVIZ_FILTER_CHILD=1", "TZ="+tz, "BINLOGVIZ_FILTER_ARGS="+string(raw))
 	out, err := cmd.Output()
 	if err != nil {

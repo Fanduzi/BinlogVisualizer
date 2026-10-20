@@ -7,6 +7,7 @@ require (
 	github.com/klauspost/compress v1.18.4
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.8.1

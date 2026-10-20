@@ -5,6 +5,7 @@
 package jsonschema
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 )
@@ -50,6 +51,31 @@ func TestSchemaMatchesEncodingAndRejectsDrift(t *testing.T) {
 	inst["other"] = true
 	if err := Validate(doc, inst); err == nil {
 		t.Fatal("a field the schema does not name must fail")
+	}
+}
+
+func TestOmitsEmptyRequired(t *testing.T) {
+	type actor struct {
+		User string `json:"user,omitempty"`
+		Host string `json:"host,omitempty"`
+	}
+	doc, err := Of(struct {
+		Actor actor `json:"actor"`
+	}{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	props := doc["properties"].(map[string]any)
+	actorSchema := props["actor"].(map[string]any)
+	if _, ok := actorSchema["required"]; ok {
+		t.Fatalf("all-omitempty struct emitted required: %#v", actorSchema["required"])
+	}
+	raw, err := json.Marshal(actorSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(`"required"`)) {
+		t.Fatalf("marshaled schema still has required: %s", raw)
 	}
 }
 

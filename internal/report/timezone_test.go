@@ -71,6 +71,67 @@ func timezoneReportFixture() model.AnalysisResult {
 	}
 }
 
+func TestDisplayZoneRendersBothSidesOfDST(t *testing.T) {
+	forceEnglishReportLocale(t)
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := time.Date(2026, 3, 8, 6, 30, 0, 0, time.UTC) // 01:30 EST
+	after := time.Date(2026, 3, 8, 7, 30, 0, 0, time.UTC)  // 03:30 EDT
+	result := timezoneReportFixture()
+	result.Summary.StartTime = before
+	result.Summary.EndTime = after
+	result.Minutes = []model.MinuteBucket{
+		{Minute: before, TotalRows: 1, TxnCount: 1},
+		{Minute: after, TotalRows: 2, TxnCount: 1},
+	}
+	result.Diagnostics.HotIntervals = result.Minutes
+	result.Diagnostics.ApplyDelay = &model.ApplyDelay{
+		Origin:     model.ApplyDelayReplica,
+		Max:        time.Second,
+		P95:        time.Second,
+		PeakMinute: after,
+		Transactions: []model.ApplyDelayTxn{{
+			GTID:            "dst:1",
+			OriginalCommit:  before.Add(123 * time.Microsecond),
+			ImmediateCommit: after.Add(456 * time.Microsecond),
+			Delay:           time.Second,
+		}},
+	}
+	opts := Options{Display: ny, TopN: 10}
+	text, err := RenderTextWithOptions(result, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	md, err := RenderMarkdownWithOptions(result, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	html, err := RenderHTMLWithOptions(result, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	js, err := RenderJSONWithOptions(result, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{text, md, html, js} {
+		if !strings.Contains(body, "-05:00") || !strings.Contains(body, "-04:00") {
+			t.Fatalf("a DST-spanning report must show both offsets:\n%s", body)
+		}
+	}
+	if !strings.Contains(text, "2026-03-08 01:30:00 -05:00") || !strings.Contains(text, "2026-03-08 03:30:00 -04:00") {
+		t.Fatalf("text time range missed a DST side:\n%s", text)
+	}
+	if !strings.Contains(text, "2026-03-08 01:30:00.000123 -05:00") || !strings.Contains(text, "2026-03-08 03:30:00.000456 -04:00") {
+		t.Fatalf("apply-delay micros missed a DST side:\n%s", text)
+	}
+	if !strings.Contains(html, "01:30 -05:00") || !strings.Contains(html, "03:30 -04:00") {
+		t.Fatalf("html chart labels missed a DST side:\n%s", html)
+	}
+}
+
 func TestHumanAnalyzeReportsLabelBinlogTimestampsUTC(t *testing.T) {
 	forceEnglishReportLocale(t)
 	result := timezoneReportFixture()

@@ -145,8 +145,9 @@ func newAnalyzeCommand() *cobra.Command {
 			if _, ferr := report.ParseFormat(opts.format); ferr != nil {
 				return ferr
 			}
-			// Parse time range
-			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
+			// A zoneless --start/--end uses the display zone when --tz set one.
+			opts.display = displaytz.From(cmd.Context())
+			startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime, opts.display)
 			if err != nil {
 				return err
 			}
@@ -166,7 +167,6 @@ func newAnalyzeCommand() *cobra.Command {
 			if cmd.Flags().Changed("diagnostics") && opts.diagnostics == "" {
 				return clierr.Errorf(clierr.KindUsage, "invalid --diagnostics %q (allowed: full, summary, off)", opts.diagnostics)
 			}
-			opts.display = displaytz.From(cmd.Context())
 			reportOpts, err := buildReportOptions(opts)
 			if err != nil {
 				return err
@@ -312,7 +312,7 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 		return args, false, fileCoverageForPaths(args), nil
 	}
 	if hasFromDir {
-		startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime)
+		startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime, opts.display)
 		if err != nil {
 			return nil, false, model.FileCoverage{}, err
 		}
@@ -919,12 +919,16 @@ func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Optio
 
 	// The snapshot is an archive and always keeps full diagnostics; only the
 	// stdout document takes the --diagnostics budget (ADR 0011 §3).
-	archive, err := report.RenderJSONWithOptions(result, report.ArchiveOptions(reportOpts))
+	// The file is an archive other commands read later. It stays UTC.
+	// --tz changes only the stdout copy (ADR 0017).
+	archiveOpts := report.ArchiveOptions(reportOpts)
+	archiveOpts.Display = nil
+	archive, err := report.RenderJSONWithOptions(result, archiveOpts)
 	if err != nil {
 		return err
 	}
 	payload := archive
-	if reportOpts.DiagnosticsMode != report.DiagnosticsFull && reportOpts.DiagnosticsMode != "" {
+	if reportOpts.Display != nil || (reportOpts.DiagnosticsMode != report.DiagnosticsFull && reportOpts.DiagnosticsMode != "") {
 		payload, err = report.RenderJSONWithOptions(result, reportOpts)
 		if err != nil {
 			return err
@@ -979,15 +983,20 @@ func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, st
 	return store, cleanup, path, nil
 }
 
-const analyzeLocalTimeLayout = "2006-01-02 15:04:05"
+const (
+	analyzeLocalTimeLayout = "2006-01-02 15:04:05"
+	analyzeLocalFracLayout = "2006-01-02 15:04:05.000000"
+)
 
-// parseTimeRange parses start and end time strings into time.Time values.
-func parseTimeRange(startStr, endStr string) (time.Time, time.Time, error) {
-	startTime, err := parseAnalyzeTime(startStr)
+// parseTimeRange parses start and end. loc is the --tz zone. Nil means a
+// zoneless value uses the machine zone. An explicit offset or a trailing
+// " UTC" is that instant either way.
+func parseTimeRange(startStr, endStr string, loc *time.Location) (time.Time, time.Time, error) {
+	startTime, err := parseAnalyzeTimeInLocation(startStr, filterLocation(loc))
 	if err != nil {
 		return time.Time{}, time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.invalidStartTime", map[string]any{"Error": err.Error()}))
 	}
-	endTime, err := parseAnalyzeTime(endStr)
+	endTime, err := parseAnalyzeTimeInLocation(endStr, filterLocation(loc))
 	if err != nil {
 		return time.Time{}, time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.invalidEndTime", map[string]any{"Error": err.Error()}))
 	}
@@ -997,8 +1006,13 @@ func parseTimeRange(startStr, endStr string) (time.Time, time.Time, error) {
 	return startTime, endTime, nil
 }
 
-func parseAnalyzeTime(value string) (time.Time, error) {
-	return parseAnalyzeTimeInLocation(value, time.Local)
+// filterLocation is the zone of a zoneless --start/--end. A nil location is
+// the historical machine zone, including absent --tz and --tz UTC.
+func filterLocation(loc *time.Location) *time.Location {
+	if loc == nil || loc == time.UTC {
+		return time.Local
+	}
+	return loc
 }
 
 func parseAnalyzeTimeInLocation(value string, loc *time.Location) (time.Time, error) {
@@ -1009,9 +1023,29 @@ func parseAnalyzeTimeInLocation(value string, loc *time.Location) (time.Time, er
 	if loc == nil {
 		loc = time.Local
 	}
+	if parsed, err := time.Parse(time.RFC3339Nano, value); err == nil {
+		return parsed, nil
+	}
 	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
 		return parsed, nil
 	}
+	if bare, ok := strings.CutSuffix(value, " UTC"); ok {
+		for _, layout := range []string{analyzeLocalFracLayout, analyzeLocalTimeLayout} {
+			if parsed, err := time.ParseInLocation(layout, bare, time.UTC); err == nil {
+				return parsed, nil
+			}
+		}
+	}
+	for _, layout := range []string{analyzeLocalFracLayout + " -07:00", analyzeLocalTimeLayout + " -07:00"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed, nil
+		}
+	}
+	if parsed, err := time.ParseInLocation(analyzeLocalFracLayout, value, loc); err == nil {
+		return parsed, nil
+	}
+	// The last attempt's *time.ParseError is the usage detail. It is not an
+	// untyped fmt.Errorf (ADR 0009).
 	return time.ParseInLocation(analyzeLocalTimeLayout, value, loc)
 }
 

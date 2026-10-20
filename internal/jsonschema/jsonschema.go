@@ -75,12 +75,7 @@ func Union(parts ...any) (map[string]any, error) {
 		required = keep
 	}
 	sort.Strings(required)
-	return map[string]any{
-		"type":                 "object",
-		"properties":           props,
-		"required":             required,
-		"additionalProperties": false,
-	}, nil
+	return objectSchema(props, required), nil
 }
 
 // AddVersion records key as a required integer const. The key is the
@@ -141,8 +136,10 @@ func Marshal(doc map[string]any, id string) ([]byte, error) {
 		"title":                id,
 		"type":                 doc["type"],
 		"properties":           doc["properties"],
-		"required":             doc["required"],
 		"additionalProperties": false,
+	}
+	if req := stringList(doc["required"]); len(req) > 0 {
+		out["required"] = req
 	}
 	raw, err := json.Marshal(out)
 	if err != nil {
@@ -200,12 +197,7 @@ func schemaOf(t reflect.Type, stack map[reflect.Type]bool) (map[string]any, erro
 			}
 		}
 		sort.Strings(required)
-		return map[string]any{
-			"type":                 "object",
-			"properties":           props,
-			"required":             required,
-			"additionalProperties": false,
-		}, nil
+		return objectSchema(props, required), nil
 	case reflect.Slice, reflect.Array:
 		if t.Elem().Kind() == reflect.Uint8 {
 			return map[string]any{"type": "string"}, nil
@@ -267,6 +259,21 @@ func fieldSchema(f fieldInfo, stack map[reflect.Type]bool) (map[string]any, erro
 		return inner, nil
 	}
 	return withNull(inner), nil
+}
+
+// objectSchema is one closed object. required is omitted when empty:
+// Draft 2020-12 says required is an array of at least one string, and a
+// nil slice would marshal as null.
+func objectSchema(props map[string]any, required []string) map[string]any {
+	doc := map[string]any{
+		"type":                 "object",
+		"properties":           props,
+		"additionalProperties": false,
+	}
+	if len(required) > 0 {
+		doc["required"] = required
+	}
+	return doc
 }
 
 func withNull(schema map[string]any) map[string]any {

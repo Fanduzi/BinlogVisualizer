@@ -2,9 +2,9 @@
 
 This is the usage guide for operators and for an agent driving the `binlogviz` CLI. The other files in `docs/agents/` are internal delivery notes from past work. They are not instructions for running the tool.
 
-A release archive contains this file, `docs/agents/USING-BINLOGVIZ.zh-CN.md`, `README.md`, `README_ZH.md`, `binlogviz`, `incident.yaml`, and `testdata/`. Commands below use those archive paths. In a git checkout, `testdata/minimal.binlog` is `cmd/binlogviz/testdata/minimal.binlog`.
+A release archive contains this file, `docs/agents/USING-BINLOGVIZ.zh-CN.md`, `README.md`, `README_ZH.md`, `binlogviz`, `incident.yaml`, `testdata/`, and `docs/schema/`. Commands below use those archive paths. In a git checkout, `testdata/minimal.binlog` is `cmd/binlogviz/testdata/minimal.binlog`.
 
-Report times are UTC unless you pass `--tz`. `--tz Asia/Shanghai` prints the same instants with a numeric offset (`+08:00`), in text, Markdown, HTML, and JSON. Absent or `--tz UTC` keeps the ` UTC` / `Z` spelling. `--start` and `--end` do not follow `--tz`. An offset is the instant: `2026-10-19T14:05:00+08:00` is `2026-10-19T06:05:00Z`. `YYYY-MM-DD HH:MM:SS` uses the machine's local timezone. Prefer an offset across machines. An unknown `--tz` exits 3.
+Report times are UTC unless you pass `--tz`. `--tz Asia/Shanghai` prints the same instants with a numeric offset (`+08:00`), in text, Markdown, HTML, and JSON. Absent or `--tz UTC` keeps the ` UTC` / `Z` spelling. Snapshot files stay UTC. `--start` and `--end` accept RFC3339, `YYYY-MM-DD HH:MM:SS`, that form plus `±HH:MM`, and a trailing ` UTC`. An offset or a trailing ` UTC` is the instant: `2026-10-19T14:05:00+08:00` is `2026-10-19T06:05:00Z`. A value with no zone uses the `--tz` zone when `--tz` is set, and otherwise the machine's local timezone. An unknown or `Local` `--tz` exits 3.
 
 `flashback` does not connect to MySQL. Review the script, test it, and apply it yourself with `binlogviz flashback verify <file> | mysql`. `mysql < file` commits nothing. A failed statement, including under `mysql --force`, does not commit a prefix. The undo is one XA transaction (ADR 0014).
 
