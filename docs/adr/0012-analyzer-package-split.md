@@ -163,4 +163,20 @@ The innermost kind wins, so a later wrap does not turn this into `refused` or `e
 - Steps 1 and 2 do not change analyze or flashback output. `report_version` and `plan_version` stay. Golden files stay.
 - ADR 0005 and ADR 0007 still describe the binding rules and the evaluator. The file paths in those ADRs are historical; the packages in this ADR are the location. Step 3 moved the guard to `internal/guard` and added `SealWriter` (see the guard interface). ADR 0006's behaviour is unchanged; its path now names `internal/guard`.
 - Step 4 moved the planner. `*Analyzer` keeps one `*flashback.Planner` and no `flash*` fields. The event loop calls the planner directly (`Observe`, `Note`, `NoteSkipped`); `cmd` uses `Planner()` (`Prepare`, `WriteTo`, `Plan` / `WritePlan`). There is no forwarding wrapper on `Analyzer`. `Prepare` returns the undo row count as `(int, error)` because exit 2 is "no undo rows". `WriteTo` returns that count widened to `int64`, not a byte count. Spill chunk size is `ChunkRows`. Generated-column review streams; see the section below.
+- Step 5 adds `internal/report/view`. `view.Build(result, Limits) View` is the only transaction selection. The renderers read that value. They do not slice the transaction lists themselves, and nothing in `analyzer` or `cmd` forwards the old helpers.
+
+  `Limits.TopN` is the normalized report top (`--top`, never left at 0 by `normalizeOptions`). `Limits.DiagnosticLists` is set only for full diagnostics. `Limits.HasQuery` is how text decides that a transaction has a query line; the view does not know SQL-context wording.
+
+  `View` holds:
+
+  - `Listed` and `Omitted`. `Listed` is `AnalysisResult.Transactions` in analyzer order. `Omitted` is `max(0, TotalTransactions-len(Listed))`. Markdown, JSON `transactions`, and the HTML lookup consume `Listed`. The analyzer already applied `--top-transactions`. The view does not cut this list again by `--top`.
+  - `Text.Largest`, `Text.Longest`, `Text.Widest`. The first `min(3, TopN)` of `Diagnostics.LargestTransactions`, the same cap of `LongestTransactions`, and the first `min(1, TopN)` of `WidestTransactions`. `Text.QueryFallback` is the first `Listed` transaction for which `HasQuery` is true, and only when none of those three slices has query text. Text prints that fallback as a query line and nothing else. `Text.ByteLeaders` is the byte ranking, stopped at `min(3, TopN)` or the first non-positive byte count.
+  - `Evidence`. The first transaction of each full diagnostic list (largest, then longest, then widest), merged when `TxnKey` is non-empty, with one reason code per win. HTML maps the codes onto the existing labels.
+  - `Largest`, `Longest`, `Widest`, `LargestBytes`. The full diagnostic lists when `DiagnosticLists` is set. Nil otherwise, so JSON summary still emits `[]` for the three row/duration/width lists and still omits an empty byte list, and JSON off still omits `diagnostics`.
+
+  The view does not sort. Those lists are already ranked. Table, thread, hot-row, minute, DDL, pattern, and apply-delay caps stay in the renderers. They already share one helper each, and they are not the per-format transaction drift this step closes.
+
+  Text and Markdown do not select the same transactions. Text prints the capped diagnostic champions. Markdown prints every `Listed` row. This step keeps both so the bytes stay the same. Unifying them is #352.
+
+  `report.Write` normalizes options, builds one view, then switches on `ParseFormat`. An unknown format returns that error and writes nothing. There is no default arm, so an unknown format cannot render text. `cmd/binlogviz/analyze.go` calls `Write` for stdout. A JSON snapshot and an HTML file call the same render functions, which build the same view. The CLI still rejects an unknown `--format` with `ParseFormat` before it reads input (usage, exit 3).
 - A later step that wants the column parser to live inside `schemacatalog` moves those functions and keeps `SchemaCol` as the single column type. It does not add a parallel struct.

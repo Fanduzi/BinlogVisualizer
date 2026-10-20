@@ -7,6 +7,8 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 | File | Responsibility |
 |------|----------------|
 | `options.go` | Defines renderer presentation controls, including `summary/off/full` SQL context modes, `full/summary/off` diagnostics modes, `ArchiveOptions` (full diagnostics for snapshots and workflow artifacts), table display limits, and the Hot Rows top-N. |
+| `write.go` | Builds one `internal/report/view` value, then writes text, JSON, Markdown, or HTML. An unknown format writes nothing. |
+| `view/` | Selects the transaction lists once: listed rows, text champions, HTML evidence, and the JSON diagnostic lists. |
 | `hotrows.go` | Renders the Hot Rows ranking for text and Markdown. `--sql-context off` hides key values and keeps counts. JSON and HTML use the same limit. |
 | `product.go` | Owns shared report presentation defaults, metric labels, and byte-coverage helpers used by all renderers. |
 | `text.go` | Owns shared UTC human timestamp formatting and renders completeness-aware incident briefs with separate input-file and counted-event byte metrics, a Top Threads section, a no-primary-key lag section, a Hot Rows section, busiest minutes with the tables that produced those rows, query text gated by `--sql-context`, opt-in bounded row images, plus opt-in minute and write-shape detail sections. |
@@ -24,6 +26,8 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 
 | API | Contract |
 |-----|----------|
+| `Write(w, result, opts, format) error` | Builds one view, then writes that format. Unknown format returns the `ParseFormat` error and writes nothing. |
+| `view.Build(result, Limits) View` | The only transaction selection. Text, Markdown, JSON, and HTML read it. |
 | `DefaultOptions() Options` | Returns renderer defaults with `SQLContextMode=summary` and shared product limits. |
 | `ParseSQLContextMode(raw string) (SQLContextMode, error)` | Validates CLI-provided SQL context modes: `summary`, `off`, `full`. |
 | `RenderText(result model.AnalysisResult) (string, error)` | Renders the default concise diagnostic text report. |
@@ -66,7 +70,8 @@ Analyze report renderers for text, JSON, Markdown, and HTML output.
 - The HTML renderer now follows a DBA reading path: executive summary (with key findings strip), risks & findings, activity overview, hot objects, then diagnostic evidence (transaction evidence, DDL timeline, pattern drilldowns, file coverage, binlog throughput).
 - Analyze text and HTML label selected physical input-file bytes separately from counted filtered event bytes; missing selected-file size metadata renders as unavailable. Default text also prints the DDL occurrence timeline, open uncommitted DML, committed duration buckets, longest transactions, byte contributors, and a multi-file size/span hint. JSON omits empty `open_dml_groups`, `duration_buckets`, and `largest_byte_transactions`.
 - Transaction evidence in HTML renders each category champion once, annotates every category it wins, and keeps a separate lookup for the bounded transaction payload.
-- JSON always reports `transactions_listed` and `transactions_omitted` alongside the bounded `transactions` array.
+- JSON always reports `transactions_listed` and `transactions_omitted` alongside the bounded `transactions` array. Those counts, the text champions, the Markdown transaction rows, and the HTML evidence cards all come from `view.Build`. Text champions and the Markdown list are not the same selection.
+- `Write` is the format switch. It builds the view before it accepts the format. There is no default arm.
 - Rendered transaction evidence and pattern representatives expose transaction keys to the HTML search control.
 - Report v3 emits optional top-level `selection` evidence: requested/effective positions, canonical include/exclude GTIDs, resolved flavor, and matched identities. Existing provenance, SQL, completeness, and replay fields are unchanged.
 - Text, Markdown, and HTML print `server_id`, `thread_id`, GTID, `xid` or `xa_xid`, and `user@host` on a transaction only when that value is present. Zero and empty values stay omitted. JSON already omits the same fields.
