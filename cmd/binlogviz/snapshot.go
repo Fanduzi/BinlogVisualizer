@@ -335,7 +335,7 @@ func writeSnapshotListText(out io.Writer, entries []snapshotpkg.Entry) error {
 			orDash(entry.CreatedAt),
 			orDash(entry.InputMode),
 			formatSnapshotWindow(entry.Window),
-			orDash(entry.DiagnosticsMode),
+			formatListDiagnostics(entry.DiagnosticsMode),
 		); err != nil {
 			return err
 		}
@@ -391,6 +391,16 @@ func formatSnapshotWindow(window snapshotpkg.Window) string {
 	default:
 		return "-"
 	}
+}
+
+func formatListDiagnostics(mode *string) string {
+	if mode == nil {
+		return "-"
+	}
+	if *mode == "" {
+		return "(empty)"
+	}
+	return *mode
 }
 
 func orDash(value string) string {

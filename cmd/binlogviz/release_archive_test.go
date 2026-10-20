@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -91,6 +93,153 @@ func TestReleaseArchiveListsBinarySampleAndWorkflowPlan(t *testing.T) {
 	if st.Size() != 1500 {
 		t.Fatalf("bundled sample must be the 1500-byte ROW fixture, got %d bytes", st.Size())
 	}
+}
+
+// Archive READMEs are copied as-is. A relative link must name a file the
+// release archive ships. The file list is the one .goreleaser.yml and
+// scripts/pack_release_archive.sh both define.
+func TestReleaseArchiveReadmeLinksStayInside(t *testing.T) {
+	root := repoRoot(t)
+	shipped, err := releaseArchiveFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	linkRe := regexp.MustCompile(`\]\(([^)]*)\)`)
+	for _, name := range []string{"README.md", "README_ZH.md"} {
+		body, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, match := range linkRe.FindAllStringSubmatch(string(body), -1) {
+			path, ok := relativeReadmeLink(match[1])
+			if !ok {
+				continue
+			}
+			if _, ship := shipped[path]; !ship {
+				t.Errorf("%s links to %q, which the release archive does not ship", name, match[1])
+			}
+		}
+	}
+}
+
+func releaseArchiveFiles(root string) (map[string]struct{}, error) {
+	goreleaser, err := os.ReadFile(filepath.Join(root, ".goreleaser.yml"))
+	if err != nil {
+		return nil, err
+	}
+	packer, err := os.ReadFile(filepath.Join(root, "scripts", "pack_release_archive.sh"))
+	if err != nil {
+		return nil, err
+	}
+	fromYAML := goreleaserArchiveFiles(string(goreleaser))
+	fromPack := packScriptArchiveFiles(string(packer))
+	binary := goreleaserBinary(string(goreleaser))
+	want := append([]string{}, fromYAML...)
+	if binary != "" {
+		want = append(want, binary)
+	}
+	sort.Strings(want)
+	sort.Strings(fromPack)
+	if strings.Join(want, "\n") != strings.Join(fromPack, "\n") {
+		return nil, errArchiveList(fromYAML, binary, fromPack)
+	}
+	set := map[string]struct{}{}
+	for _, name := range want {
+		set[name] = struct{}{}
+	}
+	return set, nil
+}
+
+type archiveListError struct {
+	msg string
+}
+
+func (e archiveListError) Error() string { return e.msg }
+
+func errArchiveList(files []string, binary string, packed []string) error {
+	return archiveListError{msg: "goreleaser files " + strings.Join(files, ", ") + " plus binary " + binary + " != pack script " + strings.Join(packed, ", ")}
+}
+
+func goreleaserBinary(yml string) string {
+	for _, line := range strings.Split(yml, "\n") {
+		trim := strings.TrimSpace(line)
+		if strings.HasPrefix(trim, "binary:") {
+			return strings.TrimSpace(strings.TrimPrefix(trim, "binary:"))
+		}
+	}
+	return ""
+}
+
+func goreleaserArchiveFiles(yml string) []string {
+	var files []string
+	in := false
+	base := 0
+	for _, line := range strings.Split(yml, "\n") {
+		if !in {
+			if strings.TrimSpace(line) == "files:" {
+				in = true
+				base = len(line) - len(strings.TrimLeft(line, " "))
+			}
+			continue
+		}
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent <= base {
+			break
+		}
+		trim := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trim, "dst:"):
+			files = append(files, strings.TrimSpace(strings.TrimPrefix(trim, "dst:")))
+		case strings.HasPrefix(trim, "- ") && !strings.Contains(strings.TrimPrefix(trim, "- "), ":"):
+			files = append(files, strings.TrimSpace(strings.TrimPrefix(trim, "- ")))
+		}
+	}
+	return files
+}
+
+func packScriptArchiveFiles(script string) []string {
+	re := regexp.MustCompile(`\$\{staging\}/(\S+)`)
+	var files []string
+	seen := map[string]struct{}{}
+	for _, line := range strings.Split(script, "\n") {
+		trim := strings.TrimSpace(line)
+		if !strings.HasPrefix(trim, "cp ") {
+			continue
+		}
+		for _, match := range re.FindAllStringSubmatch(trim, -1) {
+			name := strings.Trim(match[1], `"'`)
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			files = append(files, name)
+		}
+	}
+	return files
+}
+
+func relativeReadmeLink(dest string) (string, bool) {
+	dest = strings.TrimSpace(dest)
+	if dest == "" || strings.HasPrefix(dest, "#") || strings.Contains(dest, "://") || strings.HasPrefix(dest, "mailto:") {
+		return "", false
+	}
+	if i := strings.IndexAny(dest, " \t"); i >= 0 {
+		dest = dest[:i]
+	}
+	if i := strings.IndexByte(dest, '#'); i >= 0 {
+		dest = dest[:i]
+	}
+	if i := strings.IndexByte(dest, '?'); i >= 0 {
+		dest = dest[:i]
+	}
+	dest = strings.TrimPrefix(dest, "./")
+	if dest == "" || strings.HasPrefix(dest, "/") || strings.Contains(dest, "..") {
+		return dest, dest != ""
+	}
+	return strings.TrimSuffix(dest, "/"), dest != ""
 }
 
 func tarListingContains(listing, name string) bool {

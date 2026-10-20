@@ -215,6 +215,11 @@ func TestSnapshotListFlagsReducedDocument(t *testing.T) {
 		}
 		writeTestFile(t, filepath.Join(dir, "copied-"+mode+".json"), trimmed)
 	}
+	baseRaw, err := os.ReadFile(filepath.Join(dir, "base.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(dir, "copied-empty.json"), withDiagnosticsMode(t, string(baseRaw), ""))
 
 	code, text, stderr := runRoot(t, "snapshot", "list", "--snapshot-dir", dir)
 	if code != 0 {
@@ -233,6 +238,11 @@ func TestSnapshotListFlagsReducedDocument(t *testing.T) {
 			t.Fatalf("archive snapshot kept-%s must not be marked reduced: %q", mode, kept)
 		}
 	}
+	emptyLine := snapshotListLine(t, text, "copied-empty")
+	emptyFields := strings.Fields(emptyLine)
+	if len(emptyFields) < 2 || emptyFields[1] == "-" || emptyFields[len(emptyFields)-1] != "(empty)" {
+		t.Fatalf("empty marker line = %q", emptyLine)
+	}
 
 	code, raw, stderr := runRoot(t, "snapshot", "list", "--snapshot-dir", dir, "--format", "json")
 	if code != 0 {
@@ -243,19 +253,29 @@ func TestSnapshotListFlagsReducedDocument(t *testing.T) {
 		t.Fatalf("schema_version = %#v, want 1", doc["schema_version"])
 	}
 	modes := map[string]string{}
+	present := map[string]bool{}
 	for _, item := range doc["snapshots"].([]any) {
 		entry := item.(map[string]any)
-		mode, _ := entry["diagnostics_mode"].(string)
-		modes[entry["name"].(string)] = mode
+		name := entry["name"].(string)
+		mode, ok := entry["diagnostics_mode"]
+		present[name] = ok
+		if ok {
+			modes[name], _ = mode.(string)
+		}
 	}
 	if modes["copied-summary"] != "summary" || modes["copied-off"] != "off" {
 		t.Fatalf("json modes = %#v", modes)
 	}
-	if _, ok := modes["base"]; ok && modes["base"] != "" {
-		t.Fatalf("full snapshot marked reduced: %#v", modes["base"])
+	if present["base"] || present["kept-summary"] || present["kept-off"] {
+		t.Fatalf("full snapshot marked reduced: present=%#v modes=%#v", present, modes)
 	}
-	if modes["kept-summary"] != "" || modes["kept-off"] != "" {
-		t.Fatalf("archive snapshots marked reduced: %#v", modes)
+	if !present["copied-empty"] || modes["copied-empty"] != "" {
+		t.Fatalf("empty marker JSON = present %v mode %q", present["copied-empty"], modes["copied-empty"])
+	}
+
+	code, stdout, stderr := runRoot(t, "--error-format", "json", "snapshot", "show", "copied-empty", "--snapshot-dir", dir)
+	if code != 9 || stdout != "" || !strings.Contains(stderr, "reduced_diagnostics") || !strings.Contains(stderr, `"diagnostics_mode":""`) {
+		t.Fatalf("empty marker show: exit %d\nstdout=%q\nstderr=%s", code, stdout, stderr)
 	}
 }
 

@@ -706,7 +706,9 @@ func convertFileCoverageItems(items []model.FileCoverageItem) []jsonFileCoverage
 }
 
 // limitDDLEvents keeps the first limit events in timeline order.
-// A non-positive limit keeps every event. The omitted count is the rest.
+// A non-positive limit keeps every event. The CLI never passes one:
+// --top 0 is the default 10 after normalizeOptions, not unlimited (ADR 0011).
+// The omitted count is the rest.
 func limitDDLEvents(events []model.DDLEvent, limit int) ([]model.DDLEvent, int) {
 	if limit <= 0 || len(events) <= limit {
 		return events, 0

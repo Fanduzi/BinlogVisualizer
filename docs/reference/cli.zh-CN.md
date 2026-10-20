@@ -111,7 +111,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量；`0` 表示不限制。 |
 | `--top-threads` | 继承 `--top` | 所有格式中的热点线程或会话数量；`0` 表示不限制。 |
 | `--top-rows` | 继承 `--top` | 所有格式中的热点主键数量；`0` 表示不限制。 |
-| `--top` | `10` | 文本明细章节（分钟、写入形态）以及热点线程、热点行的默认 Top-N。 |
+| `--top` | `10` | 文本明细章节（分钟、写入形态）以及热点线程、热点行的默认 Top-N。`0` 就是这个默认值，不是不限制。 |
 | `--details` | `false` | 在文本报告中同时展开分钟明细和写入形态。 |
 | `--show-minutes` | `false` | 在文本报告中展示分钟级活动。 |
 | `--show-patterns` | `false` | 在文本报告中展示写入形态。 |
@@ -331,8 +331,8 @@ binlogviz snapshot delete <name>
 
 `snapshot list` 支持两种输出模式：
 
-- text 模式（默认）：输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode`、`window` 和 `diagnostics`（`-`，或者该文件是裁剪过的 analyze 文档时为 `summary` / `off`）
-- JSON 模式：输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象。裁剪过的文件在该条目上带 `diagnostics_mode`。`schema_version` 仍是 1。两种模式 list 都以 exit 0 结束
+- text 模式（默认）：输出面向人的表格，包含 `name`、`label`、`created_at`、`input_mode`、`window` 和 `diagnostics`（标记缺失、null、`full` 或不是字符串时为 `-`；是 `""` 时为 `(empty)`；否则是模式字符串）。`""` 仍保留 label、created_at 和 window。
+- JSON 模式：输出包含 `snapshot_dir` 和 `snapshots` 的机器可读对象。裁剪过的文件在该条目上带 `diagnostics_mode`，包括 `""`。没有裁剪标记时省略该键。`schema_version` 仍是 1。两种模式 list 都以 exit 0 结束。show、compare、trend 和 `snapshot save` 仍以 exit 9 拒绝 `""`。
 
 可用参数：
 

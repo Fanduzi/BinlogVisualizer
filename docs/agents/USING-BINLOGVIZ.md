@@ -51,14 +51,14 @@ binlogviz analyze testdata/minimal.binlog --format json --snapshot-name window -
 | `--diagnostics` | JSON |
 |---|---|
 | `full` (default) | Today's `diagnostics` object. No `diagnostics_mode` key. |
-| `summary` | Drops the transaction rankings and the other lists already at the top level. `ddl_events` is the first `--top` events (default 10). `ddl_events_omitted` counts the rest, including 0. Top-level `alerts`, `transactions`, `tables`, and `summary` stay. |
+| `summary` | Drops the transaction rankings and the other lists already at the top level. `ddl_events` is the first `--top` events (default 10; `--top 0` is that default, not unlimited). `ddl_events_omitted` counts the rest, including 0. Top-level `alerts`, `transactions`, `tables`, and `summary` stay. |
 | `off` | Omits `diagnostics`. |
 
 `summary` and `off` set `"diagnostics_mode"` to that mode. Text, Markdown, and HTML ignore the flag. `--snapshot-name` always saves full diagnostics; only stdout is trimmed.
 
 Do not pass `window.json` to `compare`, `trend`, or `snapshot save`. Those commands exit 9 (`unsupported`, `details.reason` `reduced_diagnostics`). Use the snapshot from `--snapshot-name`. `snapshot list` exits 0 and shows the mode in the `DIAGNOSTICS` column, and as `diagnostics_mode` in `--format json`, so a copied summary file is visible before show or compare fails.
 
-JSON `null` for `diagnostics_mode` is the same as a missing key. A non-string such as `1` is corrupt (exit 5). `--diagnostics ""` is a usage error (exit 3). Omitting the flag is `full`.
+JSON `null` for `diagnostics_mode` is the same as a missing key. A non-string such as `1` is corrupt (exit 5). `--diagnostics ""` is a usage error (exit 3). Omitting the flag is `full`. A file whose `diagnostics_mode` is `""` is still reduced (exit 9). `snapshot list` prints `(empty)` for it and keeps label, created_at, and window; JSON includes `"diagnostics_mode": ""`.
 
 ## Recipe 3: compare two windows
 

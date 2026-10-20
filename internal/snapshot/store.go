@@ -32,8 +32,10 @@ type Entry struct {
 	InputMode string `json:"input_mode"`
 	Window    Window `json:"window"`
 	// DiagnosticsMode is set when the file is a reduced analyze document
-	// (a diagnostics_mode string other than full). Omitted otherwise (ADR 0011 §3).
-	DiagnosticsMode string `json:"diagnostics_mode,omitempty"`
+	// (a diagnostics_mode string other than full, including "").
+	// A nil pointer is omitted. A pointer to "" is kept, so omitempty
+	// does not drop the empty marker (ADR 0011 §3).
+	DiagnosticsMode *string `json:"diagnostics_mode,omitempty"`
 }
 
 // Summary captures top-level analyze totals stored with a snapshot.
@@ -215,18 +217,19 @@ func ListSnapshots(dir string) ([]Entry, error) {
 			Path: path,
 		}
 		if data, err := os.ReadFile(path); err == nil {
-			mode := reducedDiagnosticsMarker(data)
+			mode, reduced := reducedDiagnosticsMarker(data)
 			desc, err := decodeDescriptor(path, data, name)
 			if err == nil {
 				applyListEntry(&resultEntry, desc)
-			} else if mode != "" {
+			} else if reduced {
 				// A reduced document fails decode on purpose. List still
 				// names it, and keeps snapshot metadata when the file has it.
-				resultEntry.DiagnosticsMode = mode
+				// "" is reduced: readers refuse it, and list must not look
+				// like a file with no metadata (ADR 0011 §3).
 				if meta, merr := descriptorFromStored(path, data, name); merr == nil && snapshotBlockPresent(data) {
 					applyListEntry(&resultEntry, meta)
-					resultEntry.DiagnosticsMode = mode
 				}
+				resultEntry.DiagnosticsMode = reducedModePtr(mode)
 			}
 		}
 		result = append(result, resultEntry)
@@ -328,21 +331,26 @@ func applyListEntry(entry *Entry, desc Descriptor) {
 	entry.Window = desc.Window
 }
 
-// reducedDiagnosticsMarker is the diagnostics_mode string when the file is
-// reduced. JSON null and a missing key are absent. A non-string is not a
-// marker: compare reports that as corrupt, exit 5 (ADR 0011 §3).
-func reducedDiagnosticsMarker(data []byte) string {
+// reducedDiagnosticsMarker reports the diagnostics_mode string when the file
+// is reduced. JSON null and a missing key are absent. A non-string is not a
+// marker: compare reports that as corrupt, exit 5. The empty string is
+// reduced (ADR 0011 §3).
+func reducedDiagnosticsMarker(data []byte) (string, bool) {
 	var raw struct {
 		Mode json.RawMessage `json:"diagnostics_mode"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil || len(raw.Mode) == 0 || string(raw.Mode) == "null" {
-		return ""
+		return "", false
 	}
 	var mode string
-	if err := json.Unmarshal(raw.Mode, &mode); err != nil || mode == "" || mode == "full" {
-		return ""
+	if err := json.Unmarshal(raw.Mode, &mode); err != nil || mode == "full" {
+		return "", false
 	}
-	return mode
+	return mode, true
+}
+
+func reducedModePtr(mode string) *string {
+	return &mode
 }
 
 func snapshotBlockPresent(data []byte) bool {

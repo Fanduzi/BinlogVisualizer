@@ -198,6 +198,8 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 		"schema-file":    "cmd.flashback.flag.schemaFile",
 		"schema-file-db": "cmd.flashback.flag.schemaFileDB",
 		"dml":            "cmd.flashback.flag.dml",
+		"conflict":       "cmd.flashback.flag.conflict",
+		"plan":           "cmd.flashback.flag.plan",
 		"conflict-limit": "cmd.flashback.flag.conflictLimit",
 	}
 	for name, key := range usage {
@@ -205,9 +207,21 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 			flag.Usage = i18n.T(key)
 		}
 	}
-	if cmd.Parent() != nil {
-		if flag := cmd.Parent().PersistentFlags().Lookup("lang"); flag != nil {
-			flag.Usage = i18n.T("cmd.root.flag.lang")
+	refreshInheritedFlashbackFlags(cmd)
+}
+
+func refreshInheritedFlashbackFlags(cmd *cobra.Command) {
+	root := cmd
+	for root.Parent() != nil {
+		root = root.Parent()
+	}
+	for _, spec := range []struct{ name, key string }{
+		{"lang", "cmd.root.flag.lang"},
+		{"quiet", "cmd.root.flag.quiet"},
+		{"error-format", "cmd.root.flag.errorFormat"},
+	} {
+		if flag := root.PersistentFlags().Lookup(spec.name); flag != nil {
+			flag.Usage = i18n.T(spec.key)
 		}
 	}
 }
@@ -222,11 +236,7 @@ func refreshFlashbackChildHelp(cmd *cobra.Command) {
 			flag.Usage = i18n.T("cmd.flashback.verify.flag.format")
 		}
 	}
-	if cmd.Parent() != nil && cmd.Parent().Parent() != nil {
-		if flag := cmd.Parent().Parent().PersistentFlags().Lookup("lang"); flag != nil {
-			flag.Usage = i18n.T("cmd.root.flag.lang")
-		}
-	}
+	refreshInheritedFlashbackFlags(cmd)
 }
 
 func flashbackUsageTemplate() string {

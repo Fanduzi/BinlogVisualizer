@@ -112,7 +112,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--top-transactions` | `10` | Number of top transactions to include in the report; `0` is unlimited. |
 | `--top-threads` | inherits `--top` | Number of top threads or sessions in every format; `0` is unlimited. |
 | `--top-rows` | inherits `--top` | Number of hot primary keys in every format; `0` is unlimited. |
-| `--top` | `10` | Default number of ranked items, including Top Threads, Hot Rows, and text detail sections (minutes, patterns). |
+| `--top` | `10` | Default number of ranked items, including Top Threads, Hot Rows, and text detail sections (minutes, patterns). `0` is this default, not unlimited. |
 | `--details` | `false` | Show minute details and write-shape patterns in the text report. |
 | `--show-minutes` | `false` | Show minute-level activity in the text report. |
 | `--show-patterns` | `false` | Show write-shape patterns in the text report. |
@@ -342,8 +342,8 @@ Accepted flags:
 
 `snapshot list` supports two output modes:
 
-- text mode (default): prints a human-readable table with `name`, `label`, `created_at`, `input_mode`, `window`, and `diagnostics` (`-`, or `summary` / `off` when that file is a trimmed analyze document)
-- JSON mode: prints a machine-readable object with `snapshot_dir` and `snapshots`. A trimmed file adds `diagnostics_mode` on its entry. `schema_version` stays 1. List exits 0 either way
+- text mode (default): prints a human-readable table with `name`, `label`, `created_at`, `input_mode`, `window`, and `diagnostics` (`-` when the marker is absent, null, `full`, or not a string; `(empty)` when it is `""`; otherwise the mode). Label, created_at, and window stay for `""`.
+- JSON mode: prints a machine-readable object with `snapshot_dir` and `snapshots`. A trimmed file adds `diagnostics_mode` on its entry, including `""`. The key is omitted otherwise. `schema_version` stays 1. List exits 0 either way. Show, compare, trend, and `snapshot save` still refuse `""` (exit 9).
 
 Accepted flags:
 

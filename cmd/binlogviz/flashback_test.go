@@ -245,7 +245,7 @@ func TestFlashbackHelpWording(t *testing.T) {
 		t.Fatalf("help: %v\n%s", err, stderr)
 	}
 	out := stdout + stderr
-	if strings.Contains(out, "Only count these ROW kinds") || strings.Contains(out, "Only analyze") || strings.Contains(out, "allow-unverified-generated") || !strings.Contains(out, "Only undo these ROW kinds") || !strings.Contains(out, "Only undo these schemas") || !strings.Contains(out, "Only undo these tables") || !strings.Contains(out, "SQL file of table definitions") || !strings.Contains(out, "Print SQL that reverses selected ROW changes") || !strings.Contains(out, "checks that each omitted generated column is generated on the target") {
+	if strings.Contains(out, "Only count these ROW kinds") || strings.Contains(out, "Only analyze") || strings.Contains(out, "allow-unverified-generated") || !strings.Contains(out, "Only undo these ROW kinds") || !strings.Contains(out, "Only undo these schemas") || !strings.Contains(out, "Only undo these tables") || !strings.Contains(out, "SQL file of table definitions") || !strings.Contains(out, "Print SQL that reverses selected ROW changes") || !strings.Contains(out, "checks that each omitted generated column is generated on the target") || !strings.Contains(out, "What to do when a selected row") || !strings.Contains(out, "Print a JSON plan") || !strings.Contains(out, "No progress bar") || !strings.Contains(out, "Error output on stderr") {
 		t.Fatalf("english help:\n%s", out)
 	}
 
@@ -275,12 +275,16 @@ func TestFlashbackHelpWording(t *testing.T) {
 		"选项:",
 		"全局选项:",
 		"输出语言",
+		"选中的行在扫描的 binlog 中之后又被修改时怎么办",
+		"输出 JSON 计划",
+		"stderr 不输出进度条和提示行",
+		"stderr 上的错误格式",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("zh help missing %q:\n%s", want, out)
 		}
 	}
-	for _, banned := range []string{"Only analyze", "Start position", "Flags:", "Global Flags:", "Usage:", "Omit a generated column"} {
+	for _, banned := range []string{"Only analyze", "Start position", "Flags:", "Global Flags:", "Usage:", "Omit a generated column", "What to do when a selected row", "Print a JSON plan", "No progress bar", "Error output on stderr"} {
 		if strings.Contains(out, banned) {
 			t.Fatalf("zh help still has %q:\n%s", banned, out)
 		}

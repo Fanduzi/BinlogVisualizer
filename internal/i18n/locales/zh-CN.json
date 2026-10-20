@@ -53,11 +53,11 @@
   },
   "cmd.analyze.flag.diagnostics": {
     "description": "JSON 诊断体积标志描述",
-    "other": "JSON 里 diagnostics 的体积：full（默认，与现在相同）、summary（去掉已经在顶层出现的事务排行和其他列表）或 off（不输出 diagnostics）。文本、Markdown 和 HTML 忽略此标志"
+    "other": "JSON 里 diagnostics 的体积：full（默认，与现在相同）、summary（去掉已经在顶层出现的事务排行和其他列表；ddl_events 上限为 --top，并写出 ddl_events_omitted）或 off（不输出 diagnostics）。文本、Markdown 和 HTML 忽略此标志"
   },
   "cmd.analyze.flag.top": {
     "description": "默认排序项数量标志描述",
-    "other": "默认显示的排行项数量"
+    "other": "默认显示的排行项数量（0 表示默认的 10，不是不限制）"
   },
   "cmd.analyze.flag.topTables": {
     "description": "top tables 标志描述",

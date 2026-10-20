@@ -194,6 +194,7 @@ func TestListSnapshotsFlagsReducedMarkerOnly(t *testing.T) {
 	write("absent", nil)
 	write("number", float64(1))
 	write("summary", "summary")
+	write("empty", "")
 
 	entries, err := ListSnapshots(dir)
 	if err != nil {
@@ -203,14 +204,31 @@ func TestListSnapshotsFlagsReducedMarkerOnly(t *testing.T) {
 	for _, entry := range entries {
 		got[entry.Name] = entry
 	}
-	if got["absent"].DiagnosticsMode != "" || got["absent"].Label != "absent" {
+	if got["absent"].DiagnosticsMode != nil || got["absent"].Label != "absent" {
 		t.Fatalf("null marker = %+v", got["absent"])
 	}
-	if got["number"].DiagnosticsMode != "" || got["number"].Label != "" {
+	if got["number"].DiagnosticsMode != nil || got["number"].Label != "" {
 		t.Fatalf("non-string marker = %+v", got["number"])
 	}
-	if got["summary"].DiagnosticsMode != "summary" || got["summary"].Label != "summary" {
+	if got["summary"].DiagnosticsMode == nil || *got["summary"].DiagnosticsMode != "summary" || got["summary"].Label != "summary" {
 		t.Fatalf("summary marker = %+v", got["summary"])
+	}
+	if got["empty"].DiagnosticsMode == nil || *got["empty"].DiagnosticsMode != "" || got["empty"].Label != "empty" {
+		t.Fatalf("empty marker = %+v", got["empty"])
+	}
+	raw, err := json.Marshal(got["empty"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"diagnostics_mode":""`) {
+		t.Fatalf("empty marker dropped from JSON: %s", raw)
+	}
+	absent, err := json.Marshal(got["absent"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(absent), "diagnostics_mode") {
+		t.Fatalf("null marker leaked into JSON: %s", absent)
 	}
 }
 

@@ -9,7 +9,7 @@
 
 [![English](https://img.shields.io/badge/docs-English-blue)](README.md) [![简体中文](https://img.shields.io/badge/docs-简体中文-yellow)](README_ZH.md)
 
-[![Changelog](https://img.shields.io/badge/Changelog-informational)](CHANGELOG.md) [![Security](https://img.shields.io/badge/Security-important)](SECURITY.md) [![Release Notes](https://img.shields.io/badge/Release_Notes-success)](docs/releases/)
+[![Changelog](https://img.shields.io/badge/Changelog-informational)](https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md) [![Security](https://img.shields.io/badge/Security-important)](https://github.com/Fanduzi/BinlogVisualizer/blob/main/SECURITY.md) [![Release Notes](https://img.shields.io/badge/Release_Notes-success)](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/releases)
 </div>
 
 BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs and operators who need to quickly answer practical questions from real binlog files: which tables are absorbing the most writes, which transactions are unusually large, where spikes happened, and how workload changed over a time window.
@@ -18,11 +18,11 @@ BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs a
 
 ### Analyze HTML report
 
-![Analyze HTML report](docs/images/analyze-html.png)
+![Analyze HTML report](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/images/analyze-html.png)
 
 ### Compare HTML report
 
-![Compare HTML report](docs/images/compare-html.png)
+![Compare HTML report](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/images/compare-html.png)
 
 ## Architecture
 
@@ -32,19 +32,19 @@ The Cobra command layer streams normalized binlog events into the analyzer, then
 
 | Module | Responsibility | Documentation |
 |--------|----------------|---------------|
-| `cmd/binlogviz` | CLI commands and end-to-end orchestration | [README](cmd/binlogviz/README.md) |
-| `internal/binlog` | Binlog parsing, probing, and normalization | [README](internal/binlog/README.md) |
-| `internal/analyzer` | Streaming aggregation and diagnostics | [README](internal/analyzer/README.md) |
-| `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](internal/mysqlexpr/README.md) |
-| `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](internal/schemacatalog/README.md) |
-| `internal/model` | Shared analysis and evidence types | [README](internal/model/README.md) |
-| `internal/report` | Analyze text, JSON, Markdown, and HTML renderers | [README](internal/report/README.md) |
-| `internal/i18n` | Embedded English and Simplified Chinese presentation messages | [README](internal/i18n/README.md) |
-| `internal/compare` | Two-report comparison and rendering | [README](internal/compare/README.md) |
-| `internal/trend` | Ordered multi-snapshot trend analysis and rendering | [README](internal/trend/README.md) |
-| `internal/snapshot` | Named analyze snapshot persistence | [README](internal/snapshot/README.md) |
-| `internal/workflow` | Multi-step investigation plans and manifests | [README](internal/workflow/README.md) |
-| `internal/jsonout` | Versioned JSON writer: `schema_version` first on every JSON output without its own key (ADR 0010) | [ADR 0010](docs/adr/0010-every-json-output-is-versioned.md) |
+| `cmd/binlogviz` | CLI commands and end-to-end orchestration | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/cmd/binlogviz/README.md) |
+| `internal/binlog` | Binlog parsing, probing, and normalization | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/binlog/README.md) |
+| `internal/analyzer` | Streaming aggregation and diagnostics | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/analyzer/README.md) |
+| `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/mysqlexpr/README.md) |
+| `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/schemacatalog/README.md) |
+| `internal/model` | Shared analysis and evidence types | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/model/README.md) |
+| `internal/report` | Analyze text, JSON, Markdown, and HTML renderers | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/report/README.md) |
+| `internal/i18n` | Embedded English and Simplified Chinese presentation messages | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/i18n/README.md) |
+| `internal/compare` | Two-report comparison and rendering | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/compare/README.md) |
+| `internal/trend` | Ordered multi-snapshot trend analysis and rendering | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/trend/README.md) |
+| `internal/snapshot` | Named analyze snapshot persistence | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/snapshot/README.md) |
+| `internal/workflow` | Multi-step investigation plans and manifests | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/workflow/README.md) |
+| `internal/jsonout` | Versioned JSON writer: `schema_version` first on every JSON output without its own key (ADR 0010) | [ADR 0010](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/adr/0010-every-json-output-is-versioned.md) |
 
 ## Start Here
 
@@ -157,7 +157,7 @@ binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 
 The binlog must have been recorded with `binlog_row_metadata=FULL` and `binlog_row_image=FULL`. Flashback needs `binlog_row_metadata=FULL` (MySQL 8.0.14+). A MySQL 5.7 binlog cannot be undone, and `--schema-file` does not supply row metadata. The script sets `utf8mb4`, `time_zone='+00:00'` (`TIMESTAMP` literals are the UTC wall clock), and, before creating the finish procedure, removes `PAD_CHAR_TO_FULL_LENGTH` and `NO_BACKSLASH_ESCAPES`, then restores the saved mode after a successful apply. A table with no primary key is undone by matching every column and `LIMIT 1`, and the statement says so in a comment. `INSERT` of a deleted row does not use `LIMIT 1`. JSON is rebuilt from the binary document, including JSON inside a transaction recorded with `binlog_transaction_compression=ON`. A non-`utf8mb4` string is a charset introducer and hex bytes. `ENUM` is the member index and `SET` is the bitmask, so a `latin1` or `gbk` value is exact under strict and non-strict `sql_mode`. Generated columns named by `CREATE` or `ALTER` in the parsed files, or by `--schema-file` (`mysqldump --no-data`, or `SHOW CREATE TABLE`), are left out of `INSERT` and `UPDATE` assignments only when that definition matches the binlog. MySQL 8 row metadata does not mark generated columns, and a `FULL` image includes both virtual and stored values, so those logged values are checked against the expression. The schema file must describe the table as it was at incident time. Flashback checks column count, names, order, and the types the binlog records, and prints no SQL when they differ. A generated column is omitted when every logged value matches the expression. The check covers integer and `DECIMAL` `+`, `-`, `*`, `/`, `DIV`, `%`, `MOD`, plus `UPPER`, `LOWER`, `CONCAT`, `CONCAT_WS`, `LENGTH`, `CHAR_LENGTH`, and simple JSON extraction. `/` into an integer is rounded half away from zero, so `5 / 2` is `3` and `-5 / 2` is `-3`. `/` into `DECIMAL(p,s)` keeps MySQL's default division width (9 fractional digits for integer operands) and then rounds half away from zero to scale `s`, so `5 / 2` in `DECIMAL(40,4)` is `2.5000` and `1 / 7` in `DECIMAL(40,9)` is `0.142857142`. A logged value that contradicts the expression is exit 6 (kind refused) and prints no SQL, including a quotient written with `div_precision_increment = 0`. A result that does not fit the column, when the logged value is the non-strict clip, is omitted with a warning. An expression that cannot be checked is omitted, stderr warns, and a guard after the session `SET` lines fails apply unless that column is generated on the target. A client that continues is switched to a read-only session, so later writes fail. When the logged values equal a checked expression, a real column still cannot be told apart from a generated one until that guard runs. A no-primary-key `WHERE` keeps generated columns. A plain `mysqldump --no-data db` file needs no `USE`: the database is the dump's `Database:` header (in a file of joined dumps, each header covers the dump after it), `--schema-file-db`, or the only schema of that table in the binlog. Several `SHOW CREATE TABLE` results can share a file with no `;` between them. An ambiguous database is a warning, and that definition is not used. An `ENUM` index of 0, the error member from a non-strict insert, is written as `0`. The script saves `@@SESSION.sql_mode`, drops `STRICT_TRANS_TABLES`, `STRICT_ALL_TABLES`, and `TRADITIONAL` for that statement only, and restores the saved mode. `TRADITIONAL` is removed because MySQL expands it back into the strict modes. When a selected table has no definition, the script still lists every column and stderr warns that generated columns cannot be ruled out and that apply can stop at `ERROR 3105` and the undo rolls back.
 
-`ON DELETE` / `ON UPDATE CASCADE` child rows are not restored. Triggers fire on undo. A selected row that was changed again later in the scanned binlogs is a conflict: flashback refuses with exit 7 and prints no script. `--conflict guard` writes it with each undo matched against the logged after image (a row changed later is left alone, including a primary key moved back onto a key a later row now holds), and `--plan` prints a JSON summary instead of SQL. Changes outside the scanned binlogs are not seen. A table filter or `--dml` that undoes only part of a transaction prints a warning on stderr. Review the script and test it. Apply it in a single session on the primary with `sql_log_bin=1`. A statement that fails rolls the undo back, including under `mysql --force` (a missing table or column does not commit the statements that succeeded). The undo is one XA transaction: `BEGIN`, `START TRANSACTION`, and DDL while it is open fail with ERROR 1399 and do not commit it (#328, #329, ADR 0014). `mysql < flashback.sql` commits nothing, including an intact file: the finish rolls the XA transaction back and the trailer errors. `binlogviz flashback verify` refuses an edited, truncated, reordered, or extended file (exit 6) and is what allows the finish to commit, and only when every statement succeeded. Apply needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, `SELECT, INSERT, UPDATE, DELETE` on the tables the undo changes, and the stock `mysql` client (`DELIMITER`). When `automatic_sp_privileges=0`, also grant `EXECUTE` on `binlogviz.*`. `UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143 without it). `verify` creates a new finish procedure for that run and drops it at the end, including when the undo rolls back, so a leftover procedure does not block the next apply. A rolled-back apply prints `binlogviz: undo rolled back, no rows changed`. Without `--force` the mysql client exits 1. Success, when nothing was skipped, is a line matching `^binlogviz: undo committed, [0-9]+ statements$`. When some rows were skipped it is `^binlogviz: undo committed with skips, [0-9]+ applied, [0-9]+ skipped$`. The marker is CONCAT pieces, so that literal is not in the SQL. `mysql --force -v` echoes the statement, and a plain grep of that echo is not a commit. Automation uses `set -o pipefail` and `grep -E`. Exit 0 without the matching line is not success. N counts undo statements that changed exactly one row. A keyed `UPDATE` or `DELETE`, including a no-PK `LIMIT 1` match, must affect exactly one row or the undo rolls back. `--conflict guard` counts 1 row as applied, 0 rows as skipped, and any other count as a rollback. The clean marker prints only when at least one row changed and nothing was skipped. `BINARY(n)` values are written padded to n bytes with 0x00; `VARBINARY`, `BLOB`, and `CHAR` are not. A stream cut after `COMMIT` leaves the undo committed with no marker. An administrator removes leftovers with `DROP DATABASE binlogviz`. A generation that fails writes no script bytes. A copy to a shell redirect that dies mid-write can leave a prefix; that prefix has no commit trailer, and a later `BEGIN` or DDL does not commit it. Known limits are in [docs/concept/limitations.md](docs/concept/limitations.md): a schema file that marks a real column as generated can still omit that column and exit 0 when the logged values equal a checked expression ([#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)). A contradiction is refused. A wrong dump that still exits 0 is stopped by the apply guard before any transaction. A client that continues after the error is switched to a read-only session, so later writes fail; disconnect, fix the schema file, and apply again in a new session. If the live column was altered to generated after the incident, the original value cannot be written back. Rows written under a non-strict `sql_mode` (a zero date, or a generated `a/b` with `b` = 0) restore under a strict session: only that statement drops the flag that would reject the stored value ([#180](https://github.com/Fanduzi/BinlogVisualizer/issues/180)). Omitting `--schema-file` still assigns a real generated column and apply can stop at `ERROR 3105`. `ENUM` index 0 drops `TRADITIONAL` with the strict modes for that statement and then restores the saved `sql_mode`, including `sql_mode=TRADITIONAL` ([#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168)). A failed apply commits nothing, so run `binlogviz flashback verify` on the original file again in a new session. Do not resume from a `-- gtid:` block. Applying the same script twice can duplicate rows in a table with no primary key. Keep the script's `SET NAMES`, `SET time_zone`, and `SET SESSION sql_mode` header; without it, `TIMESTAMP` values shift by the session time zone. The steps are in that document.
+`ON DELETE` / `ON UPDATE CASCADE` child rows are not restored. Triggers fire on undo. A selected row that was changed again later in the scanned binlogs is a conflict: flashback refuses with exit 7 and prints no script. `--conflict guard` writes it with each undo matched against the logged after image (a row changed later is left alone, including a primary key moved back onto a key a later row now holds), and `--plan` prints a JSON summary instead of SQL. Changes outside the scanned binlogs are not seen. A table filter or `--dml` that undoes only part of a transaction prints a warning on stderr. Review the script and test it. Apply it in a single session on the primary with `sql_log_bin=1`. A statement that fails rolls the undo back, including under `mysql --force` (a missing table or column does not commit the statements that succeeded). The undo is one XA transaction: `BEGIN`, `START TRANSACTION`, and DDL while it is open fail with ERROR 1399 and do not commit it (#328, #329, ADR 0014). `mysql < flashback.sql` commits nothing, including an intact file: the finish rolls the XA transaction back and the trailer errors. `binlogviz flashback verify` refuses an edited, truncated, reordered, or extended file (exit 6) and is what allows the finish to commit, and only when every statement succeeded. Apply needs `CREATE`, `CREATE ROUTINE`, and `ALTER ROUTINE` on `binlogviz.*`, `SELECT, INSERT, UPDATE, DELETE` on the tables the undo changes, and the stock `mysql` client (`DELIMITER`). When `automatic_sp_privileges=0`, also grant `EXECUTE` on `binlogviz.*`. `UPDATE` and `DELETE ... WHERE` need `SELECT` (ERROR 1143 without it). `verify` creates a new finish procedure for that run and drops it at the end, including when the undo rolls back, so a leftover procedure does not block the next apply. A rolled-back apply prints `binlogviz: undo rolled back, no rows changed`. Without `--force` the mysql client exits 1. Success, when nothing was skipped, is a line matching `^binlogviz: undo committed, [0-9]+ statements$`. When some rows were skipped it is `^binlogviz: undo committed with skips, [0-9]+ applied, [0-9]+ skipped$`. The marker is CONCAT pieces, so that literal is not in the SQL. `mysql --force -v` echoes the statement, and a plain grep of that echo is not a commit. Automation uses `set -o pipefail` and `grep -E`. Exit 0 without the matching line is not success. N counts undo statements that changed exactly one row. A keyed `UPDATE` or `DELETE`, including a no-PK `LIMIT 1` match, must affect exactly one row or the undo rolls back. `--conflict guard` counts 1 row as applied, 0 rows as skipped, and any other count as a rollback. The clean marker prints only when at least one row changed and nothing was skipped. `BINARY(n)` values are written padded to n bytes with 0x00; `VARBINARY`, `BLOB`, and `CHAR` are not. A stream cut after `COMMIT` leaves the undo committed with no marker. An administrator removes leftovers with `DROP DATABASE binlogviz`. A generation that fails writes no script bytes. A copy to a shell redirect that dies mid-write can leave a prefix; that prefix has no commit trailer, and a later `BEGIN` or DDL does not commit it. Known limits are in [docs/concept/limitations.md](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.md): a schema file that marks a real column as generated can still omit that column and exit 0 when the logged values equal a checked expression ([#166](https://github.com/Fanduzi/BinlogVisualizer/issues/166)). A contradiction is refused. A wrong dump that still exits 0 is stopped by the apply guard before any transaction. A client that continues after the error is switched to a read-only session, so later writes fail; disconnect, fix the schema file, and apply again in a new session. If the live column was altered to generated after the incident, the original value cannot be written back. Rows written under a non-strict `sql_mode` (a zero date, or a generated `a/b` with `b` = 0) restore under a strict session: only that statement drops the flag that would reject the stored value ([#180](https://github.com/Fanduzi/BinlogVisualizer/issues/180)). Omitting `--schema-file` still assigns a real generated column and apply can stop at `ERROR 3105`. `ENUM` index 0 drops `TRADITIONAL` with the strict modes for that statement and then restores the saved `sql_mode`, including `sql_mode=TRADITIONAL` ([#168](https://github.com/Fanduzi/BinlogVisualizer/issues/168)). A failed apply commits nothing, so run `binlogviz flashback verify` on the original file again in a new session. Do not resume from a `-- gtid:` block. Applying the same script twice can duplicate rows in a table with no primary key. Keep the script's `SET NAMES`, `SET time_zone`, and `SET SESSION sql_mode` header; without it, `TIMESTAMP` values shift by the session time zone. The steps are in that document.
 
 Flashback exits with exit 6 (kind refused), writes one `Error:` line, and prints no SQL when column names are missing, a before- or after-image is incomplete, a column type cannot be rendered exactly (`FLOAT`, `DOUBLE`, `GEOMETRY`, `VECTOR`, a partial or inexact JSON value, an unknown charset, or missing signedness, collation, or ENUM/SET members), a table definition was seen and cannot be read, `--schema-file` does not match the binlog columns, a generated value contradicts the expression, or the selected range contains DDL. `--sql-context off` is the same refusal: the script is the row values. Nothing selected is exit 2 with the same `Error:` line `analyze` uses (`schema/table filter matched no events`, `dml filter matched no events`, or `window matched 0 events`) and empty stdout. Auth-DDL `<secret>` redaction still applies to statement text in `analyze`. Flashback does not print those statements; an auth DDL in the selected range is refused as DDL. Cell values are not redacted. `analyze` text, Markdown, JSON, and HTML are unchanged when you do not run `flashback`.
 
@@ -230,7 +230,7 @@ The same plan and fixture are also available as raw URLs:
 - plan: https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/incident.yaml
 - sample binlog: https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/sample-binlog/mysql-bin.000001
 
-`workflow run` executes a declarative YAML plan that defines analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact directory with `analyze/`, `compare/`, `trend/`, a `manifest.json` that records every step's status and output path, and an `index.html` landing page. `manifest.json` always persists a `workflow_summary` object with `findings`, `recommendations`, and `warnings` arrays. BinlogViz rebuilds that summary best-effort from successful compare/trend JSON artifacts only; missing or unreadable summary inputs become warnings and never change workflow or step status semantics. When summary items exist, `index.html` surfaces them as `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings`, linking to the preferred HTML source report and falling back to JSON when needed. `stdout` stays empty in v1; all status goes to `stderr`. See [CLI Reference](docs/reference/cli.md) for the plan schema and flags.
+`workflow run` executes a declarative YAML plan that defines analysis windows, optional compare jobs, and optional trend jobs. It produces a deterministic artifact directory with `analyze/`, `compare/`, `trend/`, a `manifest.json` that records every step's status and output path, and an `index.html` landing page. `manifest.json` always persists a `workflow_summary` object with `findings`, `recommendations`, and `warnings` arrays. BinlogViz rebuilds that summary best-effort from successful compare/trend JSON artifacts only; missing or unreadable summary inputs become warnings and never change workflow or step status semantics. When summary items exist, `index.html` surfaces them as `Workflow Recommendations`, `Workflow Findings`, and `Workflow Summary Warnings`, linking to the preferred HTML source report and falling back to JSON when needed. `stdout` stays empty in v1; all status goes to `stderr`. See [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md) for the plan schema and flags.
 
 If a workflow run fails partway through, `workflow resume` picks up from the existing output directory: it reuses successful steps, reruns failed or missing ones, and supports `--rerun` selectors to force specific steps. After a fully successful run, `workflow resume` exits 0 and prints `nothing to resume` on `stderr`; use `--rerun` to force work. Resume refuses to proceed if the plan file changed or the manifest is from a legacy pre-v2 run. Resume also rejects plan paths that resolve outside the workflow root or escape via symlinks (trust-boundary hardening). `workflow status` reports the same trust check: an untrusted plan still produces full status output but sets `resumable` to `false` with a trust-boundary `resume_error`.
 
@@ -540,29 +540,29 @@ Supported languages:
 
 ### Start with these
 
-- [Quickstart](docs/recipe/quickstart.md)
-- [Analyze Local Binlogs](docs/recipe/analyze-local-binlogs.md)
-- [Troubleshoot Common Errors](docs/recipe/troubleshoot-common-errors.md)
+- [Quickstart](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/quickstart.md)
+- [Analyze Local Binlogs](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.md)
+- [Troubleshoot Common Errors](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.md)
 
 ### When you need contracts and exact behavior
 
-- [CLI Reference](docs/reference/cli.md)
-- [Input Discovery Reference](docs/reference/input-discovery.md)
-- [Output Format Reference](docs/reference/output-format.md)
+- [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md)
+- [Input Discovery Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/input-discovery.md)
+- [Output Format Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.md)
 
 ### When you need internals or operating model detail
 
-- [Architecture](docs/concept/architecture.md)
-- [DuckDB Temp Store](docs/concept/duckdb-temp-store.md)
-- [Analysis Model](docs/concept/analysis-model.md)
-- [Limitations](docs/concept/limitations.md)
+- [Architecture](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/architecture.md)
+- [DuckDB Temp Store](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.md)
+- [Analysis Model](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/analysis-model.md)
+- [Limitations](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.md)
 
 ### Release and supporting material
 
-- [Examples](docs/examples/)
-- [Release Notes](docs/releases/)
-- [Changelog](CHANGELOG.md)
-- [Security Policy](SECURITY.md)
+- [Examples](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/examples)
+- [Release Notes](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/releases)
+- [Changelog](https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md)
+- [Security Policy](https://github.com/Fanduzi/BinlogVisualizer/blob/main/SECURITY.md)
 
 ## Architecture
 
@@ -572,17 +572,17 @@ The Cobra command layer streams parser output through normalization and transact
 
 | Module | Responsibility | Doc |
 |--------|----------------|-----|
-| `cmd/binlogviz` | CLI commands and analyze orchestration | [README](cmd/binlogviz/README.md) |
-| `internal/binlog` | Binlog parsing, probing, and normalization | [README](internal/binlog/README.md) |
-| `internal/analyzer` | Transaction reconstruction and workload aggregation | [README](internal/analyzer/README.md) |
-| `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](internal/mysqlexpr/README.md) |
-| `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](internal/schemacatalog/README.md) |
-| `internal/model` | Shared event, transaction, and report contracts | [README](internal/model/README.md) |
-| `internal/report` | Text, JSON, Markdown, and HTML renderers | [README](internal/report/README.md) |
-| `internal/compare` | Analyze-report loading and comparison | [README](internal/compare/README.md) |
-| `internal/snapshot` | Named report persistence | [README](internal/snapshot/README.md) |
-| `internal/trend` | Ordered multi-snapshot analysis | [README](internal/trend/README.md) |
-| `internal/workflow` | Repeatable investigation plans | [README](internal/workflow/README.md) |
+| `cmd/binlogviz` | CLI commands and analyze orchestration | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/cmd/binlogviz/README.md) |
+| `internal/binlog` | Binlog parsing, probing, and normalization | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/binlog/README.md) |
+| `internal/analyzer` | Transaction reconstruction and workload aggregation | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/analyzer/README.md) |
+| `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/mysqlexpr/README.md) |
+| `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/schemacatalog/README.md) |
+| `internal/model` | Shared event, transaction, and report contracts | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/model/README.md) |
+| `internal/report` | Text, JSON, Markdown, and HTML renderers | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/report/README.md) |
+| `internal/compare` | Analyze-report loading and comparison | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/compare/README.md) |
+| `internal/snapshot` | Named report persistence | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/snapshot/README.md) |
+| `internal/trend` | Ordered multi-snapshot analysis | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/trend/README.md) |
+| `internal/workflow` | Repeatable investigation plans | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/workflow/README.md) |
 
 ## Requirements
 

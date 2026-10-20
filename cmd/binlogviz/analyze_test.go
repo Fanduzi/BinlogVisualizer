@@ -427,6 +427,21 @@ func TestAnalyzeCommandDefinesFlags(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHelpDocumentsSummaryDDLCapAndTopZero(t *testing.T) {
+	cmd := newAnalyzeCommand()
+	diag := cmd.Flags().Lookup("diagnostics")
+	top := cmd.Flags().Lookup("top")
+	if diag == nil || top == nil {
+		t.Fatal("expected diagnostics and top flags")
+	}
+	if !strings.Contains(diag.Usage, "ddl_events") || !strings.Contains(diag.Usage, "ddl_events_omitted") || !strings.Contains(diag.Usage, "--top") {
+		t.Fatalf("diagnostics help = %q", diag.Usage)
+	}
+	if !strings.Contains(top.Usage, "0") || !strings.Contains(top.Usage, "10") || !strings.Contains(strings.ToLower(top.Usage), "default") || !strings.Contains(strings.ToLower(top.Usage), "not unlimited") {
+		t.Fatalf("top help = %q", top.Usage)
+	}
+}
+
 func TestAnalyzeCommandDocumentsUnlimitedTransactions(t *testing.T) {
 	flag := newAnalyzeCommand().Flags().Lookup("top-transactions")
 	if flag == nil {

@@ -51,14 +51,14 @@ binlogviz analyze testdata/minimal.binlog --format json --snapshot-name window -
 | `--diagnostics` | JSON |
 |---|---|
 | `full`（默认） | 现在的 `diagnostics` 对象。没有 `diagnostics_mode` 键。 |
-| `summary` | 去掉已经在顶层出现的事务排行和其他列表。`ddl_events` 是前 `--top` 条（默认 10）。`ddl_events_omitted` 是其余条数，包括 0。顶层的 `alerts`、`transactions`、`tables` 和 `summary` 都保留。 |
+| `summary` | 去掉已经在顶层出现的事务排行和其他列表。`ddl_events` 是前 `--top` 条（默认 10；`--top 0` 就是这个默认值，不是不限制）。`ddl_events_omitted` 是其余条数，包括 0。顶层的 `alerts`、`transactions`、`tables` 和 `summary` 都保留。 |
 | `off` | 省略 `diagnostics`。 |
 
 `summary` 和 `off` 会把 `"diagnostics_mode"` 设成这个模式。文本、Markdown 和 HTML 忽略此标志。`--snapshot-name` 保存的快照始终是完整 diagnostics；只有 stdout 被裁剪。
 
 不要把 `window.json` 交给 `compare`、`trend` 或 `snapshot save`。这些命令会以退出码 9 结束（`unsupported`，`details.reason` 为 `reduced_diagnostics`）。请使用 `--snapshot-name` 保存的快照。`snapshot list` 以退出码 0 结束，并在 `DIAGNOSTICS` 列、以及 `--format json` 的 `diagnostics_mode` 里写出模式。这样，拷进去的 summary 文件会在 show 或 compare 失败之前就被标出来。
 
-`diagnostics_mode` 的 JSON `null` 和缺少该键相同。非字符串（例如 `1`）是损坏文档（退出码 5）。`--diagnostics ""` 是用法错误（退出码 3）。省略该标志就是 `full`。
+`diagnostics_mode` 的 JSON `null` 和缺少该键相同。非字符串（例如 `1`）是损坏文档（退出码 5）。`--diagnostics ""` 是用法错误（退出码 3）。省略该标志就是 `full`。文件里的 `diagnostics_mode` 为 `""` 时仍然是裁剪过的报告（退出码 9）。`snapshot list` 把它显示为 `(empty)`，并保留 label、created_at 和 window；JSON 里带 `"diagnostics_mode": ""`。
 
 ## 配方 3：比较两个窗口
 

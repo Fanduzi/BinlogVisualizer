@@ -4,6 +4,13 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Fixed
+
+- `snapshot list` shows a file with `diagnostics_mode` `""` as `(empty)`, keeps its label, created_at, and window, and includes `"diagnostics_mode": ""` in JSON. Readers still refuse that file with exit 9 (#312, ADR 0011).
+- `analyze --help` says that `--diagnostics summary` caps `ddl_events` at `--top` and reports `ddl_events_omitted`, and that `--top 0` is the default 10, not unlimited (#312).
+- `README.md` and `README_ZH.md` in the release archive link to files the tarball does not ship with GitHub URLs on `main`. Links to files in the archive stay relative (#312).
+- zh-CN `flashback --help` translates `--conflict`, `--plan`, `--error-format`, and `-q` (#312).
+
 ## v0.33.0
 
 Release date: 2026-10-20
