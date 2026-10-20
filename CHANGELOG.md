@@ -4,6 +4,10 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Added
+
+- Every command's `--help` includes a runnable example (#255).
+
 ### Changed
 
 - Analyze text, Markdown, JSON, and HTML now list the same key transactions: the `--top-transactions` ranking (`AnalysisResult.Transactions`). Text no longer substitutes a separate largest/longest/widest set, and HTML evidence no longer names a transaction outside that list. A listed transaction that is also one of those capped champions keeps the label (`Largest transaction`, `Longest transaction`, `Widest transaction`). `report_version` stays 3. JSON `transactions`, `transactions_listed`, and `transactions_omitted` are unchanged (#352, ADR 0012).
