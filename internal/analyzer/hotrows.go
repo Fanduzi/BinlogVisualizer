@@ -92,6 +92,7 @@ type hotRowAggregator struct {
 	byKey       map[hotKey]*hotAcc
 	items       hotHeap
 	overflow    bool
+	evictions   int
 	ranked      map[string]struct{}
 	unavailable map[string]model.HotRowGap
 }
@@ -171,6 +172,18 @@ func (a *hotRowAggregator) observe(ev model.NormalizedEvent, pk string) {
 		return
 	}
 	a.overflow = true
+	// Every replacement deletes a key and inserts one. The map's tombstones
+	// make it grow (about 1MB by 100k replacements at limit 8192) although it
+	// never holds more than limit keys, so rebuild it now and then (#364).
+	// Lookups and Snapshot (which sorts) do not depend on map layout.
+	a.evictions++
+	if a.evictions%a.limit == 0 {
+		fresh := make(map[hotKey]*hotAcc, a.limit)
+		for k, v := range a.byKey {
+			fresh[k] = v
+		}
+		a.byKey = fresh
+	}
 	victim := a.items[0]
 	delete(a.byKey, victim.key)
 	acc.touches = victim.touches + 1
