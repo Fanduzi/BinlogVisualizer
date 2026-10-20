@@ -54,7 +54,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
-| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | `TestFlashbackSpillLimitOnFixture`、`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`、`TestGeneratedReviewRSS`。后两个原来按固定 RSS 上限判、会偶发失败（#351）；#358、#361 改为在固定点测 live heap，`GOMAXPROCS=1` 下也稳定 | MET | — |
+| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | flashback generate：`TestFlashbackSpillLimitOnFixture`、`TestGeneratedReviewRSS`；verify：`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`（#358、#361 改为在固定点测 live heap，`GOMAXPROCS=1` 下也稳定）。缺：analyze 没有内存测试，退化了 CI 也发现不了；`TestGeneratedReviewRSS`、`TestVerifyDoesNotBufferTheScript` 在 -race 下不跑，其中后者是靠 build tag 直接排除，连 SKIP 都看不到 | PARTIAL | #364 |
 | E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `benchmark_test.go` 要 `BINLOGVIZ_REAL_BINLOG` 才跑，CI 不设；大语料只在 QA 机器上 | NOT MET | — |
 
 ## F. 安装与发布完整性
@@ -74,7 +74,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 12 / PARTIAL 5 / NOT MET 7**。
+共 24 项：**MET 11 / PARTIAL 6 / NOT MET 7**。
 
 ## 最卡生产级的 5 项
 
