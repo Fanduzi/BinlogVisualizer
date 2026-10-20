@@ -75,7 +75,11 @@ type AnalysisSelection struct {
 	IncludeGTIDs           []string
 	ExcludeGTIDs           []string
 	ResolvedGTIDFlavor     string
-	MatchedGTIDs           []string
+	// MatchedGTIDSet is the matched GTIDs as an interval set (#379): one
+	// MySQL GTID set per server UUID, or one MariaDB entry per range.
+	MatchedGTIDSet []string
+	// MatchedTransactions counts the matched GTIDs; nil without GTID selectors.
+	MatchedTransactions *int
 }
 
 // ReportProvenance summarizes the distinct producers observed in a report.

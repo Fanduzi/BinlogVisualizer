@@ -39,7 +39,7 @@ func AssessComparability(inputs []ComparabilityInput) Comparability {
 		report := input.Report
 		evidence = append(evidence, buildComparabilityEvidence(input.Role, report))
 
-		if report.ReportVersion == nil || *report.ReportVersion < currentSupportedReportVersion {
+		if report.ReportVersion == nil || *report.ReportVersion < fullMetadataReportVersion {
 			reasons[ReasonLegacyReportMetadata] = true
 		}
 		if workloadID := strings.TrimSpace(report.WorkloadID); workloadID == "" {
@@ -68,7 +68,7 @@ func AssessComparability(inputs []ComparabilityInput) Comparability {
 		} else {
 			objectScopes[canonicalScopeKey(*report.Scope, nil)] = true
 		}
-		if report.ReportVersion != nil && *report.ReportVersion >= currentSupportedReportVersion {
+		if report.ReportVersion != nil && *report.ReportVersion >= fullMetadataReportVersion {
 			selectorScopes[canonicalScopeKey(InputSnapshotFilters{}, report.Selection)] = true
 		}
 
@@ -183,6 +183,8 @@ func canonicalSelection(selection *InputSelection) *InputSelection {
 	canonical.ExcludeGTIDs = normalizedScopeValues(canonical.ExcludeGTIDs)
 	// MatchedGTIDs is retained result evidence, not a requested selector.
 	canonical.MatchedGTIDs = nil
+	canonical.MatchedGTIDSet = nil
+	canonical.MatchedTransactions = nil
 	canonical.ResolvedGTIDFlavor = strings.ToLower(strings.TrimSpace(canonical.ResolvedGTIDFlavor))
 	return canonical
 }
@@ -228,7 +230,17 @@ func cloneSelection(selection *InputSelection) *InputSelection {
 		ExcludeGTIDs:           append([]string(nil), selection.ExcludeGTIDs...),
 		ResolvedGTIDFlavor:     selection.ResolvedGTIDFlavor,
 		MatchedGTIDs:           append([]string(nil), selection.MatchedGTIDs...),
+		MatchedGTIDSet:         append([]string(nil), selection.MatchedGTIDSet...),
+		MatchedTransactions:    cloneInt(selection.MatchedTransactions),
 	}
+}
+
+func cloneInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func cloneInt64(value *int64) *int64 {

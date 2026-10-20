@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `179fd85`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3、#374 analyze 内存不随事务数增长）加上 #376（GTID 过滤下 analyze 不再缓存整个事务；E1 仍是 PARTIAL，matched_gtids 按匹配数增长，#379），2026-10-20 核对。
+基线：main `37208a3`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3、#374 analyze 内存不随事务数增长、#376 GTID 过滤下 analyze 不再缓存整个事务）加上 #379（GTID 过滤的匹配证据改成区间集合，E1 改为 MET），2026-10-20 核对。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -54,7 +54,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
-| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | analyze：`TestAnalyzeRetainedHeap`（先跑 2000 个事务预热，再分别用 2.5 万和 10 万个事务的合成 MySQL 8.0 副本 binlog 走完整 analyze 流程，每 2000 个事件和 Finalize 前后在 analyze 的 goroutine 上 GC 后测 live heap；10 万比 2.5 万多出的峰值堆必须小于 256KiB，实测约 -5KB 到 67KB，每个事务不到 1 字节）。#364 把这三处按事务增长的状态改成常数大小，输出和 v0.34.0 逐字节相同：按表、按分钟的事务 key 集合换成「计数 + 上一个 key」（事务 key 按 binlog 顺序单调分配，同一事务的行事件是连续的）；热点行 map 每淘汰 `limit` 次重建一次，清掉 Go map 删除留下的墓碑；apply-delay 的精确 P95（nearest-rank）在内存里最多留 8192 个值，超过后写到已 unlink 的临时文件，再用 4 趟 16 位基数选择取第 k 小（每个事务约 8 字节临时盘，5000 万个事务约 400MB；建不了临时文件时退回内存）。仍随输入增长、但不随事务数增长的：时间跨度（分钟桶）、不同的表/线程/语句模式数；告警（大事务、不完整事务）按告警数增长，因为文本报告要逐条列出。flashback generate：`TestFlashbackSpillLimitOnFixture`、`TestGeneratedReviewRSS`；verify：`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`。都在 CI `verify` 的 `go test ./...` 里跑；`TestGeneratedReviewRSS`、`TestVerifyDoesNotBufferTheScript` 在 -race 下用 `t.Skip` 跳过并写明原因，`TestEveryMemoryTestRunsInCIVerify` 保证 `verify` 一直是非 -race 的 `go test ./...`，这些测试都在而且没有 race 构建标签。GTID 过滤：`TestAnalyzeGTIDFilterRetainedHeap`（同样的测法：`--include-gtids` 选同样 2000 个事务时 10 万比 2.5 万个事务；一个 30 万个 UPDATE_ROWS 事件的大事务比 7.5 万个，分别在 include 和 include+exclude 下；多出的峰值堆都必须小于 256KiB，实测不到 12KB）。#376 之前 GTID 过滤会把当前事务的每个事件缓存到事务结束（每个事件约 4.3KB），30 万事件的事务会 OOM、exit 2；现在 include/exclude 在事务开头的 GTID 事件就能定下来，事件直接流过，每个事务只留常数大小的状态，输出不变（`docs/gtid-filter-streaming.md`）。这 6 个测试都列在 `TestEveryMemoryTestRunsInCIVerify` 里。缺口：`selection.matched_gtids` 逐个保存匹配到的 GTID，每个匹配的事务约 190–375 字节，测试特意固定了匹配集合；300 万事务的 binlog 上 `--exclude-gtids` 单个 GTID 或匹配 200 万以上就 Go OOM、exit 2（#379） | PARTIAL | #379（GTID 过滤下 matched_gtids 按匹配数增长） |
+| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | analyze：`TestAnalyzeRetainedHeap`（先跑 2000 个事务预热，再分别用 2.5 万和 10 万个事务的合成 MySQL 8.0 副本 binlog 走完整 analyze 流程，每 2000 个事件和 Finalize 前后在 analyze 的 goroutine 上 GC 后测 live heap；10 万比 2.5 万多出的峰值堆必须小于 256KiB，实测约 -5KB 到 67KB，每个事务不到 1 字节）。#364 把这三处按事务增长的状态改成常数大小，输出和 v0.34.0 逐字节相同：按表、按分钟的事务 key 集合换成「计数 + 上一个 key」（事务 key 按 binlog 顺序单调分配，同一事务的行事件是连续的）；热点行 map 每淘汰 `limit` 次重建一次，清掉 Go map 删除留下的墓碑；apply-delay 的精确 P95（nearest-rank）在内存里最多留 8192 个值，超过后写到已 unlink 的临时文件，再用 4 趟 16 位基数选择取第 k 小（每个事务约 8 字节临时盘，5000 万个事务约 400MB；建不了临时文件时退回内存）。仍随输入增长、但不随事务数增长的：时间跨度（分钟桶）、不同的表/线程/语句模式数；告警（大事务、不完整事务）按告警数增长，因为文本报告要逐条列出。flashback generate：`TestFlashbackSpillLimitOnFixture`、`TestGeneratedReviewRSS`；verify：`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`。都在 CI `verify` 的 `go test ./...` 里跑；`TestGeneratedReviewRSS`、`TestVerifyDoesNotBufferTheScript` 在 -race 下用 `t.Skip` 跳过并写明原因，`TestEveryMemoryTestRunsInCIVerify` 保证 `verify` 一直是非 -race 的 `go test ./...`，这些测试都在而且没有 race 构建标签。GTID 过滤：`TestAnalyzeGTIDFilterRetainedHeap`（同样的测法：`--include-gtids` 选同样 2000 个事务时 10 万比 2.5 万个事务；一个 30 万个 UPDATE_ROWS 事件的大事务比 7.5 万个，分别在 include 和 include+exclude 下；多出的峰值堆都必须小于 256KiB，实测不到 12KB）。#376 之前 GTID 过滤会把当前事务的每个事件缓存到事务结束（每个事件约 4.3KB），30 万事件的事务会 OOM、exit 2；现在 include/exclude 在事务开头的 GTID 事件就能定下来，事件直接流过，每个事务只留常数大小的状态，输出不变（`docs/gtid-filter-streaming.md`）。匹配证据：`TestAnalyzeMatchedGTIDSetHeap`（合成 MySQL 8.0 binlog，26.2 万比 104.9 万个事务，带行事件的事务固定 256 个；分别用 `--exclude-gtids` 单个 GTID，和 `--include-gtids` 全覆盖加排除 3 个 GTID；匹配数涨 4 倍、区间数不变，多出的峰值堆必须小于 256KiB，实测 13–20KB，GOMAXPROCS=1 和 8 都通过）。#379 之前 `selection.matched_gtids` 逐个保存匹配到的 GTID，同一测试里每个匹配约 117 字节、多出约 92MB，QA 在 300 万事务的 binlog 上 `--exclude-gtids` 单个 GTID 会 OOM、exit 2；现在改成 `selection.matched_gtid_set`（按 UUID 合并的区间，如 `uuid:1-4:6-3000000`）加 `matched_transactions` 计数，`report_version` 升到 4，内存随区间数而不是匹配数增长；区间超过 10 万个时 exit 10，`details.reason` 为 `matched_gtid_intervals`（`TestAnalyzeMatchedGTIDIntervalCeilingExitsTen`）。这 7 个测试都列在 `TestEveryMemoryTestRunsInCIVerify` 里 | MET | — |
 | E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `benchmark_test.go` 要 `BINLOGVIZ_REAL_BINLOG` 才跑，CI 不设；大语料只在 QA 机器上 | NOT MET | — |
 
 ## F. 安装与发布完整性
@@ -74,14 +74,14 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 17 / PARTIAL 2 / NOT MET 5**，还剩 7 项。
+共 24 项：**MET 18 / PARTIAL 1 / NOT MET 5**，还剩 6 项。
 
 ## 最卡生产级的 5 项
 
 1. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
 2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 3. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
-4. **E1、E2，内存与大文件**：GTID 过滤下 `matched_gtids` 按匹配的事务数增长，匹配上百万个事务会 OOM（#379）；≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（#374 让 analyze 内存不随事务数增长，#376 让 GTID 过滤下也不缓存整个事务，`TestAnalyzeRetainedHeap`、`TestAnalyzeGTIDFilterRetainedHeap` 在 CI 里跑；#351 的偶发失败由 #358、#361 修复。但这些测试用的是合成数据，不是 ≥100MB 的真实文件。）
+4. **E2，大文件**：≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 已经 MET：#374 让 analyze 内存不随事务数增长，#376 让 GTID 过滤下也不缓存整个事务，#379 让匹配证据随区间数而不是匹配数增长，`TestAnalyzeRetainedHeap`、`TestAnalyzeGTIDFilterRetainedHeap`、`TestAnalyzeMatchedGTIDSetHeap` 在 CI 里跑；#351 的偶发失败由 #358、#361 修复。但这些测试用的是合成数据，不是 ≥100MB 的真实文件。）
 5. **D5，机器可读的输出 schema 和 `--tz`**：没有 JSON Schema 或 describe 命令，显示时区不可选（#255 第 3、7 项）。
 
 A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。

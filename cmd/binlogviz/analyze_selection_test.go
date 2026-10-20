@@ -7,6 +7,7 @@ package binlogviz
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/clierr"
 	"binlogviz/internal/compare"
 )
 
@@ -236,10 +238,55 @@ func TestAnalyzeGTIDSelectionReportRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode report: %v\n%s", err, stdout)
 	}
-	if decoded.Selection == nil || decoded.Selection.ResolvedGTIDFlavor != "mysql" || len(decoded.Selection.IncludeGTIDs) != 1 || decoded.Selection.IncludeGTIDs[0] != sid+":1-3" || len(decoded.Selection.ExcludeGTIDs) != 1 || decoded.Selection.ExcludeGTIDs[0] != sid+":2" || len(decoded.Selection.MatchedGTIDs) != 1 || decoded.Selection.MatchedGTIDs[0] != sid+":1" {
+	if decoded.Selection == nil || decoded.Selection.ResolvedGTIDFlavor != "mysql" || len(decoded.Selection.IncludeGTIDs) != 1 || decoded.Selection.IncludeGTIDs[0] != sid+":1-3" || len(decoded.Selection.ExcludeGTIDs) != 1 || decoded.Selection.ExcludeGTIDs[0] != sid+":2" || len(decoded.Selection.MatchedGTIDSet) != 1 || decoded.Selection.MatchedGTIDSet[0] != sid+":1" || decoded.Selection.MatchedTransactions == nil || *decoded.Selection.MatchedTransactions != 1 {
 		t.Fatalf("selection = %+v", decoded.Selection)
 	}
 	if len(decoded.Transactions) != 1 || decoded.Transactions[0].GTID != sid+":1" || decoded.Transactions[0].Completeness != "complete" || decoded.Provenance == nil || len(decoded.Provenance.ServerIDs) != 1 || decoded.Transactions[0].QuerySummary == "" {
 		t.Fatalf("prior report fields lost: provenance=%+v transactions=%+v", decoded.Provenance, decoded.Transactions)
+	}
+}
+
+// TestAnalyzeMatchedGTIDIntervalCeilingExitsTen pins the #379 ceiling: when
+// the matched GTIDs leave more separate intervals than
+// analyzer.MatchedGTIDIntervalLimit, analyze stops with exit 10 and
+// reason matched_gtid_intervals instead of growing without bound.
+func TestAnalyzeMatchedGTIDIntervalCeilingExitsTen(t *testing.T) {
+	const sid = "24bc7850-2c16-11e6-a073-0242ac110002"
+	old := analyzer.MatchedGTIDIntervalLimit
+	analyzer.MatchedGTIDIntervalLimit = 2
+	t.Cleanup(func() { analyzer.MatchedGTIDIntervalLimit = old })
+	selector, err := analyzer.ParseGTIDSelector(nil, []string{sid + ":2:4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 10, 20, 9, 0, 0, 0, time.UTC)
+	events := []binlog.RawEvent{{Timestamp: base, EventType: "FORMAT_DESCRIPTION", PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "8.0.36", ServerFlavor: "mysql"}}
+	pos := int64(100)
+	add := func(ev binlog.RawEvent) {
+		ev.Timestamp, ev.PositionStart, ev.PositionEnd, ev.Position, ev.ServerFlavor = base, pos, pos+20, uint32(pos+20), "mysql"
+		events = append(events, ev)
+		pos += 20
+	}
+	for gno := 1; gno <= 5; gno++ {
+		add(binlog.RawEvent{EventType: "GTID", GTID: fmt.Sprintf("%s:%d", sid, gno)})
+		add(binlog.RawEvent{EventType: "QUERY", Query: "BEGIN"})
+		add(binlog.RawEvent{EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1})
+		add(binlog.RawEvent{EventType: "XID"})
+	}
+	for _, flashback := range []bool{false, true} {
+		opts := analyzer.DefaultOptions()
+		opts.GTIDSelector = selector
+		opts.Flashback = flashback
+		stdout, err := captureStdoutRun(t, func() error {
+			return runAnalysisWithParser([]string{"synthetic.bin"}, opts, "json", &mockParser{events: events})
+		})
+		kind, details := clierr.Of(err)
+		if ExitCode(err) != 10 || kind != clierr.KindResource || stdout != "" ||
+			details["reason"] != "matched_gtid_intervals" || details["limit"] != 2 || details["intervals"] != 3 {
+			t.Fatalf("flashback=%v: exit=%d kind=%v details=%v err=%v stdout=%q", flashback, ExitCode(err), kind, details, err, stdout)
+		}
+		if !strings.Contains(err.Error(), "--include-gtids/--exclude-gtids") {
+			t.Fatalf("error does not say how to narrow the run: %v", err)
+		}
 	}
 }

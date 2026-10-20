@@ -19,6 +19,7 @@ var e1MemoryTests = map[string]string{
 	"TestFlashbackVerifyMemoryCeiling":  "cmd/binlogviz/flashback_verify_test.go",
 	"TestAnalyzeRetainedHeap":           "cmd/binlogviz/analyze_memory_test.go",
 	"TestAnalyzeGTIDFilterRetainedHeap": "cmd/binlogviz/analyze_gtid_memory_test.go",
+	"TestAnalyzeMatchedGTIDSetHeap":     "cmd/binlogviz/analyze_gtid_memory_test.go",
 	"TestGeneratedReviewRSS":            "internal/flashback/genmem_test.go",
 	"TestVerifyDoesNotBufferTheScript":  "internal/guard/script_mem_test.go",
 }

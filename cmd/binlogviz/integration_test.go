@@ -1013,7 +1013,7 @@ func TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &parsed); err != nil {
 		t.Fatalf("decode analyze JSON: %v\n%s", err, stdout)
 	}
-	if parsed.ReportVersion != 3 || !slices.Equal(parsed.Provenance.ServerIDs, []uint32{7}) || parsed.Provenance.MixedProducers {
+	if parsed.ReportVersion != 4 || !slices.Equal(parsed.Provenance.ServerIDs, []uint32{7}) || parsed.Provenance.MixedProducers {
 		t.Fatalf("unexpected report provenance: %+v", parsed)
 	}
 	if parsed.SQLContext.Mode != "full" || !parsed.SQLContext.Available {

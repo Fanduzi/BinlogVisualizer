@@ -12,7 +12,12 @@ import (
 	"strings"
 )
 
-const currentSupportedReportVersion = 3
+const currentSupportedReportVersion = 4
+
+// fullMetadataReportVersion is the first report_version with the workload,
+// scope and selection metadata compare relies on. Version 4 only replaced
+// selection.matched_gtids with matched_gtid_set and matched_transactions (#379).
+const fullMetadataReportVersion = 3
 
 type rawInputReport struct {
 	ReportVersion   *int                   `json:"report_version"`

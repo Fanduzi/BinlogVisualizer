@@ -24,16 +24,25 @@ The comment called the buffer a stopgap ("spool if real transaction sizes make t
 - An in-window event of a matched group goes straight to `aggregateRetainedEvent`. An event of an unmatched group is dropped. Nothing is held per event.
 - The order the old buffer replayed in is kept. An event that closes its group (XID, COMMIT, XA PREPARE, a GTID-started DDL) is aggregated before that group drains. An event of the open group is aggregated after any group this same event closed.
 - A filter-excluded DDL goes to the flashback planner at once if its group matched, as it does without a selector.
-- Drain still runs the old checks in the old order: unresolved boundaries, then `Match` (whose parse error is reported there), then `matched_gtids`. As a guard, if the GTID or decision at drain differs from the one used for streaming, analyze fails ("was filtered as GTID ... but closed as ...") instead of printing a wrong report. The rule above means this cannot happen.
+- Drain still runs the old checks in the old order: unresolved boundaries, then `Match` (whose parse error is reported there), then the matched GTID set. As a guard, if the GTID or decision at drain differs from the one used for streaming, analyze fails ("was filtered as GTID ... but closed as ...") instead of printing a wrong report. The rule above means this cannot happen.
 
 No case needed lookahead, so there is no bounded buffer and no new refusal or exit code.
 
-## What still grows
+## Matched GTID evidence (#379)
 
-JSON `selection.matched_gtids` lists every matched GTID, so it grows with the number of matches, as the alert list grows with alerts. At about 190-375 bytes per matched transaction, millions of matches can still run out of memory, so E1 stays PARTIAL until #379. The memory test therefore keeps the matched set fixed.
+Report_version 3 listed every matched GTID in JSON `selection.matched_gtids` and kept them in a map until the report was built: about 117 bytes per matched transaction in the memory test below, 190-375 bytes in QA's runs. `--exclude-gtids` of one GTID on a 3M-transaction binlog ran out of memory (exit 2).
+
+The analyzer now keeps `matchedGTIDSet` (`internal/analyzer/gtid_matched_set.go`): sorted, merged sequence ranges per MySQL server UUID or MariaDB domain and server, plus a count. Report_version 4 writes them as `selection.matched_gtid_set` (`uuid:1-4:6-3000000`; MariaDB `0-7-1..3`, `0-7-8`) and `selection.matched_transactions`, and drops `matched_gtids`. Adding a GTID that extends the last range is O(1); any other GTID is a binary search, so out-of-order and repeated GTIDs are merged and counted once. Memory is O(intervals): a contiguous run of matches costs one range, whatever its length.
+
+The set holds at most `MatchedGTIDIntervalLimit` (100,000) intervals across all sources. The next new interval stops analyze with exit 10 `resource`, `details.reason` `matched_gtid_intervals`, and no report. 100,000 intervals take a few MB; reaching them needs selectors or input that leave 100,000 gaps among the matched GTIDs, for example an exclude list of 100,000 separate GTIDs.
+
+## Warning order under selectors (#378 F1)
+
+A GTID selector does not reorder flashback warnings. Retained rows reach the planner in binlog order, as without a selector, so "no table definition" warnings follow the order in which the planner settles each table: at its first undo row, or, for an unqualified `--schema-file` name, when the binlog shows the name in a second schema and the file entry is set aside. With `t1` unqualified in the schema file and rows for `q378_a.t1`, `q378_a.t2`, `q378_b.t1`, the order is `q378_a.t2`, `q378_a.t1`, `q378_b.t1`, with or without a selector. Before #378, a selector buffered the group and so resolved the name earlier, giving `q378_a.t1` first; that order is gone on purpose. `TestFlashbackWarningOrderSameUnderGTIDSelector` pins the rule for include and exclude selectors.
 
 ## Evidence
 
 - `TestAnalyzeGTIDFilterRetainedHeap` (CI `verify`, listed in `TestEveryMemoryTestRunsInCIVerify`) covers two cases. First, 25k vs 100k transactions with `--include-gtids` picking the same 2000. Second, one transaction of 75k vs 300k `UPDATE_ROWS` events, under include and under include+exclude. Each larger run may peak at most 256KiB above the smaller one. Before: the 300k transaction peaked 310MB above the 75k one (about 1.4KB per event in this test's small rows). After: under 12KB.
 - On QA's one-transaction binlogs (374-pr F1) with `--include-gtids` of the big transaction under a 3GiB address-space cap, the base binary took 134MB / 504MB of max RSS for 30k / 100k row events and crashed at 300k (`fatal error: out of memory`, exit 2). The new binary used 36MB / 45MB / 42MB with exit 0. The 30k and 100k JSON is byte-identical to the base output.
+- `TestAnalyzeMatchedGTIDSetHeap` (CI `verify`) covers #379: 262,144 vs 1,048,576 transactions (the same 256 carry rows), under `--exclude-gtids` of one GTID and under an include of everything with three GTIDs excluded. The matched count grows 4x while the interval count stays 2 or 4; the larger run may peak at most 256KiB above the smaller one. Before: 92MB more (about 117 bytes per match). After: 13-20KB, at GOMAXPROCS 1 and 8.
 - Output is unchanged. Base and new binaries were compared on the 48 repo fixtures: analyze json/text/markdown, detailed text, flashback `--plan` and flashback SQL, with first/middle/last/range include and exclude selectors, and a start/stop position in the middle of a transaction. All runs were identical in rc, stdout and stderr.

@@ -31,7 +31,11 @@ type InputSelection struct {
 	IncludeGTIDs           []string `json:"include_gtids,omitempty"`
 	ExcludeGTIDs           []string `json:"exclude_gtids,omitempty"`
 	ResolvedGTIDFlavor     string   `json:"resolved_gtid_flavor,omitempty"`
-	MatchedGTIDs           []string `json:"matched_gtids,omitempty"`
+	// MatchedGTIDs is report_version 3 evidence; version 4 writes
+	// MatchedGTIDSet and MatchedTransactions instead (#379).
+	MatchedGTIDs        []string `json:"matched_gtids,omitempty"`
+	MatchedGTIDSet      []string `json:"matched_gtid_set,omitempty"`
+	MatchedTransactions *int     `json:"matched_transactions,omitempty"`
 }
 
 type InputSQLContext struct {

@@ -49,7 +49,7 @@ type Analyzer struct {
 	// (#376, docs/gtid-filter-streaming.md). Entries leave at drain.
 	gtidGroups      map[string]*gtidGroup
 	inputGTIDFlavor string
-	matchedGTIDs    map[string]struct{}
+	matchedGTIDs    *matchedGTIDSet
 
 	flash *flashback.Planner
 }
@@ -514,7 +514,7 @@ func (a *Analyzer) reset() {
 	}
 	a.gtidGroups = make(map[string]*gtidGroup)
 	a.inputGTIDFlavor = ""
-	a.matchedGTIDs = make(map[string]struct{})
+	a.matchedGTIDs = newMatchedGTIDSet()
 	if a.flash != nil {
 		a.flash.Close()
 		a.flash = nil
@@ -575,7 +575,11 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	}
 	if a.opts.HasPositionSelectors() || a.opts.HasGTIDSelectors() {
 		a.selection.ResolvedGTIDFlavor = a.inputGTIDFlavor
-		a.selection.MatchedGTIDs = sortedStringSet(a.matchedGTIDs)
+		a.selection.MatchedGTIDSet = a.matchedGTIDs.strings()
+		if a.opts.HasGTIDSelectors() {
+			count := a.matchedGTIDs.count
+			a.selection.MatchedTransactions = &count
+		}
 		selection := a.selection
 		result.Selection = &selection
 	}
@@ -694,7 +698,9 @@ func (a *Analyzer) persistCompletedTransactions() error {
 				if err != nil {
 					return err
 				}
-				a.matchedGTIDs[identity] = struct{}{}
+				if err := a.matchedGTIDs.add(identity); err != nil {
+					return err
+				}
 			}
 		}
 		if retainCompletedTransaction(txn) {

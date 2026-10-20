@@ -54,7 +54,7 @@ func TestEveryJSONOutputIsVersioned(t *testing.T) {
 		args []string
 		exit int
 	}{
-		{"analyze", "report_version", 3, []string{"analyze", binlog, "--format", "json", "-q"}, 0},
+		{"analyze", "report_version", 4, []string{"analyze", binlog, "--format", "json", "-q"}, 0},
 		// The fixture holds a CREATE TABLE, so the real run refuses (exit 6); --plan still prints the plan.
 		{"flashback --plan", "plan_version", 2, []string{"flashback", binlog, "--plan"}, 6},
 		{"compare", "schema_version", 1, []string{"compare", "--snapshot-dir", snapshotDir, "--current-snapshot", b, "--baseline-snapshot", a, "--format", "json"}, 0},

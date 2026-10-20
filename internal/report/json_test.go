@@ -142,7 +142,7 @@ func TestRenderJSONIncludesReportVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(out, `"report_version": 3`) {
+	if !strings.Contains(out, `"report_version": 4`) {
 		t.Fatalf("expected report_version in JSON, got: %s", out)
 	}
 }
@@ -1249,8 +1249,8 @@ func TestRenderJSONV3LabelsSafeFullTransactionReplay(t *testing.T) {
 		t.Fatalf("RenderJSON returned error: %v", err)
 	}
 	parsed := parseJSONMap(t, out)
-	if parsed["report_version"] != float64(3) {
-		t.Fatalf("report_version=%v, want 3", parsed["report_version"])
+	if parsed["report_version"] != float64(4) {
+		t.Fatalf("report_version=%v, want 4", parsed["report_version"])
 	}
 	summary := parsed["summary"].(map[string]any)
 	if summary["partial_transactions"] != float64(1) {
@@ -1320,7 +1320,7 @@ func TestSummaryCapsDDLEvents(t *testing.T) {
 	if n := len(sumDiag["ddl_events"].([]any)); n != 2 || sumDiag["ddl_events_omitted"] != float64(0) {
 		t.Fatalf("short summary: len %d omitted %#v", n, sumDiag["ddl_events_omitted"])
 	}
-	if parseJSONMap(t, summary)["report_version"] != float64(3) {
-		t.Fatal("summary report_version must stay 3")
+	if parseJSONMap(t, summary)["report_version"] != float64(4) {
+		t.Fatal("summary report_version must match full output (4)")
 	}
 }

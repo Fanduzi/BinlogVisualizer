@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,7 +108,8 @@ type analyzeMemRun struct {
 	samples      int
 	peak         uint64
 	rows         int
-	matched      int // len(selection.matched_gtids), -1 without a selection
+	matched      int // selection.matched_transactions, -1 without GTID selectors
+	set          []string
 }
 
 func runAnalyzeMem(t *testing.T, dir string, n int) analyzeMemRun {
@@ -156,11 +158,14 @@ func measureAnalyzeHeap(t *testing.T, path string, opts analyzer.Options, wantTx
 		t.Fatalf("%s: %d heap samples over %d events (finalize sampled %v), peak %d", filepath.Base(path), sa.samples, sa.consumed, sa.finalizeSampled, sa.peak)
 	}
 	matched := -1
-	if sa.result.Selection != nil {
-		matched = len(sa.result.Selection.MatchedGTIDs)
+	var set []string
+	if sel := sa.result.Selection; sel != nil && sel.MatchedTransactions != nil {
+		matched = *sel.MatchedTransactions
+		set = append(set, sel.MatchedGTIDSet...)
 	}
-	// Keep only counts: a result kept alive would count in the next run's peak.
-	return analyzeMemRun{events: sa.consumed, samples: sa.samples, peak: sa.peak, rows: sa.result.Summary.TotalRows, matched: matched}
+	// Keep only counts and the small set: a result kept alive would count
+	// in the next run's peak.
+	return analyzeMemRun{events: sa.consumed, samples: sa.samples, peak: sa.peak, rows: sa.result.Summary.TotalRows, matched: matched, set: set}
 }
 
 // sampledAnalyzer reads live heap on the goroutine that feeds the analyzer:
@@ -255,7 +260,7 @@ func (tp syntheticTemplate) sid() string {
 
 // writer writes the magic and header events to out and returns an emit
 // function that appends one event with end_log_pos and CRC32 fixed.
-func (tp syntheticTemplate) writer(out *bytes.Buffer) func([]byte) {
+func (tp syntheticTemplate) writer(out io.Writer) func([]byte) {
 	out.Write(tp.magic)
 	pos := uint32(len(tp.magic))
 	emit := func(ev []byte) {

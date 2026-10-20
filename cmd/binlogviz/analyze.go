@@ -741,6 +741,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 			if operatorGroupError(err) {
 				return err
 			}
+			if resource := analyzerResourceError(err); resource != nil {
+				return resource
+			}
 			return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.analysisConsumeError", map[string]any{"Error": err.Error()}))
 		}
 		return nil
@@ -770,6 +773,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 	if err != nil {
 		if localized := localizedOperatorGroupError(err); localized != nil {
 			return localized
+		}
+		if resource := analyzerResourceError(err); resource != nil {
+			return resource
 		}
 		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
@@ -1218,6 +1224,11 @@ func wrapParseError(err error) error {
 	if localized := localizedOperatorGroupError(err); localized != nil {
 		return clierr.Wrap(clierr.KindError, localized)
 	}
+	// The matched-GTID interval ceiling (#379) is a resource limit hit
+	// while consuming a readable binlog: exit 10, not corrupt.
+	if resource := analyzerResourceError(err); resource != nil {
+		return resource
+	}
 	var corrupt *binlog.CorruptEventError
 	if errors.As(err, &corrupt) {
 		msg := i18n.Tf("error.corruptEvent", map[string]any{"Path": corrupt.Path, "Offset": corrupt.Offset, "Cause": corrupt.Cause})
@@ -1306,6 +1317,20 @@ func noteSkippedIgnoredQuery(stream commandAnalyzer, raw binlog.RawEvent) {
 		return
 	}
 	notifier.NoteIgnoredQuery()
+}
+
+// analyzerResourceError maps the matched-GTID interval ceiling (#379) to
+// exit 10, the resource kind, instead of a generic analysis error.
+func analyzerResourceError(err error) error {
+	var limit *analyzer.MatchedGTIDLimitError
+	if !errors.As(err, &limit) {
+		return nil
+	}
+	return clierr.WithDetails(clierr.KindResource, limit, map[string]any{
+		"reason":    "matched_gtid_intervals",
+		"limit":     limit.Limit,
+		"intervals": limit.Intervals,
+	})
 }
 
 func operatorGroupError(err error) bool {

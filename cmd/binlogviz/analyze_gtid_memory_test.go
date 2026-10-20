@@ -1,7 +1,7 @@
 package binlogviz
 
 import (
-	"bytes"
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -137,10 +137,129 @@ func analyzeGTIDMemChild(t *testing.T) {
 
 func writeSyntheticFile(t *testing.T, path string, body func(emit func([]byte))) {
 	t.Helper()
-	var out bytes.Buffer
-	emit := loadSyntheticTemplate(t).writer(&out)
-	body(emit)
-	if err := os.WriteFile(path, out.Bytes(), 0o600); err != nil {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
 		t.Fatal(err)
+	}
+	out := bufio.NewWriterSize(f, 1<<20)
+	emit := loadSyntheticTemplate(t).writer(out)
+	body(emit)
+	if err := out.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAnalyzeMatchedGTIDSetHeap is the E1 bound for the matched GTID evidence
+// under GTID selectors (#379). selection.matched_gtid_set is an interval set,
+// so memory grows with the gaps between matched GTIDs, not with matches.
+//
+// The child writes synthetic MySQL 8.0 binlogs of 262,144 and 1,048,576
+// transactions (GTID, BEGIN, XID; every 1024th of the first 262,144 also has
+// its TABLE_MAP and UPDATE_ROWS, so both files report the same 256 row
+// transactions and differ only in matched GTIDs) and measures live heap as
+// TestAnalyzeRetainedHeap does, under two selectors that match nearly every
+// transaction with a fixed number of gaps:
+//
+//   - exclude-one: --exclude-gtids of a single GTID (2 intervals).
+//   - gappy: --include-gtids covering everything and --exclude-gtids of three
+//     GTIDs (4 intervals).
+//
+// The 1M run may peak at most maxAnalyzeExtraHeap above the 262k run. Before
+// #379 every matched GTID stayed in a map until the report was built (about
+// 200 bytes each), so the extra 786k matches cost about 150MB.
+func TestAnalyzeMatchedGTIDSetHeap(t *testing.T) {
+	switch mode := os.Getenv("BINLOGVIZ_ANAMEM_MATCHED"); mode {
+	case "child":
+		analyzeMatchedGTIDMemChild(t)
+		return
+	case "":
+	default:
+		t.Fatalf("BINLOGVIZ_ANAMEM_MATCHED=%q: only this test sets it, to child", mode)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAnalyzeMatchedGTIDSetHeap$", "-test.count=1", "-test.v")
+	cmd.Env = append(os.Environ(),
+		"BINLOGVIZ_ANAMEM_MATCHED=child",
+		"GOMEMLIMIT=256MiB",
+	)
+	out, err := cmd.CombinedOutput()
+	t.Logf("%s", out)
+	if err != nil {
+		t.Fatalf("analyze heap grows with matched GTIDs: %v\n%s", err, out)
+	}
+	if strings.Count(string(out), "anamem-matched case=") != 4 || !strings.Contains(string(out), "--- PASS: TestAnalyzeMatchedGTIDSetHeap") {
+		t.Fatalf("child did not measure every run and pass:\n%s", out)
+	}
+}
+
+func analyzeMatchedGTIDMemChild(t *testing.T) {
+	t.Helper()
+	tp := loadSyntheticTemplate(t)
+	sid := tp.sid()
+	dir := t.TempDir()
+	const smallN, largeN, rowsEvery = 1 << 18, 1 << 20, 1024
+	write := func(n int) string {
+		path := filepath.Join(dir, fmt.Sprintf("matched.%d", n))
+		writeSyntheticFile(t, path, func(emit func([]byte)) {
+			for i := 0; i < n; i++ {
+				emit(tp.event(0, i, i))
+				emit(tp.event(1, i, i))
+				if i%rowsEvery == 0 && i < smallN {
+					emit(tp.event(2, i, i))
+					emit(tp.event(3, i, i))
+				}
+				emit(tp.event(4, i, i))
+			}
+		})
+		return path
+	}
+	type selCase struct {
+		name             string
+		include, exclude []string
+		excluded         int
+		set              func(n int) string
+	}
+	cases := []selCase{
+		{"exclude-one", nil, []string{sid + ":5"}, 1,
+			func(n int) string { return fmt.Sprintf("%s:1-4:6-%d", sid, n) }},
+		{"gappy", []string{sid + ":1-9999999"}, []string{sid + ":7:77:777"}, 3,
+			func(n int) string { return fmt.Sprintf("%s:1-6:8-76:78-776:778-%d", sid, n) }},
+	}
+	runs := map[string]analyzeMemRun{}
+	for _, n := range []int{smallN, largeN} {
+		path := write(n)
+		const withRows = smallN / rowsEvery
+		for _, c := range cases {
+			sel, err := analyzer.ParseGTIDSelector(c.include, c.exclude)
+			if err != nil {
+				t.Fatal(err)
+			}
+			opts := analyzer.DefaultOptions()
+			opts.GTIDSelector = sel
+			if n == smallN && c.name == cases[0].name {
+				measureAnalyzeHeap(t, path, opts, withRows) // warm-up
+			}
+			r := measureAnalyzeHeap(t, path, opts, withRows)
+			if r.matched != n-c.excluded || len(r.set) != 1 || r.set[0] != c.set(n) {
+				t.Fatalf("%s n=%d: matched %d set %v, want %d and %s", c.name, n, r.matched, r.set, n-c.excluded, c.set(n))
+			}
+			fmt.Printf("anamem-matched case=%s txns=%d matched=%d events=%d samples=%d peak_bytes=%d\n", c.name, n, r.matched, r.events, r.samples, r.peak)
+			runs[fmt.Sprintf("%s/%d", c.name, n)] = r
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, c := range cases {
+		small, large := runs[fmt.Sprintf("%s/%d", c.name, smallN)], runs[fmt.Sprintf("%s/%d", c.name, largeN)]
+		extra := int64(large.peak) - int64(small.peak)
+		per := float64(extra) / float64(largeN-smallN)
+		fmt.Printf("anamem-matched %s extra_heap=%d per_match=%.2f limit=%d\n", c.name, extra, per, maxAnalyzeExtraHeap)
+		if extra > maxAnalyzeExtraHeap {
+			t.Fatalf("%s: analyze live heap grew %d bytes from %d to %d matched transactions (%.1f bytes/match); limit %d bytes",
+				c.name, extra, smallN-c.excluded, largeN-c.excluded, per, maxAnalyzeExtraHeap)
+		}
 	}
 }
