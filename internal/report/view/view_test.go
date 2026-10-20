@@ -6,7 +6,7 @@ import (
 	"binlogviz/internal/model"
 )
 
-func TestTextCapsDifferFromListedAndJSON(t *testing.T) {
+func TestKeyTransactionsAreTheListedSet(t *testing.T) {
 	listed := []model.Transaction{
 		{TxnKey: "a", QuerySummary: "select 1"},
 		{TxnKey: "b"},
@@ -50,8 +50,8 @@ func TestTextCapsDifferFromListedAndJSON(t *testing.T) {
 		DiagnosticLists: true,
 		HasQuery:        func(txn model.Transaction) bool { return txn.QuerySummary != "" },
 	})
-	if len(v.Listed) != 4 || v.Omitted != 6 {
-		t.Fatalf("listed %d omitted %d", len(v.Listed), v.Omitted)
+	if len(v.Key) != 4 || len(v.Listed) != 4 || v.Omitted != 6 || keys(v.Key) != "a,b,c,d" {
+		t.Fatalf("key %s listed %d omitted %d", keys(v.Key), len(v.Listed), v.Omitted)
 	}
 	if got := keys(v.Text.Largest); got != "l1,l2,l3" {
 		t.Fatalf("text largest %s", got)
@@ -71,8 +71,8 @@ func TestTextCapsDifferFromListedAndJSON(t *testing.T) {
 	if len(v.Largest) != 4 || len(v.Longest) != 4 || len(v.Widest) != 2 || len(v.LargestBytes) != 5 {
 		t.Fatalf("json lists %d %d %d %d", len(v.Largest), len(v.Longest), len(v.Widest), len(v.LargestBytes))
 	}
-	if len(v.Evidence) != 3 {
-		t.Fatalf("evidence %+v", v.Evidence)
+	if len(v.Evidence) != 0 {
+		t.Fatalf("champions outside Key are not evidence, got %+v", v.Evidence)
 	}
 }
 
@@ -102,20 +102,18 @@ func TestTopNOneAndMergedEvidence(t *testing.T) {
 	if v.Largest != nil || v.Longest != nil {
 		t.Fatalf("diagnostic lists should be nil when DiagnosticLists is false")
 	}
-	if len(v.Evidence) != 2 {
+	if len(v.Evidence) != 1 {
 		t.Fatalf("evidence %+v", v.Evidence)
 	}
 	if v.Evidence[0].Txn.TxnKey != "same" || len(v.Evidence[0].Reasons) != 2 || v.Evidence[0].Reasons[0] != ReasonLargest || v.Evidence[0].Reasons[1] != ReasonLongest {
 		t.Fatalf("merged champion %+v", v.Evidence[0])
-	}
-	if v.Evidence[1].Txn.TxnKey != "w1" || len(v.Evidence[1].Reasons) != 1 || v.Evidence[1].Reasons[0] != ReasonWidest {
-		t.Fatalf("widest champion %+v", v.Evidence[1])
 	}
 }
 
 func TestEmptyTxnKeyDoesNotMerge(t *testing.T) {
 	blank := model.Transaction{TotalRows: 1}
 	v := Build(model.AnalysisResult{
+		Transactions: []model.Transaction{blank},
 		Diagnostics: model.Diagnostics{
 			LargestTransactions: []model.Transaction{blank},
 			LongestTransactions: []model.Transaction{blank},

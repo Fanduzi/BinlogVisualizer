@@ -336,7 +336,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string, 
 		d.InputFileSize = formatFileSize(bytes)
 		d.HasInputFileSize = true
 	}
-	for _, txn := range built.Listed {
+	for _, txn := range built.Key {
 		d.Transactions = append(d.Transactions, htmlTransactionLookup{
 			TxnKey:   txn.TxnKey,
 			Rows:     txn.TotalRows,

@@ -280,43 +280,52 @@ func maxInt(a, b int) int {
 func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, opts Options, built view.View) {
 	buf.WriteString("=== " + i18n.T("report.text.topTransactions") + " ===\n")
 	mode := opts.SQLContextMode
-	lines := make([]string, 0, len(built.Text.Largest)+len(built.Text.Longest)+len(built.Text.Widest)+2)
-	for _, txn := range built.Text.Largest {
+	lines := make([]string, 0, len(built.Key)*3+2)
+	largest := indexTxnKeys(built.Text.Largest)
+	longest := indexTxnKeys(built.Text.Longest)
+	widest := indexTxnKeys(built.Text.Widest)
+	serverVersion := result.Diagnostics.ServerVersion
+	for _, txn := range built.Key {
+		labeled := false
+		if txn.TxnKey != "" && largest[txn.TxnKey] {
+			labeled = true
+			line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
+				i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
+			if table := dominantTableName(txn.Tables); table != "" {
+				line += " table=" + table
+			}
+			if txn.BinlogBytes > 0 {
+				line += " bytes=" + formatByteSize(txn.BinlogBytes)
+			}
+			appendTxnBlock(&lines, appendTxnIdentity(line, txn), txn, mode, serverVersion, opts)
+		}
+		if txn.TxnKey != "" && longest[txn.TxnKey] {
+			labeled = true
+			line := fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
+				i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn))
+			appendTxnBlock(&lines, appendTxnIdentity(line, txn), txn, mode, serverVersion, opts)
+		}
+		if txn.TxnKey != "" && widest[txn.TxnKey] {
+			labeled = true
+			line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
+				i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn))
+			appendTxnBlock(&lines, appendTxnIdentity(line, txn), txn, mode, serverVersion, opts)
+		}
+		if labeled {
+			continue
+		}
 		line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
-			i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
+			i18n.T("report.text.listedTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
 		if table := dominantTableName(txn.Tables); table != "" {
 			line += " table=" + table
 		}
 		if txn.BinlogBytes > 0 {
 			line += " bytes=" + formatByteSize(txn.BinlogBytes)
 		}
-		line = appendTxnIdentity(line, txn)
-		lines = append(lines, line)
-		appendTextQueryLine(&lines, txn, mode)
-		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
-		appendRowImageLines(&lines, txn, opts)
+		appendTxnBlock(&lines, appendTxnIdentity(line, txn), txn, mode, serverVersion, opts)
 	}
 	if line := formatCommittedDurationLine(result.Diagnostics.DurationBuckets); line != "" {
 		lines = append(lines, "  "+line)
-	}
-	for _, txn := range built.Text.Longest {
-		line := fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
-			i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn))
-		lines = append(lines, appendTxnIdentity(line, txn))
-		appendTextQueryLine(&lines, txn, mode)
-		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
-		appendRowImageLines(&lines, txn, opts)
-	}
-	for _, txn := range built.Text.Widest {
-		line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
-			i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn))
-		lines = append(lines, appendTxnIdentity(line, txn))
-		appendTextQueryLine(&lines, txn, mode)
-		appendReplayLine(&lines, txn, result.Diagnostics.ServerVersion)
-		appendRowImageLines(&lines, txn, opts)
-	}
-	if built.Text.QueryFallback != nil {
-		appendTextQueryLine(&lines, *built.Text.QueryFallback, mode)
 	}
 	if len(lines) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noTransactions") + "\n\n")
@@ -326,6 +335,23 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, op
 		buf.WriteString(line + "\n")
 	}
 	buf.WriteString("\n")
+}
+
+func indexTxnKeys(txns []model.Transaction) map[string]bool {
+	out := make(map[string]bool, len(txns))
+	for _, txn := range txns {
+		if txn.TxnKey != "" {
+			out[txn.TxnKey] = true
+		}
+	}
+	return out
+}
+
+func appendTxnBlock(lines *[]string, line string, txn model.Transaction, mode SQLContextMode, serverVersion string, opts Options) {
+	*lines = append(*lines, line)
+	appendTextQueryLine(lines, txn, mode)
+	appendReplayLine(lines, txn, serverVersion)
+	appendRowImageLines(lines, txn, opts)
 }
 
 func renderNextActions(buf *strings.Builder, result model.AnalysisResult) {

@@ -975,6 +975,10 @@
     "description": "最宽事务发现短标签",
     "other": "最宽事务"
   },
+  "report.text.listedTransaction": {
+    "description": "不是最大、最长或最宽冠军的重点事务标签",
+    "other": "事务"
+  },
   "report.text.ddlDetected": {
     "description": "检测到 DDL 的发现短标签",
     "other": "检测到 DDL"

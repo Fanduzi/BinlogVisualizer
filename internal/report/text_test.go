@@ -483,18 +483,25 @@ func TestRenderTextTopTablesSupportsExplicitUnlimitedLimit(t *testing.T) {
 	}
 }
 
-func TestRenderTextTopTransactionsUsesTopLimit(t *testing.T) {
+func TestRenderTextKeyTransactionsAreTheListedSet(t *testing.T) {
 	result := productTextFixture()
-	result.Diagnostics.LargestTransactions = []model.Transaction{
+	listed := []model.Transaction{
 		{TxnKey: "txn-largest-a", TotalRows: 5000, Duration: 5 * time.Second, Tables: map[string]int{"shop.orders": 5000}},
+		{TxnKey: "txn-long-a", TotalRows: 20, Duration: 45 * time.Second, Tables: map[string]int{"shop.accounts": 20}},
+		{TxnKey: "txn-wide-a", TotalRows: 120, Duration: 8 * time.Second, Tables: map[string]int{"shop.orders": 1, "shop.users": 1, "shop.payments": 1, "shop.audit_logs": 1}},
+		{TxnKey: "txn-listed", TotalRows: 10, Duration: 1 * time.Second, Tables: map[string]int{"shop.audit": 10}},
+	}
+	result.Transactions = listed
+	result.Diagnostics.LargestTransactions = []model.Transaction{
+		listed[0],
 		{TxnKey: "txn-largest-b", TotalRows: 4000, Duration: 4 * time.Second, Tables: map[string]int{"shop.users": 4000}},
 	}
 	result.Diagnostics.LongestTransactions = []model.Transaction{
-		{TxnKey: "txn-long-a", TotalRows: 20, Duration: 45 * time.Second, Tables: map[string]int{"shop.accounts": 20}},
+		listed[1],
 		{TxnKey: "txn-long-b", TotalRows: 18, Duration: 30 * time.Second, Tables: map[string]int{"shop.settlements": 18}},
 	}
 	result.Diagnostics.WidestTransactions = []model.Transaction{
-		{TxnKey: "txn-wide-a", TotalRows: 120, Duration: 8 * time.Second, Tables: map[string]int{"shop.orders": 1, "shop.users": 1, "shop.payments": 1, "shop.audit_logs": 1}},
+		listed[2],
 		{TxnKey: "txn-wide-b", TotalRows: 100, Duration: 7 * time.Second, Tables: map[string]int{"shop.orders": 1, "shop.users": 1, "shop.shipments": 1}},
 	}
 
@@ -503,26 +510,29 @@ func TestRenderTextTopTransactionsUsesTopLimit(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	for _, token := range []string{"txn-largest-a", "txn-long-a", "txn-wide-a"} {
+	for _, token := range []string{"txn-largest-a", "txn-long-a", "txn-wide-a", "txn-listed", "Transaction: txn-listed"} {
 		if !strings.Contains(out, token) {
-			t.Fatalf("expected top transaction token %q\n%s", token, out)
+			t.Fatalf("expected key transaction token %q\n%s", token, out)
 		}
 	}
 	for _, token := range []string{"txn-largest-b", "txn-long-b", "txn-wide-b"} {
 		if strings.Contains(out, token) {
-			t.Fatalf("expected top limit to hide token %q\n%s", token, out)
+			t.Fatalf("diagnostic-only transaction %q is not a key transaction\n%s", token, out)
 		}
 	}
 }
 
-func TestRenderTextShowsUpToThreeLargestTransactions(t *testing.T) {
+func TestRenderTextShowsListedTransactionsNotTheFourthChampion(t *testing.T) {
 	result := productTextFixture()
-	result.Diagnostics.LargestTransactions = []model.Transaction{
+	listed := []model.Transaction{
 		{TxnKey: "txn-largest-a", TotalRows: 5000, BinlogBytes: 4096, Tables: map[string]int{"shop.orders": 5000}},
 		{TxnKey: "txn-largest-b", TotalRows: 4000, Tables: map[string]int{"shop.users": 4000}},
 		{TxnKey: "txn-largest-c", TotalRows: 3000, Tables: map[string]int{"shop.payments": 3000}},
-		{TxnKey: "txn-largest-d", TotalRows: 2000, Tables: map[string]int{"shop.audit": 2000}},
 	}
+	result.Transactions = listed
+	result.Diagnostics.LargestTransactions = append(append([]model.Transaction{}, listed...), model.Transaction{
+		TxnKey: "txn-largest-d", TotalRows: 2000, Tables: map[string]int{"shop.audit": 2000},
+	})
 
 	out, err := RenderText(result)
 	if err != nil {
@@ -534,7 +544,7 @@ func TestRenderTextShowsUpToThreeLargestTransactions(t *testing.T) {
 		}
 	}
 	if strings.Contains(out, "txn-largest-d") {
-		t.Fatalf("expected fourth largest txn to stay hidden\n%s", out)
+		t.Fatalf("expected a diagnostic-only transaction to stay out of the key section\n%s", out)
 	}
 }
 
@@ -662,7 +672,34 @@ func TestRenderTextAndHTMLShareTopNDefault(t *testing.T) {
 
 func productTextFixture() model.AnalysisResult {
 	start := time.Date(2026, 4, 17, 9, 0, 0, 0, time.UTC)
+	largest := model.Transaction{
+		TxnKey:          "txn-largest",
+		TotalRows:       5000,
+		Duration:        6 * time.Second,
+		BinlogPathStart: "mysql-bin.000044",
+		PositionStart:   210,
+		PositionEnd:     420,
+		Tables:          map[string]int{"shop.orders": 5000},
+	}
+	longest := model.Transaction{
+		TxnKey:          "txn-long",
+		TotalRows:       500,
+		Duration:        45 * time.Second,
+		BinlogPathStart: "mysql-bin.000044",
+		PositionStart:   100,
+		PositionEnd:     200,
+	}
+	widest := model.Transaction{
+		TxnKey:          "txn-wide",
+		TotalRows:       600,
+		Duration:        8 * time.Second,
+		Tables:          map[string]int{"shop.orders": 200, "shop.users": 200, "shop.payments": 200},
+		BinlogPathStart: "mysql-bin.000045",
+		PositionStart:   500,
+		PositionEnd:     700,
+	}
 	return model.AnalysisResult{
+		Transactions: []model.Transaction{largest, longest, widest},
 		Summary: model.WorkloadSummary{
 			TotalTransactions: 120,
 			TotalRows:         10000,
@@ -692,32 +729,9 @@ func productTextFixture() model.AnalysisResult {
 				Table:     "orders",
 				Statement: "ALTER TABLE shop.orders ADD COLUMN marker INT",
 			}},
-			LongestTransactions: []model.Transaction{{
-				TxnKey:          "txn-long",
-				TotalRows:       500,
-				Duration:        45 * time.Second,
-				BinlogPathStart: "mysql-bin.000044",
-				PositionStart:   100,
-				PositionEnd:     200,
-			}},
-			LargestTransactions: []model.Transaction{{
-				TxnKey:          "txn-largest",
-				TotalRows:       5000,
-				Duration:        6 * time.Second,
-				BinlogPathStart: "mysql-bin.000044",
-				PositionStart:   210,
-				PositionEnd:     420,
-				Tables:          map[string]int{"shop.orders": 5000},
-			}},
-			WidestTransactions: []model.Transaction{{
-				TxnKey:          "txn-wide",
-				TotalRows:       600,
-				Duration:        8 * time.Second,
-				Tables:          map[string]int{"shop.orders": 200, "shop.users": 200, "shop.payments": 200},
-				BinlogPathStart: "mysql-bin.000045",
-				PositionStart:   500,
-				PositionEnd:     700,
-			}},
+			LongestTransactions: []model.Transaction{longest},
+			LargestTransactions: []model.Transaction{largest},
+			WidestTransactions:  []model.Transaction{widest},
 		},
 	}
 }
@@ -827,12 +841,14 @@ func TestRenderTextShowsDDLTimelineAndOpenDML(t *testing.T) {
 		{Label: "1s-10s", TxnCount: 2},
 		{Label: ">=30s", TxnCount: 1},
 	}
-	result.Diagnostics.LongestTransactions = []model.Transaction{
+	longest := []model.Transaction{
 		{TxnKey: "txn-long-a", Duration: 45 * time.Second, TotalRows: 1, BinlogPathStart: "mysql-bin.000044", PositionStart: 10, PositionEnd: 20},
 		{TxnKey: "txn-long-b", Duration: 31 * time.Second, TotalRows: 2, BinlogPathStart: "mysql-bin.000044", PositionStart: 20, PositionEnd: 30},
 		{TxnKey: "txn-long-c", Duration: 12 * time.Second, TotalRows: 3, BinlogPathStart: "mysql-bin.000044", PositionStart: 30, PositionEnd: 40},
 		{TxnKey: "txn-long-d", Duration: time.Second, TotalRows: 4, BinlogPathStart: "mysql-bin.000044", PositionStart: 40, PositionEnd: 50},
 	}
+	result.Transactions = longest[:3]
+	result.Diagnostics.LongestTransactions = longest
 	result.Diagnostics.LargestByteTransactions = []model.Transaction{
 		{TxnKey: "txn-bytes", BinlogBytes: 8192, TotalRows: 1},
 	}
