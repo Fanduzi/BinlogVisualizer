@@ -1,7 +1,7 @@
 // Package analyzer keeps the GTIDs a GTID selector matched as an interval set.
-// input: the canonical identity of every transaction read (observe) and of each matched one (add).
+// input: the canonical identity of every transaction read (observe, or read with keep for a matched one) and of each matched MySQL one (add).
 // output: selection.matched_gtid_set (MySQL uuid:1-4:6-9 per server UUID, MariaDB domain-server-seq or domain-server-first..last, per server or shared by the servers of a domain) and the matched transaction count.
-// pos: Analyzer selection evidence (#379, #381 QA F1); memory is O(intervals), not O(matches).
+// pos: Analyzer selection evidence (#379, #381 QA F1); memory is O(intervals), not O(matches); limit errors count the stopping transaction (#384 QA F2).
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
@@ -19,13 +19,20 @@ import (
 var MatchedGTIDIntervalLimit = 100_000
 
 // MatchedGTIDLimitError is the resource ceiling for the matched GTID set.
+// Intervals is exact or a true lower bound of what the matched transactions
+// read so far need, the one that stopped the run included (#384 QA F2).
 type MatchedGTIDLimitError struct {
 	Limit     int
 	Intervals int
+	// Dropped reports that a MariaDB domain needs the per-server form after
+	// it was dropped for every domain (a sequence number repeats), rather
+	// than the rendered set passing Limit. The count may then be at or
+	// below Limit.
+	Dropped bool
 }
 
 func (e *MatchedGTIDLimitError) Error() string {
-	if e.Intervals <= e.Limit {
+	if e.Dropped {
 		return fmt.Sprintf("GTID selectors matched MariaDB transactions that need at least %d separate GTID intervals kept per server, because a sequence number repeats; that form was dropped when all domains together passed %d. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit)
 	}
 	return fmt.Sprintf("GTID selectors matched transactions that need at least %d separate GTID intervals; at most %d can be tracked. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit)
@@ -78,6 +85,11 @@ type mariaDomain struct {
 	seen     rangeList
 	conflict bool
 	cost     int
+	// repeat corrects the per-server count derived from shared for the
+	// matched identity whose sequence number made the domain conflict while
+	// the per-server form was gone: shared keeps one label per sequence
+	// number, so it cannot hold that identity (see repeatDelta).
+	repeat int
 }
 
 func newMatchedGTIDSet() *matchedGTIDSet {
@@ -88,22 +100,48 @@ func (m *matchedGTIDSet) limitError(intervals int) error {
 	return &MatchedGTIDLimitError{Limit: MatchedGTIDIntervalLimit, Intervals: intervals}
 }
 
-// observe records the GTID of a transaction read from the input, matched or
-// not, so a MariaDB domain knows whether a sequence number repeats. MySQL
-// identities are ignored. Call it before add for a matched transaction.
+// droppedError is the error of a domain left with no form.
+func (m *matchedGTIDSet) droppedError() error {
+	return &MatchedGTIDLimitError{Limit: MatchedGTIDIntervalLimit, Intervals: m.needed(), Dropped: true}
+}
+
+// observe records the GTID of an unmatched transaction (or one whose
+// evidence is not kept) read from the input; see read.
 func (m *matchedGTIDSet) observe(identity string) error {
-	domain, _, seq, ok := mariaIdentity(identity)
+	return m.read(identity, false)
+}
+
+// read records the GTID of a transaction read from the input, matched or
+// not, so a MariaDB domain knows whether a sequence number repeats; with keep
+// it also adds the identity as a matched transaction, in the same step, so a
+// limit error counts it (#384 QA F2: the count was taken on the repeat,
+// before the repeating transaction was added). MySQL identities only go to
+// add.
+func (m *matchedGTIDSet) read(identity string, keep bool) error {
+	domain, server, seq, ok := mariaIdentity(identity)
 	if !ok || m.sharedOff {
+		if keep {
+			return m.add(identity)
+		}
 		return nil
 	}
 	d := m.domain(domain)
 	delta, present := d.seen.add(seq)
 	m.seenTotal += delta
+	repeat := present && !d.conflict
+	if repeat {
+		d.conflict = true
+	}
+	if keep {
+		if repeat && m.exactOff {
+			d.repeat = d.shared.repeatDelta(seq, server, d.servers)
+		}
+		return m.add(identity)
+	}
 	if m.seenTotal > MatchedGTIDIntervalLimit {
 		return m.dropShared()
 	}
-	if present && !d.conflict {
-		d.conflict = true
+	if repeat {
 		return m.recost(d)
 	}
 	return nil
@@ -137,7 +175,7 @@ func (m *matchedGTIDSet) add(identity string) error {
 				return err
 			}
 		}
-		if m.sharedTotal > MatchedGTIDIntervalLimit {
+		if m.sharedTotal > MatchedGTIDIntervalLimit || m.seenTotal > MatchedGTIDIntervalLimit {
 			return m.dropShared()
 		}
 		return m.recost(d)
@@ -194,12 +232,14 @@ func (m *matchedGTIDSet) form(d *mariaDomain) (useShared bool, cost int, ok bool
 // perServer is the number of per-server ranges domain d needs: counted
 // directly while that form is kept, otherwise derived from the shared ranges
 // labeled by server (ranges plus server changes inside them), which is exact
-// while no sequence number of the domain repeated.
+// while no sequence number of the domain repeated, plus the bound for the
+// matched identity that repeated one (d.repeat). Analyze stops on that
+// repeat, so no later identity makes the derived count drift.
 func (m *matchedGTIDSet) perServer(d *mariaDomain) int {
 	if d.exact != nil {
 		return d.exactN
 	}
-	return d.shared.n + d.shared.changes
+	return d.shared.n + d.shared.changes + d.repeat
 }
 
 // needed is the number of entries the set needs: each domain's rendered form,
@@ -220,7 +260,7 @@ func (m *matchedGTIDSet) needed() int {
 func (m *matchedGTIDSet) recost(d *mariaDomain) error {
 	_, cost, ok := m.form(d)
 	if !ok {
-		return m.limitError(m.needed())
+		return m.droppedError()
 	}
 	m.cost += cost - d.cost
 	d.cost = cost
@@ -251,7 +291,7 @@ func (m *matchedGTIDSet) dropExact() error {
 	var err error
 	for _, d := range m.maria {
 		if _, _, ok := m.form(d); !ok {
-			err = m.limitError(m.needed())
+			err = m.droppedError()
 			break
 		}
 	}
@@ -271,7 +311,7 @@ func (m *matchedGTIDSet) dropShared() error {
 	m.sharedOff = true
 	for _, d := range m.maria {
 		if _, _, ok := m.form(d); !ok {
-			err := m.limitError(m.needed())
+			err := m.droppedError()
 			for _, d := range m.maria {
 				d.shared, d.seen = rangeList{}, rangeList{}
 			}

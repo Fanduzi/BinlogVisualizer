@@ -1327,7 +1327,7 @@ func analyzerResourceError(err error) error {
 		return nil
 	}
 	key := "error.matchedGTIDIntervals"
-	if limit.Intervals <= limit.Limit {
+	if limit.Dropped {
 		// The per-server form was dropped for every domain (fail-safe).
 		key = "error.matchedGTIDIntervalsDropped"
 	}

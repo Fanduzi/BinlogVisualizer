@@ -318,3 +318,64 @@ func TestAnalyzeMatchedGTIDIntervalCeilingExitsTen(t *testing.T) {
 		t.Fatalf("zh-CN: exit=%d err=%v", ExitCode(err), err)
 	}
 }
+
+// TestAnalyzeMatchedGTIDDroppedFormMessage pins the MariaDB fail-safe at the
+// CLI (#384 QA F1/F2): once the per-server form is dropped, a matched
+// transaction that repeats a sequence number stops analyze with the
+// "dropped" message, in en and zh-CN, and its count includes that
+// transaction: 0-8-6 joins 0-8-5 and 0-8-7, so 10, not 11.
+func TestAnalyzeMatchedGTIDDroppedFormMessage(t *testing.T) {
+	old := analyzer.MatchedGTIDIntervalLimit
+	analyzer.MatchedGTIDIntervalLimit = 4
+	t.Cleanup(func() { analyzer.MatchedGTIDIntervalLimit = old })
+	selector, err := analyzer.ParseGTIDSelector(nil, []string{"0-8-3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	events := []binlog.RawEvent{{Timestamp: base, EventType: "FORMAT_DESCRIPTION", PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "10.11.6-MariaDB-log", ServerFlavor: "mariadb"}}
+	pos := int64(100)
+	add := func(ev binlog.RawEvent) {
+		ev.Timestamp, ev.PositionStart, ev.PositionEnd, ev.Position, ev.ServerFlavor = base, pos, pos+20, uint32(pos+20), "mariadb"
+		events = append(events, ev)
+		pos += 20
+	}
+	txn := func(gtid string) {
+		add(binlog.RawEvent{EventType: "GTID", GTID: gtid})
+		add(binlog.RawEvent{EventType: "QUERY", Query: "BEGIN"})
+		add(binlog.RawEvent{EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1})
+		add(binlog.RawEvent{EventType: "XID"})
+	}
+	for seq := 1; seq <= 12; seq++ {
+		txn(fmt.Sprintf("0-%d-%d", 7+seq%2, seq))
+	}
+	txn("0-8-6")
+	run := func() error {
+		opts := analyzer.DefaultOptions()
+		opts.GTIDSelector = selector
+		stdout, err := captureStdoutRun(t, func() error {
+			return runAnalysisWithParser([]string{"synthetic.bin"}, opts, "json", &mockParser{events: events})
+		})
+		if stdout != "" {
+			t.Fatalf("stdout %q", stdout)
+		}
+		return err
+	}
+	forceEnglishRuntimeOutput(t)
+	err = run()
+	kind, details := clierr.Of(err)
+	if ExitCode(err) != 10 || kind != clierr.KindResource || details["reason"] != "matched_gtid_intervals" || details["limit"] != 4 || details["intervals"] != 10 {
+		t.Fatalf("exit=%d kind=%v details=%v err=%v", ExitCode(err), kind, details, err)
+	}
+	if want := "need at least 10 separate GTID intervals kept per server, because a sequence number repeats; that form was dropped when all domains together passed 4"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("en message: %v", err)
+	}
+	i18n.ResetForTesting()
+	t.Cleanup(i18n.ResetForTesting)
+	if err := i18n.Init("zh-CN"); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); ExitCode(err) != 10 || !strings.Contains(err.Error(), "至少需要 10 个按 server 记录的独立 GTID 区间") {
+		t.Fatalf("zh-CN: exit=%d err=%v", ExitCode(err), err)
+	}
+}

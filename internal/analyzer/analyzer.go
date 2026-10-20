@@ -690,6 +690,7 @@ func (a *Analyzer) persistCompletedTransactions() error {
 				// a group, so this cannot happen; fail rather than misreport.
 				return fmt.Errorf("cannot apply GTID selectors: transaction %s was filtered as GTID %q but closed as %q", txn.TxnKey, group.gtid, txn.GTID)
 			}
+			added := false
 			if txn.GTID != "" && a.opts.GTIDSelector.Flavor() == "mariadb" {
 				// Every MariaDB GTID read, matched or not, tells the matched
 				// set whether a domain's sequence numbers repeat (#381 QA F1).
@@ -697,14 +698,18 @@ func (a *Analyzer) persistCompletedTransactions() error {
 				if err != nil {
 					return err
 				}
-				if err := a.matchedGTIDs.observe(identity); err != nil {
+				// A matched one is added in the same step, so a limit error
+				// counts it (#384 QA F2).
+				keep := matched && group != nil && group.retained
+				if err := a.matchedGTIDs.read(identity, keep); err != nil {
 					return err
 				}
+				added = keep
 			}
 			if !matched {
 				continue
 			}
-			if txn.GTID != "" && group != nil && group.retained {
+			if !added && txn.GTID != "" && group != nil && group.retained {
 				identity, err := a.opts.GTIDSelector.canonicalIdentity(txn.GTID)
 				if err != nil {
 					return err

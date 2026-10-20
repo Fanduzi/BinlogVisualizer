@@ -1,6 +1,6 @@
 // Package analyzer keeps a sorted, merged list of sequence ranges in chunks.
 // input: sequence numbers in any order.
-// output: disjoint ranges with adjacent numbers merged, iterated in order; optionally the label changes inside ranges.
+// output: disjoint ranges with adjacent numbers merged, iterated in order; optionally the label changes inside ranges and a lower bound for adding a number under a second label.
 // pos: storage for the matched GTID set (#379); an insert costs O(log n + chunk), so out-of-order input is not quadratic.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -107,6 +107,69 @@ func (l *rangeList) addLabeled(seq, label uint64) (delta int, present bool) {
 	}
 	l.insert(c, i, seq, label)
 	return 1, false
+}
+
+// find returns the range holding seq, or nil.
+func (l *rangeList) find(seq uint64) *labeledRange {
+	c := sort.Search(len(l.chunks), func(i int) bool {
+		ch := l.chunks[i]
+		return ch[len(ch)-1].end >= seq
+	})
+	if c == len(l.chunks) {
+		return nil
+	}
+	ch := l.chunks[c]
+	i := sort.Search(len(ch), func(j int) bool { return ch[j].end >= seq })
+	if ch[i].start > seq {
+		return nil
+	}
+	return &ch[i]
+}
+
+// repeatDelta is a lower bound of the change in per-server ranges (n+changes)
+// when label adds seq although seq is already in the list under one label,
+// which a labeled list cannot hold (addLabeled reports it present). It is 0
+// when seq is not in the list (addLabeled counts it then) and exact when the
+// labels at and next to seq are known. Inside a range only the first and
+// last labels are kept, and all labels are known when the range has no
+// change. A label that is not known is taken as label when label is one of
+// labels, which gives the smallest count, and as another label otherwise.
+func (l *rangeList) repeatDelta(seq, label uint64, labels map[uint64]struct{}) int {
+	r := l.find(seq)
+	if r == nil {
+		return 0
+	}
+	_, mayBe := labels[label]
+	// at returns the label of n inside r when it is known.
+	at := func(n uint64) (uint64, bool) {
+		switch {
+		case n == r.start || r.changes == 0:
+			return r.first, true
+		case n == r.end:
+			return r.last, true
+		}
+		return 0, false
+	}
+	is := func(n uint64) bool {
+		if got, ok := at(n); ok {
+			return got == label
+		}
+		return mayBe
+	}
+	if got, ok := at(seq); ok && got == label {
+		return 0 // the same identity again
+	}
+	delta := 1 // a range of its own
+	if seq > r.start && is(seq-1) {
+		delta-- // joins the range of seq-1
+	}
+	if seq < r.end && is(seq+1) {
+		delta-- // and of seq+1
+	}
+	if _, ok := at(seq); !ok && mayBe && delta > 0 {
+		delta = 0 // may be the same identity again
+	}
+	return delta
 }
 
 func (l *rangeList) insert(c, i int, seq, label uint64) {
