@@ -106,6 +106,8 @@ type analyzeMemRun struct {
 	fileBytes    int64
 	samples      int
 	peak         uint64
+	rows         int
+	matched      int // len(selection.matched_gtids), -1 without a selection
 }
 
 func runAnalyzeMem(t *testing.T, dir string, n int) analyzeMemRun {
@@ -113,6 +115,16 @@ func runAnalyzeMem(t *testing.T, dir string, n int) analyzeMemRun {
 	path := filepath.Join(dir, "mysql-bin."+strconv.Itoa(n))
 	size := writeSyntheticBinlog(t, path, n)
 	defer os.Remove(path)
+	r := measureAnalyzeHeap(t, path, analyzer.DefaultOptions(), n)
+	r.txns, r.fileBytes = n, size
+	return r
+}
+
+// measureAnalyzeHeap runs one file through the analyze pipeline with opts and
+// returns the sampled peak live heap. wantTxns is the transaction count the
+// result must report.
+func measureAnalyzeHeap(t *testing.T, path string, opts analyzer.Options, wantTxns int) analyzeMemRun {
+	t.Helper()
 
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
@@ -131,19 +143,24 @@ func runAnalyzeMem(t *testing.T, dir string, n int) analyzeMemRun {
 		return sa
 	}
 	runtime.GC()
-	if err := runAnalysisStreamingWithDeps([]string{path}, analyzer.DefaultOptions(), report.DefaultOptions(), "json", binlog.NewParser(), nil, factory, nil, ""); err != nil {
-		t.Fatalf("analyze %d transactions: %v", n, err)
+	if err := runAnalysisStreamingWithDeps([]string{path}, opts, report.DefaultOptions(), "json", binlog.NewParser(), nil, factory, nil, ""); err != nil {
+		t.Fatalf("analyze %s: %v", filepath.Base(path), err)
 	}
 	if sa == nil || sa.result == nil {
-		t.Fatalf("analyze %d transactions never finalized, so nothing was measured", n)
+		t.Fatalf("analyze %s never finalized, so nothing was measured", filepath.Base(path))
 	}
-	if got := sa.result.Summary.TotalTransactions; got != n {
-		t.Fatalf("analyze saw %d transactions, want %d", got, n)
+	if got := sa.result.Summary.TotalTransactions; got != wantTxns {
+		t.Fatalf("analyze %s saw %d transactions, want %d", filepath.Base(path), got, wantTxns)
 	}
 	if !sa.finalizeSampled || sa.samples < sa.consumed/analyzeMemSampleEvery || sa.peak == 0 {
-		t.Fatalf("n=%d: %d heap samples over %d events (finalize sampled %v), peak %d", n, sa.samples, sa.consumed, sa.finalizeSampled, sa.peak)
+		t.Fatalf("%s: %d heap samples over %d events (finalize sampled %v), peak %d", filepath.Base(path), sa.samples, sa.consumed, sa.finalizeSampled, sa.peak)
 	}
-	return analyzeMemRun{txns: n, events: sa.consumed, fileBytes: size, samples: sa.samples, peak: sa.peak}
+	matched := -1
+	if sa.result.Selection != nil {
+		matched = len(sa.result.Selection.MatchedGTIDs)
+	}
+	// Keep only counts: a result kept alive would count in the next run's peak.
+	return analyzeMemRun{events: sa.consumed, samples: sa.samples, peak: sa.peak, rows: sa.result.Summary.TotalRows, matched: matched}
 }
 
 // sampledAnalyzer reads live heap on the goroutine that feeds the analyzer:
@@ -204,6 +221,90 @@ func (s *sampledAnalyzer) Finalize() (*model.AnalysisResult, error) {
 // timestamps (10ms apart, each with a replica apply delay of 0-3s), thread
 // id, primary key and xid, fixes end_log_pos and recomputes the CRC32.
 func writeSyntheticBinlog(t *testing.T, path string, n int) int64 {
+	t.Helper()
+	tp := loadSyntheticTemplate(t)
+	var out bytes.Buffer
+	emit := tp.writer(&out)
+	for i := 0; i < n; i++ {
+		for j := range tp.tmpl {
+			emit(tp.event(j, i, i))
+		}
+	}
+	if err := os.WriteFile(path, out.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return int64(out.Len())
+}
+
+// syntheticTemplate is the hot-rows fixture's header events and its
+// GTID/BEGIN/TABLE_MAP/UPDATE_ROWS/XID transaction, with the GTID event
+// widened to carry an original commit timestamp.
+type syntheticTemplate struct {
+	magic      []byte
+	header     [][]byte
+	tmpl       [][]byte
+	idOffsets  []int
+	baseMicros uint64
+}
+
+// sid is the server UUID of the template's GTID.
+func (tp syntheticTemplate) sid() string {
+	u := tp.tmpl[0][19+1 : 19+17]
+	return fmt.Sprintf("%x-%x-%x-%x-%x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16])
+}
+
+// writer writes the magic and header events to out and returns an emit
+// function that appends one event with end_log_pos and CRC32 fixed.
+func (tp syntheticTemplate) writer(out *bytes.Buffer) func([]byte) {
+	out.Write(tp.magic)
+	pos := uint32(len(tp.magic))
+	emit := func(ev []byte) {
+		pos += uint32(len(ev))
+		binary.LittleEndian.PutUint32(ev[13:], pos)
+		binary.LittleEndian.PutUint32(ev[len(ev)-4:], crc32.ChecksumIEEE(ev[:len(ev)-4]))
+		out.Write(ev)
+	}
+	for _, ev := range tp.header {
+		emit(append([]byte(nil), ev...))
+	}
+	return emit
+}
+
+// event is template event j (0 GTID, 1 BEGIN, 2 TABLE_MAP, 3 UPDATE_ROWS,
+// 4 XID) for transaction i, with row i as its primary key: GNO i+1,
+// sequence numbers, commit timestamps 10ms apart with a replica apply delay
+// of 0-3s, thread id, primary key and xid.
+func (tp syntheticTemplate) event(j, i, row int) []byte {
+	put7 := func(b []byte, v uint64) {
+		for k := 0; k < 7; k++ {
+			b[k] = byte(v >> (8 * k))
+		}
+	}
+	micros := tp.baseMicros + uint64(i)*10_000
+	ev := append([]byte(nil), tp.tmpl[j]...)
+	binary.LittleEndian.PutUint32(ev[0:], uint32(micros/1_000_000))
+	body := ev[19:]
+	switch j {
+	case 0: // GTID: replica-style, the original commit 0-3s earlier
+		binary.LittleEndian.PutUint64(body[17:], uint64(i+1))
+		binary.LittleEndian.PutUint64(body[26:], uint64(i))
+		binary.LittleEndian.PutUint64(body[34:], uint64(i+1))
+		put7(body[42:], micros)
+		body[48] |= 0x80
+		put7(body[49:], micros-uint64(i*7919%3_000_000))
+	case 1: // BEGIN: thread id
+		binary.LittleEndian.PutUint32(body[0:], uint32(i%32+1))
+	case 3: // UPDATE_ROWS: primary key, before and after
+		for _, off := range tp.idOffsets {
+			binary.LittleEndian.PutUint32(ev[off:], uint32(row+1))
+		}
+	case 4: // XID
+		binary.LittleEndian.PutUint64(body[0:], uint64(i+1000))
+	}
+	return ev
+}
+
+func loadSyntheticTemplate(t *testing.T) syntheticTemplate {
 	t.Helper()
 	raw, err := os.ReadFile(mustFixturePath(t, "mysql-8.0.46-hot-rows-full.binlog"))
 	if err != nil {
@@ -275,54 +376,11 @@ func writeSyntheticBinlog(t *testing.T, path string, n int) int64 {
 	idOffsets := []int{first + 4, second + 4}
 
 	baseTS := binary.LittleEndian.Uint32(tmpl[0][0:])
-	baseMicros := uint64(baseTS) * 1_000_000
-
-	var out bytes.Buffer
-	out.Write(raw[:4])
-	pos := uint32(4)
-	emit := func(ev []byte) {
-		pos += uint32(len(ev))
-		binary.LittleEndian.PutUint32(ev[13:], pos)
-		binary.LittleEndian.PutUint32(ev[len(ev)-4:], crc32.ChecksumIEEE(ev[:len(ev)-4]))
-		out.Write(ev)
+	return syntheticTemplate{
+		magic:      raw[:4],
+		header:     header,
+		tmpl:       tmpl,
+		idOffsets:  idOffsets,
+		baseMicros: uint64(baseTS) * 1_000_000,
 	}
-	for _, ev := range header {
-		emit(append([]byte(nil), ev...))
-	}
-	put7 := func(b []byte, v uint64) {
-		for k := 0; k < 7; k++ {
-			b[k] = byte(v >> (8 * k))
-		}
-	}
-	for i := 0; i < n; i++ {
-		micros := baseMicros + uint64(i)*10_000
-		ts := uint32(micros / 1_000_000)
-		for j, src := range tmpl {
-			ev := append([]byte(nil), src...)
-			binary.LittleEndian.PutUint32(ev[0:], ts)
-			body := ev[19:]
-			switch j {
-			case 0: // GTID: replica-style, the original commit 0-3s earlier
-				binary.LittleEndian.PutUint64(body[17:], uint64(i+1))
-				binary.LittleEndian.PutUint64(body[26:], uint64(i))
-				binary.LittleEndian.PutUint64(body[34:], uint64(i+1))
-				put7(body[42:], micros)
-				body[48] |= 0x80
-				put7(body[49:], micros-uint64(i*7919%3_000_000))
-			case 1: // BEGIN: thread id
-				binary.LittleEndian.PutUint32(body[0:], uint32(i%32+1))
-			case 3: // UPDATE_ROWS: primary key, before and after
-				for _, off := range idOffsets {
-					binary.LittleEndian.PutUint32(ev[off:], uint32(i+1))
-				}
-			case 4: // XID
-				binary.LittleEndian.PutUint64(body[0:], uint64(i+1000))
-			}
-			emit(ev)
-		}
-	}
-	if err := os.WriteFile(path, out.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	return int64(out.Len())
 }
