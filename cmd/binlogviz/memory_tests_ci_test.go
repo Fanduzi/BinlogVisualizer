@@ -8,8 +8,9 @@ import (
 	"testing"
 )
 
-// e1MemoryTests are the checks behind production-readiness item E1
-// (analyze, flashback generate and verify memory bounds). Two of them skip
+// e1MemoryTests are the checks behind production-readiness items E1
+// (analyze, flashback generate and verify memory bounds) and E2 (the
+// large-input baseline). Some of them skip
 // under -race. That is only safe while CI runs them in a non-race job, so
 // this test fails if CI's verify job stops running plain `go test ./...`, if
 // one of them moves behind a race build tag (left out of the build without
@@ -22,6 +23,7 @@ var e1MemoryTests = map[string]string{
 	"TestAnalyzeMatchedGTIDSetHeap":     "cmd/binlogviz/analyze_gtid_memory_test.go",
 	"TestGeneratedReviewRSS":            "internal/flashback/genmem_test.go",
 	"TestVerifyDoesNotBufferTheScript":  "internal/guard/script_mem_test.go",
+	"TestLargeInputBaseline":            "cmd/binlogviz/large_input_baseline_test.go",
 }
 
 func TestEveryMemoryTestRunsInCIVerify(t *testing.T) {
