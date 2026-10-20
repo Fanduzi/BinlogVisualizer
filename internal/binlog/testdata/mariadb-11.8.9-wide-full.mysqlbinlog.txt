@@ -1,0 +1,131 @@
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=1*/;
+/*!40019 SET @@session.max_delayed_threads=0*/;
+/*!50003 SET @OLD_COMPLETION_TYPE=@@COMPLETION_TYPE,COMPLETION_TYPE=0*/;
+DELIMITER /*!*/;
+# at 4
+#261020  8:41:38 server id 7  end_log_pos 256 CRC32 0x1b6c5547 	Start: binlog v 4, server v 11.8.9-MariaDB-ubu2404-log created 261020  8:41:38
+# at 256
+#261020  8:41:38 server id 7  end_log_pos 299 CRC32 0xa2911896 	Gtid list [0-7-7]
+# at 299
+#261020  8:41:38 server id 7  end_log_pos 342 CRC32 0x3576855f 	Binlog checkpoint mysql-bin.000001
+# at 342
+#261020  8:41:38 server id 7  end_log_pos 385 CRC32 0x48f15b9f 	Binlog checkpoint mysql-bin.000002
+# at 385
+#261020  8:41:38 server id 7  end_log_pos 427 CRC32 0xb727cbfc 	GTID 0-7-8 trans thread_id=11
+/*M!100101 SET @@session.skip_parallel_replication=0*//*!*/;
+/*M!100001 SET @@session.gtid_domain_id=0*//*!*/;
+/*M!100001 SET @@session.server_id=7*//*!*/;
+/*M!100001 SET @@session.gtid_seq_no=8*//*!*/;
+START TRANSACTION
+/*!*/;
+# at 427
+# at 784
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x57d066e7 	Annotate_rows:
+#Q> UPDATE shop.wide
+#Q>   SET qty = 7,
+#Q>       price = -12.34,
+#Q>       created_at = '2026-10-06 14:05:01.123456',
+#Q>       updated_at = '2026-10-06 14:05:01.500000',
+#Q>       note = 'it''s "bad" \\ é›ª',
+#Q>       raw = x'DEADBEEF',
+#Q>       payload = JSON_OBJECT('sku', 'Q', 'n', 2),
+#Q>       color = 'blue',
+#Q>       flags = 'a,b',
+#Q>       base = 11
+#Q>   WHERE id = 1
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x8e155827 	Table_map: `shop`.`wide` mapped to number 23
+# at 977
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x93a8bd74 	Update_rows: table id 23 flags: STMT_END_F
+### UPDATE `shop`.`wide`
+### WHERE
+###   @1=1 /* INT meta=0 nullable=0 is_null=0 */
+###   @2=-1294967296 (3000000000) /* INT meta=0 nullable=1 is_null=0 */
+###   @3=10.00 /* DECIMAL(10,2) meta=2562 nullable=1 is_null=0 */
+###   @4='2026-10-06 14:00:01.000000' /* DATETIME(6) meta=6 nullable=1 is_null=0 */
+###   @5=1791295201.000000 /* TIMESTAMP(6) meta=6 nullable=1 is_null=0 */
+###   @6='alpha' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @7='\x01' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @8='{"sku": "A", "n": 1}' /* LONGBLOB/LONGTEXT meta=4 nullable=1 is_null=0 */
+###   @9=1 /* ENUM(1 byte) meta=63233 nullable=1 is_null=0 */
+###   @10=b'00000001' /* SET(1 bytes) meta=63489 nullable=1 is_null=0 */
+###   @11=10 /* INT meta=0 nullable=1 is_null=0 */
+### SET
+###   @1=1 /* INT meta=0 nullable=0 is_null=0 */
+###   @2=7 /* INT meta=0 nullable=1 is_null=0 */
+###   @3=-12.34 /* DECIMAL(10,2) meta=2562 nullable=1 is_null=0 */
+###   @4='2026-10-06 14:05:01.123456' /* DATETIME(6) meta=6 nullable=1 is_null=0 */
+###   @5=1791295501.500000 /* TIMESTAMP(6) meta=6 nullable=1 is_null=0 */
+###   @6='it's "bad" \ é›ª' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @7='Þ­¾ï' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @8='{"sku": "Q", "n": 2}' /* LONGBLOB/LONGTEXT meta=4 nullable=1 is_null=0 */
+###   @9=2 /* ENUM(1 byte) meta=63233 nullable=1 is_null=0 */
+###   @10=b'00000011' /* SET(1 bytes) meta=63489 nullable=1 is_null=0 */
+###   @11=11 /* INT meta=0 nullable=1 is_null=0 */
+# Number of rows: 1
+# at 1167
+# at 1224
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x26a2f32d 	Annotate_rows:
+#Q> DELETE FROM shop.wide WHERE id = 2
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x8e155827 	Table_map: `shop`.`wide` mapped to number 23
+# at 1417
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x7518996a 	Delete_rows: table id 23 flags: STMT_END_F
+### DELETE FROM `shop`.`wide`
+### WHERE
+###   @1=2 /* INT meta=0 nullable=0 is_null=0 */
+###   @2=NULL /* INT meta=0 nullable=1 is_null=1 */
+###   @3=0.00 /* DECIMAL(10,2) meta=2562 nullable=1 is_null=0 */
+###   @4=NULL /* DATETIME(6) meta=6 nullable=1 is_null=1 */
+###   @5=NULL /* TIMESTAMP(6) meta=6 nullable=1 is_null=1 */
+###   @6=NULL /* BLOB/TEXT meta=2 nullable=1 is_null=1 */
+###   @7=NULL /* BLOB/TEXT meta=2 nullable=1 is_null=1 */
+###   @8=NULL /* LONGBLOB/LONGTEXT meta=4 nullable=1 is_null=1 */
+###   @9=NULL /* ENUM(1 byte) meta=63233 nullable=1 is_null=1 */
+###   @10=NULL /* SET(1 bytes) meta=63489 nullable=1 is_null=1 */
+###   @11=NULL /* INT meta=0 nullable=1 is_null=1 */
+# Number of rows: 1
+# at 1462
+# at 1727
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x78df9cac 	Annotate_rows:
+#Q> INSERT INTO shop.wide (id, qty, price, created_at, updated_at, note, raw, payload, color, flags, base)
+#Q> VALUES (3, 1, 2.50, '2026-10-07 01:02:03.000456', '2026-10-07 01:02:03.000789', 'batch', x'00FF', JSON_OBJECT('sku', 'Z'), 'green', 'c', 7)
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x8e155827 	Table_map: `shop`.`wide` mapped to number 23
+# at 1920
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0xcbf42af9 	Write_rows: table id 23 flags: STMT_END_F
+### INSERT INTO `shop`.`wide`
+### SET
+###   @1=3 /* INT meta=0 nullable=0 is_null=0 */
+###   @2=1 /* INT meta=0 nullable=1 is_null=0 */
+###   @3=2.50 /* DECIMAL(10,2) meta=2562 nullable=1 is_null=0 */
+###   @4='2026-10-07 01:02:03.000456' /* DATETIME(6) meta=6 nullable=1 is_null=0 */
+###   @5=1791334923.000789 /* TIMESTAMP(6) meta=6 nullable=1 is_null=0 */
+###   @6='batch' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @7='\x00ÿ' /* BLOB/TEXT meta=2 nullable=1 is_null=0 */
+###   @8='{"sku": "Z"}' /* LONGBLOB/LONGTEXT meta=4 nullable=1 is_null=0 */
+###   @9=3 /* ENUM(1 byte) meta=63233 nullable=1 is_null=0 */
+###   @10=b'00000100' /* SET(1 bytes) meta=63489 nullable=1 is_null=0 */
+###   @11=7 /* INT meta=0 nullable=1 is_null=0 */
+###   @12=8 /* INT meta=0 nullable=1 is_null=0 */
+###   @13=14 /* INT meta=0 nullable=1 is_null=0 */
+# Number of rows: 1
+# at 2025
+# at 2082
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x18cc377d 	Annotate_rows:
+#Q> DELETE FROM shop.heap WHERE id = 1
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x62b80d48 	Table_map: `shop`.`heap` mapped to number 24
+# at 2148
+#261020  8:41:38 server id 7  end_log_pos 0 CRC32 0x2650659d 	Delete_rows: table id 24 flags: STMT_END_F
+### DELETE FROM `shop`.`heap`
+### WHERE
+###   @1=1 /* INT meta=0 nullable=1 is_null=0 */
+###   @2='gone' /* VARSTRING(128) meta=128 nullable=1 is_null=0 */
+# Number of rows: 1
+# at 2191
+#261020  8:41:38 server id 7  end_log_pos 2222 CRC32 0xc7fa0a79 	Xid = 24
+COMMIT/*!*/;
+# at 2222
+#261020  8:41:38 server id 7  end_log_pos 2269 CRC32 0x58be6c1f 	Rotate to mysql-bin.000003  pos: 4
+DELIMITER ;
+# End of log file
+ROLLBACK /* added by mysqlbinlog */;
+/*!50003 SET COMPLETION_TYPE=@OLD_COMPLETION_TYPE*/;
+/*!50530 SET @@SESSION.PSEUDO_SLAVE_MODE=0*/;
