@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,25 +15,22 @@ import (
 	"binlogviz/internal/model"
 )
 
-// TestGeneratedReviewRSS is the #317 regression. 100k generated-column rows
-// used about 500MB on the in-memory review and about 38MB after the spill.
-// The child asserts VmHWM stays under 64MB, which the old review misses, and
-// runs with GOMEMLIMIT set. BINLOGVIZ_GENMEM=measure only prints VmHWM.
+// TestGeneratedReviewRSS is the #317 regression. An in-memory generated-column
+// review retained every image, so heap grew by kilobytes per row (about 500MB
+// at 100k rows). Streaming spill keeps a small conflict-key map instead, and
+// resident memory stays flat as the script grows.
+//
+// The child measures post-GC HeapAlloc at 25k and 100k rows. The extra bytes
+// per extra row must stay under maxRetainedBytesPerRow. That bound sits above
+// the key map and below image retention, and it does not move with VmHWM,
+// GOMAXPROCS, or the runner. BINLOGVIZ_GENMEM=measure only prints one size.
 func TestGeneratedReviewRSS(t *testing.T) {
 	if reviewRSSRace() {
-		t.Skip("race detector puts this workload above the 64MB VmHWM check")
+		t.Skip("race detector puts this workload above the retained-heap check")
 	}
 	mode := os.Getenv("BINLOGVIZ_GENMEM")
 	if mode == "child" || mode == "measure" {
-		n, _ := strconv.Atoi(os.Getenv("GENMEM_N"))
-		if n <= 0 {
-			n = 100000
-		}
-		rss, sql := genCorpus(t, n, os.Getenv("GENMEM_PLAIN") == "1")
-		fmt.Printf("n=%d plain=%v sql=%d rss_kb=%d\n", n, os.Getenv("GENMEM_PLAIN") == "1", sql, rss)
-		if mode == "child" && rss > 64*1024 {
-			t.Fatalf("VmHWM %d KB is above 64MB", rss)
-		}
+		runGenMem(t, mode)
 		return
 	}
 
@@ -39,20 +38,55 @@ func TestGeneratedReviewRSS(t *testing.T) {
 	cmd.Env = append(os.Environ(),
 		"BINLOGVIZ_GENMEM=child",
 		"GOMEMLIMIT=256MiB",
-		"GENMEM_N=100000",
-		"GENMEM_PLAIN=",
 	)
 	out, err := cmd.CombinedOutput()
 	t.Logf("%s", out)
 	if err != nil {
-		t.Fatalf("generated-column review exceeded 64MB: %v\n%s", err, out)
+		t.Fatalf("generated-column review retained images: %v\n%s", err, out)
 	}
-	if !strings.Contains(string(out), "rss_kb=") {
-		t.Fatalf("child printed no rss:\n%s", out)
+	if strings.Count(string(out), "heap_bytes=") < 2 {
+		t.Fatalf("child printed no heap pair:\n%s", out)
 	}
 }
 
-func genCorpus(t *testing.T, n int, plain bool) (rssKB int64, sqlBytes int) {
+// maxRetainedBytesPerRow is the extra post-GC heap per extra row between the
+// 25k and 100k runs. Streaming measured about 120–145 bytes/row (the
+// conflict-key map). Keeping every logged image measured about 520. 400 sits
+// between those; it is not a process RSS cap.
+const maxRetainedBytesPerRow int64 = 400
+
+func runGenMem(t *testing.T, mode string) {
+	t.Helper()
+	plain := os.Getenv("GENMEM_PLAIN") == "1"
+	if mode == "measure" {
+		n, _ := strconv.Atoi(os.Getenv("GENMEM_N"))
+		if n <= 0 {
+			n = 100000
+		}
+		heap, rss, sql := genCorpus(t, n, plain)
+		fmt.Printf("n=%d plain=%v sql=%d heap_bytes=%d rss_kb=%d\n", n, plain, sql, heap, rss)
+		return
+	}
+
+	const smallN, largeN = 25000, 100000
+	smallHeap, smallRSS, smallSQL := genCorpus(t, smallN, plain)
+	largeHeap, largeRSS, largeSQL := genCorpus(t, largeN, plain)
+	fmt.Printf("n=%d plain=%v sql=%d heap_bytes=%d rss_kb=%d\n", smallN, plain, smallSQL, smallHeap, smallRSS)
+	fmt.Printf("n=%d plain=%v sql=%d heap_bytes=%d rss_kb=%d\n", largeN, plain, largeSQL, largeHeap, largeRSS)
+	if smallSQL <= 0 || largeSQL < smallSQL*3 {
+		t.Fatalf("sql did not scale with rows: %d -> %d", smallSQL, largeSQL)
+	}
+	extraHeap := largeHeap - smallHeap
+	if extraHeap < 0 {
+		extraHeap = 0
+	}
+	extraRows := int64(largeN - smallN)
+	if extraHeap > extraRows*maxRetainedBytesPerRow {
+		t.Fatalf("retained heap grew %d bytes/row from %d to %d rows (%d -> %d bytes)", extraHeap/extraRows, smallN, largeN, smallHeap, largeHeap)
+	}
+}
+
+func genCorpus(t *testing.T, n int, plain bool) (heap int64, rssKB int64, sqlBytes int) {
 	t.Helper()
 	schema := "CREATE TABLE `t` (\n" +
 		"  `id` int NOT NULL,\n" +
@@ -93,6 +127,37 @@ func genCorpus(t *testing.T, n int, plain bool) (rssKB int64, sqlBytes int) {
 			t.Fatal(err)
 		}
 	}
+	// HeapAlloc after a GC, sampled while the review and the write run. Images
+	// the review still holds are reachable from that stack. Garbage from the
+	// script bytes is not, which is what made a whole-process VmHWM cap flake.
+	var peak atomic.Uint64
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var m runtime.MemStats
+		tick := time.NewTicker(10 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+				runtime.GC()
+				runtime.ReadMemStats(&m)
+				for {
+					old := peak.Load()
+					if m.HeapAlloc <= old || peak.CompareAndSwap(old, m.HeapAlloc) {
+						break
+					}
+				}
+			}
+		}
+	}()
+	defer func() {
+		close(stop)
+		<-done
+	}()
 	if _, err := a.Finalize(); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +165,8 @@ func genCorpus(t *testing.T, n int, plain bool) (rssKB int64, sqlBytes int) {
 	if _, err := a.Planner().WriteFlashback(&sink); err != nil {
 		t.Fatal(err)
 	}
-	return vmHWM(), sink.n
+	runtime.KeepAlive(a)
+	return int64(peak.Load()), vmHWM(), sink.n
 }
 
 type countingWriter struct{ n int }
