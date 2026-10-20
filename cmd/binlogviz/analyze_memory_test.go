@@ -20,20 +20,23 @@ import (
 	"binlogviz/internal/report"
 )
 
-// TestAnalyzeRetainedHeap is the E1 bound for analyze (#364).
-// Flashback generate and verify have their own memory tests; analyze had
-// none, so a change that kept every event, or a map entry per transaction,
-// would pass CI.
+// TestAnalyzeRetainedHeap is the E1 bound for analyze (#364): analyze live
+// heap must not grow with the number of transactions.
 //
-// The child writes two synthetic MySQL 8.0 binlogs (25k and 100k one-row
+// The child writes two synthetic MySQL 8.0 binlogs (100k and 200k one-row
 // UPDATE transactions, a distinct primary key per transaction, built from a
 // transaction in the hot-rows fixture) and runs each through the analyze
 // pipeline: the real parser, analyzer and JSON report. Live heap is read on
 // the analyze goroutine itself, every analyzeMemSampleEvery events and at
 // both sides of Finalize, after a forced GC (see sampledAnalyzer). There is
 // no background ticker, so GOMAXPROCS and machine load do not move it.
-// The extra live heap per extra transaction between the two runs must stay
-// under maxAnalyzeRetainedBytesPerTxn.
+//
+// The extra peak live heap of the 200k run over the 100k run must stay under
+// maxAnalyzeExtraHeap, plus applyDelayBytesPerTxn for each extra transaction
+// (the one structure that still grows; see that constant). Both runs start
+// past the point where the bounded structures fill up: the hot-row tracker
+// holds HotRowTrackLimit (8192) keys and its map stops growing by about 100k
+// transactions, so a 25k run would still be filling it.
 //
 // It runs in the plain `go test ./...` of CI's verify job, which is not a
 // -race build. It does not skip under -race either: the numbers are the same.
@@ -54,32 +57,40 @@ func TestAnalyzeRetainedHeap(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	t.Logf("%s", out)
 	if err != nil {
-		t.Fatalf("analyze retained heap per event: %v\n%s", err, out)
+		t.Fatalf("analyze retained heap grows with transactions: %v\n%s", err, out)
 	}
 	if strings.Count(string(out), "anamem txns=") != 2 || !strings.Contains(string(out), "--- PASS: TestAnalyzeRetainedHeap") {
 		t.Fatalf("child did not measure both runs and pass:\n%s", out)
 	}
 }
 
-// maxAnalyzeRetainedBytesPerTxn is the extra live heap per extra
-// transaction (one row and five events each: GTID, BEGIN, TABLE_MAP,
-// UPDATE_ROWS, XID) between the 25k and 100k runs. It is not an RSS cap.
+// maxAnalyzeExtraHeap is how much more live heap the 200k-transaction run
+// may peak at than the 100k run, apart from the apply-delay allowance. It is
+// not an RSS cap.
 //
-// analyze today measures about 76 bytes/transaction (15 bytes/event) at
-// GOMAXPROCS 1 and 8, with and without -race. That is not zero: the per-table
-// distinct-transaction set (TableAggregator txnSet) keeps one key per
-// transaction, about 64 bytes, and the rest is minute and table activity.
-// Keeping every event measures about 3800 bytes/transaction, half about 2000,
-// an eighth about 580, and one more map entry per transaction
-// (map[txnKey]int) about 110. 95 fails all of those and leaves about 25%
-// over today's number.
-const maxAnalyzeRetainedBytesPerTxn int64 = 95
+// Measured (#364): the table and minute aggregators used to keep a set of
+// transaction keys (about 64 bytes per transaction); they now keep a count
+// and the last key. Without the apply-delay values the extra heap is about
+// 30KB (minute and table activity for the longer time span). With them it is
+// about 1MB. Keeping every event adds about 3800 bytes per transaction, half
+// about 2000, an eighth about 580, one more map entry per transaction about
+// 35, and the old per-table key set about 64; each of those is several MB
+// over 100k extra transactions and fails.
+const maxAnalyzeExtraHeap int64 = 512 << 10
+
+// applyDelayBytesPerTxn allows for applyDelayTracker.values, which keeps one
+// int64 commit delay per transaction so the report's apply-delay P95 is the
+// exact nearest-rank value. That is 8 bytes per transaction plus slice
+// growth slack. It is the one analyze structure still O(transactions);
+// production-readiness E1 stays PARTIAL until it is bounded and this
+// allowance is 0.
+const applyDelayBytesPerTxn int64 = 16
 
 const analyzeMemSampleEvery = 2000
 
 func analyzeMemChild(t *testing.T) {
 	t.Helper()
-	const smallN, largeN = 25000, 100000
+	const smallN, largeN = 100000, 200000
 	dir := t.TempDir()
 	small := runAnalyzeMem(t, dir, smallN)
 	large := runAnalyzeMem(t, dir, largeN)
@@ -91,16 +102,15 @@ func analyzeMemChild(t *testing.T) {
 		t.Fatalf("events did not scale with transactions: %d -> %d", small.events, large.events)
 	}
 	extraHeap := int64(large.peak) - int64(small.peak)
-	if extraHeap < 0 {
-		extraHeap = 0
-	}
-	perEvent := float64(extraHeap) / float64(extraEvents)
-	perTxn := float64(extraHeap) / float64(largeN-smallN)
 	extraTxns := int64(largeN - smallN)
-	fmt.Printf("anamem extra_heap=%d per_event=%.1f per_txn=%.1f limit_per_txn=%d\n", extraHeap, perEvent, perTxn, maxAnalyzeRetainedBytesPerTxn)
-	if extraHeap > extraTxns*maxAnalyzeRetainedBytesPerTxn {
-		t.Fatalf("analyze retained %.1f bytes/transaction (%.1f bytes/event) from %d to %d transactions (%d -> %d bytes); limit %d bytes/transaction",
-			perTxn, perEvent, smallN, largeN, small.peak, large.peak, maxAnalyzeRetainedBytesPerTxn)
+	limit := maxAnalyzeExtraHeap + applyDelayBytesPerTxn*extraTxns
+	perTxn := float64(extraHeap) / float64(extraTxns)
+	perEvent := float64(extraHeap) / float64(extraEvents)
+	fmt.Printf("anamem extra_heap=%d per_txn=%.1f per_event=%.2f limit=%d (%d + %d*%d)\n",
+		extraHeap, perTxn, perEvent, limit, maxAnalyzeExtraHeap, applyDelayBytesPerTxn, extraTxns)
+	if extraHeap > limit {
+		t.Fatalf("analyze live heap grew %d bytes from %d to %d transactions (%d -> %d; %.1f bytes/transaction); limit %d bytes",
+			extraHeap, smallN, largeN, small.peak, large.peak, perTxn, limit)
 	}
 }
 
@@ -115,6 +125,7 @@ func runAnalyzeMem(t *testing.T, dir string, n int) analyzeMemRun {
 	t.Helper()
 	path := filepath.Join(dir, "mysql-bin."+strconv.Itoa(n))
 	size := writeSyntheticBinlog(t, path, n)
+	defer os.Remove(path)
 
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
