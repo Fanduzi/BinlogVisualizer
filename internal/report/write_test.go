@@ -77,6 +77,18 @@ func TestWriteMatchesRenderers(t *testing.T) {
 	}
 }
 
+func TestWriteRendersEveryKnownFormat(t *testing.T) {
+	for _, format := range knownFormats {
+		t.Run(string(format), func(t *testing.T) {
+			var buf bytes.Buffer
+			err := Write(&buf, model.AnalysisResult{}, Options{}, string(format))
+			if err != nil {
+				t.Fatalf("knownFormats has %q but Write did not render it: %v", format, err)
+			}
+		})
+	}
+}
+
 func TestWriteUnknownFormatWritesNothing(t *testing.T) {
 	var buf bytes.Buffer
 	err := Write(&buf, model.AnalysisResult{Summary: model.WorkloadSummary{TotalRows: 1}}, Options{}, "yaml")

@@ -1,7 +1,7 @@
 // Package report writes one analyze report.
 // input: a finished AnalysisResult, presentation options, and a format name.
-// output: text, JSON, Markdown, or HTML written to a writer. An unknown format writes nothing.
-// pos: the format dispatch under the analyze command. The view is built before the switch.
+// output: text, JSON, Markdown, or HTML written to a writer. An unknown format writes nothing. A listed format with no case returns an unhandled-format error and writes nothing.
+// pos: the format dispatch under the analyze command. The view is built before the switch. The switch has no default arm.
 // note: if this file changes, update this header and README.md.
 package report
 
@@ -16,7 +16,8 @@ import (
 
 // Write builds one view, then writes format to w.
 // An unknown format returns the ParseFormat error and writes nothing.
-// There is no default format.
+// The switch has no default arm. A format ParseFormat accepted that has no
+// case returns an unhandled-format error and writes nothing.
 func Write(w io.Writer, result model.AnalysisResult, opts Options, format string) error {
 	if w == nil {
 		return fmt.Errorf("nil writer")
@@ -51,9 +52,8 @@ func Write(w io.Writer, result model.AnalysisResult, opts Options, format string
 		}
 		_, err = io.WriteString(w, text)
 		return err
-	default:
-		return fmt.Errorf("unknown format %q: must be one of text, json, markdown, html", format)
 	}
+	return fmt.Errorf("unhandled format %q", parsed)
 }
 
 // Render is Write into a string. JSON includes the trailing newline Encode adds.

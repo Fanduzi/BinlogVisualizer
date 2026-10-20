@@ -36,13 +36,24 @@ const (
 	FormatHTML     Format = "html"
 )
 
+// knownFormats is the list ParseFormat accepts. An empty CLI string is text,
+// not a fifth value. Write renders each entry.
+var knownFormats = []Format{
+	FormatText,
+	FormatJSON,
+	FormatMarkdown,
+	FormatHTML,
+}
+
 // ParseFormat validates and returns a Format from a CLI string.
 func ParseFormat(raw string) (Format, error) {
-	switch Format(raw) {
-	case FormatText, FormatJSON, FormatMarkdown, FormatHTML:
-		return Format(raw), nil
-	case "":
+	if raw == "" {
 		return FormatText, nil
+	}
+	for _, format := range knownFormats {
+		if Format(raw) == format {
+			return format, nil
+		}
 	}
 	return "", fmt.Errorf("unknown format %q: must be one of text, json, markdown, html", raw)
 }
