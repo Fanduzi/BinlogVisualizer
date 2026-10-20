@@ -364,6 +364,27 @@ bash ./create_mysql_8.0.46_drop_table.sh
 
 Requires Docker and `mysql:8.0.46`. The checked-in file was recorded on mysqld 8.0.46-0ubuntu0.24.04.4 with the same SQL. A regeneration gets a new GTID UUID; tests read the checked-in mysqlbinlog decode instead of hard-coding that UUID.
 
+## Version matrix (MySQL 5.7.44, 8.4.11, 9.7.2, MariaDB 10.11.19, 11.8.9)
+
+Three small ROW files per server, each the rotated binlog of one step (setup is in the previous file and is not copied):
+
+- `*-wide-full.binlog`: DML only, `binlog_row_image=FULL`. Wide types on `shop.wide` (unsigned, `DECIMAL`, `DATETIME(6)`, `TIMESTAMP(6)`, `TEXT`, `BLOB`, JSON, `ENUM`, `SET`, virtual and stored generated columns) plus a no-primary-key `shop.heap`.
+- `*-wide-minimal.binlog`: the same DML with `binlog_row_image=MINIMAL`.
+- `*-ddl.binlog`: `CREATE` / `ALTER` / `DROP` plus two inserts.
+
+MySQL 5.7.44 has no `binlog_row_metadata`. 8.4.11 and 9.7.2 record `binlog_row_metadata=FULL`. MariaDB 10.11.19 records FULL metadata and logs JSON as `LONGTEXT`. MariaDB 11.8.9 logs `binlog_row_image=FULL` but omits generated columns from the row image.
+
+Each `*.mysqlbinlog.txt` is `mysqlbinlog -vv --base64-output=decode-rows` (5.7 files decoded by mysqlbinlog 8.4.11; 8.4 and 9.7 by the matching community `mysqlbinlog`) or that server's `mariadb-binlog -vv --base64-output=decode-rows`. `TestVersionMatrixAnalyzeMatchesDecode` and `TestVersionMatrixFlashbackBoundary` in `cmd/binlogviz` read these files. No server and no environment variable.
+
+### Regeneration
+
+```bash
+cd internal/binlog/testdata
+bash ./create_version_matrix.sh
+```
+
+Requires Docker, curl, and dpkg-deb. Images: `mysql:5.7.44`, `mysql:8.4.11`, `mysql:9.7.2`, `mariadb:10.11.19`, `mariadb:11.8.9`. The mysql images omit `mysqlbinlog`, so the script downloads `mysql-community-server-core` 8.4.11 and 9.7.2. A regeneration gets a new GTID UUID; tests read the checked-in decode.
+
 ## mariadb-10.11.14-dml.binlog
 
 A MariaDB 10.11.14 ROW binlog: one transaction inserts two rows into `shop.orders`, updates one, and deletes one. Used to confirm `--show-rows` does not crash. Positional column names are expected.
