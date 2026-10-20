@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"binlogviz/internal/clierr"
 )
 
 func TestLoadReportLoadsValidBinlogVizJSON(t *testing.T) {
@@ -496,5 +498,23 @@ func TestDecodeReportJSONPreservesTimeseriesAndDiagnostics(t *testing.T) {
 	}
 	if len(report.Diagnostics.Findings) != 1 {
 		t.Fatalf("expected one finding, got %+v", report.Diagnostics.Findings)
+	}
+}
+
+// A negative selection.matched_transactions is corrupt (exit 5), not a
+// count compare can show (#381 QA info).
+func TestDecodeReportJSONRejectsNegativeMatchedTransactions(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "current.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := strings.Replace(string(data), "{", `{"selection": {"include_gtids": ["0-7-1"], "matched_transactions": -1},`, 1)
+	_, err = DecodeReportJSON([]byte(doc))
+	if kind, _ := clierr.Of(err); kind != clierr.KindCorrupt || !strings.Contains(err.Error(), "matched_transactions is -1") {
+		t.Fatalf("error = %v (kind %v), want corrupt", err, kind)
+	}
+	ok := strings.Replace(string(data), "{", `{"selection": {"include_gtids": ["0-7-1"], "matched_gtid_set": ["0-7-1"], "matched_transactions": 1},`, 1)
+	if _, err := DecodeReportJSON([]byte(ok)); err != nil {
+		t.Fatalf("valid selection rejected: %v", err)
 	}
 }

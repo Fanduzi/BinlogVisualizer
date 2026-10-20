@@ -1,5 +1,5 @@
 // Package analyzer parses and matches transaction-group GTID selectors.
-// input: MySQL UUID sequence/range sets or MariaDB domain-server-sequence identities.
+// input: MySQL UUID sequence/range sets, or MariaDB domain-server-sequence identities and domain-server-first..last ranges.
 // output: canonical single-flavor include/exclude selectors with exclude-wins matching; anonymous groups never match an active selector.
 // pos: selector grammar and identity boundary used by Analyzer before retaining complete transaction groups.
 // note: if this file changes, update this header and module README.md.
@@ -27,8 +27,10 @@ type GTIDSelector struct {
 	exclude      []string
 	mysqlInclude map[string][]sequenceRange
 	mysqlExclude map[string][]sequenceRange
-	mariaInclude map[string]struct{}
-	mariaExclude map[string]struct{}
+	// mariaInclude/mariaExclude map a MariaDB "domain-server" pair to merged
+	// sequence ranges: d-s-n and d-s-first..last (#381 QA F2).
+	mariaInclude map[string][]sequenceRange
+	mariaExclude map[string][]sequenceRange
 }
 
 // ParseGTIDSelector parses selectors and rejects mixed or malformed flavors.
@@ -105,9 +107,11 @@ func (s *GTIDSelector) Match(gtid string) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		_, included := s.mariaInclude[identity]
-		_, excluded := s.mariaExclude[identity]
-		return (len(s.mariaInclude) == 0 || included) && !excluded, nil
+		cut := strings.LastIndexByte(identity, '-')
+		sequence, _ := strconv.ParseUint(identity[cut+1:], 10, 64)
+		source := identity[:cut]
+		included := len(s.mariaInclude) == 0 || sequenceInRanges(sequence, s.mariaInclude[source])
+		return included && !sequenceInRanges(sequence, s.mariaExclude[source]), nil
 	default:
 		return false, fmt.Errorf("unresolved GTID selector flavor")
 	}
@@ -277,30 +281,59 @@ func mergeSequenceRanges(ranges []sequenceRange) []sequenceRange {
 	return merged
 }
 
+// sequenceInRanges reports whether sequence is in sorted, merged ranges.
 func sequenceInRanges(sequence uint64, ranges []sequenceRange) bool {
-	for _, rng := range ranges {
-		if sequence >= rng.start && sequence <= rng.end {
-			return true
-		}
-	}
-	return false
+	i := sort.Search(len(ranges), func(i int) bool { return ranges[i].end >= sequence })
+	return i < len(ranges) && ranges[i].start <= sequence
 }
 
-func parseMariaDBGTIDs(values []string) (map[string]struct{}, []string, error) {
-	sets := make(map[string]struct{})
+// parseMariaDBGTIDs parses exact identities (d-s-n) and ranges
+// (d-s-first..last, the matched_gtid_set form). Canonical tokens keep one
+// entry per distinct token, sorted as strings.
+func parseMariaDBGTIDs(values []string) (map[string][]sequenceRange, []string, error) {
+	sets := make(map[string][]sequenceRange)
+	seen := make(map[string]struct{})
 	for _, token := range splitGTIDTokens(values) {
-		identity, err := parseMariaDBGTID(token)
+		source, rng, canonical, err := parseMariaDBGTIDToken(token)
 		if err != nil {
 			return nil, nil, err
 		}
-		sets[identity] = struct{}{}
+		sets[source] = append(sets[source], rng)
+		seen[canonical] = struct{}{}
 	}
-	canonical := make([]string, 0, len(sets))
-	for identity := range sets {
-		canonical = append(canonical, identity)
+	for source, ranges := range sets {
+		sets[source] = mergeSequenceRanges(ranges)
+	}
+	canonical := make([]string, 0, len(seen))
+	for token := range seen {
+		canonical = append(canonical, token)
 	}
 	sort.Strings(canonical)
 	return sets, canonical, nil
+}
+
+func parseMariaDBGTIDToken(value string) (source string, rng sequenceRange, canonical string, err error) {
+	trimmed := strings.TrimSpace(value)
+	first, last, isRange := strings.Cut(trimmed, "..")
+	identity, err := parseMariaDBGTID(first)
+	if err != nil {
+		return "", sequenceRange{}, "", errors.New(i18n.Tf("error.invalidMariaDBGTID", map[string]any{"Value": strconv.Quote(value)}))
+	}
+	cut := strings.LastIndexByte(identity, '-')
+	source = identity[:cut]
+	start, _ := strconv.ParseUint(identity[cut+1:], 10, 64)
+	end := start
+	if isRange {
+		end, err = strconv.ParseUint(last, 10, 64)
+		if err != nil || end < start {
+			return "", sequenceRange{}, "", errors.New(i18n.Tf("error.invalidMariaDBGTID", map[string]any{"Value": strconv.Quote(value)}))
+		}
+	}
+	canonical = identity
+	if end != start {
+		canonical += ".." + strconv.FormatUint(end, 10)
+	}
+	return source, sequenceRange{start: start, end: end}, canonical, nil
 }
 
 func parseMariaDBGTID(value string) (string, error) {

@@ -1330,12 +1330,23 @@ func analyzerResourceError(err error) error {
 	if !errors.As(err, &limit) {
 		return nil
 	}
-	return clierr.WithDetails(clierr.KindResource, limit, map[string]any{
+	msg := i18n.Tf("error.matchedGTIDIntervals", map[string]any{"Limit": limit.Limit})
+	return clierr.WithDetails(clierr.KindResource, &localizedCause{msg: msg, cause: limit}, map[string]any{
 		"reason":    "matched_gtid_intervals",
 		"limit":     limit.Limit,
 		"intervals": limit.Intervals,
 	})
 }
+
+// localizedCause shows a localized message and keeps the analyzer error in
+// the chain, so a second mapping (the parse-error wrapper) still finds it.
+type localizedCause struct {
+	msg   string
+	cause error
+}
+
+func (e *localizedCause) Error() string { return e.msg }
+func (e *localizedCause) Unwrap() error { return e.cause }
 
 func operatorGroupError(err error) bool {
 	var unclassified *analyzer.UnclassifiedQueryError

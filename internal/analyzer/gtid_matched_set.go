@@ -1,7 +1,7 @@
 // Package analyzer keeps the GTIDs a GTID selector matched as an interval set.
-// input: one canonical matched transaction identity at a time, in binlog order.
-// output: selection.matched_gtid_set (MySQL uuid:1-4:6-9 per server UUID, MariaDB domain-server-seq or domain-server-first..last) and the matched count.
-// pos: Analyzer selection evidence (#379); memory is O(intervals), not O(matches).
+// input: the canonical identity of every transaction read (observe) and of each matched one (add).
+// output: selection.matched_gtid_set (MySQL uuid:1-4:6-9 per server UUID, MariaDB domain-server-seq or domain-server-first..last, per server or shared by the servers of a domain) and the matched transaction count.
+// pos: Analyzer selection evidence (#379, #381 QA F1); memory is O(intervals), not O(matches).
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
@@ -25,146 +25,312 @@ type MatchedGTIDLimitError struct {
 }
 
 func (e *MatchedGTIDLimitError) Error() string {
-	return fmt.Sprintf("GTID selectors matched transactions that leave more than %d separate GTID intervals; narrow --include-gtids/--exclude-gtids or split the input", e.Limit)
+	return fmt.Sprintf("GTID selectors matched transactions that need more than %d separate GTID intervals; narrow --include-gtids/--exclude-gtids or split the input", e.Limit)
 }
 
-// matchedGTIDSet is an interval set per source: a MySQL server UUID, or a
-// MariaDB domain-server pair. Ranges per source stay sorted and disjoint, with
-// adjacent ranges merged.
+// matchedGTIDSet keeps the GTIDs of matched transactions with retained
+// evidence as ranges.
+//
+// MySQL: ranges per server UUID.
+//
+// MariaDB (#381 QA F1): several servers may write one domain with one
+// sequence (alternating writers), so ranges per domain-server pair can leave
+// one range per transaction. Each domain keeps two forms and the set renders
+// the smaller one that is exact:
+//   - exact: ranges per domain-server pair.
+//   - shared: ranges over the domain's sequence numbers plus the servers
+//     that wrote them, rendered as the same ranges once per server
+//     (0-7-1..9, 0-8-1..9). Together they cover every matched identity; the
+//     extra identities they name are not in the input, because shared is
+//     used only while no sequence number of the domain was seen twice among
+//     all transactions read (matched or not). A repeat, even of the same
+//     identity, makes the domain use exact.
+//
+// Memory is O(intervals): every form holds at most MatchedGTIDIntervalLimit
+// ranges in total; a form that grows past that is dropped, and analyze fails
+// when a domain is left with no form or the rendered entries exceed the limit.
 type matchedGTIDSet struct {
-	flavor    string
-	sources   map[string][]sequenceRange
-	intervals int
-	count     int
+	flavor string
+	mysql  map[string]*rangeList
+	maria  map[uint64]*mariaDomain
+	// count is the number of matched transactions added, repeats included.
+	count int
+	// cost is the number of rendered entries (intervals) of the set.
+	cost int
+
+	exactTotal  int
+	sharedTotal int
+	seenTotal   int
+	exactOff    bool
+	sharedOff   bool
+}
+
+type mariaDomain struct {
+	exact    map[uint64]*rangeList
+	exactN   int
+	shared   rangeList
+	servers  map[uint64]struct{}
+	seen     rangeList
+	conflict bool
+	cost     int
 }
 
 func newMatchedGTIDSet() *matchedGTIDSet {
-	return &matchedGTIDSet{sources: make(map[string][]sequenceRange)}
+	return &matchedGTIDSet{mysql: make(map[string]*rangeList), maria: make(map[uint64]*mariaDomain)}
 }
 
-// add records one canonical identity (MySQL uuid:n or MariaDB d-s-n). It
-// returns a MatchedGTIDLimitError when the set would exceed the interval cap.
-// A repeated identity is counted once.
-func (m *matchedGTIDSet) add(identity string) error {
-	source, seq, flavor, err := splitMatchedIdentity(identity)
-	if err != nil {
-		return err
+func (m *matchedGTIDSet) limitError(intervals int) error {
+	return &MatchedGTIDLimitError{Limit: MatchedGTIDIntervalLimit, Intervals: intervals}
+}
+
+// observe records the GTID of a transaction read from the input, matched or
+// not, so a MariaDB domain knows whether a sequence number repeats. MySQL
+// identities are ignored. Call it before add for a matched transaction.
+func (m *matchedGTIDSet) observe(identity string) error {
+	domain, _, seq, ok := mariaIdentity(identity)
+	if !ok || m.sharedOff {
+		return nil
 	}
-	m.flavor = flavor
-	ranges := m.sources[source]
-	n := len(ranges)
-	// Fast path: binlog order extends or repeats the last range.
-	if n > 0 && seq >= ranges[n-1].start {
-		last := &ranges[n-1]
-		if seq <= last.end {
-			return nil
-		}
-		if seq == last.end+1 {
-			last.end = seq
-			m.count++
-			return nil
-		}
+	d := m.domain(domain)
+	delta, present := d.seen.add(seq)
+	m.seenTotal += delta
+	if m.seenTotal > MatchedGTIDIntervalLimit {
+		return m.dropShared()
 	}
-	i := sort.Search(n, func(i int) bool { return ranges[i].end >= seq })
-	if i < n && ranges[i].start <= seq {
-		return nil // already present
+	if present && !d.conflict {
+		d.conflict = true
+		return m.recost(d)
 	}
-	joinLeft := i > 0 && ranges[i-1].end+1 == seq
-	joinRight := i < n && seq+1 == ranges[i].start
-	switch {
-	case joinLeft && joinRight:
-		ranges[i-1].end = ranges[i].end
-		ranges = append(ranges[:i], ranges[i+1:]...)
-		m.intervals--
-	case joinLeft:
-		ranges[i-1].end = seq
-	case joinRight:
-		ranges[i].start = seq
-	default:
-		if m.intervals+1 > MatchedGTIDIntervalLimit {
-			return &MatchedGTIDLimitError{Limit: MatchedGTIDIntervalLimit, Intervals: m.intervals + 1}
-		}
-		ranges = append(ranges, sequenceRange{})
-		copy(ranges[i+1:], ranges[i:])
-		ranges[i] = sequenceRange{start: seq, end: seq}
-		m.intervals++
-	}
-	m.sources[source] = ranges
-	m.count++
 	return nil
 }
 
-// strings renders the set: one MySQL GTID set per server UUID, sorted by UUID
-// (usable as --include-gtids), or one MariaDB entry per range, sorted by
-// domain, server and sequence.
-func (m *matchedGTIDSet) strings() []string {
-	if m == nil || len(m.sources) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(m.sources))
-	for key := range m.sources {
-		keys = append(keys, key)
-	}
-	if m.flavor == "mariadb" {
-		sort.Slice(keys, func(i, j int) bool {
-			di, si := mariaSourceParts(keys[i])
-			dj, sj := mariaSourceParts(keys[j])
-			return di < dj || di == dj && si < sj
-		})
-		out := make([]string, 0, m.intervals)
-		for _, key := range keys {
-			for _, r := range m.sources[key] {
-				entry := key + "-" + strconv.FormatUint(r.start, 10)
-				if r.end != r.start {
-					entry += ".." + strconv.FormatUint(r.end, 10)
-				}
-				out = append(out, entry)
+// add records one canonical identity (MySQL uuid:n or MariaDB d-s-n) of a
+// matched transaction. It returns a MatchedGTIDLimitError when the set would
+// need more than MatchedGTIDIntervalLimit intervals.
+func (m *matchedGTIDSet) add(identity string) error {
+	if domain, server, seq, ok := mariaIdentity(identity); ok {
+		m.flavor = "mariadb"
+		m.count++
+		d := m.domain(domain)
+		if !m.exactOff {
+			ranges := d.exact[server]
+			if ranges == nil {
+				ranges = &rangeList{}
+				d.exact[server] = ranges
+			}
+			delta, _ := ranges.add(seq)
+			d.exactN += delta
+			m.exactTotal += delta
+		}
+		if !m.sharedOff {
+			delta, _ := d.shared.add(seq)
+			d.servers[server] = struct{}{}
+			m.sharedTotal += delta
+		}
+		if m.exactTotal > MatchedGTIDIntervalLimit {
+			if err := m.dropExact(); err != nil {
+				return err
 			}
 		}
-		return out
+		if m.sharedTotal > MatchedGTIDIntervalLimit {
+			return m.dropShared()
+		}
+		return m.recost(d)
+	}
+	source, seq, err := splitMySQLIdentity(identity)
+	if err != nil {
+		return err
+	}
+	m.flavor = "mysql"
+	m.count++
+	ranges := m.mysql[source]
+	if ranges == nil {
+		ranges = &rangeList{}
+		m.mysql[source] = ranges
+	}
+	delta, _ := ranges.add(seq)
+	m.cost += delta
+	if m.cost > MatchedGTIDIntervalLimit {
+		return m.limitError(m.cost)
+	}
+	return nil
+}
+
+func (m *matchedGTIDSet) domain(domain uint64) *mariaDomain {
+	d := m.maria[domain]
+	if d == nil {
+		d = &mariaDomain{exact: make(map[uint64]*rangeList), servers: make(map[uint64]struct{})}
+		m.maria[domain] = d
+	}
+	return d
+}
+
+// form reports which form a domain renders and its entry count. ok is false
+// when the domain has matches but no form left.
+func (m *matchedGTIDSet) form(d *mariaDomain) (useShared bool, cost int, ok bool) {
+	if len(d.servers) == 0 && d.exactN == 0 {
+		return false, 0, true
+	}
+	sharedOK := !m.sharedOff && !d.conflict
+	sharedCost := d.shared.n * len(d.servers)
+	switch {
+	case !m.exactOff && (!sharedOK || d.exactN <= sharedCost):
+		return false, d.exactN, true
+	case sharedOK:
+		return true, sharedCost, true
+	}
+	return false, 0, false
+}
+
+func (m *matchedGTIDSet) recost(d *mariaDomain) error {
+	_, cost, ok := m.form(d)
+	if !ok {
+		return m.limitError(MatchedGTIDIntervalLimit + 1)
+	}
+	m.cost += cost - d.cost
+	d.cost = cost
+	if m.cost > MatchedGTIDIntervalLimit {
+		return m.limitError(m.cost)
+	}
+	return nil
+}
+
+func (m *matchedGTIDSet) recostAll() error {
+	for _, d := range m.maria {
+		if err := m.recost(d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *matchedGTIDSet) dropExact() error {
+	m.exactOff = true
+	for _, d := range m.maria {
+		d.exact, d.exactN = nil, 0
+	}
+	m.exactTotal = 0
+	return m.recostAll()
+}
+
+func (m *matchedGTIDSet) dropShared() error {
+	m.sharedOff = true
+	for _, d := range m.maria {
+		d.shared, d.seen = rangeList{}, rangeList{}
+	}
+	m.sharedTotal, m.seenTotal = 0, 0
+	return m.recostAll()
+}
+
+// strings renders the set: one MySQL GTID set per server UUID, sorted by UUID,
+// or one MariaDB entry per range (d-s-n or d-s-first..last), sorted by domain,
+// server and sequence. Every entry is valid --include-gtids input, and the
+// entries select exactly the matched transactions of the same input.
+func (m *matchedGTIDSet) strings() []string {
+	if m == nil {
+		return nil
+	}
+	if m.flavor == "mariadb" {
+		return m.mariaStrings()
+	}
+	if len(m.mysql) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m.mysql))
+	for key := range m.mysql {
+		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	out := make([]string, 0, len(keys))
 	for _, key := range keys {
 		var b strings.Builder
 		b.WriteString(key)
-		for _, r := range m.sources[key] {
+		m.mysql[key].each(func(r sequenceRange) {
 			b.WriteByte(':')
 			b.WriteString(strconv.FormatUint(r.start, 10))
 			if r.end != r.start {
 				b.WriteByte('-')
 				b.WriteString(strconv.FormatUint(r.end, 10))
 			}
-		}
+		})
 		out = append(out, b.String())
 	}
 	return out
 }
 
-func splitMatchedIdentity(identity string) (source string, seq uint64, flavor string, err error) {
-	if i := strings.LastIndexByte(identity, ':'); i >= 0 {
-		seq, err = strconv.ParseUint(identity[i+1:], 10, 64)
-		if err != nil {
-			return "", 0, "", fmt.Errorf("invalid matched GTID %q", identity)
-		}
-		return identity[:i], seq, "mysql", nil
+func (m *matchedGTIDSet) mariaStrings() []string {
+	domains := make([]uint64, 0, len(m.maria))
+	for domain := range m.maria {
+		domains = append(domains, domain)
 	}
-	i := strings.LastIndexByte(identity, '-')
+	sortUint64s(domains)
+	var out []string
+	for _, domain := range domains {
+		d := m.maria[domain]
+		useShared, _, _ := m.form(d)
+		servers := make([]uint64, 0, len(d.servers)+len(d.exact))
+		if useShared {
+			for server := range d.servers {
+				servers = append(servers, server)
+			}
+		} else {
+			for server := range d.exact {
+				servers = append(servers, server)
+			}
+		}
+		sortUint64s(servers)
+		for _, server := range servers {
+			prefix := strconv.FormatUint(domain, 10) + "-" + strconv.FormatUint(server, 10) + "-"
+			ranges := &d.shared
+			if !useShared {
+				ranges = d.exact[server]
+			}
+			ranges.each(func(r sequenceRange) {
+				entry := prefix + strconv.FormatUint(r.start, 10)
+				if r.end != r.start {
+					entry += ".." + strconv.FormatUint(r.end, 10)
+				}
+				out = append(out, entry)
+			})
+		}
+	}
+	return out
+}
+
+func sortUint64s(values []uint64) {
+	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+}
+
+func splitMySQLIdentity(identity string) (source string, seq uint64, err error) {
+	i := strings.LastIndexByte(identity, ':')
 	if i < 0 {
-		return "", 0, "", fmt.Errorf("invalid matched GTID %q", identity)
+		return "", 0, fmt.Errorf("invalid matched GTID %q", identity)
 	}
 	seq, err = strconv.ParseUint(identity[i+1:], 10, 64)
 	if err != nil {
-		return "", 0, "", fmt.Errorf("invalid matched GTID %q", identity)
+		return "", 0, fmt.Errorf("invalid matched GTID %q", identity)
 	}
-	return identity[:i], seq, "mariadb", nil
+	return identity[:i], seq, nil
 }
 
-func mariaSourceParts(key string) (domain, server uint64) {
-	parts := strings.SplitN(key, "-", 2)
-	domain, _ = strconv.ParseUint(parts[0], 10, 64)
-	if len(parts) == 2 {
-		server, _ = strconv.ParseUint(parts[1], 10, 64)
+// mariaIdentity splits a canonical MariaDB identity d-s-n.
+func mariaIdentity(identity string) (domain, server, seq uint64, ok bool) {
+	if strings.IndexByte(identity, ':') >= 0 {
+		return 0, 0, 0, false
 	}
-	return domain, server
+	parts := strings.Split(identity, "-")
+	if len(parts) != 3 {
+		return 0, 0, 0, false
+	}
+	var err error
+	if domain, err = strconv.ParseUint(parts[0], 10, 64); err != nil {
+		return 0, 0, 0, false
+	}
+	if server, err = strconv.ParseUint(parts[1], 10, 64); err != nil {
+		return 0, 0, 0, false
+	}
+	if seq, err = strconv.ParseUint(parts[2], 10, 64); err != nil {
+		return 0, 0, 0, false
+	}
+	return domain, server, seq, true
 }

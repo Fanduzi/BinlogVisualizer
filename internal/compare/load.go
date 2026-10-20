@@ -84,6 +84,10 @@ func DecodeReportJSON(data []byte) (InputReport, error) {
 	if err := normalizeTransactionCompleteness(&report, reportVersion(raw)); err != nil {
 		return InputReport{}, err
 	}
+	// A count cannot be negative; such a report was not written by analyze.
+	if report.Selection != nil && report.Selection.MatchedTransactions != nil && *report.Selection.MatchedTransactions < 0 {
+		return InputReport{}, clierr.Errorf(clierr.KindCorrupt, "corrupt BinlogViz report: selection.matched_transactions is %d", *report.Selection.MatchedTransactions)
+	}
 	return report, nil
 }
 
