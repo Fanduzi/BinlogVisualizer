@@ -232,6 +232,7 @@ func TestRenderTextAndHTMLIncludeMysqlbinlogCopy(t *testing.T) {
 		Tables:          map[string]int{"dogfood_big.t": 400000},
 	})
 	result := model.AnalysisResult{
+		Transactions: []model.Transaction{txn},
 		Diagnostics: model.Diagnostics{
 			LargestTransactions: []model.Transaction{txn},
 		},
@@ -281,6 +282,7 @@ func TestRenderTextAndHTMLMatchJSONMariadbBinlogCommand(t *testing.T) {
 		Tables:          map[string]int{"dogfood_big.t": 400000},
 	})
 	result := model.AnalysisResult{
+		Transactions: []model.Transaction{txn},
 		Diagnostics: model.Diagnostics{
 			ServerVersion:       "10.11.6-MariaDB-log",
 			LargestTransactions: []model.Transaction{txn},

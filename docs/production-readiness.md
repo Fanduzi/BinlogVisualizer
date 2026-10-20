@@ -19,7 +19,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 |---|---|---|---|---|
 | A1 | analyze 在固定语料上的统计和报告输出稳定；遇到 STATEMENT/MIXED 格式时报警并以非 0 退出 | `golden_test.go`、`analyze_corpus_rich_test.go`、`TestStatementBinlogIsUnsupported`，用 `internal/binlog/testdata` 下的 MySQL 8.0.46 夹具（都小于 10KB） | MET | 注意：QA 用的 37 个真实 binlog（含 105MB 的 rt325）只在 QA 机器上，不在仓库也不在 CI |
 | A2 | 解析结果和独立实现（mysqlbinlog）交叉校验 | `dml_rows_test.go`、`replica_apply_test.go`、`drop_table_gtid_test.go`，对照仓库里提交的 `.mysqlbinlog.txt` 解码 | MET | — |
-| A3 | text、Markdown、JSON、HTML 选出的「重点事务」是同一批 | 没有。要加一个四种格式取同一批事务的断言 | NOT MET | #352；#357（compare/trend 的格式分支还有 default 分支） |
+| A3 | text、Markdown、JSON、HTML 选出的「重点事务」是同一批 | `TestAnalyzeFormatsShareKeyTransactions`（`go test ./...`，verify）。夹具是 `internal/binlog/testdata` 里的 `mysql-8.0.46-busiest-minute.binlog`、`mysql-8.0.46-committed-duration.binlog`、`mysql-8.0.46-dml-full.binlog` | MET | — |
 
 ## B. Flashback 安全（绝不写错数据）
 
@@ -74,7 +74,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 16 / PARTIAL 2 / NOT MET 6**。
+共 24 项：**MET 17 / PARTIAL 2 / NOT MET 5**。
 
 ## 最卡生产级的 5 项
 

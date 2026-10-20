@@ -1,8 +1,8 @@
 // Package view is the one ordered selection of transactions for an analyze report.
 // input: a finished AnalysisResult and the render limits (normalized top-N, whether JSON keeps the diagnostic lists, and whether a transaction has query text).
-// output: the listed transactions, the text champions and query fallback, the HTML evidence champions, and the JSON diagnostic lists.
-// pos: the selection seam under internal/report. Text, Markdown, JSON, and HTML read this value. They do not slice transaction lists themselves.
-// note: if this file changes, update this header and internal/report/README.md. The caps are the ones the renderers used before this package existed (ADR 0012 step 5). Text and Markdown do not select the same rows; this package keeps both.
+// output: the key transactions, the text champion labels, the HTML evidence champions that are in that set, and the JSON diagnostic lists.
+// pos: the selection seam under internal/report. Text, Markdown, JSON, and HTML read Key. They do not slice transaction lists themselves.
+// note: if this file changes, update this header and internal/report/README.md. Key is AnalysisResult.Transactions (ADR 0012, #352). The text caps only label rows inside Key.
 package view
 
 import "binlogviz/internal/model"
@@ -46,10 +46,13 @@ type Text struct {
 	ByteLeaders []model.Transaction
 }
 
-// View is the selection for one report. Listed is analyzer order.
+// View is the selection for one report.
+// Key and Listed are the same slice: AnalysisResult.Transactions in analyzer
+// order. Omitted is max(0, TotalTransactions-len(Key)).
 // Largest, Longest, Widest, and LargestBytes are the full diagnostic
 // lists, or nil when the JSON document does not keep them.
 type View struct {
+	Key          []model.Transaction
 	Listed       []model.Transaction
 	Omitted      int
 	Text         Text
@@ -61,12 +64,16 @@ type View struct {
 }
 
 // Build selects every transaction list the four renderers print.
-// It does not sort. The analyzer already ranked the lists.
+// Key is the analyzer's transaction list. It does not sort. The analyzer already ranked the lists.
 func Build(result model.AnalysisResult, lim Limits) View {
-	listed := result.Transactions
-	omitted := result.Summary.TotalTransactions - len(listed)
+	key := result.Transactions
+	omitted := result.Summary.TotalTransactions - len(key)
 	if omitted < 0 {
 		omitted = 0
+	}
+	allowed := make(map[string]struct{}, len(key))
+	for _, txn := range key {
+		allowed[txn.TxnKey] = struct{}{}
 	}
 	largestN := min(3, lim.TopN)
 	widestN := min(1, lim.TopN)
@@ -74,7 +81,8 @@ func Build(result model.AnalysisResult, lim Limits) View {
 	textLongest := take(result.Diagnostics.LongestTransactions, largestN)
 	textWidest := take(result.Diagnostics.WidestTransactions, widestN)
 	out := View{
-		Listed:  listed,
+		Key:     key,
+		Listed:  key,
 		Omitted: omitted,
 		Text: Text{
 			Largest:     textLargest,
@@ -86,10 +94,11 @@ func Build(result model.AnalysisResult, lim Limits) View {
 			result.Diagnostics.LargestTransactions,
 			result.Diagnostics.LongestTransactions,
 			result.Diagnostics.WidestTransactions,
+			allowed,
 		),
 	}
 	if lim.HasQuery != nil && !anyQuery(lim.HasQuery, textLargest, textLongest, textWidest) {
-		for _, txn := range listed {
+		for _, txn := range key {
 			if !lim.HasQuery(txn) {
 				continue
 			}
@@ -118,7 +127,7 @@ func anyQuery(has func(model.Transaction) bool, lists ...[]model.Transaction) bo
 	return false
 }
 
-func evidence(largest, longest, widest []model.Transaction) []Evidence {
+func evidence(largest, longest, widest []model.Transaction, allowed map[string]struct{}) []Evidence {
 	var out []Evidence
 	index := make(map[string]int)
 	add := func(list []model.Transaction, reason Reason) {
@@ -126,6 +135,9 @@ func evidence(largest, longest, widest []model.Transaction) []Evidence {
 			return
 		}
 		txn := list[0]
+		if _, ok := allowed[txn.TxnKey]; !ok {
+			return
+		}
 		if txn.TxnKey != "" {
 			if i, ok := index[txn.TxnKey]; ok {
 				out[i].Reasons = append(out[i].Reasons, reason)

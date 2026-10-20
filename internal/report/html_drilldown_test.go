@@ -87,6 +87,11 @@ func productHTMLFixture() model.AnalysisResult {
 		PositionStart:   56789,
 		PositionEnd:     67890,
 	}}
+	result.Transactions = []model.Transaction{
+		result.Diagnostics.LargestTransactions[0],
+		result.Diagnostics.LongestTransactions[0],
+		result.Diagnostics.WidestTransactions[0],
+	}
 	return result
 }
 
@@ -451,6 +456,11 @@ func TestRenderHTMLTransactionEvidenceCards(t *testing.T) {
 			}},
 		},
 	}
+	result.Transactions = append([]model.Transaction{},
+		result.Diagnostics.LargestTransactions[0],
+		result.Diagnostics.LongestTransactions[0],
+		result.Diagnostics.WidestTransactions[0],
+	)
 
 	out, err := RenderHTML(result)
 	if err != nil {
@@ -544,6 +554,7 @@ func TestRenderHTMLTransactionEvidenceIsSearchable(t *testing.T) {
 			}},
 		},
 	}
+	result.Transactions = append(result.Transactions, result.Diagnostics.LargestTransactions[0])
 
 	out, err := RenderHTML(result)
 	if err != nil {
@@ -928,6 +939,10 @@ func TestRenderHTMLIncludesDDLTimelineAndTransactionDiagnostics(t *testing.T) {
 				DDLCount:    1,
 			}},
 		},
+	}
+	result.Transactions = []model.Transaction{
+		result.Diagnostics.LargestTransactions[0],
+		result.Diagnostics.LongestTransactions[0],
 	}
 
 	out, err := RenderHTML(result)

@@ -199,7 +199,7 @@ Columns that have no data in the displayed rows are omitted. A field the binlog 
 
 ### 4. Top Transactions
 
-The `Top Transactions` section ranks transactions by total rows and also lists up to three longest committed transactions plus a committed-duration bucket line.
+The `Top Transactions` section lists the `--top-transactions` ranking, the same transactions as Markdown, JSON `transactions`, and the HTML transaction lookup. A listed transaction that is also one of the capped largest, longest, or widest champions keeps that label. The committed-duration buckets stay in this section.
 
 Useful fields shown in text output include:
 

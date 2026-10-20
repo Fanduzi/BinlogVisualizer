@@ -193,7 +193,7 @@ Markdown 在 `## 热点行` 下用表格。HTML 使用 `id="hot-rows-table"`。
 
 ### 4. Top Transactions
 
-`Top Transactions` 章节按总行数对事务进行排序，并同时列出最多三条最长的已提交事务和已提交时长分桶。
+`Top Transactions` 列出 `--top-transactions` 的排行，和 Markdown、JSON `transactions`、HTML 事务查找是同一批。落在截断后的最大、最长或最宽冠军里的事务仍带这个标签。已提交时长分桶仍写在这一节。
 
 文本输出中常见字段包括：
 

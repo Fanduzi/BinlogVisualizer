@@ -987,6 +987,10 @@
     "description": "Short finding label for widest transaction",
     "other": "Widest transaction"
   },
+  "report.text.listedTransaction": {
+    "description": "Label for a key transaction that is not a largest, longest, or widest champion",
+    "other": "Transaction"
+  },
   "report.text.ddlDetected": {
     "description": "Short finding label for detected DDL",
     "other": "DDL detected"
