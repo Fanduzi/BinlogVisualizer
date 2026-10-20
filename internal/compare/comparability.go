@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 
+	"binlogviz/internal/gtidtoken"
 	"binlogviz/internal/i18n"
 )
 
@@ -179,14 +180,26 @@ func canonicalSelection(selection *InputSelection) *InputSelection {
 		return nil
 	}
 	canonical := cloneSelection(selection)
-	canonical.IncludeGTIDs = normalizedScopeValues(canonical.IncludeGTIDs)
-	canonical.ExcludeGTIDs = normalizedScopeValues(canonical.ExcludeGTIDs)
+	canonical.IncludeGTIDs = normalizedGTIDSelectors(canonical.IncludeGTIDs)
+	canonical.ExcludeGTIDs = normalizedGTIDSelectors(canonical.ExcludeGTIDs)
 	// MatchedGTIDs is retained result evidence, not a requested selector.
 	canonical.MatchedGTIDs = nil
 	canonical.MatchedGTIDSet = nil
 	canonical.MatchedTransactions = nil
 	canonical.ResolvedGTIDFlavor = strings.ToLower(strings.TrimSpace(canonical.ResolvedGTIDFlavor))
 	return canonical
+}
+
+// normalizedGTIDSelectors puts GTID selectors in one form before the scope
+// check. MariaDB tokens are merged per domain-server, so 0-7-1,0-7-2 (as a
+// v3 report records them) and 0-7-1..2 select the same scope (#383 QA).
+// MySQL sets are merged by the analyzer before they are recorded.
+func normalizedGTIDSelectors(values []string) []string {
+	values = normalizedScopeValues(values)
+	if merged, ok := gtidtoken.MergeMariaDB(values); ok && len(values) > 0 {
+		return merged
+	}
+	return values
 }
 
 func normalizedScopeValues(values []string) []string {

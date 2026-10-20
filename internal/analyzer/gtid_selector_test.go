@@ -76,3 +76,24 @@ func TestGTIDExcludeOnlyRejectsAnonymousGroup(t *testing.T) {
 		t.Fatalf("anonymous exclude-only match = %v, %v", matched, err)
 	}
 }
+
+// The selector takes the shared token rules: whitespace next to ".." is
+// rejected on either side, the same in --include-gtids and --exclude-gtids
+// (#383 QA).
+func TestMariaDBSelectorRejectsWhitespaceAroundRange(t *testing.T) {
+	for _, value := range []string{"0-7-1 ..5", "0-7-1.. 5", "0-7-1 .. 5"} {
+		if _, err := ParseGTIDSelector([]string{value}, nil); err == nil {
+			t.Fatalf("include %q accepted", value)
+		}
+		if _, err := ParseGTIDSelector(nil, []string{value}); err == nil {
+			t.Fatalf("exclude %q accepted", value)
+		}
+	}
+	selector, err := ParseGTIDSelector([]string{" 0-7-1..5 , 0-08-2"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := selector.Include(); len(got) != 2 || got[0] != "0-7-1..5" || got[1] != "0-8-2" {
+		t.Fatalf("canonical %v", got)
+	}
+}
