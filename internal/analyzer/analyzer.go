@@ -155,6 +155,7 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 	a.reportAgg.ConsumeDDLEvents(a.ddlAgg.Snapshot())
 
 	a.result, a.err = a.assembleResult()
+	a.reportAgg.Close()
 	if a.err != nil {
 		return nil, a.err
 	}
@@ -444,6 +445,7 @@ func (a *Analyzer) reset() {
 	a.hotRows = newHotRowAggregator(HotRowTrackLimit)
 	a.minuteAgg = NewMinuteAggregator()
 	a.ddlAgg = NewDDLAggregator()
+	a.reportAgg.Close()
 	a.reportAgg = NewReportAggregator(a.opts)
 	a.filter = newEventFilter(a.opts)
 	a.eventCount = 0
@@ -486,6 +488,9 @@ func (a *Analyzer) reset() {
 // assembleResult builds the final AnalysisResult from the streaming report aggregator snapshot.
 func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	snap := a.reportAgg.Snapshot()
+	if err := a.reportAgg.Err(); err != nil {
+		return nil, err
+	}
 
 	topTransactions := snap.Transactions
 	if err := a.attachTopTransactionSQL(topTransactions); err != nil {

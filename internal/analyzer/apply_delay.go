@@ -6,17 +6,16 @@
 package analyzer
 
 import (
-	"sort"
 	"time"
 
 	"binlogviz/internal/model"
 )
 
 // applyDelayTracker keeps one signed delay per counted transaction and a
-// bounded ranking. The int64 slice is the p95 input; a histogram would only
-// matter if a single analyze held tens of millions of transactions.
+// bounded ranking. The delays are the p95 input; delayValues keeps them in
+// bounded memory and spills the rest to disk (#364).
 type applyDelayTracker struct {
-	values       []int64
+	values       delayValues
 	maxUs        int64
 	maxImmediate time.Time
 	has          bool
@@ -33,7 +32,7 @@ func (t *applyDelayTracker) add(txn model.Transaction, limit int) {
 	}
 	delayUs := delay.Microseconds()
 	immediate := model.UnixMicroTime(txn.ImmediateCommitUs)
-	t.values = append(t.values, delayUs)
+	t.values.add(delayUs)
 	if !t.has || delayUs > t.maxUs || (delayUs == t.maxUs && immediate.Before(t.maxImmediate)) {
 		t.has = true
 		t.maxUs = delayUs
@@ -53,23 +52,22 @@ func (t *applyDelayTracker) add(txn model.Transaction, limit int) {
 	})
 }
 
-func (t applyDelayTracker) snapshot() *model.ApplyDelay {
-	if len(t.values) == 0 {
+func (t *applyDelayTracker) snapshot() *model.ApplyDelay {
+	if t.values.n == 0 {
 		return nil
 	}
-	sorted := append([]int64(nil), t.values...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+	p95, err := t.values.p95()
+	if err != nil {
+		return nil
+	}
 	origin := model.ApplyDelaySource
-	for _, us := range t.values {
-		if us != 0 {
-			origin = model.ApplyDelayReplica
-			break
-		}
+	if t.values.nonZero {
+		origin = model.ApplyDelayReplica
 	}
 	out := &model.ApplyDelay{
 		Origin:     origin,
 		Max:        time.Duration(t.maxUs) * time.Microsecond,
-		P95:        time.Duration(percentile95(sorted)) * time.Microsecond,
+		P95:        time.Duration(p95) * time.Microsecond,
 		PeakMinute: t.maxImmediate.UTC().Truncate(time.Minute),
 	}
 	if origin == model.ApplyDelayReplica {
@@ -78,22 +76,20 @@ func (t applyDelayTracker) snapshot() *model.ApplyDelay {
 	return out
 }
 
+// err reports a failure to read spilled delays back; snapshot then has no
+// apply-delay section, and the analyzer fails instead of printing it.
+func (t *applyDelayTracker) err() error { return t.values.err }
+
+func (t *applyDelayTracker) close() { t.values.close() }
+
 // percentile95 is the nearest-rank 95th percentile: the 1-based rank
 // ceil(0.95*n), which is an observed delay. Integer arithmetic avoids a
 // float landing just off an exact boundary.
 func percentile95(sorted []int64) int64 {
-	n := len(sorted)
-	if n == 0 {
+	if len(sorted) == 0 {
 		return 0
 	}
-	rank := (95*n + 99) / 100
-	if rank < 1 {
-		rank = 1
-	}
-	if rank > n {
-		rank = n
-	}
-	return sorted[rank-1]
+	return sorted[nearestRank95(len(sorted))-1]
 }
 
 func applyDelayBetter(left, right model.ApplyDelayTxn) bool {

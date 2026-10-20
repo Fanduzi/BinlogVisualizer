@@ -27,8 +27,11 @@ type minuteBucket struct {
 	insertEvents int
 	updateEvents int
 	deleteEvents int
-	txnSet       map[string]struct{} // distinct transactions
-	tableRows    map[tableIdentity]int
+	// txnCount counts distinct transactions with rows in this minute. A
+	// transaction's events are contiguous, so a change of key is a new one.
+	txnCount   int
+	lastTxnKey string
+	tableRows  map[tableIdentity]int
 }
 
 // NewMinuteAggregator creates a new MinuteAggregator.
@@ -54,7 +57,6 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 	if !exists {
 		bucket = &minuteBucket{
 			minute:    minute,
-			txnSet:    make(map[string]struct{}),
 			tableRows: make(map[tableIdentity]int),
 		}
 		a.buckets[minute] = bucket
@@ -77,8 +79,9 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 		case "DELETE":
 			bucket.deleteEvents++
 		}
-		if ev.TxnKey != "" {
-			bucket.txnSet[ev.TxnKey] = struct{}{}
+		if ev.TxnKey != "" && ev.TxnKey != bucket.lastTxnKey {
+			bucket.txnCount++
+			bucket.lastTxnKey = ev.TxnKey
 		}
 	}
 
@@ -97,7 +100,7 @@ func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 		result = append(result, model.MinuteBucket{
 			Minute:      bucket.minute,
 			TotalRows:   bucket.totalRows,
-			TxnCount:    len(bucket.txnSet),
+			TxnCount:    bucket.txnCount,
 			EventCount:  bucket.eventCount,
 			BinlogBytes: bucket.binlogBytes,
 			DDLCount:    bucket.ddlCount,
@@ -170,7 +173,7 @@ func minuteBucketSnapshot(bucket *minuteBucket, tableRows map[string]int) model.
 	return model.MinuteBucket{
 		Minute:      bucket.minute,
 		TotalRows:   bucket.totalRows,
-		TxnCount:    len(bucket.txnSet),
+		TxnCount:    bucket.txnCount,
 		EventCount:  bucket.eventCount,
 		BinlogBytes: bucket.binlogBytes,
 		DDLCount:    bucket.ddlCount,

@@ -294,6 +294,23 @@ func (a *ReportAggregator) SetFileCoverage(coverage model.FileCoverage) {
 	a.fileCoverage = coverage
 }
 
+// Err reports state the aggregator could not read back (spilled apply-delay
+// values). Check it after Snapshot.
+func (a *ReportAggregator) Err() error {
+	if a == nil {
+		return nil
+	}
+	return a.applyDelay.err()
+}
+
+// Close releases the apply-delay spill file, if one was created.
+func (a *ReportAggregator) Close() {
+	if a == nil {
+		return
+	}
+	a.applyDelay.close()
+}
+
 // Snapshot returns a point-in-time view of all aggregated report state.
 func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	if a == nil {

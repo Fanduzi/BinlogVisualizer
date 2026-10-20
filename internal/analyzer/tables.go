@@ -33,8 +33,13 @@ type tableStats struct {
 	noPKInsert    int
 	noPKUpdate    int
 	noPKDelete    int
-	txnSet        map[string]struct{} // distinct transactions that touched this table
-	activity      map[time.Time]*tableActivityPoint
+	// txnCount counts distinct transactions that touched this table. Each
+	// transaction's events arrive contiguously (the analyzer assigns keys in
+	// binlog order and never reuses one), so a change of key is a new
+	// transaction: O(1) per table instead of one set entry per transaction.
+	txnCount   int
+	lastTxnKey string
+	activity   map[time.Time]*tableActivityPoint
 }
 
 type tableActivityPoint struct {
@@ -73,7 +78,6 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 		ts = &tableStats{
 			schema:   ev.Schema,
 			table:    ev.Table,
-			txnSet:   make(map[string]struct{}),
 			activity: make(map[time.Time]*tableActivityPoint),
 		}
 		a.tables[key] = ts
@@ -99,8 +103,9 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 			ts.deleteRows += ev.RowCount
 		}
 		ts.observeKeyStatus(ev)
-		if ev.TxnKey != "" {
-			ts.txnSet[ev.TxnKey] = struct{}{}
+		if ev.TxnKey != "" && ev.TxnKey != ts.lastTxnKey {
+			ts.txnCount++
+			ts.lastTxnKey = ev.TxnKey
 		}
 	}
 
@@ -157,7 +162,7 @@ func (a *TableAggregator) Snapshot() []model.TableStats {
 			UpdateRows:     ts.updateRows,
 			UpdateEvents:   ts.updateEvents,
 			DeleteRows:     ts.deleteRows,
-			TxnCount:       len(ts.txnSet),
+			TxnCount:       ts.txnCount,
 			EventCount:     ts.eventCount,
 			BinlogBytes:    ts.binlogBytes,
 			DDLCount:       ts.ddlCount,
