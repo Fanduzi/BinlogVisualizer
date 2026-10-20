@@ -78,7 +78,9 @@ type AnalysisSelection struct {
 	// MatchedGTIDSet is the matched GTIDs as an interval set (#379): one
 	// MySQL GTID set per server UUID, or one MariaDB entry per range.
 	MatchedGTIDSet []string
-	// MatchedTransactions counts the matched GTIDs; nil without GTID selectors.
+	// MatchedTransactions counts matched transaction groups with at least one
+	// event in the window, once per group read (repeats and row-less groups
+	// included); nil without GTID selectors.
 	MatchedTransactions *int
 }
 
