@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `37208a3`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3、#374 analyze 内存不随事务数增长、#376 GTID 过滤下 analyze 不再缓存整个事务）加上 #379（GTID 过滤的匹配证据改成区间集合，E1 改为 MET），2026-10-20 核对。
+基线：main `41f170b`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3、#374 analyze 内存不随事务数增长、#376 GTID 过滤下 analyze 不再缓存整个事务、#379 GTID 过滤的匹配证据改成区间集合，E1 为 MET），2026-10-20 核对。E2 由 `TestLargeInputBaseline` 覆盖，本变更把它标为 MET（尚未进入 main）。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -55,7 +55,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
 | E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | analyze：`TestAnalyzeRetainedHeap`（先跑 2000 个事务预热，再分别用 2.5 万和 10 万个事务的合成 MySQL 8.0 副本 binlog 走完整 analyze 流程，每 2000 个事件和 Finalize 前后在 analyze 的 goroutine 上 GC 后测 live heap；10 万比 2.5 万多出的峰值堆必须小于 256KiB，实测约 -5KB 到 67KB，每个事务不到 1 字节）。#364 把这三处按事务增长的状态改成常数大小，输出和 v0.34.0 逐字节相同：按表、按分钟的事务 key 集合换成「计数 + 上一个 key」（事务 key 按 binlog 顺序单调分配，同一事务的行事件是连续的）；热点行 map 每淘汰 `limit` 次重建一次，清掉 Go map 删除留下的墓碑；apply-delay 的精确 P95（nearest-rank）在内存里最多留 8192 个值，超过后写到已 unlink 的临时文件，再用 4 趟 16 位基数选择取第 k 小（每个事务约 8 字节临时盘，5000 万个事务约 400MB；建不了临时文件时退回内存）。仍随输入增长、但不随事务数增长的：时间跨度（分钟桶）、不同的表/线程/语句模式数；告警（大事务、不完整事务）按告警数增长，因为文本报告要逐条列出。flashback generate：`TestFlashbackSpillLimitOnFixture`、`TestGeneratedReviewRSS`；verify：`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`。都在 CI `verify` 的 `go test ./...` 里跑；`TestGeneratedReviewRSS`、`TestVerifyDoesNotBufferTheScript` 在 -race 下用 `t.Skip` 跳过并写明原因，`TestEveryMemoryTestRunsInCIVerify` 保证 `verify` 一直是非 -race 的 `go test ./...`，这些测试都在而且没有 race 构建标签。GTID 过滤：`TestAnalyzeGTIDFilterRetainedHeap`（同样的测法：`--include-gtids` 选同样 2000 个事务时 10 万比 2.5 万个事务；一个 30 万个 UPDATE_ROWS 事件的大事务比 7.5 万个，分别在 include 和 include+exclude 下；多出的峰值堆都必须小于 256KiB，实测不到 12KB）。#376 之前 GTID 过滤会把当前事务的每个事件缓存到事务结束（每个事件约 4.3KB），30 万事件的事务会 OOM、exit 2；现在 include/exclude 在事务开头的 GTID 事件就能定下来，事件直接流过，每个事务只留常数大小的状态，输出不变（`docs/gtid-filter-streaming.md`）。匹配证据：`TestAnalyzeMatchedGTIDSetHeap`（合成 MySQL 8.0 binlog，26.2 万比 104.9 万个事务，带行事件的事务固定 256 个；分别用 `--exclude-gtids` 单个 GTID，和 `--include-gtids` 全覆盖加排除 3 个 GTID；匹配数涨 4 倍、区间数不变，多出的峰值堆必须小于 256KiB，实测 13–20KB，GOMAXPROCS=1 和 8 都通过）。#379 之前 `selection.matched_gtids` 逐个保存匹配到的 GTID，同一测试里每个匹配约 117 字节、多出约 92MB，QA 在 300 万事务的 binlog 上 `--exclude-gtids` 单个 GTID 会 OOM、exit 2；现在改成 `selection.matched_gtid_set`（按 UUID 合并的区间，如 `uuid:1-4:6-3000000`）加 `matched_transactions` 计数，`report_version` 升到 4，内存随区间数而不是匹配数增长；区间超过 10 万个时 exit 10，`details.reason` 为 `matched_gtid_intervals`（`TestAnalyzeMatchedGTIDIntervalCeilingExitsTen`）。这 7 个测试都列在 `TestEveryMemoryTestRunsInCIVerify` 里 | MET | — |
-| E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `TestLargeInputBaseline`（`docs/large-input-baseline.md`）在 `t.TempDir()` 用 hot-rows 事务模板写出确定性的 MySQL 8.0 binlog，不提交大文件，也不读 `BINLOGVIZ_REAL_BINLOG`。预热 2000 个事务后，同一进程分析 38437 个事务（13107174 字节）和 307500 个事务（104857657 字节，≥100MiB，约 8 倍）。analyze 走真实解析和聚合，并把结果写成 json、text、markdown、html。门槛都是比值或与输入成比例的量，不是绝对墙钟或 RSS（#351 的 VmHWM 上限、#355 的后台采样都不可靠）：大文件的 GC 后 live heap 最多比小文件高 1MiB（实测 GOMAXPROCS=4 约 45–54KB、=1 约 159KB）；CPU 时间比不超过字节数比的 2 倍（实测 7.6–8.1，线性是 8）；每事件分配字节比不超过 1.5（实测约 0.97）；apply-delay 临时文件每个事务不超过 64 字节（实测 7.9）。flashback generate 用同一对文件：多出来的 live heap 每个事务不超过 100 字节（实测约 31，是冲突键；留下行镜像是几百字节），CPU 比和分配比用同一上限，行 spill 的每输入字节不超过小文件的 2 倍，SQL 字节数比落在输入字节数比的 0.5–2 倍里。`BINLOGVIZ_LARGE_INPUT_FAULT=retain` 会多出约 1.4GB 堆而失败，`quadratic` 的 CPU 比到约 44 而失败。在 CI `verify` 的 `go test ./...` 里跑，不跳过；-race 下跳过并写明原因。列在 `TestEveryMemoryTestRunsInCIVerify` | MET | — |
+| E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `TestLargeInputBaseline`（`docs/large-input-baseline.md`）在父进程的临时目录用 hot-rows 事务模板写出确定性的 MySQL 8.0 binlog，不提交大文件，也不读 `BINLOGVIZ_REAL_BINLOG`。analyze 与 flashback 各自先跑 2000 个事务预热，再在同一进程里跑 38437 个事务（13107174 字节）和 307500 个事务（104857657 字节，≥100MiB，约 8 倍）。analyze 走真实解析和聚合，并把结果写成 json、text、markdown、html。时间是本进程 user+sys（`syscall.Getrusage(RUSAGE_SELF)`），不是 `/cpu/classes/total:cpu-seconds`（那一项是 GOMAXPROCS 乘墙钟，暂停也会变大）。比值：analyze 的 GC 后 live heap 最多比小文件高 1MiB；进程 CPU 比不超过字节数比的 2 倍，也就是只在大文件超过「小文件 CPU × 字节数比」的 2.00 倍时失败（实测比值 7.00–7.90，相对实测成本约 2.01–2.28 倍才到这道门，均匀变慢过不了）；每事件分配字节比不超过 1.5；apply-delay 临时文件每个事务不超过 64 字节。flashback 多出来的 live heap 每个事务不超过 100 字节，CPU 比和分配比用同一上限，行 spill 每输入字节不超过小文件的 2 倍，SQL 字节数比落在 0.5–2 倍里。没有 `/proc/self/fd`（非 Linux）时跳过临时文件检查并写明原因，堆和 CPU 仍检查。绝对上限只看大文件：analyze live heap ≤ 32MiB（实测约 8.3–8.4MB），flashback ≤ 64MiB（实测约 15.8–15.9MB）；每事件分配 analyze ≤ 8000 字节（实测约 1883），flashback ≤ 20000（实测约 4309）；每事件进程 CPU analyze ≤ 20µs（实测约 3.8–4.7µs），flashback ≤ 50µs（实测约 9.2–12.8µs）。`slow` 把 analyze 拉到 49255 ns/事件（比值仍约 7.6）而失败；`retain256` 大减小只有约 56KB，绝对堆 277257288 字节，超过 32MiB；`pause` 在大文件 analyze 里睡 7 秒，进程 CPU 不变，测试通过。子进程截止时间取自 `t.Deadline()`，flashback SQL 边写边计数，不把约 140MB 留在内存里。在 CI `verify` 的 `go test ./...` 里跑，不跳过；-race 下跳过并写明原因。列在 `TestEveryMemoryTestRunsInCIVerify` | MET | — |
 
 ## F. 安装与发布完整性
 
@@ -76,12 +76,11 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 共 24 项：**MET 19 / PARTIAL 1 / NOT MET 4**，还剩 5 项。
 
-## 最卡生产级的 5 项
+## 最卡生产级的 4 项
 
 1. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
 2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 3. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
-4. **E2，大文件**：≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 已经 MET：#374 让 analyze 内存不随事务数增长，#376 让 GTID 过滤下也不缓存整个事务，#379 让匹配证据随区间数而不是匹配数增长，`TestAnalyzeRetainedHeap`、`TestAnalyzeGTIDFilterRetainedHeap`、`TestAnalyzeMatchedGTIDSetHeap` 在 CI 里跑；#351 的偶发失败由 #358、#361 修复。但这些测试用的是合成数据，不是 ≥100MB 的真实文件。）
-5. **D5，机器可读的输出 schema 和 `--tz`**：没有 JSON Schema 或 describe 命令，显示时区不可选（#255 第 3、7 项）。
+4. **D5，机器可读的输出 schema 和 `--tz`**：没有 JSON Schema 或 describe 命令，显示时区不可选（#255 第 3、7 项）。
 
 A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。
