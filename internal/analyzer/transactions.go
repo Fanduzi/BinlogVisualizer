@@ -428,6 +428,21 @@ func (b *TransactionBuilder) touchLocation() (gtid, path string, pos int64) {
 	return b.current.gtid, txnStartPath(b.current), txnStartPos(b.current)
 }
 
+// groupGTID returns the GTID of the open group or of a completed group not
+// yet drained, by key. Only a GTID event carries a GTID and it opens its
+// group, so the value never changes after the group's first event.
+func (b *TransactionBuilder) groupGTID(key string) (string, bool) {
+	if b.current != nil && b.current.txnKey == key {
+		return b.current.gtid, true
+	}
+	for i := len(b.completed) - 1; i >= 0; i-- {
+		if b.completed[i].TxnKey == key {
+			return b.completed[i].GTID, true
+		}
+	}
+	return "", false
+}
+
 // CurrentTxnKey returns the in-flight transaction key, if any.
 func (b *TransactionBuilder) CurrentTxnKey() string {
 	if b.current == nil {

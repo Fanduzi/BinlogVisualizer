@@ -35,7 +35,7 @@ Every JSON document on `stdout` has a top-level integer version key (ADR 0010). 
 
 | Output | Version key | Current |
 |---|---|---|
-| `analyze --format json`, saved snapshots | `report_version` | 3 |
+| `analyze --format json`, saved snapshots | `report_version` | 4 |
 | `flashback --plan` | `plan_version` | 2 |
 | `compare`, `trend`, `snapshot list`, `snapshot show` with `--format json` | `schema_version` | 1 |
 | `workflow validate`, `describe`, `status`, `clean`, `export` with `--format json` | `schema_version` | 1 |
@@ -307,7 +307,7 @@ The top-level JSON object always contains these fields:
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `report_version` | integer | yes | Analyze report contract version; current version is `3`; readers accept v0-v3 |
+| `report_version` | integer | yes | Analyze report contract version; current version is `4`; readers accept v0-v4 |
 | `provenance` | object | no | Deterministic producer sets plus `mixed_producers`; omitted when producer evidence is unavailable |
 | `selection` | object | no | Requested selectors and effective position/GTID evidence; omitted when no position or GTID selector is active |
 | `sql_context` | object | yes | Selected `mode` and report-wide source-SQL `available` flag |
@@ -385,7 +385,10 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 | `include_gtids` | array | no | Canonical MySQL sets or exact MariaDB identities |
 | `exclude_gtids` | array | no | Canonical exclusions applied after include |
 | `resolved_gtid_flavor` | string | no | `mysql` or `mariadb` after selector/input agreement |
-| `matched_gtids` | array | no | Canonical selected transaction identities with retained evidence |
+| `matched_gtid_set` | array | no | GTIDs the selectors matched, as an interval set (report_version 4, #379). MySQL: one `uuid:1-4:6-3000000` entry per server UUID, sorted by UUID. MariaDB: one entry per run of consecutive sequence numbers, `domain-server-seq` or `domain-server-first..last`, sorted by domain, server, then sequence. Each matched transaction is counted once. Present only when GTID selectors matched |
+| `matched_transactions` | integer | no | Number of matched transactions with retained evidence. Present whenever GTID selectors are set |
+
+Report_version 3 listed every matched identity in `matched_gtids` instead, so it grew with the number of matches. Version 4 removes that key; compare and trend still read v3 reports. The set holds at most 100,000 intervals in total; a run whose matched GTIDs leave more gaps stops with exit 10 `resource`, `details.reason` `matched_gtid_intervals` (with `limit` and `intervals`), and prints no report. Narrow `--include-gtids`/`--exclude-gtids` or split the input.
 
 ### `tables`
 

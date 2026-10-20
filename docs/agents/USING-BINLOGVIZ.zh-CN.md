@@ -92,7 +92,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 | 7 | `conflict` | 选中的行后来又被修改 |
 | 8 | `output` | 写不出报告或脚本 |
 | 9 | `unsupported` | 没有 ROW 镜像的 STATEMENT/MIXED、未知版本，或裁剪过的 diagnostics 文档 |
-| 10 | `resource` | flashback 达到溢出上限（`BINLOGVIZ_SPILL_BYTES`，`details.reason` 为 `spill_limit`）或堆上限（`BINLOGVIZ_MEMORY_BYTES`，未设置时才用 `GOMEMLIMIT`；`details.reason` 为 `memory_limit`）。`BINLOGVIZ_SPILL_BYTES` 或 `BINLOGVIZ_MEMORY_BYTES` 已设置但不是正的十进制整数时是退出码 3。未设置 `BINLOGVIZ_SPILL_BYTES` 表示没有字节上限。不是空结果 |
+| 10 | `resource` | flashback 达到溢出上限（`BINLOGVIZ_SPILL_BYTES`，`details.reason` 为 `spill_limit`）或堆上限（`BINLOGVIZ_MEMORY_BYTES`，未设置时才用 `GOMEMLIMIT`；`details.reason` 为 `memory_limit`）。`BINLOGVIZ_SPILL_BYTES` 或 `BINLOGVIZ_MEMORY_BYTES` 已设置但不是正的十进制整数时是退出码 3。未设置 `BINLOGVIZ_SPILL_BYTES` 表示没有字节上限。带 `--include-gtids`/`--exclude-gtids` 的 analyze 或 flashback，匹配到的 GTID 留下超过 100,000 个区间时也是 10（`details.reason` 为 `matched_gtid_intervals`，#379）；请收窄选择器或拆分输入。不是空结果 |
 
 ## JSON 版本
 
@@ -100,7 +100,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 
 | 输出 | 键 | 当前 |
 |---|---|---|
-| `analyze --format json`、保存的快照 | `report_version` | 3 |
+| `analyze --format json`、保存的快照 | `report_version` | 4 |
 | `flashback --plan` | `plan_version` | 2 |
 | `flashback verify --format json` | `schema_version` | 1 |
 | `compare`、`trend`、`snapshot list`、`snapshot show` 的 `--format json` | `schema_version` | 1 |
@@ -111,4 +111,4 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 
 每一行的机器可读 schema 是 `binlogviz schema <name>`，以及检出或发布包里的 `docs/schema/<name>.json`（`analyze`、`flashback-plan`、`compare`、`trend`、`snapshot-list`、`snapshot-show`、`workflow-validate`、`workflow-describe`、`workflow-status`、`workflow-clean`、`workflow-export`、`version`、`flashback-verify`）。`binlogviz schema` 列出这些名字。`--tz` 不抬这些版本号。
 
-`--diagnostics summary` 和 `off` 的 `report_version` 仍是 3。summary 的 DDL 列表有上限；看 `ddl_events_omitted`。默认的 `full` JSON 没有这个键。
+`--diagnostics summary` 和 `off` 的 `report_version` 仍是 4。summary 的 DDL 列表有上限；看 `ddl_events_omitted`。默认的 `full` JSON 没有这个键。

@@ -15,11 +15,13 @@ import (
 // one of them moves behind a race build tag (left out of the build without
 // a SKIP line), or if its race skip loses its t.Skip reason.
 var e1MemoryTests = map[string]string{
-	"TestFlashbackSpillLimitOnFixture": "cmd/binlogviz/flashback_resource_test.go",
-	"TestFlashbackVerifyMemoryCeiling": "cmd/binlogviz/flashback_verify_test.go",
-	"TestAnalyzeRetainedHeap":          "cmd/binlogviz/analyze_memory_test.go",
-	"TestGeneratedReviewRSS":           "internal/flashback/genmem_test.go",
-	"TestVerifyDoesNotBufferTheScript": "internal/guard/script_mem_test.go",
+	"TestFlashbackSpillLimitOnFixture":  "cmd/binlogviz/flashback_resource_test.go",
+	"TestFlashbackVerifyMemoryCeiling":  "cmd/binlogviz/flashback_verify_test.go",
+	"TestAnalyzeRetainedHeap":           "cmd/binlogviz/analyze_memory_test.go",
+	"TestAnalyzeGTIDFilterRetainedHeap": "cmd/binlogviz/analyze_gtid_memory_test.go",
+	"TestAnalyzeMatchedGTIDSetHeap":     "cmd/binlogviz/analyze_gtid_memory_test.go",
+	"TestGeneratedReviewRSS":            "internal/flashback/genmem_test.go",
+	"TestVerifyDoesNotBufferTheScript":  "internal/guard/script_mem_test.go",
 }
 
 func TestEveryMemoryTestRunsInCIVerify(t *testing.T) {

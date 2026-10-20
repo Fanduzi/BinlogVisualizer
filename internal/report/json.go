@@ -18,7 +18,7 @@ import (
 	"binlogviz/internal/report/view"
 )
 
-const currentReportVersion = 3
+const currentReportVersion = 4
 
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
@@ -91,7 +91,8 @@ type jsonSelection struct {
 	IncludeGTIDs           []string `json:"include_gtids,omitempty"`
 	ExcludeGTIDs           []string `json:"exclude_gtids,omitempty"`
 	ResolvedGTIDFlavor     string   `json:"resolved_gtid_flavor,omitempty"`
-	MatchedGTIDs           []string `json:"matched_gtids,omitempty"`
+	MatchedGTIDSet         []string `json:"matched_gtid_set,omitempty"`
+	MatchedTransactions    *int     `json:"matched_transactions,omitempty"`
 }
 
 type jsonSQLContext struct {
@@ -546,8 +547,17 @@ func convertSelection(selection *model.AnalysisSelection) *jsonSelection {
 		IncludeGTIDs:           copyStringSlice(selection.IncludeGTIDs),
 		ExcludeGTIDs:           copyStringSlice(selection.ExcludeGTIDs),
 		ResolvedGTIDFlavor:     selection.ResolvedGTIDFlavor,
-		MatchedGTIDs:           copyStringSlice(selection.MatchedGTIDs),
+		MatchedGTIDSet:         copyStringSlice(selection.MatchedGTIDSet),
+		MatchedTransactions:    cloneJSONInt(selection.MatchedTransactions),
 	}
+}
+
+func cloneJSONInt(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func cloneJSONInt64(value *int64) *int64 {

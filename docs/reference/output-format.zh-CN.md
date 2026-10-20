@@ -35,7 +35,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 | 输出 | 版本字段 | 当前 |
 |---|---|---|
-| `analyze --format json`、已保存的快照 | `report_version` | 3 |
+| `analyze --format json`、已保存的快照 | `report_version` | 4 |
 | `flashback --plan` | `plan_version` | 2 |
 | `compare`、`trend`、`snapshot list`、`snapshot show` 加 `--format json` | `schema_version` | 1 |
 | `workflow validate`、`describe`、`status`、`clean`、`export` 加 `--format json` | `schema_version` | 1 |
@@ -287,7 +287,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 
 | Field | Type | Required | Notes |
 |------|------|----------|------|
-| `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `3`；读取端接受 v0-v3 |
+| `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `4`；读取端接受 v0-v4 |
 | `provenance` | object | no | 确定性的生产者集合和 `mixed_producers`；没有证据时省略 |
 | `selection` | object | no | 请求的 selector 与实际 position/GTID 证据；未启用 position 或 GTID selector 时省略 |
 | `sql_context` | object | yes | 所选 `mode` 和报告全局源 SQL `available` 标志 |
@@ -365,7 +365,10 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `include_gtids` | array | no | 规范化的 MySQL set 或 MariaDB 精确身份 |
 | `exclude_gtids` | array | no | 在 include 之后应用的规范化排除项 |
 | `resolved_gtid_flavor` | string | no | selector 与输入一致后得到的 `mysql` 或 `mariadb` |
-| `matched_gtids` | array | no | 有保留证据的规范化已选事务身份 |
+| `matched_gtid_set` | array | no | GTID 选择器匹配到的 GTID，按区间集合输出（report_version 4，#379）。MySQL：每个 server UUID 一项，如 `uuid:1-4:6-3000000`，按 UUID 排序。MariaDB：每段连续序号一项，`domain-server-seq` 或 `domain-server-first..last`，按 domain、server、序号排序。同一事务只计一次。只有 GTID 选择器有匹配时才出现 |
+| `matched_transactions` | integer | no | 有保留证据的已匹配事务数。设置了 GTID 选择器时出现 |
+
+report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会随匹配数增长。版本 4 去掉这个键；compare 和 trend 仍能读取 v3 报告。区间集合最多 100,000 个区间；匹配到的 GTID 留下更多空隙时，以退出码 10 `resource` 结束，`details.reason` 为 `matched_gtid_intervals`（附 `limit` 和 `intervals`），不输出报告。请收窄 `--include-gtids`/`--exclude-gtids` 或拆分输入。
 
 ### `tables`
 

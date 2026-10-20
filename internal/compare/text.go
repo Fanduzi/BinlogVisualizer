@@ -346,6 +346,12 @@ func formatSelection(selection InputSelection) string {
 	if len(selection.MatchedGTIDs) > 0 {
 		parts = append(parts, "matched_gtids="+strings.Join(selection.MatchedGTIDs, ","))
 	}
+	if len(selection.MatchedGTIDSet) > 0 {
+		parts = append(parts, "matched_gtid_set="+strings.Join(selection.MatchedGTIDSet, ","))
+	}
+	if selection.MatchedTransactions != nil {
+		parts = append(parts, fmt.Sprintf("matched_transactions=%d", *selection.MatchedTransactions))
+	}
 	if len(parts) == 0 {
 		return "explicit"
 	}

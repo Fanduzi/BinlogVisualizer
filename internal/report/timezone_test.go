@@ -147,7 +147,7 @@ func TestAnalyzeJSONTimestampsRemainRFC3339UTC(t *testing.T) {
 		t.Fatalf("render JSON: %v", err)
 	}
 	for _, want := range []string{
-		`"report_version": 3`,
+		`"report_version": 4`,
 		`"start_time": "2026-08-29T11:59:13Z"`,
 		`"minute": "2026-08-29T11:59:00Z"`,
 		`"timestamp": "2026-08-29T11:59:13Z"`,

@@ -42,12 +42,14 @@ type Analyzer struct {
 	err       error
 	selection model.AnalysisSelection
 
-	pendingGroupEvents map[string][]model.NormalizedEvent
-	// pendingFlashDDL holds filtered-out DDL of an open group until its GTID
-	// match is known. Only the flashback planner reads it.
-	pendingFlashDDL map[string][]model.NormalizedEvent
+	// gtidGroups is the GTID selector decision for the open group and for a
+	// group the current event closed, by transaction key. A group's GTID is
+	// fixed by its GTID event, which opens it, so the decision is known before
+	// any of its retained events arrive and they stream straight through
+	// (#376, docs/gtid-filter-streaming.md). Entries leave at drain.
+	gtidGroups      map[string]*gtidGroup
 	inputGTIDFlavor string
-	matchedGTIDs    map[string]struct{}
+	matchedGTIDs    *matchedGTIDSet
 
 	flash *flashback.Planner
 }
@@ -298,13 +300,23 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 	ev = a.withCurrentTxnKey(ev)
 	ev = a.withTxnLocation(ev)
 	if a.opts.HasGTIDSelectors() {
-		if relation == insideWindow {
-			if ev.TxnKey != "" {
-				// ponytail: buffer one in-flight group; spool if real transaction sizes make this a memory ceiling.
-				a.pendingGroupEvents[ev.TxnKey] = append(a.pendingGroupEvents[ev.TxnKey], ev)
-			}
+		if relation != insideWindow || ev.TxnKey == "" {
+			return a.persistCompletedTransactions()
 		}
-		return a.persistCompletedTransactions()
+		// An event of a group it just closed (XID, COMMIT, a GTID-started
+		// DDL) is aggregated before that group drains; an event of the open
+		// group after any group this event closed. That is the order the
+		// old per-group buffer replayed them in.
+		if ev.TxnKey != a.txnBuilder.CurrentTxnKey() {
+			if err := a.retainSelectedGroupEvent(ev); err != nil {
+				return err
+			}
+			return a.persistCompletedTransactions()
+		}
+		if err := a.persistCompletedTransactions(); err != nil {
+			return err
+		}
+		return a.retainSelectedGroupEvent(ev)
 	}
 	if relation != insideWindow {
 		return a.persistCompletedTransactions()
@@ -330,9 +342,48 @@ func (a *Analyzer) noteFilteredDDL(ev model.NormalizedEvent) {
 		a.flash.Note(ev)
 		return
 	}
-	if ev.TxnKey != "" {
-		a.pendingFlashDDL[ev.TxnKey] = append(a.pendingFlashDDL[ev.TxnKey], ev)
+	if group := a.gtidGroupFor(ev.TxnKey); group != nil && group.matched {
+		a.flash.Note(ev)
 	}
+}
+
+// gtidGroup is the GTID selector decision for one transaction group.
+type gtidGroup struct {
+	gtid     string
+	matched  bool
+	retained bool // at least one in-window event was aggregated
+}
+
+// gtidGroupFor returns the decision for the open group or a group closed by
+// the current event, or nil for any other key (the old buffer dropped such
+// events too). A Match error counts as not matched here; drain reports it,
+// after the unresolved-boundary check, as before.
+func (a *Analyzer) gtidGroupFor(key string) *gtidGroup {
+	if key == "" {
+		return nil
+	}
+	if group, ok := a.gtidGroups[key]; ok {
+		return group
+	}
+	gtid, ok := a.txnBuilder.groupGTID(key)
+	if !ok {
+		return nil
+	}
+	matched, err := a.opts.GTIDSelector.Match(gtid)
+	group := &gtidGroup{gtid: gtid, matched: err == nil && matched}
+	a.gtidGroups[key] = group
+	return group
+}
+
+// retainSelectedGroupEvent aggregates one in-window event of a group the
+// GTID selectors keep, and drops it otherwise. Nothing is held per event.
+func (a *Analyzer) retainSelectedGroupEvent(ev model.NormalizedEvent) error {
+	group := a.gtidGroupFor(ev.TxnKey)
+	if group == nil || !group.matched {
+		return nil
+	}
+	group.retained = true
+	return a.aggregateRetainedEvent(ev)
 }
 
 func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
@@ -461,10 +512,9 @@ func (a *Analyzer) reset() {
 		a.selection.IncludeGTIDs = a.opts.GTIDSelector.Include()
 		a.selection.ExcludeGTIDs = a.opts.GTIDSelector.Exclude()
 	}
-	a.pendingGroupEvents = make(map[string][]model.NormalizedEvent)
-	a.pendingFlashDDL = make(map[string][]model.NormalizedEvent)
+	a.gtidGroups = make(map[string]*gtidGroup)
 	a.inputGTIDFlavor = ""
-	a.matchedGTIDs = make(map[string]struct{})
+	a.matchedGTIDs = newMatchedGTIDSet()
 	if a.flash != nil {
 		a.flash.Close()
 		a.flash = nil
@@ -525,7 +575,11 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 	}
 	if a.opts.HasPositionSelectors() || a.opts.HasGTIDSelectors() {
 		a.selection.ResolvedGTIDFlavor = a.inputGTIDFlavor
-		a.selection.MatchedGTIDs = sortedStringSet(a.matchedGTIDs)
+		a.selection.MatchedGTIDSet = a.matchedGTIDs.strings()
+		if a.opts.HasGTIDSelectors() {
+			count := a.matchedGTIDs.count
+			a.selection.MatchedTransactions = &count
+		}
 		selection := a.selection
 		result.Selection = &selection
 	}
@@ -622,10 +676,8 @@ func (a *Analyzer) persistCompletedTransactions() error {
 	persisted := make([]model.Transaction, 0, len(drained))
 	for _, txn := range drained {
 		if a.opts.HasGTIDSelectors() {
-			events := a.pendingGroupEvents[txn.TxnKey]
-			delete(a.pendingGroupEvents, txn.TxnKey)
-			filteredDDL := a.pendingFlashDDL[txn.TxnKey]
-			delete(a.pendingFlashDDL, txn.TxnKey)
+			group := a.gtidGroups[txn.TxnKey]
+			delete(a.gtidGroups, txn.TxnKey)
 			if txn.EffectiveCompleteness() == model.TransactionUnknown {
 				return fmt.Errorf("cannot apply GTID selectors: transaction %s has unresolved boundaries", txn.TxnKey)
 			}
@@ -633,23 +685,22 @@ func (a *Analyzer) persistCompletedTransactions() error {
 			if err != nil {
 				return err
 			}
+			if group != nil && (group.gtid != txn.GTID || group.matched != matched) {
+				// The builder only takes a GTID from the GTID event that opens
+				// a group, so this cannot happen; fail rather than misreport.
+				return fmt.Errorf("cannot apply GTID selectors: transaction %s was filtered as GTID %q but closed as %q", txn.TxnKey, group.gtid, txn.GTID)
+			}
 			if !matched {
 				continue
 			}
-			for _, ev := range filteredDDL {
-				a.flash.Note(ev)
-			}
-			for _, ev := range events {
-				if err := a.aggregateRetainedEvent(ev); err != nil {
-					return err
-				}
-			}
-			if txn.GTID != "" && len(events) > 0 {
+			if txn.GTID != "" && group != nil && group.retained {
 				identity, err := a.opts.GTIDSelector.canonicalIdentity(txn.GTID)
 				if err != nil {
 					return err
 				}
-				a.matchedGTIDs[identity] = struct{}{}
+				if err := a.matchedGTIDs.add(identity); err != nil {
+					return err
+				}
 			}
 		}
 		if retainCompletedTransaction(txn) {

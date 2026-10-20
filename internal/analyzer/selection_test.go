@@ -44,7 +44,7 @@ func TestAnalyzerGTIDSelectorFiltersCompleteGroups(t *testing.T) {
 	if result.Summary.TotalTransactions != 1 || result.Summary.TotalRows != 1 || len(result.Transactions) != 1 || result.Transactions[0].GTID != sid+":1" {
 		t.Fatalf("selected result = %+v, transactions=%+v", result.Summary, result.Transactions)
 	}
-	if result.Selection == nil || result.Selection.ResolvedGTIDFlavor != "mysql" || len(result.Selection.MatchedGTIDs) != 1 || result.Selection.MatchedGTIDs[0] != sid+":1" {
+	if result.Selection == nil || result.Selection.ResolvedGTIDFlavor != "mysql" || len(result.Selection.MatchedGTIDSet) != 1 || result.Selection.MatchedGTIDSet[0] != sid+":1" || result.Selection.MatchedTransactions == nil || *result.Selection.MatchedTransactions != 1 {
 		t.Fatalf("selection evidence = %+v", result.Selection)
 	}
 }
@@ -359,7 +359,44 @@ func TestAnalyzerGTIDAndPositionSelectorsIntersectOnProvenGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Transactions) != 1 || result.Transactions[0].Completeness != model.TransactionPartialStart || result.Transactions[0].FullReplaySpan == nil || !result.Transactions[0].FullReplayAvailable() || result.Selection == nil || len(result.Selection.MatchedGTIDs) != 1 || result.Selection.MatchedGTIDs[0] != gtid {
+	if len(result.Transactions) != 1 || result.Transactions[0].Completeness != model.TransactionPartialStart || result.Transactions[0].FullReplaySpan == nil || !result.Transactions[0].FullReplayAvailable() || result.Selection == nil || len(result.Selection.MatchedGTIDSet) != 1 || result.Selection.MatchedGTIDSet[0] != gtid || *result.Selection.MatchedTransactions != 1 {
 		t.Fatalf("intersected selection = %+v transactions=%+v", result.Selection, result.Transactions)
+	}
+}
+
+// TestAnalyzerGTIDSelectorKeepsPositionWindow pins that a matched group only
+// contributes its in-window events (#378 QA F2): with a stop position in the
+// middle of the group, the rows and events past it stay out of the report,
+// for an include and for an exclude selector.
+func TestAnalyzerGTIDSelectorKeepsPositionWindow(t *testing.T) {
+	const sid = "24bc7850-2c16-11e6-a073-0242ac110002"
+	base := time.Date(2026, 8, 30, 12, 30, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{
+		{Timestamp: base, EventType: "GTID", GTID: sid + ":10", BinlogPath: "b.1", PositionStart: 40, PositionEnd: 60, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(time.Second), EventType: "XA_START", XAXID: "x1", BinlogPath: "b.1", PositionStart: 60, PositionEnd: 80, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(2 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 3, BinlogPath: "b.1", PositionStart: 80, PositionEnd: 100, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(3 * time.Second), EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 5, BinlogPath: "b.1", PositionStart: 100, PositionEnd: 120, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(4 * time.Second), EventType: "XA_END", BinlogPath: "b.1", PositionStart: 120, PositionEnd: 140, ServerFlavor: "mysql"},
+		{Timestamp: base.Add(5 * time.Second), EventType: "XA_PREPARE", XAXID: "x1", BinlogPath: "b.1", PositionStart: 140, PositionEnd: 160, ServerFlavor: "mysql"},
+	}
+	for _, sel := range [][2][]string{{{sid + ":10"}, nil}, {nil, {sid + ":11"}}} {
+		selector, err := ParseGTIDSelector(sel[0], sel[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		stop := int64(100)
+		opts := DefaultOptions()
+		opts.GTIDSelector = selector
+		opts.StopPosition = &stop
+		result, err := New(opts).Analyze(events)
+		if err != nil {
+			t.Fatalf("%v: %v", sel, err)
+		}
+		if result.Summary.TotalRows != 3 || result.Summary.TotalEvents != 3 {
+			t.Fatalf("%v: rows %d events %d, want 3 and 3 (GTID, XA START, first ROWS)", sel, result.Summary.TotalRows, result.Summary.TotalEvents)
+		}
+		if result.Selection == nil || len(result.Selection.MatchedGTIDSet) != 1 || *result.Selection.MatchedTransactions != 1 {
+			t.Fatalf("%v: selection %+v", sel, result.Selection)
+		}
 	}
 }

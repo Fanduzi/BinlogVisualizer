@@ -247,7 +247,9 @@ Newer analyze flags are **hardcoded English** and have **no** i18n keys: `--star
 
 ## P3 — local hazards
 
-### 10. GTID-selector event buffer is unbounded
+### 10. GTID-selector event buffer is unbounded (resolved, #376)
+
+Resolved: the selector decision is made at the group's first in-window event and events stream through; see `docs/gtid-filter-streaming.md`. Original note:
 
 `Analyzer.pendingGroupEvents` (`analyzer.go`) appends every in-window event for an in-flight group when selectors are active. Comment: `ponytail: buffer one in-flight group; spool if real transaction sizes make this a memory ceiling.` A large selected transaction holds a second copy of every `NormalizedEvent` until close. Default path does not do this.
 

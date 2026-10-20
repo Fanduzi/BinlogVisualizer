@@ -92,7 +92,7 @@ The kind string does not change with `--lang`. `--error-format json` prints one 
 | 7 | `conflict` | A selected row changed again later |
 | 8 | `output` | Could not write the report or the script |
 | 9 | `unsupported` | STATEMENT/MIXED with no ROW images, an unknown version, or a trimmed diagnostics document |
-| 10 | `resource` | Flashback hit a spill ceiling (`BINLOGVIZ_SPILL_BYTES`, `details.reason` `spill_limit`) or the heap ceiling (`BINLOGVIZ_MEMORY_BYTES`, or `GOMEMLIMIT` when that is unset; `details.reason` `memory_limit`). A set `BINLOGVIZ_SPILL_BYTES` or `BINLOGVIZ_MEMORY_BYTES` that is not a positive base-10 integer is exit 3. Unset `BINLOGVIZ_SPILL_BYTES` means no byte ceiling. Not an empty result |
+| 10 | `resource` | Flashback hit a spill ceiling (`BINLOGVIZ_SPILL_BYTES`, `details.reason` `spill_limit`) or the heap ceiling (`BINLOGVIZ_MEMORY_BYTES`, or `GOMEMLIMIT` when that is unset; `details.reason` `memory_limit`). A set `BINLOGVIZ_SPILL_BYTES` or `BINLOGVIZ_MEMORY_BYTES` that is not a positive base-10 integer is exit 3. Unset `BINLOGVIZ_SPILL_BYTES` means no byte ceiling. Also analyze or flashback with `--include-gtids`/`--exclude-gtids` whose matched GTIDs leave more than 100,000 separate intervals (`details.reason` `matched_gtid_intervals`, #379); narrow the selectors or split the input. Not an empty result |
 
 ## JSON versions
 
@@ -100,7 +100,7 @@ Read the version key first. Adding a key does not bump the number. Removing, ren
 
 | Output | Key | Current |
 |---|---|---|
-| `analyze --format json`, saved snapshots | `report_version` | 3 |
+| `analyze --format json`, saved snapshots | `report_version` | 4 |
 | `flashback --plan` | `plan_version` | 2 |
 | `flashback verify --format json` | `schema_version` | 1 |
 | `compare`, `trend`, `snapshot list`, `snapshot show` `--format json` | `schema_version` | 1 |
@@ -111,4 +111,4 @@ Read the version key first. Adding a key does not bump the number. Removing, ren
 
 The machine-readable schema for each row is `binlogviz schema <name>` and `docs/schema/<name>.json` in a checkout or a release archive (`analyze`, `flashback-plan`, `compare`, `trend`, `snapshot-list`, `snapshot-show`, `workflow-validate`, `workflow-describe`, `workflow-status`, `workflow-clean`, `workflow-export`, `version`, `flashback-verify`). `binlogviz schema` lists the names. Passing `--tz` does not bump these version numbers.
 
-`report_version` stays 3 for `--diagnostics summary` and `off`. The summary DDL list is capped; `ddl_events_omitted` is how you see that. Default `full` JSON does not have that key.
+`report_version` stays 4 for `--diagnostics summary` and `off`. The summary DDL list is capped; `ddl_events_omitted` is how you see that. Default `full` JSON does not have that key.

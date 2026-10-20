@@ -28,7 +28,7 @@ func TestAnalyzeDiagnosticsBudgetAndAlertGTID(t *testing.T) {
 	if _, ok := fullDoc["diagnostics"].(map[string]any); !ok {
 		t.Fatal("default JSON must include diagnostics")
 	}
-	if fullDoc["report_version"].(float64) != 3 {
+	if fullDoc["report_version"].(float64) != 4 {
 		t.Fatalf("report_version = %v", fullDoc["report_version"])
 	}
 
@@ -37,7 +37,7 @@ func TestAnalyzeDiagnosticsBudgetAndAlertGTID(t *testing.T) {
 		t.Fatal(err)
 	}
 	summaryDoc := decodeObject(t, summary)
-	if summaryDoc["report_version"].(float64) != 3 {
+	if summaryDoc["report_version"].(float64) != 4 {
 		t.Fatalf("summary report_version = %v", summaryDoc["report_version"])
 	}
 	assertJSONEqualExcept(t, fullDoc, summaryDoc, "diagnostics")
@@ -81,7 +81,7 @@ func TestAnalyzeDiagnosticsBudgetAndAlertGTID(t *testing.T) {
 		t.Fatal("--diagnostics off must omit diagnostics")
 	}
 	assertJSONEqualExcept(t, fullDoc, offDoc, "diagnostics")
-	if offDoc["report_version"].(float64) != 3 {
+	if offDoc["report_version"].(float64) != 4 {
 		t.Fatalf("off report_version = %v", offDoc["report_version"])
 	}
 
