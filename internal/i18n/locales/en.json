@@ -267,6 +267,10 @@
     "description": "Flashback refuses when column names are not in the binlog",
     "other": "{{.Table}}: column names are unavailable (binlog_row_metadata is not FULL); flashback needs binlog_row_metadata=FULL (MySQL 8.0.14+). A MySQL 5.7 binlog cannot be undone, and --schema-file does not supply row metadata. Restore the table from a backup or from PITR. For a later incident, run MySQL 8.0.14+ with binlog_row_metadata=FULL"
   },
+  "error.flashbackNamesMariaDB": {
+    "description": "Flashback refuses a MariaDB binlog whose rows have no column names",
+    "other": "{{.Table}}: column names are unavailable (binlog_row_metadata is not FULL); flashback needs binlog_row_metadata=FULL, which MariaDB has from 10.5 (its default is NO_LOG). --schema-file does not supply row metadata. Restore the table from a backup or from PITR. For a later incident, run MariaDB 10.5+ with binlog_row_metadata=FULL and binlog_row_image=FULL"
+  },
   "error.flashbackImage": {
     "description": "Flashback refuses an incomplete before- or after-image",
     "other": "{{.Table}}: row image is not FULL (before- or after-image is incomplete)"
