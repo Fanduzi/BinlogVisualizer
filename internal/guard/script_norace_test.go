@@ -61,9 +61,11 @@ func guardMemChild(t *testing.T) {
 }
 
 // maxVerifyPeak caps the live heap Verify may add while reading the small
-// script. Streaming measures about 70KB (the 64KiB line buffer). A 16MiB or
-// 64MiB read buffer does not grow with the file, so only this cap sees it.
-const maxVerifyPeak = 1 << 20
+// script. Streaming measures about 63–90KB (the 64KiB line buffer). A 1MiB,
+// 16MiB or 64MiB read buffer does not grow with the file, so only this cap
+// sees it. At exactly 1MiB the cap sat on a 1MiB buffer's peak and the
+// result moved with GOMAXPROCS; 512KiB leaves room on both sides.
+const maxVerifyPeak = 512 << 10
 
 // heapReader records the high post-GC HeapAlloc seen while Verify reads.
 // The buffer a slurp retains is still reachable at the return from Read.
