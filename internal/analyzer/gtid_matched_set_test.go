@@ -295,3 +295,25 @@ func TestMatchedGTIDSetIntervalCeiling(t *testing.T) {
 		t.Fatalf("fourth interval: %v", err)
 	}
 }
+
+// TestMariaDBRangeSelectorGrammar pins the d-s-first..last selector form
+// (#381 QA F2): canonical tokens, merging, exclude-wins, and refusals.
+func TestMariaDBRangeSelectorGrammar(t *testing.T) {
+	sel, err := ParseGTIDSelector([]string{"0-7-1..3, 0-7-2", "0-07-5..5", "1-7-10..18446744073709551615"}, []string{"0-7-2..2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := sel.Include(), []string{"0-7-1..3", "0-7-2", "0-7-5", "1-7-10..18446744073709551615"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("include %v, want %v", got, want)
+	}
+	for id, want := range map[string]bool{"0-7-1": true, "0-7-2": false, "0-7-3": true, "0-7-4": false, "0-7-5": true, "0-8-1": false, "1-7-18446744073709551615": true, "1-7-9": false} {
+		if got, err := sel.Match(id); err != nil || got != want {
+			t.Fatalf("%s: %v %v, want %v", id, got, err, want)
+		}
+	}
+	for _, bad := range []string{"0-7-5..4", "0-7-5..", "0-7..5", "0-7-1..2..3", "0-7-a..3", "0-7-1..-3"} {
+		if _, err := ParseGTIDSelector([]string{bad}, nil); err == nil {
+			t.Fatalf("%q accepted", bad)
+		}
+	}
+}
