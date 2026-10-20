@@ -4,6 +4,35 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.34.0
+
+Release date: 2026-10-20
+
+Highlights:
+
+- ADR 0012 step 5: text, Markdown, JSON, and HTML read one transaction view from `internal/report/view`, and `report.Write` is the only format switch (#353). A listed format with no case returns `unhandled format` instead of rendering text (#356, #354).
+- The memory-bound tests measure live heap at fixed points and pass at `GOMAXPROCS=1` (#358, #361, closes #351). `docs/production-readiness.md` is new (#359).
+- No breaking changes and no user-visible output change. `schema_version` 1, `plan_version` 2, `report_version` 3, analyze output, flashback scripts, `--help`, and exit codes are unchanged from v0.33.1.
+- Known issue: Linux release archives still report an empty commit (#303).
+
+Related notes:
+
+- [v0.34.0 release notes](docs/releases/release-notes-v0.34.0.md)
+- [v0.34.0 中文发行说明](docs/releases/release-notes-v0.34.0.zh-CN.md)
+
+### Changed
+
+- Internal: `view.Build` in `internal/report/view` is the only transaction selection. Text, Markdown, JSON, and HTML read that value, and `report.Write` builds it before it dispatches the format (ADR 0012 step 5, #353, #257). Output bytes are unchanged. `scripts/compare-analyze-formats.sh` diffs every analyze format, flashback SQL, and `--plan` for the repository binlogs between two commits.
+- Internal: `knownFormats` is the one list `ParseFormat` accepts. The `report.Write` switch has no default arm, so a listed format with no case returns `unhandled format` and writes nothing. `TestWriteRendersEveryKnownFormat` renders every listed value (#356, fixes #354). An unknown `--format` still exits 3 before input is read.
+
+### Fixed
+
+- Tests: `TestGeneratedReviewRSS` reads `/gc/heap/live:bytes` in the review's goroutine instead of a fixed 64MB VmHWM cap, with a 100 bytes/row limit, and fails when the review never reported. `TestVerifyDoesNotBufferTheScript` compares a script with one four times larger and caps the small run's peak at 512KiB. The parallel-parse test in `cmd/binlogviz` passes at `GOMAXPROCS=1` (#358, #361, closes #351). The release binary is unchanged; the test hook in `internal/flashback/review.go` is nil unless a test sets it.
+
+### Added
+
+- `docs/production-readiness.md`: the 24-item production-readiness checklist (#359).
+
 ## v0.33.1
 
 Release date: 2026-10-20
