@@ -366,7 +366,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `exclude_gtids` | array | no | 在 include 之后应用的规范化排除项 |
 | `resolved_gtid_flavor` | string | no | selector 与输入一致后得到的 `mysql` 或 `mariadb` |
 | `matched_gtid_set` | array | no | GTID 选择器匹配到的 GTID，按区间集合输出（report_version 4，#379）。MySQL：每个 server UUID 一项，如 `uuid:1-4:6-3000000`，按 UUID 排序。MariaDB：每段连续序号一项，`domain-server-seq` 或 `domain-server-first..last`，按 domain、server、序号排序。多个 server 写同一个 domain（交替写入），且输入里该 domain 没有重复的序号时，区间按该 domain 的序号合并，再对每个 server 各列一次（`0-7-1..9`、`0-8-1..9`），取条目更少的形式；区间里输入中不存在的身份不是事务。每一项都是合法的 `--include-gtids` 输入，整个列表作为 `--include-gtids` 在同一输入上选中的恰好是匹配到的事务。读到两次的 GTID 只出现一次。只有 GTID 选择器有匹配时才出现 |
-| `matched_transactions` | integer | no | 有保留证据的已匹配事务数，口径与 `summary` 统计事务相同：读到两次的事务（同一文件传两次，或文件有重叠）计两次，但它的 GTID 在 `matched_gtid_set` 里只出现一次。设置了 GTID 选择器时出现；只用位点或时间选择器时没有 |
+| `matched_transactions` | integer | no | GTID 选择器匹配到、且至少有一个事件落在时间和位点窗口内的事务组数，每读到一次计一次：读到两次的 GTID（同一文件传两次，或文件有重叠）计两次，但在 `matched_gtid_set` 里只出现一次。它包含没有保留行的匹配事务组，例如 DDL 事务，或行都在 `--stop-position` 之后的事务组；`summary.total_transactions` 不计这些（它统计有保留行的事务和 XA prepare 事务组），所以两者可能不同。设置了 GTID 选择器时出现；只用位点或时间选择器时没有 |
 
 report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会随匹配数增长。版本 4 去掉这个键；compare 和 trend 仍能读取 v3 报告。区间集合最多 100,000 个条目（区间）；匹配到的 GTID 需要更多时，以退出码 10 `resource` 结束，`details.reason` 为 `matched_gtid_intervals`（附 `limit` 和 `intervals`），不输出报告。请收窄 `--include-gtids`/`--exclude-gtids` 或拆分输入。
 
