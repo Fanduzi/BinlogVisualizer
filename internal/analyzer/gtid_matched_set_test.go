@@ -185,7 +185,7 @@ func TestMatchedGTIDSetMariaDBAlternatingWriters(t *testing.T) {
 		err = set.add("0-9-200001")
 	}
 	var limit *MatchedGTIDLimitError
-	if !errors.As(err, &limit) {
+	if !errors.As(err, &limit) || limit.Intervals != 6 {
 		t.Fatalf("third writer: %v", err)
 	}
 }
@@ -209,8 +209,10 @@ func TestMatchedGTIDSetMariaDBSequenceConflict(t *testing.T) {
 	old := MatchedGTIDIntervalLimit
 	MatchedGTIDIntervalLimit = 2
 	defer func() { MatchedGTIDIntervalLimit = old }()
+	// The error reports the real per-server count (0-7-1, 0-7-3, 0-8-2),
+	// derived from the shared ranges labeled by server (#383 QA).
 	var limit *MatchedGTIDLimitError
-	if _, err := matchedSetFrom(t, all, matched); !errors.As(err, &limit) {
+	if _, err := matchedSetFrom(t, all, matched); !errors.As(err, &limit) || limit.Intervals != 3 || limit.Limit != 2 {
 		t.Fatalf("conflict without exact form: %v", err)
 	}
 }
@@ -314,6 +316,39 @@ func TestMariaDBRangeSelectorGrammar(t *testing.T) {
 	for _, bad := range []string{"0-7-5..4", "0-7-5..", "0-7..5", "0-7-1..2..3", "0-7-a..3", "0-7-1..-3"} {
 		if _, err := ParseGTIDSelector([]string{bad}, nil); err == nil {
 			t.Fatalf("%q accepted", bad)
+		}
+	}
+}
+
+// TestSharedRangesCountPerServerRanges: without sequence repeats, the shared
+// ranges labeled by server give the exact per-server range count, in any
+// insertion order. The exit-10 error relies on it once the per-server form
+// is gone (#383 QA: no placeholder count).
+func TestSharedRangesCountPerServerRanges(t *testing.T) {
+	rng := rand.New(rand.NewSource(383))
+	for round := 0; round < 300; round++ {
+		set := newMatchedGTIDSet()
+		seqs := rng.Perm(1 + rng.Intn(500))
+		for _, i := range seqs {
+			if rng.Intn(6) == 0 {
+				continue // gap
+			}
+			server := 7 + rng.Intn(1+round%4)
+			if round%3 == 0 {
+				server = 7 + i%2 // alternating writers
+			}
+			id := fmt.Sprintf("%d-%d-%d", round%2, server, i+1)
+			if err := set.observe(id); err != nil {
+				t.Fatal(err)
+			}
+			if err := set.add(id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for domain, d := range set.maria {
+			if got := d.shared.n + d.shared.changes; got != d.exactN {
+				t.Fatalf("round %d domain %d: shared-derived %d, per-server %d", round, domain, got, d.exactN)
+			}
 		}
 	}
 }
