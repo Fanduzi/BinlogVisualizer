@@ -25,7 +25,10 @@ type MatchedGTIDLimitError struct {
 }
 
 func (e *MatchedGTIDLimitError) Error() string {
-	return fmt.Sprintf("GTID selectors matched transactions that need %d separate GTID intervals; at most %d can be tracked. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit)
+	if e.Intervals <= e.Limit {
+		return fmt.Sprintf("GTID selectors matched MariaDB transactions that need at least %d separate GTID intervals kept per server, because a sequence number repeats; that form was dropped when all domains together passed %d. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit)
+	}
+	return fmt.Sprintf("GTID selectors matched transactions that need at least %d separate GTID intervals; at most %d can be tracked. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit)
 }
 
 // matchedGTIDSet keeps the GTIDs of matched transactions with retained
