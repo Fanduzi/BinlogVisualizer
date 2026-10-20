@@ -141,7 +141,7 @@ func TestParseTimeRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			start, end, err := parseTimeRange(tt.start, tt.end)
+			start, end, err := parseTimeRange(tt.start, tt.end, nil)
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("expected error, got nil")
@@ -162,7 +162,7 @@ func TestParseTimeRange(t *testing.T) {
 }
 
 func TestParseTimeRangePreservesExplicitOffsetInstant(t *testing.T) {
-	start, end, err := parseTimeRange("2026-03-09T18:00:00+08:00", "2026-03-09T19:00:00+08:00")
+	start, end, err := parseTimeRange("2026-03-09T18:00:00+08:00", "2026-03-09T19:00:00+08:00", nil)
 	if err != nil {
 		t.Fatalf("parse explicit-offset range: %v", err)
 	}
@@ -171,6 +171,44 @@ func TestParseTimeRangePreservesExplicitOffsetInstant(t *testing.T) {
 	}
 	if !end.Equal(time.Date(2026, 3, 9, 11, 0, 0, 0, time.UTC)) {
 		t.Fatalf("end instant = %s, want 2026-03-09T11:00:00Z", end)
+	}
+}
+
+func TestParseAnalyzeTimeAcceptsPrintedOffsetAndUTC(t *testing.T) {
+	want := time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)
+	shanghai, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		value string
+		loc   *time.Location
+	}{
+		{"2026-11-01 13:00:00 +08:00", time.Local},
+		{"2026-11-01 13:00:00.000000 +08:00", nil},
+		{"2026-11-01 05:00:00 UTC", shanghai},
+		{"2026-11-01 05:00:00.000000 UTC", time.UTC},
+		{"2026-11-01 13:00:00", shanghai},
+	}
+	for _, tc := range cases {
+		got, err := parseAnalyzeTimeInLocation(tc.value, tc.loc)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.value, err)
+		}
+		if !got.Equal(want) {
+			t.Fatalf("%q = %s, want %s", tc.value, got.UTC().Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
+		}
+	}
+	// No --tz: a zoneless value stays the machine zone, not Shanghai.
+	machine, err := parseAnalyzeTimeInLocation("2026-11-01 13:00:00", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !machine.Equal(time.Date(2026, 11, 1, 13, 0, 0, 0, time.Local)) {
+		t.Fatalf("zoneless without a zone = %s", machine)
+	}
+	if _, err := parseAnalyzeTimeInLocation("2026-11-01 13:00:00 +99:00", nil); err == nil {
+		t.Fatal("an impossible offset was accepted")
 	}
 }
 
@@ -280,7 +318,7 @@ func TestBuildAnalyzerOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			startTime, endTime, err := parseTimeRange(tt.input.startTime, tt.input.endTime)
+			startTime, endTime, err := parseTimeRange(tt.input.startTime, tt.input.endTime, nil)
 			if err != nil {
 				t.Fatalf("parseTimeRange returned error: %v", err)
 			}

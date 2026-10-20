@@ -93,7 +93,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 
 | Flag | 默认值 | 说明 |
 |------|--------|------|
-| `--start` | none | 开始时间，包含边界。RFC3339，或运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。显式偏移量定义该时刻；跨机器请优先使用带偏移的 RFC3339。 |
+| `--start` | none | 开始时间，包含边界。RFC3339，或 `YYYY-MM-DD HH:MM:SS`（可带 `±HH:MM` 或以 ` UTC` 结尾）。显式偏移量定义该时刻。没有时区时，设置了 `--tz` 则用 `--tz`，否则用本机本地时区。 |
 | `--end` | none | 结束时间，包含边界。格式与 `--start` 相同。 |
 | `--start-position` | none | 单个显式 binlog 文件上的精确事件起始边界（包含）。 |
 | `--stop-position` | none | 单个显式 binlog 文件上的精确事件结束边界（不包含），也可为 EOF。 |
@@ -376,7 +376,7 @@ binlogviz snapshot delete <name>
 
 ### 时间过滤
 
-`--start` 和 `--end` 接受 RFC3339（跨机器推荐）或 `YYYY-MM-DD HH:MM:SS`。空格格式按运行 `binlogviz` 的机器本地时区解释。`Z`、`+08:00` 等显式偏移量定义该时刻。报告时间戳仍为 UTC。
+`--start` 和 `--end` 接受 RFC3339（跨机器推荐）、`YYYY-MM-DD HH:MM:SS`、带 `±HH:MM` 的空格形式，以及结尾的 ` UTC`。偏移量或结尾 ` UTC` 定义该时刻。没有时区的值，在设置了 `--tz` 时按 `--tz` 解释，否则按运行 `binlogviz` 的机器本地时区解释。不传 `--tz` 时，报告时间戳仍为 UTC。快照文件始终是 UTC。
 
 ```bash
 binlogviz analyze mysql-bin.000123 \

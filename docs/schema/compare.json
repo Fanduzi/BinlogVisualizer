@@ -343,7 +343,6 @@
                     "type": "string"
                   }
                 },
-                "required": null,
                 "type": "object"
               },
               "server_flavors": {
@@ -766,7 +765,6 @@
                       "type": "string"
                     }
                   },
-                  "required": null,
                   "type": "object"
                 },
                 "current_key": {
@@ -841,7 +839,6 @@
                       "type": "string"
                     }
                   },
-                  "required": null,
                   "type": "object"
                 },
                 "current_key": {

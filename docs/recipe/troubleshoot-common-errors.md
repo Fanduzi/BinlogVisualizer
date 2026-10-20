@@ -119,8 +119,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 Representative errors:
 
 ```text
-invalid start time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS)
-invalid end time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS)
+invalid start time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS, optionally ±HH:MM or a trailing UTC)
+invalid end time format: ... (use RFC3339 or YYYY-MM-DD HH:MM:SS, optionally ±HH:MM or a trailing UTC)
 ```
 
 What it means:

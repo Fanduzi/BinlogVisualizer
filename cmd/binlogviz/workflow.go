@@ -1298,18 +1298,29 @@ func runWorkflowAnalyzeWindow(
 	// Resolve snapshot metadata
 	result.Snapshot = resolveAnalyzeSnapshotMetadata(snapshotMeta, result.Summary)
 
-	// Render to JSON
-	// Workflow artifacts and snapshots are archives: always full diagnostics (ADR 0011 §3).
-	payload, err := report.RenderJSONWithOptions(*result, report.ArchiveOptions(reportOpts))
+	// Artifacts and snapshots are archives: always full diagnostics (ADR 0011 §3).
+	// The snapshot file stays UTC. --tz changes the analyze artifact the operator reads.
+	archiveOpts := report.ArchiveOptions(reportOpts)
+	archiveOpts.Display = nil
+	archive, err := report.RenderJSONWithOptions(*result, archiveOpts)
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindError, "render analyze JSON for %q: %w", w.Name, err)
 	}
+	artifact := archive
+	if reportOpts.Display != nil {
+		artifact, err = report.RenderJSONWithOptions(*result, report.ArchiveOptions(reportOpts))
+		if err != nil {
+			rec.Status = "failed"
+			rec.Error = err.Error()
+			return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindError, "render analyze JSON for %q: %w", w.Name, err)
+		}
+	}
 
 	// Write to artifact path
 	artifactPath := workflow.ArtifactPath(outputDir, "analyze", w.Name, "json")
-	if err := os.WriteFile(artifactPath, []byte(payload), 0o644); err != nil {
+	if err := os.WriteFile(artifactPath, []byte(artifact), 0o644); err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindOutput, "write analyze artifact for %q: %w", w.Name, err)
@@ -1320,9 +1331,9 @@ func runWorkflowAnalyzeWindow(
 		var savedPath string
 		var err error
 		if overwriteSnapshot {
-			savedPath, err = snapshot.SaveJSONOverwrite(snapshotDir, w.Name, []byte(payload))
+			savedPath, err = snapshot.SaveJSONOverwrite(snapshotDir, w.Name, []byte(archive))
 		} else {
-			savedPath, err = snapshot.SaveJSON(snapshotDir, w.Name, []byte(payload))
+			savedPath, err = snapshot.SaveJSON(snapshotDir, w.Name, []byte(archive))
 		}
 		if err != nil {
 			rec.Status = "failed"
@@ -1337,15 +1348,15 @@ func runWorkflowAnalyzeWindow(
 	rec.Execution = "executed"
 	rec.Artifacts = []string{"analyze/" + w.Name + ".json"}
 
-	// Parse the JSON for downstream compare/trend consumption
-	reportInput, err := comparepkg.DecodeReportJSON([]byte(payload))
+	// Compare and trend read the UTC archive. HTML applies --tz when it renders.
+	reportInput, err := comparepkg.DecodeReportJSON([]byte(archive))
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = fmt.Sprintf("decode generated report: %v", err)
-		return rec, payload, comparepkg.InputReport{}, clierr.Errorf(clierr.KindCorrupt, "decode analyze report for %q: %w", w.Name, err)
+		return rec, artifact, comparepkg.InputReport{}, clierr.Errorf(clierr.KindCorrupt, "decode analyze report for %q: %w", w.Name, err)
 	}
 
-	return rec, payload, reportInput, nil
+	return rec, artifact, reportInput, nil
 }
 
 // runAnalyzeToResult runs the analysis pipeline and returns the raw result without rendering.

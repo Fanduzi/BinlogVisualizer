@@ -75,6 +75,9 @@ func RenderHTMLIn(result Result, loc *time.Location) (string, error) {
 	}
 	tmpl, err := report.NewHTMLTemplate("trend", trendHTMLTemplate, template.FuncMap{
 		"comparabilityEvidence": comparepkg.FormatComparabilityEvidence,
+		"displayStored": func(value string) string {
+			return displaytz.Stored(value, loc)
+		},
 	})
 	if err != nil {
 		return "", err
@@ -775,7 +778,7 @@ const trendHTMLTemplateTail = `
           {{range $idx, $point := .Result.Points}}
           <tr id="point-{{$idx}}">
             <td>{{$point.Snapshot.Name}}</td>
-            <td>{{$point.Window.StartTime}}</td>
+            <td>{{displayStored $point.Window.StartTime}}</td>
             <td>{{$point.Summary.TotalRows}}</td>
             <td>{{$point.Summary.TotalTransactions}}</td>
             <td>{{$point.Summary.TotalEvents}}</td>
