@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `013a436`（v0.34.1 加上 #369 版本矩阵，C2–C4）加上 #370（四种格式共用重点事务，A3），2026-10-20 核对。
+基线：main `385e5ae`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3）加上 #364（analyze 内存有上界，E1），2026-10-20 核对。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -54,7 +54,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
-| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | `TestFlashbackSpillLimitOnFixture`、`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`、`TestGeneratedReviewRSS`。后两个原来按固定 RSS 上限判、会偶发失败（#351）；#358、#361 改为在固定点测 live heap，`GOMAXPROCS=1` 下也稳定。这些只覆盖 flashback 生成和 verify；analyze 的内存上界还没有测试 | PARTIAL | #364（analyze 内存上界，#367） |
+| E1 | analyze、flashback、verify 的内存有上界，大输入走 spill，不会整份读进内存 | analyze：`TestAnalyzeRetainedHeap`（先跑 2000 个事务预热，再分别用 2.5 万和 10 万个事务的合成 MySQL 8.0 副本 binlog 走完整 analyze 流程，每 2000 个事件和 Finalize 前后在 analyze 的 goroutine 上 GC 后测 live heap；10 万比 2.5 万多出的峰值堆必须小于 256KiB，实测约 -5KB 到 67KB，每个事务不到 1 字节）。#364 把这三处按事务增长的状态改成常数大小，输出和 v0.34.0 逐字节相同：按表、按分钟的事务 key 集合换成「计数 + 上一个 key」（事务 key 按 binlog 顺序单调分配，同一事务的行事件是连续的）；热点行 map 每淘汰 `limit` 次重建一次，清掉 Go map 删除留下的墓碑；apply-delay 的精确 P95（nearest-rank）在内存里最多留 8192 个值，超过后写到已 unlink 的临时文件，再用 4 趟 16 位基数选择取第 k 小（每个事务约 8 字节临时盘，5000 万个事务约 400MB；建不了临时文件时退回内存）。仍随输入增长、但不随事务数增长的：时间跨度（分钟桶）、不同的表/线程/语句模式数；告警（大事务、不完整事务）按告警数增长，因为文本报告要逐条列出。flashback generate：`TestFlashbackSpillLimitOnFixture`、`TestGeneratedReviewRSS`；verify：`TestFlashbackVerifyMemoryCeiling`、`TestVerifyDoesNotBufferTheScript`。都在 CI `verify` 的 `go test ./...` 里跑；`TestGeneratedReviewRSS`、`TestVerifyDoesNotBufferTheScript` 在 -race 下用 `t.Skip` 跳过并写明原因，`TestEveryMemoryTestRunsInCIVerify` 保证 `verify` 一直是非 -race 的 `go test ./...`，这 5 个测试都在而且没有 race 构建标签 | MET | — |
 | E2 | 大文件（≥100MB）的耗时和内存有基准，回退会让 CI 失败 | `benchmark_test.go` 要 `BINLOGVIZ_REAL_BINLOG` 才跑，CI 不设；大语料只在 QA 机器上 | NOT MET | — |
 
 ## F. 安装与发布完整性
@@ -74,14 +74,14 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 17 / PARTIAL 2 / NOT MET 5**。
+共 24 项：**MET 18 / PARTIAL 1 / NOT MET 5**。
 
 ## 最卡生产级的 5 项
 
 1. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
 2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
 3. **F3、F4，发布不看 e2e，CI 不跑 -race/vet**：同样卡在 workflow token。
-4. **E1、E2，内存与大文件**：analyze 的内存上界还没有测试（#364）；≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 的偶发失败 #351 已由 #358、#361 修复。）
+4. **E2，大文件基准不在 CI**：≥100MB 的耗时和内存没有基准，大语料只在 QA 机器上。（E1 已是 MET：#351 的偶发失败由 #358、#361 修复，#364 补了 analyze 的内存测试并把按事务增长的状态改成常数大小；但这些测试用的是合成数据，不是 ≥100MB 的真实文件。）
 5. **D5，机器可读的输出 schema 和 `--tz`**：没有 JSON Schema 或 describe 命令，显示时区不可选（#255 第 3、7 项）。
 
 A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。
