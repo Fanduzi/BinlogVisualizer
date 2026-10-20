@@ -30,7 +30,7 @@ No case needed lookahead, so there is no bounded buffer and no new refusal or ex
 
 ## What still grows
 
-JSON `selection.matched_gtids` lists every matched GTID, so it grows with the number of matches, as the alert list grows with alerts. The memory test therefore keeps the matched set fixed.
+JSON `selection.matched_gtids` lists every matched GTID, so it grows with the number of matches, as the alert list grows with alerts. At about 190-375 bytes per matched transaction, millions of matches can still run out of memory, so E1 stays PARTIAL until #379. The memory test therefore keeps the matched set fixed.
 
 ## Evidence
 
