@@ -6,10 +6,12 @@ import (
 	"io"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/displaytz"
 	snapshotpkg "binlogviz/internal/snapshot"
 	trendpkg "binlogviz/internal/trend"
 )
@@ -47,7 +49,7 @@ func newTrendCommand() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTrend(opts, args, cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runTrend(opts, args, cmd.OutOrStdout(), cmd.ErrOrStderr(), displaytz.From(cmd.Context()))
 		},
 	}
 
@@ -61,7 +63,7 @@ func newTrendCommand() *cobra.Command {
 	return cmd
 }
 
-func runTrend(opts *trendOptions, args []string, out, errOut io.Writer) error {
+func runTrend(opts *trendOptions, args []string, out, errOut io.Writer, loc *time.Location) error {
 	switch opts.format {
 	case "text", "json", "html":
 	default:
@@ -105,7 +107,7 @@ func runTrend(opts *trendOptions, args []string, out, errOut io.Writer) error {
 	case "json":
 		output, err = trendpkg.RenderJSON(result)
 	case "html":
-		output, err = trendpkg.RenderHTML(result)
+		output, err = trendpkg.RenderHTMLIn(result, loc)
 	default:
 		output, err = trendpkg.RenderText(result)
 	}

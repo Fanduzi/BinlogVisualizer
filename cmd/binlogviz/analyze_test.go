@@ -141,7 +141,7 @@ func TestParseTimeRange(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			start, end, err := parseTimeRange(tt.start, tt.end)
+			start, end, err := parseTimeRange(tt.start, tt.end, nil)
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("expected error, got nil")
@@ -162,7 +162,7 @@ func TestParseTimeRange(t *testing.T) {
 }
 
 func TestParseTimeRangePreservesExplicitOffsetInstant(t *testing.T) {
-	start, end, err := parseTimeRange("2026-03-09T18:00:00+08:00", "2026-03-09T19:00:00+08:00")
+	start, end, err := parseTimeRange("2026-03-09T18:00:00+08:00", "2026-03-09T19:00:00+08:00", nil)
 	if err != nil {
 		t.Fatalf("parse explicit-offset range: %v", err)
 	}
@@ -171,6 +171,109 @@ func TestParseTimeRangePreservesExplicitOffsetInstant(t *testing.T) {
 	}
 	if !end.Equal(time.Date(2026, 3, 9, 11, 0, 0, 0, time.UTC)) {
 		t.Fatalf("end instant = %s, want 2026-03-09T11:00:00Z", end)
+	}
+}
+
+func TestParseAnalyzeTimeAcceptsPrintedOffsetAndUTC(t *testing.T) {
+	want := time.Date(2026, 11, 1, 5, 0, 0, 0, time.UTC)
+	shanghai, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		value string
+		loc   *time.Location
+	}{
+		{"2026-11-01 13:00:00 +08:00", time.Local},
+		{"2026-11-01 13:00:00.000000 +08:00", nil},
+		{"2026-11-01 05:00:00 UTC", shanghai},
+		{"2026-11-01 05:00:00.000000 UTC", time.UTC},
+		{"2026-11-01 13:00:00", shanghai},
+	}
+	for _, tc := range cases {
+		got, err := parseAnalyzeTimeInLocation(tc.value, tc.loc)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.value, err)
+		}
+		if !got.Equal(want) {
+			t.Fatalf("%q = %s, want %s", tc.value, got.UTC().Format(time.RFC3339Nano), want.Format(time.RFC3339Nano))
+		}
+	}
+	// No --tz: a zoneless value stays the machine zone, not Shanghai.
+	machine, err := parseAnalyzeTimeInLocation("2026-11-01 13:00:00", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !machine.Equal(time.Date(2026, 11, 1, 13, 0, 0, 0, time.Local)) {
+		t.Fatalf("zoneless without a zone = %s", machine)
+	}
+	if _, err := parseAnalyzeTimeInLocation("2026-11-01 13:00:00 +99:00", nil); err == nil {
+		t.Fatal("an impossible offset was accepted")
+	}
+	utcGot, err := parseAnalyzeTimeInLocation("2026-11-01 05:00:00", time.UTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !utcGot.Equal(want) {
+		t.Fatalf("--tz UTC zoneless = %s, want %s", utcGot, want)
+	}
+	etc, err := time.LoadLocation("Etc/UTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	etcGot, err := parseAnalyzeTimeInLocation("2026-11-01 05:00:00", etc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !etcGot.Equal(utcGot) {
+		t.Fatalf("Etc/UTC zoneless = %s, UTC zoneless = %s", etcGot, utcGot)
+	}
+}
+
+func TestParseAnalyzeTimeRejectsDSTGapOverlapAndBadOffset(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gap, err := parseAnalyzeTimeInLocation("2026-03-08 02:30:00", ny)
+	if err == nil {
+		t.Fatalf("DST gap resolved to %s", gap)
+	}
+	if !strings.Contains(err.Error(), "2026-03-08 02:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "DST gap") || !strings.Contains(err.Error(), "add an explicit offset") {
+		t.Fatalf("gap error: %v", err)
+	}
+	overlap, err := parseAnalyzeTimeInLocation("2026-11-01 01:30:00", ny)
+	if err == nil {
+		t.Fatalf("DST overlap resolved to %s", overlap)
+	}
+	if !strings.Contains(err.Error(), "2026-11-01 01:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "DST overlap") || !strings.Contains(err.Error(), "add an explicit offset") {
+		t.Fatalf("overlap error: %v", err)
+	}
+	// The spring-forward morning before the gap, and the hour after it, exist.
+	for _, value := range []string{"2026-03-08 01:30:00", "2026-03-08 03:30:00"} {
+		if _, err := parseAnalyzeTimeInLocation(value, ny); err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
+	}
+	for _, value := range []string{
+		"2026-11-01T05:00:00+24:00",
+		"2026-11-01T05:00:00+14:30",
+		"2026-11-01 05:00:00 +08:15",
+		"2026-11-01 05:00:00 -14:30",
+	} {
+		if _, err := parseAnalyzeTimeInLocation(value, nil); err == nil {
+			t.Fatalf("%s was accepted", value)
+		}
+	}
+	for _, value := range []string{
+		"2026-11-01T05:00:00+14:00",
+		"2026-11-01T05:00:00+05:45",
+		"2026-11-01 05:00:00 +05:30",
+		"2026-11-01 05:00:00 -12:00",
+	} {
+		if _, err := parseAnalyzeTimeInLocation(value, nil); err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
 	}
 }
 
@@ -280,7 +383,7 @@ func TestBuildAnalyzerOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			startTime, endTime, err := parseTimeRange(tt.input.startTime, tt.input.endTime)
+			startTime, endTime, err := parseTimeRange(tt.input.startTime, tt.input.endTime, nil)
 			if err != nil {
 				t.Fatalf("parseTimeRange returned error: %v", err)
 			}

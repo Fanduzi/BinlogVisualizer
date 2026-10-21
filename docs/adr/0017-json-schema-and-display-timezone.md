@@ -1,0 +1,39 @@
+# ADR 0017: JSON Schema for every JSON output, and a display timezone
+
+Status: accepted (2026-10-20). Tracks production-readiness D5 and issue #255 items 3 and 7.
+
+## Context
+
+Every JSON document on stdout already carries a version key (ADR 0010). The shape of each document was described in prose in `docs/reference/output-format.md`. An agent could not load a schema and check a document against it.
+
+Report times were rendered in UTC. An operator who had a wall time of `14:05 +08:00` had to convert it to `06:05Z` before reading a report. `--start` and `--end` already accept an RFC3339 offset; the display did not.
+
+## Decision
+
+1. **Schemas are derived from the Go types `encoding/json` marshals.** `internal/jsonschema` walks those types and emits a Draft 2020-12 document with `additionalProperties: false` on every struct. A nil slice or map, and a nil pointer that is not `omitempty`, is allowed to be `null`, because that is what `encoding/json` writes. A struct whose fields are all `omitempty` has no required names; the generator omits `required` instead of writing `null`, because Draft 2020-12 requires that keyword to be an array. `workflow validate` is one schema that is the union of the success object and the failure object; the required keys are the ones both shapes carry (`valid`), plus `schema_version`. Hand-written schemas would drift from the analyze struct tree. The generator is the field list. `TestDraft202012Schemas` compiles every `docs/schema` file with `santhosh-tekuri/jsonschema` against the 2020-12 meta-schema (the in-repo checker accepts a null `required`) and validates real command output, including a DDL report that carries an actor.
+
+2. **Published files and a command.** `binlogviz schema` prints one name per line. `binlogviz schema <name>` prints the schema. The same bytes are checked in as `docs/schema/<name>.json` and copied into the release archive next to the agent guide (the G1 file list). An unknown name is exit 3, kind `usage`. The schema command's stdout is a JSON Schema document (`$schema`, `$id`), not a versioned result, so it is not in the ADR 0010 inventory and it does not carry `schema_version`. The name list is text.
+
+3. **One catalog.** `schemaOutputs()` is the list of versioned JSON documents. `TestEveryJSONOutputIsVersioned` and `TestJSONOutputMatchesSchema` both run that list. A name with no command runner, a runner whose name is not in the catalog, or a catalog name with no `docs/schema` file fails the test. `TestPublishedSchemaMatchesGenerator` fails when a file differs from the generator or from `binlogviz schema <name>`. `TestSchemaRejectsDroppedProperty` deletes `summary` from the analyze schema and requires validation of a real analyze document to fail. `TestSchemaRejectsUnknownField` adds a key the schema does not name and requires the same.
+
+4. **No version bump.** `report_version` stays 4 (the value #379 set), `plan_version` stays 2, and every `schema_version` stays 1. With no `--tz`, every existing output is byte-identical to the previous spelling: human times end in ` UTC`, JSON times use `Z`. `--tz` changes only the lexical offset of timestamp strings. The instant and the JSON type stay the same. A consumer that requires a trailing `Z` sees a different spelling only when the operator passed `--tz`. That is not a key removed, renamed, or changed in type or meaning (ADR 0010), so the version does not move. Adding a `timezone` key on the default document would have changed every JSON output, so the default document does not gain one.
+
+5. **`--tz` is a root flag.** It takes an IANA name (`Asia/Shanghai`). An absent flag, or `UTC` (`time.UTC`), keeps the historical spelling. Any other zone, including `Etc/UTC`, renders a numeric offset and never an abbreviation: text, Markdown, and HTML use `2006-01-02 15:04:05 -07:00` (the chart tick layout keeps its `15:04` and gains the same suffix); JSON uses RFC3339, which is `Z` only when that instant's offset is zero. The Timestamps line names the IANA zone, because a single abbreviation cannot cover a DST change. Apply-delay fractional times follow the same rule (`2006-01-02 15:04:05.000000 -07:00`, JSON `RFC3339Nano`).
+
+   It applies to analyze text, Markdown, HTML, and JSON, including generated-at, chart labels, busiest minutes, and apply-delay times; to compare and trend HTML generated-at, to the Current/Baseline window and trend point start times on those pages, and to the compare HTML hot-interval Minute cells (a display rewrite of the stored RFC3339 string); to snapshot list and show `created_at` and window start/end (the same rewrite; an unparsable string is left as stored); to workflow describe window start and end; to `version` `commit_time` when that string parses as RFC3339; and to the analyze artifacts and compare/trend HTML that `workflow run` and `workflow resume` write. Compare and trend JSON and text repeat timestamps already stored in snapshots and are not rewritten. Workflow status, clean, and export bookkeeping times stay the stored UTC strings. Row-cell `TIMESTAMP` and `DATETIME` values, and flashback SQL, stay the UTC wall clock stored in the binlog.
+
+   Snapshot files are always written in UTC, including `analyze --snapshot-name`, a workflow snapshot, and `snapshot save` of a report that was rendered with `--tz`. `--tz` changes the printed analyze JSON and the workflow analyze artifact, not the file other people later open. `snapshot save` rewrites every RFC3339 timestamp in that report to `Z` before writing. List and show rewrite only the printed copy.
+
+6. **A zoneless `--start` or `--end` is read in the `--tz` zone when `--tz` is set, including `--tz UTC`.** An RFC3339 value, `YYYY-MM-DD HH:MM:SS ±HH:MM`, and a trailing ` UTC` are that instant, on any machine, with or without `--tz`. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. `--tz UTC` and `--tz Etc/UTC` resolve that value to the same instant. `--tz UTC` still uses the historical ` UTC` / `Z` spelling; `Etc/UTC` still prints a numeric offset. This is the paste-back rule: the time an operator copies out of a `--tz` report is that zone's wall time. The explicit forms do not depend on either zone, so a pasted offset or a trailing ` UTC` is safe on another machine. Analyze and flashback call the same parser.
+
+   A zoneless value that falls in a DST gap (the wall time does not exist) or a DST overlap (the wall time is ambiguous) in that effective zone is exit 3, kind `usage`. The error names the value, the zone, and why, and tells the operator to add an explicit offset. The command does not choose an instant.
+
+   An explicit offset is the same usage error when it is not a real UTC offset: the absolute value is greater than 14:00 (`+24:00`, and `+14:30` because 14:30 is past 14:00), or the minutes are not 00, 30, or 45. `+14:00`, `+05:30`, and `+05:45` are accepted.
+
+7. **An empty, unknown, or `Local` `--tz` is exit 3, kind `usage`**, the same class as an invalid `--format`. `Local` is the process zone, so the same command would differ across machines and the Timestamps line would not name an IANA zone. The message is `invalid --tz ...`. There is no prompt.
+
+## Consequences
+
+- An agent discovers the contract with `binlogviz schema` or by reading `docs/schema/` from a git checkout or a release archive.
+- A new JSON output fails CI until it is in the catalog, has a runner, and has a generated file.
+- Default output stays byte-identical. Saved snapshots stay UTC even when the command that wrote them was passed `--tz`. `TestDefaultOutputByteIdentical` re-runs analyze under `TZ=UTC` and `TZ=America/New_York` with no `--tz` and requires the JSON, text, and Markdown to match and to keep `Z` / ` UTC`.

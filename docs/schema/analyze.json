@@ -1,0 +1,2428 @@
+{
+  "$id": "binlogviz:schema/analyze",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "alerts": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "details": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "gtid": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "minute": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string"
+          },
+          "txn_key": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "severity",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "column_names_note": {
+      "type": "string"
+    },
+    "diagnostics": {
+      "additionalProperties": false,
+      "properties": {
+        "counted_event_bytes": {
+          "type": "integer"
+        },
+        "ddl_events": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "binlog_bytes": {
+                "type": "integer"
+              },
+              "binlog_path": {
+                "type": "string"
+              },
+              "gtid": {
+                "type": "string"
+              },
+              "gtid_note": {
+                "type": "string"
+              },
+              "mysqlbinlog_stop": {
+                "type": "string"
+              },
+              "object": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "position_end": {
+                "type": "integer"
+              },
+              "position_start": {
+                "type": "integer"
+              },
+              "schema": {
+                "type": "string"
+              },
+              "server_id": {
+                "type": "integer"
+              },
+              "statement": {
+                "type": "string"
+              },
+              "stop_gtid": {
+                "type": "string"
+              },
+              "stop_note": {
+                "type": "string"
+              },
+              "table": {
+                "type": "string"
+              },
+              "thread_id": {
+                "type": "integer"
+              },
+              "timestamp": {
+                "type": "string"
+              },
+              "txn_start_file": {
+                "type": "string"
+              },
+              "txn_start_pos": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "operation",
+              "timestamp"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ddl_events_omitted": {
+          "type": "integer"
+        },
+        "duration_buckets": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "txn_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "label",
+              "txn_count"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "file_coverage": {
+          "additionalProperties": false,
+          "properties": {
+            "selected": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_path": {
+                    "type": "string"
+                  },
+                  "first_event_at": {
+                    "type": "string"
+                  },
+                  "last_event_at": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "binlog_path",
+                  "size"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "skipped": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_path": {
+                    "type": "string"
+                  },
+                  "first_event_at": {
+                    "type": "string"
+                  },
+                  "last_event_at": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "size": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "binlog_path",
+                  "size"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "selected",
+            "skipped"
+          ],
+          "type": "object"
+        },
+        "file_segments": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "binlog_bytes": {
+                "type": "integer"
+              },
+              "end_time": {
+                "type": "string"
+              },
+              "events": {
+                "type": "integer"
+              },
+              "rows": {
+                "type": "integer"
+              },
+              "start_time": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "binlog_bytes",
+              "end_time",
+              "events",
+              "rows",
+              "start_time"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "findings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence_refs": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "minute": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "txn_key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "message",
+              "severity"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "hot_intervals": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "binlog_bytes": {
+                "type": "integer"
+              },
+              "ddl_count": {
+                "type": "integer"
+              },
+              "event_count": {
+                "type": "integer"
+              },
+              "minute": {
+                "type": "string"
+              },
+              "table_rows": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "total_rows": {
+                "type": "integer"
+              },
+              "txn_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "binlog_bytes",
+              "ddl_count",
+              "event_count",
+              "minute",
+              "total_rows",
+              "txn_count"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ignored_query_dml_events": {
+          "type": "integer"
+        },
+        "ignored_query_events": {
+          "type": "integer"
+        },
+        "input_format_guess": {
+          "type": "string"
+        },
+        "largest_byte_transactions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "binlog_bytes": {
+                "type": "integer"
+              },
+              "binlog_file_end": {
+                "type": "string"
+              },
+              "binlog_file_start": {
+                "type": "string"
+              },
+              "completeness": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "string"
+              },
+              "end_time": {
+                "type": "string"
+              },
+              "event_count": {
+                "type": "integer"
+              },
+              "gtid": {
+                "type": "string"
+              },
+              "mysqlbinlog_cmd": {
+                "type": "string"
+              },
+              "operations": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "pos_end": {
+                "type": "integer"
+              },
+              "pos_start": {
+                "type": "integer"
+              },
+              "query_original_bytes": {
+                "type": "integer"
+              },
+              "query_sql": {
+                "type": "string"
+              },
+              "query_summary": {
+                "type": "string"
+              },
+              "query_truncated": {
+                "type": "boolean"
+              },
+              "replay_available": {
+                "type": "boolean"
+              },
+              "replay_note": {
+                "type": "string"
+              },
+              "replay_scope": {
+                "type": "string"
+              },
+              "rows": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "before": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "changed": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "names": {
+                      "type": "string"
+                    },
+                    "op": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "type": "string"
+                    },
+                    "table": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "columns",
+                    "names",
+                    "op"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "rows_omitted": {
+                "type": "integer"
+              },
+              "server_flavor": {
+                "type": "string"
+              },
+              "server_id": {
+                "type": "integer"
+              },
+              "server_version": {
+                "type": "string"
+              },
+              "start_time": {
+                "type": "string"
+              },
+              "tables": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "thread_id": {
+                "type": "integer"
+              },
+              "total_rows": {
+                "type": "integer"
+              },
+              "txn_key": {
+                "type": "string"
+              },
+              "xa_xid": {
+                "type": "string"
+              },
+              "xid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "binlog_bytes",
+              "completeness",
+              "duration",
+              "end_time",
+              "event_count",
+              "replay_available",
+              "start_time",
+              "total_rows",
+              "txn_key"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "largest_transactions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "binlog_bytes": {
+                "type": "integer"
+              },
+              "binlog_file_end": {
+                "type": "string"
+              },
+              "binlog_file_start": {
+                "type": "string"
+              },
+              "completeness": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "string"
+              },
+              "end_time": {
+                "type": "string"
+              },
+              "event_count": {
+                "type": "integer"
+              },
+              "gtid": {
+                "type": "string"
+              },
+              "mysqlbinlog_cmd": {
+                "type": "string"
+              },
+              "operations": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "pos_end": {
+                "type": "integer"
+              },
+              "pos_start": {
+                "type": "integer"
+              },
+              "query_original_bytes": {
+                "type": "integer"
+              },
+              "query_sql": {
+                "type": "string"
+              },
+              "query_summary": {
+                "type": "string"
+              },
+              "query_truncated": {
+                "type": "boolean"
+              },
+              "replay_available": {
+                "type": "boolean"
+              },
+              "replay_note": {
+                "type": "string"
+              },
+              "replay_scope": {
+                "type": "string"
+              },
+              "rows": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "before": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "changed": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "names": {
+                      "type": "string"
+                    },
+                    "op": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "type": "string"
+                    },
+                    "table": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "columns",
+                    "names",
+                    "op"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "rows_omitted": {
+                "type": "integer"
+              },
+              "server_flavor": {
+                "type": "string"
+              },
+              "server_id": {
+                "type": "integer"
+              },
+              "server_version": {
+                "type": "string"
+              },
+              "start_time": {
+                "type": "string"
+              },
+              "tables": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "thread_id": {
+                "type": "integer"
+              },
+              "total_rows": {
+                "type": "integer"
+              },
+              "txn_key": {
+                "type": "string"
+              },
+              "xa_xid": {
+                "type": "string"
+              },
+              "xid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "binlog_bytes",
+              "completeness",
+              "duration",
+              "end_time",
+              "event_count",
+              "replay_available",
+              "start_time",
+              "total_rows",
+              "txn_key"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "longest_transactions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "binlog_bytes": {
+                "type": "integer"
+              },
+              "binlog_file_end": {
+                "type": "string"
+              },
+              "binlog_file_start": {
+                "type": "string"
+              },
+              "completeness": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "string"
+              },
+              "end_time": {
+                "type": "string"
+              },
+              "event_count": {
+                "type": "integer"
+              },
+              "gtid": {
+                "type": "string"
+              },
+              "mysqlbinlog_cmd": {
+                "type": "string"
+              },
+              "operations": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "pos_end": {
+                "type": "integer"
+              },
+              "pos_start": {
+                "type": "integer"
+              },
+              "query_original_bytes": {
+                "type": "integer"
+              },
+              "query_sql": {
+                "type": "string"
+              },
+              "query_summary": {
+                "type": "string"
+              },
+              "query_truncated": {
+                "type": "boolean"
+              },
+              "replay_available": {
+                "type": "boolean"
+              },
+              "replay_note": {
+                "type": "string"
+              },
+              "replay_scope": {
+                "type": "string"
+              },
+              "rows": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "before": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "changed": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "names": {
+                      "type": "string"
+                    },
+                    "op": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "type": "string"
+                    },
+                    "table": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "columns",
+                    "names",
+                    "op"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "rows_omitted": {
+                "type": "integer"
+              },
+              "server_flavor": {
+                "type": "string"
+              },
+              "server_id": {
+                "type": "integer"
+              },
+              "server_version": {
+                "type": "string"
+              },
+              "start_time": {
+                "type": "string"
+              },
+              "tables": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "thread_id": {
+                "type": "integer"
+              },
+              "total_rows": {
+                "type": "integer"
+              },
+              "txn_key": {
+                "type": "string"
+              },
+              "xa_xid": {
+                "type": "string"
+              },
+              "xid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "binlog_bytes",
+              "completeness",
+              "duration",
+              "end_time",
+              "event_count",
+              "replay_available",
+              "start_time",
+              "total_rows",
+              "txn_key"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "open_dml_groups": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "binlog_file_end": {
+                "type": "string"
+              },
+              "binlog_file_start": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "string"
+              },
+              "end_time": {
+                "type": "string"
+              },
+              "gtid": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              },
+              "pos_end": {
+                "type": "integer"
+              },
+              "pos_start": {
+                "type": "integer"
+              },
+              "start_time": {
+                "type": "string"
+              },
+              "tables": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "total_rows": {
+                "type": "integer"
+              },
+              "txn_key": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "duration",
+              "end_time",
+              "note",
+              "start_time",
+              "total_rows",
+              "txn_key"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "open_explicit_groups": {
+          "type": "integer"
+        },
+        "unmapped_events": {
+          "type": "integer"
+        },
+        "widest_transactions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "additionalProperties": false,
+                "properties": {
+                  "host": {
+                    "type": "string"
+                  },
+                  "user": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "binlog_bytes": {
+                "type": "integer"
+              },
+              "binlog_file_end": {
+                "type": "string"
+              },
+              "binlog_file_start": {
+                "type": "string"
+              },
+              "completeness": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "string"
+              },
+              "end_time": {
+                "type": "string"
+              },
+              "event_count": {
+                "type": "integer"
+              },
+              "gtid": {
+                "type": "string"
+              },
+              "mysqlbinlog_cmd": {
+                "type": "string"
+              },
+              "operations": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "pos_end": {
+                "type": "integer"
+              },
+              "pos_start": {
+                "type": "integer"
+              },
+              "query_original_bytes": {
+                "type": "integer"
+              },
+              "query_sql": {
+                "type": "string"
+              },
+              "query_summary": {
+                "type": "string"
+              },
+              "query_truncated": {
+                "type": "boolean"
+              },
+              "replay_available": {
+                "type": "boolean"
+              },
+              "replay_note": {
+                "type": "string"
+              },
+              "replay_scope": {
+                "type": "string"
+              },
+              "rows": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "after": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "before": {
+                      "items": {},
+                      "type": "array"
+                    },
+                    "changed": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "columns": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": [
+                        "array",
+                        "null"
+                      ]
+                    },
+                    "names": {
+                      "type": "string"
+                    },
+                    "op": {
+                      "type": "string"
+                    },
+                    "schema": {
+                      "type": "string"
+                    },
+                    "table": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "columns",
+                    "names",
+                    "op"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "rows_omitted": {
+                "type": "integer"
+              },
+              "server_flavor": {
+                "type": "string"
+              },
+              "server_id": {
+                "type": "integer"
+              },
+              "server_version": {
+                "type": "string"
+              },
+              "start_time": {
+                "type": "string"
+              },
+              "tables": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "thread_id": {
+                "type": "integer"
+              },
+              "total_rows": {
+                "type": "integer"
+              },
+              "txn_key": {
+                "type": "string"
+              },
+              "xa_xid": {
+                "type": "string"
+              },
+              "xid": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "binlog_bytes",
+              "completeness",
+              "duration",
+              "end_time",
+              "event_count",
+              "replay_available",
+              "start_time",
+              "total_rows",
+              "txn_key"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "counted_event_bytes",
+        "ddl_events",
+        "file_coverage",
+        "file_segments",
+        "findings",
+        "hot_intervals",
+        "ignored_query_dml_events",
+        "input_format_guess",
+        "largest_transactions",
+        "longest_transactions",
+        "widest_transactions"
+      ],
+      "type": "object"
+    },
+    "diagnostics_mode": {
+      "type": "string"
+    },
+    "hot_row_track_limit": {
+      "type": "integer"
+    },
+    "hot_row_unavailable": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "reason",
+          "schema",
+          "table"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "hot_rows": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "approximate": {
+            "type": "boolean"
+          },
+          "first_file": {
+            "type": "string"
+          },
+          "first_gtid": {
+            "type": "string"
+          },
+          "first_pos": {
+            "type": "integer"
+          },
+          "first_time": {
+            "type": "string"
+          },
+          "key_hidden": {
+            "type": "boolean"
+          },
+          "last_file": {
+            "type": "string"
+          },
+          "last_gtid": {
+            "type": "string"
+          },
+          "last_pos": {
+            "type": "integer"
+          },
+          "last_time": {
+            "type": "string"
+          },
+          "primary_key": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "touches": {
+            "type": "integer"
+          },
+          "transactions": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "schema",
+          "table",
+          "touches",
+          "transactions"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "hot_rows_listed": {
+      "type": "integer"
+    },
+    "hot_rows_note": {
+      "type": "string"
+    },
+    "hot_rows_omitted": {
+      "type": "integer"
+    },
+    "hot_rows_overflow": {
+      "type": "boolean"
+    },
+    "minutes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "minute": {
+            "type": "string"
+          },
+          "table_rows": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "total_rows": {
+            "type": "integer"
+          },
+          "txn_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "minute",
+          "total_rows",
+          "txn_count"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "pattern_drilldowns": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "avg_rows_per_txn": {
+            "type": "number"
+          },
+          "busiest_minutes": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "minute": {
+                  "type": "string"
+                },
+                "total_rows": {
+                  "type": "integer"
+                },
+                "txn_count": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "minute",
+                "total_rows",
+                "txn_count"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "pattern_key": {
+            "type": "string"
+          },
+          "representative_transactions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "duration": {
+                  "type": "string"
+                },
+                "query_summary": {
+                  "type": "string"
+                },
+                "total_rows": {
+                  "type": "integer"
+                },
+                "txn_key": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "duration",
+                "total_rows",
+                "txn_key"
+              ],
+              "type": "object"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "share_of_rows": {
+            "type": "number"
+          },
+          "share_of_txns": {
+            "type": "number"
+          },
+          "signal_flags": {
+            "additionalProperties": false,
+            "properties": {
+              "anomaly": {
+                "type": "boolean"
+              },
+              "dominance": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "anomaly",
+              "dominance"
+            ],
+            "type": "object"
+          },
+          "why_selected": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "avg_rows_per_txn",
+          "busiest_minutes",
+          "label",
+          "pattern_key",
+          "representative_transactions",
+          "share_of_rows",
+          "share_of_txns",
+          "signal_flags",
+          "why_selected"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "patterns": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "avg_rows_per_txn": {
+            "type": "number"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "label": {
+            "type": "string"
+          },
+          "operations": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "pattern_key": {
+            "type": "string"
+          },
+          "sample_query_summary": {
+            "type": "string"
+          },
+          "share_of_rows": {
+            "type": "number"
+          },
+          "share_of_txns": {
+            "type": "number"
+          },
+          "tables": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "total_rows": {
+            "type": "integer"
+          },
+          "txn_count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "avg_rows_per_txn",
+          "event_count",
+          "label",
+          "operations",
+          "pattern_key",
+          "share_of_rows",
+          "share_of_txns",
+          "tables",
+          "total_rows",
+          "txn_count"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "primary_key_note": {
+      "type": "string"
+    },
+    "provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "mixed_producers": {
+          "type": "boolean"
+        },
+        "server_flavors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "server_ids": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "server_versions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "mixed_producers"
+      ],
+      "type": "object"
+    },
+    "replica_apply_delay": {
+      "additionalProperties": false,
+      "properties": {
+        "max_delay_us": {
+          "type": "integer"
+        },
+        "origin": {
+          "type": "string"
+        },
+        "p95_delay_us": {
+          "type": "integer"
+        },
+        "peak_minute": {
+          "type": "string"
+        },
+        "transactions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "delay_us": {
+                "type": "integer"
+              },
+              "gtid": {
+                "type": "string"
+              },
+              "immediate_commit_time": {
+                "type": "string"
+              },
+              "immediate_commit_us": {
+                "type": "integer"
+              },
+              "original_commit_time": {
+                "type": "string"
+              },
+              "original_commit_us": {
+                "type": "integer"
+              },
+              "tables": {
+                "additionalProperties": {
+                  "type": "integer"
+                },
+                "type": "object"
+              },
+              "txn_start_file": {
+                "type": "string"
+              },
+              "txn_start_pos": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "delay_us"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "max_delay_us",
+        "origin",
+        "p95_delay_us"
+      ],
+      "type": "object"
+    },
+    "report_version": {
+      "const": 4,
+      "type": "integer"
+    },
+    "row_values_note": {
+      "type": "string"
+    },
+    "scope": {
+      "additionalProperties": false,
+      "properties": {
+        "dml": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exclude_schema": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "exclude_table": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "include_schema": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "include_table": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "exclude_schema",
+        "exclude_table",
+        "include_schema",
+        "include_table"
+      ],
+      "type": "object"
+    },
+    "selection": {
+      "additionalProperties": false,
+      "properties": {
+        "effective_start_position": {
+          "type": "integer"
+        },
+        "effective_stop_position": {
+          "type": "integer"
+        },
+        "exclude_gtids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "include_gtids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "matched_gtid_set": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "matched_transactions": {
+          "type": "integer"
+        },
+        "requested_start_position": {
+          "type": "integer"
+        },
+        "requested_stop_position": {
+          "type": "integer"
+        },
+        "resolved_gtid_flavor": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "binlogviz_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "dml": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "exclude_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "exclude_schema",
+            "exclude_table",
+            "include_schema",
+            "include_table"
+          ],
+          "type": "object"
+        },
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "from_dir": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "files",
+            "from_dir",
+            "prefix"
+          ],
+          "type": "object"
+        },
+        "input_mode": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "window": {
+          "additionalProperties": false,
+          "properties": {
+            "end_time": {
+              "type": "string"
+            },
+            "start_time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "end_time",
+            "start_time"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "binlogviz_version",
+        "created_at",
+        "filters",
+        "input",
+        "input_mode",
+        "label",
+        "name",
+        "window"
+      ],
+      "type": "object"
+    },
+    "sql_context": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "available",
+        "mode"
+      ],
+      "type": "object"
+    },
+    "summary": {
+      "additionalProperties": false,
+      "properties": {
+        "duration": {
+          "type": "string"
+        },
+        "end_time": {
+          "type": "string"
+        },
+        "partial_transactions": {
+          "type": "integer"
+        },
+        "start_time": {
+          "type": "string"
+        },
+        "total_events": {
+          "type": "integer"
+        },
+        "total_rows": {
+          "type": "integer"
+        },
+        "total_transactions": {
+          "type": "integer"
+        },
+        "unknown_transactions": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "duration",
+        "end_time",
+        "partial_transactions",
+        "start_time",
+        "total_events",
+        "total_rows",
+        "total_transactions",
+        "unknown_transactions"
+      ],
+      "type": "object"
+    },
+    "tables": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "delete_rows": {
+            "type": "integer"
+          },
+          "insert_rows": {
+            "type": "integer"
+          },
+          "key_status": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "table": {
+            "type": "string"
+          },
+          "total_rows": {
+            "type": "integer"
+          },
+          "txn_count": {
+            "type": "integer"
+          },
+          "update_events": {
+            "type": "integer"
+          },
+          "update_rows": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "delete_rows",
+          "insert_rows",
+          "schema",
+          "table",
+          "total_rows",
+          "txn_count",
+          "update_events",
+          "update_rows"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "threads": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "additionalProperties": false,
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "binlog_bytes": {
+            "type": "integer"
+          },
+          "events": {
+            "type": "integer"
+          },
+          "rows": {
+            "type": "integer"
+          },
+          "schema": {
+            "type": "string"
+          },
+          "schemas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "server_id": {
+            "type": "integer"
+          },
+          "share": {
+            "type": "number"
+          },
+          "share_of_rows": {
+            "type": "number"
+          },
+          "thread_id": {
+            "type": "integer"
+          },
+          "transactions": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "events",
+          "rows",
+          "share",
+          "share_of_rows",
+          "transactions"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "threads_listed": {
+      "type": "integer"
+    },
+    "threads_omitted": {
+      "type": "integer"
+    },
+    "threads_ranked_by": {
+      "type": "string"
+    },
+    "timeseries": {
+      "additionalProperties": false,
+      "properties": {
+        "binlog_bytes_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ddl_event_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "delete_event_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "events_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "insert_event_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "rows_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "tps_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "txn_size_series_summary": {
+          "additionalProperties": false,
+          "properties": {
+            "buckets": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "binlog_bytes": {
+                    "type": "integer"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "rows": {
+                    "type": "integer"
+                  },
+                  "txn_count": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "binlog_bytes",
+                  "label",
+                  "rows",
+                  "txn_count"
+                ],
+                "type": "object"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "buckets"
+          ],
+          "type": "object"
+        },
+        "update_event_series": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "minute": {
+                "type": "string"
+              },
+              "value": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "minute",
+              "value"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "binlog_bytes_series",
+        "ddl_event_series",
+        "delete_event_series",
+        "events_series",
+        "insert_event_series",
+        "rows_series",
+        "tps_series",
+        "txn_size_series_summary",
+        "update_event_series"
+      ],
+      "type": "object"
+    },
+    "transactions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "additionalProperties": false,
+            "properties": {
+              "host": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "binlog_bytes": {
+            "type": "integer"
+          },
+          "binlog_file_end": {
+            "type": "string"
+          },
+          "binlog_file_start": {
+            "type": "string"
+          },
+          "completeness": {
+            "type": "string"
+          },
+          "duration": {
+            "type": "string"
+          },
+          "end_time": {
+            "type": "string"
+          },
+          "event_count": {
+            "type": "integer"
+          },
+          "gtid": {
+            "type": "string"
+          },
+          "mysqlbinlog_cmd": {
+            "type": "string"
+          },
+          "operations": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "pos_end": {
+            "type": "integer"
+          },
+          "pos_start": {
+            "type": "integer"
+          },
+          "query_original_bytes": {
+            "type": "integer"
+          },
+          "query_sql": {
+            "type": "string"
+          },
+          "query_summary": {
+            "type": "string"
+          },
+          "query_truncated": {
+            "type": "boolean"
+          },
+          "replay_available": {
+            "type": "boolean"
+          },
+          "replay_note": {
+            "type": "string"
+          },
+          "replay_scope": {
+            "type": "string"
+          },
+          "rows": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "after": {
+                  "items": {},
+                  "type": "array"
+                },
+                "before": {
+                  "items": {},
+                  "type": "array"
+                },
+                "changed": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "columns": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": [
+                    "array",
+                    "null"
+                  ]
+                },
+                "names": {
+                  "type": "string"
+                },
+                "op": {
+                  "type": "string"
+                },
+                "schema": {
+                  "type": "string"
+                },
+                "table": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "columns",
+                "names",
+                "op"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "rows_omitted": {
+            "type": "integer"
+          },
+          "server_flavor": {
+            "type": "string"
+          },
+          "server_id": {
+            "type": "integer"
+          },
+          "server_version": {
+            "type": "string"
+          },
+          "start_time": {
+            "type": "string"
+          },
+          "tables": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "thread_id": {
+            "type": "integer"
+          },
+          "total_rows": {
+            "type": "integer"
+          },
+          "txn_key": {
+            "type": "string"
+          },
+          "xa_xid": {
+            "type": "string"
+          },
+          "xid": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "binlog_bytes",
+          "completeness",
+          "duration",
+          "end_time",
+          "event_count",
+          "replay_available",
+          "start_time",
+          "total_rows",
+          "txn_key"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "transactions_listed": {
+      "type": "integer"
+    },
+    "transactions_omitted": {
+      "type": "integer"
+    },
+    "warnings": {
+      "type": "integer"
+    },
+    "workload_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "alerts",
+    "hot_rows",
+    "hot_rows_listed",
+    "hot_rows_omitted",
+    "minutes",
+    "pattern_drilldowns",
+    "patterns",
+    "report_version",
+    "sql_context",
+    "summary",
+    "tables",
+    "threads",
+    "threads_listed",
+    "threads_omitted",
+    "timeseries",
+    "transactions",
+    "transactions_listed",
+    "transactions_omitted",
+    "warnings"
+  ],
+  "title": "analyze",
+  "type": "object"
+}

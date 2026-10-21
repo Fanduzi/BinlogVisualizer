@@ -28,7 +28,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - `AssessComparability(inputs []ComparabilityInput) Comparability` — Returns the shared structured verdict and visible evidence used by compare and trend.
 - `RenderText(result CompareResult) (string, error)` — Renders terminal-friendly compare output.
 - `RenderJSON(result CompareResult) (string, error)` — Serializes compare results with stable JSON fields.
-- `RenderHTML(result CompareResult) (string, error)` — Renders the chart-based compare HTML report.
+- `RenderHTML(result CompareResult) (string, error)` — Renders the chart-based compare HTML report. `RenderHTMLIn` is the same report with a display zone; a nil zone keeps the historical UTC generated-at line and the hot-interval Minute cells. A zone rewrites those Minute cells the same way it rewrites the window.
 - `TransactionEvidenceFor(txn InputTransaction) *TransactionEvidence` — Converts analyze transaction fields into replay-ready evidence while omitting unusable commands.
 
 ## Dependencies

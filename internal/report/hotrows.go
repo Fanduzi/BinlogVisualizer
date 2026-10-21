@@ -104,10 +104,10 @@ func renderHotRows(buf *strings.Builder, report model.HotRowReport, opts Options
 		}
 		buf.WriteString(line + "\n")
 		buf.WriteString(fmt.Sprintf("     %s %s  %s\n",
-			i18n.T("report.text.hotRowsFirst"), formatTime(row.FirstTime),
+			i18n.T("report.text.hotRowsFirst"), opts.formatTime(row.FirstTime),
 			hotRowTxnPlace(row.FirstGTID, row.FirstFile, row.FirstPos)))
 		buf.WriteString(fmt.Sprintf("     %s %s  %s\n",
-			i18n.T("report.text.hotRowsLast"), formatTime(row.LastTime),
+			i18n.T("report.text.hotRowsLast"), opts.formatTime(row.LastTime),
 			hotRowTxnPlace(row.LastGTID, row.LastFile, row.LastPos)))
 	}
 	if omitted > 0 {
@@ -150,8 +150,8 @@ func mdHotRows(buf *strings.Builder, report model.HotRowReport, opts Options) {
 				mdCell(key),
 				touches,
 				row.Transactions,
-				mdCell(formatTime(row.FirstTime)),
-				mdCell(formatTime(row.LastTime)),
+				mdCell(opts.formatTime(row.FirstTime)),
+				mdCell(opts.formatTime(row.LastTime)),
 				mdCell(hotRowTxnPlace(row.FirstGTID, row.FirstFile, row.FirstPos)),
 				mdCell(hotRowTxnPlace(row.LastGTID, row.LastFile, row.LastPos)),
 			))

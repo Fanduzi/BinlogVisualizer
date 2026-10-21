@@ -1,0 +1,299 @@
+{
+  "$id": "binlogviz:schema/workflow-status",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attempt": {
+      "type": "integer"
+    },
+    "manifest_version": {
+      "type": "integer"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "output_dir": {
+      "type": "string"
+    },
+    "resumable": {
+      "type": "boolean"
+    },
+    "resume_error": {
+      "type": "string"
+    },
+    "resume_preview": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "kind",
+          "name",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "runtime_state": {
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "status": {
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "artifacts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "exists": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "exists",
+                "path"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "execution": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "name",
+          "status"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "workflow_name": {
+      "type": "string"
+    },
+    "workflow_summary": {
+      "additionalProperties": false,
+      "properties": {
+        "findings": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence_refs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "anchor": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "section": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "anchor",
+                    "label",
+                    "section"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "source_report_label": {
+                "type": "string"
+              },
+              "source_report_path": {
+                "type": "string"
+              },
+              "source_step_kind": {
+                "type": "string"
+              },
+              "source_step_name": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "source_report_label",
+              "source_report_path",
+              "source_step_kind",
+              "source_step_name",
+              "summary",
+              "title"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "recommendations": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "evidence_refs": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "anchor": {
+                      "type": "string"
+                    },
+                    "key": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "section": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "anchor",
+                    "label",
+                    "section"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "priority": {
+                "type": "string"
+              },
+              "related_finding_kinds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "source_report_label": {
+                "type": "string"
+              },
+              "source_report_path": {
+                "type": "string"
+              },
+              "source_step_kind": {
+                "type": "string"
+              },
+              "source_step_name": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "priority",
+              "related_finding_kinds",
+              "source_report_label",
+              "source_report_path",
+              "source_step_kind",
+              "source_step_name",
+              "summary",
+              "title"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "findings",
+        "recommendations",
+        "warnings"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "attempt",
+    "manifest_version",
+    "mode",
+    "output_dir",
+    "resumable",
+    "resume_error",
+    "runtime_state",
+    "schema_version",
+    "status",
+    "steps",
+    "workflow_name",
+    "workflow_summary"
+  ],
+  "title": "workflow-status",
+  "type": "object"
+}

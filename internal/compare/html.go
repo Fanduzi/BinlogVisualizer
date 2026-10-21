@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
 )
@@ -53,23 +54,34 @@ type htmlAlertDatum struct {
 }
 
 func RenderHTML(result CompareResult) (string, error) {
+	return RenderHTMLIn(result, nil)
+}
+
+// RenderHTMLIn is RenderHTML with a display zone. A nil loc keeps the
+// historical " UTC" spelling of the generated-at line (ADR 0017).
+func RenderHTMLIn(result CompareResult, loc *time.Location) (string, error) {
 	echartsJS, err := report.ReadEmbeddedECharts()
 	if err != nil {
 		return "", err
 	}
 
 	tmpl, err := report.NewHTMLTemplate("compare", compareHTMLTemplate, template.FuncMap{
-		"formatDelta":           formatHTMLDelta,
-		"formatPercent":         formatHTMLPercent,
-		"formatBytes":           formatCompareFileSize,
-		"formatOptionalBytes":   formatOptionalCompareFileSize,
-		"snapshotWindow":        formatSnapshotWindow,
+		"formatDelta":         formatHTMLDelta,
+		"formatPercent":       formatHTMLPercent,
+		"formatBytes":         formatCompareFileSize,
+		"formatOptionalBytes": formatOptionalCompareFileSize,
+		"snapshotWindow": func(snapshot *InputSnapshot) string {
+			return formatSnapshotWindowIn(snapshot, loc)
+		},
 		"snapshotInputMode":     formatSnapshotInputMode,
 		"snapshotSource":        formatSnapshotSource,
 		"snapshotFilters":       formatSnapshotFilters,
 		"compareLabel":          localizedCompareLabel,
 		"compareSource":         localizedCompareSource,
 		"comparabilityEvidence": FormatComparabilityEvidence,
+		"displayStored": func(value string) string {
+			return displaytz.Stored(value, loc)
+		},
 	})
 	if err != nil {
 		return "", err
@@ -81,7 +93,7 @@ func RenderHTML(result CompareResult) (string, error) {
 		GuardTitle:            ComparabilityGuardTitle(),
 		GuardSummary:          ComparabilityGuardSummary(result.Comparability.Verdict),
 		ReasonCodesLabel:      ComparabilityReasonCodesLabel(),
-		GeneratedAt:           time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		GeneratedAt:           displaytz.Wall(time.Now(), "2006-01-02 15:04:05", loc),
 		EChartsJS:             template.JS(echartsJS), //nolint:gosec
 		SummaryPairsJSON:      mustHTMLJSON(buildSummaryPairs(result)),
 		TopTablesJSON:         mustHTMLJSON(buildTopTableSeries(result.TableChanges)),
@@ -93,7 +105,7 @@ func RenderHTML(result CompareResult) (string, error) {
 		RecommendationsJSON:   mustHTMLJSON(result.Recommendations),
 		DDLChangesJSON:        mustHTMLJSON(buildDDLChangeData(result.DiagnosticsDelta)),
 		TxnDiagnosticsJSON:    mustHTMLJSON(buildTxnDiagnosticData(result.DiagnosticsDelta)),
-		HotIntervalsJSON:      mustHTMLJSON(buildHotIntervalData(result.DiagnosticsDelta)),
+		HotIntervalsJSON:      mustHTMLJSON(buildHotIntervalData(result.DiagnosticsDelta, loc)),
 		EventMixDeltaJSON:     mustHTMLJSON(result.DiagnosticsDelta.EventMixDelta),
 	}
 
@@ -297,11 +309,11 @@ func buildTxnDiagnosticData(delta DiagnosticsDelta) htmlTxnDiagnosticData {
 	}
 }
 
-func buildHotIntervalData(delta DiagnosticsDelta) htmlHotIntervalData {
+func buildHotIntervalData(delta DiagnosticsDelta, loc *time.Location) htmlHotIntervalData {
 	items := make([]htmlHotIntervalItem, 0, len(delta.HotIntervalDelta.TopItems))
 	for _, item := range delta.HotIntervalDelta.TopItems {
 		items = append(items, htmlHotIntervalItem{
-			Minute:    item.Minute,
+			Minute:    displaytz.Stored(item.Minute, loc),
 			Source:    localizedCompareSource(item.Source),
 			TotalRows: item.TotalRows,
 			TxnCount:  item.TxnCount,
@@ -1194,7 +1206,7 @@ const compareHTMLTemplateTail = `
           <tbody>
             {{range .Result.DiagnosticsDelta.HotIntervalDelta.TopItems}}
             <tr>
-              <td>{{.Minute}}</td>
+              <td>{{displayStored .Minute}}</td>
               <td>{{compareSource .Source}}</td>
               <td class="num">{{.TotalRows}}</td>
               <td class="num">{{.TxnCount}}</td>

@@ -14,6 +14,7 @@ import (
 	"github.com/spf13/cobra"
 
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/jsonout"
 	snapshotpkg "binlogviz/internal/snapshot"
 	"binlogviz/internal/version"
@@ -109,6 +110,7 @@ func newSnapshotListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			entries = displaySnapshotEntries(entries, displaytz.From(cmd.Context()))
 			switch opts.format {
 			case "text":
 				return writeSnapshotListText(cmd.OutOrStdout(), entries)
@@ -117,9 +119,9 @@ func newSnapshotListCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return writeSnapshotJSON(cmd.OutOrStdout(), map[string]any{
-					"snapshot_dir": resolvedDir,
-					"snapshots":    entries,
+				return writeSnapshotJSON(cmd.OutOrStdout(), snapshotListJSON{
+					SnapshotDir: resolvedDir,
+					Snapshots:   entries,
 				})
 			default:
 				return clierr.Errorf(clierr.KindUsage, "unsupported snapshot list format: %s", opts.format)
@@ -154,6 +156,7 @@ func newSnapshotShowCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			desc = displaySnapshotDescriptor(desc, displaytz.From(cmd.Context()))
 			switch opts.format {
 			case "text":
 				for _, line := range buildSnapshotShowLines(desc) {
@@ -163,9 +166,7 @@ func newSnapshotShowCommand() *cobra.Command {
 				}
 				return nil
 			case "json":
-				return writeSnapshotJSON(cmd.OutOrStdout(), map[string]any{
-					"snapshot": desc,
-				})
+				return writeSnapshotJSON(cmd.OutOrStdout(), snapshotShowJSON{Snapshot: desc})
 			}
 			return nil
 		},
@@ -264,7 +265,51 @@ func normalizeSnapshotReport(data []byte, name string, now time.Time) ([]byte, e
 	}
 
 	payload["snapshot"] = snapshot
+	// A report rendered with --tz carries numeric offsets. The file other
+	// commands read later stays UTC (ADR 0017), same as --snapshot-name.
+	rewriteSnapshotTimesUTC(payload)
 	return json.MarshalIndent(payload, "", "  ")
+}
+
+// rewriteSnapshotTimesUTC rewrites every RFC3339 timestamp in the document
+// to UTC with a Z suffix. Other strings, including row cells, stay as stored.
+func rewriteSnapshotTimesUTC(v any) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, child := range x {
+			if s, ok := child.(string); ok {
+				if utc, ok := utcTimestamp(s); ok {
+					x[k] = utc
+					continue
+				}
+			}
+			rewriteSnapshotTimesUTC(child)
+		}
+	case []any:
+		for i, child := range x {
+			if s, ok := child.(string); ok {
+				if utc, ok := utcTimestamp(s); ok {
+					x[i] = utc
+					continue
+				}
+			}
+			rewriteSnapshotTimesUTC(child)
+		}
+	}
+}
+
+func utcTimestamp(value string) (string, bool) {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339, value)
+		if err != nil {
+			return "", false
+		}
+	}
+	if strings.Contains(value, ".") {
+		return parsed.UTC().Format(time.RFC3339Nano), true
+	}
+	return parsed.UTC().Format(time.RFC3339), true
 }
 
 func deriveSnapshotWindow(summaryValue any) map[string]any {
@@ -316,6 +361,43 @@ func buildSnapshotShowLines(desc snapshotpkg.Descriptor) []string {
 		fmt.Sprintf("warnings: %d", desc.Warnings),
 	)
 	return lines
+}
+
+// snapshotListJSON is snapshot list --format json. Field order matches the
+// alphabetical order encoding/json used when this object was a map.
+type snapshotListJSON struct {
+	SnapshotDir string              `json:"snapshot_dir"`
+	Snapshots   []snapshotpkg.Entry `json:"snapshots"`
+}
+
+// snapshotShowJSON is snapshot show --format json.
+type snapshotShowJSON struct {
+	Snapshot snapshotpkg.Descriptor `json:"snapshot"`
+}
+
+// displaySnapshotEntries rewrites stored RFC3339 timestamps for display.
+// A nil location returns the same slice, so the default JSON stays byte-identical.
+func displaySnapshotEntries(entries []snapshotpkg.Entry, loc *time.Location) []snapshotpkg.Entry {
+	if loc == nil || loc == time.UTC {
+		return entries
+	}
+	out := append([]snapshotpkg.Entry(nil), entries...)
+	for i := range out {
+		out[i].CreatedAt = displaytz.Stored(out[i].CreatedAt, loc)
+		out[i].Window.StartTime = displaytz.Stored(out[i].Window.StartTime, loc)
+		out[i].Window.EndTime = displaytz.Stored(out[i].Window.EndTime, loc)
+	}
+	return out
+}
+
+func displaySnapshotDescriptor(desc snapshotpkg.Descriptor, loc *time.Location) snapshotpkg.Descriptor {
+	if loc == nil || loc == time.UTC {
+		return desc
+	}
+	desc.CreatedAt = displaytz.Stored(desc.CreatedAt, loc)
+	desc.Window.StartTime = displaytz.Stored(desc.Window.StartTime, loc)
+	desc.Window.EndTime = displaytz.Stored(desc.Window.EndTime, loc)
+	return desc
 }
 
 func writeSnapshotJSON(out io.Writer, payload any) error {

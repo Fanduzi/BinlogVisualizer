@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Fanduzi/BinlogVisualizer?display_name=tag)](https://github.com/Fanduzi/BinlogVisualizer/releases)
 ![Platform](https://img.shields.io/badge/platform-darwin%20amd64%20%7C%20darwin%20arm64%20%7C%20linux%20amd64%20%7C%20linux%20arm64-blue)
-![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
+![Go Version](https://img.shields.io/badge/go-1.26.10-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](#license)
 
 [![English](https://img.shields.io/badge/docs-English-blue)](README.md) [![简体中文](https://img.shields.io/badge/docs-简体中文-yellow)](README_ZH.md)
@@ -90,7 +90,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-`--start`/`--end` also accept `YYYY-MM-DD HH:MM:SS` in the local timezone of the machine running `binlogviz`. Prefer RFC3339 with an explicit offset across machines.
+`--start`/`--end` also accept `YYYY-MM-DD HH:MM:SS`. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. Prefer RFC3339 with an explicit offset across machines.
 
 ### Start from `SHOW MASTER STATUS` position or GTID
 
@@ -587,7 +587,7 @@ The Cobra command layer streams parser output through normalization and transact
 ## Requirements
 
 - local MySQL `ROW` binlog files
-- Go 1.26.1+ if building from source
+- Go 1.26.10+ if building from source
 
 ## License
 

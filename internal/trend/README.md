@@ -23,7 +23,7 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 - `BuildResult(opts BuildOptions) (Result, error)` — Builds the ordered multi-snapshot trend result.
 - `RenderText(result Result) (string, error)` — Renders terminal-friendly trend output.
 - `RenderJSON(result Result) (string, error)` — Serializes machine-readable trend output.
-- `RenderHTML(result Result) (string, error)` — Renders the chart-based HTML trend report.
+- `RenderHTML(result Result) (string, error)` — Renders the chart-based HTML trend report. `RenderHTMLIn` is the same report with a display zone; a nil zone keeps the historical UTC generated-at line.
 
 ## Dependencies
 

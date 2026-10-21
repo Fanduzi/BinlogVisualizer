@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/github/v/release/Fanduzi/BinlogVisualizer?display_name=tag)](https://github.com/Fanduzi/BinlogVisualizer/releases)
 ![Platform](https://img.shields.io/badge/platform-darwin%20amd64%20%7C%20darwin%20arm64%20%7C%20linux%20amd64%20%7C%20linux%20arm64-blue)
-![Go Version](https://img.shields.io/badge/go-1.26.1-00ADD8?logo=go)
+![Go Version](https://img.shields.io/badge/go-1.26.10-00ADD8?logo=go)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](#license)
 
 [![English](https://img.shields.io/badge/docs-English-blue)](README.md) [![简体中文](https://img.shields.io/badge/docs-简体中文-yellow)](README_ZH.md)
@@ -68,7 +68,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --end "2026-03-15T10:30:00Z"
 ```
 
-`--start`/`--end` 也接受运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。跨机器请优先使用带显式偏移的 RFC3339。
+`--start`/`--end` 也接受 `YYYY-MM-DD HH:MM:SS`。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。跨机器请优先使用带显式偏移的 RFC3339。
 
 ### 从 `SHOW MASTER STATUS` 位点或 GTID 起
 
@@ -528,7 +528,7 @@ LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.000123
 ## 环境要求
 
 - 本地 MySQL `ROW` 格式 binlog 文件
-- 如果从源码构建，需要 Go 1.26.1+
+- 如果从源码构建，需要 Go 1.26.10+
 
 ## License
 

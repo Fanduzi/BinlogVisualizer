@@ -34,6 +34,6 @@ Preconditions:
 
 - ROW-only counting: STATEMENT/MIXED Query-DML is not counted; the text banner says so.
 - Progress bars often write to stderr; a non-empty stderr alone is not failure.
-- Space-separated `--start`/`--end` use the machine local timezone; prefer RFC3339 with offset across machines.
+- A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. Prefer RFC3339 with offset across machines.
 - Exit `2` means no counted data in the window — not a crash. Treat it as an expected outcome when proving empty windows.
 - Never omit isolation for snapshot-saving analyze; see [snapshot.md](./snapshot.md).

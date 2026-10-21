@@ -1,0 +1,32 @@
+{
+  "$id": "binlogviz:schema/flashback-verify",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "command": {
+      "type": "string"
+    },
+    "digest": {
+      "type": "string"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "statements": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "command",
+    "digest",
+    "ok",
+    "schema_version",
+    "statements"
+  ],
+  "title": "flashback-verify",
+  "type": "object"
+}

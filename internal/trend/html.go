@@ -14,6 +14,7 @@ import (
 	"time"
 
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
 )
@@ -62,12 +63,21 @@ type htmlPatternTrendSeries struct {
 }
 
 func RenderHTML(result Result) (string, error) {
+	return RenderHTMLIn(result, nil)
+}
+
+// RenderHTMLIn is RenderHTML with a display zone. A nil loc keeps the
+// historical " UTC" spelling of the generated-at line (ADR 0017).
+func RenderHTMLIn(result Result, loc *time.Location) (string, error) {
 	echartsJS, err := report.ReadEmbeddedECharts()
 	if err != nil {
 		return "", err
 	}
 	tmpl, err := report.NewHTMLTemplate("trend", trendHTMLTemplate, template.FuncMap{
 		"comparabilityEvidence": comparepkg.FormatComparabilityEvidence,
+		"displayStored": func(value string) string {
+			return displaytz.Stored(value, loc)
+		},
 	})
 	if err != nil {
 		return "", err
@@ -79,7 +89,7 @@ func RenderHTML(result Result) (string, error) {
 		GuardTitle:            comparepkg.ComparabilityGuardTitle(),
 		GuardSummary:          comparepkg.ComparabilityGuardSummary(result.Comparability.Verdict),
 		ReasonCodesLabel:      comparepkg.ComparabilityReasonCodesLabel(),
-		GeneratedAt:           time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		GeneratedAt:           displaytz.Wall(time.Now(), "2006-01-02 15:04:05", loc),
 		EChartsJS:             template.JS(echartsJS), //nolint:gosec
 		LabelsJSON:            mustHTMLJSON(buildLabels(result.Points)),
 		RowsJSON:              mustHTMLJSON(buildMetricSeries(result.Points, func(point Point) int { return point.Summary.TotalRows })),
@@ -768,7 +778,7 @@ const trendHTMLTemplateTail = `
           {{range $idx, $point := .Result.Points}}
           <tr id="point-{{$idx}}">
             <td>{{$point.Snapshot.Name}}</td>
-            <td>{{$point.Window.StartTime}}</td>
+            <td>{{displayStored $point.Window.StartTime}}</td>
             <td>{{$point.Summary.TotalRows}}</td>
             <td>{{$point.Summary.TotalTransactions}}</td>
             <td>{{$point.Summary.TotalEvents}}</td>

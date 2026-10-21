@@ -48,6 +48,7 @@ binlogviz workflow describe <plan.yaml> --format json
 | Flag | 默认值 | 说明 |
 |------|--------|------|
 | `--lang` | 按环境变量检测 | 运行时输出语言，例如 `en` 或 `zh-CN`。 |
+| `--tz` | 历史 UTC 写法 | 渲染时间戳的 IANA 时区，例如 `Asia/Shanghai`。不传或 `UTC` 在文本、Markdown、HTML 里保持 ` UTC`，在 JSON 里保持 `Z`。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。空名、未知名或 `Local` 退出码是 3。 |
 | `--version`, `-v` | `false` | 仅输出版本号并退出。`binlogviz version` 在构建带有 git 信息时还会输出 commit；`binlogviz version --format json` 输出 `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}`，供脚本和 agent 使用（`commit` 优先取 Go 构建信息，其次取 `-ldflags -X binlogviz/internal/version.Commit=…`/`CommitTime=…` 注入的值，两者都没有时为 `""`）。其他 `--format` 退出码为 3。 |
 
 ## `analyze` 命令语法
@@ -93,8 +94,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 
 | Flag | 默认值 | 说明 |
 |------|--------|------|
-| `--start` | none | 开始时间，包含边界。RFC3339，或运行 `binlogviz` 的机器本地时区下的 `YYYY-MM-DD HH:MM:SS`。显式偏移量定义该时刻；跨机器请优先使用带偏移的 RFC3339。 |
-| `--end` | none | 结束时间，包含边界。格式与 `--start` 相同。 |
+| `--start` | none | 开始时间，包含边界。RFC3339，或 `YYYY-MM-DD HH:MM:SS`（可带 `±HH:MM` 或以 ` UTC` 结尾）。显式偏移量定义该时刻。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。 |
+| `--end` | none | 结束时间，包含边界。格式与 `--start` 相同。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。 |
 | `--start-position` | none | 单个显式 binlog 文件上的精确事件起始边界（包含）。 |
 | `--stop-position` | none | 单个显式 binlog 文件上的精确事件结束边界（不包含），也可为 EOF。 |
 | `--include-gtids` | none | 包含匹配 MySQL UUID range set，或 MariaDB 身份 `domain-server-seq` 与区间 `domain-server-first..last`（`..` 两侧不能有空白）的完整事务组。报告里的 `selection.matched_gtid_set` 可以直接作为输入。 |
@@ -376,7 +377,7 @@ binlogviz snapshot delete <name>
 
 ### 时间过滤
 
-`--start` 和 `--end` 接受 RFC3339（跨机器推荐）或 `YYYY-MM-DD HH:MM:SS`。空格格式按运行 `binlogviz` 的机器本地时区解释。`Z`、`+08:00` 等显式偏移量定义该时刻。报告时间戳仍为 UTC。
+`--start` 和 `--end` 接受 RFC3339（跨机器推荐）、`YYYY-MM-DD HH:MM:SS`、带 `±HH:MM` 的空格形式，以及结尾的 ` UTC`。偏移量或结尾 ` UTC` 定义该时刻。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。`--tz UTC` 和 `--tz Etc/UTC` 把这个值解析成同一个时刻。不传 `--tz` 时，报告时间戳仍为 UTC。快照文件始终是 UTC，包括 `snapshot save` 一份带 `--tz` 的报告。落在夏令时空档或重叠时段、且没有时区的值，退出码是 3，错误会写出该值、时区和原因，并要求补上显式偏移。绝对值大于 14:00 的偏移（例如 `+24:00`、`+14:30`），或分钟不是 00、30、45 的偏移，同样是退出码 3。
 
 ```bash
 binlogviz analyze mysql-bin.000123 \

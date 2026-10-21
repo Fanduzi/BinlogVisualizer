@@ -22,6 +22,7 @@ import (
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/displaytz"
 	"binlogviz/internal/jsonout"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
@@ -297,7 +298,7 @@ func newWorkflowDescribeCommand() *cobra.Command {
 				return err
 			}
 
-			desc := workflow.BuildDescription(plan)
+			desc := workflow.BuildDescriptionIn(plan, displaytz.From(cmd.Context()))
 			return writeWorkflowDescribeOutput(cmd.OutOrStdout(), opts.format, desc)
 		},
 	}
@@ -387,7 +388,7 @@ func newWorkflowRunCommand() *cobra.Command {
 			}
 			absPlanPath, _ := filepath.Abs(planPath)
 
-			return executeWorkflow(plan, outputDir, opts.snapshotDir, absPlanPath, stderr)
+			return executeWorkflow(plan, outputDir, opts.snapshotDir, absPlanPath, stderr, displaytz.From(cmd.Context()))
 		},
 	}
 
@@ -416,7 +417,7 @@ func newWorkflowResumeCommand() *cobra.Command {
 			outputDir := args[0]
 			stderr := cmd.OutOrStderr()
 
-			return executeResume(outputDir, opts.snapshotDir, opts.rerun, stderr)
+			return executeResume(outputDir, opts.snapshotDir, opts.rerun, stderr, displaytz.From(cmd.Context()))
 		},
 	}
 
@@ -430,15 +431,7 @@ func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Pl
 	if warnings == nil {
 		warnings = []string{}
 	}
-	payload := struct {
-		Valid        bool     `json:"valid"`
-		WorkflowName string   `json:"workflow_name"`
-		Windows      int      `json:"windows"`
-		CompareJobs  int      `json:"compare_jobs"`
-		TrendJobs    int      `json:"trend_jobs"`
-		OutputDir    string   `json:"output_dir"`
-		Warnings     []string `json:"warnings"`
-	}{
+	payload := workflowValidateJSON{
 		Valid:        true,
 		WorkflowName: plan.Workflow.Name,
 		Windows:      len(plan.Windows),
@@ -482,10 +475,7 @@ func writeWorkflowValidateSuccess(out io.Writer, format string, plan workflow.Pl
 
 func writeWorkflowValidateFailure(out io.Writer, format string, err error) {
 	if format == "json" {
-		data, marshalErr := jsonout.Marshal(workflowValidateSchemaVersion, struct {
-			Valid bool   `json:"valid"`
-			Error string `json:"error"`
-		}{
+		data, marshalErr := jsonout.Marshal(workflowValidateSchemaVersion, workflowValidateErrorJSON{
 			Valid: false,
 			Error: err.Error(),
 		})
@@ -796,6 +786,24 @@ func writeWorkflowCleanOutput(out io.Writer, format string, result workflow.Clea
 	return nil
 }
 
+// workflowValidateJSON is the success document of workflow validate --format json.
+type workflowValidateJSON struct {
+	Valid        bool     `json:"valid"`
+	WorkflowName string   `json:"workflow_name"`
+	Windows      int      `json:"windows"`
+	CompareJobs  int      `json:"compare_jobs"`
+	TrendJobs    int      `json:"trend_jobs"`
+	OutputDir    string   `json:"output_dir"`
+	Warnings     []string `json:"warnings"`
+}
+
+// workflowValidateErrorJSON is the failure document. It shares schema_version
+// and valid with the success document and carries error instead of the counts.
+type workflowValidateErrorJSON struct {
+	Valid bool   `json:"valid"`
+	Error string `json:"error"`
+}
+
 type workflowExportOutput struct {
 	WorkflowName      string   `json:"workflow_name"`
 	OutputDir         string   `json:"output_dir"`
@@ -878,7 +886,7 @@ func writeWorkflowExportOutput(out io.Writer, format string, payload workflowExp
 	return nil
 }
 
-func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stderr io.Writer) error {
+func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stderr io.Writer, loc *time.Location) error {
 	startedAt := time.Now().UTC()
 
 	// Load existing manifest
@@ -962,7 +970,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 
 	// Build analyzer and report options from plan defaults
 	analyzerOpts := buildWorkflowAnalyzerOptions(plan)
-	reportOpts, err := buildWorkflowReportOptions(plan)
+	reportOpts, err := buildWorkflowReportOptions(plan, loc)
 	if err != nil {
 		return err
 	}
@@ -1026,7 +1034,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 
 		case "compare":
 			job := findCompareJob(plan, planned.Name)
-			rec, cerr := runWorkflowCompareJob(outputDir, job, windowReports)
+			rec, cerr := runWorkflowCompareJob(outputDir, job, windowReports, loc)
 			newMf.Steps = append(newMf.Steps, rec)
 			if cerr != nil {
 				return finalizeWorkflow(outputDir, &newMf, startedAt, stderr, cerr)
@@ -1034,7 +1042,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 
 		case "trend":
 			job := findTrendJob(plan, planned.Name)
-			rec, terr := runWorkflowTrendJob(outputDir, job, windowReports)
+			rec, terr := runWorkflowTrendJob(outputDir, job, windowReports, loc)
 			newMf.Steps = append(newMf.Steps, rec)
 			if terr != nil {
 				return finalizeWorkflow(outputDir, &newMf, startedAt, stderr, terr)
@@ -1081,7 +1089,7 @@ func findTrendJob(plan workflow.Plan, name string) workflow.TrendJob {
 	return workflow.TrendJob{Name: name}
 }
 
-func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string, stderr io.Writer) error {
+func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string, stderr io.Writer, loc *time.Location) error {
 	startedAt := time.Now().UTC()
 
 	fmt.Fprintf(stderr, "workflow %q: starting\n", plan.Workflow.Name)
@@ -1136,7 +1144,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 
 	// Build analyzer options from plan defaults
 	analyzerOpts := buildWorkflowAnalyzerOptions(plan)
-	reportOpts, err := buildWorkflowReportOptions(plan)
+	reportOpts, err := buildWorkflowReportOptions(plan, loc)
 	if err != nil {
 		return finalizeWorkflow(outputDir, &mf, startedAt, stderr, err)
 	}
@@ -1159,7 +1167,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 	// --- Compare phase ---
 	for _, job := range plan.Compare {
 		fmt.Fprintf(stderr, "  compare %q\n", job.Name)
-		rec, cerr := runWorkflowCompareJob(outputDir, job, windowReports)
+		rec, cerr := runWorkflowCompareJob(outputDir, job, windowReports, loc)
 		mf.Steps = append(mf.Steps, rec)
 		if cerr != nil {
 			return finalizeWorkflow(outputDir, &mf, startedAt, stderr, cerr)
@@ -1169,7 +1177,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 	// --- Trend phase ---
 	for _, job := range plan.Trend {
 		fmt.Fprintf(stderr, "  trend %q\n", job.Name)
-		rec, terr := runWorkflowTrendJob(outputDir, job, windowReports)
+		rec, terr := runWorkflowTrendJob(outputDir, job, windowReports, loc)
 		mf.Steps = append(mf.Steps, rec)
 		if terr != nil {
 			return finalizeWorkflow(outputDir, &mf, startedAt, stderr, terr)
@@ -1290,18 +1298,29 @@ func runWorkflowAnalyzeWindow(
 	// Resolve snapshot metadata
 	result.Snapshot = resolveAnalyzeSnapshotMetadata(snapshotMeta, result.Summary)
 
-	// Render to JSON
-	// Workflow artifacts and snapshots are archives: always full diagnostics (ADR 0011 §3).
-	payload, err := report.RenderJSONWithOptions(*result, report.ArchiveOptions(reportOpts))
+	// Artifacts and snapshots are archives: always full diagnostics (ADR 0011 §3).
+	// The snapshot file stays UTC. --tz changes the analyze artifact the operator reads.
+	archiveOpts := report.ArchiveOptions(reportOpts)
+	archiveOpts.Display = nil
+	archive, err := report.RenderJSONWithOptions(*result, archiveOpts)
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindError, "render analyze JSON for %q: %w", w.Name, err)
 	}
+	artifact := archive
+	if reportOpts.Display != nil && reportOpts.Display != time.UTC {
+		artifact, err = report.RenderJSONWithOptions(*result, report.ArchiveOptions(reportOpts))
+		if err != nil {
+			rec.Status = "failed"
+			rec.Error = err.Error()
+			return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindError, "render analyze JSON for %q: %w", w.Name, err)
+		}
+	}
 
 	// Write to artifact path
 	artifactPath := workflow.ArtifactPath(outputDir, "analyze", w.Name, "json")
-	if err := os.WriteFile(artifactPath, []byte(payload), 0o644); err != nil {
+	if err := os.WriteFile(artifactPath, []byte(artifact), 0o644); err != nil {
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindOutput, "write analyze artifact for %q: %w", w.Name, err)
@@ -1312,9 +1331,9 @@ func runWorkflowAnalyzeWindow(
 		var savedPath string
 		var err error
 		if overwriteSnapshot {
-			savedPath, err = snapshot.SaveJSONOverwrite(snapshotDir, w.Name, []byte(payload))
+			savedPath, err = snapshot.SaveJSONOverwrite(snapshotDir, w.Name, []byte(archive))
 		} else {
-			savedPath, err = snapshot.SaveJSON(snapshotDir, w.Name, []byte(payload))
+			savedPath, err = snapshot.SaveJSON(snapshotDir, w.Name, []byte(archive))
 		}
 		if err != nil {
 			rec.Status = "failed"
@@ -1329,15 +1348,15 @@ func runWorkflowAnalyzeWindow(
 	rec.Execution = "executed"
 	rec.Artifacts = []string{"analyze/" + w.Name + ".json"}
 
-	// Parse the JSON for downstream compare/trend consumption
-	reportInput, err := comparepkg.DecodeReportJSON([]byte(payload))
+	// Compare and trend read the UTC archive. HTML applies --tz when it renders.
+	reportInput, err := comparepkg.DecodeReportJSON([]byte(archive))
 	if err != nil {
 		rec.Status = "failed"
 		rec.Error = fmt.Sprintf("decode generated report: %v", err)
-		return rec, payload, comparepkg.InputReport{}, clierr.Errorf(clierr.KindCorrupt, "decode analyze report for %q: %w", w.Name, err)
+		return rec, artifact, comparepkg.InputReport{}, clierr.Errorf(clierr.KindCorrupt, "decode analyze report for %q: %w", w.Name, err)
 	}
 
-	return rec, payload, reportInput, nil
+	return rec, artifact, reportInput, nil
 }
 
 // runAnalyzeToResult runs the analysis pipeline and returns the raw result without rendering.
@@ -1402,6 +1421,7 @@ func runWorkflowCompareJob(
 	outputDir string,
 	job workflow.CompareJob,
 	windowReports map[string]comparepkg.InputReport,
+	loc *time.Location,
 ) (workflow.StepRecord, error) {
 	rec := workflow.StepRecord{
 		Kind: "compare",
@@ -1432,7 +1452,7 @@ func runWorkflowCompareJob(
 		case "json":
 			output, err = comparepkg.RenderJSON(result)
 		case "html":
-			output, err = comparepkg.RenderHTML(result)
+			output, err = comparepkg.RenderHTMLIn(result, loc)
 		default:
 			err = clierr.Errorf(clierr.KindUsage, "unsupported format %q", format)
 		}
@@ -1460,6 +1480,7 @@ func runWorkflowTrendJob(
 	outputDir string,
 	job workflow.TrendJob,
 	windowReports map[string]comparepkg.InputReport,
+	loc *time.Location,
 ) (workflow.StepRecord, error) {
 	rec := workflow.StepRecord{
 		Kind: "trend",
@@ -1500,7 +1521,7 @@ func runWorkflowTrendJob(
 		case "json":
 			output, renderErr = trendpkg.RenderJSON(result)
 		case "html":
-			output, renderErr = trendpkg.RenderHTML(result)
+			output, renderErr = trendpkg.RenderHTMLIn(result, loc)
 		default:
 			renderErr = clierr.Errorf(clierr.KindUsage, "unsupported format %q", format)
 		}
@@ -1563,7 +1584,7 @@ func buildWorkflowAnalyzerOptions(plan workflow.Plan) analyzer.Options {
 	return opts
 }
 
-func buildWorkflowReportOptions(plan workflow.Plan) (report.Options, error) {
+func buildWorkflowReportOptions(plan workflow.Plan, loc *time.Location) (report.Options, error) {
 	mode := report.SQLContextSummary
 	if da := plan.Defaults.Analyze; da.SQLContext != "" {
 		var err error
@@ -1572,7 +1593,7 @@ func buildWorkflowReportOptions(plan workflow.Plan) (report.Options, error) {
 			return report.Options{}, err
 		}
 	}
-	return report.Options{SQLContextMode: mode}, nil
+	return report.Options{SQLContextMode: mode, Display: loc}, nil
 }
 
 // workflowManifestFromJSON is a test helper to parse a manifest JSON file.

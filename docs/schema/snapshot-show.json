@@ -1,0 +1,173 @@
+{
+  "$id": "binlogviz:schema/snapshot-show",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "type": "integer"
+    },
+    "snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "binlogviz_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "filters": {
+          "additionalProperties": false,
+          "properties": {
+            "dml": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "exclude_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "exclude_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_schema": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "include_table": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "exclude_schema",
+            "exclude_table",
+            "include_schema",
+            "include_table"
+          ],
+          "type": "object"
+        },
+        "input": {
+          "additionalProperties": false,
+          "properties": {
+            "files": {
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "from_dir": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "files",
+            "from_dir",
+            "prefix"
+          ],
+          "type": "object"
+        },
+        "input_mode": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "summary": {
+          "additionalProperties": false,
+          "properties": {
+            "total_events": {
+              "type": "integer"
+            },
+            "total_rows": {
+              "type": "integer"
+            },
+            "total_transactions": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "total_events",
+            "total_rows",
+            "total_transactions"
+          ],
+          "type": "object"
+        },
+        "warnings": {
+          "type": "integer"
+        },
+        "window": {
+          "additionalProperties": false,
+          "properties": {
+            "end_time": {
+              "type": "string"
+            },
+            "start_time": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "end_time",
+            "start_time"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "binlogviz_version",
+        "created_at",
+        "filters",
+        "input",
+        "input_mode",
+        "label",
+        "name",
+        "path",
+        "summary",
+        "warnings",
+        "window"
+      ],
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "snapshot"
+  ],
+  "title": "snapshot-show",
+  "type": "object"
+}

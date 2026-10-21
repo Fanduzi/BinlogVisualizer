@@ -1,12 +1,13 @@
 module binlogviz
 
-go 1.26.1
+go 1.26.10
 
 require (
 	github.com/go-mysql-org/go-mysql v1.14.0
 	github.com/klauspost/compress v1.18.4
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.8.1
@@ -19,7 +20,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/apache/arrow-go/v18 v18.1.0 // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/google/flatbuffers v25.1.24+incompatible // indirect
 	github.com/google/uuid v1.6.0 // indirect

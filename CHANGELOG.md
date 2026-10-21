@@ -4,8 +4,14 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Security
+
+- `github.com/go-viper/mapstructure/v2` v2.2.1 -> v2.4.0 (indirect, through `go-duckdb` v1.8.5, which is unchanged) for GO-2025-3787 (GHSA-fv92-fjc5-jj9h, fixed in v2.3.0) and GHSA-2464-8j7c-4cjm (fixed in v2.4.0): decode errors could include the raw input value. Successful decodes are unchanged; decode error messages no longer echo the value.
+- Build with Go 1.26.10. govulncheck reported 24 Go 1.26.1 standard library vulnerabilities reachable from binlogviz, including GO-2026-6809 (`crypto/x509`), GO-2026-6599/6600 (`html/template`), GO-2026-6603/6611/6612/6613/6617 (`net/http`) and GO-2026-6604 (`os`). Building from source requires Go 1.26.10+. No module changes.
+
 ### Added
 
+- `binlogviz schema` prints the JSON Schema of every versioned JSON output. The same documents are `docs/schema/*.json` and are packed into the release archive. `--tz` selects an IANA display zone for rendered timestamps. Absent or `UTC` keeps the previous ` UTC` / `Z` spelling, so existing output is unchanged. `report_version` stays 4 (#379), `plan_version` stays 2, and `schema_version` stays 1. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. An offset or a trailing ` UTC` is that instant. A DST gap or overlap, and an offset past 14:00 or with minutes other than 00, 30, or 45, is exit 3. Snapshot files stay UTC, including `snapshot save`. Compare HTML Minute cells follow `--tz`. `Local` and an unknown zone are exit 3 (ADR 0017, #255).
 - Version-matrix fixtures for MySQL 5.7.44, 8.4.11, 9.7.2 and MariaDB 10.11.19, 11.8.9: `analyze` is compared with each server's own `mysqlbinlog -vv` decode, and the flashback boundary (FULL undone, MINIMAL, DDL, missing row metadata and 11.8 generated columns refused) is tested (#366).
 - `flashback` warns `mariadb_apply_unsupported` for a MariaDB binlog.
 

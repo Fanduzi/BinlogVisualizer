@@ -8,6 +8,7 @@ package compare
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"binlogviz/internal/i18n"
 )
@@ -263,5 +264,49 @@ func TestRenderHTMLLocalizesHotIntervalSourcesToChinese(t *testing.T) {
 		if strings.Contains(html, token) {
 			t.Fatalf("expected source cell not to leak English token %q", token)
 		}
+	}
+}
+
+func TestCompareHTMLMinuteFollowsTimezone(t *testing.T) {
+	i18n.ResetForTesting()
+	i18n.MustInit("en")
+	t.Cleanup(i18n.ResetForTesting)
+	loc, err := time.LoadLocation("Asia/Kolkata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := CompareResult{
+		CurrentLabel:  "current",
+		BaselineLabel: "baseline",
+		Summary: SummaryDelta{
+			CurrentTotalRows: 10, BaselineTotalRows: 5, TotalRowsDelta: 5,
+		},
+		DiagnosticsDelta: DiagnosticsDelta{
+			HotIntervalDelta: HotIntervalDelta{
+				TopItems: []HotIntervalItem{
+					{Minute: "2026-03-20T10:05:00Z", Source: "current", TotalRows: 600, TxnCount: 10},
+				},
+			},
+		},
+		OperationMix: []OperationDelta{},
+		AlertChanges: AlertDelta{},
+	}
+	html, err := RenderHTMLIn(result, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := strings.ReplaceAll(html, "&#43;", "+")
+	if !strings.Contains(plain, "2026-03-20T15:35:00+05:30") {
+		t.Fatal("minute cell ignored --tz")
+	}
+	if strings.Contains(plain, "2026-03-20T10:05:00Z") {
+		t.Fatal("minute cell stayed Z")
+	}
+	untimed, err := RenderHTML(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(untimed, "2026-03-20T10:05:00Z") {
+		t.Fatal("default minute cell changed")
 	}
 }

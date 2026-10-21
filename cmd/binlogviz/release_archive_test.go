@@ -57,6 +57,16 @@ func TestReleaseArchiveListsBinarySampleAndWorkflowPlan(t *testing.T) {
 			t.Fatalf("release archive must list %q so extract-and-run works without a git clone; got:\n%s", name, listing)
 		}
 	}
+	schemas, err := filepath.Glob(filepath.Join(repoRoot, "docs", "schema", "*.json"))
+	if err != nil || len(schemas) == 0 {
+		t.Fatalf("docs/schema: %v", err)
+	}
+	for _, path := range schemas {
+		name := "docs/schema/" + filepath.Base(path)
+		if !tarListingContains(listing, name) {
+			t.Fatalf("release archive must list %q; got:\n%s", name, listing)
+		}
+	}
 
 	extractDir := filepath.Join(tmp, "extract")
 	if err := os.MkdirAll(extractDir, 0o755); err != nil {
