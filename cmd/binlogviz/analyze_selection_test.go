@@ -379,3 +379,88 @@ func TestAnalyzeMatchedGTIDDroppedFormMessage(t *testing.T) {
 		t.Fatalf("zh-CN: exit=%d err=%v", ExitCode(err), err)
 	}
 }
+
+// TestAnalyzeMatchedGTIDFormMessages pins the two MariaDB messages that do
+// not involve a repeat (#390 QA P2/P3), in en and zh-CN: the shared form
+// that would hold 2 intervals was dropped after the per-server one, and a
+// per-server count of 11 after the shared form was dropped. Neither says a
+// sequence number repeats.
+func TestAnalyzeMatchedGTIDFormMessages(t *testing.T) {
+	old := analyzer.MatchedGTIDIntervalLimit
+	t.Cleanup(func() { analyzer.MatchedGTIDIntervalLimit = old })
+	formDropped := []string{}
+	for seq := 1; seq <= 12; seq++ {
+		formDropped = append(formDropped, fmt.Sprintf("0-%d-%d", 7+seq%2, seq))
+	}
+	for seq := 2; seq <= 10; seq += 2 {
+		formDropped = append(formDropped, fmt.Sprintf("1-9-%d", seq)) // unmatched: the seen ranges pass 4
+	}
+	perServer := []string{}
+	for i := 1; i <= 30; i++ {
+		perServer = append(perServer, fmt.Sprintf("0-%d-%d", 7+(i-1)%3, 2*i))
+	}
+	for _, tc := range []struct {
+		name      string
+		limit     int
+		gtids     []string
+		exclude   string
+		intervals int
+		en, zh    string
+	}{
+		{"form dropped", 4, formDropped, "1-9-1..100", 2,
+			"need at least 2 separate GTID intervals, within the limit of 4, but the form that holds them was dropped when all domains together passed 4",
+			"至少需要 2 个独立的 GTID 区间，没有超过上限 4，但能容纳它们的形式已在所有 domain 合计超过 4 个时放弃"},
+		{"per server", 10, perServer, "99-99-99", 11,
+			"need at least 11 separate GTID intervals kept per server; at most 10 can be tracked, and the shared form, which can need fewer, was dropped when all domains together passed 10",
+			"至少需要 11 个按 server 记录的独立 GTID 区间，最多只能跟踪 10 个；可能需要更少区间的共享形式，已在所有 domain 合计超过 10 个时放弃"},
+	} {
+		analyzer.MatchedGTIDIntervalLimit = tc.limit
+		selector, err := analyzer.ParseGTIDSelector(nil, []string{tc.exclude})
+		if err != nil {
+			t.Fatal(err)
+		}
+		base := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+		events := []binlog.RawEvent{{Timestamp: base, EventType: "FORMAT_DESCRIPTION", PositionStart: 4, PositionEnd: 100, Position: 100, ServerVersion: "10.11.6-MariaDB-log", ServerFlavor: "mariadb"}}
+		pos := int64(100)
+		add := func(ev binlog.RawEvent) {
+			ev.Timestamp, ev.PositionStart, ev.PositionEnd, ev.Position, ev.ServerFlavor = base, pos, pos+20, uint32(pos+20), "mariadb"
+			events = append(events, ev)
+			pos += 20
+		}
+		for _, gtid := range tc.gtids {
+			add(binlog.RawEvent{EventType: "GTID", GTID: gtid})
+			add(binlog.RawEvent{EventType: "QUERY", Query: "BEGIN"})
+			add(binlog.RawEvent{EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1})
+			add(binlog.RawEvent{EventType: "XID"})
+		}
+		run := func() error {
+			opts := analyzer.DefaultOptions()
+			opts.GTIDSelector = selector
+			stdout, err := captureStdoutRun(t, func() error {
+				return runAnalysisWithParser([]string{"synthetic.bin"}, opts, "json", &mockParser{events: events})
+			})
+			if stdout != "" {
+				t.Fatalf("%s: stdout %q", tc.name, stdout)
+			}
+			return err
+		}
+		i18n.ResetForTesting()
+		forceEnglishRuntimeOutput(t)
+		err = run()
+		kind, details := clierr.Of(err)
+		if ExitCode(err) != 10 || kind != clierr.KindResource || details["reason"] != "matched_gtid_intervals" || details["limit"] != tc.limit || details["intervals"] != tc.intervals {
+			t.Fatalf("%s: exit=%d kind=%v details=%v err=%v", tc.name, ExitCode(err), kind, details, err)
+		}
+		if !strings.Contains(err.Error(), tc.en) || strings.Contains(err.Error(), "repeat") {
+			t.Fatalf("%s: en message: %v", tc.name, err)
+		}
+		i18n.ResetForTesting()
+		if err := i18n.Init("zh-CN"); err != nil {
+			t.Fatal(err)
+		}
+		if err := run(); ExitCode(err) != 10 || !strings.Contains(err.Error(), tc.zh) || strings.Contains(err.Error(), "重复") {
+			t.Fatalf("%s: zh-CN: exit=%d err=%v", tc.name, ExitCode(err), err)
+		}
+	}
+	i18n.ResetForTesting()
+}

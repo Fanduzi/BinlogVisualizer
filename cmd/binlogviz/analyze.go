@@ -1327,9 +1327,15 @@ func analyzerResourceError(err error) error {
 		return nil
 	}
 	key := "error.matchedGTIDIntervals"
-	if limit.Dropped {
-		// The per-server form was dropped for every domain (fail-safe).
+	switch limit.Reason {
+	case analyzer.MatchedGTIDLimitRepeat:
+		// A sequence number repeats after the per-server form was dropped
+		// for every domain (fail-safe).
 		key = "error.matchedGTIDIntervalsDropped"
+	case analyzer.MatchedGTIDLimitPerServer:
+		key = "error.matchedGTIDIntervalsPerServer"
+	case analyzer.MatchedGTIDLimitFormDropped:
+		key = "error.matchedGTIDIntervalsFormDropped"
 	}
 	msg := i18n.Tf(key, map[string]any{"Limit": limit.Limit, "Intervals": limit.Intervals})
 	return clierr.WithDetails(clierr.KindResource, &localizedCause{msg: msg, cause: limit}, map[string]any{

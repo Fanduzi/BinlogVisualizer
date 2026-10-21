@@ -1899,6 +1899,14 @@
     "description": "MariaDB 序列号重复需要按 server 记录区间，而这种形式已对所有 domain 放弃（退出码 10）",
     "other": "GTID 选择器匹配到的 MariaDB 事务至少需要 {{.Intervals}} 个按 server 记录的独立 GTID 区间（因为有序列号重复）；所有 domain 合计超过 {{.Limit}} 个时已放弃这种形式。请收窄 --include-gtids/--exclude-gtids，或拆分输入"
   },
+  "error.matchedGTIDIntervalsPerServer": {
+    "description": "共享形式已放弃后，GTID 选择器匹配到的 MariaDB 事务按 server 记录的区间数超过 matched_gtid_set 上限（退出码 10）",
+    "other": "GTID 选择器匹配到的 MariaDB 事务至少需要 {{.Intervals}} 个按 server 记录的独立 GTID 区间，最多只能跟踪 {{.Limit}} 个；可能需要更少区间的共享形式，已在所有 domain 合计超过 {{.Limit}} 个时放弃。请收窄 --include-gtids/--exclude-gtids，或拆分输入"
+  },
+  "error.matchedGTIDIntervalsFormDropped": {
+    "description": "GTID 选择器匹配到的 MariaDB 事务所需区间数在 matched_gtid_set 上限以内，但能容纳它们的形式已对所有 domain 放弃（退出码 10）",
+    "other": "GTID 选择器匹配到的 MariaDB 事务至少需要 {{.Intervals}} 个独立的 GTID 区间，没有超过上限 {{.Limit}}，但能容纳它们的形式已在所有 domain 合计超过 {{.Limit}} 个时放弃。请收窄 --include-gtids/--exclude-gtids，或拆分输入"
+  },
   "error.invalidMariaDBGTID": {
     "description": "MariaDB GTID 参数不是 domain-server-sequence 形式",
     "other": "无效的 MariaDB GTID {{.Value}}"

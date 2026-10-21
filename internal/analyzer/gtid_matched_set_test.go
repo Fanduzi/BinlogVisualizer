@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"binlogviz/internal/model"
 )
 
 // refRanges renders sorted unique sequence numbers the way the set should.
@@ -524,19 +527,25 @@ func TestMatchedGTIDSetDropExactCountsConflictedDomain(t *testing.T) {
 	}
 }
 
-// TestMatchedGTIDSetDropSharedCountsFormlessDomain (#384 QA F1): when the
-// shared form is dropped after the per-server one, the per-server count is
-// derived from the shared ranges before they are freed (1..10 alternating:
-// 10), not 0.
+// TestMatchedGTIDSetDropSharedCountsFormlessDomain (#384 QA F1, #390 QA
+// P3): when the shared form is dropped after the per-server one, the count
+// is taken before the shared ranges are freed, not 0. 1..10 alternating
+// needs 10 per server but 2 shared (1..10 on 7 and 8), and no sequence
+// number repeats, so the count is 2 and the message says the form was
+// dropped, not that a sequence number repeats.
 func TestMatchedGTIDSetDropSharedCountsFormlessDomain(t *testing.T) {
 	withLimit(t, 4)
 	all, matched := alternating(10)
 	for _, seq := range []int{12, 14, 16, 18} { // unmatched: the seen ranges pass 4
 		all = append(all, fmt.Sprintf("0-7-%d", seq))
 	}
-	limit := limitOf(t, func() error { _, err := matchedSetFrom(t, all, matched); return err }())
-	if limit.Intervals != 10 || !limit.Dropped {
-		t.Fatalf("got %+v, want 10 dropped", limit)
+	err := func() error { _, err := matchedSetFrom(t, all, matched); return err }()
+	limit := limitOf(t, err)
+	if limit.Intervals != 2 || !limit.Dropped || limit.Reason != MatchedGTIDLimitFormDropped {
+		t.Fatalf("got %+v, want 2 form_dropped", limit)
+	}
+	if msg := err.Error(); strings.Contains(msg, "repeat") || !strings.Contains(msg, "at least 2 separate GTID intervals, within the limit of 4, but the form that holds them was dropped") {
+		t.Fatalf("message: %v", msg)
 	}
 }
 
@@ -590,7 +599,10 @@ func TestMatchedGTIDSetSeenRangesAreBounded(t *testing.T) {
 // TestMatchedGTIDSetDropExactRecosts (#383 QA survivor): dropping the
 // per-server form recounts every domain, so a domain that rendered
 // per-server and now renders shared (3 servers x 3 ranges) is counted, and
-// the set fails instead of rendering 11 entries over a limit of 10.
+// the set fails instead of rendering 11 entries over a limit of 10. The
+// count is what the transactions need (#390 QA P2): 3 per server for domain
+// 1 and 2 shared for domain 0, 5, within the limit, with the per-server form
+// dropped.
 func TestMatchedGTIDSetDropExactRecosts(t *testing.T) {
 	withLimit(t, 10)
 	all, matched := alternating(8)
@@ -600,7 +612,306 @@ func TestMatchedGTIDSetDropExactRecosts(t *testing.T) {
 	}
 	set, err := matchedSetFrom(t, all, matched)
 	limit := limitOf(t, err)
-	if limit.Intervals != 11 || limit.Dropped {
-		t.Fatalf("got %+v (set %v), want 11 not dropped", limit, set.strings())
+	if limit.Intervals != 5 || limit.Reason != MatchedGTIDLimitFormDropped {
+		t.Fatalf("got %+v (set %v), want 5 form_dropped", limit, set.strings())
+	}
+}
+
+// TestMatchedGTIDSetSeenFirstThreeWriters is #390 QA P2 (seen_gappy_3writers
+// at a lower limit): writers 7, 8, 9 in turn on sequence numbers 2, 4, 6, ...
+// leave one range per transaction in every form; shared needs 3 entries per
+// range. The seen ranges are checked before a matched transaction is added,
+// so the shared form goes first and the run stops on the per-server count,
+// 11 (the stopping transaction included), not 33 (the shared cost).
+func TestMatchedGTIDSetSeenFirstThreeWriters(t *testing.T) {
+	withLimit(t, 10)
+	var all []string
+	matched := map[string]bool{}
+	for i := 1; i <= 30; i++ {
+		id := fmt.Sprintf("0-%d-%d", 7+(i-1)%3, 2*i)
+		all = append(all, id)
+		matched[id] = true
+	}
+	set, err := matchedSetFrom(t, all, matched)
+	limit := limitOf(t, err)
+	if limit.Intervals != 11 || limit.Reason != MatchedGTIDLimitPerServer || set.count != 11 {
+		t.Fatalf("got %+v after %d matched, want 11 per_server after 11", limit, set.count)
+	}
+	if real := trueNeed(all[:11], matched); limit.Intervals != real {
+		t.Fatalf("reported %d, real %d", limit.Intervals, real)
+	}
+	if msg := err.Error(); strings.Contains(msg, "repeat") || !strings.Contains(msg, "at least 11 separate GTID intervals kept per server; at most 10 can be tracked, and the shared form, which can need fewer, was dropped") {
+		t.Fatalf("message: %v", msg)
+	}
+}
+
+// TestMatchedGTIDSetDropExactReportsPerServerCount is the same root cause
+// on main (#390 QA P2, O1): 7 then 8 write the odd sequence numbers, an
+// unmatched 9 the even ones, so the seen ranges stay one range. Every
+// matched transaction is its own range: 11 per server, 22 shared. When the
+// per-server ranges pass the limit they are freed, the shared cost passes
+// it too, and the error reports 11, derived from the shared ranges, not 22.
+func TestMatchedGTIDSetDropExactReportsPerServerCount(t *testing.T) {
+	withLimit(t, 10)
+	var all []string
+	matched := map[string]bool{}
+	for k := 0; k < 20; k++ {
+		writer := 7
+		if k >= 10 {
+			writer = 8
+		}
+		odd, even := fmt.Sprintf("0-%d-%d", writer, 2*k+1), fmt.Sprintf("0-9-%d", 2*k+2)
+		all = append(all, odd, even)
+		matched[odd] = true
+	}
+	set, err := matchedSetFrom(t, all, matched)
+	limit := limitOf(t, err)
+	if limit.Intervals != 11 || limit.Reason != MatchedGTIDLimitPlain || limit.Dropped || set.count != 11 {
+		t.Fatalf("got %+v after %d matched, want 11 plain after 11", limit, set.count)
+	}
+	if real := trueNeed(all[:21], matched); limit.Intervals != real {
+		t.Fatalf("reported %d, real %d", limit.Intervals, real)
+	}
+}
+
+// TestMatchedGTIDSetRepeatBoundsAreExact pins the repeat count where the
+// labels next to the repeated sequence number are known (#390 QA P3, the
+// rd_* survivors): a looser lower bound would still be safe, but less
+// precise. Each case drops the per-server form on the alternating domain,
+// then repeats a sequence number of the other one. The reported count
+// equals the real need of the matched transactions read.
+func TestMatchedGTIDSetRepeatBoundsAreExact(t *testing.T) {
+	withLimit(t, 8)
+	alt := func(domain int, skip string) ([]string, map[string]bool) {
+		var all []string
+		matched := map[string]bool{}
+		for seq := 1; seq <= 12; seq++ {
+			id := fmt.Sprintf("%d-%d-%d", domain, 7+seq%2, seq)
+			all = append(all, id)
+			matched[id] = id != skip
+		}
+		return all, matched
+	}
+	join := func(head []string, domain int, skip string, tail ...string) ([]string, map[string]bool) {
+		all, matched := alt(domain, skip)
+		for _, id := range head {
+			matched[id] = true
+		}
+		for _, id := range tail {
+			matched[id] = true
+		}
+		return append(append(append([]string{}, head...), all...), tail...), matched
+	}
+	run := []int{}
+	for i := 1; i <= 10; i++ {
+		run = append(run, i)
+	}
+	sevenRun := make([]string, 0, 11)
+	for _, i := range run {
+		sevenRun = append(sevenRun, fmt.Sprintf("0-7-%d", i))
+	}
+	sevenRun = append(sevenRun, "0-8-20")
+	for _, tc := range []struct {
+		name  string
+		input func() ([]string, map[string]bool)
+		want  int
+	}{
+		// 0-7-1..10 has no label change, so every label in it is known:
+		// 0-8-5 is a range of its own (3 for domain 0, 4 shared for domain 1).
+		{"no change in the range", func() ([]string, map[string]bool) { return join(sevenRun, 1, "1-8-3", "0-8-5") }, 7},
+		// 10..14 is 7,7,8,8,7: the label of 10, the range start, is known
+		// to be 7, so 0-8-11 cannot join it and joins 0-8-12 only.
+		{"known range start", func() ([]string, map[string]bool) {
+			return join([]string{"0-7-10", "0-7-11", "0-8-12", "0-8-13", "0-7-14"}, 1, "1-8-3", "0-8-11")
+		}, 7},
+		// 1-8-1 repeats 1, the start of 1-7-1's range: found there, it is a
+		// range of its own (2 for domain 1, 4 shared for domain 0).
+		{"repeat at the range start", func() ([]string, map[string]bool) { return join(nil, 0, "0-8-3", "1-7-1", "1-8-1") }, 6},
+	} {
+		all, matched := tc.input()
+		limit := limitOf(t, func() error { _, err := matchedSetFrom(t, all, matched); return err }())
+		if limit.Intervals != tc.want || limit.Reason != MatchedGTIDLimitRepeat {
+			t.Fatalf("%s: got %+v, want %d repeat", tc.name, limit, tc.want)
+		}
+		if real := trueNeed(all, matched); limit.Intervals != real {
+			t.Fatalf("%s: reported %d, real %d", tc.name, limit.Intervals, real)
+		}
+	}
+}
+
+// TestMatchedGTIDSetLimitErrorIsTruthful: for random MariaDB inputs, every
+// limit error reports at most the real need of the matched transactions read
+// up to the stop (a per-server count when the shared form was dropped
+// earlier), a count over the limit for the plain message and within it for
+// form_dropped, and the repeat message only when a sequence number repeated.
+func TestMatchedGTIDSetLimitErrorIsTruthful(t *testing.T) {
+	withLimit(t, 8)
+	rng := rand.New(rand.NewSource(390))
+	seen := map[MatchedGTIDLimitReason]int{}
+	for round := 0; round < 3000; round++ {
+		var all []string
+		matched := map[string]bool{}
+		servers, n := 1+rng.Intn(3), 5+rng.Intn(40)
+		for i := 1; i <= n; i++ {
+			domain, seq := rng.Intn(2), i*(1+round%2)
+			if rng.Intn(15) == 0 {
+				seq = 1 + rng.Intn(seq) // may repeat
+			}
+			id := fmt.Sprintf("%d-%d-%d", domain, 7+rng.Intn(servers), seq)
+			if round%3 == 0 {
+				id = fmt.Sprintf("%d-%d-%d", domain, 7+i%servers, seq)
+			}
+			all = append(all, id)
+			if _, ok := matched[id]; !ok {
+				matched[id] = rng.Intn(6) != 0
+			}
+		}
+		set := newMatchedGTIDSet()
+		var err error
+		stop := 0
+		for stop < len(all) && err == nil {
+			err = set.read(all[stop], matched[all[stop]])
+			stop++
+		}
+		if err == nil {
+			continue
+		}
+		limit := limitOf(t, err)
+		seen[limit.Reason]++
+		prefix := all[:stop]
+		repeats := map[string]bool{}
+		repeated := false
+		for _, id := range prefix {
+			d, _, q, _ := mariaIdentity(id)
+			key := fmt.Sprint(d, "-", q)
+			repeated = repeated || repeats[key]
+			repeats[key] = true
+		}
+		real := trueNeed(prefix, matched)
+		bad := ""
+		switch limit.Reason {
+		case MatchedGTIDLimitPlain:
+			if limit.Intervals <= limit.Limit || limit.Intervals > real {
+				bad = "plain"
+			}
+		case MatchedGTIDLimitFormDropped:
+			if limit.Intervals > limit.Limit || limit.Intervals > real {
+				bad = "form_dropped"
+			}
+		case MatchedGTIDLimitRepeat:
+			if !repeated || limit.Intervals > real {
+				bad = "repeat"
+			}
+		case MatchedGTIDLimitPerServer:
+			if limit.Intervals <= limit.Limit {
+				bad = "per_server"
+			}
+		}
+		if bad != "" || limit.Dropped != (limit.Reason != MatchedGTIDLimitPlain) {
+			t.Fatalf("round %d: %s: %+v, real %d; input %v matched %v", round, bad, limit, real, prefix, matched)
+		}
+	}
+	for _, reason := range []MatchedGTIDLimitReason{MatchedGTIDLimitPlain, MatchedGTIDLimitFormDropped, MatchedGTIDLimitRepeat, MatchedGTIDLimitPerServer} {
+		if seen[reason] < 20 {
+			t.Fatalf("only %d rounds stopped with %q: %v", seen[reason], reason, seen)
+		}
+	}
+}
+
+// trueNeed is the reference count (#390 QA): per domain, the per-server ranges when a sequence number repeats among all identities read, else min(per-server, shared ranges x servers).
+func trueNeed(all []string, matched map[string]bool) int {
+	type dom struct {
+		seen    map[uint64]int
+		per     map[uint64]map[uint64]bool
+		shared  map[uint64]bool
+		repeats bool
+	}
+	doms := map[uint64]*dom{}
+	for _, id := range all {
+		d, s, q, _ := mariaIdentity(id)
+		x := doms[d]
+		if x == nil {
+			x = &dom{seen: map[uint64]int{}, per: map[uint64]map[uint64]bool{}, shared: map[uint64]bool{}}
+			doms[d] = x
+		}
+		x.seen[q]++
+		if x.seen[q] > 1 {
+			x.repeats = true
+		}
+		if !matched[id] {
+			continue
+		}
+		if x.per[s] == nil {
+			x.per[s] = map[uint64]bool{}
+		}
+		x.per[s][q] = true
+		x.shared[q] = true
+	}
+	none := func(uint64) string { return "" }
+	span := func(a, b uint64) string { return "" }
+	total := 0
+	for _, x := range doms {
+		if len(x.per) == 0 {
+			continue
+		}
+		per := 0
+		for _, seqs := range x.per {
+			per += len(refRanges(seqs, none, span))
+		}
+		shared := len(refRanges(x.shared, none, span)) * len(x.per)
+		if x.repeats || per <= shared {
+			total += per
+		} else {
+			total += shared
+		}
+	}
+	return total
+}
+
+// TestMatchedGTIDSetMariaDBPositionWindow (#390 QA P3, read_keep_matched_only):
+// with a position window, a MariaDB transaction that matches the selector
+// but has no event inside the window is read for the repeat check only; it
+// is not added to matched_gtid_set or counted.
+func TestMatchedGTIDSetMariaDBPositionWindow(t *testing.T) {
+	base := time.Date(2026, 10, 21, 9, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	pos := int64(4)
+	add := func(ev model.NormalizedEvent) {
+		ev.Timestamp, ev.ServerFlavor, ev.BinlogPath = base, "mariadb", "mariadb-bin.000001"
+		ev.PositionStart, ev.PositionEnd = pos, pos+20
+		events = append(events, ev)
+		pos += 20
+	}
+	for seq := 1; seq <= 6; seq++ {
+		add(model.NormalizedEvent{EventType: "GTID", GTID: fmt.Sprintf("0-%d-%d", 7+seq/4, seq)})
+		add(model.NormalizedEvent{EventType: "BEGIN"})
+		add(model.NormalizedEvent{EventType: "ROWS", Schema: "shop", Table: "orders", Operation: "INSERT", RowCount: 1})
+		add(model.NormalizedEvent{EventType: "XID"})
+	}
+	selector, err := ParseGTIDSelector(nil, []string{"99-99-99"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Each transaction is 80 bytes from 4: 1-3 end at 244, 4-6 after it.
+	stop, start := int64(244), int64(244)
+	for _, tc := range []struct {
+		name        string
+		start, stop *int64
+		want        []string
+	}{
+		{"stop position", nil, &stop, []string{"0-7-1..3"}},
+		{"start position", &start, nil, []string{"0-8-4..6"}},
+	} {
+		opts := DefaultOptions()
+		opts.GTIDSelector = selector
+		opts.StartPosition, opts.StopPosition = tc.start, tc.stop
+		result, err := New(opts).Analyze(events)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sel := result.Selection
+		if sel == nil || !reflect.DeepEqual(sel.MatchedGTIDSet, tc.want) || sel.MatchedTransactions == nil || *sel.MatchedTransactions != 3 {
+			t.Fatalf("%s: selection %+v", tc.name, sel)
+		}
 	}
 }
