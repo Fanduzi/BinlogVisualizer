@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -74,81 +75,21 @@ func TestLargeInputBaseline(t *testing.T) {
 	)
 	cmd.WaitDelay = 3 * time.Second
 	setChildDeathSignal(cmd)
-	out, err := cmd.CombinedOutput()
+	out, runErr := cmd.CombinedOutput()
 	t.Logf("%s", out)
-	reportLargeInputSummary(t, string(out), err)
-	if err != nil {
-		t.Fatalf("large-input baseline: %v\n%s", err, out)
-	}
-	text := string(out)
-	if strings.Count(text, "large-input analyze scale=") != 2 || strings.Count(text, "large-input flashback scale=") != 2 {
-		t.Fatalf("child did not measure both analyze and flashback runs:\n%s", text)
-	}
-	if !strings.Contains(text, "--- PASS: TestLargeInputBaseline") {
-		t.Fatalf("child did not pass:\n%s", text)
-	}
-	const marker = "large-input large_bytes="
-	i := strings.Index(text, marker)
-	if i < 0 {
-		t.Fatalf("child did not report the large file size:\n%s", text)
-	}
-	size, convErr := strconv.ParseInt(strings.Fields(text[i+len(marker):])[0], 10, 64)
-	if convErr != nil || size < largeInputMinBytes {
-		t.Fatalf("large file is %d bytes, want at least %d", size, largeInputMinBytes)
-	}
-}
-
-// reportLargeInputSummary makes the measurements visible in CI. CI's verify
-// step is plain `go test ./...`, and in package-list mode go test discards
-// a passing package's output, t.Log and stderr alike, so neither shows. Every
-// step of a GitHub Actions job gets $GITHUB_STEP_SUMMARY, a file whose
-// markdown is shown on the run's summary page; the summary lines go there.
-// Outside Actions the lines go to t.Log (seen with -v), and to stderr when a
-// value is within 1.5x of its cap or a CPU retry happened.
-func reportLargeInputSummary(t *testing.T, out string, runErr error) {
-	t.Helper()
-	var lines []string
-	alert := false
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(line, "large-input summary "):
-			alert = alert || strings.Contains(line, " near_cap=")
-		case strings.HasPrefix(line, "large-input fault="),
-			strings.HasPrefix(line, "large-input large_bytes="),
-			strings.HasPrefix(line, "large-input attempts "):
-		case strings.Contains(line, "large-input ") && strings.Contains(line, " retry: "):
-			alert = true
-		default:
-			continue
-		}
-		lines = append(lines, line)
-	}
-	status := "pass"
-	if runErr != nil {
-		status = "FAIL: " + runErr.Error()
-	}
-	body := strings.Join(lines, "\n")
-	t.Logf("TestLargeInputBaseline summary (%s; value/cap(headroom)):\n%s", status, body)
+	// Judge first, then write the summary, so the summary carries the
+	// parent's verdict and the failing check.
+	outcome := evaluateLargeInputChild(string(out), runErr)
+	body, alert := outcome.summary()
+	t.Logf("%s", body)
 	if alert {
-		fmt.Fprintf(os.Stderr, "TestLargeInputBaseline: a value is within %.1fx of its cap or a CPU retry ran (%s)\n%s\n", nearCapFactor, status, body)
+		fmt.Fprintln(os.Stderr, body)
 	}
-	path := os.Getenv("GITHUB_STEP_SUMMARY")
-	if path == "" {
-		return
+	if err := appendStepSummary(os.Getenv("GITHUB_STEP_SUMMARY"), body); err != nil {
+		t.Errorf("TestLargeInputBaseline could not write the CI step summary: %v", err)
 	}
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
-	if err != nil {
-		t.Logf("GITHUB_STEP_SUMMARY: %v", err)
-		return
-	}
-	defer f.Close()
-	head := "### TestLargeInputBaseline (" + status + ")\n\nvalue/cap(headroom); near_cap lists values within 1.5x of their cap.\n\n"
-	if alert {
-		head = "### ⚠️ TestLargeInputBaseline (" + status + "): near a cap or retried\n\nvalue/cap(headroom); near_cap lists values within 1.5x of their cap.\n\n"
-	}
-	if _, err := fmt.Fprintf(f, "%s```\n%s\n```\n", head, body); err != nil {
-		t.Logf("GITHUB_STEP_SUMMARY: %v", err)
+	if outcome.err != nil {
+		t.Fatalf("large-input baseline: %v\n%s", outcome.err, out)
 	}
 }
 
@@ -248,6 +189,7 @@ var largeInputFaults = map[string]bool{
 	"quadratic":  true, // analyze: O(n) extra work per event
 	"slow":       true, // analyze: fixed extra CPU per event
 	"pause":      true, // analyze: 7s sleep once (must pass)
+	"slowfirst":  true, // analyze: slow on the first measured pair only (must pass, attempts=2)
 	"pertable":   true, // analyze: 512KB kept per distinct table
 	"minuteheap": true, // analyze: 16KB kept per minute bucket
 	"minutescan": true, // analyze: every event walks every minute bucket
@@ -291,6 +233,8 @@ func largeInputChild(t *testing.T) {
 	largeBytes := writeScaledBinlog(t, shape, largePath, largeN)
 	fmt.Printf("large-input large_bytes=%d small_bytes=%d warm_bytes=%d txns=%d,%d tables=%d minutes=%d,%d\n",
 		largeBytes, smallBytes, warm, smallN, largeN, largeInputTables, spanMinutes(smallN), spanMinutes(largeN))
+	fmt.Println(largeInputInput{Fault: fault, LargeBytes: largeBytes, SmallBytes: smallBytes, Txns: [2]int{smallN, largeN},
+		Minutes: [2]int{spanMinutes(smallN), spanMinutes(largeN)}, Tables: largeInputTables}.line())
 	if largeBytes < largeInputMinBytes {
 		t.Fatalf("large binlog is %d bytes, want at least %d", largeBytes, largeInputMinBytes)
 	}
@@ -299,23 +243,35 @@ func largeInputChild(t *testing.T) {
 		t.Fatalf("size ratio %.2f, want about 8 (small %d, large %d)", byteRatio, smallBytes, largeBytes)
 	}
 
-	measureAnalyze(t, dir+"/warm.bin", 2000, fault) // warmup: one-time report and runtime caches
-	analyzeAttempts, err := runGatedPair(func() (largeRun, largeRun) {
-		small := measureAnalyze(t, smallPath, smallN, fault)
-		large := measureAnalyze(t, largePath, largeN, fault)
+	// slowfirst is the slow fault on the first measured analyze pair only:
+	// a host stall in miniature. The retry must absorb it and pass.
+	analyzeFault := func(attempt int) string {
+		if fault != "slowfirst" {
+			return fault
+		}
+		if attempt == 1 {
+			return "slow"
+		}
+		return ""
+	}
+	measureAnalyze(t, dir+"/warm.bin", 2000, analyzeFault(0)) // warmup: one-time report and runtime caches
+	analyze := runGatedPair("analyze", func(attempt int) (largeRun, largeRun) {
+		small := measureAnalyze(t, smallPath, smallN, analyzeFault(attempt))
+		large := measureAnalyze(t, largePath, largeN, analyzeFault(attempt))
 		small.minutes, large.minutes = spanMinutes(smallN), spanMinutes(largeN)
 		printAnalyze("small", small)
 		printAnalyze("large", large)
 		return small, large
-	}, func(small, large largeRun) []gateFailure {
+	}, func(small, large largeRun) pairResult {
 		return checkScale("analyze", small, large, byteRatio, true, 0)
 	}, func(msg string) { fmt.Printf("large-input analyze retry: %s\n", msg) })
-	if err != nil {
-		t.Fatalf("analyze: %v", err)
+	fmt.Println(analyze.line())
+	if err := analyze.err(); err != nil {
+		t.Fatal(err)
 	}
 
 	measureFlashback(t, dir+"/warm.bin", fault) // same warmup, on the flashback path
-	flashAttempts, err := runGatedPair(func() (largeRun, largeRun) {
+	flash := runGatedPair("flashback", func(int) (largeRun, largeRun) {
 		smallFlash := measureFlashback(t, smallPath, fault)
 		largeFlash := measureFlashback(t, largePath, fault)
 		smallFlash.run.txns = smallN
@@ -326,14 +282,16 @@ func largeInputChild(t *testing.T) {
 		smallFlash.run.sql = smallFlash.sql
 		largeFlash.run.sql = largeFlash.sql
 		return smallFlash.run, largeFlash.run
-	}, func(small, large largeRun) []gateFailure {
-		fails := checkScale("flashback", small, large, byteRatio, false, maxFlashbackBytesPerTxn)
-		return append(fails, checkFlashbackOutput(small, large, byteRatio)...)
+	}, func(small, large largeRun) pairResult {
+		r := checkScale("flashback", small, large, byteRatio, false, maxFlashbackBytesPerTxn)
+		r.add(checkFlashbackOutput(small, large, byteRatio))
+		return r
 	}, func(msg string) { fmt.Printf("large-input flashback retry: %s\n", msg) })
-	if err != nil {
-		t.Fatalf("flashback: %v", err)
+	fmt.Println(flash.line())
+	if err := flash.err(); err != nil {
+		t.Fatal(err)
 	}
-	fmt.Printf("large-input attempts analyze=%d flashback=%d\n", analyzeAttempts, flashAttempts)
+	fmt.Printf("large-input attempts analyze=%d flashback=%d\n", analyze.Attempts, flash.Attempts)
 }
 
 // largeInputTables is how many tables the generated transactions rotate
@@ -412,19 +370,23 @@ func (s largeShape) event(j, i int) []byte {
 	return ev
 }
 
-// gateFailure is one failed gate. CPU failures (the process CPU ratio and
-// the per-event CPU cap) are the only ones a noisy host can produce: heap,
+// gateFailure is one failed gate: the check's name, the measured value and
+// its cap, and the message. CPU failures (the process CPU ratio and the
+// per-event CPU cap) are the only ones a noisy host can produce: heap,
 // allocation, spill and output size do not move under load.
 type gateFailure struct {
-	cpu bool
-	msg string
+	CPU   bool    `json:"cpu,omitempty"`
+	Check string  `json:"check"`
+	Value float64 `json:"value"`
+	Cap   float64 `json:"cap"`
+	Msg   string  `json:"msg"`
 }
 
 func (f gateFailure) String() string {
-	if f.cpu {
-		return "cpu: " + f.msg
+	if f.CPU {
+		return "cpu: " + f.Msg
 	}
-	return f.msg
+	return f.Msg
 }
 
 func joinFailures(fs []gateFailure) string {
@@ -435,57 +397,107 @@ func joinFailures(fs []gateFailure) string {
 	return strings.Join(parts, "; ")
 }
 
+// pairResult is one small/large pair's gauges and failed gates.
+type pairResult struct {
+	gauges []gauge
+	fails  []gateFailure
+}
+
+func (r *pairResult) add(o pairResult) {
+	r.gauges = append(r.gauges, o.gauges...)
+	r.fails = append(r.fails, o.fails...)
+}
+
+// largeInputVerdict is the child's final record for one path, printed as
+// one "large-input verdict {json}" line. The parent reads these instead of
+// counting measurement lines, so a retried pair (four scale= lines) is
+// judged on its verdict. Gauges and Failures are the last pair's; Retried
+// holds the first pair's failures when it was measured again.
+type largeInputVerdict struct {
+	Path     string        `json:"path"`
+	Attempts int           `json:"attempts"`
+	Pass     bool          `json:"pass"`
+	Gauges   []gauge       `json:"gauges"`
+	Failures []gateFailure `json:"failures,omitempty"`
+	Retried  []gateFailure `json:"retried,omitempty"`
+}
+
+func (v largeInputVerdict) err() error {
+	if v.Pass {
+		return nil
+	}
+	return fmt.Errorf("%s attempt %d: %s", v.Path, v.Attempts, joinFailures(v.Failures))
+}
+
+const largeInputVerdictPrefix = "large-input verdict "
+
+func (v largeInputVerdict) line() string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return largeInputVerdictPrefix + string(b)
+}
+
 // runGatedPair measures a small/large pair and checks it. When every
 // failure is a CPU failure, it measures the whole pair again, small and
 // large, and fails if the second pair fails any gate. Any other failure
 // fails at once. One host stall inflates one pair's CPU (QA saw 1 in 82
 // runs under 8 saturated cores, ratio 17.23 against 16); a super-linear
-// step fails every pair, so a second pair cannot hide it.
-func runGatedPair(measure func() (largeRun, largeRun), check func(small, large largeRun) []gateFailure, retry func(string)) (attempts int, err error) {
-	for attempts = 1; ; attempts++ {
-		small, large := measure()
-		fails := check(small, large)
-		if len(fails) == 0 {
-			return attempts, nil
+// step fails every pair, so a second pair cannot hide it. measure gets the
+// attempt number (1 or 2).
+func runGatedPair(path string, measure func(attempt int) (largeRun, largeRun), check func(small, large largeRun) pairResult, retry func(string)) largeInputVerdict {
+	v := largeInputVerdict{Path: path}
+	for v.Attempts = 1; ; v.Attempts++ {
+		small, large := measure(v.Attempts)
+		r := check(small, large)
+		v.Gauges, v.Failures = r.gauges, r.fails
+		if len(r.fails) == 0 {
+			v.Pass = true
+			return v
 		}
-		if attempts > 1 || !allCPU(fails) {
-			return attempts, fmt.Errorf("attempt %d: %s", attempts, joinFailures(fails))
+		if v.Attempts > 1 || !allCPU(r.fails) {
+			return v
 		}
-		retry("CPU-only failure on attempt 1, measuring the pair again: " + joinFailures(fails))
+		v.Retried = r.fails
+		retry("CPU-only failure on attempt 1, measuring the pair again: " + joinFailures(r.fails))
 	}
 }
 
 func allCPU(fs []gateFailure) bool {
 	for _, f := range fs {
-		if !f.cpu {
+		if !f.CPU {
 			return false
 		}
 	}
 	return true
 }
 
-func checkFlashbackOutput(small, large largeRun, byteRatio float64) []gateFailure {
-	var fails []gateFailure
+func checkFlashbackOutput(small, large largeRun, byteRatio float64) pairResult {
+	var r pairResult
 	sqlRatio := float64(large.sql) / float64(small.sql)
 	fmt.Printf("large-input flashback sql_ratio=%.2f\n", sqlRatio)
+	r.gauges = append(r.gauges, gauge{"sql_ratio", sqlRatio, byteRatio * 2, true})
 	if sqlRatio < byteRatio/2 || sqlRatio > byteRatio*2 {
-		fails = append(fails, gateFailure{msg: fmt.Sprintf("flashback SQL scaled %.2f from the small file to the large one, want between %.2f and %.2f (bytes %d -> %d)",
+		r.fails = append(r.fails, gateFailure{Check: "sql_ratio", Value: sqlRatio, Cap: byteRatio * 2, Msg: fmt.Sprintf("flashback SQL scaled %.2f from the small file to the large one, want between %.2f and %.2f (bytes %d -> %d)",
 			sqlRatio, byteRatio/2, byteRatio*2, small.sql, large.sql)})
 	}
 	if !spillStatAvailable() {
 		fmt.Printf("large-input flashback spill skipped: /proc/self/fd is not available\n")
-		return fails
+		return r
 	}
 	if large.spill <= 0 || small.spill <= 0 {
-		return append(fails, gateFailure{msg: fmt.Sprintf("flashback spill missing (small %d, large %d)", small.spill, large.spill)})
+		r.fails = append(r.fails, gateFailure{Check: "flashback_spill", Value: float64(large.spill), Msg: fmt.Sprintf("flashback spill missing (small %d, large %d)", small.spill, large.spill)})
+		return r
 	}
 	perByte := func(r largeRun) float64 { return float64(r.spill) / float64(r.file) }
 	fmt.Printf("large-input flashback spill_per_byte=%.3f\n", perByte(large))
+	r.gauges = append(r.gauges, gauge{"spill_per_byte", perByte(large), perByte(small) * 2, true})
 	if perByte(large) > perByte(small)*2 {
-		fails = append(fails, gateFailure{msg: fmt.Sprintf("flashback spill grew super-linearly: %.3f bytes of spill per input byte, small run %.3f",
+		r.fails = append(r.fails, gateFailure{Check: "spill_per_byte", Value: perByte(large), Cap: perByte(small) * 2, Msg: fmt.Sprintf("flashback spill grew super-linearly: %.3f bytes of spill per input byte, small run %.3f",
 			perByte(large), perByte(small))})
 	}
-	return fails
+	return r
 }
 
 type largeRun struct {
@@ -528,27 +540,37 @@ const nearCapFactor = 1.5
 
 // gauge is one gated value and its cap, for the summary line.
 type gauge struct {
-	name       string
-	value, cap float64
-	// tight marks a deterministic gate set on purpose close to the
-	// measurement (the heap growth budget, the allocation ratio). It is
-	// shown but never reported as near its cap.
-	tight bool
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+	Cap   float64 `json:"cap"`
+	// Tight marks a deterministic gate set on purpose close to the
+	// measurement (the heap growth budget, the allocation, spill and SQL
+	// ratios). It is shown but never reported as near its cap.
+	Tight bool `json:"tight,omitempty"`
 }
 
-func (g gauge) near() bool { return !g.tight && g.value*nearCapFactor >= g.cap }
+// over is a value past its cap, tight or not.
+func (g gauge) over() bool { return g.Value > g.Cap }
+
+func (g gauge) near() bool { return !g.Tight && !g.over() && g.Value*nearCapFactor >= g.Cap }
 
 // summaryLine is the one line per pair that the parent copies to the CI
 // step summary. Values within 1.5x of their cap are listed after near_cap=.
 func summaryLine(what string, gs []gauge) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "large-input summary %s", what)
-	var near []string
+	var near, over []string
 	for _, g := range gs {
-		fmt.Fprintf(&b, " %s=%s/%s(%.2fx)", g.name, fmtGauge(g.value), fmtGauge(g.cap), g.cap/g.value)
-		if g.near() {
-			near = append(near, g.name)
+		fmt.Fprintf(&b, " %s=%s/%s(%.2fx)", g.Name, fmtGauge(g.Value), fmtGauge(g.Cap), g.Cap/g.Value)
+		switch {
+		case g.over():
+			over = append(over, g.Name)
+		case g.near():
+			near = append(near, g.Name)
 		}
+	}
+	if len(over) > 0 {
+		fmt.Fprintf(&b, " over_cap=%s", strings.Join(over, ","))
 	}
 	if len(near) > 0 {
 		fmt.Fprintf(&b, " near_cap=%s", strings.Join(near, ","))
@@ -563,10 +585,10 @@ func fmtGauge(v float64) string {
 	return strconv.FormatFloat(v, 'f', 2, 64)
 }
 
-func checkScale(what string, small, large largeRun, byteRatio float64, analyzeSpill bool, heapPerTxn float64) []gateFailure {
+func checkScale(what string, small, large largeRun, byteRatio float64, analyzeSpill bool, heapPerTxn float64) pairResult {
 	var fails []gateFailure
-	fail := func(cpu bool, format string, args ...any) {
-		fails = append(fails, gateFailure{cpu: cpu, msg: fmt.Sprintf(format, args...)})
+	fail := func(cpu bool, check string, value, cap float64, format string, args ...any) {
+		fails = append(fails, gateFailure{CPU: cpu, Check: check, Value: value, Cap: cap, Msg: fmt.Sprintf(format, args...)})
 	}
 	extra := int64(large.peak) - int64(small.peak)
 	cpuRatio := large.cpu / small.cpu
@@ -601,50 +623,52 @@ func checkScale(what string, small, large largeRun, byteRatio float64, analyzeSp
 	fmt.Printf("large-input %s extra_heap=%d allowed=%d (1MiB + %.0f B x %d minutes + %.0f B x %d transactions) per_extra_minute=%.0f per_extra_txn=%.2f\n",
 		what, extra, allowExtra, maxHeapPerMinute, extraMinutes, heapPerTxn, extraTxns, float64(extra)/float64(max(extraMinutes, 1)), float64(extra)/float64(max(extraTxns, 1)))
 	if extra > allowExtra {
-		fail(false, "%s live heap grew %d bytes (%d -> %d) over %d more minutes and %d more transactions; limit %d (1MiB + %.0f B/minute + %.0f B/transaction)",
+		fail(false, "extra_heap", float64(extra), float64(allowExtra), "%s live heap grew %d bytes (%d -> %d) over %d more minutes and %d more transactions; limit %d (1MiB + %.0f B/minute + %.0f B/transaction)",
 			what, extra, small.peak, large.peak, extraMinutes, extraTxns, allowExtra, maxHeapPerMinute, heapPerTxn)
 	}
 	if cpuRatio > limitCPU {
-		fail(true, "%s process CPU ratio %.2f exceeds %.2f (%.2fx the %.2f size ratio; fails only above %.2fx the linear extrapolation from the small run); small %.3fs large %.3fs",
+		fail(true, "cpu_ratio", cpuRatio, limitCPU, "%s process CPU ratio %.2f exceeds %.2f (%.2fx the %.2f size ratio; fails only above %.2fx the linear extrapolation from the small run); small %.3fs large %.3fs",
 			what, cpuRatio, limitCPU, largeInputCPUSlack, byteRatio, largeInputCPUSlack, small.cpu, large.cpu)
 	}
 	if allocRatio > largeInputAllocSlack {
-		fail(false, "%s allocated %.0f bytes/event on the large run and %.0f on the small one (ratio %.2f, limit %.2f)",
+		fail(false, "alloc_ratio", allocRatio, largeInputAllocSlack, "%s allocated %.0f bytes/event on the large run and %.0f on the small one (ratio %.2f, limit %.2f)",
 			what, largePer, smallPer, allocRatio, largeInputAllocSlack)
 	}
 	fmt.Printf("large-input %s absolute peak=%d limit_peak=%d alloc_per_event=%.0f limit_alloc=%.0f cpu_ns_per_event=%.0f limit_cpu_ns=%.0f\n",
 		what, large.peak, maxHeap, largePer, maxAlloc, cpuPer*1e9, maxCPU*1e9)
 	if large.peak > maxHeap {
-		fail(false, "%s live heap after GC is %d bytes; limit %d (fixed cap + %.0f B x %d minutes)", what, large.peak, maxHeap, maxHeapPerMinute, large.minutes)
+		fail(false, "peak_heap", float64(large.peak), float64(maxHeap), "%s live heap after GC is %d bytes; limit %d (fixed cap + %.0f B x %d minutes)", what, large.peak, maxHeap, maxHeapPerMinute, large.minutes)
 	}
 	if largePer > maxAlloc {
-		fail(false, "%s allocated %.0f bytes/event; limit %.0f", what, largePer, maxAlloc)
+		fail(false, "alloc_per_event", largePer, maxAlloc, "%s allocated %.0f bytes/event; limit %.0f", what, largePer, maxAlloc)
 	}
 	if cpuPer > maxCPU {
-		fail(true, "%s process CPU is %.0f ns/event (getrusage user+sys, %.3fs over %d events); limit %.0f ns/event",
+		fail(true, "cpu_ns_per_event", cpuPer*1e9, maxCPU*1e9, "%s process CPU is %.0f ns/event (getrusage user+sys, %.3fs over %d events); limit %.0f ns/event",
 			what, cpuPer*1e9, large.cpu, large.events, maxCPU*1e9)
 	}
 	defer func() { fmt.Println(summaryLine(what, gauges)) }()
+	result := func() pairResult { return pairResult{gauges: gauges, fails: fails} }
 
 	if !analyzeSpill {
-		return fails
+		return result()
 	}
 	if !spillStatAvailable() {
 		fmt.Printf("large-input %s spill skipped: /proc/self/fd is not available\n", what)
-		return fails
+		return result()
 	}
 	if small.spill <= 0 || large.spill <= 0 {
-		fail(false, "apply-delay spill missing (small %d, large %d); delays would be staying in memory", small.spill, large.spill)
-		return fails
+		fail(false, "delay_spill", float64(large.spill), 0, "apply-delay spill missing (small %d, large %d); delays would be staying in memory", small.spill, large.spill)
+		return result()
 	}
 	perTxn := float64(large.spill) / float64(large.txns)
 	smallPerTxn := float64(small.spill) / float64(small.txns)
 	fmt.Printf("large-input analyze spill_per_txn=%.2f small_per_txn=%.2f\n", perTxn, smallPerTxn)
 	if perTxn > maxDelaySpillPerTxn || perTxn > smallPerTxn*4 {
-		fail(false, "apply-delay spill is %.1f bytes/transaction (small run %.1f); limit %.0f and 4x the small run",
+		fail(false, "spill_per_txn", perTxn, min(maxDelaySpillPerTxn, smallPerTxn*4), "apply-delay spill is %.1f bytes/transaction (small run %.1f); limit %.0f and 4x the small run",
 			perTxn, smallPerTxn, maxDelaySpillPerTxn)
 	}
-	return fails
+	gauges = append(gauges, gauge{"spill_per_txn", perTxn, min(maxDelaySpillPerTxn, smallPerTxn*4), true})
+	return result()
 }
 
 func measureAnalyze(t *testing.T, path string, wantTxns int, fault string) largeRun {
