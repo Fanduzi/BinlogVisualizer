@@ -37,15 +37,13 @@ Live heap is modelled as a fixed part plus a part per minute of time span (plus,
 
 The CPU gates are the only ones a noisy host moves. Heap, allocation, spill and output size did not move under any load QA tried. When every failure of a pair is a CPU failure (the ratio or the per-event cap), the child measures the whole pair again, small and large, and fails if the second pair fails any gate. Any other failure fails at once, with no retry. The single flake QA found (1 in 82 runs, 8 saturated cores, analyze ratio 17.23 against 16) came from one stall inflating one pair. A super-linear step fails every pair: the `quadratic` and `minutescan` faults fail both attempts. `TestLargeInputCPURetry` pins the rule: the measured quadratic shape (ratio about 37) fails on the second pair, a heap or allocation failure is never retried, and a second pair that fails on heap fails.
 
+### How the parent judges the child
+
+The child prints one record per path, `large-input verdict {json}`, after its last pair: the path, the number of attempts, pass or fail, every gated value with its cap, the last pair's failed checks (name, value, cap, message), and the first pair's failures when it was measured again. It also prints `large-input input {json}` with the file sizes. The parent judges from these records, not from counting measurement lines, so a retried pair, which prints its `scale=` lines twice, is judged like any other. #388 at b0f2ebff counted those lines, so every retry failed, even one that passed. A passing child must exit 0, print both verdicts in order with one or two attempts, have no failed check, have retried only after CPU-only failures, report no value over its cap, report a large file at or above 100MiB, and print go test's PASS line. `TestLargeInputParentVerdict` feeds the parent synthetic child output built from real `runGatedPair` verdicts: a clean run, a CPU retry that passes, a CPU retry that fails again, a heap failure (not retried), and records that lie or are missing.
+
 ### Seeing the numbers in CI
 
-CI runs plain `go test ./...`. In package-list mode go test discards everything a passing package prints, `t.Log` and stderr alike, so the measurements never show in the job log. GitHub Actions gives every step `$GITHUB_STEP_SUMMARY`, a file whose markdown appears on the run's summary page, and a test process inherits it. When it is set, the parent appends one `large-input summary` line per path (value/cap and headroom for each gate) to it, headed with ⚠️ when a value is within 1.5× of its cap or a CPU retry ran. The deliberately tight heap-growth budget and allocation ratio are shown but not flagged. Outside Actions the same lines go to `t.Log` (`go test -v -run TestLargeInputBaseline ./cmd/binlogviz`), and to stderr when flagged.
-
-Process CPU is `syscall.Getrusage(RUSAGE_SELF)` user+sys. It is not `/cpu/classes/total:cpu-seconds`. Go defines that metric as `GOMAXPROCS` times wall time, so a pause during the large run moves the ratio with no code change.
-
-Samples are every 20,000 events, plus both sides of `Finalize`. There is no background ticker.
-
-The temp-file rows read `/proc/self/fd`. When that directory is not there (not Linux), those rows are skipped and the log says why. The heap and CPU gates still run. On Linux a missing spill still fails.
+CI runs plain `go test ./...`. In package-list mode go test discards everything a passing package prints, `t.Log` and stderr alike, so the measurements never show in the job log. GitHub Actions gives every step `$GITHUB_STEP_SUMMARY`, a file whose markdown appears on the run's summary page (to signed-in viewers), and a test process inherits it. The parent writes it after judging the child: a heading with the parent's verdict (✅ pass, ⚠️ pass after a retry or near a cap, ❌ FAIL with the failing check, its value and its cap), the parent's error, and one line per path with value/cap and headroom for each gate, `over_cap=` for values past their cap, `near_cap=` for values within 1.5× of it (the deliberately tight heap-growth budget and ratio gates are never near_cap), and the retried first attempt's failures. A failed write to the summary file fails the test (`t.Errorf`). Outside Actions the same text goes to `t.Log` (`go test -v -run TestLargeInputBaseline ./cmd/binlogviz`), and to stderr when flagged.
 
 ## Why these metrics
 
@@ -121,8 +119,16 @@ What the template still does not cover: wide rows, blobs, DDL, more than 32 thre
 | `retain256` | one 256MiB buffer for the whole run | FAIL: live heap 293.0MB against 51.9MB. Large minus small stayed 13.2MB, inside its budget. |
 | `retain` | a 1KB copy of every analyze event | FAIL: heap grew 1.43GB (child RSS 1.7GB, no rlimit). |
 | `pause` | 7 s sleep once in the large analyze | PASS, as designed: 6.4µs/event, ratio 7.21. Process CPU does not count a sleep. |
+| `slowfirst` | the `slow` loop on the first measured analyze pair only, a host stall in miniature | PASS, as designed, with analyze attempts=2: the first pair failed only the per-event CPU cap (61707 ns/event), the retried pair measured 5650 ns/event and ratio 7.23, and the step summary reads ⚠️ pass with the retried attempt listed. Under #388 at b0f2ebff the same child passed and the parent failed. |
 
-What still passes: a 2× flashback or analyze slowdown (the per-event caps leave 2.5–3× for runner noise), an n log n step costing about 3× (QA, #382), and short-lived garbage under 4× the allocation rate.
+**Detection limits.** These pass today, measured by QA on #388 and #382, and are accepted rather than tightened:
+
+- a uniform 2× analyze slowdown (14.8µs/event against 20µs) and a 2.1× flashback slowdown (41.6µs against 50µs); uniform slowdowns hide up to about 2.8× (analyze) and 2.7× (flashback);
+- an n log n step at K=1000 (about 3× analyze cost; the ratio stays near 8.6 and the per-event cost under 20µs);
+- 4KB of short-lived garbage per event (6062 against 8000 bytes/event);
+- per-transaction leaks of about 12–13 bytes or less (14 B/transaction fails), about 100KB per table (128KB fails), and about 512 bytes per minute (1024 fails).
+
+The per-event CPU caps leave about 3× over a quiet run on purpose. CI runners are shared, and QA's flake matrix on #388 saw the CPU ratio reach 13.69 against 16 (1.17× headroom) with two busy loops on two CPUs, and flashback per-event CPU left only 1.94× headroom; the absolute caps get no ratio to hide behind, so their slack has to cover a slow runner on its own. The retry absorbs a stall in one pair, not a runner that is slow throughout. Heap and allocation caps are deterministic and are where the gate is tight.
 
 ## Cost
 
