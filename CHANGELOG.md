@@ -6,6 +6,7 @@ This file records user-visible changes for tagged releases.
 
 ### Security
 
+- `github.com/go-viper/mapstructure/v2` v2.2.1 -> v2.4.0 (indirect, through `go-duckdb` v1.8.5, which is unchanged) for GO-2025-3787 (GHSA-fv92-fjc5-jj9h, fixed in v2.3.0) and GHSA-2464-8j7c-4cjm (fixed in v2.4.0): decode errors could include the raw input value. Successful decodes are unchanged; decode error messages no longer echo the value.
 - Build with Go 1.26.10. govulncheck reported 24 Go 1.26.1 standard library vulnerabilities reachable from binlogviz, including GO-2026-6809 (`crypto/x509`), GO-2026-6599/6600 (`html/template`), GO-2026-6603/6611/6612/6613/6617 (`net/http`) and GO-2026-6604 (`os`). Building from source requires Go 1.26.10+. No module changes.
 
 ### Added
