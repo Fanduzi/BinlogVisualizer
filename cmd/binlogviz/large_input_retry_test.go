@@ -183,10 +183,15 @@ func TestLargeInputParentVerdict(t *testing.T) {
 		wantAttempts int
 		wantCheck    string
 		wantHead     string
+		// wantOver must appear in over_cap=. extra_heap is a tight gauge;
+		// b0f2ebff never flagged those, and labelled an over-cap value near_cap.
+		wantOver string
 	}{
 		{name: "clean run", analyze: []scriptedPair{pairOf(syntheticAnalyzePair(0.85, 6.6))}, wantPass: true, wantAttempts: 1, wantHead: "### ✅ TestLargeInputBaseline pass"},
 		{
 			// slowfirst: the first pair at about 56µs/event, the retry clean.
+			// Four analyze scale= lines. The parent at b0f2ebff required
+			// exactly two, so this output failed there.
 			name:         "CPU retry that then passes",
 			analyze:      []scriptedPair{pairOf(syntheticAnalyzePair(9.4, 86.6)), pairOf(syntheticAnalyzePair(0.85, 6.6))},
 			wantPass:     true,
@@ -198,20 +203,26 @@ func TestLargeInputParentVerdict(t *testing.T) {
 			analyze:      []scriptedPair{pairOf(syntheticAnalyzePair(0.85, 0.85*34.2)), pairOf(syntheticAnalyzePair(0.85, 0.85*34.5))},
 			wantAttempts: 2,
 			wantCheck:    "cpu_ratio",
-			wantHead:     "### ❌ TestLargeInputBaseline FAIL: cpu_ratio 34.50 over cap 16",
+			wantHead:     "### ❌ TestLargeInputBaseline FAIL: analyze attempt 2: cpu: analyze process CPU ratio 34.50 exceeds 16.00",
+			wantOver:     "cpu_ratio",
 		},
 		{
 			name:         "heap failure is never retried",
 			analyze:      heapPairs,
 			wantAttempts: 1,
 			wantCheck:    "extra_heap",
-			wantHead:     "### ❌ TestLargeInputBaseline FAIL: extra_heap 281583280 over cap 17122816",
+			wantHead:     "### ❌ TestLargeInputBaseline FAIL: analyze attempt 1: analyze live heap grew 281583280 bytes",
+			wantOver:     "extra_heap",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			analyze, _, _ := runScripted(t, "analyze", tc.analyze, checkAnalyzePair)
 			out, runErr := childOutput(analyze, &cleanFlash)
+			scales := strings.Count(out, "large-input analyze scale=")
+			if scales != 2*tc.wantAttempts {
+				t.Fatalf("analyze scale= lines = %d, want %d", scales, 2*tc.wantAttempts)
+			}
 			o := evaluateLargeInputChild(out, runErr)
 			if (o.err == nil) != tc.wantPass {
 				t.Fatalf("parent verdict %v, want pass=%v\n%s", o.err, tc.wantPass, out)
@@ -223,8 +234,9 @@ func TestLargeInputParentVerdict(t *testing.T) {
 				t.Fatalf("failing check %+v, want %q", o.failing, tc.wantCheck)
 			}
 			body, alert := o.summary()
-			if !strings.HasPrefix(body, tc.wantHead+"\n") {
-				t.Fatalf("summary heading:\n%s\nwant %q", body, tc.wantHead)
+			head, _, _ := strings.Cut(body, "\n")
+			if !strings.HasPrefix(head, tc.wantHead) || (tc.wantPass && head != tc.wantHead) {
+				t.Fatalf("summary heading:\n%s\nwant prefix %q", head, tc.wantHead)
 			}
 			if alert == (tc.wantAttempts == 1 && tc.wantPass) {
 				t.Fatalf("alert=%v for %s", alert, tc.name)
@@ -234,6 +246,20 @@ func TestLargeInputParentVerdict(t *testing.T) {
 			}
 			if !tc.wantPass && !strings.Contains(body, "Parent verdict: ") {
 				t.Fatalf("failing summary has no parent verdict:\n%s", body)
+			}
+			if tc.wantOver != "" {
+				over := flagList(body, "over_cap")
+				if !strings.Contains(","+over+",", ","+tc.wantOver+",") {
+					t.Fatalf("over_cap=%q, want %s\n%s", over, tc.wantOver, body)
+				}
+				if strings.Contains(","+flagList(body, "near_cap")+",", ","+tc.wantOver+",") {
+					t.Fatalf("%s is listed near_cap\n%s", tc.wantOver, body)
+				}
+			} else if strings.Contains(body, "over_cap=") {
+				t.Fatalf("passing summary flags over_cap:\n%s", body)
+			}
+			if tc.wantOver == "extra_heap" && !gaugeTight(o, "extra_heap") {
+				t.Fatal("extra_heap is the tight heap-growth gauge")
 			}
 		})
 	}
@@ -267,6 +293,28 @@ func TestLargeInputParentVerdict(t *testing.T) {
 			}
 		})
 	}
+}
+
+func flagList(body, key string) string {
+	token := key + "="
+	i := strings.Index(body, token)
+	if i < 0 {
+		return ""
+	}
+	rest := body[i+len(token):]
+	if j := strings.IndexAny(rest, " \n"); j >= 0 {
+		rest = rest[:j]
+	}
+	return rest
+}
+
+func gaugeTight(o largeInputOutcome, name string) bool {
+	for _, g := range o.verdicts[0].Gauges {
+		if g.Name == name {
+			return g.Tight
+		}
+	}
+	return false
 }
 
 func TestLargeInputStepSummaryWriteError(t *testing.T) {

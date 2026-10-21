@@ -144,8 +144,9 @@ func lastFailureLine(out string) string {
 }
 
 // summary is the markdown for the CI step summary and the test log: a
-// heading with the parent's verdict, then one line per path. alert is set
-// on a failure, a retry, or a value within 1.5x of its cap.
+// heading with the parent's verdict, then one line per path. On a failure
+// the heading is the child's failure line, the text t.Fatal printed.
+// alert is set on a failure, a retry, or a value within 1.5x of its cap.
 func (o largeInputOutcome) summary() (body string, alert bool) {
 	var lines []string
 	retried := false
@@ -173,8 +174,6 @@ func (o largeInputOutcome) summary() (body string, alert bool) {
 	}
 	var head string
 	switch {
-	case o.err != nil && o.failing != nil:
-		head = fmt.Sprintf("### ❌ TestLargeInputBaseline FAIL: %s %s over cap %s", o.failing.Check, fmtGauge(o.failing.Value), fmtGauge(o.failing.Cap))
 	case o.err != nil:
 		head = "### ❌ TestLargeInputBaseline FAIL: " + firstLine(o.err.Error())
 	case retried || alert:

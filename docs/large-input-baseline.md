@@ -27,7 +27,7 @@ For each pair the test records, on the goroutine doing the work, after `runtime.
 | Process CPU, large/small | ≤ 2 × the byte ratio | same |
 | Process CPU of the large run | ≤ 20µs/event | ≤ 50µs/event |
 | Bytes allocated per event, large/small | ≤ 1.5 | same |
-| Bytes allocated per event, large run | ≤ 8000 | ≤ 20000 |
+| Bytes allocated per event, large run | ≤ 4000 | ≤ 20000 |
 | Temp file | apply-delay spill ≤ 64 bytes/transaction, and ≤ 4× the small run | row-spill bytes per input byte ≤ 2× the small run |
 | Output size | each format non-empty and contains the count | SQL byte ratio within 0.5×–2× the input byte ratio |
 
@@ -43,7 +43,7 @@ The child prints one record per path, `large-input verdict {json}`, after its la
 
 ### Seeing the numbers in CI
 
-CI runs plain `go test ./...`. In package-list mode go test discards everything a passing package prints, `t.Log` and stderr alike, so the measurements never show in the job log. GitHub Actions gives every step `$GITHUB_STEP_SUMMARY`, a file whose markdown appears on the run's summary page (to signed-in viewers), and a test process inherits it. The parent writes it after judging the child: a heading with the parent's verdict (✅ pass, ⚠️ pass after a retry or near a cap, ❌ FAIL with the failing check, its value and its cap), the parent's error, and one line per path with value/cap and headroom for each gate, `over_cap=` for values past their cap, `near_cap=` for values within 1.5× of it (the deliberately tight heap-growth budget and ratio gates are never near_cap), and the retried first attempt's failures. A failed write to the summary file fails the test (`t.Errorf`). Outside Actions the same text goes to `t.Log` (`go test -v -run TestLargeInputBaseline ./cmd/binlogviz`), and to stderr when flagged.
+CI runs plain `go test ./...`. In package-list mode go test discards everything a passing package prints, `t.Log` and stderr alike, so the measurements never show in the job log. GitHub Actions gives every step `$GITHUB_STEP_SUMMARY`, a file whose markdown appears on the run's summary page (to signed-in viewers), and a test process inherits it. The parent writes it after judging the child: a heading with the parent's verdict (✅ pass, ⚠️ pass after a retry or near a cap, ❌ FAIL followed by the child's failure line), the parent's error, and one line per path with value/cap and headroom for each gate, `over_cap=` for every gauge under 1× headroom (including the tight heap-growth budget and ratio gates), `near_cap=` for values within 1.5× of the cap (those tight gates are never near_cap), and the retried first attempt's failures. A failed write to the summary file fails the test (`t.Errorf`). Outside Actions the same text goes to `t.Log` (`go test -v -run TestLargeInputBaseline ./cmd/binlogviz`), and to stderr when flagged.
 
 ## Why these metrics
 
@@ -88,7 +88,7 @@ The per-event CPU caps are 20µs (analyze) and 50µs (flashback). QA's quiet wor
 
 **The per-event CPU and allocation caps hold for this synthetic template only.** They are not a statement about real binlogs. The template is 68 bytes per event, one-row `UPDATE`s. On QA's ≥100MB real files analyze measured 9–65µs/event and 2.9–14KB/event, and flashback up to about 400µs/event and 273KB/event, 3–14× over these caps, while per input byte the real files were cheaper than the template. The caps exist to catch a change in the code on a fixed input, not to bound real-world cost. The heap caps did hold on the real files (≤25MB).
 
-The alloc ratio cap is 1.5 against a measurement of 0.95–1.00. The absolute alloc caps are 8000 and 20000 bytes/event, about 4× the measurements (1966 and 4439).
+The alloc ratio cap is 1.5 against a measurement of 0.95–1.00. The absolute alloc caps are 4000 and 20000 bytes/event. Analyze is twice the measurement (1966). That number did not move under any load QA tried (1960–1966), so the previous 8000 cap was slack with no noise to absorb: 4KB of short-lived garbage per event (6062) passed it and fails 4000. Flashback stays at 20000, about 4.5× its 4439.
 
 What the template still does not cover: wide rows, blobs, DDL, more than 32 threads, and many tables in the same minute (real busy servers write hundreds of tables a minute; the analyzer's per-table per-minute points then grow with tables × minutes).
 
@@ -125,10 +125,9 @@ What the template still does not cover: wide rows, blobs, DDL, more than 32 thre
 
 - a uniform 2× analyze slowdown (14.8µs/event against 20µs) and a 2.1× flashback slowdown (41.6µs against 50µs); uniform slowdowns hide up to about 2.8× (analyze) and 2.7× (flashback);
 - an n log n step at K=1000 (about 3× analyze cost; the ratio stays near 8.6 and the per-event cost under 20µs);
-- 4KB of short-lived garbage per event (6062 against 8000 bytes/event);
 - per-transaction leaks of about 12–13 bytes or less (14 B/transaction fails), about 100KB per table (128KB fails), and about 512 bytes per minute (1024 fails).
 
-The per-event CPU caps leave about 3× over a quiet run on purpose. CI runners are shared, and QA's flake matrix on #388 saw the CPU ratio reach 13.69 against 16 (1.17× headroom) with two busy loops on two CPUs, and flashback per-event CPU left only 1.94× headroom; the absolute caps get no ratio to hide behind, so their slack has to cover a slow runner on its own. The retry absorbs a stall in one pair, not a runner that is slow throughout. Heap and allocation caps are deterministic and are where the gate is tight.
+The per-event CPU caps leave about 3× over a quiet run on purpose. CI runners are shared, and QA's flake matrix on #388 saw the CPU ratio reach 13.69 against 16 (1.17× headroom) with two busy loops on two CPUs, and flashback per-event CPU left only 1.94× headroom (worst sample 25.8µs against 50µs). A flashback cap of 35µs would be 1.36× that sample. The absolute caps get no ratio to hide behind, and the retry absorbs a stall in one pair, not a runner that is slow throughout, so the CPU caps stay where that matrix still had room. Analyze allocation is the opposite: it did not move, and its cap is twice the measurement. Heap growth was already tight (about 1.2× and 1.5×).
 
 ## Cost
 
