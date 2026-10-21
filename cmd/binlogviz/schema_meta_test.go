@@ -16,7 +16,8 @@ import (
 
 // TestDraft202012Schemas checks every published schema against the Draft 2020-12
 // meta-schema with santhosh-tekuri/jsonschema, then checks real command output
-// against those schemas. A schema that still has "required": null fails here
+// against those schemas, including a failure document a command prints on
+// stdout. A schema that still has "required": null fails here
 // and is accepted by the in-repo validator.
 func TestDraft202012Schemas(t *testing.T) {
 	root := repoRoot(t)
@@ -82,6 +83,24 @@ func TestDraft202012Schemas(t *testing.T) {
 		}
 		if err := validateDraft202012(sch, stdout); err != nil {
 			t.Errorf("%s output does not match its Draft 2020-12 schema: %v", run.name, err)
+		}
+	}
+	for _, run := range prepareJSONFailureRuns(t) {
+		if !run.document {
+			continue
+		}
+		sch := compiled[run.name]
+		if sch == nil {
+			t.Errorf("no compiled schema for failure %s", run.name)
+			continue
+		}
+		code, stdout, stderr := runRoot(t, run.args...)
+		if code != run.exit {
+			t.Errorf("%s failure exit %d: %s", run.name, code, stderr)
+			continue
+		}
+		if err := validateDraft202012(sch, stdout); err != nil {
+			t.Errorf("%s failure output does not match its Draft 2020-12 schema: %v\n%s", run.name, err, stdout)
 		}
 	}
 

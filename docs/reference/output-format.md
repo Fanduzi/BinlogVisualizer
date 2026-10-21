@@ -17,7 +17,7 @@ BinlogViz uses separate output channels for different purposes:
 - `workflow clean`: `stdout` carries either a text or JSON cleanup summary. The command reads `manifest.json`, reports orphaned workflow artifacts and optional orphaned snapshots, and in `--apply` mode also reports `deleted`, `skipped`, `skip_reasons` (path to cause, when a move failed), and `trash_dir` / `snapshot_trash_dir` (where files were moved; clean never empties them). It does not use `stderr` for progress output, but a skipped deletion still causes a non-zero command exit after the `stdout` payload is written.
 - `workflow export`: `stdout` carries either a text or JSON export summary. The command reads `manifest.json`, writes a deterministic zip archive outside the workflow root, and reports included-file counts plus warnings. It does not use `stderr` for progress output.
 - `workflow validate`: `stdout` carries either a text or JSON validation result. The command reads only `plan.yaml`, performs static plan validation, and exits non-zero on invalid plans. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
-- `workflow describe`: `stdout` carries either a text or JSON static preview of workflow execution order and artifact paths. The command reads only `plan.yaml`, renders no HTML, and does not inspect runtime outputs. On failure it also returns the command error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
+- `workflow describe`: `stdout` carries either a text or JSON static preview of workflow execution order and artifact paths. The command reads only `plan.yaml`, renders no HTML, and does not inspect runtime outputs. On failure, JSON stdout is the same `{schema_version, valid: false, error}` document as `workflow validate`, and the command also returns the error, so default CLI execution may emit an error line on `stderr` after the `stdout` payload.
 
 This separation matters because it keeps report output safe for redirection and automation.
 
@@ -45,7 +45,7 @@ Every JSON document on `stdout` has a top-level integer version key (ADR 0010). 
 
 ## JSON Schema
 
-Every versioned JSON document has a Draft 2020-12 schema derived from the Go type the command marshals (ADR 0017). `binlogviz schema` prints the names. `binlogviz schema analyze` prints the schema for that name. The same documents are files under `docs/schema/` (`analyze.json`, `flashback-plan.json`, `compare.json`, `trend.json`, `snapshot-list.json`, `snapshot-show.json`, `workflow-validate.json`, `workflow-describe.json`, `workflow-status.json`, `workflow-clean.json`, `workflow-export.json`, `version.json`, `flashback-verify.json`) and are in the release archive at those paths. `workflow validate` is one schema covering the success object and the failure object. The schema command's own stdout is a JSON Schema document, not a versioned result, so it has no `schema_version`. An unknown name is exit 3.
+Every versioned JSON document has a Draft 2020-12 schema derived from the Go type the command marshals (ADR 0017). `binlogviz schema` prints the names. `binlogviz schema analyze` prints the schema for that name. The same documents are files under `docs/schema/` (`analyze.json`, `flashback-plan.json`, `compare.json`, `trend.json`, `snapshot-list.json`, `snapshot-show.json`, `workflow-validate.json`, `workflow-describe.json`, `workflow-status.json`, `workflow-clean.json`, `workflow-export.json`, `version.json`, `flashback-verify.json`) and are in the release archive at those paths. `workflow validate` is one schema covering the success object and the failure object. `workflow describe` is a `oneOf` of the success object and that same failure object, so the success object's required keys stay required. On failure, every other JSON command in that list prints nothing on stdout; the error is on stderr. The schema command's own stdout is a JSON Schema document, not a versioned result, so it has no `schema_version`. An unknown name is exit 3.
 
 `report_version` stays 4, `plan_version` stays 2, and every `schema_version` stays 1. Passing `--tz` changes the offset spelling of timestamp strings. It does not add or remove a key, and it does not change a value's type.
 
@@ -1215,6 +1215,15 @@ The JSON description contains:
 Each `windows` entry contains `name`, `start`, `end`, `artifacts`, and optional `snapshot_name`.
 Each `compare` entry contains `name`, `current`, `baseline`, and `artifacts`.
 Each `trend` entry contains `name`, `snapshots`, and `artifacts`.
+
+When the plan file does not open or does not load, JSON stdout is the same failure object as `workflow validate`:
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `valid` | boolean | yes | Always `false` |
+| `error` | string | yes | Decode or file-read error message |
+
+The published schema is a `oneOf` of the success object above and this failure object. A success document still requires `workflow_name`, `output_dir`, and `snapshot_save`.
 
 ## Workflow Manifest
 

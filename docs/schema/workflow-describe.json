@@ -1,132 +1,157 @@
 {
   "$id": "binlogviz:schema/workflow-describe",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "additionalProperties": false,
-  "properties": {
-    "compare": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "artifacts": {
-            "items": {
-              "type": "string"
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "compare": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "artifacts": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "baseline": {
+                "type": "string"
+              },
+              "current": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
             },
-            "type": [
-              "array",
-              "null"
-            ]
+            "required": [
+              "artifacts",
+              "baseline",
+              "current",
+              "name"
+            ],
+            "type": "object"
           },
-          "baseline": {
-            "type": "string"
-          },
-          "current": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          }
+          "type": "array"
         },
-        "required": [
-          "artifacts",
-          "baseline",
-          "current",
-          "name"
-        ],
-        "type": "object"
-      },
-      "type": "array"
-    },
-    "output_dir": {
-      "type": "string"
-    },
-    "schema_version": {
-      "const": 1,
-      "type": "integer"
-    },
-    "snapshot_save": {
-      "type": "boolean"
-    },
-    "trend": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "artifacts": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "name": {
-            "type": "string"
-          },
-          "snapshots": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          }
+        "output_dir": {
+          "type": "string"
         },
-        "required": [
-          "artifacts",
-          "name",
-          "snapshots"
-        ],
-        "type": "object"
-      },
-      "type": "array"
-    },
-    "windows": {
-      "items": {
-        "additionalProperties": false,
-        "properties": {
-          "artifacts": {
-            "items": {
-              "type": "string"
-            },
-            "type": [
-              "array",
-              "null"
-            ]
-          },
-          "end": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "snapshot_name": {
-            "type": "string"
-          },
-          "start": {
-            "type": "string"
-          }
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
         },
-        "required": [
-          "artifacts",
-          "end",
-          "name",
-          "start"
-        ],
-        "type": "object"
+        "snapshot_save": {
+          "type": "boolean"
+        },
+        "trend": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "artifacts": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "name": {
+                "type": "string"
+              },
+              "snapshots": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "artifacts",
+              "name",
+              "snapshots"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "windows": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "artifacts": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "array",
+                  "null"
+                ]
+              },
+              "end": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "snapshot_name": {
+                "type": "string"
+              },
+              "start": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "artifacts",
+              "end",
+              "name",
+              "start"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "workflow_name": {
+          "type": "string"
+        }
       },
-      "type": "array"
+      "required": [
+        "output_dir",
+        "schema_version",
+        "snapshot_save",
+        "workflow_name"
+      ],
+      "type": "object"
     },
-    "workflow_name": {
-      "type": "string"
+    {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "type": "integer"
+        },
+        "valid": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "error",
+        "schema_version",
+        "valid"
+      ],
+      "type": "object"
     }
-  },
-  "required": [
-    "output_dir",
-    "schema_version",
-    "snapshot_save",
-    "workflow_name"
   ],
-  "title": "workflow-describe",
-  "type": "object"
+  "title": "workflow-describe"
 }
