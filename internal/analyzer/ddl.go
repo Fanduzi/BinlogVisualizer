@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. A multi-table DROP TABLE is one event per table, from mysqlexpr.ParseDropTable. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 	"binlogviz/internal/redact"
 )
 
@@ -60,17 +61,26 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 		}, true
 	}
 
-	var identifier string
-	switch {
-	case operation == "SET PASSWORD":
-		identifier, _ = identifierAfterKeyword(tokens, "FOR")
-	case object == "index":
-		// The name before ON is the index. The table is the next identifier.
-		identifier, _ = identifierAfterKeyword(tokens, "ON")
-	default:
-		identifier = findDDLIdentifier(tokens[skipOptionalIfClause(tokens, startIndex):])
+	var schema, table string
+	if operation == "DROP TABLE" {
+		// One list parser. Do not split the backquoted text on '.' or ','.
+		names, isDrop, okDrop := mysqlexpr.ParseDropTable(trimmed)
+		if isDrop && okDrop && len(names) > 0 {
+			schema, table = names[0].Schema, names[0].Table
+		}
+	} else {
+		var identifier string
+		switch {
+		case operation == "SET PASSWORD":
+			identifier, _ = identifierAfterKeyword(tokens, "FOR")
+		case object == "index":
+			// The name before ON is the index. The table is the next identifier.
+			identifier, _ = identifierAfterKeyword(tokens, "ON")
+		default:
+			identifier = findDDLIdentifier(tokens[skipOptionalIfClause(tokens, startIndex):])
+		}
+		schema, table = splitQualifiedIdentifier(identifier)
 	}
-	schema, table := splitQualifiedIdentifier(identifier)
 	if object == "database" && schema == "" && table != "" {
 		schema, table = table, ""
 	}
@@ -126,35 +136,66 @@ func hasWordPrefixFold(sql, word string) bool {
 
 // ConsumeEvent extracts a DDL event from a normalized event when possible.
 func (a *DDLAggregator) ConsumeEvent(ev model.NormalizedEvent) {
-	ddlEvent, ok := DDLEventFromNormalizedEvent(ev)
-	if !ok {
-		return
+	for _, ddlEvent := range ddlEventsFor(ev) {
+		a.events = append(a.events, ddlEvent)
 	}
-	a.events = append(a.events, ddlEvent)
+}
+
+// ddlEventsFor is one timeline row per DROP TABLE target, and one row for
+// every other statement. Statement order is kept.
+func ddlEventsFor(ev model.NormalizedEvent) []model.DDLEvent {
+	one, ok := DDLEventFromNormalizedEvent(ev)
+	if !ok {
+		return nil
+	}
+	ids := parsedDropTables(ev)
+	if len(ids) <= 1 {
+		return []model.DDLEvent{one}
+	}
+	out := make([]model.DDLEvent, len(ids))
+	for i, id := range ids {
+		out[i] = one
+		out[i].Schema = id.schema
+		out[i].Table = id.table
+	}
+	return out
+}
+
+// parsedDropTables reads a DROP TABLE list. Schema is the name's schema, or
+// the session schema when the name is unqualified. Nil when sql is not a
+// readable DROP TABLE.
+func parsedDropTables(ev model.NormalizedEvent) []tableIdentity {
+	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL)
+	if !isDrop || !ok || len(names) == 0 {
+		return nil
+	}
+	session := ev.QuerySchema
+	if session == "" && names[0].Schema == "" {
+		session = ev.Schema
+	}
+	out := make([]tableIdentity, 0, len(names))
+	for _, name := range names {
+		schema := name.Schema
+		if schema == "" {
+			schema = session
+		}
+		out = append(out, newTableIdentity(schema, name.Table))
+	}
+	return out
 }
 
 // ConsumeStatement appends a parsed DDL statement directly.
 func (a *DDLAggregator) ConsumeStatement(ts time.Time, binlogPath string, positionStart, positionEnd, binlogBytes int64, sql string) {
-	stmt, ok := ParseDDLStatement(sql)
-	if !ok {
-		return
+	for _, event := range ddlEventsFor(model.NormalizedEvent{
+		Timestamp:     ts,
+		BinlogPath:    binlogPath,
+		PositionStart: positionStart,
+		PositionEnd:   positionEnd,
+		BinlogBytes:   binlogBytes,
+		QuerySQL:      sql,
+	}) {
+		a.events = append(a.events, event)
 	}
-	a.events = append(a.events, model.DDLEvent{
-		BinlogPath:             binlogPath,
-		Timestamp:              ts.UTC(),
-		Schema:                 stmt.Schema,
-		Table:                  stmt.Table,
-		Operation:              stmt.Operation,
-		Object:                 stmt.Object,
-		Statement:              stmt.Statement,
-		StatementTruncated:     stmt.Truncated,
-		StatementOriginalBytes: stmt.OriginalBytes,
-		PositionStart:          positionStart,
-		PositionEnd:            positionEnd,
-		BinlogBytes:            binlogBytes,
-		TxnStartPath:           binlogPath,
-		TxnStartPos:            positionStart,
-	})
 }
 
 // Snapshot returns collected DDL events sorted by timestamp and source position.
@@ -164,7 +205,7 @@ func (a *DDLAggregator) Snapshot() []model.DDLEvent {
 	}
 
 	out := append([]model.DDLEvent(nil), a.events...)
-	sort.Slice(out, func(i, j int) bool {
+	sort.SliceStable(out, func(i, j int) bool {
 		if !out[i].Timestamp.Equal(out[j].Timestamp) {
 			return out[i].Timestamp.Before(out[j].Timestamp)
 		}

@@ -3,11 +3,15 @@
 // input: the statement text of a DDL query event and the session's default schema.
 // output: every table and schema the statement names as a source or target, or ok=false
 // when the statement is not one of the shapes read here. ok=false refuses.
-// pos: flashback-only helper. Analyze does not call it.
+// pos: flashback-only helper. Analyze does not call it. DROP TABLE names come from mysqlexpr.ParseDropTable.
 // note: if this file changes, update this header, README.md, and ADR 0015.
 package flashback
 
-import "strings"
+import (
+	"strings"
+
+	"binlogviz/internal/mysqlexpr"
+)
 
 // ddlRef is one object a DDL names. table is empty for a whole schema.
 // schema is empty when the name is unqualified and the session had no
@@ -241,6 +245,21 @@ func (p *ddlParser) nameList() bool {
 // reader knows completely: the caller refuses. A statement that changes no
 // table (account and privilege statements) returns no references and ok=true.
 func ddlReferences(sql, session string) ([]ddlRef, bool) {
+	// DROP TABLE names come from the shared list parser, not this lexer's nameList.
+	if names, isDrop, ok := mysqlexpr.ParseDropTable(sql); isDrop {
+		if !ok {
+			return nil, false
+		}
+		refs := make([]ddlRef, len(names))
+		for i, name := range names {
+			schema := name.Schema
+			if schema == "" {
+				schema = session
+			}
+			refs[i] = ddlRef{schema: schema, table: name.Table}
+		}
+		return refs, true
+	}
 	toks, ok := lexDDL(sql)
 	if !ok || len(toks) == 0 {
 		return nil, false

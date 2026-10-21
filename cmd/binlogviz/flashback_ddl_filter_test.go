@@ -30,7 +30,7 @@ func TestFlashbackDDLUnderTableFilter(t *testing.T) {
 		{"swap gtids span the rename", "rename-swap-later", []string{"--include-table", "rn.t1", "--include-gtids", ddlFilterUUID + ":71-73"}, "rn.t1", "RENAME TABLE rn.t2"},
 		// The selected table is the second name of a multi-table DROP, then the
 		// target of a RENAME.
-		{"drop second name", "drop-multi", []string{"--include-table", "rn.t1"}, "rn.t1", "DROP TABLE `rn`.`z`,`rn`.`t1`"},
+		{"drop second name", "drop-multi", []string{"--include-table", "rn.t1"}, "rn.z, rn.t1", "DROP TABLE `rn`.`z`,`rn`.`t1`"},
 		// The selected table is named first.
 		{"rename first", "rename-first", []string{"--include-table", "rn.t1"}, "rn.t1", "RENAME TABLE rn.t1 TO rn.t1_old"},
 		{"alter rename first", "alter-rename", []string{"--include-table", "rn.t1"}, "rn.t1", "ALTER TABLE rn.t1 RENAME TO rn.t9"},

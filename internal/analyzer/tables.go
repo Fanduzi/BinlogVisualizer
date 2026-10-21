@@ -63,7 +63,23 @@ func NewTableAggregator() *TableAggregator {
 // Consume processes a normalized event and updates table statistics.
 // Only row mutation events (INSERT, UPDATE, DELETE) are counted.
 // Non-row events like TABLE_MAP, BEGIN, COMMIT are ignored.
+// A multi-table DROP TABLE is charged to each named table.
 func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
+	if ev.EventType == "DDL" {
+		if ids := parsedDropTables(ev); len(ids) > 1 {
+			for _, id := range ids {
+				if id.schema == "" || id.table == "" {
+					continue
+				}
+				one := ev
+				one.Schema = id.schema
+				one.Table = id.table
+				one.QuerySQL = ""
+				a.Consume(one)
+			}
+			return
+		}
+	}
 	if ev.Schema == "" || ev.Table == "" {
 		return
 	}
