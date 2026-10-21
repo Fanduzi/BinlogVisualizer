@@ -4,6 +4,10 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+### Security
+
+- Build with Go 1.26.10. govulncheck reported 24 Go 1.26.1 standard library vulnerabilities reachable from binlogviz, including GO-2026-6809 (`crypto/x509`), GO-2026-6599/6600 (`html/template`), GO-2026-6603/6611/6612/6613/6617 (`net/http`) and GO-2026-6604 (`os`). Building from source requires Go 1.26.10+. No module changes.
+
 ### Added
 
 - Version-matrix fixtures for MySQL 5.7.44, 8.4.11, 9.7.2 and MariaDB 10.11.19, 11.8.9: `analyze` is compared with each server's own `mysqlbinlog -vv` decode, and the flashback boundary (FULL undone, MINIMAL, DDL, missing row metadata and 11.8 generated columns refused) is tested (#366).
