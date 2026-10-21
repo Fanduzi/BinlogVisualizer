@@ -136,16 +136,17 @@ const largeInputCPUSlack = 2.0
 // divided by the same figure on the small run.
 const largeInputAllocSlack = 1.5
 
-// Absolute caps are the large run alone, after GC. Headroom over a clean
-// run is several times the measurement and still far under a 256MiB retain
-// or an ~11× per-event slowdown. Values are filled from the measurement
-// table in docs/large-input-baseline.md; the constants below are the gates.
+// Absolute caps are the large run alone, after GC. Process-CPU caps stay
+// several times a clean run: a shared runner moves them, and the one retry
+// does not help when both pairs are slow. Analyze bytes per event does not
+// move under load (1960–1966), so that cap is twice the measurement.
+// Values are filled from the measurement table in docs/large-input-baseline.md.
 //
 // CPU is seconds of process user+sys per event (getrusage RUSAGE_SELF).
 const (
 	maxAnalyzeLiveHeap        uint64 = 32 << 20
 	maxFlashbackLiveHeap      uint64 = 64 << 20
-	maxAnalyzeAllocPerEvent          = 8000.0
+	maxAnalyzeAllocPerEvent          = 4000.0
 	maxFlashbackAllocPerEvent        = 20000.0
 	maxAnalyzeCPUPerEvent            = 20e-6
 	maxFlashbackCPUPerEvent          = 50e-6
