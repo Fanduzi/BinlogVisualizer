@@ -41,7 +41,7 @@ func schemaOutputs() []schemaOutput {
 		{Name: "snapshot-show", VersionKey: "schema_version", Version: snapshotSchemaVersion, Schema: snapshotShowSchema},
 		{Name: "workflow-validate", VersionKey: "schema_version", Version: workflowValidateSchemaVersion, Schema: workflowValidateSchema},
 		{Name: "workflow-describe", VersionKey: "schema_version", Version: workflowDescribeSchemaVersion, Schema: func() ([]byte, error) {
-			return workflow.DescribeJSONSchema(workflowDescribeSchemaVersion)
+			return workflow.DescribeJSONSchema(workflowDescribeSchemaVersion, workflowValidateErrorJSON{})
 		}},
 		{Name: "workflow-status", VersionKey: "schema_version", Version: workflowStatusSchemaVersion, Schema: func() ([]byte, error) {
 			return workflow.StatusJSONSchema(workflowStatusSchemaVersion)

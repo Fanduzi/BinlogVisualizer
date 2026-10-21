@@ -106,6 +106,41 @@ func TestUnionKeepsOnlySharedRequiredKeys(t *testing.T) {
 	}
 }
 
+func TestOneOfKeepsEachBranchRequired(t *testing.T) {
+	type ok struct {
+		Name string `json:"name"`
+	}
+	type bad struct {
+		Valid bool   `json:"valid"`
+		Error string `json:"error"`
+	}
+	raw, err := OneOfVersioned("sample", "schema_version", 1, ok{}, bad{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+	success := map[string]any{"schema_version": float64(1), "name": "a"}
+	failure := map[string]any{"schema_version": float64(1), "valid": false, "error": "no"}
+	if err := Validate(schema, success); err != nil {
+		t.Fatal(err)
+	}
+	if err := Validate(schema, failure); err != nil {
+		t.Fatal(err)
+	}
+	if err := Validate(schema, map[string]any{"schema_version": float64(1)}); err == nil {
+		t.Fatal("a document missing each branch's required keys must fail")
+	}
+	if err := Validate(schema, map[string]any{"schema_version": float64(1), "name": "a", "error": "no"}); err == nil {
+		t.Fatal("a mix of the two shapes must fail")
+	}
+	if err := Validate(schema, map[string]any{"schema_version": float64(1), "valid": false}); err == nil {
+		t.Fatal("a failure document missing error must fail")
+	}
+}
+
 func cloneMap(in map[string]any) map[string]any {
 	out := map[string]any{}
 	for k, v := range in {

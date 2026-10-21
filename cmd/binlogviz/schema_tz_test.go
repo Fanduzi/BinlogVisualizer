@@ -1,6 +1,6 @@
 // Package binlogviz checks the D5 contract: every versioned JSON output matches a published schema, and --tz changes only the display of times.
 // input: the schema catalog, the commands that print those documents, and minimal.binlog.
-// output: a failure when a schema file drifts, a new JSON output has no schema, a field is dropped or added, --tz is ignored, or an invalid zone exits as something other than usage.
+// output: a failure when a schema file drifts, a new JSON output has no schema, a success or failure document does not match its schema, a JSON command has no failure case, a field is dropped or added, --tz is ignored, or an invalid zone exits as something other than usage.
 // pos: the checks named by docs/production-readiness.md item D5. They run under go test ./...
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -54,6 +54,103 @@ func TestJSONOutputMatchesSchema(t *testing.T) {
 		}
 		if _, err := os.Stat(filepath.Join(root, "docs", "schema", name+".json")); err != nil {
 			t.Errorf("schema %s has no docs/schema file: %v", name, err)
+		}
+	}
+}
+
+// jsonFailureRun is one failure of a versioned JSON command.
+// document is true when that failure prints a JSON document on stdout.
+// Every schemaOutputs name has one run; a new command with no run fails
+// TestJSONFailureOutputMatchesSchema.
+type jsonFailureRun struct {
+	name     string
+	args     []string
+	exit     int
+	document bool
+}
+
+func prepareJSONFailureRuns(t *testing.T) []jsonFailureRun {
+	t.Helper()
+	forceEnglishRuntimeOutput(t)
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "missing.binlog")
+	plan := filepath.Join(dir, "plan.yaml")
+	// Unknown trend key. describe and validate both print the failure document.
+	body := []byte("version: 1\nworkflow:\n  name: bad\n  output_dir: out\ndefaults:\n  input:\n    from_dir: binlogs\n    prefix: mysql-bin.\nwindows:\n  - name: w\n    start: 2026-08-29T11:59:13Z\n    end: 2026-08-29T12:00:00Z\ntrend:\n  - name: t\n    snapshots: [w]\n    windows: [w]\n")
+	if err := os.WriteFile(plan, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	notDir := filepath.Join(dir, "not-a-dir")
+	if err := os.WriteFile(notDir, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	notScript := filepath.Join(dir, "not.sql")
+	if err := os.WriteFile(notScript, []byte("select 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	snap := filepath.Join(dir, "snaps")
+	if err := os.Mkdir(snap, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return []jsonFailureRun{
+		{name: "analyze", args: []string{"analyze", missing, "--format", "json", "-q"}, exit: 4},
+		{name: "flashback-plan", args: []string{"flashback", missing, "--plan"}, exit: 4},
+		{name: "compare", args: []string{"compare", filepath.Join(dir, "a.json"), filepath.Join(dir, "b.json"), "--format", "json"}, exit: 4},
+		{name: "trend", args: []string{"trend", "none-a", "none-b", "--snapshot-dir", snap, "--format", "json"}, exit: 4},
+		{name: "snapshot-list", args: []string{"snapshot", "list", "--snapshot-dir", notDir, "--format", "json"}, exit: 4},
+		{name: "snapshot-show", args: []string{"snapshot", "show", "missing", "--snapshot-dir", snap, "--format", "json"}, exit: 4},
+		{name: "workflow-validate", args: []string{"workflow", "validate", plan, "--format", "json"}, exit: 5, document: true},
+		{name: "workflow-describe", args: []string{"workflow", "describe", plan, "--format", "json"}, exit: 5, document: true},
+		{name: "workflow-status", args: []string{"workflow", "status", dir, "--format", "json"}, exit: 4},
+		{name: "workflow-clean", args: []string{"workflow", "clean", dir, "--format", "json"}, exit: 4},
+		{name: "workflow-export", args: []string{"workflow", "export", dir, "--format", "json"}, exit: 4},
+		{name: "version", args: []string{"version", "--format", "yaml"}, exit: 3},
+		{name: "flashback-verify", args: []string{"flashback", "verify", notScript, "--format", "json"}, exit: 6},
+	}
+}
+
+func TestJSONFailureOutputMatchesSchema(t *testing.T) {
+	runs := prepareJSONFailureRuns(t)
+	byName := schemaCatalogByName(t)
+	if len(runs) != len(byName) {
+		t.Fatalf("JSON failure runs %d, schema catalog %d", len(runs), len(byName))
+	}
+	root := repoRoot(t)
+	seen := map[string]bool{}
+	for _, run := range runs {
+		if _, ok := byName[run.name]; !ok {
+			t.Errorf("failure run %s is not in schemaOutputs()", run.name)
+			continue
+		}
+		if seen[run.name] {
+			t.Errorf("duplicate failure run %s", run.name)
+			continue
+		}
+		seen[run.name] = true
+		code, stdout, stderr := runRoot(t, run.args...)
+		if code != run.exit {
+			t.Errorf("%s: exit %d, want %d: %s", run.name, code, run.exit, stderr)
+			continue
+		}
+		if !run.document {
+			if stdout != "" {
+				t.Errorf("%s: failure printed a stdout document:\n%s", run.name, stdout)
+			}
+			continue
+		}
+		schema := readPublishedSchema(t, root, run.name)
+		var inst any
+		if err := json.Unmarshal([]byte(stdout), &inst); err != nil {
+			t.Errorf("%s: stdout is not JSON: %v\n%s", run.name, err, stdout)
+			continue
+		}
+		if err := jsonschema.Validate(schema, inst); err != nil {
+			t.Errorf("%s: failure output does not match docs/schema/%s.json: %v\n%s", run.name, run.name, err, stdout)
+		}
+	}
+	for name := range byName {
+		if !seen[name] {
+			t.Errorf("schema %s has no failure output to validate", name)
 		}
 	}
 }

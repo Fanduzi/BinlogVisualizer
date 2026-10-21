@@ -2,7 +2,7 @@
 // would marshal, and checks a document against that schema.
 // input: a value whose type is the JSON object a command prints, plus the version key that object carries.
 // output: a Draft 2020-12 schema with additionalProperties false on every struct, and a validator for one instance.
-// pos: the schema published for every versioned JSON output (ADR 0017). Commands do not hand-write a second field list.
+// pos: the schema published for every versioned JSON output (ADR 0017). Commands do not hand-write a second field list. A command that prints two shapes uses Union when they share required keys, or OneOf when a union would drop a shape's required keys.
 // note: if this file changes, update docs/adr/0017-json-schema-and-display-timezone.md.
 package jsonschema
 
@@ -128,6 +128,43 @@ func UnionVersioned(id, key string, version int, parts ...any) ([]byte, error) {
 	return Marshal(doc, id)
 }
 
+// OneOfVersioned is one schema whose oneOf branches are the parts, each with
+// the version key required. A property union would keep only the required
+// keys every part shares, so a success object and a failure object that
+// share none would stop requiring the success keys. Each branch keeps its own.
+func OneOfVersioned(id, key string, version int, parts ...any) ([]byte, error) {
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("jsonschema: oneOf needs at least two parts")
+	}
+	branches := make([]any, 0, len(parts))
+	for _, part := range parts {
+		doc, err := Of(part)
+		if err != nil {
+			return nil, err
+		}
+		if err := AddVersion(doc, key, version); err != nil {
+			return nil, err
+		}
+		branches = append(branches, doc)
+	}
+	out := map[string]any{
+		"$schema": draft,
+		"$id":     "binlogviz:schema/" + id,
+		"title":   id,
+		"oneOf":   branches,
+	}
+	raw, err := json.Marshal(out)
+	if err != nil {
+		return nil, err
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, raw, "", "  "); err != nil {
+		return nil, err
+	}
+	pretty.WriteByte('\n')
+	return pretty.Bytes(), nil
+}
+
 // Marshal renders doc as the published schema file, with $schema and $id.
 func Marshal(doc map[string]any, id string) ([]byte, error) {
 	out := map[string]any{
@@ -155,7 +192,9 @@ func Marshal(doc map[string]any, id string) ([]byte, error) {
 
 // Validate reports the first place inst disagrees with schema.
 // A property missing from a closed object, or a key the schema does not
-// name, is an error. Keywords this package does not emit are ignored.
+// name, is an error. A oneOf matches exactly one branch and does not also
+// apply sibling keywords on that object. Keywords this package does not
+// emit are ignored.
 func Validate(schema map[string]any, inst any) error {
 	return validateAt(schema, inst, "$")
 }
@@ -384,6 +423,9 @@ func validateAt(schema map[string]any, inst any, path string) error {
 	if len(schema) == 0 {
 		return nil
 	}
+	if branches, ok := schema["oneOf"]; ok {
+		return validateOneOf(branches, inst, path)
+	}
 	if c, ok := schema["const"]; ok && !sameJSON(c, inst) {
 		return fmt.Errorf("%s: const %v, got %v", path, c, inst)
 	}
@@ -429,6 +471,40 @@ func validateAt(schema map[string]any, inst any, path string) error {
 		}
 	}
 	return nil
+}
+
+func validateOneOf(branches any, inst any, path string) error {
+	list, ok := branches.([]any)
+	if !ok {
+		return fmt.Errorf("%s: oneOf is not an array", path)
+	}
+	matched := 0
+	var first error
+	for _, branch := range list {
+		sub, ok := branch.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: oneOf branch is not an object", path)
+		}
+		err := validateAt(sub, inst, path)
+		if err == nil {
+			matched++
+			continue
+		}
+		if first == nil {
+			first = err
+		}
+	}
+	switch matched {
+	case 1:
+		return nil
+	case 0:
+		if first != nil {
+			return fmt.Errorf("%s: oneOf matched none: %v", path, first)
+		}
+		return fmt.Errorf("%s: oneOf matched none", path)
+	default:
+		return fmt.Errorf("%s: oneOf matched %d schemas", path, matched)
+	}
 }
 
 func checkType(spec any, inst any, path string) error {

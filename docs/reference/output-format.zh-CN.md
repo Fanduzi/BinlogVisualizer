@@ -17,7 +17,7 @@ BinlogViz 会把不同用途的输出写到不同通道：
 - `workflow clean`：`stdout` 输出文本或 JSON 形式的清理摘要。命令会读取 `manifest.json`，报告 orphaned workflow artifacts 以及可选的 orphaned snapshots；在 `--apply` 模式下还会报告 `deleted` 和 `skipped`。它不会用 `stderr` 输出进度，但只要存在 skipped 删除，仍会在写完 `stdout` 后以非零状态退出。
 - `workflow export`：`stdout` 输出文本或 JSON 形式的导出摘要。命令会读取 `manifest.json`，在 workflow root 之外写入确定性的 zip archive，并报告纳入文件计数和 warnings。它不会用 `stderr` 输出进度。
 - `workflow validate`：`stdout` 输出文本或 JSON 校验结果。命令只读取 `plan.yaml`，执行静态 plan 校验；如果 plan 非法则以非零状态退出。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
-- `workflow describe`：`stdout` 输出文本或 JSON 的静态执行预览，包括步骤顺序和 artifact 路径。命令只读取 `plan.yaml`，不会渲染 HTML，也不会检查任何运行时产物。失败时还会继续返回命令错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
+- `workflow describe`：`stdout` 输出文本或 JSON 的静态执行预览，包括步骤顺序和 artifact 路径。命令只读取 `plan.yaml`，不会渲染 HTML，也不会检查任何运行时产物。失败时，JSON stdout 与 `workflow validate` 相同，是 `{schema_version, valid: false, error}`；命令还会继续返回错误，因此默认 CLI 执行下可能在 `stdout` 载荷之后再向 `stderr` 输出一行错误信息。
 
 这种分离很重要，因为它能让报告输出保持适合重定向和自动化处理。
 
@@ -1204,6 +1204,15 @@ JSON 描述包含：
 每个 `windows` 条目包含 `name`、`start`、`end`、`artifacts` 和可选的 `snapshot_name`。
 每个 `compare` 条目包含 `name`、`current`、`baseline` 和 `artifacts`。
 每个 `trend` 条目包含 `name`、`snapshots` 和 `artifacts`。
+
+plan 文件打不开或加载失败时，JSON stdout 与 `workflow validate` 的失败对象相同：
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `valid` | boolean | yes | 始终为 `false` |
+| `error` | string | yes | 解码或读文件的错误消息 |
+
+发布的 schema 是上面的成功对象和这个失败对象的 `oneOf`。成功文档仍然要求 `workflow_name`、`output_dir` 和 `snapshot_save`。
 
 ## Workflow Manifest
 
