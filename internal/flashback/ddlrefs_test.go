@@ -108,7 +108,7 @@ func TestDDLRefusalUnderSelection(t *testing.T) {
 	}{
 		{"later pair", model.NormalizedEvent{EventType: "DDL", Schema: "rn", Table: "t2", QuerySchema: "rn", QuerySQL: "RENAME TABLE t2 TO tmp, t1 TO t2"}, true, "rn.t1", false},
 		{"session schema after qualified name", model.NormalizedEvent{EventType: "DDL", Schema: "other", Table: "x", QuerySchema: "rn", QuerySQL: "RENAME TABLE other.x TO other.y, t2 TO t1"}, true, "rn.t1", false},
-		{"unknown session matches any schema", model.NormalizedEvent{EventType: "DDL", QuerySQL: "DROP TABLE z, t1"}, true, "t1", false},
+		{"unknown session matches any schema", model.NormalizedEvent{EventType: "DDL", QuerySQL: "DROP TABLE z, t1"}, true, "z, t1", false},
 		{"whole schema", model.NormalizedEvent{EventType: "DDL", QuerySQL: "DROP DATABASE rn"}, true, "", false},
 		{"other table", model.NormalizedEvent{EventType: "DDL", Schema: "rn", Table: "t2", QuerySchema: "rn", QuerySQL: "ALTER TABLE t2 ADD INDEX i (v)"}, false, "", false},
 		{"other schema", model.NormalizedEvent{EventType: "DDL", QuerySQL: "DROP DATABASE shop"}, false, "", false},

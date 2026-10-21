@@ -712,6 +712,9 @@ func (a *Planner) ddlRefusal(ev model.NormalizedEvent) error {
 		if ev.Table != "" {
 			table = label
 		}
+		if all := a.dropTableList(ev); all != "" {
+			label, table = all, all
+		}
 		return refuse("ddl_in_range", table, flashDDLError(ev, label))
 	}
 	// QuerySchema is the default database of the query event. Empty means
@@ -738,10 +741,38 @@ func (a *Planner) ddlRefusal(ev model.NormalizedEvent) error {
 		}
 		if sel.MayHoldTable(ref.schema, ref.table) {
 			label := a.refusalTable(ref.schema, ref.table)
+			if all := a.dropTableList(ev); all != "" {
+				label = all
+			}
 			return refuse("ddl_in_range", label, flashDDLError(ev, label))
 		}
 	}
 	return nil
+}
+
+// dropTableList is every table a readable DROP TABLE names, joined for the
+// refusal message and details.table. Empty when the statement is not one.
+func (a *Planner) dropTableList(ev model.NormalizedEvent) string {
+	if ev.QueryTruncated {
+		return ""
+	}
+	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL)
+	if !isDrop || !ok || len(names) == 0 {
+		return ""
+	}
+	session := ev.QuerySchema
+	if session == "" && names[0].Schema == "" {
+		session = ev.Schema
+	}
+	parts := make([]string, len(names))
+	for i, name := range names {
+		schema := name.Schema
+		if schema == "" {
+			schema = session
+		}
+		parts[i] = a.refusalTable(schema, name.Table)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func flashDDLUnreadError(ev model.NormalizedEvent) error {

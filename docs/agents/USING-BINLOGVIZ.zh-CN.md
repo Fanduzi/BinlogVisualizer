@@ -88,7 +88,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 | 3 | `usage` | 标志或参数错误，包括 `--diagnostics ""` 或 `nope` |
 | 4 | `input` | 文件或快照不存在 |
 | 5 | `corrupt` | 不是 binlog，或 JSON 不符合报告形状，包括非字符串的 `diagnostics_mode` |
-| 6 | `refused` | flashback 不会输出 SQL，或 `flashback verify` 不会打印脚本。生成时的 `details.reason`：`row_metadata`、`row_image`、`column_type`、`row_capture`、`ddl_in_range`、`generated_unknown`、`generated_mismatch`、`generated_row`、`schema_mismatch`、`sql_context_off`。点名了一张表时带 `details.table`。verify 的 `details.reason`：`not_flashback`、`truncated`、`missing_trailer`、`appended`、`digest_mismatch`、`old_format`（v0.31 或 v0.32.0 的脚本需要重新生成）。verify 的 stdout 为空 |
+| 6 | `refused` | flashback 不会输出 SQL，或 `flashback verify` 不会打印脚本。生成时的 `details.reason`：`row_metadata`、`row_image`、`column_type`、`row_capture`、`ddl_in_range`、`generated_unknown`、`generated_mismatch`、`generated_row`、`schema_mismatch`、`sql_context_off`。点名了表时带 `details.table`。多表 `DROP TABLE` 在这个字符串里列出每一张表。verify 的 `details.reason`：`not_flashback`、`truncated`、`missing_trailer`、`appended`、`digest_mismatch`、`old_format`（v0.31 或 v0.32.0 的脚本需要重新生成）。verify 的 stdout 为空 |
 | 7 | `conflict` | 选中的行后来又被修改 |
 | 8 | `output` | 写不出报告或脚本 |
 | 9 | `unsupported` | 没有 ROW 镜像的 STATEMENT/MIXED、未知版本，或裁剪过的 diagnostics 文档 |
