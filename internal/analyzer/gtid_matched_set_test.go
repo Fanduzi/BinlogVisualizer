@@ -620,9 +620,9 @@ func TestMatchedGTIDSetDropExactRecosts(t *testing.T) {
 // TestMatchedGTIDSetSeenFirstThreeWriters is #390 QA P2 (seen_gappy_3writers
 // at a lower limit): writers 7, 8, 9 in turn on sequence numbers 2, 4, 6, ...
 // leave one range per transaction in every form; shared needs 3 entries per
-// range. The seen ranges are checked before a matched transaction is added,
-// so the shared form goes first and the run stops on the per-server count,
-// 11 (the stopping transaction included), not 33 (the shared cost).
+// range. The matched transaction is stored, then the seen overflow drops
+// the shared form, and the run stops on the per-server count, 11 (the
+// stopping transaction included), not 33 (the shared cost).
 func TestMatchedGTIDSetSeenFirstThreeWriters(t *testing.T) {
 	withLimit(t, 10)
 	var all []string
@@ -913,5 +913,60 @@ func TestMatchedGTIDSetMariaDBPositionWindow(t *testing.T) {
 		if sel == nil || !reflect.DeepEqual(sel.MatchedGTIDSet, tc.want) || sel.MatchedTransactions == nil || *sel.MatchedTransactions != 3 {
 			t.Fatalf("%s: selection %+v", tc.name, sel)
 		}
+	}
+}
+
+// gappyKept is writers 7, 8, ... round-robin with sequence 2i, every
+// transaction kept. i=100001 is 0-9-200002 for three writers and
+// 0-8-200002 for two.
+func gappyKept(n, writers int) ([]string, map[string]bool) {
+	all := make([]string, 0, n)
+	matched := make(map[string]bool, n)
+	for i := 1; i <= n; i++ {
+		id := fmt.Sprintf("0-%d-%d", 7+(i%writers), 2*i)
+		all = append(all, id)
+		matched[id] = true
+	}
+	return all, matched
+}
+
+// TestMatchedGTIDSetGappyWritersReportPerServer is the #390 P2 repro at the
+// real limit. 100,001 kept transactions, sequence 2i, stop at 0-9-200002
+// (three writers) or 0-8-200002 (two). The shared cost is 300003 or 200002.
+// The reported count is 100001, and nothing repeated.
+func TestMatchedGTIDSetGappyWritersReportPerServer(t *testing.T) {
+	for _, writers := range []int{2, 3} {
+		all, matched := gappyKept(100_001, writers)
+		set, err := matchedSetFrom(t, all, matched)
+		limit := limitOf(t, err)
+		if limit.Intervals != 100_001 || limit.Reason == MatchedGTIDLimitRepeat || set.count != 100_001 {
+			t.Fatalf("%d writers: got %+v after %d, want 100001", writers, limit, set.count)
+		}
+		if strings.Contains(limit.Error(), "sequence number repeats") || !strings.Contains(limit.Error(), "at least 100001 separate GTID intervals kept per server") {
+			t.Fatalf("%d writers message: %v", writers, limit)
+		}
+	}
+}
+
+// TestMatchedGTIDSetSeenOverflowCountsStoppingInterval: the per-server form
+// is already gone, then one new matched sequence (not a repeat) pushes the
+// seen list over the limit. The count includes that sequence. Returning from
+// the seen check before the transaction is stored reports the smaller number.
+func TestMatchedGTIDSetSeenOverflowCountsStoppingInterval(t *testing.T) {
+	withLimit(t, 4)
+	all, matched := alternating(8)
+	for _, seq := range []int{20, 22, 24} { // seen reaches the limit, does not pass it
+		all = append(all, fmt.Sprintf("0-7-%d", seq))
+	}
+	all = append(all, "0-7-30")
+	matched["0-7-30"] = true
+	limit := limitOf(t, func() error { _, err := matchedSetFrom(t, all, matched); return err }())
+	withStopping := trueNeed(all, matched)
+	without := trueNeed(all[:len(all)-1], matched)
+	if limit.Intervals != withStopping || limit.Intervals == without || limit.Reason != MatchedGTIDLimitFormDropped {
+		t.Fatalf("got %+v, want %d form_dropped (without the stopping transaction: %d)", limit, withStopping, without)
+	}
+	if strings.Contains(limit.Error(), "repeat") {
+		t.Fatalf("message: %v", limit)
 	}
 }

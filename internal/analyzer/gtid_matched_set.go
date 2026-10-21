@@ -1,7 +1,7 @@
 // Package analyzer keeps the GTIDs a GTID selector matched as an interval set.
 // input: the canonical identity of every transaction read (observe, or read with keep for a matched one) and of each matched MySQL one (add).
 // output: selection.matched_gtid_set (MySQL uuid:1-4:6-9 per server UUID, MariaDB domain-server-seq or domain-server-first..last, per server or shared by the servers of a domain) and the matched transaction count.
-// pos: Analyzer selection evidence (#379, #381 QA F1); memory is O(intervals), not O(matches); limit errors count the stopping transaction (#384 QA F2), report the smaller form a domain can still be counted in, and name the form that was dropped (#390 QA).
+// pos: Analyzer selection evidence (#379, #381 QA F1); memory is O(intervals), not O(matches); every limit error takes its count from needed, after the stopping transaction is stored, and its message from the reason recorded in the tracker (ADR 0018, #390 QA).
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
@@ -123,12 +123,10 @@ func newMatchedGTIDSet() *matchedGTIDSet {
 	return &matchedGTIDSet{mysql: make(map[string]*rangeList), maria: make(map[uint64]*mariaDomain)}
 }
 
-func (m *matchedGTIDSet) limitError(intervals int) error {
-	return &MatchedGTIDLimitError{Limit: MatchedGTIDIntervalLimit, Intervals: intervals}
-}
-
-// stopError is the MariaDB limit error: the count from needed, taken before
-// any form is freed, and the reason that matches it.
+// stopError is the only constructor of a MatchedGTIDLimitError. The count
+// comes from needed, taken before any form is freed. The message comes from
+// flags the tracker already stored (a repeated sequence number, the shared
+// form already off), not from treating a small count as a repeat.
 func (m *matchedGTIDSet) stopError() error {
 	intervals, perServerOnly := m.needed()
 	reason := MatchedGTIDLimitPlain
@@ -184,21 +182,19 @@ func (m *matchedGTIDSet) read(identity string, keep bool) error {
 	if repeat {
 		d.conflict = true
 	}
-	if keep && repeat && m.exactOff {
+	if keep && repeat && m.exactOff && !m.sharedOff {
 		// Taken while the shared ranges are still there.
 		d.repeat = d.shared.repeatDelta(seq, server, d.servers)
 	}
-	// The seen ranges are checked before the matched identity is added, as
-	// for an unmatched one (#390 QA P2): adding first could drop the
-	// per-server form while the shared form was still kept and then fail on
-	// the shared cost.
-	if m.seenTotal > MatchedGTIDIntervalLimit {
-		if err := m.dropShared(); err != nil {
-			return err
-		}
-	}
+	// Store a matched identity before a ceiling can fail the run. Returning
+	// on the seen list first leaves that transaction out of the count
+	// (#384 QA F2). add applies a seen or shared overflow before a
+	// per-server one, so the looser shared cost is not what is reported.
 	if keep {
 		return m.add(identity)
+	}
+	if m.seenTotal > MatchedGTIDIntervalLimit {
+		return m.dropShared()
 	}
 	if repeat {
 		return m.recost(d)
@@ -229,13 +225,26 @@ func (m *matchedGTIDSet) add(identity string) error {
 			d.servers[server] = struct{}{}
 			m.sharedTotal += delta
 		}
+		// The identity is already in the forms. A seen overflow drops the
+		// shared form first: that form is no longer trusted, and its
+		// rendered cost (ranges times servers) is looser than the
+		// per-server count when writers leave gaps. A per-server overflow
+		// with the shared form still trusted is priced by needed, which
+		// keeps the smaller of the two.
+		if !m.sharedOff && m.seenTotal > MatchedGTIDIntervalLimit {
+			if err := m.dropShared(); err != nil {
+				return err
+			}
+		}
 		if m.exactTotal > MatchedGTIDIntervalLimit {
 			if err := m.dropExact(); err != nil {
 				return err
 			}
 		}
-		if m.sharedTotal > MatchedGTIDIntervalLimit || m.seenTotal > MatchedGTIDIntervalLimit {
-			return m.dropShared()
+		if !m.sharedOff && m.sharedTotal > MatchedGTIDIntervalLimit {
+			if err := m.dropShared(); err != nil {
+				return err
+			}
 		}
 		return m.recost(d)
 	}
@@ -254,7 +263,7 @@ func (m *matchedGTIDSet) add(identity string) error {
 	m.cost += delta
 	m.mysqlCost += delta
 	if m.cost > MatchedGTIDIntervalLimit {
-		return m.limitError(m.cost)
+		return m.stopError()
 	}
 	return nil
 }
