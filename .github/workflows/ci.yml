@@ -24,6 +24,8 @@ jobs:
           install-only: true
       - name: Run tests
         run: go test ./...
+      - name: Wide heap margin
+        run: go test -v -count=1 -timeout 20m -run '^TestWideActivityHeap$' ./cmd/binlogviz/
       - name: Validate GoReleaser config
         run: goreleaser check
       - name: Build local archive
