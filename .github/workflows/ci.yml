@@ -33,6 +33,22 @@ jobs:
       - name: Smoke test packaged archive
         run: bash scripts/release_smoke.sh dist/binlogviz_ci_linux_amd64.tar.gz
 
+  vet-race:
+    name: vet and race
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: go vet
+        run: go vet ./...
+      - name: go test -race
+        # The E1 memory tests skip under -race with a reason naming the verify
+        # job, which still runs plain go test ./... (TestEveryMemoryTestRunsInCIVerify).
+        run: go test -race -count=1 -timeout 40m ./...
+
   flashback-e2e:
     name: flashback e2e
     runs-on: ubuntu-24.04
