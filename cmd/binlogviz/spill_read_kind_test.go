@@ -2,11 +2,28 @@ package binlogviz
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/clierr"
 )
+
+func TestAnalysisSpillReadReportsSpillKind(t *testing.T) {
+	spill := &analyzer.SpillReadError{Err: errors.New("closed")}
+	err := asSpill(spill)
+	kind, _ := clierr.Of(err)
+	if kind != clierr.KindSpill || clierr.Code(kind) != 11 {
+		t.Fatalf("analysis spill read kind %s code %d", kind, clierr.Code(kind))
+	}
+	if !strings.Contains(err.Error(), "read spilled activity") {
+		t.Fatalf("analysis spill read message %q", err.Error())
+	}
+	plain := asSpill(errors.New("disk"))
+	if plain != nil {
+		t.Fatalf("plain finalize error classified as spill: %v", plain)
+	}
+}
 
 func TestSpillReadReportsSpillKind(t *testing.T) {
 	spill := &analyzer.SpillReadError{Err: errors.New("closed")}

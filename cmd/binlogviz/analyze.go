@@ -1,6 +1,6 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
 // input: CLI workload-identity, RFC3339 or YYYY-MM-DD HH:MM:SS time flags (a zoneless value uses the --tz zone when --tz is set, including UTC, otherwise the machine zone; a DST gap or overlap, or an offset past 14:00 or with minutes other than 00, 30, or 45, is a usage error), position/GTID/filter flags, explicit binlog paths or discovery flags, parser callbacks including Format Description server version, command-owned temporary directory roots, and flashback --schema-file SQL.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, a Top Threads session ranking, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; when Options.Flashback is set, undo SQL is written instead of a report; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, user@host, --sql-context, --diagnostics, and stdin `-`; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/object filter that matches nothing exits 2 with its own Error line, a filter that matches a view, event, routine, or trigger exits 0 even with zero rows, other valid no-data (including ADMIN-only) exits 2, a terminal or empty stdin `-` fails before parsing, --snapshot-name without json fails before rendering, a saved snapshot always keeps full diagnostics whatever --diagnostics says, DuckDB temp state is cleaned, and the analyze command does not register --schema-file or --schema-file-db. A failed activity-spill read while rendering is exit 11 (kind spill), not an output write failure.
+// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, a Top Threads session ranking, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; when Options.Flashback is set, undo SQL is written instead of a report; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, user@host, --sql-context, --diagnostics, and stdin `-`; Unclassified QUERY, open BEGIN, SAVEPOINT rollback, and Ignored-only next-GTID failures that intersect the window are exit 1 with one Error: line; after-window Unclassified QUERY keeps the in-window report; invalid selectors fail, a schema/object filter that matches nothing exits 2 with its own Error line, a filter that matches a view, event, routine, or trigger exits 0 even with zero rows, other valid no-data (including ADMIN-only) exits 2, a terminal or empty stdin `-` fails before parsing, --snapshot-name without json fails before rendering, a saved snapshot always keeps full diagnostics whatever --diagnostics says, DuckDB temp state is cleaned, and the analyze command does not register --schema-file or --schema-file-db. A failed activity-spill read, while the analysis finishes or while rendering, is exit 11 (kind spill), not an output write failure.
 // pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering. report.Write owns the format switch. An unknown --format is still a usage error before any input is read.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -781,6 +781,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if resource := analyzerResourceError(err); resource != nil {
 			return resource
 		}
+		if spill := asSpill(err); spill != nil {
+			return spill
+		}
 		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
 	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
@@ -827,15 +830,25 @@ func runAnalysisStreamingWithSnapshotDeps(
 	return nil
 }
 
+// asSpill maps a failed activity-spill read to kind spill. Analysis finalize
+// and report rendering both use it. A spill write that falls back to memory
+// is not this error.
+func asSpill(err error) error {
+	var spill *analyzer.SpillReadError
+	if errors.As(err, &spill) {
+		return clierr.Wrap(clierr.KindSpill, err)
+	}
+	return nil
+}
+
 // classifyReportWriteErr maps a spill read to kind spill. HTML keeps any
 // other error untyped. Every other format's write failure is kind output.
 func classifyReportWriteErr(format string, err error) error {
 	if err == nil {
 		return nil
 	}
-	var spill *analyzer.SpillReadError
-	if errors.As(err, &spill) {
-		return clierr.Wrap(clierr.KindSpill, err)
+	if spill := asSpill(err); spill != nil {
+		return spill
 	}
 	if format == "html" {
 		return err

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"reflect"
@@ -178,8 +179,8 @@ func TestSpilledJSONMatchesEncoder(t *testing.T) {
 }
 
 // Alternating minutes are the shape that used to append a whole minute on
-// every switch (long transactions, lagging channels). The file stays one
-// record per point across a second pass that only updates those points.
+// every switch (long transactions, lagging channels). A second pass updates
+// those points in place. The file stays within 2× points×68.
 // Output matches the in-memory series. After the shared event state is
 // released, live heap and RSS of what remains stay at or below the
 // in-memory series main retains. VmRSS does not include the unlinked file;
@@ -216,8 +217,8 @@ func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
 	if src.ops < points/200 || src.ops > points {
 		t.Fatalf("spill I/O ops %d, want between %d and %d", src.ops, points/200, points)
 	}
-	bound := int64(points) * int64(actRecSize)
-	if got := src.spillBytes(); got != bound {
+	bound := int64(spillFileFactor) * int64(points) * int64(actRecSize)
+	if got := src.spillBytes(); got <= 0 || got > bound {
 		t.Fatalf("spill file is %d bytes for %d points, bound %d", got, points, bound)
 	}
 	opts := report.DefaultOptions()
@@ -240,7 +241,7 @@ func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
 	if spill.points != points || mem.points != points {
 		t.Fatalf("child points spill=%d inline=%d want=%d", spill.points, mem.points, points)
 	}
-	if spill.file != bound {
+	if spill.file <= 0 || spill.file > bound {
 		t.Fatalf("child spill file %d, bound %d", spill.file, bound)
 	}
 	if mem.file != 0 {
@@ -537,6 +538,11 @@ func analyzeUntilWriteFails(t *testing.T, events []model.NormalizedEvent, before
 	t.Helper()
 	restore := SetActivityInlineLimitForTest(0)
 	defer restore()
+	// A byte budget that holds every one-table minute never opens the file
+	// during Consume. Zero evicts on the first park, which is the write the
+	// test fails.
+	restoreBytes := SetSpillResidentBytesForTest(0)
+	defer restoreBytes()
 	a := New(minuteAnalyzeOptions())
 	for i, ev := range events {
 		before(a, i)
@@ -626,6 +632,8 @@ func TestSpillReadErrorFailsFinalize(t *testing.T) {
 	}
 	restore := SetActivityInlineLimitForTest(0)
 	defer restore()
+	restoreBytes := SetSpillResidentBytesForTest(0)
+	defer restoreBytes()
 	a := New(minuteAnalyzeOptions())
 	for _, ev := range events {
 		if err := a.Consume(ev); err != nil {
@@ -678,6 +686,202 @@ func TestSpillReadErrorWritesNoJSON(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A statfs failure used to be able to stop spilling and leave the series in
+// memory. The check failing is not a full disk: the write still happens.
+func TestStatfsFailureStillSpills(t *testing.T) {
+	restoreDisk := SetSpillDiskAvailForTest(func() (uint64, bool) { return 0, false })
+	defer restoreDisk()
+	m0 := time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	for i := 0; i < 4; i++ {
+		events = append(events, closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), "orders", i+1)...)
+	}
+	spilled := analyzeWithLimit(t, events, 0)
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("statfs failure kept the series in memory")
+	}
+	t.Cleanup(src.Close)
+	if src.spillBytes() <= 0 {
+		t.Fatal("statfs failure did not spill")
+	}
+}
+
+// A second flush of one dirty cell rewrites that cell. Leaving every cell
+// dirty writes the whole minute again.
+func TestDirtyClearWritesOneCell(t *testing.T) {
+	restore := SetActivityInlineLimitForTest(0)
+	defer restore()
+	a := New(minuteAnalyzeOptions())
+	m0 := time.Date(2026, 3, 16, 1, 0, 0, 0, time.UTC)
+	const cells = 32
+	for i := 0; i < cells; i++ {
+		for _, ev := range closedInsert(m0, fmt.Sprintf("k%d", i), fmt.Sprintf("t%02d", i), 1) {
+			if err := a.Consume(ev); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	m := a.activity.live
+	if m == nil || len(m.recs) != cells {
+		t.Fatalf("live cells = %d, want %d", len(m.recs), cells)
+	}
+	if err := a.activity.writeMinute(m); err != nil {
+		t.Fatal(err)
+	}
+	m.dirty[0] = true
+	before := a.activity.written
+	if err := a.activity.writeMinute(m); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.activity.written - before; got != actRecSize {
+		t.Fatalf("second flush wrote %d bytes, want %d", got, actRecSize)
+	}
+	t.Cleanup(a.activity.Close)
+}
+
+// The detail store reads each spilled minute while persisting buckets.
+// A failed read has to come back from that path, not a nil row map.
+func TestDuckDBDetailStoreSpillReadFails(t *testing.T) {
+	restore := SetActivityInlineLimitForTest(0)
+	defer restore()
+	restoreBytes := SetSpillResidentBytesForTest(0)
+	defer restoreBytes()
+	opts := minuteAnalyzeOptions()
+	opts.DetailStoreMode = DetailStoreDuckDB
+	a := New(opts)
+	m0 := time.Date(2026, 3, 16, 2, 0, 0, 0, time.UTC)
+	for i := 0; i < 4; i++ {
+		for _, ev := range closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), "orders", i+1) {
+			if err := a.Consume(ev); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	a.activity.flushAll()
+	if err := a.activity.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if a.activity.file == nil {
+		t.Fatal("expected a spill file")
+	}
+	if err := a.activity.file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	err := a.persistMinuteBuckets(a.minuteAgg.DrainAll())
+	var spill *SpillReadError
+	if !errors.As(err, &spill) {
+		t.Fatalf("duckdb spill read returned %v", err)
+	}
+}
+
+// Six channels two minutes apart, twelve channels one minute apart, and a
+// random minute inside a ten-minute window. Each shape is at least 30k
+// points. The hot minutes fit in the resident byte budget, so a switch is
+// not a read and a write. hotSwitches/4 is inside one read plus one write
+// per switch: four resident minutes, or one read per record, is over it.
+func TestInterleavedChannelsStayResident(t *testing.T) {
+	tests := []struct {
+		name                        string
+		channels, gap, tables, cold int
+		random                      bool
+	}{
+		{name: "6 channels 2 min apart", channels: 6, gap: 2, tables: 800, cold: 32},
+		{name: "12 channels 1 min apart", channels: 12, gap: 1, tables: 500, cold: 48},
+		{name: "random minute in a 10 min window", channels: 10, gap: 1, tables: 500, cold: 50, random: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			events, points, hotSwitches := channelShapeEvents(tc.channels, tc.gap, tc.tables, tc.cold, tc.random)
+			if points < 30000 {
+				t.Fatalf("points = %d, want at least 30000", points)
+			}
+			inlineStart := time.Now()
+			inline := analyzeWithLimit(t, events, 1<<30)
+			if _, err := report.RenderJSONWithOptions(*inline, report.DefaultOptions()); err != nil {
+				t.Fatal(err)
+			}
+			inlineDur := time.Since(inlineStart)
+			spillStart := time.Now()
+			spilled := analyzeWithLimit(t, events, 0)
+			got, err := report.RenderJSONWithOptions(*spilled, report.DefaultOptions())
+			if err != nil {
+				t.Fatal(err)
+			}
+			spillDur := time.Since(spillStart)
+			t.Cleanup(func() {
+				if spilled.MinuteTables != nil {
+					spilled.MinuteTables.Close()
+				}
+			})
+			src, ok := spilled.MinuteTables.(*activityStore)
+			if !ok {
+				t.Fatal("series was inlined")
+			}
+			if src.n != points {
+				t.Fatalf("points = %d, want %d", src.n, points)
+			}
+			ceiling := hotSwitches/4 + tc.cold + tc.channels
+			t.Logf("%s inline %s spill %s ops %d points %d switches %d file %d",
+				tc.name, inlineDur, spillDur, src.ops, points, hotSwitches, src.spillBytes())
+			if src.ops > ceiling {
+				t.Fatalf("spill I/O ops %d, ceiling %d (switches %d)", src.ops, ceiling, hotSwitches)
+			}
+			bound := int64(spillFileFactor) * int64(points) * int64(actRecSize)
+			if file := src.spillBytes(); file <= 0 || file > bound {
+				t.Fatalf("spill file %d bytes, bound %d", file, bound)
+			}
+			budget := inlineDur*3 + time.Second
+			if spillDur > budget {
+				t.Fatalf("spill %s exceeds %s (inline %s)", spillDur, budget, inlineDur)
+			}
+			want, err := report.RenderJSONWithOptions(*inline, report.DefaultOptions())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != want {
+				t.Fatal("spilled JSON differs from in-memory")
+			}
+		})
+	}
+}
+
+func channelShapeEvents(channels, gapMin, tables, cold int, randomMinute bool) ([]model.NormalizedEvent, int, int) {
+	base := time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	var last time.Time
+	hotSwitches := 0
+	add := func(ts time.Time, key, table string, hot bool) {
+		if hot && !last.IsZero() && !last.Equal(ts) {
+			hotSwitches++
+		}
+		last = ts
+		events = append(events, closedInsert(ts, key, table, 1)...)
+	}
+	for c := 0; c < cold; c++ {
+		minute := base.Add(time.Duration(c) * time.Minute)
+		for tbl := 0; tbl < tables; tbl++ {
+			add(minute, fmt.Sprintf("c%d-%d", c, tbl), fmt.Sprintf("t%04d", tbl), false)
+		}
+	}
+	hotBase := base.Add(time.Duration(cold+10) * time.Minute)
+	if randomMinute {
+		rng := rand.New(rand.NewSource(1))
+		for tbl := 0; tbl < tables; tbl++ {
+			for _, ch := range rng.Perm(channels) {
+				add(hotBase.Add(time.Duration(ch*gapMin)*time.Minute), fmt.Sprintf("r%d-%d", tbl, ch), fmt.Sprintf("t%04d", tbl), true)
+			}
+		}
+	} else {
+		for tbl := 0; tbl < tables; tbl++ {
+			for ch := 0; ch < channels; ch++ {
+				add(hotBase.Add(time.Duration(ch*gapMin)*time.Minute), fmt.Sprintf("h%d-%d", tbl, ch), fmt.Sprintf("t%04d", tbl), true)
+			}
+		}
+	}
+	return events, (cold + channels) * tables, hotSwitches
 }
 
 func mustJSON(t *testing.T, result *model.AnalysisResult) string {

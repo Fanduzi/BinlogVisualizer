@@ -63,7 +63,7 @@ const (
 // maxWideExtraHeap is how many more live-heap bytes the wide run may peak
 // at than the narrow run. On main the wide file keeps about 220 bytes per
 // extra (table, minute) point, several megabytes over this span. A spilled
-// series keeps one minute of table points plus the minute index.
+// series keeps a byte-capped resident set plus the minute index.
 const maxWideExtraHeap int64 = 2 << 20
 
 func wideHeapChild(t *testing.T) {

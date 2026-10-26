@@ -1412,6 +1412,9 @@ func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer)
 
 	result, err := a.Finalize()
 	if err != nil {
+		if spill := asSpill(err); spill != nil {
+			return nil, spill
+		}
 		return nil, clierr.Errorf(clierr.KindError, "finalize: %w", err)
 	}
 	return result, nil

@@ -93,7 +93,7 @@ The kind string does not change with `--lang`. `--error-format json` prints one 
 | 8 | `output` | Could not write the report or the script |
 | 9 | `unsupported` | STATEMENT/MIXED with no ROW images, an unknown version, or a trimmed diagnostics document |
 | 10 | `resource` | Flashback hit a spill ceiling (`BINLOGVIZ_SPILL_BYTES`, `details.reason` `spill_limit`) or the heap ceiling (`BINLOGVIZ_MEMORY_BYTES`, or `GOMEMLIMIT` when that is unset; `details.reason` `memory_limit`). A set `BINLOGVIZ_SPILL_BYTES` or `BINLOGVIZ_MEMORY_BYTES` that is not a positive base-10 integer is exit 3. Unset `BINLOGVIZ_SPILL_BYTES` means no byte ceiling. Also analyze or flashback with `--include-gtids`/`--exclude-gtids` whose matched GTIDs leave more than 100,000 separate intervals (`details.reason` `matched_gtid_intervals`, #379); narrow the selectors or split the input. Not an empty result |
-| 11 | `spill` | Analyze could not read the per-(table, minute) activity spill while writing the report. Stdout is empty. Not a failure to write the report (that is exit 8) |
+| 11 | `spill` | Analyze could not read the per-(table, minute) activity spill while finishing the analysis or writing the report. Stdout is empty. Not a generic failure (exit 1) and not a failure to write the report (exit 8) |
 
 ## JSON versions
 
