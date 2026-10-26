@@ -4,7 +4,32 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.35.1
+
+Release date: 2026-10-26
+
+Highlights:
+
+- One identifier reader for every DDL name (#412): server-generated multi-table `DROP TABLE` reports each real table (#410), and quoted, ANSI-quoted, digit-led, and version-commented names are read by the server's rules. Filtered flashback no longer refuses a readable DDL that names only other tables.
+- `workflow describe --format json` failure output validates against its published schema (#407).
+- The release pipeline runs vet, `-race`, the failed-apply and guard SQL tests, and flashback e2e on the tagged commit before building, and every archive reports its commit (#417, #419, #303). `docs/production-readiness.md` is 24 of 24 MET.
+- No breaking changes: `report_version` 4, `plan_version` 2, and `schema_version` 1 are unchanged. Known issues: #418, #420, #421.
+
+Related notes:
+
+- [v0.35.1 release notes](docs/releases/release-notes-v0.35.1.md)
+- [v0.35.1 中文发行说明](docs/releases/release-notes-v0.35.1.zh-CN.md)
+
+### Fixed
+
+- Server-generated multi-table `DROP TABLE` names are read as an identifier list instead of split on dots, so `analyze` and unfiltered `flashback` no longer report a made-up table such as ``z`,`db.t1``. `analyze` reports one DDL target per table; flashback still exits 6 and lists every table in its message and `details.table` (#410, #375).
+- `mysqlexpr.Reader` is the only DDL name reader for `CREATE`, `ALTER`, `RENAME`, `TRUNCATE`, and `DROP`. Doubled backticks undouble the same way everywhere, a quoted name is never a keyword, `ANSI_QUOTES` comes from the event's `sql_mode`, and version comments follow each flavor's digit rules and count only when the server version is known and not older. Digit-led unquoted names are names; `USER` statements keep the account spelling. The flashback refusal shows five names then "and N more" and escapes control characters. DDL counts in every format, `compare`, and `trend` are statements (`4 targets in 2 statements`) (#412, #411).
+- `workflow describe --format json` and `workflow validate --format json` failure documents validate against the published schema; the describe schema is a `oneOf` of success and failure. `TestJSONFailureOutputMatchesSchema` covers one failure of every JSON command (#407, #404).
+
+### Changed
+
 - Linux release archives report the commit they were built from: `release.yml` passes the tagged commit and its time as ldflags in all four build jobs, and the release smoke fails when `version --format json` does not report that commit (#303).
+- `release.yml` runs the full CI workflow, including flashback e2e on MySQL 8.0, on the tagged commit, and the builds wait for it (F3). CI runs `go vet` and `go test -race` on every PR (F4), and flashback e2e runs the failed-apply and guard SQL server tests (B5). `docs/production-readiness.md`: 24 MET / 0 PARTIAL / 0 NOT MET (#417, #419).
 
 ## v0.35.0
 
