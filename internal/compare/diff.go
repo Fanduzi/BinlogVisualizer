@@ -1,6 +1,6 @@
 // Package compare computes stable comparison results from validated input reports.
 // input: two validated InputReport values representing current and baseline analyses with optional comparability metadata.
-// output: deterministic CompareResult values with raw deltas, a structured comparability gate, completeness counts, trusted current replay evidence, and byte coverage for renderers.
+// output: deterministic CompareResult values with raw deltas, a structured comparability gate, completeness counts, trusted current replay evidence, and byte coverage for renderers. DDL change counts are statements.
 // pos: compare pipeline core between report loading and output rendering.
 // note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
@@ -316,43 +316,18 @@ func selectedInputFileBytes(coverage InputFileCoverage) *int64 {
 }
 
 func buildDDLChangeDelta(current, baseline []InputDDLEvent) DDLChangeDelta {
+	baseN := ddlInputStatementCount(baseline)
+	curN := ddlInputStatementCount(current)
 	delta := DDLChangeDelta{
-		BaselineCount: len(baseline),
-		CurrentCount:  len(current),
-		Delta:         len(current) - len(baseline),
+		BaselineCount: baseN,
+		CurrentCount:  curN,
+		Delta:         curN - baseN,
 	}
 
-	baselineSet := make(map[string]bool, len(baseline))
-	for _, evt := range baseline {
-		baselineSet[ddlEventKey(evt)] = true
-	}
-	currentSet := make(map[string]bool, len(current))
-	for _, evt := range current {
-		currentSet[ddlEventKey(evt)] = true
-	}
-
-	for _, evt := range current {
-		if !baselineSet[ddlEventKey(evt)] {
-			delta.Added = append(delta.Added, DDLEventItem{
-				Timestamp: evt.Timestamp,
-				Schema:    evt.Schema,
-				Table:     evt.Table,
-				Operation: evt.Operation,
-				Statement: evt.Statement,
-			})
-		}
-	}
-	for _, evt := range baseline {
-		if !currentSet[ddlEventKey(evt)] {
-			delta.Removed = append(delta.Removed, DDLEventItem{
-				Timestamp: evt.Timestamp,
-				Schema:    evt.Schema,
-				Table:     evt.Table,
-				Operation: evt.Operation,
-				Statement: evt.Statement,
-			})
-		}
-	}
+	baselineSet := ddlStatementSet(baseline)
+	currentSet := ddlStatementSet(current)
+	delta.Added = ddlStatementsExcept(current, baselineSet)
+	delta.Removed = ddlStatementsExcept(baseline, currentSet)
 
 	sort.Slice(delta.Added, func(i, j int) bool {
 		return delta.Added[i].Timestamp < delta.Added[j].Timestamp
@@ -366,6 +341,66 @@ func buildDDLChangeDelta(current, baseline []InputDDLEvent) DDLChangeDelta {
 
 func ddlEventKey(evt InputDDLEvent) string {
 	return fmt.Sprintf("%s|%s|%s|%s", evt.Timestamp, evt.Schema, evt.Table, evt.Operation)
+}
+
+// ddlStmtID is one statement. A multi-table DROP is several rows with the
+// same text and position. A row with no statement text stays its own statement.
+func ddlStmtID(ev InputDDLEvent) string {
+	if ev.Statement == "" {
+		return "row|" + ddlEventKey(ev)
+	}
+	return fmt.Sprintf("stmt|%s|%d|%d|%s|%s", ev.BinlogPath, ev.PositionStart, ev.PositionEnd, ev.Timestamp, ev.Statement)
+}
+
+func ddlInputStatementCount(events []InputDDLEvent) int {
+	seen := make(map[string]struct{}, len(events))
+	n := 0
+	for _, ev := range events {
+		if ev.Statement == "" {
+			n++
+			continue
+		}
+		id := ddlStmtID(ev)
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		n++
+	}
+	return n
+}
+
+func ddlStatementSet(events []InputDDLEvent) map[string]bool {
+	set := make(map[string]bool, len(events))
+	for _, ev := range events {
+		set[ddlStmtID(ev)] = true
+	}
+	return set
+}
+
+func ddlStatementsExcept(events []InputDDLEvent, other map[string]bool) []DDLEventItem {
+	seen := make(map[string]bool, len(events))
+	var out []DDLEventItem
+	for _, ev := range events {
+		id := ddlStmtID(ev)
+		if other[id] {
+			continue
+		}
+		if ev.Statement != "" {
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+		}
+		out = append(out, DDLEventItem{
+			Timestamp: ev.Timestamp,
+			Schema:    ev.Schema,
+			Table:     ev.Table,
+			Operation: ev.Operation,
+			Statement: ev.Statement,
+		})
+	}
+	return out
 }
 
 func buildTxnDiagnosticDelta(current, baseline InputDiagnostics) TxnDiagnosticDelta {

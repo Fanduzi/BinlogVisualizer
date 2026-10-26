@@ -359,3 +359,22 @@ func TestBuildCompareResultDDLChangesIdentifiesAddedAndRemoved(t *testing.T) {
 		t.Fatalf("expected removed DDL to be DROP TABLE, got %q", removed.Operation)
 	}
 }
+
+func TestDDLChangeDeltaCountsStatements(t *testing.T) {
+	drop := "DROP TABLE shop.b, shop.c, shop.d"
+	current := InputReport{Diagnostics: InputDiagnostics{DDLEvents: []InputDDLEvent{
+		{Timestamp: "2026-03-20T10:10:00Z", Schema: "shop", Table: "b", Operation: "DROP TABLE", Statement: drop, BinlogPath: "bin.1", PositionStart: 10, PositionEnd: 20},
+		{Timestamp: "2026-03-20T10:10:00Z", Schema: "shop", Table: "c", Operation: "DROP TABLE", Statement: drop, BinlogPath: "bin.1", PositionStart: 10, PositionEnd: 20},
+		{Timestamp: "2026-03-20T10:10:00Z", Schema: "shop", Table: "d", Operation: "DROP TABLE", Statement: drop, BinlogPath: "bin.1", PositionStart: 10, PositionEnd: 20},
+	}}}
+	baseline := InputReport{Diagnostics: InputDiagnostics{DDLEvents: []InputDDLEvent{
+		{Timestamp: "2026-03-13T10:05:00Z", Schema: "shop", Table: "a", Operation: "CREATE TABLE", Statement: "CREATE TABLE shop.a (id INT)"},
+	}}}
+	got := BuildCompareResult(current, baseline).DiagnosticsDelta.DDLChanges
+	if got.BaselineCount != 1 || got.CurrentCount != 1 || got.Delta != 0 {
+		t.Fatalf("counts base %d current %d delta %d, want 1, 1, 0", got.BaselineCount, got.CurrentCount, got.Delta)
+	}
+	if len(got.Added) != 1 || len(got.Removed) != 1 {
+		t.Fatalf("added %d removed %d, want one statement each", len(got.Added), len(got.Removed))
+	}
+}

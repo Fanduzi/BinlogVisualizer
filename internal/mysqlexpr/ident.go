@@ -114,6 +114,30 @@ func ReadNameAfter(sql, keyword string, d Dialect, opt NameOpt) (QualifiedIdent,
 	}
 }
 
+// AccountAfter returns the account after the first unquoted keyword, quotes
+// included: 'repl'@'%'. CREATE, ALTER, and DROP USER use it. The read stops
+// at a comma or a following word such as IDENTIFIED.
+func AccountAfter(sql, keyword string, d Dialect) string {
+	p := NewReader(sql, d)
+	for {
+		word, ok := p.nextWord()
+		if !ok || p.bad {
+			return ""
+		}
+		if word.Quoted || !strings.EqualFold(word.Text, keyword) {
+			continue
+		}
+		if !p.skipOptionalIf() || p.bad {
+			return ""
+		}
+		raw, ok := p.rawAccount()
+		if !ok || p.bad {
+			return ""
+		}
+		return raw
+	}
+}
+
 // RestAfter returns the raw text after the first unquoted keyword, up to '='.
 // SET PASSWORD FOR keeps the account spelling, quotes included.
 func RestAfter(sql, keyword string, d Dialect) string {
@@ -141,14 +165,15 @@ func RestAfter(sql, keyword string, d Dialect) string {
 // Reader walks one statement. Versioned comments the server would run are
 // part of the statement. A doubled quote inside a quoted name is one quote.
 type Reader struct {
-	s     string
-	i     int
-	bad   bool
-	ansi  bool
-	ver   int
-	maria bool
-	known bool // flavor was mysql or mariadb
-	inVer int
+	s       string
+	i       int
+	bad     bool
+	ansi    bool
+	ver     int
+	maria   bool
+	known   bool // flavor was mysql or mariadb
+	inVer   int
+	skipVer bool // rewritten DROP: a preserved version comment is not a name list
 }
 
 type readerMark struct {
@@ -263,13 +288,14 @@ func (p *Reader) lineComment() bool {
 // comment consumes a plain comment, or enters a versioned comment the server runs.
 func (p *Reader) comment() {
 	// p.i at '/'
-	body, maria, ver, hasVer, ok := versionComment(p.s, p.i)
+	body, maria, ver, hasVer, ok := versionComment(p.s, p.i, !p.maria, p.ver)
 	if !ok {
 		p.bad = true
 		return
 	}
-	if body < 0 {
-		// Plain comment. end is ver's unused; scan for */.
+	if body < 0 || p.skipVer {
+		// Plain comment, or a version comment MariaDB preserved on a rewritten
+		// DROP. The names that were dropped are the list outside that comment.
 		end := strings.Index(p.s[p.i+2:], "*/")
 		if end < 0 {
 			p.bad = true
@@ -317,7 +343,10 @@ func (p *Reader) comment() {
 
 // versionComment parses /*!N or /*M!N at i (which points at '/').
 // body is the first byte of the body, or -1 when this is a plain comment.
-func versionComment(s string, i int) (body int, maria bool, ver int, hasVer, ok bool) {
+// mysql is the server: MariaDB takes 5 digits, or 6 when a sixth digit is
+// present. MySQL takes 5, and from 8.1 also 6 when whitespace follows the
+// sixth. Fewer than 5 digits is not a version. Extra digits stay in the body.
+func versionComment(s string, i int, mysql bool, verID int) (body int, maria bool, ver int, hasVer, ok bool) {
 	if i+1 >= len(s) || s[i+1] != '*' {
 		return 0, false, 0, false, false
 	}
@@ -333,15 +362,29 @@ func versionComment(s string, i int) (body int, maria bool, ver int, hasVer, ok 
 	} else {
 		return -1, false, 0, false, true
 	}
-	for j < len(s) && s[j] >= '0' && s[j] <= '9' {
-		hasVer = true
-		ver = ver*10 + int(s[j]-'0')
-		j++
-		if ver > 99999999 {
-			return 0, false, 0, false, false
-		}
+	n := 0
+	for n < 7 && j+n < len(s) && s[j+n] >= '0' && s[j+n] <= '9' {
+		n++
 	}
-	return j, maria, ver, hasVer, true
+	if n < 5 {
+		return j, maria, 0, false, true
+	}
+	take := 5
+	if !mysql {
+		if n >= 6 {
+			take = 6
+		}
+	} else if verID >= 80100 && n >= 6 && j+6 < len(s) && isSpaceByte(s[j+6]) {
+		take = 6
+	}
+	for k := 0; k < take; k++ {
+		ver = ver*10 + int(s[j+k]-'0')
+	}
+	return j + take, maria, ver, true, true
+}
+
+func isSpaceByte(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v'
 }
 
 // Ident reads one name. A double quote without ANSI_QUOTES is not a name.
@@ -355,10 +398,76 @@ func (p *Reader) Ident() (Ident, bool) {
 		p.bad = true
 		return Ident{}, false
 	}
+	if c >= '0' && c <= '9' {
+		mark := p.i
+		text, isIdent := p.DigitToken()
+		if !isIdent {
+			p.i = mark
+			return Ident{}, false
+		}
+		return Ident{Text: text}, true
+	}
 	if c == '`' || (c == '"' && p.ansi) || identStart(c) {
 		return p.readIdent()
 	}
 	return Ident{}, false
+}
+
+// DigitToken reads one digit-led token, the way MySQL's lexer does.
+// isIdent is true for a name such as 2fa_codes. A pure number, a hex or bit
+// literal, and an exponent (1e5, 1e+10) are not names; those are still consumed.
+func (p *Reader) DigitToken() (text string, isIdent bool) {
+	if p.EOF() || p.s[p.i] < '0' || p.s[p.i] > '9' {
+		return "", false
+	}
+	start := p.i
+	s := p.s
+	if s[p.i] == '0' && p.i+1 < len(s) {
+		switch s[p.i+1] {
+		case 'x', 'X':
+			k := p.i + 2
+			for k < len(s) && isHex(s[k]) {
+				k++
+			}
+			if k > p.i+2 && (k >= len(s) || !identPart(s[k])) {
+				p.i = k
+				return s[start:p.i], false
+			}
+		case 'b', 'B':
+			k := p.i + 2
+			for k < len(s) && (s[k] == '0' || s[k] == '1') {
+				k++
+			}
+			if k > p.i+2 && (k >= len(s) || !identPart(s[k])) {
+				p.i = k
+				return s[start:p.i], false
+			}
+		}
+	}
+	p.i = start
+	for p.i < len(s) && s[p.i] >= '0' && s[p.i] <= '9' {
+		p.i++
+	}
+	if p.i < len(s) && (s[p.i] == 'e' || s[p.i] == 'E') {
+		k := p.i + 1
+		if k < len(s) && (s[k] == '+' || s[k] == '-') {
+			k++
+		}
+		if k < len(s) && s[k] >= '0' && s[k] <= '9' {
+			p.i = k
+			for p.i < len(s) && s[p.i] >= '0' && s[p.i] <= '9' {
+				p.i++
+			}
+			return s[start:p.i], false
+		}
+	}
+	if p.i < len(s) && identPart(s[p.i]) {
+		for p.i < len(s) && identPart(s[p.i]) {
+			p.i++
+		}
+		return s[start:p.i], true
+	}
+	return s[start:p.i], false
 }
 
 func (p *Reader) readIdent() (Ident, bool) {
@@ -430,6 +539,11 @@ func (p *Reader) nextWord() (Ident, bool) {
 		switch {
 		case c == '`' || (p.ansi && c == '"') || identStart(c):
 			return p.readIdent()
+		case c >= '0' && c <= '9':
+			text, isIdent := p.DigitToken()
+			if isIdent {
+				return Ident{Text: text}, true
+			}
 		case c == '\'' || (c == '"' && !p.ansi):
 			if !p.readString(c) {
 				return Ident{}, false
@@ -490,6 +604,35 @@ func (p *Reader) skipOptionalIf() bool {
 		return ok && !word.Quoted && strings.EqualFold(word.Text, "EXISTS") && !p.bad
 	}
 	return ok && !word.Quoted && strings.EqualFold(word.Text, "EXISTS") && !p.bad
+}
+
+// rawAccount is the account spelling at p, quotes kept.
+func (p *Reader) rawAccount() (string, bool) {
+	p.Skip()
+	if p.bad || p.EOF() {
+		return "", false
+	}
+	start := p.i
+	for p.i < len(p.s) {
+		c := p.s[p.i]
+		switch c {
+		case '\'', '"', '`':
+			if !p.readString(c) {
+				return "", false
+			}
+		case ' ', '\t', '\n', '\r', ',', ';':
+			if p.i == start {
+				return "", false
+			}
+			return p.s[start:p.i], true
+		default:
+			p.i++
+		}
+	}
+	if p.i == start {
+		return "", false
+	}
+	return p.s[start:p.i], true
 }
 
 // IdentStart reports a byte that can begin an unquoted name.

@@ -999,6 +999,26 @@
     "description": "检测到 DDL 的发现短标签",
     "other": "检测到 DDL"
   },
+  "report.text.ddlTargetsInStatements": {
+    "description": "一条语句包含多个对象时的 DDL 时间线说明",
+    "other": "{{.Targets}} 个对象，共 {{.Statements}} 条语句"
+  },
+  "report.word.target.one": {
+    "description": "DDL 对象数为一时的量词",
+    "other": "个对象"
+  },
+  "report.word.target.other": {
+    "description": "DDL 对象数为多个时的量词",
+    "other": "个对象"
+  },
+  "report.word.statement.one": {
+    "description": "DDL 语句数为一时的量词",
+    "other": "条语句"
+  },
+  "report.word.statement.other": {
+    "description": "DDL 语句数为多个时的量词",
+    "other": "条语句"
+  },
   "report.text.ddlOccurrenceNote": {
     "description": "DDL 时间线只记录发生，不是锁等待时长",
     "other": "DDL 发生时间线（不是 MDL 或锁等待时长）"

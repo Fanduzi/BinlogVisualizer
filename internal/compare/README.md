@@ -9,7 +9,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | `load.go` | Loads and validates analyze report versions 0 through 3 from files or bytes, normalizing legacy missing completeness to unknown, and refusing a report marked `diagnostics_mode` summary/off (exit 9, `reduced_diagnostics`). JSON null is absent. A non-string is corrupt (exit 5). |
 | `model.go` | Defines compare input contracts that preserve report-v3 identity/scope, selection, provenance/SQL metadata, completeness, counted-event diagnostics, snapshot metadata, pattern shapes, and structured comparability evidence without inventing legacy identity. |
 | `comparability.go` | Assesses explicit workload identity, provenance/flavor, configured object/position/GTID scope, report version, and transaction completeness across inputs. |
-| `diff.go` | Computes deterministic raw summary, completeness, table, pattern, operation, alert, and byte-coverage deltas, and gates causal findings, recommendations, and drilldowns on comparability. |
+| `diff.go` | Computes deterministic raw summary, completeness, table, pattern, operation, alert, and byte-coverage deltas, and gates causal findings, recommendations, and drilldowns on comparability. DDL change counts and the added or removed list are statements, the same way the report counts them. |
 | `findings.go` | Selects capped key findings from compare deltas for downstream rendering. |
 | `evidence.go` | Maps compare findings back to stable section anchors and evidence references. |
 | `replay.go` | Preserves analyze transaction spans and replay commands for compare and trend evidence. |

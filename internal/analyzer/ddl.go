@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, versioned comments and ANSI_QUOTES follow the event). A multi-table DROP TABLE is one event per table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, a digit-leading name is a name, versioned comments and ANSI_QUOTES follow the event). CREATE/ALTER/DROP USER keep the account spelling. A multi-table DROP TABLE is one event per table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -405,6 +405,8 @@ func ddlObjectName(sql, operation, object string, d mysqlexpr.Dialect) (string, 
 			return "", ""
 		}
 		return name.Schema, name.Table
+	case object == "user":
+		return "", mysqlexpr.AccountAfter(sql, "USER", d)
 	case object == "database":
 		name, ok := mysqlexpr.ReadNameAfter(sql, "DATABASE", d, mysqlexpr.NameOpt{})
 		if !ok {

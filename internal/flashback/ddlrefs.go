@@ -3,7 +3,7 @@
 // input: the statement text of a DDL query event and the session's default schema.
 // output: every table and schema the statement names as a source or target, or ok=false
 // when the statement is not one of the shapes read here. ok=false refuses.
-// pos: flashback-only helper. Analyze does not call it. Names come from mysqlexpr's identifier reader. DROP TABLE names come from mysqlexpr.ParseDropTable.
+// pos: flashback-only helper. Analyze does not call it. Names come from mysqlexpr's identifier reader, including a digit-leading name. DROP TABLE names come from mysqlexpr.ParseDropTable.
 // note: if this file changes, update this header, README.md, and ADR 0015.
 package flashback
 
@@ -65,11 +65,12 @@ func lexDDL(s string, d mysqlexpr.Dialect) ([]ddlTok, bool) {
 		case c == '"':
 			return nil, false
 		case c >= '0' && c <= '9':
-			start := p.Pos()
-			for !p.EOF() && p.Peek() >= '0' && p.Peek() <= '9' {
-				p.Bump()
+			text, isIdent := p.DigitToken()
+			kind := byte('n')
+			if isIdent {
+				kind = 'w'
 			}
-			toks = append(toks, ddlTok{kind: 'n', text: p.Slice(start, p.Pos())})
+			toks = append(toks, ddlTok{kind: kind, text: text})
 		default:
 			p.Bump()
 			toks = append(toks, ddlTok{kind: 'p', text: string(c)})

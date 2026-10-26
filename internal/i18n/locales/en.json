@@ -999,6 +999,26 @@
     "description": "Short finding label for detected DDL",
     "other": "DDL detected"
   },
+  "report.text.ddlTargetsInStatements": {
+    "description": "DDL timeline note when one statement names several objects",
+    "other": "{{.Targets}} {{.TargetWord}} in {{.Statements}} {{.StatementWord}}"
+  },
+  "report.word.target.one": {
+    "description": "Singular object word in the DDL target phrase",
+    "other": "target"
+  },
+  "report.word.target.other": {
+    "description": "Plural object word in the DDL target phrase",
+    "other": "targets"
+  },
+  "report.word.statement.one": {
+    "description": "Singular statement word in the DDL target phrase",
+    "other": "statement"
+  },
+  "report.word.statement.other": {
+    "description": "Plural statement word in the DDL target phrase",
+    "other": "statements"
+  },
   "report.text.ddlOccurrenceNote": {
     "description": "DDL timeline is an occurrence list, not a lock-wait duration",
     "other": "DDL occurrence timeline (not MDL or lock-wait duration)"

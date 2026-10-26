@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"binlogviz/internal/clierr"
 	"binlogviz/internal/guard"
@@ -801,13 +802,20 @@ func shortDDLNames(names []string) string {
 }
 
 func escapeControls(s string) string {
-	for i := 0; i < len(s); i++ {
-		if s[i] < 0x20 || s[i] == 0x7f {
-			q := strconv.Quote(s)
-			return q[1 : len(q)-1]
+	if !nameNeedsEscape(s) {
+		return s
+	}
+	q := strconv.QuoteToASCII(s)
+	return q[1 : len(q)-1]
+}
+
+func nameNeedsEscape(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f || unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) {
+			return true
 		}
 	}
-	return s
+	return false
 }
 
 func flashDDLUnreadError(ev model.NormalizedEvent) error {
