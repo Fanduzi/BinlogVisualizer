@@ -63,3 +63,14 @@ type MinuteBucket struct {
 	DDLCount    int
 	TableRows   map[string]int
 }
+
+// MinuteTableSource is the per-(table, minute) series when it is not stored
+// on MinuteBucket.TableRows and TableStats.Activity. Close releases any
+// spill file. Err is a failed read of that file. A nil source on
+// AnalysisResult means those fields are complete.
+type MinuteTableSource interface {
+	TableRows(minute time.Time) map[string]int
+	Activity(schema, table string) []TableActivityPoint
+	Close()
+	Err() error
+}

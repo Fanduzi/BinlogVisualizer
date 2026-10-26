@@ -320,10 +320,13 @@ func spanMinutes(txns int) int {
 // writes table t_%06d (i mod tables), with its own table id in TABLE_MAP
 // and UPDATE_ROWS. The name has the same length as the fixture's
 // "counters", so event sizes, and the file sizes, do not change.
+// perMinute is how many distinct tables each minute writes. Zero uses
+// largeInputTablesPerMinute (4), which is what the E2 template measures.
 type largeShape struct {
-	tp      syntheticTemplate
-	tables  int
-	nameOff int
+	tp        syntheticTemplate
+	tables    int
+	nameOff   int
+	perMinute int
 }
 
 func newLargeShape(t *testing.T, tp syntheticTemplate, tables int) largeShape {
@@ -343,16 +346,22 @@ func newLargeShape(t *testing.T, tp syntheticTemplate, tables int) largeShape {
 	return largeShape{tp: tp, tables: tables, nameOff: off + 1}
 }
 
-// table is the table transaction i writes. Each minute writes
-// largeInputTablesPerMinute tables, and the next minute moves on to the next
-// ones, so both files touch all of them but the number of (table, minute)
-// activity points is a fixed multiple of the minutes, not of the
-// transactions. The analyzer keeps one point per table per minute (about
-// 220 bytes); rotating every transaction through all tables would make that
-// a per-transaction cost and hide a per-transaction leak inside it.
+// table is the table transaction i writes. Each minute writes perMinute
+// tables (largeInputTablesPerMinute when unset), and the next minute moves
+// on to the next ones, so a file that spans enough minutes touches every
+// table but the number of (table, minute) activity points is a fixed
+// multiple of the minutes, not of the transactions. Rotating every
+// transaction through all tables would make that a per-transaction cost
+// and hide a per-transaction leak inside it. Many tables in the same
+// minute are TestWideActivityHeap; this template stays at 4 so the
+// per-minute term measured here is the minute bucket.
 func (s largeShape) table(i int) int {
+	per := s.perMinute
+	if per <= 0 {
+		per = largeInputTablesPerMinute
+	}
 	minute := uint64(i) * s.tp.stepMicros / 60_000_000
-	return int((minute*largeInputTablesPerMinute + uint64(i%largeInputTablesPerMinute)) % uint64(s.tables))
+	return int((minute*uint64(per) + uint64(i%per)) % uint64(s.tables))
 }
 
 func (s largeShape) event(j, i int) []byte {

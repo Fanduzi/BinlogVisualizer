@@ -40,7 +40,7 @@ func renderMarkdown(result model.AnalysisResult, opts Options, built view.View) 
 	mdTopTransactions(&buf, built.Key, opts, result.Diagnostics.ServerVersion)
 	mdBusiestMinutes(&buf, result.Diagnostics.HotIntervals, opts.TopN, opts)
 	mdApplyDelay(&buf, result.Diagnostics.ApplyDelay, opts.TopN, opts)
-	mdMinuteActivity(&buf, result.Minutes, opts.TopN, opts)
+	mdMinuteActivity(&buf, result.Minutes, result.MinuteTables, opts.TopN, opts)
 	mdDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.SQLContextMode, result.Diagnostics.ServerVersion, opts)
 	mdFindings(&buf, result.Diagnostics.Findings, result.Alerts, opts)
 
@@ -329,19 +329,19 @@ func mdBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, topN i
 	if minutesHaveTables(shown) {
 		buf.WriteString(i18n.T("report.text.busiestMinutesLead") + "\n\n")
 	}
-	writeMinuteTable(buf, shown, topN, opts)
+	writeMinuteTable(buf, shown, nil, topN, opts)
 }
 
-func mdMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
+func mdMinuteActivity(buf *strings.Builder, minutes []model.MinuteBucket, src model.MinuteTableSource, topN int, opts Options) {
 	buf.WriteString("## " + i18n.T("report.section.minutes") + "\n\n")
 	if len(minutes) == 0 {
 		buf.WriteString("_" + i18n.T("report.placeholder.noMinuteActivity") + "_\n\n")
 		return
 	}
-	writeMinuteTable(buf, minutes, topN, opts)
+	writeMinuteTable(buf, minutes, src, topN, opts)
 }
 
-func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
+func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, src model.MinuteTableSource, topN int, opts Options) {
 	buf.WriteString("| Time | Rows | Transactions | " + i18n.T("report.label.drivingTables") + " |\n")
 	buf.WriteString("|---|---:|---:|---|\n")
 	for _, m := range minutes {
@@ -349,7 +349,7 @@ func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, topN i
 			opts.formatTime(m.Minute),
 			formatInt(m.TotalRows),
 			formatInt(m.TxnCount),
-			escapeMD(formatDrivingTables(m.TableRows, topN)),
+			escapeMD(formatDrivingTables(minuteRows(src, m), topN)),
 		))
 	}
 	buf.WriteString("\n")

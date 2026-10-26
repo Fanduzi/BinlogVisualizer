@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"sort"
+	"time"
 
 	"binlogviz/internal/model"
 )
@@ -18,6 +19,13 @@ import (
 // The baseline is computed as the median of the previous SpikeWindow minutes.
 // Only detects spikes when DetectSpikes is enabled.
 func DetectSpikeAlerts(buckets []model.MinuteBucket, opts Options) []model.Alert {
+	return detectSpikeAlerts(buckets, opts, nil)
+}
+
+// detectSpikeAlerts is DetectSpikeAlerts. lookup supplies per-table rows
+// when the buckets themselves do not carry them. It keeps only the baseline
+// window of lookups, not every minute.
+func detectSpikeAlerts(buckets []model.MinuteBucket, opts Options, lookup func(time.Time) map[string]int) []model.Alert {
 	if !opts.DetectSpikes {
 		return nil
 	}
@@ -30,6 +38,21 @@ func DetectSpikeAlerts(buckets []model.MinuteBucket, opts Options) []model.Alert
 	})
 
 	var alerts []model.Alert
+	var cache map[time.Time]map[string]int
+	rowsOf := func(b model.MinuteBucket) map[string]int {
+		if lookup == nil {
+			return b.TableRows
+		}
+		if cache == nil {
+			cache = make(map[time.Time]map[string]int, opts.SpikeWindow+1)
+		}
+		if rows, ok := cache[b.Minute]; ok {
+			return rows
+		}
+		rows := lookup(b.Minute)
+		cache[b.Minute] = rows
+		return rows
+	}
 
 	for i, bucket := range sorted {
 		// Need at least SpikeWindow previous buckets for baseline
@@ -66,14 +89,15 @@ func DetectSpikeAlerts(buckets []model.MinuteBucket, opts Options) []model.Alert
 
 		// === Table-level spike detection ===
 		// Collect table names and sort for deterministic ordering
-		tableNames := make([]string, 0, len(bucket.TableRows))
-		for table := range bucket.TableRows {
+		tableRowsNow := rowsOf(bucket)
+		tableNames := make([]string, 0, len(tableRowsNow))
+		for table := range tableRowsNow {
 			tableNames = append(tableNames, table)
 		}
 		sort.Strings(tableNames)
 
 		for _, table := range tableNames {
-			rows := bucket.TableRows[table]
+			rows := tableRowsNow[table]
 			if rows < opts.SpikeMinRows {
 				continue
 			}
@@ -81,7 +105,7 @@ func DetectSpikeAlerts(buckets []model.MinuteBucket, opts Options) []model.Alert
 			// Collect baseline values for this specific table
 			tableBaselineValues := make([]int, 0, opts.SpikeWindow)
 			for j := i - opts.SpikeWindow; j < i; j++ {
-				if tableRows, ok := sorted[j].TableRows[table]; ok {
+				if tableRows, ok := rowsOf(sorted[j])[table]; ok {
 					tableBaselineValues = append(tableBaselineValues, tableRows)
 				} else {
 					tableBaselineValues = append(tableBaselineValues, 0)
@@ -107,6 +131,9 @@ func DetectSpikeAlerts(buckets []model.MinuteBucket, opts Options) []model.Alert
 					})
 				}
 			}
+		}
+		if lookup != nil && i >= opts.SpikeWindow {
+			delete(cache, sorted[i-opts.SpikeWindow].Minute)
 		}
 	}
 

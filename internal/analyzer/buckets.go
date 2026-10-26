@@ -1,7 +1,7 @@
 // Package analyzer aggregates row activity into minute buckets that can later be persisted and queried.
 // input: normalized row events with timestamps, transaction keys, and schema/table identifiers.
 // output: deterministic minute-level aggregates and per-table minute rows for spike detection and activity reporting.
-// pos: live minute map keyed by truncated minute. The analyzer keeps every minute until Finalize, so an earlier timestamp updates the existing bucket. Memory is one bucket per minute, not per transaction.
+// pos: live minute map keyed by truncated minute. The analyzer keeps every minute until Finalize, so an earlier timestamp updates the existing bucket. Memory is one bucket per minute, not per transaction. Per-table row counts live in the shared activity store when one is set.
 // note: if this file changes, update this header and module README.md.
 package analyzer
 
@@ -15,7 +15,9 @@ import (
 // MinuteAggregator aggregates row activity into minute buckets.
 // It tracks total rows, distinct transactions, and per-table row counts per minute.
 type MinuteAggregator struct {
-	buckets map[time.Time]*minuteBucket // key: truncated minute
+	buckets     map[time.Time]*minuteBucket // key: truncated minute
+	series      *activityStore
+	includeRows bool
 }
 
 type minuteBucket struct {
@@ -55,9 +57,9 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 	minute := truncateToMinute(ev.Timestamp)
 	bucket, exists := a.buckets[minute]
 	if !exists {
-		bucket = &minuteBucket{
-			minute:    minute,
-			tableRows: make(map[tableIdentity]int),
+		bucket = &minuteBucket{minute: minute}
+		if a.series == nil {
+			bucket.tableRows = make(map[tableIdentity]int)
 		}
 		a.buckets[minute] = bucket
 	}
@@ -87,7 +89,12 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 
 	// Track per-table rows
 	if isRowEvent {
-		bucket.tableRows[newTableIdentity(ev.Schema, ev.Table)] += ev.RowCount
+		id := newTableIdentity(ev.Schema, ev.Table)
+		if a.series != nil {
+			a.series.addRows(id, minute, ev.RowCount)
+		} else {
+			bucket.tableRows[id] += ev.RowCount
+		}
 	}
 }
 
@@ -97,15 +104,7 @@ func (a *MinuteAggregator) Consume(ev model.NormalizedEvent) {
 func (a *MinuteAggregator) Snapshot() []model.MinuteBucket {
 	result := make([]model.MinuteBucket, 0, len(a.buckets))
 	for _, bucket := range a.buckets {
-		result = append(result, model.MinuteBucket{
-			Minute:      bucket.minute,
-			TotalRows:   bucket.totalRows,
-			TxnCount:    bucket.txnCount,
-			EventCount:  bucket.eventCount,
-			BinlogBytes: bucket.binlogBytes,
-			DDLCount:    bucket.ddlCount,
-			TableRows:   exportTableRows(bucket.tableRows),
-		})
+		result = append(result, a.exportBucket(bucket))
 	}
 
 	// Sort by time ascending for deterministic output
@@ -132,7 +131,7 @@ func (a *MinuteAggregator) DrainBefore(cutoffMinute time.Time) []model.MinuteBuc
 		if result == nil {
 			result = make([]model.MinuteBucket, 0, len(a.buckets))
 		}
-		result = append(result, drainMinuteBucket(bucket))
+		result = append(result, a.exportBucket(bucket))
 		delete(a.buckets, minute)
 	}
 	if len(result) > 1 {
@@ -150,7 +149,7 @@ func (a *MinuteAggregator) DrainAll() []model.MinuteBucket {
 	}
 	result := make([]model.MinuteBucket, 0, len(a.buckets))
 	for minute, bucket := range a.buckets {
-		result = append(result, drainMinuteBucket(bucket))
+		result = append(result, a.exportBucket(bucket))
 		delete(a.buckets, minute)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -164,12 +163,18 @@ func truncateToMinute(t time.Time) time.Time {
 	return t.Truncate(time.Minute)
 }
 
-func snapshotMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
-	return minuteBucketSnapshot(bucket, exportTableRows(bucket.tableRows))
+func (a *MinuteAggregator) exportBucket(bucket *minuteBucket) model.MinuteBucket {
+	return minuteBucketSnapshot(bucket, a.tableRowsOf(bucket))
 }
 
-func drainMinuteBucket(bucket *minuteBucket) model.MinuteBucket {
-	return minuteBucketSnapshot(bucket, exportTableRows(bucket.tableRows))
+func (a *MinuteAggregator) tableRowsOf(bucket *minuteBucket) map[string]int {
+	if a.series == nil {
+		return exportTableRows(bucket.tableRows)
+	}
+	if !a.includeRows {
+		return nil
+	}
+	return a.series.TableRows(bucket.minute)
 }
 
 func minuteBucketSnapshot(bucket *minuteBucket, tableRows map[string]int) model.MinuteBucket {

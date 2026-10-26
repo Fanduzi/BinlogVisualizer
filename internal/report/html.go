@@ -365,8 +365,12 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string, 
 	for _, t := range tables {
 		key := t.Schema + "." + t.Table
 		domID := sanitizeDOMID(key)
-		if len(t.Activity) > 0 {
-			tableActivitySeries[key] = buildHTMLTableActivitySeries(t.Activity, opts)
+		points := t.Activity
+		if len(points) == 0 && result.MinuteTables != nil {
+			points = result.MinuteTables.Activity(t.Schema, t.Table)
+		}
+		if len(points) > 0 {
+			tableActivitySeries[key] = buildHTMLTableActivitySeries(points, opts)
 		}
 		d.Tables = append(d.Tables, htmlTableRow{
 			Key:                  key,
@@ -386,7 +390,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string, 
 			UpdatePct:            fmtOpCell(t.UpdateRows, t.TotalRows),
 			DeletePct:            fmtOpCell(t.DeleteRows, t.TotalRows),
 			DDLPct:               fmtOpCell(t.DDLCount, t.EventCount),
-			HasActivity:          len(t.Activity) > 0,
+			HasActivity:          len(points) > 0,
 		})
 	}
 	d.TableActivitySeries = mustJSON(tableActivitySeries)

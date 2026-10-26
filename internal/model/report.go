@@ -109,11 +109,15 @@ type AnalysisResult struct {
 	Patterns            []PatternStats
 	// Minutes is the source-of-truth aggregated minute series.
 	// Timeseries is the chart-ready projection derived from Minutes and may omit raw table context.
-	Minutes     []MinuteBucket
-	Diagnostics Diagnostics
-	Alerts      []Alert
-	Warnings    int
-	Snapshot    *Snapshot
+	Minutes []MinuteBucket
+	// MinuteTables is set when the per-(table, minute) series was spilled
+	// instead of inlined onto Minutes and Tables. Reports read it from
+	// here. It is not a JSON field.
+	MinuteTables MinuteTableSource
+	Diagnostics  Diagnostics
+	Alerts       []Alert
+	Warnings     int
+	Snapshot     *Snapshot
 
 	// PatternDrilldowns holds optional bounded explanations for high-signal patterns.
 	// Empty in low-signal windows.

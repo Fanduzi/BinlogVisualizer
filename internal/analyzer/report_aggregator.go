@@ -68,6 +68,9 @@ type ReportAggregator struct {
 	txnSize             txnSizeTracker
 	operationCounts     map[time.Time]operationMinuteStats
 	applyDelay          applyDelayTracker
+	// minuteRows is set when per-table minute rows were spilled. Spike
+	// detection and the top hot intervals read it instead of TableRows.
+	minuteRows func(minute time.Time) map[string]int
 }
 
 type txnSizeTracker struct {
@@ -270,6 +273,21 @@ func (a *ReportAggregator) consumeProvenance(serverID uint32, serverVersion, ser
 	}
 }
 
+// hotIntervals is the busiest minutes. When per-table rows were spilled,
+// only these copies are filled, not every minute.
+func hotIntervals(minutes []model.MinuteBucket, lookup func(time.Time) map[string]int) []model.MinuteBucket {
+	hot := SelectHotIntervals(minutes, 5)
+	if lookup == nil {
+		return hot
+	}
+	for i := range hot {
+		if len(hot[i].TableRows) == 0 {
+			hot[i].TableRows = lookup(hot[i].Minute)
+		}
+	}
+	return hot
+}
+
 // ConsumeMinuteBucket appends a minute bucket to the aggregation state.
 func (a *ReportAggregator) ConsumeMinuteBucket(bucket model.MinuteBucket) {
 	if a == nil {
@@ -321,7 +339,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	patterns := a.snapshotPatterns()
 	threads, threadsRankedBy := a.threads.snapshot()
 	alerts := append([]model.Alert(nil), a.alerts...)
-	alerts = append(alerts, DetectSpikeAlerts(minutes, a.opts)...)
+	alerts = append(alerts, detectSpikeAlerts(minutes, a.opts, a.minuteRows)...)
 
 	summary := model.WorkloadSummary{
 		TotalTransactions:   a.totalTransactions,
@@ -355,7 +373,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		LargestByteTransactions: append([]model.Transaction(nil), a.largestBytes.sorted()...),
 		DurationBuckets:         a.durations.snapshot(),
 		FileSegments:            fileSegments,
-		HotIntervals:            SelectHotIntervals(minutes, 5),
+		HotIntervals:            hotIntervals(minutes, a.minuteRows),
 		Findings:                BuildFindingsFromAlerts(alerts, minutes, evidenceTxns, a.ddlEvents),
 		ApplyDelay:              a.applyDelay.snapshot(),
 	}

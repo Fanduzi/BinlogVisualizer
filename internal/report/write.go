@@ -36,6 +36,9 @@ func Write(w io.Writer, result model.AnalysisResult, opts Options, format string
 		if err != nil {
 			return err
 		}
+		if err := spilledErr(result); err != nil {
+			return err
+		}
 		_, err = io.WriteString(w, text)
 		return err
 	case FormatMarkdown:
@@ -43,11 +46,17 @@ func Write(w io.Writer, result model.AnalysisResult, opts Options, format string
 		if err != nil {
 			return err
 		}
+		if err := spilledErr(result); err != nil {
+			return err
+		}
 		_, err = io.WriteString(w, text)
 		return err
 	case FormatHTML:
 		text, err := renderHTML(result, opts, built)
 		if err != nil {
+			return err
+		}
+		if err := spilledErr(result); err != nil {
 			return err
 		}
 		_, err = io.WriteString(w, text)
@@ -63,6 +72,13 @@ func Render(result model.AnalysisResult, opts Options, format string) (string, e
 		return "", err
 	}
 	return buf.String(), nil
+}
+
+func spilledErr(result model.AnalysisResult) error {
+	if result.MinuteTables == nil {
+		return nil
+	}
+	return result.MinuteTables.Err()
 }
 
 func newView(result model.AnalysisResult, opts Options) view.View {

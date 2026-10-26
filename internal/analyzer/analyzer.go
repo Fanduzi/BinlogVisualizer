@@ -1,6 +1,6 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
 // input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set (generated columns learned from Options.SchemaSQL and from every parsed CREATE/ALTER, including excluded GTIDs; a refusal when a schema-file generated value contradicts the expression; an unverifiable expression is omitted and the script guard checks the target; a warning when a selected table has no definition; and a split-transaction warning when a table or DML filter keeps only part of a transaction), DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images. Minute buckets stay keyed by minute until Finalize, so an earlier timestamp updates that minute instead of opening a second bucket.
+// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set (generated columns learned from Options.SchemaSQL and from every parsed CREATE/ALTER, including excluded GTIDs; a refusal when a schema-file generated value contradicts the expression; an unverifiable expression is omitted and the script guard checks the target; a warning when a selected table has no definition; and a split-transaction warning when a table or DML filter keeps only part of a transaction), DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images. Minute buckets stay keyed by minute until Finalize, so an earlier timestamp updates that minute instead of opening a second bucket. The per-(table, minute) series spills past 8192 points (ADR 0019).
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -28,6 +28,7 @@ type Analyzer struct {
 	tableAgg   *TableAggregator
 	hotRows    *hotRowAggregator
 	minuteAgg  *MinuteAggregator
+	activity   *activityStore
 	ddlAgg     *DDLAggregator
 	reportAgg  *ReportAggregator
 
@@ -145,7 +146,27 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 		a.err = fmt.Errorf("cannot resolve GTID flavor from input")
 		return nil, a.err
 	}
-	if err := a.persistMinuteBuckets(a.minuteAgg.DrainAll()); err != nil {
+	inline := true
+	if a.activity != nil {
+		inline = a.activity.inline()
+		if err := a.activity.Err(); err != nil {
+			a.err = err
+			return nil, err
+		}
+		a.minuteAgg.includeRows = inline
+		a.tableAgg.fillActivity = inline
+		if !inline {
+			a.reportAgg.minuteRows = a.activity.TableRows
+		}
+	}
+	buckets := a.minuteAgg.DrainAll()
+	if a.activity != nil {
+		if err := a.activity.Err(); err != nil {
+			a.err = err
+			return nil, err
+		}
+	}
+	if err := a.persistMinuteBuckets(buckets); err != nil {
 		a.err = err
 		return nil, err
 	}
@@ -160,6 +181,13 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 	a.reportAgg.Close()
 	if a.err != nil {
 		return nil, a.err
+	}
+	if a.activity != nil {
+		if inline && a.result.MinuteTables == nil {
+			a.activity.Close()
+		} else if !inline {
+			a.result.MinuteTables = a.activity
+		}
 	}
 	a.finalized = true
 	return a.result, nil
@@ -491,11 +519,17 @@ func withDDLIdentity(ev model.NormalizedEvent) (model.NormalizedEvent, bool) {
 
 // reset clears all internal state for a fresh analysis run.
 func (a *Analyzer) reset() {
+	if a.activity != nil && (a.result == nil || a.result.MinuteTables != a.activity) {
+		a.activity.Close()
+	}
 	a.err = nil
 	a.txnBuilder = NewTransactionBuilder()
+	a.activity = newActivityStore()
 	a.tableAgg = NewTableAggregator()
+	a.tableAgg.series = a.activity
 	a.hotRows = newHotRowAggregator(HotRowTrackLimit)
 	a.minuteAgg = NewMinuteAggregator()
+	a.minuteAgg.series = a.activity
 	a.ddlAgg = NewDDLAggregator()
 	a.reportAgg.Close()
 	a.reportAgg = NewReportAggregator(a.opts)
@@ -583,6 +617,9 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		}
 		selection := a.selection
 		result.Selection = &selection
+	}
+	if err := a.activity.Err(); err != nil {
+		return nil, err
 	}
 	result.Diagnostics.OpenExplicitGroups = a.txnBuilder.OpenExplicitGroups()
 	if groups := a.txnBuilder.OpenDMLGroups(); len(groups) > 0 {
@@ -750,5 +787,21 @@ func (a *Analyzer) persistMinuteBuckets(buckets []model.MinuteBucket) error {
 	for _, bucket := range buckets {
 		a.reportAgg.ConsumeMinuteBucket(bucket)
 	}
-	return a.store.RecordMinuteBuckets(buckets)
+	if _, ok := a.store.(noopDetailStore); ok || a.minuteAgg.includeRows || a.activity == nil {
+		return a.store.RecordMinuteBuckets(buckets)
+	}
+	// One minute at a time so a DuckDB batch can flush instead of holding
+	// every table in every minute. The in-memory detail store keeps them;
+	// that store is the destination.
+	for i := range buckets {
+		one := buckets[i]
+		one.TableRows = a.activity.TableRows(one.Minute)
+		if err := a.activity.Err(); err != nil {
+			return err
+		}
+		if err := a.store.RecordMinuteBuckets([]model.MinuteBucket{one}); err != nil {
+			return err
+		}
+	}
+	return nil
 }

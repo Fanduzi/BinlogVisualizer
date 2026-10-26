@@ -60,7 +60,7 @@ func renderText(result model.AnalysisResult, opts Options, built view.View) (str
 	renderNextActions(&buf, result)
 
 	if opts.ShowMinutes {
-		renderMinuteDetails(&buf, result.Minutes, opts.TopN, opts)
+		renderMinuteDetails(&buf, result.Minutes, result.MinuteTables, opts.TopN, opts)
 	}
 	if opts.ShowPatterns {
 		renderWriteShapePatterns(&buf, result.Patterns, result.PatternDrilldowns, opts.TopN, opts.SQLContextMode, opts)
@@ -374,7 +374,7 @@ func shouldSuggestOpenHTML(result model.AnalysisResult) bool {
 	return true
 }
 
-func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, topN int, opts Options) {
+func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, src model.MinuteTableSource, topN int, opts Options) {
 	buf.WriteString("=== " + i18n.T("report.text.minuteDetails") + " ===\n")
 	if len(minutes) == 0 {
 		buf.WriteString("  " + i18n.T("report.placeholder.noMinuteActivity") + "\n\n")
@@ -389,7 +389,7 @@ func renderMinuteDetails(buf *strings.Builder, minutes []model.MinuteBucket, top
 			"TotalRows": minute.TotalRows,
 			"TxnCount":  minute.TxnCount,
 		})
-		if tables := formatDrivingTables(minute.TableRows, topN); tables != "" {
+		if tables := formatDrivingTables(minuteRows(src, minute), topN); tables != "" {
 			line += "  " + tables
 		}
 		buf.WriteString("  " + line + "\n")

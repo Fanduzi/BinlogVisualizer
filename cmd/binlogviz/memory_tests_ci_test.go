@@ -24,6 +24,7 @@ var e1MemoryTests = map[string]string{
 	"TestGeneratedReviewRSS":            "internal/flashback/genmem_test.go",
 	"TestVerifyDoesNotBufferTheScript":  "internal/guard/script_mem_test.go",
 	"TestLargeInputBaseline":            "cmd/binlogviz/large_input_baseline_test.go",
+	"TestWideActivityHeap":              "cmd/binlogviz/wide_activity_heap_test.go",
 }
 
 func TestEveryMemoryTestRunsInCIVerify(t *testing.T) {

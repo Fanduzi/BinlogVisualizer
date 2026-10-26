@@ -1,12 +1,14 @@
 // Package report renders JSON reports from bounded analysis results.
 // input: analyzer-produced AnalysisResult values with explicit workload identity, canonical scope, provenance/selector evidence, SQL context, and snapshot presentation controls.
-// output: report JSON (report_version 4) with workload identity/scope, RFC3339 timestamps (Z unless --tz sets a display zone), selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional replica apply delay, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, snapshots, alerts[].gtid when a transaction has one, and diagnostics omitted or reduced, with a diagnostics_mode marker, when --diagnostics says so.
+// output: report JSON (report_version 4) with workload identity/scope, RFC3339 timestamps (Z unless --tz sets a display zone), selection evidence, completeness, safe replay, XA/provenance, SQL modes, full table data, list counts, counted bytes, DDL timeline events, optional replica apply delay, optional open uncommitted DML groups, optional committed duration buckets, optional byte-ranked transactions, optional Ignored QUERY counts, optional open-explicit-group counts, unmapped events, snapshots, alerts[].gtid when a transaction has one, and diagnostics omitted or reduced, with a diagnostics_mode marker, when --diagnostics says so. A spilled per-(table, minute) series writes minutes one object at a time; those bytes match the inlined document.
 // pos: JSON serializer for the CLI output path after analyzer Finalize. Transaction lists come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -453,13 +455,23 @@ func RenderJSON(result model.AnalysisResult) (string, error) {
 // RenderJSONWithOptions serializes an AnalysisResult with explicit presentation controls.
 func RenderJSONWithOptions(result model.AnalysisResult, opts Options) (string, error) {
 	opts = normalizeOptions(opts)
-	jr := convertToJSON(result, opts, newView(result, opts))
-
-	data, err := json.MarshalIndent(jr, "", "  ")
-	if err != nil {
+	if result.MinuteTables == nil || len(result.Minutes) == 0 {
+		jr := convertToJSON(result, opts, newView(result, opts))
+		data, err := json.MarshalIndent(jr, "", "  ")
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	}
+	var buf bytes.Buffer
+	if err := writeJSON(&buf, result, opts, newView(result, opts)); err != nil {
 		return "", err
 	}
-	return string(data), nil
+	b := buf.Bytes()
+	if len(b) > 0 && b[len(b)-1] == '\n' {
+		b = b[:len(b)-1]
+	}
+	return string(b), nil
 }
 
 // RenderJSONTo writes the JSON output to the specified writer.
@@ -474,9 +486,86 @@ func RenderJSONToWithOptions(result model.AnalysisResult, w io.Writer, opts Opti
 }
 
 func writeJSON(w io.Writer, result model.AnalysisResult, opts Options, built view.View) error {
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(convertToJSON(result, opts, built))
+	if result.MinuteTables == nil || len(result.Minutes) == 0 {
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(convertToJSON(result, opts, built))
+	}
+	return writeJSONSpilled(w, result, opts, built)
+}
+
+// writeJSONSpilled writes the same bytes as Encoder.Encode, but the minutes
+// array is one minute at a time. The rest of the document is the usual
+// object with an empty minutes placeholder, and that placeholder is replaced
+// as the bytes go out. A spilled series is not copied into one JSON value.
+func writeJSONSpilled(w io.Writer, result model.AnalysisResult, opts Options, built view.View) error {
+	jr := convertToJSON(result, opts, built)
+	jr.Minutes = []jsonMinuteBucket{}
+	data, err := json.MarshalIndent(jr, "", "  ")
+	if err != nil {
+		return err
+	}
+	const needle = "\n  \"minutes\": []"
+	idx := bytes.Index(data, []byte(needle))
+	if idx < 0 {
+		return fmt.Errorf("activity series spill: JSON minutes placeholder missing")
+	}
+	headEnd := idx + len("\n  \"minutes\": ")
+	if _, err := w.Write(data[:headEnd]); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, "[\n"); err != nil {
+		return err
+	}
+	for i, minute := range result.Minutes {
+		if i > 0 {
+			if _, err := io.WriteString(w, ",\n"); err != nil {
+				return err
+			}
+		}
+		raw, err := json.MarshalIndent(jsonMinuteFrom(minute, opts, result.MinuteTables), "", "  ")
+		if err != nil {
+			return err
+		}
+		// MarshalIndent does not indent the first line. Four spaces puts the
+		// object where Encoder nests an element of a top-level array.
+		for i, line := range bytes.Split(raw, []byte("\n")) {
+			if i > 0 {
+				if _, err := io.WriteString(w, "\n"); err != nil {
+					return err
+				}
+			}
+			if _, err := io.WriteString(w, "    "); err != nil {
+				return err
+			}
+			if _, err := w.Write(line); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := io.WriteString(w, "\n  ]"); err != nil {
+		return err
+	}
+	if _, err := w.Write(data[idx+len(needle):]); err != nil {
+		return err
+	}
+	if _, err := io.WriteString(w, "\n"); err != nil {
+		return err
+	}
+	return result.MinuteTables.Err()
+}
+
+func jsonMinuteFrom(m model.MinuteBucket, opts Options, src model.MinuteTableSource) jsonMinuteBucket {
+	rows := m.TableRows
+	if len(rows) == 0 && src != nil {
+		rows = src.TableRows(m.Minute)
+	}
+	return jsonMinuteBucket{
+		Minute:    opts.formatJSONTime(m.Minute),
+		TotalRows: m.TotalRows,
+		TxnCount:  m.TxnCount,
+		TableRows: copyStringIntMap(rows),
+	}
 }
 
 // RenderJSONToStdout writes the JSON output to stdout.

@@ -66,6 +66,15 @@ func minutesHaveTables(minutes []model.MinuteBucket) bool {
 	return false
 }
 
+// minuteRows is the per-table row map for a minute. An inlined minute
+// already has it. A spilled minute reads one minute from the series.
+func minuteRows(src model.MinuteTableSource, minute model.MinuteBucket) map[string]int {
+	if len(minute.TableRows) > 0 || src == nil {
+		return minute.TableRows
+	}
+	return src.TableRows(minute.Minute)
+}
+
 // formatDrivingTables is the one-line table list for a minute.
 // limit caps how many tables are named; the rest become the shared omitted-tables label.
 func formatDrivingTables(rows map[string]int, limit int) string {

@@ -11,7 +11,7 @@ The parent owns the temp directory and passes it to the child. The child writes 
 
 The table names have the fixture's name length, so event and file sizes do not change. A 2000-transaction file warms analyze, and the same file warms flashback, before the measured runs. The measured files are 38,437 transactions (13,107,174 bytes) and 307,500 transactions (104,857,657 bytes, above the 100MiB floor). The size ratio is 8.00. Generation is not part of the timed section.
 
-Why 4 tables a minute and not every transaction on a new table: the analyzer keeps one activity point per table per minute (about 220 bytes) and a minute bucket per minute. Rotating every transaction through all 256 tables makes each transaction a new point, a per-transaction cost of a few hundred bytes, and a per-transaction leak of that size would hide inside it. With 4 a minute, the per-table and per-minute paths run on every event, and the legitimate growth is a fixed amount per minute that the gate budgets (below).
+Why 4 tables a minute and not every transaction on a new table: a minute bucket is one per minute, and the per-(table, minute) series used to be one point per table per minute (about 220 bytes). Rotating every transaction through all 256 tables makes each transaction a new point, a per-transaction cost of a few hundred bytes, and a per-transaction leak of that size would hide inside it. With 4 a minute, the per-table and per-minute paths run on every event, and the legitimate growth is a fixed amount per minute that the gate budgets (below). Past 8192 points that series is an unlinked temp file (ADR 0019), so this template's large file (about 20k points) no longer keeps those points on the heap. Many tables in the same minute are `TestWideActivityHeap`, not this template.
 
 On each file:
 
@@ -31,7 +31,7 @@ For each pair the test records, on the goroutine doing the work, after `runtime.
 | Temp file | apply-delay spill ≤ 64 bytes/transaction, and ≤ 4× the small run | row-spill bytes per input byte ≤ 2× the small run |
 | Output size | each format non-empty and contains the count | SQL byte ratio within 0.5×–2× the input byte ratio |
 
-Live heap is modelled as a fixed part plus a part per minute of time span (plus, for flashback, its conflict keys per transaction). The two files span different minutes, so the per-minute part is budgeted rather than ignored, and growing it fails. The budgets are about 1.2× (analyze, measured 2925 B/minute) and 1.5× (flashback, about 1360 B/minute beside 31 B/transaction) the measurement, which is the same on every run. With 60 transactions a minute, a leak of more than about 15 bytes per transaction (3 per event) exceeds the analyze slack, and about 25 bytes per transaction (5 per event) the flashback slack.
+Live heap is modelled as a fixed part plus a part per minute of time span (plus, for flashback, its conflict keys per transaction). The two files span different minutes, so the per-minute part is budgeted rather than ignored, and growing it fails. After the per-(table, minute) series spills (#389, ADR 0019), the measured terms are 1238 B/minute for analyze (was 2925, when the 4 points a minute were still on the heap) and about 322 B/minute beside 31 B/transaction for flashback (was about 1360 B/minute beside 31 B/transaction). The caps stay 3584 and 2048 + 40, which are now several times the measurement rather than 1.2× and 1.5×. They were not tightened: they are still upper bounds, and the wide-table term is `TestWideActivityHeap`. With 60 transactions a minute, a leak of more than about 39 bytes per transaction (8 per event) exceeds the analyze slack (3584 − 1238 = 2346 B/minute), and the flashback slack is the gap from 322 + 31 up to 2048 + 40.
 
 ### Retry on CPU only
 
@@ -68,19 +68,19 @@ Measured on the same comparison the test runs (warmup, then small, then large), 
 
 | | Measured |
 |---|---|
-| Analyze large live heap | 24.57–24.61MB (about 9.6MB fixed + 2925 B × 5126 minutes) |
-| Analyze extra live heap | 13.10–13.14MB, 2921–2929 B per extra minute |
+| Analyze large live heap | 16.4MB on the #389 remeasure (17158664 bytes; was 24.57–24.61MB when the series stayed on the heap) |
+| Analyze extra live heap | 5.55MB, 1238 B per extra minute (was 13.10–13.14MB, 2921–2929 B per extra minute) |
 | Analyze process CPU | 6.8–7.3µs/event, ratio 7.74–8.00 |
-| Analyze alloc per event | 1960–1966, ratio 0.95 |
+| Analyze alloc per event | 1960–1966 before #389; the remeasure was 2175 B/event, ratio 0.968 |
 | Apply-delay spill | 7.89 B/txn (small run 6.82) |
-| Flashback large live heap | 24.58–24.59MB |
-| Flashback extra live heap | 14.40–14.42MB (31 B × 269,063 transactions + about 1360 B × 4485 minutes) |
+| Flashback large live heap | 19.0MB on the #389 remeasure (19972296 bytes; was 24.58–24.59MB) |
+| Flashback extra live heap | 9.79MB (31 B × 269,063 transactions + about 322 B × 4485 minutes; was 14.40–14.42MB at about 1360 B/minute) |
 | Flashback process CPU | 17.4–19.6µs/event, ratio 7.60–7.97 |
 | Flashback alloc per event | 4439, ratio 1.00 |
 | Flashback spill | 0.58 B per input byte, both sizes |
 | Flashback SQL ratio | 8.05 |
 
-The live heap numbers were the same to within 40KB on every run, under any load. QA saw the same on #382 (heap and alloc did not move under 8 or 16 CPU hogs), which is why the heap-growth budgets can sit at 1.2× and 1.5× and are never retried. The fixed parts of the absolute caps (32MiB analyze, 64MiB flashback) stay about 3.5× the fixed part of the measurement.
+Before #389 the live heap numbers were the same to within 40KB on every run, under any load. QA saw the same on #382 (heap and alloc did not move under 8 or 16 CPU hogs), which is why a heap failure is never retried. The growth caps were about 1.2× and 1.5× of that measurement. After the series spills they are several times the new measurement and were left as upper bounds; `TestWideActivityHeap` is the tight check on tables × minutes. The fixed parts of the absolute caps (32MiB analyze, 64MiB flashback) stay several times the fixed part of the measurement.
 
 The CPU ratio cap is twice the byte ratio (16 when the files are 8×). That is 2.00× the linear extrapolation from the small run (`small CPU × byte ratio`). A uniform slowdown stays near the size ratio and does not trip it. On #382's one-table template, QA's quiet worst case was 9.14 for analyze and 7.76 for flashback, 1.75× and 2.06× under the cap; a stall on a saturated host reached 17.23 once in 82 runs, which the retry now absorbs.
 
@@ -88,9 +88,9 @@ The per-event CPU caps are 20µs (analyze) and 50µs (flashback). QA's quiet wor
 
 **The per-event CPU and allocation caps hold for this synthetic template only.** They are not a statement about real binlogs. The template is 68 bytes per event, one-row `UPDATE`s. On QA's ≥100MB real files analyze measured 9–65µs/event and 2.9–14KB/event, and flashback up to about 400µs/event and 273KB/event, 3–14× over these caps, while per input byte the real files were cheaper than the template. The caps exist to catch a change in the code on a fixed input, not to bound real-world cost. The heap caps did hold on the real files (≤25MB).
 
-The alloc ratio cap is 1.5 against a measurement of 0.95–1.00. The absolute alloc caps are 4000 and 20000 bytes/event. Analyze is twice the measurement (1966). That number did not move under any load QA tried (1960–1966), so the previous 8000 cap was slack with no noise to absorb: 4KB of short-lived garbage per event (6062) passed it and fails 4000. Flashback stays at 20000, about 4.5× its 4439.
+The alloc ratio cap is 1.5 against a measurement of 0.95–1.00 (0.968 on the #389 remeasure). The absolute alloc caps are 4000 and 20000 bytes/event. Analyze was twice the pre-spill measurement (1966). That number did not move under any load QA tried (1960–1966), so the previous 8000 cap was slack with no noise to absorb: 4KB of short-lived garbage per event (6062) passed it and fails 4000. The #389 remeasure was 2175 B/event, and 4000 is still about 1.8× that. Flashback stays at 20000, about 4.5× its 4439 (4623 on the remeasure).
 
-What the template still does not cover: wide rows, blobs, DDL, more than 32 threads, and many tables in the same minute (real busy servers write hundreds of tables a minute; the analyzer's per-table per-minute points then grow with tables × minutes).
+What the template still does not cover: wide rows, blobs, DDL, and more than 32 threads. Many tables in the same minute are `TestWideActivityHeap` (60 tables every minute against 4, same transaction count, live-heap gap ≤ 2MiB). The per-(table, minute) series past 8192 points is an unlinked temp file, so that gap is no longer tables × minutes × ~220 bytes.
 
 ## Staying non-flaky
 
@@ -127,7 +127,7 @@ What the template still does not cover: wide rows, blobs, DDL, more than 32 thre
 - an n log n step at K=1000 (about 3× analyze cost; the ratio stays near 8.6 and the per-event cost under 20µs);
 - per-transaction leaks of about 12–13 bytes or less (14 B/transaction fails), about 100KB per table (128KB fails), and about 512 bytes per minute (1024 fails).
 
-The per-event CPU caps leave about 3× over a quiet run on purpose. CI runners are shared, and QA's flake matrix on #388 saw the CPU ratio reach 13.69 against 16 (1.17× headroom) with two busy loops on two CPUs, and flashback per-event CPU left only 1.94× headroom (worst sample 25.8µs against 50µs). A flashback cap of 35µs would be 1.36× that sample. The absolute caps get no ratio to hide behind, and the retry absorbs a stall in one pair, not a runner that is slow throughout, so the CPU caps stay where that matrix still had room. Analyze allocation is the opposite: it did not move, and its cap is twice the measurement. Heap growth was already tight (about 1.2× and 1.5×).
+The per-event CPU caps leave about 3× over a quiet run on purpose. CI runners are shared, and QA's flake matrix on #388 saw the CPU ratio reach 13.69 against 16 (1.17× headroom) with two busy loops on two CPUs, and flashback per-event CPU left only 1.94× headroom (worst sample 25.8µs against 50µs). A flashback cap of 35µs would be 1.36× that sample. The absolute caps get no ratio to hide behind, and the retry absorbs a stall in one pair, not a runner that is slow throughout, so the CPU caps stay where that matrix still had room. Analyze allocation did not move under that load, and its cap stays 4000 (about 1.8× the #389 remeasure of 2175). Heap growth was tight before the series spilled (about 1.2× and 1.5×); those caps were not tightened when the measured minute term dropped.
 
 ## Cost
 

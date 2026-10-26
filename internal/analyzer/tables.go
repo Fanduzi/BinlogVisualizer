@@ -14,7 +14,9 @@ import (
 
 // TableAggregator tracks per-table write statistics.
 type TableAggregator struct {
-	tables map[tableIdentity]*tableStats
+	tables       map[tableIdentity]*tableStats
+	series       *activityStore
+	fillActivity bool
 }
 
 type tableStats struct {
@@ -39,7 +41,7 @@ type tableStats struct {
 	// transaction: O(1) per table instead of one set entry per transaction.
 	txnCount   int
 	lastTxnKey string
-	activity   map[time.Time]*tableActivityPoint
+	activity   map[time.Time]*tableActivityPoint // nil when series is set
 }
 
 type tableActivityPoint struct {
@@ -92,9 +94,11 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 	ts, exists := a.tables[key]
 	if !exists {
 		ts = &tableStats{
-			schema:   ev.Schema,
-			table:    ev.Table,
-			activity: make(map[time.Time]*tableActivityPoint),
+			schema: ev.Schema,
+			table:  ev.Table,
+		}
+		if a.series == nil {
+			ts.activity = make(map[time.Time]*tableActivityPoint)
 		}
 		a.tables[key] = ts
 	}
@@ -126,6 +130,10 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 	}
 
 	minute := truncateToMinute(ev.Timestamp)
+	if a.series != nil {
+		a.series.addTable(key, minute, ev, ev.EventType == "DDL")
+		return
+	}
 	point, exists := ts.activity[minute]
 	if !exists {
 		point = &tableActivityPoint{minute: minute}
@@ -153,22 +161,7 @@ func (a *TableAggregator) Consume(ev model.NormalizedEvent) {
 func (a *TableAggregator) Snapshot() []model.TableStats {
 	result := make([]model.TableStats, 0, len(a.tables))
 	for _, ts := range a.tables {
-		activity := make([]model.TableActivityPoint, 0, len(ts.activity))
-		for _, point := range ts.activity {
-			activity = append(activity, model.TableActivityPoint{
-				Minute:      point.minute,
-				Rows:        point.rows,
-				InsertRows:  point.insertRows,
-				UpdateRows:  point.updateRows,
-				DeleteRows:  point.deleteRows,
-				EventCount:  point.eventCount,
-				BinlogBytes: point.binlogBytes,
-				DDLCount:    point.ddlCount,
-			})
-		}
-		sort.Slice(activity, func(i, j int) bool {
-			return activity[i].Minute.Before(activity[j].Minute)
-		})
+		activity := a.activityFor(ts)
 
 		result = append(result, model.TableStats{
 			Schema:         ts.schema,
@@ -203,6 +196,32 @@ func (a *TableAggregator) Snapshot() []model.TableStats {
 	})
 
 	return result
+}
+
+func (a *TableAggregator) activityFor(ts *tableStats) []model.TableActivityPoint {
+	if a.series != nil {
+		if !a.fillActivity {
+			return nil
+		}
+		return a.series.Activity(ts.schema, ts.table)
+	}
+	activity := make([]model.TableActivityPoint, 0, len(ts.activity))
+	for _, point := range ts.activity {
+		activity = append(activity, model.TableActivityPoint{
+			Minute:      point.minute,
+			Rows:        point.rows,
+			InsertRows:  point.insertRows,
+			UpdateRows:  point.updateRows,
+			DeleteRows:  point.deleteRows,
+			EventCount:  point.eventCount,
+			BinlogBytes: point.binlogBytes,
+			DDLCount:    point.ddlCount,
+		})
+	}
+	sort.Slice(activity, func(i, j int) bool {
+		return activity[i].Minute.Before(activity[j].Minute)
+	})
+	return activity
 }
 
 func (ts *tableStats) observeKeyStatus(ev model.NormalizedEvent) {
