@@ -8,7 +8,7 @@
 - **NOT MET**：没有可重跑的自动检查，或者已知缺陷还开着。
 
 CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
-- `verify`：`go test ./...`、`goreleaser check`、打包，再对包跑 `release_smoke.sh`。
+- `verify`：`go test ./...`、`goreleaser check`、按 Linux 发布的方式（`-buildvcs=false` 加 commit ldflags）打包，再对包跑 `release_smoke.sh`，要求包报告本次 CI 的 commit。
 - `vet and race`：`go vet ./...`、`go test -race -count=1 ./...`。
 - `flashback e2e`：用 ubuntu-24.04 自带的 MySQL 8.0，跑 `go test -run 'TestFlashbackRoundTripMySQL80|TestNumericDecodeMySQL80|TestFlashbackFailedApplyDropsAndSignals'`，再跑 `internal/guard` 的 `OnServer` 测试；有任何 SKIP 或缺 PASS 就判失败。
 
@@ -63,7 +63,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 | # | 要求 | 验证 | 状态 | 阻塞 |
 |---|---|---|---|---|
 | F1 | 4 个平台的包带 checksums；`install.sh` 校验 sha256，没有校验工具时直接失败；Homebrew cask 同步 | `release.yml`；`TestInstallScriptInstallsVerifiedArchive`、`…RefusesBadDownloads`、`…FailsClosedWithoutShaTool`；`release_smoke.sh`（CI verify） | MET | — |
-| F2 | 发布出来的二进制报告正确的 commit | v0.33.1 的 linux_amd64 我实测，`version --format json` 里 `"commit": ""`。`release_smoke.sh` 支持 `BINLOGVIZ_SMOKE_EXPECT_COMMIT`，但 `release.yml` 没设 | NOT MET | #303（要改 workflow，需要有 workflow 权限的 token） |
+| F2 | 发布出来的二进制报告正确的 commit | `release.yml` 4 个构建 job 都用 `-X binlogviz/internal/version.Commit=${GITHUB_SHA}` 和 `CommitTime` 构建（Linux 在 manylinux 容器里仍是 `-buildvcs=false`），并以 `BINLOGVIZ_SMOKE_EXPECT_COMMIT=${GITHUB_SHA}`、`BINLOGVIZ_SMOKE_REQUIRE_COMMIT=1` 跑 `release_smoke.sh`，commit 不对或为空就挡住发布。CI `verify` 每个 PR 用同样的 `-buildvcs=false` 加 ldflags 构建，再以 `BINLOGVIZ_SMOKE_EXPECT_COMMIT=${{ github.sha }}` 跑包的 smoke | MET | — |
 | F3 | 打 tag 前，这个 commit 已经过了 flashback e2e | `release.yml` 的 test job 只跑 `go test ./...`，MySQL 测试全部 Skip，也不检查这个 commit 的 CI 结果 | NOT MET | 要改 workflow |
 | F4 | CI 里跑 `go vet` 和 `-race` | `ci.yml` 的 `vet and race` job：`go vet ./...` 和 `go test -race -count=1 ./...`，每个 PR 和 push main 都跑；E1 的内存测试在 -race 下按 `TestEveryMemoryTestRunsInCIVerify` 的约定 Skip，仍由 `verify` 的普通 `go test ./...` 覆盖 | MET | — |
 
@@ -75,11 +75,10 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 22 / PARTIAL 0 / NOT MET 2**，还剩 2 项。
+共 24 项：**MET 23 / PARTIAL 0 / NOT MET 1**，还剩 1 项。
 
-## 最卡生产级的 2 项
+## 最卡生产级的 1 项
 
-1. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
-2. **F3，发布不看 e2e**：`release.yml` 的 test job 只跑 `go test ./...`，MySQL 测试全部 Skip，也不检查这个 commit 的 CI 结果。要改 workflow。
+1. **F3，发布不看 e2e**：`release.yml` 的 test job 只跑 `go test ./...`，MySQL 测试全部 Skip，也不检查这个 commit 的 CI 结果。要改 workflow。
 
-A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这两项里；MariaDB 上脚本明确拒绝执行。
+A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这一项里；MariaDB 上脚本明确拒绝执行。
