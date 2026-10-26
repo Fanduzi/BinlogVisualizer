@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, replica apply delay after activity, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, a DDL card that counts statements and notes the target count when those differ, replica apply delay after activity, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize. Transaction lookup and evidence come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -81,6 +81,7 @@ type htmlReportData struct {
 	TotalRows              int
 	TotalEvents            int
 	DDLCount               int
+	DDLNote                string
 	InputFileSize          string
 	HasInputFileSize       bool
 	CountedEventBytes      string
@@ -478,7 +479,8 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string, 
 		})
 	}
 	d.HasDDLEvents = len(d.DDLEvents) > 0
-	d.DDLCount = len(d.DDLEvents)
+	d.DDLCount = ddlStatementCount(result.Diagnostics.DDLEvents)
+	d.DDLNote = ddlTargetPhrase(result.Diagnostics.DDLEvents)
 
 	if hotRowHasSection(result.HotRows) {
 		d.HasHotRows = true

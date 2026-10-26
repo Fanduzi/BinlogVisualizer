@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 )
 
 func TestDDLReferencesReadsEveryName(t *testing.T) {
@@ -43,7 +44,7 @@ func TestDDLReferencesReadsEveryName(t *testing.T) {
 		{"SET PASSWORD FOR u = 'x'", "", nil},
 	}
 	for _, tc := range cases {
-		got, ok := ddlReferences(tc.sql, tc.session)
+		got, ok := ddlReferences(tc.sql, tc.session, "", mysqlexpr.Dialect{})
 		if !ok || !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s: got %v ok=%v, want %v", tc.sql, got, ok, tc.want)
 		}
@@ -84,7 +85,7 @@ func TestDDLReferencesFailsClosed(t *testing.T) {
 		"SET GLOBAL x = 1",
 		"OPTIMIZE TABLE t1",
 	} {
-		if got, ok := ddlReferences(sql, "rn"); ok {
+		if got, ok := ddlReferences(sql, "rn", "", mysqlexpr.Dialect{}); ok {
 			t.Errorf("%q read as %v; want refusal", sql, got)
 		}
 	}

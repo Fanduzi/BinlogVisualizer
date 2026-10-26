@@ -27,6 +27,7 @@ type RawEvent struct {
 	ServerID      uint32 // Event-header server ID; zero means unavailable.
 	ServerVersion string // Format Description server version, when the event carries one.
 	ServerFlavor  string // mysql or mariadb, derived from ServerVersion when available.
+	SQLMode       uint64 // Query-event sql_mode (Q_SQL_MODE_CODE). Zero means it was not carried.
 	GTID          string
 	// OriginalCommitTimestamp and ImmediateCommitTimestamp are MySQL 8 GTID
 	// commit times in microseconds since the Unix epoch. Zero means the event

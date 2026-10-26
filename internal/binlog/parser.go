@@ -272,7 +272,7 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 		raw.Query = stripLeadingSQLComments(string(e.Query))
 		raw.Schema = string(e.Schema)
 		raw.ThreadID = e.SlaveProxyID
-		raw.ActorUser, raw.ActorHost = queryEventActor(e.StatusVars)
+		raw.ActorUser, raw.ActorHost, raw.SQLMode = queryEventActor(e.StatusVars)
 	case *replication.GTIDEvent:
 		setCommitTimestamps(raw, e.OriginalCommitTimestamp, e.ImmediateCommitTimestamp)
 		if et == replication.ANONYMOUS_GTID_EVENT {
@@ -365,14 +365,19 @@ func serverFlavor(version string) string {
 	return "mysql"
 }
 
-func queryEventActor(statusVars []byte) (string, string) {
+func queryEventActor(statusVars []byte) (string, string, uint64) {
+	var sqlMode uint64
 	for pos := 0; pos < len(statusVars); {
 		code := statusVars[pos]
 		pos++
 		switch code {
 		case 0:
 			pos += 4
-		case 1:
+		case 1: // Q_SQL_MODE_CODE, 8 little-endian bytes. ANSI_QUOTES is bit 4.
+			if pos+8 > len(statusVars) {
+				return "", "", 0
+			}
+			sqlMode = binary.LittleEndian.Uint64(statusVars[pos : pos+8])
 			pos += 8
 		case 2:
 			pos = skipLengthEncodedStatusString(statusVars, pos, true)
@@ -391,21 +396,21 @@ func queryEventActor(statusVars []byte) (string, string) {
 		case 11:
 			user, next, ok := readLengthEncodedStatusString(statusVars, pos)
 			if !ok {
-				return "", ""
+				return "", "", sqlMode
 			}
 			host, _, ok := readLengthEncodedStatusString(statusVars, next)
 			if !ok {
-				return "", ""
+				return "", "", sqlMode
 			}
-			return user, host
+			return user, host, sqlMode
 		default:
-			return "", ""
+			return "", "", sqlMode
 		}
 		if pos < 0 || pos > len(statusVars) {
-			return "", ""
+			return "", "", sqlMode
 		}
 	}
-	return "", ""
+	return "", "", sqlMode
 }
 
 func skipLengthEncodedStatusString(data []byte, pos int, trailingNUL bool) int {

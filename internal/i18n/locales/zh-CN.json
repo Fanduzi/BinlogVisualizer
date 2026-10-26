@@ -287,6 +287,10 @@
     "description": "表或库过滤无法排除的范围内 DDL 导致 flashback 拒绝",
     "other": "选定范围内的 DDL（{{.Statement}}）无法完整解析，表或库过滤无法排除它重命名、删除或修改了所选的表；flashback 拒绝生成。请用 --start-position、--stop-position 或 --exclude-gtids 缩小范围，把这条 DDL 排除在外"
   },
+  "error.flashbackDDLAndMore": {
+    "description": "flashback DDL 拒绝信息里超出前五个的表名",
+    "other": "以及另外 {{.Count}} 个"
+  },
   "error.flashbackCapture": {
     "description": "选中的行事件没有镜像",
     "other": "{{.Table}}：没有捕获到行镜像"

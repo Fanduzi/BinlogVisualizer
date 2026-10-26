@@ -199,6 +199,22 @@ func TestApplyBinlogEventMetadataCapturesTransactionProvenance(t *testing.T) {
 	if query.ThreadID != 1875 || query.ActorUser != "alice" || query.ActorHost != "db.local" {
 		t.Fatalf("unexpected Query provenance: %+v", query)
 	}
+	if query.SQLMode != 0 {
+		t.Fatalf("SQLMode=%d, want 0 when the status vars omit it", query.SQLMode)
+	}
+
+	var mode RawEvent
+	applyBinlogEventMetadata(&mode, replication.QUERY_EVENT, &replication.QueryEvent{
+		StatusVars: []byte{
+			1, 4, 0, 0, 0, 0, 0, 0, 0,
+			11,
+			5, 'a', 'l', 'i', 'c', 'e',
+			8, 'd', 'b', '.', 'l', 'o', 'c', 'a', 'l',
+		},
+	}, nil)
+	if mode.SQLMode != 4 || mode.ActorUser != "alice" || mode.ActorHost != "db.local" {
+		t.Fatalf("sql_mode provenance: %+v, want mode 4 and alice@db.local", mode)
+	}
 
 	var mysqlGTID RawEvent
 	applyBinlogEventMetadata(&mysqlGTID, replication.GTID_EVENT, &replication.GTIDEvent{

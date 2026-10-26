@@ -625,6 +625,7 @@ func TestNormalizeQueryDDLCreateTableAndDatabase(t *testing.T) {
 		EventType:     "QUERY",
 		Schema:        "testdb",
 		Query:         "CREATE TABLE users (\n  id INT PRIMARY KEY,\n  name VARCHAR(100)\n)",
+		SQLMode:       4,
 		PositionStart: 219,
 		PositionEnd:   361,
 		BinlogBytes:   142,
@@ -641,6 +642,9 @@ func TestNormalizeQueryDDLCreateTableAndDatabase(t *testing.T) {
 	}
 	if !strings.Contains(createTable.QuerySQL, "CREATE TABLE users") {
 		t.Fatalf("expected QuerySQL to keep CREATE TABLE text, got %q", createTable.QuerySQL)
+	}
+	if createTable.SQLMode != 4 {
+		t.Fatalf("SQLMode=%d, want the query event sql_mode", createTable.SQLMode)
 	}
 	if createTable.Schema != "testdb" || createTable.PositionStart != 219 || createTable.BinlogBytes != 142 {
 		t.Fatalf("expected schema/positions preserved, got %+v", createTable)

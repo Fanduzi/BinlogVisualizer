@@ -7,7 +7,7 @@ Trend-result construction and renderer output for multi-snapshot historical revi
 | File | Responsibility |
 |------|----------------|
 | `model.go` | Defines trend build inputs, structured comparability, completeness-aware ordered points and baseline deltas, table/pattern movement series, replay evidence, and renderer-facing results. |
-| `build.go` | Validates snapshot metadata, orders inputs, assesses the optional baseline and every point, preserves raw metrics, and gates causal narratives on series comparability. |
+| `build.go` | Validates snapshot metadata, orders inputs, assesses the optional baseline and every point, preserves raw metrics, and gates causal narratives on series comparability. A DDL trend point sums `ddl_event_series` when that series is present, and otherwise counts the DDL event list. |
 | `patterns.go` | Builds per-pattern movement series across ordered trend points. |
 | `summary.go` | Selects capped trend findings from pattern, table, and concentration changes. |
 | `evidence.go` | Maps trend findings back to stable section anchors and evidence references. |

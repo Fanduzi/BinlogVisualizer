@@ -1,6 +1,6 @@
 // Package report renders human-readable text reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline, open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, and opt-in minute/pattern detail.
+// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline counted in statements (a multi-table statement also prints its target count), open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, and opt-in minute/pattern detail.
 // pos: text renderer for the CLI output path after analyzer Finalize. Transaction lists come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -1059,6 +1059,64 @@ func joinedSortedTables(tables map[string]int) string {
 	return strings.Join(names, ",")
 }
 
+// ddlStmtKey is one statement. A multi-table DROP is several timeline rows
+// with the same file span, timestamp, and statement text.
+type ddlStmtKey struct {
+	path       string
+	start, end int64
+	ts         int64
+	stmt       string
+}
+
+func ddlStatementCount(events []model.DDLEvent) int {
+	if len(events) == 0 {
+		return 0
+	}
+	// An empty statement cannot be tied to its neighbors. Hand-built rows
+	// and older reports then stay one count per row.
+	seen := make(map[ddlStmtKey]struct{}, len(events))
+	n := 0
+	for _, ev := range events {
+		if ev.Statement == "" {
+			n++
+			continue
+		}
+		key := ddlStmtKey{
+			path:  ev.BinlogPath,
+			start: ev.PositionStart,
+			end:   ev.PositionEnd,
+			ts:    ev.Timestamp.UTC().UnixNano(),
+			stmt:  ev.Statement,
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		n++
+	}
+	return n
+}
+
+func pluralWord(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// ddlTargetPhrase is empty when each statement names one object. Otherwise
+// it is "4 targets in 2 statements".
+func ddlTargetPhrase(events []model.DDLEvent) string {
+	targets := len(events)
+	statements := ddlStatementCount(events)
+	if targets == 0 || targets == statements {
+		return ""
+	}
+	return fmt.Sprintf("%d %s in %d %s",
+		targets, pluralWord(targets, "target", "targets"),
+		statements, pluralWord(statements, "statement", "statements"))
+}
+
 func formatDDLTimelineSummary(events []model.DDLEvent) string {
 	if len(events) == 0 {
 		return "0"
@@ -1076,10 +1134,21 @@ func formatDDLTimelineSummary(events []model.DDLEvent) string {
 		seen[op] = struct{}{}
 		ops = append(ops, op)
 	}
-	if len(ops) == 0 {
-		return fmt.Sprintf("%d", len(events))
+	phrase := ddlTargetPhrase(events)
+	count := ddlStatementCount(events)
+	if phrase == "" {
+		count = len(events)
 	}
-	return fmt.Sprintf("%d (%s)", len(events), strings.Join(ops, ", "))
+	if phrase != "" {
+		if len(ops) == 0 {
+			return phrase
+		}
+		return phrase + " (" + strings.Join(ops, ", ") + ")"
+	}
+	if len(ops) == 0 {
+		return fmt.Sprintf("%d", count)
+	}
+	return fmt.Sprintf("%d (%s)", count, strings.Join(ops, ", "))
 }
 
 func minInt(a, b int) int {

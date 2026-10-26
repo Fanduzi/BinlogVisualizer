@@ -1,6 +1,6 @@
 // Package report renders Markdown reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, DDL timeline, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
+// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, DDL timeline, a workload row for the target count when one statement names several tables, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
 // pos: Markdown renderer for the CLI output path after analyzer Finalize. Transaction rows come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -85,6 +85,9 @@ func mdWorkloadSummary(buf *strings.Builder, result model.AnalysisResult, opts O
 	}
 	if diagnostics.OpenExplicitGroups > 0 {
 		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.openExplicitGroups"), formatInt(diagnostics.OpenExplicitGroups)))
+	}
+	if phrase := ddlTargetPhrase(diagnostics.DDLEvents); phrase != "" {
+		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.html.analyze.ddlEvents"), phrase))
 	}
 	buf.WriteString("\n")
 }

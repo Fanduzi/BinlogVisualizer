@@ -20,7 +20,10 @@ type NormalizedEvent struct {
 	ServerID      uint32
 	ServerVersion string
 	ServerFlavor  string
-	GTID          string
+	// SQLMode is the query event's sql_mode (Q_SQL_MODE_CODE, 8 little-endian
+	// bytes). Zero means the event did not carry it. ANSI_QUOTES is bit 4.
+	SQLMode uint64
+	GTID    string
 	// OriginalCommitUs and ImmediateCommitUs are MySQL 8 GTID commit timestamps
 	// in microseconds since the Unix epoch. Zero means the event did not carry them.
 	OriginalCommitUs  uint64

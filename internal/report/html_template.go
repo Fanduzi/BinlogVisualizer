@@ -975,7 +975,7 @@ const htmlReportTemplateTail = `
             <div class="card-icon">🚨</div>
           </div>
           <div class="card-value">{{fmtIntHTML .DDLCount}}</div>
-          <div class="card-sub">{{t "report.html.analyze.ddlEvents"}}</div>
+          <div class="card-sub">{{if .DDLNote}}{{.DDLNote}}{{else}}{{t "report.html.analyze.ddlEvents"}}{{end}}</div>
         </div>
         {{end}}
       </div>

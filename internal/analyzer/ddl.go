@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. A multi-table DROP TABLE is one event per table, from mysqlexpr.ParseDropTable. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. Identifiers are cut at the first parenthesis outside backticks, so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, versioned comments and ANSI_QUOTES follow the event). A multi-table DROP TABLE is one event per table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -38,6 +38,10 @@ func NewDDLAggregator() *DDLAggregator {
 
 // ParseDDLStatement normalizes a supported DDL statement and extracts object metadata.
 func ParseDDLStatement(sql string) (DDLStatement, bool) {
+	return parseDDLStatement(sql, mysqlexpr.Dialect{})
+}
+
+func parseDDLStatement(sql string, d mysqlexpr.Dialect) (DDLStatement, bool) {
 	trimmed := strings.TrimSpace(sql)
 	if trimmed == "" || !hasSupportedDDLPrefix(trimmed) {
 		return DDLStatement{}, false
@@ -45,12 +49,26 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 
 	normalized := strings.Join(strings.Fields(redact.Display(redact.Credentials(trimmed))), " ")
 	stored, truncated, originalBytes := boundDDLStatement(normalized)
+	// A readable DROP TABLE is classified here. strings.Fields splits a
+	// versioned comment into tokens, so /*!40005 TEMPORARY */ never reached
+	// the name reader.
+	if names, isDrop, ok := mysqlexpr.ParseDropTable(trimmed, d); isDrop && ok && len(names) > 0 {
+		return DDLStatement{
+			Operation:     "DROP TABLE",
+			Object:        "table",
+			Schema:        names[0].Schema,
+			Table:         names[0].Table,
+			Statement:     stored,
+			Truncated:     truncated,
+			OriginalBytes: originalBytes,
+		}, true
+	}
 	tokens := strings.Fields(normalized)
 	if len(tokens) < 2 {
 		return DDLStatement{}, false
 	}
 
-	operation, object, startIndex, ok := classifyDDL(tokens)
+	operation, object, _, ok := classifyDDL(tokens)
 	if !ok {
 		return DDLStatement{
 			Operation:     "DDL",
@@ -61,26 +79,7 @@ func ParseDDLStatement(sql string) (DDLStatement, bool) {
 		}, true
 	}
 
-	var schema, table string
-	if operation == "DROP TABLE" {
-		// One list parser. Do not split the backquoted text on '.' or ','.
-		names, isDrop, okDrop := mysqlexpr.ParseDropTable(trimmed)
-		if isDrop && okDrop && len(names) > 0 {
-			schema, table = names[0].Schema, names[0].Table
-		}
-	} else {
-		var identifier string
-		switch {
-		case operation == "SET PASSWORD":
-			identifier, _ = identifierAfterKeyword(tokens, "FOR")
-		case object == "index":
-			// The name before ON is the index. The table is the next identifier.
-			identifier, _ = identifierAfterKeyword(tokens, "ON")
-		default:
-			identifier = findDDLIdentifier(tokens[skipOptionalIfClause(tokens, startIndex):])
-		}
-		schema, table = splitQualifiedIdentifier(identifier)
-	}
+	schema, table := ddlObjectName(trimmed, operation, object, d)
 	if object == "database" && schema == "" && table != "" {
 		schema, table = table, ""
 	}
@@ -165,21 +164,15 @@ func ddlEventsFor(ev model.NormalizedEvent) []model.DDLEvent {
 // the session schema when the name is unqualified. Nil when sql is not a
 // readable DROP TABLE.
 func parsedDropTables(ev model.NormalizedEvent) []tableIdentity {
-	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL)
+	d := mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode)
+	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL, d)
 	if !isDrop || !ok || len(names) == 0 {
 		return nil
 	}
-	session := ev.QuerySchema
-	if session == "" && names[0].Schema == "" {
-		session = ev.Schema
-	}
+	names = mysqlexpr.WithSession(names, ev.QuerySchema, ev.Schema)
 	out := make([]tableIdentity, 0, len(names))
 	for _, name := range names {
-		schema := name.Schema
-		if schema == "" {
-			schema = session
-		}
-		out = append(out, newTableIdentity(schema, name.Table))
+		out = append(out, newTableIdentity(name.Schema, name.Table))
 	}
 	return out
 }
@@ -222,7 +215,7 @@ func (a *DDLAggregator) Snapshot() []model.DDLEvent {
 
 // DDLEventFromNormalizedEvent converts a normalized query event into a model.DDLEvent when the SQL is DDL.
 func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool) {
-	stmt, ok := ParseDDLStatement(ev.QuerySQL)
+	stmt, ok := parseDDLStatement(ev.QuerySQL, mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode))
 	if !ok {
 		return model.DDLEvent{}, false
 	}
@@ -388,85 +381,48 @@ func createIndexOperation(tokens []string) (string, bool) {
 	return "", false
 }
 
-func identifierAfterKeyword(tokens []string, keyword string) (string, bool) {
-	for i := 0; i < len(tokens)-1; i++ {
-		if !strings.EqualFold(tokens[i], keyword) {
-			continue
+// ddlObjectName reads one object name with the shared identifier reader.
+// DROP TABLE uses the list reader so a quoted keyword stays a name.
+func ddlObjectName(sql, operation, object string, d mysqlexpr.Dialect) (string, string) {
+	switch {
+	case operation == "SET PASSWORD":
+		return "", mysqlexpr.RestAfter(sql, "FOR", d)
+	case operation == "DROP TABLE":
+		names, isDrop, ok := mysqlexpr.ParseDropTable(sql, d)
+		if !isDrop || !ok || len(names) == 0 {
+			return "", ""
 		}
-		clean := trimDDLIdentifier(tokens[i+1])
-		if clean == "" {
-			return "", false
+		return names[0].Schema, names[0].Table
+	case object == "index":
+		name, ok := mysqlexpr.ReadNameAfter(sql, "ON", d, mysqlexpr.NameOpt{})
+		if !ok {
+			return "", ""
 		}
-		return clean, true
-	}
-	return "", false
-}
-
-func skipOptionalIfClause(tokens []string, start int) int {
-	index := start
-	if len(tokens) > index+1 && strings.EqualFold(tokens[index], "IF") {
-		index++
-		if len(tokens) > index && strings.EqualFold(tokens[index], "NOT") {
-			index++
+		return name.Schema, name.Table
+	case operation == "TRUNCATE TABLE":
+		name, ok := mysqlexpr.ReadNameAfter(sql, "TRUNCATE", d, mysqlexpr.NameOpt{OptionalTable: true})
+		if !ok {
+			return "", ""
 		}
-		if len(tokens) > index && strings.EqualFold(tokens[index], "EXISTS") {
-			index++
+		return name.Schema, name.Table
+	case object == "database":
+		name, ok := mysqlexpr.ReadNameAfter(sql, "DATABASE", d, mysqlexpr.NameOpt{})
+		if !ok {
+			name, ok = mysqlexpr.ReadNameAfter(sql, "SCHEMA", d, mysqlexpr.NameOpt{})
 		}
-	}
-	return index
-}
-
-func findDDLIdentifier(tokens []string) string {
-	for _, token := range tokens {
-		clean := strings.TrimSpace(token)
-		if clean == "" {
-			continue
+		if !ok {
+			return "", ""
 		}
-		return trimDDLIdentifier(clean)
-	}
-	return ""
-}
-
-// trimDDLIdentifier keeps the object name. A column list glued on as name(col)
-// ends at the first '(' outside backticks. A doubled backtick is an escaped quote.
-// A trailing comma is still dropped.
-func trimDDLIdentifier(token string) string {
-	return strings.TrimRight(cutAtParenOutsideBackticks(strings.TrimSpace(token)), ",")
-}
-
-func cutAtParenOutsideBackticks(token string) string {
-	inBacktick := false
-	for i := 0; i < len(token); i++ {
-		switch token[i] {
-		case '`':
-			if inBacktick && i+1 < len(token) && token[i+1] == '`' {
-				i++
-				continue
-			}
-			inBacktick = !inBacktick
-		case '(':
-			if !inBacktick {
-				return token[:i]
-			}
+		return name.Schema, name.Table
+	default:
+		keyword := operation
+		if i := strings.LastIndex(operation, " "); i >= 0 {
+			keyword = operation[i+1:]
 		}
+		name, ok := mysqlexpr.ReadNameAfter(sql, keyword, d, mysqlexpr.NameOpt{})
+		if !ok {
+			return "", ""
+		}
+		return name.Schema, name.Table
 	}
-	return token
-}
-
-func splitQualifiedIdentifier(identifier string) (string, string) {
-	identifier = strings.TrimSpace(identifier)
-	if identifier == "" {
-		return "", ""
-	}
-
-	identifier = strings.Trim(identifier, "`")
-	parts := strings.Split(identifier, ".")
-	for index := range parts {
-		parts[index] = strings.Trim(parts[index], "`")
-	}
-
-	if len(parts) >= 2 {
-		return parts[len(parts)-2], parts[len(parts)-1]
-	}
-	return "", parts[0]
 }

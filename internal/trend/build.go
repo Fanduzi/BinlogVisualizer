@@ -1,6 +1,6 @@
 // Package trend builds ordered multi-snapshot trend results from analyze reports.
 // input: snapshot-backed compare.InputReport values with workload comparability metadata plus an optional baseline.
-// output: deterministic Result values preserving raw point/delta series and gating causal findings, recommendations, and drilldowns behind one shared verdict.
+// output: deterministic Result values preserving raw point/delta series and gating causal findings, recommendations, and drilldowns behind one shared verdict. A DDL trend point is the ddl_event_series sum when that series is present.
 // pos: trend pipeline core between snapshot loading and text, JSON, or HTML rendering.
 // note: if this file changes, keep internal/trend/README.md synchronized.
 package trend
@@ -389,10 +389,19 @@ func buildDDLTrendSeries(points []resolvedPoint) []MetricTrendSeries {
 	for _, point := range points {
 		series = append(series, MetricTrendSeries{
 			SnapshotName: point.Meta.Name,
-			Value:        float64(len(point.Report.Diagnostics.DDLEvents)),
+			Value:        ddlTrendValue(point.Report),
 		})
 	}
 	return series
+}
+
+// ddlTrendValue counts statements. The series is one per statement. A report
+// written before that series existed still counts its DDL event list.
+func ddlTrendValue(report InputReport) float64 {
+	if len(report.Timeseries.DDLEventSeries) > 0 {
+		return sumInputSeries(report.Timeseries.DDLEventSeries)
+	}
+	return float64(len(report.Diagnostics.DDLEvents))
 }
 
 func buildTxnSizeTrendSeries(points []resolvedPoint) []MetricTrendSeries {

@@ -3,7 +3,7 @@
 // input: the statement text of a DDL query event and the session's default schema.
 // output: every table and schema the statement names as a source or target, or ok=false
 // when the statement is not one of the shapes read here. ok=false refuses.
-// pos: flashback-only helper. Analyze does not call it. DROP TABLE names come from mysqlexpr.ParseDropTable.
+// pos: flashback-only helper. Analyze does not call it. Names come from mysqlexpr's identifier reader. DROP TABLE names come from mysqlexpr.ParseDropTable.
 // note: if this file changes, update this header, README.md, and ADR 0015.
 package flashback
 
@@ -28,100 +28,55 @@ type ddlTok struct {
 
 func (t ddlTok) word(w string) bool { return t.kind == 'w' && strings.EqualFold(t.text, w) }
 
-// lexDDL splits a statement into tokens. Plain comments are dropped. An
-// executable comment (/*! ... */ or /*M! ... */) is code to the server, a
-// double-quoted token is an identifier under ANSI_QUOTES, and an unterminated
-// quote or comment cannot be read; each returns ok=false.
-func lexDDL(s string) ([]ddlTok, bool) {
+// lexDDL splits a statement into tokens. Plain comments are dropped. A
+// versioned comment is code when the dialect's server version runs it, and
+// unreadable when the version is unknown. A double-quoted name is an
+// identifier when the dialect has ANSI_QUOTES. An unterminated quote or
+// comment returns ok=false. Names use the shared identifier reader.
+func lexDDL(s string, d mysqlexpr.Dialect) ([]ddlTok, bool) {
+	p := mysqlexpr.NewReader(s, d)
 	var toks []ddlTok
-	for i := 0; i < len(s); {
-		c := s[i]
-		switch {
-		case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v':
-			i++
-		case c == '#':
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
-		case c == '-' && i+2 < len(s) && s[i+1] == '-' && (s[i+2] == ' ' || s[i+2] == '\t' || s[i+2] == '\n' || s[i+2] == '\r'):
-			for i < len(s) && s[i] != '\n' {
-				i++
-			}
-		case c == '-' && i+2 == len(s) && s[i+1] == '-':
-			i = len(s)
-		case c == '/' && i+1 < len(s) && s[i+1] == '*':
-			if i+2 < len(s) && (s[i+2] == '!' || (s[i+2] == 'M' && i+3 < len(s) && s[i+3] == '!')) {
-				return nil, false
-			}
-			end := strings.Index(s[i+2:], "*/")
-			if end < 0 {
-				return nil, false
-			}
-			i += 2 + end + 2
-		case c == '`':
-			var b strings.Builder
-			j := i + 1
-			closed := false
-			for j < len(s) {
-				if s[j] == '`' {
-					if j+1 < len(s) && s[j+1] == '`' {
-						b.WriteByte('`')
-						j += 2
-						continue
-					}
-					closed = true
-					j++
-					break
-				}
-				b.WriteByte(s[j])
-				j++
-			}
-			if !closed {
-				return nil, false
-			}
-			toks = append(toks, ddlTok{kind: 'q', text: b.String()})
-			i = j
-		case c == '\'':
-			j := i + 1
-			closed := false
-			for j < len(s) {
-				if s[j] == '\\' && j+1 < len(s) {
-					j += 2
-					continue
-				}
-				if s[j] == '\'' {
-					if j+1 < len(s) && s[j+1] == '\'' {
-						j += 2
-						continue
-					}
-					closed = true
-					j++
-					break
-				}
-				j++
-			}
-			if !closed {
-				return nil, false
-			}
-			toks = append(toks, ddlTok{kind: 's', text: s[i:j]})
-			i = j
-		case c == '"':
+	for !p.EOF() {
+		p.Skip()
+		if p.Err() {
 			return nil, false
-		case ddlWordByte(c):
-			j := i
-			for j < len(s) && ddlWordByte(s[j]) {
-				j++
+		}
+		if p.EOF() {
+			break
+		}
+		c := p.Peek()
+		switch {
+		case c == '`' || (d.ANSIQuotes && c == '"') || mysqlexpr.IdentStart(c):
+			id, ok := p.Ident()
+			if !ok || p.Err() {
+				return nil, false
 			}
 			kind := byte('w')
-			if c >= '0' && c <= '9' && allDigits(s[i:j]) {
-				kind = 'n'
+			if id.Quoted {
+				kind = 'q'
 			}
-			toks = append(toks, ddlTok{kind: kind, text: s[i:j]})
-			i = j
+			toks = append(toks, ddlTok{kind: kind, text: id.Text})
+		case c == '\'':
+			start := p.Pos()
+			if !p.ReadString('\'') {
+				return nil, false
+			}
+			toks = append(toks, ddlTok{kind: 's', text: p.Slice(start, p.Pos())})
+		case c == '"':
+			return nil, false
+		case c >= '0' && c <= '9':
+			start := p.Pos()
+			for !p.EOF() && p.Peek() >= '0' && p.Peek() <= '9' {
+				p.Bump()
+			}
+			toks = append(toks, ddlTok{kind: 'n', text: p.Slice(start, p.Pos())})
 		default:
-			toks = append(toks, ddlTok{kind: 'p', text: s[i : i+1]})
-			i++
+			p.Bump()
+			toks = append(toks, ddlTok{kind: 'p', text: string(c)})
 		}
+	}
+	if !p.Complete() {
+		return nil, false
 	}
 	if n := len(toks); n > 0 && toks[n-1].kind == 'p' && toks[n-1].text == ";" {
 		toks = toks[:n-1]
@@ -132,19 +87,6 @@ func lexDDL(s string) ([]ddlTok, bool) {
 		}
 	}
 	return toks, true
-}
-
-func ddlWordByte(c byte) bool {
-	return c == '_' || c == '$' || c >= 0x80 || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
-}
-
-func allDigits(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return s != ""
 }
 
 type ddlParser struct {
@@ -244,25 +186,26 @@ func (p *ddlParser) nameList() bool {
 // read from its full text. ok=false means the statement is not a shape this
 // reader knows completely: the caller refuses. A statement that changes no
 // table (account and privilege statements) returns no references and ok=true.
-func ddlReferences(sql, session string) ([]ddlRef, bool) {
+func ddlReferences(sql, querySchema, eventSchema string, d mysqlexpr.Dialect) ([]ddlRef, bool) {
 	// DROP TABLE names come from the shared list parser, not this lexer's nameList.
-	if names, isDrop, ok := mysqlexpr.ParseDropTable(sql); isDrop {
+	if names, isDrop, ok := mysqlexpr.ParseDropTable(sql, d); isDrop {
 		if !ok {
 			return nil, false
 		}
+		names = mysqlexpr.WithSession(names, querySchema, eventSchema)
 		refs := make([]ddlRef, len(names))
 		for i, name := range names {
-			schema := name.Schema
-			if schema == "" {
-				schema = session
-			}
-			refs[i] = ddlRef{schema: schema, table: name.Table}
+			refs[i] = ddlRef{schema: name.Schema, table: name.Table}
 		}
 		return refs, true
 	}
-	toks, ok := lexDDL(sql)
+	toks, ok := lexDDL(sql, d)
 	if !ok || len(toks) == 0 {
 		return nil, false
+	}
+	session := querySchema
+	if session == "" {
+		session = eventSchema
 	}
 	p := &ddlParser{toks: toks, session: session}
 	verb := p.peek()

@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"binlogviz/internal/clierr"
@@ -712,18 +713,17 @@ func (a *Planner) ddlRefusal(ev model.NormalizedEvent) error {
 		if ev.Table != "" {
 			table = label
 		}
-		if all := a.dropTableList(ev); all != "" {
-			label, table = all, all
+		if names := a.dropNames(ev); len(names) > 0 {
+			return a.refuseDrop(ev, names)
 		}
-		return refuse("ddl_in_range", table, flashDDLError(ev, label))
+		return refuse("ddl_in_range", table, flashDDLError(ev, escapeControls(label)))
 	}
 	// QuerySchema is the default database of the query event. Empty means
 	// it is not known, and an unqualified name then matches any schema.
-	session := ev.QuerySchema
 	var refs []ddlRef
 	ok := !ev.QueryTruncated
 	if ok {
-		refs, ok = ddlReferences(ev.QuerySQL, session)
+		refs, ok = ddlReferences(ev.QuerySQL, ev.QuerySchema, ev.Schema, mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode))
 	}
 	if !ok {
 		return refuse("ddl_in_range", "", flashDDLUnreadError(ev))
@@ -735,44 +735,79 @@ func (a *Planner) ddlRefusal(ev model.NormalizedEvent) error {
 				if label == "" {
 					label = "?"
 				}
-				return refuse("ddl_in_range", "", flashDDLError(ev, label))
+				return refuse("ddl_in_range", "", flashDDLError(ev, escapeControls(label)))
 			}
 			continue
 		}
 		if sel.MayHoldTable(ref.schema, ref.table) {
-			label := a.refusalTable(ref.schema, ref.table)
-			if all := a.dropTableList(ev); all != "" {
-				label = all
+			if names := a.dropNames(ev); len(names) > 0 {
+				return a.refuseDrop(ev, names)
 			}
-			return refuse("ddl_in_range", label, flashDDLError(ev, label))
+			label := a.refusalTable(ref.schema, ref.table)
+			return refuse("ddl_in_range", label, flashDDLError(ev, escapeControls(label)))
 		}
 	}
 	return nil
 }
 
-// dropTableList is every table a readable DROP TABLE names, joined for the
-// refusal message and details.table. Empty when the statement is not one.
-func (a *Planner) dropTableList(ev model.NormalizedEvent) string {
+// dropNames is every table a readable DROP TABLE names. Empty when the
+// statement is not one. Schema fill is mysqlexpr.WithSession.
+func (a *Planner) dropNames(ev model.NormalizedEvent) []string {
 	if ev.QueryTruncated {
-		return ""
+		return nil
 	}
-	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL)
+	d := mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode)
+	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL, d)
 	if !isDrop || !ok || len(names) == 0 {
-		return ""
+		return nil
 	}
-	session := ev.QuerySchema
-	if session == "" && names[0].Schema == "" {
-		session = ev.Schema
-	}
+	names = mysqlexpr.WithSession(names, ev.QuerySchema, ev.Schema)
 	parts := make([]string, len(names))
 	for i, name := range names {
-		schema := name.Schema
-		if schema == "" {
-			schema = session
-		}
-		parts[i] = a.refusalTable(schema, name.Table)
+		parts[i] = a.refusalTable(name.Schema, name.Table)
 	}
-	return strings.Join(parts, ", ")
+	return parts
+}
+
+// refuseDrop puts every name in details.table. The message shows five names
+// and "and N more", with control characters escaped.
+func (a *Planner) refuseDrop(ev model.NormalizedEvent, names []string) error {
+	return refuse("ddl_in_range", strings.Join(names, ", "), flashDDLError(ev, shortDDLNames(names)))
+}
+
+const ddlNamesShown = 5
+
+func shortDDLNames(names []string) string {
+	n := len(names)
+	if n == 0 {
+		return ""
+	}
+	end := n
+	if end > ddlNamesShown {
+		end = ddlNamesShown
+	}
+	var b strings.Builder
+	for i := 0; i < end; i++ {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(escapeControls(names[i]))
+	}
+	if n > ddlNamesShown {
+		b.WriteByte(' ')
+		b.WriteString(i18n.Tf("error.flashbackDDLAndMore", map[string]any{"Count": n - ddlNamesShown}))
+	}
+	return b.String()
+}
+
+func escapeControls(s string) string {
+	for i := 0; i < len(s); i++ {
+		if s[i] < 0x20 || s[i] == 0x7f {
+			q := strconv.Quote(s)
+			return q[1 : len(q)-1]
+		}
+	}
+	return s
 }
 
 func flashDDLUnreadError(ev model.NormalizedEvent) error {
