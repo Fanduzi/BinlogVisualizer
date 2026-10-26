@@ -116,15 +116,34 @@ jobs:
         timeout-minutes: 18
         run: |
           set -euo pipefail
-          # A skip or a -run miss still exits 0. -v prints --- PASS; require both names.
+          # A skip or a -run miss still exits 0. -v prints --- PASS; require every name.
           log=$(mktemp)
           BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 12m -v ./cmd/binlogviz \
-            -run 'TestFlashbackRoundTripMySQL80|TestNumericDecodeMySQL80' 2>&1 | tee "$log"
+            -run 'TestFlashbackRoundTripMySQL80|TestNumericDecodeMySQL80|TestFlashbackFailedApplyDropsAndSignals' 2>&1 | tee "$log"
           if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
             echo "MySQL e2e skipped" >&2
             exit 1
           fi
-          for name in TestFlashbackRoundTripMySQL80 TestNumericDecodeMySQL80; do
+          for name in TestFlashbackRoundTripMySQL80 TestNumericDecodeMySQL80 TestFlashbackFailedApplyDropsAndSignals; do
+            if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then
+              echo "missing --- PASS for ${name}" >&2
+              exit 1
+            fi
+          done
+      - name: Guard SQL on MySQL 8.0
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          # The guard's message cut exists only in the emitted SQL, so these
+          # tests run it on the server. A skip or a -run miss still exits 0.
+          log=$(mktemp)
+          BINLOGVIZ_GUARD_MYSQL="$BINLOGVIZ_MYSQL" go test -count=1 -timeout 4m -v ./internal/guard \
+            -run 'OnServer' 2>&1 | tee "$log"
+          if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
+            echo "guard server tests skipped" >&2
+            exit 1
+          fi
+          for name in TestGuardMessageOnServer TestGuardMatchOnServer TestGuardMessageCutSweepOnServer; do
             if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then
               echo "missing --- PASS for ${name}" >&2
               exit 1
