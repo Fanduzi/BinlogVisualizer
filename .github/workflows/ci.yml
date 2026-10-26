@@ -22,6 +22,8 @@ jobs:
         with:
           version: latest
           install-only: true
+      - name: Spill margins
+        run: go test -count=1 -timeout 20m -v -run 'TestLaggingChannelsSpillKeepsUp|TestWideActivityHeap|TestAlternatingMinuteSpillStaysBounded' ./internal/analyzer/ ./cmd/binlogviz/
       - name: Run tests
         run: go test ./...
       - name: Validate GoReleaser config

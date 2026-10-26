@@ -337,9 +337,6 @@ func (s *activityStore) writeMinute(m *minuteState) error {
 		}
 		for i := 0; i < len(dirty); {
 			j := i + 1
-			for j < len(dirty) && dirty[j].off == dirty[i].off+int64(j-i)*actRecSize {
-				j++
-			}
 			buf := make([]byte, (j-i)*actRecSize)
 			for k := i; k < j; k++ {
 				putRec(buf[(k-i)*actRecSize:], dirty[k].rec)
