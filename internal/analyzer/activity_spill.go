@@ -24,7 +24,7 @@ import (
 // small report: the E2 template's large file is about 20k and spills, and
 // its small file stays inline so the bytes of a small report do not change.
 // A temp file that cannot be created falls back to memory, as apply-delay does.
-var activityInlineLimit = 1 << 40
+var activityInlineLimit = 8192
 
 // SetActivityInlineLimitForTest sets how many (table, minute) points stay
 // on the result. The returned function restores the previous limit.
