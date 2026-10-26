@@ -28,9 +28,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          go build -trimpath -o dist/binlogviz .
+          # Same identity path as the Linux release build: no VCS stamping,
+          # commit and commit time passed as ldflags (ADR 0010, #303).
+          COMMIT_TIME="$(TZ=UTC0 git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ "${GITHUB_SHA}")"
+          go build -buildvcs=false -trimpath \
+            -ldflags "-X binlogviz/internal/version.Commit=${GITHUB_SHA} -X binlogviz/internal/version.CommitTime=${COMMIT_TIME}" \
+            -o dist/binlogviz .
           bash scripts/pack_release_archive.sh dist/binlogviz dist/binlogviz_ci_linux_amd64.tar.gz
       - name: Smoke test packaged archive
+        env:
+          BINLOGVIZ_SMOKE_EXPECT_COMMIT: ${{ github.sha }}
+          BINLOGVIZ_SMOKE_REQUIRE_COMMIT: "1"
         run: bash scripts/release_smoke.sh dist/binlogviz_ci_linux_amd64.tar.gz
 
   vet-race:

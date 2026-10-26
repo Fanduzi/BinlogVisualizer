@@ -4,6 +4,8 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+- Linux release archives report the commit they were built from: `release.yml` passes the tagged commit and its time as ldflags in all four build jobs, and the release smoke fails when `version --format json` does not report that commit (#303).
+
 ## v0.35.0
 
 Release date: 2026-10-21
