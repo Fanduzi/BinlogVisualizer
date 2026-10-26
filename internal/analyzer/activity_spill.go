@@ -313,7 +313,7 @@ func (s *activityStore) residentBytes() int {
 }
 
 func (s *activityStore) trimRecent() {
-	for s.residentBytes() > spillResidentBytes && len(s.recent) > 0 && s.spillOK() {
+	for len(s.recent) > 4 && s.spillOK() {
 		s.evictOldest()
 	}
 }
