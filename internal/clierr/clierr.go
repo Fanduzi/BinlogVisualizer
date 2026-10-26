@@ -31,12 +31,15 @@ const (
 	// KindResource is an enforced ceiling: a spill byte limit or a memory
 	// limit (GOMEMLIMIT). It is never "no data" (ADR 0012, #317).
 	KindResource Kind = "resource" // 10
+	// KindSpill is a failed read of an activity spill file while rendering.
+	// It is not a failure to write the report (ADR 0019).
+	KindSpill Kind = "spill" // 11
 )
 
 var codes = map[Kind]int{
 	KindError: 1, KindNoData: 2, KindUsage: 3, KindInput: 4,
 	KindCorrupt: 5, KindRefused: 6, KindConflict: 7, KindOutput: 8,
-	KindUnsupported: 9, KindResource: 10,
+	KindUnsupported: 9, KindResource: 10, KindSpill: 11,
 }
 
 // Code is the process exit code for kind.

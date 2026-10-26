@@ -93,6 +93,7 @@ kind 字符串不随 `--lang` 变化。`--error-format json` 在 stderr 打印�
 | 8 | `output` | 写不出报告或脚本 |
 | 9 | `unsupported` | 没有 ROW 镜像的 STATEMENT/MIXED、未知版本，或裁剪过的 diagnostics 文档 |
 | 10 | `resource` | flashback 达到溢出上限（`BINLOGVIZ_SPILL_BYTES`，`details.reason` 为 `spill_limit`）或堆上限（`BINLOGVIZ_MEMORY_BYTES`，未设置时才用 `GOMEMLIMIT`；`details.reason` 为 `memory_limit`）。`BINLOGVIZ_SPILL_BYTES` 或 `BINLOGVIZ_MEMORY_BYTES` 已设置但不是正的十进制整数时是退出码 3。未设置 `BINLOGVIZ_SPILL_BYTES` 表示没有字节上限。带 `--include-gtids`/`--exclude-gtids` 的 analyze 或 flashback，匹配到的 GTID 留下超过 100,000 个区间时也是 10（`details.reason` 为 `matched_gtid_intervals`，#379）；请收窄选择器或拆分输入。不是空结果 |
+| 11 | `spill` | analyze 在写报告时读不回 (表, 分钟) 活动 spill。stdout 为空。不是写报告失败（那是退出码 8） |
 
 ## JSON 版本
 

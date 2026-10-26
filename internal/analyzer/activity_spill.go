@@ -1,6 +1,6 @@
 // Package analyzer spills the per-(table, minute) series once it no longer fits a small report.
 // input: one row or DDL event at a time, from the table aggregator and the minute aggregator, which share one store.
-// output: per-minute table row counts and per-table activity points, either copied onto the result or read back from an unlinked temp file. The file is one 68-byte record per (table, minute); a revisit overwrites that record.
+// output: per-minute table row counts and per-table activity points, either copied onto the result or read back from an unlinked temp file. The file is one 68-byte record per (table, minute). A few recent minutes stay resident; a flush writes each dirty run with one write, and a read is one read per run.
 // pos: the (table, minute) term of analyze and flashback. Minute totals stay in memory. This series does not.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -8,14 +8,15 @@ package analyzer
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"time"
 
 	"binlogviz/internal/model"
+	"golang.org/x/sys/unix"
 )
 
 // activityInlineLimit is how many (table, minute) points stay in memory.
@@ -43,42 +44,80 @@ type actRec struct {
 
 const actRecSize = 68
 
-// slot is one cell that did not fit in the minute's first contiguous run.
-type slot struct {
-	id  uint32
+// spillResident is how many minutes stay in memory after the series spills.
+// Two channels a few minutes apart, or a transaction crossing into the next
+// minute, keep hitting the same minutes. Holding those avoids a read and a
+// write on every switch. ponytail: 4 is enough for that pair plus one
+// neighbor; a workload that keeps dozens of minutes hot would raise it.
+const spillResident = 4
+
+// spillReserve is free space left on the spill filesystem for temps that
+// are not optional (flashback SQL, the DuckDB store). Past this the series
+// stays in memory instead of filling the disk.
+const spillReserve int64 = 32 << 20
+
+// span is a contiguous run of records. A minute is one or more runs.
+type span struct {
 	off int64
+	n   int
 }
 
-// minuteSpill is one minute on disk. The first flush is one contiguous run
-// at off (n records). A later flush overwrites those bytes and appends only
-// cells that were not in the run, into extra. The file therefore grows when
-// a (table, minute) appears, not when a minute is visited again.
-type minuteSpill struct {
-	off   int64
-	n     uint32
-	extra []slot
+// cell is one table in the minute being updated.
+type cell struct {
+	rec   actRec
+	off   int64 // -1 when the cell has no disk slot yet
+	dirty bool
+}
+
+// minuteState is one minute, either resident or about to be written.
+type minuteState struct {
+	at    time.Time
+	cells map[uint32]*cell
+	spans []span
+}
+
+// SpillReadError is a failed read of the spill file. The command maps it
+// to its own kind; it is not a failure to write the report.
+type SpillReadError struct{ Err error }
+
+func (e *SpillReadError) Error() string {
+	if e == nil || e.Err == nil {
+		return "read spilled activity"
+	}
+	return "read spilled activity: " + e.Err.Error()
+}
+
+func (e *SpillReadError) Unwrap() error { return e.Err }
+
+// spillDiskAvail, when set, replaces the free-space check. Tests use it
+// as a small tmpfs. A false ok means the check itself failed.
+var spillDiskAvail func() (avail uint64, ok bool)
+
+// SetSpillDiskAvailForTest installs the free-space check. The returned
+// function restores the previous one.
+func SetSpillDiskAvailForTest(fn func() (uint64, bool)) func() {
+	prev := spillDiskAvail
+	spillDiskAvail = fn
+	return func() { spillDiskAvail = prev }
 }
 
 // activityStore is the per-(table, minute) series for one analysis.
-// Up to activityInlineLimit points live in mem. Past that, a finished
-// minute is written once and mem is cleared. The minute being updated is
-// the only one held expanded. A later event for an earlier minute reloads
-// that minute and overwrites its records, because the event timestamp is
-// not a high-water mark.
+// Up to activityInlineLimit points live in mem. Past that, the last
+// spillResident minutes stay in memory and the rest are contiguous runs
+// in an unlinked temp file. A later event for an earlier minute reloads
+// that minute, because the event timestamp is not a high-water mark.
+// Dirty cells are written back as one write per contiguous run.
 type activityStore struct {
 	limit int
 	n     int
 	ids   map[tableIdentity]uint32
 	names []tableIdentity
 
-	liveOn    bool
-	liveAt    time.Time
-	live      map[uint32]*actRec
-	liveOff   map[uint32]int64
-	liveSpill minuteSpill
+	live   *minuteState
+	recent []*minuteState
 
 	mem   map[time.Time][]actRec
-	index map[time.Time]minuteSpill
+	index map[time.Time][]span
 	off   int64
 
 	file     *os.File
@@ -88,8 +127,10 @@ type activityStore struct {
 	// failWrites, when non-zero, fails that many spill writes and keeps the
 	// minute in memory. Tests use it as a full disk.
 	failWrites int
-	err        error
-	closed     bool
+	// ops counts writeAt and readAt calls. A test budgets it.
+	ops    int
+	err    error
+	closed bool
 }
 
 func newActivityStore() *activityStore {
@@ -97,7 +138,7 @@ func newActivityStore() *activityStore {
 		limit: activityInlineLimit,
 		ids:   make(map[tableIdentity]uint32),
 		mem:   make(map[time.Time][]actRec),
-		index: make(map[time.Time]minuteSpill),
+		index: make(map[time.Time][]span),
 	}
 	runtime.SetFinalizer(s, (*activityStore).Close)
 	return s
@@ -141,17 +182,22 @@ func (s *activityStore) touch(minute time.Time, id tableIdentity) *actRec {
 		return nil
 	}
 	s.useMinute(minute)
-	if s.err != nil {
+	if s.err != nil || s.live == nil {
 		return nil
 	}
 	tid := s.idOf(id)
-	rec := s.live[tid]
-	if rec == nil {
-		rec = &actRec{}
-		s.live[tid] = rec
+	c := s.live.cells[tid]
+	if c == nil {
+		c = &cell{off: -1, dirty: true}
+		c.rec.id = tid
+		s.live.cells[tid] = c
 		s.n++
+		if s.spillOK() {
+			s.noteSpill()
+		}
 	}
-	return rec
+	c.dirty = true
+	return &c.rec
 }
 
 func (s *activityStore) idOf(id tableIdentity) uint32 {
@@ -164,144 +210,199 @@ func (s *activityStore) idOf(id tableIdentity) uint32 {
 	return tid
 }
 
+func (s *activityStore) spillOK() bool {
+	return s != nil && !s.noSpill && s.n > s.limit
+}
+
 func (s *activityStore) useMinute(minute time.Time) {
-	if s.liveOn && s.liveAt == minute {
+	if s.live != nil && s.live.at.Equal(minute) {
 		return
 	}
-	if s.liveOn {
-		s.flushLive()
-		if s.err != nil {
+	if s.live != nil {
+		s.park(s.live)
+		s.live = nil
+	}
+	if s.err != nil {
+		return
+	}
+	if m := s.takeRecent(minute); m != nil {
+		s.live = m
+		return
+	}
+	if spans, ok := s.index[minute]; ok {
+		cells, err := s.readSpans(spans)
+		if err != nil {
+			s.err = err
 			return
 		}
+		delete(s.index, minute)
+		s.live = &minuteState{at: minute, cells: cells, spans: append([]span(nil), spans...)}
+		return
 	}
-	s.liveAt = minute
-	s.liveOn = true
-	s.live = make(map[uint32]*actRec)
-	s.liveOff = nil
-	s.liveSpill = minuteSpill{}
 	if recs, ok := s.mem[minute]; ok {
 		delete(s.mem, minute)
-		s.adopt(recs)
+		s.live = minuteFromRecs(minute, recs)
 		return
 	}
-	sp, ok := s.index[minute]
-	if !ok {
-		return
-	}
-	recs, offs, err := s.readSpill(sp)
-	if err != nil {
-		s.err = err
-		return
-	}
-	delete(s.index, minute)
-	s.liveSpill = sp
-	s.liveOff = offs
-	s.adopt(recs)
+	s.live = &minuteState{at: minute, cells: make(map[uint32]*cell)}
 }
 
-func (s *activityStore) adopt(recs []actRec) {
-	for i := range recs {
-		rec := recs[i]
-		s.live[rec.id] = &rec
-	}
-}
-
-func (s *activityStore) flushLive() {
-	if !s.liveOn {
-		return
-	}
-	recs := compactRecs(s.live)
-	offs := s.liveOff
-	sp := s.liveSpill
-	at := s.liveAt
-	s.live = nil
-	s.liveOff = nil
-	s.liveSpill = minuteSpill{}
-	s.liveOn = false
-	if len(recs) == 0 {
-		return
-	}
-	if s.file != nil && !s.noSpill {
-		if err := s.writeSpill(at, recs, offs, sp); err != nil {
-			// The minute was taken out of mem when it became live. Put it
-			// back. Dropping it here loses table_rows on a full disk.
-			s.noSpill = true
-			s.mem[at] = recs
+func (s *activityStore) takeRecent(at time.Time) *minuteState {
+	for i, m := range s.recent {
+		if m.at.Equal(at) {
+			s.recent = append(s.recent[:i], s.recent[i+1:]...)
+			return m
 		}
-		return
 	}
-	s.mem[at] = recs
-	if !s.noSpill && s.n > s.limit {
-		s.dumpMem()
-	}
+	return nil
 }
 
-func (s *activityStore) dumpMem() {
+func (s *activityStore) park(m *minuteState) {
+	if m == nil || len(m.cells) == 0 {
+		return
+	}
+	if s.spillOK() {
+		s.recent = append(s.recent, m)
+		s.trimRecent()
+		return
+	}
+	s.mem[m.at] = cellsToRecs(m)
+}
+
+// noteSpill moves minutes that were parked before the series crossed the
+// limit into the resident set, then evicts down to spillResident.
+func (s *activityStore) noteSpill() {
+	if !s.spillOK() {
+		return
+	}
 	for at, recs := range s.mem {
-		if err := s.appendPrefix(at, recs); err != nil {
-			s.noSpill = true
-			return
-		}
+		s.recent = append(s.recent, minuteFromRecs(at, recs))
 		delete(s.mem, at)
 	}
+	s.trimRecent()
 }
 
-// writeSpill overwrites cells that already have a slot and appends the rest.
-func (s *activityStore) writeSpill(at time.Time, recs []actRec, offs map[uint32]int64, sp minuteSpill) error {
-	if sp.n == 0 && len(sp.extra) == 0 && len(offs) == 0 {
-		return s.appendPrefix(at, recs)
+func (s *activityStore) trimRecent() {
+	for len(s.recent) > spillResident && s.spillOK() {
+		s.evictOldest()
 	}
-	if err := s.ensureFile(); err != nil {
-		return err
+}
+
+func (s *activityStore) evictOldest() {
+	m := s.recent[0]
+	s.recent = s.recent[1:]
+	if err := s.writeMinute(m); err != nil {
+		// The minute is no longer resident. Put it back in memory. Dropping
+		// it here loses table_rows on a full disk.
+		s.noSpill = true
+		s.mem[m.at] = cellsToRecs(m)
 	}
-	one := make([]byte, actRecSize)
-	var fresh []actRec
-	for _, rec := range recs {
-		off, ok := offs[rec.id]
-		if !ok {
-			fresh = append(fresh, rec)
+}
+
+func (s *activityStore) flushAll() {
+	if s.live != nil {
+		s.park(s.live)
+		s.live = nil
+	}
+	for len(s.recent) > 0 && s.spillOK() {
+		s.evictOldest()
+	}
+	for _, m := range s.recent {
+		s.mem[m.at] = cellsToRecs(m)
+	}
+	s.recent = nil
+}
+
+// writeMinute overwrites dirty cells that already have a slot, one write
+// per contiguous run, and appends cells that have no slot yet as one run.
+func (s *activityStore) writeMinute(m *minuteState) error {
+	var dirty, fresh []*cell
+	for _, c := range m.cells {
+		if !c.dirty {
 			continue
 		}
-		putRec(one, rec)
-		if _, err := s.writeAt(one, off); err != nil {
+		if c.off < 0 {
+			fresh = append(fresh, c)
+		} else {
+			dirty = append(dirty, c)
+		}
+	}
+	if len(fresh) > 0 && !s.canGrow(int64(len(fresh))*actRecSize) {
+		return errors.New("activity spill would fill the disk")
+	}
+	if len(dirty) > 0 {
+		sort.Slice(dirty, func(i, j int) bool { return dirty[i].off < dirty[j].off })
+		if err := s.ensureFile(); err != nil {
 			return err
+		}
+		for i := 0; i < len(dirty); {
+			j := i + 1
+			for j < len(dirty) && dirty[j].off == dirty[i].off+int64(j-i)*actRecSize {
+				j++
+			}
+			buf := make([]byte, (j-i)*actRecSize)
+			for k := i; k < j; k++ {
+				putRec(buf[(k-i)*actRecSize:], dirty[k].rec)
+			}
+			if err := s.writeAt(buf, dirty[i].off); err != nil {
+				return err
+			}
+			for k := i; k < j; k++ {
+				dirty[k].dirty = false
+			}
+			i = j
 		}
 	}
 	if len(fresh) > 0 {
-		base := s.off
-		buf := make([]byte, len(fresh)*actRecSize)
-		for i, rec := range fresh {
-			putRec(buf[i*actRecSize:], rec)
+		sort.Slice(fresh, func(i, j int) bool { return fresh[i].rec.id < fresh[j].rec.id })
+		if err := s.ensureFile(); err != nil {
+			return err
 		}
-		if _, err := s.writeAt(buf, base); err != nil {
+		buf := make([]byte, len(fresh)*actRecSize)
+		for i, c := range fresh {
+			putRec(buf[i*actRecSize:], c.rec)
+		}
+		off := s.off
+		if err := s.writeAt(buf, off); err != nil {
 			return err
 		}
 		s.off += int64(len(buf))
-		// The minute was taken out of the index when it became live, so this
-		// slice is not shared. Append the new cells; do not copy the old ones.
-		for i, rec := range fresh {
-			sp.extra = append(sp.extra, slot{id: rec.id, off: base + int64(i)*actRecSize})
+		m.spans = append(m.spans, span{off: off, n: len(fresh)})
+		for i, c := range fresh {
+			c.off = off + int64(i)*actRecSize
+			c.dirty = false
 		}
 	}
-	s.index[at] = sp
+	if len(m.spans) > 0 {
+		s.index[m.at] = append([]span(nil), m.spans...)
+	}
 	return nil
 }
 
-func (s *activityStore) appendPrefix(at time.Time, recs []actRec) error {
-	if err := s.ensureFile(); err != nil {
-		return err
+func (s *activityStore) canGrow(n int64) bool {
+	if n <= 0 {
+		return true
 	}
-	buf := make([]byte, len(recs)*actRecSize)
-	for i, rec := range recs {
-		putRec(buf[i*actRecSize:], rec)
+	avail, ok := s.diskFree()
+	if !ok {
+		return true
 	}
-	off := s.off
-	if _, err := s.writeAt(buf, off); err != nil {
-		return err
+	return avail >= uint64(n)+uint64(spillReserve)
+}
+
+func (s *activityStore) diskFree() (uint64, bool) {
+	if spillDiskAvail != nil {
+		return spillDiskAvail()
 	}
-	s.off += int64(len(buf))
-	s.index[at] = minuteSpill{off: off, n: uint32(len(recs))}
-	return nil
+	dir := os.TempDir()
+	if s.path != "" {
+		dir = filepath.Dir(s.path)
+	}
+	var st unix.Statfs_t
+	if err := unix.Statfs(dir, &st); err != nil || st.Bsize <= 0 {
+		return 0, false
+	}
+	return st.Bavail * uint64(st.Bsize), true
 }
 
 func (s *activityStore) ensureFile() error {
@@ -318,19 +419,50 @@ func (s *activityStore) ensureFile() error {
 	return nil
 }
 
-func (s *activityStore) writeAt(p []byte, off int64) (int, error) {
+func (s *activityStore) writeAt(p []byte, off int64) error {
 	if s.failWrites > 0 {
 		s.failWrites--
-		return 0, errors.New("activity spill write failed")
+		return errors.New("activity spill write failed")
 	}
+	s.ops++
 	n, err := s.file.WriteAt(p, off)
 	if err != nil {
-		return n, err
+		return err
 	}
 	if n != len(p) {
-		return n, io.ErrShortWrite
+		return io.ErrShortWrite
 	}
-	return n, nil
+	return nil
+}
+
+func (s *activityStore) readAt(off int64, n int) ([]byte, error) {
+	if n == 0 {
+		return nil, nil
+	}
+	if s.file == nil {
+		return nil, &SpillReadError{Err: errors.New("activity series was spilled to a file that is closed")}
+	}
+	s.ops++
+	buf := make([]byte, n)
+	if _, err := s.file.ReadAt(buf, off); err != nil {
+		return nil, &SpillReadError{Err: err}
+	}
+	return buf, nil
+}
+
+func (s *activityStore) readSpans(spans []span) (map[uint32]*cell, error) {
+	cells := make(map[uint32]*cell)
+	for _, sp := range spans {
+		buf, err := s.readAt(sp.off, sp.n*actRecSize)
+		if err != nil {
+			return nil, err
+		}
+		for i := 0; i < sp.n; i++ {
+			rec := takeRec(buf[i*actRecSize:])
+			cells[rec.id] = &cell{rec: rec, off: sp.off + int64(i)*actRecSize}
+		}
+	}
+	return cells, nil
 }
 
 // spillBytes is the temp file's logical size. Zero when the series is in memory.
@@ -352,7 +484,7 @@ func (s *activityStore) inline() bool {
 	if s == nil {
 		return true
 	}
-	s.flushLive()
+	s.flushAll()
 	if s.err != nil {
 		return false
 	}
@@ -418,26 +550,36 @@ func (s *activityStore) Activity(schema, table string) []model.TableActivityPoin
 			})
 		}
 	}
-	if s.liveOn {
-		take(s.liveAt, compactRecs(s.live))
-	}
-	for at, recs := range s.mem {
-		take(at, recs)
-	}
-	for at, sp := range s.index {
-		recs, _, err := s.readSpill(sp)
-		if err != nil {
-			if s.err == nil {
-				s.err = err
-			}
-			return nil
+	if err := s.eachMinute(take); err != nil {
+		if s.err == nil {
+			s.err = err
 		}
-		take(at, recs)
+		return nil
 	}
 	sort.Slice(points, func(i, j int) bool {
 		return points[i].Minute.Before(points[j].Minute)
 	})
 	return points
+}
+
+func (s *activityStore) eachMinute(take func(time.Time, []actRec)) error {
+	if s.live != nil {
+		take(s.live.at, cellsToRecs(s.live))
+	}
+	for _, m := range s.recent {
+		take(m.at, cellsToRecs(m))
+	}
+	for at, recs := range s.mem {
+		take(at, recs)
+	}
+	for at, spans := range s.index {
+		cells, err := s.readSpans(spans)
+		if err != nil {
+			return err
+		}
+		take(at, cellsToRecs(&minuteState{cells: cells}))
+	}
+	return nil
 }
 
 // Close releases the spill file. It is safe to call more than once.
@@ -457,7 +599,7 @@ func (s *activityStore) Close() {
 	}
 	s.mem = nil
 	s.live = nil
-	s.liveOff = nil
+	s.recent = nil
 	s.index = nil
 }
 
@@ -465,64 +607,49 @@ func (s *activityStore) records(minute time.Time) ([]actRec, error) {
 	if s.closed {
 		return nil, errors.New("activity series is closed")
 	}
-	if s.liveOn && s.liveAt == minute {
-		return compactRecs(s.live), nil
+	if s.live != nil && s.live.at.Equal(minute) {
+		return cellsToRecs(s.live), nil
+	}
+	for _, m := range s.recent {
+		if m.at.Equal(minute) {
+			return cellsToRecs(m), nil
+		}
 	}
 	if recs, ok := s.mem[minute]; ok {
 		return recs, nil
 	}
-	sp, ok := s.index[minute]
+	spans, ok := s.index[minute]
 	if !ok {
 		return nil, nil
 	}
-	recs, _, err := s.readSpill(sp)
-	return recs, err
+	cells, err := s.readSpans(spans)
+	if err != nil {
+		return nil, err
+	}
+	return cellsToRecs(&minuteState{cells: cells}), nil
 }
 
-func (s *activityStore) readSpill(sp minuteSpill) ([]actRec, map[uint32]int64, error) {
-	if sp.n == 0 && len(sp.extra) == 0 {
-		return nil, nil, nil
+func minuteFromRecs(at time.Time, recs []actRec) *minuteState {
+	m := &minuteState{at: at, cells: make(map[uint32]*cell, len(recs))}
+	for i := range recs {
+		rec := recs[i]
+		m.cells[rec.id] = &cell{rec: rec, off: -1, dirty: true}
 	}
-	recs := make([]actRec, 0, int(sp.n)+len(sp.extra))
-	offs := make(map[uint32]int64, int(sp.n)+len(sp.extra))
-	if sp.n > 0 {
-		// ponytail: cells added on a later visit are one ReadAt each. A minute
-		// written once is this single read. Batch extras if a lagging channel
-		// adds thousands of tables onto an old minute.
-		buf, err := s.readAt(sp.off, int(sp.n)*actRecSize)
-		if err != nil {
-			return nil, nil, err
-		}
-		for i := 0; i < int(sp.n); i++ {
-			rec := takeRec(buf[i*actRecSize:])
-			recs = append(recs, rec)
-			offs[rec.id] = sp.off + int64(i)*actRecSize
-		}
+	return m
+}
+
+func cellsToRecs(m *minuteState) []actRec {
+	if m == nil || len(m.cells) == 0 {
+		return nil
 	}
-	for _, ex := range sp.extra {
-		buf, err := s.readAt(ex.off, actRecSize)
-		if err != nil {
-			return nil, nil, err
-		}
-		rec := takeRec(buf)
+	recs := make([]actRec, 0, len(m.cells))
+	for id, c := range m.cells {
+		rec := c.rec
+		rec.id = id
 		recs = append(recs, rec)
-		offs[rec.id] = ex.off
 	}
-	return recs, offs, nil
-}
-
-func (s *activityStore) readAt(off int64, n int) ([]byte, error) {
-	if n == 0 {
-		return nil, nil
-	}
-	if s.file == nil {
-		return nil, errors.New("activity series was spilled to a file that is closed")
-	}
-	buf := make([]byte, n)
-	if _, err := io.ReadFull(io.NewSectionReader(s.file, off, int64(n)), buf); err != nil {
-		return nil, fmt.Errorf("read spilled activity: %w", err)
-	}
-	return buf, nil
+	sort.Slice(recs, func(i, j int) bool { return recs[i].id < recs[j].id })
+	return recs
 }
 
 func (r actRec) hasActivity() bool {

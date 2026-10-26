@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -208,6 +209,13 @@ func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
 	if src.n != points {
 		t.Fatalf("points = %d, want %d", src.n, points)
 	}
+	// One spill op per point is inside the allowance of one per point plus
+	// one per minute switch. A per-cell pwrite on revisit is over it.
+	// Each minute is written at least once, so a missing counter fails too.
+	t.Logf("alternating spill ops %d points %d", src.ops, points)
+	if src.ops < points/200 || src.ops > points {
+		t.Fatalf("spill I/O ops %d, want between %d and %d", src.ops, points/200, points)
+	}
 	bound := int64(points) * int64(actRecSize)
 	if got := src.spillBytes(); got != bound {
 		t.Fatalf("spill file is %d bytes for %d points, bound %d", got, points, bound)
@@ -390,6 +398,82 @@ func alternatingMinuteEvents() ([]model.NormalizedEvent, int) {
 	return events, tables * pairs * 2
 }
 
+// Two channels a few minutes apart are the lag shape. Both minutes stay
+// resident, so the spill does a handful of reads and writes at the end
+// rather than one syscall per cell on every switch. The ops budget is what
+// fails that shape; the wall budget leaves room for a slow runner and still
+// fails a multi-second regression against the in-memory path.
+func TestLaggingChannelsSpillKeepsUp(t *testing.T) {
+	events := laggingChannelEvents()
+	inlineStart := time.Now()
+	inline := analyzeWithLimit(t, events, 1<<30)
+	inlineDur := time.Since(inlineStart)
+	spillStart := time.Now()
+	spilled := analyzeWithLimit(t, events, 0)
+	spillDur := time.Since(spillStart)
+	t.Cleanup(func() {
+		if spilled.MinuteTables != nil {
+			spilled.MinuteTables.Close()
+		}
+	})
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("lagging series was inlined")
+	}
+	t.Logf("lag shape inline %s spill %s ops %d points %d", inlineDur, spillDur, src.ops, src.n)
+	if src.ops > 8 {
+		t.Fatalf("spill I/O ops %d, want at most 8 for two resident minutes", src.ops)
+	}
+	budget := inlineDur*5 + time.Second
+	if spillDur > budget {
+		t.Fatalf("spill %s exceeds %s (inline %s)", spillDur, budget, inlineDur)
+	}
+	opts := report.DefaultOptions()
+	got, err := report.RenderJSONWithOptions(*spilled, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := report.RenderJSONWithOptions(*inline, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatal("lagging spilled JSON differs from in-memory")
+	}
+}
+
+func laggingChannelEvents() []model.NormalizedEvent {
+	const tables = 2000
+	base := time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC)
+	other := base.Add(3 * time.Minute)
+	events := make([]model.NormalizedEvent, 0, tables*2*3)
+	for tbl := 0; tbl < tables; tbl++ {
+		name := fmt.Sprintf("t%04d", tbl)
+		events = append(events, closedInsert(base, fmt.Sprintf("a%d", tbl), name, 1)...)
+		events = append(events, closedInsert(other, fmt.Sprintf("b%d", tbl), name, 1)...)
+	}
+	return events
+}
+
+func TestSpillStopsBeforeFillingTempFS(t *testing.T) {
+	restoreDisk := SetSpillDiskAvailForTest(func() (uint64, bool) { return 8 << 20, true })
+	defer restoreDisk()
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	for i := 0; i < 6; i++ {
+		events = append(events, closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), "orders", i+1)...)
+	}
+	inline := analyzeWithLimit(t, events, 1<<20)
+	spilled := analyzeWithLimit(t, events, 0)
+	if spilled.MinuteTables != nil {
+		spilled.MinuteTables.Close()
+		t.Fatal("spill grew a file when the filesystem was under the reserve")
+	}
+	if mustJSON(t, spilled) != mustJSON(t, inline) {
+		t.Fatal("low-space fallback differs from the in-memory series")
+	}
+}
+
 func TestSpillFileIsUnlinkedWhileOpen(t *testing.T) {
 	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
 	events := append(closedInsert(m0, "a", "orders", 2), closedInsert(m0.Add(time.Minute), "b", "orders", 3)...)
@@ -410,7 +494,7 @@ func TestSpillFileIsUnlinkedWhileOpen(t *testing.T) {
 func TestSpillWriteFailureKeepsRows(t *testing.T) {
 	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
 	var events []model.NormalizedEvent
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 8; i++ {
 		events = append(events, closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), "orders", i+1)...)
 	}
 	want := analyzeWithLimit(t, events, 1<<20)
@@ -536,7 +620,10 @@ func TestSpilledDDLMinuteOmitsZeroRowTable(t *testing.T) {
 
 func TestSpillReadErrorFailsFinalize(t *testing.T) {
 	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
-	events := append(closedInsert(m0, "a", "orders", 2), closedInsert(m0.Add(time.Minute), "b", "orders", 3)...)
+	var events []model.NormalizedEvent
+	for i := 0; i < 8; i++ {
+		events = append(events, closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), "orders", i+1)...)
+	}
 	restore := SetActivityInlineLimitForTest(0)
 	defer restore()
 	a := New(minuteAnalyzeOptions())
@@ -570,13 +657,26 @@ func TestSpillReadErrorWritesNoJSON(t *testing.T) {
 	if err := src.file.Truncate(0); err != nil {
 		t.Fatal(err)
 	}
-	var buf bytes.Buffer
-	err := report.Write(&buf, *spilled, report.DefaultOptions(), "json")
-	if err == nil {
-		t.Fatal("JSON write swallowed a spill read error")
-	}
-	if buf.Len() != 0 {
-		t.Fatalf("JSON wrote %d bytes on a spill read error:\n%s", buf.Len(), buf.String())
+	opts := report.Options{TopN: 10, TopTables: 10, ShowMinutes: true}
+	for _, format := range []string{"json", "text", "markdown", "html"} {
+		t.Run(format, func(t *testing.T) {
+			src.err = nil
+			var buf bytes.Buffer
+			err := report.Write(&buf, *spilled, opts, format)
+			if err == nil {
+				t.Fatalf("%s write swallowed a spill read error", format)
+			}
+			var spill *SpillReadError
+			if !errors.As(err, &spill) {
+				t.Fatalf("%s error is %T (%v), want a spill read error", format, err, err)
+			}
+			if !strings.Contains(err.Error(), "read spilled activity") {
+				t.Fatalf("%s error %q", format, err.Error())
+			}
+			if buf.Len() != 0 {
+				t.Fatalf("%s wrote %d bytes on a spill read error", format, buf.Len())
+			}
+		})
 	}
 }
 
