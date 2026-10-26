@@ -2,7 +2,14 @@ package analyzer
 
 import (
 	"bytes"
+	"fmt"
+	"os"
+	"os/exec"
 	"reflect"
+	"runtime"
+	"runtime/debug"
+	"runtime/metrics"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -167,4 +174,417 @@ func TestSpilledJSONMatchesEncoder(t *testing.T) {
 	if !bytes.Equal(spilledBuf.Bytes(), inlineBuf.Bytes()) {
 		t.Fatalf("RenderJSONTo spilled differs\n%s\n%s", spilledBuf.String(), inlineBuf.String())
 	}
+}
+
+// Alternating minutes are the shape that used to append a whole minute on
+// every switch (long transactions, lagging channels). The file stays one
+// record per point across a second pass that only updates those points.
+// Output matches the in-memory series. After the shared event state is
+// released, live heap and RSS of what remains stay at or below the
+// in-memory series main retains. VmRSS does not include the unlinked file;
+// the file-size check is what bounds that tmpfs RAM.
+func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
+	switch os.Getenv("ACTIVITY_SPILL_SHAPE") {
+	case "spill", "inline":
+		measureAlternatingShape(t, os.Getenv("ACTIVITY_SPILL_SHAPE"))
+		return
+	case "":
+	default:
+		t.Fatalf("ACTIVITY_SPILL_SHAPE=%q", os.Getenv("ACTIVITY_SPILL_SHAPE"))
+	}
+
+	events, points := alternatingMinuteEvents()
+	inline := analyzeWithLimit(t, events, 1<<30)
+	spilled := analyzeWithLimit(t, events, 0)
+	t.Cleanup(func() {
+		if spilled.MinuteTables != nil {
+			spilled.MinuteTables.Close()
+		}
+	})
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("alternating series was inlined")
+	}
+	if src.n != points {
+		t.Fatalf("points = %d, want %d", src.n, points)
+	}
+	bound := int64(points) * int64(actRecSize)
+	if got := src.spillBytes(); got != bound {
+		t.Fatalf("spill file is %d bytes for %d points, bound %d", got, points, bound)
+	}
+	opts := report.DefaultOptions()
+	got, err := report.RenderJSONWithOptions(*spilled, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := report.RenderJSONWithOptions(*inline, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatal("alternating spilled JSON differs from in-memory")
+	}
+
+	spill := runAlternatingChild(t, "spill")
+	mem := runAlternatingChild(t, "inline")
+	t.Logf("spill %s", spill.raw)
+	t.Logf("inline %s", mem.raw)
+	if spill.points != points || mem.points != points {
+		t.Fatalf("child points spill=%d inline=%d want=%d", spill.points, mem.points, points)
+	}
+	if spill.file != bound {
+		t.Fatalf("child spill file %d, bound %d", spill.file, bound)
+	}
+	if mem.file != 0 {
+		t.Fatalf("in-memory child wrote %d spill bytes", mem.file)
+	}
+	if spill.heap > mem.heap {
+		t.Fatalf("spill live heap %d is above the in-memory series %d", spill.heap, mem.heap)
+	}
+	if spill.rss > mem.rss {
+		t.Fatalf("spill RSS %d is above the in-memory series %d", spill.rss, mem.rss)
+	}
+}
+
+type alternatingChild struct {
+	points int
+	file   int64
+	heap   uint64
+	rss    uint64
+	raw    string
+}
+
+func runAlternatingChild(t *testing.T, mode string) alternatingChild {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^TestAlternatingMinuteSpillStaysBounded$", "-test.count=1", "-test.v")
+	cmd.Env = append(os.Environ(), "ACTIVITY_SPILL_SHAPE="+mode)
+	out, err := cmd.CombinedOutput()
+	text := string(out)
+	if err != nil {
+		t.Fatalf("shape %s: %v\n%s", mode, err, text)
+	}
+	var got alternatingChild
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "ACTIVITY_SHAPE ") {
+			continue
+		}
+		got.raw = line
+		if _, scanErr := fmt.Sscanf(line, "ACTIVITY_SHAPE points=%d file=%d heap=%d rss=%d", &got.points, &got.file, &got.heap, &got.rss); scanErr != nil {
+			t.Fatalf("parse %q: %v", line, scanErr)
+		}
+	}
+	if got.raw == "" || got.heap == 0 || got.rss == 0 {
+		t.Fatalf("shape %s did not report heap and RSS\n%s", mode, text)
+	}
+	return got
+}
+
+func measureAlternatingShape(t *testing.T, mode string) {
+	t.Helper()
+	events, points := alternatingMinuteEvents()
+	limit := 1 << 30
+	if mode == "spill" {
+		limit = 0
+	}
+	restore := SetActivityInlineLimitForTest(limit)
+	defer restore()
+	a := New(minuteAnalyzeOptions())
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := a.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Drop the analyzer's other state (transactions, the event slice) and
+	// keep only the series. Whole-process samples during Consume sit on
+	// that shared state, about 100MB, and jitter by more than the series
+	// itself. What main keeps for this shape, and what a tmpfs spill adds,
+	// is the series: the in-memory points, or the index plus the file.
+	var file int64
+	var retained any
+	if mode == "spill" {
+		src, ok := res.MinuteTables.(*activityStore)
+		if !ok {
+			t.Fatal("alternating shape did not spill")
+		}
+		if src.n != points {
+			t.Fatalf("points %d, want %d", src.n, points)
+		}
+		file = src.spillBytes()
+		retained = src
+	} else if res.MinuteTables != nil {
+		res.MinuteTables.Close()
+		t.Fatal("in-memory shape spilled")
+	} else {
+		retained = []any{res.Minutes, res.Tables}
+	}
+	res = nil
+	a = nil
+	events = nil
+	debug.FreeOSMemory()
+	heap := liveHeap(t)
+	rss := processRSS(t)
+	runtime.KeepAlive(retained)
+	fmt.Printf("ACTIVITY_SHAPE points=%d file=%d heap=%d rss=%d\n", points, file, heap, rss)
+	if src, ok := retained.(*activityStore); ok {
+		src.Close()
+	}
+}
+
+func liveHeap(t *testing.T) uint64 {
+	t.Helper()
+	sample := []metrics.Sample{{Name: "/gc/heap/live:bytes"}}
+	metrics.Read(sample)
+	if sample[0].Value.Kind() != metrics.KindUint64 {
+		t.Fatalf("live heap kind %v", sample[0].Value.Kind())
+	}
+	return sample[0].Value.Uint64()
+}
+
+func processRSS(t *testing.T) uint64 {
+	t.Helper()
+	data, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "VmRSS:") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			t.Fatalf("VmRSS line %q", line)
+		}
+		kb, err := strconv.ParseUint(fields[1], 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return kb * 1024
+	}
+	t.Fatal("VmRSS missing")
+	return 0
+}
+
+func alternatingMinuteEvents() ([]model.NormalizedEvent, int) {
+	const tables = 200
+	const pairs = 100
+	base := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	for wave := 0; wave < 2; wave++ {
+		for p := 0; p < pairs; p++ {
+			minute := base.Add(time.Duration(p*6) * time.Minute)
+			other := minute.Add(3 * time.Minute)
+			for tbl := 0; tbl < tables; tbl++ {
+				name := fmt.Sprintf("t%02d", tbl)
+				keyA := fmt.Sprintf("w%d-p%d-t%d-a", wave, p, tbl)
+				keyB := fmt.Sprintf("w%d-p%d-t%d-b", wave, p, tbl)
+				events = append(events, closedInsert(minute, keyA, name, 1)...)
+				events = append(events, closedInsert(other, keyB, name, 1)...)
+			}
+		}
+	}
+	return events, tables * pairs * 2
+}
+
+func TestSpillFileIsUnlinkedWhileOpen(t *testing.T) {
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	events := append(closedInsert(m0, "a", "orders", 2), closedInsert(m0.Add(time.Minute), "b", "orders", 3)...)
+	spilled := analyzeWithLimit(t, events, 0)
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("expected a spill file")
+	}
+	t.Cleanup(src.Close)
+	if _, err := os.Stat(src.path); !os.IsNotExist(err) {
+		t.Fatalf("spill file %s is still linked: %v", src.path, err)
+	}
+	if got := src.TableRows(m0)["shop.orders"]; got != 2 {
+		t.Fatalf("unlinked spill table_rows = %d, want 2", got)
+	}
+}
+
+func TestSpillWriteFailureKeepsRows(t *testing.T) {
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	for i := 0; i < 3; i++ {
+		events = append(events, closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), "orders", i+1)...)
+	}
+	want := analyzeWithLimit(t, events, 1<<20)
+	wantJSON := mustJSON(t, want)
+
+	t.Run("first write", func(t *testing.T) {
+		got := analyzeUntilWriteFails(t, events, func(a *Analyzer, consumed int) {
+			if consumed == 0 {
+				a.activity.failWrites = 1
+			}
+		})
+		if got.MinuteTables != nil {
+			got.MinuteTables.Close()
+			t.Fatal("a failed first write still spilled")
+		}
+		if mustJSON(t, got) != wantJSON {
+			t.Fatal("rows dropped when the first spill write failed")
+		}
+	})
+	t.Run("later write", func(t *testing.T) {
+		armed := false
+		got := analyzeUntilWriteFails(t, events, func(a *Analyzer, consumed int) {
+			if !armed && a.activity.file != nil {
+				a.activity.failWrites = 1
+				armed = true
+			}
+			_ = consumed
+		})
+		if got.MinuteTables != nil {
+			got.MinuteTables.Close()
+			t.Fatal("a failed later write still left the series spilled")
+		}
+		if mustJSON(t, got) != wantJSON {
+			t.Fatal("rows dropped when a later spill write failed")
+		}
+	})
+}
+
+func analyzeUntilWriteFails(t *testing.T, events []model.NormalizedEvent, before func(*Analyzer, int)) *model.AnalysisResult {
+	t.Helper()
+	restore := SetActivityInlineLimitForTest(0)
+	defer restore()
+	a := New(minuteAnalyzeOptions())
+	for i, ev := range events {
+		before(a, i)
+		if err := a.Consume(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := a.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+func TestDumpMemDoesNotDoubleActivity(t *testing.T) {
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	for i := 0; i < 4; i++ {
+		events = append(events, closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), fmt.Sprintf("t%d", i), 3)...)
+	}
+	inline := analyzeWithLimit(t, events, 1<<20)
+	spilled := analyzeWithLimit(t, events, 2)
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("series over the limit was inlined")
+	}
+	t.Cleanup(src.Close)
+	if pts := src.Activity("shop", "t0"); len(pts) != 1 {
+		t.Fatalf("shop.t0 activity points = %d, want 1", len(pts))
+	}
+	opts := report.Options{TopN: 10, TopTables: 10, ShowMinutes: true}
+	got, err := report.Render(*spilled, opts, "html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := report.Render(*inline, opts, "html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seriesOf(got) != seriesOf(want) {
+		t.Fatalf("html activity duplicated\nspilled %s\ninline %s", seriesOf(got), seriesOf(want))
+	}
+}
+
+func TestSpilledDDLMinuteOmitsZeroRowTable(t *testing.T) {
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	events := []model.NormalizedEvent{{
+		Timestamp: m0,
+		EventType: "DDL",
+		Schema:    "shop",
+		Table:     "t",
+		QuerySQL:  "CREATE TABLE shop.t (id int)",
+	}}
+	events = append(events, closedInsert(m0.Add(time.Minute), "r1", "orders", 4)...)
+	inline := analyzeWithLimit(t, events, 1<<20)
+	spilled := analyzeWithLimit(t, events, 0)
+	t.Cleanup(func() {
+		if spilled.MinuteTables != nil {
+			spilled.MinuteTables.Close()
+		}
+	})
+	if spilled.MinuteTables == nil {
+		t.Fatal("DDL series was inlined")
+	}
+	opts := report.DefaultOptions()
+	got, err := report.RenderJSONWithOptions(*spilled, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := report.RenderJSONWithOptions(*inline, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("DDL spilled JSON differs\n%s\n%s", got, want)
+	}
+	if strings.Contains(got, `"shop.t": 0`) {
+		t.Fatalf("DDL-only minute wrote a zero row count\n%s", got)
+	}
+}
+
+func TestSpillReadErrorFailsFinalize(t *testing.T) {
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	events := append(closedInsert(m0, "a", "orders", 2), closedInsert(m0.Add(time.Minute), "b", "orders", 3)...)
+	restore := SetActivityInlineLimitForTest(0)
+	defer restore()
+	a := New(minuteAnalyzeOptions())
+	for _, ev := range events {
+		if err := a.Consume(ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if a.activity.file == nil {
+		t.Fatal("expected a spill file")
+	}
+	// Truncate leaves a hole that reads back as zeros. Closing the fd makes
+	// the next read fail, which is the error Finalize has to surface.
+	if err := a.activity.file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Finalize(); err == nil {
+		t.Fatal("Finalize swallowed a spill read error")
+	}
+}
+
+func TestSpillReadErrorWritesNoJSON(t *testing.T) {
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	events := append(closedInsert(m0, "a", "orders", 2), closedInsert(m0.Add(time.Minute), "b", "orders", 3)...)
+	spilled := analyzeWithLimit(t, events, 0)
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("expected a spill file")
+	}
+	t.Cleanup(src.Close)
+	if err := src.file.Truncate(0); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	err := report.Write(&buf, *spilled, report.DefaultOptions(), "json")
+	if err == nil {
+		t.Fatal("JSON write swallowed a spill read error")
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("JSON wrote %d bytes on a spill read error:\n%s", buf.Len(), buf.String())
+	}
+}
+
+func mustJSON(t *testing.T, result *model.AnalysisResult) string {
+	t.Helper()
+	got, err := report.RenderJSONWithOptions(*result, report.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }

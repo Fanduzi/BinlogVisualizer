@@ -40,6 +40,8 @@ Report times were rendered in UTC. An operator who had a wall time of `14:05 +08
 
    The other JSON commands print no stdout document on the failure the test runs. `analyze --format json` on a missing file exits 4. `flashback --plan` on a missing file exits 4. `compare --format json` on a missing report exits 4. `trend --format json` on a missing snapshot exits 4. `snapshot list --format json` when the snapshot directory is a file exits 4. `snapshot show --format json` on a missing snapshot exits 4. `workflow status`, `workflow clean`, and `workflow export` with `--format json` on a missing manifest exit 4. `version --format yaml` exits 3. `flashback verify --format json` on a file that is not a flashback script exits 6. An unknown `--format` is the same: nothing on stdout, and it is not a second schema.
 
+   `analyze --format json` with a spilled per-(table, minute) series (ADR 0019) reads that series before the first stdout byte and then encodes the document the same way as an in-memory series. A spill read error writes nothing and the process exits non-zero. It does not print a schema-valid document whose `table_rows` are null. The SIGTERM window is that encode, the same window as an in-memory series.
+
    Two non-zero exits still print the success document. `flashback --plan` on a refusal (exit 6) prints the plan, including `would_refuse`. That is the success runner in `TestJSONOutputMatchesSchema`, not a second shape. `workflow clean --apply` writes the clean document and then exits 8 when a move was skipped. That document is the success object.
 
 ## Consequences

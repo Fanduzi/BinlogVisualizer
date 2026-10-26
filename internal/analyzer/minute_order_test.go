@@ -102,16 +102,20 @@ type minuteWant struct {
 	tables map[string]int
 }
 
-func analyzeMinutes(t *testing.T, events []model.NormalizedEvent) *model.AnalysisResult {
-	t.Helper()
-	a := New(Options{
+func minuteAnalyzeOptions() Options {
+	return Options{
 		DetectSpikes: true,
 		SpikeWindow:  2,
 		SpikeFactor:  3,
 		SpikeMinRows: 60,
 		LargeTxnRows: 10000,
 		TopMinutes:   0,
-	})
+	}
+}
+
+func analyzeMinutes(t *testing.T, events []model.NormalizedEvent) *model.AnalysisResult {
+	t.Helper()
+	a := New(minuteAnalyzeOptions())
 	result, err := a.Analyze(events)
 	if err != nil {
 		t.Fatalf("Analyze: %v", err)
