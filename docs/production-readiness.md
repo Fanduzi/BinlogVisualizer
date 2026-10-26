@@ -63,7 +63,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 |---|---|---|---|---|
 | F1 | 4 个平台的包带 checksums；`install.sh` 校验 sha256，没有校验工具时直接失败；Homebrew cask 同步 | `release.yml`；`TestInstallScriptInstallsVerifiedArchive`、`…RefusesBadDownloads`、`…FailsClosedWithoutShaTool`；`release_smoke.sh`（CI verify） | MET | — |
 | F2 | 发布出来的二进制报告正确的 commit | v0.33.1 的 linux_amd64 我实测，`version --format json` 里 `"commit": ""`。`release_smoke.sh` 支持 `BINLOGVIZ_SMOKE_EXPECT_COMMIT`，但 `release.yml` 没设 | NOT MET | #303（要改 workflow，需要有 workflow 权限的 token） |
-| F3 | 打 tag 前，这个 commit 已经过了 flashback e2e | `release.yml` 的 test job 只跑 `go test ./...`，MySQL 测试全部 Skip，也不检查这个 commit 的 CI 结果 | NOT MET | 要改 workflow |
+| F3 | 打 tag 前，这个 commit 已经过了 flashback e2e | `release.yml` 的 `ci` job 以 `uses: ./.github/workflows/ci.yml` 在 tag 所在 commit 上跑完整 CI（`verify` 和 MySQL 8.0 的 `flashback e2e`），4 个 build job 都 `needs: [test, ci]`，没过就不打包、不发布。`TestReleaseWaitsForFlashbackE2E`（`go test ./...`，每个 PR）锁住这条依赖：`ci.yml` 可被调用且保留 flashback-e2e，`release.yml` 调用它且 build 依赖它 | MET | — |
 | F4 | CI 里跑 `go vet` 和 `-race` | 都不跑；只有 QA 在本地跑 | NOT MET | 要改 workflow |
 
 ## G. 文档
@@ -74,13 +74,12 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 20 / PARTIAL 1 / NOT MET 3**，还剩 4 项。
+共 24 项：**MET 21 / PARTIAL 1 / NOT MET 2**，还剩 3 项。
 
-## 最卡生产级的 4 项
+## 最卡生产级的 3 项
 
 1. **B5，失败路径的测试 CI 不跑**：apply 失败后的清理（`TestFlashbackFailedApplyDropsAndSignals`）和服务器端的 guard 测试，写好了但 CI 从来不跑。
 2. **F2，二进制 commit 为空**：#303，要你用有 workflow 权限的 token 改 `release.yml`。
-3. **F3，发布不看 e2e**：`release.yml` 的 test job 只跑 `go test ./...`，MySQL 测试全部 Skip，也不检查这个 commit 的 CI 结果。要改 workflow。
-4. **F4，CI 不跑 -race/vet**：都不跑；只有 QA 在本地跑。同样卡在 workflow token。
+3. **F4，CI 不跑 -race/vet**：都不跑；只有 QA 在本地跑。同样卡在 workflow token。
 
 A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这三项里；MariaDB 上脚本明确拒绝执行。

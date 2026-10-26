@@ -29,6 +29,13 @@ jobs:
       - name: Validate GoReleaser config
         run: goreleaser check
 
+  ci:
+    name: ci
+    # The full CI workflow (verify and flashback e2e on MySQL 8.0) on the
+    # tagged commit. build waits for it, so nothing is packaged or published
+    # unless this commit passed the e2e (production-readiness F3).
+    uses: ./.github/workflows/ci.yml
+
   validate-homebrew:
     name: validate-homebrew
     runs-on: ubuntu-latest
@@ -58,7 +65,7 @@ jobs:
 
   build:
     name: build-${{ matrix.goos }}-${{ matrix.goarch }}
-    needs: test
+    needs: [test, ci]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
