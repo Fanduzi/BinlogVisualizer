@@ -64,7 +64,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 |---|---|---|---|---|
 | F1 | 4 个平台的包带 checksums；`install.sh` 校验 sha256，没有校验工具时直接失败；Homebrew cask 同步 | `release.yml`；`TestInstallScriptInstallsVerifiedArchive`、`…RefusesBadDownloads`、`…FailsClosedWithoutShaTool`；`release_smoke.sh`（CI verify） | MET | — |
 | F2 | 发布出来的二进制报告正确的 commit | `release.yml` 4 个构建 job 都用 `-X binlogviz/internal/version.Commit=${GITHUB_SHA}` 和 `CommitTime` 构建（Linux 在 manylinux 容器里仍是 `-buildvcs=false`），并以 `BINLOGVIZ_SMOKE_EXPECT_COMMIT=${GITHUB_SHA}`、`BINLOGVIZ_SMOKE_REQUIRE_COMMIT=1` 跑 `release_smoke.sh`，commit 不对或为空就挡住发布。CI `verify` 每个 PR 用同样的 `-buildvcs=false` 加 ldflags 构建，再以 `BINLOGVIZ_SMOKE_EXPECT_COMMIT=${{ github.sha }}` 跑包的 smoke | MET | — |
-| F3 | 打 tag 前，这个 commit 已经过了 flashback e2e | `release.yml` 的 test job 只跑 `go test ./...`，MySQL 测试全部 Skip，也不检查这个 commit 的 CI 结果 | NOT MET | 要改 workflow |
+| F3 | 打 tag 前，这个 commit 已经过了 flashback e2e | `release.yml` 的 `ci` job 以 `uses: ./.github/workflows/ci.yml` 在 tag 所在 commit 上跑完整 CI（`verify` 和 MySQL 8.0 的 `flashback e2e`），4 个 build job 都 `needs: [test, ci]`，没过就不打包、不发布。`TestReleaseWaitsForFlashbackE2E`（`go test ./...`，每个 PR）锁住这条依赖：`ci.yml` 可被调用且保留 flashback-e2e，`release.yml` 调用它且 build 依赖它 | MET | — |
 | F4 | CI 里跑 `go vet` 和 `-race` | `ci.yml` 的 `vet and race` job：`go vet ./...` 和 `go test -race -count=1 ./...`，每个 PR 和 push main 都跑；E1 的内存测试在 -race 下按 `TestEveryMemoryTestRunsInCIVerify` 的约定 Skip，仍由 `verify` 的普通 `go test ./...` 覆盖 | MET | — |
 
 ## G. 文档
@@ -75,10 +75,8 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 
 ## 计数
 
-共 24 项：**MET 23 / PARTIAL 0 / NOT MET 1**，还剩 1 项。
+共 24 项：**MET 24 / PARTIAL 0 / NOT MET 0**，还剩 0 项。
 
-## 最卡生产级的 1 项
+清单上的项都已 MET。
 
-1. **F3，发布不看 e2e**：`release.yml` 的 test job 只跑 `go test ./...`，MySQL 测试全部 Skip，也不检查这个 commit 的 CI 结果。要改 workflow。
-
-A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不在这一项里；MariaDB 上脚本明确拒绝执行。
+A3 已由 #370 覆盖（四种格式比较有序的重点事务序列，含不完整证据的一例）。C2–C4 已由 `go test ./...` 里的版本矩阵夹具覆盖；8.4 / 9.x 上执行脚本的往返仍要改 workflow，不算清单项；MariaDB 上脚本明确拒绝执行。

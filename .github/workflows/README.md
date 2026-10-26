@@ -4,8 +4,8 @@
 
 | File | Responsibility |
 |------|----------------|
-| `ci.yml` | Verifies tests, GoReleaser configuration, archive packaging, and the packaged smoke path on pushes to `main` and pull requests. A separate `flashback-e2e` job on Ubuntu 24.04 starts the image's preinstalled MySQL 8.0, runs `TestFlashbackRoundTripMySQL80*`, `TestNumericDecodeMySQL80` and `TestFlashbackFailedApplyDropsAndSignals`, then the `internal/guard` `*OnServer` tests against the same server; a SKIP or a missing PASS fails the job. A `vet and race` job runs `go vet ./...` and `go test -race ./...`. |
-| `release.yml` | Runs tests, validates `.goreleaser.yml` and Homebrew tap write access, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, publishes GitHub Releases, and synchronizes the cask on version tags. |
+| `ci.yml` | Verifies tests, GoReleaser configuration, archive packaging, and the packaged smoke path on pushes to `main` and pull requests; `release.yml` also calls it through `workflow_call`. A separate `flashback-e2e` job on Ubuntu 24.04 starts the image's preinstalled MySQL 8.0, runs `TestFlashbackRoundTripMySQL80*`, `TestNumericDecodeMySQL80` and `TestFlashbackFailedApplyDropsAndSignals`, then the `internal/guard` `*OnServer` tests against the same server; a SKIP or a missing PASS fails the job. A `vet and race` job runs `go vet ./...` and `go test -race ./...`. |
+| `release.yml` | Calls `ci.yml` on the tagged commit (verify and flashback e2e) and makes every build job wait for it, runs tests, validates `.goreleaser.yml` and Homebrew tap write access, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, publishes GitHub Releases, and synchronizes the cask on version tags. |
 
 ## Notes
 
