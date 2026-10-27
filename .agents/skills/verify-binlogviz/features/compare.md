@@ -21,9 +21,9 @@ Preconditions:
 - Two snapshots (or two JSON reports) prepared under an isolated scratch dir:
 
 ```bash
-SCRATCH=.cursor/skills/verify-binlogviz/scratch/cmp-demo
+SCRATCH=.agents/skills/verify-binlogviz/scratch/cmp-demo
 mkdir -p "$SCRATCH/snapshots"
-DRIVE=.cursor/skills/verify-binlogviz/helpers/drive.sh
+DRIVE=.agents/skills/verify-binlogviz/helpers/drive.sh
 "$DRIVE" cmp-seed-a -- analyze cmd/binlogviz/testdata/minimal.binlog --format json \
   --snapshot-name week1 --snapshot-dir "$SCRATCH/snapshots"
 "$DRIVE" cmp-seed-b -- analyze cmd/binlogviz/testdata/minimal.binlog --format json \

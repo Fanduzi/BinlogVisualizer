@@ -24,9 +24,9 @@ Preconditions:
 - Isolated dirs:
 
 ```bash
-SCRATCH=.cursor/skills/verify-binlogviz/scratch/wf-demo
+SCRATCH=.agents/skills/verify-binlogviz/scratch/wf-demo
 mkdir -p "$SCRATCH/snapshots" "$SCRATCH/out"
-DRIVE=.cursor/skills/verify-binlogviz/helpers/drive.sh
+DRIVE=.agents/skills/verify-binlogviz/helpers/drive.sh
 PLAN=incident.yaml
 ```
 
