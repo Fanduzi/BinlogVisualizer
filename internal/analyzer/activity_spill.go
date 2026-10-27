@@ -46,11 +46,12 @@ const actRecSize = 68
 
 // spillResidentBytes is how many bytes of cells stay in memory after the
 // series spills. A count of minutes evicts the 5th hot minute; interleaved
-// channels share the same bytes instead. ponytail: 800KiB of 68-byte cells,
-// about 6 channels of 2000 tables. WideActivityHeap's 2MiB gap is the
-// ceiling; 1MiB and 2MiB of cells blew the flashback side. Raise this only
-// while that gap still holds.
-var spillResidentBytes = 800 << 10
+// channels share the same bytes instead. ponytail: 320KiB of 68-byte cells,
+// six channels of 800 tables or twelve of 400. WideActivityHeap's 2MiB gap
+// is the ceiling and wants about 1MiB free on both sides. 800KiB left the
+// flashback side 150KB under that cap; 336KiB left about 1MiB with nothing
+// to spare. Raise this only while both extras keep that room.
+var spillResidentBytes = 320 << 10
 
 // SetSpillResidentBytesForTest sets the resident cell budget. The returned
 // function restores the previous budget.

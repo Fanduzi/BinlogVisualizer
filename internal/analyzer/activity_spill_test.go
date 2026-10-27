@@ -779,7 +779,7 @@ func TestDuckDBDetailStoreSpillReadFails(t *testing.T) {
 
 // Six channels two minutes apart, twelve channels one minute apart, and a
 // random minute inside a ten-minute window. Each shape is at least 30k
-// points. The hot minutes fit in the resident byte budget, so a switch is
+// points. The hot minutes fit in the 320KiB resident budget, so a switch is
 // not a read and a write. hotSwitches/4 is inside one read plus one write
 // per switch: four resident minutes, or one read per record, is over it.
 func TestInterleavedChannelsStayResident(t *testing.T) {
@@ -789,8 +789,8 @@ func TestInterleavedChannelsStayResident(t *testing.T) {
 		random                      bool
 	}{
 		{name: "6 channels 2 min apart", channels: 6, gap: 2, tables: 800, cold: 32},
-		{name: "12 channels 1 min apart", channels: 12, gap: 1, tables: 500, cold: 48},
-		{name: "random minute in a 10 min window", channels: 10, gap: 1, tables: 500, cold: 50, random: true},
+		{name: "12 channels 1 min apart", channels: 12, gap: 1, tables: 400, cold: 63},
+		{name: "random minute in a 10 min window", channels: 10, gap: 1, tables: 480, cold: 53, random: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
