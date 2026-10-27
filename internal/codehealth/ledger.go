@@ -1,147 +1,126 @@
 package codehealth
 
-import (
-	"bytes"
-	"encoding/json"
-	"errors"
-	"sort"
-)
-
-// Entry is the ceiling for one file or function. SplitFrom names the entry,
-// in the same ledger of the previous baseline, that this one was split or
-// renamed from. It is the only way an entry can join a baseline.
-type Entry struct {
-	Value     int
-	SplitFrom string
-}
-
-type entryJSON struct {
-	Value     int    `json:"value"`
-	SplitFrom string `json:"split_from"`
-}
-
-// MarshalJSON writes a plain number, or {"value", "split_from"} for an entry
-// with lineage.
-func (e Entry) MarshalJSON() ([]byte, error) {
-	if e.SplitFrom == "" {
-		return json.Marshal(e.Value)
-	}
-	return json.Marshal(entryJSON(e))
-}
-
-// UnmarshalJSON reads what MarshalJSON writes.
-func (e *Entry) UnmarshalJSON(data []byte) error {
-	if err := json.Unmarshal(data, &e.Value); err == nil {
-		return nil
-	}
-	var j entryJSON
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&j); err != nil {
-		return err
-	}
-	if j.SplitFrom == "" {
-		return errors.New("an entry without split_from is a plain number")
-	}
-	*e = Entry(j)
-	return nil
-}
+import "sort"
 
 // Ledger maps a file path or function key to its ceiling.
-type Ledger map[string]Entry
+type Ledger map[string]int
 
-// kind describes one ledger: where its values come from, the limit above
-// which a value needs an entry, how far a value may sit above its ceiling,
-// and how much a split may add per extra piece (negative: no lineage).
+// kind describes one ledger: where its values and content come from, the
+// limit above which a value needs an entry, how far a value may sit above
+// its ceiling, how much each piece after the first may add when an entry is
+// split (package clause and imports for a file, a signature for a function),
+// and how big a drop the pull request that causes it must record. content is
+// nil when an entry cannot move (deadcode: delete the function).
 type kind struct {
-	name      string
-	noun      string
-	unit      string
-	fix       string
-	ledger    func(*Baseline) *Ledger
-	values    func(Measurement) map[string]int
-	limit     func(Limits) int
-	tolerance func(Limits) int
-	slack     int
+	name, noun, unit, fix string
+	ledger                func(*Baseline) *Ledger
+	values                func(Measurement) map[string]int
+	content               func(Measurement, string) []string
+	limit                 func(Limits) int
+	tolerance             func(Limits) int
+	slack, paydown        int
 }
 
 // fileSplitSlack is what each extra file of a split may add: its package
 // clause, imports and doc comment.
-const fileSplitSlack = 20
+const fileSplitSlack = 40
 
-func zero(Limits) int { return 0 }
+// functionLineTolerance lets a baselined long function take a small fix
+// without being split first; complexity gets no such room.
+const functionLineTolerance = 5
+
+func fixed(n int) func(Limits) int { return func(Limits) int { return n } }
+
+func fileText(m Measurement, key string) []string { return m.Text[key] }
+
+func funcBody(m Measurement, key string) []string { return m.Funcs[key].Body }
+
+func testFuncBody(m Measurement, key string) []string { return m.TestFuncs[key].Body }
 
 var kinds = []kind{
 	{
 		name: "files", noun: "file", unit: "lines", fix: "split it",
 		ledger:    func(b *Baseline) *Ledger { return &b.Files },
 		values:    func(m Measurement) map[string]int { return m.Files },
+		content:   fileText,
 		limit:     func(l Limits) int { return l.FileLines },
 		tolerance: func(l Limits) int { return l.GrowthTolerance },
-		slack:     fileSplitSlack,
+		slack:     fileSplitSlack, paydown: 50,
 	},
 	{
 		name: "test_files", noun: "test file", unit: "lines", fix: "split it",
 		ledger:    func(b *Baseline) *Ledger { return &b.TestFiles },
 		values:    func(m Measurement) map[string]int { return m.TestFiles },
+		content:   fileText,
 		limit:     func(l Limits) int { return l.FileLines },
 		tolerance: func(l Limits) int { return l.GrowthTolerance },
-		slack:     fileSplitSlack,
+		slack:     fileSplitSlack, paydown: 50,
 	},
 	{
 		name: "complex_functions", noun: "function", unit: "complexity", fix: "extract a branch into its own function",
 		ledger:    func(b *Baseline) *Ledger { return &b.ComplexFunctions },
-		values:    func(m Measurement) map[string]int { return complexityOf(m.Funcs) },
+		values:    func(m Measurement) map[string]int { return funcValues(m.Funcs, complexityOf) },
+		content:   funcBody,
 		limit:     func(l Limits) int { return l.Complexity },
-		tolerance: zero,
-		slack:     1,
+		tolerance: fixed(0),
+		slack:     1, paydown: 5,
 	},
 	{
 		name: "test_complex_functions", noun: "test function", unit: "complexity", fix: "extract a helper or split the cases",
 		ledger:    func(b *Baseline) *Ledger { return &b.TestComplexFunctions },
-		values:    func(m Measurement) map[string]int { return complexityOf(m.TestFuncs) },
+		values:    func(m Measurement) map[string]int { return funcValues(m.TestFuncs, complexityOf) },
+		content:   testFuncBody,
 		limit:     func(l Limits) int { return l.Complexity },
-		tolerance: zero,
-		slack:     1,
+		tolerance: fixed(0),
+		slack:     1, paydown: 5,
 	},
 	{
 		name: "long_functions", noun: "function", unit: "lines", fix: "extract a phase into its own function",
 		ledger:    func(b *Baseline) *Ledger { return &b.LongFunctions },
-		values:    func(m Measurement) map[string]int { return linesOf(m.Funcs) },
+		values:    func(m Measurement) map[string]int { return funcValues(m.Funcs, linesOf) },
+		content:   funcBody,
 		limit:     func(l Limits) int { return l.FunctionLines },
-		tolerance: zero,
-		slack:     2,
+		tolerance: fixed(functionLineTolerance),
+		slack:     3, paydown: 20,
+	},
+	{
+		name: "statement_functions", noun: "function", unit: "statements", fix: "extract a phase into its own function",
+		ledger:    func(b *Baseline) *Ledger { return &b.StatementFunctions },
+		values:    func(m Measurement) map[string]int { return funcValues(m.Funcs, statementsOf) },
+		content:   funcBody,
+		limit:     func(l Limits) int { return l.FunctionStatements },
+		tolerance: fixed(functionLineTolerance),
+		slack:     2, paydown: 10,
 	},
 	{
 		name: "issue_refs", noun: "file", unit: "issue references in comments", fix: "put the history in the commit message or ADR (list them: codehealth refs)",
 		ledger:    func(b *Baseline) *Ledger { return &b.IssueRefs },
 		values:    func(m Measurement) map[string]int { return refCounts(m.Refs) },
-		limit:     zero,
-		tolerance: zero,
-		slack:     0,
+		content:   fileText,
+		limit:     fixed(0),
+		tolerance: fixed(0),
+		slack:     0, paydown: 3,
 	},
 	{
-		name: "deadcode", noun: "function", unit: "unreachable", fix: "delete it or call it from non-test code; test-only use counts as dead (list them: codehealth -deadcode deadcode)",
+		name: "deadcode", noun: "function", unit: "unreachable", fix: "delete it or call it from non-test code; test-only use counts as dead (list them: codehealth deadcode)",
 		ledger:    func(b *Baseline) *Ledger { return &b.Deadcode },
 		values:    func(m Measurement) map[string]int { return deadcodeOf(m.Deadcode) },
-		limit:     zero,
-		tolerance: zero,
-		slack:     -1,
+		limit:     fixed(0),
+		tolerance: fixed(0),
+		paydown:   1,
 	},
 }
 
-func complexityOf(fns map[string]Func) map[string]int {
-	out := make(map[string]int, len(fns))
-	for k, f := range fns {
-		out[k] = f.Complexity
-	}
-	return out
-}
+func complexityOf(f Func) int { return f.Complexity }
 
-func linesOf(fns map[string]Func) map[string]int {
+func linesOf(f Func) int { return f.Lines }
+
+func statementsOf(f Func) int { return f.Statements }
+
+func funcValues(fns map[string]Func, metric func(Func) int) map[string]int {
 	out := make(map[string]int, len(fns))
 	for k, f := range fns {
-		out[k] = f.Lines
+		out[k] = metric(f)
 	}
 	return out
 }

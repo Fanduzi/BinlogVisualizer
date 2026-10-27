@@ -94,7 +94,7 @@ func RenderHTMLIn(result CompareResult, loc *time.Location) (string, error) {
 		GuardSummary:          ComparabilityGuardSummary(result.Comparability.Verdict),
 		ReasonCodesLabel:      ComparabilityReasonCodesLabel(),
 		GeneratedAt:           displaytz.Wall(time.Now(), "2006-01-02 15:04:05", loc),
-		EChartsJS:             template.JS(echartsJS), //nolint:gosec
+		EChartsJS:             template.JS(echartsJS), //nolint:gosec // embedded ECharts bundle from static/echarts.min.js, not user input
 		SummaryPairsJSON:      mustHTMLJSON(buildSummaryPairs(result)),
 		TopTablesJSON:         mustHTMLJSON(buildTopTableSeries(result.TableChanges)),
 		PatternChangesJSON:    mustHTMLJSON(buildPatternSeries(result.PatternChanges)),
@@ -119,9 +119,9 @@ func RenderHTMLIn(result CompareResult, loc *time.Location) (string, error) {
 func mustHTMLJSON(v any) template.JS {
 	data, err := json.Marshal(v)
 	if err != nil {
-		return template.JS("[]") //nolint:gosec
+		return template.JS("[]") //nolint:gosec // constant empty JSON array
 	}
-	return template.JS(data) //nolint:gosec
+	return template.JS(data) //nolint:gosec // json.Marshal escapes <, > and &, so it cannot close the script tag
 }
 
 func buildSummaryPairs(result CompareResult) []htmlMetricDatum {

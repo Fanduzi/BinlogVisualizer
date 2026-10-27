@@ -1,11 +1,11 @@
 package codehealth
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -76,36 +76,39 @@ func TestGolangciSkipsOnlyAllowlistedGeneratedFiles(t *testing.T) {
 	}
 }
 
-func TestEntryJSON(t *testing.T) {
-	l := Ledger{"a.go": {Value: 900}, "b.go": {Value: 850, SplitFrom: "c.go"}}
-	data, err := json.Marshal(l)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := `{"a.go":900,"b.go":{"value":850,"split_from":"c.go"}}`; string(data) != want {
-		t.Fatalf("marshal %s, want %s", data, want)
-	}
-	var back Ledger
-	if err := json.Unmarshal(data, &back); err != nil || !reflect.DeepEqual(back, l) {
-		t.Fatalf("round trip %v %v, want %v", back, err, l)
-	}
-	for _, bad := range []string{`{"a.go":{"value":1}}`, `{"a.go":{"value":1,"split_from":"b","x":1}}`, `{"a.go":"1"}`} {
-		if err := json.Unmarshal([]byte(bad), &back); err == nil {
-			t.Errorf("%s: no error", bad)
-		}
-	}
-}
-
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "b.json")
-	if err := os.WriteFile(path, []byte(`{"limits":{},"issue_ref_total":3}`), 0o644); err != nil {
+	lim := `"limits":{"file_lines":800,"growth_tolerance_lines":20,"complexity":40,"function_lines":150,"function_statements":100}`
+	bad := []string{"{" + lim + `,"issue_ref_total":3}`, "{" + lim + `} {"files":{"a.go":9999}}`, "{" + lim + `,"files":{"a.go":{"value":1}}}`}
+	// A baseline from before a limit existed reads that limit as 0; it is
+	// rejected instead of measuring every function against 0.
+	for _, field := range []string{`"file_lines":800,`, `"growth_tolerance_lines":20,`, `"complexity":40,`, `"function_lines":150,`, `,"function_statements":100`} {
+		bad = append(bad, "{"+strings.Replace(lim, field, "", 1)+"}")
+	}
+	for _, bad := range bad {
+		if err := os.WriteFile(path, []byte(bad), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(path); err == nil {
+			t.Errorf("%s accepted", bad)
+		}
+	}
+	// Limits of 1 are allowed, and a missing ledger is written back as {}.
+	if err := os.WriteFile(path, []byte(`{"limits":{"file_lines":1,"growth_tolerance_lines":1,"complexity":1,"function_lines":1,"function_statements":1}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Load(path); err == nil {
-		t.Fatal("unknown field accepted")
+	ones, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	b := Baseline{Limits: DefaultLimits, Files: Ledger{"a.go": {Value: 900}}}
+	if err := Save(path, ones); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); !strings.Contains(string(data), `"deadcode": {}`) {
+		t.Errorf("saved %s", data)
+	}
+	b := Baseline{Limits: DefaultLimits, Files: Ledger{"a.go": 900}}
 	if err := Save(path, b); err != nil {
 		t.Fatal(err)
 	}
@@ -124,46 +127,62 @@ func TestParseDeadcode(t *testing.T) {
 }
 
 func TestCheckSkipsUnmeasuredDeadcode(t *testing.T) {
-	b := Baseline{Limits: DefaultLimits, Deadcode: Ledger{"x:F": {Value: 1}}}
+	b := Baseline{Limits: DefaultLimits, Deadcode: Ledger{"x:F": 1}}
 	expect(t, Check(b, Measurement{}), "")
-	expect(t, Check(b, Measurement{Deadcode: map[string]string{}}), "deadcode: x:F is down to 0")
-	next, refused := Update(b, Measurement{}, nil)
+	expect(t, Check(b, Measurement{Deadcode: map[string]string{"x:G": "x/a.go:3:6"}}), "deadcode: x:G at x/a.go:3:6 is unreachable")
+	next, refused := Update(b, Measurement{})
 	expect(t, refused, "")
 	if !reflect.DeepEqual(next.Deadcode, b.Deadcode) {
 		t.Fatalf("unmeasured deadcode changed: %v", next.Deadcode)
 	}
 }
 
-func TestUpdateLowersAndKeepsLineage(t *testing.T) {
-	b := Baseline{Limits: DefaultLimits, Files: Ledger{"a.go": {Value: 900}, "b.go": {Value: 1000, SplitFrom: "c.go"}, "gone.go": {Value: 1000}}}
-	m := Measurement{Files: map[string]int{"a.go": 915, "b.go": 950, "gone.go": 800}}
-	next, refused := Update(b, m, nil)
+func TestUpdate(t *testing.T) {
+	b := Baseline{Limits: DefaultLimits, Files: Ledger{"a.go": 900, "b.go": 1000, "gone.go": 1000}}
+	m := Measurement{Files: map[string]int{"a.go": 915, "b.go": 950, "gone.go": 800, "new.go": 801, "small.go": 800}}
+	next, refused := Update(b, m)
 	expect(t, refused, "")
-	want := Ledger{"a.go": {Value: 900}, "b.go": {Value: 950, SplitFrom: "c.go"}}
-	if !reflect.DeepEqual(next.Files, want) {
+	if want := (Ledger{"a.go": 900, "b.go": 950, "new.go": 801}); !reflect.DeepEqual(next.Files, want) {
 		t.Fatalf("files %v, want %v", next.Files, want)
 	}
 	m.Files["a.go"] = 921
-	if same, refused := Update(b, m, nil); len(refused) == 0 || !reflect.DeepEqual(same, b.normalized()) {
-		t.Fatalf("growth past tolerance: refused %q, baseline %v", refused, same.Files)
+	same, refused := Update(b, m)
+	expect(t, refused, "files: a.go grew to 921 lines, ceiling 900 (+20 allowed)")
+	if !reflect.DeepEqual(same, b.normalized()) {
+		t.Fatalf("refused update changed the baseline: %v", same.Files)
 	}
 }
 
 // Check alone holds the tolerance: a file may sit up to growth_tolerance
-// lines above its ceiling, a function not even one above.
+// lines above its ceiling, a long function 5 lines, complexity and issue
+// references not even one. Below the ceiling always passes.
 func TestCheckToleranceBoundary(t *testing.T) {
-	lim := DefaultLimits
-	lim.FunctionLines = 1000 // only lines and complexity vary here
-	b := Baseline{Limits: lim, Files: Ledger{"a.go": {Value: 837}}, ComplexFunctions: Ledger{".:Run": {Value: 60}}}
+	b := Baseline{Limits: DefaultLimits, Files: Ledger{"a.go": 837}, ComplexFunctions: Ledger{".:Run": 60}, LongFunctions: Ledger{".:Long": 160, ".:Run": 1000}, StatementFunctions: Ledger{".:Long": 1000, ".:Run": 1000}, IssueRefs: Ledger{"a.go": 2}}
 	for _, c := range []struct {
-		lines, complexity int
-		want              string
+		lines, complexity, long int
+		refs                    string
+		want                    string
 	}{
-		{857, 60, ""},
-		{858, 60, "files: a.go grew to 858 lines, ceiling 837 (+20 allowed)"},
-		{857, 61, "complex_functions: .:Run grew to 61 complexity, ceiling 60 (+0 allowed)"},
+		{857, 60, 165, "#1 #2", ""},
+		{600, 50, 155, "", ""},
+		{858, 60, 160, "", "files: a.go grew to 858 lines, ceiling 837 (+20 allowed)"},
+		{857, 61, 160, "", "complex_functions: .:Run grew to 61 complexity, ceiling 60 (+0 allowed)"},
+		{857, 60, 166, "", "long_functions: .:Long grew to 166 lines, ceiling 160 (+5 allowed)"},
+		{857, 60, 160, "#1 #2 #3", "issue_refs: a.go grew to 3 issue references in comments, ceiling 2 (+0 allowed)"},
 	} {
-		m := measure(t, tree{"a.go": file(c.lines, complexFunc("Run", c.complexity))}, nil)
+		m := measure(t, tree{"a.go": file(c.lines, "// "+c.refs+"\n"+complexFunc("Run", c.complexity)+longFunc("Long", c.long))}, nil)
 		expect(t, Check(b, m), c.want)
+	}
+}
+
+// Initial records values over a limit, not at it.
+func TestInitialBoundary(t *testing.T) {
+	m := measure(t, tree{"a.go": file(800, ""), "b.go": file(801, complexFunc("At", 40)+complexFunc("Over", 41))}, nil)
+	b := Initial(DefaultLimits, nil, m)
+	if want := (Ledger{"b.go": 801}); !reflect.DeepEqual(b.Files, want) {
+		t.Errorf("files %v, want %v", b.Files, want)
+	}
+	if want := (Ledger{".:Over": 41}); !reflect.DeepEqual(b.ComplexFunctions, want) {
+		t.Errorf("complex %v, want %v", b.ComplexFunctions, want)
 	}
 }

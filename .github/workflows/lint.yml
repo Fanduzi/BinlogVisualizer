@@ -1,9 +1,11 @@
 name: lint
 
-# Coding-standards gate (docs/development/coding-standards.md). golangci-lint fails only on
-# issues in lines this change touches; codehealth fails when the tree does not
-# match internal/codehealth/baseline.json or when the change loosens that
-# baseline compared with the base revision.
+# Coding-standards gate (docs/development/coding-standards.md). golangci-lint fails on
+# findings the base revision does not have, matched by enclosing function so
+# moved or renamed code keeps its findings; codehealth fails when the tree
+# does not hold against internal/codehealth/baseline.json, when a generated
+# file is not its generator's output, or when the change loosens the baseline
+# compared with the base tree.
 
 on:
   push:
@@ -17,7 +19,7 @@ permissions:
 jobs:
   golangci-lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -25,6 +27,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          install-only: true
       - name: Find the base revision
         id: base
         env:
@@ -32,11 +39,8 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}
         run: bash internal/codehealth/lint-base.sh >> "$GITHUB_OUTPUT"
-      - name: golangci-lint on changed lines
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.15.0
-          args: --new-from-rev=${{ steps.base.outputs.sha }}
+      - name: golangci-lint findings not in the base revision
+        run: go run ./internal/codehealth/cmd/codehealth -base "${{ steps.base.outputs.sha }}" lint
 
   codehealth:
     runs-on: ubuntu-latest
@@ -55,17 +59,14 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}
         run: bash internal/codehealth/lint-base.sh >> "$GITHUB_OUTPUT"
-      - name: Tree matches the baseline (files, functions, issue refs, deadcode)
+      - name: Tree holds against the baseline (files, functions, issue refs, deadcode)
         run: go run ./internal/codehealth/cmd/codehealth -deadcode check
-      - name: Baseline is no looser than the base revision
+      - name: Generated files are their generators' output
+        run: |
+          go run ./internal/codehealth/cmd/codehealth regen
+          git diff --exit-code
+      - name: Baseline is no looser than at the base revision
         env:
           BASE: ${{ steps.base.outputs.sha }}
-        run: |
-          set -euo pipefail
-          path=internal/codehealth/baseline.json
-          if ! git cat-file -e "${BASE}:${path}" 2>/dev/null; then
-            echo "no ${path} at ${BASE}; this change adds the first baseline"
-            exit 0
-          fi
-          git show "${BASE}:${path}" > "${RUNNER_TEMP}/baseline-prev.json"
-          go run ./internal/codehealth/cmd/codehealth -base "${BASE}" compare "${RUNNER_TEMP}/baseline-prev.json"
+          PAYDOWN: ${{ github.event_name == 'pull_request' && '-paydown' || '' }}
+        run: go run ./internal/codehealth/cmd/codehealth -base "${BASE}" ${PAYDOWN} compare

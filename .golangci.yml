@@ -1,6 +1,8 @@
-# golangci-lint v2. CI runs it with --new-from-rev at the merge base
-# (.github/workflows/lint.yml, make lint), so only issues on changed lines
-# fail. Existing debt is ratcheted separately by internal/codehealth.
+# golangci-lint v2. CI runs it on the base tree and on the PR tree
+# (`codehealth -base REV lint`, .github/workflows/lint.yml, make lint) and
+# fails on findings whose linter, function and message are not in the base
+# run, so moving or renaming code does not hide or create findings.
+# Existing debt is ratcheted separately by internal/codehealth.
 # Limits match docs/development/coding-standards.md.
 version: "2"
 

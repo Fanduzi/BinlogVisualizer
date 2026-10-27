@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"path/filepath"
 )
 
 // Baseline is the checked-in ceiling for every file and function over a
-// limit. Generated maps a path to the generator whose header exempts it.
+// limit. Generated maps a generated file to the command that regenerates
+// it; that list may not change in a pull request.
 type Baseline struct {
 	Limits               Limits            `json:"limits"`
 	Generated            map[string]string `json:"generated_files"`
@@ -17,11 +20,12 @@ type Baseline struct {
 	ComplexFunctions     Ledger            `json:"complex_functions"`
 	TestComplexFunctions Ledger            `json:"test_complex_functions"`
 	LongFunctions        Ledger            `json:"long_functions"`
+	StatementFunctions   Ledger            `json:"statement_functions"`
 	IssueRefs            Ledger            `json:"issue_refs"`
 	Deadcode             Ledger            `json:"deadcode"`
 }
 
-// Load reads a baseline file. Unknown fields are an error.
+// Load reads a baseline file. Unknown fields and trailing data are errors.
 func Load(path string) (Baseline, error) {
 	var b Baseline
 	data, err := os.ReadFile(path)
@@ -33,16 +37,28 @@ func Load(path string) (Baseline, error) {
 	if err := dec.Decode(&b); err != nil {
 		return b, fmt.Errorf("%s: %w", path, err)
 	}
+	if dec.More() {
+		return b, fmt.Errorf("%s: data after the baseline object", path)
+	}
+	if l := b.Limits; min(l.FileLines, l.GrowthTolerance, l.Complexity, l.FunctionLines, l.FunctionStatements) <= 0 {
+		return b, fmt.Errorf("%s: every limit must be set and positive, got %+v", path, l)
+	}
 	return b.normalized(), nil
 }
 
 // Save writes b as indented JSON with sorted keys.
 func Save(path string, b Baseline) error {
-	data, err := json.MarshalIndent(b.normalized(), "", "  ")
-	if err != nil {
+	var data bytes.Buffer
+	enc := json.NewEncoder(&data)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(b.normalized()); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data.Bytes(), 0o644)
 }
 
 func (b Baseline) normalized() Baseline {
@@ -65,7 +81,7 @@ func Initial(lim Limits, generated map[string]string, m Measurement) Baseline {
 		out := Ledger{}
 		for key, v := range k.values(m) {
 			if v > k.limit(lim) {
-				out[key] = Entry{Value: v}
+				out[key] = v
 			}
 		}
 		*k.ledger(&b) = out
@@ -75,32 +91,24 @@ func Initial(lim Limits, generated map[string]string, m Measurement) Baseline {
 
 // Check compares a tree with its baseline and returns one message per
 // problem: a value over a limit with no entry, a value above its ceiling
-// plus tolerance, a value below its ceiling (the ceiling must come down so
-// the freed room cannot be spent again), and a generated_files entry whose
-// file is gone or does not start with its generator's header. Ledgers that
-// m did not measure (deadcode without -deadcode) are not checked.
+// plus tolerance, and the measurement's own problems (nested modules, token
+// //nolint reasons). A value at or below its ceiling always passes, so main
+// stays green when two changes pay down the same entry; Compare asks the
+// change that paid down to record it. Ledgers that m did not measure
+// (deadcode without -deadcode) are not checked.
 func Check(b Baseline, m Measurement) []string {
 	b = b.normalized()
-	out := checkGenerated(b, m)
+	out := append([]string{}, m.Problems...)
 	for _, k := range kinds {
-		vals := k.values(m)
-		if vals == nil {
-			continue
-		}
-		l := *k.ledger(&b)
+		vals, l := k.values(m), *k.ledger(&b)
 		for _, key := range sortedKeys(vals) {
 			v := vals[key]
-			e, ok := l[key]
+			ceiling, ok := l[key]
 			switch {
 			case !ok && v > k.limit(b.Limits):
 				out = append(out, newEntryMessage(k, b.Limits, m, key, v))
-			case ok && v > e.Value+k.tolerance(b.Limits):
-				out = append(out, fmt.Sprintf("%s: %s grew to %d %s, ceiling %d (+%d allowed); %s", k.name, key, v, k.unit, e.Value, k.tolerance(b.Limits), k.fix))
-			}
-		}
-		for _, key := range sortedKeys(l) {
-			if v := vals[key]; v < l[key].Value {
-				out = append(out, fmt.Sprintf("%s: %s is down to %d %s, ceiling %d; run make codehealth-baseline to lower the ceiling", k.name, key, v, k.unit, l[key].Value))
+			case ok && v > ceiling+k.tolerance(b.Limits):
+				out = append(out, fmt.Sprintf("%s: %s grew to %d %s, ceiling %d (+%d allowed); %s", k.name, key, v, k.unit, ceiling, k.tolerance(b.Limits), k.fix))
 			}
 		}
 	}
@@ -112,109 +120,73 @@ func newEntryMessage(k kind, lim Limits, m Measurement, key string, v int) strin
 	case "deadcode":
 		return fmt.Sprintf("deadcode: %s at %s is unreachable; %s", key, m.Deadcode[key], k.fix)
 	case "issue_refs":
-		return fmt.Sprintf("issue_refs: %s has %d issue references in comments, none allowed in a new file; %s. A renamed file: make codehealth-baseline FROM=%s=OLD", key, v, k.fix, key)
+		return fmt.Sprintf("issue_refs: %s has %d issue references in comments, none allowed in a new file; %s. If the file was renamed or split from a baselined file, run make codehealth-baseline", key, v, k.fix)
 	}
-	return fmt.Sprintf("%s: new %s over %d %s: %s has %d; %s. If it was split or renamed from a baseline entry: make codehealth-baseline FROM=%s=OLD", k.name, k.noun, k.limit(lim), k.unit, key, v, k.fix, key)
+	return fmt.Sprintf("%s: new %s over %d %s: %s has %d; %s. If it was split or renamed from a baseline entry, run make codehealth-baseline; compare checks that its content came from that entry", k.name, k.noun, k.limit(lim), k.unit, key, v, k.fix)
 }
 
-func checkGenerated(b Baseline, m Measurement) []string {
-	var out []string
-	for _, path := range sortedKeys(b.Generated) {
-		line, ok := m.Generated[path]
-		switch {
-		case !ok:
-			out = append(out, fmt.Sprintf("generated_files: %s does not exist; remove it from the baseline", path))
-		case !GeneratedBy(line, b.Generated[path]):
-			out = append(out, fmt.Sprintf("generated_files: %s starts with %q, not \"// Code generated by %s. DO NOT EDIT.\"; it is measured as hand-written code", path, line, b.Generated[path]))
-		}
-	}
-	return out
-}
-
-// Update lowers every ceiling in b to what m measured and drops entries
-// that are no longer over a limit. from maps a new key to the baseline
-// entry it was split or renamed from; that is the only way Update adds an
-// entry. It refuses, returning the problems, when a value is above its
-// ceiling plus tolerance, a new value has no lineage, a lineage pair is
-// unused, or a split is bigger than its original.
-func Update(b Baseline, m Measurement, from map[string]string) (Baseline, []string) {
+// Update lowers every ceiling in b to what m measured, drops entries that
+// are no longer over a limit, and adds the new ones. Compare decides in CI
+// whether a new entry is a split or rename of an old one. It refuses,
+// returning the problems, when a value is above its ceiling plus tolerance.
+func Update(b Baseline, m Measurement) (Baseline, []string) {
 	b = b.normalized()
 	next := Baseline{Limits: b.Limits, Generated: b.Generated}.normalized()
-	problems := checkGenerated(b, m)
-	used := map[string]bool{}
+	var problems []string
 	for _, k := range kinds {
 		vals, l := k.values(m), *k.ledger(&b)
 		if vals == nil {
-			*k.ledger(&next) = l
+			*k.ledger(&next) = maps.Clone(l)
 			continue
 		}
 		out := Ledger{}
 		for _, key := range sortedKeys(vals) {
 			v := vals[key]
-			e, ok := l[key]
+			ceiling, ok := l[key]
 			switch {
 			case v <= k.limit(b.Limits):
-			case ok && v > e.Value+k.tolerance(b.Limits):
-				problems = append(problems, fmt.Sprintf("%s: %s grew to %d %s, ceiling %d (+%d allowed)", k.name, key, v, k.unit, e.Value, k.tolerance(b.Limits)))
-			case ok:
-				out[key] = Entry{Value: min(v, e.Value), SplitFrom: e.SplitFrom}
-			case from[key] != "":
-				out[key] = Entry{Value: v, SplitFrom: from[key]}
-				used[key] = true
+			case !ok:
+				out[key] = v
+			case v > ceiling+k.tolerance(b.Limits):
+				problems = append(problems, fmt.Sprintf("%s: %s grew to %d %s, ceiling %d (+%d allowed)", k.name, key, v, k.unit, ceiling, k.tolerance(b.Limits)))
 			default:
-				problems = append(problems, newEntryMessage(k, b.Limits, m, key, v))
+				out[key] = min(v, ceiling)
 			}
 		}
 		*k.ledger(&next) = out
 	}
-	for _, key := range sortedKeys(from) {
-		if !used[key] {
-			problems = append(problems, fmt.Sprintf("FROM %s=%s: %s is not a new entry over a limit", key, from[key], key))
-		}
-	}
-	problems = append(problems, lineage(b, next, m)...)
 	if len(problems) > 0 {
 		return b, problems
 	}
 	return next, nil
 }
 
-// Compare returns one message per way next is looser than prev, the
-// baseline of the base revision. Limits may not loosen. An entry already in
-// prev may only go down and keeps its lineage. An entry not in prev must
-// name a prev entry in split_from, and the split must pass lineage. A new
-// generated_files path must be a file that did not exist at the base
-// revision and that starts with its generator's header.
-func Compare(prev, next Baseline, m Measurement, existedAtBase func(path string) bool) []string {
+// Compare returns one message per way the pull request's baseline next is
+// looser than prev, the baseline at the base revision. base and pr are the
+// two trees, measured. Limits may not loosen and generated_files may not
+// change. An entry already in prev may not rise. A new entry must be
+// derived from a prev entry (lineage). With paydown set (pull requests), an
+// entry whose value this change lowered by at least its kind's paydown must
+// be lowered in next too.
+func Compare(prev Baseline, base Measurement, next Baseline, pr Measurement, paydown bool) []string {
 	prev, next = prev.normalized(), next.normalized()
 	out := compareLimits(prev.Limits, next.Limits)
-	for _, path := range sortedKeys(next.Generated) {
-		gen := next.Generated[path]
-		if g, ok := prev.Generated[path]; ok && g == gen {
-			continue
-		}
-		if existedAtBase(path) {
-			out = append(out, fmt.Sprintf("generated_files: adds %s, which existed before this change; only a new file can be listed as generated", path))
-		} else if !GeneratedBy(m.Generated[path], gen) {
-			out = append(out, fmt.Sprintf("generated_files: adds %s, whose first line is not the %s header", path, gen))
-		}
+	if !maps.Equal(prev.Generated, next.Generated) {
+		out = append(out, fmt.Sprintf("generated_files: changed from %v to %v; the list of generated files and their commands may not change in a pull request", prev.Generated, next.Generated))
 	}
 	for _, k := range kinds {
 		p, n := *k.ledger(&prev), *k.ledger(&next)
 		for _, key := range sortedKeys(n) {
-			e := n[key]
-			pe, ok := p[key]
-			switch {
-			case ok && e.Value > pe.Value:
-				out = append(out, fmt.Sprintf("%s: %s raised %d -> %d", k.name, key, pe.Value, e.Value))
-			case ok && e.SplitFrom != pe.SplitFrom:
-				out = append(out, fmt.Sprintf("%s: %s changed split_from %q -> %q", k.name, key, pe.SplitFrom, e.SplitFrom))
-			case !ok && e.SplitFrom == "":
-				out = append(out, fmt.Sprintf("%s: adds %s (%d); a new %s over the limit fails, and only a split or rename of an existing entry (split_from) may add one", k.name, key, e.Value, k.noun))
+			if was, ok := p[key]; ok && n[key] > was {
+				out = append(out, fmt.Sprintf("%s: %s raised %d -> %d", k.name, key, was, n[key]))
 			}
 		}
+		out = append(out, lineage(k, next.Limits, p, n, base, pr)...)
+		if paydown {
+			out = append(out, paidDown(k, n, base, pr)...)
+		}
 	}
-	return append(out, lineage(prev, next, m)...)
+	return out
 }
 
 func compareLimits(prev, next Limits) []string {
@@ -227,6 +199,7 @@ func compareLimits(prev, next Limits) []string {
 		{"growth_tolerance_lines", prev.GrowthTolerance, next.GrowthTolerance},
 		{"complexity", prev.Complexity, next.Complexity},
 		{"function_lines", prev.FunctionLines, next.FunctionLines},
+		{"function_statements", prev.FunctionStatements, next.FunctionStatements},
 	} {
 		if f.next > f.prev {
 			out = append(out, fmt.Sprintf("limits: %s loosened %d -> %d", f.name, f.prev, f.next))
@@ -235,45 +208,19 @@ func compareLimits(prev, next Limits) []string {
 	return out
 }
 
-// lineage checks every entry of next that is not in prev and names a
-// split_from. The original must be a prev entry of the same ledger, and the
-// successors plus whatever is left of the original, as measured now, may
-// not exceed the original's ceiling plus the ledger's slack for each extra
-// piece. A rename is a split into one piece with nothing left, so it gets
-// no slack. Removed entries cannot be reused: an original that is gone from
-// prev cannot be split again.
-func lineage(prev, next Baseline, m Measurement) []string {
+// paidDown asks the change that lowered a value by at least the kind's
+// paydown to lower its ceiling too. Only values this change moved count,
+// so a drop that reached main through another merge never fails here.
+func paidDown(k kind, n Ledger, base, pr Measurement) []string {
 	var out []string
-	for _, k := range kinds {
-		p, n := *k.ledger(&prev), *k.ledger(&next)
-		pieces := map[string][]string{}
-		for _, key := range sortedKeys(n) {
-			if _, ok := p[key]; !ok && n[key].SplitFrom != "" {
-				pieces[n[key].SplitFrom] = append(pieces[n[key].SplitFrom], key)
-			}
-		}
-		vals := k.values(m)
-		for _, orig := range sortedKeys(pieces) {
-			succ := pieces[orig]
-			orig0, ok := p[orig]
-			switch {
-			case k.slack < 0:
-				out = append(out, fmt.Sprintf("%s: %v cannot be split or renamed from %s; %s", k.name, succ, orig, k.fix))
-				continue
-			case !ok:
-				out = append(out, fmt.Sprintf("%s: %v split_from %s, which is not in the previous baseline", k.name, succ, orig))
-				continue
-			}
-			total, count := vals[orig], len(succ)
-			if total > 0 {
-				count++
-			}
-			for _, s := range succ {
-				total += vals[s]
-			}
-			if allowed := orig0.Value + k.slack*(count-1); total > allowed {
-				out = append(out, fmt.Sprintf("%s: %s split into %v has %d %s in total (original left: %d), more than its ceiling %d + %d per extra piece", k.name, orig, succ, total, k.unit, vals[orig], orig0.Value, k.slack))
-			}
+	before, after := k.values(base), k.values(pr)
+	if before == nil || after == nil || k.paydown == 0 {
+		return nil
+	}
+	for _, key := range sortedKeys(n) {
+		v := after[key]
+		if before[key] != v && n[key]-v >= k.paydown {
+			out = append(out, fmt.Sprintf("%s: %s is down to %d %s, ceiling %d; run make codehealth-baseline to record the paydown", k.name, key, v, k.unit, n[key]))
 		}
 	}
 	return out

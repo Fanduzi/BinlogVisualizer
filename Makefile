@@ -19,19 +19,24 @@ release-check-test:
 
 # Coding-standards gate (docs/development/coding-standards.md). Kept as its
 # own block so it does not overlap the release targets above.
-.PHONY: lint codehealth codehealth-baseline
+.PHONY: lint codehealth codehealth-baseline codehealth-regen
 LINT_BASE ?= $(shell git merge-base origin/main HEAD)
 
-# golangci-lint, only issues on lines changed since LINT_BASE (default: merge base with origin/main).
+# golangci-lint findings that the tree at LINT_BASE (default: merge base with origin/main) does not have.
+# Code that moved or was renamed keeps its findings' identity; see docs/development/coding-standards.md.
 lint:
-	golangci-lint run --new-from-rev=$(LINT_BASE) ./...
+	go run ./internal/codehealth/cmd/codehealth -base $(LINT_BASE) lint
 
-# Fail unless the tree matches internal/codehealth/baseline.json (file size, function complexity and length, issue refs, deadcode).
+# Fail unless the tree holds against internal/codehealth/baseline.json (file size, function complexity and length, issue refs, deadcode).
 codehealth:
 	go run ./internal/codehealth/cmd/codehealth -deadcode check
 
-# Lower internal/codehealth/baseline.json to today's numbers; refuses to raise anything.
-# After a split or rename, name each new piece and its baseline entry:
-#   make codehealth-baseline FROM="cmd/binlogviz/new.go=cmd/binlogviz/old.go cmd/binlogviz:NewFunc=cmd/binlogviz:OldFunc"
+# Lower internal/codehealth/baseline.json to today's numbers and add entries for split or renamed code;
+# refuses to raise anything. CI checks by content that each new entry came from an old one.
 codehealth-baseline:
-	go run ./internal/codehealth/cmd/codehealth -deadcode $(addprefix -from ,$(FROM)) update
+	go run ./internal/codehealth/cmd/codehealth -deadcode update
+
+# Regenerate the files in generated_files and fail if any differs from what is committed.
+codehealth-regen:
+	go run ./internal/codehealth/cmd/codehealth regen
+	git diff --exit-code

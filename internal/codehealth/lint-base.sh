@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prints sha=<revision> for the lint workflow: the merge base with the target
-# branch on a pull request, the previous tip on a push. golangci-lint
-# --new-from-rev and the baseline comparison both diff against it.
+# branch on a pull request, the previous tip on a push. codehealth lint and
+# codehealth compare both extract that tree and compare with it.
 set -euo pipefail
 
 case "${EVENT:-}" in

@@ -42,7 +42,7 @@ func renderHTML(result model.AnalysisResult, opts Options, built view.View) (str
 	}
 
 	tmpl, err := NewHTMLTemplate("report", htmlReportTemplate, template.FuncMap{
-		"safeJS":     func(s string) template.JS { return template.JS(s) }, //nolint:gosec
+		"safeJS":     func(s string) template.JS { return template.JS(s) }, //nolint:gosec // template helper; no report template calls it with input today
 		"json":       jsonMarshal,
 		"mulFloat":   func(f float64, m float64) float64 { return f * m },
 		"fmtIntHTML": fmtIntHTML,
@@ -65,7 +65,7 @@ func jsonMarshal(v any) (template.JS, error) {
 	if err != nil {
 		return "", err
 	}
-	return template.JS(b), nil //nolint:gosec
+	return template.JS(b), nil //nolint:gosec // json.Marshal escapes <, > and &, so it cannot close the script tag
 }
 
 type htmlReportData struct {
@@ -332,7 +332,7 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string, 
 		TotalRows:         result.Summary.TotalRows,
 		TotalEvents:       result.Summary.TotalEvents,
 		CountedEventBytes: formatFileSize(countedEventBytes(result)),
-		EChartsJS:         template.JS(echartsJS), //nolint:gosec
+		EChartsJS:         template.JS(echartsJS), //nolint:gosec // embedded ECharts bundle from static/echarts.min.js, not user input
 		TopN:              opts.TopN,
 	}
 	if bytes, ok := selectedInputFileBytes(result.Diagnostics.FileCoverage); ok {
@@ -738,9 +738,9 @@ func evidenceReasonLabel(reason view.Reason) string {
 func mustJSON(v any) template.JS {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return template.JS("[]") //nolint:gosec
+		return template.JS("[]") //nolint:gosec // constant empty JSON array
 	}
-	return template.JS(b) //nolint:gosec
+	return template.JS(b) //nolint:gosec // json.Marshal escapes <, > and &, so it cannot close the script tag
 }
 
 func buildHTMLTableActivitySeries(points []model.TableActivityPoint, opts Options) htmlTableActivitySeries {

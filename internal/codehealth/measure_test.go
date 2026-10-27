@@ -1,6 +1,8 @@
 package codehealth
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -25,6 +27,8 @@ func Branchy(x int, ch chan int) int {
 	}
 	select {
 	case <-ch:
+	case v := <-ch:
+		_ = v
 	default:
 	}
 	f := func() {
@@ -52,19 +56,80 @@ var a, b = 1, func() {
 
 func TestComplexityCountsLikeGocyclo(t *testing.T) {
 	m := measure(t, tree{"p.go": gocycloSrc}, nil)
-	got := complexityOf(m.Funcs)
-	want := map[string]int{".:Branchy": 10, ".:runner.Method": 1, ".:Handler": 3, ".:b": 2}
+	got := funcValues(m.Funcs, complexityOf)
+	want := map[string]int{".:Branchy": 11, ".:runner.Method": 1, ".:Handler": 3, ".:b": 2}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("complexities %v, want %v", got, want)
 	}
 }
 
-func TestFunctionLinesSkipCommentLines(t *testing.T) {
-	src := "package p\n\nfunc F() {\n\t// a comment\n\t_ = 1\n\n\t_ = 2 // trailing\n}\n\nfunc One() {}\n\n" + longFunc("Long", 151)
-	got := linesOf(measure(t, tree{"p.go": src}, nil).Funcs)
-	want := map[string]int{".:F": 3, ".:One": 0, ".:Long": 151}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("lines %v, want %v", got, want)
+// funlenSrc and its numbers come from golangci-lint v2.15.0 funlen with
+// ignore-comments (the repository's setting): a comment inside the function
+// takes off one line however many it spans, and a select's cases add no
+// statements.
+const funlenSrc = `package p
+
+func F() {
+	// a comment
+	_ = 1
+
+	_ = 2 // trailing
+	/* block
+	   two */
+	_ = 3
+}
+
+func G(ch chan int) {
+	select {
+	case <-ch:
+		_ = 1
+		_ = 2
+	}
+	go func() {
+		_ = 1
+		_ = 2
+	}()
+	x := func() {
+		_ = 3
+	}
+	_ = x
+	switch {
+	case true:
+		_ = 4
+	}
+	{
+		_ = 5
+	}
+}
+
+func H(a int,
+	b int) {
+	_ = a
+}
+`
+
+func TestFunctionsCountLikeFunlen(t *testing.T) {
+	// A's comments sit on the lines of its braces, so funlen keeps them.
+	// asm has no body (it is implemented in assembly) and is not measured.
+	q := "package p\n\nfunc One() {}\n\nfunc Two() { _ = 1 }\n\nfunc A() { // opening note\n\tprintln(1)\n\tprintln(2)\n} // closing note\n\nfunc Three() {\n\tprintln(3)\n}\n\nfunc asm(x int) int\n"
+	m := measure(t, tree{"p.go": funlenSrc, "q.go": q}, nil)
+	if got, want := funcValues(m.Funcs, linesOf), map[string]int{".:F": 4, ".:G": 20, ".:H": 2, ".:One": -1, ".:Two": -1, ".:A": 2, ".:Three": 1}; !reflect.DeepEqual(got, want) {
+		t.Errorf("lines %v, want %v", got, want)
+	}
+	if got, want := m.Funcs[".:A"].Body, []string{"println(1)", "println(2)"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("A body %q, want %q", got, want)
+	}
+	if got, want := m.Funcs[".:Three"].Body, []string{"println(3)"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Three body %q, want %q", got, want)
+	}
+	if got, want := funcValues(m.Funcs, statementsOf), map[string]int{".:F": 3, ".:G": 12, ".:H": 1, ".:One": 0, ".:Two": 1, ".:A": 2, ".:Three": 1}; !reflect.DeepEqual(got, want) {
+		t.Errorf("statements %v, want %v", got, want)
+	}
+	if got, want := m.Funcs[".:F"].Body, []string{"// a comment", "_ = 1", "_ = 2 // trailing", "/* block", "two */", "_ = 3"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("body %q, want %q", got, want)
+	}
+	if f := m.Funcs[".:G"]; f.File != "p.go" || f.Start != 13 || f.End != 34 {
+		t.Errorf("G at %s:%d-%d, want p.go:13-34", f.File, f.Start, f.End)
 	}
 }
 
@@ -76,6 +141,7 @@ func TestCountLines(t *testing.T) {
 	}
 }
 
+// Issue references count only in forms that cannot be ordinary prose.
 func TestIssueRefStyles(t *testing.T) {
 	cases := []struct {
 		comment string
@@ -83,109 +149,135 @@ func TestIssueRefStyles(t *testing.T) {
 	}{
 		{"see #12", 1},
 		{"(#7) and #8", 2},
+		{"#358/#361", 2},
 		{"fixed in issue 12", 1},
+		{"Issue: 12", 1},
+		{"issue number 12", 1},
 		{"Issues 359", 1},
 		{"issue #462", 1},
 		{"issue189", 1},
 		{"PR#12", 1},
 		{"PR #12", 1},
-		{"PR-3 of the plan", 1},
-		{"PR 12", 1},
-		{"pull request 9", 1},
 		{"GH-12", 1},
+		{"GH12", 1},
 		{"Fanduzi/BinlogServer#12", 1},
 		{"https://github.com/Fanduzi/BinlogServer/issues/12", 1},
 		{"https://github.com/Fanduzi/BinlogServer/pull/12", 1},
+		{"pull/446", 1},
 		{"full-width ＃12", 1},
-		{"§3 and § 4", 2},
-		{"fixed in round 3", 1},
-		{"QA rounds 2", 1},
-		{"&#12; is an entity", 0},
-		{"C#12 is not a ref", 0},
-		{"color #123abc", 0},
-		{"color #fff", 0},
-		{"RFC 9110 section 11.1", 0},
-		{"process 12 items", 0},
+		{"full-width digits ＃１２３", 1},
+		{"from QA r6", 1},
+		{"the r3 review", 1},
+		{"#12 and issue 12 and PR #3", 3},
 	}
 	for _, c := range cases {
-		src := "package p\n\n// " + c.comment + "\nvar x = \"#99 in a string is not a comment\"\n"
-		m := measure(t, tree{"p.go": src}, nil)
-		if got := len(m.Refs["p.go"]); got != c.want {
-			t.Errorf("%q: %d refs %q, want %d", c.comment, got, m.Refs["p.go"], c.want)
+		if got := refsIn(c.comment); len(got) != c.want {
+			t.Errorf("%q: refs %q, want %d", c.comment, got, c.want)
 		}
 	}
-	m := measure(t, tree{"p_test.go": "package p\n\n/* block\n   #5 */\n"}, nil)
+	m := measure(t, tree{"p_test.go": "package p\n\n/* block\n   #5 */\nvar x = \"#99 in a string is not a comment\"\n"}, nil)
 	if want := []string{"4: #5"}; !reflect.DeepEqual(m.Refs["p_test.go"], want) {
 		t.Errorf("refs in a test block comment %q, want %q", m.Refs["p_test.go"], want)
 	}
 }
 
-func TestMeasureWalksWhatGoCompiles(t *testing.T) {
+// Prose, SQL and binlog positions that look like references do not count.
+// The cost is recall: "round 3", "§ 9.2", "bug 12", "see 12", "PR-3" and a
+// bare "(12)" are not counted, because the same words are ordinary prose.
+func TestIssueRefFalsePositives(t *testing.T) {
+	for _, comment := range []string{
+		"fixed in round 3", "QA rounds 5", "ROUND 2", "round-3", "§ 9.2", "§3",
+		"Column #3", "Field #2", "row #4", "arg #1", "step #2", "byte #7",
+		"The server issues 2 events", "pr0 register", "mysql-bin/000001#4", "a r3 register",
+		"&#12; is an entity", "C#12 is not a ref", "color #123abc", "color #fff", "RFC 9110 section 11.1",
+		"process 12 items", "bug 12", "see 12", "ADR 0011 PR-3", "returns (12)", "##12",
+	} {
+		if got := refsIn(comment); len(got) != 0 {
+			t.Errorf("%q: counted %q", comment, got)
+		}
+	}
+}
+
+// Every directory but .git is measured, because some tool compiles or
+// ships each of them; a nested module is a problem, and a file under
+// testdata that is not Go is counted by lines and reported.
+func TestMeasureWalksEverything(t *testing.T) {
 	big := file(801, "")
 	m := measure(t, tree{
-		"a.go":                    big,
-		"a_test.go":               big,
-		"vendor/v/v.go":           big,
-		"x/testdata/t/t.go":       big,
-		"x/.hidden/h.go":          big,
-		"x/_under/u.go":           big,
-		".git/objects/o.go":       big,
-		"ui/node_modules/n/n.go":  big,
-		"nested/go.mod":           "module nested\n",
-		"nested/n.go":             big,
-		"notgo.txt":               big,
-		"x/testdata/t/broken.txt": "not go",
+		"a.go":                   big,
+		"a_test.go":              big,
+		"vendor/v/v.go":          big,
+		"x/testdata/t/t.go":      big,
+		"x/.hidden/h.go":         big,
+		"x/_under/u.go":          big,
+		".git/objects/o.go":      big,
+		"ui/node_modules/n/n.go": big,
+		"nested/go.mod":          "module nested\n",
+		"nested/n.go":            big,
+		"x/testdata/mod/go.mod":  "module t\n",
+		"notgo.txt":              big,
+		"x/testdata/bad.go":      "package\n\nnot go\n",
 	}, nil)
-	want := map[string]int{"a.go": 801, "vendor/v/v.go": 801, "x/testdata/t/t.go": 801, "x/.hidden/h.go": 801, "x/_under/u.go": 801}
+	want := map[string]int{"a.go": 801, "vendor/v/v.go": 801, "x/testdata/t/t.go": 801, "x/.hidden/h.go": 801, "x/_under/u.go": 801, "ui/node_modules/n/n.go": 801, "nested/n.go": 801, "x/testdata/bad.go": 3}
 	if !reflect.DeepEqual(m.Files, want) {
 		t.Fatalf("files %v, want %v", m.Files, want)
 	}
 	if !reflect.DeepEqual(m.TestFiles, map[string]int{"a_test.go": 801}) {
 		t.Fatalf("test files %v", m.TestFiles)
 	}
+	if want := []string{"x/testdata/bad.go"}; !reflect.DeepEqual(m.Unparsed, want) {
+		t.Fatalf("unparsed %v, want %v", m.Unparsed, want)
+	}
+	if len(m.Problems) != 1 || !strings.Contains(m.Problems[0], "nested module nested/go.mod") {
+		t.Fatalf("problems %q, want one nested module", m.Problems)
+	}
 	if _, err := Measure(tree{"bad.go": "package"}.write(t), nil); err == nil {
-		t.Fatal("a file that does not parse was not an error")
+		t.Fatal("a file outside testdata that does not parse was not an error")
 	}
 }
 
-func TestGeneratedOnlyByAllowlistAndFirstLine(t *testing.T) {
+// Only the listed paths are skipped, whatever a file's header says.
+func TestGeneratedOnlyByList(t *testing.T) {
 	const header = "// Code generated by gen. DO NOT EDIT.\n"
-	body := complexFunc("F", 50)
-	cases := []struct {
-		name, src string
-		allow     bool
-		skipped   bool
-	}{
-		{"header on line 1, allowlisted", header + file(900, body), true, true},
-		{"header on line 1, not allowlisted", header + file(900, body), false, false},
-		{"header after a blank line", "\n" + header + file(900, body), true, false},
-		{"header in a doc comment", "// Package p Code generated by gen. DO NOT EDIT.\n" + file(900, body), true, false},
-		{"header without the final period", "// Code generated by gen. DO NOT EDIT\n" + file(900, body), true, false},
-		{"header naming another generator", "// Code generated by other. DO NOT EDIT.\n" + file(900, body), true, false},
-		{"generator name is only a prefix", "// Code generated by genx. DO NOT EDIT.\n" + file(900, body), true, false},
-		{"text after the header", "// Code generated by gen. DO NOT EDIT. Edited.\n" + file(900, body), true, false},
-		{"header with CRLF line ends", "// Code generated by gen. DO NOT EDIT.\r\n" + file(900, body), true, true},
+	m := measure(t, tree{
+		"a/g.go":     header + file(900, complexFunc("F", 50)),
+		"b/g.go":     header + file(900, complexFunc("F", 50)),
+		"c/g.go":     header + file(900, ""),
+		"c/plain.go": file(900, ""),
+	}, map[string]string{"a/g.go": "gen", "c/g.go": "gen"})
+	if want := map[string]int{"b/g.go": 901, "c/plain.go": 900}; !reflect.DeepEqual(m.Files, want) {
+		t.Fatalf("files %v, want %v", m.Files, want)
 	}
-	for _, c := range cases {
-		allow := map[string]string{}
-		if c.allow {
-			allow["g.go"] = "gen"
-		}
-		m := measure(t, tree{"g.go": c.src}, allow)
-		_, measured := m.Files["g.go"]
-		if measured == c.skipped {
-			t.Errorf("%s: measured=%v, want skipped=%v", c.name, measured, c.skipped)
-		}
-		if measured && m.Funcs[".:F"].Complexity != 50 {
-			t.Errorf("%s: complexity not measured: %v", c.name, m.Funcs)
-		}
-		problems := Check(Baseline{Limits: DefaultLimits, Generated: allow}, m)
-		if wantProblem := c.allow && !c.skipped; wantProblem != strings.Contains(strings.Join(problems, "\n"), "generated_files: g.go starts with") {
-			t.Errorf("%s: generated problem %v, want %v: %q", c.name, !wantProblem, wantProblem, problems)
-		}
+	if _, ok := m.Funcs["a:F"]; ok {
+		t.Fatal("functions of a listed file measured")
 	}
-	m := measure(t, tree{"a.go": "package p\n"}, map[string]string{"gone.go": "gen"})
-	expect(t, Check(Baseline{Limits: DefaultLimits, Generated: map[string]string{"gone.go": "gen"}}, m), "generated_files: gone.go does not exist")
+	if m.Funcs["b:F"].Complexity != 50 {
+		t.Fatalf("functions of an unlisted file with a header not measured: %v", m.Funcs)
+	}
+}
+
+// A //nolint needs a reason of a few words.
+func TestWeakNolint(t *testing.T) {
+	src := "package p\n\nvar a = 1 //nolint:gosec // fine\nvar b = 2 //nolint:gosec // test only\nvar c = 3 //nolint:gosec // the path is a constant\nvar d = 4 //nolint // ok\nvar e = 5 //nolint:gosec\nvar f = 6 // nolint\nvar g = 7 // nolintlint checks directives\nvar h = 8 //nolint:gosec // exactly three words\n"
+	m := measure(t, tree{"p.go": src}, nil)
+	if len(m.Problems) != 5 || !strings.Contains(m.Problems[0], `p.go:3: //nolint reason "fine"`) || !strings.Contains(m.Problems[1], `p.go:4:`) || !strings.Contains(m.Problems[2], `p.go:6:`) ||
+		!strings.Contains(m.Problems[3], `p.go:7: //nolint reason ""`) || !strings.Contains(m.Problems[4], `p.go:8:`) {
+		t.Fatalf("problems %q", m.Problems)
+	}
+}
+
+// A function literal nested in another counts toward the outer one, and
+// each literal in a composite value counts.
+func TestPackageLevelLiterals(t *testing.T) {
+	src := "package p\n\nvar Table = map[string]func(int) int{\n\t\"a\": " + strings.TrimSuffix(complexFunc("", 3), "\n") + ",\n\t\"b\": " + strings.TrimSuffix(complexFunc("", 45), "\n") + ",\n}\n"
+	m := measure(t, tree{"p.go": src}, nil)
+	if got := m.Funcs[".:Table"].Complexity; got != 45 {
+		t.Fatalf("Table complexity %d, want 45 (the larger literal)", got)
+	}
+	nested := "package p\n\nvar Outer = func() {\n\tif true {\n\t}\n\t_ = func() {\n\t\tif true {\n\t\t}\n\t}\n}\n"
+	if got := measure(t, tree{"p.go": nested}, nil).Funcs[".:Outer"].Complexity; got != 3 {
+		t.Fatalf("Outer complexity %d, want 3", got)
+	}
 }
 
 // Files for different build tags may declare the same function; the
@@ -201,5 +293,52 @@ func TestSameKeyKeepsTheLargest(t *testing.T) {
 	}
 	if got := m.Funcs[".:init"].Complexity; got != 3 {
 		t.Errorf(".:init complexity = %d, want 3", got)
+	}
+	// The longer copy is read last this time.
+	m = measure(t, tree{
+		"c_linux.go":   "//go:build linux\n\n" + file(200, longFunc("G", 160)),
+		"c_windows.go": "//go:build windows\n\n" + file(200, longFunc("G", 170)),
+	}, nil)
+	if got := m.Funcs[".:G"]; got.Lines != 170 || len(got.Body) != 170 {
+		t.Errorf(".:G has %d lines and %d body lines, want 170", got.Lines, len(got.Body))
+	}
+	// The longer copy has fewer statements; each metric takes its larger value.
+	m = measure(t, tree{
+		"d_linux.go":   "//go:build linux\n\n" + file(200, "func H() {\n"+strings.Repeat("\n", 170)+"\t_ = 0\n}\n"),
+		"d_windows.go": "//go:build windows\n\n" + file(200, longFunc("H", 160)),
+	}, nil)
+	if got := m.Funcs[".:H"]; got.Lines != 171 || got.Statements != 160 {
+		t.Errorf(".:H = %d lines, %d statements, want 171 and 160", got.Lines, got.Statements)
+	}
+}
+
+// A file's text, which lineage compares, leaves out its package clause and
+// imports: every file has them.
+func TestTextSkipsPackageAndImports(t *testing.T) {
+	m := measure(t, tree{"p.go": "package p\n\nimport (\n\t\"fmt\"\n\t\"os\"\n)\n\nimport \"io\"\n\nvar _ = fmt.Sprint\nvar _ = os.Exit\nvar _ = io.EOF\n"}, nil)
+	if got, want := m.Text["p.go"], []string{"var _ = fmt.Sprint", "var _ = os.Exit", "var _ = io.EOF"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("text %q, want %q", got, want)
+	}
+}
+
+// A tree that cannot be read fails instead of measuring as empty.
+func TestMeasureReadErrors(t *testing.T) {
+	if _, err := Measure(filepath.Join(t.TempDir(), "missing"), nil); err == nil {
+		t.Error("missing root measured")
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(dir, "nowhere.go"), filepath.Join(dir, "a.go")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Measure(dir, nil); err == nil {
+		t.Error("dangling a.go measured")
+	}
+}
+
+// Only files with references have an entry.
+func TestRefsOnlyFilesWithRefs(t *testing.T) {
+	m := measure(t, tree{"a.go": "package p\n", "b.go": "package p\n\n// see #12\n"}, nil)
+	if !reflect.DeepEqual(m.Refs, map[string][]string{"b.go": {"3: #12"}}) {
+		t.Fatalf("refs = %v", m.Refs)
 	}
 }

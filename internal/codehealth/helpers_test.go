@@ -102,3 +102,27 @@ func expect(t *testing.T, problems []string, want string) {
 		t.Fatalf("want a problem containing %q, got:\n%s", want, joined)
 	}
 }
+
+// lines is n distinct significant lines named prefix-from .. prefix-(to-1),
+// so a test can move content between files and functions.
+func lines(prefix string, from, to int) string {
+	var b strings.Builder
+	for i := from; i < to; i++ {
+		fmt.Fprintf(&b, "var _ = %q\n", fmt.Sprintf("%s-%d", prefix, i))
+	}
+	return b.String()
+}
+
+// stmtFunc is a function with one statement per line, named prefix-i for
+// each (prefix, from, to) triple in ranges.
+func stmtFunc(name string, ranges ...any) string {
+	var b strings.Builder
+	b.WriteString("func " + name + "() {\n")
+	for r := 0; r < len(ranges); r += 3 {
+		for i := ranges[r+1].(int); i < ranges[r+2].(int); i++ {
+			fmt.Fprintf(&b, "\tprintln(%q)\n", fmt.Sprintf("%s-%d", ranges[r], i))
+		}
+	}
+	b.WriteString("}\n")
+	return b.String()
+}
