@@ -1,6 +1,6 @@
 // Package analyzer spills the per-(table, minute) series once it no longer fits a small report.
 // input: one row or DDL event at a time, from the table aggregator and the minute aggregator, which share one store.
-// output: per-minute table row counts and per-table activity points, either copied onto the result or read back from an unlinked temp file. Analysis only appends sorted runs. A full buffer is written and cleared; a revisit after that is a new record in the next run. When more than 8 runs exist they are merged in order and duplicate cells are summed. The high water mark stays within 12× points×68, and after truncate the file is one record per point. The render reads one merged run.
+// output: per-minute table row counts and per-table activity points, either copied onto the result or read back from an unlinked temp file. Analysis only appends sorted runs. A full buffer is written and cleared; a revisit after that is a new record in the next run. Eight runs of one level merge into one run of the next level, so a record is rewritten about log8 of the run count times. The final merge sums every level. The render reads that one run.
 // pos: the (table, minute) term of analyze and flashback. Minute totals stay in memory. This series does not.
 // note: if this file changes, update this header and module README.md.
 package analyzer
@@ -63,25 +63,29 @@ func SetSpillResidentBytesForTest(n int) func() {
 	return func() { spillResidentBytes = prev }
 }
 
-// spillFileFactor is the spill file's high water mark divided by points×68.
-// ponytail: 12. A record is 76 bytes, and a merge keeps at most 8 runs plus
-// the merged copy before it truncates. 10×76 is 760 bytes per point and
-// 12×68 is 816, so a correct merge fits and a run list that is not merged
-// does not.
-const spillFileFactor = 12
+// spillFileFactor is the test high-water mark divided by points×68.
+// Sequential points peak at 2×76/68 (2.24) while the merged copy is still
+// at the end of the file. The 16-pass revisit peaked at 8.74, because
+// duplicate runs stay on disk until their level merges. 16 is about twice
+// that peak. Tests pin this constant; production does not stop spilling
+// because of it.
+const spillFileFactor = 16
 
-// spillFinalFactor is the file after that truncate, divided by points×68.
-// One 76-byte record per point is under 2×68. Skipping the truncate, or
-// keeping duplicate cells, is not.
+// spillFinalFactor is the file after truncate, divided by points×68.
+// One 76-byte record per point is 76/68. Tests pin this constant.
 const spillFinalFactor = 2
 
-// spillIOFactor bounds bytes read plus bytes written against the final file.
-// A reload of every minute on each switch moves orders of magnitude more.
-const spillIOFactor = 64
+// spillIOCoeff is c in the test bound
+// I/O ≤ c · file · (1 + log8(points / bufferCells)).
+// One sequential pass measured about 3.9. 8 is about twice that.
+// A flat merge of every run is quadratic and crosses the bound. Tests pin
+// this constant; production does not stop spilling because of it.
+const spillIOCoeff = 8
 
-// spillRunK is how many sorted runs may sit in the file. One more, and they
-// are merged into one. ponytail: 8. Past that the file grows with every
-// flush instead of with the points.
+// spillRunK is how many sorted runs of one level may sit in the file.
+// One more, and those runs merge into one run of the next level.
+// ponytail: 8. Past that a level would be merged with a larger level on
+// every flush.
 const spillRunK = 8
 
 // spillReserve is free space left on the spill filesystem for temps that
@@ -114,6 +118,24 @@ func SetSpillDiskAvailForTest(fn func() (uint64, bool)) func() {
 	return func() { spillDiskAvail = prev }
 }
 
+// spillObserve, when set, runs after a buffer flush and after a merge.
+// Tests pin the disk and I/O bounds there. Production leaves it nil.
+var spillObserve func(*activityStore)
+
+// SetSpillObserveForTest installs the flush and merge hook. The returned
+// function restores the previous hook.
+func SetSpillObserveForTest(fn func(*activityStore)) func() {
+	prev := spillObserve
+	spillObserve = fn
+	return func() { spillObserve = prev }
+}
+
+func (s *activityStore) observe() {
+	if spillObserve != nil {
+		spillObserve(s)
+	}
+}
+
 // cellKey is one (minute, table) point. The minute is UTC unix nanos.
 type cellKey struct {
 	min int64
@@ -121,9 +143,11 @@ type cellKey struct {
 }
 
 // run is one sorted spill of the buffer, or a merge of earlier runs.
+// level 0 is a buffer flush. Eight runs of level i become one run of level i+1.
 type run struct {
-	off int64
-	n   int
+	off   int64
+	n     int
+	level int
 }
 
 // span is one minute inside the final merged run.
@@ -135,8 +159,8 @@ type span struct {
 
 // activityStore is the per-(table, minute) series for one analysis.
 // The buffer accumulates every increment. Full buffers become sorted runs.
-// Runs merge when there are more than spillRunK of them, and once more at
-// the end. The parse never reads a run in order to update it.
+// Eight runs of one level merge into the next level. The end merges
+// whatever levels remain. The parse never reads a run in order to update it.
 type activityStore struct {
 	limit int
 	n     int
@@ -266,7 +290,7 @@ func (s *activityStore) flushAll() {
 		return
 	}
 	if len(s.runs) > 1 {
-		if err := s.mergeRuns(); err != nil {
+		if err := s.mergeAll(); err != nil {
 			if isSpillRead(err) {
 				s.err = err
 				return
@@ -315,23 +339,90 @@ func (s *activityStore) flushBuffer() error {
 	}
 	s.runs = append(s.runs, run{off: s.off - int64(len(buf)), n: len(keys)})
 	clear(s.buf)
-	if len(s.runs) > spillRunK {
-		return s.mergeRuns()
+	if err := s.cascade(); err != nil {
+		return err
 	}
+	s.observe()
 	return nil
 }
 
-// mergeRuns writes every run, summing a cell that appears more than once,
-// then copies that output to the front and truncates.
-func (s *activityStore) mergeRuns() error {
-	if len(s.runs) <= 1 {
-		return nil
+// cascade merges a level once it has spillRunK runs. Only that level is
+// read. Larger levels stay where they are until the final merge.
+func (s *activityStore) cascade() error {
+	for {
+		n := len(s.runs)
+		if n < spillRunK {
+			return nil
+		}
+		level := s.runs[n-1].level
+		count := 1
+		for i := n - 2; i >= 0 && s.runs[i].level == level; i-- {
+			count++
+		}
+		if count < spillRunK {
+			return nil
+		}
+		if err := s.mergeTail(count, level+1); err != nil {
+			return err
+		}
 	}
-	cs := make([]runReader, len(s.runs))
-	for i, r := range s.runs {
+}
+
+// mergeAll is the last merge: every level, summed, then copied to the front.
+func (s *activityStore) mergeAll() error {
+	outN, err := s.writeMerge(s.runs)
+	if err != nil {
+		return err
+	}
+	from := s.off - int64(outN)*diskRecSize
+	if err := s.rewindTo(0, from, int64(outN)*diskRecSize); err != nil {
+		// The copy may have overwritten the inputs. The merged bytes at
+		// the end are complete, so a fallback reads those and not the front.
+		s.runs = []run{{off: from, n: outN}}
+		return err
+	}
+	s.runs = []run{{off: 0, n: outN}}
+	s.spans = nil
+	s.observe()
+	return nil
+}
+
+// mergeTail replaces the last count runs with one run of the next level.
+// The prefix is not read.
+func (s *activityStore) mergeTail(count, level int) error {
+	n := len(s.runs)
+	rs := s.runs[n-count:]
+	dst := rs[0].off
+	outN, err := s.writeMerge(rs)
+	if err != nil {
+		return err
+	}
+	from := s.off - int64(outN)*diskRecSize
+	width := int64(outN) * diskRecSize
+	if err := s.rewindTo(dst, from, width); err != nil {
+		kept := make([]run, n-count, n-count+1)
+		copy(kept, s.runs[:n-count])
+		s.runs = append(kept, run{off: from, n: outN, level: level})
+		return err
+	}
+	kept := make([]run, n-count, n-count+1)
+	copy(kept, s.runs[:n-count])
+	s.runs = append(kept, run{off: dst, n: outN, level: level})
+	s.observe()
+	return nil
+}
+
+// writeMerge appends a k-way merge of rs. Duplicate cells are summed.
+// It does not change the run list.
+func (s *activityStore) writeMerge(rs []run) (int, error) {
+	if len(rs) == 0 {
+		return 0, nil
+	}
+	cs := make([]runReader, len(rs))
+	for i, r := range rs {
 		cs[i] = runReader{base: r.off, n: r.n}
 		if err := cs[i].pull(s); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	out := make([]byte, 0, 64*1024)
@@ -369,7 +460,7 @@ func (s *activityStore) mergeRuns() error {
 		k := cellKey{min: cs[i].min, id: cs[i].rec.id}
 		rec := cs[i].rec
 		if err := cs[i].pull(s); err != nil {
-			return err
+			return 0, err
 		}
 		if have && k == key {
 			addAct(&acc, rec)
@@ -377,33 +468,27 @@ func (s *activityStore) mergeRuns() error {
 		}
 		if have {
 			if err := emit(key, acc); err != nil {
-				return err
+				return 0, err
 			}
 		}
 		key, acc, have = k, rec, true
 	}
 	if have {
 		if err := emit(key, acc); err != nil {
-			return err
+			return 0, err
 		}
 	}
 	if err := flushOut(); err != nil {
-		return err
+		return 0, err
 	}
-	from := s.off - int64(outN)*diskRecSize
-	if err := s.rewind(from, int64(outN)*diskRecSize); err != nil {
-		// The copy may have overwritten the inputs. The merged bytes at
-		// the end are complete, so a fallback reads those and not the front.
-		s.runs = []run{{off: from, n: outN}}
-		return err
-	}
-	s.runs = []run{{off: 0, n: outN}}
-	s.spans = nil
-	return nil
+	return outN, nil
 }
 
-func (s *activityStore) rewind(from, n int64) error {
-	if from < n {
+func (s *activityStore) rewindTo(dst, from, n int64) error {
+	if n == 0 {
+		return errors.New("merged activity run is empty")
+	}
+	if from < dst+n {
 		return errors.New("merged activity run overlaps its inputs")
 	}
 	const chunk = 64 * 1024
@@ -417,15 +502,16 @@ func (s *activityStore) rewind(from, n int64) error {
 		if err != nil {
 			return err
 		}
-		if err := s.writeAt(buf, off); err != nil {
+		if err := s.writeAt(buf, dst+off); err != nil {
 			return err
 		}
 		off += int64(len(buf))
 	}
-	if err := s.file.Truncate(n); err != nil {
+	end := dst + n
+	if err := s.file.Truncate(end); err != nil {
 		return err
 	}
-	s.off = n
+	s.off = end
 	return nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -220,8 +221,9 @@ func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
 	if got := src.spillBytes(); got <= 0 || got > finalBound {
 		t.Fatalf("spill file is %d bytes for %d points, bound %d", got, points, finalBound)
 	}
-	if src.spillIO() > int64(spillIOFactor)*src.spillBytes() {
-		t.Fatalf("spill io %d exceeds %d× the %d-byte file", src.spillIO(), spillIOFactor, src.spillBytes())
+	// The second wave writes every cell again, so the one-pass bound is doubled.
+	if lim := 2 * spillIOLimit(points, src.spillBytes()); src.spillIO() > lim {
+		t.Fatalf("spill io %d exceeds %d (%.2f× the %d-byte file)", src.spillIO(), lim, float64(src.spillIO())/float64(src.spillBytes()), src.spillBytes())
 	}
 	opts := report.DefaultOptions()
 	got, err := report.RenderJSONWithOptions(*spilled, opts)
@@ -909,8 +911,8 @@ func TestLaggingReplicaScales(t *testing.T) {
 		if m.file > finalBound {
 			t.Fatalf("%d tables: spill file %d exceeds %d× %d points × %d", m.tables, m.file, spillFinalFactor, m.points, actRecSize)
 		}
-		if m.file > 0 && m.io > int64(spillIOFactor)*m.file {
-			t.Fatalf("%d tables: spill io %d exceeds %d× the %d-byte file", m.tables, m.io, spillIOFactor, m.file)
+		if m.file > 0 && m.io > spillIOLimit(m.points, m.file) {
+			t.Fatalf("%d tables: spill io %d exceeds %d (file %d)", m.tables, m.io, spillIOLimit(m.points, m.file), m.file)
 		}
 	}
 }
@@ -955,6 +957,13 @@ func TestRevisitedSpillStaysBounded(t *testing.T) {
 	m0 := time.Date(2026, 4, 5, 0, 0, 0, 0, time.UTC)
 	lag := m0.Add(time.Minute)
 	events := make([]model.NormalizedEvent, 0, tables*waves*2*3)
+	bound := int64(spillFileFactor) * int64(tables*2) * actRecSize
+	restore := SetSpillObserveForTest(func(st *activityStore) {
+		if st.peakSpill() > bound {
+			t.Fatalf("peak %d during a flush, bound %d", st.peakSpill(), bound)
+		}
+	})
+	defer restore()
 	for wave := 0; wave < waves; wave++ {
 		for i := 0; i < tables; i++ {
 			table := fmt.Sprintf("t%05d", i)
@@ -969,7 +978,6 @@ func TestRevisitedSpillStaysBounded(t *testing.T) {
 	}
 	t.Cleanup(src.Close)
 	points := tables * 2
-	bound := int64(spillFileFactor) * int64(points) * actRecSize
 	finalBound := int64(spillFinalFactor) * int64(points) * actRecSize
 	t.Logf("revisit points=%d peak=%d file=%d io=%d bound=%d final=%d", src.n, src.peakSpill(), src.spillBytes(), src.spillIO(), bound, finalBound)
 	if peak := src.peakSpill(); peak <= 0 || peak > bound {
@@ -981,6 +989,144 @@ func TestRevisitedSpillStaysBounded(t *testing.T) {
 	if src.n != points {
 		t.Fatalf("points = %d, want %d", src.n, points)
 	}
+}
+
+// spillIOLimit is c · file · (1 + log8(points / bufferCells)).
+// The literals in TestSpillBoundFactorsStayTight keep c from being raised
+// until the measured shapes need it.
+func spillIOLimit(points int, file int64) int64 {
+	cells := spillResidentBytes / actRecSize
+	if cells < 1 {
+		cells = 1
+	}
+	ratio := float64(points) / float64(cells)
+	if ratio < 1 {
+		ratio = 1
+	}
+	logs := math.Log(ratio) / math.Log(float64(spillRunK))
+	return int64(math.Ceil(float64(spillIOCoeff) * float64(file) * (1 + logs)))
+}
+
+func TestSpillBoundFactorsStayTight(t *testing.T) {
+	if spillFileFactor > 16 {
+		t.Fatalf("spillFileFactor = %d, ceiling 16", spillFileFactor)
+	}
+	if spillFinalFactor > 2 {
+		t.Fatalf("spillFinalFactor = %d, ceiling 2", spillFinalFactor)
+	}
+	if spillIOCoeff > 8 {
+		t.Fatalf("spillIOCoeff = %d, ceiling 8", spillIOCoeff)
+	}
+	if spillRunK > 8 {
+		t.Fatalf("spillRunK = %d, ceiling 8", spillRunK)
+	}
+}
+
+// Exactly the reserve is free. The pending run does not fit on top of it.
+// A check that ignores the write size still spills.
+func TestReserveIncludesPendingWrite(t *testing.T) {
+	restoreDisk := SetSpillDiskAvailForTest(func() (uint64, bool) {
+		return uint64(spillReserve), true
+	})
+	defer restoreDisk()
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	for i := 0; i < 6; i++ {
+		events = append(events, closedInsert(m0.Add(time.Duration(i)*time.Minute), fmt.Sprintf("k%d", i), "orders", i+1)...)
+	}
+	inline := analyzeWithLimit(t, events, 1<<20)
+	spilled := analyzeWithLimit(t, events, 0)
+	if spilled.MinuteTables != nil {
+		spilled.MinuteTables.Close()
+		t.Fatal("spill grew a file when free space was only the reserve")
+	}
+	if mustJSON(t, spilled) != mustJSON(t, inline) {
+		t.Fatal("reserve fallback differs from the in-memory series")
+	}
+}
+
+// Sequential points, 500 tables a minute, no revisits. Twice the points
+// must not multiply io/file the way a flat merge of every run does, and
+// four times the points must stay near four times the wall time.
+func TestSequentialSpillIOScales(t *testing.T) {
+	sizes := []int{250_000, 500_000, 1_000_000}
+	var first, prev seqMeasure
+	for _, n := range sizes {
+		m := measureSequential(t, n)
+		ratio := float64(m.io) / float64(m.file)
+		t.Logf("seq points=%d wall=%s io=%d file=%d peak=%d ratio=%.2f", m.points, m.wall, m.io, m.file, m.peak, ratio)
+		if lim := spillIOLimit(m.points, m.file); m.io > lim {
+			t.Fatalf("%d points: spill io %d exceeds %d (%.2f× file)", m.points, m.io, lim, ratio)
+		}
+		bound := int64(spillFileFactor) * int64(m.points) * actRecSize
+		if m.peak <= 0 || m.peak > bound {
+			t.Fatalf("%d points: peak %d, bound %d", m.points, m.peak, bound)
+		}
+		finalBound := int64(spillFinalFactor) * int64(m.points) * actRecSize
+		if m.file <= 0 || m.file > finalBound {
+			t.Fatalf("%d points: file %d, bound %d", m.points, m.file, finalBound)
+		}
+		if prev.points > 0 && ratio > prev.ratio*1.35 && ratio > prev.ratio+8 {
+			t.Fatalf("io/file %.2f at %d points vs %.2f at %d, want logarithmic", ratio, m.points, prev.ratio, prev.points)
+		}
+		if first.points > 0 && m.points >= first.points*4 && m.wall > first.wall*9/2+time.Second {
+			t.Fatalf("%d points took %s vs %s at %d, want at most about 4.5×", m.points, m.wall, first.wall, first.points)
+		}
+		m.ratio = ratio
+		if first.points == 0 {
+			first = m
+		}
+		prev = m
+	}
+}
+
+type seqMeasure struct {
+	points int
+	wall   time.Duration
+	io     int64
+	file   int64
+	peak   int64
+	ratio  float64
+}
+
+func measureSequential(t *testing.T, points int) seqMeasure {
+	t.Helper()
+	s := newActivityStore()
+	s.limit = 0
+	bound := int64(spillFileFactor) * int64(points) * actRecSize
+	restore := SetSpillObserveForTest(func(st *activityStore) {
+		if st.peakSpill() > bound {
+			t.Fatalf("peak %d during a flush, bound %d for %d points", st.peakSpill(), bound, points)
+		}
+		levels := 1
+		for _, r := range st.runs {
+			if r.level+1 > levels {
+				levels = r.level + 1
+			}
+		}
+		if len(st.runs) > spillRunK*levels {
+			t.Fatalf("%d open runs across %d levels", len(st.runs), levels)
+		}
+	})
+	defer restore()
+	base := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	const tables = 500
+	start := time.Now()
+	for i := 0; i < points; i++ {
+		minute := base.Add(time.Duration(i/tables) * time.Minute)
+		id := tableIdentity{schema: "s", table: fmt.Sprintf("t%03d", i%tables)}
+		s.addRows(id, minute, 1)
+	}
+	s.flushAll()
+	wall := time.Since(start)
+	if err := s.Err(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+	if s.n != points {
+		t.Fatalf("points = %d, want %d", s.n, points)
+	}
+	return seqMeasure{points: s.n, wall: wall, io: s.spillIO(), file: s.spillBytes(), peak: s.peakSpill()}
 }
 
 func mustJSON(t *testing.T, result *model.AnalysisResult) string {
