@@ -24,6 +24,8 @@ jobs:
           install-only: true
       - name: Run tests
         run: go test ./...
+      - name: Log wide-heap margin
+        run: go test -v -count=1 -run 'TestWideActivityHeap|TestInterleavedChannelsStayResident' ./cmd/binlogviz/ ./internal/analyzer/
       - name: Validate GoReleaser config
         run: goreleaser check
       - name: Build local archive
