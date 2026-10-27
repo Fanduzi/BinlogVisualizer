@@ -23,11 +23,11 @@ Preconditions:
 - Isolated dir prepared:
 
 ```bash
-SCRATCH=.cursor/skills/verify-binlogviz/scratch/snap-demo
+SCRATCH=.agents/skills/verify-binlogviz/scratch/snap-demo
 mkdir -p "$SCRATCH/snapshots"
 ```
 
-- **Save via analyze.** Run `.cursor/skills/verify-binlogviz/helpers/drive.sh snap-save -- analyze cmd/binlogviz/testdata/minimal.binlog --format json --snapshot-name verify-a --snapshot-dir "$SCRATCH/snapshots"`. Expect exit `0`. List `$SCRATCH/snapshots` and confirm a file/dir for `verify-a`.
+- **Save via analyze.** Run `.agents/skills/verify-binlogviz/helpers/drive.sh snap-save -- analyze cmd/binlogviz/testdata/minimal.binlog --format json --snapshot-name verify-a --snapshot-dir "$SCRATCH/snapshots"`. Expect exit `0`. List `$SCRATCH/snapshots` and confirm a file/dir for `verify-a`.
 - **List.** Run `…/drive.sh snap-list -- snapshot list --snapshot-dir "$SCRATCH/snapshots" --format text`. Expect exit `0` and `verify-a` in stdout.
 - **Show.** Run `…/drive.sh snap-show -- snapshot show verify-a --snapshot-dir "$SCRATCH/snapshots"`. Expect exit `0` and summary fields.
 - **Rename.** Run `…/drive.sh snap-rename -- snapshot rename verify-a verify-b --snapshot-dir "$SCRATCH/snapshots"`. Expect exit `0`; list no longer shows `verify-a`.

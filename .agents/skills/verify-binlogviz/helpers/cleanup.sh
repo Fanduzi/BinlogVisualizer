@@ -13,7 +13,7 @@ fi
 
 # Safety: only delete under the skill's own scratch path
 case "$SCRATCH" in
-  */.cursor/skills/verify-binlogviz/scratch) ;;
+  */.agents/skills/verify-binlogviz/scratch) ;;
   *)
     printf 'cleanup: refusing unexpected scratch path: %s\n' "$SCRATCH" >&2
     exit 1
