@@ -969,17 +969,17 @@ func TestRevisitedSpillStaysBounded(t *testing.T) {
 	}
 	t.Cleanup(src.Close)
 	points := tables * 2
-	if src.n != points {
-		t.Fatalf("points = %d, want %d", src.n, points)
-	}
 	bound := int64(spillFileFactor) * int64(points) * actRecSize
 	finalBound := int64(spillFinalFactor) * int64(points) * actRecSize
-	t.Logf("revisit points=%d peak=%d file=%d io=%d bound=%d final=%d", points, src.peakSpill(), src.spillBytes(), src.spillIO(), bound, finalBound)
+	t.Logf("revisit points=%d peak=%d file=%d io=%d bound=%d final=%d", src.n, src.peakSpill(), src.spillBytes(), src.spillIO(), bound, finalBound)
 	if peak := src.peakSpill(); peak <= 0 || peak > bound {
 		t.Fatalf("peak %d, bound %d for %d points", peak, bound, points)
 	}
 	if file := src.spillBytes(); file <= 0 || file > finalBound {
 		t.Fatalf("file %d, bound %d for %d points", file, finalBound, points)
+	}
+	if src.n != points {
+		t.Fatalf("points = %d, want %d", src.n, points)
 	}
 }
 
