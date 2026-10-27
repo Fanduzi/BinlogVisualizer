@@ -250,7 +250,10 @@ func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
 	if spill.heap > mem.heap {
 		t.Fatalf("spill live heap %d is above the in-memory series %d", spill.heap, mem.heap)
 	}
-	if spill.rss > mem.rss {
+	// The race detector's shadow memory stays in VmRSS after the series is
+	// released, and the two child processes differ by tens of MB. The plain
+	// verify job is the RSS check.
+	if !activitySpillRace && spill.rss > mem.rss {
 		t.Fatalf("spill RSS %d is above the in-memory series %d", spill.rss, mem.rss)
 	}
 }

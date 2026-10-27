@@ -41,7 +41,7 @@ Chosen: one region per spilled minute, and a resident set bounded by bytes. The 
 
 The resident budget is 320KiB of cell bytes, not a count of minutes. The minute being updated is not evicted. Flashback samples the live heap at the end of the parse, before the resident set is flushed, so this budget shows up in `TestWideActivityHeap`'s flashback side. Analyze's peak is the render after that flush, so the same budget barely moves the analyze side.
 
-Two goals meet here, and a larger budget misses one of them. The gate allows the wide run 2MiB above the narrow run, and that gap needs about 1MiB of room on both sides so a noisy runner still passes. Measured on this machine, then checked for the 800KiB figure on the runner:
+Two goals meet here, and a larger budget misses one of them. The gate allows the wide run 2MiB above the narrow run, and that gap needs about 1MiB of room on both sides so a noisy runner still passes. The 800KiB row is runner run 40421515796. The 320KiB row is runner run 40423928390, the same spill code as dd511e52. The rows between them were measured on this machine to find the cliff:
 
 | resident budget | analyze extra | flashback extra | flashback room under 2MiB |
 | --- | ---: | ---: | ---: |
@@ -49,7 +49,7 @@ Two goals meet here, and a larger budget misses one of them. The gate allows the
 | 352KiB | 828776 | 1118608 | 978544 |
 | 344KiB | 828648 | 1083392 | 1013760 |
 | 336KiB | 828808 | 1047744 | 1049408 |
-| 320KiB | 829144 | 794320 | 1302832 |
+| 320KiB | 829208 | 795520 | 1301632 |
 | 256KiB | 828728 | 848560 | 1248592 |
 
 800KiB is the budget that holds six channels of 2000 tables (816000 bytes). It leaves 150KB under the cap. 336KiB leaves 1049408 bytes, which is 1MiB with nothing to spare, and the step from 320KiB to 336KiB is a cliff rather than a slope. 1MiB and 2MiB of cells put the flashback side over the cap. The cap stays 2MiB. 320KiB is the largest measured budget that keeps about 1.2MiB free on both sides. 256KiB is smaller and not better.
