@@ -2,9 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <script>
-      document.documentElement.classList.add('js');
-    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>BinlogViz — Turn MySQL ROW Binlogs into Incident-Ready Reports</title>
     <meta
@@ -70,7 +67,7 @@
         text-underline-offset: 0.18em;
       }
 
-      code, pre, .mono, .nav-lang, .eyebrow, .section-label, .tab-button, .code-shell::before, .timeline-date, .back-to-top {
+      code, pre, .mono, .nav-lang, .eyebrow, .section-label, .tab-button, .code-shell::before, .back-to-top {
         font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
 
@@ -85,21 +82,6 @@
 
       section[id] { scroll-margin-top: 92px; }
 
-      .reveal {
-        opacity: 1;
-        transform: translateY(0);
-      }
-
-      .js .reveal {
-        opacity: 0;
-        transform: translateY(16px);
-        transition: opacity 0.45s ease, transform 0.45s ease;
-      }
-
-      .js .reveal.visible {
-        opacity: 1;
-        transform: translateY(0);
-      }
 
       nav {
         position: fixed;
@@ -232,8 +214,9 @@
         content: "";
         position: absolute;
         top: 0;
-        left: 50%;
-        transform: translateX(-50%);
+        left: 0;
+        right: 0;
+        margin-inline: auto;
         width: 840px;
         max-width: 100%;
         height: 600px;
@@ -388,7 +371,6 @@
       .surface-card,
       .workflow-panel,
       .rules-table-wrap,
-      .timeline-wrap,
       .cta-section,
       .footer-panel {
         background: var(--surface);
@@ -471,7 +453,6 @@
       .surface-card,
       .workflow-panel,
       .rules-table-wrap,
-      .timeline-wrap,
       .cta-section,
       .footer-panel {
         padding: 24px;
@@ -505,7 +486,6 @@
       .card h3,
       .surface-card h3,
       .workflow-panel h3,
-      .timeline-title,
       .cta-section h2 {
         margin: 0 0 10px;
         font-size: 1rem;
@@ -515,7 +495,6 @@
       .card p,
       .surface-card p,
       .workflow-panel p,
-      .timeline-desc,
       .cta-section p {
         margin: 0;
         font-size: 0.89rem;
@@ -731,54 +710,6 @@
       .rules-table tr:last-child td { border-bottom: none; }
       .rules-table .mono { color: var(--accent); font-size: 0.82rem; }
 
-      .timeline-wrap {
-        position: relative;
-        padding-left: 32px;
-      }
-
-      .timeline-wrap::before {
-        content: "";
-        position: absolute;
-        left: 13px;
-        top: 12px;
-        bottom: 12px;
-        width: 2px;
-        background: linear-gradient(to bottom, var(--accent), rgba(88,166,255,0.08));
-      }
-
-      .timeline-item {
-        position: relative;
-        margin-bottom: 28px;
-      }
-
-      .timeline-item:last-child { margin-bottom: 0; }
-
-      .timeline-item::before {
-        content: "";
-        position: absolute;
-        left: -23px;
-        top: 8px;
-        width: 10px;
-        height: 10px;
-        border-radius: 50%;
-        background: var(--accent);
-        border: 2px solid var(--bg);
-      }
-
-      .timeline-date {
-        font-size: 0.72rem;
-        color: var(--muted);
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        margin-bottom: 4px;
-      }
-
-      .timeline-title {
-        font-size: 1rem;
-        font-weight: 800;
-        margin-bottom: 6px;
-      }
 
       .cta-section {
         text-align: center;
@@ -975,9 +906,7 @@
         *, *::before, *::after {
           animation: none !important;
           transition: none !important;
-          transform: none !important;
         }
-        .js .reveal { opacity: 1 !important; }
       }
     </style>
   </head>
@@ -1012,26 +941,26 @@
       </nav>
 
       <main id="top">
-        <section class="hero">
+        <section id="overview" class="hero">
           <div class="container hero-content">
-            <div class="hero-badge reveal visible">
+            <div class="hero-badge">
               <span class="eyebrow" data-i18n="hero.badge">Local-first CLI · MySQL ROW binlogs · Open source</span>
             </div>
-            <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
+            <h1 data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
-            <p class="hero-sub reveal visible" data-i18n="hero.sub">BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.
+            <p class="hero-sub" data-i18n="hero.sub">BinlogViz helps DBAs and on-call engineers move from raw binlog events to a clear account of what was written, where, and when.
 Find hot tables, large transactions, write spikes, and incident-window changes, compare current versus baseline, and hand the result to your team. Reads ROW-format binlogs; STATEMENT and MIXED events are not counted.</p>
-            <div class="hero-actions reveal visible">
+            <div class="hero-actions">
               <a href="#install" class="btn-primary" data-i18n="hero.primary">Install BinlogViz</a>
               <a href="#outputs" class="btn-secondary" data-i18n="hero.secondary">See output surfaces</a>
             </div>
-            <div class="code-shell reveal visible">
+            <div class="code-shell">
               <code data-i18n="hero.code"><span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>
 <span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-14T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-14T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-previous</span>
 <span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>
 <span class="token-prompt">$</span> <span class="token-command">binlogviz trend</span> <span class="token-flag">--from-snapshots</span> <span class="token-string">'incident-*'</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">trend.html</span></code>
             </div>
-            <div class="hero-highlights reveal visible">
+            <div class="hero-highlights">
               <article class="stat-card"><strong>4</strong><span data-i18n="hero.stats.formats">Output formats</span></article>
               <article class="stat-card"><strong>1×</strong><span data-i18n="hero.stats.stream">Streaming pipeline</span></article>
               <article class="stat-card"><strong>0</strong><span data-i18n="hero.stats.hosted">Hosted services required</span></article>
@@ -1040,7 +969,7 @@ Find hot tables, large transactions, write spikes, and incident-window changes, 
           </div>
         </section>
 
-        <section id="why" class="reveal">
+        <section id="why">
           <div class="container">
             <p class="section-label" data-i18n="why.label">Why BinlogViz</p>
             <h2 class="section-title" data-i18n="why.title">Answer the operator questions that matter before the incident room loses patience</h2>
@@ -1048,17 +977,17 @@ Find hot tables, large transactions, write spikes, and incident-window changes, 
 aggregating workload shape, surfacing abnormal moments, and packaging the result so it can move cleanly into an incident review, issue thread, or postmortem.</p>
 
             <div class="grid-3">
-              <div class="card reveal">
+              <div class="card">
                 <div class="card-icon">◎</div>
                 <h3 data-i18n="why.cards.hot.title">Hot tables first</h3>
                 <p data-i18n="why.cards.hot.desc">See where writes concentrated instead of scanning raw row events line by line.</p>
               </div>
-              <div class="card reveal">
+              <div class="card">
                 <div class="card-icon">!</div>
                 <h3 data-i18n="why.cards.txn.title">Large transactions surfaced</h3>
                 <p data-i18n="why.cards.txn.desc">Find outsized transactions before they disappear into a long stream of ordinary noise.</p>
               </div>
-              <div class="card reveal">
+              <div class="card">
                 <div class="card-icon">↗</div>
                 <h3 data-i18n="why.cards.spike.title">Spike-aware investigation</h3>
                 <p data-i18n="why.cards.spike.desc">Optional spike detection points attention at the minute most likely to explain impact.</p>
@@ -1067,7 +996,7 @@ aggregating workload shape, surfacing abnormal moments, and packaging the result
           </div>
         </section>
 
-        <section id="workflows" class="band reveal">
+        <section id="workflows" class="band">
           <div class="container">
             <p class="section-label" data-i18n="workflows.label">Core Workflows</p>
             <h2 class="section-title" data-i18n="workflows.title">Start where real binlog investigations actually begin</h2>
@@ -1075,17 +1004,17 @@ aggregating workload shape, surfacing abnormal moments, and packaging the result
 validate one file, widen to an incident window, then export something a teammate can read without replaying the whole investigation.</p>
 
             <div class="grid-3">
-              <div class="card reveal">
+              <div class="card">
                 <div class="card-icon">🗂</div>
                 <h3 data-i18n="workflows.cards.single.title">Validate one file quickly</h3>
                 <p data-i18n="workflows.cards.single.desc">Use a single binlog to prove the path, preview the default report, and sanity-check event volume fast.</p>
               </div>
-              <div class="card reveal">
+              <div class="card">
                 <div class="card-icon">⏱</div>
                 <h3 data-i18n="workflows.cards.window.title">Constrain the incident window</h3>
-                <p data-i18n="workflows.cards.window.desc">Use time, schema, and table filters to reduce noise and keep the workload story centered on the event you care about.</p>
+                <p data-i18n="workflows.cards.window.desc">Use time, schema, and table filters to reduce noise and keep the report focused on the event you care about.</p>
               </div>
-              <div class="card reveal">
+              <div class="card">
                 <div class="card-icon">📄</div>
                 <h3 data-i18n="workflows.cards.handoff.title">Compare and hand the answer off cleanly</h3>
                 <p data-i18n="workflows.cards.handoff.desc">Export JSON reports from analyze, compare current versus baseline, then share the result as HTML for review, JSON for automation, Markdown for docs, or text for terminal-first debugging.</p>
@@ -1094,14 +1023,14 @@ validate one file, widen to an incident window, then export something a teammate
           </div>
         </section>
 
-        <section id="how" class="reveal">
+        <section id="how">
           <div class="container">
             <p class="section-label" data-i18n="how.label">How It Works</p>
             <h2 class="section-title" data-i18n="how.title">Resolve files, aggregate in a streaming pass, render the answer in the right surface</h2>
             <p class="section-sub" data-i18n="how.sub">The architecture stays intentionally direct: parse, normalize, analyze, finalize, render.
 That makes the tool easier to reason about and keeps the product story focused on fast-to-insight investigation instead of infrastructure complexity.</p>
 
-            <div class="workflow-panel reveal">
+            <div class="workflow-panel">
               <div class="workflow-steps">
                 <div class="step" data-i18n="how.step1">Provide files<span>single file or directory range</span></div>
                 <span class="step-arrow">→</span>
@@ -1111,11 +1040,11 @@ That makes the tool easier to reason about and keeps the product story focused o
               </div>
 
               <div class="split-grid">
-                <div class="card reveal">
+                <div class="card">
                   <h3 data-i18n="how.points.stream.title">Streaming by design</h3>
                   <p data-i18n="how.points.stream.desc">Parsing, normalization, analysis, finalization, and rendering flow forward rather than collecting every event into one giant in-memory buffer first.</p>
                 </div>
-                <div class="card reveal">
+                <div class="card">
                   <h3 data-i18n="how.points.io.title">Automation-safe I/O contract</h3>
                   <p data-i18n="how.points.io.desc">Reports stay on stdout while progress and runtime status stay on stderr, so redirecting output into files or pipelines remains predictable.</p>
                 </div>
@@ -1124,14 +1053,14 @@ That makes the tool easier to reason about and keeps the product story focused o
           </div>
         </section>
 
-        <section id="outputs" class="band reveal">
+        <section id="outputs" class="band">
           <div class="container">
             <p class="section-label" data-i18n="outputs.label">Output Surfaces</p>
             <h2 class="section-title" data-i18n="outputs.title">Analyze locally, compare when needed, hand off in the right surface</h2>
             <p class="section-sub" data-i18n="outputs.sub">Output format is part of the product. Analyze can end as text, JSON, Markdown, or self-contained HTML. Compare turns two exported JSON reports into a text summary, structured JSON delta, or chart-based HTML review artifact.</p>
 
             <div class="proof-grid">
-              <article class="workflow-panel reveal">
+              <article class="workflow-panel">
                 <h3 data-i18n="outputs.preview.title">Preview the reporting surfaces teams actually use</h3>
                 <p data-i18n="outputs.preview.desc">Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. Compare reuses text, JSON, and HTML once two analyze JSON reports exist.</p>
 
@@ -1224,7 +1153,7 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
                 </div>
               </article>
 
-              <article class="workflow-panel reveal">
+              <article class="workflow-panel">
                 <h3 data-i18n="outputs.side.title">Why visual compare expands the product story</h3>
                 <p data-i18n="outputs.side.desc">HTML is no longer just a prettier analyze export. It also gives DBAs a browser-ready compare view for current-versus-baseline review, with charts that make workload changes easier to scan together.</p>
                 <ul class="proof-list">
@@ -1238,29 +1167,29 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
           </div>
         </section>
 
-        <section id="trust" class="reveal">
+        <section id="trust">
           <div class="container">
             <p class="section-label" data-i18n="trust.label">Trust Signals</p>
             <h2 class="section-title" data-i18n="trust.title">Trust the contract, not just the parser</h2>
             <p class="section-sub" data-i18n="trust.sub">Reports follow a documented contract, so you can script against them and hand them to a teammate without caveats.</p>
 
             <div class="surfaces-grid">
-              <div class="surface-card reveal">
+              <div class="surface-card">
                 <div class="surface-icon">📘</div>
                 <h3 data-i18n="trust.cards.docs.title">Documented behavior</h3>
                 <p data-i18n="trust.cards.docs.desc">CLI flags, output formats, exit codes, and limitations are documented, and <code>binlogviz schema</code> prints the JSON Schema of every JSON output.</p>
               </div>
-              <div class="surface-card reveal">
+              <div class="surface-card">
                 <div class="surface-icon">📄</div>
-                <h3 data-i18n="trust.cards.contract.title">Stable report surfaces</h3>
-                <p data-i18n="trust.cards.contract.desc">Text, JSON, Markdown, and HTML make it clear where the answer can go next and who can consume it.</p>
+                <h3 data-i18n="trust.cards.contract.title">One analysis, four formats</h3>
+                <p data-i18n="trust.cards.contract.desc">Text for the terminal, JSON for scripts, Markdown for a ticket, HTML for review in a browser. Every format reports the same findings.</p>
               </div>
-              <div class="surface-card reveal">
+              <div class="surface-card">
                 <div class="surface-icon">📦</div>
                 <h3 data-i18n="trust.cards.release.title">Predictable failures</h3>
                 <p data-i18n="trust.cards.release.desc">Every error has a kind and a documented exit code, so a script can tell a filter that matched nothing from a truncated file.</p>
               </div>
-              <div class="surface-card reveal">
+              <div class="surface-card">
                 <div class="surface-icon">🧭</div>
                 <h3 data-i18n="trust.cards.scope.title">Focused scope</h3>
                 <p data-i18n="trust.cards.scope.desc">A binlog analysis CLI, not a general observability platform. It runs locally and needs no hosted service.</p>
@@ -1269,23 +1198,25 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
           </div>
         </section>
 
-        <section id="install" class="reveal">
+        <section id="install">
           <div class="container">
             <p class="section-label" data-i18n="install.label">Install & Start</p>
             <h2 class="section-title" data-i18n="install.title">Install once, validate one file, widen only when the question demands it</h2>
             <p class="section-sub" data-i18n="install.sub">Install the binary, analyze one binlog, then move to directory ranges and named snapshots when you need a baseline to compare against.</p>
 
             <div class="install-grid">
-              <div class="workflow-panel reveal">
+              <div class="workflow-panel">
                 <h3 data-i18n="install.quick.title">Quick start</h3>
                 <div class="code-block">
                   <code data-i18n="install.quick.code"><span class="token-comment"># macOS only (Homebrew cask)</span>
 <span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>
 <span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>
 
-<span class="token-comment"># Linux: install.sh or tarball</span>
+<span class="token-comment"># Linux: install.sh writes to /usr/local/bin, which needs root</span>
 <span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh</span>
-<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span>
+<span class="token-prompt">$</span> <span class="token-command">sudo sh ./install.sh</span>
+<span class="token-comment"># or, without root, a directory you own</span>
+<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--bin-dir</span> <span class="token-string">~/.local/bin</span>
 
 <span class="token-comment"># verify install with the sample ROW binlog</span>
 <span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>
@@ -1299,7 +1230,7 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
                 </div>
               </div>
 
-              <div class="workflow-panel reveal">
+              <div class="workflow-panel">
                 <h3 data-i18n="install.first.title">What a good first session looks like</h3>
                 <ul class="proof-list">
                   <li data-i18n="install.first.one">Validate one file to confirm the default report shape.</li>
@@ -1317,9 +1248,9 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
           </div>
         </section>
 
-        <section class="reveal">
+        <section id="next">
           <div class="container">
-            <div class="cta-section reveal">
+            <div class="cta-section">
               <h2 data-i18n="cta.title">Make the next binlog investigation easier to explain</h2>
               <p data-i18n="cta.sub">BinlogViz gives you a local-first path from raw MySQL ROW binlogs to an answer the rest of the incident room can actually read.</p>
               <div class="hero-actions" style="margin-bottom:0;">
@@ -1332,7 +1263,7 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
       </main>
 
       <footer>
-        <div class="container footer-panel reveal">
+        <div class="container footer-panel">
           <div class="footer-grid">
             <div class="footer-brand">
               <a href="#top" class="nav-logo" aria-label="BinlogViz home" data-i18n-aria-label="nav.homeLabel">
@@ -1390,7 +1321,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           hero: {
             badge: 'Local-first CLI · MySQL ROW binlogs · Open source',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
-            sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, compare current versus baseline, and hand the result to your team. Reads ROW-format binlogs; STATEMENT and MIXED events are not counted.',
+            sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a clear account of what was written, where, and when.\nFind hot tables, large transactions, write spikes, and incident-window changes, compare current versus baseline, and hand the result to your team. Reads ROW-format binlogs; STATEMENT and MIXED events are not counted.',
             primary: 'Install BinlogViz',
             secondary: 'See output surfaces',
             code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-14T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-14T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-previous</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz trend</span> <span class="token-flag">--from-snapshots</span> <span class="token-string">\'incident-*\'</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">trend.html</span>',
@@ -1417,7 +1348,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'The value of BinlogViz is clearest at the moment somebody already has binlogs and needs answers fast:\nvalidate one file, widen to an incident window, then export something a teammate can read without replaying the whole investigation.',
             cards: {
               single: { title: 'Validate one file quickly', desc: 'Use a single binlog to prove the path, preview the default report, and sanity-check event volume fast.' },
-              window: { title: 'Constrain the incident window', desc: 'Use time, schema, and table filters to reduce noise and keep the workload story centered on the event you care about.' },
+              window: { title: 'Constrain the incident window', desc: 'Use time, schema, and table filters to reduce noise and keep the report focused on the event you care about.' },
               handoff: { title: 'Compare and hand the answer off cleanly', desc: 'Export JSON reports from analyze, compare current versus baseline, then share the result as HTML for review, JSON for automation, Markdown for docs, or text for terminal-first debugging.' }
             }
           },
@@ -1481,7 +1412,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Reports follow a documented contract, so you can script against them and hand them to a teammate without caveats.',
             cards: {
               docs: { title: 'Documented behavior', desc: 'CLI flags, output formats, exit codes, and limitations are documented, and <code>binlogviz schema</code> prints the JSON Schema of every JSON output.' },
-              contract: { title: 'Stable report surfaces', desc: 'Text, JSON, Markdown, and HTML make it clear where the answer can go next and who can consume it.' },
+              contract: { title: 'One analysis, four formats', desc: 'Text for the terminal, JSON for scripts, Markdown for a ticket, HTML for review in a browser. Every format reports the same findings.' },
               release: { title: 'Predictable failures', desc: 'Every error has a kind and a documented exit code, so a script can tell a filter that matched nothing from a truncated file.' },
               scope: { title: 'Focused scope', desc: 'A binlog analysis CLI, not a general observability platform. It runs locally and needs no hosted service.' }
             }
@@ -1492,7 +1423,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Install the binary, analyze one binlog, then move to directory ranges and named snapshots when you need a baseline to compare against.',
             quick: {
               title: 'Quick start',
-              code: '<span class="token-comment"># macOS only (Homebrew cask)</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux: install.sh or tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span>\n\n<span class="token-comment"># verify install with the sample ROW binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># save current + baseline snapshots, inspect them as JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
+              code: '<span class="token-comment"># macOS only (Homebrew cask)</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux: install.sh writes to /usr/local/bin, which needs root</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sudo sh ./install.sh</span>\n<span class="token-comment"># or, without root, a directory you own</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--bin-dir</span> <span class="token-string">~/.local/bin</span>\n\n<span class="token-comment"># verify install with the sample ROW binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># save current + baseline snapshots, inspect them as JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: 'What a good first session looks like',
@@ -1547,7 +1478,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           hero: {
             badge: '本地 CLI · MySQL ROW binlog · 开源',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
-            sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，对比 current 与 baseline，并把结果交给团队。只分析 ROW 格式 binlog；STATEMENT 和 MIXED 事件不计入。',
+            sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件整理成一份报告，说清楚什么时候、哪些表、写了多少。\n定位热点表、大事务、写入尖峰和事故窗口变化，对比 current 与 baseline，并把结果交给团队。只分析 ROW 格式 binlog；STATEMENT 和 MIXED 事件不计入。',
             primary: '安装 BinlogViz',
             secondary: '查看输出形式',
             code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-14T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-14T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-previous</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz trend</span> <span class="token-flag">--from-snapshots</span> <span class="token-string">\'incident-*\'</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">trend.html</span>',
@@ -1574,7 +1505,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'BinlogViz 的价值最清楚地体现在：你已经拿到了 binlog，现在需要尽快得到答案。\n先验证一个文件，再扩大到事故窗口，最后导出一个不用重演调查过程也能看懂的结果。',
             cards: {
               single: { title: '先快速验证一个文件', desc: '用单个 binlog 证明链路可用，快速预览默认报告形态，并检查事件规模。' },
-              window: { title: '收窄事故时间窗口', desc: '用时间、schema、table 过滤把噪音压下去，让工作负载故事围绕真正关心的事件展开。' },
+              window: { title: '收窄事故时间窗口', desc: '用时间、schema、table 过滤把噪音压下去，让报告聚焦在你真正关心的事件上。' },
               handoff: { title: '把对比结果顺滑交给别人', desc: '先从 analyze 导出 JSON 报告，再对比 current 与 baseline，然后按场景交付成 HTML 评审稿、JSON 自动化输入、Markdown 文档或终端里的 Text。' }
             }
           },
@@ -1638,7 +1569,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '报告遵循有文档的契约，可以直接写进脚本，也可以直接交给同事。',
             cards: {
               docs: { title: '行为已文档化', desc: 'CLI 参数、输出格式、退出码和限制都有文档，<code>binlogviz schema</code> 会打印每种 JSON 输出的 JSON Schema。' },
-              contract: { title: '稳定的报告表面', desc: 'Text、JSON、Markdown、HTML 清楚地说明了结果会流向哪里、谁来消费。' },
+              contract: { title: '一次分析，四种格式', desc: '终端看 Text，脚本读 JSON，工单贴 Markdown，浏览器里看 HTML。每种格式给出的结论都一样。' },
               release: { title: '可预期的失败', desc: '每个错误都有类别和有文档的退出码，脚本能区分过滤条件没匹配到和文件被截断。' },
               scope: { title: '边界清晰', desc: '专注 binlog 分析的 CLI，不是泛化的可观测平台。本地运行，不依赖任何托管服务。' }
             }
@@ -1649,7 +1580,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: '安装二进制，先分析一个 binlog；需要基线对比时，再切到目录范围和命名快照。',
             quick: {
               title: '快速开始',
-              code: '<span class="token-comment"># 仅 macOS（Homebrew cask）</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux：install.sh 或 tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span>\n\n<span class="token-comment"># 用样例 ROW binlog 验证安装</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># 保存 current + baseline 快照，查看 JSON 元数据，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
+              code: '<span class="token-comment"># 仅 macOS（Homebrew cask）</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux：install.sh 默认写入 /usr/local/bin，需要 root</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sudo sh ./install.sh</span>\n<span class="token-comment"># 没有 root 时装到你自己有权限的目录</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span> <span class="token-flag">--bin-dir</span> <span class="token-string">~/.local/bin</span>\n\n<span class="token-comment"># 用样例 ROW binlog 验证安装</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># 保存 current + baseline 快照，查看 JSON 元数据，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
             },
             first: {
               title: '一个好的首轮会话应该长这样',
@@ -1811,21 +1742,6 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
       window.addEventListener('scroll', toggleBackToTop, { passive: true });
       toggleBackToTop();
 
-      const observer = 'IntersectionObserver' in window
-        ? new IntersectionObserver((entries) => {
-            entries.forEach((entry) => {
-              if (entry.isIntersecting) {
-                entry.target.classList.add('visible');
-                observer.unobserve(entry.target);
-              }
-            });
-          }, { threshold: 0, rootMargin: '0px 0px -8% 0px' })
-        : null;
-
-      document.querySelectorAll('.reveal').forEach((node) => {
-        if (observer) observer.observe(node);
-        else node.classList.add('visible');
-      });
 
       applyTranslations(getLang());
     </script>
