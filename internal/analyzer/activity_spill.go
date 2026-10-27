@@ -371,10 +371,6 @@ func (s *activityStore) mergeRuns() error {
 		if err := cs[i].pull(s); err != nil {
 			return err
 		}
-		if have && k == key {
-			addAct(&acc, rec)
-			continue
-		}
 		if have {
 			if err := emit(key, acc); err != nil {
 				return err
