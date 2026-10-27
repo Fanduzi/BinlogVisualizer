@@ -66,6 +66,10 @@ func SetSpillResidentBytesForTest(n int) func() {
 // regions are reused or the file is packed.
 const spillFileFactor = 2
 
+const spillFinalFactor = 2
+
+const spillIOFactor = 64
+
 // spillReserve is free space left on the spill filesystem for temps that
 // are not optional (flashback SQL, the DuckDB store). Past this the series
 // stays in memory instead of filling the disk.
@@ -145,10 +149,12 @@ type activityStore struct {
 	failWrites int
 	// ops counts writeAt and readAt calls. written is the bytes those writes
 	// accepted. Tests budget both.
-	ops     int
-	written int64
-	err     error
-	closed  bool
+	ops       int
+	written   int64
+	readBytes int64
+	peak      int64
+	err       error
+	closed    bool
 }
 
 func newActivityStore() *activityStore {
@@ -605,7 +611,25 @@ func (s *activityStore) readAt(off int64, n int) ([]byte, error) {
 	if _, err := s.file.ReadAt(buf, off); err != nil {
 		return nil, &SpillReadError{Err: err}
 	}
+	s.readBytes += int64(n)
 	return buf, nil
+}
+
+func (s *activityStore) spillIO() int64 {
+	if s == nil {
+		return 0
+	}
+	return s.written + s.readBytes
+}
+
+func (s *activityStore) peakSpill() int64 {
+	if s == nil {
+		return 0
+	}
+	if s.peak > s.spillBytes() {
+		return s.peak
+	}
+	return s.spillBytes()
 }
 
 // readRegion loads one minute with one read.

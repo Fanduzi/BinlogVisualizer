@@ -895,3 +895,60 @@ func mustJSON(t *testing.T, result *model.AnalysisResult) string {
 	}
 	return got
 }
+
+// Two channels a minute apart, with a new table on every transaction, so the
+// hot minutes grow past the resident budget. Twice the tables is twice the
+// transactions. The spill work has to stay near that ratio, and the bytes
+// moved have to stay within a constant of the final file.
+func TestLaggingReplicaScales(t *testing.T) {
+	small := measureLagReplica(t, 6000)
+	large := measureLagReplica(t, 12000)
+	t.Logf("lag tables=%d points=%d wall=%s io=%d file=%d peak=%d", small.tables, small.points, small.wall, small.io, small.file, small.peak)
+	t.Logf("lag tables=%d points=%d wall=%s io=%d file=%d peak=%d", large.tables, large.points, large.wall, large.io, large.file, large.peak)
+	if small.wall > 0 && large.wall > small.wall*5/2+time.Second {
+		t.Fatalf("2× txns took %s vs %s, want at most about 2.5×", large.wall, small.wall)
+	}
+	for _, m := range []lagMeasure{small, large} {
+		bound := int64(spillFileFactor) * int64(m.points) * actRecSize
+		finalBound := int64(spillFinalFactor) * int64(m.points) * actRecSize
+		if m.peak > bound {
+			t.Fatalf("%d tables: peak file %d exceeds %d× %d points × %d", m.tables, m.peak, spillFileFactor, m.points, actRecSize)
+		}
+		if m.file > finalBound {
+			t.Fatalf("%d tables: spill file %d exceeds %d× %d points × %d", m.tables, m.file, spillFinalFactor, m.points, actRecSize)
+		}
+		if m.file > 0 && m.io > int64(spillIOFactor)*m.file {
+			t.Fatalf("%d tables: spill io %d exceeds %d× the %d-byte file", m.tables, m.io, spillIOFactor, m.file)
+		}
+	}
+}
+
+type lagMeasure struct {
+	tables int
+	points int
+	wall   time.Duration
+	io     int64
+	file   int64
+	peak   int64
+}
+
+func measureLagReplica(t *testing.T, tables int) lagMeasure {
+	t.Helper()
+	m0 := time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC)
+	lag := m0.Add(time.Minute)
+	events := make([]model.NormalizedEvent, 0, tables*2*3)
+	for i := 0; i < tables; i++ {
+		table := fmt.Sprintf("t%05d", i)
+		events = append(events, closedInsert(m0, fmt.Sprintf("a%d", i), table, 1)...)
+		events = append(events, closedInsert(lag, fmt.Sprintf("b%d", i), table, 1)...)
+	}
+	start := time.Now()
+	result := analyzeMinutes(t, events)
+	wall := time.Since(start)
+	src, ok := result.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("lagging replica stayed in memory")
+	}
+	t.Cleanup(src.Close)
+	return lagMeasure{tables: tables, points: src.n, wall: wall, io: src.spillIO(), file: src.spillBytes(), peak: src.peakSpill()}
+}
