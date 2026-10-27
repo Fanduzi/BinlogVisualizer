@@ -422,9 +422,6 @@ func (s *activityStore) rewind(from, n int64) error {
 		}
 		off += int64(len(buf))
 	}
-	if err := s.file.Truncate(n); err != nil {
-		return err
-	}
 	s.off = n
 	return nil
 }
