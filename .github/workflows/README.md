@@ -29,13 +29,13 @@ Before pushing a new release tag:
 - Update every versioned release surface in the same release-preparation commit:
   - `CHANGELOG.md`
   - `install.sh`
-  - current release content and install commands in `docs/landing/index.html`
   - both release note files:
     - `docs/releases/release-notes-vX.Y.Z.md`
     - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`
 - Do not add release notes, a per-version section, or new behavior detail to `README.md` / `README_ZH.md`. Release notes go in the two release note files and `CHANGELOG.md`. Behavior detail goes in `docs/reference/` or `docs/recipe/` (for example `docs/reference/analyze-behavior.md`, `docs/recipe/flashback.md`, `docs/recipe/compare-trend-workflow.md`, and their `.zh-CN.md` pages); the README keeps the command and a link. The README install examples resolve the latest release and need no edit per release. `TestReadmeStaysConcise` fails the PR otherwise.
 - Run `make release-check VERSION=vX.Y.Z` on the release-preparation commit. The tag goes on that commit: `release.yml`'s `release-prep` job runs the same check on the tag before any build and fails the release if a surface is missing or stale.
-- Push the release-preparation commit to `main`, then confirm both the `verify` and `Cloudflare Pages` checks pass and the live landing page shows the target version.
+- Do not edit `docs/landing/index.html` for a release. It names no version and installs the latest release; `TestLandingPageHasNoReleaseHistory` fails on a version string, a release section, or a page over 128 KiB.
+- Push the release-preparation commit to `main`, then confirm both the `verify` and `Cloudflare Pages` checks pass.
 - Run the `release.yml` workflow via `workflow_dispatch` after any workflow or packaging change, and verify:
   - `test` passes
   - `validate-homebrew` passes
@@ -57,4 +57,4 @@ After pushing the version tag:
 - Confirm the GitHub Release is public and contains four platform archives plus the checksum manifest.
 - Download one archive for the current host, verify its checksum, and confirm `binlogviz --version` reports the tag version.
 - Confirm `Fanduzi/homebrew-binlogviz/Casks/binlogviz.rb` has the target version and the same four checksums.
-- Recheck the public landing page and its tag-pinned release-note links.
+- Recheck that the public landing page loads.

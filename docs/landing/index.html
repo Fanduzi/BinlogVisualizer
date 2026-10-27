@@ -582,125 +582,23 @@
         background: linear-gradient(135deg, var(--accent), var(--warn));
       }
 
-      .release-stack {
-        max-width: 980px;
-        margin: 0 auto;
-        display: grid;
-        gap: 24px;
-      }
 
-      .release-spotlight {
-        border: 1px solid rgba(88,166,255,0.28);
-        background: linear-gradient(135deg, rgba(88,166,255,0.12), rgba(17,24,39,0.94));
-        border-radius: 22px;
-        padding: 28px;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-      }
 
-      .release-kicker {
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--accent);
-        margin-bottom: 10px;
-      }
 
-      .release-version-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-bottom: 10px;
-      }
 
-      .release-version {
-        font-size: clamp(1.5rem, 3vw, 2rem);
-        font-weight: 900;
-        letter-spacing: -0.03em;
-      }
 
-      .release-title {
-        font-size: 1.05rem;
-        font-weight: 700;
-        margin-bottom: 10px;
-      }
 
-      .release-copy {
-        font-size: 0.92rem;
-        color: var(--muted);
-        line-height: 1.7;
-      }
 
-      .release-link {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        margin-top: 16px;
-        color: var(--accent);
-        text-decoration: none;
-        font-weight: 700;
-        font-size: 0.9rem;
-      }
 
-      .release-link:hover { color: var(--text); }
 
-      .release-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-      }
 
-      .release-card {
-        border: 1px solid var(--border);
-        background: var(--surface);
-        border-radius: 18px;
-        padding: 22px;
-        min-height: 100%;
-      }
 
-      .release-card.archive {
-        background: linear-gradient(180deg, rgba(88,166,255,0.06), rgba(17,24,39,0.88));
-        border-color: rgba(88,166,255,0.18);
-      }
 
-      .release-card-head {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 12px;
-        margin-bottom: 8px;
-        flex-wrap: wrap;
-      }
 
-      .release-card-version {
-        font-weight: 800;
-        font-size: 1rem;
-      }
 
-      .release-card-label {
-        font-size: 0.8rem;
-        color: var(--muted);
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-      }
 
-      .release-card-copy {
-        font-size: 0.86rem;
-        color: var(--muted);
-        line-height: 1.65;
-        margin-bottom: 14px;
-      }
 
-      .release-card-link {
-        color: var(--accent);
-        text-decoration: none;
-        font-weight: 700;
-        font-size: 0.86rem;
-      }
 
-      .release-card-link:hover { color: var(--text); }
 
       .tab-shell {
         border: 1px solid var(--border);
@@ -929,6 +827,9 @@
         margin-bottom: 14px;
       }
 
+      .proof-grid > *, .split-grid > *, .install-grid > *, .preview-grid > *, .surfaces-grid > * { min-width: 0; }
+      .release-line { margin-top: 18px; color: var(--muted); font-size: 0.9rem; }
+      .release-line a { color: var(--text); }
       .footer-links {
         list-style: none;
         padding: 0;
@@ -1003,7 +904,6 @@
         .split-grid,
         .install-grid,
         .footer-grid,
-        .release-grid,
         .preview-grid {
           grid-template-columns: 1fr 1fr;
         }
@@ -1040,13 +940,10 @@
         .split-grid,
         .install-grid,
         .footer-grid,
-        .release-grid,
         .preview-grid {
           grid-template-columns: 1fr;
         }
 
-        .release-spotlight,
-        .release-card { padding: 20px; }
 
         .workflow-steps {
           flex-direction: column;
@@ -1099,7 +996,7 @@
             <li><a href="#how" data-i18n="nav.how">How</a></li>
             <li><a href="#outputs" data-i18n="nav.outputs">Outputs</a></li>
             <li><a href="#trust" data-i18n="nav.trust">Trust</a></li>
-            <li><a href="#releases" data-i18n="nav.releases">Releases</a></li>
+            <li><a href="https://github.com/Fanduzi/BinlogVisualizer/releases" target="_blank" rel="noopener" data-i18n="nav.releases">Releases</a></li>
             <li><a href="#install" data-i18n="nav.installGuide">Install</a></li>
           </ul>
 
@@ -1118,12 +1015,12 @@
         <section class="hero">
           <div class="container hero-content">
             <div class="hero-badge reveal visible">
-              <span class="eyebrow" data-i18n="hero.badge">v0.35.0 — report v4 with an interval set for matched GTIDs, JSON Schema and --tz, bounded analyze memory</span>
+              <span class="eyebrow" data-i18n="hero.badge">Local-first CLI · MySQL ROW binlogs · Open source</span>
             </div>
             <h1 class="reveal visible" data-i18n="hero.title">Turn MySQL ROW binlogs
 into incident-ready reports</h1>
-            <p class="hero-sub reveal visible" data-i18n="hero.sub">Fast ROW-binlog summary: hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.
-STATEMENT or MIXED files come back empty or undercounted. Printed positions are file evidence — use them as mysqlbinlog --start-position only when the span covers the transaction events, not an XID-only interval.</p>
+            <p class="hero-sub reveal visible" data-i18n="hero.sub">BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.
+Find hot tables, large transactions, write spikes, and incident-window changes, compare current versus baseline, and hand the result to your team. Reads ROW-format binlogs; STATEMENT and MIXED events are not counted.</p>
             <div class="hero-actions reveal visible">
               <a href="#install" class="btn-primary" data-i18n="hero.primary">Install BinlogViz</a>
               <a href="#outputs" class="btn-secondary" data-i18n="hero.secondary">See output surfaces</a>
@@ -1345,14 +1242,13 @@ spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
           <div class="container">
             <p class="section-label" data-i18n="trust.label">Trust Signals</p>
             <h2 class="section-title" data-i18n="trust.title">Trust the contract, not just the parser</h2>
-            <p class="section-sub" data-i18n="trust.sub">BinlogViz already has a stronger adoption story than “it parses binlogs.”
-It has published docs, explicit output contracts, release notes around HTML and Markdown exports, and a product boundary that makes sense for DBAs.</p>
+            <p class="section-sub" data-i18n="trust.sub">Reports follow a documented contract, so you can script against them and hand them to a teammate without caveats.</p>
 
             <div class="surfaces-grid">
               <div class="surface-card reveal">
                 <div class="surface-icon">📘</div>
                 <h3 data-i18n="trust.cards.docs.title">Documented behavior</h3>
-                <p data-i18n="trust.cards.docs.desc">CLI flags, output formats, architecture, and limitations are already documented in a way that supports product messaging.</p>
+                <p data-i18n="trust.cards.docs.desc">CLI flags, output formats, exit codes, and limitations are documented, and <code>binlogviz schema</code> prints the JSON Schema of every JSON output.</p>
               </div>
               <div class="surface-card reveal">
                 <div class="surface-icon">📄</div>
@@ -1361,509 +1257,13 @@ It has published docs, explicit output contracts, release notes around HTML and 
               </div>
               <div class="surface-card reveal">
                 <div class="surface-icon">📦</div>
-                <h3 data-i18n="trust.cards.release.title">Release-driven story</h3>
-                <p data-i18n="trust.cards.release.desc">Recent releases show the project moving from core analysis toward team-facing deliverable artifacts.</p>
+                <h3 data-i18n="trust.cards.release.title">Predictable failures</h3>
+                <p data-i18n="trust.cards.release.desc">Every error has a kind and a documented exit code, so a script can tell a filter that matched nothing from a truncated file.</p>
               </div>
               <div class="surface-card reveal">
                 <div class="surface-icon">🧭</div>
                 <h3 data-i18n="trust.cards.scope.title">Focused scope</h3>
-                <p data-i18n="trust.cards.scope.desc">It is not trying to be a general observability platform — and that constraint makes the positioning sharper.</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section id="releases" class="band reveal">
-          <div class="container">
-            <p class="section-label" data-i18n="releases.label">Releases</p>
-            <h2 class="section-title" data-i18n="releases.title">Release focus and recent milestones</h2>
-            <p class="section-sub" data-i18n="releases.sub">Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.</p>
-
-            <div class="release-stack reveal">
-              <article class="release-spotlight">
-                <div class="release-kicker" data-i18n="releases.currentLabel">Current release</div>
-                <div class="release-version-row">
-                  <div class="release-version">v0.35.0</div>
-                  <span class="tag tag-new" style="font-size:0.65rem;" data-i18n="releases.currentFocus">minor release</span>
-                </div>
-                <div class="release-title" data-i18n="releases.currentTitle">report v4 with an interval set for matched GTIDs, JSON Schema and --tz, bounded analyze memory</div>
-                <div class="release-copy" data-i18n="releases.items.v0350">Minor release, breaking for analyze --format json: report_version is 4. selection.matched_gtids is replaced by the interval set selection.matched_gtid_set and the count selection.matched_transactions, so GTID filters no longer run out of memory on millions of matches, and more than 100,000 intervals is exit 10 matched_gtid_intervals (#379, ADR 0018); compare and trend read v3 and v4. binlogviz schema prints the JSON Schema of every JSON output and --tz selects a display zone (ADR 0017). analyze memory no longer grows with transactions (#364, #376), every format lists the same key transactions (#352), a minute is no longer split when timestamps go backwards (#377), and a flashback script stops on MariaDB with ERROR 1231. Built with Go 1.26.10 and mapstructure v2.4.0. plan_version 2 and schema_version 1 are unchanged. Known issues: #399, #400, #403, #404, #303 (Linux empty commit).</div>
-                <a class="release-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.35.0/docs/releases/release-notes-v0.35.0.md" target="_blank" rel="noopener" data-i18n="releases.currentLink">Read release notes →</a>
-              </article>
-
-              <div class="release-grid">
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.34.1</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0341">filtered flashback refuses a DDL that names the selected table anywhere, a runnable example in every --help</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0341">Patch release for a P1, upgrade if you use filtered flashback: with --include-table, --exclude-table, --include-schema or --exclude-schema, v0.34.0 and earlier checked an in-range DDL against its first-named table only, so a RENAME TABLE or DROP TABLE that named the selected table later was not refused and the undo could write rows into the wrong table. Every table a DDL names as a source or a target is now checked, and a DDL that cannot be read completely refuses with exit 6 (#368, ADR 0015). Every command's --help has a runnable example, and tests prove no command prompts or waits on stdin (#365). No breaking changes for analyze or unfiltered flashback: schema_version 1, plan_version 2, report_version 3, analyze output and exit codes are unchanged from v0.34.0. Known issue: #303 (Linux empty commit).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.34.1/docs/releases/release-notes-v0.34.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0341">Open v0.34.1 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.34.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0340">one transaction view for every analyze format, memory-bound tests stable on one CPU</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0340">ADR 0012 step 5: text, Markdown, JSON and HTML read one transaction view from internal/report/view, and report.Write is the only format switch (#353). A listed format with no case returns unhandled format instead of rendering text (#356, #354). The flashback and verify memory-bound tests measure live heap at fixed points and pass at GOMAXPROCS=1 (#358, #361, closes #351). docs/production-readiness.md is new (#359). No breaking changes and no output change: schema_version 1, plan_version 2, report_version 3, analyze output, flashback scripts, --help and exit codes are unchanged from v0.33.1. Known issue: #303 (Linux empty commit).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.34.0/docs/releases/release-notes-v0.34.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0340">Open v0.34.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.33.1</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0331">snapshot list shows an empty diagnostics mode, DDL cap in analyze --help, archive README links, zh-CN flashback help</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0331">Patch release that closes the #312 follow-ups: snapshot list shows a file with diagnostics_mode "" as (empty) and JSON keeps "diagnostics_mode": "", and readers still refuse it with exit 9; analyze --help says --diagnostics summary caps ddl_events at --top and that --top 0 is the default 10; README links to files the release archive does not ship are absolute GitHub URLs; zh-CN flashback --help translates --conflict, --plan, --error-format and -q. No breaking changes: schema_version 1, plan_version 2, analyze output and flashback scripts are unchanged from v0.33.0. Known issue: #303 (Linux empty commit).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.33.1/docs/releases/release-notes-v0.33.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0331">Open v0.33.1 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.33.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0330">flashback apply fixes: SELECT grant, CHAR/BINARY keys, an anchored commit line</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0330">Breaking for flashback apply: v0.32.0 scripts must be regenerated; verify exits 6 with details.reason old_format (#342). Apply grants on the undo tables are SELECT, INSERT, UPDATE, DELETE (#341). PAD_CHAR_TO_FULL_LENGTH is removed before the undo and BINARY(n) keys are 0x00-padded, and a keyed undo that does not change exactly one row rolls the apply back (#347, #348). A failed apply drops its procedure and prints the real error (#338, #343). Success is the anchored line binlogviz: undo committed, N statements (or ... with skips), not the mysql exit code. Refusals carry details.reason and details.table (#344). schema_version 1, plan_version 2 and analyze output are unchanged. Known issue: #303 (Linux empty commit).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.33.0/docs/releases/release-notes-v0.33.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0330">Open v0.33.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.32.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0320">a failed flashback apply never commits a prefix, one XA transaction, documented apply grants</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0320">Breaking for flashback apply: ADR 0014 runs the undo in one XA transaction, so a failed apply never commits a prefix and script BEGIN, START TRANSACTION, or DDL cannot commit it; the finish commits only when every statement succeeded (#328, #329, #332). Apply needs CREATE, CREATE ROUTINE, ALTER ROUTINE on binlogviz.*, plus EXECUTE when automatic_sp_privileges=0; XA_RECOVER_ADMIN is not needed (#333). A pre-XA failure stays poisoned under mysql --force. Each run gets its own SQL SECURITY INVOKER finish procedure, so leftovers do not block; clean them with DROP DATABASE IF EXISTS binlogviz (#334). flashback verify --help usage is fixed (#335). v0.31.0 scripts do not verify; regenerate them. schema_version 1, plan_version 2 and analyze output are unchanged. Known issues: #338 (some missing-grant paths leave the per-run procedure behind), #303 (Linux empty commit).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.32.0/docs/releases/release-notes-v0.32.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0320">Open v0.32.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.31.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0310">flashback scripts commit only through binlogviz flashback verify, streaming verify</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0310">Breaking for flashback apply: ADR 0013 makes the published undo one transaction that never commits by itself; apply with binlogviz flashback verify file.sql | mysql, not mysql &lt; file (#318, #321). verify checks the digest and emits the conditional COMMIT; partial, edited, appended, or truncated scripts exit 6 and commit nothing, and generation exit 8 leaves no applyable prefix. Invalid BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES exit 3. verify streams: RSS about 34-41 MB on 400 MB+ scripts, heap ceiling exit 10 (#327). The SQL is the new sealed format; plan_version 2 and analyze output are unchanged. Known issues: #328 (verify | mysql --force can commit partial undo on a missing table or column), #329 (implicit commit after the script), #303 (Linux empty commit).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.31.0/docs/releases/release-notes-v0.31.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0310">Open v0.31.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.30.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0300">streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0300">ADR 0012 steps 1-4 move mysqlexpr, schemacatalog, guard, and the flashback planner into their own packages (#315, #316, #320); analyze and flashback output stay byte-identical to v0.29.0 on the tip-QA corpora. Generated-column review with --schema-file streams: on a 1.07 GB binlog that produced a 1.13 GB script, tip RSS is about 128 MB where v0.29.0 OOMed with exit 2 (#317). Exit 10 resource (details.reason spill_limit / memory_limit) and BINLOGVIZ_SPILL_BYTES never report a ceiling as exit 2. guard.Seal refuses a digest under 8 bytes (#319). Known issues: #303 (Linux empty commit), #321 (truncated exit-8 script can partially apply), #318 (guard token does not detect content edits).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.30.0/docs/releases/release-notes-v0.30.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0300">Open v0.30.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.29.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0290">summary DDL cap, snapshot list flags trimmed files, --help examples and an agent guide in the archive</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0290">Breaking for --diagnostics summary only: diagnostics.ddl_events is the first --top events and ddl_events_omitted counts the rest; on a 1.07 GB binlog summary drops from 42759 to 32632 bytes. Default and full output is byte-identical, report_version 3 (ADR 0011, #308, #311). snapshot list marks a trimmed file with a DIAGNOSTICS column and diagnostics_mode in JSON, diagnostics_mode edge values are pinned, and --diagnostics &quot;&quot; exits 3. Six commands have --help examples, flashback --sql-context help is rewritten, and release archives ship the agent usage guide and both READMEs. Known issues: #303 (Linux binaries report an empty commit) and #312.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.29.0/docs/releases/release-notes-v0.29.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0290">Open v0.29.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.28.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0280">analyze --diagnostics budget for agents, GTID on transaction alerts, trimmed reports refused</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0280">analyze --diagnostics full|summary|off shrinks analyze JSON for agents; the default full is unchanged, and on a 1.07 GB binlog stdout is 63042, 42759 and 22627 bytes (ADR 0011, #282, #307). A transaction alert carries its gtid, ready for flashback --include-gtids. Snapshots and workflow artifacts always keep full diagnostics, and compare, trend, snapshot save and show, and workflow resume refuse a trimmed report with exit 9 (reduced_diagnostics) instead of comparing omitted lists as empty. No breaking changes: report_version 3 and plan_version 2. Known issues: #303 (Linux binaries report an empty commit) and #308.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.28.0/docs/releases/release-notes-v0.28.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0280">Open v0.28.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.27.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0270">every JSON output versioned, workflow refuses unknown artifacts, version shows the commit</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0270">Every JSON output is versioned: compare, trend, snapshot and workflow JSON start with schema_version 1, while analyze (report_version 3) and flashback --plan (plan_version 2) output is byte-identical (ADR 0010, #282, #302). workflow status, resume and clean refuse a compare or trend artifact with an unknown schema_version with exit 9 and touch nothing. binlogviz version prints the build's git commit, and version --format json prints it for agents. No breaking changes. Known issue: Linux release binaries report an empty commit until #303 is fixed; macOS archives and checkout builds report it.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.27.0/docs/releases/release-notes-v0.27.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0270">Open v0.27.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.26.1</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0261">flashback --conflict guard skips a primary key moved back onto a reused key</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0261">binlogviz flashback --conflict guard no longer fails with ERROR 1062 when an UPDATE moved a primary key and a later row reused the old key: the move-back changes no row, like any other row changed later, and the rest of the block applies (#270, #299). The default --conflict refuse still exits 7. No breaking changes: exit codes, plan_version 2, analyze output and flashback SQL outside the guard are unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.26.1/docs/releases/release-notes-v0.26.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0261">Open v0.26.1 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.26.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0260">flashback --plan v2: a plan on every refusal, coded warnings, --conflict-limit</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0260">Breaking for scripts: flashback --plan is plan_version 2 (#270, #282, #296). Warnings are {code, message} with a code that does not change with --lang, and exit 6 and exit 7 refusals now print the plan with would_refuse and a refusal {kind, message}, so the JSON alone tells ok, refused and conflict apart. flashback --conflict-limit N (default 20, 0 for all) sets how many conflicts the plan and the exit 7 details list; count stays the full count. Analyze output, flashback SQL, stderr and exit codes are unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.26.0/docs/releases/release-notes-v0.26.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0260">Open v0.26.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.25.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0250">exit-code taxonomy everywhere, ledger-based workflow clean, fail-closed install.sh, 16 MiB+ compressed transactions</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0250">Breaking for scripts: every command error has a kind, exit 9 unsupported is new, and many failures moved off exit 1 (ADR 0009, #277, #284, #286). workflow clean deletes only files its ledger.jsonl attributes, moves them to .trash, and refuses untrusted manifests, failed runs and paths outside the root (#287-#291). install.sh fails closed on bad checksums or missing tools and defaults to the latest release (#283, #292). Real MySQL 8.0 compressed transactions of 16 MiB and up now parse, with bounded streaming decompression (#278, #293).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.25.0/docs/releases/release-notes-v0.25.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0250">Open v0.25.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.24.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0240">streaming flashback, conflict refusal, typed exit codes, hardened parsing</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0240">binlogviz flashback streams row images through a temp file (#258) and refuses with exit 7 when a selected row was changed again later; --conflict guard and --plan let you choose (#259, #267). Every command has typed exit codes and --error-format json (#263, #268). Event CRC32 is verified and hostile input is bounded before decoding, so corrupt binlogs exit 5 (#271, #272). Also --quiet and no ANSI on non-TTY stderr (#253), password redaction (#250), a faster top-transactions ranking (#252) and MariaDB 11.4 collations (#269). Scripts that matched exit 1 must read the new codes.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.24.0/docs/releases/release-notes-v0.24.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0240">Open v0.24.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.34</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02334">flashback refusal messages: correct FLUSH TABLES advice, printed once per run</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02334">binlogviz flashback only changes messages; scripts, exit codes and accept/refuse are unchanged. zh-CN errors and warnings start with 错误：/警告： (#227, #244). The div_precision_increment hand-restore advice gives SET SESSION with a defined N, FLUSH TABLES `db`.`tbl`, what FLUSH waits for, and a fresh-connection alternative, and is printed once per run, so refusal stderr is about 31-41% smaller (#246). A correct dump at an increment flashback cannot check is told it may be right (#243, #231).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.34/docs/releases/release-notes-v0.23.34.md" target="_blank" rel="noopener" data-i18n="releases.links.v02334">Open v0.23.34 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.33</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02333">flashback checks JSON [0] and DECIMAL DIV/% the way MySQL does</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02333">binlogviz flashback now evaluates $.v[0] on a non-array JSON value as the value itself (#237) and keeps MySQL rounding for a / inside DIV, % or MOD on DECIMAL (#238). Both could give a rare false accept before. More DIV/% DECIMAL columns are verified and kept in the script; a few that were verified only by luck are now left out with a guard. Also the #225 label fix and three refactors with unchanged output (#234, #235, #236).</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.33/docs/releases/release-notes-v0.23.33.md" target="_blank" rel="noopener" data-i18n="releases.links.v02333">Open v0.23.33 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.32</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02332">flashback div_precision_increment hint is fast again and names unchecked increments</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02332">binlogviz flashback re-checks a refused / column at every div_precision_increment much faster (#226): a refused run on a 19.5 MB, 186-table binlog takes 27 s instead of about 10 h on v0.23.30/31. The hint now names increments it could not check instead of a cut-short range (#227), and suggests --exclude-table. Accept and refuse decisions and scripts are unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.32/docs/releases/release-notes-v0.23.32.md" target="_blank" rel="noopener" data-i18n="releases.links.v02332">Open v0.23.32 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.31</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02331">flashback names the schema-file table when a letter-case match is refused</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02331">binlogviz flashback --schema-file now names the schema-file table as well as the binlog table when a table matched only by letter case is refused, and the fold warning says it assumes lower_case_table_names=1 or 2 on the binlog server (#215). Accept and refuse decisions and scripts are unchanged. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.31/docs/releases/release-notes-v0.23.31.md" target="_blank" rel="noopener" data-i18n="releases.links.v02331">Open v0.23.31 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.30</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02330">flashback names the div_precision_increment behind a refused / column</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02330">binlogviz flashback --schema-file now says which div_precision_increment values fit when a generated column with / is refused, says the dump may be right, and points at --include-table / --exclude-table instead of only blaming the dump (#193). The table is still refused; accept and refuse decisions and scripts are unchanged. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.30/docs/releases/release-notes-v0.23.30.md" target="_blank" rel="noopener" data-i18n="releases.links.v02330">Open v0.23.30 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.29</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02329">flashback --schema-file accepts dumps taken after an ADD COLUMN and joined dumps</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02329">binlogviz flashback --schema-file treats an ADD COLUMN that is already in the dump as applied, so a correct incident-time dump is no longer refused, and each Database header in joined mysqldump outputs binds the dump that follows it (#167). Off-timeline dumps and changed definitions are still refused. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.29/docs/releases/release-notes-v0.23.29.md" target="_blank" rel="noopener" data-i18n="releases.links.v02329">Open v0.23.29 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.28</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02328">flashback --schema-file uses dumps with spaced or differently cased names</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02328">binlogviz flashback --schema-file now reads a mysqldump Database: header whose name has spaces, and uses a dump table that differs from the binlog only in letter case when the binlog names are all lower case, as with a lower_case_table_names=0 dump and a lower_case_table_names=1 binlog (#187). A warning names the file table, and the rows are still checked against it. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.28/docs/releases/release-notes-v0.23.28.md" target="_blank" rel="noopener" data-i18n="releases.links.v02328">Open v0.23.28 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.27</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02327">flashback guard error never shows a column that does not exist</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02327">binlogviz flashback shows every | in a guard label as / (#208), so a column name ending in " |" can no longer form the list separator and the 200-byte ERROR 1231 cut always keeps whole names. The SELECT on stdout and the SQL keep the real names. The guard refuses in the same cases and writes no rows. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.27/docs/releases/release-notes-v0.23.27.md" target="_blank" rel="noopener" data-i18n="releases.links.v02327">Open v0.23.27 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.26</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02326">flashback guard error keeps non-ASCII column names</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02326">binlogviz flashback lists non-ASCII column names in the guard ERROR 1231 line (#192). MySQL cuts that value at 200 bytes, and the guard now picks whole names by bytes, so CJK names are listed instead of the bare count. The guard refuses in the same cases and writes no rows. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.26/docs/releases/release-notes-v0.23.26.md" target="_blank" rel="noopener" data-i18n="releases.links.v02326">Open v0.23.26 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.25</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02325">flashback restores rows written by a non-strict session</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02325">binlogviz flashback restores zero dates and generated columns that divided by zero when the script is applied in a strict session (#180). Only the statement that writes such a value drops NO_ZERO_DATE and NO_ZERO_IN_DATE, or ERROR_FOR_DIVISION_BY_ZERO, and the session sql_mode is restored right after it. Strict mode stays on.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.25/docs/releases/release-notes-v0.23.25.md" target="_blank" rel="noopener" data-i18n="releases.links.v02325">Open v0.23.25 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.24</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02324">flashback guard is bound to its own script</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02324">binlogviz flashback binds the apply guard to its own script with a token, and every undo statement checks it. A header-less block pasted into a session that ran another script, a client reconnect inside a block, and XA START now change no row. A script applied in a session that is already read-only stops with a clear message instead of a bare ERROR 1792. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.24/docs/releases/release-notes-v0.23.24.md" target="_blank" rel="noopener" data-i18n="releases.links.v02324">Open v0.23.24 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.23</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02323">flashback apply guard fails closed on MariaDB and MySQL 5.7</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02323">binlogviz flashback checks schema-file generated columns against the logged rows and accepts more correct dumps (UPPER, CONCAT, JSON extraction, DECIMAL division). A wrong dump is refused, or stopped by an apply-time guard that locks the session with SET SESSION TRANSACTION READ ONLY, so mysql --force writes no rows on MySQL 5.7+, MariaDB 10.2+, older servers, and a server that refuses PREPARE. analyze output is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.23/docs/releases/release-notes-v0.23.23.md" target="_blank" rel="noopener" data-i18n="releases.links.v02323">Open v0.23.23 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.22</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02322">binlogviz flashback prints undo SQL</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02322">binlogviz flashback (#153) prints SQL that undoes selected DELETE, UPDATE, and INSERT row changes from a MySQL 8 binlog, without connecting to a database. Statements are in reverse binlog order, one START TRANSACTION / COMMIT per original transaction, with the original GTID and file:start-position in a comment. The rule is: restore exactly, or refuse (exit 1, one Error: line, no SQL) or warn on stderr before anything is applied. Six rounds of tip dogfooding on MySQL 8.0.46 found and fixed #154, #155, #156, #158, #159, #161, #162, #163, #165, #170, and #171 before this release, and #173 fixes the resume-after-failure steps. Three P2 limitations stay open with documented workarounds: #166, #167, and #168.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.22/docs/releases/release-notes-v0.23.22.md" target="_blank" rel="noopener" data-i18n="releases.links.v02322">Open v0.23.22 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.21</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02321">Hot Rows ranks UPDATE and DELETE primary keys</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02321">analyze ranks the primary keys touched by the most UPDATE and DELETE row images. The section is Hot Rows, after No Primary Key and before Top Threads, in text, Markdown, and HTML. Identity comes only from MySQL 8 binlog_row_metadata=FULL (SIMPLE_PRIMARY_KEY or PRIMARY_KEY_WITH_PREFIX). On mysql-8.0.46-hot-rows-full.binlog, shop.counters id=7 has 7 touches across 6 transactions. The first transaction is 87adba67-c25d-11f1-ba98-822b383dbcd0:11 at byte 2791 (2026-10-06 14:00:01 UTC) and the last is 87adba67-c25d-11f1-ba98-822b383dbcd0:16 at byte 4605 (2026-10-06 14:00:06 UTC). Those bytes are the GTID event's # at start, so mysqlbinlog or BinlogServer can open the group. The primary key is id, column @2. The first column is label. The report prints id=7 and does not guess @1. shop.heap has no primary key and twelve UPDATE images, and it is not ranked. --top limits the list. --top-rows overrides it (0 keeps every tracked key). --sql-context off hides the key values and keeps the counts.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.21/docs/releases/release-notes-v0.23.21.md" target="_blank" rel="noopener" data-i18n="releases.links.v02321">Open v0.23.21 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.20</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02320">Replica Apply Delay ranks commit timestamps</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02320">analyze reports, after Busiest Minutes, how far behind a replica was when it applied each transaction. MySQL 8 GTID events carry original_commit_timestamp and immediate_commit_timestamp. Delay is immediate minus original. On mysql-8.0.46-replica-apply.binlog the max delay is 5426519 µs (5.426519s), p95 is 5208595 µs (5.208595s), the peak minute is 2026-10-07 11:41:00 UTC, and the slowest transaction is 11458b63-c244-11f1-a0d2-822b383dbcd0:7 at byte 197 (shop.audit, 1 row). The lead sentence says this assumes the source and replica clocks agree. That sentence is not a finding. There is no new CLI flag.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.20/docs/releases/release-notes-v0.23.20.md" target="_blank" rel="noopener" data-i18n="releases.links.v02320">Open v0.23.20 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.19</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02319">DDL Timeline names the holding transaction</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02319">analyze names, on the DDL Timeline, the transaction that holds each DDL, so a DBA can copy a stop without grepping the binlog. The timeline prints that GTID when the binlog has one, the file and byte where the transaction starts, and a copy-ready mysqlbinlog --stop-position (MariaDB prints mariadb-binlog). When a GTID exists it also prints BinlogServer stop_gtid. That stop replays earlier events and excludes this DDL. On mysql-8.0.46-drop-table.binlog, DROP TABLE shop.orders is GTID 4d8275bc-c221-11f1-a25e-822b383dbcd0:2. The GTID event starts at byte 523. The Query event stays 600-734. There is no new CLI flag. It pairs with BinlogServer v0.5.54 stop_gtid.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.19/docs/releases/release-notes-v0.23.19.md" target="_blank" rel="noopener" data-i18n="releases.links.v02319">Open v0.23.19 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.18</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02318">Busiest Minutes names driving tables</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02318">analyze names, in text, Markdown, and HTML, the tables that produced each busiest minute. The window's hottest table and the table behind the peak minute can differ. On mysql-8.0.46-busiest-minute.binlog, Activity peaks at Rows/min: 32.0 at 2026-03-15 14:05, and that minute is shop.orders 30 and shop.catalog 2, while Top Tables stays led by shop.catalog (82). JSON already had diagnostics.hot_intervals[].table_rows and minutes[].table_rows; the shape is unchanged. There is no new CLI flag. --detect-spikes stays opt-in.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.18/docs/releases/release-notes-v0.23.18.md" target="_blank" rel="noopener" data-i18n="releases.links.v02318">Open v0.23.18 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.17</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02317">No-PK UPDATE/DELETE lag finding</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02317">analyze reports tables that received UPDATE or DELETE rows and have no primary key. On a replica, each of those rows can force a table scan. MySQL 8 binlog_row_metadata=FULL marks a table has_pk, no_pk, or unknown. SIMPLE_PRIMARY_KEY and PRIMARY_KEY_WITH_PREFIX are has_pk. FULL metadata with neither field is no_pk. Without FULL metadata, presence stays unknown and the report does not emit no_pk. INSERT-only no-PK tables are named and are not ranked as a lag risk. Top Findings adds a no_primary_key warning. There is no new CLI flag.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.17/docs/releases/release-notes-v0.23.17.md" target="_blank" rel="noopener" data-i18n="releases.links.v02317">Open v0.23.17 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.16</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02316">UTC TIMESTAMP in show-rows</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02316">--show-rows prints a MySQL TIMESTAMP, including fractional seconds, as the UTC wall clock of the stored instant. The printed time does not follow the process timezone. The same instant that printed 22:00:01 on Asia/Shanghai in v0.23.15 prints 14:00:01. DATETIME stays the wall clock stored in the binlog. Column names, unsigned integers, the 32-row and 64-byte bounds, and --dml are unchanged. --show-rows stays off by default.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.16/docs/releases/release-notes-v0.23.16.md" target="_blank" rel="noopener" data-i18n="releases.links.v02316">Open v0.23.16 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.15</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02315">DML filter and opt-in row images</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02315">--dml insert,update,delete keeps those ROW kinds and composes with table, schema, time, position, and GTID filters. Summary, Top Tables, Top Transactions, Top Threads, and alerts count only the kept kinds. Nothing matched is exit 2, empty stdout, Error: dml filter matched no events. --show-rows is off by default. On, DELETE prints the before-image, UPDATE prints changed columns (before -> after) plus the unchanged count, and INSERT prints the after-image. Names come from binlog_row_metadata=FULL; otherwise columns are @1..@N. Bounds are 32 rows and 64 bytes per value. --sql-context off also omits those cells. Default text, Markdown, JSON, and HTML stay the same when neither flag is set. Flashback SQL is not in this release.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.15/docs/releases/release-notes-v0.23.15.md" target="_blank" rel="noopener" data-i18n="releases.links.v02315">Open v0.23.15 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.14</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02314">Sessions, redacted auth DDL, and stdin cleanup</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02314">Default reports rank Top Threads. --top-threads overrides --top. --sql-context off omits query and DDL text; summary is one line; full caps stored SQL and DDL at 4096 bytes and marks a cut. Auth-DDL passwords and hashes become &lt;secret&gt;, including MariaDB IDENTIFIED VIA/WITH and OR plugin chains. MariaDB SET PASSWORD is DDL on the timeline. VIEW, TRIGGER, routine, and EVENT stay on the timeline; CREATE and DROP TRIGGER use the trigger name. --include-table and --exclude-table match those names and exit 0 on a match even with no row changes. analyze - removes the stdin spool on SIGHUP, SIGINT, SIGQUIT, and SIGTERM.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.14/docs/releases/release-notes-v0.23.14.md" target="_blank" rel="noopener" data-i18n="releases.links.v02314">Open v0.23.14 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.13</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02313">Index DDL counts on the table it changes</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02313">CREATE INDEX, CREATE UNIQUE INDEX, CREATE FULLTEXT INDEX, CREATE SPATIAL INDEX, and DROP INDEX are counted on the table after ON. UNIQUE and FULLTEXT index changes stay on the DDL timeline, and SPATIAL does too. A schema written in the statement wins over the USE database. ON t(col) and CREATE TABLE t(id INT) without a space parse as the table. --include-table keeps these index DDLs.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.13/docs/releases/release-notes-v0.23.13.md" target="_blank" rel="noopener" data-i18n="releases.links.v02313">Open v0.23.13 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.12</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02312">Transaction identity when the binlog has it</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02312">Default text, Markdown, and HTML analyze reports name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host appears only when the binlog stored an invoker. A missing field stays absent. JSON already had these fields. --sql-context full is unchanged.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.12/docs/releases/release-notes-v0.23.12.md" target="_blank" rel="noopener" data-i18n="releases.links.v02312">Open v0.23.12 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.11</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02311">Filter misses stay distinct from bad files</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02311">A schema or table filter that matches nothing stays exit 2 with Error: schema/table filter matched no events. A file that ends in a partial event is exit 1, Error: binlog is truncated or corrupt. --snapshot-name without --format json fails before a report and writes no snapshot. A failing command clears the stderr progress line before Error:.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.11/docs/releases/release-notes-v0.23.11.md" target="_blank" rel="noopener" data-i18n="releases.links.v02311">Open v0.23.11 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.10</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v02310">Committed duration across the server clock</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v02310">Committed duration is the earliest-to-latest non-zero in-window timestamp, so a MySQL 8 GTID stamped at commit no longer reports 0s after SLEEP. The SLEEP(2) fixture lands in 1s-10s; --large-trx-duration 1s warns and the default 30s does not. An open BEGIN+DML fixture locks the exit-1 error line.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.10/docs/releases/release-notes-v0.23.10.md" target="_blank" rel="noopener" data-i18n="releases.links.v02310">Open v0.23.10 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.9</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0239">CHECK TABLE and SET ROLE as ADMIN</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0239">CHECK TABLE and SET ROLE, including SET ROLE ALL, close a maintenance GTID group as ADMIN. A following business transaction lets analyze exit 0. Exact FLUSH TABLES is unchanged; FLUSH TABLES WITH READ LOCK stays Unclassified.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.9/docs/releases/release-notes-v0.23.9.md" target="_blank" rel="noopener" data-i18n="releases.links.v0239">Open v0.23.9 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.8</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0238">DDL timeline and incident evidence</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0238">Analyze text and JSON surface a DDL occurrence timeline, open uncommitted BEGIN+DML groups, committed transaction duration ranking and distribution buckets, and input file size versus counted event bytes.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.8/docs/releases/release-notes-v0.23.8.md" target="_blank" rel="noopener" data-i18n="releases.links.v0238">Open v0.23.8 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.7</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0237">Unclassified QUERY and transaction payload</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0237">Unclassified QUERY fails analyze with a statement prefix; Ignored QUERY is counted and never closes; transaction payload inner ROW images share one file-relative wrapper span.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.7/docs/releases/release-notes-v0.23.7.md" target="_blank" rel="noopener" data-i18n="releases.links.v0237">Open v0.23.7 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.6</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0236">Admin QUERY close and local time</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0236">Independent management QUERY closes its GTID group, and --start/--end accept YYYY-MM-DD HH:MM:SS in the machine-local timezone.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.6/docs/releases/release-notes-v0.23.6.md" target="_blank" rel="noopener" data-i18n="releases.links.v0236">Open v0.23.6 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.5</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0235">XA ROLLBACK and CGO-free analyze</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0235">XA ROLLBACK closes its GTID group, default analyze no longer needs CGO or DuckDB, and JSON reports unmapped parser events.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.5/docs/releases/release-notes-v0.23.5.md" target="_blank" rel="noopener" data-i18n="releases.links.v0235">Open v0.23.5 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.4</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0234">MariaDB GRANT DDL</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0234">GRANT/REVOKE close consecutive MariaDB ddl GTIDs, table filters accept SCHEMA.TABLE, --prefix accepts a complete filename, and workflow export accepts -o.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.4/docs/releases/release-notes-v0.23.4.md" target="_blank" rel="noopener" data-i18n="releases.links.v0234">Open v0.23.4 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.3</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0233">MariaDB XA recovery</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0233">Physical XA PREPARE events retain their XA identity, and zero-row XA COMMIT transactions remain visible and selectable by GTID or position.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.3/docs/releases/release-notes-v0.23.3.md" target="_blank" rel="noopener" data-i18n="releases.links.v0233">Open v0.23.3 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.2</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0232">MariaDB XA GTID fix</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0232">Physical XA PREPARE events close their GTID group, so later XA COMMIT and unrelated transactions no longer fail analysis with a conflicting GTID.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.2/docs/releases/release-notes-v0.23.2.md" target="_blank" rel="noopener" data-i18n="releases.links.v0232">Open v0.23.2 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.1</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0231">MariaDB DDL GTID fix</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0231">Consecutive MariaDB DDL GTIDs form independent implicit groups, including under object filters, so analyze reaches the report instead of exiting on a conflicting GTID.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.1/docs/releases/release-notes-v0.23.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0231">Open v0.23.1 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.23.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0230">Incident-close evidence</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0230">Position and GTID windows, comparability-gated compare/trend, replayable file:pos evidence, and complete table/transaction output so a ROW incident can be closed without a second tool.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.23.0/docs/releases/release-notes-v0.23.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0230">Open v0.23.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.22.1</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0221">Operator CLI contract</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0221">HTML redirect writes stdout, STATEMENT fails with empty stdout, no-data is exit 2, MIXED JSON carries an input_format alert, and release tar.gz ships the sample ROW binlog.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.22.1/docs/releases/release-notes-v0.22.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0221">Open v0.22.1 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.22.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0220">HTML UI redesign</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0220">Complete visual redesign with modern dark aesthetics, sortable BINLOG BYTES physical volume in Top Tables, multi-chart synchronization, and interactive range zoom.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.22.0/docs/releases/release-notes-v0.22.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0220">Open v0.22.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.21.1</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0211">Operator dogfood</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0211">Text findings match JSON, MariaDB txn spans use real file positions, usable txns print mysqlbinlog commands, and the archive ships a sample ROW binlog.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.21.1/docs/releases/release-notes-v0.21.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0211">Open v0.21.1 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.21.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0210">HTML file output</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0210">Default HTML writes to a file instead of stdout, --output picks the destination, and Top Tables show INSERT/UPDATE/DELETE/DDL shares.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.21.0/docs/releases/release-notes-v0.21.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0210">Open v0.21.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.20.3</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0203">Sequential inference</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0203">Replaces unreliable offset-based last-timestamp probing with sequential inference from next file's first timestamp, making time-window filtering reliable on files of any size.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.20.3/docs/releases/release-notes-v0.20.3.md" target="_blank" rel="noopener" data-i18n="releases.links.v0203">Open v0.20.3 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.20.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0200">Fast discovery probing</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0200">Discovery-mode probing now uses two-phase timestamp extraction instead of full file scans, and text report sparklines are downsampled to stay readable for multi-hour windows.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.20.0/docs/releases/release-notes-v0.20.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0200">Open v0.20.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.18.1</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0181">Performance validation</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0181">Analyze reports keep the v0.18 DBA workflow while tightening memory and batching behavior against a real 988 MB MySQL ROW binlog smoke workload.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.18.1/docs/releases/release-notes-v0.18.1.md" target="_blank" rel="noopener" data-i18n="releases.links.v0181">Open v0.18.1 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.16.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0160">Analyze drilldowns</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0160">Analyze reports expand high-signal write patterns into bounded drilldown summaries with window-level context.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.16.0/docs/releases/release-notes-v0.16.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0160">Open v0.16.0 notes →</a>
-                </article>
-                <article class="release-card">
-                  <div class="release-card-head">
-                    <div class="release-card-version">v0.15.0</div>
-                    <div class="release-card-label" data-i18n="releases.labels.v0150">Trust boundary</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.items.v0150">Workflow status and resume now trust only rooted plan files inside the workflow root, blocking symlink escapes and arbitrary external plan paths.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/blob/v0.15.0/docs/releases/release-notes-v0.15.0.md" target="_blank" rel="noopener" data-i18n="releases.links.v0150">Open v0.15.0 notes →</a>
-                </article>
-                <article class="release-card archive">
-                  <div class="release-card-head">
-                    <div class="release-card-version" data-i18n="releases.archiveTitle">Release archive</div>
-                    <div class="release-card-label" data-i18n="releases.archiveLabel">All versions</div>
-                  </div>
-                  <div class="release-card-copy" data-i18n="releases.archiveDesc">Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.</div>
-                  <a class="release-card-link" href="https://github.com/Fanduzi/BinlogVisualizer/releases" target="_blank" rel="noopener" data-i18n="releases.archiveLink">View all release notes →</a>
-                </article>
+                <p data-i18n="trust.cards.scope.desc">A binlog analysis CLI, not a general observability platform. It runs locally and needs no hosted service.</p>
               </div>
             </div>
           </div>
@@ -1873,8 +1273,7 @@ It has published docs, explicit output contracts, release notes around HTML and 
           <div class="container">
             <p class="section-label" data-i18n="install.label">Install & Start</p>
             <h2 class="section-title" data-i18n="install.title">Install once, validate one file, widen only when the question demands it</h2>
-            <p class="section-sub" data-i18n="install.sub">The right onboarding path for a product site is simple and credible:
-install the binary, analyze one binlog, then move to ordered directory ranges and named snapshots when the incident story gets wide enough to compare against a baseline.</p>
+            <p class="section-sub" data-i18n="install.sub">Install the binary, analyze one binlog, then move to directory ranges and named snapshots when you need a baseline to compare against.</p>
 
             <div class="install-grid">
               <div class="workflow-panel reveal">
@@ -1912,6 +1311,7 @@ install the binary, analyze one binlog, then move to ordered directory ranges an
                   <a href="https://github.com/Fanduzi/BinlogVisualizer" class="btn-primary" target="_blank" rel="noopener" data-i18n="install.first.repo">Open repository</a>
                   <a href="https://github.com/Fanduzi/BinlogVisualizer#readme" class="btn-secondary" target="_blank" rel="noopener" data-i18n="install.first.docs">Read docs</a>
                 </div>
+                <p class="release-line" data-i18n="install.first.releases">What changed in each version: <a href="https://github.com/Fanduzi/BinlogVisualizer/releases" target="_blank" rel="noopener">release notes</a> and <a href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG</a>.</p>
               </div>
             </div>
           </div>
@@ -1948,7 +1348,6 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
                 <li><a href="#why" data-i18n="footer.links.why">Why BinlogViz</a></li>
                 <li><a href="#how" data-i18n="footer.links.how">How it works</a></li>
                 <li><a href="#outputs" data-i18n="footer.links.outputs">Output surfaces</a></li>
-                <li><a href="#releases" data-i18n="footer.links.releasesSection">Release arc</a></li>
                 <li><a href="#install" data-i18n="footer.links.install">Install guide</a></li>
               </ul>
             </div>
@@ -1989,9 +1388,9 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz home'
           },
           hero: {
-            badge: 'v0.35.0 — report v4 with an interval set for matched GTIDs, JSON Schema and --tz, bounded analyze memory',
+            badge: 'Local-first CLI · MySQL ROW binlogs · Open source',
             title: 'Turn MySQL ROW binlogs\ninto incident-ready reports',
-            sub: 'Fast ROW-binlog summary: hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.\nSTATEMENT or MIXED files come back empty or undercounted. Printed positions are file evidence — use them as mysqlbinlog --start-position only when the span covers the transaction events, not an XID-only interval.',
+            sub: 'BinlogViz helps DBAs and on-call engineers move from raw binlog events to a readable workload story.\nFind hot tables, large transactions, write spikes, and incident-window changes, compare current versus baseline, and hand the result to your team. Reads ROW-format binlogs; STATEMENT and MIXED events are not counted.',
             primary: 'Install BinlogViz',
             secondary: 'See output surfaces',
             code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-14T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-14T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-previous</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz trend</span> <span class="token-flag">--from-snapshots</span> <span class="token-string">\'incident-*\'</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">trend.html</span>',
@@ -2079,219 +1478,18 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           trust: {
             label: 'Trust Signals',
             title: 'Trust the contract, not just the parser',
-            sub: 'BinlogViz already has a stronger adoption story than “it parses binlogs.”\nIt has published docs, explicit output contracts, release notes around HTML and Markdown exports, and a product boundary that makes sense for DBAs.',
+            sub: 'Reports follow a documented contract, so you can script against them and hand them to a teammate without caveats.',
             cards: {
-              docs: { title: 'Documented behavior', desc: 'CLI flags, output formats, architecture, and limitations are already documented in a way that supports product messaging.' },
+              docs: { title: 'Documented behavior', desc: 'CLI flags, output formats, exit codes, and limitations are documented, and <code>binlogviz schema</code> prints the JSON Schema of every JSON output.' },
               contract: { title: 'Stable report surfaces', desc: 'Text, JSON, Markdown, and HTML make it clear where the answer can go next and who can consume it.' },
-              release: { title: 'Release-driven story', desc: 'Recent releases show the project moving from core analysis toward team-facing deliverable artifacts.' },
-              scope: { title: 'Focused scope', desc: 'It is not trying to be a general observability platform — and that constraint makes the positioning sharper.' }
-            }
-          },
-          releases: {
-            label: 'Releases',
-            title: 'Release focus and recent milestones',
-            sub: 'Keep the latest workflow release front and center, skim the last few product turns quickly, and use the archive link when you want the full history.',
-            currentLabel: 'Current release',
-            currentFocus: 'minor release',
-            currentTitle: 'report v4 with an interval set for matched GTIDs, JSON Schema and --tz, bounded analyze memory',
-            currentLink: 'Read release notes →',
-            labels: {
-              v0341: 'filtered flashback refuses a DDL that names the selected table anywhere, a runnable example in every --help',
-              v0340: 'one transaction view for every analyze format, memory-bound tests stable on one CPU',
-              v0331: 'snapshot list shows an empty diagnostics mode, DDL cap in analyze --help, archive README links, zh-CN flashback help',
-              v0330: 'flashback apply fixes: SELECT grant, CHAR/BINARY keys, an anchored commit line',
-              v0320: 'a failed flashback apply never commits a prefix, one XA transaction, documented apply grants',
-              v0310: 'flashback scripts commit only through binlogviz flashback verify, streaming verify',
-              v0300: 'streaming generated-column flashback, exit 10 resource ceilings, ADR 0012 package split',
-              v0290: 'summary DDL cap, snapshot list flags trimmed files, --help examples and an agent guide in the archive',
-              v0280: 'analyze --diagnostics budget for agents, GTID on transaction alerts, trimmed reports refused',
-              v0270: 'every JSON output versioned, workflow refuses unknown artifacts, version shows the commit',
-              v0261: 'flashback --conflict guard skips a primary key moved back onto a reused key',
-              v0260: 'flashback --plan v2: a plan on every refusal, coded warnings, --conflict-limit',
-              v0250: 'exit-code taxonomy everywhere, ledger-based workflow clean, fail-closed install.sh, 16 MiB+ compressed transactions',
-              v0240: 'streaming flashback, conflict refusal, typed exit codes, hardened parsing',
-              v02334: 'flashback refusal messages: correct FLUSH TABLES advice, printed once per run',
-              v02333: 'flashback checks JSON [0] and DECIMAL DIV/% the way MySQL does',
-              v02332: 'flashback div_precision_increment hint is fast again and names unchecked increments',
-              v02331: 'flashback names the schema-file table when a letter-case match is refused',
-              v02330: 'flashback names the div_precision_increment behind a refused / column',
-              v02329: 'flashback --schema-file accepts dumps taken after an ADD COLUMN and joined dumps',
-              v02328: 'flashback --schema-file uses dumps with spaced or differently cased names',
-              v02327: 'flashback guard error never shows a column that does not exist',
-              v02326: 'flashback guard error keeps non-ASCII column names',
-              v02325: 'flashback restores rows written by a non-strict session',
-              v02324: 'flashback guard is bound to its own script',
-              v02323: 'flashback apply guard fails closed on MariaDB and MySQL 5.7',
-              v02322: 'binlogviz flashback prints undo SQL',
-              v02321: 'Hot Rows ranks UPDATE and DELETE primary keys',
-              v02320: 'Replica Apply Delay ranks commit timestamps',
-              v02319: 'DDL Timeline names the holding transaction',
-              v02318: 'Busiest Minutes names driving tables',
-              v02317: 'No-PK UPDATE/DELETE lag finding',
-              v02316: 'UTC TIMESTAMP in show-rows',
-              v02315: 'DML filter and opt-in row images',
-              v02314: 'Sessions, redacted auth DDL, and stdin cleanup',
-              v02313: 'Index DDL counts on the table it changes',
-              v02312: 'Transaction identity when the binlog has it',
-              v02311: 'Filter misses stay distinct from bad files',
-              v02310: 'Committed duration across the server clock',
-              v0239: 'CHECK TABLE and SET ROLE as ADMIN',
-              v0238: 'DDL timeline and incident evidence',
-              v0237: 'Unclassified QUERY and transaction payload',
-              v0236: 'Admin QUERY close and local time',
-              v0235: 'XA ROLLBACK and CGO-free analyze',
-              v0234: 'MariaDB GRANT DDL',
-              v0233: 'MariaDB XA recovery',
-              v0232: 'MariaDB XA GTID fix',
-              v0231: 'MariaDB DDL GTID fix',
-              v0230: 'Incident-close evidence',
-              v0221: 'Operator CLI contract',
-              v0220: 'HTML UI redesign',
-              v0211: 'Operator dogfood',
-              v0210: 'HTML file output',
-              v0203: 'Sequential inference',
-              v0202: 'Probe regression fix',
-              v0200: 'Fast discovery probing',
-              v0181: 'Performance validation',
-              v0160: 'Analyze drilldowns',
-              v0150: 'Trust boundary'
-            },
-            links: {
-              v0341: 'Open v0.34.1 notes →',
-              v0340: 'Open v0.34.0 notes →',
-              v0331: 'Open v0.33.1 notes →',
-              v0330: 'Open v0.33.0 notes →',
-              v0320: 'Open v0.32.0 notes →',
-              v0310: 'Open v0.31.0 notes →',
-              v0300: 'Open v0.30.0 notes →',
-              v0290: 'Open v0.29.0 notes →',
-              v0280: 'Open v0.28.0 notes →',
-              v0270: 'Open v0.27.0 notes →',
-              v0261: 'Open v0.26.1 notes →',
-              v0260: 'Open v0.26.0 notes →',
-              v0250: 'Open v0.25.0 notes →',
-              v0240: 'Open v0.24.0 notes →',
-              v02334: 'Open v0.23.34 notes →',
-              v02333: 'Open v0.23.33 notes →',
-              v02332: 'Open v0.23.32 notes →',
-              v02331: 'Open v0.23.31 notes →',
-              v02330: 'Open v0.23.30 notes →',
-              v02329: 'Open v0.23.29 notes →',
-              v02328: 'Open v0.23.28 notes →',
-              v02327: 'Open v0.23.27 notes →',
-              v02326: 'Open v0.23.26 notes →',
-              v02325: 'Open v0.23.25 notes →',
-              v02324: 'Open v0.23.24 notes →',
-              v02323: 'Open v0.23.23 notes →',
-              v02322: 'Open v0.23.22 notes →',
-              v02321: 'Open v0.23.21 notes →',
-              v02320: 'Open v0.23.20 notes →',
-              v02319: 'Open v0.23.19 notes →',
-              v02318: 'Open v0.23.18 notes →',
-              v02317: 'Open v0.23.17 notes →',
-              v02316: 'Open v0.23.16 notes →',
-              v02315: 'Open v0.23.15 notes →',
-              v02314: 'Open v0.23.14 notes →',
-              v02313: 'Open v0.23.13 notes →',
-              v02312: 'Open v0.23.12 notes →',
-              v02311: 'Open v0.23.11 notes →',
-              v02310: 'Open v0.23.10 notes →',
-              v0239: 'Open v0.23.9 notes →',
-              v0238: 'Open v0.23.8 notes →',
-              v0237: 'Open v0.23.7 notes →',
-              v0236: 'Open v0.23.6 notes →',
-              v0235: 'Open v0.23.5 notes →',
-              v0234: 'Open v0.23.4 notes →',
-              v0233: 'Open v0.23.3 notes →',
-              v0232: 'Open v0.23.2 notes →',
-              v0231: 'Open v0.23.1 notes →',
-              v0230: 'Open v0.23.0 notes →',
-              v0221: 'Open v0.22.1 notes →',
-              v0220: 'Open v0.22.0 notes →',
-              v0211: 'Open v0.21.1 notes →',
-              v0210: 'Open v0.21.0 notes →',
-              v0203: 'Open v0.20.3 notes →',
-              v0202: 'Open v0.20.2 notes →',
-              v0200: 'Open v0.20.0 notes →',
-              v0181: 'Open v0.18.1 notes →',
-              v0160: 'Open v0.16.0 notes →',
-              v0150: 'Open v0.15.0 notes →'
-            },
-            archiveTitle: 'Release archive',
-            archiveLabel: 'All versions',
-            archiveDesc: 'Browse the full release history when you want older milestones, detailed changelogs, or download artifacts beyond the latest workflow surface.',
-            archiveLink: 'View all release notes →',
-            items: {
-              v0350: 'Minor release, breaking for analyze --format json: report_version is 4. selection.matched_gtids is replaced by the interval set selection.matched_gtid_set and the count selection.matched_transactions, so GTID filters no longer run out of memory on millions of matches, and more than 100,000 intervals is exit 10 matched_gtid_intervals (#379, ADR 0018); compare and trend read v3 and v4. binlogviz schema prints the JSON Schema of every JSON output and --tz selects a display zone (ADR 0017). analyze memory no longer grows with transactions (#364, #376), every format lists the same key transactions (#352), a minute is no longer split when timestamps go backwards (#377), and a flashback script stops on MariaDB with ERROR 1231. Built with Go 1.26.10 and mapstructure v2.4.0. plan_version 2 and schema_version 1 are unchanged. Known issues: #399, #400, #403, #404, #303 (Linux empty commit).',
-              v0341: 'Patch release for a P1, upgrade if you use filtered flashback: with --include-table, --exclude-table, --include-schema or --exclude-schema, v0.34.0 and earlier checked an in-range DDL against its first-named table only, so a RENAME TABLE or DROP TABLE that named the selected table later was not refused and the undo could write rows into the wrong table. Every table a DDL names as a source or a target is now checked, and a DDL that cannot be read completely refuses with exit 6 (#368, ADR 0015). Every command\'s --help has a runnable example, and tests prove no command prompts or waits on stdin (#365). No breaking changes for analyze or unfiltered flashback: schema_version 1, plan_version 2, report_version 3, analyze output and exit codes are unchanged from v0.34.0. Known issue: #303 (Linux empty commit).',
-              v0340: 'ADR 0012 step 5: text, Markdown, JSON and HTML read one transaction view from internal/report/view, and report.Write is the only format switch (#353). A listed format with no case returns unhandled format instead of rendering text (#356, #354). The flashback and verify memory-bound tests measure live heap at fixed points and pass at GOMAXPROCS=1 (#358, #361, closes #351). docs/production-readiness.md is new (#359). No breaking changes and no output change: schema_version 1, plan_version 2, report_version 3, analyze output, flashback scripts, --help and exit codes are unchanged from v0.33.1. Known issue: #303 (Linux empty commit).',
-              v0331: 'Patch release that closes the #312 follow-ups: snapshot list shows a file with diagnostics_mode "" as (empty) and JSON keeps "diagnostics_mode": "", and readers still refuse it with exit 9; analyze --help says --diagnostics summary caps ddl_events at --top and that --top 0 is the default 10; README links to files the release archive does not ship are absolute GitHub URLs; zh-CN flashback --help translates --conflict, --plan, --error-format and -q. No breaking changes: schema_version 1, plan_version 2, analyze output and flashback scripts are unchanged from v0.33.0. Known issue: #303 (Linux empty commit).',
-              v0330: 'Breaking for flashback apply: v0.32.0 scripts must be regenerated; verify exits 6 with details.reason old_format (#342). Apply grants on the undo tables are SELECT, INSERT, UPDATE, DELETE (#341). PAD_CHAR_TO_FULL_LENGTH is removed before the undo and BINARY(n) keys are 0x00-padded, and a keyed undo that does not change exactly one row rolls the apply back (#347, #348). A failed apply drops its procedure and prints the real error (#338, #343). Success is the anchored line binlogviz: undo committed, N statements (or ... with skips), not the mysql exit code. Refusals carry details.reason and details.table (#344). schema_version 1, plan_version 2 and analyze output are unchanged. Known issue: #303 (Linux empty commit).',
-              v0320: 'Breaking for flashback apply: ADR 0014 runs the undo in one XA transaction, so a failed apply never commits a prefix and script BEGIN, START TRANSACTION, or DDL cannot commit it; the finish commits only when every statement succeeded (#328, #329, #332). Apply needs CREATE, CREATE ROUTINE, ALTER ROUTINE on binlogviz.*, plus EXECUTE when automatic_sp_privileges=0; XA_RECOVER_ADMIN is not needed (#333). A pre-XA failure stays poisoned under mysql --force. Each run gets its own SQL SECURITY INVOKER finish procedure, so leftovers do not block; clean them with DROP DATABASE IF EXISTS binlogviz (#334). flashback verify --help usage is fixed (#335). v0.31.0 scripts do not verify; regenerate them. schema_version 1, plan_version 2 and analyze output are unchanged. Known issues: #338 (some missing-grant paths leave the per-run procedure behind), #303 (Linux empty commit).',
-              v0310: 'Breaking for flashback apply: ADR 0013 makes the published undo one transaction that never commits by itself; apply with binlogviz flashback verify file.sql | mysql, not mysql < file (#318, #321). verify checks the digest and emits the conditional COMMIT; partial, edited, appended, or truncated scripts exit 6 and commit nothing, and generation exit 8 leaves no applyable prefix. Invalid BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES exit 3. verify streams: RSS about 34-41 MB on 400 MB+ scripts, heap ceiling exit 10 (#327). The SQL is the new sealed format; plan_version 2 and analyze output are unchanged. Known issues: #328 (verify | mysql --force can commit partial undo on a missing table or column), #329 (implicit commit after the script), #303 (Linux empty commit).',
-              v0300: 'ADR 0012 steps 1-4 move mysqlexpr, schemacatalog, guard, and the flashback planner into their own packages (#315, #316, #320); analyze and flashback output stay byte-identical to v0.29.0 on the tip-QA corpora. Generated-column review with --schema-file streams: on a 1.07 GB binlog that produced a 1.13 GB script, tip RSS is about 128 MB where v0.29.0 OOMed with exit 2 (#317). Exit 10 resource (details.reason spill_limit / memory_limit) and BINLOGVIZ_SPILL_BYTES never report a ceiling as exit 2. guard.Seal refuses a digest under 8 bytes (#319). Known issues: #303 (Linux empty commit), #321 (truncated exit-8 script can partially apply), #318 (guard token does not detect content edits).',
-              v0290: 'Breaking for --diagnostics summary only: diagnostics.ddl_events is the first --top events and ddl_events_omitted counts the rest; on a 1.07 GB binlog summary drops from 42759 to 32632 bytes. Default and full output is byte-identical, report_version 3 (ADR 0011, #308, #311). snapshot list marks a trimmed file with a DIAGNOSTICS column and diagnostics_mode in JSON, diagnostics_mode edge values are pinned, and --diagnostics "" exits 3. Six commands have --help examples, flashback --sql-context help is rewritten, and release archives ship the agent usage guide and both READMEs. Known issues: #303 (Linux binaries report an empty commit) and #312.',
-              v0280: 'analyze --diagnostics full|summary|off shrinks analyze JSON for agents; the default full is unchanged, and on a 1.07 GB binlog stdout is 63042, 42759 and 22627 bytes (ADR 0011, #282, #307). A transaction alert carries its gtid, ready for flashback --include-gtids. Snapshots and workflow artifacts always keep full diagnostics, and compare, trend, snapshot save and show, and workflow resume refuse a trimmed report with exit 9 (reduced_diagnostics) instead of comparing omitted lists as empty. No breaking changes: report_version 3 and plan_version 2. Known issues: #303 (Linux binaries report an empty commit) and #308.',
-              v0270: 'Every JSON output is versioned: compare, trend, snapshot and workflow JSON start with schema_version 1, while analyze (report_version 3) and flashback --plan (plan_version 2) output is byte-identical (ADR 0010, #282, #302). workflow status, resume and clean refuse a compare or trend artifact with an unknown schema_version with exit 9 and touch nothing. binlogviz version prints the build\'s git commit, and version --format json prints it for agents. No breaking changes. Known issue: Linux release binaries report an empty commit until #303 is fixed; macOS archives and checkout builds report it.',
-              v0261: 'binlogviz flashback --conflict guard no longer fails with ERROR 1062 when an UPDATE moved a primary key and a later row reused the old key: the move-back changes no row, like any other row changed later, and the rest of the block applies (#270, #299). The default --conflict refuse still exits 7. No breaking changes: exit codes, plan_version 2, analyze output and flashback SQL outside the guard are unchanged.',
-              v0260: 'Breaking for scripts: flashback --plan is plan_version 2 (#270, #282, #296). Warnings are {code, message} with a code that does not change with --lang, and exit 6 and exit 7 refusals now print the plan with would_refuse and a refusal {kind, message}, so the JSON alone tells ok, refused and conflict apart. flashback --conflict-limit N (default 20, 0 for all) sets how many conflicts the plan and the exit 7 details list; count stays the full count. Analyze output, flashback SQL, stderr and exit codes are unchanged.',
-              v0250: 'Breaking for scripts: every command error has a kind, exit 9 unsupported is new, and many failures moved off exit 1 (ADR 0009, #277, #284, #286). workflow clean deletes only files its ledger.jsonl attributes, moves them to .trash, and refuses untrusted manifests, failed runs and paths outside the root (#287-#291). install.sh fails closed on bad checksums or missing tools and defaults to the latest release (#283, #292). Real MySQL 8.0 compressed transactions of 16 MiB and up now parse, with bounded streaming decompression (#278, #293).',
-              v0240: 'binlogviz flashback streams row images through a temp file (#258) and refuses with exit 7 when a selected row was changed again later; --conflict guard and --plan let you choose (#259, #267). Every command has typed exit codes and --error-format json (#263, #268). Event CRC32 is verified and hostile input is bounded before decoding, so corrupt binlogs exit 5 (#271, #272). Also --quiet and no ANSI on non-TTY stderr (#253), password redaction (#250), a faster top-transactions ranking (#252) and MariaDB 11.4 collations (#269). Scripts that matched exit 1 must read the new codes.',
-              v02334: 'binlogviz flashback only changes messages; scripts, exit codes and accept/refuse are unchanged. zh-CN errors and warnings start with 错误：/警告： (#227, #244). The div_precision_increment hand-restore advice gives SET SESSION with a defined N, FLUSH TABLES `db`.`tbl`, what FLUSH waits for, and a fresh-connection alternative, and is printed once per run, so refusal stderr is about 31-41% smaller (#246). A correct dump at an increment flashback cannot check is told it may be right (#243, #231).',
-              v02333: 'binlogviz flashback now evaluates $.v[0] on a non-array JSON value as the value itself (#237) and keeps MySQL rounding for a / inside DIV, % or MOD on DECIMAL (#238). Both could give a rare false accept before. More DIV/% DECIMAL columns are verified and kept in the script; a few that were verified only by luck are now left out with a guard. Also the #225 label fix and three refactors with unchanged output (#234, #235, #236).',
-              v02332: 'binlogviz flashback re-checks a refused / column at every div_precision_increment much faster (#226): a refused run on a 19.5 MB, 186-table binlog takes 27 s instead of about 10 h on v0.23.30/31. The hint now names increments it could not check instead of a cut-short range (#227), and suggests --exclude-table. Accept and refuse decisions and scripts are unchanged.',
-              v02331: 'binlogviz flashback --schema-file now names the schema-file table as well as the binlog table when a table matched only by letter case is refused, and the fold warning says it assumes lower_case_table_names=1 or 2 on the binlog server (#215). Accept and refuse decisions and scripts are unchanged. analyze output is unchanged.',
-              v02330: 'binlogviz flashback --schema-file now says which div_precision_increment values fit when a generated column with / is refused, says the dump may be right, and points at --include-table / --exclude-table instead of only blaming the dump (#193). The table is still refused; accept and refuse decisions and scripts are unchanged. analyze output is unchanged.',
-              v02329: 'binlogviz flashback --schema-file treats an ADD COLUMN that is already in the dump as applied, so a correct incident-time dump is no longer refused, and each Database header in joined mysqldump outputs binds the dump that follows it (#167). Off-timeline dumps and changed definitions are still refused. analyze output is unchanged.',
-              v02328: 'binlogviz flashback --schema-file now reads a mysqldump Database: header whose name has spaces, and uses a dump table that differs from the binlog only in letter case when the binlog names are all lower case, as with a lower_case_table_names=0 dump and a lower_case_table_names=1 binlog (#187). A warning names the file table, and the rows are still checked against it. analyze output is unchanged.',
-              v02327: 'binlogviz flashback shows every | in a guard label as / (#208), so a column name ending in " |" can no longer form the list separator and the 200-byte ERROR 1231 cut always keeps whole names. The SELECT on stdout and the SQL keep the real names. The guard refuses in the same cases and writes no rows. analyze output is unchanged.',
-              v02326: 'binlogviz flashback lists non-ASCII column names in the guard ERROR 1231 line (#192). MySQL cuts that value at 200 bytes, and the guard now picks whole names by bytes, so CJK names are listed instead of the bare count. The guard refuses in the same cases and writes no rows. analyze output is unchanged.',
-              v02325: 'binlogviz flashback restores zero dates and generated columns that divided by zero when the script is applied in a strict session (#180). Only the statement that writes such a value drops NO_ZERO_DATE and NO_ZERO_IN_DATE, or ERROR_FOR_DIVISION_BY_ZERO, and the session sql_mode is restored right after it. Strict mode stays on.',
-              v02324: 'binlogviz flashback binds the apply guard to its own script with a token, and every undo statement checks it. A header-less block pasted into a session that ran another script, a client reconnect inside a block, and XA START now change no row. A script applied in a session that is already read-only stops with a clear message instead of a bare ERROR 1792. analyze output is unchanged.',
-              v02323: 'binlogviz flashback checks schema-file generated columns against the logged rows and accepts more correct dumps (UPPER, CONCAT, JSON extraction, DECIMAL division). A wrong dump is refused, or stopped by an apply-time guard that locks the session with SET SESSION TRANSACTION READ ONLY, so mysql --force writes no rows on MySQL 5.7+, MariaDB 10.2+, older servers, and a server that refuses PREPARE. analyze output is unchanged.',
-              v02322: 'binlogviz flashback (#153) prints SQL that undoes selected DELETE, UPDATE, and INSERT row changes from a MySQL 8 binlog, without connecting to a database. Statements are in reverse binlog order, one START TRANSACTION / COMMIT per original transaction, with the original GTID and file:start-position in a comment. The rule is: restore exactly, or refuse (exit 1, one Error: line, no SQL) or warn on stderr before anything is applied. Six rounds of tip dogfooding on MySQL 8.0.46 found and fixed #154, #155, #156, #158, #159, #161, #162, #163, #165, #170, and #171 before this release, and #173 fixes the resume-after-failure steps. Three P2 limitations stay open with documented workarounds: #166, #167, and #168.',
-              v02321: 'analyze ranks the primary keys touched by the most UPDATE and DELETE row images. The section is Hot Rows, after No Primary Key and before Top Threads, in text, Markdown, and HTML. Identity comes only from MySQL 8 binlog_row_metadata=FULL (SIMPLE_PRIMARY_KEY or PRIMARY_KEY_WITH_PREFIX). On mysql-8.0.46-hot-rows-full.binlog, shop.counters id=7 has 7 touches across 6 transactions. The first transaction is 87adba67-c25d-11f1-ba98-822b383dbcd0:11 at byte 2791 (2026-10-06 14:00:01 UTC) and the last is 87adba67-c25d-11f1-ba98-822b383dbcd0:16 at byte 4605 (2026-10-06 14:00:06 UTC). Those bytes are the GTID event\'s # at start, so mysqlbinlog or BinlogServer can open the group. The primary key is id, column @2. The first column is label. The report prints id=7 and does not guess @1. shop.heap has no primary key and twelve UPDATE images, and it is not ranked. --top limits the list. --top-rows overrides it (0 keeps every tracked key). --sql-context off hides the key values and keeps the counts.',
-              v02320: 'analyze reports, after Busiest Minutes, how far behind a replica was when it applied each transaction. MySQL 8 GTID events carry original_commit_timestamp and immediate_commit_timestamp. Delay is immediate minus original. On mysql-8.0.46-replica-apply.binlog the max delay is 5426519 µs (5.426519s), p95 is 5208595 µs (5.208595s), the peak minute is 2026-10-07 11:41:00 UTC, and the slowest transaction is 11458b63-c244-11f1-a0d2-822b383dbcd0:7 at byte 197 (shop.audit, 1 row). The lead sentence says this assumes the source and replica clocks agree. That sentence is not a finding. There is no new CLI flag.',
-              v02319: 'analyze names, on the DDL Timeline, the transaction that holds each DDL, so a DBA can copy a stop without grepping the binlog. The timeline prints that GTID when the binlog has one, the file and byte where the transaction starts, and a copy-ready mysqlbinlog --stop-position (MariaDB prints mariadb-binlog). When a GTID exists it also prints BinlogServer stop_gtid. That stop replays earlier events and excludes this DDL. On mysql-8.0.46-drop-table.binlog, DROP TABLE shop.orders is GTID 4d8275bc-c221-11f1-a25e-822b383dbcd0:2. The GTID event starts at byte 523. The Query event stays 600-734. There is no new CLI flag. It pairs with BinlogServer v0.5.54 stop_gtid.',
-              v02318: 'analyze names, in text, Markdown, and HTML, the tables that produced each busiest minute. The window\'s hottest table and the table behind the peak minute can differ. On mysql-8.0.46-busiest-minute.binlog, Activity peaks at Rows/min: 32.0 at 2026-03-15 14:05, and that minute is shop.orders 30 and shop.catalog 2, while Top Tables stays led by shop.catalog (82). JSON already had diagnostics.hot_intervals[].table_rows and minutes[].table_rows; the shape is unchanged. There is no new CLI flag. --detect-spikes stays opt-in.',
-              v02317: 'analyze reports tables that received UPDATE or DELETE rows and have no primary key. On a replica, each of those rows can force a table scan. MySQL 8 binlog_row_metadata=FULL marks a table has_pk, no_pk, or unknown. SIMPLE_PRIMARY_KEY and PRIMARY_KEY_WITH_PREFIX are has_pk. FULL metadata with neither field is no_pk. Without FULL metadata, presence stays unknown and the report does not emit no_pk. INSERT-only no-PK tables are named and are not ranked as a lag risk. Top Findings adds a no_primary_key warning. There is no new CLI flag.',
-              v02316: '--show-rows prints a MySQL TIMESTAMP, including fractional seconds, as the UTC wall clock of the stored instant. The printed time does not follow the process timezone. The same instant that printed 22:00:01 on Asia/Shanghai in v0.23.15 prints 14:00:01. DATETIME stays the wall clock stored in the binlog. Column names, unsigned integers, the 32-row and 64-byte bounds, and --dml are unchanged. --show-rows stays off by default.',
-              v02315: '--dml insert,update,delete keeps those ROW kinds and composes with table, schema, time, position, and GTID filters. Summary, Top Tables, Top Transactions, Top Threads, and alerts count only the kept kinds. Nothing matched is exit 2, empty stdout, Error: dml filter matched no events. --show-rows is off by default. On, DELETE prints the before-image, UPDATE prints changed columns (before -> after) plus the unchanged count, and INSERT prints the after-image. Names come from binlog_row_metadata=FULL; otherwise columns are @1..@N. Bounds are 32 rows and 64 bytes per value. --sql-context off also omits those cells. Default text, Markdown, JSON, and HTML stay the same when neither flag is set. Flashback SQL is not in this release.',
-              v02314: 'Default reports rank Top Threads. --top-threads overrides --top. --sql-context off omits query and DDL text; summary is one line; full caps stored SQL and DDL at 4096 bytes and marks a cut. Auth-DDL passwords and hashes become &lt;secret&gt;, including MariaDB IDENTIFIED VIA/WITH and OR plugin chains. MariaDB SET PASSWORD is DDL on the timeline. VIEW, TRIGGER, routine, and EVENT stay on the timeline; CREATE and DROP TRIGGER use the trigger name. --include-table and --exclude-table match those names and exit 0 on a match even with no row changes. analyze - removes the stdin spool on SIGHUP, SIGINT, SIGQUIT, and SIGTERM.',
-              v02313: 'CREATE INDEX, CREATE UNIQUE INDEX, CREATE FULLTEXT INDEX, CREATE SPATIAL INDEX, and DROP INDEX are counted on the table after ON. UNIQUE and FULLTEXT index changes stay on the DDL timeline, and SPATIAL does too. A schema written in the statement wins over the USE database. ON t(col) and CREATE TABLE t(id INT) without a space parse as the table. --include-table keeps these index DDLs.',
-              v02312: 'Default text, Markdown, and HTML analyze reports name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host appears only when the binlog stored an invoker. A missing field stays absent. JSON already had these fields. --sql-context full is unchanged.',
-              v02311: 'A schema or table filter that matches nothing stays exit 2 with Error: schema/table filter matched no events. A file that ends in a partial event is exit 1, Error: binlog is truncated or corrupt. --snapshot-name without --format json fails before a report and writes no snapshot. A failing command clears the stderr progress line before Error:.',
-              v02310: 'Committed duration is the earliest-to-latest non-zero in-window timestamp, so a MySQL 8 GTID stamped at commit no longer reports 0s after SLEEP. The SLEEP(2) fixture lands in 1s-10s; --large-trx-duration 1s warns and the default 30s does not. An open BEGIN+DML fixture locks the exit-1 error line.',
-              v0239: 'CHECK TABLE and SET ROLE, including SET ROLE ALL, close a maintenance GTID group as ADMIN. A following business transaction lets analyze exit 0. Exact FLUSH TABLES is unchanged; FLUSH TABLES WITH READ LOCK stays Unclassified.',
-              v0238: 'Analyze text and JSON surface a DDL occurrence timeline, open uncommitted BEGIN+DML groups, committed transaction duration ranking and distribution buckets, and input file size versus counted event bytes.',
-              v0237: 'Unclassified QUERY fails analyze with a statement prefix; Ignored QUERY is counted and never closes; transaction payload inner ROW images share one file-relative wrapper span.',
-              v0236: 'Independent management QUERY closes its GTID group, and --start/--end accept YYYY-MM-DD HH:MM:SS in the machine-local timezone.',
-              v0235: 'XA ROLLBACK closes its GTID group, default analyze no longer needs CGO or DuckDB, and JSON reports unmapped parser events.',
-              v0234: 'GRANT/REVOKE close consecutive MariaDB ddl GTIDs, table filters accept SCHEMA.TABLE, --prefix accepts a complete filename, and workflow export accepts -o.',
-              v0233: 'Physical XA PREPARE events retain their XA identity, and zero-row XA COMMIT transactions remain visible and selectable by GTID or position.',
-              v0232: 'Physical XA PREPARE events now close their GTID group, so later XA COMMIT and unrelated transactions no longer fail analysis with a conflicting GTID.',
-              v0231: 'Consecutive MariaDB DDL GTIDs now form independent implicit groups, including under object filters, so analyze reaches the report instead of exiting on a conflicting GTID.',
-              v0230: 'Position and GTID windows, comparability-gated compare/trend, replayable file:pos evidence, and complete table/transaction output so a ROW incident can be closed without a second tool.',
-              v0221: 'HTML redirect writes stdout, STATEMENT fails with empty stdout, no-data is exit 2, MIXED JSON carries an input_format alert, and release tar.gz ships the sample ROW binlog.',
-              v0220: 'Complete visual redesign with modern dark aesthetics, sortable BINLOG BYTES physical volume in Top Tables, multi-chart synchronization, and interactive range zoom.',
-              v0211: 'Text findings match JSON, MariaDB txn spans use real file positions, usable txns print mysqlbinlog commands, and the archive ships a sample ROW binlog.',
-              v0210: 'Default HTML writes to a file instead of stdout, --output picks the destination, and Top Tables show INSERT/UPDATE/DELETE/DDL shares.',
-              v0203: 'Replaces unreliable offset-based last-timestamp probing with sequential inference from next file\'s first timestamp, making time-window filtering reliable on files of any size.',
-              v0202: 'Fixes a regression that excluded all binlog files from time-windowed analysis on large files, and adds an explicit error when discovery resolves zero files.',
-              v0201: 'Offset-based timestamp probing now tolerates corrupted or truncated events gracefully, and HTML drill-down charts display Y-axis labels for clarity.',
-              v0200: 'Discovery-mode probing now uses two-phase timestamp extraction instead of full file scans, and text report sparklines are downsampled to stay readable for multi-hour windows.',
-              v0181: 'Analyze reports keep the v0.18 DBA workflow while tightening memory and batching behavior against a real 988 MB MySQL ROW binlog smoke workload.',
-              v0180: 'Analyze, compare, and trend now share richer DBA diagnostics: file coverage, DDL timelines, TPS and event-mix charts, transaction evidence, and localized HTML reports that make incident windows easier to explain.',
-              v0170: 'Compare and trend reports now expand high-signal pattern changes into bounded cross-window drilldown summaries, so operators can see why a pattern moved without flooding the report.',
-              v0160: 'Analyze reports now expand high-signal write patterns into bounded drilldown summaries with window-level context.',
-              v0150: 'Workflow status and resume now trust only rooted plan files inside the workflow root, blocking symlink escapes and arbitrary external plan paths.',
-              v0130: 'Findings now link back to supporting compare and trend evidence, so report summaries are traceable instead of isolated.'
+              release: { title: 'Predictable failures', desc: 'Every error has a kind and a documented exit code, so a script can tell a filter that matched nothing from a truncated file.' },
+              scope: { title: 'Focused scope', desc: 'A binlog analysis CLI, not a general observability platform. It runs locally and needs no hosted service.' }
             }
           },
           install: {
             label: 'Install & Start',
             title: 'Install once, validate one file, widen only when the question demands it',
-            sub: 'The right onboarding path for a product site is simple and credible:\ninstall the binary, analyze one binlog, then move to ordered directory ranges and named snapshots when the incident story gets wide enough to compare against a baseline.',
+            sub: 'Install the binary, analyze one binlog, then move to directory ranges and named snapshots when you need a baseline to compare against.',
             quick: {
               title: 'Quick start',
               code: '<span class="token-comment"># macOS only (Homebrew cask)</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux: install.sh or tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span>\n\n<span class="token-comment"># verify install with the sample ROW binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># save current + baseline snapshots, inspect them as JSON, then open a visual compare report</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
@@ -2303,7 +1501,8 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               three: 'Add <code>--start</code>, <code>--end</code>, schema, or table filters to cut noise.',
               four: 'Save named snapshots when you need a baseline, inspect them as JSON when automation needs context, then use <code>compare --format html</code> for browser-based review.',
               repo: 'Open repository',
-              docs: 'Read docs'
+              docs: 'Read docs',
+              releases: 'What changed in each version: <a href="https://github.com/Fanduzi/BinlogVisualizer/releases" target="_blank" rel="noopener">release notes</a> and <a href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG</a>.'
             }
           },
           cta: {
@@ -2320,7 +1519,6 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               why: 'Why BinlogViz',
               how: 'How it works',
               outputs: 'Output surfaces',
-              releasesSection: 'Release arc',
               install: 'Install guide',
               releases: 'Releases'
             },
@@ -2347,9 +1545,9 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             homeLabel: 'BinlogViz 首页'
           },
           hero: {
-            badge: 'v0.35.0 —— 报告 v4 用区间集合记录匹配的 GTID、JSON Schema 与 --tz、analyze 内存有上界',
+            badge: '本地 CLI · MySQL ROW binlog · 开源',
             title: '把 MySQL ROW binlog\n变成可交付的事件报告',
-            sub: 'ROW binlog 的快速摘要：热表、写入形态、上线前后 compare。510 MB 级大约数秒。\nSTATEMENT / MIXED 会空或少计。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 mysqlbinlog --start-position。',
+            sub: 'BinlogViz 帮助 DBA 和值班工程师把原始 binlog 事件转成可读的工作负载故事。\n定位热点表、大事务、写入尖峰和事故窗口变化，对比 current 与 baseline，并把结果交给团队。只分析 ROW 格式 binlog；STATEMENT 和 MIXED 事件不计入。',
             primary: '安装 BinlogViz',
             secondary: '查看输出形式',
             code: '<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-15T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-15T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-14T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-14T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-previous</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">2026-03-08T10:00:00Z</span> <span class="token-flag">--end</span> <span class="token-string">2026-03-08T10:30:00Z</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz trend</span> <span class="token-flag">--from-snapshots</span> <span class="token-string">\'incident-*\'</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">trend.html</span>',
@@ -2437,219 +1635,18 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           trust: {
             label: '信任信号',
             title: '信任的是契约，不只是解析能力',
-            sub: 'BinlogViz 已经不只是“能解析 binlog”。\n它有公开文档、明确的输出契约、围绕 HTML / Markdown 的 release notes，以及对 DBA 合理的产品边界。',
+            sub: '报告遵循有文档的契约，可以直接写进脚本，也可以直接交给同事。',
             cards: {
-              docs: { title: '行为已文档化', desc: 'CLI 参数、输出格式、架构和限制都已经被记录下来，足以支撑产品叙事。' },
+              docs: { title: '行为已文档化', desc: 'CLI 参数、输出格式、退出码和限制都有文档，<code>binlogviz schema</code> 会打印每种 JSON 输出的 JSON Schema。' },
               contract: { title: '稳定的报告表面', desc: 'Text、JSON、Markdown、HTML 清楚地说明了结果会流向哪里、谁来消费。' },
-              release: { title: '由版本演进支撑', desc: '最近几个版本显示项目正从核心分析走向面向团队的可交付产物。' },
-              scope: { title: '边界清晰', desc: '它不是一个泛化的可观测平台，而这个约束反而让定位更可信。' }
-            }
-          },
-          releases: {
-            label: '版本演进',
-            title: '当前版本与最近里程碑',
-            sub: '把最新 workflow 版本放在最前面，快速扫过最近几次产品转折；如果要看完整历史，再进归档入口。',
-            currentLabel: '当前版本',
-            currentFocus: '次版本',
-            currentTitle: '报告 v4 用区间集合记录匹配的 GTID、JSON Schema 与 --tz、analyze 内存有上界',
-            currentLink: '查看发布说明 →',
-            labels: {
-              v0341: '带过滤的 flashback 拒绝在任何位置写到选中表的 DDL、每个 --help 都有可执行示例',
-              v0340: '所有 analyze 格式共用一份事务视图、内存上界测试在单 CPU 下稳定',
-              v0331: 'snapshot list 显示空的 diagnostics 模式、analyze --help 写明 DDL 上限、发布包 README 链接、补全 zh-CN flashback 帮助',
-              v0330: 'flashback 执行修复：补上 SELECT 权限、CHAR/BINARY 键、带锚点的提交行',
-              v0320: 'flashback 执行失败绝不提交前缀、单个 XA 事务、执行权限写进文档',
-              v0310: 'flashback 脚本只能经 binlogviz flashback verify 提交、流式 verify',
-              v0300: '流式生成列 flashback、退出码 10 资源上限、ADR 0012 包拆分',
-              v0290: 'summary 的 DDL 上限、snapshot list 标出裁剪过的文件、--help 示例和归档内的 agent 指南',
-              v0280: 'analyze --diagnostics 为 agent 限制输出大小、事务告警带 GTID、拒绝裁剪过的报告',
-              v0270: '所有 JSON 输出带版本号、workflow 拒绝未知产物、version 显示 commit',
-              v0261: 'flashback --conflict guard 跳过改回已被重新使用的主键',
-              v0260: 'flashback --plan v2：每次拒绝都输出 plan、带 code 的警告、--conflict-limit',
-              v0250: '退出码分类覆盖所有命令、基于 ledger 的 workflow clean、出错即拒绝的 install.sh、16 MiB 以上的压缩事务',
-              v0240: '流式 flashback、冲突拒绝、分类退出码、加固的解析',
-              v02334: 'flashback 拒绝提示：FLUSH TABLES 说明改正，每次运行只打印一次',
-              v02333: 'flashback 对 JSON [0] 和 DECIMAL DIV/% 的核对与 MySQL 一致',
-              v02332: 'flashback 的 div_precision_increment 提示重新变快，并写出无法核对的增量',
-              v02331: 'flashback 在大小写折叠匹配被拒绝时写出转储里的表名',
-              v02330: 'flashback 报错写出被拒绝的 / 列对应的 div_precision_increment',
-              v02329: 'flashback --schema-file 接受 ADD COLUMN 之后的转储和拼接的转储',
-              v02328: 'flashback --schema-file 能用库名带空格或大小写不同的转储',
-              v02327: 'flashback 守卫报错不再显示不存在的列',
-              v02326: 'flashback 守卫报错保留非 ASCII 列名',
-              v02325: 'flashback 能还原非严格会话写下的行',
-              v02324: 'flashback 守卫绑定到所属脚本',
-              v02323: 'flashback 执行守卫在 MariaDB 和 MySQL 5.7 上失败即锁定',
-              v02322: 'binlogviz flashback 打印撤销 SQL',
-              v02321: '热点行按 UPDATE 和 DELETE 的主键排名',
-              v02320: '副本应用延迟按提交时间戳排名',
-              v02319: 'DDL 时间线点名所在事务',
-              v02318: '最忙分钟点名驱动表',
-              v02317: '无主键 UPDATE/DELETE 记为复制延迟',
-              v02316: 'show-rows 的 TIMESTAMP 按 UTC',
-              v02315: 'DML 过滤与按需行镜像',
-              v02314: '会话排行、口令打码与 stdin 清理',
-              v02313: '索引 DDL 记在它改的表上',
-              v02312: '事务身份按 binlog 实际字段',
-              v02311: '过滤未命中与损坏文件分开',
-              v02310: '已提交事务时长按服务器时钟',
-              v0239: 'CHECK TABLE 与 SET ROLE 升为 ADMIN',
-              v0238: 'DDL 时间线与排障证据',
-              v0237: '未分类 QUERY 与 transaction payload',
-              v0236: '管理 QUERY 关组与本地空格时间',
-              v0235: 'XA ROLLBACK 关组与默认可无 CGO 分析',
-              v0234: 'MariaDB GRANT DDL',
-              v0233: 'MariaDB XA 排障证据',
-              v0232: 'MariaDB XA GTID 修复',
-              v0231: 'MariaDB DDL GTID 修复',
-              v0230: '事故结案证据',
-              v0221: '值班 CLI 契约',
-              v0220: 'HTML UI 重构',
-              v0211: '值班 dogfood',
-              v0210: 'HTML 写文件',
-              v0203: '顺序推断',
-              v0202: 'Probe 回归修复',
-              v0200: '快速发现探测',
-              v0181: '性能验证',
-              v0160: 'Analyze 钻取',
-              v0150: '信任边界'
-            },
-            links: {
-              v0341: '打开 v0.34.1 说明 →',
-              v0340: '打开 v0.34.0 说明 →',
-              v0331: '打开 v0.33.1 说明 →',
-              v0330: '打开 v0.33.0 说明 →',
-              v0320: '打开 v0.32.0 说明 →',
-              v0310: '打开 v0.31.0 说明 →',
-              v0300: '打开 v0.30.0 说明 →',
-              v0290: '打开 v0.29.0 说明 →',
-              v0280: '打开 v0.28.0 说明 →',
-              v0270: '打开 v0.27.0 说明 →',
-              v0261: '打开 v0.26.1 说明 →',
-              v0260: '打开 v0.26.0 说明 →',
-              v0250: '打开 v0.25.0 说明 →',
-              v0240: '打开 v0.24.0 说明 →',
-              v02334: '打开 v0.23.34 说明 →',
-              v02333: '打开 v0.23.33 说明 →',
-              v02332: '打开 v0.23.32 说明 →',
-              v02331: '打开 v0.23.31 说明 →',
-              v02330: '打开 v0.23.30 说明 →',
-              v02329: '打开 v0.23.29 说明 →',
-              v02328: '打开 v0.23.28 说明 →',
-              v02327: '打开 v0.23.27 说明 →',
-              v02326: '打开 v0.23.26 说明 →',
-              v02325: '打开 v0.23.25 说明 →',
-              v02324: '打开 v0.23.24 说明 →',
-              v02323: '打开 v0.23.23 说明 →',
-              v02322: '打开 v0.23.22 说明 →',
-              v02321: '打开 v0.23.21 说明 →',
-              v02320: '打开 v0.23.20 说明 →',
-              v02319: '打开 v0.23.19 说明 →',
-              v02318: '打开 v0.23.18 说明 →',
-              v02317: '打开 v0.23.17 说明 →',
-              v02316: '打开 v0.23.16 说明 →',
-              v02315: '打开 v0.23.15 说明 →',
-              v02314: '打开 v0.23.14 说明 →',
-              v02313: '打开 v0.23.13 说明 →',
-              v02312: '打开 v0.23.12 说明 →',
-              v02311: '打开 v0.23.11 说明 →',
-              v02310: '打开 v0.23.10 说明 →',
-              v0239: '打开 v0.23.9 说明 →',
-              v0238: '打开 v0.23.8 说明 →',
-              v0237: '打开 v0.23.7 说明 →',
-              v0236: '打开 v0.23.6 说明 →',
-              v0235: '打开 v0.23.5 说明 →',
-              v0234: '打开 v0.23.4 说明 →',
-              v0233: '打开 v0.23.3 说明 →',
-              v0232: '打开 v0.23.2 说明 →',
-              v0231: '打开 v0.23.1 说明 →',
-              v0230: '打开 v0.23.0 说明 →',
-              v0221: '打开 v0.22.1 说明 →',
-              v0220: '打开 v0.22.0 说明 →',
-              v0211: '打开 v0.21.1 说明 →',
-              v0210: '打开 v0.21.0 说明 →',
-              v0203: '打开 v0.20.3 说明 →',
-              v0202: '打开 v0.20.2 说明 →',
-              v0200: '打开 v0.20.0 说明 →',
-              v0181: '打开 v0.18.1 说明 →',
-              v0160: '打开 v0.16.0 说明 →',
-              v0150: '打开 v0.15.0 说明 →'
-            },
-            archiveTitle: '发布归档',
-            archiveLabel: '全部版本',
-            archiveDesc: '如果你想看更早的里程碑、更细的 changelog，或者下载最新 workflow surface 之外的历史产物，可以从这里进入完整发布历史。',
-            archiveLink: '查看全部发布说明 →',
-            items: {
-              v0350: '次版本，对 analyze --format json 不兼容：report_version 为 4。selection.matched_gtids 换成区间集合 selection.matched_gtid_set 和计数 selection.matched_transactions，GTID 过滤在数百万个匹配时不再耗尽内存，超过 100,000 个区间时退出码 10 matched_gtid_intervals（#379，ADR 0018）；compare 和 trend 能读 v3 和 v4。binlogviz schema 打印每种 JSON 输出的 JSON Schema，--tz 选择显示时区（ADR 0017）。analyze 内存不再随事务数增长（#364、#376），所有格式列出同一批重点事务（#352），时间戳倒退时同一分钟不再被拆开（#377），flashback 脚本在 MariaDB 上以 ERROR 1231 停下。用 Go 1.26.10 和 mapstructure v2.4.0 构建。plan_version 2 和 schema_version 1 不变。已知问题：#399、#400、#403、#404、#303（Linux 版本信息 commit 为空）。',
-              v0341: '补丁版本，修复一个 P1，使用带过滤的 flashback 请升级：v0.34.0 及更早版本在使用 --include-table、--exclude-table、--include-schema 或 --exclude-schema 时，只按范围内 DDL 的第一个表名判断，把选中表写在后面的 RENAME TABLE 或 DROP TABLE 不会被拒绝，撤销可能把行写进错的表。现在检查 DDL 作为源或目标写到的每张表，读不全的 DDL 以退出码 6 拒绝（#368，ADR 0015）。每个命令的 --help 都有可执行示例，测试保证没有命令会提问或等待 stdin（#365）。analyze 和不带过滤的 flashback 没有不兼容变更：schema_version 1、plan_version 2、report_version 3、analyze 输出和退出码与 v0.34.0 相同。已知问题：#303（Linux 版 commit 为空）。',
-              v0340: 'ADR 0012 第 5 步：text、Markdown、JSON 和 HTML 读取 internal/report/view 构建的同一份事务视图，report.Write 是唯一的格式分支（#353）。列表里有但没有对应分支的格式返回 unhandled format，而不是输出 text（#356、#354）。flashback 和 verify 的内存上界测试改为在固定点测 live heap，GOMAXPROCS=1 下也能通过（#358、#361，关闭 #351）。新增 docs/production-readiness.md（#359）。没有不兼容变更，输出不变：schema_version 1、plan_version 2、report_version 3、analyze 输出、flashback 脚本、--help 和退出码与 v0.33.1 相同。已知问题：#303（Linux 版 commit 为空）。',
-              v0331: '补丁版本，收尾 #312：snapshot list 把 diagnostics_mode 为 "" 的文件显示为 (empty)，JSON 保留 "diagnostics_mode": ""，读取时仍以退出码 9 拒绝；analyze --help 写明 --diagnostics summary 把 ddl_events 限制为 --top 条，--top 0 即默认的 10；README 中指向发布包未包含文件的链接改为 GitHub 绝对地址；zh-CN flashback --help 补全 --conflict、--plan、--error-format 和 -q。没有不兼容变更：schema_version 1、plan_version 2、analyze 输出和 flashback 脚本与 v0.33.0 相同。已知问题：#303（Linux 版 commit 为空）。',
-              v0330: 'flashback 执行方式不兼容：v0.32.0 的脚本必须重新生成，verify 以退出码 6、details.reason old_format 拒绝（#342）。撤销改动的表需要 SELECT, INSERT, UPDATE, DELETE 权限（#341）。撤销前去掉 PAD_CHAR_TO_FULL_LENGTH，BINARY(n) 键用 0x00 补齐，按键撤销没有恰好改动一行时整次执行回滚（#347、#348）。执行失败会删除存储过程并给出真实错误（#338、#343）。成功以带锚点的 binlogviz: undo committed, N statements（或 with skips）行为准，而不是 mysql 的退出码。拒绝会带上 details.reason 和 details.table（#344）。schema_version 1、plan_version 2 与 analyze 输出不变。已知问题：#303（Linux 版 commit 为空）。',
-              v0320: 'flashback 执行方式不兼容：ADR 0014 把撤销放进一个 XA 事务，执行失败绝不提交前缀，脚本里的 BEGIN、START TRANSACTION 或 DDL 也无法提交；只有每条语句都成功，收尾才提交（#328、#329、#332）。执行需要 binlogviz.* 上的 CREATE、CREATE ROUTINE、ALTER ROUTINE，automatic_sp_privileges=0 时还需要 EXECUTE；不需要 XA_RECOVER_ADMIN（#333）。XA START 之前的失败在 mysql --force 下也会一直记着。每次执行使用独立的 SQL SECURITY INVOKER 收尾过程，遗留过程不会挡住执行；用 DROP DATABASE IF EXISTS binlogviz 清理（#334）。flashback verify --help 用法已修复（#335）。v0.31.0 的脚本无法通过 verify，请重新生成。schema_version 1、plan_version 2 和 analyze 输出不变。已知问题：#338（部分缺权限路径会留下本次执行的过程）、#303（Linux commit 为空）。',
-              v0310: 'flashback 执行方式不兼容：ADR 0013 让发布的撤销脚本成为一个永不自行提交的事务；请用 binlogviz flashback verify file.sql | mysql 执行，而不是 mysql < file（#318、#321）。verify 校验 digest 并输出条件 COMMIT；截断、篡改、追加的脚本以退出码 6 拒绝且什么也不提交，生成时退出码 8 不留可执行前缀。无效的 BINLOGVIZ_SPILL_BYTES / BINLOGVIZ_MEMORY_BYTES 退出码 3。verify 改为流式：400 MB 以上脚本 RSS 约 34–41 MB，堆上限退出码 10（#327）。SQL 是新的封印格式；plan_version 2 和 analyze 输出不变。已知问题：#328（目标缺表或缺列时 verify | mysql --force 可能提交部分撤销）、#329（脚本后的隐式提交）、#303（Linux commit 为空）。',
-              v0300: 'ADR 0012 第 1–4 步把 mysqlexpr、schemacatalog、guard 和 flashback 规划器拆到独立包（#315、#316、#320）；在 tip QA 语料上 analyze 和 flashback 输出与 v0.29.0 逐字节一致。带 --schema-file 的生成列审阅改为流式：在会生成 1.13 GB 脚本的 1.07 GB binlog 上，tip RSS 约 128 MB，而 v0.29.0 以退出码 2 OOM（#317）。退出码 10 resource（details.reason 为 spill_limit / memory_limit）和 BINLOGVIZ_SPILL_BYTES，不会再把上限报成退出码 2。guard.Seal 拒绝短于 8 字节的 digest（#319）。已知问题：#303（Linux commit 为空）、#321（退出码 8 截断的脚本仍可能部分执行）、#318（守卫 token 不检测内容篡改）。',
-              v0290: '仅对 --diagnostics summary 不兼容：diagnostics.ddl_events 只保留前 --top 条，ddl_events_omitted 统计其余条数；在 1.07 GB 的 binlog 上 summary 从 42759 字节降到 32632 字节。默认和 full 输出逐字节不变，report_version 3（ADR 0011、#308、#311）。snapshot list 用 DIAGNOSTICS 列和 JSON 中的 diagnostics_mode 标出裁剪过的文件，diagnostics_mode 的异常取值有了明确处理，--diagnostics "" 以退出码 3 结束。六个命令的 --help 带示例，flashback --sql-context 的帮助重写，release 归档附带 agent 使用指南和两份 README。已知问题：#303（Linux 二进制报告的 commit 为空）和 #312。',
-              v0280: 'analyze --diagnostics full|summary|off 为 agent 缩小 analyze 的 JSON；默认 full 不变，在 1.07 GB 的 binlog 上 stdout 分别是 63042、42759 和 22627 字节（ADR 0011、#282、#307）。事务告警带上 gtid，可以直接交给 flashback --include-gtids。快照和 workflow 产物始终保留完整 diagnostics；compare、trend、snapshot save 和 show 以及 workflow resume 遇到裁剪过的报告时以退出码 9（reduced_diagnostics）拒绝，不会把省略的列表当成空列表比较。没有不兼容变更：report_version 3、plan_version 2。已知问题：#303（Linux 二进制报告的 commit 为空）和 #308。',
-              v0270: '所有 JSON 输出都带版本号：compare、trend、snapshot 和 workflow 的 JSON 以 schema_version 1 开头，analyze（report_version 3）和 flashback --plan（plan_version 2）的输出逐字节不变（ADR 0010、#282、#302）。workflow status、resume 和 clean 遇到 schema_version 未知的 compare 或 trend 产物时以退出码 9 拒绝，不改动任何东西。binlogviz version 输出构建的 git commit，version --format json 供 agent 读取。没有不兼容变更。已知问题：#303 修复之前，Linux 发布版二进制报告的 commit 为空；macOS 归档和从 checkout 构建的二进制正常。',
-              v0261: 'binlogviz flashback --conflict guard 在 UPDATE 修改了主键、旧主键后来又被其他行使用时，不再报 ERROR 1062：改回主键的语句和其他后来被修改过的行一样不改变任何行，块中其余语句照常执行（#270、#299）。默认的 --conflict refuse 仍以退出码 7 拒绝。没有不兼容变更：退出码、plan_version 2、analyze 输出以及 guard 之外的 flashback SQL 都不变。',
-              v0260: '对脚本不兼容：flashback --plan 升级为 plan_version 2（#270、#282、#296）。警告改为 {code, message}，code 不随 --lang 变化；退出码 6 和 7 的拒绝现在也输出 plan，带 would_refuse 和 refusal {kind, message}，只看 JSON 就能区分正常、拒绝和冲突。flashback --conflict-limit N（默认 20，0 表示全部）设置 plan 和退出码 7 详情中列出的冲突条数，count 始终是完整数量。analyze 输出、flashback SQL、stderr 和退出码不变。',
-              v0250: '对脚本不兼容：每个命令错误都有类别，新增退出码 9 unsupported，很多失败不再是退出码 1（ADR 0009、#277、#284、#286）。workflow clean 只删除 ledger.jsonl 记录的文件，移到 .trash，并拒绝不可信的 manifest、失败的运行和根目录之外的路径（#287–#291）。install.sh 在校验和错误或缺少工具时拒绝安装，默认安装最新版本（#283、#292）。真实 MySQL 8.0 中 16 MiB 及以上的压缩事务现在可以解析，解压是有界的流式处理（#278、#293）。',
-              v0240: 'binlogviz flashback 通过临时文件流式处理行镜像（#258）；所选的行后来又被修改时以退出码 7 拒绝，可用 --conflict guard 和 --plan 选择（#259、#267）。每个命令都有分类退出码和 --error-format json（#263、#268）。解码前校验事件 CRC32 并限制恶意输入，损坏的 binlog 退出码为 5（#271、#272）。另有 --quiet、非终端不输出 ANSI（#253）、密码脱敏（#250）、更快的大事务排行（#252）和 MariaDB 11.4 排序规则（#269）。匹配退出码 1 的脚本需要读取新的退出码。',
-              v02334: 'binlogviz flashback 只改提示信息，脚本、退出码和接受/拒绝都不变。zh-CN 的错误和警告以 错误：/警告： 开头（#227、#244）。div_precision_increment 的手工恢复说明给出带 N 定义的 SET SESSION、FLUSH TABLES `库`.`表`、FLUSH 会等什么，以及新连接的替代做法，并且每次运行只打印一次，拒绝的 stderr 小了约 31%–41%（#246）。增量值无法核对的正确转储会被告知可能没错（#243、#231）。',
-              v02333: 'binlogviz flashback 对非数组 JSON 值取 $.v[0] 时得到值本身（#237），DECIMAL 上 DIV、%、MOD 里的 / 保留 MySQL 的舍入（#238）。两处以前都可能极少数误接受。更多 DIV/% 的 DECIMAL 列现在能核对并留在脚本里；少数以前碰巧核对通过的列改为加守卫省略。另含 #225 标签修复和三处输出不变的重构（#234、#235、#236）。',
-              v02332: 'binlogviz flashback 对被拒绝的 / 列逐个增量重新核对时快了很多（#226）：在 19.5 MB、186 张表的 binlog 上，被拒绝的运行只需 27 秒，v0.23.30/31 约 10 小时。提示现在写出无法核对的增量，而不是不完整的范围（#227），并建议用 --exclude-table。接受和拒绝的判定以及脚本都不变。',
-              v02331: 'binlogviz flashback --schema-file 在只靠大小写折叠匹配的表被拒绝时，同时写出转储里的表名和 binlog 表名；折叠警告也说明它假定 binlog 服务器是 lower_case_table_names=1 或 2（#215）。接受与拒绝的判断和生成的脚本都不变。analyze 的输出不变。',
-              v02330: 'binlogviz flashback --schema-file 在含 / 的生成列被拒绝时，会写出能对上的 div_precision_increment，说明转储可能没错，并提示用 --include-table / --exclude-table，而不是只说转储不对（#193）。这张表仍会被拒绝，接受与拒绝的判断和生成的脚本都不变。analyze 的输出不变。',
-              v02329: 'binlogviz flashback --schema-file 把转储里已经有的 ADD COLUMN 当作已应用，正确的事故当时转储不再被拒绝；拼接的 mysqldump 输出里，每个 Database 头都绑定后面那份转储（#167）。时间线之外的转储和定义有变化的转储仍会被拒绝。analyze 的输出不变。',
-              v02328: 'binlogviz flashback --schema-file 现在能读库名带空格的 mysqldump Database: 头；binlog 里的名字全是小写时，也会采用只差大小写的转储表，例如 lower_case_table_names=0 的转储配 lower_case_table_names=1 的 binlog（#187）。警告里写出文件中的表名，行数据仍按它校验。analyze 的输出不变。',
-              v02327: 'binlogviz flashback 把守卫标签里的每个 | 显示为 /（#208），以 " |" 结尾的列名不会再拼出分隔符，ERROR 1231 的 200 字节截断总是保留完整的列名。stdout 上的 SELECT 和 SQL 仍用真实名字。守卫拒绝的情况不变，不写入任何行。analyze 的输出不变。',
-              v02326: 'binlogviz flashback 守卫的 ERROR 1231 报错里会列出非 ASCII 列名（#192）。MySQL 把这个值截到 200 字节，守卫现在按字节挑完整的列名，中文列名会列出来，而不是只显示列数。守卫拒绝的情况不变，不写入任何行。analyze 的输出不变。',
-              v02325: 'binlogviz flashback 在严格会话里执行时，也能还原零日期和除以零的生成列（#180）。只有写这种值的那一条语句去掉 NO_ZERO_DATE 和 NO_ZERO_IN_DATE，或 ERROR_FOR_DIVISION_BY_ZERO，执行完立即恢复会话的 sql_mode。严格模式仍然开着。',
-              v02324: 'binlogviz flashback 用令牌把执行守卫绑定到所属脚本，每条撤销语句都会核对这个令牌。在执行过其他脚本的会话里粘贴不带头部的块、块执行中途客户端重连、XA START，现在都不会改动任何行。在已经只读的会话里执行脚本，会给出明确提示，而不是只报 ERROR 1792。analyze 的输出不变。',
-              v02323: 'binlogviz flashback 按 binlog 里的行核对 schema 文件中的生成列，更多正确的转储会被接受（UPPER、CONCAT、JSON 提取、DECIMAL 除法）。错误的转储会被拒绝，或被执行时的守卫拦下：守卫用 SET SESSION TRANSACTION READ ONLY 锁住会话，所以在 MySQL 5.7+、MariaDB 10.2+、老版本服务器以及拒绝 PREPARE 的服务器上，mysql --force 都不会写入任何行。analyze 的输出不变。',
-              v02322: 'binlogviz flashback（#153）从 MySQL 8 binlog 里选出 DELETE、UPDATE、INSERT 行变更，打印撤销它们的 SQL，不连接数据库。语句按 binlog 逆序排列，每个原事务一对 START TRANSACTION / COMMIT，注释里写出原 GTID 和 file:start-position。原则是：要么精确还原，要么在执行之前拒绝（退出码 1，一行 Error:，不输出 SQL）或在 stderr 警告。在 MySQL 8.0.46 上做了六轮 tip dogfood，发版前已修复 #154、#155、#156、#158、#159、#161、#162、#163、#165、#170、#171，#173 修正了「执行失败后接着跑」的步骤。三个 P2 限制仍开着，文档里写了变通办法：#166、#167、#168。',
-              v02321: 'analyze 按主键给被碰到次数最多的 UPDATE 和 DELETE 行镜像排名。这一节叫热点行，在「无主键」之后、Top Threads 之前，文本、Markdown、HTML 都有。身份只来自 MySQL 8 binlog_row_metadata=FULL（SIMPLE_PRIMARY_KEY 或 PRIMARY_KEY_WITH_PREFIX）。在 mysql-8.0.46-hot-rows-full.binlog 上，shop.counters 的 id=7 被碰到 7 次，分布在 6 个事务里。最早的事务是 87adba67-c25d-11f1-ba98-822b383dbcd0:11，字节 2791（2026-10-06 14:00:01 UTC），最晚的是 87adba67-c25d-11f1-ba98-822b383dbcd0:16，字节 4605（2026-10-06 14:00:06 UTC）。这两个字节是 GTID 事件的 # at 起点，可以直接拿去打开 mysqlbinlog 或 BinlogServer。主键是 id，也就是第 2 列 @2。第 1 列是 label。报告写出 id=7，不会拿 @1 来猜。shop.heap 没有主键，有 12 次 UPDATE，不参与排名。--top 限制列出几条。--top-rows 覆盖它（0 保留已追踪的全部键）。--sql-context off 隐藏键值，次数仍在。',
-              v02320: 'analyze 在最忙分钟之后报告副本应用每条事务时落后多少。MySQL 8 的 GTID 事件带有 original_commit_timestamp 和 immediate_commit_timestamp。延迟是本机提交时间减去原始提交时间。在 mysql-8.0.46-replica-apply.binlog 上，最大延迟是 5426519 µs（5.426519s），p95 是 5208595 µs（5.208595s），峰值分钟是 2026-10-07 11:41:00 UTC，最慢的事务是 11458b63-c244-11f1-a0d2-822b383dbcd0:7，字节 197（shop.audit，1 行）。导语说明这假设源库和副本的时钟一致。这句话不是发现。没有新的 CLI 参数。',
-              v02319: 'analyze 在 DDL 时间线上点名每条 DDL 所在的事务，DBA 不用再去 binlog 里搜就能复制停止位点。binlog 里有 GTID 时，时间线写出这个 GTID、事务开始的文件和字节，以及可直接复制的 mysqlbinlog --stop-position（MariaDB 写成 mariadb-binlog）。有 GTID 时还会写出 BinlogServer stop_gtid。这个停止位点会回放更早的事件，并且不包含这条 DDL。在 mysql-8.0.46-drop-table.binlog 上，DROP TABLE shop.orders 的 GTID 是 4d8275bc-c221-11f1-a25e-822b383dbcd0:2。GTID 事件从字节 523 开始。Query 事件仍是 600-734。没有新的 CLI 参数。与 BinlogServer v0.5.54 的 stop_gtid 配套。',
-              v02318: 'analyze 在文本、Markdown、HTML 里点名每个最忙分钟是哪些表写出来的。整个窗口最热的表，和峰值那一分钟背后的表，可以不是同一张。在 mysql-8.0.46-busiest-minute.binlog 上，活动概览峰值是 Rows/min: 32.0 at 2026-03-15 14:05（中文标签是每分钟行数），这一分钟是 shop.orders 30 行和 shop.catalog 2 行，热点表仍由 shop.catalog（82）领头。JSON 本来就有 diagnostics.hot_intervals[].table_rows 和 minutes[].table_rows，形状不变。没有新的 CLI 参数。--detect-spikes 仍是显式打开。',
-              v02317: 'analyze 会报告收到 UPDATE 或 DELETE 行、并且没有主键的表。副本应用这些行时可能全表扫描。MySQL 8 binlog_row_metadata=FULL 把表标成 has_pk、no_pk 或 unknown。SIMPLE_PRIMARY_KEY 和 PRIMARY_KEY_WITH_PREFIX 是 has_pk。有 FULL 元数据但这两个字段都没有，是 no_pk。没有 FULL 元数据时保持 unknown，报告不会写出 no_pk。只有 INSERT 的无主键表会点名，不会被排成延迟风险。Top Findings 增加 no_primary_key 警告。没有新的 CLI 参数。',
-              v02316: '--show-rows 把 MySQL TIMESTAMP（含小数秒）打成所存时刻的 UTC 墙钟。打印结果不跟随进程时区。v0.23.15 在 Asia/Shanghai 下打印成 22:00:01 的同一时刻，现在打印成 14:00:01。DATETIME 仍是 binlog 里写下的墙钟。列名、无符号整数、每事务 32 行和每值 64 字节的上限，以及 --dml，都不变。--show-rows 仍默认关闭。',
-              v02315: '--dml insert,update,delete 只保留这些 ROW 类型，并和表、schema、时间、位置、GTID 过滤一起生效。摘要、Top Tables、Top Transactions、Top Threads 和告警只统计保留下来的类型。什么都匹配不到时退出 2，stdout 为空，Error: dml filter matched no events。--show-rows 默认关闭。打开后，DELETE 打印前镜像，UPDATE 只打印变化的列（before -> after）以及未变列计数，INSERT 打印后镜像。列名来自 binlog_row_metadata=FULL；否则列是 @1..@N。上限是每个事务 32 行、每个值 64 字节。--sql-context off 也会省略这些单元格。两个标志都没开时，默认文本、Markdown、JSON、HTML 不变。本版本不生成 flashback SQL。',
-              v02314: '默认报告按 Top Threads 排序。--top-threads 覆盖 --top。--sql-context off 去掉查询和 DDL 文本；summary 是一行；full 把存储 SQL 和 DDL 限在 4096 字节，截断时带标记。账号 DDL 的口令和哈希写成 &lt;secret&gt;，包括 MariaDB IDENTIFIED VIA/WITH 和 OR 插件链。MariaDB SET PASSWORD 是时间线上的 DDL。VIEW、TRIGGER、routine、EVENT 留在时间线上；CREATE 和 DROP TRIGGER 使用触发器名字。--include-table 和 --exclude-table 按这些名字匹配，命中时即使没有行变更也退出 0。analyze - 在 SIGHUP、SIGINT、SIGQUIT、SIGTERM 时删掉 stdin 临时文件。',
-              v02313: 'CREATE INDEX、CREATE UNIQUE INDEX、CREATE FULLTEXT INDEX、CREATE SPATIAL INDEX 和 DROP INDEX 记在 ON 后面的表上。UNIQUE 和 FULLTEXT 索引变更留在 DDL 时间线上，SPATIAL 同样留下。语句里写的 schema 优先于 USE 选中的库。没有空格的 ON t(col) 和 CREATE TABLE t(id INT) 解析成那张表。--include-table 会保留这些索引 DDL。',
-              v02312: '默认文本、Markdown 和 HTML 的 analyze 报告按事务写出事件里有的 server_id、thread_id、GTID，以及 xid 或 XA xid。user@host 只在 binlog 存了调用方时出现。缺的字段保持缺席，不写 0，也不写空字符串。JSON 本来就有这些字段。--sql-context full 不变。',
-              v02311: 'schema 或 table 过滤没有匹配时仍是 exit 2，stderr 为 Error: schema/table filter matched no events。文件在事件中间截断时是 exit 1，Error: binlog is truncated or corrupt，不再和空过滤共用 exit 2。--snapshot-name 不是 --format json 时在出报告前失败，也不写快照。失败命令会先清掉 stderr 进度行再打印 Error:。',
-              v02310: '已提交事务时长是窗口内最早到最晚的非零时间戳，MySQL 8 在提交时盖戳的 GTID 在 SLEEP 之后不再报 0s。SLEEP(2) fixture 落入 1s-10s；--large-trx-duration 1s 会告警，默认 30s 不会。开放 BEGIN+DML fixture 锁住 exit 1 的 Error 行。',
-              v0239: 'CHECK TABLE 与 SET ROLE（含 SET ROLE ALL）作为维护窗口 GTID 组的唯一工作会按 ADMIN 关组，随后的业务事务让 analyze 以 exit 0 结束。精确 FLUSH TABLES 不变；FLUSH TABLES WITH READ LOCK 仍是 Unclassified。',
-              v0238: 'Analyze 文本和 JSON 呈现 DDL 发生时间线、未提交 BEGIN+DML 悬挂事务组、已提交事务耗时排行与分布桶、以及输入文件大小与计入事件字节数对比。',
-              v0237: 'Unclassified QUERY 会带着语句前缀让 analyze 失败；Ignored QUERY 会计数且从不关组；transaction payload 内部 ROW 图共用 wrapper 在文件上的跨度一次。',
-              v0236: '独立管理 QUERY 会结束所属 GTID 组；--start/--end 接受运行机器本地时区下的 YYYY-MM-DD HH:MM:SS。',
-              v0235: 'XA ROLLBACK 会结束所属 GTID 组；默认 analyze 不再需要 CGO 或 DuckDB；JSON 会报告未映射的解析事件。',
-              v0234: 'GRANT/REVOKE 会结束连续 MariaDB ddl GTID；表过滤接受 SCHEMA.TABLE；--prefix 接受完整文件名；workflow export 接受 -o。',
-              v0233: '物理 XA PREPARE 事件会保留 XA 身份，0 行 XA COMMIT 事务也会留在报告中，并可由 GTID 或位点选择器命中。',
-              v0232: '物理 XA PREPARE 事件现在会结束所属 GTID 组，后续 XA COMMIT 与无关事务不再让 analyze 因 conflicting GTID 失败。',
-              v0231: '连续 MariaDB DDL GTID 现在会形成独立的隐式事务组；对象过滤下也保留该边界，analyze 不再因 conflicting GTID 在报告前退出。',
-              v0230: '位点/GTID 窗口、compare/trend 可比性护栏、可回放的 file:pos 证据，以及完整的热表/事务输出，让 ROW 事故能在本工具内结案。',
-              v0221: 'HTML 重定向写 stdout，STATEMENT 失败且 stdout 为空，无数据 exit 2，MIXED JSON 带 input_format alert，发布包带样例 ROW binlog。',
-              v0220: 'HTML 报告全面视觉重构，Top Tables 增加可排序 BINLOG BYTES 物理体积列，多图表跨维实时联动与鼠标范围缩放。',
-              v0211: '文本 findings 对齐 JSON，MariaDB 事务跨度按真实位置记录，可用事务给出 mysqlbinlog 命令，release archive 带样例 ROW binlog。',
-              v0210: 'HTML 默认写入文件而不是 stdout，可用 --output 指定路径；Top Tables 展示 INSERT/UPDATE/DELETE/DDL 占比。',
-              v0203: '用下一文件首个时间戳做顺序推断，替换不可靠的 offset 末尾探测，让任意大小文件的时间窗口过滤更可靠。',
-              v0202: '修复了在大文件上将全部 binlog 文件排除在时间窗口分析之外的回归问题，并在发现阶段解析到零文件时给出明确报错。',
-              v0201: '偏移量探测现在能优雅地容忍损坏或截断的事件，HTML 下钻图表显示 Y 轴标签提升可读性。',
-              v0200: '发现模式探测改为两阶段时间戳提取，替代全文件扫描；文本报告 sparkline 降采样后保持多小时间隔下的可读性。',
-              v0181: 'analyze 报告保留 v0.18 的 DBA 工作流，同时用真实 988 MB MySQL ROW binlog 冒烟样本收紧内存与批处理表现。',
-              v0180: 'analyze、compare 和 trend 现在共享更完整的 DBA 诊断层：file coverage、DDL timeline、TPS 与 event mix 图、事务证据，以及更适合事故复盘的中英文本地化 HTML 报告。',
-              v0170: 'compare 和 trend 报告现在会把高信号模式变化展开成有界的跨窗口 drilldown 摘要，让操作者看清模式为什么变化，而不会被大量细节淹没。',
-              v0160: 'analyze 报告现在会把高信号写入模式展开成带窗口级上下文的有界 drilldown 摘要。',
-              v0150: 'workflow status 和 resume 现在只信任 workflow root 内的 rooted plan 文件，可阻止符号链接逃逸和任意外部 plan 路径。',
-              v0130: 'finding 现在可以链接回支撑它的 compare 和 trend 证据，让报告摘要可追溯，而不是孤立结论。'
+              release: { title: '可预期的失败', desc: '每个错误都有类别和有文档的退出码，脚本能区分过滤条件没匹配到和文件被截断。' },
+              scope: { title: '边界清晰', desc: '专注 binlog 分析的 CLI，不是泛化的可观测平台。本地运行，不依赖任何托管服务。' }
             }
           },
           install: {
             label: '安装与开始',
             title: '安装一次，先验证一个文件，只有在问题变大时才扩大范围',
-            sub: '对产品官网来说，正确的上手路径应该简单且可信：\n安装二进制，分析一个 binlog，然后在事故故事变宽到需要基线对比时，再切到目录范围和命名快照。',
+            sub: '安装二进制，先分析一个 binlog；需要基线对比时，再切到目录范围和命名快照。',
             quick: {
               title: '快速开始',
               code: '<span class="token-comment"># 仅 macOS（Homebrew cask）</span>\n<span class="token-prompt">$</span> <span class="token-command">brew tap</span> <span class="token-string">Fanduzi/binlogviz</span>\n<span class="token-prompt">$</span> <span class="token-command">brew install</span> <span class="token-string">--cask binlogviz</span>\n\n<span class="token-comment"># Linux：install.sh 或 tarball</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh</span>\n<span class="token-prompt">$</span> <span class="token-command">sh ./install.sh</span>\n\n<span class="token-comment"># 用样例 ROW binlog 验证安装</span>\n<span class="token-prompt">$</span> <span class="token-command">curl</span> <span class="token-string">-fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-string">minimal.binlog</span>\n\n<span class="token-comment"># 保存 current + baseline 快照，查看 JSON 元数据，再打开 visual compare 报告</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-15T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-15T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">incident-current</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz analyze</span> <span class="token-flag">--from-dir</span> <span class="token-string">/var/lib/mysql</span> <span class="token-flag">--prefix</span> <span class="token-string">mysql-bin.</span> <span class="token-flag">--start</span> <span class="token-string">"2026-03-08T10:00:00Z"</span> <span class="token-flag">--end</span> <span class="token-string">"2026-03-08T10:30:00Z"</span> <span class="token-flag">--format</span> <span class="token-string">json</span> <span class="token-flag">--snapshot-name</span> <span class="token-string">baseline-weekly-orders</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz snapshot</span> <span class="token-string">show</span> <span class="token-string">incident-current</span> <span class="token-flag">--format</span> <span class="token-string">json</span>\n<span class="token-prompt">$</span> <span class="token-command">binlogviz compare</span> <span class="token-flag">--current-snapshot</span> <span class="token-string">incident-current</span> <span class="token-flag">--baseline-snapshot</span> <span class="token-string">baseline-weekly-orders</span> <span class="token-flag">--format</span> <span class="token-string">html</span> &gt; <span class="token-string">compare.html</span>'
@@ -2661,7 +1658,8 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               three: '加入 <code>--start</code>、<code>--end</code>、schema 或 table 过滤来压噪。',
               four: '需要基线时先保存命名快照，自动化要上下文时再查看 JSON，然后用 <code>compare --format html</code> 做浏览器评审。',
               repo: '打开仓库',
-              docs: '阅读文档'
+              docs: '阅读文档',
+              releases: '每个版本的变化见 <a href="https://github.com/Fanduzi/BinlogVisualizer/releases" target="_blank" rel="noopener">发布说明</a> 和 <a href="https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md" target="_blank" rel="noopener">CHANGELOG</a>。'
             }
           },
           cta: {
@@ -2678,7 +1676,6 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               why: '为什么选择 BinlogViz',
               how: '工作方式',
               outputs: '输出形式',
-              releasesSection: '版本演进',
               install: '安装指南',
               releases: '版本发布'
             },
@@ -2822,7 +1819,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
                 observer.unobserve(entry.target);
               }
             });
-          }, { threshold: 0.12 })
+          }, { threshold: 0, rootMargin: '0px 0px -8% 0px' })
         : null;
 
       document.querySelectorAll('.reveal').forEach((node) => {
