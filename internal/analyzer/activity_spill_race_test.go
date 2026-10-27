@@ -3,3 +3,5 @@
 package analyzer
 
 const activitySpillRace = true
+
+func spillRSSComparable() bool { return !activitySpillRace }

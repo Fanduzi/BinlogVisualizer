@@ -180,7 +180,8 @@ func TestSpilledJSONMatchesEncoder(t *testing.T) {
 
 // Alternating minutes are the shape that used to append a whole minute on
 // every switch (long transactions, lagging channels). A second pass updates
-// those points in place. The file stays within 2× points×68.
+// those points. The file's high water mark stays within the spill factor of
+// points×68, and the bytes moved stay within a constant of the final file.
 // Output matches the in-memory series. After the shared event state is
 // released, live heap and RSS of what remains stay at or below the
 // in-memory series main retains. VmRSS does not include the unlinked file;
@@ -210,16 +211,17 @@ func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
 	if src.n != points {
 		t.Fatalf("points = %d, want %d", src.n, points)
 	}
-	// One spill op per point is inside the allowance of one per point plus
-	// one per minute switch. A per-cell pwrite on revisit is over it.
-	// Each minute is written at least once, so a missing counter fails too.
-	t.Logf("alternating spill ops %d points %d", src.ops, points)
-	if src.ops < points/200 || src.ops > points {
-		t.Fatalf("spill I/O ops %d, want between %d and %d", src.ops, points/200, points)
-	}
 	bound := int64(spillFileFactor) * int64(points) * int64(actRecSize)
-	if got := src.spillBytes(); got <= 0 || got > bound {
-		t.Fatalf("spill file is %d bytes for %d points, bound %d", got, points, bound)
+	finalBound := int64(spillFinalFactor) * int64(points) * int64(actRecSize)
+	t.Logf("alternating peak %d file %d io %d points %d bound %d", src.peakSpill(), src.spillBytes(), src.spillIO(), points, bound)
+	if got := src.peakSpill(); got <= 0 || got > bound {
+		t.Fatalf("spill high water is %d bytes for %d points, bound %d", got, points, bound)
+	}
+	if got := src.spillBytes(); got <= 0 || got > finalBound {
+		t.Fatalf("spill file is %d bytes for %d points, bound %d", got, points, finalBound)
+	}
+	if src.spillIO() > int64(spillIOFactor)*src.spillBytes() {
+		t.Fatalf("spill io %d exceeds %d× the %d-byte file", src.spillIO(), spillIOFactor, src.spillBytes())
 	}
 	opts := report.DefaultOptions()
 	got, err := report.RenderJSONWithOptions(*spilled, opts)
@@ -250,10 +252,10 @@ func TestAlternatingMinuteSpillStaysBounded(t *testing.T) {
 	if spill.heap > mem.heap {
 		t.Fatalf("spill live heap %d is above the in-memory series %d", spill.heap, mem.heap)
 	}
-	// The race detector's shadow memory stays in VmRSS after the series is
-	// released, and the two child processes differ by tens of MB. The plain
-	// verify job is the RSS check.
-	if !activitySpillRace && spill.rss > mem.rss {
+	// Shadow memory from the race detector stays in VmRSS after the series
+	// is released, and the two child processes differ by tens of MB. The
+	// plain verify job is the RSS check.
+	if spillRSSComparable() && spill.rss > mem.rss {
 		t.Fatalf("spill RSS %d is above the in-memory series %d", spill.rss, mem.rss)
 	}
 }
@@ -402,11 +404,10 @@ func alternatingMinuteEvents() ([]model.NormalizedEvent, int) {
 	return events, tables * pairs * 2
 }
 
-// Two channels a few minutes apart are the lag shape. Both minutes stay
-// resident, so the spill does a handful of reads and writes at the end
-// rather than one syscall per cell on every switch. The ops budget is what
-// fails that shape; the wall budget leaves room for a slow runner and still
-// fails a multi-second regression against the in-memory path.
+// Two channels a few minutes apart, few enough tables to fit in the buffer.
+// The parse writes them once at the end. The ops budget fails a path that
+// reads the minute back on every switch; the wall budget leaves room for a
+// slow runner and still fails a multi-second regression against memory.
 func TestLaggingChannelsSpillKeepsUp(t *testing.T) {
 	events := laggingChannelEvents()
 	inlineStart := time.Now()
@@ -712,37 +713,32 @@ func TestStatfsFailureStillSpills(t *testing.T) {
 	}
 }
 
-// A second flush of one dirty cell rewrites that cell. Leaving every cell
-// dirty writes the whole minute again.
-func TestDirtyClearWritesOneCell(t *testing.T) {
-	restore := SetActivityInlineLimitForTest(0)
-	defer restore()
-	a := New(minuteAnalyzeOptions())
-	m0 := time.Date(2026, 3, 16, 1, 0, 0, 0, time.UTC)
+// A cell written, flushed, and written again is one record whose counters
+// are the sum. Leaving both copies on disk doubles the point.
+func TestMergeSumsRevisitedCells(t *testing.T) {
+	restoreBytes := SetSpillResidentBytesForTest(0)
+	defer restoreBytes()
 	const cells = 32
-	for i := 0; i < cells; i++ {
-		for _, ev := range closedInsert(m0, fmt.Sprintf("k%d", i), fmt.Sprintf("t%02d", i), 1) {
-			if err := a.Consume(ev); err != nil {
-				t.Fatal(err)
-			}
+	m0 := time.Date(2026, 3, 16, 1, 0, 0, 0, time.UTC)
+	var events []model.NormalizedEvent
+	for pass := 0; pass < 2; pass++ {
+		for i := 0; i < cells; i++ {
+			events = append(events, closedInsert(m0, fmt.Sprintf("p%d-%d", pass, i), fmt.Sprintf("t%02d", i), 1)...)
 		}
 	}
-	m := a.activity.live
-	if m == nil || len(m.recs) != cells {
-		t.Fatalf("live cells = %d, want %d", len(m.recs), cells)
+	inline := analyzeWithLimit(t, events, 1<<20)
+	spilled := analyzeWithLimit(t, events, 0)
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("revisited cells were inlined")
 	}
-	if err := a.activity.writeMinute(m); err != nil {
-		t.Fatal(err)
+	t.Cleanup(src.Close)
+	if len(src.runs) != 1 || src.runs[0].n != cells {
+		t.Fatalf("on-disk records = %v, want 1 run of %d", src.runs, cells)
 	}
-	m.dirty[0] = true
-	before := a.activity.written
-	if err := a.activity.writeMinute(m); err != nil {
-		t.Fatal(err)
+	if mustJSON(t, spilled) != mustJSON(t, inline) {
+		t.Fatal("revisited cells differ from the in-memory series")
 	}
-	if got := a.activity.written - before; got != actRecSize {
-		t.Fatalf("second flush wrote %d bytes, want %d", got, actRecSize)
-	}
-	t.Cleanup(a.activity.Close)
 }
 
 // The detail store reads each spilled minute while persisting buckets.
@@ -782,9 +778,10 @@ func TestDuckDBDetailStoreSpillReadFails(t *testing.T) {
 
 // Six channels two minutes apart, twelve channels one minute apart, and a
 // random minute inside a ten-minute window. Each shape is at least 30k
-// points. The hot minutes fit in the 320KiB resident budget, so a switch is
-// not a read and a write. hotSwitches/4 is inside one read plus one write
-// per switch: four resident minutes, or one read per record, is over it.
+// points and the hot minutes fit in the buffer, so the parse does not read
+// the file. The ops ceiling is one read and one write per switch: a reload
+// of every record is over it. The file's high water mark stays within the
+// spill factor.
 func TestInterleavedChannelsStayResident(t *testing.T) {
 	tests := []struct {
 		name                        string
@@ -833,8 +830,12 @@ func TestInterleavedChannelsStayResident(t *testing.T) {
 				t.Fatalf("spill I/O ops %d, ceiling %d (switches %d)", src.ops, ceiling, hotSwitches)
 			}
 			bound := int64(spillFileFactor) * int64(points) * int64(actRecSize)
-			if file := src.spillBytes(); file <= 0 || file > bound {
-				t.Fatalf("spill file %d bytes, bound %d", file, bound)
+			finalBound := int64(spillFinalFactor) * int64(points) * int64(actRecSize)
+			if file := src.peakSpill(); file <= 0 || file > bound {
+				t.Fatalf("spill high water %d bytes, bound %d", file, bound)
+			}
+			if file := src.spillBytes(); file <= 0 || file > finalBound {
+				t.Fatalf("spill file %d bytes, bound %d", file, finalBound)
 			}
 			budget := inlineDur*3 + time.Second
 			if spillDur > budget {
@@ -885,6 +886,101 @@ func channelShapeEvents(channels, gapMin, tables, cold int, randomMinute bool) (
 		}
 	}
 	return events, (cold + channels) * tables, hotSwitches
+}
+
+// Two channels a minute apart, with a new table on every transaction, so the
+// hot minutes grow past the resident budget. Twice the tables is twice the
+// transactions. The spill work has to stay near that ratio, and the bytes
+// moved have to stay within a constant of the final file.
+func TestLaggingReplicaScales(t *testing.T) {
+	small := measureLagReplica(t, 6000)
+	large := measureLagReplica(t, 12000)
+	t.Logf("lag tables=%d points=%d wall=%s io=%d file=%d peak=%d", small.tables, small.points, small.wall, small.io, small.file, small.peak)
+	t.Logf("lag tables=%d points=%d wall=%s io=%d file=%d peak=%d", large.tables, large.points, large.wall, large.io, large.file, large.peak)
+	if small.wall > 0 && large.wall > small.wall*5/2+time.Second {
+		t.Fatalf("2× txns took %s vs %s, want at most about 2.5×", large.wall, small.wall)
+	}
+	for _, m := range []lagMeasure{small, large} {
+		bound := int64(spillFileFactor) * int64(m.points) * actRecSize
+		finalBound := int64(spillFinalFactor) * int64(m.points) * actRecSize
+		if m.peak > bound {
+			t.Fatalf("%d tables: peak file %d exceeds %d× %d points × %d", m.tables, m.peak, spillFileFactor, m.points, actRecSize)
+		}
+		if m.file > finalBound {
+			t.Fatalf("%d tables: spill file %d exceeds %d× %d points × %d", m.tables, m.file, spillFinalFactor, m.points, actRecSize)
+		}
+		if m.file > 0 && m.io > int64(spillIOFactor)*m.file {
+			t.Fatalf("%d tables: spill io %d exceeds %d× the %d-byte file", m.tables, m.io, spillIOFactor, m.file)
+		}
+	}
+}
+
+type lagMeasure struct {
+	tables int
+	points int
+	wall   time.Duration
+	io     int64
+	file   int64
+	peak   int64
+}
+
+func measureLagReplica(t *testing.T, tables int) lagMeasure {
+	t.Helper()
+	m0 := time.Date(2026, 4, 4, 0, 0, 0, 0, time.UTC)
+	lag := m0.Add(time.Minute)
+	events := make([]model.NormalizedEvent, 0, tables*2*3)
+	for i := 0; i < tables; i++ {
+		table := fmt.Sprintf("t%05d", i)
+		events = append(events, closedInsert(m0, fmt.Sprintf("a%d", i), table, 1)...)
+		events = append(events, closedInsert(lag, fmt.Sprintf("b%d", i), table, 1)...)
+	}
+	start := time.Now()
+	result := analyzeMinutes(t, events)
+	wall := time.Since(start)
+	src, ok := result.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("lagging replica stayed in memory")
+	}
+	t.Cleanup(src.Close)
+	return lagMeasure{tables: tables, points: src.n, wall: wall, io: src.spillIO(), file: src.spillBytes(), peak: src.peakSpill()}
+}
+
+// The same two minutes, rewritten. 4000 tables is 544000 bytes, past the
+// 320KiB buffer, so every pass spills. 16 passes is twice 8. The high
+// water mark is taken at every flush and merge; a run list that is not
+// merged, not truncated, or not summed stays above the factor.
+func TestRevisitedSpillStaysBounded(t *testing.T) {
+	const tables = 4000
+	const waves = 16
+	m0 := time.Date(2026, 4, 5, 0, 0, 0, 0, time.UTC)
+	lag := m0.Add(time.Minute)
+	events := make([]model.NormalizedEvent, 0, tables*waves*2*3)
+	for wave := 0; wave < waves; wave++ {
+		for i := 0; i < tables; i++ {
+			table := fmt.Sprintf("t%05d", i)
+			events = append(events, closedInsert(m0, fmt.Sprintf("a%d-%d", wave, i), table, 1)...)
+			events = append(events, closedInsert(lag, fmt.Sprintf("b%d-%d", wave, i), table, 1)...)
+		}
+	}
+	spilled := analyzeWithLimit(t, events, 0)
+	src, ok := spilled.MinuteTables.(*activityStore)
+	if !ok {
+		t.Fatal("revisited spill was inlined")
+	}
+	t.Cleanup(src.Close)
+	points := tables * 2
+	if src.n != points {
+		t.Fatalf("points = %d, want %d", src.n, points)
+	}
+	bound := int64(spillFileFactor) * int64(points) * actRecSize
+	finalBound := int64(spillFinalFactor) * int64(points) * actRecSize
+	t.Logf("revisit points=%d peak=%d file=%d io=%d bound=%d final=%d", points, src.peakSpill(), src.spillBytes(), src.spillIO(), bound, finalBound)
+	if peak := src.peakSpill(); peak <= 0 || peak > bound {
+		t.Fatalf("peak %d, bound %d for %d points", peak, bound, points)
+	}
+	if file := src.spillBytes(); file <= 0 || file > finalBound {
+		t.Fatalf("file %d, bound %d for %d points", file, finalBound, points)
+	}
 }
 
 func mustJSON(t *testing.T, result *model.AnalysisResult) string {
