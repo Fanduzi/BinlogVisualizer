@@ -74,7 +74,7 @@ SQL 上下文是有界的，而且面向展示。
 
 ## Flashback SQL
 
-`binlogviz flashback` 打印撤销选定行变更的 SQL。它只读本地 binlog，不连接数据库。先审阅并测试脚本，再在主库的同一个会话里执行。
+`binlogviz flashback` 打印撤销选定行变更的 SQL。它只读本地 binlog，不连接数据库。flashback 是实验功能：执行生成的 SQL 之前必须先审阅。先审阅并测试脚本，再在主库的同一个会话里执行。
 
 DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，`WHERE` 用后镜像的主键。语句按 binlog 逆序。整个撤销是一个 XA 事务，文件本身不会提交。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`（文件名和该事务起点字节）。
 

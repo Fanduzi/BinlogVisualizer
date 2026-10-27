@@ -74,7 +74,7 @@ Column names are taken from the binlog when `binlog_row_metadata=FULL` (MySQL 8.
 
 ## Flashback SQL
 
-`binlogviz flashback` prints SQL that undoes the selected row changes. It reads the local binlog and does not connect to a database. Review the script, test it, and apply it yourself in a single session on the primary.
+`binlogviz flashback` prints SQL that undoes the selected row changes. It reads the local binlog and does not connect to a database. Flashback is experimental: review the generated SQL before applying it. Review the script, test it, and apply it yourself in a single session on the primary.
 
 A DELETE becomes `INSERT` of the before-image. An INSERT becomes `DELETE` of the after-image. An UPDATE sets every column back to the before-image and matches the primary key from the after-image. Statements are in reverse binlog order. The undo is one XA transaction and the file does not commit. A comment names the original GTID, or `GTID unavailable`, and `file:start-position` (the basename and the byte where that transaction starts).
 

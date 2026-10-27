@@ -187,3 +187,86 @@ jobs:
               exit 1
             fi
           done
+
+  flashback-difftest:
+    name: flashback difftest
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      mysql80:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: difftest
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pdifftest --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=30
+      mysql84:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: difftest
+          MYSQL_ROOT_HOST: "%"
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pdifftest --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Install MySQL client
+        run: sudo apt-get update && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-client
+      - name: Enable ROW binlogs on the MySQL services
+        run: |
+          set -euo pipefail
+          chmod +x scripts/difftest_enable_binlog.sh
+          echo "DIFFTEST_DOCKER_80=$(bash scripts/difftest_enable_binlog.sh 3306 1)" >> "$GITHUB_ENV"
+          echo "DIFFTEST_DOCKER_84=$(bash scripts/difftest_enable_binlog.sh 3307 2)" >> "$GITHUB_ENV"
+      - name: Differential tests on MySQL 8.0
+        env:
+          BINLOGVIZ_DIFFTEST: "1"
+          BINLOGVIZ_DIFFTEST_MYSQL: "mysql --protocol=tcp -h 127.0.0.1 -P 3306 -uroot -pdifftest"
+          BINLOGVIZ_DIFFTEST_DOCKER: ${{ env.DIFFTEST_DOCKER_80 }}
+        run: |
+          set -euo pipefail
+          log=$(mktemp)
+          go test -count=1 -timeout 15m -v ./internal/mysqlexpr ./cmd/binlogviz \
+            -run 'TestDiffMySQLExpressions|TestFlashbackDiffMySQL' 2>&1 | tee "$log"
+          if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
+            echo "differential tests skipped" >&2
+            exit 1
+          fi
+          for name in TestDiffMySQLExpressions TestFlashbackDiffMySQL; do
+            if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then
+              echo "missing --- PASS for ${name}" >&2
+              exit 1
+            fi
+          done
+      - name: Differential tests on MySQL 8.4
+        env:
+          BINLOGVIZ_DIFFTEST: "1"
+          BINLOGVIZ_DIFFTEST_MYSQL: "mysql --protocol=tcp -h 127.0.0.1 -P 3307 -uroot -pdifftest"
+          BINLOGVIZ_DIFFTEST_DOCKER: ${{ env.DIFFTEST_DOCKER_84 }}
+        run: |
+          set -euo pipefail
+          log=$(mktemp)
+          go test -count=1 -timeout 15m -v ./internal/mysqlexpr ./cmd/binlogviz \
+            -run 'TestDiffMySQLExpressions|TestFlashbackDiffMySQL' 2>&1 | tee "$log"
+          if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
+            echo "differential tests skipped" >&2
+            exit 1
+          fi
+          for name in TestDiffMySQLExpressions TestFlashbackDiffMySQL; do
+            if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then
+              echo "missing --- PASS for ${name}" >&2
+              exit 1
+            fi
+          done

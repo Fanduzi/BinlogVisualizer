@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -45,6 +46,7 @@ func newFlashbackCommand() *cobra.Command {
 			return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
 		},
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			warnFlashbackExperimental()
 			stage := clierr.KindUsage
 			defer func() { err = clierr.Wrap(stage, err) }()
 			if err := flashback.ValidateResourceEnv(); err != nil {
@@ -178,10 +180,27 @@ func newFlashbackCommand() *cobra.Command {
 	return cmd
 }
 
+const experimentalMark = "[experimental] "
+
+func markExperimental(s string) string {
+	if strings.HasPrefix(s, experimentalMark) {
+		return s
+	}
+	return experimentalMark + s
+}
+
+// warnFlashbackExperimental is the one stderr line every flashback run prints
+// (ADR 0020). --quiet does not hide it. Help is not a run and does not print it.
+func warnFlashbackExperimental() {
+	fmt.Fprintf(os.Stderr, "%s\n", i18n.Tf("warning.flashbackLine", map[string]any{
+		"Message": i18n.T("warning.flashbackExperimental"),
+	}))
+}
+
 func refreshFlashbackHelp(cmd *cobra.Command) {
 	cmd.Use = i18n.T("cmd.flashback.use")
-	cmd.Short = i18n.T("cmd.flashback.short")
-	cmd.Long = i18n.T("cmd.flashback.long")
+	cmd.Short = markExperimental(i18n.T("cmd.flashback.short"))
+	cmd.Long = markExperimental(i18n.T("cmd.flashback.long"))
 	cmd.SetUsageTemplate(flashbackUsageTemplate())
 	usage := map[string]string{
 		"start":          "cmd.analyze.flag.start",
@@ -206,8 +225,11 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 	}
 	for name, key := range usage {
 		if flag := cmd.Flags().Lookup(name); flag != nil {
-			flag.Usage = i18n.T(key)
+			flag.Usage = markExperimental(i18n.T(key))
 		}
+	}
+	for _, child := range cmd.Commands() {
+		refreshFlashbackChildHelp(child)
 	}
 	refreshInheritedFlashbackFlags(cmd)
 }
@@ -232,10 +254,10 @@ func refreshFlashbackChildHelp(cmd *cobra.Command) {
 	switch cmd.Name() {
 	case "verify":
 		cmd.Use = i18n.T("cmd.flashback.verify.use")
-		cmd.Short = i18n.T("cmd.flashback.verify.short")
-		cmd.Long = i18n.T("cmd.flashback.verify.long")
+		cmd.Short = markExperimental(i18n.T("cmd.flashback.verify.short"))
+		cmd.Long = markExperimental(i18n.T("cmd.flashback.verify.long"))
 		if flag := cmd.Flags().Lookup("format"); flag != nil {
-			flag.Usage = i18n.T("cmd.flashback.verify.flag.format")
+			flag.Usage = markExperimental(i18n.T("cmd.flashback.verify.flag.format"))
 		}
 	}
 	refreshInheritedFlashbackFlags(cmd)

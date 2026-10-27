@@ -184,7 +184,7 @@ The report's DDL Timeline lists each `DROP TABLE`, `TRUNCATE`, and `ALTER` with 
 
 ### Undo the bad rows
 
-Find the transaction with `analyze`, the DDL Timeline, or `--show-rows`. Then print SQL that reverses only those row changes. Review the script. Apply it yourself. Flashback does not connect to a database.
+Find the transaction with `analyze`, the DDL Timeline, or `--show-rows`. Then print SQL that reverses only those row changes. Review the script. Apply it yourself. Flashback does not connect to a database. Flashback is experimental: review the generated SQL before applying it.
 
 ```bash
 binlogviz analyze mysql-bin.000123 \

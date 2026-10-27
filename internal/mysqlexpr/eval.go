@@ -1,6 +1,6 @@
 // Package mysqlexpr: the generated-column expression evaluator.
 // input: a generated-column expression from a schema file, logged column values, and (for DECIMAL arithmetic) a div_precision_increment.
-// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; EvalGenExpr) or the exact-DECIMAL domain (EvalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237).
+// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; EvalGenExpr) or the exact-DECIMAL domain (EvalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237). A COLLATE clause is not modelled and returns ok=false (ADR 0020). Signed integer + - * DIV past BIGINT is unverified in both domains, because MySQL rejects it.
 // pos: flashback-only module. Analyze does not call it. Value helpers (GenVal, DecVal, apply*) live in expr.go and schema.go.
 // note: if this file changes, update this header, CONTEXT.md (Expression evaluator) and docs/adr/0007-expression-evaluator.md.
 package mysqlexpr
@@ -162,18 +162,18 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 		}
 		return parseExprText(body)
 	case '\'', '"':
-		v, ok := sc.quotedText("utf8mb4")
+		v, ok, collated := sc.quotedText("utf8mb4")
 		if !ok {
 			return nil, false
 		}
-		return &exprNode{kind: exLit, lit: v}, true
+		return &exprNode{kind: exLit, lit: v, collate: collated}, true
 	}
 	if sc.S[sc.I] == 'X' || sc.S[sc.I] == 'x' {
 		if v, ok, parsed := sc.hexBinary(); parsed {
 			if !ok {
 				return nil, false
 			}
-			return &exprNode{kind: exLit, lit: v}, true
+			return &exprNode{kind: exLit, lit: v, collate: sc.skipCollate()}, true
 		}
 	}
 	if sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
@@ -192,11 +192,11 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 		return nil, false
 	}
 	if !quoted && strings.HasPrefix(name, "_") {
-		if v, ok, parsed := sc.introducedLiteral(name); parsed {
+		if v, ok, parsed, collated := sc.introducedLiteral(name); parsed {
 			if !ok {
 				return nil, false
 			}
-			return &exprNode{kind: exLit, lit: v}, true
+			return &exprNode{kind: exLit, lit: v, collate: collated}, true
 		}
 	}
 	if sc.PeekByte() == '(' {
@@ -218,9 +218,7 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 		}
 		return call, true
 	}
-	save := sc.I
-	sc.skipCollate()
-	collate := sc.I != save
+	collate := sc.skipCollate()
 	if !quoted && isNullWord(name) {
 		return &exprNode{kind: exNull, collate: collate}, true
 	}
@@ -245,6 +243,11 @@ func EvalGenExpr(expr string, env map[string]GenVal) (GenVal, bool) {
 }
 
 func (n *exprNode) evalGen(env map[string]GenVal) (GenVal, bool) {
+	// A COLLATE clause is not modelled. Returning a value would ignore a
+	// collation that changes the result (for example Turkish UPPER of i).
+	if n.collate {
+		return GenVal{}, false
+	}
 	switch n.kind {
 	case exAdd:
 		left, ok := n.l.evalGen(env)
@@ -287,7 +290,11 @@ func (n *exprNode) evalGen(env map[string]GenVal) (GenVal, bool) {
 		if !ok || iv.null {
 			return v, ok
 		}
-		return GenVal{kind: genNum, n: new(big.Rat).Neg(iv.n)}, true
+		neg := new(big.Rat).Neg(iv.n)
+		if !fitsSignedBigint(neg) {
+			return GenVal{}, false
+		}
+		return GenVal{kind: genNum, n: neg}, true
 	case exArrow:
 		v, ok := n.x.evalGen(env)
 		if !ok {
@@ -398,13 +405,18 @@ func (n *exprNode) evalDec(env map[string]GenVal, inc int) (DecVal, bool) {
 			}
 			return DecVal{}, false
 		}
-		return DecVal{n: new(big.Rat).Neg(v.n), scale: v.scale, mode: v.mode}, true
+		neg := new(big.Rat).Neg(v.n)
+		if v.intKind && !fitsSignedBigint(neg) {
+			return DecVal{}, false
+		}
+		return DecVal{n: neg, scale: v.scale, mode: v.mode, intKind: v.intKind}, true
 	case exNum:
 		i, ok := new(big.Int).SetString(n.num, 10)
 		if !ok {
 			return DecVal{}, false
 		}
-		return DecVal{n: new(big.Rat).SetInt(i), scale: 0}, true
+		r := new(big.Rat).SetInt(i)
+		return DecVal{n: r, scale: 0, intKind: fitsSignedBigint(r)}, true
 	case exNull:
 		if n.collate {
 			return DecVal{}, false
@@ -519,7 +531,7 @@ func decIntOp(left, right DecVal, remainder bool) (DecVal, bool) {
 		if next.null {
 			return DecVal{null: true}, true
 		}
-		return placeDec(next.n, 0, false), true
+		return tagIntKind(placeDec(next.n, 0, false), true), true
 	}
 	// An operand this walk does not claim, or one near DECIMAL's 65 digits
 	// (where MySQL's own arithmetic can overflow first), is declined as
@@ -534,13 +546,13 @@ func decIntOp(left, right DecVal, remainder bool) (DecVal, bool) {
 		if t.Cmp(maxInt64Big) > 0 || t.Cmp(minInt64Big) < 0 {
 			return DecVal{mode: decOmit}, true
 		}
-		return placeDec(new(big.Rat).SetInt(t), 0, false), true
+		return tagIntKind(placeDec(new(big.Rat).SetInt(t), 0, false), true), true
 	}
 	rem := new(big.Rat).Sub(left.n, new(big.Rat).Mul(right.n, new(big.Rat).SetInt(t)))
 	if rem.Sign() == 0 {
 		// MySQL's decimal_mod makes a zero remainder a plain 0 (scale 0),
 		// which a following / sees.
-		return placeDec(rem, 0, false), true
+		return tagIntKind(placeDec(rem, 0, false), true), true
 	}
 	scale := left.scale
 	if right.scale > scale {
@@ -556,6 +568,16 @@ var (
 	maxInt64Big = big.NewInt(math.MaxInt64)
 	minInt64Big = big.NewInt(math.MinInt64)
 )
+
+// fitsSignedBigint reports whether n is an integer in signed BIGINT.
+// MySQL's integer + - * DIV raise ERROR 1690 past that range.
+func fitsSignedBigint(n *big.Rat) bool {
+	if n == nil || !n.IsInt() {
+		return false
+	}
+	i := n.Num()
+	return i.Cmp(maxInt64Big) <= 0 && i.Cmp(minInt64Big) >= 0
+}
 
 // decZeroScale applies MySQL's rule that an arithmetic result of zero is a
 // plain 0 with scale 0 (decimal_make_zero), which a later / sees: for

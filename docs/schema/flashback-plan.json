@@ -57,6 +57,9 @@
       ],
       "type": "object"
     },
+    "experimental": {
+      "type": "boolean"
+    },
     "guarded_statements": {
       "type": "integer"
     },
@@ -154,6 +157,7 @@
   "required": [
     "conflict_policy",
     "conflicts",
+    "experimental",
     "guarded_statements",
     "plan_version",
     "refusal",

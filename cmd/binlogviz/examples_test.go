@@ -1,6 +1,8 @@
 package binlogviz
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -34,6 +36,65 @@ func TestCommandExamplesIncludeSpikeRecipe(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestFlashbackMarkedExperimental(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	for _, args := range [][]string{
+		{"flashback", "--help"},
+		{"--lang", "zh-CN", "flashback", "--help"},
+		{"flashback", "verify", "--help"},
+	} {
+		code, stdout, stderr := runRoot(t, args...)
+		out := stdout + stderr
+		if code != 0 || !strings.Contains(out, "[experimental]") {
+			t.Fatalf("%v exit %d, help has no [experimental] marker:\n%s", args, code, out)
+		}
+	}
+	_, stdout, stderr := runRoot(t, "flashback", "--help")
+	help := stdout + stderr
+	for _, flag := range []string{"--plan", "--conflict", "--dml", "--schema-file"} {
+		if !helpLineHas(help, flag, "[experimental]") {
+			t.Fatalf("flag %s is not marked experimental:\n%s", flag, help)
+		}
+	}
+	_, stdout, stderr = runRoot(t, "flashback", "verify", "--help")
+	if !helpLineHas(stdout+stderr, "--format", "[experimental]") {
+		t.Fatalf("verify --format is not marked experimental:\n%s", stdout+stderr)
+	}
+
+	langFlag = ""
+	i18n.ResetForTesting()
+	if err := i18n.Init("en"); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runRoot(t, "flashback", mustFixturePath(t, "minimal.binlog"), "--plan")
+	const warn = "warning: flashback is experimental; review the generated SQL before applying it"
+	if strings.Count(stderr, warn) != 1 {
+		t.Fatalf("exit %d, experimental warning count %d\nstderr:\n%s", code, strings.Count(stderr, warn), stderr)
+	}
+	if strings.HasPrefix(strings.TrimSpace(stdout), "{") {
+		var plan map[string]any
+		if err := json.Unmarshal([]byte(stdout), &plan); err != nil {
+			t.Fatalf("plan: %v\n%s", err, stdout)
+		}
+		if plan["experimental"] != true {
+			t.Fatalf("plan experimental = %v\n%s", plan["experimental"], stdout)
+		}
+	}
+	code, _, stderr = runRoot(t, "flashback", "verify", filepath.Join(t.TempDir(), "missing.sql"))
+	if code == 0 || strings.Count(stderr, warn) != 1 {
+		t.Fatalf("verify exit %d\n%s", code, stderr)
+	}
+}
+
+func helpLineHas(out, a, b string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, a) && strings.Contains(line, b) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestFlashbackSQLContextHelpIsNotAnalyzeWording(t *testing.T) {

@@ -35,3 +35,5 @@ A change to the grammar had to be made two or three times. Nothing checked that 
   - Operands over 60 digits still go to the general evaluator.
 
   A later `/` whose scale goes past 30 stays unverified, as before.
+- ADR 0020: a COLLATE clause is unverified in both domains. The general domain used to parse it and then ignore it, so `UPPER('i' COLLATE utf8mb4_tr_0900_ai_ci)` came back as `I`. That disagrees with MySQL. The walk now returns unverified whenever a node carries COLLATE.
+- ADR 0020: signed integer `+`, `-`, `*`, and `DIV` whose result is outside BIGINT are unverified. MySQL raises `ERROR 1690`. Two integer-typed operands stay on that arithmetic inside the DECIMAL domain; a DECIMAL operand uses exact decimal arithmetic and can exceed BIGINT.

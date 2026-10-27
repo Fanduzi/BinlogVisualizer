@@ -351,6 +351,10 @@
     "description": "Prefix for a flashback warning printed on stderr",
     "other": "warning: {{.Message}}"
   },
+  "warning.flashbackExperimental": {
+    "description": "Stderr line on every flashback run: the feature is experimental",
+    "other": "flashback is experimental; review the generated SQL before applying it"
+  },
   "warning.flashbackGenerated": {
     "description": "Flashback warns when a selected table has no CREATE in the binlog or schema file",
     "other": "{{.Table}}: no table definition in the parsed binlogs or --schema-file; generated columns cannot be ruled out. The script still lists every column. If the table has any, applying it stops at ERROR 3105 and the undo rolls back. Pass --schema-file (mysqldump --no-data, or SHOW CREATE TABLE). The file must match the table at incident time."

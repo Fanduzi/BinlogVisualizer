@@ -51,3 +51,26 @@ func TestReleaseWaitsForFlashbackE2E(t *testing.T) {
 		t.Fatal("release.yml's github-release job no longer waits for build")
 	}
 }
+
+// The MySQL 8.0 and 8.4 differential job runs on every pull request. It is
+// not continue-on-error, and a skip still fails the step (ADR 0020).
+func TestDiffTestJobIsRequired(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := string(b)
+	job := ciJob(t, ci, "flashback-difftest")
+	if !strings.Contains(job, "name: flashback difftest") {
+		t.Fatal("ci.yml is missing the flashback difftest job")
+	}
+	if strings.Contains(job, "continue-on-error") {
+		t.Fatal("flashback difftest must fail the workflow")
+	}
+	if strings.Count(job, `BINLOGVIZ_DIFFTEST: "1"`) < 2 || !strings.Contains(job, "mysql:8.0") || !strings.Contains(job, "mysql:8.4") {
+		t.Fatal("flashback difftest does not run on MySQL 8.0 and 8.4")
+	}
+	if !strings.Contains(job, "TestDiffMySQLExpressions") || !strings.Contains(job, "TestFlashbackDiffMySQL") {
+		t.Fatal("flashback difftest does not require the differential tests")
+	}
+}

@@ -36,7 +36,7 @@ binlogviz flashback mysql-bin.000001 --include-gtids '<gtid>' --conflict guard
 
 不加 `--detect-spikes` 就不会做尖峰检测。此时 `alerts` 仍会列出超过 `--large-trx-rows`（默认 1000）的事务。告警针对某一个事务时，读 `alerts[].gtid`。它和 `transactions[].gtid` 是同一个字符串。把这个字符串传给 `--include-gtids`。尖峰告警、输入格式警告和没有主键的警告没有 `gtid`。
 
-`--plan` 只打印 JSON，不打印撤销 SQL。`plan_version` 是 2。退出码 7 表示选中的行后来又被改过（默认 `--conflict refuse`）。`--conflict guard` 按日志里的后镜像匹配，而不是直接拒绝。退出码 6 表示 flashback 不会写出脚本（范围内有 DDL、行镜像不是 FULL，或 `--sql-context off`）。
+flashback 是实验功能：执行生成的 SQL 之前必须先审阅。`--plan` 只打印 JSON，不打印撤销 SQL。`plan_version` 是 2。plan 对象带 `experimental: true`。退出码 7 表示选中的行后来又被改过（默认 `--conflict refuse`）。`--conflict guard` 按日志里的后镜像匹配，而不是直接拒绝。退出码 6 表示 flashback 不会写出脚本（范围内有 DDL、行镜像不是 FULL，或 `--sql-context off`）。
 
 `testdata/minimal.binlog` 是一份很小的 ROW 样本。它可能没有尖峰，也没有告警。在真实文件上命令是一样的。
 

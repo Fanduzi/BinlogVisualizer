@@ -38,6 +38,7 @@ func newFlashbackVerifyCommand() *cobra.Command {
 		SilenceErrors: true,
 		Args:          cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			warnFlashbackExperimental()
 			switch strings.ToLower(strings.TrimSpace(format)) {
 			case "sql", "json":
 			default:

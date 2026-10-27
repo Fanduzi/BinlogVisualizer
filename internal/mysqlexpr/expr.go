@@ -150,6 +150,11 @@ func applyGenAdd(left, right GenVal, op byte) (GenVal, bool) {
 	} else {
 		n.Sub(li.n, ri.n)
 	}
+	// MySQL rejects a signed BIGINT sum or difference (ERROR 1690). A value
+	// past that range is unverified, not a result the checker may claim.
+	if !fitsSignedBigint(n) {
+		return GenVal{}, false
+	}
 	return GenVal{kind: genNum, n: n}, true
 }
 
@@ -565,28 +570,28 @@ func (sc *Scan) numberAtom() (GenVal, bool) {
 	return genNumVal(sc.S[start:sc.I])
 }
 
-func (sc *Scan) quotedText(charset string) (GenVal, bool) {
+func (sc *Scan) quotedText(charset string) (GenVal, bool, bool) {
 	text, ok := sc.decodeQuoted()
 	if !ok {
-		return GenVal{}, false
+		return GenVal{}, false, false
 	}
-	sc.skipCollate()
+	collated := sc.skipCollate()
 	switch charset {
 	case "latin1":
 		raw := make([]byte, 0, len(text))
 		for _, r := range text {
 			if r > 0xFF {
-				return GenVal{}, false
+				return GenVal{}, false, false
 			}
 			raw = append(raw, byte(r))
 		}
-		return GenVal{kind: genText, text: text, raw: raw, haveRaw: true, charset: "latin1", decoded: true}, true
+		return GenVal{kind: genText, text: text, raw: raw, haveRaw: true, charset: "latin1", decoded: true}, true, collated
 	case "binary":
-		return GenVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: "binary", decoded: true}, true
+		return GenVal{kind: genText, text: text, raw: []byte(text), haveRaw: true, charset: "binary", decoded: true}, true, collated
 	case "utf8mb4", "utf8", "ascii", "":
-		return genTextVal(text, "utf8mb4"), true
+		return genTextVal(text, "utf8mb4"), true, collated
 	default:
-		return GenVal{kind: genText, charset: charset}, true
+		return GenVal{kind: genText, charset: charset}, true, collated
 	}
 }
 
@@ -650,26 +655,26 @@ func (sc *Scan) constString() (string, bool) {
 	return v.text, true
 }
 
-func (sc *Scan) introducedLiteral(name string) (GenVal, bool, bool) {
+func (sc *Scan) introducedLiteral(name string) (GenVal, bool, bool, bool) {
 	charset := strings.ToLower(strings.TrimPrefix(name, "_"))
 	save := *sc
 	sc.Skip()
 	if sc.I >= len(sc.S) {
 		*sc = save
-		return GenVal{}, false, false
+		return GenVal{}, false, false, false
 	}
 	if sc.S[sc.I] == '\'' || sc.S[sc.I] == '"' {
-		v, ok := sc.quotedText(normalizeIntroCharset(charset))
-		return v, ok, true
+		v, ok, collated := sc.quotedText(normalizeIntroCharset(charset))
+		return v, ok, true, collated
 	}
 	if v, ok, parsed := sc.hexBinary(); parsed {
 		if !ok {
-			return GenVal{}, false, true
+			return GenVal{}, false, true, false
 		}
-		return tagCharset(v, normalizeIntroCharset(charset)), true, true
+		return tagCharset(v, normalizeIntroCharset(charset)), true, true, sc.skipCollate()
 	}
 	*sc = save
-	return GenVal{}, false, false
+	return GenVal{}, false, false, false
 }
 
 func normalizeIntroCharset(charset string) string {
@@ -810,10 +815,12 @@ func fromHex(b byte) (byte, bool) {
 	}
 }
 
-func (sc *Scan) skipCollate() {
+func (sc *Scan) skipCollate() bool {
 	if sc.WordIs("COLLATE") {
 		_, _ = sc.Ident()
+		return true
 	}
+	return false
 }
 
 func isNullWord(name string) bool { return strings.EqualFold(name, "NULL") }
@@ -877,7 +884,7 @@ func generatedRefs(expr string, columns []string) (refs []string, ok bool) {
 				return nil, false
 			}
 			if !quoted && strings.HasPrefix(name, "_") {
-				if _, _, parsed := sc.introducedLiteral(name); parsed {
+				if _, _, parsed, _ := sc.introducedLiteral(name); parsed {
 					continue
 				}
 			}
@@ -910,7 +917,7 @@ func parseLoggedValue(lit string) (GenVal, bool) {
 		return genNullVal(), true
 	case s[0] == '\'' || s[0] == '"':
 		sc := &Scan{S: s}
-		v, ok := sc.quotedText("utf8mb4")
+		v, ok, _ := sc.quotedText("utf8mb4")
 		if !ok {
 			return GenVal{}, false
 		}
@@ -2571,6 +2578,10 @@ type DecVal struct {
 	n     *big.Rat
 	scale int
 	mode  uint8
+	// intKind is a signed integer type (an integer column or a BIGINT literal).
+	// + - * of two intKind values use MySQL's integer arithmetic: a result
+	// outside signed BIGINT is unverified. A DECIMAL operand clears it.
+	intKind bool
 }
 
 func integerClip(v intVal, col SchemaCol) (*big.Int, bool) {
@@ -2783,6 +2794,7 @@ func decFromGen(v GenVal) (DecVal, bool) {
 		if !v.n.IsInt() {
 			return DecVal{}, false
 		}
+		return DecVal{n: new(big.Rat).Set(v.n), scale: scale, intKind: fitsSignedBigint(v.n)}, true
 	default:
 		return DecVal{}, false
 	}
@@ -2806,9 +2818,15 @@ func applyDecAdd(left, right DecVal, op byte) (DecVal, bool) {
 	if right.scale > scale {
 		scale = right.scale
 	}
+	// Two signed integer operands use BIGINT arithmetic. MySQL rejects the
+	// sum (ERROR 1690) instead of promoting it to DECIMAL.
+	intKind := left.intKind && right.intKind
+	if intKind && !fitsSignedBigint(n) {
+		return DecVal{}, false
+	}
 	// The sum is exact at max(scale). MySQL does not round it here. A sum
 	// that does not fit in 65 digits is unverified, not rounded down.
-	return placeDec(n, scale, false), true
+	return tagIntKind(placeDec(n, scale, false), intKind), true
 }
 
 func applyDecMul(left, right DecVal, op string, inc int) (DecVal, bool) {
@@ -2830,7 +2848,11 @@ func applyDecMul(left, right DecVal, op string, inc int) (DecVal, bool) {
 		// 30 places here and again on store can carry into the stored digit.
 		scale := left.scale + right.scale
 		prod := new(big.Rat).Mul(left.n, right.n)
-		return placeDec(prod, scale, true), true
+		intKind := left.intKind && right.intKind
+		if intKind && !fitsSignedBigint(prod) {
+			return DecVal{}, false
+		}
+		return tagIntKind(placeDec(prod, scale, true), intKind), true
 	case "/":
 		if right.n.Sign() == 0 {
 			if right.mode != decClaim {
@@ -2870,6 +2892,13 @@ func placeDec(n *big.Rat, scale int, product bool) DecVal {
 		return DecVal{mode: decOmit}
 	}
 	return DecVal{n: n, scale: scale}
+}
+
+func tagIntKind(v DecVal, intKind bool) DecVal {
+	if intKind && v.mode == decClaim {
+		v.intKind = true
+	}
+	return v
 }
 
 // decDigits is the precision of n written with exactly scale fractional digits.

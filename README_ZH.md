@@ -184,7 +184,7 @@ binlogviz analyze mysql-bin.000123
 
 ### 撤销误改的行
 
-先用 `analyze`、DDL 时间线或 `--show-rows` 找到那个事务，再打印只撤销这些行变更的 SQL。先审脚本，再自己执行。flashback 不连接数据库。
+先用 `analyze`、DDL 时间线或 `--show-rows` 找到那个事务，再打印只撤销这些行变更的 SQL。先审脚本，再自己执行。flashback 不连接数据库。flashback 是实验功能：执行生成的 SQL 之前必须先审阅。
 
 ```bash
 binlogviz analyze mysql-bin.000123 \

@@ -36,7 +36,7 @@ binlogviz flashback mysql-bin.000001 --include-gtids '<gtid>' --conflict guard
 
 Spike detection is off unless you pass `--detect-spikes`. Without it, `alerts` still lists transactions over `--large-trx-rows` (default 1000). Read `alerts[].gtid` when the alert is about one transaction. It is the same string as `transactions[].gtid`. Pass that string to `--include-gtids`. A spike alert, an input-format warning, and a no-primary-key warning have no `gtid`.
 
-`--plan` prints JSON and does not print the undo SQL. `plan_version` is 2. Exit 7 means a selected row changed again later (`--conflict refuse`, the default). `--conflict guard` matches the logged after-image instead of refusing. Exit 6 means flashback will not write the script (DDL in range, a row image that is not FULL, or `--sql-context off`).
+Flashback is experimental: review the generated SQL before applying it. `--plan` prints JSON and does not print the undo SQL. `plan_version` is 2. The plan object includes `experimental: true`. Exit 7 means a selected row changed again later (`--conflict refuse`, the default). `--conflict guard` matches the logged after-image instead of refusing. Exit 6 means flashback will not write the script (DDL in range, a row image that is not FULL, or `--sql-context off`).
 
 `testdata/minimal.binlog` is a small ROW sample. It may have no spike and no alert. The commands are the same on a real file.
 

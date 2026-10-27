@@ -2,6 +2,8 @@
 
 This page holds the row-image, DDL Timeline, and flashback detail that used to live in the project README. Known limits are in [Limitations](../concept/limitations.md); flags are in the [CLI Reference](../reference/cli.md).
 
+Flashback is experimental: review the generated SQL before applying it.
+
 ## Find the bad DELETE and see its rows
 
 ```bash

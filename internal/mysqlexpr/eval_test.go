@@ -34,6 +34,71 @@ func TestEvaluatorDecimalRejectsUnmodelled(t *testing.T) {
 	}
 }
 
+// A COLLATE clause used to be parsed and ignored, so UPPER('i' COLLATE
+// utf8mb4_tr_0900_ai_ci) came back as I. MySQL's Turkish collation does not.
+// The walk refuses the clause instead of returning that value.
+func TestEvaluatorCollateUnsupported(t *testing.T) {
+	env := map[string]GenVal{"a": genTextVal("i", "utf8mb4")}
+	for _, expr := range []string{
+		"UPPER('i' COLLATE utf8mb4_tr_0900_ai_ci)",
+		"UPPER(a COLLATE utf8mb4_bin)",
+		"'a' COLLATE utf8mb4_0900_ai_ci",
+		"_latin1 X'B5' COLLATE latin1_bin",
+		"LOWER('ß')",
+	} {
+		if _, ok := EvalGenExpr(expr, env); ok {
+			t.Errorf("%s returned a value; it is unverified", expr)
+		}
+	}
+	v, ok := EvalGenExpr("UPPER('AbC')", nil)
+	if !ok || v.text != "ABC" {
+		t.Fatalf("UPPER ascii = %+v %v", v, ok)
+	}
+	v, ok = EvalGenExpr("1 + NULL", nil)
+	if !ok || v.kind != genNull {
+		t.Fatalf("1+NULL = %+v %v", v, ok)
+	}
+	if _, ok := EvalGenExpr("'1' + 2", nil); ok {
+		t.Fatal("string-to-number addition must stay unverified")
+	}
+}
+
+func TestEvaluatorBigintOverflowUnsupported(t *testing.T) {
+	for _, expr := range []string{
+		"9223372036854775807 + 1",
+		"-9223372036854775808 - 1",
+		"9223372036854775807 * 2",
+		"-9223372036854775808 DIV -1",
+		"-(-9223372036854775808)",
+	} {
+		if _, ok := EvalGenExpr(expr, nil); ok {
+			t.Errorf("%s returned a value; signed BIGINT overflow is unverified", expr)
+		}
+	}
+	v, ok := EvalGenExpr("9223372036854775807 + 0", nil)
+	if !ok || v.kind != genNum || v.n == nil || !v.n.IsInt() || v.n.Num().String() != "9223372036854775807" {
+		t.Fatalf("max bigint + 0 = %+v %v", v, ok)
+	}
+	minInt, ok := genNumVal("-9223372036854775808")
+	if !ok {
+		t.Fatal("min int")
+	}
+	minInt.base = "bigint"
+	env := map[string]GenVal{"c_n": minInt}
+	if d, ok := EvalDecExprInc("c_n - 2", env, 4); ok && d.mode == decClaim {
+		t.Fatalf("bigint c_n - 2 claimed %+v", d.n)
+	}
+	wide, _ := genNumVal("-9223372036854775808")
+	wide.base = "decimal"
+	wide.hasPrec = true
+	wide.prec = 65
+	wide.scale = 0
+	d, ok := EvalDecExprInc("c_w - 2", map[string]GenVal{"c_w": wide}, 4)
+	if !ok || d.mode != decClaim || d.n == nil || d.n.FloatString(0) != "-9223372036854775810" {
+		t.Fatalf("decimal c_w - 2 = %+v %v", d, ok)
+	}
+}
+
 func TestEvaluatorLiteralNotMutatedAcrossCalls(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		v, ok := EvalGenExpr("'ab'", nil)

@@ -739,7 +739,11 @@ func applyMulOp(left, right intVal, op string) (intVal, bool) {
 	}
 	switch op {
 	case "*":
-		return intVal{n: new(big.Rat).Mul(left.n, right.n)}, true
+		prod := new(big.Rat).Mul(left.n, right.n)
+		if !fitsSignedBigint(prod) {
+			return intVal{}, false
+		}
+		return intVal{n: prod}, true
 	case "/":
 		if right.n.Sign() == 0 {
 			return intVal{null: true}, true
@@ -774,6 +778,9 @@ func applyIntDiv(left, right intVal, remainder bool) (intVal, bool) {
 		out = new(big.Int).Rem(li, ri)
 	} else {
 		out = new(big.Int).Quo(li, ri)
+		if out.Cmp(maxInt64Big) > 0 || out.Cmp(minInt64Big) < 0 {
+			return intVal{}, false
+		}
 	}
 	return intVal{n: new(big.Rat).SetInt(out)}, true
 }

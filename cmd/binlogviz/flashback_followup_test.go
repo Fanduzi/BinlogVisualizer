@@ -206,7 +206,7 @@ func TestFlashbackRefusalJSONReasons(t *testing.T) {
 					Details map[string]any `json:"details"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal([]byte(strings.TrimSpace(stderr)), &body); err != nil {
+			if err := json.Unmarshal([]byte(lastJSONLine(stderr)), &body); err != nil {
 				t.Fatalf("json: %v\n%s", err, stderr)
 			}
 			if body.Error.Kind != "refused" || body.Error.Details["reason"] != tc.reason {

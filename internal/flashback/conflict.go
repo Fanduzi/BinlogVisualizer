@@ -244,7 +244,10 @@ const FlashbackPlanVersion = 2
 // FlashbackPlan is the --plan output: what the script would undo, and why it
 // would be refused.
 type FlashbackPlan struct {
-	PlanVersion       int                      `json:"plan_version"`
+	PlanVersion int `json:"plan_version"`
+	// Experimental is always true. Adding the key does not bump plan_version
+	// (ADR 0010). ADR 0020.
+	Experimental      bool                     `json:"experimental"`
 	Transactions      int                      `json:"transactions"`
 	Rows              int                      `json:"rows"`
 	Tables            []FlashbackPlanTable     `json:"tables"`
@@ -289,6 +292,7 @@ func SQLContextOffPlan(policy, message string) FlashbackPlan {
 	}
 	return FlashbackPlan{
 		PlanVersion:    FlashbackPlanVersion,
+		Experimental:   true,
 		ConflictPolicy: policy,
 		Tables:         []FlashbackPlanTable{},
 		Conflicts:      FlashbackPlanCounts{Listed: []FlashbackConflict{}},
@@ -344,6 +348,7 @@ func (a *Planner) WritePlan(w io.Writer) error {
 func (a *Planner) flashbackPlan() (plan FlashbackPlan, err error) {
 	plan = FlashbackPlan{
 		PlanVersion:    FlashbackPlanVersion,
+		Experimental:   true,
 		ConflictPolicy: a.conflictPolicy(),
 		Tables:         []FlashbackPlanTable{},
 		Conflicts:      FlashbackPlanCounts{Listed: []FlashbackConflict{}},

@@ -187,7 +187,7 @@ func TestFlashbackPlanReportsRowsAndConflicts(t *testing.T) {
 	if jerr := json.Unmarshal([]byte(b.String()), &plan); jerr != nil {
 		t.Fatalf("%v: %s", jerr, b.String())
 	}
-	if plan.PlanVersion != 2 || plan.Transactions != 1 || plan.Rows != 2 || plan.Conflicts.Count != 1 ||
+	if plan.PlanVersion != 2 || !plan.Experimental || plan.Transactions != 1 || plan.Rows != 2 || plan.Conflicts.Count != 1 ||
 		plan.ConflictPolicy != "refuse" || !plan.WouldRefuse || len(plan.Tables) != 1 || plan.Tables[0].Update != 2 {
 		t.Fatalf("plan: %s", b.String())
 	}

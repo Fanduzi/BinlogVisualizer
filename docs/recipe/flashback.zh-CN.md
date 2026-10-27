@@ -2,6 +2,8 @@
 
 本页收录原先写在项目 README 里的行镜像、DDL 时间线和 flashback 细节。已知限制见 [限制与边界](../concept/limitations.zh-CN.md)，参数见 [CLI 参考](../reference/cli.zh-CN.md)。
 
+flashback 是实验功能：执行生成的 SQL 之前必须先审阅。
+
 ## 找到误删并看到被删的行
 
 ```bash

@@ -351,6 +351,10 @@
     "description": "stderr 上 flashback 警告的前缀",
     "other": "警告：{{.Message}}"
   },
+  "warning.flashbackExperimental": {
+    "description": "每次 flashback 运行都在 stderr 打印的实验功能提示",
+    "other": "flashback 是实验功能；执行生成的 SQL 之前必须先审阅"
+  },
   "warning.flashbackGenerated": {
     "description": "binlog 和 schema 文件都没有这张表的 CREATE 时警告",
     "other": "{{.Table}}：解析到的 binlog 和 --schema-file 里都没有表定义，不能排除生成列。脚本仍会列出每一列。若表上有生成列，执行会在 ERROR 3105 停下，撤销会回滚。请用 --schema-file 传入 mysqldump --no-data 或 SHOW CREATE TABLE 的输出。文件必须是事故当时的表结构。"
