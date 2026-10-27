@@ -1,0 +1,71 @@
+name: lint
+
+# Coding-standards gate (docs/development/coding-standards.md). golangci-lint fails only on
+# issues in lines this change touches; codehealth fails when any ratcheted
+# number is worse than internal/codehealth/baseline.json or when the change
+# raises that baseline.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  golangci-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Find the base revision
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: bash internal/codehealth/lint-base.sh >> "$GITHUB_OUTPUT"
+      - name: golangci-lint on changed lines
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0
+          args: --new-from-rev=${{ steps.base.outputs.sha }}
+
+  codehealth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Find the base revision
+        id: base
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: bash internal/codehealth/lint-base.sh >> "$GITHUB_OUTPUT"
+      - name: Ratchet against the baseline (files, complexity, issue refs, deadcode)
+        run: go run ./internal/codehealth/cmd/codehealth -deadcode check
+      - name: Baseline only goes down
+        env:
+          BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          path=internal/codehealth/baseline.json
+          if ! git cat-file -e "${BASE}:${path}" 2>/dev/null; then
+            echo "no ${path} at ${BASE}; this change adds the first baseline"
+            exit 0
+          fi
+          git show "${BASE}:${path}" > "${RUNNER_TEMP}/baseline-prev.json"
+          go run ./internal/codehealth/cmd/codehealth compare "${RUNNER_TEMP}/baseline-prev.json"
