@@ -22,9 +22,9 @@ Preconditions:
 - At least two snapshots under an isolated dir (reuse compare seeding):
 
 ```bash
-SCRATCH=.cursor/skills/verify-binlogviz/scratch/trend-demo
+SCRATCH=.agents/skills/verify-binlogviz/scratch/trend-demo
 mkdir -p "$SCRATCH/snapshots"
-DRIVE=.cursor/skills/verify-binlogviz/helpers/drive.sh
+DRIVE=.agents/skills/verify-binlogviz/helpers/drive.sh
 "$DRIVE" trend-seed-a -- analyze cmd/binlogviz/testdata/minimal.binlog --format json \
   --snapshot-name week1 --snapshot-dir "$SCRATCH/snapshots"
 "$DRIVE" trend-seed-b -- analyze cmd/binlogviz/testdata/minimal.binlog --format json \
