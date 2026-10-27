@@ -10,14 +10,18 @@ usage() {
 usage: check-release-prep.sh vX.Y.Z [git-ref]
 
 Checks that the release surfaces are ready for vX.Y.Z:
+  0. this clone has release tags, and one of them is older than vX.Y.Z
   1. release notes exist in English and Chinese and name the version
-  2. CHANGELOG.md has a section for the version
+  2. CHANGELOG.md has a non-empty section for the version (outside code
+     fences and HTML comments)
   3. README.md and README_ZH.md install pins name the version (and no other)
   4. no file under docs/landing/ names a release version (HTML comments aside),
      so a release never edits the landing page
 
 With a git ref (release.yml passes the tag), files are read from that commit.
 Without one, the working tree is read, so the check can run before committing.
+Pre-release tags (vX.Y.Z-rc1) are rejected on purpose: the gate is for final
+releases only.
 USAGE
   exit 2
 }
@@ -42,7 +46,10 @@ NOTES_ZH="docs/releases/release-notes-${TAG}.zh-CN.md"
 NOTES_ZH_TITLE_RE="^# BinlogViz v${VER_RE} 发布说明"
 # Install snippets resolve releases/latest (#281, #285), so a README carries no
 # pin; any pinned tag that does appear must be this release.
-PIN_RE='releases/download/v[0-9]+\.[0-9]+\.[0-9]+/|BinlogVisualizer/v[0-9]+\.[0-9]+\.[0-9]+/install\.sh|--version v[0-9]+\.[0-9]+\.[0-9]+'
+# A pin is matched with its whole version (extra segments, suffixes, quotes,
+# with or without the v), so v1.1.0.1 or "1.0.0" is never read as a match.
+PIN_VER='[0-9][0-9A-Za-z.+-]*'
+PIN_RE="releases/download/v${PIN_VER}/|BinlogVisualizer/v${PIN_VER}/install\\.sh|--version[ =][\"']?v?${PIN_VER}"
 PIN_REQUIRED=0
 PIN_HINT="none"
 EXTRA_PINS=()
@@ -64,6 +71,23 @@ read_file() {
   if [[ -n "$REF" ]]; then git show "$REF:$1"; else cat "$1"; fi
 }
 
+# 0. Release tags. A shallow clone (fetch-depth 1) has none, and with no older
+# tag nothing can be compared, so both stop here with a message instead of
+# passing vacuously or exiting silently.
+release_tags="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+if [[ -z "$release_tags" ]]; then
+  fail "no vX.Y.Z release tags in this clone; a shallow clone (fetch-depth 1) has none: run git fetch --tags"
+  echo "[release-check] $failures check(s) failed for $TAG${REF:+ at $REF}" >&2
+  exit 1
+fi
+older_tag="$(grep -Fxv -- "$TAG" <<<"$release_tags" | { cat; echo "$TAG"; } | sort -V \
+  | awk -v t="$TAG" '$0 == t { print prev; exit } { prev = $0 }')"
+if [[ -z "$older_tag" ]]; then
+  fail "no release tag older than $TAG in this clone; run git fetch --tags"
+else
+  pass "previous release tag is $older_tag"
+fi
+
 # 1. Release notes in both languages, each naming the version in its title.
 check_note() {
   local path="$1" title_re="$2"
@@ -78,13 +102,31 @@ check_note() {
 check_note "$NOTES_EN" "$NOTES_EN_TITLE_RE"
 check_note "$NOTES_ZH" "$NOTES_ZH_TITLE_RE"
 
-# 2. CHANGELOG section for the version.
+# 2. CHANGELOG section for the version, with at least one line of body before
+# the next '## ' heading. Headings and body inside ``` fences or <!-- -->
+# comments do not count.
+changelog_section() { # prints "none", "empty" or "ok"
+  CL_RE="^## \\[?v?${VER_RE}\\]?([[:space:]]|$)" awk '
+    BEGIN { re = ENVIRON["CL_RE"] }
+    { line = $0 }
+    in_comment { if (index(line, "-->")) { in_comment = 0; line = substr(line, index(line, "-->") + 3) } else next }
+    { while (match(line, /<!--/)) { rest = substr(line, RSTART + 4); e = index(rest, "-->")
+        if (e) { line = substr(line, 1, RSTART - 1) substr(rest, e + 3) } else { line = substr(line, 1, RSTART - 1); in_comment = 1; break } } }
+    line ~ /^[ \t]*(```|~~~)/ { in_fence = !in_fence; next }
+    in_fence { if (found && line ~ /[^ \t]/) body = 1; next }
+    found && line ~ /^## / { exit }
+    found && line ~ /[^ \t]/ { body = 1 }
+    !found && line ~ re { found = 1 }
+    END { print (found ? (body ? "ok" : "empty") : "none") }'
+}
 if ! has_file CHANGELOG.md; then
   fail "CHANGELOG.md missing"
-elif grep -Eq "^## \[?v?${VER_RE}\]?([[:space:]]|$)" <<<"$(read_file CHANGELOG.md)"; then
-  pass "CHANGELOG.md has a $TAG section"
 else
-  fail "CHANGELOG.md has no '## $TAG' section"
+  case "$(read_file CHANGELOG.md | changelog_section)" in
+    ok) pass "CHANGELOG.md has a $TAG section" ;;
+    empty) fail "CHANGELOG.md's '## $TAG' section is empty" ;;
+    *) fail "CHANGELOG.md has no '## $TAG' section" ;;
+  esac
 fi
 
 # 3. README install pins: every pinned version must be this one.
@@ -94,7 +136,9 @@ check_pins() {
     fail "$path missing"
     return
   fi
-  pins="$(grep -Eo "$PIN_RE" <<<"$(read_file "$path")" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | sort -u || true)"
+  pins="$(grep -Eo "$PIN_RE" <<<"$(read_file "$path")" \
+    | sed -E 's#^releases/download/v##; s#/$##; s#^BinlogVisualizer/v##; s#/install\.sh$##; s#^--version[ =]["'"'"']?v?##' \
+    | sort -u || true)"
   if [[ -z "$pins" ]]; then
     if [[ "$PIN_REQUIRED" == 1 ]]; then
       fail "$path has no install pin (expected $PIN_HINT)"
@@ -103,7 +147,7 @@ check_pins() {
     fi
     return
   fi
-  wrong="$(grep -vx "$VER_RE" <<<"$pins" || true)"
+  wrong="$(grep -Fvx -- "$VER" <<<"$pins" || true)"
   if [[ -n "$wrong" ]]; then
     fail "$path pins $(tr '\n' ' ' <<<"$wrong")instead of $VER"
   else

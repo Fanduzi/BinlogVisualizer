@@ -74,3 +74,46 @@ func TestDiffTestJobIsRequired(t *testing.T) {
 		t.Fatal("flashback difftest does not require the differential tests")
 	}
 }
+
+// TestReleaseWaitsForReleasePrep keeps the release-prep gate in front of the
+// build: release.yml's build job must need release-prep, and release-prep
+// must check the tag with full history (tags fetched) after its self-test.
+// ci.yml must run the self-test on every PR.
+func TestReleaseWaitsForReleasePrep(t *testing.T) {
+	root := filepath.Join("..", "..")
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join(root, ".github", "workflows", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	ci, release := read("ci.yml"), read("release.yml")
+
+	needs := regexp.MustCompile(`(?m)^    needs: \[([^\]]*)\]`).FindStringSubmatch(ciJob(t, release, "build"))
+	if needs == nil {
+		t.Fatal("release.yml's build job has no list-form needs")
+	}
+	found := false
+	for _, n := range strings.Split(needs[1], ",") {
+		if strings.TrimSpace(n) == "release-prep" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("release.yml's build job does not need release-prep (needs: [%s]), so a tag can ship without notes, CHANGELOG or pins", needs[1])
+	}
+	prep := ciJob(t, release, "release-prep")
+	for _, want := range []string{
+		"fetch-depth: 0",
+		"bash scripts/check-release-prep-test.sh",
+		`bash scripts/check-release-prep.sh "${GITHUB_REF_NAME}" "${GITHUB_SHA}"`,
+	} {
+		if !strings.Contains(prep, want) {
+			t.Fatalf("release.yml's release-prep job lost %q:\n%s", want, prep)
+		}
+	}
+	if !strings.Contains(ciJob(t, ci, "release-prep-selftest"), "bash scripts/check-release-prep-test.sh") {
+		t.Fatal("ci.yml no longer runs the release-prep self-test on every PR")
+	}
+}

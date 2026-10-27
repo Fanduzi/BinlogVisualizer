@@ -16,7 +16,7 @@ write_notes() { # version title-version
   printf '# BinlogViz v%s Release Notes\n' "$2" > "$(notes_en "$1")"
   printf '# BinlogViz v%s 发布说明\n' "$2" > "$(notes_zh "$1")"
 }
-write_changelog() { printf '# Changelog\n\n## [Unreleased]\n\n## v%s\n' "$1" > CHANGELOG.md; }
+write_changelog() { printf '# Changelog\n\n## [Unreleased]\n\n## v%s\n\n- A change.\n' "$1" > CHANGELOG.md; }
 # The README installs releases/latest; a pinned tag only appears when $2 is set.
 write_readme() {
   if [[ -n "${2:-}" ]]; then
@@ -137,6 +137,54 @@ expect 1 "ref mode reads the landing page from the ref, not the clean tree" "nam
 expect 2 "a malformed version is a usage error" "must look like vX.Y.Z" 1.1.0
 expect 2 "an unknown ref is a usage error" "unknown ref" v1.1.0 no-such-ref
 expect 1 "a fake next version fails against a complete earlier tag" "release notes missing" v1.2.0 v1.1.0
+
+# CHANGELOG body: the section needs a line of its own outside fences and comments.
+changelog() { printf '# Changelog\n\n%b' "$1" > CHANGELOG.md; }
+reset_complete; changelog '## v1.1.0\n\n## v1.0.0\n\n- old\n'
+expect 1 "an empty CHANGELOG section fails" "section is empty"
+reset_complete; changelog '## v1.1.0\n<!-- - TODO -->\n\n## v1.0.0\n'
+expect 1 "a CHANGELOG section with only a comment fails" "section is empty"
+reset_complete; changelog '```\n## v1.1.0\n- x\n```\n'
+expect 1 "a CHANGELOG heading inside a code fence does not count" "has no '## v1.1.0' section"
+reset_complete; changelog '## v1.1.0\n```\n```\n\n## v1.0.0\n'
+expect 1 "a CHANGELOG section with only an empty fence fails" "section is empty"
+reset_complete; changelog '- notes for ## v1.1.0 follow\n- x\n'
+expect 1 "a CHANGELOG heading not at the start of a line does not count" "has no '## v1.1.0' section"
+reset_complete; changelog '<!--\n## v1.1.0\n- x\n-->\n'
+expect 1 "a CHANGELOG heading inside a comment does not count" "has no '## v1.1.0' section"
+reset_complete; changelog '## [v1.1.0] - 2026-10-27\n```\nbinlogviz analyze\n```\n'
+expect pass "a bracketed, dated CHANGELOG heading with a fenced body passes" "CHANGELOG.md has a v1.1.0 section"
+
+# Version boundaries: a longer version, an extra segment or another digit in
+# place of a dot never stands in for this one.
+for heading in '## v1.1.0.1' '## v1.10.0' '## v1x1x0' '## v11.1.0'; do
+  reset_complete; changelog "$heading\n\n- x\n"
+  expect 1 "CHANGELOG '$heading' is not v1.1.0" "has no '## v1.1.0' section"
+done
+for title in 1.1.0.1 1.10.0 1x1x0; do
+  reset_complete; write_notes 1.1.0 "$title"
+  expect 1 "notes titled v$title are not v1.1.0" "do not open with a title"
+done
+for pin in 'releases/download/v1.1.0.1/x.tar.gz=1.1.0.1' 'releases/download/v1x1x0/x.tar.gz=1x1x0' \
+  'releases/download/v1.10.0/x.tar.gz=1.10.0' 'releases/download/v1.1.0-rc1/x.tar.gz=1.1.0-rc1' \
+  'sh -s -- --version 1.0.0=1.0.0' 'sh -s -- --version "v1.0.0"=1.0.0' 'sh -s -- --version=v1.0.0=1.0.0' \
+  'raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v1.0.0/install.sh=1.0.0'; do
+  reset_complete; printf '%s\n' "${pin%=*}" >> README.md
+  expect 1 "README pin ${pin%=*} is not v1.1.0" "README.md pins ${pin##*=}"
+done
+reset_complete; printf 'sh -s -- --version "v1.1.0"\n' >> README.md
+expect pass "a quoted --version pin naming this release passes" "README.md install pin is 1.1.0"
+
+# Tags: the previous release is found by version order, a clone with no older
+# tag or no tags at all fails with a message, and rc tags are rejected.
+git_q tag v1.9.0 base
+expect 1 "v1.10.0 follows v1.9.0, not v1.1.0" "previous release tag is v1.9.0" v1.10.0 base
+git_q tag -d v1.9.0
+expect 1 "no tag older than the release fails" "FAIL no release tag older than v0.1.0" v0.1.0 base
+git clone -q --depth 1 --no-tags "file://$repo" "$work/shallow" 2>/dev/null
+(cd "$work/shallow" && expect 1 "a clone without tags fails with a message" "FAIL no vX.Y.Z release tags in this clone" v1.1.0 HEAD \
+  && exit "$failures") || failures=$((failures + 1))
+expect 2 "an rc tag is rejected on purpose" "must look like vX.Y.Z" v1.1.0-rc1
 
 if [[ "$failures" -gt 0 ]]; then
   echo "$failures release-prep self-test case(s) failed" >&2
