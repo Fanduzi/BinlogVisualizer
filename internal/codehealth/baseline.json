@@ -1,0 +1,31 @@
+{
+  "limits": {
+    "file_lines": 800,
+    "growth_tolerance_lines": 20,
+    "complexity": 40
+  },
+  "oversized_files": {
+    "cmd/binlogviz/analyze.go": 1651,
+    "cmd/binlogviz/workflow.go": 1636,
+    "internal/analyzer/activity_spill.go": 988,
+    "internal/analyzer/analyzer.go": 807,
+    "internal/analyzer/store_duckdb.go": 848,
+    "internal/analyzer/transactions.go": 953,
+    "internal/compare/html.go": 1619,
+    "internal/flashback/planner.go": 1450,
+    "internal/guard/script.go": 1323,
+    "internal/mysqlexpr/expr.go": 2891,
+    "internal/mysqlexpr/schema.go": 1101,
+    "internal/report/html.go": 885,
+    "internal/report/html_template.go": 2260,
+    "internal/report/json.go": 1375,
+    "internal/report/text.go": 1228,
+    "internal/trend/html.go": 1292
+  },
+  "complex_functions": {
+    "cmd/binlogviz:writeWorkflowStatusOutput": 41,
+    "internal/report:buildHTMLData": 58
+  },
+  "issue_refs": 259,
+  "deadcode": 89
+}

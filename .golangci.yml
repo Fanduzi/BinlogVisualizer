@@ -1,0 +1,47 @@
+# golangci-lint v2. CI runs it with --new-from-rev at the merge base
+# (.github/workflows/lint.yml, make lint), so only issues on changed lines
+# fail. Existing debt is ratcheted separately by internal/codehealth.
+# Limits match docs/development/coding-standards.md.
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - funlen
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - staticcheck
+    - unused
+  settings:
+    gocyclo:
+      # Reports functions above 40.
+      min-complexity: 40
+    funlen:
+      lines: 150
+      statements: 100
+      ignore-comments: true
+  exclusions:
+    generated: lax
+    rules:
+      # Table-driven tests are long by design; complexity still applies.
+      - path: _test\.go
+        linters:
+          - funlen
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
