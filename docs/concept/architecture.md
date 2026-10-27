@@ -79,3 +79,23 @@ The default and recommended analyze path is `--detail-store none`, which produce
 When `--detail-store duckdb` is used, `binlogviz analyze` creates one command-owned temporary DuckDB store for the run, passes it into the analyzer, and cleans it up when the command exits.
 
 For lifecycle details, operational implications, and what users may notice during large analyses, see [DuckDB Temp Store](./duckdb-temp-store.md).
+
+## Modules
+
+The Cobra command layer streams normalized binlog events into the analyzer, then delegates stable machine and human presentation to report, compare, and trend modules.
+
+| Module | Responsibility | Documentation |
+|--------|----------------|---------------|
+| `cmd/binlogviz` | CLI commands and end-to-end orchestration | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/cmd/binlogviz/README.md) |
+| `internal/binlog` | Binlog parsing, probing, and normalization | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/binlog/README.md) |
+| `internal/analyzer` | Streaming aggregation and diagnostics | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/analyzer/README.md) |
+| `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/mysqlexpr/README.md) |
+| `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/schemacatalog/README.md) |
+| `internal/model` | Shared analysis and evidence types | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/model/README.md) |
+| `internal/report` | Analyze text, JSON, Markdown, and HTML renderers | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/report/README.md) |
+| `internal/i18n` | Embedded English and Simplified Chinese presentation messages | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/i18n/README.md) |
+| `internal/compare` | Two-report comparison and rendering | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/compare/README.md) |
+| `internal/trend` | Ordered multi-snapshot trend analysis and rendering | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/trend/README.md) |
+| `internal/snapshot` | Named analyze snapshot persistence | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/snapshot/README.md) |
+| `internal/workflow` | Multi-step investigation plans and manifests | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/workflow/README.md) |
+| `internal/jsonout` | Versioned JSON writer: `schema_version` first on every JSON output without its own key (ADR 0010) | [ADR 0010](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/adr/0010-every-json-output-is-versioned.md) |

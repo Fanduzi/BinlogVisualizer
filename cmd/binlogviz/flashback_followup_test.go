@@ -25,8 +25,8 @@ func TestDocumentedApplyGrantsMatchLeastPrivilege(t *testing.T) {
 	}
 	root := repoRoot(t)
 	files := []string{
-		"README.md",
-		"README_ZH.md",
+		filepath.Join("docs", "recipe", "flashback.md"),
+		filepath.Join("docs", "recipe", "flashback.zh-CN.md"),
 		filepath.Join("docs", "concept", "limitations.md"),
 		filepath.Join("docs", "concept", "limitations.zh-CN.md"),
 		filepath.Join("docs", "agents", "USING-BINLOGVIZ.md"),
@@ -60,31 +60,53 @@ func TestDocumentedApplyGrantsMatchLeastPrivilege(t *testing.T) {
 	}
 }
 
-func TestReadmeExitCodesAndTrendOrder(t *testing.T) {
+// userDocSets lists, per language, the README and the pages that hold the
+// detail moved out of it. A rule checked here may live on any page of the set.
+var userDocSets = [][]string{
+	{
+		"README.md",
+		filepath.Join("docs", "reference", "analyze-behavior.md"),
+		filepath.Join("docs", "recipe", "flashback.md"),
+		filepath.Join("docs", "recipe", "compare-trend-workflow.md"),
+	},
+	{
+		"README_ZH.md",
+		filepath.Join("docs", "reference", "analyze-behavior.zh-CN.md"),
+		filepath.Join("docs", "recipe", "flashback.zh-CN.md"),
+		filepath.Join("docs", "recipe", "compare-trend-workflow.zh-CN.md"),
+	},
+}
+
+func TestUserDocsExitCodesAndTrendOrder(t *testing.T) {
 	root := repoRoot(t)
-	for _, name := range []string{"README.md", "README_ZH.md"} {
-		body, err := os.ReadFile(filepath.Join(root, name))
-		if err != nil {
-			t.Fatal(err)
+	for _, set := range userDocSets {
+		var all strings.Builder
+		for _, name := range set {
+			body, err := os.ReadFile(filepath.Join(root, name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(body)
+			all.WriteString(text)
+			if strings.Contains(text, "**1** when the file could not be analyzed (corrupt, truncated, or no Format Description)") || strings.Contains(text, "无法分析（损坏、截断、没有 Format Description）时退出 **1**") {
+				t.Errorf("%s still says analyze of a corrupt file exits 1", name)
+			}
+			if strings.Contains(text, "Flashback exits 1") || strings.Contains(text, "flashback 退出 1") || strings.Contains(text, "contradicts the expression exits 1") || strings.Contains(text, "记下的值与表达式矛盾时退出 1") {
+				t.Errorf("%s still says a flashback refusal exits 1", name)
+			}
+			if strings.Contains(text, "orders them by effective window start time") || strings.Contains(text, "按有效窗口开始时间排序") {
+				t.Errorf("%s still says trend sorts by window start by default", name)
+			}
 		}
-		text := string(body)
-		if strings.Contains(text, "**1** when the file could not be analyzed (corrupt, truncated, or no Format Description)") || strings.Contains(text, "无法分析（损坏、截断、没有 Format Description）时退出 **1**") {
-			t.Errorf("%s still says analyze of a corrupt file exits 1", name)
-		}
-		if strings.Contains(text, "Flashback exits 1") || strings.Contains(text, "flashback 退出 1") || strings.Contains(text, "contradicts the expression exits 1") || strings.Contains(text, "记下的值与表达式矛盾时退出 1") {
-			t.Errorf("%s still says a flashback refusal exits 1", name)
-		}
+		text := all.String()
 		if !strings.Contains(text, "exit 5") && !strings.Contains(text, "退出码 5") {
-			t.Errorf("%s does not point corrupt input at exit 5", name)
+			t.Errorf("%v do not point corrupt input at exit 5", set)
 		}
 		if !strings.Contains(text, "exit 6") && !strings.Contains(text, "退出码 6") {
-			t.Errorf("%s does not point a flashback refusal at exit 6", name)
-		}
-		if strings.Contains(text, "orders them by effective window start time") || strings.Contains(text, "按有效窗口开始时间排序") {
-			t.Errorf("%s still says trend sorts by window start by default", name)
+			t.Errorf("%v do not point a flashback refusal at exit 6", set)
 		}
 		if !strings.Contains(text, "--order cli") {
-			t.Errorf("%s does not document the default trend order", name)
+			t.Errorf("%v do not document the default trend order", set)
 		}
 	}
 	lim, err := os.ReadFile(filepath.Join(root, "docs", "concept", "limitations.md"))

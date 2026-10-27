@@ -79,3 +79,23 @@ BinlogViz 把报告数据保留在 `stdout`，把面向人的状态输出放在 
 当使用 `--detail-store duckdb` 时，`binlogviz analyze` 会创建一个命令拥有的临时 DuckDB 存储，把它传给分析器，并在命令退出时清理掉。
 
 如果你想看生命周期细节、运维侧影响，以及大规模分析时用户可能观察到的现象，请继续阅读 [DuckDB 临时存储](./duckdb-temp-store.zh-CN.md)。
+
+## 模块
+
+Cobra 命令层把规范化后的 binlog 事件流式交给分析器，再把稳定的机器输出和人读输出交给 report、compare、trend 模块。
+
+| 模块 | 职责 | 文档 |
+|------|------|------|
+| `cmd/binlogviz` | CLI 命令和端到端编排 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/cmd/binlogviz/README.md) |
+| `internal/binlog` | binlog 解析、探测和规范化 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/binlog/README.md) |
+| `internal/analyzer` | 流式聚合和诊断 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/analyzer/README.md) |
+| `internal/mysqlexpr` | 生成列表达式核对，以及 CREATE/ALTER 列解析 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/mysqlexpr/README.md) |
+| `internal/schemacatalog` | flashback 为某个 binlog `db.table` 选用哪份表定义 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/schemacatalog/README.md) |
+| `internal/model` | 共享的分析和证据类型 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/model/README.md) |
+| `internal/report` | analyze 的文本、JSON、Markdown 和 HTML 渲染 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/report/README.md) |
+| `internal/i18n` | 内嵌的英文和简体中文展示文案 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/i18n/README.md) |
+| `internal/compare` | 两份报告的对比和渲染 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/compare/README.md) |
+| `internal/trend` | 有序多快照趋势分析和渲染 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/trend/README.md) |
+| `internal/snapshot` | 命名 analyze 快照的持久化 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/snapshot/README.md) |
+| `internal/workflow` | 多步调查 plan 和 manifest | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/workflow/README.md) |
+| `internal/jsonout` | 带版本的 JSON 输出：没有自带版本键的 JSON 输出都以 `schema_version` 开头（ADR 0010） | [ADR 0010](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/adr/0010-every-json-output-is-versioned.md) |

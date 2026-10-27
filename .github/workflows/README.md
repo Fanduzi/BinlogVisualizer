@@ -28,12 +28,12 @@ Before pushing a new release tag:
 - Confirm `go test ./...` passes locally.
 - Update every versioned release surface in the same release-preparation commit:
   - `CHANGELOG.md`
-  - install examples in `README.md` and `README_ZH.md`
   - `install.sh`
   - current release content and install commands in `docs/landing/index.html`
   - both release note files:
     - `docs/releases/release-notes-vX.Y.Z.md`
     - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`
+- Do not add release notes, a per-version section, or new behavior detail to `README.md` / `README_ZH.md`. Release notes go in the two release note files and `CHANGELOG.md`. Behavior detail goes in `docs/reference/` or `docs/recipe/` (for example `docs/reference/analyze-behavior.md`, `docs/recipe/flashback.md`, `docs/recipe/compare-trend-workflow.md`, and their `.zh-CN.md` pages); the README keeps the command and a link. The README install examples resolve the latest release and need no edit per release. `TestReadmeStaysConcise` fails the PR otherwise.
 - Push the release-preparation commit to `main`, then confirm both the `verify` and `Cloudflare Pages` checks pass and the live landing page shows the target version.
 - Run the `release.yml` workflow via `workflow_dispatch` after any workflow or packaging change, and verify:
   - `test` passes
