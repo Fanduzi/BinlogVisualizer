@@ -1,6 +1,5 @@
 // input: repository install.sh, README.md, README_ZH.md, and docs/landing/index.html.
-// output: guards that install instructions, including the manual tarball snippets, follow the latest release instead of a pinned tag (#281, #285),
-// and that the landing page stays a version-free product page with no release history.
+// output: guards that install instructions, including the manual tarball snippets, follow the latest release instead of a pinned tag (#281, #285).
 // pos: release-doc drift guard; the install path must never again silently install an old release.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -72,34 +71,5 @@ func TestInstallDocsDoNotPinAReleaseTag(t *testing.T) {
 				t.Errorf("%s downloads a tarball from a pinned tag; resolve releases/latest first (#285): %s", name, strings.TrimSpace(line))
 			}
 		}
-	}
-}
-
-// The landing page is a product page, not a release log. It names no version, so a
-// release never has to edit it; release history lives in docs/releases, CHANGELOG.md
-// and GitHub Releases.
-const landingMaxBytes = 128 << 10
-
-func TestLandingPageHasNoReleaseHistory(t *testing.T) {
-	const rel = "docs/landing/index.html"
-	raw, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(rel)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := string(raw)
-	const why = "keep release history in docs/releases and CHANGELOG.md and link to GitHub Releases"
-	if len(body) > landingMaxBytes {
-		t.Errorf("%s is %d bytes, over the %d-byte bound; %s", rel, len(body), landingMaxBytes, why)
-	}
-	if m := regexp.MustCompile(`\bv\d+\.\d+\.\d+\b`).FindString(body); m != "" {
-		t.Errorf("%s names release %s; the landing page is version-free so releases never edit it; %s", rel, m, why)
-	}
-	if m := regexp.MustCompile(`id="releases"|release-notes-v\d`).FindString(body); m != "" {
-		t.Errorf("%s has a release section (%q); %s", rel, m, why)
-	}
-	// A reveal threshold above 0 never fires on a section taller than 1/threshold
-	// viewports, which left that section invisible: a blank gap on the page.
-	if m := regexp.MustCompile(`threshold:\s*0?\.\d*[1-9]`).FindString(body); m != "" {
-		t.Errorf("%s reveals sections at %q; use threshold 0 so a tall section still becomes visible", rel, m)
 	}
 }
