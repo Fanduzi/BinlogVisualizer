@@ -7,7 +7,7 @@ description: "Drive BinlogViz (CLI) the way a DBA would — analyze/snapshot/com
 
 Cold-agent guide for proving `binlogviz` (Cobra CLI) against real ROW binlog fixtures. Primary surface is the CLI. HTML reports (`--format html`) opened in a browser are optional extra evidence, not required for CLI proof.
 
-Repo root for this skill: the checkout that contains `.cursor/skills/verify-binlogviz/` (expected: `/workspace/binlogviz-src`).
+Repo root for this skill: the checkout that contains `.agents/skills/verify-binlogviz/` (expected: `/workspace/binlogviz-src`).
 
 ## Launch
 
@@ -36,7 +36,7 @@ Teardown: nothing for the binary. Scratch snapshot / workflow dirs are removed b
 
 ```bash
 cd /workspace/binlogviz-src
-.cursor/skills/verify-binlogviz/helpers/doctor.sh
+.agents/skills/verify-binlogviz/helpers/doctor.sh
 ```
 
 Read-only. EXIT `0` when: binary exists+executable, `version` works, `cmd/binlogviz/testdata/minimal.binlog` is present. Prints which binary was chosen (`env` / `repo build` / `fallback release`) and `go version` if available. Non-zero + stderr if not ready. Run doctor before any drive when something looks off.
@@ -45,7 +45,7 @@ Read-only. EXIT `0` when: binary exists+executable, `version` works, `cmd/binlog
 
 ```bash
 cd /workspace/binlogviz-src
-HELPERS=.cursor/skills/verify-binlogviz/helpers
+HELPERS=.agents/skills/verify-binlogviz/helpers
 DRIVE="$HELPERS/drive.sh"
 
 # Pure analyze (no snapshot-dir required):
@@ -55,7 +55,7 @@ DRIVE="$HELPERS/drive.sh"
 # drive.sh still creates scratch/<RUN_ID>/snapshots; either use the path it prints,
 # or prepare one yourself:
 RUN_HINT=$(date +%Y%m%d-%H%M%S)-snap
-SCRATCH=.cursor/skills/verify-binlogviz/scratch/$RUN_HINT
+SCRATCH=.agents/skills/verify-binlogviz/scratch/$RUN_HINT
 mkdir -p "$SCRATCH/snapshots"
 "$DRIVE" snap-save -- analyze cmd/binlogviz/testdata/minimal.binlog \
   --format json \
@@ -67,7 +67,7 @@ mkdir -p "$SCRATCH/snapshots"
 
 - Resolves the same binary as doctor
 - Runs from repo root so relative fixture paths work
-- Writes under `.cursor/skills/verify-binlogviz/evidence/<RUN_ID>/`:
+- Writes under `.agents/skills/verify-binlogviz/evidence/<RUN_ID>/`:
   - `meta.txt` — cmd, exit, binary, utc/local time, scratch path
   - `stdout` — CLI stdout
   - `stderr` — CLI stderr (progress bars often land here)
@@ -87,7 +87,7 @@ Exit codes from binlogviz (observe these in `meta.txt`):
 
 Absolute base (under this repo):
 
-`/workspace/binlogviz-src/.cursor/skills/verify-binlogviz/evidence/<RUN_ID>/`
+`/workspace/binlogviz-src/.agents/skills/verify-binlogviz/evidence/<RUN_ID>/`
 
 Proof standards:
 
@@ -101,10 +101,10 @@ Proof standards:
 ## Cleanup
 
 ```bash
-.cursor/skills/verify-binlogviz/helpers/cleanup.sh
+.agents/skills/verify-binlogviz/helpers/cleanup.sh
 ```
 
-Removes only `.cursor/skills/verify-binlogviz/scratch/**` (snapshot-dirs and workflow outs created by drives). **NEVER** deletes `evidence/`. Confirm evidence still exists after cleanup.
+Removes only `.agents/skills/verify-binlogviz/scratch/**` (snapshot-dirs and workflow outs created by drives). **NEVER** deletes `evidence/`. Confirm evidence still exists after cleanup.
 
 ## Helpers
 

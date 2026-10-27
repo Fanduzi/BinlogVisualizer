@@ -5,10 +5,10 @@ Maintained source for verifying DBA-facing `binlogviz` CLI behavior against real
 ## Baseline preconditions
 
 - Resolve a binary (`BINLOGVIZ`, `./binlogviz` after `go build -o binlogviz .`, or `/home/box/bin/binlogviz`).
-- Run `.cursor/skills/verify-binlogviz/helpers/doctor.sh` and require PASS before driving.
+- Run `.agents/skills/verify-binlogviz/helpers/doctor.sh` and require PASS before driving.
 - Work from the repo root (`/workspace/binlogviz-src`) so relative fixture paths resolve.
 - Seed fixtures: `cmd/binlogviz/testdata/minimal.binlog` (ROW); discovery layout `cmd/binlogviz/testdata/sample-binlog/` + `incident.yaml` for workflow.
-- Always pass `--snapshot-dir` under `.cursor/skills/verify-binlogviz/scratch/<id>/snapshots` when saving or loading snapshots. Never use the user's default snapshot home.
+- Always pass `--snapshot-dir` under `.agents/skills/verify-binlogviz/scratch/<id>/snapshots` when saving or loading snapshots. Never use the user's default snapshot home.
 - Never mock binlog parsing; drive the real CLI.
 
 ## Driving conventions

@@ -24,7 +24,7 @@ Preconditions:
 - Fixture `cmd/binlogviz/testdata/minimal.binlog` present (ROW; contains `testdb.users` DML + DDL).
 - Cwd effectively repo root (drive.sh cds there).
 
-- **Text analyze (baseline proof).** Run `.cursor/skills/verify-binlogviz/helpers/drive.sh analyze-text -- analyze cmd/binlogviz/testdata/minimal.binlog --format text`. Expect exit `0`, stdout contains `=== Summary ===` and `testdb.users`, `meta.txt` records exit=`0`.
+- **Text analyze (baseline proof).** Run `.agents/skills/verify-binlogviz/helpers/drive.sh analyze-text -- analyze cmd/binlogviz/testdata/minimal.binlog --format text`. Expect exit `0`, stdout contains `=== Summary ===` and `testdb.users`, `meta.txt` records exit=`0`.
 - **JSON analyze.** Run `…/drive.sh analyze-json -- analyze cmd/binlogviz/testdata/minimal.binlog --format json`. Expect exit `0`, stdout JSON with `"summary"` / `"total_transactions"`.
 - **From-dir discovery.** Run `…/drive.sh analyze-from-dir -- analyze --from-dir cmd/binlogviz/testdata/sample-binlog --prefix mysql-bin. --format text`. Expect exit `0` and a non-empty summary.
 - **Time window (wide, fixture timestamp).** Fixture events are at `2026-03-15T14:10:26Z`. Run `…/drive.sh analyze-window -- analyze cmd/binlogviz/testdata/minimal.binlog --start 2026-03-15T00:00:00Z --end 2026-03-15T23:59:59Z --format text`. Expect exit `0`. A window that misses all events should exit `2` (no-data).
