@@ -1069,7 +1069,9 @@ func TestSequentialSpillIOScales(t *testing.T) {
 		if prev.points > 0 && ratio > prev.ratio*1.35 && ratio > prev.ratio+8 {
 			t.Fatalf("io/file %.2f at %d points vs %.2f at %d, want logarithmic", ratio, m.points, prev.ratio, prev.points)
 		}
-		if first.points > 0 && m.points >= first.points*4 && m.wall > first.wall*9/2+time.Second {
+		// The race detector stretched a 4.31× plain run to 4.98× (13.68s vs
+		// 2.75s) with the same bytes. The plain verify job is the wall check.
+		if spillRSSComparable() && first.points > 0 && m.points >= first.points*4 && m.wall > first.wall*9/2+time.Second {
 			t.Fatalf("%d points took %s vs %s at %d, want at most about 4.5×", m.points, m.wall, first.wall, first.points)
 		}
 		m.ratio = ratio
