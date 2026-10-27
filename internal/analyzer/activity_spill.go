@@ -82,7 +82,7 @@ const spillIOFactor = 64
 // spillRunK is how many sorted runs may sit in the file. One more, and they
 // are merged into one. ponytail: 8. Past that the file grows with every
 // flush instead of with the points.
-const spillRunK = 8
+const spillRunK = 1000
 
 // spillReserve is free space left on the spill filesystem for temps that
 // are not optional (flashback SQL, the DuckDB store). Past this the series
