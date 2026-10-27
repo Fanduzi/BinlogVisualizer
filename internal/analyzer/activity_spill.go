@@ -608,15 +608,15 @@ func (s *activityStore) readAt(off int64, n int) ([]byte, error) {
 	return buf, nil
 }
 
-// readRegion loads one minute with one read.
+// readRegion loads one minute with one read per cell.
 func (s *activityStore) readRegion(r region) (*minuteState, error) {
-	buf, err := s.readAt(r.off, r.n*actRecSize)
-	if err != nil {
-		return nil, err
-	}
 	m := &minuteState{off: r.off, cap: r.cap, nDisk: r.n, recs: make([]actRec, r.n), dirty: make([]bool, r.n)}
 	for i := 0; i < r.n; i++ {
-		m.recs[i] = takeRec(buf[i*actRecSize:])
+		buf, err := s.readAt(r.off+int64(i*actRecSize), actRecSize)
+		if err != nil {
+			return nil, err
+		}
+		m.recs[i] = takeRec(buf)
 	}
 	m.reindex()
 	return m, nil
