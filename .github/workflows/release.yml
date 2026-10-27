@@ -36,6 +36,29 @@ jobs:
     # unless this commit passed the e2e (production-readiness F3).
     uses: ./.github/workflows/ci.yml
 
+  release-prep:
+    name: release-prep
+    # Before anything is built: the tagged commit must carry both release
+    # notes, the CHANGELOG section, README pins that name this release (if
+    # any), and a landing page updated for this tag. Same check as
+    # `make release-check`; a manual run has no tag and only runs the self-test.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Self-test the release-prep check
+        run: bash scripts/check-release-prep-test.sh
+      - name: Check release surfaces for the tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" != "tag" ]]; then
+            echo "not a tag run; skipping release-prep check (run make release-check VERSION=vX.Y.Z locally)"
+            exit 0
+          fi
+          bash scripts/check-release-prep.sh "${GITHUB_REF_NAME}" "${GITHUB_SHA}"
+
   validate-homebrew:
     name: validate-homebrew
     runs-on: ubuntu-latest
@@ -65,7 +88,7 @@ jobs:
 
   build:
     name: build-${{ matrix.goos }}-${{ matrix.goarch }}
-    needs: [test, ci]
+    needs: [test, ci, release-prep]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false

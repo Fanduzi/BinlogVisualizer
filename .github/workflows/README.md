@@ -5,7 +5,7 @@
 | File | Responsibility |
 |------|----------------|
 | `ci.yml` | Verifies tests, GoReleaser configuration, archive packaging, and the packaged smoke path on pushes to `main` and pull requests; `release.yml` also calls it through `workflow_call`. A separate `flashback-e2e` job on Ubuntu 24.04 starts the image's preinstalled MySQL 8.0, runs `TestFlashbackRoundTripMySQL80*`, `TestNumericDecodeMySQL80` and `TestFlashbackFailedApplyDropsAndSignals`, then the `internal/guard` `*OnServer` tests against the same server; a SKIP or a missing PASS fails the job. A `vet and race` job runs `go vet ./...` and `go test -race ./...`. |
-| `release.yml` | Calls `ci.yml` on the tagged commit (verify and flashback e2e) and makes every build job wait for it, runs tests, validates `.goreleaser.yml` and Homebrew tap write access, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, publishes GitHub Releases, and synchronizes the cask on version tags. |
+| `release.yml` | Runs the release-prep gate (`scripts/check-release-prep.sh`) on the tag before any build, calls `ci.yml` on the tagged commit (verify and flashback e2e) and makes every build job wait for it, runs tests, validates `.goreleaser.yml` and Homebrew tap write access, builds darwin/linux archives via `scripts/pack_release_archive.sh`, computes checksums, publishes GitHub Releases, and synchronizes the cask on version tags. |
 
 ## Notes
 
@@ -34,6 +34,7 @@ Before pushing a new release tag:
   - both release note files:
     - `docs/releases/release-notes-vX.Y.Z.md`
     - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`
+- Run `make release-check VERSION=vX.Y.Z` on the release-preparation commit. The tag goes on that commit: `release.yml`'s `release-prep` job runs the same check on the tag before any build and fails the release if a surface is missing or stale.
 - Push the release-preparation commit to `main`, then confirm both the `verify` and `Cloudflare Pages` checks pass and the live landing page shows the target version.
 - Run the `release.yml` workflow via `workflow_dispatch` after any workflow or packaging change, and verify:
   - `test` passes
