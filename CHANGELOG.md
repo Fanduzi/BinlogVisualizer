@@ -4,6 +4,31 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.35.2
+
+Release date: 2026-10-27
+
+Highlights:
+
+- The per-(table, minute) activity series no longer grows the heap with tables times minutes (#423, #389, ADR 0019). Past 8192 points it spills to an unlinked temp file as sorted runs with a tiered merge and one final merge. On a 2M-point file analyze took 24.05s against 27.43s for v0.35.1, with 1372MiB RSS against 2260MiB.
+- A failed read of that spill exits 11 with kind `spill` and empty stdout.
+- No breaking changes: output is byte-identical, and `report_version` 4, `plan_version` 2, and `schema_version` 1 are unchanged. Known issues: #439, #418, #420, #421.
+
+Related notes:
+
+- [v0.35.2 release notes](docs/releases/release-notes-v0.35.2.md)
+- [v0.35.2 中文发行说明](docs/releases/release-notes-v0.35.2.zh-CN.md)
+
+### Fixed
+
+- `analyze` and `flashback` no longer keep every (table, minute) activity point in memory, about 220 bytes each (#423, closes #389). Up to 8192 points the series stays in memory. Past that, a 320KiB buffer is written as sorted runs to an unlinked temp file (`binlogviz-activity-*`), eight runs on a level merge into one on the next, and one final k-way merge sums the rest. The parse never reads the file back, and temp I/O stays near linear. JSON, text, Markdown, HTML, compare, and trend inputs are byte-identical (ADR 0019).
+- Before a flush extends the spill file, free space must cover the write plus a 32MiB reserve; otherwise the series stays in memory. A spill file that cannot be created or written also keeps the series in memory.
+
+### Added
+
+- Exit code 11, kind `spill`: a failed read of the activity spill while finishing the analysis (including `--detail-store duckdb`) or while rendering json, text, markdown, or html. Stdout is empty (`docs/reference/exit-codes.md`).
+- `TestWideActivityHeap` (2MiB cap on the live-heap gap between 4 and 60 tables a minute), `TestSequentialSpillIOScales`, `TestLaggingReplicaScales`, and the spill bound, reserve, and read-error tests. `docs/production-readiness.md` E1 names the per-(table, minute) term; 24 MET / 0 PARTIAL / 0 NOT MET.
+
 ## v0.35.1
 
 Release date: 2026-10-26
