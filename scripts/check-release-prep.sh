@@ -13,7 +13,8 @@ Checks that the release surfaces are ready for vX.Y.Z:
   1. release notes exist in English and Chinese and name the version
   2. CHANGELOG.md has a section for the version
   3. README.md and README_ZH.md install pins name the version (and no other)
-  4. the landing page names the version and changed since the previous release tag
+  4. no file under docs/landing/ names a release version (HTML comments aside),
+     so a release never edits the landing page
 
 With a git ref (release.yml passes the tag), files are read from that commit.
 Without one, the working tree is read, so the check can run before committing.
@@ -45,7 +46,7 @@ PIN_RE='releases/download/v[0-9]+\.[0-9]+\.[0-9]+/|BinlogVisualizer/v[0-9]+\.[0-
 PIN_REQUIRED=0
 PIN_HINT="none"
 EXTRA_PINS=()
-LANDING="docs/landing/index.html"
+LANDING_DIR="docs/landing"
 # ---------------------------------------------------------------------------
 
 failures=0
@@ -127,30 +128,35 @@ for spec in ${EXTRA_PINS[@]+"${EXTRA_PINS[@]}"}; do
   fi
 done
 
-# 4. Landing page names the version and changed in this release cycle.
-prev_tag="$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | { cat; echo "$TAG"; } | sort -uV \
-  | awk -v t="$TAG" '$0 == t && !done { print prev; done = 1 } { prev = $0 }')"
-if ! has_file "$LANDING"; then
-  fail "landing page missing: $LANDING"
+# 4. The landing page is version-free: it installs the latest release and
+# links to GitHub Releases, so no landing file may name a release.
+list_landing() {
+  if [[ -n "$REF" ]]; then git ls-tree -r --name-only "$REF" -- "$LANDING_DIR"; else find "$LANDING_DIR" -type f 2>/dev/null | sort; fi
+}
+# Strip HTML comments, decode numeric and &period; character references, then
+# print each version-like token: v1.2, v1.2.3 or 1.2.3, also inside names such
+# as binlogviz_v1.2.3_linux. A bare two-part number is a CSS value, not a release.
+landing_versions() {
+  perl -0777 -ne '
+    s/<!--.*?-->//gs;
+    s/&#[xX]([0-9a-fA-F]+);?/chr(hex $1)/ge; s/&#([0-9]+);?/chr($1)/ge; s/&period;/./gi;
+    while (/(?:^|[^0-9.])([vV][ \t]*[0-9]+[ \t]*\.[ \t]*[0-9]+(?:[ \t]*\.[ \t]*[0-9]+)?|[0-9]+[ \t]*\.[ \t]*[0-9]+[ \t]*\.[ \t]*[0-9]+)/g) {
+      (my $t = $1) =~ s/[ \t]+//g; print "$t\n";
+    }'
+}
+landing_files="$(list_landing || true)"
+if [[ -z "$landing_files" ]]; then
+  fail "landing page missing: no files under $LANDING_DIR/"
 else
-  landing="$(read_file "$LANDING")"
-  if grep -Eq "v${VER_RE}([^0-9.]|\.[^0-9]|$)" <<<"$landing"; then
-    pass "$LANDING names $TAG"
-  else
-    # Only versions that are release tags here, so a dependency version is not reported.
-    shown="$(grep -Eo 'v[0-9]+\.[0-9]+\.[0-9]+' <<<"$landing" | sort -u | grep -Fx -f <(git tag -l 'v*') | sort -V | tail -n 1 || true)"
-    fail "$LANDING does not name $TAG (newest release it shows: ${shown:-none})"
-  fi
-  if [[ -z "$prev_tag" ]]; then
-    pass "$LANDING freshness: no earlier release tag to compare with"
-  elif ! git cat-file -e "$prev_tag:$LANDING" 2>/dev/null; then
-    pass "$LANDING freshness: $prev_tag has no landing page"
-  elif { [[ -n "$REF" ]] && git diff --quiet "$prev_tag" "$REF" -- "$LANDING"; } \
-    || { [[ -z "$REF" ]] && git diff --quiet "$prev_tag" -- "$LANDING"; }; then
-    fail "$LANDING is unchanged since $prev_tag; update it for $TAG"
-  else
-    pass "$LANDING changed since $prev_tag"
-  fi
+  while IFS= read -r path; do
+    found="$(read_file "$path" | landing_versions | sort -u | tr '\n' ' ')"
+    found="${found% }"
+    if [[ -n "$found" ]]; then
+      fail "$path names release version $found; the landing page is version-free, so remove it (release history goes to docs/releases and GitHub Releases)"
+    else
+      pass "$path names no release version"
+    fi
+  done <<<"$landing_files"
 fi
 
 if [[ "$failures" -gt 0 ]]; then

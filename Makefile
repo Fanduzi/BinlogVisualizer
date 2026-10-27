@@ -2,10 +2,10 @@
 
 help:
 	@echo "Targets:"
-	@echo "  make release-check VERSION=vX.Y.Z [REF=<git-ref>] # before tagging: notes (EN+zh), CHANGELOG, README pins, landing for the version"
+	@echo "  make release-check VERSION=vX.Y.Z [REF=<git-ref>] # before tagging: notes (EN+zh), CHANGELOG, README pins, version-free landing page"
 	@echo "  make release-check-test         # self-test release-check against fake complete and incomplete releases"
 
-# The release-preparation commit (notes, CHANGELOG, landing) is what gets
+# The release-preparation commit (notes, CHANGELOG) is what gets
 # tagged; release.yml runs the same check on the tag before any build starts.
 release-check:
 	@if [ -z "$(VERSION)" ]; then \

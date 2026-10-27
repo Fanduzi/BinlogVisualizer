@@ -33,8 +33,8 @@ Before pushing a new release tag:
     - `docs/releases/release-notes-vX.Y.Z.md`
     - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`
 - Do not add release notes, a per-version section, or new behavior detail to `README.md` / `README_ZH.md`. Release notes go in the two release note files and `CHANGELOG.md`. Behavior detail goes in `docs/reference/` or `docs/recipe/` (for example `docs/reference/analyze-behavior.md`, `docs/recipe/flashback.md`, `docs/recipe/compare-trend-workflow.md`, and their `.zh-CN.md` pages); the README keeps the command and a link. The README install examples resolve the latest release and need no edit per release. `TestReadmeStaysConcise` fails the PR otherwise.
+- Do not edit `docs/landing/` for a release. The landing page names no version and installs the latest release. `TestLandingPageHasNoReleaseHistory` fails the PR on a version string, an unlisted section, id, link or script, hidden content, or a landing directory over its size cap; `make release-check` fails if any `docs/landing/` file names a release version.
 - Run `make release-check VERSION=vX.Y.Z` on the release-preparation commit. The tag goes on that commit: `release.yml`'s `release-prep` job runs the same check on the tag before any build and fails the release if a surface is missing or stale.
-- Do not edit `docs/landing/index.html` for a release. It names no version and installs the latest release; `TestLandingPageHasNoReleaseHistory` fails on a version string, a release section, or a page over 128 KiB.
 - Push the release-preparation commit to `main`, then confirm both the `verify` and `Cloudflare Pages` checks pass.
 - Run the `release.yml` workflow via `workflow_dispatch` after any workflow or packaging change, and verify:
   - `test` passes

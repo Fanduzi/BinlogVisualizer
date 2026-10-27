@@ -40,7 +40,7 @@ jobs:
     name: release-prep
     # Before anything is built: the tagged commit must carry both release
     # notes, the CHANGELOG section, README pins that name this release (if
-    # any), and a landing page updated for this tag. Same check as
+    # any), and a landing page that names no release. Same check as
     # `make release-check`; a manual run has no tag and only runs the self-test.
     runs-on: ubuntu-latest
     steps:

@@ -36,6 +36,9 @@ extra_cases() {
   expect 1 "a stale install.sh --version pin fails" "README_ZH.md pins 1.0.0"
 }
 
+# The landing page names no release; it installs the latest one.
+write_landing() { printf '<style>.a { opacity: 0.45; line-height: 1.6; }</style>\n<p>Get BinlogViz</p>\n' > docs/landing/index.html; }
+
 git_q() { git -c user.name=fixture -c user.email=fixture@example.invalid -c commit.gpgsign=false -c tag.gpgsign=false "$@" >/dev/null; }
 
 repo="$work/repo"
@@ -44,7 +47,7 @@ cp "$CHECK" "$repo/scripts/check-release-prep.sh"
 cd "$repo"
 git_q init -q
 write_release 1.0.0
-echo '<p>Get v1.0.0</p>' > docs/landing/index.html
+write_landing
 git_q add -A && git_q commit -qm v1.0.0 && git_q tag v1.0.0
 git_q tag base
 
@@ -70,7 +73,7 @@ expect() {
 reset_complete() {
   git checkout -q -f --detach base && git clean -qfd
   write_release 1.1.0
-  echo '<p>Get v1.1.0</p>' > docs/landing/index.html
+  write_landing
 }
 
 reset_complete
@@ -89,18 +92,33 @@ expect 1 "stale README pin fails" "README.md pins 1.0.0"
 reset_complete; write_readme README_ZH.md 1.0.0
 expect 1 "stale README_ZH pin fails" "README_ZH.md pins 1.0.0"
 extra_cases
-reset_complete; echo '<p>Get v1.0.0</p>' > docs/landing/index.html
-expect 1 "landing without the version fails" "does not name v1.1.0 (newest release it shows: v1.0.0)"
-reset_complete; echo '<p>Get v1.10.0</p>' > docs/landing/index.html
-expect 1 "landing naming only a longer version fails" "does not name v1.1.0"
+# Landing: version-free in every file, whatever the spelling.
+landing_case() { # label pattern html [file]
+  reset_complete; printf '%s\n' "$3" >> "docs/landing/${4:-index.html}"
+  expect 1 "$1" "$2"
+}
+landing_case "landing naming this release fails" "names release version v1.1.0;" '<p>Get v1.1.0</p>'
+landing_case "landing naming an older release fails" "names release version v1.0.0;" '<p>Get v1.0.0</p>'
+landing_case "landing naming a bare 1.1.0 fails" "names release version 1.1.0;" '<p>Latest: 1.1.0</p>'
+landing_case "landing naming a two-part v1.10 fails" "names release version v1.10;" '<p>v1.10</p>'
+landing_case "landing naming a multi-digit V10.20.300 fails" "names release version V10.20.300;" '<p>V10.20.300</p>'
+landing_case "landing archive name binlogviz_v1.1.0_linux fails" "names release version v1.1.0;" '<code>binlogviz_v1.1.0_linux_amd64.tar.gz</code>'
+landing_case "landing entity-encoded v1&#46;1&#46;0 fails" "names release version v1.1.0;" '<p>v1&#46;1&#46;0</p>'
+landing_case "landing hex-entity &#x76;1.1.0 fails" "names release version v1.1.0;" '<p>&#x76;1.1.0</p>'
+landing_case "landing &period; entity fails" "names release version v1.1.0;" '<p>v1&period;1&period;0</p>'
+landing_case "landing spaced v 1 . 1 . 0 fails" "names release version v1.1.0;" '<p>v 1 . 1 . 0</p>'
+landing_case "landing listing two releases names both" "names release version v1.0.0 v1.1.0;" '<p>v1.1.0 after v1.0.0</p>'
+landing_case "a second landing file naming a release fails" "docs/landing/releases.html names release version v1.0.0;" '<p>v1.0.0</p>' releases.html
+reset_complete; mkdir -p docs/landing/js; printf "const v = 'v1.0.0';\n" > docs/landing/js/r.js
+expect 1 "a nested landing file naming a release fails" "docs/landing/js/r.js names release version v1.0.0;"
+reset_complete; printf '<!-- v1.1.0\n v1.0.0 -->\n' >> docs/landing/index.html
+expect pass "a version only inside an HTML comment passes" "docs/landing/index.html names no release version"
+reset_complete; rm -rf docs/landing
+expect 1 "a missing landing directory fails" "landing page missing"
 
-# Freshness: the landing page already names v1.1.0 at v1.0.0 and is not touched.
-git checkout -q -f --detach base && git clean -qfd
-echo '<p>Get v1.0.0; v1.1.0 is next</p>' > docs/landing/index.html
-git_q commit -qam "landing names next" && git_q tag -f v1.0.0
-write_release 1.1.0
-expect 1 "landing unchanged since the previous tag fails" "unchanged since v1.0.0"
-git_q tag -f v1.0.0 base
+# The landing page is not edited per release: unchanged since the previous tag passes.
+reset_complete
+expect pass "an untouched landing page passes" "docs/landing/index.html names no release version"
 
 # Ref mode reads the tagged commit, not the working tree.
 reset_complete
@@ -110,6 +128,11 @@ rm "$(notes_zh 1.1.0)"
 expect pass "a dirty working tree does not change a tag check" "ready for v1.1.0 at v1.1.0" v1.1.0 v1.1.0
 git checkout -q -f v1.1.0
 expect 1 "an incomplete commit fails at its ref" "release notes missing" v1.1.0 base
+
+reset_complete; printf '<p>v1.1.0</p>\n' >> docs/landing/index.html
+git_q add -A && git_q commit -qm "landing names v1.1.0" && git_q tag landing-names-release
+write_landing
+expect 1 "ref mode reads the landing page from the ref, not the clean tree" "names release version v1.1.0;" v1.1.0 landing-names-release
 
 expect 2 "a malformed version is a usage error" "must look like vX.Y.Z" 1.1.0
 expect 2 "an unknown ref is a usage error" "unknown ref" v1.1.0 no-such-ref
