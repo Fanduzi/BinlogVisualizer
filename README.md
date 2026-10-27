@@ -53,13 +53,16 @@ VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Fan
 curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_linux_amd64.tar.gz"
 curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_checksums.txt"
 grep " binlogviz_${VERSION#v}_linux_amd64.tar.gz\$" "binlogviz_${VERSION#v}_checksums.txt" | sha256sum -c - &&
-  tar -xzf "binlogviz_${VERSION#v}_linux_amd64.tar.gz" &&
-  install ./binlogviz /usr/local/bin/binlogviz
+  mkdir -p "binlogviz_${VERSION#v}" &&
+  tar -xzf "binlogviz_${VERSION#v}_linux_amd64.tar.gz" -C "binlogviz_${VERSION#v}" &&
+  install "binlogviz_${VERSION#v}/binlogviz" /usr/local/bin/binlogviz
 ```
 
-On macOS without Homebrew, use the same commands with `darwin_arm64` or `darwin_amd64` in place of `linux_amd64` and `shasum -a 256 -c -` in place of `sha256sum -c -`. A checksum mismatch prints `FAILED` and exits non-zero; stop there. All archives are on [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases).
+On ARM Linux, use `linux_arm64` in place of `linux_amd64`. On macOS without Homebrew, use the same commands with `darwin_arm64` or `darwin_amd64` in place of `linux_amd64` and `shasum -a 256 -c -` in place of `sha256sum -c -`. A checksum mismatch prints `FAILED` and exits non-zero; stop there. All archives are on [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases).
 
 `install.sh` installs the latest release, refuses to install when the sha256 does not match `checksums.txt` or no sha256 tool exists (pass `--no-verify` to skip the check on purpose), and accepts `--version vX.Y.Z`, `--bin-dir DIR`, and `--dry-run`.
+
+The tarball unpacks loose files (the binary, both READMEs, `docs/`, `testdata/`, `incident.yaml`), so the commands above unpack it into its own directory. Writing to `/usr/local/bin` needs root: run `sudo sh ./install.sh` and `sudo install …`, or install into a directory you own with `sh ./install.sh --bin-dir ~/.local/bin`.
 
 ### Fallback: Build From Source
 
@@ -93,7 +96,7 @@ curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/
 binlogviz analyze minimal.binlog
 ```
 
-Release archives ship the same sample and an `incident.yaml` that runs from the extract directory. Archive contents, stdin input, Top Threads, Hot Rows, and exit codes are in [Analyze Behavior Details](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/analyze-behavior.md).
+Release archives ship the same sample and an `incident.yaml` that runs from the extract directory. Archive contents, stdin input, Top Threads, Hot Rows, and exit codes are in [Analyze Behavior Details](docs/reference/analyze-behavior.md).
 
 ### Inspect one of your own files
 
@@ -177,6 +180,8 @@ binlogviz analyze mysql-bin.000123 \
 binlogviz analyze mysql-bin.000123
 ```
 
+The report's DDL Timeline lists each `DROP TABLE`, `TRUNCATE`, and `ALTER` with its GTID and start position, to use as the stop GTID or `--stop-position` of a point-in-time restore. See [Find an accidental DROP](docs/recipe/flashback.md#find-an-accidental-drop).
+
 ### Undo the bad rows
 
 Find the transaction with `analyze`, the DDL Timeline, or `--show-rows`. Then print SQL that reverses only those row changes. Review the script. Apply it yourself. Flashback does not connect to a database.
@@ -195,7 +200,7 @@ binlogviz flashback mysql-bin.000123 \
 binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 ```
 
-`--show-rows` limits, the DDL Timeline stop points, flashback requirements, refusals, conflicts, apply grants, and commit markers are in [Find and Undo Bad Rows](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/flashback.md).
+`--show-rows` limits, the DDL Timeline stop points, flashback requirements, refusals, conflicts, apply grants, and commit markers are in [Find and Undo Bad Rows](docs/recipe/flashback.md).
 
 ## Snapshots, Compare, Trend, and Workflow
 
@@ -220,12 +225,14 @@ binlogviz snapshot list
 binlogviz snapshot list --format json
 binlogviz snapshot show incident_current
 binlogviz snapshot show incident_current --format json
-binlogviz snapshot rename incident_current incident_current_renamed
-binlogviz snapshot delete incident_current_renamed
 binlogviz compare \
   --current-snapshot incident_current \
   --baseline-snapshot incident_baseline \
   --format html > compare.html
+
+# rename or delete a snapshot after you are done with it
+binlogviz snapshot rename incident_current incident_current_renamed
+binlogviz snapshot delete incident_current_renamed
 ```
 
 When `--snapshot-name` is set, `analyze --format json` still writes the JSON report to `stdout` and also saves the same payload under `~/.binlogviz/snapshots/<name>.json`. The save confirmation is printed to `stderr`.
@@ -249,7 +256,7 @@ binlogviz workflow run incident.yaml
 tree artifacts/incident
 ```
 
-Compare comparability, trend ordering, and the `workflow resume`, `status`, `clean`, `export`, `validate`, and `describe` lifecycle are in [Snapshots, Compare, Trend, and Workflow](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/compare-trend-workflow.md).
+Compare comparability, trend ordering, and the `workflow resume`, `status`, `clean`, `export`, `validate`, and `describe` lifecycle are in [Snapshots, Compare, Trend, and Workflow](docs/recipe/compare-trend-workflow.md).
 
 ## What BinlogViz Helps You See
 
@@ -258,7 +265,7 @@ BinlogViz is optimized for these common DBA questions:
 - **Which tables are taking the heaviest write load?**
 - **Which primary key was updated or deleted the most?**
 - **Which UPDATE or DELETE rows hit a table with no primary key?**
-- **How far behind was this replica, and which transactions caused it?**
+- **How far behind was this replica, and which transactions caused it?** See [Why is my replica lagging?](docs/reference/analyze-behavior.md#why-is-my-replica-lagging).
 - **Which transactions are large enough to deserve attention?**
 - **Did a spike happen at a specific minute?**
 - **What changed inside a known incident window?**
@@ -288,19 +295,19 @@ Supported languages:
 - [Quickstart](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/quickstart.md)
 - [Analyze Local Binlogs](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.md)
 - [Troubleshoot Common Errors](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.md)
-- [Find and Undo Bad Rows](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/flashback.md)
-- [Snapshots, Compare, Trend, and Workflow](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/compare-trend-workflow.md)
+- [Find and Undo Bad Rows](docs/recipe/flashback.md)
+- [Snapshots, Compare, Trend, and Workflow](docs/recipe/compare-trend-workflow.md)
 
 ### When you need contracts and exact behavior
 
 - [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md)
 - [Input Discovery Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/input-discovery.md)
 - [Output Format Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.md)
-- [Analyze Behavior Details](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/analyze-behavior.md)
+- [Analyze Behavior Details](docs/reference/analyze-behavior.md)
 
 ### When you need internals or operating model detail
 
-- [Architecture](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/architecture.md)
+- [Architecture](docs/concept/architecture.md)
 - [DuckDB Temp Store](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.md)
 - [Analysis Model](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/analysis-model.md)
 - [Limitations](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.md)
@@ -314,7 +321,7 @@ Supported languages:
 
 ## Architecture
 
-The Cobra command layer streams normalized binlog events into the analyzer, then hands the result to report, snapshot, compare, trend, and workflow modules. The pipeline and the module table are in [Architecture](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/architecture.md).
+The Cobra command layer streams normalized binlog events into the analyzer, then hands the result to report, snapshot, compare, trend, and workflow modules. The pipeline and the module table are in [Architecture](docs/concept/architecture.md).
 
 ## Requirements
 

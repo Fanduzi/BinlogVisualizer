@@ -57,7 +57,7 @@ binlogviz workflow describe incident.yaml --format json
 
 ## 常见 DBA 工作流
 
-## 1. 先用一个文件验证分析链路
+### 1. 先用一个文件验证分析链路
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
@@ -70,7 +70,7 @@ binlogviz analyze minimal.binlog
 - 先确认解析成功
 - 先看默认文本报告是否已经足够支撑第一轮判断
 
-## 2. 分析整个目录时优先用 discovery 模式
+### 2. 分析整个目录时优先用 discovery 模式
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
@@ -84,7 +84,7 @@ discovery 模式通常是目录分析时最稳妥的运维路径。BinlogViz 会
 4. 把最终解析出的有序文件列表打印到 `stderr`
 5. 按该顺序执行分析
 
-## 3. 用时间和对象过滤减少噪音
+### 3. 用时间和对象过滤减少噪音
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -101,7 +101,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 
 适合用于已知故障时间窗口、特定服务 schema，或者一组明确的热点表排查。
 
-## 4. 安全地输出 JSON
+### 4. 安全地输出 JSON
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
@@ -109,7 +109,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 这样机器可读结果保留在 `stdout`，进度和运行状态保留在 `stderr`。
 
-## 5. 默认 Top-N 不够时扩大报告范围
+### 5. 默认 Top-N 不够时扩大报告范围
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -119,7 +119,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --top-minutes 30
 ```
 
-## 6. 关注异常时打开告警检测
+### 6. 关注异常时打开告警检测
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -128,7 +128,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --large-trx-duration 60s
 ```
 
-## 7. 把当前结果和基线结果做对比
+### 7. 把当前结果和基线结果做对比
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \

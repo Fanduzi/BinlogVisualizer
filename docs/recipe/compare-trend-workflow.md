@@ -57,7 +57,7 @@ binlogviz workflow describe incident.yaml --format json
 
 ## Common DBA Workflows
 
-## 1. Validate one file before scaling up
+### 1. Validate one file before scaling up
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
@@ -70,7 +70,7 @@ Use this when you want the fastest check that:
 - the file parses successfully
 - the default text report is already enough for a first look
 
-## 2. Prefer discovery mode for repeatable directory analysis
+### 2. Prefer discovery mode for repeatable directory analysis
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
@@ -84,7 +84,7 @@ Discovery mode is usually the safest operator path when files live in one direct
 4. print the resolved ordered list to `stderr`
 5. analyze that ordered set
 
-## 3. Reduce noise with time and object filters
+### 3. Reduce noise with time and object filters
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -101,7 +101,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 
 Use this when you are working a known incident window, a specific service schema, or a short list of hot tables.
 
-## 4. Redirect JSON safely
+### 4. Redirect JSON safely
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > analyze.json
@@ -109,7 +109,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 This keeps the machine-readable report on `stdout` while leaving progress and runtime information on `stderr`.
 
-## 5. Tune the report when default Top-N is too small
+### 5. Tune the report when default Top-N is too small
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -119,7 +119,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --top-minutes 30
 ```
 
-## 6. Turn on alerting when looking for anomalies
+### 6. Turn on alerting when looking for anomalies
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
@@ -128,7 +128,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
   --large-trx-duration 60s
 ```
 
-## 7. Compare a current incident window against a baseline
+### 7. Compare a current incident window against a baseline
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
