@@ -154,8 +154,8 @@ func TestUpdate(t *testing.T) {
 }
 
 // Check alone holds the tolerance: a file may sit up to growth_tolerance
-// lines above its ceiling, a long function 5 lines, complexity and issue
-// references not even one. Below the ceiling always passes.
+// lines above its ceiling, a long function 5 lines, a complex function 2,
+// issue references not even one. Below the ceiling always passes.
 func TestCheckToleranceBoundary(t *testing.T) {
 	b := Baseline{Limits: DefaultLimits, Files: Ledger{"a.go": 837}, ComplexFunctions: Ledger{".:Run": 60}, LongFunctions: Ledger{".:Long": 160, ".:Run": 1000}, StatementFunctions: Ledger{".:Long": 1000, ".:Run": 1000}, IssueRefs: Ledger{"a.go": 2}}
 	for _, c := range []struct {
@@ -166,7 +166,8 @@ func TestCheckToleranceBoundary(t *testing.T) {
 		{857, 60, 165, "#1 #2", ""},
 		{600, 50, 155, "", ""},
 		{858, 60, 160, "", "files: a.go grew to 858 lines, ceiling 837 (+20 allowed)"},
-		{857, 61, 160, "", "complex_functions: .:Run grew to 61 complexity, ceiling 60 (+0 allowed)"},
+		{857, 62, 160, "", ""},
+		{857, 63, 160, "", "complex_functions: .:Run grew to 63 complexity, ceiling 60 (+2 allowed)"},
 		{857, 60, 166, "", "long_functions: .:Long grew to 166 lines, ceiling 160 (+5 allowed)"},
 		{857, 60, 160, "#1 #2 #3", "issue_refs: a.go grew to 3 issue references in comments, ceiling 2 (+0 allowed)"},
 	} {
@@ -184,5 +185,28 @@ func TestInitialBoundary(t *testing.T) {
 	}
 	if want := (Ledger{".:Over": 41}); !reflect.DeepEqual(b.ComplexFunctions, want) {
 		t.Errorf("complex %v, want %v", b.ComplexFunctions, want)
+	}
+}
+
+// A new entry's hint names make codehealth-compare, which records the
+// entry and runs the comparison CI runs, so following the hint cannot leave
+// the local gates green while CI fails.
+func TestNewEntryHintNamesCompare(t *testing.T) {
+	b := Baseline{Limits: DefaultLimits}
+	m := measure(t, tree{"a.go": file(900, ""), "b.go": "package p\n// #1\n"}, nil)
+	for _, want := range []string{
+		"files: new file over 800 lines: a.go has 900; split it. If it was split or renamed from a baseline entry, run make codehealth-compare",
+		"issue_refs: b.go has 1 issue references in comments, none allowed in a new file; put the history in the commit message or ADR (list them: codehealth refs). If the file was renamed or split from a baselined file, run make codehealth-compare",
+	} {
+		expect(t, Check(b, m), want)
+	}
+	m.Deadcode = map[string]string{"x:New": "x/a.go:3:6"}
+	expect(t, Check(b, m), "deadcode: x:New at x/a.go:3:6 is unreachable; delete it, or call it from non-test code in this same pull request; no dead code lands and test-only use counts as dead")
+	makefile, err := os.ReadFile(filepath.Join(repoRoot, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "codehealth-compare: codehealth-baseline\n\tgo run ./internal/codehealth/cmd/codehealth -base $(LINT_BASE) -paydown compare\n"; !strings.Contains(string(makefile), want) {
+		t.Fatalf("Makefile has no target %q", want)
 	}
 }

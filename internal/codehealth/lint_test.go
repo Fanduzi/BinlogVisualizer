@@ -3,6 +3,7 @@ package codehealth
 import (
 	"os/exec"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -117,4 +118,60 @@ func TestRunDeadcode(t *testing.T) {
 	if want := map[string]string{".:dead": "main.go:7:6", ".:genDead2": "unlisted.go:5:6"}; !reflect.DeepEqual(dead, want) {
 		t.Fatalf("dead %v, want %v", dead, want)
 	}
+}
+
+// Renaming a local variable keeps an existing finding: identifiers inside
+// backticks, double quotes or single quotes are normalized. A second
+// finding of the same shape in the same function is still new, and an
+// apostrophe in prose does not open a quote.
+func TestDiffLintQuotedIdentifiers(t *testing.T) {
+	base := measure(t, tree{"a.go": lintBase}, nil)
+	baseIssues := []LintIssue{
+		issue("errcheck", "a.go", 4, "Error return value of `mysqlStore.Close` is not checked"),
+		issue("revive", "a.go", 5, `exported var "oldName" should have comment`),
+		issue("staticcheck", "a.go", 6, "should use 'oldName' instead"),
+		issue("ineffassign", "a.go", 7, "can't drop oldName, it's used"),
+	}
+	cases := []struct {
+		name   string
+		issues []LintIssue
+		want   []string
+	}{
+		{"renamed in every quote style", []LintIssue{
+			issue("errcheck", "a.go", 4, "Error return value of `metaStore.Close` is not checked"),
+			issue("revive", "a.go", 5, `exported var "newName" should have comment`),
+			issue("staticcheck", "a.go", 6, "should use 'newName' instead"),
+			issue("ineffassign", "a.go", 7, "can't drop oldName, it's used"),
+		}, nil},
+		{"renamed plus a new unchecked error in the same function", []LintIssue{
+			issue("errcheck", "a.go", 4, "Error return value of `metaStore.Close` is not checked"),
+			issue("errcheck", "a.go", 8, "Error return value of `f.Write` is not checked"),
+			baseIssues[1], baseIssues[2], baseIssues[3],
+		}, []string{"a.go:8: errcheck: Error return value of `f.Write` is not checked"}},
+		{"a different message shape is new", append(slices.Clone(baseIssues[1:]), issue("errcheck", "a.go", 4, "Error return value is not checked")), []string{"a.go:4: errcheck"}},
+		{"an apostrophe is not a quote", append(slices.Clone(baseIssues[:3]), issue("ineffassign", "a.go", 7, "can't drop newName, it's used")), []string{"a.go:7: ineffassign"}},
+		{"a different identifier shape in quotes is new", append(slices.Clone(baseIssues[1:]), issue("errcheck", "a.go", 4, "Error return value of `Close` is not checked")), []string{"a.go:4: errcheck"}},
+	}
+	for _, c := range cases {
+		got := DiffLint(base, baseIssues, measure(t, tree{"a.go": lintBase}, nil), c.issues)
+		if len(got) != len(c.want) {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+			continue
+		}
+		for i := range got {
+			expect(t, got[i:i+1], c.want[i])
+		}
+	}
+}
+
+// The linter is part of a finding's identity: another linter's finding
+// with the same text in the same function is new, even when the base
+// finding is gone.
+func TestDiffLintKeysByLinter(t *testing.T) {
+	m := measure(t, tree{"a.go": lintBase}, nil)
+	got := DiffLint(m, []LintIssue{issue("errcheck", "a.go", 4, "value of `x` is unused")}, m, []LintIssue{issue("ineffassign", "a.go", 4, "value of `x` is unused")})
+	if len(got) != 1 {
+		t.Fatalf("got %q, want the ineffassign finding", got)
+	}
+	expect(t, got, "a.go:4: ineffassign: value of `x` is unused")
 }

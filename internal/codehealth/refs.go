@@ -32,13 +32,23 @@ var issueRef = regexp.MustCompile(`(?i:\b(?:issues|pull)/\d+\b)` +
 // HTML entity ("&#39;") or a second hash.
 var hashRef = regexp.MustCompile(`(?:^|[^\w&#])(#\d+)\b`)
 
-// notRefWords are words that, right before "#N", make it a position, not an
-// issue: "Column #3", "Field #2".
+// notRefWords are words that, right before "#N", make it a position, an
+// instance or a colour, not an issue: "Column #3", "trx #2", "thread #3",
+// "color: #333".
 var notRefWords = map[string]bool{
 	"column": true, "col": true, "field": true, "row": true, "item": true, "arg": true, "argument": true,
 	"param": true, "parameter": true, "step": true, "line": true, "byte": true, "bit": true, "index": true,
 	"slot": true, "position": true, "pos": true, "offset": true, "entry": true, "event": true, "no": true,
 	"number": true, "attempt": true, "try": true, "page": true, "part": true, "case": true, "test": true,
+	// Binlog and server instances.
+	"trx": true, "txn": true, "tx": true, "transaction": true, "thread": true, "worker": true, "session": true,
+	"query": true, "statement": true, "stmt": true, "conn": true, "connection": true, "server": true,
+	"node": true, "replica": true, "shard": true, "partition": true, "table": true, "file": true,
+	"segment": true, "chunk": true, "batch": true, "packet": true, "record": true, "block": true, "job": true,
+	"task": true, "run": true, "pass": true, "phase": true, "stage": true, "iteration": true, "round": true,
+	// Colours.
+	"color": true, "colour": true, "background": true, "bg": true, "fg": true, "foreground": true,
+	"border": true, "fill": true, "stroke": true,
 }
 
 var fullWidth = strings.NewReplacer("＃", "#",
@@ -71,12 +81,16 @@ func overlaps(spans [][]int, start, end int) bool {
 	return false
 }
 
+// lastWord is the word right before a reference, with a colon, quotes or
+// an opening parenthesis around it trimmed. Clause punctuation stays on
+// it, so a word that ends a clause qualifies nothing: after "the segment,"
+// a hash and a number is a reference.
 func lastWord(s string) string {
 	f := strings.Fields(s)
 	if len(f) == 0 {
 		return ""
 	}
-	return strings.Trim(f[len(f)-1], ":,.;(\"'`")
+	return strings.Trim(f[len(f)-1], ":(\"'`")
 }
 
 func issueRefs(fset *token.FileSet, f *ast.File) []string {

@@ -9,12 +9,18 @@
 package codehealth
 
 import (
+	"bytes"
+	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -69,42 +75,95 @@ type Measurement struct {
 	Unparsed []string
 }
 
-// Measure walks root and measures every Go file Go could compile, which is
-// every directory but .git. Paths in generated are skipped: CI regenerates
-// them (Regenerate) to prove they are generator output.
+// Measure measures every Go file Go could compile under root, which is
+// every directory but .git. In a git work tree (root holds .git) that is
+// the files git would commit, tracked or untracked but not ignored, so a
+// local worktree under .worktrees/, an agent's .claude/ or a nested
+// repository does not count; elsewhere, such as the tree compare and lint
+// extract with git archive, it is every file. Paths in generated are
+// skipped: CI regenerates them (Regenerate) to prove they are generator
+// output.
 func Measure(root string, generated map[string]string) (Measurement, error) {
 	m := Measurement{
 		Files: map[string]int{}, TestFiles: map[string]int{}, Text: map[string][]string{},
 		Funcs: map[string]Func{}, TestFuncs: map[string]Func{}, Refs: map[string][]string{},
 	}
 	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	visit := func(rel string) error {
+		if path.Base(rel) == "go.mod" && rel != "go.mod" && !inTestdata(rel) {
+			m.Problems = append(m.Problems, "nested module "+rel+": go test ./..., golangci-lint and deadcode do not cover it; move the code into the main module")
+		}
+		if _, ok := generated[rel]; ok || !strings.HasSuffix(rel, ".go") {
+			return nil
+		}
+		return m.addFile(fset, filepath.Join(root, filepath.FromSlash(rel)), rel)
+	}
+	files, err := worktreeFiles(root)
+	if err != nil || files != nil {
+		for _, rel := range files {
+			if err := visit(rel); err != nil {
+				return m, err
+			}
+		}
+		return m, err
+	}
+	err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if d.Name() == ".git" && path != root {
+			if d.Name() == ".git" && p != root {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		if d.Name() == "go.mod" && rel != "go.mod" && !inTestdata(rel) {
-			m.Problems = append(m.Problems, "nested module "+rel+": go test ./..., golangci-lint and deadcode do not cover it; move the code into the main module")
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
 		}
-		if !strings.HasSuffix(rel, ".go") {
-			return nil
-		}
-		if _, ok := generated[rel]; ok {
-			return nil
-		}
-		return m.addFile(fset, path, rel)
+		return visit(filepath.ToSlash(rel))
 	})
 	return m, err
+}
+
+// worktreeFiles returns, sorted, the files git would commit when root is
+// the top of a git work tree: tracked ones still on disk and untracked ones
+// that .gitignore does not exclude. A nested repository or a submodule is
+// a directory to git and is skipped. A file git lists twice, as an
+// unmerged path in a conflict does, is measured once. It returns nil when
+// root holds no .git.
+func worktreeFiles(root string) ([]string, error) {
+	if _, err := os.Lstat(filepath.Join(root, ".git")); err != nil {
+		return nil, nil // not a work tree top; the walk reports an unreadable root
+	}
+	cmd := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	cmd.Dir = root
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git ls-files in %s: %w: %s", root, err, stderr.String())
+	}
+	files := []string{}
+	seen := map[string]bool{}
+	for _, rel := range strings.Split(string(out), "\x00") {
+		if seen[rel] {
+			continue
+		}
+		seen[rel] = true
+		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			continue // deleted in the work tree, not yet in the index
+		case err != nil:
+			return nil, err
+		case info.IsDir():
+			continue // the work tree itself, a nested repository or a submodule
+		}
+		files = append(files, rel)
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 func inTestdata(rel string) bool {

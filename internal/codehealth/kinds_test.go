@@ -16,8 +16,8 @@ type kindSpec struct {
 var kindSpecs = []kindSpec{
 	{"files", 20, 40, 50},
 	{"test_files", 20, 40, 50},
-	{"complex_functions", 0, 1, 5},
-	{"test_complex_functions", 0, 1, 5},
+	{"complex_functions", 2, 1, 5},
+	{"test_complex_functions", 2, 1, 5},
 	{"long_functions", 5, 3, 20},
 	{"statement_functions", 5, 2, 10},
 	{"issue_refs", 0, 0, 3},

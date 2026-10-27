@@ -1,6 +1,7 @@
 package codehealth
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -155,9 +156,9 @@ func TestGateBypasses(t *testing.T) {
 			want: "complex_functions: internal/r:Run became [internal/r:Run2] with 99 complexity in total",
 		},
 		{
-			name: "function renamed and grown: Run becomes RunMain at 61", base: baseTree,
-			pr:   baseTree.with(tree{"internal/r/mysql_runner.go": file(3592, complexFunc("RunMain", 61)+lines("r", 0, 3400))}),
-			want: "complex_functions: internal/r:Run became [internal/r:RunMain] with 61 complexity in total",
+			name: "function renamed and grown: Run becomes RunMain at 63", base: baseTree,
+			pr:   baseTree.with(tree{"internal/r/mysql_runner.go": file(3592, complexFunc("RunMain", 63)+lines("r", 0, 3400))}),
+			want: "complex_functions: internal/r:Run became [internal/r:RunMain] with 63 complexity in total",
 		},
 		{
 			name: "new complex function of new code while Run shrinks", base: baseTree,
@@ -225,14 +226,14 @@ func TestGateBypasses(t *testing.T) {
 			want: "long_functions: .:Pass grew to 157 lines, ceiling 151 (+5 allowed)",
 		},
 		{
-			name: "an existing complex function grows by one", base: baseTree, pr: baseTree.with(tree{"internal/r/mysql_runner.go": file(3592, complexFunc("Run", 61)+lines("r", 0, 3400))}),
-			want: "complex_functions: internal/r:Run grew to 61 complexity, ceiling 60 (+0 allowed)",
+			name: "an existing complex function grows by three", base: baseTree, pr: baseTree.with(tree{"internal/r/mysql_runner.go": file(3592, complexFunc("Run", 63)+lines("r", 0, 3400))}),
+			want: "complex_functions: internal/r:Run grew to 63 complexity, ceiling 60 (+2 allowed)",
 		},
 		{name: "a package-level func literal over 40", pr: tree{"a.go": "package p\n\nvar F = " + complexFunc("", 45)}, want: "complex_functions: adds .:F (45 complexity)"},
 		{name: "a new 5000-line test file", pr: tree{"a_test.go": file(5000, lines("t", 0, 4000))}, want: "test_files: adds a_test.go (5000 lines)"},
 		{
-			name: "an existing complex test function grows", base: tree{"a_test.go": file(400, complexFunc("TestHot", 98))}, pr: tree{"a_test.go": file(400, complexFunc("TestHot", 99))},
-			want: "test_complex_functions: .:TestHot grew to 99 complexity, ceiling 98",
+			name: "an existing complex test function grows", base: tree{"a_test.go": file(400, complexFunc("TestHot", 98))}, pr: tree{"a_test.go": file(400, complexFunc("TestHot", 101))},
+			want: "test_complex_functions: .:TestHot grew to 101 complexity, ceiling 98 (+2 allowed)",
 		},
 		{name: "a 900-line file under testdata", pr: tree{"x/testdata/big/b.go": file(900, lines("b", 0, 890))}, want: "files: adds x/testdata/big/b.go"},
 		{name: "a 900-line file in a dot directory", pr: tree{"x/.hidden/b.go": file(900, lines("b", 0, 890))}, want: "files: adds x/.hidden/b.go"},
@@ -296,4 +297,82 @@ func TestShrinkOnMainStaysGreen(t *testing.T) {
 	other := shrunk.with(tree{"internal/t/small.go": file(20, "")})
 	expect(t, Compare(prev, m, prev, measure(t, other, nil), true), "")
 	expect(t, Compare(prev, measure(t, baseTree, nil), prev, m, false), "")
+}
+
+// appRun is App.Run with complexity c, one line per branch; guard adds a
+// three-line nil check.
+func appRun(c int, guard bool) string {
+	var b strings.Builder
+	b.WriteString("type App struct{ store *int }\n\nfunc (a *App) Run(x int) int {\n")
+	if guard {
+		b.WriteString("\tif a.store == nil {\n\t\treturn -1\n\t}\n")
+	}
+	for i := 1; i < c; i++ {
+		fmt.Fprintf(&b, "\tif x == %d { return %d }\n", i, i)
+	}
+	b.WriteString("\treturn 0\n}\n")
+	return b.String()
+}
+
+// step runs one pull request on top of main the way CI does, with the
+// author's make codehealth-baseline, and returns main's next baseline.
+func step(t *testing.T, prev Baseline, base, pr tree) (Baseline, []string) {
+	t.Helper()
+	baseM, prM := measure(t, base, nil), measure(t, pr, nil)
+	next, problems := Update(prev, prM)
+	problems = append(problems, Check(next, prM)...)
+	return next, append(problems, Compare(prev, baseM, next, prM, true)...)
+}
+
+// A one-line fix in a baselined complex function, such as a nil guard,
+// passes; complexity may sit 2 above the stored ceiling and no more. The
+// ceiling does not move with the fix, so two fixes of +2 in a row do not
+// add up: the second fails until a branch is extracted.
+func TestComplexityToleranceIsAgainstTheStoredCeiling(t *testing.T) {
+	src := func(c int, guard bool) tree { return tree{"internal/app/app.go": file(900, appRun(c, guard))} }
+	main := src(80, false)
+	prev := Initial(DefaultLimits, nil, measure(t, main, nil))
+	if got := prev.ComplexFunctions["internal/app:App.Run"]; got != 80 {
+		t.Fatalf("App.Run ceiling %d, want 80", got)
+	}
+	next, problems := step(t, prev, main, src(80, true))
+	expect(t, problems, "")
+	if got := next.ComplexFunctions["internal/app:App.Run"]; got != 80 {
+		t.Fatalf("ceiling after the nil guard %d, want 80", got)
+	}
+	_, problems = step(t, prev, main, src(83, false))
+	expect(t, problems, "complex_functions: internal/app:App.Run grew to 83 complexity, ceiling 80 (+2 allowed); extract a branch")
+
+	first := src(82, false)
+	next, problems = step(t, prev, main, first)
+	expect(t, problems, "")
+	_, problems = step(t, next, first, src(84, false))
+	expect(t, problems, "complex_functions: internal/app:App.Run grew to 84 complexity, ceiling 80 (+2 allowed)")
+	raised := clone(t, next)
+	raised.ComplexFunctions["internal/app:App.Run"] = 82
+	expect(t, Compare(next, measure(t, first, nil), raised, measure(t, src(84, false), nil), true), "complex_functions: internal/app:App.Run raised 80 -> 82")
+}
+
+// Two pull requests that each pay down 60 lines of one file and refresh the
+// baseline merge cleanly and leave main below its ceiling. The next pull
+// request, one line long, did not pay anything down and passes with or
+// without a refresh.
+func TestConcurrentPaydownsThenOneLine(t *testing.T) {
+	main := tree{"expr.go": file(1000, lines("a", 0, 400)+lines("b", 0, 400))}
+	prev := Initial(DefaultLimits, nil, measure(t, main, nil))
+	cutA, problems := step(t, prev, main, tree{"expr.go": file(940, lines("a", 0, 340)+lines("b", 0, 400))})
+	expect(t, problems, "")
+	cutB, problems := step(t, prev, main, tree{"expr.go": file(940, lines("a", 0, 400)+lines("b", 0, 340))})
+	expect(t, problems, "")
+	if cutA.Files["expr.go"] != 940 || cutB.Files["expr.go"] != 940 {
+		t.Fatalf("refreshed ceilings %d and %d, want 940 in both", cutA.Files["expr.go"], cutB.Files["expr.go"])
+	}
+	merged := tree{"expr.go": file(880, lines("a", 0, 340)+lines("b", 0, 340))}
+	expect(t, Check(cutA, measure(t, merged, nil)), "")
+	oneLine := tree{"expr.go": file(881, lines("a", 0, 340)+lines("b", 0, 340)+"// one more line\n")}
+	expect(t, Compare(cutA, measure(t, merged, nil), cutA, measure(t, oneLine, nil), true), "")
+	_, problems = step(t, cutA, merged, oneLine)
+	expect(t, problems, "")
+	paid := tree{"expr.go": file(830, lines("a", 0, 290)+lines("b", 0, 340))}
+	expect(t, Compare(cutA, measure(t, merged, nil), cutA, measure(t, paid, nil), true), "files: expr.go is down to 830 lines, ceiling 940; run make codehealth-baseline")
 }

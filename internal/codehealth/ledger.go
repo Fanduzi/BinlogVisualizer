@@ -26,8 +26,14 @@ type kind struct {
 const fileSplitSlack = 40
 
 // functionLineTolerance lets a baselined long function take a small fix
-// without being split first; complexity gets no such room.
+// without being split first.
 const functionLineTolerance = 5
+
+// complexityTolerance lets a baselined complex function take a one-line
+// fix, such as a nil or error guard, without extracting a branch first. It
+// is measured against the stored ceiling, which a pull request cannot
+// raise, so two fixes in a row cannot add up past it.
+const complexityTolerance = 2
 
 func fixed(n int) func(Limits) int { return func(Limits) int { return n } }
 
@@ -62,7 +68,7 @@ var kinds = []kind{
 		values:    func(m Measurement) map[string]int { return funcValues(m.Funcs, complexityOf) },
 		content:   funcBody,
 		limit:     func(l Limits) int { return l.Complexity },
-		tolerance: fixed(0),
+		tolerance: fixed(complexityTolerance),
 		slack:     1, paydown: 5,
 	},
 	{
@@ -71,7 +77,7 @@ var kinds = []kind{
 		values:    func(m Measurement) map[string]int { return funcValues(m.TestFuncs, complexityOf) },
 		content:   testFuncBody,
 		limit:     func(l Limits) int { return l.Complexity },
-		tolerance: fixed(0),
+		tolerance: fixed(complexityTolerance),
 		slack:     1, paydown: 5,
 	},
 	{
@@ -102,7 +108,7 @@ var kinds = []kind{
 		slack:     0, paydown: 3,
 	},
 	{
-		name: "deadcode", noun: "function", unit: "unreachable", fix: "delete it or call it from non-test code; test-only use counts as dead (list them: codehealth deadcode)",
+		name: "deadcode", noun: "function", unit: "unreachable", fix: "delete it, or call it from non-test code in this same pull request; no dead code lands and test-only use counts as dead, so code added now and wired up in a later pull request fails (list them: codehealth deadcode)",
 		ledger:    func(b *Baseline) *Ledger { return &b.Deadcode },
 		values:    func(m Measurement) map[string]int { return deadcodeOf(m.Deadcode) },
 		limit:     fixed(0),

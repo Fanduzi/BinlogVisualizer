@@ -120,9 +120,9 @@ func newEntryMessage(k kind, lim Limits, m Measurement, key string, v int) strin
 	case "deadcode":
 		return fmt.Sprintf("deadcode: %s at %s is unreachable; %s", key, m.Deadcode[key], k.fix)
 	case "issue_refs":
-		return fmt.Sprintf("issue_refs: %s has %d issue references in comments, none allowed in a new file; %s. If the file was renamed or split from a baselined file, run make codehealth-baseline", key, v, k.fix)
+		return fmt.Sprintf("issue_refs: %s has %d issue references in comments, none allowed in a new file; %s. If the file was renamed or split from a baselined file, run make codehealth-compare: it records the entry and checks, as CI does, that its content came from that file", key, v, k.fix)
 	}
-	return fmt.Sprintf("%s: new %s over %d %s: %s has %d; %s. If it was split or renamed from a baseline entry, run make codehealth-baseline; compare checks that its content came from that entry", k.name, k.noun, k.limit(lim), k.unit, key, v, k.fix)
+	return fmt.Sprintf("%s: new %s over %d %s: %s has %d; %s. If it was split or renamed from a baseline entry, run make codehealth-compare: it records the entry and checks, as CI does, that its content came from that entry", k.name, k.noun, k.limit(lim), k.unit, key, v, k.fix)
 }
 
 // Update lowers every ceiling in b to what m measured, drops entries that
@@ -209,8 +209,11 @@ func compareLimits(prev, next Limits) []string {
 }
 
 // paidDown asks the change that lowered a value by at least the kind's
-// paydown to lower its ceiling too. Only values this change moved count,
-// so a drop that reached main through another merge never fails here.
+// paydown, measured from the base tree, to lower its ceiling to the new
+// value. The drop is this change's own: room left between the ceiling and
+// the base value, by a paydown that reached main through another merge,
+// never fails here, so the next one-line change after two concurrent
+// paydowns still passes.
 func paidDown(k kind, n Ledger, base, pr Measurement) []string {
 	var out []string
 	before, after := k.values(base), k.values(pr)
@@ -219,7 +222,7 @@ func paidDown(k kind, n Ledger, base, pr Measurement) []string {
 	}
 	for _, key := range sortedKeys(n) {
 		v := after[key]
-		if before[key] != v && n[key]-v >= k.paydown {
+		if before[key]-v >= k.paydown && n[key] > v {
 			out = append(out, fmt.Sprintf("%s: %s is down to %d %s, ceiling %d; run make codehealth-baseline to record the paydown", k.name, key, v, k.unit, n[key]))
 		}
 	}

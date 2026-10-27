@@ -41,9 +41,9 @@ func ParseLint(data []byte) ([]LintIssue, error) {
 }
 
 // DiffLint returns the pull request's lint findings that the base revision
-// does not have. A finding is identified by its linter, its message with
-// numbers and the enclosing function's own name normalized, and the
-// enclosing function. A function in the pull request is the base function
+// does not have. A finding is identified by lintKey: its linter, the
+// enclosing function, and its message with numbers, quoted identifiers and
+// the function's own name normalized. A function in the pull request is the base function
 // with the same key, else the base function whose body holds at least
 // minDerived of its body (it moved or was renamed), else itself. So an
 // existing finding in code that was moved, split off or renamed matches its
@@ -104,10 +104,25 @@ func enclosing(funcs map[string]Func, i LintIssue) (string, string) {
 	return best, name[strings.LastIndex(name, ".")+1:]
 }
 
-var digits = regexp.MustCompile(`\d+`)
+var (
+	digits = regexp.MustCompile(`\d+`)
+	// quoted is a span in backticks or double quotes, or in single quotes
+	// with no space inside, so an apostrophe in prose does not open one.
+	quoted     = regexp.MustCompile("`[^`]*`" + `|"[^"]*"|'[^'\s]*'`)
+	identifier = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+)
 
+// lintKey is the identity of a finding: its linter, the identity of its
+// enclosing function, and its message with numbers, the function's own
+// name and every identifier inside quotes normalized. Quoted identifiers
+// are the code the message names (errcheck's `store.Close`), so renaming a
+// local variable keeps the finding; the linter, the function and the shape
+// of the message still tell findings apart, and a second finding of the
+// same shape in the same function still counts as new.
 func lintKey(i LintIssue, fn, name string) string {
-	text := i.Text
+	text := quoted.ReplaceAllStringFunc(i.Text, func(q string) string {
+		return identifier.ReplaceAllString(q, "ID")
+	})
 	if name != "" {
 		text = regexp.MustCompile(`\b`+regexp.QuoteMeta(name)+`\b`).ReplaceAllString(text, "FUNC")
 	}

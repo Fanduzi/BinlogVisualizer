@@ -2,6 +2,7 @@ package codehealth
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -169,6 +170,12 @@ func TestIssueRefStyles(t *testing.T) {
 		{"from QA r6", 1},
 		{"the r3 review", 1},
 		{"#12 and issue 12 and PR #3", 3},
+		{"trx #2 hit #333", 1},
+		{"fixes #333", 1},
+		{"cannot change the sealed segment, #415)", 1},
+		{"one per task; #12", 1},
+		{"after the phase. #12", 1},
+		{"(the run) #12", 1},
 	}
 	for _, c := range cases {
 		if got := refsIn(c.comment); len(got) != c.want {
@@ -191,9 +198,18 @@ func TestIssueRefFalsePositives(t *testing.T) {
 		"The server issues 2 events", "pr0 register", "mysql-bin/000001#4", "a r3 register",
 		"&#12; is an entity", "C#12 is not a ref", "color #123abc", "color #fff", "RFC 9110 section 11.1",
 		"process 12 items", "bug 12", "see 12", "ADR 0011 PR-3", "returns (12)", "##12",
+		"trx #2 commits first", "Transaction #2", "thread #3 holds the lock", "worker #2", "Session #1", "Query #3",
+		"text color: #333", "background #333", "border: #333", "(fill #000)",
 	} {
 		if got := refsIn(comment); len(got) != 0 {
 			t.Errorf("%q: counted %q", comment, got)
+		}
+	}
+	for _, word := range strings.Fields(`trx txn tx transaction thread worker session query statement stmt conn connection
+		server node replica shard partition table file segment chunk batch packet record block job task run pass phase
+		stage iteration round color colour background bg fg foreground border fill stroke`) {
+		if got := refsIn("the " + word + " #2"); len(got) != 0 {
+			t.Errorf("%s #2: counted %q", word, got)
 		}
 	}
 }
@@ -210,7 +226,7 @@ func TestMeasureWalksEverything(t *testing.T) {
 		"x/testdata/t/t.go":      big,
 		"x/.hidden/h.go":         big,
 		"x/_under/u.go":          big,
-		".git/objects/o.go":      big,
+		"x/.git/objects/o.go":    big,
 		"ui/node_modules/n/n.go": big,
 		"nested/go.mod":          "module nested\n",
 		"nested/n.go":            big,
@@ -340,5 +356,114 @@ func TestRefsOnlyFilesWithRefs(t *testing.T) {
 	m := measure(t, tree{"a.go": "package p\n", "b.go": "package p\n\n// see #12\n"}, nil)
 	if !reflect.DeepEqual(m.Refs, map[string][]string{"b.go": {"3: #12"}}) {
 		t.Fatalf("refs = %v", m.Refs)
+	}
+}
+
+// In a git work tree only what git would commit is measured: tracked files
+// and untracked ones that are not ignored. A worktree under an ignored
+// .worktrees/, an ignored .claude/, an untracked nested repository and a
+// tracked file deleted from disk do not count.
+func TestMeasureWorkTreeSkipsIgnoredAndNestedRepos(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git command")
+	}
+	big := file(801, "")
+	root := tree{
+		".gitignore":           ".worktrees/\n.claude/\n",
+		"go.mod":               "module m\n",
+		"a.go":                 big,
+		"gone.go":              big,
+		".worktrees/wt/go.mod": "module m\n",
+		".worktrees/wt/a.go":   big,
+		".worktrees/wt/.git":   "gitdir: elsewhere\n",
+		".claude/x.go":         big,
+		"vendored/r.go/go.mod": "module r\n", // a nested repository whose directory looks like a Go file
+		"vendored/r.go/r.go":   big,
+	}.write(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "GIT_CONFIG_GLOBAL=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("init", "-q", "vendored/r.go")
+	git("add", ".gitignore", "go.mod", "a.go", "gone.go")
+	git("commit", "-q", "-m", "init")
+	// A submodule is a directory in the index; this one's name looks like a Go file.
+	git("update-index", "--add", "--cacheinfo", "160000,"+strings.Repeat("1", 40)+",sub.go")
+	if err := os.Mkdir(filepath.Join(root, "sub.go"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(root, "gone.go")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "new.go"), []byte(big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m, err := Measure(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]int{"a.go": 801, "new.go": 801}; !reflect.DeepEqual(m.Files, want) {
+		t.Fatalf("files %v, want %v", m.Files, want)
+	}
+	if len(m.Problems) != 0 {
+		t.Fatalf("problems %q", m.Problems)
+	}
+	if _, err := Measure(tree{".git": "not a repository\n", "a.go": "package p\n"}.write(t), nil); err == nil {
+		t.Fatal("a broken .git measured without an error")
+	}
+}
+
+// A path git lists more than once, as an unmerged file in a conflict, is
+// measured once, and a listed file that cannot be read is an error.
+func TestMeasureWorkTreeConflictsAndErrors(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git command")
+	}
+	root := tree{"go.mod": "module m\n", "nested/go.mod": "module a\n", "x/a.go": "package x\n"}.write(t)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t", "GIT_CONFIG_GLOBAL=/dev/null")
+		_, _ = cmd.CombinedOutput()
+	}
+	write := func(name, src string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	git("add", ".")
+	git("commit", "-q", "-m", "base")
+	git("checkout", "-q", "-b", "other")
+	write("nested/go.mod", "module b\n")
+	git("commit", "-q", "-am", "b")
+	git("checkout", "-q", "main")
+	write("nested/go.mod", "module c\n")
+	git("commit", "-q", "-am", "c")
+	git("merge", "-q", "other")
+	m, err := Measure(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Problems) != 1 || !strings.Contains(m.Problems[0], "nested module nested/go.mod") {
+		t.Fatalf("problems %q, want the conflicted nested module once", m.Problems)
+	}
+	if os.Getuid() == 0 {
+		return // root reads anything
+	}
+	if err := os.Chmod(filepath.Join(root, "x"), 0); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(filepath.Join(root, "x"), 0o755) }()
+	if _, err := Measure(root, nil); err == nil {
+		t.Fatal("an unreadable tracked file measured without an error")
 	}
 }
