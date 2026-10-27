@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# input: a built binlogviz binary path, a destination tar.gz path, and repo extra files (sample ROW fixture, release-oriented incident.yaml, README, and the agent usage guide).
-# output: a tar.gz whose members are the binary, testdata/minimal.binlog, testdata/sample-binlog/mysql-bin.000001, incident.yaml, README.md, README_ZH.md, docs/agents/USING-BINLOGVIZ.md plus the zh-CN guide, and docs/schema/*.json.
+# input: a built binlogviz binary path, a destination tar.gz path, and repo extra files (sample ROW fixture, release-oriented incident.yaml, README, the agent usage guide, and the user docs pages the README links to).
+# output: a tar.gz whose members are the binary, testdata/minimal.binlog, testdata/sample-binlog/mysql-bin.000001, incident.yaml, README.md, README_ZH.md, docs/agents/USING-BINLOGVIZ.md plus the zh-CN guide, the README-linked user docs pages (docs/reference/analyze-behavior, docs/recipe/flashback, docs/recipe/compare-trend-workflow, docs/concept/architecture, EN and zh-CN), and docs/schema/*.json.
 # pos: shared packing helper used by the GitHub release job, CI smoke, and the packing-contract test so Linux and Darwin archives share one extra-file set.
 # note: if this file changes, update this header and scripts/README.md.
 
@@ -47,7 +47,8 @@ archive="${archive_dir}/$(basename -- "${archive}")"
 staging="$(mktemp -d)"
 trap 'rm -rf "${staging}"' EXIT
 
-mkdir -p "${staging}/testdata/sample-binlog" "${staging}/docs/agents" "${staging}/docs/schema"
+mkdir -p "${staging}/testdata/sample-binlog" "${staging}/docs/agents" "${staging}/docs/schema" \
+  "${staging}/docs/reference" "${staging}/docs/recipe" "${staging}/docs/concept"
 cp "${binary}" "${staging}/binlogviz"
 chmod +x "${staging}/binlogviz"
 cp "${sample}" "${staging}/testdata/minimal.binlog"
@@ -57,6 +58,14 @@ cp "${readme}" "${staging}/README.md"
 cp "${readme_zh}" "${staging}/README_ZH.md"
 cp "${guide}" "${staging}/docs/agents/USING-BINLOGVIZ.md"
 cp "${guide_zh}" "${staging}/docs/agents/USING-BINLOGVIZ.zh-CN.md"
+cp "${repo_root}/docs/reference/analyze-behavior.md" "${staging}/docs/reference/analyze-behavior.md"
+cp "${repo_root}/docs/reference/analyze-behavior.zh-CN.md" "${staging}/docs/reference/analyze-behavior.zh-CN.md"
+cp "${repo_root}/docs/recipe/flashback.md" "${staging}/docs/recipe/flashback.md"
+cp "${repo_root}/docs/recipe/flashback.zh-CN.md" "${staging}/docs/recipe/flashback.zh-CN.md"
+cp "${repo_root}/docs/recipe/compare-trend-workflow.md" "${staging}/docs/recipe/compare-trend-workflow.md"
+cp "${repo_root}/docs/recipe/compare-trend-workflow.zh-CN.md" "${staging}/docs/recipe/compare-trend-workflow.zh-CN.md"
+cp "${repo_root}/docs/concept/architecture.md" "${staging}/docs/concept/architecture.md"
+cp "${repo_root}/docs/concept/architecture.zh-CN.md" "${staging}/docs/concept/architecture.zh-CN.md"
 cp "${repo_root}/docs/schema/analyze.json" "${staging}/docs/schema/analyze.json"
 cp "${repo_root}/docs/schema/flashback-plan.json" "${staging}/docs/schema/flashback-plan.json"
 cp "${repo_root}/docs/schema/compare.json" "${staging}/docs/schema/compare.json"

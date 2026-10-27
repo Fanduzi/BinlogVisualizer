@@ -4,7 +4,7 @@ This page holds the detailed `analyze` behavior that used to live in the project
 
 ## Sample binlog and release archive contents
 
-The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in the repo. Each GitHub Release tar.gz also includes that file as `testdata/minimal.binlog`, a discovery-layout copy at `testdata/sample-binlog/mysql-bin.000001`, an `incident.yaml` whose `from_dir` points at that directory, `README.md`, `README_ZH.md`, and `docs/agents/USING-BINLOGVIZ.md` (plus the zh-CN guide). After extract, `./binlogviz analyze testdata/minimal.binlog` and `./binlogviz workflow run incident.yaml` do not need a clone. Agents start at `docs/agents/USING-BINLOGVIZ.md`.
+The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in the repo. Each GitHub Release tar.gz also includes that file as `testdata/minimal.binlog`, a discovery-layout copy at `testdata/sample-binlog/mysql-bin.000001`, an `incident.yaml` whose `from_dir` points at that directory, `README.md`, `README_ZH.md`, `docs/agents/USING-BINLOGVIZ.md` (plus the zh-CN guide), and the docs pages the README links to: `docs/reference/analyze-behavior`, `docs/recipe/flashback`, `docs/recipe/compare-trend-workflow`, and `docs/concept/architecture`, each with its `.zh-CN.md` page. After extract, `./binlogviz analyze testdata/minimal.binlog` and `./binlogviz workflow run incident.yaml` do not need a clone. Agents start at `docs/agents/USING-BINLOGVIZ.md`.
 
 ## Reading a binlog from stdin
 

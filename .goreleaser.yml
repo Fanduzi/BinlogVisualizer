@@ -40,6 +40,22 @@ archives:
         dst: docs/agents/USING-BINLOGVIZ.md
       - src: docs/agents/USING-BINLOGVIZ.zh-CN.md
         dst: docs/agents/USING-BINLOGVIZ.zh-CN.md
+      - src: docs/reference/analyze-behavior.md
+        dst: docs/reference/analyze-behavior.md
+      - src: docs/reference/analyze-behavior.zh-CN.md
+        dst: docs/reference/analyze-behavior.zh-CN.md
+      - src: docs/recipe/flashback.md
+        dst: docs/recipe/flashback.md
+      - src: docs/recipe/flashback.zh-CN.md
+        dst: docs/recipe/flashback.zh-CN.md
+      - src: docs/recipe/compare-trend-workflow.md
+        dst: docs/recipe/compare-trend-workflow.md
+      - src: docs/recipe/compare-trend-workflow.zh-CN.md
+        dst: docs/recipe/compare-trend-workflow.zh-CN.md
+      - src: docs/concept/architecture.md
+        dst: docs/concept/architecture.md
+      - src: docs/concept/architecture.zh-CN.md
+        dst: docs/concept/architecture.zh-CN.md
       - src: cmd/binlogviz/testdata/minimal.binlog
         dst: testdata/minimal.binlog
       - src: cmd/binlogviz/testdata/sample-binlog/mysql-bin.000001

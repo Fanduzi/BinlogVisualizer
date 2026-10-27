@@ -4,7 +4,7 @@
 
 ## 样例 binlog 与发布包内容
 
-同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。GitHub Release 的每个 tar.gz 也会带上这份文件（`testdata/minimal.binlog`）、discovery 布局副本 `testdata/sample-binlog/mysql-bin.000001`、`from_dir` 指向该目录的 `incident.yaml`、`README.md`、`README_ZH.md`，以及 `docs/agents/USING-BINLOGVIZ.md`（和中文指南）。解压后执行 `./binlogviz analyze testdata/minimal.binlog` 和 `./binlogviz workflow run incident.yaml`，不需要再 clone 仓库。给代理的用法从 `docs/agents/USING-BINLOGVIZ.md` 开始。
+同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。GitHub Release 的每个 tar.gz 也会带上这份文件（`testdata/minimal.binlog`）、discovery 布局副本 `testdata/sample-binlog/mysql-bin.000001`、`from_dir` 指向该目录的 `incident.yaml`、`README.md`、`README_ZH.md`，`docs/agents/USING-BINLOGVIZ.md`（和中文指南），以及 README 链接到的文档页：`docs/reference/analyze-behavior`、`docs/recipe/flashback`、`docs/recipe/compare-trend-workflow` 和 `docs/concept/architecture`，每页都带 `.zh-CN.md` 版本。解压后执行 `./binlogviz analyze testdata/minimal.binlog` 和 `./binlogviz workflow run incident.yaml`，不需要再 clone 仓库。给代理的用法从 `docs/agents/USING-BINLOGVIZ.md` 开始。
 
 ## 从 stdin 读取 binlog
 
