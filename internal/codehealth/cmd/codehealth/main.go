@@ -1,137 +1,185 @@
 // Command codehealth checks the tree against internal/codehealth/baseline.json.
 //
-//	codehealth [-deadcode] check          fail if any number is worse than the baseline
-//	codehealth [-deadcode] update         lower the baseline to today's numbers; refuses to raise it
-//	codehealth compare PREV.json          fail if the baseline raises a ceiling over PREV.json
-//	codehealth refs                       list the issue references in comments
-//	codehealth [-deadcode] init           write the first baseline; refuses if one exists
+//	codehealth [-deadcode] check                fail if the tree does not match the baseline
+//	codehealth [-deadcode] [-from NEW=OLD] update  lower the baseline to today's numbers; refuses to raise it
+//	codehealth -base REV compare PREV.json      fail if the baseline is looser than PREV.json (the baseline at REV)
+//	codehealth refs                             list the issue references in comments
+//	codehealth deadcode                         list the unreachable functions
+//	codehealth [-deadcode] [-generated PATH=GEN] init  write the first baseline; refuses if one exists
 //
-// Run it from the module root (make codehealth, make codehealth-baseline).
+// -from records that NEW (a file path or "pkgdir:Func") was split or renamed
+// from the baseline entry OLD; repeat it for each piece. Run it from the
+// module root (make codehealth, make codehealth-baseline).
 package main
 
 import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"binlogviz/internal/codehealth"
 )
 
-func main() {
-	root := flag.String("root", ".", "module root to measure")
-	baselinePath := flag.String("baseline", "internal/codehealth/baseline.json", "baseline file, relative to -root")
-	withDeadcode := flag.Bool("deadcode", false, "also count unreachable functions with "+codehealth.DeadcodeTool)
-	flag.Parse()
-	if flag.NArg() < 1 {
-		flag.Usage()
-		os.Exit(2)
-	}
-	path := filepath.Join(*root, *baselinePath)
-	if err := run(flag.Arg(0), flag.Args()[1:], *root, path, *withDeadcode); err != nil {
-		fmt.Fprintln(os.Stderr, "codehealth:", err)
-		os.Exit(1)
-	}
+// deps are the outside tools a command uses, so tests can replace them.
+type deps struct {
+	deadcode      func(root string) (map[string]string, error)
+	existedAtBase func(root, rev, path string) bool
 }
 
-func run(cmd string, args []string, root, path string, withDeadcode bool) error {
-	if cmd == "compare" {
-		if len(args) != 1 {
-			return errors.New("usage: codehealth compare PREV.json")
-		}
-		return compare(args[0], path)
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, deps{deadcode: codehealth.RunDeadcode, existedAtBase: gitHas}))
+}
+
+func gitHas(root, rev, path string) bool {
+	return exec.Command("git", "-C", root, "cat-file", "-e", rev+":"+path).Run() == nil
+}
+
+// pairs is a repeatable NEW=OLD flag.
+type pairs map[string]string
+
+func (p pairs) String() string { return fmt.Sprint(map[string]string(p)) }
+
+func (p pairs) Set(s string) error {
+	k, v, ok := strings.Cut(s, "=")
+	if !ok || k == "" || v == "" {
+		return fmt.Errorf("want NEW=OLD, got %q", s)
 	}
-	m, err := measure(root, withDeadcode)
-	if err != nil {
-		return err
+	p[k] = v
+	return nil
+}
+
+type options struct {
+	root, baseline, base string
+	deadcode             bool
+	from, generated      pairs
+	stdout               io.Writer
+	deps                 deps
+}
+
+func run(args []string, stdout, stderr io.Writer, d deps) int {
+	o := options{from: pairs{}, generated: pairs{}, stdout: stdout, deps: d}
+	flags := flag.NewFlagSet("codehealth", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.StringVar(&o.root, "root", ".", "module root to measure")
+	flags.StringVar(&o.baseline, "baseline", "internal/codehealth/baseline.json", "baseline file, relative to -root")
+	flags.StringVar(&o.base, "base", "", "compare: the git revision PREV.json came from")
+	flags.BoolVar(&o.deadcode, "deadcode", false, "also find unreachable functions with "+codehealth.DeadcodeTool)
+	flags.Var(o.from, "from", "update: NEW=OLD, NEW was split or renamed from the baseline entry OLD (repeatable)")
+	flags.Var(o.generated, "generated", "init: PATH=GENERATOR, a generated file and the generator its header names (repeatable)")
+	if err := flags.Parse(args); err != nil {
+		return 2
 	}
+	if flags.NArg() < 1 {
+		flags.Usage()
+		return 2
+	}
+	if err := o.dispatch(flags.Arg(0), flags.Args()[1:]); err != nil {
+		// Nothing is left to report a failed write to.
+		_, _ = fmt.Fprintln(stderr, "codehealth:", err)
+		return 1
+	}
+	return 0
+}
+
+func (o options) dispatch(cmd string, args []string) error {
+	path := filepath.Join(o.root, o.baseline)
 	switch cmd {
-	case "refs":
-		for _, r := range m.IssueRefs {
-			fmt.Println(r)
-		}
-		return nil
 	case "init":
 		if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("%s already exists; use update", path)
 		}
-		return codehealth.Save(path, codehealth.Initial(codehealth.DefaultLimits, m))
+		m, err := o.measure(o.generated, o.deadcode)
+		if err != nil {
+			return err
+		}
+		return codehealth.Save(path, codehealth.Initial(codehealth.DefaultLimits, o.generated, m))
+	case "check", "update", "compare", "refs", "deadcode":
+	default:
+		return fmt.Errorf("unknown command %q", cmd)
 	}
 	b, err := codehealth.Load(path)
 	if err != nil {
 		return err
 	}
+	m, err := o.measure(b.Generated, o.deadcode || cmd == "deadcode")
+	if err != nil {
+		return err
+	}
 	switch cmd {
 	case "check":
-		problems := codehealth.Check(b, m)
-		for _, s := range codehealth.Stale(b, m) {
-			problems = append(problems, s+"; run make codehealth-baseline")
-		}
-		return report("does not hold against the baseline", problems, summary(b, m))
+		return o.report("does not hold against the baseline", codehealth.Check(b, m), "matches the baseline")
 	case "update":
-		next, refused := codehealth.Tighten(b, m)
+		next, refused := codehealth.Update(b, m, o.from)
 		if len(refused) > 0 {
-			return report("refusing to raise the baseline", refused, "")
+			return o.report("refusing to raise the baseline", refused, "")
 		}
-		if err := codehealth.Save(path, next); err != nil {
-			return err
+		return codehealth.Save(path, next)
+	case "compare":
+		return o.compare(args, b, m)
+	case "refs":
+		var out strings.Builder
+		for _, file := range sortedKeys(m.Refs) {
+			for _, r := range m.Refs[file] {
+				out.WriteString(file + ":" + r + "\n")
+			}
 		}
-		fmt.Println("baseline:", summary(next, m))
-		return nil
+		return o.print(out.String())
 	}
-	return fmt.Errorf("unknown command %q", cmd)
+	var out strings.Builder
+	for _, key := range sortedKeys(m.Deadcode) {
+		out.WriteString(m.Deadcode[key] + ": " + key + "\n")
+	}
+	return o.print(out.String())
 }
 
-func measure(root string, withDeadcode bool) (codehealth.Measurement, error) {
-	b, err := codehealth.Load(filepath.Join(root, "internal/codehealth/baseline.json"))
-	lim := codehealth.DefaultLimits
-	if err == nil {
-		lim = b.Limits
+func (o options) print(s string) error {
+	_, err := io.WriteString(o.stdout, s)
+	return err
+}
+
+func (o options) compare(args []string, next codehealth.Baseline, m codehealth.Measurement) error {
+	if len(args) != 1 || o.base == "" {
+		return errors.New("usage: codehealth -base REV compare PREV.json")
 	}
-	m, err := codehealth.Measure(root, lim)
+	prev, err := codehealth.Load(args[0])
 	if err != nil {
+		return err
+	}
+	existed := func(p string) bool { return o.deps.existedAtBase(o.root, o.base, p) }
+	return o.report("baseline is looser than "+o.base, codehealth.Compare(prev, next, m, existed), "baseline only went down")
+}
+
+func (o options) measure(generated map[string]string, withDeadcode bool) (codehealth.Measurement, error) {
+	m, err := codehealth.Measure(o.root, generated)
+	if err != nil || !withDeadcode {
 		return m, err
 	}
-	if withDeadcode {
-		m.Deadcode, err = codehealth.CountDeadcode(root)
-	}
+	m.Deadcode, err = o.deps.deadcode(o.root)
 	return m, err
 }
 
-func compare(prevPath, nextPath string) error {
-	prev, err := codehealth.Load(prevPath)
-	if err != nil {
-		return err
-	}
-	next, err := codehealth.Load(nextPath)
-	if err != nil {
-		return err
-	}
-	return report("baseline raised", codehealth.CompareBaselines(prev, next), "baseline only went down")
-}
-
-func report(what string, problems []string, ok string) error {
+func (o options) report(what string, problems []string, ok string) error {
 	if len(problems) == 0 {
-		if ok != "" {
-			fmt.Println("codehealth: ok:", ok)
+		if ok == "" {
+			return nil
 		}
-		return nil
+		return o.print("codehealth: ok: " + ok + "\n")
 	}
-	for _, p := range problems {
-		fmt.Fprintln(os.Stderr, "  "+p)
-	}
-	return fmt.Errorf("%s (%d); see docs/development/coding-standards.md", what, len(problems))
+	return fmt.Errorf("%s (%d); see docs/development/coding-standards.md\n  %s", what, len(problems), strings.Join(problems, "\n  "))
 }
 
-func summary(b codehealth.Baseline, m codehealth.Measurement) string {
-	dead := "not measured"
-	if m.Deadcode >= 0 {
-		dead = fmt.Sprint(m.Deadcode)
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-	return fmt.Sprintf("files over %d lines %d/%d, functions over complexity %d %d/%d, issue refs %d/%d, deadcode %s/%d (now/baseline)",
-		b.Limits.FileLines, len(m.OversizedFiles), len(b.OversizedFiles),
-		b.Limits.Complexity, len(m.ComplexFunctions), len(b.ComplexFunctions),
-		len(m.IssueRefs), b.IssueRefs, dead, b.Deadcode)
+	sort.Strings(keys)
+	return keys
 }

@@ -5,24 +5,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
-	"sort"
-	"strings"
 )
 
-// DeadcodeTool is the pinned deadcode command CountDeadcode runs.
-const DeadcodeTool = "golang.org/x/tools/cmd/deadcode@v0.52.0"
-
-// Baseline is the checked-in ceiling for every ratcheted number.
+// Baseline is the checked-in ceiling for every file and function over a
+// limit. Generated maps a path to the generator whose header exempts it.
 type Baseline struct {
-	Limits           Limits         `json:"limits"`
-	OversizedFiles   map[string]int `json:"oversized_files"`
-	ComplexFunctions map[string]int `json:"complex_functions"`
-	IssueRefs        int            `json:"issue_refs"`
-	Deadcode         int            `json:"deadcode"`
+	Limits               Limits            `json:"limits"`
+	Generated            map[string]string `json:"generated_files"`
+	Files                Ledger            `json:"files"`
+	TestFiles            Ledger            `json:"test_files"`
+	ComplexFunctions     Ledger            `json:"complex_functions"`
+	TestComplexFunctions Ledger            `json:"test_complex_functions"`
+	LongFunctions        Ledger            `json:"long_functions"`
+	IssueRefs            Ledger            `json:"issue_refs"`
+	Deadcode             Ledger            `json:"deadcode"`
 }
 
-// Load reads a baseline file.
+// Load reads a baseline file. Unknown fields are an error.
 func Load(path string) (Baseline, error) {
 	var b Baseline
 	data, err := os.ReadFile(path)
@@ -34,188 +33,248 @@ func Load(path string) (Baseline, error) {
 	if err := dec.Decode(&b); err != nil {
 		return b, fmt.Errorf("%s: %w", path, err)
 	}
-	if b.OversizedFiles == nil {
-		b.OversizedFiles = map[string]int{}
-	}
-	if b.ComplexFunctions == nil {
-		b.ComplexFunctions = map[string]int{}
-	}
-	return b, nil
+	return b.normalized(), nil
 }
 
 // Save writes b as indented JSON with sorted keys.
 func Save(path string, b Baseline) error {
-	data, err := json.MarshalIndent(b, "", "  ")
+	data, err := json.MarshalIndent(b.normalized(), "", "  ")
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
-// Initial is the first baseline for a tree: today's numbers become the ceilings.
-func Initial(lim Limits, m Measurement) Baseline {
-	return Baseline{
-		Limits:           lim,
-		OversizedFiles:   copyMap(m.OversizedFiles),
-		ComplexFunctions: copyMap(m.ComplexFunctions),
-		IssueRefs:        len(m.IssueRefs),
-		Deadcode:         max(m.Deadcode, 0),
+func (b Baseline) normalized() Baseline {
+	if b.Generated == nil {
+		b.Generated = map[string]string{}
 	}
+	for _, k := range kinds {
+		if *k.ledger(&b) == nil {
+			*k.ledger(&b) = Ledger{}
+		}
+	}
+	return b
 }
 
-// Check returns one message per number that is worse than the baseline.
-// A Deadcode of -1 means it was not measured and is not checked.
+// Initial is the first baseline for a tree: every value over a limit
+// becomes its ceiling.
+func Initial(lim Limits, generated map[string]string, m Measurement) Baseline {
+	b := Baseline{Limits: lim, Generated: generated}.normalized()
+	for _, k := range kinds {
+		out := Ledger{}
+		for key, v := range k.values(m) {
+			if v > k.limit(lim) {
+				out[key] = Entry{Value: v}
+			}
+		}
+		*k.ledger(&b) = out
+	}
+	return b
+}
+
+// Check compares a tree with its baseline and returns one message per
+// problem: a value over a limit with no entry, a value above its ceiling
+// plus tolerance, a value below its ceiling (the ceiling must come down so
+// the freed room cannot be spent again), and a generated_files entry whose
+// file is gone or does not start with its generator's header. Ledgers that
+// m did not measure (deadcode without -deadcode) are not checked.
 func Check(b Baseline, m Measurement) []string {
-	var out []string
-	for _, path := range sortedKeys(m.OversizedFiles) {
-		n := m.OversizedFiles[path]
-		ceiling, known := b.OversizedFiles[path]
-		switch {
-		case !known:
-			out = append(out, fmt.Sprintf("file over %d lines: %s has %d lines; split it instead of adding to the baseline", b.Limits.FileLines, path, n))
-		case n > ceiling+b.Limits.GrowthTolerance:
-			out = append(out, fmt.Sprintf("oversized file grew: %s has %d lines, baseline %d (+%d allowed); move code out before adding more", path, n, ceiling, b.Limits.GrowthTolerance))
+	b = b.normalized()
+	out := checkGenerated(b, m)
+	for _, k := range kinds {
+		vals := k.values(m)
+		if vals == nil {
+			continue
 		}
-	}
-	for _, key := range sortedKeys(m.ComplexFunctions) {
-		c := m.ComplexFunctions[key]
-		ceiling, known := b.ComplexFunctions[key]
-		switch {
-		case !known:
-			out = append(out, fmt.Sprintf("function over complexity %d: %s is %d; split it into phase functions", b.Limits.Complexity, key, c))
-		case c > ceiling:
-			out = append(out, fmt.Sprintf("complex function grew: %s is %d, baseline %d; extract the new branch into its own function", key, c, ceiling))
+		l := *k.ledger(&b)
+		for _, key := range sortedKeys(vals) {
+			v := vals[key]
+			e, ok := l[key]
+			switch {
+			case !ok && v > k.limit(b.Limits):
+				out = append(out, newEntryMessage(k, b.Limits, m, key, v))
+			case ok && v > e.Value+k.tolerance(b.Limits):
+				out = append(out, fmt.Sprintf("%s: %s grew to %d %s, ceiling %d (+%d allowed); %s", k.name, key, v, k.unit, e.Value, k.tolerance(b.Limits), k.fix))
+			}
 		}
-	}
-	if n := len(m.IssueRefs); n > b.IssueRefs {
-		out = append(out, fmt.Sprintf("issue references in comments: %d, baseline %d; put issue numbers and section history in the commit message or ADR (list them with: codehealth refs)", n, b.IssueRefs))
-	}
-	if m.Deadcode > b.Deadcode {
-		out = append(out, fmt.Sprintf("unreachable functions (deadcode): %d, baseline %d; delete the code instead of keeping it", m.Deadcode, b.Deadcode))
-	}
-	return out
-}
-
-// Stale lists baseline entries that no longer apply: a file now under the
-// line cap or a function now under the complexity cap. Leaving them would let
-// the debt come back without failing Check.
-func Stale(b Baseline, m Measurement) []string {
-	var out []string
-	for _, path := range sortedKeys(b.OversizedFiles) {
-		if _, ok := m.OversizedFiles[path]; !ok {
-			out = append(out, "oversized file no longer over the cap: "+path)
-		}
-	}
-	for _, key := range sortedKeys(b.ComplexFunctions) {
-		if _, ok := m.ComplexFunctions[key]; !ok {
-			out = append(out, "complex function no longer over the cap: "+key)
+		for _, key := range sortedKeys(l) {
+			if v := vals[key]; v < l[key].Value {
+				out = append(out, fmt.Sprintf("%s: %s is down to %d %s, ceiling %d; run make codehealth-baseline to lower the ceiling", k.name, key, v, k.unit, l[key].Value))
+			}
 		}
 	}
 	return out
 }
 
-// Tighten lowers every ceiling in b to what m measured. It refuses, returning
-// the Check messages, when anything in m is worse than b: the baseline only
-// goes down.
-func Tighten(b Baseline, m Measurement) (Baseline, []string) {
-	if v := Check(b, m); len(v) > 0 {
-		return b, v
+func newEntryMessage(k kind, lim Limits, m Measurement, key string, v int) string {
+	switch k.name {
+	case "deadcode":
+		return fmt.Sprintf("deadcode: %s at %s is unreachable; %s", key, m.Deadcode[key], k.fix)
+	case "issue_refs":
+		return fmt.Sprintf("issue_refs: %s has %d issue references in comments, none allowed in a new file; %s. A renamed file: make codehealth-baseline FROM=%s=OLD", key, v, k.fix, key)
 	}
-	next := Baseline{
-		Limits:           b.Limits,
-		OversizedFiles:   map[string]int{},
-		ComplexFunctions: map[string]int{},
-		IssueRefs:        min(b.IssueRefs, len(m.IssueRefs)),
-		Deadcode:         b.Deadcode,
+	return fmt.Sprintf("%s: new %s over %d %s: %s has %d; %s. If it was split or renamed from a baseline entry: make codehealth-baseline FROM=%s=OLD", k.name, k.noun, k.limit(lim), k.unit, key, v, k.fix, key)
+}
+
+func checkGenerated(b Baseline, m Measurement) []string {
+	var out []string
+	for _, path := range sortedKeys(b.Generated) {
+		line, ok := m.Generated[path]
+		switch {
+		case !ok:
+			out = append(out, fmt.Sprintf("generated_files: %s does not exist; remove it from the baseline", path))
+		case !GeneratedBy(line, b.Generated[path]):
+			out = append(out, fmt.Sprintf("generated_files: %s starts with %q, not \"// Code generated by %s. DO NOT EDIT.\"; it is measured as hand-written code", path, line, b.Generated[path]))
+		}
 	}
-	for path, n := range m.OversizedFiles {
-		next.OversizedFiles[path] = min(n, b.OversizedFiles[path])
+	return out
+}
+
+// Update lowers every ceiling in b to what m measured and drops entries
+// that are no longer over a limit. from maps a new key to the baseline
+// entry it was split or renamed from; that is the only way Update adds an
+// entry. It refuses, returning the problems, when a value is above its
+// ceiling plus tolerance, a new value has no lineage, a lineage pair is
+// unused, or a split is bigger than its original.
+func Update(b Baseline, m Measurement, from map[string]string) (Baseline, []string) {
+	b = b.normalized()
+	next := Baseline{Limits: b.Limits, Generated: b.Generated}.normalized()
+	problems := checkGenerated(b, m)
+	used := map[string]bool{}
+	for _, k := range kinds {
+		vals, l := k.values(m), *k.ledger(&b)
+		if vals == nil {
+			*k.ledger(&next) = l
+			continue
+		}
+		out := Ledger{}
+		for _, key := range sortedKeys(vals) {
+			v := vals[key]
+			e, ok := l[key]
+			switch {
+			case v <= k.limit(b.Limits):
+			case ok && v > e.Value+k.tolerance(b.Limits):
+				problems = append(problems, fmt.Sprintf("%s: %s grew to %d %s, ceiling %d (+%d allowed)", k.name, key, v, k.unit, e.Value, k.tolerance(b.Limits)))
+			case ok:
+				out[key] = Entry{Value: min(v, e.Value), SplitFrom: e.SplitFrom}
+			case from[key] != "":
+				out[key] = Entry{Value: v, SplitFrom: from[key]}
+				used[key] = true
+			default:
+				problems = append(problems, newEntryMessage(k, b.Limits, m, key, v))
+			}
+		}
+		*k.ledger(&next) = out
 	}
-	for key, c := range m.ComplexFunctions {
-		next.ComplexFunctions[key] = min(c, b.ComplexFunctions[key])
+	for _, key := range sortedKeys(from) {
+		if !used[key] {
+			problems = append(problems, fmt.Sprintf("FROM %s=%s: %s is not a new entry over a limit", key, from[key], key))
+		}
 	}
-	if m.Deadcode >= 0 {
-		next.Deadcode = m.Deadcode
+	problems = append(problems, lineage(b, next, m)...)
+	if len(problems) > 0 {
+		return b, problems
 	}
 	return next, nil
 }
 
-// CompareBaselines returns one message per ceiling that next raises over
-// prev. A renamed entry is fine as long as the entry count and the total do
-// not go up.
-func CompareBaselines(prev, next Baseline) []string {
-	var out []string
-	if next.Limits.FileLines > prev.Limits.FileLines || next.Limits.GrowthTolerance > prev.Limits.GrowthTolerance || next.Limits.Complexity > prev.Limits.Complexity {
-		out = append(out, fmt.Sprintf("limits loosened: %+v -> %+v", prev.Limits, next.Limits))
+// Compare returns one message per way next is looser than prev, the
+// baseline of the base revision. Limits may not loosen. An entry already in
+// prev may only go down and keeps its lineage. An entry not in prev must
+// name a prev entry in split_from, and the split must pass lineage. A new
+// generated_files path must be a file that did not exist at the base
+// revision and that starts with its generator's header.
+func Compare(prev, next Baseline, m Measurement, existedAtBase func(path string) bool) []string {
+	prev, next = prev.normalized(), next.normalized()
+	out := compareLimits(prev.Limits, next.Limits)
+	for _, path := range sortedKeys(next.Generated) {
+		gen := next.Generated[path]
+		if g, ok := prev.Generated[path]; ok && g == gen {
+			continue
+		}
+		if existedAtBase(path) {
+			out = append(out, fmt.Sprintf("generated_files: adds %s, which existed before this change; only a new file can be listed as generated", path))
+		} else if !GeneratedBy(m.Generated[path], gen) {
+			out = append(out, fmt.Sprintf("generated_files: adds %s, whose first line is not the %s header", path, gen))
+		}
 	}
-	out = append(out, compareEntries("oversized_files", prev.OversizedFiles, next.OversizedFiles)...)
-	out = append(out, compareEntries("complex_functions", prev.ComplexFunctions, next.ComplexFunctions)...)
-	if next.IssueRefs > prev.IssueRefs {
-		out = append(out, fmt.Sprintf("issue_refs raised: %d -> %d", prev.IssueRefs, next.IssueRefs))
+	for _, k := range kinds {
+		p, n := *k.ledger(&prev), *k.ledger(&next)
+		for _, key := range sortedKeys(n) {
+			e := n[key]
+			pe, ok := p[key]
+			switch {
+			case ok && e.Value > pe.Value:
+				out = append(out, fmt.Sprintf("%s: %s raised %d -> %d", k.name, key, pe.Value, e.Value))
+			case ok && e.SplitFrom != pe.SplitFrom:
+				out = append(out, fmt.Sprintf("%s: %s changed split_from %q -> %q", k.name, key, pe.SplitFrom, e.SplitFrom))
+			case !ok && e.SplitFrom == "":
+				out = append(out, fmt.Sprintf("%s: adds %s (%d); a new %s over the limit fails, and only a split or rename of an existing entry (split_from) may add one", k.name, key, e.Value, k.noun))
+			}
+		}
 	}
-	if next.Deadcode > prev.Deadcode {
-		out = append(out, fmt.Sprintf("deadcode raised: %d -> %d", prev.Deadcode, next.Deadcode))
-	}
-	return out
+	return append(out, lineage(prev, next, m)...)
 }
 
-func compareEntries(name string, prev, next map[string]int) []string {
+func compareLimits(prev, next Limits) []string {
 	var out []string
-	if len(next) > len(prev) {
-		out = append(out, fmt.Sprintf("%s: %d entries -> %d", name, len(prev), len(next)))
-	}
-	if sum(next) > sum(prev) {
-		out = append(out, fmt.Sprintf("%s: total %d -> %d", name, sum(prev), sum(next)))
-	}
-	for _, k := range sortedKeys(next) {
-		if p, ok := prev[k]; ok && next[k] > p {
-			out = append(out, fmt.Sprintf("%s: %s raised %d -> %d", name, k, p, next[k]))
+	for _, f := range []struct {
+		name       string
+		prev, next int
+	}{
+		{"file_lines", prev.FileLines, next.FileLines},
+		{"growth_tolerance_lines", prev.GrowthTolerance, next.GrowthTolerance},
+		{"complexity", prev.Complexity, next.Complexity},
+		{"function_lines", prev.FunctionLines, next.FunctionLines},
+	} {
+		if f.next > f.prev {
+			out = append(out, fmt.Sprintf("limits: %s loosened %d -> %d", f.name, f.prev, f.next))
 		}
 	}
 	return out
 }
 
-// CountDeadcode runs the pinned deadcode tool on root and counts the
-// functions it reports as unreachable.
-func CountDeadcode(root string) (int, error) {
-	cmd := exec.Command("go", "run", DeadcodeTool, "./...")
-	cmd.Dir = root
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return 0, fmt.Errorf("deadcode: %w: %s", err, stderr.String())
-	}
-	n := 0
-	for _, line := range strings.Split(string(out), "\n") {
-		if strings.Contains(line, "unreachable func") {
-			n++
+// lineage checks every entry of next that is not in prev and names a
+// split_from. The original must be a prev entry of the same ledger, and the
+// successors plus whatever is left of the original, as measured now, may
+// not exceed the original's ceiling plus the ledger's slack for each extra
+// piece. A rename is a split into one piece with nothing left, so it gets
+// no slack. Removed entries cannot be reused: an original that is gone from
+// prev cannot be split again.
+func lineage(prev, next Baseline, m Measurement) []string {
+	var out []string
+	for _, k := range kinds {
+		p, n := *k.ledger(&prev), *k.ledger(&next)
+		pieces := map[string][]string{}
+		for _, key := range sortedKeys(n) {
+			if _, ok := p[key]; !ok && n[key].SplitFrom != "" {
+				pieces[n[key].SplitFrom] = append(pieces[n[key].SplitFrom], key)
+			}
 		}
-	}
-	return n, nil
-}
-
-func sortedKeys(m map[string]int) []string {
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func sum(m map[string]int) int {
-	t := 0
-	for _, v := range m {
-		t += v
-	}
-	return t
-}
-
-func copyMap(m map[string]int) map[string]int {
-	out := make(map[string]int, len(m))
-	for k, v := range m {
-		out[k] = v
+		vals := k.values(m)
+		for _, orig := range sortedKeys(pieces) {
+			succ := pieces[orig]
+			orig0, ok := p[orig]
+			switch {
+			case k.slack < 0:
+				out = append(out, fmt.Sprintf("%s: %v cannot be split or renamed from %s; %s", k.name, succ, orig, k.fix))
+				continue
+			case !ok:
+				out = append(out, fmt.Sprintf("%s: %v split_from %s, which is not in the previous baseline", k.name, succ, orig))
+				continue
+			}
+			total, count := vals[orig], len(succ)
+			if total > 0 {
+				count++
+			}
+			for _, s := range succ {
+				total += vals[s]
+			}
+			if allowed := orig0.Value + k.slack*(count-1); total > allowed {
+				out = append(out, fmt.Sprintf("%s: %s split into %v has %d %s in total (original left: %d), more than its ceiling %d + %d per extra piece", k.name, orig, succ, total, k.unit, vals[orig], orig0.Value, k.slack))
+			}
+		}
 	}
 	return out
 }

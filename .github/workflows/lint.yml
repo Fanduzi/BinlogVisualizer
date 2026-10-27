@@ -1,9 +1,9 @@
 name: lint
 
 # Coding-standards gate (docs/development/coding-standards.md). golangci-lint fails only on
-# issues in lines this change touches; codehealth fails when any ratcheted
-# number is worse than internal/codehealth/baseline.json or when the change
-# raises that baseline.
+# issues in lines this change touches; codehealth fails when the tree does not
+# match internal/codehealth/baseline.json or when the change loosens that
+# baseline compared with the base revision.
 
 on:
   push:
@@ -55,9 +55,9 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           BEFORE: ${{ github.event.before }}
         run: bash internal/codehealth/lint-base.sh >> "$GITHUB_OUTPUT"
-      - name: Ratchet against the baseline (files, complexity, issue refs, deadcode)
+      - name: Tree matches the baseline (files, functions, issue refs, deadcode)
         run: go run ./internal/codehealth/cmd/codehealth -deadcode check
-      - name: Baseline only goes down
+      - name: Baseline is no looser than the base revision
         env:
           BASE: ${{ steps.base.outputs.sha }}
         run: |
@@ -68,4 +68,4 @@ jobs:
             exit 0
           fi
           git show "${BASE}:${path}" > "${RUNNER_TEMP}/baseline-prev.json"
-          go run ./internal/codehealth/cmd/codehealth compare "${RUNNER_TEMP}/baseline-prev.json"
+          go run ./internal/codehealth/cmd/codehealth -base "${BASE}" compare "${RUNNER_TEMP}/baseline-prev.json"

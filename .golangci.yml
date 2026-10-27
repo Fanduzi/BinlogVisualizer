@@ -17,6 +17,7 @@ linters:
     - govet
     - ineffassign
     - misspell
+    - nolintlint
     - staticcheck
     - unused
   settings:
@@ -27,8 +28,17 @@ linters:
       lines: 150
       statements: 100
       ignore-comments: true
+    nolintlint:
+      # A //nolint names the linter and says why: //nolint:errcheck // reason.
+      require-specific: true
+      require-explanation: true
   exclusions:
-    generated: lax
+    # Generated-code markers are not honored: anyone can write one. Only the
+    # files in generated_files of internal/codehealth/baseline.json are
+    # skipped (none today), and TestGolangciSkipsOnlyAllowlistedGeneratedFiles
+    # keeps the two lists equal.
+    generated: disable
+    paths: []
     rules:
       # Table-driven tests are long by design; complexity still applies.
       - path: _test\.go
@@ -40,7 +50,8 @@ formatters:
     - gofmt
     - goimports
   exclusions:
-    generated: lax
+    generated: disable
+    paths: []
 
 issues:
   max-issues-per-linter: 0

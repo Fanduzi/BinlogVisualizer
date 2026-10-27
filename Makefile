@@ -26,10 +26,12 @@ LINT_BASE ?= $(shell git merge-base origin/main HEAD)
 lint:
 	golangci-lint run --new-from-rev=$(LINT_BASE) ./...
 
-# Fail if file size, complexity, issue refs or deadcode are worse than internal/codehealth/baseline.json.
+# Fail unless the tree matches internal/codehealth/baseline.json (file size, function complexity and length, issue refs, deadcode).
 codehealth:
 	go run ./internal/codehealth/cmd/codehealth -deadcode check
 
 # Lower internal/codehealth/baseline.json to today's numbers; refuses to raise anything.
+# After a split or rename, name each new piece and its baseline entry:
+#   make codehealth-baseline FROM="cmd/binlogviz/new.go=cmd/binlogviz/old.go cmd/binlogviz:NewFunc=cmd/binlogviz:OldFunc"
 codehealth-baseline:
-	go run ./internal/codehealth/cmd/codehealth -deadcode update
+	go run ./internal/codehealth/cmd/codehealth -deadcode $(addprefix -from ,$(FROM)) update

@@ -176,9 +176,9 @@ func TestReadmeStaysConcise(t *testing.T) {
 	}
 }
 
-// Every way BinlogQA found to slip notes past the first version of this
-// guard (#441), plus the shapes it already caught. Each is appended to the
-// real README and must fail.
+// Every way QA found to slip notes past the first version of this guard,
+// plus the shapes it already caught. Each is appended to the real README
+// and must fail.
 func TestReadmeShapeCatchesBypassProbes(t *testing.T) {
 	long := strings.Repeat("word ", 120)
 	wrapped := strings.Repeat(strings.Repeat("word ", 20)+"\n", 5)
