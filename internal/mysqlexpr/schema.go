@@ -643,12 +643,15 @@ func memberList(members []string) string {
 	return strings.Join(quoted, ",")
 }
 
-// OneLine returns the first line of value, trimmed, cut to limit bytes when limit is positive.
+// OneLine returns the first line of value, trimmed, with each internal
+// whitespace run collapsed to one space (a TAB does not survive into a
+// one-line excerpt), cut to limit bytes when limit is positive.
 func OneLine(value string, limit int) string {
 	value = strings.TrimSpace(value)
 	if i := strings.IndexAny(value, "\r\n"); i >= 0 {
-		value = strings.TrimSpace(value[:i])
+		value = value[:i]
 	}
+	value = strings.Join(strings.Fields(value), " ")
 	if limit > 0 && len(value) > limit {
 		value = value[:limit] + "..."
 	}

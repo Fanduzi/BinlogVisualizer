@@ -118,3 +118,37 @@ func TestAnalyzeCrossSchemaDropReportsEachTable(t *testing.T) {
 		t.Fatalf("top table bytes:\n%s", text)
 	}
 }
+
+// A multi-pair RENAME TABLE must show each pair's old table, the same way a
+// multi-table DROP TABLE shows each target: only the first pair used to be
+// attributed, so the rest of the statement was invisible.
+func TestAnalyzeMultiPairRenameReportsEachOldTable(t *testing.T) {
+	base := time.Date(2026, 10, 20, 9, 17, 23, 0, time.UTC)
+	sql := "RENAME TABLE `a` TO `b`, `s2`.`c` TO `s2`.`d`"
+	result, err := New(DefaultOptions()).Analyze([]model.NormalizedEvent{{
+		Timestamp:   base,
+		EventType:   "DDL",
+		Schema:      "s1",
+		BinlogBytes: 120,
+		QuerySQL:    sql,
+	}})
+	if err != nil {
+		t.Fatalf("Analyze: %v", err)
+	}
+	want := map[string]bool{"s1.a": false, "s2.c": false}
+	for _, event := range result.Diagnostics.DDLEvents {
+		if event.Operation != "RENAME TABLE" {
+			continue
+		}
+		name := event.Schema + "." + event.Table
+		if _, ok := want[name]; !ok {
+			t.Fatalf("DDL target %s, events %+v", name, result.Diagnostics.DDLEvents)
+		}
+		want[name] = true
+	}
+	for name, seen := range want {
+		if !seen {
+			t.Fatalf("missing DDL target %s in %+v", name, result.Diagnostics.DDLEvents)
+		}
+	}
+}

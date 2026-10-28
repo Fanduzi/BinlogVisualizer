@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, a digit-leading name is a name, versioned comments and ANSI_QUOTES follow the event). CREATE/ALTER/DROP USER keep the account spelling. A multi-account DROP USER is one event per account; RENAME USER is one event per "old TO new" pair. A multi-table DROP TABLE is one event per table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, a digit-leading name is a name, versioned comments and ANSI_QUOTES follow the event). CREATE/ALTER/DROP USER keep the account spelling. A multi-account DROP USER is one event per account; RENAME USER is one event per "old TO new" pair. A multi-table DROP TABLE is one event per table; a multi-pair RENAME TABLE is one event per pair, named by the old table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -140,9 +140,10 @@ func (a *DDLAggregator) ConsumeEvent(ev model.NormalizedEvent) {
 	}
 }
 
-// ddlEventsFor is one timeline row per DROP TABLE target, one row per DROP
-// USER account or RENAME USER pair, and one row for every other statement.
-// Statement order is kept.
+// ddlEventsFor is one timeline row per DROP TABLE target, one row per
+// RENAME TABLE pair (named by its old table, so --table keeps matching),
+// one row per DROP USER account or RENAME USER pair, and one row for every
+// other statement. Statement order is kept.
 func ddlEventsFor(ev model.NormalizedEvent) []model.DDLEvent {
 	one, ok := DDLEventFromNormalizedEvent(ev)
 	if !ok {
@@ -155,6 +156,16 @@ func ddlEventsFor(ev model.NormalizedEvent) []model.DDLEvent {
 			out[i] = one
 			out[i].Schema = id.schema
 			out[i].Table = id.table
+		}
+		return out
+	}
+	pairs := parsedRenameTables(ev)
+	if len(pairs) > 1 {
+		out := make([]model.DDLEvent, len(pairs))
+		for i, pair := range pairs {
+			out[i] = one
+			out[i].Schema = pair.schema
+			out[i].Table = pair.table
 		}
 		return out
 	}
@@ -185,6 +196,28 @@ func parsedDropTables(ev model.NormalizedEvent) []tableIdentity {
 	names = mysqlexpr.WithSession(names, ev.QuerySchema, ev.Schema)
 	out := make([]tableIdentity, 0, len(names))
 	for _, name := range names {
+		out = append(out, newTableIdentity(name.Schema, name.Table))
+	}
+	return out
+}
+
+// parsedRenameTables reads a RENAME TABLE pair list like parsedDropTables
+// reads a DROP TABLE list, keeping each pair's old name so the row names
+// the table that existed before the statement ran. Nil when sql is not a
+// readable RENAME TABLE.
+func parsedRenameTables(ev model.NormalizedEvent) []tableIdentity {
+	d := mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode)
+	pairs, isRename, ok := mysqlexpr.ParseRenameTable(ev.QuerySQL, d)
+	if !isRename || !ok || len(pairs) == 0 {
+		return nil
+	}
+	oldNames := make([]mysqlexpr.QualifiedIdent, len(pairs))
+	for i, pair := range pairs {
+		oldNames[i] = pair.Old
+	}
+	oldNames = mysqlexpr.WithSession(oldNames, ev.QuerySchema, ev.Schema)
+	out := make([]tableIdentity, 0, len(oldNames))
+	for _, name := range oldNames {
 		out = append(out, newTableIdentity(name.Schema, name.Table))
 	}
 	return out
