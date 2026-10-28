@@ -85,6 +85,22 @@ jobs:
       - name: Run tests
         run: go test -count=1 ./...
 
+  landing-overflow:
+    name: landing overflow
+    # The Go landing guard sees markup only; a headless browser is the one
+    # check that catches layout wider than the viewport (#451).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install playwright
+        run: npm install --no-save playwright@1.49.1 && npx playwright install --with-deps chromium
+      - name: Check scrollWidth fits viewport
+        run: node scripts/check-landing-overflow.mjs
+
   flashback-e2e:
     name: flashback e2e
     runs-on: ubuntu-24.04
