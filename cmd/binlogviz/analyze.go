@@ -19,6 +19,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
@@ -32,8 +33,8 @@ type commandAnalyzer interface {
 }
 
 type normalizeRawEventFunc func(binlog.RawEvent) (*model.NormalizedEvent, error)
-type commandAnalyzerFactory func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer
-type tempStoreFactory func(root string) (*analyzer.DuckDBStore, func() error, string, error)
+type commandAnalyzerFactory func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer
+type tempStoreFactory func(root string) (*detailstore.DuckDBStore, func() error, string, error)
 
 type aggregateProgress struct {
 	bar          *progressbar.ProgressBar
@@ -300,12 +301,12 @@ func runAnalysisWithParserAndTempDirAndReportOptions(paths []string, opts analyz
 }
 
 func runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, parser binlog.Parser, tempRoot string, onStoreCreated func(string)) error {
-	return runAnalysisStreamingFastWithSnapshot(paths, opts, reportOpts, format, parser, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	return runAnalysisStreamingFastWithSnapshot(paths, opts, reportOpts, format, parser, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 		if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
 			return analyzer.NewWithStore(opts, store)
 		}
 		return analyzer.New(opts)
-	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
+	}, func(root string) (*detailstore.DuckDBStore, func() error, string, error) {
 		store, cleanup, path, err := createDuckDBTempStore(root)
 		if err == nil && onStoreCreated != nil {
 			onStoreCreated(path)
@@ -455,7 +456,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 		}
 	}
 
-	var store *analyzer.DuckDBStore
+	var store *detailstore.DuckDBStore
 	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
 		var cleanup func() error
 		store, cleanup, _, err = newTempStore(tempRoot)
@@ -668,12 +669,12 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 }
 
 func runAnalysisWithOutput(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, dest outputDestination, pathAliases map[string]string) error {
-	return runAnalysisStreamingFastWithOutput(paths, opts, reportOpts, format, binlog.NewParser(), func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	return runAnalysisStreamingFastWithOutput(paths, opts, reportOpts, format, binlog.NewParser(), func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 		if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
 			return analyzer.NewWithStore(opts, store)
 		}
 		return analyzer.New(opts)
-	}, func(root string) (*analyzer.DuckDBStore, func() error, string, error) {
+	}, func(root string) (*detailstore.DuckDBStore, func() error, string, error) {
 		return createDuckDBTempStore(root)
 	}, "", snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest, pathAliases)
 }
@@ -745,13 +746,13 @@ func resolveAnalyzeSnapshotMetadata(snapshotMeta *model.Snapshot, summary model.
 	return &resolved
 }
 
-func createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, string, error) {
+func createDuckDBTempStore(root string) (*detailstore.DuckDBStore, func() error, string, error) {
 	tempDir, err := os.MkdirTemp(root, "binlogviz-duckdb-*")
 	if err != nil {
 		return nil, nil, "", err
 	}
 	path := filepath.Join(tempDir, "analysis.duckdb")
-	store, err := analyzer.NewDuckDBStore(path, analyzer.DefaultBatchFlushRows)
+	store, err := detailstore.NewDuckDBStore(path, detailstore.DefaultBatchFlushRows)
 	if err != nil {
 		_ = os.RemoveAll(tempDir)
 		return nil, nil, "", err

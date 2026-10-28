@@ -23,6 +23,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/flashback"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
@@ -698,7 +699,7 @@ func measureAnalyze(t *testing.T, path string, wantTxns int, fault string) large
 	// below is the analyzer's, not the test's copy of the output.
 	jsonScan := newReportScan(wantTxns, `"report_version"`)
 	streamStdout(t, jsonScan, func() {
-		factory := func(opts analyzer.Options, _ *analyzer.DuckDBStore) commandAnalyzer {
+		factory := func(opts analyzer.Options, _ *detailstore.DuckDBStore) commandAnalyzer {
 			sa = &largeInputAnalyzer{inner: analyzer.New(opts), every: largeInputSampleEvery, fault: fault}
 			return sa
 		}
@@ -818,7 +819,7 @@ func measureFlashback(t *testing.T, path, fault string) flashRun {
 	opts.FlashbackConflict = flashback.FlashbackConflictRefuse
 	sqlScan := newNeedleScan([]byte("shop"))
 	streamStdout(t, sqlScan, func() {
-		factory := func(opts analyzer.Options, _ *analyzer.DuckDBStore) commandAnalyzer {
+		factory := func(opts analyzer.Options, _ *detailstore.DuckDBStore) commandAnalyzer {
 			return analyzer.New(opts)
 		}
 		if err := runAnalysisStreamingWithDeps([]string{path}, opts, report.Options{}, "text", hp, nil, factory, nil, ""); err != nil {

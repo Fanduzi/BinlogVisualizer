@@ -1,11 +1,11 @@
 //go:build cgo
 
-// Package analyzer persists high-cardinality analysis results in DuckDB batches.
+// Package detailstore persists high-cardinality analysis results in DuckDB batches.
 // input: completed transactions with provenance, minute buckets, alerts, and an owned DuckDB path.
 // output: batched DuckDB reconstruction of transaction evidence, minutes, alerts with their GTID, and on-demand SQL.
-// pos: CGO-only DuckDB adapter behind NewDuckDBStore.
-// note: if this file changes, keep this header and module README.md synchronized.
-package analyzer
+// pos: CGO-only DuckDB adapter behind NewDuckDBStore (ADR 0012).
+// note: if this file changes, keep this header and README.md synchronized.
+package detailstore
 
 import (
 	"context"
@@ -99,7 +99,7 @@ func (s *DuckDBStore) Close() error {
 	return s.db.Close()
 }
 
-func (s *DuckDBStore) RecordTransactions(transactions []persistedTransaction) error {
+func (s *DuckDBStore) RecordTransactions(transactions []Transaction) error {
 	if len(transactions) == 0 {
 		return nil
 	}
@@ -539,20 +539,6 @@ FROM alerts`)
 	})
 
 	return alerts, nil
-}
-
-func (s *DuckDBStore) tableExists(table string) bool {
-	var count int
-	err := s.db.QueryRow(`SELECT COUNT(*) FROM information_schema.tables WHERE table_name = ?`, table).Scan(&count)
-	return err == nil && count == 1
-}
-
-func (s *DuckDBStore) mustCountRows(t interface{ Fatalf(string, ...any) }, table string) int {
-	var count int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&count); err != nil {
-		t.Fatalf("count rows for %s: %v", table, err)
-	}
-	return count
 }
 
 func (s *DuckDBStore) initSchema() error {

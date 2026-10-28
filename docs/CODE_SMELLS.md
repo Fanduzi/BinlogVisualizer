@@ -8,7 +8,7 @@ The corrections below were read from the source tree at `d85f32d3bc80d2194ec4350
 
 ## What the current tree does
 
-**DuckDB is behind build tags.** `internal/analyzer/store_duckdb.go` starts with `//go:build cgo` and is the file that imports `github.com/marcboeker/go-duckdb`. `internal/analyzer/store_nocgo.go` starts with `//go:build !cgo`, and its `NewDuckDBStore` returns `ErrDuckDBRequiresCGO` (declared in `internal/analyzer/store.go`, which does not import DuckDB). A `CGO_ENABLED=0` build omits the DuckDB adapter. Release packaging still compiles with CGO: `.goreleaser.yml` sets `CGO_ENABLED=1`, and the native archive job in `.github/workflows/release.yml` does the same.
+**DuckDB is behind build tags.** `internal/detailstore/store_duckdb.go` starts with `//go:build cgo` and is the file that imports `github.com/marcboeker/go-duckdb`. `internal/detailstore/store_nocgo.go` starts with `//go:build !cgo`, and its `NewDuckDBStore` returns `ErrDuckDBRequiresCGO` (declared in `internal/detailstore/types.go`, which does not import DuckDB). `internal/analyzer` itself no longer imports go-duckdb (ADR 0012 step 6). A `CGO_ENABLED=0` build omits the DuckDB adapter. Release packaging still compiles with CGO: `.goreleaser.yml` sets `CGO_ENABLED=1`, and the native archive job in `.github/workflows/release.yml` does the same.
 
 **`parseXAQuery` maps `XA END` and `XA ROLLBACK`.** In `internal/binlog/normalize.go`, `parseXAQuery` recognizes `XA START`, `XA BEGIN` (as `XA_START`), `XA END` (`XA_END`), `XA PREPARE`, `XA COMMIT`, and `XA ROLLBACK`. `ok` is true when the XID remainder is non-empty. `normalizeQueryEventInto` keeps those XA queries. `TestNormalizeMariaDBXAQueries` in `internal/binlog/normalize_test.go` covers `XA END` and `XA ROLLBACK`.
 

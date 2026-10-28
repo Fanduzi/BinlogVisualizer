@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/flashback"
 	"binlogviz/internal/model"
 )
@@ -68,7 +69,7 @@ func New(opts Options) *Analyzer {
 }
 
 // NewWithStore creates a new Analyzer backed by a caller-managed store.
-func NewWithStore(opts Options, store *DuckDBStore) *Analyzer {
+func NewWithStore(opts Options, store *detailstore.DuckDBStore) *Analyzer {
 	opts.DetailStoreMode = DetailStoreDuckDB
 	a := &Analyzer{
 		opts:  opts,

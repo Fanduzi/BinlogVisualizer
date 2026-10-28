@@ -1,29 +1,21 @@
 // Package analyzer persists optional analysis details; default reports do not open DuckDB.
 // input: completed transactions, minute buckets, alerts, and transaction keys needing SQL hydration.
-// output: in-memory detail persistence plus shared DTOs used by the DuckDB adapter when CGO is enabled.
+// output: in-memory detail persistence; the DuckDB adapter and its record DTO live in internal/detailstore.
 // pos: default-package store that keeps analyze compilable without CGO.
 // note: if this file changes, keep this header and module README.md synchronized.
 package analyzer
 
 import (
-	"errors"
 	"sort"
 	"time"
 
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/model"
-)
-
-// ErrDuckDBRequiresCGO is returned by NewDuckDBStore when the binary was built without CGO.
-var ErrDuckDBRequiresCGO = errors.New("duckdb detail store requires cgo")
-
-const (
-	DefaultBatchFlushRows  = 10000
-	defaultBatchFlushBytes = 4 * 1024 * 1024
 )
 
 type analysisStore interface {
 	Reset() error
-	RecordTransactions([]persistedTransaction) error
+	RecordTransactions([]detailstore.Transaction) error
 	RecordMinuteBuckets([]model.MinuteBucket) error
 	RecordAlerts([]model.Alert) error
 	Flush() error
@@ -36,157 +28,15 @@ type analysisStore interface {
 }
 
 type inMemoryStore struct {
-	transactions []persistedTransaction
+	transactions []detailstore.Transaction
 	minutes      []model.MinuteBucket
 	alerts       []model.Alert
 }
 
-type persistedTransaction struct {
-	TxnKey              string
-	ServerID            uint32
-	ServerVersion       string
-	ServerFlavor        string
-	GTID                string
-	ThreadID            uint32
-	XID                 string
-	ActorUser           string
-	ActorHost           string
-	XAXID               string
-	StartTime           time.Time
-	EndTime             time.Time
-	DurationMS          int64
-	TotalRows           int64
-	EventCount          int64
-	BinlogBytes         int64
-	BinlogPathStart     string
-	BinlogPathEnd       string
-	PositionStart       int64
-	PositionEnd         int64
-	Completeness        model.TransactionCompleteness
-	FullBinlogPathStart string
-	FullBinlogPathEnd   string
-	FullPositionStart   int64
-	FullPositionEnd     int64
-	FullBinlogBytes     int64
-	QuerySummary        string
-	QuerySQL            string
-	QueryTruncated      bool
-	QueryOriginalBytes  int64
-	TableRows           map[string]int
-	Operations          map[string]int
-}
-
-type transactionRow struct {
-	TxnKey              string
-	ServerID            uint32
-	ServerVersion       string
-	ServerFlavor        string
-	GTID                string
-	ThreadID            uint32
-	XID                 string
-	ActorUser           string
-	ActorHost           string
-	XAXID               string
-	StartTime           time.Time
-	EndTime             time.Time
-	DurationMS          int64
-	TotalRows           int64
-	EventCount          int64
-	BinlogBytes         int64
-	BinlogPathStart     string
-	BinlogPathEnd       string
-	PositionStart       int64
-	PositionEnd         int64
-	Completeness        string
-	FullBinlogPathStart string
-	FullBinlogPathEnd   string
-	FullPositionStart   int64
-	FullPositionEnd     int64
-	FullBinlogBytes     int64
-	QuerySummary        string
-	QueryTruncated      bool
-	QueryOriginalBytes  int64
-}
-
-type transactionTableRow struct {
-	TxnKey   string
-	TableKey string
-	Rows     int64
-}
-
-type transactionOperationRow struct {
-	TxnKey    string
-	Operation string
-	Rows      int64
-}
-
-type transactionSQLContextRow struct {
-	TxnKey             string
-	QuerySQL           string
-	QueryTruncated     bool
-	QueryOriginalBytes int64
-}
-
-type minuteBucketRow struct {
-	Minute      time.Time
-	TotalRows   int64
-	TxnCount    int64
-	EventCount  int64
-	BinlogBytes int64
-	DDLCount    int64
-}
-
-type minuteTableRow struct {
-	Minute   time.Time
-	TableKey string
-	Rows     int64
-}
-
-type alertRow struct {
-	Type        string
-	Severity    string
-	TxnKey      string
-	Minute      time.Time
-	Message     string
-	DetailsJSON string
-	GTID        string
-}
-
-func estimateStringBytes(v string) int {
-	return len(v)
-}
-
-func growSlice[T any](items []T, additional int) []T {
-	if additional <= 0 {
-		return items
-	}
-	needed := len(items) + additional
-	if cap(items) >= needed {
-		return items
-	}
-	newCap := cap(items) * 2
-	if newCap < needed {
-		newCap = needed
-	}
-	if newCap == 0 {
-		newCap = additional
-	}
-	grown := make([]T, len(items), newCap)
-	copy(grown, items)
-	return grown
-}
-
-func zeroTimeToNil(ts time.Time) any {
-	if ts.IsZero() {
-		return nil
-	}
-	return ts
-}
-
-func toPersistedTransactions(transactions []model.Transaction) []persistedTransaction {
-	result := make([]persistedTransaction, 0, len(transactions))
+func toPersistedTransactions(transactions []model.Transaction) []detailstore.Transaction {
+	result := make([]detailstore.Transaction, 0, len(transactions))
 	for _, txn := range transactions {
-		pt := persistedTransaction{
+		pt := detailstore.Transaction{
 			TxnKey:          txn.TxnKey,
 			ServerID:        txn.ServerID,
 			ServerVersion:   txn.ServerVersion,
@@ -251,7 +101,7 @@ func (s *inMemoryStore) Reset() error {
 	return nil
 }
 
-func (s *inMemoryStore) RecordTransactions(transactions []persistedTransaction) error {
+func (s *inMemoryStore) RecordTransactions(transactions []detailstore.Transaction) error {
 	for _, txn := range transactions {
 		s.transactions = append(s.transactions, clonePersistedTransaction(txn))
 	}
@@ -375,8 +225,8 @@ func (s *inMemoryStore) Close() error {
 	return nil
 }
 
-func clonePersistedTransaction(txn persistedTransaction) persistedTransaction {
-	return persistedTransaction{
+func clonePersistedTransaction(txn detailstore.Transaction) detailstore.Transaction {
+	return detailstore.Transaction{
 		TxnKey:              txn.TxnKey,
 		ServerID:            txn.ServerID,
 		ServerVersion:       txn.ServerVersion,
@@ -447,7 +297,7 @@ func cloneStringAnyMap(src map[string]any) map[string]any {
 	return dst
 }
 
-func buildTransactionsFromPersisted(src []persistedTransaction, includeSQL bool) []model.Transaction {
+func buildTransactionsFromPersisted(src []detailstore.Transaction, includeSQL bool) []model.Transaction {
 	if len(src) == 0 {
 		return nil
 	}
@@ -458,7 +308,7 @@ func buildTransactionsFromPersisted(src []persistedTransaction, includeSQL bool)
 	return txns
 }
 
-func buildTransactionFromPersisted(row persistedTransaction, includeSQL bool) model.Transaction {
+func buildTransactionFromPersisted(row detailstore.Transaction, includeSQL bool) model.Transaction {
 	txn := model.Transaction{
 		TxnKey:          row.TxnKey,
 		ServerID:        row.ServerID,

@@ -9,6 +9,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
@@ -129,7 +130,7 @@ func wideAnalyze(t *testing.T, path string, txns, wantTables int) uint64 {
 	}()
 
 	var sa *sampledAnalyzer
-	factory := func(opts analyzer.Options, _ *analyzer.DuckDBStore) commandAnalyzer {
+	factory := func(opts analyzer.Options, _ *detailstore.DuckDBStore) commandAnalyzer {
 		sa = &sampledAnalyzer{inner: analyzer.New(opts), every: analyzeMemSampleEvery}
 		return sa
 	}

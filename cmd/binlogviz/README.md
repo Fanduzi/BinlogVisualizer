@@ -42,7 +42,7 @@ Cobra CLI entrypoints and command-layer orchestration for analyze, flashback, co
 - `newSnapshotCommand() *cobra.Command` — Defines the snapshot command subtree.
 - `runAnalysisWithReportAndSnapshotOptions(...) error` — Executes analyze with optional snapshot metadata and snapshot persistence.
 - `runAnalysisWithParserAndTempDirAndReportAndSnapshotOptions(...) error` — Test seam for command-path analyze behavior with explicit snapshot options.
-- `createDuckDBTempStore(root string) (*analyzer.DuckDBStore, func() error, string, error)` — Creates a temp DuckDB file under a system or test-provided temp root and returns command-layer cleanup.
+- `createDuckDBTempStore(root string) (*detailstore.DuckDBStore, func() error, string, error)` — Creates a temp DuckDB file under a system or test-provided temp root and returns command-layer cleanup.
 
 ## Dependencies
 

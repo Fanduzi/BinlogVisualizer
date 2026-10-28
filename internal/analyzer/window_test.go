@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/model"
 )
 
@@ -333,12 +334,12 @@ func TestAnalyzerWindowCompletenessMatchesDuckDBDetailStore(t *testing.T) {
 		t.Fatalf("in-memory Analyze returned error: %v", err)
 	}
 
-	store, err := NewDuckDBStore(filepath.Join(t.TempDir(), "analysis.duckdb"), 10)
+	store, err := detailstore.NewDuckDBStore(filepath.Join(t.TempDir(), "analysis.duckdb"), 10)
 	if err != nil {
-		if errors.Is(err, ErrDuckDBRequiresCGO) {
+		if errors.Is(err, detailstore.ErrDuckDBRequiresCGO) {
 			t.Skip(err.Error())
 		}
-		t.Fatalf("NewDuckDBStore returned error: %v", err)
+		t.Fatalf("detailstore.NewDuckDBStore returned error: %v", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 	got, err := NewWithStore(opts, store).Analyze(events)
