@@ -681,8 +681,9 @@ func schemaColIndexNames(names []string, want string) int {
 // and truncate toward zero. A zero divisor is NULL, matching a non-strict
 // insert that stored NULL.
 type intVal struct {
-	null bool
-	n    *big.Rat
+	null     bool
+	n        *big.Rat
+	unsigned bool
 }
 
 func intValMatches(v intVal, lit string) bool {
@@ -742,11 +743,15 @@ func applyMulOp(left, right intVal, op string) (intVal, bool) {
 	}
 	switch op {
 	case "*":
+		unsigned := left.unsigned || right.unsigned
 		prod := new(big.Rat).Mul(left.n, right.n)
-		if !fitsSignedBigint(prod) {
+		if unsigned && (left.n.Sign() < 0 || right.n.Sign() < 0 || !fitsUnsignedBigint(prod)) {
 			return intVal{}, false
 		}
-		return intVal{n: prod}, true
+		if !unsigned && !fitsSignedBigint(prod) {
+			return intVal{}, false
+		}
+		return intVal{n: prod, unsigned: unsigned}, true
 	case "/":
 		if right.n.Sign() == 0 {
 			return intVal{null: true}, true
@@ -776,6 +781,11 @@ func applyIntDiv(left, right intVal, remainder bool) (intVal, bool) {
 	if ri.Sign() == 0 {
 		return intVal{null: true}, true
 	}
+	if (left.unsigned || right.unsigned) && (li.Sign() < 0 || ri.Sign() < 0) {
+		// With an UNSIGNED operand MySQL converts the pair to unsigned
+		// BIGINT first; a negative operand is not modelled.
+		return intVal{}, false
+	}
 	var out *big.Int
 	if remainder {
 		out = new(big.Int).Rem(li, ri)
@@ -785,7 +795,7 @@ func applyIntDiv(left, right intVal, remainder bool) (intVal, bool) {
 			return intVal{}, false
 		}
 	}
-	return intVal{n: new(big.Rat).SetInt(out)}, true
+	return intVal{n: new(big.Rat).SetInt(out), unsigned: left.unsigned || right.unsigned}, true
 }
 
 func ratAsInt(r *big.Rat) (*big.Int, bool) {

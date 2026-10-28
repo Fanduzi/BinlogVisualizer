@@ -56,6 +56,7 @@ type GenVal struct {
 	prec    int
 	scale   int
 	hasPrec bool
+	unsigned bool
 }
 
 type LoggedImage struct {
@@ -88,7 +89,7 @@ func (v GenVal) asInt() (intVal, bool) {
 		if v.n == nil {
 			return intVal{}, false
 		}
-		return intVal{n: v.n}, true
+		return intVal{n: v.n, unsigned: v.unsigned}, true
 	default:
 		return intVal{}, false
 	}
@@ -109,12 +110,18 @@ func applyGenAdd(left, right GenVal, op byte) (GenVal, bool) {
 	} else {
 		n.Sub(li.n, ri.n)
 	}
-	// MySQL rejects a signed BIGINT sum or difference (ERROR 1690). A value
-	// past that range is unverified, not a result the checker may claim.
-	if !fitsSignedBigint(n) {
+	unsigned := li.unsigned || ri.unsigned
+	// MySQL rejects a signed BIGINT sum or difference (ERROR 1690); with an
+	// UNSIGNED operand the arithmetic is unsigned, so a negative operand or
+	// a result outside [0, 2^64-1] errors too. Either way the value is
+	// unverified, not a result the checker may claim.
+	if unsigned && (li.n.Sign() < 0 || ri.n.Sign() < 0 || !fitsUnsignedBigint(n)) {
 		return GenVal{}, false
 	}
-	return GenVal{kind: genNum, n: n}, true
+	if !unsigned && !fitsSignedBigint(n) {
+		return GenVal{}, false
+	}
+	return GenVal{kind: genNum, n: n, unsigned: unsigned}, true
 }
 
 func (sc *Scan) startsArrow() bool {
@@ -849,6 +856,7 @@ func attachColMeta(v GenVal, col SchemaCol) GenVal {
 	v.prec = col.prec
 	v.scale = col.scale
 	v.hasPrec = col.hasPrec
+	v.unsigned = col.unsigned
 	if v.charset == "" && col.charset != "" {
 		v.charset = col.charset
 	}

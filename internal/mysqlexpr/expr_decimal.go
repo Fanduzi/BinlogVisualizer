@@ -46,6 +46,10 @@ type DecVal struct {
 	// + - * of two intKind values use MySQL's integer arithmetic: a result
 	// outside signed BIGINT is unverified. A DECIMAL operand clears it.
 	intKind bool
+	// unsigned marks an UNSIGNED integer operand. MySQL computes the pair in
+	// unsigned BIGINT: a negative operand or a result outside [0, 2^64-1]
+	// raises ERROR 1690, which here is unverified (ok=false), not a value.
+	unsigned bool
 }
 
 func integerClip(v intVal, col SchemaCol) (*big.Int, bool) {
@@ -258,7 +262,13 @@ func decFromGen(v GenVal) (DecVal, bool) {
 		if !v.n.IsInt() {
 			return DecVal{}, false
 		}
-		return DecVal{n: new(big.Rat).Set(v.n), scale: scale, intKind: fitsSignedBigint(v.n)}, true
+		// An unsigned column's kind is unsigned BIGINT: 2^64-1 is a kind
+		// value even though it does not fit signed BIGINT.
+		intKind := fitsSignedBigint(v.n)
+		if v.unsigned {
+			intKind = fitsUnsignedBigint(v.n)
+		}
+		return DecVal{n: new(big.Rat).Set(v.n), scale: scale, intKind: intKind, unsigned: v.unsigned}, true
 	default:
 		return DecVal{}, false
 	}
@@ -282,15 +292,20 @@ func applyDecAdd(left, right DecVal, op byte) (DecVal, bool) {
 	if right.scale > scale {
 		scale = right.scale
 	}
-	// Two signed integer operands use BIGINT arithmetic. MySQL rejects the
-	// sum (ERROR 1690) instead of promoting it to DECIMAL.
+	// Two integer operands use BIGINT arithmetic; an UNSIGNED operand makes it
+	// unsigned BIGINT, so a negative operand or a result outside [0, 2^64-1]
+	// is MySQL's ERROR 1690. Signed pairs reject outside signed BIGINT.
 	intKind := left.intKind && right.intKind
-	if intKind && !fitsSignedBigint(n) {
+	unsigned := left.unsigned || right.unsigned
+	if intKind && unsigned && (left.n.Sign() < 0 || right.n.Sign() < 0 || !fitsUnsignedBigint(n)) {
+		return DecVal{}, false
+	}
+	if intKind && !unsigned && !fitsSignedBigint(n) {
 		return DecVal{}, false
 	}
 	// The sum is exact at max(scale). MySQL does not round it here. A sum
 	// that does not fit in 65 digits is unverified, not rounded down.
-	return tagIntKind(placeDec(n, scale, false), intKind), true
+	return tagIntKind(placeDec(n, scale, false), intKind, intKind && unsigned), true
 }
 
 func applyDecMul(left, right DecVal, op string, inc int) (DecVal, bool) {
@@ -313,10 +328,14 @@ func applyDecMul(left, right DecVal, op string, inc int) (DecVal, bool) {
 		scale := left.scale + right.scale
 		prod := new(big.Rat).Mul(left.n, right.n)
 		intKind := left.intKind && right.intKind
-		if intKind && !fitsSignedBigint(prod) {
+		unsigned := left.unsigned || right.unsigned
+		if intKind && unsigned && (left.n.Sign() < 0 || right.n.Sign() < 0 || !fitsUnsignedBigint(prod)) {
 			return DecVal{}, false
 		}
-		return tagIntKind(placeDec(prod, scale, true), intKind), true
+		if intKind && !unsigned && !fitsSignedBigint(prod) {
+			return DecVal{}, false
+		}
+		return tagIntKind(placeDec(prod, scale, true), intKind, intKind && unsigned), true
 	case "/":
 		if right.n.Sign() == 0 {
 			if right.mode != decClaim {
@@ -358,9 +377,10 @@ func placeDec(n *big.Rat, scale int, product bool) DecVal {
 	return DecVal{n: n, scale: scale}
 }
 
-func tagIntKind(v DecVal, intKind bool) DecVal {
+func tagIntKind(v DecVal, intKind, unsigned bool) DecVal {
 	if intKind && v.mode == decClaim {
 		v.intKind = true
+		v.unsigned = unsigned
 	}
 	return v
 }

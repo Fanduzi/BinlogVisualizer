@@ -1,6 +1,6 @@
 // Package mysqlexpr: the generated-column expression evaluator.
 // input: a generated-column expression from a schema file, logged column values, and (for DECIMAL arithmetic) a div_precision_increment.
-// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; EvalGenExpr) or the exact-DECIMAL domain (EvalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237). A COLLATE clause is not modelled and returns ok=false (ADR 0020). Signed integer + - * DIV past BIGINT is unverified in both domains, because MySQL rejects it.
+// output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; EvalGenExpr) or the exact-DECIMAL domain (EvalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237). A COLLATE clause is not modelled and returns ok=false (ADR 0020). Signed integer + - * DIV past BIGINT is unverified in both domains, because MySQL rejects it; an UNSIGNED operand switches to unsigned BIGINT, so a negative operand or a result outside [0, 2^64-1] (MySQL's ERROR 1690) is unverified too.
 // pos: flashback-only module. Analyze does not call it. Value helpers (GenVal, DecVal, apply*) live in expr.go, expr_json.go, expr_decimal.go, and schema.go.
 // note: if this file changes, update this header, CONTEXT.md (Expression evaluator) and docs/adr/0007-expression-evaluator.md.
 package mysqlexpr
@@ -290,11 +290,15 @@ func (n *exprNode) evalGen(env map[string]GenVal) (GenVal, bool) {
 		if !ok || iv.null {
 			return v, ok
 		}
+		if iv.unsigned {
+			// MySQL negates in unsigned BIGINT (wraps); not modelled.
+			return GenVal{}, false
+		}
 		neg := new(big.Rat).Neg(iv.n)
 		if !fitsSignedBigint(neg) {
 			return GenVal{}, false
 		}
-		return GenVal{kind: genNum, n: neg}, true
+		return GenVal{kind: genNum, n: neg, unsigned: iv.unsigned}, true
 	case exArrow:
 		v, ok := n.x.evalGen(env)
 		if !ok {
@@ -405,11 +409,15 @@ func (n *exprNode) evalDec(env map[string]GenVal, inc int) (DecVal, bool) {
 			}
 			return DecVal{}, false
 		}
+		if v.intKind && v.unsigned {
+			// MySQL negates in unsigned BIGINT (wraps); not modelled.
+			return DecVal{}, false
+		}
 		neg := new(big.Rat).Neg(v.n)
 		if v.intKind && !fitsSignedBigint(neg) {
 			return DecVal{}, false
 		}
-		return DecVal{n: neg, scale: v.scale, mode: v.mode, intKind: v.intKind}, true
+		return DecVal{n: neg, scale: v.scale, mode: v.mode, intKind: v.intKind, unsigned: v.unsigned}, true
 	case exNum:
 		i, ok := new(big.Int).SetString(n.num, 10)
 		if !ok {
@@ -531,7 +539,7 @@ func decIntOp(left, right DecVal, remainder bool) (DecVal, bool) {
 		if next.null {
 			return DecVal{null: true}, true
 		}
-		return tagIntKind(placeDec(next.n, 0, false), true), true
+		return tagIntKind(placeDec(next.n, 0, false), true, left.unsigned || right.unsigned), true
 	}
 	// An operand this walk does not claim, or one near DECIMAL's 65 digits
 	// (where MySQL's own arithmetic can overflow first), is declined as
@@ -540,19 +548,22 @@ func decIntOp(left, right DecVal, remainder bool) (DecVal, bool) {
 		decDigits(left.n, left.scale) > decIntOpMaxDigits || decDigits(right.n, right.scale) > decIntOpMaxDigits {
 		return DecVal{}, false
 	}
+	if (left.unsigned || right.unsigned) && (left.n.Sign() < 0 || right.n.Sign() < 0) {
+		return DecVal{}, false
+	}
 	q := new(big.Rat).Quo(left.n, right.n)
 	t := new(big.Int).Quo(q.Num(), q.Denom()) // toward zero
 	if !remainder {
 		if t.Cmp(maxInt64Big) > 0 || t.Cmp(minInt64Big) < 0 {
 			return DecVal{mode: decOmit}, true
 		}
-		return tagIntKind(placeDec(new(big.Rat).SetInt(t), 0, false), true), true
+		return tagIntKind(placeDec(new(big.Rat).SetInt(t), 0, false), true, left.unsigned || right.unsigned), true
 	}
 	rem := new(big.Rat).Sub(left.n, new(big.Rat).Mul(right.n, new(big.Rat).SetInt(t)))
 	if rem.Sign() == 0 {
 		// MySQL's decimal_mod makes a zero remainder a plain 0 (scale 0),
 		// which a following / sees.
-		return tagIntKind(placeDec(rem, 0, false), true), true
+		return tagIntKind(placeDec(rem, 0, false), true, left.unsigned || right.unsigned), true
 	}
 	scale := left.scale
 	if right.scale > scale {
@@ -577,6 +588,19 @@ func fitsSignedBigint(n *big.Rat) bool {
 	}
 	i := n.Num()
 	return i.Cmp(maxInt64Big) <= 0 && i.Cmp(minInt64Big) >= 0
+}
+
+var maxUint64Big = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
+
+// fitsUnsignedBigint reports whether n is an integer in unsigned BIGINT.
+// With an UNSIGNED operand MySQL's + - * raise ERROR 1690 below 0 or past
+// 2^64-1, where a signed pair would have kept the value.
+func fitsUnsignedBigint(n *big.Rat) bool {
+	if n == nil || !n.IsInt() {
+		return false
+	}
+	i := n.Num()
+	return i.Sign() >= 0 && i.Cmp(maxUint64Big) <= 0
 }
 
 // decZeroScale applies MySQL's rule that an arithmetic result of zero is a
