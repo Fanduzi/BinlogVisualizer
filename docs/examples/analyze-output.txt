@@ -1,51 +1,76 @@
-=== Workload Summary ===
-  Total Transactions: 156
-  Total Rows: 45823
-  Total Events: 892
-  Time Range: 2026-03-15 10:00:00 - 2026-03-15 10:14:59
-  Duration: 14m59s
+=== Summary ===
+  Time Range: 2026-03-15 14:10:26 UTC - 2026-03-15 14:10:26 UTC
+  Timestamps: UTC (binlog)
+  Format: ROW images / logical rows (STATEMENT/MIXED Query-DML is not counted)
+  primary key presence unknown (binlog_row_metadata is not FULL)
+  Total Transactions: 4
+  Partial Transactions: 0
+  Unknown Transactions: 0
+  Total Rows: 4
+  Total Events: 22
+  DDL Timeline: 1 (CREATE TABLE)
+  Input File Size: 1.5KB
+  Counted Event Bytes: 342B
+  Largest txn: 289B
+  Top txn bytes: txn-4 289B, txn-2 269B, txn-3 267B
+  Top table bytes: testdb.users 342B
+
+=== DDL Timeline ===
+  DDL occurrence timeline (not MDL or lock-wait duration)
+  2026-03-15 14:10:26 UTC  CREATE TABLE  testdb.users  cmd/binlogviz/testdata/minimal.binlog:219-361
+    server_id=1 thread_id=2 GTID unavailable
+    txn start cmd/binlogviz/testdata/minimal.binlog:154
+    stop before this DDL (replays earlier events, excludes this DDL)
+    mysqlbinlog --stop-position=154 cmd/binlogviz/testdata/minimal.binlog
+    CREATE TABLE users ( id INT PRIMARY KEY, name VARCHAR(100))
 
 === Top Tables ===
-  shop.orders: 28450 rows (18520 insert, 7230 update, 2700 delete, 89 txn)
-  shop.order_items: 12400 rows (9800 insert, 2100 update, 500 delete, 89 txn)
-  shop.users: 2800 rows (1200 insert, 1400 update, 200 delete, 45 txn)
-  shop.sessions: 1500 rows (800 insert, 600 update, 100 delete, 120 txn)
-  inventory.stock: 420 rows (200 insert, 180 update, 40 delete, 15 txn)
-  shop.products: 200 rows (50 insert, 120 update, 30 delete, 35 txn)
-  analytics.events: 38 rows (38 insert, 0 update, 0 delete, 12 txn)
-  shop.audit_log: 15 rows (15 insert, 0 update, 0 delete, 15 txn)
+  #  Table        Affected Rows    INSERT    UPDATE    DELETE DDL Events Transactions Binlog Events Row Share
+  1  testdb.users             4 2 (50.0%) 1 (25.0%) 1 (25.0%)  1 (20.0%)            4             5    100.0%
+  DML shares are of affected rows; DDL share is of binlog events.
+
+=== Hot Rows ===
+  UPDATE and DELETE row images, by primary key.
+  hot-row tracking unavailable for testdb.users: primary key is not in the binlog (binlog_row_metadata is not FULL)
+
+=== Top Threads (by rows) ===
+  # thread_id server_id schema rows events bytes txns share
+  1 3         1         testdb 4    4      1.1KB 4    100.0%
 
 === Top Transactions ===
-  txn-10f3a2: 5200 rows in 2.3s (12 events)
-  txn-10f1b8: 3800 rows in 1.8s (8 events)
-  txn-10e4c1: 2400 rows in 3.1s (6 events)
-  txn-10f290: 1850 rows in 1.2s (4 events)
-  txn-10e8a5: 1200 rows in 0.8s (3 events)
-  txn-10d7f2: 980 rows in 1.5s (5 events)
-  txn-10f3b7: 850 rows in 0.6s (2 events)
-  txn-10e2d4: 720 rows in 2.1s (4 events)
-  txn-10c9a1: 650 rows in 0.4s (2 events)
-  txn-10f0e3: 580 rows in 0.9s (3 events)
+  Largest transaction: txn-4 rows=1 tables=1 file=minimal.binlog:897-1186 (289B, 1 rows) table=testdb.users bytes=289B server_id=1 thread_id=3 xid=8
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Longest transaction: txn-4 dur=0s rows=1 file=cmd/binlogviz/testdata/minimal.binlog:897-1186 server_id=1 thread_id=3 xid=8
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Largest transaction: txn-2 rows=1 tables=1 file=minimal.binlog:361-630 (269B, 1 rows) table=testdb.users bytes=269B server_id=1 thread_id=3 xid=6
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Longest transaction: txn-2 dur=0s rows=1 file=cmd/binlogviz/testdata/minimal.binlog:361-630 server_id=1 thread_id=3 xid=6
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Widest transaction: txn-2 tables=1 rows=1 file=cmd/binlogviz/testdata/minimal.binlog:361-630 server_id=1 thread_id=3 xid=6
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Largest transaction: txn-3 rows=1 tables=1 file=minimal.binlog:630-897 (267B, 1 rows) table=testdb.users bytes=267B server_id=1 thread_id=3 xid=7
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Longest transaction: txn-3 dur=0s rows=1 file=cmd/binlogviz/testdata/minimal.binlog:630-897 server_id=1 thread_id=3 xid=7
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Transaction: txn-5 rows=1 tables=1 file=minimal.binlog:1186-1453 (267B, 1 rows) table=testdb.users bytes=267B server_id=1 thread_id=3 xid=9
+    Full-transaction replay: mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog
+  Committed duration: <1s=4
 
-=== Minute Activity ===
-  2026-03-15 10:00: 2850 rows, 12 txn
-  2026-03-15 10:01: 3420 rows, 14 txn
-  2026-03-15 10:02: 2980 rows, 11 txn
-  2026-03-15 10:03: 8450 rows, 8 txn
-  2026-03-15 10:04: 3120 rows, 10 txn
-  2026-03-15 10:05: 2890 rows, 12 txn
-  2026-03-15 10:06: 2650 rows, 9 txn
-  2026-03-15 10:07: 3180 rows, 13 txn
-  2026-03-15 10:08: 2940 rows, 11 txn
-  2026-03-15 10:09: 2780 rows, 10 txn
-  2026-03-15 10:10: 3250 rows, 14 txn
-  2026-03-15 10:11: 3100 rows, 12 txn
-  2026-03-15 10:12: 2860 rows, 10 txn
-  2026-03-15 10:13: 2940 rows, 11 txn
-  2026-03-15 10:14: 2513 rows, 8 txn
+=== Top Findings ===
+  No high-signal findings detected.
 
-=== Alerts ===
-  [WARNING] large_transaction: Transaction txn-10f3a2 exceeds row threshold
-  [WARNING] large_transaction: Transaction txn-10f1b8 exceeds row threshold
-  [WARNING] large_transaction: Transaction txn-10e4c1 exceeds row threshold
-  [WARNING] spike: Write spike detected
+=== Activity ===
+  TPS:     ▁  N/A (sub-second)  
+  Rows/min: ▁  4.0 at 2026-03-15 14:10 UTC
+
+=== Busiest Minutes ===
+  Rows in that minute, by table.
+  2026-03-15 14:10:00 UTC  rows=4  txns=4
+    testdb.users  4
+
+=== Replica Apply Delay ===
+  commit timestamps unavailable
+
+=== Next Actions ===
+  Open HTML for minute charts and transaction evidence.
+
