@@ -183,6 +183,11 @@ type Scan struct {
 	I    int
 	last int
 	have bool
+	// noIntroducer rejects _charset'..' literals outside the dump-safe UTF
+	// family. Expression text from SHOW CREATE TABLE can carry a mangled
+	// literal ('?' for a lost byte), so a generated expression declines them;
+	// logged values still parse every introducer.
+	noIntroducer bool
 }
 
 func (sc *Scan) Skip() {

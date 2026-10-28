@@ -14,9 +14,9 @@
     "internal/analyzer/transactions.go": 953,
     "internal/compare/html.go": 1619,
     "internal/guard/script.go": 1323,
-    "internal/mysqlexpr/expr.go": 1773,
+    "internal/mysqlexpr/expr.go": 1658,
     "internal/mysqlexpr/schema.go": 1108,
-    "internal/report/html.go": 885,
+    "internal/report/html.go": 884,
     "internal/report/html_template.go": 2260,
     "internal/report/json.go": 1375,
     "internal/report/text.go": 1228,
@@ -65,10 +65,10 @@
     "cmd/binlogviz:newFlashbackCommand": 157,
     "cmd/binlogviz:runAnalysisStreamingWithSnapshotDeps": 159,
     "internal/compare:RenderText": 151,
-    "internal/report:buildHTMLData": 374
+    "internal/report:buildHTMLData": 373
   },
   "statement_functions": {
-    "internal/report:buildHTMLData": 179
+    "internal/report:buildHTMLData": 178
   },
   "issue_refs": {
     "cmd/binlogviz/analyze.go": 3,

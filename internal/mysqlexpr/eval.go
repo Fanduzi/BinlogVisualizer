@@ -63,7 +63,7 @@ func parseExprTree(expr string) (*exprNode, bool) {
 }
 
 func parseExprText(expr string) (*exprNode, bool) {
-	sc := &Scan{S: expr}
+	sc := &Scan{S: expr, noIntroducer: true}
 	n, ok := pexAdd(sc)
 	if !ok {
 		return nil, false
@@ -193,7 +193,7 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 	}
 	if !quoted && strings.HasPrefix(name, "_") {
 		if v, ok, parsed, collated := sc.introducedLiteral(name); parsed {
-			if !ok {
+			if !ok || (sc.noIntroducer && !dumpSafeIntroducer(name)) {
 				return nil, false
 			}
 			return &exprNode{kind: exLit, lit: v, collate: collated}, true
@@ -226,6 +226,19 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 		return &exprNode{kind: exBool, truth: strings.EqualFold(name, "TRUE"), collate: collate}, true
 	}
 	return &exprNode{kind: exCol, name: strings.ToLower(name), collate: collate}, true
+}
+
+// dumpSafeIntroducer reports whether a _charset literal in dumped expression
+// text is byte-faithful: the UTF family and ASCII always survive SHOW CREATE
+// TABLE. latin1, binary, and any other charset can carry '?' for a lost byte,
+// so a generated expression declines them instead of claiming a value.
+func dumpSafeIntroducer(name string) bool {
+	switch strings.ToLower(strings.TrimPrefix(name, "_")) {
+	case "utf8", "utf8mb3", "utf8mb4", "ascii":
+		return true
+	default:
+		return false
+	}
 }
 
 // EvalGenExpr evaluates expr with logged column values.
