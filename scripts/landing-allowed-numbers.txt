@@ -1,0 +1,15 @@
+# Contexts in which a release-shaped version token may appear under
+# docs/landing/. Read by both version gates — the Go landing guard
+# (cmd/binlogviz/landing_page_test.go) and the release-prep check
+# (scripts/check-release-prep.sh) — so a page that passes CI also
+# passes the tag-push gate.
+#
+# One entry per line: the exact context text as it appears in the file,
+# a TAB, then the reason it is allowed. Blank lines and lines starting
+# with # are ignored. Every entry's context must still appear in each
+# landing file; a stale entry fails so the list stays honest.
+#
+# Only release-shaped tokens need an entry: vX.Y, vX.Y.Z or bare X.Y.Z
+# (a token followed by another .digit, as in 10.0.0.1, is not a
+# version). Bare two-part numbers — MySQL 8.0, 1.5 GB, initial-scale=1.0,
+# SVG decimals — are not release versions and need no entry.

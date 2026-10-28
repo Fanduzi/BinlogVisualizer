@@ -112,9 +112,23 @@ landing_case "a second landing file naming a release fails" "docs/landing/releas
 reset_complete; mkdir -p docs/landing/js; printf "const v = 'v1.0.0';\n" > docs/landing/js/r.js
 expect 1 "a nested landing file naming a release fails" "docs/landing/js/r.js names release version v1.0.0;"
 reset_complete; printf '<!-- v1.1.0\n v1.0.0 -->\n' >> docs/landing/index.html
-expect pass "a version only inside an HTML comment passes" "docs/landing/index.html names no release version"
+expect 1 "a version inside an HTML comment fails, like the Go guard" "names release version v1.0.0 v1.1.0;"
 reset_complete; rm -rf docs/landing
 expect 1 "a missing landing directory fails" "landing page missing"
+
+# The shared rule: only release-shaped tokens count, minus the allowlist the
+# Go landing guard also reads.
+reset_complete; printf '<p>reads MySQL 8.0, MariaDB 10.6 and 1.5 GB files</p>\n' >> docs/landing/index.html
+expect pass "two-part numbers are not release versions" "names no release version"
+reset_complete; printf '<p>host 10.0.0.1 port 3306</p>\n' >> docs/landing/index.html
+expect pass "an IPv4 address is not a release version" "names no release version"
+reset_complete; printf '<p>tested on MySQL 8.0.46</p>\n' >> docs/landing/index.html
+expect 1 "a bare 8.0.46 is release-shaped" "names release version 8.0.46;"
+reset_complete; printf 'MySQL 8.0.46\tthe supported server version\n' > scripts/landing-allowed-numbers.txt
+printf '<p>tested on MySQL 8.0.46</p>\n' >> docs/landing/index.html
+expect pass "an allowlisted number context passes" "names no release version"
+reset_complete; printf 'gone context 1.2.3\tno longer on the page\n' > scripts/landing-allowed-numbers.txt
+expect 1 "a stale allowlist context fails" "no longer contains allowed number context"
 
 # The landing page is not edited per release: unchanged since the previous tag passes.
 reset_complete

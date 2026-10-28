@@ -53,14 +53,6 @@ var (
 		"https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md",
 	}
 
-	// The only dotted numbers outside CSS. Each entry is the exact text it
-	// appears in and must still be on the page.
-	landingAllowedNumbers = []struct{ context, reason string }{
-		{"initial-scale=1.0", "viewport meta tag, not a release"},
-		{"4.7× baseline", "spike ratio in the sample text report (EN)"},
-		{"4.7× 基线", "spike ratio in the sample text report (zh)"},
-	}
-
 	// The only calendar dates: the sample incident (03-15), its baseline
 	// (03-08) and the trend day before (03-14) in the demo commands and output.
 	landingAllowedDates = []string{"2026-03-08", "2026-03-14", "2026-03-15"}
@@ -207,8 +199,10 @@ func landingVisible(raw string) (sectionText map[string]string, headings []strin
 
 // landingIssues returns every rule the landing files break, one line each,
 // prefixed with the rule: file, size, version, section, id, heading, link,
-// reveal, banned, hidden, hex, date or allowlist.
-func landingIssues(files map[string]string) []string {
+// reveal, banned, hidden, hex, date or allowlist. allowed lists the number
+// contexts a release-shaped token may appear in (the shared allowlist
+// scripts/check-release-prep.sh also reads).
+func landingIssues(files map[string]string, allowed []allowedNumber) []string {
 	var issues []string
 	add := func(rule, format string, args ...any) {
 		issues = append(issues, rule+": "+fmt.Sprintf(format, args...))
@@ -223,7 +217,7 @@ func landingIssues(files map[string]string) []string {
 			add("size", "%s/%s is %d bytes, over the %d-byte page bound; release history belongs in docs/releases and GitHub Releases", landingDir, name, len(body), landingPageMaxBytes)
 		}
 		if !slices.Contains(landingFiles, name) {
-			add("file", "%s/%s is not a listed landing file; the landing page is one self-contained index.html", landingDir, name)
+			add("file", "%s/%s is not a listed landing file; the landing page is one self-contained index.html (landingFiles)", landingDir, name)
 		}
 	}
 	sort.Strings(names)
@@ -241,11 +235,12 @@ func landingIssues(files map[string]string) []string {
 		body := files[name]
 		where := landingDir + "/" + name
 
-		// Versions: the folded text, comments included, minus the listed contexts.
+		// Versions: the folded text, comments included, minus the contexts
+		// in the shared allowlist scripts/check-release-prep.sh also reads.
 		text := versionScanText(body)
-		for _, a := range landingAllowedNumbers {
+		for _, a := range allowed {
 			if !strings.Contains(text, a.context) {
-				add("allowlist", "%s no longer contains allowed number context %q; drop it from landingAllowedNumbers", where, a.context)
+				add("allowlist", "%s no longer contains allowed number context %q; drop it from %s", where, a.context, landingAllowedNumbersFile)
 			}
 			text = strings.ReplaceAll(text, a.context, "")
 		}
@@ -262,12 +257,14 @@ func landingIssues(files map[string]string) []string {
 		report := func(view, tok string) {
 			if !seen[view+tok] {
 				seen[view+tok] = true
-				add("version", "%s (%s) names %q; the landing page is version-free so a release never edits it", where, view, tok)
+				add("version", "%s (%s) names %q; the landing page is version-free so a release never edits it — if %q is not a BinlogViz release, add its context to %s", where, view, tok, tok, landingAllowedNumbersFile)
 			}
 		}
 		for _, v := range []struct{ label, text string }{{"source", rest}, {"text", anyTag.ReplaceAllString(rest, "")}} {
 			for _, tok := range versionTokens(v.text) {
-				report(v.label, tok)
+				if isReleaseShaped(tok) {
+					report(v.label, tok)
+				}
 			}
 		}
 		for _, tok := range versionTokens(css.String()) {
@@ -295,12 +292,12 @@ func landingIssues(files map[string]string) []string {
 			}
 			date = strings.ReplaceAll(date, " ", "0")
 			if !slices.Contains(landingAllowedDates, date) {
-				add("date", "%s has a date (%q); dated entries are release history", where, strings.TrimSpace(m[0]))
+				add("date", "%s has a date (%q); dated entries are release history — a legitimate demo date goes in landingAllowedDates", where, strings.TrimSpace(m[0]))
 			}
 		}
 		for _, re := range wordDates {
 			if m := re.FindString(text); m != "" {
-				add("date", "%s has a date (%q); dated entries are release history", where, m)
+				add("date", "%s has a date (%q); dated entries are release history — a legitimate demo date goes in landingAllowedDates", where, m)
 			}
 		}
 
@@ -322,7 +319,7 @@ func landingIssues(files map[string]string) []string {
 			id := attrValue(m[1])
 			ids[id]++
 			if !slices.Contains(landingSections, id) && !slices.Contains(landingOtherIDs, id) {
-				add("id", "%s has unlisted id %q", where, id)
+				add("id", "%s has unlisted id %q; a legitimate id goes in landingSections or landingOtherIDs", where, id)
 			}
 		}
 		var heads []string
@@ -334,7 +331,7 @@ func landingIssues(files map[string]string) []string {
 			heads = append(heads, key)
 		}
 		if !slices.Equal(heads, landingHeadings) {
-			add("heading", "%s h2 headings are %q, want %q", where, heads, landingHeadings)
+			add("heading", "%s h2 headings are %q, want %q; a legitimate h2 goes in landingHeadings", where, heads, landingHeadings)
 		}
 
 		// What a reader sees as served: every listed heading and some text
@@ -351,25 +348,25 @@ func landingIssues(files map[string]string) []string {
 		}
 		for _, m := range metaTag.FindAllString(raw, -1) {
 			if m = strings.Join(strings.Fields(m), " "); !slices.Contains(landingMetas, m) {
-				add("meta", "%s has unlisted meta tag %s; meta content is not shown on the page", where, m)
+				add("meta", "%s has unlisted meta tag %s; meta content is not shown on the page — a legitimate meta goes in landingMetas", where, m)
 			}
 		}
 		for _, m := range linkAttr.FindAllStringSubmatch(raw, -1) {
 			link := attrValue(m[1])
 			if anchor, ok := strings.CutPrefix(link, "#"); ok {
 				if !slices.Contains(landingSections, anchor) && !slices.Contains(landingOtherIDs, anchor) {
-					add("link", "%s links to unknown anchor %q", where, link)
+					add("link", "%s links to unknown anchor %q; the target id belongs in landingSections or landingOtherIDs", where, link)
 				}
 			} else if !slices.Contains(landingExternalLinks, link) {
-				add("link", "%s links to unlisted %q", where, link)
+				add("link", "%s links to unlisted %q; a legitimate external link goes in landingExternalLinks", where, link)
 			}
 		}
 		if m := revealRule.FindString(raw); m != "" {
-			add("reveal", "%s contains %q: no scroll reveal or reveal threshold; content must be visible as served", where, m)
+			add("reveal", "%s contains %q: no scroll reveal or reveal threshold; content must be visible as served (revealRule)", where, m)
 		}
 		for _, b := range landingBanned {
 			if m := b.re.FindString(raw); m != "" {
-				add("banned", "%s contains %q: %s", where, m, b.why)
+				add("banned", "%s contains %q: %s; a legitimate use narrows the pattern in landingBanned", where, m, b.why)
 			}
 		}
 
@@ -392,14 +389,14 @@ func landingIssues(files map[string]string) []string {
 				for _, sel := range strings.Split(r[1], ",") {
 					sel = strings.Join(strings.Fields(sel), " ")
 					if _, ok := landingHiddenSelectors[sel]; !ok {
-						add("hidden", "%s hides %q (%s); content must be visible without JS", where, sel, strings.TrimSpace(r[2]))
+						add("hidden", "%s hides %q (%s); content must be visible without JS — a selector that unhides itself (tab, hover fade, media-query fallback) goes in landingHiddenSelectors", where, sel, strings.TrimSpace(r[2]))
 					}
 				}
 			}
 		}
 		for _, m := range styleAttr.FindAllStringSubmatch(raw, -1) {
 			if hidingDecl.MatchString(attrValue(m[1])) {
-				add("hidden", "%s hides an element with an inline style %s", where, m[1])
+				add("hidden", "%s hides an element with an inline style %s; move the hiding to a selector listed in landingHiddenSelectors", where, m[1])
 			}
 		}
 		for _, tag := range hiddenAttrTag.FindAllString(raw, -1) {
@@ -408,7 +405,7 @@ func landingIssues(files map[string]string) []string {
 				id = attrValue(a[1])
 			}
 			if !slices.Contains(landingHiddenAttrIDs, id) {
-				add("hidden", "%s hides %s with the hidden attribute", where, tag)
+				add("hidden", "%s hides %s with the hidden attribute; a control that unhides itself goes in landingHiddenAttrIDs", where, tag)
 			}
 		}
 	}
@@ -449,7 +446,7 @@ func readLandingDir(t *testing.T, root string) map[string]string {
 }
 
 func TestLandingPageHasNoReleaseHistory(t *testing.T) {
-	for _, issue := range landingIssues(readLandingFiles(t)) {
+	for _, issue := range landingIssues(readLandingFiles(t), loadAllowedNumbers(t)) {
 		t.Error(issue)
 	}
 }
@@ -460,7 +457,8 @@ func TestLandingPageHasNoReleaseHistory(t *testing.T) {
 func TestLandingGuardRejectsRegrowth(t *testing.T) {
 	files := readLandingFiles(t)
 	page := files["index.html"]
-	if issues := landingIssues(files); len(issues) > 0 {
+	allowed := loadAllowedNumbers(t)
+	if issues := landingIssues(files, allowed); len(issues) > 0 {
 		t.Fatalf("the real landing page must pass first: %q", issues)
 	}
 	replace := func(old, new string) func(string) string {
@@ -513,6 +511,7 @@ func TestLandingGuardRejectsRegrowth(t *testing.T) {
 		name, want string
 		edit       func(string) string
 		extra      map[string]string
+		allow      []allowedNumber
 	}{
 		// QA r1 bypasses: version strings.
 		{name: "entity v0&#46;35&#46;2", want: `names "v0.35.2"`, edit: footer("<p>v0&#46;35&#46;2</p>")},
@@ -628,7 +627,7 @@ func TestLandingGuardRejectsRegrowth(t *testing.T) {
 		{name: "day-first date", want: `has a date ("27 Oct 2026")`, edit: footer("<p>27 Oct 2026</p>")},
 		{name: "month and year", want: `has a date ("October 2026")`, edit: footer("<p>October 2026</p>")},
 		// Files, sizes and the allowlists themselves.
-		{name: "allowed number context removed", want: `allowed number context "initial-scale=1.0"`, edit: replace("initial-scale=1.0", "initial-scale=1")},
+		{name: "allowed number context removed", want: `allowed number context "initial-scale=1.0"`, edit: replace("initial-scale=1.0", "initial-scale=1"), allow: []allowedNumber{{"initial-scale=1.0", "viewport meta tag, not a release"}}},
 		{name: "second landing file", want: "docs/landing/releases.html is not a listed landing file", extra: map[string]string{"releases.html": "<p>history</p>"}},
 		{name: "index.html missing", want: "docs/landing/index.html is missing", edit: func(string) string { return "" }},
 		{name: "page one byte over its bound", want: "over the 106496-byte page bound", edit: padTo(landingPageMaxBytes + 1)},
@@ -647,7 +646,11 @@ func TestLandingGuardRejectsRegrowth(t *testing.T) {
 			for name, body := range tc.extra {
 				mutated[name] = body
 			}
-			issues := landingIssues(mutated)
+			al := allowed
+			if tc.allow != nil {
+				al = tc.allow
+			}
+			issues := landingIssues(mutated, al)
 			for _, issue := range issues {
 				if strings.Contains(issue, tc.want) {
 					return
@@ -666,6 +669,9 @@ func TestLandingGuardAllowsProductContent(t *testing.T) {
 		{"inline style decimals", `<div class="hero-badge">`, `<div class="hero-badge" style="line-height:1.5">`},
 		{"the sample incident date again", "</footer>", "<p>2026-03-15T10:05:00Z</p></footer>"},
 		{"the sample spike ratio again", "</footer>", "<p>spike · 4.7× baseline</p></footer>"},
+		{"a MySQL version in the copy", "</footer>", "<p>reads MySQL 8.0 and MariaDB 10.6 binlogs</p></footer>"},
+		{"a size in GB", "</footer>", "<p>a 1.5 GB binlog</p></footer>"},
+		{"an IPv4 address", "</footer>", "<p>host 10.0.0.1 port 3306</p></footer>"},
 		{"a version-free release link", "</footer>", `<a href="https://github.com/Fanduzi/BinlogVisualizer/releases">Releases</a></footer>`},
 		{"a page exactly at its bound", "", ""},
 	}
@@ -678,7 +684,7 @@ func TestLandingGuardAllowsProductContent(t *testing.T) {
 				}
 				p = strings.Replace(page, tc.old, tc.new, 1)
 			}
-			if issues := landingIssues(map[string]string{"index.html": p}); len(issues) > 0 {
+			if issues := landingIssues(map[string]string{"index.html": p}, nil); len(issues) > 0 {
 				t.Fatalf("want no failure, got %q", issues)
 			}
 		})
@@ -698,7 +704,7 @@ func TestLandingGuardReadsNestedFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	issues := landingIssues(readLandingDir(t, dir))
+	issues := landingIssues(readLandingDir(t, dir), nil)
 	want := "file: docs/landing/assets/releases.js is not a listed landing file"
 	if !slices.ContainsFunc(issues, func(s string) bool { return strings.HasPrefix(s, want) }) {
 		t.Fatalf("want %q, got %q", want, issues)
@@ -713,7 +719,7 @@ func TestLandingGuardTotalBoundary(t *testing.T) {
 		extra    int
 		wantSize bool
 	}{{landingMaxBytes - len(page), false}, {landingMaxBytes - len(page) + 1, true}} {
-		issues := landingIssues(map[string]string{"index.html": page, "extra.txt": strings.Repeat(" ", tc.extra)})
+		issues := landingIssues(map[string]string{"index.html": page, "extra.txt": strings.Repeat(" ", tc.extra)}, nil)
 		gotSize := false
 		for _, issue := range issues {
 			gotSize = gotSize || strings.Contains(issue, "bytes in total")

@@ -15,8 +15,11 @@ Checks that the release surfaces are ready for vX.Y.Z:
   2. CHANGELOG.md has a non-empty section for the version (outside code
      fences and HTML comments)
   3. README.md and README_ZH.md install pins name the version (and no other)
-  4. no file under docs/landing/ names a release version (HTML comments aside),
-     so a release never edits the landing page
+  4. no file under docs/landing/ names a release version, so a release never
+     edits the landing page. Only release-shaped tokens count (vX.Y, vX.Y.Z
+     or bare X.Y.Z — not 1.5 GB, MySQL 8.0 or 10.0.0.1), minus the contexts
+     in scripts/landing-allowed-numbers.txt, which the Go landing guard
+     (cmd/binlogviz) reads too so both gates agree
 
 With a git ref (release.yml passes the tag), files are read from that commit.
 Without one, the working tree is read, so the check can run before committing.
@@ -56,6 +59,15 @@ PIN_REQUIRED=0
 PIN_HINT="none"
 EXTRA_PINS=()
 LANDING_DIR="docs/landing"
+# Contexts in which a release-shaped token may appear on the landing page;
+# the Go landing guard reads the same file, so CI and this gate agree.
+ALLOWED_NUMBERS="scripts/landing-allowed-numbers.txt"
+allowed_contexts=()
+if [[ -f "$ALLOWED_NUMBERS" ]]; then
+  while IFS=$'\t' read -r ctx _why; do
+    [[ -n "$ctx" && "$ctx" != \#* ]] && allowed_contexts+=("$ctx")
+  done < "$ALLOWED_NUMBERS"
+fi
 # ---------------------------------------------------------------------------
 
 failures=0
@@ -175,18 +187,21 @@ for spec in ${EXTRA_PINS[@]+"${EXTRA_PINS[@]}"}; do
 done
 
 # 4. The landing page is version-free: it installs the latest release and
-# links to GitHub Releases, so no landing file may name a release.
+# links to GitHub Releases, so no landing file may name a release. The rule
+# is shared with cmd/binlogviz's landing guard: only release-shaped tokens
+# count, comments included, minus the shared allowlist's contexts.
 list_landing() {
   if [[ -n "$REF" ]]; then git ls-tree -r --name-only "$REF" -- "$LANDING_DIR"; else find "$LANDING_DIR" -type f 2>/dev/null | sort; fi
 }
-# Strip HTML comments, decode numeric and &period; character references, then
-# print each version-like token: v1.2, v1.2.3 or 1.2.3, also inside names such
-# as binlogviz_v1.2.3_linux. A bare two-part number is a CSS value, not a release.
+# Decode numeric and &period; character references, then print each
+# release-shaped token: v1.2, v1.2.3 or bare 1.2.3, also inside names such
+# as binlogviz_v1.2.3_linux. A bare two-part number is a CSS value or a
+# "MySQL 8.0", not a release, and a token followed by another .digit is a
+# longer run (10.0.0.1 is an address).
 landing_versions() {
   perl -0777 -ne '
-    s/<!--.*?-->//gs;
     s/&#[xX]([0-9a-fA-F]+);?/chr(hex $1)/ge; s/&#([0-9]+);?/chr($1)/ge; s/&period;/./gi;
-    while (/(?:^|[^0-9.])([vV][ \t]*[0-9]+[ \t]*\.[ \t]*[0-9]+(?:[ \t]*\.[ \t]*[0-9]+)?|[0-9]+[ \t]*\.[ \t]*[0-9]+[ \t]*\.[ \t]*[0-9]+)/g) {
+    while (/(?:^|[^0-9.])([vV][ \t]*[0-9]+[ \t]*\.[ \t]*[0-9]+(?:[ \t]*\.[ \t]*[0-9]+)?|[0-9]+[ \t]*\.[ \t]*[0-9]+[ \t]*\.[ \t]*[0-9]+)(?!\.\d)/g) {
       (my $t = $1) =~ s/[ \t]+//g; print "$t\n";
     }'
 }
@@ -195,10 +210,18 @@ if [[ -z "$landing_files" ]]; then
   fail "landing page missing: no files under $LANDING_DIR/"
 else
   while IFS= read -r path; do
-    found="$(read_file "$path" | landing_versions | sort -u | tr '\n' ' ')"
+    body="$(read_file "$path")"
+    for ctx in ${allowed_contexts[@]+"${allowed_contexts[@]}"}; do
+      if ! grep -Fq -- "$ctx" <<<"$body"; then
+        fail "$path no longer contains allowed number context '$ctx'; drop it from $ALLOWED_NUMBERS"
+      else
+        body="$(CTX="$ctx" perl -pe 's/\Q$ENV{CTX}\E//g' <<<"$body")"
+      fi
+    done
+    found="$(landing_versions <<<"$body" | sort -u | tr '\n' ' ')"
     found="${found% }"
     if [[ -n "$found" ]]; then
-      fail "$path names release version $found; the landing page is version-free, so remove it (release history goes to docs/releases and GitHub Releases)"
+      fail "$path names release version $found; the landing page is version-free, so remove it (release history goes to docs/releases and GitHub Releases); if it is not a BinlogViz release, add its context to $ALLOWED_NUMBERS"
     else
       pass "$path names no release version"
     fi
