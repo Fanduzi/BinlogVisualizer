@@ -33,9 +33,7 @@ func newFlashbackCommand() *cobra.Command {
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			warn()
-			hasArgs := len(args) > 0
-			hasFromDir := opts.fromDir != ""
-			hasPrefix := opts.prefix != ""
+			hasArgs, hasFromDir, hasPrefix := len(args) > 0, opts.fromDir != "", opts.prefix != ""
 			if hasArgs && (hasFromDir || hasPrefix) {
 				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.combineArgsWithDir"))
 			}

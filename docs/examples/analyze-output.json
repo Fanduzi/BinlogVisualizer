@@ -152,7 +152,7 @@
         "operations": {
           "UPDATE": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-2",
@@ -180,7 +180,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-3",
@@ -208,7 +208,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-5",
@@ -236,7 +236,7 @@
         "operations": {
           "DELETE": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 cmd/binlogviz/testdata/minimal.binlog"
       }
     ],
     "longest_transactions": [
@@ -266,7 +266,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-3",
@@ -294,7 +294,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-4",
@@ -322,7 +322,7 @@
         "operations": {
           "UPDATE": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-5",
@@ -350,7 +350,7 @@
         "operations": {
           "DELETE": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 cmd/binlogviz/testdata/minimal.binlog"
       }
     ],
     "widest_transactions": [
@@ -380,7 +380,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-3",
@@ -408,7 +408,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-4",
@@ -436,7 +436,7 @@
         "operations": {
           "UPDATE": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-5",
@@ -464,7 +464,7 @@
         "operations": {
           "DELETE": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 cmd/binlogviz/testdata/minimal.binlog"
       }
     ],
     "largest_byte_transactions": [
@@ -494,7 +494,7 @@
         "operations": {
           "UPDATE": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-2",
@@ -522,7 +522,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 cmd/binlogviz/testdata/minimal.binlog"
       },
       {
         "txn_key": "txn-3",
@@ -550,7 +550,7 @@
         "operations": {
           "INSERT": 1
         },
-        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 cmd/binlogviz/testdata/minimal.binlog"
       }
     ],
     "duration_buckets": [
@@ -654,7 +654,7 @@
       "operations": {
         "UPDATE": 1
       },
-      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 cmd/binlogviz/testdata/minimal.binlog"
     },
     {
       "txn_key": "txn-2",
@@ -682,7 +682,7 @@
       "operations": {
         "INSERT": 1
       },
-      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 cmd/binlogviz/testdata/minimal.binlog"
     },
     {
       "txn_key": "txn-3",
@@ -710,7 +710,7 @@
       "operations": {
         "INSERT": 1
       },
-      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 cmd/binlogviz/testdata/minimal.binlog"
     },
     {
       "txn_key": "txn-5",
@@ -738,7 +738,7 @@
       "operations": {
         "DELETE": 1
       },
-      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 cmd/binlogviz/testdata/minimal.binlog"
     }
   ],
   "transactions_listed": 4,
