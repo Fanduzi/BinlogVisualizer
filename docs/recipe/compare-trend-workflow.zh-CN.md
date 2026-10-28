@@ -1,6 +1,6 @@
 # 快照、对比、趋势与 workflow
 
-本页收录原先写在项目 README 里的快照、compare、trend、workflow 细节和 DBA 工作流示例。参数和 plan schema 见 [CLI 参考](../reference/cli.zh-CN.md)。
+本页收录原先写在项目 README 里的快照、compare、trend、workflow 细节和 DBA 工作流示例。参数和 plan schema 见 [CLI 参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md)。
 
 ## 快照与对比
 

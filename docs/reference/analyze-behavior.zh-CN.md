@@ -1,6 +1,6 @@
 # Analyze 行为细节
 
-本页收录原先写在项目 README 里的 `analyze` 细节规则。README 只保留命令；精确规则写在这里。参数见 [CLI 参考](cli.zh-CN.md)，报告字段见 [输出格式参考](output-format.zh-CN.md)。
+本页收录原先写在项目 README 里的 `analyze` 细节规则。README 只保留命令；精确规则写在这里。参数见 [CLI 参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md)，报告字段见 [输出格式参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.zh-CN.md)。
 
 ## 样例 binlog 与发布包内容
 

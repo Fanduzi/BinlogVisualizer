@@ -1,6 +1,6 @@
 # Analyze Behavior Details
 
-This page holds the detailed `analyze` behavior that used to live in the project README. The README keeps the commands; this page keeps the exact rules. For flags see the [CLI Reference](cli.md); for report fields see the [Output Format Reference](output-format.md).
+This page holds the detailed `analyze` behavior that used to live in the project README. The README keeps the commands; this page keeps the exact rules. For flags see the [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md); for report fields see the [Output Format Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.md).
 
 ## Sample binlog and release archive contents
 

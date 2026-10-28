@@ -78,7 +78,7 @@ The default and recommended analyze path is `--detail-store none`, which produce
 
 When `--detail-store duckdb` is used, `binlogviz analyze` creates one command-owned temporary DuckDB store for the run, passes it into the analyzer, and cleans it up when the command exits.
 
-For lifecycle details, operational implications, and what users may notice during large analyses, see [DuckDB Temp Store](./duckdb-temp-store.md).
+For lifecycle details, operational implications, and what users may notice during large analyses, see [DuckDB Temp Store](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.md).
 
 ## Modules
 
