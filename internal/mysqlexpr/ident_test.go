@@ -57,3 +57,22 @@ func TestAccountAfterKeepsQuotes(t *testing.T) {
 		}
 	}
 }
+
+// A double-quoted string with ANSI_QUOTES off is a string literal the
+// lexer skips; a mutant that stopped skipping it would return it as the
+// name.
+func TestDoubleQuotedStringIsSkippedNotAName(t *testing.T) {
+	p := NewReader(`ALTER USER "x" IDENTIFIED BY 'p'`, Dialect{})
+	word, ok := p.nextWord()
+	if !ok || word.Text != "ALTER" {
+		t.Fatalf("first word %q ok=%v", word.Text, ok)
+	}
+	word, ok = p.nextWord()
+	if !ok || word.Text != "USER" {
+		t.Fatalf("second word %q ok=%v", word.Text, ok)
+	}
+	word, ok = p.nextWord()
+	if !ok || word.Text != "IDENTIFIED" {
+		t.Fatalf(`"x" was taken as a name or the skip stopped: %q ok=%v`, word.Text, ok)
+	}
+}
