@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,12 @@ type trendOptions struct {
 	topTables        int
 	order            string
 }
+
+// trendFormats is the authoritative --format list: runTrend validates
+// against it and renderTrend must render each entry (its switch has no
+// default arm, so a listed format with no case errors instead of silently
+// rendering text).
+var trendFormats = []string{"text", "json", "html"}
 
 func newTrendCommand() *cobra.Command {
 	opts := &trendOptions{}
@@ -63,10 +70,23 @@ func newTrendCommand() *cobra.Command {
 	return cmd
 }
 
+// renderTrend renders result in format. The switch has no default arm:
+// a format trendFormats accepts with no case returns an unhandled-format
+// error instead of silently rendering text.
+func renderTrend(result trendpkg.Result, format string, loc *time.Location) (string, error) {
+	switch format {
+	case "text":
+		return trendpkg.RenderText(result)
+	case "json":
+		return trendpkg.RenderJSON(result)
+	case "html":
+		return trendpkg.RenderHTMLIn(result, loc)
+	}
+	return "", fmt.Errorf("unhandled trend format %q", format)
+}
+
 func runTrend(opts *trendOptions, args []string, out, errOut io.Writer, loc *time.Location) error {
-	switch opts.format {
-	case "text", "json", "html":
-	default:
+	if !slices.Contains(trendFormats, opts.format) {
 		return clierr.Errorf(clierr.KindUsage, "unsupported trend format: %s", opts.format)
 	}
 
@@ -102,15 +122,7 @@ func runTrend(opts *trendOptions, args []string, out, errOut io.Writer, loc *tim
 		fmt.Fprintf(errOut, "trend: reordered by window start_time: %s\n", strings.Join(names, ", "))
 	}
 
-	var output string
-	switch opts.format {
-	case "json":
-		output, err = trendpkg.RenderJSON(result)
-	case "html":
-		output, err = trendpkg.RenderHTMLIn(result, loc)
-	default:
-		output, err = trendpkg.RenderText(result)
-	}
+	output, err := renderTrend(result, opts.format, loc)
 	if err != nil {
 		return clierr.Errorf(clierr.KindError, "render trend output (%s): %w", opts.format, err)
 	}
