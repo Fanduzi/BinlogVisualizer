@@ -1,224 +1,842 @@
 {
+  "report_version": 4,
+  "scope": {
+    "include_schema": [],
+    "exclude_schema": [],
+    "include_table": [],
+    "exclude_table": []
+  },
+  "provenance": {
+    "server_ids": [
+      1
+    ],
+    "server_versions": [
+      "5.7.44-log"
+    ],
+    "server_flavors": [
+      "mysql"
+    ],
+    "mixed_producers": false
+  },
+  "sql_context": {
+    "mode": "summary",
+    "available": false
+  },
   "summary": {
-    "total_transactions": 156,
-    "total_rows": 45823,
-    "total_events": 892,
-    "start_time": "2026-03-15T10:00:00Z",
-    "end_time": "2026-03-15T10:14:59Z",
-    "duration": "14m59s"
+    "total_transactions": 4,
+    "partial_transactions": 0,
+    "unknown_transactions": 0,
+    "total_rows": 4,
+    "total_events": 22,
+    "start_time": "2026-03-15T14:10:26Z",
+    "end_time": "2026-03-15T14:10:26Z",
+    "duration": "0s"
+  },
+  "timeseries": {
+    "tps_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 0.06666666666666667
+      }
+    ],
+    "rows_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 4
+      }
+    ],
+    "events_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 5
+      }
+    ],
+    "insert_event_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 2
+      }
+    ],
+    "update_event_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 1
+      }
+    ],
+    "delete_event_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 1
+      }
+    ],
+    "ddl_event_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 1
+      }
+    ],
+    "binlog_bytes_series": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "value": 342
+      }
+    ],
+    "txn_size_series_summary": {
+      "buckets": [
+        {
+          "label": "1-9",
+          "txn_count": 4,
+          "rows": 4,
+          "binlog_bytes": 1092
+        }
+      ]
+    }
+  },
+  "diagnostics": {
+    "file_coverage": {
+      "selected": [
+        {
+          "binlog_path": "cmd/binlogviz/testdata/minimal.binlog",
+          "reason": "selected",
+          "size": 1500
+        }
+      ],
+      "skipped": []
+    },
+    "counted_event_bytes": 342,
+    "ddl_events": [
+      {
+        "binlog_path": "cmd/binlogviz/testdata/minimal.binlog",
+        "timestamp": "2026-03-15T14:10:26Z",
+        "schema": "testdb",
+        "table": "users",
+        "operation": "CREATE TABLE",
+        "object": "table",
+        "statement": "CREATE TABLE users ( id INT PRIMARY KEY, name VARCHAR(100))",
+        "position_start": 219,
+        "position_end": 361,
+        "binlog_bytes": 142,
+        "gtid_note": "GTID unavailable",
+        "txn_start_file": "cmd/binlogviz/testdata/minimal.binlog",
+        "txn_start_pos": 154,
+        "server_id": 1,
+        "thread_id": 2,
+        "mysqlbinlog_stop": "mysqlbinlog --stop-position=154 cmd/binlogviz/testdata/minimal.binlog",
+        "stop_note": "stop before this DDL (replays earlier events, excludes this DDL)"
+      }
+    ],
+    "largest_transactions": [
+      {
+        "txn_key": "txn-4",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "8",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 289,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 897,
+        "pos_end": 1186,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "UPDATE": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-2",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "6",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 269,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 361,
+        "pos_end": 630,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-3",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "7",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 267,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 630,
+        "pos_end": 897,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-5",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "9",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 267,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 1186,
+        "pos_end": 1453,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "DELETE": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      }
+    ],
+    "longest_transactions": [
+      {
+        "txn_key": "txn-2",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "6",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 269,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 361,
+        "pos_end": 630,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-3",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "7",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 267,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 630,
+        "pos_end": 897,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-4",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "8",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 289,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 897,
+        "pos_end": 1186,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "UPDATE": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-5",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "9",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 267,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 1186,
+        "pos_end": 1453,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "DELETE": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      }
+    ],
+    "widest_transactions": [
+      {
+        "txn_key": "txn-2",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "6",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 269,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 361,
+        "pos_end": 630,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-3",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "7",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 267,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 630,
+        "pos_end": 897,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-4",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "8",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 289,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 897,
+        "pos_end": 1186,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "UPDATE": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-5",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "9",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 267,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 1186,
+        "pos_end": 1453,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "DELETE": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      }
+    ],
+    "largest_byte_transactions": [
+      {
+        "txn_key": "txn-4",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "8",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 289,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 897,
+        "pos_end": 1186,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "UPDATE": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-2",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "6",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 269,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 361,
+        "pos_end": 630,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      },
+      {
+        "txn_key": "txn-3",
+        "server_id": 1,
+        "server_version": "5.7.44-log",
+        "server_flavor": "mysql",
+        "thread_id": 3,
+        "xid": "7",
+        "start_time": "2026-03-15T14:10:26Z",
+        "end_time": "2026-03-15T14:10:26Z",
+        "duration": "0s",
+        "total_rows": 1,
+        "event_count": 1,
+        "binlog_bytes": 267,
+        "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+        "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+        "pos_start": 630,
+        "pos_end": 897,
+        "completeness": "complete",
+        "replay_available": true,
+        "replay_scope": "full_transaction",
+        "tables": {
+          "testdb.users": 1
+        },
+        "operations": {
+          "INSERT": 1
+        },
+        "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+      }
+    ],
+    "duration_buckets": [
+      {
+        "label": "\u003c1s",
+        "txn_count": 4
+      }
+    ],
+    "file_segments": [
+      {
+        "start_time": "2026-03-15T14:10:00Z",
+        "end_time": "2026-03-15T14:10:00Z",
+        "binlog_bytes": 342,
+        "rows": 4,
+        "events": 5
+      }
+    ],
+    "hot_intervals": [
+      {
+        "minute": "2026-03-15T14:10:00Z",
+        "total_rows": 4,
+        "txn_count": 4,
+        "event_count": 5,
+        "binlog_bytes": 342,
+        "ddl_count": 1,
+        "table_rows": {
+          "testdb.users": 4
+        }
+      }
+    ],
+    "findings": [],
+    "input_format_guess": "ROW",
+    "ignored_query_dml_events": 0,
+    "unmapped_events": 2
   },
   "tables": [
     {
-      "schema": "shop",
-      "table": "orders",
-      "total_rows": 28450,
-      "insert_rows": 18520,
-      "update_rows": 7230,
-      "delete_rows": 2700,
-      "txn_count": 89
-    },
-    {
-      "schema": "shop",
-      "table": "order_items",
-      "total_rows": 12400,
-      "insert_rows": 9800,
-      "update_rows": 2100,
-      "delete_rows": 500,
-      "txn_count": 89
-    },
-    {
-      "schema": "shop",
+      "schema": "testdb",
       "table": "users",
-      "total_rows": 2800,
-      "insert_rows": 1200,
-      "update_rows": 1400,
-      "delete_rows": 200,
-      "txn_count": 45
-    },
+      "total_rows": 4,
+      "insert_rows": 2,
+      "update_rows": 1,
+      "update_events": 1,
+      "delete_rows": 1,
+      "txn_count": 4,
+      "key_status": "unknown"
+    }
+  ],
+  "threads": [
     {
-      "schema": "shop",
-      "table": "sessions",
-      "total_rows": 1500,
-      "insert_rows": 800,
-      "update_rows": 600,
-      "delete_rows": 100,
-      "txn_count": 120
-    },
+      "thread_id": 3,
+      "server_id": 1,
+      "schema": "testdb",
+      "rows": 4,
+      "events": 4,
+      "transactions": 4,
+      "binlog_bytes": 1092,
+      "share": 1,
+      "share_of_rows": 1
+    }
+  ],
+  "threads_listed": 1,
+  "threads_omitted": 0,
+  "threads_ranked_by": "rows",
+  "hot_rows": [],
+  "hot_rows_listed": 0,
+  "hot_rows_omitted": 0,
+  "hot_row_track_limit": 8192,
+  "hot_row_unavailable": [
     {
-      "schema": "inventory",
-      "table": "stock",
-      "total_rows": 420,
-      "insert_rows": 200,
-      "update_rows": 180,
-      "delete_rows": 40,
-      "txn_count": 15
+      "schema": "testdb",
+      "table": "users",
+      "reason": "metadata",
+      "message": "hot-row tracking unavailable for testdb.users: primary key is not in the binlog (binlog_row_metadata is not FULL)"
     }
   ],
   "transactions": [
     {
-      "txn_key": "txn-10f3a2",
-      "start_time": "2026-03-15T10:03:12Z",
-      "end_time": "2026-03-15T10:03:14Z",
-      "duration": "2.3s",
-      "total_rows": 5200,
-      "event_count": 12,
+      "txn_key": "txn-4",
+      "server_id": 1,
+      "server_version": "5.7.44-log",
+      "server_flavor": "mysql",
+      "thread_id": 3,
+      "xid": "8",
+      "start_time": "2026-03-15T14:10:26Z",
+      "end_time": "2026-03-15T14:10:26Z",
+      "duration": "0s",
+      "total_rows": 1,
+      "event_count": 1,
+      "binlog_bytes": 289,
+      "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+      "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+      "pos_start": 897,
+      "pos_end": 1186,
+      "completeness": "complete",
+      "replay_available": true,
+      "replay_scope": "full_transaction",
       "tables": {
-        "shop.orders": 3200,
-        "shop.order_items": 2000
+        "testdb.users": 1
       },
       "operations": {
-        "INSERT": 4500,
-        "UPDATE": 700
+        "UPDATE": 1
+      },
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=897 --stop-position=1186 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+    },
+    {
+      "txn_key": "txn-2",
+      "server_id": 1,
+      "server_version": "5.7.44-log",
+      "server_flavor": "mysql",
+      "thread_id": 3,
+      "xid": "6",
+      "start_time": "2026-03-15T14:10:26Z",
+      "end_time": "2026-03-15T14:10:26Z",
+      "duration": "0s",
+      "total_rows": 1,
+      "event_count": 1,
+      "binlog_bytes": 269,
+      "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+      "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+      "pos_start": 361,
+      "pos_end": 630,
+      "completeness": "complete",
+      "replay_available": true,
+      "replay_scope": "full_transaction",
+      "tables": {
+        "testdb.users": 1
+      },
+      "operations": {
+        "INSERT": 1
+      },
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=361 --stop-position=630 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+    },
+    {
+      "txn_key": "txn-3",
+      "server_id": 1,
+      "server_version": "5.7.44-log",
+      "server_flavor": "mysql",
+      "thread_id": 3,
+      "xid": "7",
+      "start_time": "2026-03-15T14:10:26Z",
+      "end_time": "2026-03-15T14:10:26Z",
+      "duration": "0s",
+      "total_rows": 1,
+      "event_count": 1,
+      "binlog_bytes": 267,
+      "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+      "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+      "pos_start": 630,
+      "pos_end": 897,
+      "completeness": "complete",
+      "replay_available": true,
+      "replay_scope": "full_transaction",
+      "tables": {
+        "testdb.users": 1
+      },
+      "operations": {
+        "INSERT": 1
+      },
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=630 --stop-position=897 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+    },
+    {
+      "txn_key": "txn-5",
+      "server_id": 1,
+      "server_version": "5.7.44-log",
+      "server_flavor": "mysql",
+      "thread_id": 3,
+      "xid": "9",
+      "start_time": "2026-03-15T14:10:26Z",
+      "end_time": "2026-03-15T14:10:26Z",
+      "duration": "0s",
+      "total_rows": 1,
+      "event_count": 1,
+      "binlog_bytes": 267,
+      "binlog_file_start": "cmd/binlogviz/testdata/minimal.binlog",
+      "binlog_file_end": "cmd/binlogviz/testdata/minimal.binlog",
+      "pos_start": 1186,
+      "pos_end": 1453,
+      "completeness": "complete",
+      "replay_available": true,
+      "replay_scope": "full_transaction",
+      "tables": {
+        "testdb.users": 1
+      },
+      "operations": {
+        "DELETE": 1
+      },
+      "mysqlbinlog_cmd": "mysqlbinlog --base64-output=DECODE-ROWS -v --start-position=1186 --stop-position=1453 /Users/fan/GolangProjects/BinlogVisualizer/cmd/binlogviz/testdata/minimal.binlog"
+    }
+  ],
+  "transactions_listed": 4,
+  "transactions_omitted": 0,
+  "patterns": [
+    {
+      "pattern_key": "tables=testdb.users|ops=INSERT|shape=tiny",
+      "label": "testdb.users / INSERT / tiny batch",
+      "total_rows": 2,
+      "txn_count": 2,
+      "event_count": 2,
+      "share_of_rows": 0.5,
+      "share_of_txns": 0.5,
+      "avg_rows_per_txn": 1,
+      "tables": {
+        "testdb.users": 2
+      },
+      "operations": {
+        "INSERT": 2
       }
     },
     {
-      "txn_key": "txn-10f1b8",
-      "start_time": "2026-03-15T10:02:45Z",
-      "end_time": "2026-03-15T10:02:47Z",
-      "duration": "1.8s",
-      "total_rows": 3800,
-      "event_count": 8,
+      "pattern_key": "tables=testdb.users|ops=DELETE|shape=tiny",
+      "label": "testdb.users / DELETE / tiny batch",
+      "total_rows": 1,
+      "txn_count": 1,
+      "event_count": 1,
+      "share_of_rows": 0.25,
+      "share_of_txns": 0.25,
+      "avg_rows_per_txn": 1,
       "tables": {
-        "shop.orders": 2100,
-        "shop.order_items": 1700
+        "testdb.users": 1
       },
       "operations": {
-        "INSERT": 3200,
-        "UPDATE": 600
+        "DELETE": 1
       }
     },
     {
-      "txn_key": "txn-10e4c1",
-      "start_time": "2026-03-15T10:01:20Z",
-      "end_time": "2026-03-15T10:01:23Z",
-      "duration": "3.1s",
-      "total_rows": 2400,
-      "event_count": 6,
+      "pattern_key": "tables=testdb.users|ops=UPDATE|shape=tiny",
+      "label": "testdb.users / UPDATE / tiny batch",
+      "total_rows": 1,
+      "txn_count": 1,
+      "event_count": 1,
+      "share_of_rows": 0.25,
+      "share_of_txns": 0.25,
+      "avg_rows_per_txn": 1,
       "tables": {
-        "shop.users": 1200,
-        "shop.sessions": 800,
-        "shop.orders": 400
+        "testdb.users": 1
       },
       "operations": {
-        "INSERT": 1800,
-        "UPDATE": 600
+        "UPDATE": 1
       }
     }
   ],
   "minutes": [
     {
-      "minute": "2026-03-15T10:00:00Z",
-      "total_rows": 2850,
-      "txn_count": 12,
+      "minute": "2026-03-15T14:10:00Z",
+      "total_rows": 4,
+      "txn_count": 4,
       "table_rows": {
-        "shop.orders": 1800,
-        "shop.order_items": 850,
-        "shop.users": 200
-      }
-    },
-    {
-      "minute": "2026-03-15T10:01:00Z",
-      "total_rows": 3420,
-      "txn_count": 14,
-      "table_rows": {
-        "shop.orders": 2100,
-        "shop.order_items": 920,
-        "shop.users": 400
-      }
-    },
-    {
-      "minute": "2026-03-15T10:02:00Z",
-      "total_rows": 2980,
-      "txn_count": 11,
-      "table_rows": {
-        "shop.orders": 1900,
-        "shop.order_items": 780,
-        "shop.users": 300
-      }
-    },
-    {
-      "minute": "2026-03-15T10:03:00Z",
-      "total_rows": 8450,
-      "txn_count": 8,
-      "table_rows": {
-        "shop.orders": 5200,
-        "shop.order_items": 2800,
-        "shop.users": 450
-      }
-    },
-    {
-      "minute": "2026-03-15T10:04:00Z",
-      "total_rows": 3120,
-      "txn_count": 10,
-      "table_rows": {
-        "shop.orders": 1950,
-        "shop.order_items": 970,
-        "shop.users": 200
+        "testdb.users": 4
       }
     }
   ],
-  "alerts": [
+  "alerts": [],
+  "warnings": 0,
+  "pattern_drilldowns": [
     {
-      "type": "large_transaction",
-      "severity": "warning",
-      "message": "Transaction txn-10f3a2 exceeds row threshold",
-      "txn_key": "txn-10f3a2",
-      "details": {
-        "rows": 5200,
-        "duration_ms": 2300,
-        "event_count": 12,
-        "rows_threshold": 1000,
-        "tables": [
-          "shop.order_items",
-          "shop.orders"
-        ]
-      }
-    },
-    {
-      "type": "large_transaction",
-      "severity": "warning",
-      "message": "Transaction txn-10f1b8 exceeds row threshold",
-      "txn_key": "txn-10f1b8",
-      "details": {
-        "rows": 3800,
-        "duration_ms": 1800,
-        "event_count": 8,
-        "rows_threshold": 1000,
-        "tables": [
-          "shop.order_items",
-          "shop.orders"
-        ]
-      }
-    },
-    {
-      "type": "large_transaction",
-      "severity": "warning",
-      "message": "Transaction txn-10e4c1 exceeds row threshold",
-      "txn_key": "txn-10e4c1",
-      "details": {
-        "rows": 2400,
-        "duration_ms": 3100,
-        "event_count": 6,
-        "rows_threshold": 1000,
-        "tables": [
-          "shop.orders",
-          "shop.sessions",
-          "shop.users"
-        ]
-      }
-    },
-    {
-      "type": "spike",
-      "severity": "warning",
-      "message": "Write spike detected",
-      "minute": "2026-03-15T10:03:00Z",
-      "details": {
-        "rows": 8450,
-        "baseline": 2940,
-        "factor": 2.87,
-        "minute": "2026-03-15T10:03:00Z"
-      }
+      "pattern_key": "tables=testdb.users|ops=INSERT|shape=tiny",
+      "label": "testdb.users / INSERT / tiny batch",
+      "why_selected": "high signal: dominates workload (50% rows, 50% txns)",
+      "share_of_rows": 0.5,
+      "share_of_txns": 0.5,
+      "avg_rows_per_txn": 1,
+      "signal_flags": {
+        "dominance": true,
+        "anomaly": false
+      },
+      "busiest_minutes": [
+        {
+          "minute": "2026-03-15T14:10:00Z",
+          "total_rows": 4,
+          "txn_count": 4
+        }
+      ],
+      "representative_transactions": [
+        {
+          "txn_key": "txn-2",
+          "total_rows": 1,
+          "duration": "0s"
+        },
+        {
+          "txn_key": "txn-3",
+          "total_rows": 1,
+          "duration": "0s"
+        }
+      ]
     }
   ],
-  "warnings": 0
+  "primary_key_note": "primary key presence unknown (binlog_row_metadata is not FULL)"
 }

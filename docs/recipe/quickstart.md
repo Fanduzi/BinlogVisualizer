@@ -83,7 +83,7 @@ This keeps the machine-readable report on `stdout` and leaves progress and runti
 
 ## 6. Compare Against Sample Outputs
 
-If you want to see what a successful run looks like before wiring it into your own workflow, inspect the shipped samples:
+If you want to see what a successful run looks like before wiring it into your own workflow, inspect the samples in the repository:
 
 - text report: `docs/examples/analyze-output.txt`
 - JSON report: `docs/examples/analyze-output.json`
