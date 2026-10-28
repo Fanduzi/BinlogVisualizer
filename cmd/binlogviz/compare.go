@@ -87,7 +87,7 @@ func renderCompare(result comparepkg.CompareResult, format string, loc *time.Loc
 	case "html":
 		return comparepkg.RenderHTMLIn(result, loc)
 	}
-	return "", fmt.Errorf("unhandled compare format %q", format)
+	return "", clierr.Errorf(clierr.KindError, "unhandled compare format %q", format)
 }
 
 func runCompare(opts *compareOptions, args []string, out io.Writer, loc *time.Location) error {

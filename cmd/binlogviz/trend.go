@@ -82,7 +82,7 @@ func renderTrend(result trendpkg.Result, format string, loc *time.Location) (str
 	case "html":
 		return trendpkg.RenderHTMLIn(result, loc)
 	}
-	return "", fmt.Errorf("unhandled trend format %q", format)
+	return "", clierr.Errorf(clierr.KindError, "unhandled trend format %q", format)
 }
 
 func runTrend(opts *trendOptions, args []string, out, errOut io.Writer, loc *time.Location) error {
