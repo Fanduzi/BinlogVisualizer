@@ -119,6 +119,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Verify checkout matches the tagged commit
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "${GITHUB_SHA}" ]; then
+            echo "checkout HEAD $head != GITHUB_SHA ${GITHUB_SHA}; the archive would claim a commit its source is not" >&2
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "checkout is dirty; version modified would be true while the archive claims ${GITHUB_SHA}" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
       - name: Build archive
         if: matrix.build_mode == 'native'
         shell: bash

@@ -52,6 +52,75 @@ func TestReleaseWaitsForFlashbackE2E(t *testing.T) {
 	}
 }
 
+// The F3 lock above only means anything if the e2e job itself cannot be
+// silenced: an if: on flashback-e2e skips it on tag pushes, continue-on-error
+// turns its failure green, and if: always() on the downstream jobs lets them
+// run over a failed ci gate.
+func TestFlashbackE2EJobCannotBeSilenced(t *testing.T) {
+	root := filepath.Join("..", "..")
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join(root, ".github", "workflows", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	ci, release := read("ci.yml"), read("release.yml")
+
+	e2e := ciJob(t, ci, "flashback-e2e")
+	if regexp.MustCompile(`(?m)^    if:`).MatchString(e2e) {
+		t.Fatalf("flashback-e2e has a job-level if: it can be skipped on a tag push while ci still counts green:\n%s", e2e)
+	}
+	if strings.Contains(e2e, "continue-on-error") {
+		t.Fatal("flashback-e2e must fail the workflow, not continue-on-error")
+	}
+	for _, name := range []string{"build", "release"} {
+		if strings.Contains(ciJob(t, release, name), "if: always()") {
+			t.Fatalf("release.yml's %s job has if: always(), so it runs even when the ci gate failed", name)
+		}
+	}
+}
+
+// The vet-race and guard-SQL wiring is what makes the e2e gate the real one:
+// vet and -race run on every PR, and the e2e job must keep both the failed-
+// apply test (a broken apply still signals) and the on-server guard tests
+// (the emitted SQL's message cut actually works on MySQL).
+func TestVetRaceAndGuardWiringPresent(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci := string(b)
+	vet := ciJob(t, ci, "vet-race")
+	for _, want := range []string{"go vet ./...", "go test -race"} {
+		if !strings.Contains(vet, want) {
+			t.Fatalf("ci.yml's vet-race job lost %q:\n%s", want, vet)
+		}
+	}
+	e2e := ciJob(t, ci, "flashback-e2e")
+	for _, want := range []string{"TestFlashbackFailedApplyDropsAndSignals", "Guard SQL", "internal/guard", "OnServer"} {
+		if !strings.Contains(e2e, want) {
+			t.Fatalf("ci.yml's flashback-e2e job lost %q:\n%s", want, e2e)
+		}
+	}
+}
+
+// release_smoke checks the archive's reported commit but not `modified`, so
+// the build job itself must prove the checkout is the tagged commit and is
+// clean before either build mode runs.
+func TestBuildVerifiesCheckoutMatchesTag(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	build := ciJob(t, string(b), "build")
+	for _, want := range []string{"git rev-parse HEAD", "git status --porcelain"} {
+		if !strings.Contains(build, want) {
+			t.Fatalf("release.yml's build job lost the checkout verification %q:\n%s", want, build)
+		}
+	}
+}
+
 // The MySQL 8.0 and 8.4 differential job runs on every pull request. It is
 // not continue-on-error, and a skip still fails the step (ADR 0020).
 func TestDiffTestJobIsRequired(t *testing.T) {
