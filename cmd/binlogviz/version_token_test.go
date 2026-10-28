@@ -1,4 +1,4 @@
-// input: text from a repository doc page (HTML, Markdown or inline JS).
+// input: text from a repository doc page (HTML, Markdown or inline JS), plus the shared allowed-number list.
 // output: the version-like tokens in that text after folding the ways a page can spell a dotted number.
 // pos: shared helper for the release-doc drift guards (landing page now; the README guard redesign in #447 should reuse it).
 // note: if this file changes, update this header and module README.md.
@@ -6,9 +6,12 @@ package binlogviz
 
 import (
 	"html"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"testing"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -46,18 +49,49 @@ func versionScanText(s string) string {
 }
 
 // versionTokens returns every version-like token in s, with inner spaces
-// removed: "v 0.35.2" yields "v0.35.2". Callers pass versionScanText output.
+// removed: "v 0.35.2" yields "v0.35.2". A token followed by another .digit
+// is part of a longer run (10.0.0.1 is an address, not a release). Callers
+// pass versionScanText output.
 func versionTokens(s string) []string {
 	var out []string
-	for _, m := range versionToken.FindAllStringSubmatch(s, -1) {
-		out = append(out, tokenSpace.ReplaceAllString(m[1], ""))
+	for _, m := range versionToken.FindAllStringSubmatchIndex(s, -1) {
+		if m[1]+1 < len(s) && s[m[1]] == '.' && s[m[1]+1] >= '0' && s[m[1]+1] <= '9' {
+			continue
+		}
+		out = append(out, tokenSpace.ReplaceAllString(s[m[2]:m[3]], ""))
 	}
 	return out
 }
 
 // isReleaseShaped reports whether a token can only be a release version:
-// it carries a v or has three parts. A bare two-part number ("0.45") can be
-// a CSS value, so callers decide where those are allowed.
+// it carries a v or has three parts. A bare two-part number ("0.45",
+// "MySQL 8.0", "1.5 GB") can be anything else, so it never counts.
 func isReleaseShaped(tok string) bool {
 	return strings.HasPrefix(strings.ToLower(tok), "v") || strings.Count(tok, ".") == 2
+}
+
+// landingAllowedNumbersFile is the one allowlist both landing version gates
+// read — this test and scripts/check-release-prep.sh — so CI and the
+// tag-push gate agree. One entry per line: the exact context text, a TAB,
+// then the reason; # comments and blank lines are ignored.
+const landingAllowedNumbersFile = "scripts/landing-allowed-numbers.txt"
+
+type allowedNumber struct{ context, reason string }
+
+// loadAllowedNumbers reads the shared allowlist the release-prep check also
+// applies: contexts in which a release-shaped token may appear.
+func loadAllowedNumbers(t *testing.T) []allowedNumber {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(landingAllowedNumbersFile)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []allowedNumber
+	for _, line := range strings.Split(string(b), "\n") {
+		ctx, why, ok := strings.Cut(line, "\t")
+		if ok && ctx != "" && !strings.HasPrefix(ctx, "#") {
+			out = append(out, allowedNumber{ctx, strings.TrimSpace(why)})
+		}
+	}
+	return out
 }
