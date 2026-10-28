@@ -19,6 +19,12 @@ release-check-test:
 
 # Coding-standards gate (docs/development/coding-standards.md). Kept as its
 # own block so it does not overlap the release targets above.
+.PHONY: test
+# -count=1 because TestRepoWithinBaseline reads the worktree and the git index,
+# neither of which invalidates go test's result cache (#454 QA N1).
+test:
+	go test -count=1 ./...
+
 .PHONY: lint codehealth codehealth-baseline codehealth-compare codehealth-regen
 LINT_BASE ?= $(shell git merge-base origin/main HEAD)
 

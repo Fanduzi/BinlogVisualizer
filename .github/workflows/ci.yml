@@ -23,7 +23,7 @@ jobs:
           version: latest
           install-only: true
       - name: Run tests
-        run: go test ./...
+        run: go test -count=1 ./...
       - name: Validate GoReleaser config
         run: goreleaser check
       - name: Build local archive
@@ -83,7 +83,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Run tests
-        run: go test ./...
+        run: go test -count=1 ./...
 
   flashback-e2e:
     name: flashback e2e

@@ -167,13 +167,23 @@ for title in 1.1.0.1 1.10.0 1x1x0; do
 done
 for pin in 'releases/download/v1.1.0.1/x.tar.gz=1.1.0.1' 'releases/download/v1x1x0/x.tar.gz=1x1x0' \
   'releases/download/v1.10.0/x.tar.gz=1.10.0' 'releases/download/v1.1.0-rc1/x.tar.gz=1.1.0-rc1' \
-  'sh -s -- --version 1.0.0=1.0.0' 'sh -s -- --version "v1.0.0"=1.0.0' 'sh -s -- --version=v1.0.0=1.0.0' \
+  'sh -s -- --version v1.0.0=1.0.0' 'sh -s -- --version "v1.0.0"=1.0.0' 'sh -s -- --version=v1.0.0=1.0.0' \
+  'sh -s -- --version v1.0.0.=1.0.0' \
   'raw.githubusercontent.com/Fanduzi/BinlogVisualizer/v1.0.0/install.sh=1.0.0'; do
   reset_complete; printf '%s\n' "${pin%=*}" >> README.md
   expect 1 "README pin ${pin%=*} is not v1.1.0" "README.md pins ${pin##*=}"
 done
 reset_complete; printf 'sh -s -- --version "v1.1.0"\n' >> README.md
 expect pass "a quoted --version pin naming this release passes" "README.md install pin is 1.1.0"
+# --version without the v is another tool's flag, not our pin.
+reset_complete; printf 'mysqlbinlog --version 8.0.36\n' >> README.md
+expect pass "an unversioned --version is not a pin" "pins no release"
+# A clone that holds only the release tag still prints the hint, not a
+# silent pipefail death (the grep -Fxv has nothing to match).
+git clone -q "file://$repo" "$work/tagonly" 2>/dev/null
+(cd "$work/tagonly" && { git tag | grep -Fxv v1.1.0 | xargs git tag -d >/dev/null 2>&1 || true; } && \
+  expect 1 "a clone with only the release tag fails with a message" "no release tag older than v1.1.0" v1.1.0 HEAD \
+  && exit "$failures") || failures=$((failures + 1))
 
 # Tags: the previous release is found by version order, a clone with no older
 # tag or no tags at all fails with a message, and rc tags are rejected.
