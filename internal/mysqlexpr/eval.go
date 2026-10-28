@@ -280,7 +280,12 @@ func (n *exprNode) evalGen(env map[string]GenVal) (GenVal, bool) {
 		if next.null {
 			return genNullVal(), true
 		}
-		return GenVal{kind: genNum, n: next.n}, true
+		if n.mulOp == "/" {
+			// MySQL's / produces DECIMAL at scale div_precision_increment
+			// (default 4): 7/7 prints 1.0000 in a string context.
+			return GenVal{kind: genNum, n: next.n, base: "decimal", scale: mysqlDefaultDivPrecIncrement, hasPrec: true, unsigned: next.unsigned}, true
+		}
+		return GenVal{kind: genNum, n: next.n, unsigned: next.unsigned}, true
 	case exUnary:
 		v, ok := n.x.evalGen(env)
 		if !ok || v.kind == genNull || n.op == '+' {
