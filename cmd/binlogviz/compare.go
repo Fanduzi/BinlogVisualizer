@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,12 @@ type compareOptions struct {
 	baselineSnapshot string
 	snapshotDir      string
 }
+
+// compareFormats is the authoritative --format list: runCompare validates
+// against it and renderCompare must render each entry (its switch has no
+// default arm, so a listed format with no case errors instead of silently
+// rendering text).
+var compareFormats = []string{"text", "json", "html"}
 
 func newCompareCommand() *cobra.Command {
 	opts := &compareOptions{}
@@ -68,10 +75,23 @@ func newCompareCommand() *cobra.Command {
 	return cmd
 }
 
+// renderCompare renders result in format. The switch has no default arm:
+// a format compareFormats accepts with no case returns an unhandled-format
+// error instead of silently rendering text.
+func renderCompare(result comparepkg.CompareResult, format string, loc *time.Location) (string, error) {
+	switch format {
+	case "text":
+		return comparepkg.RenderText(result)
+	case "json":
+		return comparepkg.RenderJSON(result)
+	case "html":
+		return comparepkg.RenderHTMLIn(result, loc)
+	}
+	return "", fmt.Errorf("unhandled compare format %q", format)
+}
+
 func runCompare(opts *compareOptions, args []string, out io.Writer, loc *time.Location) error {
-	switch opts.format {
-	case "text", "json", "html":
-	default:
+	if !slices.Contains(compareFormats, opts.format) {
 		return clierr.Errorf(clierr.KindUsage, "unsupported compare format: %s", opts.format)
 	}
 
@@ -82,15 +102,7 @@ func runCompare(opts *compareOptions, args []string, out io.Writer, loc *time.Lo
 
 	result := comparepkg.BuildCompareResult(current, baseline)
 
-	var output string
-	switch opts.format {
-	case "json":
-		output, err = comparepkg.RenderJSON(result)
-	case "html":
-		output, err = comparepkg.RenderHTMLIn(result, loc)
-	default:
-		output, err = comparepkg.RenderText(result)
-	}
+	output, err := renderCompare(result, opts.format, loc)
 	if err != nil {
 		return clierr.Errorf(clierr.KindError, "render compare output (%s): %w", opts.format, err)
 	}
