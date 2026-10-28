@@ -4,17 +4,19 @@ This document defines how BinlogViz resolves binlog files when you use discovery
 
 ## Discovery Mode Contract
 
-Use discovery mode with both flags together:
+Use discovery mode with `--from-dir` plus exactly one selector:
 
 ```bash
 binlogviz analyze --from-dir DIR --prefix PREFIX
+binlogviz analyze --from-dir DIR --index-file binlog.index
 ```
 
 Requirements:
 
 - `--from-dir` supplies the directory to scan.
 - `--prefix` supplies the filename prefix that matching files must start with.
-- Both flags are required together.
+- `--index-file` supplies a server binlog index manifest inside `--from-dir`. Entries resolve relative to the directory (absolute paths are used as-is), read in listed order — a rotated-away or missing entry fails the command rather than silently dropping part of the history. It cannot be combined with `--prefix`.
+- Exactly one of `--prefix` or `--index-file` is required with `--from-dir`.
 - Discovery mode cannot be combined with positional binlog file arguments.
 
 If you already know the exact files you want, use positional file mode instead.

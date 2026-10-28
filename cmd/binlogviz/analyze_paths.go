@@ -48,15 +48,23 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 	hasArgs := len(args) > 0
 	hasFromDir := opts.fromDir != ""
 	hasPrefix := opts.prefix != ""
+	hasIndex := opts.indexFile != ""
 
-	if hasArgs && (hasFromDir || hasPrefix) {
+	if hasArgs && (hasFromDir || hasPrefix || hasIndex) {
 		return nil, false, model.FileCoverage{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.combineArgsWithDir"))
 	}
-	if hasFromDir != hasPrefix {
-		return nil, false, model.FileCoverage{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirAndPrefixRequired"))
+	if (hasFromDir || hasPrefix || hasIndex) && (!hasFromDir || hasPrefix == hasIndex) {
+		return nil, false, model.FileCoverage{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirPrefixOrIndex"))
 	}
 	if hasArgs {
 		return args, false, fileCoverageForPaths(args), nil
+	}
+	if hasIndex {
+		paths, err := readIndexFilePaths(opts.fromDir, opts.indexFile)
+		if err != nil {
+			return nil, false, model.FileCoverage{}, err
+		}
+		return paths, true, fileCoverageForPaths(paths), nil
 	}
 	if hasFromDir {
 		startTime, endTime, err := parseTimeRange(opts.startTime, opts.endTime, opts.display)
@@ -70,6 +78,41 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 		return plan.Paths, true, plan.FileCoverage, nil
 	}
 	return nil, false, model.FileCoverage{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
+}
+
+// readIndexFilePaths reads a server's binlog.index manifest: one entry per line
+// in write order. Relative entries resolve against --from-dir. Every listed
+// file must exist — a rotated-away entry fails instead of silently dropping
+// part of the history.
+func readIndexFilePaths(dir, indexName string) ([]string, error) {
+	indexPath := indexName
+	if !filepath.IsAbs(indexPath) {
+		indexPath = filepath.Join(dir, indexName)
+	}
+	data, err := os.ReadFile(indexPath)
+	if err != nil {
+		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.readIndexFile", map[string]any{"Path": indexPath, "Error": err.Error()}))
+	}
+	var paths []string
+	for _, line := range strings.Split(string(data), "\n") {
+		entry := strings.TrimSpace(line)
+		if entry == "" {
+			continue
+		}
+		path := entry
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(dir, entry)
+		}
+		info, statErr := os.Stat(path)
+		if statErr != nil || info.IsDir() {
+			return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileEntry", map[string]any{"Index": indexPath, "Entry": entry}))
+		}
+		paths = append(paths, path)
+	}
+	if len(paths) == 0 {
+		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileEmpty", map[string]any{"Index": indexPath}))
+	}
+	return paths, nil
 }
 
 func fileCoverageForPaths(paths []string) model.FileCoverage {

@@ -56,7 +56,7 @@ These flags are available on the root command and apply before subcommand execut
 `analyze` accepts exactly one input mode per invocation:
 
 - **Positional file mode**: pass one or more local binlog file paths as positional arguments. `-` reads one binary binlog from stdin.
-- **Discovery mode**: pass `--from-dir` and `--prefix` together so BinlogViz resolves matching files from a directory.
+- **Discovery mode**: pass `--from-dir` and `--prefix` together so BinlogViz resolves matching files from a directory, or `--from-dir` and `--index-file` to follow a server `binlog.index` manifest (the index order is the read order and every listed file must exist).
 
 Default text and JSON reports name, on each transaction, `server_id`, `thread_id`, GTID, and `xid` or XA xid when the binlog events contain them. `user@host` appears only when the binlog stored an invoker. A field the events do not have is left out; the report does not fill in `0` or an empty string. Markdown and HTML follow the same rule.
 
@@ -85,7 +85,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ### Positional vs discovery behavior
 
 - Positional file arguments and discovery flags are mutually exclusive.
-- `--from-dir` and `--prefix` must be provided together.
+- `--from-dir` needs exactly one of `--prefix` or `--index-file`.
 - If neither positional files nor a complete discovery pair is provided, the command fails.
 
 For the exact discovery matching, ordering, resolved-file reporting, and invalid-combination contract, see [Input Discovery Reference](input-discovery.md).
@@ -102,6 +102,7 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--exclude-gtids` | none | Exclude matching complete groups after include; exclusion wins. |
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
 | `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. Optional `.` before the numeric suffix; a complete filename selects that file; for one file, pass the path. |
+| `--index-file` | none | Binlog index manifest inside `--from-dir` (for example `binlog.index`). Entries resolve relative to the directory, read in listed order; every listed file must exist. Mutually exclusive with `--prefix`. |
 | `--format` | `text` | Report output format: `text`, `json`, `markdown` (alias `md`), or `html`. |
 | `--output`, `-o` | auto | HTML output file path. Only supported with `--format html`. Default: derived cwd file on a TTY; stdout when stdout is redirected. Use `-` to force stdout. |
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
@@ -425,9 +426,9 @@ Validation happens before analysis starts:
 
 The command rejects these invalid combinations:
 
-- positional files plus `--from-dir` or `--prefix`
-- `--from-dir` without `--prefix`
-- `--prefix` without `--from-dir`
+- positional files plus `--from-dir`, `--prefix`, or `--index-file`
+- `--from-dir` without exactly one of `--prefix` or `--index-file`
+- `--prefix` or `--index-file` without `--from-dir`
 - no positional files and no complete discovery pair
 - `--snapshot-name` without `--format json`
 

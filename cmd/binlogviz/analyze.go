@@ -60,6 +60,7 @@ type analyzeOptions struct {
 	excludeGTIDs           []string
 	fromDir                string
 	prefix                 string
+	indexFile              string
 	format                 string
 	output                 string
 	snapshotName           string
@@ -116,14 +117,12 @@ func newAnalyzeCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
-			hasArgs := len(args) > 0
-			hasFromDir := opts.fromDir != ""
-			hasPrefix := opts.prefix != ""
-			if hasArgs && (hasFromDir || hasPrefix) {
+			hasArgs, hasFromDir, hasPrefix, hasIndex := len(args) > 0, opts.fromDir != "", opts.prefix != "", opts.indexFile != ""
+			if hasArgs && (hasFromDir || hasPrefix || hasIndex) {
 				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.combineArgsWithDir"))
 			}
-			if hasFromDir != hasPrefix {
-				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirAndPrefixRequired"))
+			if (hasFromDir || hasPrefix || hasIndex) && (!hasFromDir || hasPrefix == hasIndex) {
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirPrefixOrIndex"))
 			}
 			if hasArgs || hasFromDir {
 				return nil
@@ -233,6 +232,7 @@ func newAnalyzeCommand() *cobra.Command {
 	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, "Exclude complete transaction groups matching this GTID set")
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
+	cmd.Flags().StringVar(&opts.indexFile, "index-file", "", i18n.T("cmd.analyze.flag.indexFile"))
 	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.analyze.flag.format"))
 	cmd.Flags().StringVarP(&opts.output, "output", "o", "", i18n.T("cmd.analyze.flag.output"))
 	cmd.Flags().StringVar(&opts.snapshotName, "snapshot-name", "", "Save JSON analyze output as a named snapshot")
