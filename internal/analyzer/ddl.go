@@ -1,6 +1,6 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
 // input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, a digit-leading name is a name, versioned comments and ANSI_QUOTES follow the event). CREATE/ALTER/DROP USER keep the account spelling. A multi-table DROP TABLE is one event per table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
+// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, a digit-leading name is a name, versioned comments and ANSI_QUOTES follow the event). CREATE/ALTER/DROP USER keep the account spelling. A multi-account DROP USER is one event per account; RENAME USER is one event per "old TO new" pair. A multi-table DROP TABLE is one event per table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
 // pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
 // note: if this file changes, update this header and README.md.
 package analyzer
@@ -140,22 +140,35 @@ func (a *DDLAggregator) ConsumeEvent(ev model.NormalizedEvent) {
 	}
 }
 
-// ddlEventsFor is one timeline row per DROP TABLE target, and one row for
-// every other statement. Statement order is kept.
+// ddlEventsFor is one timeline row per DROP TABLE target, one row per DROP
+// USER account or RENAME USER pair, and one row for every other statement.
+// Statement order is kept.
 func ddlEventsFor(ev model.NormalizedEvent) []model.DDLEvent {
 	one, ok := DDLEventFromNormalizedEvent(ev)
 	if !ok {
 		return nil
 	}
 	ids := parsedDropTables(ev)
-	if len(ids) <= 1 {
+	if len(ids) > 1 {
+		out := make([]model.DDLEvent, len(ids))
+		for i, id := range ids {
+			out[i] = one
+			out[i].Schema = id.schema
+			out[i].Table = id.table
+		}
+		return out
+	}
+	if one.Object != "user" {
 		return []model.DDLEvent{one}
 	}
-	out := make([]model.DDLEvent, len(ids))
-	for i, id := range ids {
+	targets := parsedUserTargets(ev)
+	if len(targets) == 0 {
+		return []model.DDLEvent{one}
+	}
+	out := make([]model.DDLEvent, len(targets))
+	for i, target := range targets {
 		out[i] = one
-		out[i].Schema = id.schema
-		out[i].Table = id.table
+		out[i].Table = target
 	}
 	return out
 }
@@ -175,6 +188,26 @@ func parsedDropTables(ev model.NormalizedEvent) []tableIdentity {
 		out = append(out, newTableIdentity(name.Schema, name.Table))
 	}
 	return out
+}
+
+// parsedUserTargets expands a USER statement's account list the way
+// parsedDropTables expands a DROP TABLE list: DROP USER names each dropped
+// account, RENAME USER names each "old TO new" pair. A CREATE or ALTER USER
+// list stays one row because auth options sit between the accounts. Nil when
+// the statement is not a readable DROP or RENAME USER.
+func parsedUserTargets(ev model.NormalizedEvent) []string {
+	d := mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode)
+	if accounts, isDrop, ok := mysqlexpr.ParseDropUser(ev.QuerySQL, d); isDrop {
+		if !ok {
+			return nil
+		}
+		return accounts
+	}
+	targets, isRename, ok := mysqlexpr.ParseRenameUser(ev.QuerySQL, d)
+	if !isRename || !ok {
+		return nil
+	}
+	return targets
 }
 
 // ConsumeStatement appends a parsed DDL statement directly.
@@ -221,7 +254,8 @@ func DDLEventFromNormalizedEvent(ev model.NormalizedEvent) (model.DDLEvent, bool
 	}
 
 	schema := stmt.Schema
-	if schema == "" {
+	// An account is global, not a session-schema object.
+	if schema == "" && stmt.Object != "user" {
 		schema = ev.Schema
 	}
 	table := stmt.Table
@@ -286,6 +320,9 @@ func classifyDDL(tokens []string) (operation string, object string, identifierIn
 	case "RENAME":
 		if second == "TABLE" {
 			return "RENAME TABLE", "table", 2, true
+		}
+		if second == "USER" {
+			return "RENAME USER", "user", 2, true
 		}
 		return "", "", 0, false
 	case "CREATE", "ALTER", "DROP":
