@@ -1,7 +1,7 @@
 // Package analyzer verifies after-window Unclassified QUERY at the window-plus-Analyzer seam.
 // input: Query-normalized events with an in-window business transaction, then a trailing GTID-started Unclassified QUERY or ADMIN clipped by --end / --stop-position.
 // output: in-window business transaction retained when Unclassified QUERY never intersected the window, including when another GTID follows that QUERY; UnclassifiedQueryError when that group intersects; after-window ADMIN omitted from transactions and DDL.
-// pos: #79 window relation for ADR-0003 Unclassified QUERY; does not admit ADMIN verbs.
+// pos: regression (79) window relation for ADR-0003 Unclassified QUERY; does not admit ADMIN verbs.
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 

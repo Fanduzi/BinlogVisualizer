@@ -356,3 +356,19 @@ func TestUsage(t *testing.T) {
 	f.mustFail(`unknown command "frob"`, "frob")
 	f.mustFail("no such file", "check")
 }
+
+// A committed submodule is a gitlink: a directory in the file list whose
+// contents nothing here covers, so check flags it like a nested module.
+func TestCheckFlagsASubmodule(t *testing.T) {
+	f := newFixture(t, map[string]string{"a.go": "package p\n"})
+	f.mustRun("init")
+	f.commit()
+	if err := os.MkdirAll(filepath.Join(f.root, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("git", "-C", f.root, "update-index", "--add", "--cacheinfo", "160000,4b825dc642cb6eb9a060e54bf8d69288fbee4904,sub").CombinedOutput()
+	if err != nil {
+		t.Fatalf("gitlink: %v\n%s", err, out)
+	}
+	f.mustFail("nested repository sub", "check")
+}

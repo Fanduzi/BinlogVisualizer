@@ -1,7 +1,7 @@
 // Package binlogviz verifies Unclassified QUERY and Ignored QUERY command I/O.
 // input: injected mock parser events through runAnalysisWithParser, including --end / --stop-position clips around a trailing GTID-started Unclassified QUERY.
 // output: exit 1 Unclassified QUERY (empty stdout, one Error: line, statement prefix, English and zh-CN), including anonymous empty-identity groups on the next GTID and at EOF, exit 0 in-window report when that QUERY is after the window, exit 2 ADMIN-only no-data, Ignored QUERY JSON count distinct from ignored_query_dml_events, and ADMIN-then-business exit 0.
-// pos: #74/#78/#79 operator I/O seam for ADR-0001/0003 QUERY classes and after-window Unclassified QUERY.
+// pos: regressions (74/78/79) operator I/O seam for ADR-0001/0003 QUERY classes and after-window Unclassified QUERY.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
 

@@ -173,6 +173,7 @@ func TestIssueRefStyles(t *testing.T) {
 		{"trx #2 hit #333", 1},
 		{"fixes #333", 1},
 		{"cannot change the sealed segment, #415)", 1},
+		{"worker: #415", 1},
 		{"one per task; #12", 1},
 		{"after the phase. #12", 1},
 		{"(the run) #12", 1},
@@ -200,6 +201,11 @@ func TestIssueRefFalsePositives(t *testing.T) {
 		"process 12 items", "bug 12", "see 12", "ADR 0011 PR-3", "returns (12)", "##12",
 		"trx #2 commits first", "Transaction #2", "thread #3 holds the lock", "worker #2", "Session #1", "Query #3",
 		"text color: #333", "background #333", "border: #333", "(fill #000)",
+		// Plural and domain words are no more references than their
+		// singular forms; a "#N" field continues a list it follows.
+		"events #5", "Columns #2", "rows #3-#5", "binlog #3", "relay log #2",
+		"GTID #5", "GTID set #2", "xid #12", "group #2", "commit #2", "key #2",
+		"retry #2", "Example #3", "mutant #12", "row image #2",
 	} {
 		if got := refsIn(comment); len(got) != 0 {
 			t.Errorf("%q: counted %q", comment, got)
@@ -362,7 +368,9 @@ func TestRefsOnlyFilesWithRefs(t *testing.T) {
 // In a git work tree only what git would commit is measured: tracked files
 // and untracked ones that are not ignored. A worktree under an ignored
 // .worktrees/, an ignored .claude/, an untracked nested repository and a
-// tracked file deleted from disk do not count.
+// tracked file deleted from disk do not count. A committed submodule is a
+// gitlink in the index: nothing covers its files, so it is a problem like
+// a nested go.mod.
 func TestMeasureWorkTreeSkipsIgnoredAndNestedRepos(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git command")
@@ -411,8 +419,8 @@ func TestMeasureWorkTreeSkipsIgnoredAndNestedRepos(t *testing.T) {
 	if want := map[string]int{"a.go": 801, "new.go": 801}; !reflect.DeepEqual(m.Files, want) {
 		t.Fatalf("files %v, want %v", m.Files, want)
 	}
-	if len(m.Problems) != 0 {
-		t.Fatalf("problems %q", m.Problems)
+	if len(m.Problems) != 1 || !strings.Contains(m.Problems[0], "nested repository sub.go") {
+		t.Fatalf("problems %q, want one nested repository", m.Problems)
 	}
 	if _, err := Measure(tree{".git": "not a repository\n", "a.go": "package p\n"}.write(t), nil); err == nil {
 		t.Fatal("a broken .git measured without an error")

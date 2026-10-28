@@ -57,7 +57,7 @@ func TestDiffLint(t *testing.T) {
 			issue("errcheck", "a.go", 4, "Error return value of `Run` is not checked"),
 			issue("gosec", "c.go", 2, "G101: top at line 2"), issue("gosec", "b.go", 9, "G101: top at line 9"),
 			issue("gosec", "a.go", 11, "G101: top at line 11"), issue("gosec", "a.go", 10, "G101: top at line 10"),
-		}, []string{"a.go:11: gosec", "b.go:9: gosec", "c.go:2: gosec"}},
+		}, []string{"a.go:10: gosec", "b.go:9: gosec", "c.go:2: gosec"}},
 	}
 	for _, c := range cases {
 		pr := measure(t, c.pr, nil)
@@ -162,6 +162,44 @@ func TestDiffLintQuotedIdentifiers(t *testing.T) {
 			expect(t, got[i:i+1], c.want[i])
 		}
 	}
+}
+
+// A pull-request finding that matches a base finding's line and text is
+// that finding. When a new finding sorts before it in the same function
+// under the same normalized key, the new one is the one reported, at its
+// own line — the base finding is not reported in its place.
+func TestDiffLintReportsTheNewSibling(t *testing.T) {
+	m := measure(t, tree{"a.go": lintBase}, nil)
+	baseIssues := []LintIssue{
+		issue("errcheck", "a.go", 7, "Error return value of `os.Remove` is not checked"),
+	}
+	got := DiffLint(m, baseIssues, m, []LintIssue{
+		issue("errcheck", "a.go", 4, "Error return value of `os.Remove` is not checked"),
+		issue("errcheck", "a.go", 7, "Error return value of `os.Remove` is not checked"),
+	})
+	if len(got) != 1 {
+		t.Fatalf("got %q, want the new finding at line 4", got)
+	}
+	expect(t, got, "a.go:4: errcheck: Error return value of `os.Remove` is not checked")
+}
+
+// The identifier a message ends with an assignment to names a local, so
+// renaming it keeps the finding. A message ending in another word keeps
+// the word: it can be the only part that tells two findings apart.
+func TestDiffLintAssignedIdentifier(t *testing.T) {
+	m := measure(t, tree{"a.go": lintBase}, nil)
+	baseIssues := []LintIssue{
+		issue("ineffassign", "a.go", 5, "ineffectual assignment to mark"),
+		issue("govet", "a.go", 6, "suspicious something is wrong"),
+	}
+	got := DiffLint(m, baseIssues, m, []LintIssue{
+		issue("ineffassign", "a.go", 5, "ineffectual assignment to pos"),
+		issue("govet", "a.go", 6, "suspicious something is broken"),
+	})
+	if len(got) != 1 {
+		t.Fatalf("got %q, want only the govet finding", got)
+	}
+	expect(t, got, "a.go:6: govet: suspicious something is broken")
 }
 
 // The linter is part of a finding's identity: another linter's finding

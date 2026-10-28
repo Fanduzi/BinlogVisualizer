@@ -33,8 +33,8 @@ var issueRef = regexp.MustCompile(`(?i:\b(?:issues|pull)/\d+\b)` +
 var hashRef = regexp.MustCompile(`(?:^|[^\w&#])(#\d+)\b`)
 
 // notRefWords are words that, right before "#N", make it a position, an
-// instance or a colour, not an issue: "Column #3", "trx #2", "thread #3",
-// "color: #333".
+// instance or a colour, not an issue: "Column #N", "trx #N", "thread #N",
+// "color: #NNN".
 var notRefWords = map[string]bool{
 	"column": true, "col": true, "field": true, "row": true, "item": true, "arg": true, "argument": true,
 	"param": true, "parameter": true, "step": true, "line": true, "byte": true, "bit": true, "index": true,
@@ -46,7 +46,19 @@ var notRefWords = map[string]bool{
 	"node": true, "replica": true, "shard": true, "partition": true, "table": true, "file": true,
 	"segment": true, "chunk": true, "batch": true, "packet": true, "record": true, "block": true, "job": true,
 	"task": true, "run": true, "pass": true, "phase": true, "stage": true, "iteration": true, "round": true,
+	// Binlog, domain and enumeration words.
+	"binlog": true, "log": true, "gtid": true, "xid": true, "group": true, "commit": true,
+	"key": true, "image": true, "retry": true, "example": true, "set": true, "mutant": true,
 	// Colours.
+	"color": true, "colour": true, "background": true, "bg": true, "fg": true, "foreground": true,
+	"border": true, "fill": true, "stroke": true,
+}
+
+// colorWords are the notRef words that still qualify after a colon:
+// "color: #NNN" is a colour value. Any other colon-ended word is a label,
+// so "worker:" followed by a hash and digits names an issue like "issue:"
+// does.
+var colorWords = map[string]bool{
 	"color": true, "colour": true, "background": true, "bg": true, "fg": true, "foreground": true,
 	"border": true, "fill": true, "stroke": true,
 }
@@ -60,7 +72,20 @@ func refsIn(line string) []string {
 	spans := issueRef.FindAllStringIndex(line, -1)
 	for _, loc := range hashRef.FindAllStringSubmatchIndex(line, -1) {
 		start, end := loc[2], loc[3]
-		if !overlaps(spans, start, end) && !notRefWords[strings.ToLower(lastWord(line[:start]))] {
+		if overlaps(spans, start, end) {
+			continue
+		}
+		word := lastWord(line[:start])
+		label := strings.HasSuffix(word, ":")
+		lookup := strings.ToLower(strings.TrimSuffix(word, ":"))
+		_, notRef := notRefWords[lookup]
+		if !notRef && strings.HasSuffix(lookup, "s") {
+			_, notRef = notRefWords[strings.TrimSuffix(lookup, "s")]
+		}
+		if notRef && label && !colorWords[lookup] {
+			notRef = false
+		}
+		if !notRef {
 			spans = append(spans, []int{start, end})
 		}
 	}
@@ -81,16 +106,22 @@ func overlaps(spans [][]int, start, end int) bool {
 	return false
 }
 
-// lastWord is the word right before a reference, with a colon, quotes or
-// an opening parenthesis around it trimmed. Clause punctuation stays on
-// it, so a word that ends a clause qualifies nothing: after "the segment,"
-// a hash and a number is a reference.
+// lastWord is the word right before a reference, with quotes or an opening
+// parenthesis around it trimmed; a trailing colon stays so a label word is
+// told from an instance word. A trailing "#N" field continues one list, so
+// the qualifier is the word before it ("rows #N-#N" qualifies as "rows").
+// Clause punctuation stays on it, so a word that ends a clause qualifies
+// nothing: after "the segment," a hash and a number is a reference.
 func lastWord(s string) string {
 	f := strings.Fields(s)
 	if len(f) == 0 {
 		return ""
 	}
-	return strings.Trim(f[len(f)-1], ":(\"'`")
+	w := f[len(f)-1]
+	if strings.HasPrefix(w, "#") && len(f) > 1 {
+		w = f[len(f)-2]
+	}
+	return strings.Trim(w, "(\"'`")
 }
 
 func issueRefs(fset *token.FileSet, f *ast.File) []string {

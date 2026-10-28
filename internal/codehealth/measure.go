@@ -98,8 +98,9 @@ func Measure(root string, generated map[string]string) (Measurement, error) {
 		}
 		return m.addFile(fset, filepath.Join(root, filepath.FromSlash(rel)), rel)
 	}
-	files, err := worktreeFiles(root)
+	files, nested, err := worktreeFiles(root)
 	if err != nil || files != nil {
+		m.Problems = append(m.Problems, nested...)
 		for _, rel := range files {
 			if err := visit(rel); err != nil {
 				return m, err
@@ -128,42 +129,54 @@ func Measure(root string, generated map[string]string) (Measurement, error) {
 
 // worktreeFiles returns, sorted, the files git would commit when root is
 // the top of a git work tree: tracked ones still on disk and untracked ones
-// that .gitignore does not exclude. A nested repository or a submodule is
-// a directory to git and is skipped. A file git lists twice, as an
-// unmerged path in a conflict does, is measured once. It returns nil when
-// root holds no .git.
-func worktreeFiles(root string) ([]string, error) {
+// that .gitignore does not exclude. An untracked entry that is a directory
+// is a nested repository and is skipped, like an ignored path. A tracked
+// entry that is a directory is a committed submodule's gitlink: its files
+// cannot be measured, so it comes back as a problem like a nested go.mod
+// does. A file git lists twice, as an unmerged path in a conflict does,
+// is measured once. It returns nil when root holds no .git.
+func worktreeFiles(root string) ([]string, []string, error) {
 	if _, err := os.Lstat(filepath.Join(root, ".git")); err != nil {
-		return nil, nil // not a work tree top; the walk reports an unreadable root
-	}
-	cmd := exec.Command("git", "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	cmd.Dir = root
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("git ls-files in %s: %w: %s", root, err, stderr.String())
+		return nil, nil, nil // not a work tree top; the walk reports an unreadable root
 	}
 	files := []string{}
+	var nested []string
 	seen := map[string]bool{}
-	for _, rel := range strings.Split(string(out), "\x00") {
-		if seen[rel] {
-			continue
+	for i, args := range [][]string{
+		{"ls-files", "-z", "--cached"},
+		{"ls-files", "-z", "--others", "--exclude-standard"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, nil, fmt.Errorf("git %s in %s: %w: %s", strings.Join(args, " "), root, err, stderr.String())
 		}
-		seen[rel] = true
-		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			continue // deleted in the work tree, not yet in the index
-		case err != nil:
-			return nil, err
-		case info.IsDir():
-			continue // the work tree itself, a nested repository or a submodule
+		for _, rel := range strings.Split(string(out), "\x00") {
+			rel = strings.TrimSuffix(rel, "/")
+			if rel == "" || seen[rel] {
+				continue
+			}
+			seen[rel] = true
+			info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
+			switch {
+			case errors.Is(err, fs.ErrNotExist):
+				continue // deleted in the work tree, not yet in the index
+			case err != nil:
+				return nil, nil, err
+			case info.IsDir() && i == 0:
+				nested = append(nested, "nested repository "+rel+": a submodule or nested module's files are not covered by go test ./..., golangci-lint or deadcode; move the code into the main module")
+				continue
+			case info.IsDir():
+				continue // an untracked nested repository does not count
+			}
+			files = append(files, rel)
 		}
-		files = append(files, rel)
 	}
 	sort.Strings(files)
-	return files, nil
+	return files, nested, nil
 }
 
 func inTestdata(rel string) bool {

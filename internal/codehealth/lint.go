@@ -47,13 +47,29 @@ func ParseLint(data []byte) ([]LintIssue, error) {
 // with the same key, else the base function whose body holds at least
 // minDerived of its body (it moved or was renamed), else itself. So an
 // existing finding in code that was moved, split off or renamed matches its
-// base finding, and a new one does not. Line numbers play no part.
+// base finding, and a new one does not.
+//
+// Two pull-request findings can share one normalized key with two base
+// findings in the same function. A pull-request finding whose line and text
+// match a base finding exactly IS that finding, so those slots are consumed
+// first; only what is left counts against the key, and a new finding is
+// reported at its own line, never at a base finding's.
 func DiffLint(base Measurement, baseIssues []LintIssue, pr Measurement, prIssues []LintIssue) []string {
+	type finding struct {
+		line int
+		text string
+	}
 	have := map[string]int{}
+	specific := map[string]map[finding]int{}
 	baseFuncs := allFuncs(base)
 	for _, i := range baseIssues {
 		key, name := enclosing(baseFuncs, i)
-		have[lintKey(i, key, name)]++
+		k := lintKey(i, key, name)
+		have[k]++
+		if specific[k] == nil {
+			specific[k] = map[finding]int{}
+		}
+		specific[k][finding{i.Line, i.Text}]++
 	}
 	prFuncs := allFuncs(pr)
 	origins := newOriginIndex(sortedKeys(baseFuncs), func(k string) []string { return baseFuncs[k].Body })
@@ -66,16 +82,33 @@ func DiffLint(base Measurement, baseIssues []LintIssue, pr Measurement, prIssues
 		}
 		return key
 	}
-	var out []string
+	type cand struct {
+		i LintIssue
+		k string
+	}
+	cands := make([]cand, 0, len(prIssues))
 	for _, i := range sortedIssues(prIssues) {
 		key, name := enclosing(prFuncs, i)
 		key = identity(key)
-		k := lintKey(i, key, name)
-		if have[k] > 0 {
-			have[k]--
+		cands = append(cands, cand{i, lintKey(i, key, name)})
+	}
+	var rest []cand
+	for _, c := range cands {
+		f := finding{c.i.Line, c.i.Text}
+		if specific[c.k][f] > 0 {
+			specific[c.k][f]--
+			have[c.k]--
 			continue
 		}
-		out = append(out, fmt.Sprintf("%s:%d: %s: %s", i.File, i.Line, i.Linter, i.Text))
+		rest = append(rest, c)
+	}
+	var out []string
+	for _, c := range rest {
+		if have[c.k] > 0 {
+			have[c.k]--
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s:%d: %s: %s", c.i.File, c.i.Line, c.i.Linter, c.i.Text))
 	}
 	return out
 }
@@ -110,13 +143,20 @@ var (
 	// with no space inside, so an apostrophe in prose does not open one.
 	quoted     = regexp.MustCompile("`[^`]*`" + `|"[^"]*"|'[^'\s]*'`)
 	identifier = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
+	// assignedTo is a bare identifier a message assigns to:
+	// "ineffectual assignment to pos". It names a local, so renaming the
+	// local must not turn the finding new. Other words at the end of a
+	// message stay — for vet or revive they can be the only
+	// distinguishing part.
+	assignedTo = regexp.MustCompile(`\bto [A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 // lintKey is the identity of a finding: its linter, the identity of its
 // enclosing function, and its message with numbers, the function's own
-// name and every identifier inside quotes normalized. Quoted identifiers
-// are the code the message names (errcheck's `store.Close`), so renaming a
-// local variable keeps the finding; the linter, the function and the shape
+// name, every identifier inside quotes and the identifier a message ends
+// with an assignment to normalized. Quoted identifiers are the code the
+// message names (errcheck's `store.Close`), so renaming a local variable
+// keeps the finding; the linter, the function and the shape
 // of the message still tell findings apart, and a second finding of the
 // same shape in the same function still counts as new.
 func lintKey(i LintIssue, fn, name string) string {
@@ -126,6 +166,7 @@ func lintKey(i LintIssue, fn, name string) string {
 	if name != "" {
 		text = regexp.MustCompile(`\b`+regexp.QuoteMeta(name)+`\b`).ReplaceAllString(text, "FUNC")
 	}
+	text = assignedTo.ReplaceAllString(text, "to ID")
 	return i.Linter + "\x00" + fn + "\x00" + digits.ReplaceAllString(text, "N")
 }
 

@@ -42,11 +42,13 @@ codehealth:
 codehealth-baseline:
 	go run ./internal/codehealth/cmd/codehealth -deadcode update
 
-# What CI's baseline comparison says about this change: run codehealth-baseline, then compare the
-# result with the baseline at LINT_BASE (default: merge base with origin/main), paydown included.
-# A new file or function over a limit passes only if its content came from a baseline entry.
-codehealth-compare: codehealth-baseline
-	go run ./internal/codehealth/cmd/codehealth -base $(LINT_BASE) -paydown compare
+# What CI's baseline comparison says about this change: the update codehealth-baseline would
+# write is applied in memory and compared, paydown included, with the baseline at LINT_BASE
+# (default: merge base with origin/main). Nothing is written; run codehealth-baseline and
+# commit the result for CI to accept what this accepts. A new file or function over a limit
+# passes only if its content came from a baseline entry.
+codehealth-compare:
+	go run ./internal/codehealth/cmd/codehealth -base $(LINT_BASE) -paydown -update compare
 
 # Regenerate the files in generated_files and fail if any differs from what is committed.
 codehealth-regen:
