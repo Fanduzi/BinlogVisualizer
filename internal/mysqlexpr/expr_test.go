@@ -100,6 +100,15 @@ func TestGeneratedExactTypesAndJSONKinds(t *testing.T) {
 	if !ok || got.text != "2.00" {
 		t.Fatalf("decimal concat ok=%v text=%q", ok, got.text)
 	}
+	// A / result is DECIMAL: a whole-number quotient keeps its scale.
+	got, ok = EvalGenExpr("CONCAT(7/7)", env)
+	if !ok || got.text != "1.0000" {
+		t.Fatalf("division concat ok=%v text=%q, want 1.0000", ok, got.text)
+	}
+	got, ok = EvalGenExpr("CONCAT(7/2)", env)
+	if !ok || got.text != "3.5000" {
+		t.Fatalf("division concat ok=%v text=%q, want 3.5000", ok, got.text)
+	}
 	got, ok = EvalGenExpr("CONCAT(tm)", env)
 	if !ok || got.text != "12:00:00.50" {
 		t.Fatalf("time concat ok=%v text=%q", ok, got.text)
