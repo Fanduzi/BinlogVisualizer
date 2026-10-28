@@ -12,7 +12,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/metrics"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -359,30 +358,6 @@ func liveHeap(t *testing.T) uint64 {
 		t.Fatalf("live heap kind %v", sample[0].Value.Kind())
 	}
 	return sample[0].Value.Uint64()
-}
-
-func processRSS(t *testing.T) uint64 {
-	t.Helper()
-	data, err := os.ReadFile("/proc/self/status")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if !strings.HasPrefix(line, "VmRSS:") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			t.Fatalf("VmRSS line %q", line)
-		}
-		kb, err := strconv.ParseUint(fields[1], 10, 64)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return kb * 1024
-	}
-	t.Fatal("VmRSS missing")
-	return 0
 }
 
 func alternatingMinuteEvents() ([]model.NormalizedEvent, int) {
