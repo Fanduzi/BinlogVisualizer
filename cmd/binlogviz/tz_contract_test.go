@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"binlogviz/internal/displaytz"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/version"
 )
 
@@ -509,10 +510,10 @@ func TestDSTGapAndOverlapRefused(t *testing.T) {
 	cases := []struct {
 		flag, value, why string
 	}{
-		{flag: "--start", value: "2026-03-08 02:30:00", why: "DST gap"},
-		{flag: "--end", value: "2026-03-08 02:30:00", why: "DST gap"},
-		{flag: "--start", value: "2026-11-01 01:30:00", why: "DST overlap"},
-		{flag: "--end", value: "2026-11-01 01:30:00", why: "DST overlap"},
+		{flag: "--start", value: "2026-03-08 02:30:00", why: "local-time gap"},
+		{flag: "--end", value: "2026-03-08 02:30:00", why: "local-time gap"},
+		{flag: "--start", value: "2026-11-01 01:30:00", why: "local-time overlap"},
+		{flag: "--end", value: "2026-11-01 01:30:00", why: "local-time overlap"},
 	}
 	for _, command := range []string{"analyze", "flashback"} {
 		for _, tc := range cases {
@@ -711,4 +712,31 @@ func lineContaining(body, needle string) string {
 		}
 	}
 	return ""
+}
+
+// The gap/overlap/bad-offset clauses are localized: zh-CN must not fall
+// back to the English wording, and neither language may call a non-DST
+// offset change "DST".
+func TestZoneTimeErrorsAreLocalized(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i18n.ResetForTesting()
+	t.Cleanup(i18n.ResetForTesting)
+	if err := i18n.Init("zh-CN"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseAnalyzeTimeInLocation("2026-03-08 02:30:00", ny); err == nil ||
+		!strings.Contains(err.Error(), "当地时间缺口") || strings.Contains(err.Error(), "DST") {
+		t.Fatalf("zh gap error: %v", err)
+	}
+	if _, err := parseAnalyzeTimeInLocation("2026-11-01 01:30:00", ny); err == nil ||
+		!strings.Contains(err.Error(), "当地时间重叠") || strings.Contains(err.Error(), "DST") {
+		t.Fatalf("zh overlap error: %v", err)
+	}
+	if _, err := parseAnalyzeTimeInLocation("2026-11-01T05:00:00+24:00", nil); err == nil ||
+		!strings.Contains(err.Error(), "不是有效的 UTC 偏移") {
+		t.Fatalf("zh offset error: %v", err)
+	}
 }
