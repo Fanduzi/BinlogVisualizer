@@ -1,6 +1,6 @@
 # BinlogViz 生产级验收清单
 
-基线：main `45f6a8b`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3、#374 analyze 内存不随事务数增长、#376 GTID 过滤下 analyze 不再缓存整个事务、#379 GTID 过滤的匹配证据改成区间集合，E1 为 MET，#382 大文件基准 E2 为 MET，#383/#384 匹配事务计数与 MariaDB 选择器（#383 含 MariaDB 共享区间与区间选择器，#381 QA 的 P3）、#385 `TestLargeInputBaseline`（E2 为 MET）），2026-10-20 核对，E2 于 2026-10-21 复核。D5 在这次核对里改为 MET（JSON Schema 与 `--tz`，#255 第 3、7 项）。
+基线：`fc31600`（在 `45f6a8b` 之后；2026-10-28 复核。此前核对：main `45f6a8b`（v0.34.1 加上 #369 版本矩阵 C2–C4、#370 四种格式共用重点事务 A3、#374 analyze 内存不随事务数增长、#376 GTID 过滤下 analyze 不再缓存整个事务、#379 GTID 过滤的匹配证据改成区间集合，E1 为 MET，#382 大文件基准 E2 为 MET，#383/#384 匹配事务计数与 MariaDB 选择器（#383 含 MariaDB 共享区间与区间选择器，#381 QA 的 P3）、#385 `TestLargeInputBaseline`（E2 为 MET）），2026-10-20 核对，E2 于 2026-10-21 复核。D5 在这次核对里改为 MET（JSON Schema 与 `--tz`，#255 第 3、7 项））。
 
 状态口径：
 - **MET**：有自动检查，今天每个 PR 或每次 push main 都在 CI 里跑并且通过。
@@ -64,7 +64,7 @@ CI 现状（`ci.yml`，每个 PR 和 push main 都跑）：
 |---|---|---|---|---|
 | F1 | 4 个平台的包带 checksums；`install.sh` 校验 sha256，没有校验工具时直接失败；Homebrew cask 同步 | `release.yml`；`TestInstallScriptInstallsVerifiedArchive`、`…RefusesBadDownloads`、`…FailsClosedWithoutShaTool`；`release_smoke.sh`（CI verify） | MET | — |
 | F2 | 发布出来的二进制报告正确的 commit | `release.yml` 4 个构建 job 都用 `-X binlogviz/internal/version.Commit=${GITHUB_SHA}` 和 `CommitTime` 构建（Linux 在 manylinux 容器里仍是 `-buildvcs=false`），并以 `BINLOGVIZ_SMOKE_EXPECT_COMMIT=${GITHUB_SHA}`、`BINLOGVIZ_SMOKE_REQUIRE_COMMIT=1` 跑 `release_smoke.sh`，commit 不对或为空就挡住发布。CI `verify` 每个 PR 用同样的 `-buildvcs=false` 加 ldflags 构建，再以 `BINLOGVIZ_SMOKE_EXPECT_COMMIT=${{ github.sha }}` 跑包的 smoke | MET | — |
-| F3 | 打 tag 前，这个 commit 已经过了 flashback e2e | `release.yml` 的 `ci` job 以 `uses: ./.github/workflows/ci.yml` 在 tag 所在 commit 上跑完整 CI（`verify` 和 MySQL 8.0 的 `flashback e2e`），4 个 build job 都 `needs: [test, ci]`，没过就不打包、不发布。`TestReleaseWaitsForFlashbackE2E`（`go test ./...`，每个 PR）锁住这条依赖：`ci.yml` 可被调用且保留 flashback-e2e，`release.yml` 调用它且 build 依赖它 | MET | — |
+| F3 | 打 tag 触发的发布，只发布已经过了 flashback e2e 的 commit | `release.yml` 的 `ci` job 以 `uses: ./.github/workflows/ci.yml` 在 tag 所在 commit 上跑完整 CI（`verify`、`vet and race`、MySQL 8.0 的 `flashback e2e`），4 个 build job 都 `needs: [test, ci]`，没过就不打包、不发布（失败的 commit 会留下一个没有 release 的 `v*` tag）。`TestReleaseWaitsForFlashbackE2E`（`go test ./...`，每个 PR）锁住这条依赖：`ci.yml` 可被调用且保留 flashback-e2e，`release.yml` 调用它且 build 依赖它；`TestFlashbackE2EJobCannotBeSilenced` 另锁住 e2e 不能被 `if:`/`continue-on-error:` 静默、build/release 不能 `if: always()` 绕过；`TestVetRaceAndGuardWiringPresent` 锁住 vet-race 与 guard SQL 接线 | MET | — |
 | F4 | CI 里跑 `go vet` 和 `-race` | `ci.yml` 的 `vet and race` job：`go vet ./...` 和 `go test -race -count=1 ./...`，每个 PR 和 push main 都跑；E1 的内存测试在 -race 下按 `TestEveryMemoryTestRunsInCIVerify` 的约定 Skip，仍由 `verify` 的普通 `go test ./...` 覆盖 | MET | — |
 
 ## G. 文档
