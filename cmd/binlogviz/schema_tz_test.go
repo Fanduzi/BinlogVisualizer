@@ -227,6 +227,27 @@ func TestSchemaRejectsUnknownField(t *testing.T) {
 	}
 }
 
+// The describe failure branch pins valid to false: an error document with
+// valid:true, and a bare {"schema_version":1}, must match no branch. The
+// oneOf would accept both if the branch went back to a property union or
+// dropped the const.
+func TestDescribeSchemaRejectsMismatchedFailure(t *testing.T) {
+	schema := readPublishedSchema(t, repoRoot(t), "workflow-describe")
+	for _, doc := range []map[string]any{
+		{"schema_version": 1, "valid": true, "error": "x"},
+		{"schema_version": 1},
+		{"schema_version": 1, "valid": false},
+	} {
+		if err := jsonschema.Validate(schema, doc); err == nil {
+			t.Fatalf("%v matched the describe schema", doc)
+		}
+	}
+	real := map[string]any{"schema_version": 1, "valid": false, "error": "x"}
+	if err := jsonschema.Validate(schema, real); err != nil {
+		t.Fatalf("the real failure document must validate: %v", err)
+	}
+}
+
 func analyzeSchemaAndOutput(t *testing.T) (map[string]any, any) {
 	t.Helper()
 	forceEnglishRuntimeOutput(t)

@@ -142,6 +142,7 @@
           "type": "integer"
         },
         "valid": {
+          "const": false,
           "type": "boolean"
         }
       },

@@ -42,7 +42,7 @@ Report times were rendered in UTC. An operator who had a wall time of `14:05 +08
 
    `analyze --format json` with a spilled per-(table, minute) series (ADR 0019) reads that series before the first stdout byte and then encodes the document the same way as an in-memory series. A spill read error writes nothing and the process exits 11 (kind `spill`), not 8 (kind `output`) and not 1 (kind `error`). A spill read that fails while the analysis finishes, including a DuckDB detail store, is the same kind and code. It does not print a schema-valid document whose `table_rows` are null. The SIGTERM window is that encode, the same window as an in-memory series.
 
-   Two non-zero exits still print the success document. `flashback --plan` on a refusal (exit 6) prints the plan, including `would_refuse`. That is the success runner in `TestJSONOutputMatchesSchema`, not a second shape. `workflow clean --apply` writes the clean document and then exits 8 when a move was skipped. That document is the success object.
+   Three non-zero exits still print the success document. `flashback --plan` on a refusal (exit 6) prints the plan, including `would_refuse`, and the same run on a conflict (exit 7) prints the same schema-valid plan before `flashbackExit` maps the error. Those are the success runner in `TestJSONOutputMatchesSchema`, not a second shape. `workflow clean --apply` writes the clean document and then exits 8 when a move was skipped. That document is the success object.
 
 ## Consequences
 

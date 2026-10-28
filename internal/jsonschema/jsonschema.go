@@ -294,6 +294,13 @@ func fieldSchema(f fieldInfo, stack map[reflect.Type]bool) (map[string]any, erro
 	if err != nil {
 		return nil, err
 	}
+	if f.constRaw != "" {
+		var v any
+		if err := json.Unmarshal([]byte(f.constRaw), &v); err != nil {
+			return nil, fmt.Errorf("jsonschema: field %s const %q: %w", f.name, f.constRaw, err)
+		}
+		inner["const"] = v
+	}
 	if !nullable {
 		return inner, nil
 	}
@@ -340,9 +347,10 @@ func withNull(schema map[string]any) map[string]any {
 }
 
 type fieldInfo struct {
-	name string
-	omit bool
-	typ  reflect.Type
+	name     string
+	omit     bool
+	typ      reflect.Type
+	constRaw string
 }
 
 func collectFields(t reflect.Type) []fieldInfo {
@@ -367,7 +375,13 @@ func collectFields(t reflect.Type) []fieldInfo {
 			continue
 		}
 		seen[name] = true
-		direct = append(direct, fieldInfo{name: name, omit: omit, typ: f.Type})
+		fi := fieldInfo{name: name, omit: omit, typ: f.Type}
+		// jsonschema:"const:<json>" pins the field's schema to one value,
+		// for a failure branch's valid:false.
+		if tag := f.Tag.Get("jsonschema"); strings.HasPrefix(tag, "const:") {
+			fi.constRaw = tag[len("const:"):]
+		}
+		direct = append(direct, fi)
 	}
 	for _, et := range embeds {
 		for _, f := range collectFields(et) {

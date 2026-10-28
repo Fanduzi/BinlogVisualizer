@@ -394,6 +394,14 @@ type workflowValidateErrorJSON struct {
 	Error string `json:"error"`
 }
 
+// workflowDescribeErrorJSON is the describe failure branch's schema shape.
+// It shares the wire shape of workflowValidateErrorJSON but pins valid to
+// false so a valid:true error document matches neither describe branch.
+type workflowDescribeErrorJSON struct {
+	Valid bool   `json:"valid" jsonschema:"const:false"`
+	Error string `json:"error"`
+}
+
 type workflowExportOutput struct {
 	WorkflowName      string   `json:"workflow_name"`
 	OutputDir         string   `json:"output_dir"`
