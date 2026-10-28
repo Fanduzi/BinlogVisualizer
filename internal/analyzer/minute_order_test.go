@@ -298,6 +298,59 @@ func assertRenderedMinute(t *testing.T, result *model.AnalysisResult, jsonMinute
 	}
 }
 
+// A clock step back of any size must land in the minute that already exists.
+// The minute map is drained only at Finalize, so revisits more than an hour
+// and more than a day behind the newest event still sum into one bucket —
+// rows, transactions, tables, and binlog bytes alike.
+func TestAnalyzeFarBackRevisitCountedOnce(t *testing.T) {
+	m0 := time.Date(2026, 3, 15, 14, 0, 0, 0, time.UTC)
+	hour := m0.Add(61 * time.Minute)
+	day := m0.Add(25 * time.Hour)
+
+	bytesInsert := func(ts time.Time, key, table string, rows int, b int64) []model.NormalizedEvent {
+		evs := closedInsert(ts, key, table, rows)
+		for i := range evs {
+			if evs[i].EventType == "ROWS" {
+				evs[i].BinlogBytes = b
+			}
+		}
+		return evs
+	}
+
+	events := []model.NormalizedEvent{}
+	events = append(events, bytesInsert(m0.Add(10*time.Second), "t1", "orders", 10, 100)...)
+	events = append(events, bytesInsert(hour.Add(10*time.Second), "t2", "orders", 10, 100)...)
+	events = append(events, bytesInsert(day.Add(10*time.Second), "t3", "orders", 10, 100)...)
+	// More than an hour back, then more than a day back: a drain lag of any
+	// size reopens the minute and splits the counts.
+	events = append(events, bytesInsert(hour.Add(40*time.Second), "t4", "orders", 20, 200)...)
+	events = append(events, bytesInsert(m0.Add(50*time.Second), "t5", "orders", 30, 500)...)
+
+	result := analyzeMinutes(t, events)
+	want := []minuteWant{
+		{at: m0, rows: 40, txns: 2, tables: map[string]int{"shop.orders": 40}},
+		{at: hour, rows: 30, txns: 2, tables: map[string]int{"shop.orders": 30}},
+		{at: day, rows: 10, txns: 1, tables: map[string]int{"shop.orders": 10}},
+	}
+	assertMinutes(t, result.Minutes, want)
+	assertSeriesMinutes(t, result.Timeseries.RowsSeries, want)
+
+	wantBytes := []int64{600, 300, 100}
+	for i, minute := range result.Minutes {
+		if minute.BinlogBytes != wantBytes[i] {
+			t.Fatalf("minute %s binlog_bytes = %d, want %d (revisit bytes dropped?)", minute.Minute, minute.BinlogBytes, wantBytes[i])
+		}
+	}
+	if len(result.Timeseries.BinlogBytesSeries) != len(wantBytes) {
+		t.Fatalf("binlog bytes series = %+v, want %d points", result.Timeseries.BinlogBytesSeries, len(wantBytes))
+	}
+	for i, point := range result.Timeseries.BinlogBytesSeries {
+		if point.Value != float64(wantBytes[i]) {
+			t.Fatalf("binlog bytes series[%d] = %s %v, want %d", i, point.Minute, point.Value, wantBytes[i])
+		}
+	}
+}
+
 func closedInsert(ts time.Time, key, table string, rows int) []model.NormalizedEvent {
 	return []model.NormalizedEvent{
 		{Timestamp: ts, EventType: "BEGIN", TxnKey: key},
