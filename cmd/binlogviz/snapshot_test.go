@@ -461,6 +461,53 @@ func TestSnapshotDeleteCommandMissingSnapshotErrorIsClear(t *testing.T) {
 	}
 }
 
+// snapshot save must keep a workload_id that merely looks like RFC3339
+// while still normalizing the real timestamp fields to UTC.
+func TestSnapshotSaveKeepsTimestampLookingWorkloadID(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+
+	reportPath := filepath.Join(t.TempDir(), "report.json")
+	report := strings.Replace(
+		minimalAnalyzeReportJSON(2400, 0),
+		`"summary": {`,
+		`"workload_id": "2026-10-01T08:00:00+08:00",`+"\n  "+`"summary": {`,
+		1,
+	)
+	report = strings.ReplaceAll(report, "2026-03-20T10:00:00Z", "2026-03-20T10:00:00+08:00")
+	if err := os.WriteFile(reportPath, []byte(report), 0o644); err != nil {
+		t.Fatalf("write source report: %v", err)
+	}
+	snapshotDir := t.TempDir()
+
+	cmd := NewRootCommand()
+	cmd.SetArgs([]string{"snapshot", "save", reportPath, "--name", "tz_id", "--snapshot-dir", snapshotDir})
+	cmd.SilenceUsage = true
+	cmd.SilenceErrors = true
+	if _, _, err := captureStdoutStderrRun(t, func() error { return cmd.Execute() }); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	savedBytes, err := os.ReadFile(filepath.Join(snapshotDir, "tz_id.json"))
+	if err != nil {
+		t.Fatalf("read saved snapshot: %v", err)
+	}
+	var saved struct {
+		WorkloadID string `json:"workload_id"`
+		Summary    struct {
+			StartTime string `json:"start_time"`
+		} `json:"summary"`
+	}
+	if err := json.Unmarshal(savedBytes, &saved); err != nil {
+		t.Fatalf("decode saved snapshot: %v", err)
+	}
+	if saved.WorkloadID != "2026-10-01T08:00:00+08:00" {
+		t.Fatalf("workload_id was rewritten to %q", saved.WorkloadID)
+	}
+	if saved.Summary.StartTime != "2026-03-20T02:00:00Z" {
+		t.Fatalf("start_time not normalized to UTC, got %q", saved.Summary.StartTime)
+	}
+}
+
 func writeSnapshotSourceReport(t *testing.T, withMetadata bool) string {
 	t.Helper()
 
