@@ -103,7 +103,6 @@
     "cmd/binlogviz/large_input_baseline_test.go": 1,
     "cmd/binlogviz/large_input_retry_test.go": 1,
     "cmd/binlogviz/open_begin_dml_dialect_test.go": 1,
-    "cmd/binlogviz/readme_shape_test.go": 1,
     "cmd/binlogviz/root.go": 3,
     "cmd/binlogviz/snapshot.go": 1,
     "cmd/binlogviz/terminal.go": 2,

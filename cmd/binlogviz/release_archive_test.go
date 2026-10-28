@@ -1,6 +1,6 @@
 // Package binlogviz tests the GitHub release archive packing contract.
 // input: scripts/pack_release_archive.sh and the extra files it copies from the repository.
-// output: a tar.gz listing that includes the binary, the 1500-byte sample ROW binlog, a workflow plan whose from_dir exists inside the archive, the READMEs, the agent usage guide, and the user docs pages the README links to.
+// output: a tar.gz listing that includes the binary, the 1500-byte sample ROW binlog, a workflow plan whose from_dir exists inside the archive, the READMEs, the agent usage guide, and the user docs pages the README links to; every relative link inside those Markdown files must resolve to a file the archive ships.
 // pos: operator-facing packing check so a downloaded GitHub Release tarball is not binary-only.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -8,6 +8,7 @@ package binlogviz
 import (
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -115,8 +116,9 @@ func TestReleaseArchiveListsBinarySampleAndWorkflowPlan(t *testing.T) {
 	}
 }
 
-// Archive READMEs are copied as-is. A relative link must name a file the
-// release archive ships. The file list is the one .goreleaser.yml and
+// Archive docs are copied as-is. A relative link in any shipped Markdown
+// file must name a file the release archive ships, resolved against the
+// linking page's directory. The file list is the one .goreleaser.yml and
 // scripts/pack_release_archive.sh both define.
 func TestReleaseArchiveReadmeLinksStayInside(t *testing.T) {
 	root := repoRoot(t)
@@ -125,17 +127,24 @@ func TestReleaseArchiveReadmeLinksStayInside(t *testing.T) {
 		t.Fatal(err)
 	}
 	linkRe := regexp.MustCompile(`\]\(([^)]*)\)`)
-	for _, name := range []string{"README.md", "README_ZH.md"} {
+	var pages []string
+	for name := range shipped {
+		if strings.HasSuffix(name, ".md") {
+			pages = append(pages, name)
+		}
+	}
+	sort.Strings(pages)
+	for _, name := range pages {
 		body, err := os.ReadFile(filepath.Join(root, name))
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, match := range linkRe.FindAllStringSubmatch(string(body), -1) {
-			path, ok := relativeReadmeLink(match[1])
+			dest, ok := relativeReadmeLink(match[1])
 			if !ok {
 				continue
 			}
-			if _, ship := shipped[path]; !ship {
+			if _, ship := shipped[path.Join(path.Dir(name), dest)]; !ship {
 				t.Errorf("%s links to %q, which the release archive does not ship", name, match[1])
 			}
 		}

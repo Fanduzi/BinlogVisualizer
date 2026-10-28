@@ -78,7 +78,7 @@ BinlogViz 把报告数据保留在 `stdout`，把面向人的状态输出放在 
 
 当使用 `--detail-store duckdb` 时，`binlogviz analyze` 会创建一个命令拥有的临时 DuckDB 存储，把它传给分析器，并在命令退出时清理掉。
 
-如果你想看生命周期细节、运维侧影响，以及大规模分析时用户可能观察到的现象，请继续阅读 [DuckDB 临时存储](./duckdb-temp-store.zh-CN.md)。
+如果你想看生命周期细节、运维侧影响，以及大规模分析时用户可能观察到的现象，请继续阅读 [DuckDB 临时存储](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.zh-CN.md)。
 
 ## 模块
 

@@ -1,6 +1,6 @@
 # Snapshots, Compare, Trend, and Workflow
 
-This page holds the snapshot, compare, trend, and workflow detail and the DBA workflow walkthroughs that used to live in the project README. Flags and the plan schema are in the [CLI Reference](../reference/cli.md).
+This page holds the snapshot, compare, trend, and workflow detail and the DBA workflow walkthroughs that used to live in the project README. Flags and the plan schema are in the [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md).
 
 ## Snapshots and compare
 

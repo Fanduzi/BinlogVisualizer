@@ -1,6 +1,6 @@
 # Find and Undo Bad Rows
 
-This page holds the row-image, DDL Timeline, and flashback detail that used to live in the project README. Known limits are in [Limitations](../concept/limitations.md); flags are in the [CLI Reference](../reference/cli.md).
+This page holds the row-image, DDL Timeline, and flashback detail that used to live in the project README. Known limits are in [Limitations](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.md); flags are in the [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md).
 
 Flashback is experimental: review the generated SQL before applying it.
 
