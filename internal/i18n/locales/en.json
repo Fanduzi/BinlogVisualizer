@@ -1928,8 +1928,12 @@
     "other": "GTID selectors matched MariaDB transactions that need at least {{.Intervals}} separate GTID intervals kept per server, because a sequence number repeats; that form was dropped when all domains together passed {{.Limit}}. Narrow --include-gtids/--exclude-gtids or split the input"
   },
   "error.matchedGTIDIntervalsPerServer": {
-    "description": "GTID selectors matched MariaDB transactions that need more per-server intervals than the matched_gtid_set ceiling after the shared form was dropped (exit 10)",
+    "description": "GTID selectors matched MariaDB transactions that need more per-server intervals than the matched_gtid_set ceiling after the shared form, which would have needed fewer, was dropped (exit 10)",
     "other": "GTID selectors matched MariaDB transactions that need at least {{.Intervals}} separate GTID intervals kept per server; at most {{.Limit}} can be tracked, and the shared form, which can need fewer, was dropped when all domains together passed {{.Limit}}. Narrow --include-gtids/--exclude-gtids or split the input"
+  },
+  "error.matchedGTIDIntervalsPerServerAtLeast": {
+    "description": "GTID selectors matched MariaDB transactions that need more per-server intervals than the matched_gtid_set ceiling after the shared form, which needed at least as many, was dropped (exit 10)",
+    "other": "GTID selectors matched MariaDB transactions that need at least {{.Intervals}} separate GTID intervals kept per server; at most {{.Limit}} can be tracked, and the shared form, which needs at least as many, was dropped when all domains together passed {{.Limit}}. Narrow --include-gtids/--exclude-gtids or split the input"
   },
   "error.matchedGTIDIntervalsFormDropped": {
     "description": "GTID selectors matched MariaDB transactions whose intervals fit the matched_gtid_set ceiling, but the form that holds them was dropped for every domain (exit 10)",

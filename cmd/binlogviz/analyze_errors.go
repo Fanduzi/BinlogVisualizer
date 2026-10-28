@@ -142,6 +142,9 @@ func analyzerResourceError(err error) error {
 		key = "error.matchedGTIDIntervalsDropped"
 	case analyzer.MatchedGTIDLimitPerServer:
 		key = "error.matchedGTIDIntervalsPerServer"
+		if !limit.SharedSmaller {
+			key = "error.matchedGTIDIntervalsPerServerAtLeast"
+		}
 	case analyzer.MatchedGTIDLimitFormDropped:
 		key = "error.matchedGTIDIntervalsFormDropped"
 	}

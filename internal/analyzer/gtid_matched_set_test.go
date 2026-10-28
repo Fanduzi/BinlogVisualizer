@@ -640,7 +640,12 @@ func TestMatchedGTIDSetSeenFirstThreeWriters(t *testing.T) {
 	if real := trueNeed(all[:11], matched); limit.Intervals != real {
 		t.Fatalf("reported %d, real %d", limit.Intervals, real)
 	}
-	if msg := err.Error(); strings.Contains(msg, "repeat") || !strings.Contains(msg, "at least 11 separate GTID intervals kept per server; at most 10 can be tracked, and the shared form, which can need fewer, was dropped") {
+	// shared renders 11 ranges x 3 writers = 33 > 11, so the message must
+	// not claim it could need fewer.
+	if limit.SharedSmaller {
+		t.Fatalf("sharedSmaller true for 33 > 11: %+v", limit)
+	}
+	if msg := err.Error(); strings.Contains(msg, "repeat") || !strings.Contains(msg, "at least 11 separate GTID intervals kept per server; at most 10 can be tracked, and the shared form, which needs at least as many, was dropped") {
 		t.Fatalf("message: %v", msg)
 	}
 }
