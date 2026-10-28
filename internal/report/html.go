@@ -1,6 +1,6 @@
 // Package report renders self-contained HTML reports from complete analysis results.
 // input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: self-contained HTML with UTC-labelled timestamps, completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, a DDL card that counts statements and notes the target count when those differ, replica apply delay after activity, and labelled trusted full-transaction replay commands.
+// output: self-contained HTML with UTC-labelled timestamps (a minute chart crossing midnight prefixes the date to every label), completeness, a Top Threads session ranking, deduplicated transaction evidence, bounded transaction lookup, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, selected-file/count-event bytes, hot intervals naming the tables that produced each minute's rows, a DDL card that counts statements and notes the target count when those differ, replica apply delay after activity, and labelled trusted full-transaction replay commands.
 // pos: HTML renderer for the CLI output path after analyzer Finalize. Transaction lookup and evidence come from internal/report/view.
 // note: if this file changes, update this header and module README.md.
 package report
@@ -615,27 +615,26 @@ func buildHTMLData(result model.AnalysisResult, opts Options, echartsJS string, 
 	d.ThroughputRows = mustJSON(throughputRows)
 
 	// Chart data — minute timeline
+	chartLayout := opts.chartMinuteLayout(result.Minutes)
 	labels := make([]string, 0, len(result.Minutes))
 	rows := make([]int, 0, len(result.Minutes))
 	txns := make([]int, 0, len(result.Minutes))
 	for _, m := range result.Minutes {
-		labels = append(labels, opts.formatTimeWithLayout(m.Minute, "15:04"))
+		labels = append(labels, opts.formatTimeWithLayout(m.Minute, chartLayout))
 		rows = append(rows, m.TotalRows)
 		txns = append(txns, m.TxnCount)
 	}
-	d.MinuteLabels = mustJSON(labels)
-	d.MinuteRows = mustJSON(rows)
-	d.MinuteTxns = mustJSON(txns)
+	d.MinuteLabels, d.MinuteRows, d.MinuteTxns = mustJSON(labels), mustJSON(rows), mustJSON(txns)
 
 	tpsLabels := make([]string, 0, len(result.Timeseries.TPSSeries))
 	tpsValues := make([]float64, 0, len(result.Timeseries.TPSSeries))
 	for _, point := range result.Timeseries.TPSSeries {
-		tpsLabels = append(tpsLabels, opts.formatTimeWithLayout(point.Minute, "15:04"))
+		tpsLabels = append(tpsLabels, opts.formatTimeWithLayout(point.Minute, chartLayout))
 		tpsValues = append(tpsValues, point.Value)
 	}
 	if len(tpsLabels) == 0 {
 		for _, m := range result.Minutes {
-			tpsLabels = append(tpsLabels, opts.formatTimeWithLayout(m.Minute, "15:04"))
+			tpsLabels = append(tpsLabels, opts.formatTimeWithLayout(m.Minute, chartLayout))
 			tpsValues = append(tpsValues, float64(m.TxnCount)/60.0)
 		}
 	}
@@ -752,7 +751,7 @@ func buildHTMLTableActivitySeries(points []model.TableActivityPoint, opts Option
 		DeleteRows: make([]int, 0, len(points)),
 	}
 	for _, point := range points {
-		series.Labels = append(series.Labels, opts.formatTimeWithLayout(point.Minute, "15:04"))
+		series.Labels = append(series.Labels, opts.formatTimeWithLayout(point.Minute, opts.chartActivityLayout(points)))
 		series.Rows = append(series.Rows, point.Rows)
 		series.InsertRows = append(series.InsertRows, point.InsertRows)
 		series.UpdateRows = append(series.UpdateRows, point.UpdateRows)

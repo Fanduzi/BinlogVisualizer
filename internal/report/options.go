@@ -8,6 +8,8 @@ package report
 import (
 	"fmt"
 	"time"
+
+	"binlogviz/internal/model"
 )
 
 // SQLContextMode controls how transaction SQL context is rendered.
@@ -167,4 +169,44 @@ func normalizeOptions(opts Options) Options {
 		opts.ShowPatterns = true
 	}
 	return opts
+}
+
+// chartTimeLayout picks the x-axis label layout for minute charts: HH:MM
+// when every point lands on one calendar day in the display zone, with the
+// date prefixed when the span crosses midnight, so the same time cannot
+// label two different days.
+func (o Options) chartTimeLayout(times []time.Time) string {
+	if len(times) == 0 {
+		return "15:04"
+	}
+	loc := o.Display
+	if loc == nil {
+		loc = time.UTC
+	}
+	first := times[0].In(loc)
+	for _, t := range times[1:] {
+		d := t.In(loc)
+		if d.Year() != first.Year() || d.YearDay() != first.YearDay() {
+			return "01-02 15:04"
+		}
+	}
+	return "15:04"
+}
+
+// chartMinuteLayout is chartTimeLayout for minute buckets.
+func (o Options) chartMinuteLayout(minutes []model.MinuteBucket) string {
+	times := make([]time.Time, 0, len(minutes))
+	for _, m := range minutes {
+		times = append(times, m.Minute)
+	}
+	return o.chartTimeLayout(times)
+}
+
+// chartActivityLayout is chartMinuteLayout for a per-table activity series.
+func (o Options) chartActivityLayout(points []model.TableActivityPoint) string {
+	times := make([]time.Time, 0, len(points))
+	for _, p := range points {
+		times = append(times, p.Minute)
+	}
+	return o.chartTimeLayout(times)
 }
