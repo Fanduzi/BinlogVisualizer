@@ -21,6 +21,7 @@ import (
 
 func newFlashbackCommand() *cobra.Command {
 	opts := &analyzeOptions{}
+	warn := experimentalWarnOnce()
 	cmd := &cobra.Command{
 		Use:   i18n.T("cmd.flashback.use"),
 		Short: i18n.T("cmd.flashback.short"),
@@ -31,6 +32,7 @@ func newFlashbackCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
+			warn()
 			hasArgs := len(args) > 0
 			hasFromDir := opts.fromDir != ""
 			hasPrefix := opts.prefix != ""
@@ -46,7 +48,7 @@ func newFlashbackCommand() *cobra.Command {
 			return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
 		},
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			warnFlashbackExperimental()
+			warn()
 			stage := clierr.KindUsage
 			defer func() { err = clierr.Wrap(stage, err) }()
 			if err := flashback.ValidateResourceEnv(); err != nil {
@@ -162,6 +164,12 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.Flags().StringVar(&opts.conflict, "conflict", flashback.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
 	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
 	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
+	// A usage error still runs the warning once: flag parse errors never
+	// reach Args or RunE (ADR 0020's "every run").
+	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		warn()
+		return err
+	})
 	help := cmd.HelpFunc()
 	cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
 		if langFlag != "" {
@@ -187,6 +195,20 @@ func markExperimental(s string) string {
 		return s
 	}
 	return experimentalMark + s
+}
+
+// experimentalWarnOnce returns the one-time stderr warning for one command
+// execution. Cobra reaches Args, the flag-error hook, or RunE first, so all
+// three call it and only the first prints (ADR 0020's "every run").
+func experimentalWarnOnce() func() {
+	warned := false
+	return func() {
+		if warned {
+			return
+		}
+		warned = true
+		warnFlashbackExperimental()
+	}
 }
 
 // warnFlashbackExperimental is the one stderr line every flashback run prints
