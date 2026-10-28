@@ -8,7 +8,6 @@
   },
   "generated_files": {},
   "files": {
-    "cmd/binlogviz/analyze.go": 1651,
     "cmd/binlogviz/workflow.go": 1636,
     "internal/analyzer/activity_spill.go": 988,
     "internal/analyzer/analyzer.go": 807,
@@ -73,9 +72,12 @@
     "internal/report:buildHTMLData": 179
   },
   "issue_refs": {
-    "cmd/binlogviz/analyze.go": 8,
+    "cmd/binlogviz/analyze.go": 3,
+    "cmd/binlogviz/analyze_errors.go": 3,
     "cmd/binlogviz/analyze_gtid_memory_test.go": 4,
     "cmd/binlogviz/analyze_memory_test.go": 3,
+    "cmd/binlogviz/analyze_options.go": 1,
+    "cmd/binlogviz/analyze_paths.go": 1,
     "cmd/binlogviz/analyze_selection_test.go": 7,
     "cmd/binlogviz/analyze_stdin.go": 1,
     "cmd/binlogviz/committed_duration_dialect_test.go": 1,
