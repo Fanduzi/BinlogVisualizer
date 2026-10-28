@@ -38,12 +38,12 @@ func TestEveryMemoryTestRunsInCIVerify(t *testing.T) {
 	plain := false
 	for _, line := range strings.Split(verify, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "run: go test ./..." {
+		if line == "run: go test ./..." || line == "run: go test -count=1 ./..." {
 			plain = true
 		}
 	}
 	if !plain {
-		t.Fatalf("CI's verify job no longer runs plain `go test ./...` (no -race, -run, -skip or -short); the E1 memory tests skip under -race and need a non-race job:\n%s", verify)
+		t.Fatalf("CI's verify job no longer runs plain `go test [-count=1] ./...` (no -race, -run, -skip or -short); the E1 memory tests skip under -race and need a non-race job:\n%s", verify)
 	}
 
 	buildTag := regexp.MustCompile(`(?m)^//go:build .*\brace\b`)

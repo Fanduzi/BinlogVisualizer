@@ -238,6 +238,37 @@ func TestDecimalGeneratedCompoundAndNull(t *testing.T) {
 		g := SchemaCol{Name: "g", base: "bigint", unsigned: true, Expr: "(`a` / `b`)"}
 		assertGenOutcome(t, g, []SchemaCol{au, bu, g}, []string{"a", "b", "g"}, []string{"18446744073709551615", "7", "2635249153387078802"}, match)
 	})
+	t.Run("unsigned a-b past zero refuses", func(t *testing.T) {
+		// MySQL raises ERROR 1690 for 1-2 in unsigned BIGINT; returning a
+		// value would be a wrong verification (ADR 0020), so unverified.
+		au := SchemaCol{Name: "a", base: "bigint", unsigned: true}
+		bu := SchemaCol{Name: "b", base: "bigint", unsigned: true}
+		g := SchemaCol{Name: "g", base: "bigint", unsigned: true, Expr: "(`a` - `b`)"}
+		assertGenOutcome(t, g, []SchemaCol{au, bu, g}, []string{"a", "b", "g"}, []string{"1", "2", "NULL"}, "unverified")
+	})
+	t.Run("unsigned a-b in range verifies", func(t *testing.T) {
+		au := SchemaCol{Name: "a", base: "bigint", unsigned: true}
+		bu := SchemaCol{Name: "b", base: "bigint", unsigned: true}
+		g := SchemaCol{Name: "g", base: "bigint", unsigned: true, Expr: "(`a` - `b`)"}
+		assertGenOutcome(t, g, []SchemaCol{au, bu, g}, []string{"a", "b", "g"}, []string{"5", "2", "3"}, match)
+	})
+	t.Run("unsigned a+b past 2^64 refuses", func(t *testing.T) {
+		au := SchemaCol{Name: "a", base: "bigint", unsigned: true}
+		bu := SchemaCol{Name: "b", base: "bigint", unsigned: true}
+		g := SchemaCol{Name: "g", base: "bigint", unsigned: true, Expr: "(`a` + `b`)"}
+		assertGenOutcome(t, g, []SchemaCol{au, bu, g}, []string{"a", "b", "g"}, []string{"18446744073709551615", "1", "NULL"}, "unverified")
+	})
+	t.Run("unsigned minus with signed operand refuses", func(t *testing.T) {
+		au := SchemaCol{Name: "a", base: "bigint", unsigned: true}
+		b := SchemaCol{Name: "b", base: "bigint"}
+		g := SchemaCol{Name: "g", base: "bigint", unsigned: true, Expr: "(`a` - `b`)"}
+		assertGenOutcome(t, g, []SchemaCol{au, b, g}, []string{"a", "b", "g"}, []string{"5", "10", "NULL"}, "unverified")
+	})
+	t.Run("unsigned negate refuses", func(t *testing.T) {
+		au := SchemaCol{Name: "a", base: "bigint", unsigned: true}
+		g := SchemaCol{Name: "g", base: "bigint", unsigned: true, Expr: "(-`a`)"}
+		assertGenOutcome(t, g, []SchemaCol{au, g}, []string{"a", "g"}, []string{"1", "NULL"}, "unverified")
+	})
 	t.Run("div", func(t *testing.T) {
 		check(t, "dv", "(`a` DIV `b`)", "-2.0000", "-5", "2", match, 20, 4, "decimal")
 	})
