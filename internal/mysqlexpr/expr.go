@@ -1,6 +1,6 @@
 // Package mysqlexpr evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
-// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. ENUM and SET print the schema-file member labels when the file lists them; an index of 0 is an empty label, and a value with no member list stays the raw index or bitmask. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
+// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. ENUM and SET print the schema-file member labels when the file lists them; an index of 0 is an empty label, and a value with no member list stays the raw index or bitmask. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. TIME and DATETIME assignment rounds fractional seconds half away from zero to the column fsp; a carry into the seconds is unverified. A YEAR value coerced to text renders MySQL's 4 digits, so YEAR 0 is '0000'. A fixed BINARY column zero-pads the expression result to its width, and a longer result is unverified like a long CHAR. A _charset literal outside the dump-safe UTF family (utf8/utf8mb3/utf8mb4/ascii) is not evaluated: the dumped expression can carry '?' for a lost byte. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package mysqlexpr
@@ -42,20 +42,20 @@ const (
 // raw is the original bytes when known. base and the precision fields are the
 // schema column the literal came from, so string functions can use that type.
 type GenVal struct {
-	kind    genKind
-	n       *big.Rat
-	numText string
-	text    string
-	raw     []byte
-	haveRaw bool
-	charset string
-	decoded bool
-	j       *jNode
-	base    string
-	members []string
-	prec    int
-	scale   int
-	hasPrec bool
+	kind     genKind
+	n        *big.Rat
+	numText  string
+	text     string
+	raw      []byte
+	haveRaw  bool
+	charset  string
+	decoded  bool
+	j        *jNode
+	base     string
+	members  []string
+	prec     int
+	scale    int
+	hasPrec  bool
 	unsigned bool
 }
 
@@ -336,6 +336,8 @@ func (v GenVal) coerceText() (GenVal, bool) {
 		return GenVal{}, false
 	case "time", "datetime":
 		return v.temporalAsText()
+	case "year":
+		return v.yearAsText()
 	}
 	switch v.kind {
 	case genNull:
@@ -861,131 +863,6 @@ func attachColMeta(v GenVal, col SchemaCol) GenVal {
 		v.charset = col.charset
 	}
 	return v
-}
-
-// matchGenerated reports whether got is the logged literal after assignment to col.
-// confident is false when the checker will not claim a match or a mismatch.
-func matchGenerated(got GenVal, lit string, col SchemaCol) (match, confident bool) {
-	logged, ok := parseLoggedValue(lit)
-	if !ok {
-		return false, false
-	}
-	if got.kind == genNull || logged.kind == genNull {
-		return got.kind == genNull && logged.kind == genNull, true
-	}
-	if binaryAssign(col.base) && got.haveRaw && logged.haveRaw {
-		return bytes.Equal(got.raw, logged.raw), true
-	}
-	if integerAssign(col.base) && (got.kind == genNum || logged.kind == genNum) {
-		iv, ok := got.asInt()
-		if !ok {
-			text, tok := got.coerceText()
-			if !tok {
-				return false, false
-			}
-			iv, ok = textToInt(text)
-			if !ok {
-				return false, false
-			}
-		}
-		if clip, clipped := integerClip(iv, col); clipped {
-			// Non-strict sql_mode stores the type's endpoint. Matching that
-			// endpoint would also accept a real column that happens to hold it.
-			if intValMatches(intVal{n: new(big.Rat).SetInt(clip)}, literalNumber(lit)) {
-				return false, false
-			}
-			return false, true
-		}
-		return intValMatches(iv, literalNumber(lit)), true
-	}
-	if col.base == "json" && got.kind == genJSON && logged.kind == genJSON {
-		return jsonEqual(got.j, logged.j), true
-	}
-	if stringAssign(col.base) {
-		left, ok1 := assignText(got, col)
-		right, ok2 := assignText(logged, col)
-		if !ok1 || !ok2 {
-			return false, false
-		}
-		return left == right, true
-	}
-	if got.kind == logged.kind && got.kind == genText {
-		return got.text == logged.text, true
-	}
-	if got.kind == genJSON && logged.kind == genText {
-		text, ok := jsonUnquote(got)
-		if !ok || text.kind != genText {
-			return false, false
-		}
-		return text.text == logged.text, true
-	}
-	return false, false
-}
-
-func literalNumber(lit string) string {
-	return strings.TrimSpace(lit)
-}
-
-func textToInt(v GenVal) (intVal, bool) {
-	if v.kind != genText {
-		return intVal{}, false
-	}
-	i, ok := new(big.Int).SetString(v.text, 10)
-	if !ok {
-		return intVal{}, false
-	}
-	return intVal{n: new(big.Rat).SetInt(i)}, true
-}
-
-func binaryAssign(base string) bool {
-	switch base {
-	case "binary", "varbinary", "tinyblob", "blob", "mediumblob", "longblob":
-		return true
-	default:
-		return false
-	}
-}
-
-func integerAssign(base string) bool {
-	switch base {
-	case "tinyint", "smallint", "mediumint", "int", "bigint", "year":
-		return true
-	default:
-		return false
-	}
-}
-
-func stringAssign(base string) bool {
-	switch base {
-	case "char", "varchar", "tinytext", "text", "mediumtext", "longtext", "binary", "varbinary", "blob", "tinyblob", "mediumblob", "longblob":
-		return true
-	default:
-		return false
-	}
-}
-
-func assignText(v GenVal, col SchemaCol) (string, bool) {
-	src, ok := v.coerceText()
-	if !ok || src.kind == genNull {
-		return "", false
-	}
-	text := src.text
-	if (col.base == "char" || col.base == "varchar") && col.hasPrec && utf8.RuneCountInString(text) > col.prec {
-		// Non-strict sessions truncate. This checker does not know sql_mode, so a longer result is unverifiable.
-		return "", false
-	}
-	if col.base == "char" && col.hasPrec {
-		text = padChar(text, col.prec)
-	}
-	return text, true
-}
-
-func padChar(text string, width int) string {
-	n := utf8.RuneCountInString(text)
-	if n >= width {
-		return text
-	}
-	return text + strings.Repeat(" ", width-n)
 }
 
 func exampleImage(im LoggedImage, meta []SchemaCol) string {
