@@ -127,31 +127,56 @@ func TestJSONFailureOutputMatchesSchema(t *testing.T) {
 			continue
 		}
 		seen[run.name] = true
-		code, stdout, stderr := runRoot(t, run.args...)
-		if code != run.exit {
-			t.Errorf("%s: exit %d, want %d: %s", run.name, code, run.exit, stderr)
-			continue
-		}
-		if !run.document {
-			if stdout != "" {
-				t.Errorf("%s: failure printed a stdout document:\n%s", run.name, stdout)
-			}
-			continue
-		}
-		schema := readPublishedSchema(t, root, run.name)
-		var inst any
-		if err := json.Unmarshal([]byte(stdout), &inst); err != nil {
-			t.Errorf("%s: stdout is not JSON: %v\n%s", run.name, err, stdout)
-			continue
-		}
-		if err := jsonschema.Validate(schema, inst); err != nil {
-			t.Errorf("%s: failure output does not match docs/schema/%s.json: %v\n%s", run.name, run.name, err, stdout)
-		}
+		runJSONFailureCase(t, root, run)
 	}
 	for name := range byName {
 		if !seen[name] {
 			t.Errorf("schema %s has no failure output to validate", name)
 		}
+	}
+}
+
+func runJSONFailureCase(t *testing.T, root string, run jsonFailureRun) {
+	t.Helper()
+	code, stdout, stderr := runRoot(t, run.args...)
+	if code != run.exit {
+		t.Errorf("%s: exit %d, want %d: %s", run.name, code, run.exit, stderr)
+		return
+	}
+	if !run.document {
+		if stdout != "" {
+			t.Errorf("%s: failure printed a stdout document:\n%s", run.name, stdout)
+		}
+		return
+	}
+	schema := readPublishedSchema(t, root, run.name)
+	var inst any
+	if err := json.Unmarshal([]byte(stdout), &inst); err != nil {
+		t.Errorf("%s: stdout is not JSON: %v\n%s", run.name, err, stdout)
+		return
+	}
+	if err := jsonschema.Validate(schema, inst); err != nil {
+		t.Errorf("%s: failure output does not match docs/schema/%s.json: %v\n%s", run.name, run.name, err, stdout)
+	}
+}
+
+// A command fails more than one way; the catalog pins only one run per
+// name. These extra runs pin the shapes a mutant could break without
+// failing the catalog: a missing plan still prints the describe failure
+// document, and an analyze decode failure prints nothing.
+func TestJSONFailureOutputMatchesSchemaExtraRuns(t *testing.T) {
+	forceEnglishRuntimeOutput(t)
+	dir := t.TempDir()
+	notBinlog := filepath.Join(dir, "not.binlog")
+	if err := os.WriteFile(notBinlog, []byte("select 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := repoRoot(t)
+	for _, run := range []jsonFailureRun{
+		{name: "analyze", args: []string{"analyze", notBinlog, "--format", "json", "-q"}, exit: 5},
+		{name: "workflow-describe", args: []string{"workflow", "describe", filepath.Join(dir, "missing.yaml"), "--format", "json"}, exit: 4, document: true},
+	} {
+		runJSONFailureCase(t, root, run)
 	}
 }
 
