@@ -46,10 +46,12 @@ NOTES_ZH="docs/releases/release-notes-${TAG}.zh-CN.md"
 NOTES_ZH_TITLE_RE="^# BinlogViz v${VER_RE} 发布说明"
 # Install snippets resolve releases/latest (#281, #285), so a README carries no
 # pin; any pinned tag that does appear must be this release.
-# A pin is matched with its whole version (extra segments, suffixes, quotes,
-# with or without the v), so v1.1.0.1 or "1.0.0" is never read as a match.
-PIN_VER='[0-9][0-9A-Za-z.+-]*'
-PIN_RE="releases/download/v${PIN_VER}/|BinlogVisualizer/v${PIN_VER}/install\\.sh|--version[ =][\"']?v?${PIN_VER}"
+# A pin is matched with its whole version (extra segments, suffixes, quotes),
+# so v1.1.0.1 or "1.0.0" is never read as a match. --version requires the v
+# (--version 8.0.36 is another tool's flag, not our pin) and the version must
+# end alnum, so a trailing '.' or ')' at a sentence end is not part of it.
+PIN_VER='[0-9]([0-9A-Za-z.+-]*[0-9A-Za-z])?'
+PIN_RE="releases/download/v${PIN_VER}/|BinlogVisualizer/v${PIN_VER}/install\\.sh|--version[ =][\"']?v${PIN_VER}"
 PIN_REQUIRED=0
 PIN_HINT="none"
 EXTRA_PINS=()
@@ -80,7 +82,7 @@ if [[ -z "$release_tags" ]]; then
   echo "[release-check] $failures check(s) failed for $TAG${REF:+ at $REF}" >&2
   exit 1
 fi
-older_tag="$(grep -Fxv -- "$TAG" <<<"$release_tags" | { cat; echo "$TAG"; } | sort -V \
+older_tag="$({ grep -Fxv -- "$TAG" <<<"$release_tags" || true; } | { cat; echo "$TAG"; } | sort -V \
   | awk -v t="$TAG" '$0 == t { print prev; exit } { prev = $0 }')"
 if [[ -z "$older_tag" ]]; then
   fail "no release tag older than $TAG in this clone; run git fetch --tags"
