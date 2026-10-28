@@ -34,7 +34,7 @@ func assertDMLRowsFixture(t *testing.T, name string) {
 		t.Fatalf("read mysqlbinlog decode: %v", err)
 	}
 	if live, err := exec.LookPath("mysqlbinlog"); err == nil {
-		out, err := exec.Command(live, "-v", "--base64-output=DECODE-ROWS", path).Output()
+		out, err := exec.Command(live, "--no-defaults", "-v", "--base64-output=DECODE-ROWS", path).Output()
 		if err != nil {
 			t.Fatalf("mysqlbinlog: %v", err)
 		}

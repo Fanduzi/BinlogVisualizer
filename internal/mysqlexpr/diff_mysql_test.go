@@ -437,7 +437,7 @@ func diffMySQLMust(t *testing.T, sql string) string {
 func diffMySQL(sql string) (string, error) {
 	base := strings.Fields(os.Getenv("BINLOGVIZ_DIFFTEST_MYSQL"))
 	args := append(append([]string{}, base[1:]...), "--default-character-set=utf8mb4", "--batch", "--raw", "--skip-column-names", "--connect-timeout=10")
-	cmd := exec.Command(base[0], args...)
+	cmd := exec.Command(base[0], append([]string{"--no-defaults"}, args...)...)
 	cmd.Stdin = strings.NewReader(sql)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

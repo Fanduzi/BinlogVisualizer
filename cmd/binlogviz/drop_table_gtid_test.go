@@ -94,7 +94,7 @@ func TestDropTableFixtureTimelineMatchesMysqlbinlog(t *testing.T) {
 
 	assertStopPositionExcludesDrop(t, string(mustRead(t, stopPath)), gtid)
 	if live, err := exec.LookPath("mysqlbinlog"); err == nil {
-		full, err := exec.Command(live, "-v", "--base64-output=DECODE-ROWS", path).Output()
+		full, err := exec.Command(live, "--no-defaults", "-v", "--base64-output=DECODE-ROWS", path).Output()
 		if err != nil {
 			t.Fatalf("mysqlbinlog: %v", err)
 		}
@@ -102,7 +102,7 @@ func TestDropTableFixtureTimelineMatchesMysqlbinlog(t *testing.T) {
 		if liveGTID != gtid || liveAt != gtidAt || liveQuery != queryAt {
 			t.Fatalf("live mysqlbinlog gtid=%q at %d query %d, checked-in gtid=%q at %d query %d", liveGTID, liveAt, liveQuery, gtid, gtidAt, queryAt)
 		}
-		stopped, err := exec.Command(live, "-v", "--base64-output=DECODE-ROWS", "--stop-position="+strconv.Itoa(gtidAt), path).Output()
+		stopped, err := exec.Command(live, "--no-defaults", "-v", "--base64-output=DECODE-ROWS", "--stop-position="+strconv.Itoa(gtidAt), path).Output()
 		if err != nil {
 			t.Fatalf("mysqlbinlog --stop-position: %v", err)
 		}

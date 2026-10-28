@@ -1175,8 +1175,17 @@ func normalizeWorkflowStatusOutput(raw, outputDir string) string {
 }
 
 func normalizeWorkflowCleanOutput(raw, outputDir string) string {
-	out := strings.ReplaceAll(raw, outputDir, "<output-dir>")
+	out := raw
+	// workflow clean reports symlink-resolved paths (t.TempDir is under
+	// /private/var on darwin); mask the resolved forms before the raw ones.
+	if resolved, err := filepath.EvalSymlinks(outputDir); err == nil {
+		out = strings.ReplaceAll(out, resolved, "<output-dir>")
+	}
+	out = strings.ReplaceAll(out, outputDir, "<output-dir>")
 	testRoot := filepath.Dir(filepath.Dir(outputDir))
+	if resolved, err := filepath.EvalSymlinks(testRoot); err == nil {
+		out = strings.ReplaceAll(out, resolved+"/", "<test-root>/")
+	}
 	if testRoot != "" && testRoot != "." && testRoot != "/" {
 		out = strings.ReplaceAll(out, testRoot+"/", "<test-root>/")
 	}

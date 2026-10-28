@@ -994,7 +994,7 @@ var (
 
 func numericCrossCheck(t *testing.T, path string, tables []numericTable, viz map[string]map[string]map[string]string) {
 	t.Helper()
-	cmd := exec.Command("mysqlbinlog", "-vv", "--base64-output=DECODE-ROWS", path)
+	cmd := exec.Command("mysqlbinlog", "--no-defaults", "-vv", "--base64-output=DECODE-ROWS", path)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("mysqlbinlog: %v\n%s", err, out)

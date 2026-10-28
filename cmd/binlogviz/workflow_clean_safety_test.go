@@ -167,12 +167,20 @@ func TestCleanMovesToTrash(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &out); err != nil {
 		t.Fatalf("%v\n%s", err, stdout)
 	}
-	if !strings.HasPrefix(out.TrashDir, filepath.Join(outputDir, ".trash")+string(filepath.Separator)) {
+	resolvedOutput, err := filepath.EvalSymlinks(outputDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.TrashDir, filepath.Join(resolvedOutput, ".trash")+string(filepath.Separator)) {
 		t.Fatalf("trash_dir %q must be under %s/.trash", out.TrashDir, outputDir)
 	}
 	mustBeGone(t, filepath.Join(outputDir, "analyze", "week2.json"), filepath.Join(snapshotDir, "week2.json"))
 	mustExist(t, filepath.Join(out.TrashDir, "analyze", "week2.json"), filepath.Join(out.SnapshotTrashDir, "week2.json"))
-	if !strings.HasPrefix(out.SnapshotTrashDir, filepath.Join(snapshotDir, ".trash")) {
+	resolvedSnapshot, err := filepath.EvalSymlinks(snapshotDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.SnapshotTrashDir, filepath.Join(resolvedSnapshot, ".trash")) {
 		t.Fatalf("snapshot_trash_dir %q must be under the snapshot dir", out.SnapshotTrashDir)
 	}
 }
