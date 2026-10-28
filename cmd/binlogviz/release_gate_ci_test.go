@@ -142,6 +142,37 @@ func TestDiffTestJobIsRequired(t *testing.T) {
 	if !strings.Contains(job, "TestDiffMySQLExpressions") || !strings.Contains(job, "TestFlashbackDiffMySQL") {
 		t.Fatal("flashback difftest does not require the differential tests")
 	}
+	// The services are pinned patch releases and a step asserts each version:
+	// a floating mysql:8.0 tag can drift to a server the checker fails on.
+	for _, pin := range []string{"mysql:8.0.", "mysql:8.4."} {
+		if !strings.Contains(job, "image: "+pin) {
+			t.Fatalf("flashback difftest %s service is not pinned", pin)
+		}
+	}
+	if !strings.Contains(job, "Assert the MySQL service versions") || !strings.Contains(job, "SELECT VERSION()") {
+		t.Fatal("flashback difftest does not assert the server versions")
+	}
+}
+
+// The nightly corpus run is a separate scheduled workflow with
+// BINLOGVIZ_DIFFTEST_NIGHTLY=1 on the same pinned services.
+func TestNightlyDiffTestWorkflow(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "difftest-nightly.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf := string(b)
+	if !strings.Contains(wf, "schedule:") || !strings.Contains(wf, "cron:") {
+		t.Fatal("difftest-nightly has no schedule")
+	}
+	if strings.Count(wf, `BINLOGVIZ_DIFFTEST_NIGHTLY: "1"`) < 2 {
+		t.Fatal("difftest-nightly does not enlarge the corpus on both servers")
+	}
+	for _, pin := range []string{"mysql:8.0.", "mysql:8.4."} {
+		if !strings.Contains(wf, "image: "+pin) {
+			t.Fatalf("difftest-nightly %s service is not pinned", pin)
+		}
+	}
 }
 
 // TestReleaseWaitsForReleasePrep keeps the release-prep gate in front of the

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // End-to-end differential check of the flashback planner and the apply guard
@@ -106,8 +107,10 @@ INSERT INTO bvdiff.flt VALUES (1, 1.25);`)
 		// A selected transaction moves key 1, and a later transaction reuses
 		// that key. The default policy refuses (exit 7) and writes no script.
 		// Two updates of a non-key column in the selected range are one undo,
-		// not a conflict.
-		const gtid = "aaaaaaaa-0270-4000-8000-000000000270:1"
+		// not a conflict. The GTID is fresh per run: a fixed one is already
+		// executed on a re-run against the same server, GTID_NEXT skips the
+		// UPDATE, and the INSERT fails ERROR 1062.
+		gtid := fmt.Sprintf("aaaaaaaa-0270-4000-8000-000000000270:%d", time.Now().UnixNano())
 		diffMust(t, `
 DROP TABLE IF EXISTS bvdiff.pk;
 CREATE TABLE bvdiff.pk (id INT NOT NULL PRIMARY KEY, v INT);
