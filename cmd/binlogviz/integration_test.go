@@ -348,8 +348,8 @@ func TestAnalyzeCommandRejectsFromDirWithoutPrefix(t *testing.T) {
 	cmd.SilenceErrors = true
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "must be provided together") {
-		t.Fatalf("expected paired-flag error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "exactly one of --prefix or --index-file") {
+		t.Fatalf("expected selector-pairing error, got %v", err)
 	}
 }
 
@@ -361,8 +361,8 @@ func TestAnalyzeCommandRejectsPrefixWithoutFromDir(t *testing.T) {
 	cmd.SilenceErrors = true
 
 	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "must be provided together") {
-		t.Fatalf("expected paired-flag error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "exactly one of --prefix or --index-file") {
+		t.Fatalf("expected selector-pairing error, got %v", err)
 	}
 }
 
