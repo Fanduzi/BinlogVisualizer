@@ -1,7 +1,7 @@
 // Package mysqlexpr: the generated-column expression evaluator.
 // input: a generated-column expression from a schema file, logged column values, and (for DECIMAL arithmetic) a div_precision_increment.
 // output: the value MySQL would compute, or ok=false when the expression uses something this checker does not model. One grammar, parsed once per expression text into a tree (cached); one evaluator walks that tree in the general domain (integers, text, JSON; EvalGenExpr) or the exact-DECIMAL domain (EvalDecExprInc). The DECIMAL domain accepts only its subset: numbers, columns, NULL/TRUE/FALSE, + - * / DIV % MOD, MOD(), and parentheses; it follows MySQL's per-operation DECIMAL rounding, including DIV and % over a rounded / (#238). JSON paths autowrap a non-array for [0] (#237). A COLLATE clause is not modelled and returns ok=false (ADR 0020). Signed integer + - * DIV past BIGINT is unverified in both domains, because MySQL rejects it.
-// pos: flashback-only module. Analyze does not call it. Value helpers (GenVal, DecVal, apply*) live in expr.go and schema.go.
+// pos: flashback-only module. Analyze does not call it. Value helpers (GenVal, DecVal, apply*) live in expr.go, expr_json.go, expr_decimal.go, and schema.go.
 // note: if this file changes, update this header, CONTEXT.md (Expression evaluator) and docs/adr/0007-expression-evaluator.md.
 package mysqlexpr
 
