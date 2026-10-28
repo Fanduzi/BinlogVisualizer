@@ -411,8 +411,8 @@ func TestAnalyzeMatchedGTIDFormMessages(t *testing.T) {
 			"need at least 2 separate GTID intervals, within the limit of 4, but the form that holds them was dropped when all domains together passed 4",
 			"至少需要 2 个独立的 GTID 区间，没有超过上限 4，但能容纳它们的形式已在所有 domain 合计超过 4 个时放弃"},
 		{"per server", 10, perServer, "99-99-99", 11,
-			"need at least 11 separate GTID intervals kept per server; at most 10 can be tracked, and the shared form, which can need fewer, was dropped when all domains together passed 10",
-			"至少需要 11 个按 server 记录的独立 GTID 区间，最多只能跟踪 10 个；可能需要更少区间的共享形式，已在所有 domain 合计超过 10 个时放弃"},
+			"need at least 11 separate GTID intervals kept per server; at most 10 can be tracked, and the shared form, which needs at least as many, was dropped when all domains together passed 10",
+			"至少需要 11 个按 server 记录的独立 GTID 区间，最多只能跟踪 10 个；所需区间数量至少相同的共享形式，已在所有 domain 合计超过 10 个时放弃"},
 	} {
 		analyzer.MatchedGTIDIntervalLimit = tc.limit
 		selector, err := analyzer.ParseGTIDSelector(nil, []string{tc.exclude})

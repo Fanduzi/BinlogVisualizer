@@ -30,7 +30,12 @@ type MatchedGTIDLimitError struct {
 	// Dropped reports that a MariaDB form was dropped, so Reason is not
 	// MatchedGTIDLimitPlain; the count may then be at or below Limit.
 	Dropped bool
-	Reason  MatchedGTIDLimitReason
+	// SharedSmaller reports that the dropped shared form rendered fewer
+	// entries than the per-server form for the matched domains; it is
+	// recorded when the shared form is freed and matters only with
+	// MatchedGTIDLimitPerServer.
+	SharedSmaller bool
+	Reason        MatchedGTIDLimitReason
 }
 
 // MatchedGTIDLimitReason tells why a matched set stopped analyze.
@@ -46,7 +51,8 @@ const (
 	MatchedGTIDLimitRepeat MatchedGTIDLimitReason = "repeat"
 	// MatchedGTIDLimitPerServer: the shared form was dropped earlier (the
 	// shared ranges or the sequence numbers read passed Limit), so Intervals
-	// counts the per-server form only; the shared one could need fewer.
+	// counts the per-server form only; SharedSmaller tells whether the
+	// shared one would have needed fewer.
 	MatchedGTIDLimitPerServer MatchedGTIDLimitReason = "per_server"
 	// MatchedGTIDLimitFormDropped: Intervals fits in Limit, but the form
 	// that would hold it was dropped when all domains together passed Limit.
@@ -58,7 +64,10 @@ func (e *MatchedGTIDLimitError) Error() string {
 	case MatchedGTIDLimitRepeat:
 		return fmt.Sprintf("GTID selectors matched MariaDB transactions that need at least %d separate GTID intervals kept per server, because a sequence number repeats; that form was dropped when all domains together passed %d. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit)
 	case MatchedGTIDLimitPerServer:
-		return fmt.Sprintf("GTID selectors matched MariaDB transactions that need at least %d separate GTID intervals kept per server; at most %d can be tracked, and the shared form, which can need fewer, was dropped when all domains together passed %d. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit, e.Limit)
+		if e.SharedSmaller {
+			return fmt.Sprintf("GTID selectors matched MariaDB transactions that need at least %d separate GTID intervals kept per server; at most %d can be tracked, and the shared form, which can need fewer, was dropped when all domains together passed %d. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit, e.Limit)
+		}
+		return fmt.Sprintf("GTID selectors matched MariaDB transactions that need at least %d separate GTID intervals kept per server; at most %d can be tracked, and the shared form, which needs at least as many, was dropped when all domains together passed %d. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit, e.Limit)
 	case MatchedGTIDLimitFormDropped:
 		return fmt.Sprintf("GTID selectors matched MariaDB transactions that need at least %d separate GTID intervals, within the limit of %d, but the form that holds them was dropped when all domains together passed %d. Narrow --include-gtids/--exclude-gtids or split the input", e.Intervals, e.Limit, e.Limit)
 	}
@@ -102,6 +111,10 @@ type matchedGTIDSet struct {
 	seenTotal   int
 	exactOff    bool
 	sharedOff   bool
+	// sharedSmaller is recorded by dropShared before it frees the shared
+	// ranges: whether that form rendered fewer entries than the per-server
+	// form for the matched domains, so a later per-server error can say so.
+	sharedSmaller bool
 }
 
 type mariaDomain struct {
@@ -138,7 +151,7 @@ func (m *matchedGTIDSet) stopError() error {
 	case intervals <= MatchedGTIDIntervalLimit:
 		reason = MatchedGTIDLimitFormDropped
 	}
-	return &MatchedGTIDLimitError{Limit: MatchedGTIDIntervalLimit, Intervals: intervals, Dropped: reason != MatchedGTIDLimitPlain, Reason: reason}
+	return &MatchedGTIDLimitError{Limit: MatchedGTIDIntervalLimit, Intervals: intervals, Dropped: reason != MatchedGTIDLimitPlain, SharedSmaller: m.sharedSmaller, Reason: reason}
 }
 
 // repeatWithoutForm reports a domain whose sequence numbers repeat after the
@@ -400,11 +413,28 @@ func (m *matchedGTIDSet) dropExact() error {
 	return m.recostAll()
 }
 
+// sharedNeedsFewer compares the shared and per-server rendered counts of the
+// matched domains while the shared ranges are still counted; a conflicted
+// domain cannot use the shared form anyway and does not vote.
+func (m *matchedGTIDSet) sharedNeedsFewer() bool {
+	shared, per := 0, 0
+	for _, d := range m.maria {
+		if !d.matched() || d.conflict {
+			continue
+		}
+		shared += d.shared.n * len(d.servers)
+		per += m.perServer(d)
+	}
+	return shared < per
+}
+
 // dropShared frees the shared form (and the repeat check) of every domain;
 // domains then need the per-server form. The error count is taken first,
 // while the shared ranges still count (#390 QA P3: a domain whose shared
-// form fits reports that count, not the per-server one).
+// form fits reports that count, not the per-server one). sharedSmaller is
+// recorded here for the per-server error wording.
 func (m *matchedGTIDSet) dropShared() error {
+	m.sharedSmaller = m.sharedNeedsFewer()
 	for _, d := range m.maria {
 		if !m.exactOff || !d.matched() {
 			continue
