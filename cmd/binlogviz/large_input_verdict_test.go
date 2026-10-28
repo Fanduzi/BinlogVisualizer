@@ -47,7 +47,7 @@ var largeInputPaths = []string{"analyze", "flashback"}
 // verdict like any other. A passing child must exit 0, print both verdicts
 // with Pass set, no failures, one or two attempts, no gauge over its cap,
 // a large file at or above the floor, and go test's PASS line.
-func evaluateLargeInputChild(out string, runErr error) largeInputOutcome {
+func evaluateLargeInputChild(out string, runErr error, timedOut bool) largeInputOutcome {
 	var o largeInputOutcome
 	var parseErrs []string
 	for _, line := range strings.Split(out, "\n") {
@@ -85,7 +85,11 @@ func evaluateLargeInputChild(out string, runErr error) largeInputOutcome {
 	case len(parseErrs) > 0:
 		o.err = errors.New(strings.Join(parseErrs, "; "))
 	case runErr != nil:
-		o.err = fmt.Errorf("child exited with %v before a failing verdict: %s", runErr, lastFailureLine(out))
+		if timedOut {
+			o.err = fmt.Errorf("child ran out of time (%v): %s", runErr, lastFailureLine(out))
+		} else {
+			o.err = fmt.Errorf("child exited with %v before a failing verdict: %s", runErr, lastFailureLine(out))
+		}
 	case o.input == nil:
 		o.err = errors.New("child printed no input record")
 	case o.input.LargeBytes < largeInputMinBytes:
@@ -104,12 +108,20 @@ func evaluateLargeInputChild(out string, runErr error) largeInputOutcome {
 			o.err = fmt.Errorf("verdict %d is for %q, want %q", i+1, v.Path, largeInputPaths[i])
 		case !v.Pass:
 			o.err = fmt.Errorf("%s verdict is not a pass and names no failed check", v.Path)
+		case len(v.Failures) > 0:
+			o.err = fmt.Errorf("%s verdict says pass but names failed checks: %s", v.Path, joinFailures(v.Failures))
 		case v.Attempts < 1 || v.Attempts > 2:
 			o.err = fmt.Errorf("%s took %d attempts, want 1 or 2", v.Path, v.Attempts)
+		case v.Attempts == 1 && len(v.Retried) > 0:
+			o.err = fmt.Errorf("%s took one attempt but lists retried failures: %s", v.Path, joinFailures(v.Retried))
+		case v.Attempts == 2 && len(v.Retried) == 0:
+			o.err = fmt.Errorf("%s took two attempts but lists no retried failure", v.Path)
 		case v.Attempts == 2 && !allCPU(v.Retried):
 			o.err = fmt.Errorf("%s was retried after a non-CPU failure: %s", v.Path, joinFailures(v.Retried))
 		case len(v.Gauges) == 0:
 			o.err = fmt.Errorf("%s verdict has no measurements", v.Path)
+		case !gaugesMatchPath(v):
+			o.err = fmt.Errorf("%s verdict gauges %v do not cover the expected measurements", v.Path, gaugeNames(v.Gauges))
 		}
 		if o.err != nil {
 			return o
@@ -128,19 +140,74 @@ func evaluateLargeInputChild(out string, runErr error) largeInputOutcome {
 	return o
 }
 
-// lastFailureLine is the last line of the child's output that names a test
-// file, which is where t.Fatal puts its message.
+// lastFailureLine names the child's cause of death: the first panic or
+// fatal error line when one exists (a stack's last frame names a helper,
+// not the cause), else the last line that names a test file, which is
+// where t.Fatal puts its message. The heading is one line, so the cause
+// is cut rather than a garbled verdict blob.
 func lastFailureLine(out string) string {
 	last := ""
 	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "panic:") || strings.HasPrefix(trimmed, "fatal error:") {
+			return truncateLine(trimmed)
+		}
 		if strings.Contains(line, "_test.go:") {
-			last = strings.TrimSpace(line)
+			last = trimmed
 		}
 	}
 	if last == "" {
 		return "no failure message"
 	}
-	return last
+	return truncateLine(last)
+}
+
+// largeInputGauges are the gauge names a verdict may carry per path; the
+// spill gauges are conditional on /proc/self/fd, the rest are required.
+var largeInputCoreGauges = []string{"cpu_ratio", "cpu_ns_per_event", "peak_heap", "alloc_per_event", "alloc_ratio", "extra_heap"}
+
+var largeInputGauges = map[string]map[string]bool{
+	"analyze":   {"cpu_ratio": true, "cpu_ns_per_event": true, "peak_heap": true, "alloc_per_event": true, "alloc_ratio": true, "extra_heap": true, "spill_per_txn": true},
+	"flashback": {"cpu_ratio": true, "cpu_ns_per_event": true, "peak_heap": true, "alloc_per_event": true, "alloc_ratio": true, "extra_heap": true, "sql_ratio": true, "spill_per_byte": true},
+}
+
+// gaugesMatchPath reports that every gauge a verdict carries is a known
+// name for its path and that every required gauge is present: a verdict
+// missing a gauge stops gating that measurement.
+func gaugesMatchPath(v largeInputVerdict) bool {
+	allowed, ok := largeInputGauges[v.Path]
+	if !ok {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, g := range v.Gauges {
+		if !allowed[g.Name] {
+			return false
+		}
+		seen[g.Name] = true
+	}
+	for _, name := range largeInputCoreGauges {
+		if !seen[name] {
+			return false
+		}
+	}
+	return true
+}
+
+func gaugeNames(gs []gauge) []string {
+	names := make([]string, len(gs))
+	for i, g := range gs {
+		names[i] = g.Name
+	}
+	return names
+}
+
+func truncateLine(s string) string {
+	const max = 160
+	if len(s) > max {
+		return s[:max] + "..."
+	}
+	return s
 }
 
 // summary is the markdown for the CI step summary and the test log: a

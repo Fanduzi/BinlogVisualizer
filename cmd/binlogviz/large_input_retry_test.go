@@ -223,7 +223,7 @@ func TestLargeInputParentVerdict(t *testing.T) {
 			if scales != 2*tc.wantAttempts {
 				t.Fatalf("analyze scale= lines = %d, want %d", scales, 2*tc.wantAttempts)
 			}
-			o := evaluateLargeInputChild(out, runErr)
+			o := evaluateLargeInputChild(out, runErr, false)
 			if (o.err == nil) != tc.wantPass {
 				t.Fatalf("parent verdict %v, want pass=%v\n%s", o.err, tc.wantPass, out)
 			}
@@ -284,7 +284,7 @@ func TestLargeInputParentVerdict(t *testing.T) {
 			if tc.out == good && tc.runErr == nil {
 				t.Fatalf("replacement did not apply")
 			}
-			o := evaluateLargeInputChild(tc.out, tc.runErr)
+			o := evaluateLargeInputChild(tc.out, tc.runErr, false)
 			if o.err == nil || !strings.Contains(o.err.Error(), tc.want) {
 				t.Fatalf("parent verdict %v, want it to contain %q", o.err, tc.want)
 			}

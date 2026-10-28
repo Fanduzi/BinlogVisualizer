@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -79,7 +80,7 @@ func TestLargeInputBaseline(t *testing.T) {
 	t.Logf("%s", out)
 	// Judge first, then write the summary, so the summary carries the
 	// parent's verdict and the failing check.
-	outcome := evaluateLargeInputChild(string(out), runErr)
+	outcome := evaluateLargeInputChild(string(out), runErr, errors.Is(ctx.Err(), context.DeadlineExceeded))
 	body, alert := outcome.summary()
 	t.Logf("%s", body)
 	if alert {
