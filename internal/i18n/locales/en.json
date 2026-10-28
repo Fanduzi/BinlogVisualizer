@@ -203,6 +203,18 @@
     "description": "End time before start time error",
     "other": "end time must be after start time"
   },
+  "error.invalidUTCOffset": {
+    "description": "An explicit +-HH:MM offset that is not a real UTC offset",
+    "other": "{{.Value}} is not a valid UTC offset"
+  },
+  "error.zoneTimeGap": {
+    "description": "A zoneless local time that does not exist because the zone skipped it at an offset change",
+    "other": "{{.Value}} does not exist in {{.Zone}} (local-time gap at an offset change); add an explicit offset"
+  },
+  "error.zoneTimeOverlap": {
+    "description": "A zoneless local time that is ambiguous because the zone repeated it at an offset change",
+    "other": "{{.Value}} is ambiguous in {{.Zone}} (local-time overlap at an offset change); add an explicit offset"
+  },
   "error.noResolvedFiles": {
     "description": "Discovery resolved zero binlog files for the requested window",
     "other": "discovery resolved 0 binlog files for the requested time window — check file availability or widen the window"

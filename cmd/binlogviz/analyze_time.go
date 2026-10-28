@@ -1,7 +1,7 @@
 // Package binlogviz parses analyze's --start/--end time flags.
 // input: RFC3339 or YYYY-MM-DD HH:MM:SS flag text and a --tz location.
 // output: the resolved instants, or a usage error for an offset past 14:00,
-// offset minutes outside 00/30/45, or a DST gap/overlap in the zoneless form.
+// offset minutes outside 00/30/45, or a local-time gap/overlap in the zoneless form.
 // pos: CLI orchestration helper for analyze.go.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -90,24 +90,25 @@ func rejectUTCOffset(value string, parsed time.Time) (time.Time, error) {
 	}
 	minutes := int((abs % time.Hour) / time.Minute)
 	if abs > 14*time.Hour || abs%time.Minute != 0 || (minutes != 0 && minutes != 30 && minutes != 45) {
-		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s is not a valid UTC offset", value)
+		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.invalidUTCOffset", map[string]any{"Value": value}))
 	}
 	return parsed, nil
 }
 
 // rejectZoneCivil refuses a zoneless wall time that does not exist once in
-// loc. A DST gap is a time the zone skipped. A DST overlap is a time the
-// zone repeated. Neither is resolved to an instant.
+// loc. A gap is a local time the zone skipped at an offset change (DST or
+// otherwise). An overlap is a local time the zone repeated. Neither is
+// resolved to an instant.
 func rejectZoneCivil(value, layout string, parsed time.Time, loc *time.Location) (time.Time, error) {
 	requested, err := time.ParseInLocation(layout, value, time.UTC)
 	if err != nil {
 		return parsed, nil
 	}
 	if !sameWallClock(parsed, requested) {
-		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s does not exist in %s (DST gap); add an explicit offset", value, zoneName(loc))
+		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.zoneTimeGap", map[string]any{"Value": value, "Zone": zoneName(loc)}))
 	}
 	if ambiguousWall(parsed) {
-		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s is ambiguous in %s (DST overlap); add an explicit offset", value, zoneName(loc))
+		return time.Time{}, clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.zoneTimeOverlap", map[string]any{"Value": value, "Zone": zoneName(loc)}))
 	}
 	return parsed, nil
 }

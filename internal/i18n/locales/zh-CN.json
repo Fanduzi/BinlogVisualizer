@@ -203,6 +203,18 @@
     "description": "结束时间早于开始时间错误",
     "other": "结束时间必须晚于开始时间"
   },
+  "error.invalidUTCOffset": {
+    "description": "显式 ±HH:MM 偏移不是真实 UTC 偏移",
+    "other": "{{.Value}} 不是有效的 UTC 偏移"
+  },
+  "error.zoneTimeGap": {
+    "description": "无时区本地时间在时区偏移切换中被跳过而不存在",
+    "other": "{{.Value}} 在 {{.Zone}} 不存在（时区偏移切换产生的当地时间缺口）；请加上明确的偏移量"
+  },
+  "error.zoneTimeOverlap": {
+    "description": "无时区本地时间在时区偏移切换中被重复而产生歧义",
+    "other": "{{.Value}} 在 {{.Zone}} 有歧义（时区偏移切换产生的当地时间重叠）；请加上明确的偏移量"
+  },
   "error.noResolvedFiles": {
     "description": "Discovery resolved zero binlog files for the requested window",
     "other": "发现阶段解析到 0 个 binlog 文件——请检查文件可用性或扩大时间窗口"

@@ -239,14 +239,14 @@ func TestParseAnalyzeTimeRejectsDSTGapOverlapAndBadOffset(t *testing.T) {
 	if err == nil {
 		t.Fatalf("DST gap resolved to %s", gap)
 	}
-	if !strings.Contains(err.Error(), "2026-03-08 02:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "DST gap") || !strings.Contains(err.Error(), "add an explicit offset") {
+	if !strings.Contains(err.Error(), "2026-03-08 02:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "local-time gap") || !strings.Contains(err.Error(), "add an explicit offset") {
 		t.Fatalf("gap error: %v", err)
 	}
 	overlap, err := parseAnalyzeTimeInLocation("2026-11-01 01:30:00", ny)
 	if err == nil {
 		t.Fatalf("DST overlap resolved to %s", overlap)
 	}
-	if !strings.Contains(err.Error(), "2026-11-01 01:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "DST overlap") || !strings.Contains(err.Error(), "add an explicit offset") {
+	if !strings.Contains(err.Error(), "2026-11-01 01:30:00") || !strings.Contains(err.Error(), "America/New_York") || !strings.Contains(err.Error(), "local-time overlap") || !strings.Contains(err.Error(), "add an explicit offset") {
 		t.Fatalf("overlap error: %v", err)
 	}
 	// The spring-forward morning before the gap, and the hour after it, exist.
