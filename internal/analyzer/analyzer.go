@@ -511,7 +511,8 @@ func withDDLIdentity(ev model.NormalizedEvent) (model.NormalizedEvent, bool) {
 	if ddl.Schema != "" {
 		ev.Schema = ddl.Schema
 	}
-	if ddl.Table != "" {
+	// An account is not a table; USER DDL stays out of table aggregation.
+	if ddl.Table != "" && ddl.Object != "user" {
 		ev.Table = ddl.Table
 	}
 	return ev, true

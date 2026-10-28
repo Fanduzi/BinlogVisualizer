@@ -717,6 +717,9 @@ func (a *Planner) ddlRefusal(ev model.NormalizedEvent) error {
 		if names := a.dropNames(ev); len(names) > 0 {
 			return a.refuseDrop(ev, names)
 		}
+		if names := a.userNames(ev); len(names) > 0 {
+			return a.refuseDrop(ev, names)
+		}
 		return refuse("ddl_in_range", table, flashDDLError(ev, escapeControls(label)))
 	}
 	// QuerySchema is the default database of the query event. Empty means
@@ -749,25 +752,6 @@ func (a *Planner) ddlRefusal(ev model.NormalizedEvent) error {
 		}
 	}
 	return nil
-}
-
-// dropNames is every table a readable DROP TABLE names. Empty when the
-// statement is not one. Schema fill is mysqlexpr.WithSession.
-func (a *Planner) dropNames(ev model.NormalizedEvent) []string {
-	if ev.QueryTruncated {
-		return nil
-	}
-	d := mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode)
-	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL, d)
-	if !isDrop || !ok || len(names) == 0 {
-		return nil
-	}
-	names = mysqlexpr.WithSession(names, ev.QuerySchema, ev.Schema)
-	parts := make([]string, len(names))
-	for i, name := range names {
-		parts[i] = a.refusalTable(name.Schema, name.Table)
-	}
-	return parts
 }
 
 // refuseDrop puts every name in details.table. The message shows five names

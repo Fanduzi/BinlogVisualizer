@@ -3,13 +3,14 @@
 // input: the statement text of a DDL query event and the session's default schema.
 // output: every table and schema the statement names as a source or target, or ok=false
 // when the statement is not one of the shapes read here. ok=false refuses.
-// pos: flashback-only helper. Analyze does not call it. Names come from mysqlexpr's identifier reader, including a digit-leading name. DROP TABLE names come from mysqlexpr.ParseDropTable.
+// pos: flashback-only helper. Analyze does not call it. Names come from mysqlexpr's identifier reader, including a digit-leading name. DROP TABLE names come from mysqlexpr.ParseDropTable; USER accounts come from mysqlexpr.ParseDropUser and mysqlexpr.ParseRenameUser, for the refusal label.
 // note: if this file changes, update this header, README.md, and ADR 0015.
 package flashback
 
 import (
 	"strings"
 
+	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
 )
 
@@ -429,4 +430,60 @@ func (p *ddlParser) createPrefix() {
 			return
 		}
 	}
+}
+
+// dropNames is every table a readable DROP TABLE names. Empty when the
+// statement is not one. Schema fill is mysqlexpr.WithSession.
+func (a *Planner) dropNames(ev model.NormalizedEvent) []string {
+	if ev.QueryTruncated {
+		return nil
+	}
+	d := mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode)
+	names, isDrop, ok := mysqlexpr.ParseDropTable(ev.QuerySQL, d)
+	if !isDrop || !ok || len(names) == 0 {
+		return nil
+	}
+	names = mysqlexpr.WithSession(names, ev.QuerySchema, ev.Schema)
+	parts := make([]string, len(names))
+	for i, name := range names {
+		parts[i] = a.refusalTable(name.Schema, name.Table)
+	}
+	return parts
+}
+
+// userNames is every account a USER statement names, for the refusal label:
+// DROP USER lists each dropped account, RENAME USER each "old TO new" pair,
+// and CREATE or ALTER USER the one account after USER (the auth options that
+// follow it are not names). Empty for non-USER DDL.
+func (a *Planner) userNames(ev model.NormalizedEvent) []string {
+	if ev.QueryTruncated {
+		return nil
+	}
+	d := mysqlexpr.EventDialect(ev.ServerVersion, ev.ServerFlavor, ev.SQLMode)
+	if accounts, isDrop, ok := mysqlexpr.ParseDropUser(ev.QuerySQL, d); isDrop {
+		if !ok {
+			return nil
+		}
+		return accounts
+	}
+	if targets, isRename, ok := mysqlexpr.ParseRenameUser(ev.QuerySQL, d); isRename {
+		if !ok {
+			return nil
+		}
+		return targets
+	}
+	p := mysqlexpr.NewReader(ev.QuerySQL, d)
+	verb, ok := p.Ident()
+	if !ok || verb.Quoted ||
+		(!strings.EqualFold(verb.Text, "CREATE") && !strings.EqualFold(verb.Text, "ALTER")) {
+		return nil
+	}
+	keyword, ok := p.Ident()
+	if !ok || keyword.Quoted || !strings.EqualFold(keyword.Text, "USER") {
+		return nil
+	}
+	if account := mysqlexpr.AccountAfter(ev.QuerySQL, "USER", d); account != "" {
+		return []string{account}
+	}
+	return nil
 }
