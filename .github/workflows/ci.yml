@@ -71,6 +71,20 @@ jobs:
         # job, which still runs plain go test ./... (TestEveryMemoryTestRunsInCIVerify).
         run: go test -race -count=1 -timeout 40m ./...
 
+  darwin-verify:
+    name: darwin verify
+    # The test suite is the only gate Linux runs that darwin users also run;
+    # keep it green so a Linux-only test helper cannot quietly break them.
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run tests
+        run: go test ./...
+
   flashback-e2e:
     name: flashback e2e
     runs-on: ubuntu-24.04
