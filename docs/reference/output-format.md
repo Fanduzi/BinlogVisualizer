@@ -166,7 +166,7 @@ When `binlog_row_metadata=FULL` and a table with no primary key received UPDATE 
 
 ### Hot Rows
 
-`Hot Rows` follows No Primary Key and precedes Top Threads. It ranks individual primary keys by how many UPDATE and DELETE row images touched them. INSERT images are not counted. A table with no primary key is not ranked here. The section is omitted when there are no ranked keys, no unavailable tables, and the tracking cap was not hit.
+`Hot Rows` follows Top Transactions and precedes Top Findings. It ranks individual primary keys by how many UPDATE and DELETE row images touched them. INSERT images are not counted. A table with no primary key is not ranked here. The section is omitted when there are no ranked keys, no unavailable tables, and the tracking cap was not hit.
 
 Each listed row shows:
 

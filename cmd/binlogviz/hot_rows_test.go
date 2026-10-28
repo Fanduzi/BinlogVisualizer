@@ -65,6 +65,7 @@ func TestHotRowsOnMySQL80FullAndMinimal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("text: %v\n%s", err, stderr)
 	}
+	assertTextSectionBefore(t, text, "=== Top Transactions ===", "=== Hot Rows ===")
 	section := sectionBetween(text, "=== Hot Rows ===", "===")
 	if section == "" || !strings.Contains(section, "shop.counters id=7") || !strings.Contains(section, "touches=7") || !strings.Contains(section, "transactions=6") {
 		t.Fatalf("text section:\n%s", text)
@@ -279,5 +280,12 @@ func assertGTIDAt(t *testing.T, path, gtid string, pos int64) {
 	}
 	if !found {
 		t.Fatalf("gtid %s not in %s", gtid, path)
+	}
+}
+
+func assertTextSectionBefore(t *testing.T, text, first, second string) {
+	t.Helper()
+	if a, b := strings.Index(text, first), strings.Index(text, second); a < 0 || b < 0 || a > b {
+		t.Fatalf("text report must place %s before %s for spike triage:\n%s", first, second, text)
 	}
 }
