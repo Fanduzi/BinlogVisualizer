@@ -160,7 +160,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 ### 热点行
 
-「热点行」在「无主键」之后、Top Threads 之前。它按主键被 UPDATE 和 DELETE 行镜像碰到的次数排序。INSERT 不计入。没有主键的表不在这一节排名。没有排名、没有无法追踪的表、也没有触及追踪上限时，这一节省略。
+「热点行」在 Top Transactions 之后、Top Findings 之前。它按主键被 UPDATE 和 DELETE 行镜像碰到的次数排序。INSERT 不计入。没有主键的表不在这一节排名。没有排名、没有无法追踪的表、也没有触及追踪上限时，这一节省略。
 
 每一条包括：
 
