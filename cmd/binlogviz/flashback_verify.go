@@ -28,6 +28,7 @@ type flashbackVerifyJSON struct {
 
 func newFlashbackVerifyCommand() *cobra.Command {
 	var format string
+	warn := experimentalWarnOnce()
 	cmd := &cobra.Command{
 		Use:   i18n.T("cmd.flashback.verify.use"),
 		Short: i18n.T("cmd.flashback.verify.short"),
@@ -36,9 +37,12 @@ func newFlashbackVerifyCommand() *cobra.Command {
   binlogviz flashback verify undo.sql --format json`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Args:          cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			warn()
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			warnFlashbackExperimental()
+			warn()
 			switch strings.ToLower(strings.TrimSpace(format)) {
 			case "sql", "json":
 			default:
@@ -101,6 +105,10 @@ func newFlashbackVerifyCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&format, "format", "sql", i18n.T("cmd.flashback.verify.flag.format"))
+	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		warn()
+		return err
+	})
 	return cmd
 }
 

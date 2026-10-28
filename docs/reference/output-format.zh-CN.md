@@ -43,6 +43,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 
 `schema_version` 总是第一个字段。每种输出只在不兼容变更（删除或改名字段、改变字段类型或含义）时提升自己的版本号，CHANGELOG 会把这次提升标为不兼容。新增字段不提升版本。`workflow run` 写出的 compare 和 trend 产物带同样的字段。`workflow status`、`resume` 和 `clean` 对这些产物遵守同一规则：manifest 记录的 compare 或 trend JSON 产物，如果 `schema_version` 不是 1 到本构建所写版本之间的整数，就以退出码 9 退出（`unsupported`，`details.reason` 为 `unsupported_artifact_version`，并带 `artifact`、`step_kind`、`step_name`、`schema_version` 和 `supported_version`），stdout 不输出，磁盘上不做任何改动。没有这个字段的产物是 ADR 0010 之前写的，仍然可以读取。`stderr` 上单行的 `{"error":…}` 和 `{"warning":…}` 不是带版本的文档，格式由 ADR 0009 固定。`workflow status` 另外报告 `manifest_version`，那是它读到的 manifest 的版本。
 
+`flashback --plan` 文档在 flashback 处于实验阶段时带 `experimental: true`（ADR 0020）。它是新增字段，按版本规则 `plan_version` 保持 2。
+
 ## 显示时区
 
 不传 `--tz`，或 `--tz UTC`，渲染出的时间保持原来的写法：文本、Markdown 和 HTML 以 ` UTC` 结尾，JSON 使用带 `Z` 的 RFC3339。`--tz` 接受 IANA 名，例如 `Asia/Shanghai`。其他时区使用数字偏移，不用缩写。时间戳行写出这个 IANA 名。

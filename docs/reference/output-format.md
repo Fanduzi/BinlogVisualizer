@@ -49,6 +49,8 @@ Every versioned JSON document has a Draft 2020-12 schema derived from the Go typ
 
 `report_version` stays 4, `plan_version` stays 2, and every `schema_version` stays 1. Passing `--tz` changes the offset spelling of timestamp strings. It does not add or remove a key, and it does not change a value's type.
 
+A `flashback --plan` document also carries `experimental: true` while flashback is experimental (ADR 0020). It is an added key, so `plan_version` stays 2 under the versioning rule.
+
 ## Display timezone
 
 With no `--tz`, or with `--tz UTC`, rendered times keep the historical spelling: text, Markdown, and HTML end in ` UTC`, and JSON uses RFC3339 with `Z`. `--tz` takes an IANA name such as `Asia/Shanghai`. Any other zone uses a numeric offset and never an abbreviation (`2006-01-02 15:04:05 -07:00` in text, Markdown, and HTML; RFC3339 with that offset in JSON; `Z` only when that instant's offset is zero, so `Etc/UTC` JSON stays `Z` and the human form uses `+00:00`). The Timestamps line names the IANA zone.
