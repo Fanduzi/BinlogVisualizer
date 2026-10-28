@@ -23,6 +23,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
@@ -246,7 +247,7 @@ func TestRunAnalysisParsesMultipleFilesConcurrentlyAndConsumesInOrder(t *testing
 			report.DefaultOptions(),
 			"json",
 			parser,
-			func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+			func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 				return fakeAnalyzer
 			},
 			createDuckDBTempStore,
@@ -900,7 +901,7 @@ func TestRunAnalysisStreamsEventsDirectlyIntoAnalyzer(t *testing.T) {
 	}
 
 	_, err := captureStdoutRun(t, func() error {
-		return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", mock, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 			return fakeAnalyzer
 		}, createDuckDBTempStore, "")
 	})
@@ -1109,7 +1110,7 @@ func TestRunAnalysisTextSQLContextModes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			out, err := captureStdoutRun(t, func() error {
-				return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "text", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+				return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "text", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 					return &fakeStreamingAnalyzer{finalResult: result}
 				}, createDuckDBTempStore, "")
 			})
@@ -1170,7 +1171,7 @@ func TestRunAnalysisJSONSQLContextModes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			stdout, err := captureStdoutRun(t, func() error {
-				return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "json", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+				return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.Options{SQLContextMode: tt.mode}, "json", &mockParser{}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 					return &fakeStreamingAnalyzer{finalResult: result}
 				}, createDuckDBTempStore, "")
 			})
@@ -1310,7 +1311,7 @@ func TestCreateDuckDBTempStoreCreatesAndCleansFiles(t *testing.T) {
 
 	store, cleanup, path, err := createDuckDBTempStore(root)
 	if err != nil {
-		if errors.Is(err, analyzer.ErrDuckDBRequiresCGO) {
+		if errors.Is(err, detailstore.ErrDuckDBRequiresCGO) {
 			t.Skip(err.Error())
 		}
 		t.Fatalf("createDuckDBTempStore returned error: %v", err)
@@ -1348,7 +1349,7 @@ func TestRunAnalysisWithParserCleansDuckDBTempStoreOnFailure(t *testing.T) {
 	}, root, func(path string) {
 		createdPath = path
 	})
-	if err != nil && (errors.Is(err, analyzer.ErrDuckDBRequiresCGO) || strings.Contains(err.Error(), "requires cgo")) {
+	if err != nil && (errors.Is(err, detailstore.ErrDuckDBRequiresCGO) || strings.Contains(err.Error(), "requires cgo")) {
 		t.Skip(err.Error())
 	}
 	if err == nil {
@@ -1370,7 +1371,7 @@ func TestRunAnalysisPropagatesNormalizeError(t *testing.T) {
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS", Position: 42}},
 	}, func(raw binlog.RawEvent) (*model.NormalizedEvent, error) {
 		return nil, wantErr
-	}, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	}, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{}
 	}, createDuckDBTempStore, "")
 	if err == nil {
@@ -1387,7 +1388,7 @@ func TestRunAnalysisPropagatesAnalyzerConsumeError(t *testing.T) {
 	wantErr := errors.New("consume boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1}},
-	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{consumeErr: wantErr}
 	}, createDuckDBTempStore, "")
 	if err == nil {
@@ -1404,7 +1405,7 @@ func TestRunAnalysisPropagatesAnalyzerFinalizeError(t *testing.T) {
 	wantErr := errors.New("finalize boom")
 	err := runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.Options{}, report.DefaultOptions(), "text", &mockParser{
 		events: []binlog.RawEvent{{Timestamp: time.Now(), EventType: "WRITE_ROWS", Schema: "shop", Table: "orders", RowCount: 1}},
-	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+	}, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 		return &fakeStreamingAnalyzer{finalizeErr: wantErr}
 	}, createDuckDBTempStore, "")
 	if err == nil {
@@ -1841,7 +1842,7 @@ func TestRunAnalysisDetailStoreDuckDBCreatesTempStore(t *testing.T) {
 		})
 	})
 	if err != nil {
-		if errors.Is(err, analyzer.ErrDuckDBRequiresCGO) || strings.Contains(err.Error(), "requires cgo") {
+		if errors.Is(err, detailstore.ErrDuckDBRequiresCGO) || strings.Contains(err.Error(), "requires cgo") {
 			t.Skip(err.Error())
 		}
 		t.Fatalf("runAnalysisWithParserAndTempDir returned error: %v", err)

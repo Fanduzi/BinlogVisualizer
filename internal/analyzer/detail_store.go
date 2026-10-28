@@ -5,7 +5,10 @@
 // note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
-import "binlogviz/internal/model"
+import (
+	"binlogviz/internal/detailstore"
+	"binlogviz/internal/model"
+)
 
 // DetailStoreMode selects the optional detail-store backend.
 type DetailStoreMode string
@@ -19,7 +22,7 @@ const (
 // and optional SQL hydration. Report assembly reads from ReportAggregator instead.
 type detailStore interface {
 	Reset() error
-	RecordTransactions([]persistedTransaction) error
+	RecordTransactions([]detailstore.Transaction) error
 	RecordMinuteBuckets([]model.MinuteBucket) error
 	RecordAlerts([]model.Alert) error
 	Flush() error
@@ -30,11 +33,11 @@ type detailStore interface {
 // noopDetailStore accepts all writes and returns empty reads.
 type noopDetailStore struct{}
 
-func (noopDetailStore) Reset() error                                        { return nil }
-func (noopDetailStore) RecordTransactions([]persistedTransaction) error     { return nil }
-func (noopDetailStore) RecordMinuteBuckets([]model.MinuteBucket) error      { return nil }
-func (noopDetailStore) RecordAlerts([]model.Alert) error                    { return nil }
-func (noopDetailStore) Flush() error                                        { return nil }
+func (noopDetailStore) Reset() error                                       { return nil }
+func (noopDetailStore) RecordTransactions([]detailstore.Transaction) error { return nil }
+func (noopDetailStore) RecordMinuteBuckets([]model.MinuteBucket) error     { return nil }
+func (noopDetailStore) RecordAlerts([]model.Alert) error                   { return nil }
+func (noopDetailStore) Flush() error                                       { return nil }
 func (noopDetailStore) ResolveTransactionQuerySQL([]string) (map[string]string, error) {
 	return map[string]string{}, nil
 }

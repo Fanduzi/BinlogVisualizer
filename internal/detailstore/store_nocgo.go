@@ -1,11 +1,11 @@
 //go:build !cgo
 
-// Package analyzer stubs DuckDB when CGO is disabled.
+// Package detailstore stubs DuckDB when CGO is disabled.
 // input: NewDuckDBStore requests from analyze --detail-store duckdb.
 // output: ErrDuckDBRequiresCGO and a DuckDBStore type so command code still compiles.
 // pos: !cgo adapter so default analyze builds without go-duckdb.
-// note: if this file changes, keep this header and module README.md synchronized.
-package analyzer
+// note: if this file changes, keep this header and README.md synchronized.
+package detailstore
 
 import "binlogviz/internal/model"
 
@@ -23,7 +23,7 @@ func (s *DuckDBStore) Reset() error { return ErrDuckDBRequiresCGO }
 
 func (s *DuckDBStore) Close() error { return nil }
 
-func (s *DuckDBStore) RecordTransactions([]persistedTransaction) error {
+func (s *DuckDBStore) RecordTransactions([]Transaction) error {
 	return ErrDuckDBRequiresCGO
 }
 

@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/model"
 )
 
@@ -246,9 +247,9 @@ func TestAnalyzerGTIDSelectionInMemoryAndDuckDBParity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := NewDuckDBStore(t.TempDir()+"/selection.duckdb", 1)
+	store, err := detailstore.NewDuckDBStore(t.TempDir()+"/selection.duckdb", 1)
 	if err != nil {
-		if errors.Is(err, ErrDuckDBRequiresCGO) {
+		if errors.Is(err, detailstore.ErrDuckDBRequiresCGO) {
 			t.Skip(err.Error())
 		}
 		t.Fatal(err)

@@ -19,6 +19,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 )
@@ -355,7 +356,7 @@ func TestRunAnalysisStopsParsingImmediatelyOnConsumeFailure(t *testing.T) {
 	}
 
 	_, err := captureStdoutRun(t, func() error {
-		return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.DefaultOptions(), "text", parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *analyzer.DuckDBStore) commandAnalyzer {
+		return runAnalysisStreamingWithDeps([]string{"dummy.binlog"}, analyzer.DefaultOptions(), report.DefaultOptions(), "text", parser, binlog.NormalizeRawEvent, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
 			return streamAnalyzer
 		}, createDuckDBTempStore, "")
 	})
