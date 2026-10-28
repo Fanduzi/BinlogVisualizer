@@ -4,17 +4,19 @@
 
 ## Discovery 模式契约
 
-通过同时使用这两个 flag 开启 discovery 模式：
+通过 `--from-dir` 加两个选择器之一开启 discovery 模式：
 
 ```bash
 binlogviz analyze --from-dir DIR --prefix PREFIX
+binlogviz analyze --from-dir DIR --index-file binlog.index
 ```
 
 要求如下：
 
 - `--from-dir` 提供需要扫描的目录。
 - `--prefix` 提供匹配文件必须具备的文件名前缀。
-- 这两个 flag 必须一起提供。
+- `--index-file` 提供 `--from-dir` 目录中的服务器 binlog 索引清单。相对条目按目录解析（绝对路径直接使用），按列出顺序读取——被轮转删除或缺失的条目会让命令失败，而不是静默丢掉一部分历史。不能与 `--prefix` 同时使用。
+- `--prefix` 与 `--index-file` 必须且只能提供一个。
 - discovery 模式不能与位置参数 binlog 文件参数同时使用。
 
 如果你已经明确知道要分析哪些文件，应该改用位置参数文件模式。

@@ -43,6 +43,10 @@
     "description": "Prefix flag description",
     "other": "Filename prefix used with --from-dir (optional '.' before the numeric suffix; a complete filename selects that file; for one file, pass the path)"
   },
+  "cmd.analyze.flag.indexFile": {
+    "description": "Index-file flag description",
+    "other": "Binlog index file inside --from-dir (the server's binlog.index); the listed order is the read order and every entry must exist. Mutually exclusive with --prefix"
+  },
   "cmd.analyze.flag.workloadID": {
     "description": "Explicit workload identity flag description",
     "other": "Explicit workload identity used to gate compare and trend narratives"
@@ -154,6 +158,22 @@
   "error.fromDirAndPrefixRequired": {
     "description": "Error when from-dir or prefix is missing",
     "other": "--from-dir and --prefix must be provided together"
+  },
+  "error.fromDirPrefixOrIndex": {
+    "description": "Error when from-dir is not paired with exactly one selector",
+    "other": "--from-dir needs exactly one of --prefix or --index-file; --index-file only works with --from-dir"
+  },
+  "error.readIndexFile": {
+    "description": "Error when the binlog index file cannot be read",
+    "other": "cannot read binlog index file {{.Path}}: {{.Error}}"
+  },
+  "error.indexFileEntry": {
+    "description": "Error when a binlog index entry does not exist",
+    "other": "binlog index {{.Index}} lists {{.Entry}}, which is missing or not a file"
+  },
+  "error.indexFileEmpty": {
+    "description": "Error when the binlog index file lists nothing",
+    "other": "binlog index {{.Index}} lists no binlog files"
   },
   "error.requiresBinlogOrDir": {
     "description": "Error when no binlog files or from-dir provided",

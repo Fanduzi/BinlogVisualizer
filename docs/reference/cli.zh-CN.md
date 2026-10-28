@@ -56,7 +56,7 @@ binlogviz workflow describe <plan.yaml> --format json
 每次调用 `analyze` 只能使用一种输入模式：
 
 - **位置参数文件模式**：通过位置参数传入一个或多个本地 binlog 文件路径。`-` 从 stdin 读取一份二进制 binlog。
-- **discovery 模式**：同时提供 `--from-dir` 和 `--prefix`，由 BinlogViz 从目录中解析匹配文件。
+- **discovery 模式**：同时提供 `--from-dir` 和 `--prefix`，由 BinlogViz 从目录中解析匹配文件；或用 `--from-dir` 加 `--index-file` 按服务器的 `binlog.index` 清单读取（顺序即索引顺序，所列文件必须都存在）。
 
 默认文本和 JSON 报告会在每条事务上写出事件里实际有的 `server_id`、`thread_id`、GTID，以及 `xid` 或 XA xid。只有 binlog 存了调用者时才出现 `user@host`。事件里没有的字段保持缺席，报告不会补 `0` 或空字符串。Markdown 和 HTML 使用同一规则。
 
@@ -85,7 +85,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ### 位置参数与 discovery 的行为关系
 
 - 位置参数文件与 discovery flags 互斥。
-- `--from-dir` 和 `--prefix` 必须同时提供。
+- `--from-dir` 需要且只能搭配 `--prefix` 或 `--index-file` 之一。
 - 如果既没有位置参数文件，也没有完整的 discovery 参数对，命令会失败。
 
 关于精确的 discovery 匹配、排序、已解析文件报告以及非法组合契约，请参见[输入发现参考](input-discovery.zh-CN.md)。
@@ -102,6 +102,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--exclude-gtids` | none | 在 include 之后排除匹配的完整事务组；exclude 优先。 |
 | `--from-dir` | none | 从该目录自动发现 binlog 文件。必须与 `--prefix` 一起使用。 |
 | `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。数字后缀前可省略 `.`；完整文件名只匹配该文件；单文件请直接传路径。 |
+| `--index-file` | none | `--from-dir` 目录中的 binlog 索引清单（例如 `binlog.index`）。相对条目按目录解析，按列出顺序读取，所列文件必须都存在。与 `--prefix` 互斥。 |
 | `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
@@ -412,9 +413,9 @@ binlogviz analyze mysql-bin.000123 \
 
 命令会拒绝以下非法组合：
 
-- 位置参数文件与 `--from-dir` 或 `--prefix` 同时出现
-- 只提供 `--from-dir`，不提供 `--prefix`
-- 只提供 `--prefix`，不提供 `--from-dir`
+- 位置参数文件与 `--from-dir`、`--prefix` 或 `--index-file` 同时出现
+- 只提供 `--from-dir`，却没有 `--prefix` 或 `--index-file` 其中之一
+- 只提供 `--prefix` 或 `--index-file`，不提供 `--from-dir`
 - 既没有位置参数文件，也没有完整的 discovery 参数对
 - 使用 `--snapshot-name` 但没有同时设置 `--format json`
 
