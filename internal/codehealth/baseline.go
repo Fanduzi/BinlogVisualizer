@@ -120,9 +120,9 @@ func newEntryMessage(k kind, lim Limits, m Measurement, key string, v int) strin
 	case "deadcode":
 		return fmt.Sprintf("deadcode: %s at %s is unreachable; %s", key, m.Deadcode[key], k.fix)
 	case "issue_refs":
-		return fmt.Sprintf("issue_refs: %s has %d issue references in comments, none allowed in a new file; %s. If the file was renamed or split from a baselined file, run make codehealth-compare: it records the entry and checks, as CI does, that its content came from that file", key, v, k.fix)
+		return fmt.Sprintf("issue_refs: %s has %d issue references in comments, none allowed in a new file; %s. If the file was renamed or split from a baselined file, run make codehealth-compare to check, as CI does, that its content came from that file, then make codehealth-baseline to record the entry", key, v, k.fix)
 	}
-	return fmt.Sprintf("%s: new %s over %d %s: %s has %d; %s. If it was split or renamed from a baseline entry, run make codehealth-compare: it records the entry and checks, as CI does, that its content came from that entry", k.name, k.noun, k.limit(lim), k.unit, key, v, k.fix)
+	return fmt.Sprintf("%s: new %s over %d %s: %s has %d; %s. If it was split or renamed from a baseline entry, run make codehealth-compare to check, as CI does, that its content came from that entry, then make codehealth-baseline to record the entry", k.name, k.noun, k.limit(lim), k.unit, key, v, k.fix)
 }
 
 // Update lowers every ceiling in b to what m measured, drops entries that

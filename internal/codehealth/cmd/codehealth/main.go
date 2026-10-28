@@ -2,7 +2,7 @@
 //
 //	codehealth [-deadcode] check          fail if the tree does not hold against the baseline
 //	codehealth [-deadcode] update         lower the baseline to today's numbers; refuses to raise it
-//	codehealth -base REV [-paydown] compare  fail if the baseline is looser than the one at REV
+//	codehealth -base REV [-paydown] [-update] compare  fail if the baseline is looser than the one at REV; -update compares the baseline update would write, in memory
 //	codehealth -base REV lint             fail on golangci-lint findings the tree at REV does not have
 //	codehealth regen                      fail unless each generated file is what its command generates
 //	codehealth refs                       list the issue references in comments
@@ -96,6 +96,7 @@ func (p pairs) Set(s string) error {
 type options struct {
 	root, baseline, base string
 	deadcode, paydown    bool
+	update               bool
 	generated            pairs
 	stdout               io.Writer
 	deps                 deps
@@ -110,6 +111,7 @@ func run(args []string, stdout, stderr io.Writer, d deps) int {
 	flags.StringVar(&o.base, "base", "", "compare, lint: the git revision to compare with")
 	flags.BoolVar(&o.deadcode, "deadcode", false, "also find unreachable functions with "+codehealth.DeadcodeTool)
 	flags.BoolVar(&o.paydown, "paydown", false, "compare: require recording each paydown this change makes")
+	flags.BoolVar(&o.update, "update", false, "compare: compare the baseline update would write instead of the committed one, in memory; nothing is written")
 	flags.Var(o.generated, "generated", "init: PATH=COMMAND, a generated file and the command that regenerates it (repeatable)")
 	if err := flags.Parse(args); err != nil {
 		return 2
@@ -228,7 +230,12 @@ func (o options) baseTree() (string, func(), error) {
 	return dir, cleanup, nil
 }
 
-func (o options) compare(next codehealth.Baseline) error {
+// compare compares the baseline with the one at the base revision. With
+// -update it compares what the update command would write, computed in
+// memory: make codehealth-compare previews the comparison CI runs on the
+// committed baseline without leaving baseline.json modified on failure.
+// CI runs it without -update, so only a committed baseline counts.
+func (o options) compare(b codehealth.Baseline) error {
 	dir, cleanup, err := o.baseTree()
 	if err != nil {
 		return err
@@ -245,9 +252,16 @@ func (o options) compare(next codehealth.Baseline) error {
 	if err != nil {
 		return err
 	}
-	prM, err := codehealth.Measure(o.root, next.Generated)
+	prM, err := o.measure(o.root, b.Generated, o.deadcode || o.update)
 	if err != nil {
 		return err
+	}
+	next := b
+	if o.update {
+		var refused []string
+		if next, refused = codehealth.Update(b, prM); len(refused) > 0 {
+			return failure("refusing to raise the baseline", refused)
+		}
 	}
 	return o.report("baseline is looser than at "+o.base, codehealth.Compare(prev, baseM, next, prM, o.paydown), "baseline is no looser than at "+o.base)
 }

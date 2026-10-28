@@ -1,7 +1,7 @@
 // Package analyzer verifies ADMIN, Ignored QUERY, and Unclassified QUERY at the normalize-plus-Analyzer seam.
 // input: synthetic parser-shaped RawEvents (canonical kinds, GTID only on GTID events) run through binlog.NormalizeRawEventInto then Analyzer.Consume.
 // output: assertions that ANALYZE TABLE / OPTIMIZE TABLE / FLUSH PRIVILEGES / SET DEFAULT ROLE / exact FLUSH TABLES / CHECK TABLE / SET ROLE close GTID-started non-explicit groups without DDL or zero-row report transactions; Unclassified QUERY fails with a prefix, including anonymous empty-identity groups on the next GTID and at finalize; Ignored QUERY stays open and the next GTID names that Ignored-only group; explicit BEGIN names an open BEGIN and XA_START still conflicts.
-// pos: #74/#78 QUERY-class regression at the normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
+// pos: regressions (74/78) at the QUERY-class normalize-plus-Analyzer seam; binary decoding of on-disk binlog is not exercised.
 // note: if this file changes, update this header and README.md.
 package analyzer
 

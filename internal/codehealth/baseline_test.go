@@ -188,15 +188,15 @@ func TestInitialBoundary(t *testing.T) {
 	}
 }
 
-// A new entry's hint names make codehealth-compare, which records the
-// entry and runs the comparison CI runs, so following the hint cannot leave
-// the local gates green while CI fails.
+// A new entry's hint names make codehealth-compare, which previews the
+// comparison CI runs on the committed baseline without writing it, so
+// following the hint cannot leave the local gates green while CI fails.
 func TestNewEntryHintNamesCompare(t *testing.T) {
 	b := Baseline{Limits: DefaultLimits}
 	m := measure(t, tree{"a.go": file(900, ""), "b.go": "package p\n// #1\n"}, nil)
 	for _, want := range []string{
-		"files: new file over 800 lines: a.go has 900; split it. If it was split or renamed from a baseline entry, run make codehealth-compare",
-		"issue_refs: b.go has 1 issue references in comments, none allowed in a new file; put the history in the commit message or ADR (list them: codehealth refs). If the file was renamed or split from a baselined file, run make codehealth-compare",
+		"files: new file over 800 lines: a.go has 900; split it. If it was split or renamed from a baseline entry, run make codehealth-compare to check, as CI does, that its content came from that entry, then make codehealth-baseline to record the entry",
+		"issue_refs: b.go has 1 issue references in comments, none allowed in a new file; put the history in the commit message or ADR (list them: codehealth refs). If the file was renamed or split from a baselined file, run make codehealth-compare to check, as CI does, that its content came from that file, then make codehealth-baseline to record the entry",
 	} {
 		expect(t, Check(b, m), want)
 	}
@@ -206,7 +206,7 @@ func TestNewEntryHintNamesCompare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "codehealth-compare: codehealth-baseline\n\tgo run ./internal/codehealth/cmd/codehealth -base $(LINT_BASE) -paydown compare\n"; !strings.Contains(string(makefile), want) {
+	if want := "codehealth-compare:\n\tgo run ./internal/codehealth/cmd/codehealth -base $(LINT_BASE) -paydown -update compare\n"; !strings.Contains(string(makefile), want) {
 		t.Fatalf("Makefile has no target %q", want)
 	}
 }
