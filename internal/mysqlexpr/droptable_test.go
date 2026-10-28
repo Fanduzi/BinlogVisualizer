@@ -108,6 +108,7 @@ func TestParseDropTableVersionCommentAndANSIQuotes(t *testing.T) {
 
 func TestVersionCommentDigitWidth(t *testing.T) {
 	mysql80 := Dialect{VersionID: 80036}
+	mysql81 := Dialect{VersionID: 80100}
 	mysql84 := Dialect{VersionID: 80411}
 	maria := Dialect{VersionID: 110809, MariaDB: true}
 	cases := []struct {
@@ -126,6 +127,18 @@ func TestVersionCommentDigitWidth(t *testing.T) {
 		{"mysql84 six digits and space", mysql84, "DROP TABLE z /*!080411 , t2 */", []string{"z", "t2"}, false},
 		{"mysql84 six digits too new", mysql84, "DROP TABLE z /*!080412 , t2 */", []string{"z"}, false},
 		{"mysql80 six digits are five", mysql80, "DROP TABLE z /*!080411 , t2 */", nil, true},
+		// The 8.1.0 boundary itself: six digits count from 8.1 when
+		// whitespace follows, and five when it does not.
+		{"mysql81 six digits and space", mysql81, "DROP TABLE z /*!080100 , t2 */", []string{"z", "t2"}, false},
+		{"mysql81 six digits too new", mysql81, "DROP TABLE z /*!080101 , t2 */", []string{"z"}, false},
+		// Without the space, 8.1 reads five digits and the sixth digit
+		// is body: 0 fails as a name, so the read is unreadable.
+		{"mysql81 six digits no space", mysql81, "DROP TABLE z /*!080100, t2 */", nil, true},
+		// Fewer than five digits is not a version, so the digits are
+		// body. A leading-zero five-digit form still compares as its
+		// number, and 8041 < 80036 runs.
+		{"four digit digits are body", mysql84, "DROP TABLE z /*!1234 , t2 */", nil, true},
+		{"leading zero five digits run", mysql80, "DROP TABLE z /*!08041 , t2 */", []string{"z", "t2"}, false},
 		// MariaDB takes six whenever the sixth character is a digit.
 		{"maria six from seven", maria, "DROP TABLE z, /*!1100009_t, t_keep */", []string{"z", "9_t", "t_keep"}, false},
 		{"maria M! six from seven", maria, "DROP TABLE z, /*M!1100009_t, t_keep */", []string{"z", "9_t", "t_keep"}, false},
