@@ -192,8 +192,8 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 		return nil, false
 	}
 	if !quoted && strings.HasPrefix(name, "_") {
-		if v, ok, parsed, collated := sc.introducedLiteral(name); parsed {
-			if !ok || (sc.noIntroducer && !dumpSafeIntroducer(name)) {
+		if v, ok, parsed, collated, raw := sc.introducedLiteral(name); parsed {
+			if !ok || (sc.noIntroducer && !raw && !dumpSafeIntroducer(name)) {
 				return nil, false
 			}
 			return &exprNode{kind: exLit, lit: v, collate: collated}, true
@@ -228,10 +228,12 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 	return &exprNode{kind: exCol, name: strings.ToLower(name), collate: collate}, true
 }
 
-// dumpSafeIntroducer reports whether a _charset literal in dumped expression
-// text is byte-faithful: the UTF family and ASCII always survive SHOW CREATE
-// TABLE. latin1, binary, and any other charset can carry '?' for a lost byte,
-// so a generated expression declines them instead of claiming a value.
+// dumpSafeIntroducer reports whether a _charset'..' quoted literal in
+// dumped expression text is byte-faithful: the UTF family and ASCII always
+// survive SHOW CREATE TABLE. latin1, binary, and any other charset can
+// carry '?' for a lost byte, so a generated expression declines them
+// instead of claiming a value. A hex or binary literal names its bytes
+// exactly, so its introducer never needs this check.
 func dumpSafeIntroducer(name string) bool {
 	switch strings.ToLower(strings.TrimPrefix(name, "_")) {
 	case "utf8", "utf8mb3", "utf8mb4", "ascii":

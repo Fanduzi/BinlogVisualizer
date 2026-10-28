@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"binlogviz/internal/jsonschema"
@@ -30,6 +31,11 @@ func TestExampleOutputsMatchFreshRun(t *testing.T) {
 		code, stdout, stderr := runRoot(t, "analyze", rel, "--format", tc.format)
 		if code != 0 {
 			t.Fatalf("analyze --format %s: exit %d: %s", tc.format, code, stderr)
+		}
+		// mysqlbinlog_cmd embeds the absolute fixture path; pin the relative
+		// form so the example is the same on every checkout.
+		if abs, err := filepath.Abs(rel); err == nil {
+			stdout = strings.ReplaceAll(stdout, abs, rel)
 		}
 		path := filepath.Join(root, "docs", "examples", tc.file)
 		if os.Getenv("UPDATE_EXAMPLES") == "1" {

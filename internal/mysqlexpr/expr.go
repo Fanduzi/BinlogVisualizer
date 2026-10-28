@@ -1,6 +1,6 @@
 // Package mysqlexpr evaluates generated-column expressions against logged row images.
 // input: the expression text from a schema file, and SQL literals from FULL row images.
-// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. ENUM and SET print the schema-file member labels when the file lists them; an index of 0 is an empty label, and a value with no member list stays the raw index or bitmask. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. TIME and DATETIME assignment rounds fractional seconds half away from zero to the column fsp; a carry into the seconds is unverified. A YEAR value coerced to text renders MySQL's 4 digits, so YEAR 0 is '0000'. A fixed BINARY column zero-pads the expression result to its width, and a longer result is unverified like a long CHAR. A _charset literal outside the dump-safe UTF family (utf8/utf8mb3/utf8mb4/ascii) is not evaluated: the dumped expression can carry '?' for a lost byte. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
+// output: a match, a contradiction (with one example image), or unverified when the expression cannot be modelled exactly and the images do not contradict it. The example prints printable text for a text charset and keeps the hex literal for binary or non-printable bytes. ENUM and SET print the schema-file member labels when the file lists them; an index of 0 is an empty label, and a value with no member list stays the raw index or bitmask. UPPER/LOWER cover ascii, latin1's 1:1 map, and utf8mb4 Latin-1 plus µ. NULL propagates, except CONCAT_WS, which skips NULL arguments. Integer and DECIMAL columns share MySQL's division width (9 fractional digits for integer operands at the default div_precision_increment). DECIMAL assignment then rounds half away from zero to the column scale; integer assignment rounds the same way at scale 0. TIME and DATETIME assignment rounds fractional seconds half away from zero to the column fsp; a carry into the seconds is unverified. A YEAR value coerced to text renders MySQL's 4 digits, so YEAR 0 is '0000'. A fixed BINARY column zero-pads the expression result to its width, and a longer result is unverified like a long CHAR. A _charset'..' quoted literal outside the dump-safe UTF family (utf8/utf8mb3/utf8mb4/ascii) is not evaluated: the dumped expression can carry '?' for a lost byte. A hex or binary literal names its bytes exactly, so it is evaluated in any charset. An intermediate product, sum, or quotient is not rounded to fit 30 fractional digits or 65 digits of precision. Past either limit a DECIMAL target is unverified, and an integer target rounds an exact product once. An unknown charset, an unmodelled type, or a value this checker will not claim is unverified, never a match and never a mismatch.
 // pos: flashback-only helper. Analyze does not call it.
 // note: if this file changes, update this header and module README.md.
 package mysqlexpr
@@ -203,7 +203,17 @@ func evalCaseFunc(args []GenVal, upper bool) (GenVal, bool) {
 	if !ok {
 		return GenVal{}, false
 	}
-	return genTextVal(folded, src.charset), true
+	out := genTextVal(folded, src.charset)
+	if src.charset == "latin1" {
+		// foldText guarantees every rune is Latin-1, so raw holds the
+		// charset's own bytes, not the UTF-8 form genTextVal assumes.
+		raw := make([]byte, 0, len(folded))
+		for _, r := range folded {
+			raw = append(raw, byte(r))
+		}
+		out.raw = raw
+	}
+	return out, true
 }
 
 func evalConcat(args []GenVal) (GenVal, bool) {
@@ -530,26 +540,26 @@ func (sc *Scan) constString() (string, bool) {
 	return v.text, true
 }
 
-func (sc *Scan) introducedLiteral(name string) (GenVal, bool, bool, bool) {
+func (sc *Scan) introducedLiteral(name string) (GenVal, bool, bool, bool, bool) {
 	charset := strings.ToLower(strings.TrimPrefix(name, "_"))
 	save := *sc
 	sc.Skip()
 	if sc.I >= len(sc.S) {
 		*sc = save
-		return GenVal{}, false, false, false
+		return GenVal{}, false, false, false, false
 	}
 	if sc.S[sc.I] == '\'' || sc.S[sc.I] == '"' {
 		v, ok, collated := sc.quotedText(normalizeIntroCharset(charset))
-		return v, ok, true, collated
+		return v, ok, true, collated, false
 	}
 	if v, ok, parsed := sc.hexBinary(); parsed {
 		if !ok {
-			return GenVal{}, false, true, false
+			return GenVal{}, false, true, false, true
 		}
-		return tagCharset(v, normalizeIntroCharset(charset)), true, true, sc.skipCollate()
+		return tagCharset(v, normalizeIntroCharset(charset)), true, true, sc.skipCollate(), true
 	}
 	*sc = save
-	return GenVal{}, false, false, false
+	return GenVal{}, false, false, false, false
 }
 
 func normalizeIntroCharset(charset string) string {
@@ -759,7 +769,7 @@ func generatedRefs(expr string, columns []string) (refs []string, ok bool) {
 				return nil, false
 			}
 			if !quoted && strings.HasPrefix(name, "_") {
-				if _, _, parsed, _ := sc.introducedLiteral(name); parsed {
+				if _, _, parsed, _, _ := sc.introducedLiteral(name); parsed {
 					continue
 				}
 			}

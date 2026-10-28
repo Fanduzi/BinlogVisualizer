@@ -50,14 +50,17 @@ func TestGeneratedDatetimeRoundsFraction(t *testing.T) {
 }
 
 func TestGeneratedIntroducerLiteralIsNotEvaluated(t *testing.T) {
-	// A _charset literal in a dumped expression can already be mangled, so the
-	// checker declines the whole expression rather than claim a value.
+	// A _charset'..' quoted literal in a dumped expression can already be
+	// mangled, so the checker declines the whole expression rather than
+	// claim a value.
 	g := SchemaCol{Name: "g", base: "varchar", Expr: "UPPER(_latin1'é')", prec: 10, hasPrec: true}
 	assertGenOutcome(t, g, []SchemaCol{g}, []string{"g"}, []string{"'É'"}, "unverified")
+	// A hex or binary literal names its bytes exactly, so the same
+	// introducer is byte-faithful and the expression is evaluated.
 	h := SchemaCol{Name: "h", base: "int", Expr: "CHAR_LENGTH(UPPER(_latin1 X'E9'))"}
-	assertGenOutcome(t, h, []SchemaCol{h}, []string{"h"}, []string{"1"}, "unverified")
+	assertGenOutcome(t, h, []SchemaCol{h}, []string{"h"}, []string{"1"}, "match")
 	b := SchemaCol{Name: "b", base: "int", Expr: "LENGTH(_binary X'41')"}
-	assertGenOutcome(t, b, []SchemaCol{b}, []string{"b"}, []string{"1"}, "unverified")
+	assertGenOutcome(t, b, []SchemaCol{b}, []string{"b"}, []string{"1"}, "match")
 	// The same literal form still parses when it is the logged image itself.
 	if v, ok := parseLoggedValue("_latin1 X'E9'"); !ok || v.kind != genText {
 		t.Fatalf("logged introducer literal did not parse: %v %v", v, ok)

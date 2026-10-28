@@ -185,8 +185,9 @@ type Scan struct {
 	have bool
 	// noIntroducer rejects _charset'..' literals outside the dump-safe UTF
 	// family. Expression text from SHOW CREATE TABLE can carry a mangled
-	// literal ('?' for a lost byte), so a generated expression declines them;
-	// logged values still parse every introducer.
+	// literal ('?' for a lost byte), so a generated expression declines
+	// them; a hex or binary literal names its bytes exactly, so it stays
+	// allowed in any charset; logged values still parse every introducer.
 	noIntroducer bool
 }
 
