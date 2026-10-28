@@ -35,7 +35,7 @@ func TestDocumentedApplyGrantsMatchLeastPrivilege(t *testing.T) {
 		filepath.Join("internal", "i18n", "locales", "zh-CN.json"),
 		filepath.Join("docs", "releases", "release-notes-v0.32.0.md"),
 		filepath.Join("docs", "releases", "release-notes-v0.32.0.zh-CN.md"),
-		filepath.Join("internal", "flashback", "planner.go"),
+		filepath.Join("internal", "flashback", "render.go"),
 	}
 	for _, name := range files {
 		body, err := os.ReadFile(filepath.Join(root, name))
