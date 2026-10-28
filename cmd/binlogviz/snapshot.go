@@ -273,29 +273,48 @@ func normalizeSnapshotReport(data []byte, name string, now time.Time) ([]byte, e
 
 // rewriteSnapshotTimesUTC rewrites every RFC3339 timestamp in the document
 // to UTC with a Z suffix. Other strings, including row cells, stay as stored.
+// A field counts as a timestamp by its key — timestamp itself, or a name
+// ending in _time, _at, or _minute — so an RFC3339-looking workload_id or
+// any other free string keeps its spelling.
 func rewriteSnapshotTimesUTC(v any) {
+	rewriteSnapshotTimeValue(v, "")
+}
+
+func rewriteSnapshotTimeValue(v any, key string) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, child := range x {
 			if s, ok := child.(string); ok {
-				if utc, ok := utcTimestamp(s); ok {
-					x[k] = utc
-					continue
+				if isSnapshotTimeKey(k) {
+					if utc, ok := utcTimestamp(s); ok {
+						x[k] = utc
+					}
 				}
+				continue
 			}
-			rewriteSnapshotTimesUTC(child)
+			rewriteSnapshotTimeValue(child, k)
 		}
 	case []any:
 		for i, child := range x {
 			if s, ok := child.(string); ok {
-				if utc, ok := utcTimestamp(s); ok {
-					x[i] = utc
-					continue
+				if isSnapshotTimeKey(key) {
+					if utc, ok := utcTimestamp(s); ok {
+						x[i] = utc
+					}
 				}
+				continue
 			}
-			rewriteSnapshotTimesUTC(child)
+			rewriteSnapshotTimeValue(child, key)
 		}
 	}
+}
+
+func isSnapshotTimeKey(key string) bool {
+	return key == "timestamp" ||
+		key == "minute" ||
+		strings.HasSuffix(key, "_time") ||
+		strings.HasSuffix(key, "_at") ||
+		strings.HasSuffix(key, "_minute")
 }
 
 func utcTimestamp(value string) (string, bool) {
