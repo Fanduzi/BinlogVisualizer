@@ -33,7 +33,7 @@ Remote is a fourth `analyze` input mode, engaged by `--host`. New flags:
 | `--start-file` | none | Binlog file name on the server to begin dumping from |
 | `--start-pos` | `4` | Byte position in `--start-file`; requires `--start-file` |
 | `--start-gtid` | none | Executed GTID set to resume after; mutually exclusive with `--start-file`/`--start-pos` |
-| `--ssl-mode` | `disabled` | `disabled`, `preferred`, or `required` (MySQL vocabulary) |
+| `--ssl-mode` | `preferred` | `disabled`, `preferred`, or `required` (MySQL vocabulary) |
 
 No `--stop-at-end` or `--follow` flag exists: a flag whose only legal value is its default is noise, and bounded-to-end is the only mode analyze has. `--follow` arrives with its own flag when a consumer (flashback planning, continuous watch) needs it — it changes termination, reconnect, and memory semantics, none of which are free. `--stop-position` is not borrowed for remote: it is an exact-boundary file selector and remote positions are server coordinates the operator supplies through `--start-pos`.
 
@@ -66,16 +66,16 @@ No `--flavor` flag exists: for file:pos the dump command is flavor-identical (go
 
 Authentication is delegated to go-mysql (`mysql_native_password`, `caching_sha2_password`, `auth_socket` is not supported over TCP — the same as every Go client). `--ssl-mode` maps:
 
-- `disabled` — no TLS (`TLSConfig` nil, the default);
+- `preferred` — the default, matching the `mysql` client and `mysqlbinlog`, which both default to PREFERRED: connect as `required`; if, and only if, the server refuses TLS at handshake (go-mysql's "server does not support TLS" capability error, before credentials are sent), reconnect plain. Auth or network failures never fall back — that would downgrade the channel after credentials were sent. Replication traffic is sensitive data, so TLS-when-available is the right default posture, and the pre-auth-only fallback keeps it safe;
 - `required` — `tls.Config{InsecureSkipVerify: true}`: MySQL `REQUIRED` encrypts without verifying, matching upstream semantics;
-- `preferred` — connect as `required`; if, and only if, the server refuses TLS at handshake (go-mysql's "server does not support TLS" capability error, before credentials are sent), reconnect plain. Auth or network failures never fall back — that would downgrade the channel after credentials were sent.
+- `disabled` — no TLS (`TLSConfig` nil).
 
 `verify_ca`/`verify_identity` and the certificate flags they need are out of scope for this change. The password comes from `--password` or `BINLOGVIZ_MYSQL_PASSWORD`; go-mysql's own config logging clears it, and BinlogViz never prints it in errors, help, or logs.
 
 ### Error taxonomy (no new kinds)
 
-- Flag combination and value problems → `usage` (exit 3): remote flags without `--host`, remote combined with positional args/stdin `-`/`--from-dir`/`--prefix`/`--index-file`/`--start-position`/`--stop-position`, `--start-pos` without `--start-file`, `--start-file`/`--start-pos` with `--start-gtid`, an invalid `--ssl-mode`/`--start-gtid`/`--port`/`--server-id` value, `--start-pos` past the probed file end.
-- Connect, TLS negotiation, auth, manifest probe, privilege, and mid-stream failures → `input` (exit 4), with `details.reason` distinguishing `connect`, `tls`, `auth`, `manifest`, `privilege`, `start_file`, and `stream` for scripts that want the fix hint machine-readably.
+- Flag combination and value problems → `usage` (exit 3): remote flags without `--host`, remote combined with positional args/stdin `-`/`--from-dir`/`--prefix`/`--index-file`/`--start-position`/`--stop-position`, `--start-pos` without `--start-file`, `--start-file`/`--start-pos` with `--start-gtid`, a `--host` with an empty host (`:3306`) or empty port (`db:`) half, an invalid `--ssl-mode`/`--start-gtid`/`--port`/`--server-id` value, `--start-pos` past the probed file end.
+- Connect, TLS negotiation, auth, manifest probe, privilege, and mid-stream failures → `input` (exit 4), with `details.reason` distinguishing `connect`, `tls`, `auth`, `manifest`, `privilege`, `start_file`, and `stream` for scripts that want the fix hint machine-readably. `start_file` also covers the server refusing the dump with `ER_MASTER_FATAL_ERROR_READING_BINLOG` (1236) — a purged binlog name or GTIDs it no longer retains; `start_pos` stays `usage`.
 - Corrupt event bytes on the wire → `corrupt` (exit 5) through the unchanged `CorruptEventError` path — the same verification guards the stream.
 - A stream that yields no events falls through the existing no-data guards exactly like an empty-window file run (exit 2); it does not pretend a file was missing.
 

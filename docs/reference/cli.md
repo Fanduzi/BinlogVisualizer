@@ -107,7 +107,7 @@ The client registers as a pseudo-replica (`COM_BINLOG_DUMP`, or `COM_BINLOG_DUMP
 
 The read is bounded: at connect time the client snapshots `SHOW BINARY LOGS` and stops at the end of the last listed file. Events written after the probe, and a server rotation past the probed list, are excluded rather than racing the report. With no start selector the dump covers the server's whole retained history from its first binlog. `--start-file` must be in the probed list (a purged name fails `input` with `reason: start_file`) and `--start-pos` must not exceed its probed size (`usage`). `--start-gtid` means "the set already consumed": the stream begins at the first transaction after it; a bare `uuid:N` expands to `uuid:1-N`. The GTID set's format selects the wire flavor — MySQL `uuid:intervals` and MariaDB `domain-server-seq` need no `--flavor` flag.
 
-`--user` defaults to the OS login name. The password comes from `--password` or `BINLOGVIZ_MYSQL_PASSWORD` (the flag wins; the variable keeps it out of the command line) and is never logged or printed. `--server-id` defaults to a crypto-random pseudo-replica id. `--ssl-mode` is `disabled` by default; `required` encrypts without verifying the certificate (MySQL `REQUIRED` semantics), and `preferred` falls back to plain only when the server refuses TLS at handshake — before credentials are sent. A dropped connection mid-read fails `input` (`reason: stream`) instead of producing a short report.
+`--user` defaults to the OS login name. The password comes from `--password` or `BINLOGVIZ_MYSQL_PASSWORD` (the flag wins; the variable keeps it out of the command line) and is never logged or printed. `--server-id` defaults to a crypto-random pseudo-replica id. `--ssl-mode` is `preferred` by default (TLS when the server offers it, like the `mysql` client): `preferred` falls back to plain only when the server refuses TLS at handshake — before credentials are sent — and `required` encrypts without verifying the certificate (MySQL `REQUIRED` semantics) or fails. A dropped connection mid-read fails `input` (`reason: stream`) instead of producing a short report.
 
 ## Flags
 
@@ -130,7 +130,7 @@ The read is bounded: at connect time the client snapshots `SHOW BINARY LOGS` and
 | `--start-file` | none | Binlog file name on the server to begin reading from; without it the read covers the server's whole retained history. |
 | `--start-pos` | `4` | Byte position in `--start-file`; requires `--start-file` and must be at least 4. |
 | `--start-gtid` | none | Executed GTID set to resume after (MySQL `uuid:intervals` or MariaDB `domain-server-seq`); mutually exclusive with `--start-file`/`--start-pos`. |
-| `--ssl-mode` | `disabled` | TLS mode for remote input: `disabled`, `preferred` (TLS when the server offers it), or `required` (TLS or fail). |
+| `--ssl-mode` | `preferred` | TLS mode for remote input: `preferred` (TLS when the server offers it), `required` (TLS or fail), or `disabled`. |
 | `--format` | `text` | Report output format: `text`, `json`, `markdown` (alias `md`), or `html`. |
 | `--output`, `-o` | auto | HTML output file path. Only supported with `--format html`. Default: derived cwd file on a TTY; stdout when stdout is redirected. Use `-` to force stdout. |
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
@@ -462,6 +462,7 @@ The command rejects these invalid combinations:
 - `--port`, `--user`, `--password`, `--server-id`, `--start-file`, `--start-pos`, `--start-gtid`, or `--ssl-mode` without `--host`
 - `--start-gtid` together with `--start-file` or an explicit `--start-pos`
 - `--start-pos` without `--start-file` (`--start-file` alone is allowed; `--start-pos` defaults to `4`)
+- a `--host` with an empty host (`:3306`) or empty port (`db:`) half
 - `--start-pos` below `4`, `--port 0` or a port past `65535`, an empty `--start-gtid`, or an `--ssl-mode` other than `disabled`/`preferred`/`required`
 - no positional files and no complete discovery pair and no `--host`
 - `--snapshot-name` without `--format json`

@@ -12,7 +12,7 @@
 
 ## 从存活服务器读取 binlog
 
-`analyze --host` 通过复制协议直接从一台存活的 MySQL 或 MariaDB 服务器读取事件，与 `mysqlbinlog -R` 相同，无需把 binlog 文件复制到本机。账号需要 `REPLICATION SLAVE` 和 `REPLICATION CLIENT`。读取以连接时拿到的 `SHOW BINARY LOGS` 清单为界；中途连接断开是 `input` 失败（`reason: stream`），而不是产出截短的报告。起点可用 `--start-file`/`--start-pos`，也可用 `--start-gtid`（MySQL `uuid:intervals` 或 MariaDB `domain-server-seq`，格式自行决定线路 flavor）。密码来自 `--password` 或 `BINLOGVIZ_MYSQL_PASSWORD`，绝不打印。`--ssl-mode` 取 `disabled`（默认）、`preferred` 或 `required`。远程参数与文件路径、`-`、`--from-dir`/`--prefix`/`--index-file` 以及 `--start-position`/`--stop-position` 互斥。完整的参数与错误契约见 [CLI 参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md)。
+`analyze --host` 通过复制协议直接从一台存活的 MySQL 或 MariaDB 服务器读取事件，与 `mysqlbinlog -R` 相同，无需把 binlog 文件复制到本机。账号需要 `REPLICATION SLAVE` 和 `REPLICATION CLIENT`。读取以连接时拿到的 `SHOW BINARY LOGS` 清单为界；中途连接断开是 `input` 失败（`reason: stream`），而不是产出截短的报告。起点可用 `--start-file`/`--start-pos`，也可用 `--start-gtid`（MySQL `uuid:intervals` 或 MariaDB `domain-server-seq`，格式自行决定线路 flavor）。密码来自 `--password` 或 `BINLOGVIZ_MYSQL_PASSWORD`，绝不打印。`--ssl-mode` 取 `preferred`（默认）、`required` 或 `disabled`。远程参数与文件路径、`-`、`--from-dir`/`--prefix`/`--index-file` 以及 `--start-position`/`--stop-position` 互斥。完整的参数与错误契约见 [CLI 参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md)。
 
 ## 热点线程
 
