@@ -90,6 +90,23 @@ func (f *fakeSource) Next(context.Context) ([]byte, error) {
 	return frame, nil
 }
 
+// hangingSource replays frames then panics if Next is called once more —
+// that call is where a real blocking dump waits forever once the server
+// goes quiet. fakeSource's io.EOF masked exactly this hang.
+type hangingSource struct {
+	frames [][]byte
+	i      int
+}
+
+func (h *hangingSource) Next(context.Context) ([]byte, error) {
+	if h.i >= len(h.frames) {
+		panic("Next called after the stream's last frame: a blocking dump connection waits forever here")
+	}
+	frame := h.frames[h.i]
+	h.i++
+	return frame, nil
+}
+
 func collectRemote(t *testing.T, src FrameSource, boundary RemoteBoundary) ([]RawEvent, error) {
 	t.Helper()
 	var events []RawEvent
@@ -194,6 +211,40 @@ func TestRemoteParserBoundaryStopsAtSnapshotEnd(t *testing.T) {
 	}
 	if events[2].PositionEnd != cut {
 		t.Fatalf("last emitted event ends at %d, want %d", events[2].PositionEnd, cut)
+	}
+}
+
+// TestRemoteParserStopsWhenBoundaryReached: when the last retained event
+// ends exactly at the manifest end, the parser must emit it and stop on
+// its own — a blocking dump sends nothing after that point, so calling
+// Next again hangs forever (the live e2e hit this and timed out). The
+// stream is truncated at the boundary frame and the source panics on one
+// more Next, so passing proves the parser never reads past the boundary.
+func TestRemoteParserStopsWhenBoundaryReached(t *testing.T) {
+	fixture := "testdata/mysql-8.0.46-dml-full.binlog"
+	frames := splitFrames(t, fixture)
+
+	var fileEvents []RawEvent
+	if err := NewParser().ParseFiles([]string{fixture}, func(raw RawEvent) error {
+		fileEvents = append(fileEvents, raw)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cut := fileEvents[1].PositionEnd
+
+	// Rotate + the two events at/below the boundary, then nothing: any
+	// further Next is the blocking read that hung the e2e test.
+	stream := append([][]byte{makeRotateFrame("binlog.000001", 4, 0, false)}, frames[:2]...)
+	events, err := collectRemote(t, &hangingSource{frames: stream}, RemoteBoundary{File: "binlog.000001", Size: cut})
+	if err != nil {
+		t.Fatalf("reaching the boundary must be a clean end, got %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("expected rotate + 2 events, got %d", len(events))
+	}
+	if events[2].PositionEnd != cut {
+		t.Fatalf("last emitted event ends at %d, want the boundary %d", events[2].PositionEnd, cut)
 	}
 }
 

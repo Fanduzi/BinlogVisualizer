@@ -42,8 +42,9 @@ No `--stop-at-end` or `--follow` flag exists: a flag whose only legal value is i
 Remote analyze reads up to the end of binlog **as it stood when the connection opened**, then stops:
 
 1. Inside the `Option` hook (post-auth, pre-dump) the client runs `SHOW BINARY LOGS` once. The result is the manifest: the ordered `(name, size)` list; the last row is the boundary `(endFile, endSize)`.
-2. The dump is issued in normal blocking mode. Events are emitted until one of three stop conditions, checked before an event reaches the handler:
+2. The dump is issued in normal blocking mode. Events are emitted until one of four stop conditions:
    - the event sits in `endFile` and its `end_log_pos` exceeds `endSize` — data written after the probe; stop without emitting it;
+   - the event sits in `endFile` and its `end_log_pos` reaches `endSize` — emit it, then stop without reading again: a blocking server sends nothing after the last retained event, so waiting on the stream hangs;
    - a ROTATE event names a file beyond `endFile` (or absent from the manifest and sorting after it) — the server rotated since the probe; stop;
    - the stream errors or closes.
 3. `--start-file` must be present in the manifest and `--start-pos` must not exceed its probed size — both checked before the dump starts, so a purged file or a stale position fails as `input`/`usage` instead of a server error the operator has to decode. With no start selector, the dump begins at the first manifest file, position 4 — the whole retained history; the flag docs say so.
