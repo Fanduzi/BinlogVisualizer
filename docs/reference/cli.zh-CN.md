@@ -107,7 +107,7 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 
 读取是有界的：连接时客户端会快照 `SHOW BINARY LOGS`，并在最后列出的文件结尾处停止。探测之后新写入的事件、以及越过探测清单的服务器轮换，都会被排除，而不是让报告去追赶。没有起点选择器时，dump 覆盖服务器从首个 binlog 起的全部保留历史。`--start-file` 必须在探测到的清单中（已清除的名字会以 `reason: start_file` 报 `input` 失败），`--start-pos` 不得超过探测到的文件大小（`usage`）。`--start-gtid` 的语义是“已消费的事务集”：流从其后第一个事务开始；裸写 `uuid:N` 展开为 `uuid:1-N`。GTID 集合的格式自行选择线路 flavor——MySQL 的 `uuid:intervals` 与 MariaDB 的 `domain-server-seq`，不需要单独的 `--flavor` 参数。
 
-`--user` 默认取操作系统登录名。密码来自 `--password` 或 `BINLOGVIZ_MYSQL_PASSWORD`（flag 优先；环境变量可使其不出现在命令行里），绝不写入日志或输出。`--server-id` 默认生成密码学随机的伪副本 id。`--ssl-mode` 默认 `disabled`；`required` 加密但不校验证书（MySQL `REQUIRED` 语义），`preferred` 只在服务器握手时拒绝 TLS 时回退明文——发生在发送凭据之前。读取中途连接断开会以 `input`（`reason: stream`）失败，而不是产出一份截短的报告。
+`--user` 默认取操作系统登录名。密码来自 `--password` 或 `BINLOGVIZ_MYSQL_PASSWORD`（flag 优先；环境变量可使其不出现在命令行里），绝不写入日志或输出。`--server-id` 默认生成密码学随机的伪副本 id。`--ssl-mode` 默认 `preferred`（服务器支持则启用 TLS，与 `mysql` 客户端一致）：`preferred` 只在服务器握手时拒绝 TLS 时回退明文——发生在发送凭据之前；`required` 加密但不校验证书（MySQL `REQUIRED` 语义），否则失败。读取中途连接断开会以 `input`（`reason: stream`）失败，而不是产出一份截短的报告。
 
 ## Flags
 
@@ -130,7 +130,7 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 | `--start-file` | none | 服务器上开始读取的 binlog 文件名；缺省时读取服务器全部保留历史。 |
 | `--start-pos` | `4` | `--start-file` 内的字节位置；必须与 `--start-file` 一起使用且不小于 4。 |
 | `--start-gtid` | none | 已执行 GTID 集合，从其后继续读取（MySQL `uuid:intervals` 或 MariaDB `domain-server-seq`）；与 `--start-file`/`--start-pos` 互斥。 |
-| `--ssl-mode` | `disabled` | 远程输入的 TLS 模式：`disabled`、`preferred`（服务器支持时使用 TLS）或 `required`（必须 TLS，否则失败）。 |
+| `--ssl-mode` | `preferred` | 远程输入的 TLS 模式：`preferred`（服务器支持时使用 TLS）、`required`（必须 TLS，否则失败）或 `disabled`。 |
 | `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
@@ -449,6 +449,7 @@ binlogviz analyze mysql-bin.000123 \
 - 提供了 `--port`、`--user`、`--password`、`--server-id`、`--start-file`、`--start-pos`、`--start-gtid` 或 `--ssl-mode`，却没有 `--host`
 - `--start-gtid` 与 `--start-file` 或显式 `--start-pos` 同时出现
 - `--start-pos` 没有搭配 `--start-file`（单独使用 `--start-file` 是允许的，`--start-pos` 默认 `4`）
+- `--host` 的 host 部分为空（`:3306`）或 port 部分为空（`db:`）
 - `--start-pos` 小于 `4`、`--port 0` 或端口超过 `65535`、空的 `--start-gtid`，或 `--ssl-mode` 不是 `disabled`/`preferred`/`required`
 - 既没有位置参数文件，也没有完整的 discovery 参数对，也没有 `--host`
 - 使用 `--snapshot-name` 但没有同时设置 `--format json`
