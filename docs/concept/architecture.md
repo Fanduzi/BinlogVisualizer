@@ -88,6 +88,7 @@ The Cobra command layer streams normalized binlog events into the analyzer, then
 |--------|----------------|---------------|
 | `cmd/binlogviz` | CLI commands and end-to-end orchestration | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/cmd/binlogviz/README.md) |
 | `internal/binlog` | Binlog parsing, probing, and normalization | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/binlog/README.md) |
+| `internal/remote` | Replication-protocol client for remote binlog input (pseudo-replica dump) | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/remote/README.md) |
 | `internal/analyzer` | Streaming aggregation and diagnostics | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/analyzer/README.md) |
 | `internal/mysqlexpr` | Generated-column expression checker and CREATE/ALTER column parser | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/mysqlexpr/README.md) |
 | `internal/schemacatalog` | Which table definition flashback uses for a binlog `db.table` | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/schemacatalog/README.md) |

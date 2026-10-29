@@ -18,8 +18,9 @@ binlogviz analyze --from-dir DIR --index-file binlog.index
 - `--index-file` 提供 `--from-dir` 目录中的服务器 binlog 索引清单。相对条目按目录解析（绝对路径直接使用），按列出顺序读取——被轮转删除或缺失的条目会让命令失败，而不是静默丢掉一部分历史。不能与 `--prefix` 同时使用。
 - `--prefix` 与 `--index-file` 必须且只能提供一个。
 - discovery 模式不能与位置参数 binlog 文件参数同时使用。
+- discovery 模式不能与远程模式（`--host`）同时使用。
 
-如果你已经明确知道要分析哪些文件，应该改用位置参数文件模式。
+如果你已经明确知道要分析哪些文件，应该改用位置参数文件模式。如果文件根本无法复制，改用远程模式——见下文“远程模式”。
 
 ## 匹配规则
 
@@ -85,6 +86,14 @@ Resolved binlog files:
 
 这能帮助操作者确认到底会分析哪些文件，同时保持 `stdout` 仍然可用于文本或 JSON 报告输出。
 
+## 远程模式
+
+远程模式是 `analyze` 的第四种输入模式，由 `--host` 选择：BinlogViz 不再解析本地文件，而是以伪副本身份连接一台存活的 MySQL 或 MariaDB 服务器，通过 `COM_BINLOG_DUMP`（或 GTID 形式）流式读取事件。它与所有本地输入模式——位置参数文件、stdin `-` 以及全部 discovery flag——互斥，也与本地的 `--start-position`/`--stop-position` 选择器互斥；远程读取改用 `--start-file`/`--start-pos` 或 `--start-gtid`。
+
+读取是有界的：连接时探测的服务器端 `SHOW BINARY LOGS` 清单定义了最后一个文件及其大小，报告不会去追赶新写入的数据。报告的文件覆盖信息也来自该清单：`--start-file` 之前的文件记为 skipped，其余记为 selected，每项标记为 `remote://host:port/<name>`。
+
+参数列表、起点语义、TLS 模式、凭据和错误契约请参见 [CLI 参考](cli.zh-CN.md) 中的“远程模式”一节。
+
 ## 非法用法
 
 BinlogViz 会拒绝以下与 discovery 相关的输入组合：
@@ -141,3 +150,8 @@ no matching binlog files found under /var/lib/mysql with prefix "mysql-bin."
 - 你需要手工挑选一个子集
 - 文件并不遵循统一的“前缀 + 数字后缀”契约
 - 你希望使用 shell 展开或显式逐文件控制
+
+在以下情况使用远程模式：
+
+- binlog 文件无法复制到本机（托管数据库、权限或空间受限）
+- 你希望像 `mysqlbinlog -R` 那样直接从服务器读取

@@ -10,6 +10,10 @@
 
 `analyze -` 从管道读取一份二进制 binlog。解析需要可 seek 的文件，所以会把 stdin 复制到临时文件，命令结束时删除，包括 SIGHUP（退出码 129）、Ctrl-C（退出码 130）、SIGQUIT（退出码 131）和 SIGTERM（退出码 143）。终端会在解析前失败。`/dev/null` 和空管道报 `stdin 没有数据`。这种输入的回放提示会说明来自 stdin，不会编造文件路径。`mysqlbinlog` 的文本输出不是 binlog。
 
+## 从存活服务器读取 binlog
+
+`analyze --host` 通过复制协议直接从一台存活的 MySQL 或 MariaDB 服务器读取事件，与 `mysqlbinlog -R` 相同，无需把 binlog 文件复制到本机。账号需要 `REPLICATION SLAVE` 和 `REPLICATION CLIENT`。读取以连接时拿到的 `SHOW BINARY LOGS` 清单为界；中途连接断开是 `input` 失败（`reason: stream`），而不是产出截短的报告。起点可用 `--start-file`/`--start-pos`，也可用 `--start-gtid`（MySQL `uuid:intervals` 或 MariaDB `domain-server-seq`，格式自行决定线路 flavor）。密码来自 `--password` 或 `BINLOGVIZ_MYSQL_PASSWORD`，绝不打印。`--ssl-mode` 取 `disabled`（默认）、`preferred` 或 `required`。远程参数与文件路径、`-`、`--from-dir`/`--prefix`/`--index-file` 以及 `--start-position`/`--stop-position` 互斥。完整的参数与错误契约见 [CLI 参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md)。
+
 ## 热点线程
 
 默认文本报告包含热点线程，有行变更时按行数排序（否则按事件数、字节或事务数）。binlog 里有的 `thread_id`、`server_id`、`user@host` 和 schema 会写出来，回答「谁写最多」不必再 `jq`。`--top` 限制这一节；`--top-threads 0` 保留全部会话。JSON 的同一排名在 `threads`。
