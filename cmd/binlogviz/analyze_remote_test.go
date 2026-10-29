@@ -70,12 +70,12 @@ func clierrKind(t *testing.T, err error) clierr.Kind {
 }
 
 // runAnalyzeRemote executes analyze with the connect seam stubbed.
-func runAnalyzeRemote(t *testing.T, args []string, src remoteSource, openErr error) (error, *remote.Config) {
+func runAnalyzeRemote(t *testing.T, args []string, src remoteSource, openErr error) (*remote.Config, error) {
 	t.Helper()
 	got := stubRemoteOpen(t, src, openErr)
 	cmd := newAnalyzeCommand()
 	cmd.SetArgs(args)
-	return cmd.Execute(), got
+	return got, cmd.Execute()
 }
 
 func TestAnalyzeRemoteUsageMatrix(t *testing.T) {
@@ -104,7 +104,7 @@ func TestAnalyzeRemoteUsageMatrix(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err, _ := runAnalyzeRemote(t, tc.args, &fakeRemoteSource{}, nil)
+			_, err := runAnalyzeRemote(t, tc.args, &fakeRemoteSource{}, nil)
 			if kind := clierrKind(t, err); kind != clierr.KindUsage {
 				t.Fatalf("%v: kind = %s, want usage; err = %v", tc.args, kind, err)
 			}
@@ -128,7 +128,7 @@ func TestAnalyzeRemoteSelectorValidation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err, _ := runAnalyzeRemote(t, tc.args, &fakeRemoteSource{}, nil)
+			_, err := runAnalyzeRemote(t, tc.args, &fakeRemoteSource{}, nil)
 			if kind := clierrKind(t, err); kind != clierr.KindUsage {
 				t.Fatalf("%v: kind = %s, want usage; err = %v", tc.args, kind, err)
 			}
@@ -140,7 +140,7 @@ func TestAnalyzeRemoteSelectorValidation(t *testing.T) {
 // the reason preserved in details — not a bare error.
 func TestAnalyzeRemoteOpenFailure(t *testing.T) {
 	openErr := &remote.Error{Reason: remote.ReasonAuth, Err: errors.New("Error 1045: Access denied")}
-	err, got := runAnalyzeRemote(t, []string{"--host", "db", "--user", "replica"}, nil, openErr)
+	got, err := runAnalyzeRemote(t, []string{"--host", "db", "--user", "replica"}, nil, openErr)
 	if kind := clierrKind(t, err); kind != clierr.KindInput {
 		t.Fatalf("kind = %s, want input; err = %v", kind, err)
 	}
@@ -156,7 +156,7 @@ func TestAnalyzeRemoteOpenFailure(t *testing.T) {
 func TestAnalyzeRemoteConfigFromFlags(t *testing.T) {
 	t.Setenv("BINLOGVIZ_MYSQL_PASSWORD", "env-secret")
 	src := &fakeRemoteSource{manifest: []remote.LogFile{{Name: "binlog.000001", Size: 4}}}
-	err, got := runAnalyzeRemote(t, []string{
+	got, err := runAnalyzeRemote(t, []string{
 		"--host", "db.internal:3307", "--user", "replica",
 		"--server-id", "42", "--ssl-mode", "required",
 		"--start-file", "binlog.000001", "--start-pos", "120",
@@ -184,7 +184,7 @@ func TestAnalyzeRemoteConfigFromFlags(t *testing.T) {
 func TestAnalyzeRemotePasswordFlagBeatsEnv(t *testing.T) {
 	t.Setenv("BINLOGVIZ_MYSQL_PASSWORD", "env-secret")
 	src := &fakeRemoteSource{manifest: []remote.LogFile{{Name: "binlog.000001", Size: 4}}}
-	_, got := runAnalyzeRemote(t, []string{"--host", "db", "--password", "flag-secret"}, src, nil)
+	got, _ := runAnalyzeRemote(t, []string{"--host", "db", "--password", "flag-secret"}, src, nil)
 	if got.Password != "flag-secret" {
 		t.Fatalf("explicit flag must win over the environment, got %q", got.Password)
 	}
@@ -194,7 +194,7 @@ func TestAnalyzeRemotePasswordFlagBeatsEnv(t *testing.T) {
 // parity defaults — preferred TLS, port 3306, random server id, pos 4.
 func TestAnalyzeRemoteDefaults(t *testing.T) {
 	src := &fakeRemoteSource{manifest: []remote.LogFile{{Name: "binlog.000001", Size: 4}}}
-	_, got := runAnalyzeRemote(t, []string{"--host", "db", "--user", "replica"}, src, nil)
+	got, _ := runAnalyzeRemote(t, []string{"--host", "db", "--user", "replica"}, src, nil)
 	if got.SSLMode != remote.SSLPreferred {
 		t.Fatalf("unset --ssl-mode must default to preferred (mysql client parity), got %q", got.SSLMode)
 	}
@@ -205,14 +205,14 @@ func TestAnalyzeRemoteDefaults(t *testing.T) {
 
 func TestAnalyzeRemoteGTIDSelectsFlavor(t *testing.T) {
 	src := &fakeRemoteSource{manifest: []remote.LogFile{{Name: "binlog.000001", Size: 4}}}
-	_, got := runAnalyzeRemote(t, []string{"--host", "db", "--start-gtid", "0-1-3"}, src, nil)
+	got, _ := runAnalyzeRemote(t, []string{"--host", "db", "--start-gtid", "0-1-3"}, src, nil)
 	if got.GTIDSet == nil {
 		t.Fatal("GTID start must carry a set")
 	}
 	if got.Flavor != "mariadb" {
 		t.Fatalf("domain-server-seq must select mariadb flavor, got %q", got.Flavor)
 	}
-	_, got = runAnalyzeRemote(t, []string{"--host", "db", "--start-gtid", "3E11FA47-71CA-11E1-9E33-C80AA9429562:5"}, src, nil)
+	got, _ = runAnalyzeRemote(t, []string{"--host", "db", "--start-gtid", "3E11FA47-71CA-11E1-9E33-C80AA9429562:5"}, src, nil)
 	if got.Flavor != "mysql" || got.GTIDSet == nil {
 		t.Fatalf("uuid set must select mysql flavor, got %+v", got)
 	}

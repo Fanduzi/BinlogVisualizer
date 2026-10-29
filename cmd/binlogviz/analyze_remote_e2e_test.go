@@ -77,7 +77,7 @@ FLUSH PRIVILEGES;`)
 		t.Fatalf("--start-file %s failed: %v\nstderr=%s", last, err, stderr)
 	}
 	// A purged name fails input, not a server error the operator decodes.
-	_, stderr, err = executeAnalyzeLikeMain(t,
+	_, _, err = executeAnalyzeLikeMain(t,
 		"--host", "127.0.0.1", "--user", "binlogviz_remote", "--start-file", "binlog.999999")
 	if err == nil {
 		t.Fatal("a start-file absent from the manifest must fail")

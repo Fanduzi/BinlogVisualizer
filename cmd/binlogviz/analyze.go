@@ -189,7 +189,7 @@ func newAnalyzeCommand() *cobra.Command {
 			}
 
 			opts.remote = analyzeRemoteRequested(cmd)
-			var parser binlog.Parser = binlog.NewParser()
+			parser := binlog.NewParser()
 			var paths []string
 			var pathAliases map[string]string
 			var fileCoverage model.FileCoverage
