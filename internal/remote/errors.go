@@ -59,6 +59,11 @@ func classifyOpenError(err error) Reason {
 		return ReasonAuth
 	case 1227, 1370, 1412:
 		return ReasonPrivilege
+	case 1236:
+		// ER_MASTER_FATAL_ERROR_READING_BINLOG: the dump start names a
+		// purged binlog file or GTIDs the server no longer retains — a
+		// start-point failure, not a connect one.
+		return ReasonStartFile
 	}
 	if strings.Contains(text, "Access denied") {
 		return ReasonAuth

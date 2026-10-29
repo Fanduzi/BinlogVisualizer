@@ -229,12 +229,21 @@ func randomServerID() (uint32, error) {
 }
 
 // NormalizeHost splits an optional host:port form. A port carried by --host
-// wins over the default but not over an explicit --port value.
+// wins over the default but not over an explicit --port value. Malformed
+// halves are usage errors: an empty host (:3306) would silently dial
+// localhost, and an empty port (db:, [::1]:) would reach the dialer as a
+// broken hostname.
 func NormalizeHost(host string, port uint16, portSet bool) (string, uint16, error) {
 	h, p, err := net.SplitHostPort(host)
 	if err != nil {
 		// Bare hostname or bare IPv6; those keep the flag port.
 		return host, port, nil
+	}
+	if h == "" {
+		return "", 0, fmt.Errorf("empty host in --host %q", host)
+	}
+	if p == "" {
+		return "", 0, fmt.Errorf("missing port in --host %q", host)
 	}
 	n, err := strconv.ParseUint(p, 10, 16)
 	if err != nil || n == 0 {

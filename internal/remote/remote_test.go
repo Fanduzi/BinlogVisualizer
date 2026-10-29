@@ -123,6 +123,12 @@ func TestNormalizeHost(t *testing.T) {
 	if _, _, err := NormalizeHost("db.internal:0", 3306, false); err == nil {
 		t.Fatal("port 0 in --host must fail")
 	}
+	if _, _, err := NormalizeHost(":3306", 3306, false); err == nil {
+		t.Fatal("an empty host in --host would silently dial localhost")
+	}
+	if _, _, err := NormalizeHost("db.internal:", 3306, false); err == nil {
+		t.Fatal("an empty port in --host must fail")
+	}
 }
 
 func TestValidateStart(t *testing.T) {
@@ -153,6 +159,7 @@ func TestClassifyOpenError(t *testing.T) {
 		{"Error 1045: Access denied for user 'replica'", ReasonAuth},
 		{"Error 1227: Access denied; you need the REPLICATION SLAVE privilege", ReasonPrivilege},
 		{"Error 1130: Host 'x' is not allowed to connect", ReasonAuth},
+		{"Error 1236: Got fatal error 1236 from master when reading data from binary log: 'Could not find first log file name in binary log index file'", ReasonStartFile},
 		{"dial tcp 10.0.0.1:3306: connect: connection refused", ReasonConnect},
 	}
 	for _, tc := range cases {
