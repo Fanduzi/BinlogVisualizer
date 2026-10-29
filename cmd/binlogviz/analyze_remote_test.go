@@ -99,6 +99,8 @@ func TestAnalyzeRemoteUsageMatrix(t *testing.T) {
 		{"start-gtid without host", []string{"--start-gtid", "0-1-3"}},
 		{"ssl-mode without host", []string{"--ssl-mode", "required"}},
 		{"empty host", []string{"--host", ""}},
+		{"empty host from host:port", []string{"--host", ":3306"}},
+		{"missing port in host", []string{"--host", "db:"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -185,6 +187,19 @@ func TestAnalyzeRemotePasswordFlagBeatsEnv(t *testing.T) {
 	_, got := runAnalyzeRemote(t, []string{"--host", "db", "--password", "flag-secret"}, src, nil)
 	if got.Password != "flag-secret" {
 		t.Fatalf("explicit flag must win over the environment, got %q", got.Password)
+	}
+}
+
+// TestAnalyzeRemoteDefaults: unset remote flags land on the mysql-client
+// parity defaults — preferred TLS, port 3306, random server id, pos 4.
+func TestAnalyzeRemoteDefaults(t *testing.T) {
+	src := &fakeRemoteSource{manifest: []remote.LogFile{{Name: "binlog.000001", Size: 4}}}
+	_, got := runAnalyzeRemote(t, []string{"--host", "db", "--user", "replica"}, src, nil)
+	if got.SSLMode != remote.SSLPreferred {
+		t.Fatalf("unset --ssl-mode must default to preferred (mysql client parity), got %q", got.SSLMode)
+	}
+	if got.Port != 3306 || got.ServerID != 0 || got.Start.Pos != 4 {
+		t.Fatalf("defaults = %+v", got)
 	}
 }
 
