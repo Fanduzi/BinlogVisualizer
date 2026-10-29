@@ -68,9 +68,19 @@ FLUSH PRIVILEGES;`)
 		t.Fatalf("remote analyze saw no workload: rows=%d events=%d", report.Summary.TotalRows, report.Summary.TotalEvents)
 	}
 
-	// --start-file bounds the dump: the current log exists and reads fine.
-	names := binlogNames(t, e2eMySQL(t, "SHOW BINARY LOGS"))
-	last := names[len(names)-1]
+	// --start-file bounds the dump: the last manifest row is the server's
+	// newest binlog. Parsed locally — binlogNames is a flashback helper
+	// that requires two logs, and CI keeps exactly one.
+	logs := e2eMySQL(t, "SHOW BINARY LOGS")
+	last := ""
+	for _, line := range strings.Split(logs, "\n") {
+		if fields := strings.Fields(line); len(fields) > 0 {
+			last = fields[0]
+		}
+	}
+	if last == "" {
+		t.Fatalf("SHOW BINARY LOGS returned no rows:\n%s", logs)
+	}
 	if _, stderr, err = executeAnalyzeLikeMain(t,
 		"--host", "127.0.0.1", "--user", "binlogviz_remote",
 		"--start-file", last, "--format", "json"); err != nil {
