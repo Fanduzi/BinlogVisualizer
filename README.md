@@ -111,6 +111,19 @@ cat mysql-bin.000123 | binlogviz analyze -
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ```
 
+### Read a live server instead of copying files
+
+Remote mode connects as a pseudo-replica (`COM_BINLOG_DUMP`), like `mysqlbinlog -R`. The account needs `REPLICATION SLAVE` and `REPLICATION CLIENT`. The password comes from `BINLOGVIZ_MYSQL_PASSWORD` or `--password` and is never printed.
+
+```bash
+export BINLOGVIZ_MYSQL_PASSWORD='secret'
+binlogviz analyze --host db.internal --user replica
+binlogviz analyze --host db.internal --user replica \
+  --start-file binlog.000041 --start-pos 12345     # or --start-gtid 'uuid:1-5' / '0-1-300'
+```
+
+The read stops at the end of the `SHOW BINARY LOGS` snapshot taken at connect, so it never races a live writer. Start selectors, `--ssl-mode`, and errors are in [Analyze Behavior Details](docs/reference/analyze-behavior.md#reading-a-binlog-from-a-live-server).
+
 ### Narrow to an incident window
 
 ```bash

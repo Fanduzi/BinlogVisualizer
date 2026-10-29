@@ -10,6 +10,10 @@ The same 1500-byte fixture lives at `cmd/binlogviz/testdata/minimal.binlog` in t
 
 `analyze -` reads one binary binlog from a pipe. The parser needs a seekable file, so stdin is copied to a temporary file and removed when the command finishes, including SIGHUP (exit 129), Ctrl-C (exit 130), SIGQUIT (exit 131), and SIGTERM (exit 143). A terminal fails before parsing. `/dev/null` and an empty pipe say `stdin has no data`. Replay hints for that input say it came from stdin and do not point at a file. `mysqlbinlog` text output is not a binlog.
 
+## Reading a binlog from a live server
+
+`analyze --host` reads events straight from a live MySQL or MariaDB server over the replication protocol, like `mysqlbinlog -R`, so the binlog files never have to be copied. The account needs `REPLICATION SLAVE` and `REPLICATION CLIENT`. The read is bounded at the `SHOW BINARY LOGS` list taken at connect, and a dropped connection is an `input` failure (`reason: stream`), not a short report. Start anywhere in the retained history with `--start-file`/`--start-pos` or `--start-gtid` (MySQL `uuid:intervals` or MariaDB `domain-server-seq`; the format picks the wire flavor). The password comes from `--password` or `BINLOGVIZ_MYSQL_PASSWORD` and is never printed. `--ssl-mode` takes `disabled` (default), `preferred`, or `required`. Remote flags are mutually exclusive with file paths, `-`, `--from-dir`/`--prefix`/`--index-file`, and `--start-position`/`--stop-position`. The full flag and error contract is in the [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md).
+
 ## Top Threads
 
 The default text report includes Top Threads, ranked by rows (or by events, bytes, or transactions when there are no row images). It shows `thread_id`, and `server_id`, `user@host`, and schema when the binlog stored them, so "who wrote the most" does not need `jq`. `--top` limits that section; `--top-threads 0` keeps every session. JSON exposes the same ranking as `threads`.

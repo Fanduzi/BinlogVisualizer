@@ -18,8 +18,9 @@ Requirements:
 - `--index-file` supplies a server binlog index manifest inside `--from-dir`. Entries resolve relative to the directory (absolute paths are used as-is), read in listed order — a rotated-away or missing entry fails the command rather than silently dropping part of the history. It cannot be combined with `--prefix`.
 - Exactly one of `--prefix` or `--index-file` is required with `--from-dir`.
 - Discovery mode cannot be combined with positional binlog file arguments.
+- Discovery mode cannot be combined with remote mode (`--host`).
 
-If you already know the exact files you want, use positional file mode instead.
+If you already know the exact files you want, use positional file mode instead. If the files cannot be copied at all, use remote mode — see "Remote mode" below.
 
 ## Matching Rules
 
@@ -85,6 +86,14 @@ Resolved binlog files:
 
 This helps operators verify exactly which files will be analyzed while keeping `stdout` available for text or JSON report output.
 
+## Remote Mode
+
+Remote mode is `analyze`'s fourth input mode, selected by `--host`: instead of resolving local files, BinlogViz connects to a live MySQL or MariaDB server as a pseudo-replica and streams events from `COM_BINLOG_DUMP` (or the GTID form). It is mutually exclusive with every local input mode — positional files, stdin `-`, and all discovery flags — and with the local `--start-position`/`--stop-position` selectors; remote reads use `--start-file`/`--start-pos` or `--start-gtid` instead.
+
+The stream is bounded: the server-side `SHOW BINARY LOGS` list probed at connect time defines the last file and its size, so a report never races newly written data. The report's file coverage comes from that manifest: files before `--start-file` are reported as skipped, the rest selected, each labeled `remote://host:port/<name>`.
+
+For the flag list, start-point semantics, TLS modes, credentials, and error contract, see "Remote mode" in the [CLI Reference](cli.md#remote-mode).
+
 ## Invalid Usage
 
 BinlogViz rejects these discovery-related input combinations:
@@ -141,3 +150,8 @@ Use positional file mode when:
 - you need a hand-picked subset
 - the files do not share one numeric-prefix contract
 - you want shell expansion or explicit per-file control
+
+Use remote mode when:
+
+- the binlog files cannot be copied to this machine (managed databases, permission or space limits)
+- you want to read straight from the server like `mysqlbinlog -R` does

@@ -57,6 +57,7 @@ binlogviz workflow describe <plan.yaml> --format json
 
 - **位置参数文件模式**：通过位置参数传入一个或多个本地 binlog 文件路径。`-` 从 stdin 读取一份二进制 binlog。
 - **discovery 模式**：同时提供 `--from-dir` 和 `--prefix`，由 BinlogViz 从目录中解析匹配文件；或用 `--from-dir` 加 `--index-file` 按服务器的 `binlog.index` 清单读取（顺序即索引顺序，所列文件必须都存在）。
+- **远程模式**：传入 `--host`，以伪副本身份从一台存活的 MySQL 或 MariaDB 服务器上流式读取 binlog 事件，无需先复制文件。远程参数与位置参数文件、`-`、`--from-dir`、`--prefix`、`--index-file` 以及 `--start-position`、`--stop-position` 互斥。
 
 默认文本和 JSON 报告会在每条事务上写出事件里实际有的 `server_id`、`thread_id`、GTID，以及 `xid` 或 XA xid。只有 binlog 存了调用者时才出现 `user@host`。事件里没有的字段保持缺席，报告不会补 `0` 或空字符串。Markdown 和 HTML 使用同一规则。
 
@@ -90,6 +91,24 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 
 关于精确的 discovery 匹配、排序、已解析文件报告以及非法组合契约，请参见[输入发现参考](input-discovery.zh-CN.md)。
 
+### 远程模式
+
+当 binlog 文件无法复制时使用远程模式——托管数据库、不允许落盘的主机，或空间与权限受限的场景。
+
+```bash
+export BINLOGVIZ_MYSQL_PASSWORD='secret'
+binlogviz analyze --host db.internal --user replica
+binlogviz analyze --host db.internal:3307 --user replica --start-file binlog.000041 --start-pos 12345
+binlogviz analyze --host db.internal --user replica --start-gtid '3e11fa47-71ca-11e1-9e33-c80aa9429562:1-5'
+binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
+```
+
+客户端注册为伪副本（`COM_BINLOG_DUMP`，MySQL GTID 起点用 `COM_BINLOG_DUMP_GTID`，MariaDB 用 `@slave_connect_state`），每个事件都经过与文件输入相同的字节级校验。账号需要 `REPLICATION SLAVE` 和 `REPLICATION CLIENT`。
+
+读取是有界的：连接时客户端会快照 `SHOW BINARY LOGS`，并在最后列出的文件结尾处停止。探测之后新写入的事件、以及越过探测清单的服务器轮换，都会被排除，而不是让报告去追赶。没有起点选择器时，dump 覆盖服务器从首个 binlog 起的全部保留历史。`--start-file` 必须在探测到的清单中（已清除的名字会以 `reason: start_file` 报 `input` 失败），`--start-pos` 不得超过探测到的文件大小（`usage`）。`--start-gtid` 的语义是“已消费的事务集”：流从其后第一个事务开始；裸写 `uuid:N` 展开为 `uuid:1-N`。GTID 集合的格式自行选择线路 flavor——MySQL 的 `uuid:intervals` 与 MariaDB 的 `domain-server-seq`，不需要单独的 `--flavor` 参数。
+
+`--user` 默认取操作系统登录名。密码来自 `--password` 或 `BINLOGVIZ_MYSQL_PASSWORD`（flag 优先；环境变量可使其不出现在命令行里），绝不写入日志或输出。`--server-id` 默认生成密码学随机的伪副本 id。`--ssl-mode` 默认 `disabled`；`required` 加密但不校验证书（MySQL `REQUIRED` 语义），`preferred` 只在服务器握手时拒绝 TLS 时回退明文——发生在发送凭据之前。读取中途连接断开会以 `input`（`reason: stream`）失败，而不是产出一份截短的报告。
+
 ## Flags
 
 | Flag | 默认值 | 说明 |
@@ -103,6 +122,15 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 | `--from-dir` | none | 从该目录自动发现 binlog 文件。必须与 `--prefix` 一起使用。 |
 | `--prefix` | none | 配合 `--from-dir` 使用的文件名前缀。必须与 `--from-dir` 一起使用。数字后缀前可省略 `.`；完整文件名只匹配该文件；单文件请直接传路径。 |
 | `--index-file` | none | `--from-dir` 目录中的 binlog 索引清单（例如 `binlog.index`）。相对条目按目录解析，按列出顺序读取，所列文件必须都存在。与 `--prefix` 互斥。 |
+| `--host` | none | 从存活服务器读取 binlog 事件：`host` 或 `host:port`。传入该参数即选择远程输入模式。 |
+| `--port` | `3306` | 远程输入的服务器端口；`--host` 内携带的端口优先，除非同时显式传入 `--port`。 |
+| `--user` | 操作系统登录名 | 远程输入的复制账号。 |
+| `--password` | none | 远程输入的账号密码；未传该 flag 时由 `BINLOGVIZ_MYSQL_PASSWORD` 补齐（推荐用法——使密码不出现在命令行）。绝不写入日志或输出。 |
+| `--server-id` | `0` = 随机 | 伪副本注册时使用的 `server_id`；必须非零，缺省时为密码学随机值。 |
+| `--start-file` | none | 服务器上开始读取的 binlog 文件名；缺省时读取服务器全部保留历史。 |
+| `--start-pos` | `4` | `--start-file` 内的字节位置；必须与 `--start-file` 一起使用且不小于 4。 |
+| `--start-gtid` | none | 已执行 GTID 集合，从其后继续读取（MySQL `uuid:intervals` 或 MariaDB `domain-server-seq`）；与 `--start-file`/`--start-pos` 互斥。 |
+| `--ssl-mode` | `disabled` | 远程输入的 TLS 模式：`disabled`、`preferred`（服务器支持时使用 TLS）或 `required`（必须 TLS，否则失败）。 |
 | `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
@@ -414,9 +442,15 @@ binlogviz analyze mysql-bin.000123 \
 命令会拒绝以下非法组合：
 
 - 位置参数文件与 `--from-dir`、`--prefix` 或 `--index-file` 同时出现
+- 位置参数文件与 `--host` 同时出现
+- `--host` 与 `--from-dir`、`--prefix`、`--index-file`、`--start-position` 或 `--stop-position` 同时出现
 - 只提供 `--from-dir`，却没有 `--prefix` 或 `--index-file` 其中之一
 - 只提供 `--prefix` 或 `--index-file`，不提供 `--from-dir`
-- 既没有位置参数文件，也没有完整的 discovery 参数对
+- 提供了 `--port`、`--user`、`--password`、`--server-id`、`--start-file`、`--start-pos`、`--start-gtid` 或 `--ssl-mode`，却没有 `--host`
+- `--start-gtid` 与 `--start-file` 或显式 `--start-pos` 同时出现
+- `--start-pos` 没有搭配 `--start-file`（单独使用 `--start-file` 是允许的，`--start-pos` 默认 `4`）
+- `--start-pos` 小于 `4`、`--port 0` 或端口超过 `65535`、空的 `--start-gtid`，或 `--ssl-mode` 不是 `disabled`/`preferred`/`required`
+- 既没有位置参数文件，也没有完整的 discovery 参数对，也没有 `--host`
 - 使用 `--snapshot-name` 但没有同时设置 `--format json`
 
 代表性的失败案例：

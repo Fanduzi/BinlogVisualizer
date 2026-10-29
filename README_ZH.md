@@ -111,6 +111,19 @@ cat mysql-bin.000123 | binlogviz analyze -
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 ```
 
+### 直接读取存活服务器，无需复制文件
+
+远程模式以伪副本身份连接（`COM_BINLOG_DUMP`），等价于 `mysqlbinlog -R`。账号需要 `REPLICATION SLAVE` 和 `REPLICATION CLIENT`。密码来自 `BINLOGVIZ_MYSQL_PASSWORD` 或 `--password`，绝不打印。
+
+```bash
+export BINLOGVIZ_MYSQL_PASSWORD='secret'
+binlogviz analyze --host db.internal --user replica
+binlogviz analyze --host db.internal --user replica \
+  --start-file binlog.000041 --start-pos 12345     # 或 --start-gtid 'uuid:1-5' / '0-1-300'
+```
+
+读取在连接时快照的 `SHOW BINARY LOGS` 末尾处停止，不会追赶正在写入的服务器。起点选择器、`--ssl-mode` 和错误契约见 [Analyze 行为细节](docs/reference/analyze-behavior.zh-CN.md)。
+
 ### 聚焦某个故障时间窗口
 
 ```bash

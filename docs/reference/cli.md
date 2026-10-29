@@ -57,6 +57,7 @@ These flags are available on the root command and apply before subcommand execut
 
 - **Positional file mode**: pass one or more local binlog file paths as positional arguments. `-` reads one binary binlog from stdin.
 - **Discovery mode**: pass `--from-dir` and `--prefix` together so BinlogViz resolves matching files from a directory, or `--from-dir` and `--index-file` to follow a server `binlog.index` manifest (the index order is the read order and every listed file must exist).
+- **Remote mode**: pass `--host` to stream binlog events from a live MySQL or MariaDB server as a pseudo-replica, instead of copying files first. Remote flags are mutually exclusive with positional files, `-`, `--from-dir`, `--prefix`, `--index-file`, `--start-position`, and `--stop-position`.
 
 Default text and JSON reports name, on each transaction, `server_id`, `thread_id`, GTID, and `xid` or XA xid when the binlog events contain them. `user@host` appears only when the binlog stored an invoker. A field the events do not have is left out; the report does not fill in `0` or an empty string. Markdown and HTML follow the same rule.
 
@@ -90,6 +91,24 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin.
 
 For the exact discovery matching, ordering, resolved-file reporting, and invalid-combination contract, see [Input Discovery Reference](input-discovery.md).
 
+### Remote mode
+
+Use remote mode when the binlog files cannot be copied — managed databases, hosts you may not stage on, or space and permission limits.
+
+```bash
+export BINLOGVIZ_MYSQL_PASSWORD='secret'
+binlogviz analyze --host db.internal --user replica
+binlogviz analyze --host db.internal:3307 --user replica --start-file binlog.000041 --start-pos 12345
+binlogviz analyze --host db.internal --user replica --start-gtid '3e11fa47-71ca-11e1-9e33-c80aa9429562:1-5'
+binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
+```
+
+The client registers as a pseudo-replica (`COM_BINLOG_DUMP`, or `COM_BINLOG_DUMP_GTID` for MySQL GTID start and `@slave_connect_state` for MariaDB) and streams each event through the same byte-level checks as file input. The account needs `REPLICATION SLAVE` and `REPLICATION CLIENT`.
+
+The read is bounded: at connect time the client snapshots `SHOW BINARY LOGS` and stops at the end of the last listed file. Events written after the probe, and a server rotation past the probed list, are excluded rather than racing the report. With no start selector the dump covers the server's whole retained history from its first binlog. `--start-file` must be in the probed list (a purged name fails `input` with `reason: start_file`) and `--start-pos` must not exceed its probed size (`usage`). `--start-gtid` means "the set already consumed": the stream begins at the first transaction after it; a bare `uuid:N` expands to `uuid:1-N`. The GTID set's format selects the wire flavor — MySQL `uuid:intervals` and MariaDB `domain-server-seq` need no `--flavor` flag.
+
+`--user` defaults to the OS login name. The password comes from `--password` or `BINLOGVIZ_MYSQL_PASSWORD` (the flag wins; the variable keeps it out of the command line) and is never logged or printed. `--server-id` defaults to a crypto-random pseudo-replica id. `--ssl-mode` is `disabled` by default; `required` encrypts without verifying the certificate (MySQL `REQUIRED` semantics), and `preferred` falls back to plain only when the server refuses TLS at handshake — before credentials are sent. A dropped connection mid-read fails `input` (`reason: stream`) instead of producing a short report.
+
 ## Flags
 
 | Flag | Default | Description |
@@ -103,6 +122,15 @@ For the exact discovery matching, ordering, resolved-file reporting, and invalid
 | `--from-dir` | none | Discover binlog files from this directory. Must be used with `--prefix`. |
 | `--prefix` | none | Filename prefix used with `--from-dir`. Must be used with `--from-dir`. Optional `.` before the numeric suffix; a complete filename selects that file; for one file, pass the path. |
 | `--index-file` | none | Binlog index manifest inside `--from-dir` (for example `binlog.index`). Entries resolve relative to the directory, read in listed order; every listed file must exist. Mutually exclusive with `--prefix`. |
+| `--host` | none | Read binlog events from a live server: `host` or `host:port`. Its presence selects remote input mode. |
+| `--port` | `3306` | Server port for remote input; a port inside `--host` wins unless `--port` is passed. |
+| `--user` | OS login name | Replication account for remote input. |
+| `--password` | none | Account password for remote input; `BINLOGVIZ_MYSQL_PASSWORD` fills it when the flag is absent (preferred — keeps it out of the command line). Never logged or printed. |
+| `--server-id` | `0` = random | `server_id` the pseudo-replica registers with; a nonzero value, crypto-random when unset. |
+| `--start-file` | none | Binlog file name on the server to begin reading from; without it the read covers the server's whole retained history. |
+| `--start-pos` | `4` | Byte position in `--start-file`; requires `--start-file` and must be at least 4. |
+| `--start-gtid` | none | Executed GTID set to resume after (MySQL `uuid:intervals` or MariaDB `domain-server-seq`); mutually exclusive with `--start-file`/`--start-pos`. |
+| `--ssl-mode` | `disabled` | TLS mode for remote input: `disabled`, `preferred` (TLS when the server offers it), or `required` (TLS or fail). |
 | `--format` | `text` | Report output format: `text`, `json`, `markdown` (alias `md`), or `html`. |
 | `--output`, `-o` | auto | HTML output file path. Only supported with `--format html`. Default: derived cwd file on a TTY; stdout when stdout is redirected. Use `-` to force stdout. |
 | `--snapshot-name` | none | Save the JSON analyze output as `<name>.json`. Requires `--format json`. |
@@ -427,9 +455,15 @@ Validation happens before analysis starts:
 The command rejects these invalid combinations:
 
 - positional files plus `--from-dir`, `--prefix`, or `--index-file`
+- positional files plus `--host`
+- `--host` plus `--from-dir`, `--prefix`, `--index-file`, `--start-position`, or `--stop-position`
 - `--from-dir` without exactly one of `--prefix` or `--index-file`
 - `--prefix` or `--index-file` without `--from-dir`
-- no positional files and no complete discovery pair
+- `--port`, `--user`, `--password`, `--server-id`, `--start-file`, `--start-pos`, `--start-gtid`, or `--ssl-mode` without `--host`
+- `--start-gtid` together with `--start-file` or an explicit `--start-pos`
+- `--start-pos` without `--start-file` (`--start-file` alone is allowed; `--start-pos` defaults to `4`)
+- `--start-pos` below `4`, `--port 0` or a port past `65535`, an empty `--start-gtid`, or an `--ssl-mode` other than `disabled`/`preferred`/`required`
+- no positional files and no complete discovery pair and no `--host`
 - `--snapshot-name` without `--format json`
 
 Representative failure cases:
