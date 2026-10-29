@@ -181,7 +181,7 @@
   },
   "cmd.analyze.flag.sslMode": {
     "description": "Remote ssl-mode flag description",
-    "other": "TLS mode for remote input: disabled (default), preferred (TLS when the server offers it), or required (TLS or fail)"
+    "other": "TLS mode for remote input: preferred (default, TLS when the server offers it), required (TLS or fail), or disabled"
   },
   "cmd.version.short": {
     "description": "Version command short description",

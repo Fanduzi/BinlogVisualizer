@@ -12,6 +12,7 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/i18n"
+	"binlogviz/internal/remote"
 	"binlogviz/internal/report"
 )
 
@@ -62,5 +63,5 @@ func registerAnalyzeFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().StringVar(&opts.remoteStartFile, "start-file", "", i18n.T("cmd.analyze.flag.startFile"))
 	cmd.Flags().Uint32Var(&opts.remoteStartPos, "start-pos", 4, i18n.T("cmd.analyze.flag.startPos"))
 	cmd.Flags().StringVar(&opts.remoteStartGTID, "start-gtid", "", i18n.T("cmd.analyze.flag.startGTID"))
-	cmd.Flags().StringVar(&opts.remoteSSLMode, "ssl-mode", "disabled", i18n.T("cmd.analyze.flag.sslMode"))
+	cmd.Flags().StringVar(&opts.remoteSSLMode, "ssl-mode", string(remote.SSLPreferred), i18n.T("cmd.analyze.flag.sslMode"))
 }

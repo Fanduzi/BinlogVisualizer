@@ -181,7 +181,7 @@
   },
   "cmd.analyze.flag.sslMode": {
     "description": "远程 ssl-mode 标志描述",
-    "other": "远程输入的 TLS 模式：disabled（默认）、preferred（服务器支持则启用 TLS）或 required（必须 TLS）"
+    "other": "远程输入的 TLS 模式：preferred（默认，服务器支持则启用 TLS）、required（必须 TLS，否则失败）或 disabled"
   },
   "cmd.version.short": {
     "description": "version 命令简短描述",
