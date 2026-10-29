@@ -119,6 +119,11 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 		if err != nil {
 			return err
 		}
+		// reachedEnd records that the frame below ended exactly at the
+		// boundary: emitting it consumed the last manifest byte, and a
+		// blocking dump sends nothing after that — the loop must stop on
+		// its own instead of waiting on the next frame forever (ADR 0021).
+		reachedEnd := false
 		if _, err := r.dispatchRemote(frame, &inHandler, func(ev *replication.BinlogEvent) error {
 			if ev == nil || ev.Header == nil {
 				return nil
@@ -136,9 +141,11 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 			// are the old file's; the tracking update follows them.
 			path := eventPath()
 			start, end, _, next := deriveEventPositionRange(ev.Header, cursor)
-			if currentFile == p.boundary.File && p.boundary.File != "" && end > p.boundary.Size {
+			inBoundaryFile := p.boundary.File != "" && currentFile == p.boundary.File
+			if inBoundaryFile && end > p.boundary.Size {
 				return errRemoteEnd
 			}
+			reachedEnd = inBoundaryFile && end >= p.boundary.Size
 			cursor = next
 			consumed += int64(ev.Header.EventSize)
 			if rot != nil {
@@ -203,6 +210,9 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 				return nil
 			}
 			return err
+		}
+		if reachedEnd {
+			return nil
 		}
 	}
 }
