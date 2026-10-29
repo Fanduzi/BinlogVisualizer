@@ -99,6 +99,16 @@ type analyzeOptions struct {
 	topTablesChanged       bool
 	topTransactionsChanged bool
 	detailStore            string
+	remote                 bool
+	remoteHost             string
+	remotePort             uint16
+	remoteUser             string
+	remotePassword         string
+	remoteServerID         uint32
+	remoteStartFile        string
+	remoteStartPos         uint32
+	remoteStartGTID        string
+	remoteSSLMode          string
 }
 
 func newAnalyzeCommand() *cobra.Command {
@@ -124,7 +134,10 @@ func newAnalyzeCommand() *cobra.Command {
 			if (hasFromDir || hasPrefix || hasIndex) && (!hasFromDir || hasPrefix == hasIndex) {
 				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirPrefixOrIndex"))
 			}
-			if hasArgs || hasFromDir {
+			if err := validateRemoteArgs(cmd, args, opts); err != nil {
+				return err
+			}
+			if hasArgs || hasFromDir || analyzeRemoteRequested(cmd) {
 				return nil
 			}
 			return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
@@ -175,31 +188,57 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
-			stage = clierr.KindInput
-			paths, discovered, fileCoverage, err := resolveAnalyzePaths(args, opts)
-			if err != nil {
-				return err
-			}
-			paths, pathAliases, cleanupInputs, err := materializeAnalyzePaths(paths)
-			if cleanupInputs != nil {
-				defer cleanupInputs()
-			}
-			if err != nil {
-				return err
-			}
-			if !discovered {
-				fileCoverage = fileCoverageForPaths(paths)
-			}
-			if discovered {
+			opts.remote = analyzeRemoteRequested(cmd)
+			var parser binlog.Parser = binlog.NewParser()
+			var paths []string
+			var pathAliases map[string]string
+			var fileCoverage model.FileCoverage
+			discovered := false
+			if opts.remote {
+				runCfg, err := buildRemoteRunConfig(cmd, opts)
+				if err != nil {
+					return err
+				}
+				stage = clierr.KindInput
+				src, boundary, err := openRemoteInput(cmd.Context(), runCfg)
+				if err != nil {
+					return err
+				}
+				defer src.Close()
+				parser = binlog.NewRemoteParser(cmd.Context(), src, boundary)
+				paths = []string{runCfg.origin}
+				discovered = true
+				fileCoverage = remoteFileCoverage(runCfg.origin, src.Manifest(), runCfg.cfg.Start.File, runCfg.cfg.GTIDSet != nil)
 				printResolvedPaths(infoWriter(os.Stderr), paths)
-			}
-			if len(paths) == 0 {
-				return clierr.Errorf(clierr.KindInput, "%s", i18n.T("error.noResolvedFiles"))
-			}
+			} else {
+				stage = clierr.KindInput
+				var err error
+				paths, discovered, fileCoverage, err = resolveAnalyzePaths(args, opts)
+				if err != nil {
+					return err
+				}
+				var cleanupInputs func()
+				paths, pathAliases, cleanupInputs, err = materializeAnalyzePaths(paths)
+				if cleanupInputs != nil {
+					defer cleanupInputs()
+				}
+				if err != nil {
+					return err
+				}
+				if !discovered {
+					fileCoverage = fileCoverageForPaths(paths)
+				}
+				if discovered {
+					printResolvedPaths(infoWriter(os.Stderr), paths)
+				}
+				if len(paths) == 0 {
+					return clierr.Errorf(clierr.KindInput, "%s", i18n.T("error.noResolvedFiles"))
+				}
 
-			// Validate input files exist
-			if err := validateFiles(paths); err != nil {
-				return err
+				// Validate input files exist
+				if err := validateFiles(paths); err != nil {
+					return err
+				}
 			}
 
 			// Resolve output destination
@@ -219,50 +258,18 @@ func newAnalyzeCommand() *cobra.Command {
 
 			// Execute the analysis pipeline
 			stage = clierr.KindError
-			return runAnalysisWithOutput(paths, analyzerOpts, reportOpts, opts.format, snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir, dest, pathAliases)
+			return runAnalysisStreamingFastWithOutput(paths, analyzerOpts, reportOpts, opts.format, parser, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
+				if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+					return analyzer.NewWithStore(opts, store)
+				}
+				return analyzer.New(opts)
+			}, func(root string) (*detailstore.DuckDBStore, func() error, string, error) {
+				return createDuckDBTempStore(root)
+			}, "", snapshotMeta, fileCoverage, opts.snapshotName, opts.snapshotDir, dest, pathAliases)
 		},
 	}
 
-	// Register flags
-	cmd.Flags().StringVar(&opts.startTime, "start", "", i18n.T("cmd.analyze.flag.start"))
-	cmd.Flags().StringVar(&opts.endTime, "end", "", i18n.T("cmd.analyze.flag.end"))
-	cmd.Flags().Int64Var(&opts.startPosition, "start-position", 0, "Start position (inclusive event boundary)")
-	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, "Stop position (exclusive event boundary or EOF)")
-	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, "Include complete transaction groups matching this GTID set")
-	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, "Exclude complete transaction groups matching this GTID set")
-	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
-	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
-	cmd.Flags().StringVar(&opts.indexFile, "index-file", "", i18n.T("cmd.analyze.flag.indexFile"))
-	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.analyze.flag.format"))
-	cmd.Flags().StringVarP(&opts.output, "output", "o", "", i18n.T("cmd.analyze.flag.output"))
-	cmd.Flags().StringVar(&opts.snapshotName, "snapshot-name", "", "Save JSON analyze output as a named snapshot")
-	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to save analyze snapshots")
-	cmd.Flags().StringVar(&opts.workloadID, "workload-id", "", i18n.T("cmd.analyze.flag.workloadID"))
-	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.analyze.flag.sqlContext"))
-	cmd.Flags().StringVar(&opts.diagnostics, "diagnostics", string(report.DiagnosticsFull), i18n.T("cmd.analyze.flag.diagnostics"))
-	cmd.Flags().IntVar(&opts.top, "top", report.DefaultTopN, i18n.T("cmd.analyze.flag.top"))
-	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.analyze.flag.topTables"))
-	cmd.Flags().IntVar(&opts.topTransactions, "top-transactions", 10, i18n.T("cmd.analyze.flag.topTransactions"))
-	cmd.Flags().IntVar(&opts.topThreads, "top-threads", 10, i18n.T("cmd.analyze.flag.topThreads"))
-	cmd.Flags().IntVar(&opts.topRows, "top-rows", 10, i18n.T("cmd.analyze.flag.topRows"))
-	cmd.Flags().BoolVar(&opts.details, "details", false, i18n.T("cmd.analyze.flag.details"))
-	cmd.Flags().BoolVar(&opts.showMinutes, "show-minutes", false, i18n.T("cmd.analyze.flag.showMinutes"))
-	cmd.Flags().BoolVar(&opts.showPatterns, "show-patterns", false, i18n.T("cmd.analyze.flag.showPatterns"))
-	cmd.Flags().BoolVar(&opts.detectSpikes, "detect-spikes", false, i18n.T("cmd.analyze.flag.detectSpikes"))
-	cmd.Flags().IntVar(&opts.largeTrxRows, "large-trx-rows", 1000, i18n.T("cmd.analyze.flag.largeTrxRows"))
-	cmd.Flags().DurationVar(&opts.largeTrxDuration, "large-trx-duration", 30*time.Second, i18n.T("cmd.analyze.flag.largeTrxDuration"))
-	cmd.Flags().IntVar(&opts.topMinutes, "top-minutes", 60, i18n.T("cmd.analyze.flag.topMinutes"))
-	cmd.Flags().IntVar(&opts.spikeWindow, "spike-window", 5, i18n.T("cmd.analyze.flag.spikeWindow"))
-	cmd.Flags().Float64Var(&opts.spikeFactor, "spike-factor", 3.0, i18n.T("cmd.analyze.flag.spikeFactor"))
-	cmd.Flags().IntVar(&opts.spikeMinRows, "spike-min-rows", 100, i18n.T("cmd.analyze.flag.spikeMinRows"))
-	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.analyze.flag.includeSchema"))
-	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.analyze.flag.excludeSchema"))
-	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.analyze.flag.includeTable"))
-	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.analyze.flag.dml"))
-	cmd.Flags().BoolVar(&opts.showRows, "show-rows", false, i18n.T("cmd.analyze.flag.showRows"))
-	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.analyze.flag.excludeTable"))
-	cmd.Flags().StringVar(&opts.detailStore, "detail-store", string(analyzer.DetailStoreNone), i18n.T("cmd.analyze.flag.detailStore"))
-
+	registerAnalyzeFlags(cmd, opts)
 	return cmd
 }
 

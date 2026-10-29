@@ -21,11 +21,18 @@ import (
 	"binlogviz/internal/clierr"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/remote"
 )
 
 func wrapParseError(err error) error {
 	if err == nil {
 		return nil
+	}
+	// A remote stream failure is an input failure with its own reason, not
+	// corrupt bytes on disk (ADR 0021).
+	var rerr *remote.Error
+	if errors.As(err, &rerr) {
+		return remoteClierr(rerr)
 	}
 	// An open BEGIN or unclassified QUERY is a readable binlog that cannot
 	// be analyzed safely: exit 1, as ADR 0001 documents, not corrupt.

@@ -147,6 +147,42 @@
     "description": "可选明细存储后端标志描述",
     "other": "可选事务明细存储后端：none 或 duckdb"
   },
+  "cmd.analyze.flag.host": {
+    "description": "远程 host 标志描述",
+    "other": "从在线服务器读取 binlog 事件：host 或 host:port；设置后进入远程输入模式"
+  },
+  "cmd.analyze.flag.port": {
+    "description": "远程 port 标志描述",
+    "other": "远程输入的服务器端口；--host 中的端口优先，除非显式传 --port"
+  },
+  "cmd.analyze.flag.user": {
+    "description": "远程 user 标志描述",
+    "other": "远程输入使用的复制账号；默认为操作系统登录名"
+  },
+  "cmd.analyze.flag.password": {
+    "description": "远程 password 标志描述",
+    "other": "远程输入的账号密码；未传该标志时读取 BINLOGVIZ_MYSQL_PASSWORD（推荐，避免出现在命令行中）"
+  },
+  "cmd.analyze.flag.serverID": {
+    "description": "远程 server-id 标志描述",
+    "other": "伪从库注册的 server_id；必须为非零值，不传时随机生成"
+  },
+  "cmd.analyze.flag.startFile": {
+    "description": "远程 start-file 标志描述",
+    "other": "开始读取的服务器 binlog 文件名；不传则覆盖服务器保留的全部历史"
+  },
+  "cmd.analyze.flag.startPos": {
+    "description": "远程 start-pos 标志描述",
+    "other": "在 --start-file 中开始读取的字节位置；必须与 --start-file 一起使用"
+  },
+  "cmd.analyze.flag.startGTID": {
+    "description": "远程 start-gtid 标志描述",
+    "other": "从已执行 GTID 集合之后恢复读取（MySQL uuid:intervals 或 MariaDB domain-server-seq 格式）；与 --start-file/--start-pos 互斥"
+  },
+  "cmd.analyze.flag.sslMode": {
+    "description": "远程 ssl-mode 标志描述",
+    "other": "远程输入的 TLS 模式：disabled（默认）、preferred（服务器支持则启用 TLS）或 required（必须 TLS）"
+  },
   "cmd.version.short": {
     "description": "version 命令简短描述",
     "other": "打印 binlogviz 版本"
@@ -154,6 +190,30 @@
   "error.combineArgsWithDir": {
     "description": "位置参数与 from-dir 混用错误",
     "other": "不能同时使用位置参数指定 binlog 文件和 --from-dir/--prefix"
+  },
+  "error.remoteCombineArgs": {
+    "description": "远程输入与本地输入模式混用错误",
+    "other": "远程输入（--host）不能与 binlog 文件参数、-、--from-dir/--prefix/--index-file 或 --start-position/--stop-position 同时使用"
+  },
+  "error.remoteRequiresHost": {
+    "description": "远程标志缺少 --host 错误",
+    "other": "远程输入标志必须与 --host 一起使用"
+  },
+  "error.remotePosRequiresFile": {
+    "description": "--start-pos 缺少 --start-file 错误",
+    "other": "--start-pos 必须与 --start-file 一起使用"
+  },
+  "error.remoteGTIDConflict": {
+    "description": "--start-gtid 与 file:pos 选择器冲突错误",
+    "other": "--start-gtid 不能与 --start-file/--start-pos 同时使用"
+  },
+  "error.remotePosBeforeHeader": {
+    "description": "--start-pos 小于 binlog 头部错误",
+    "other": "--start-pos {{.Pos}} 小于 binlog 头部大小 4"
+  },
+  "error.remoteUserMissing": {
+    "description": "无法确定远程账号名错误",
+    "other": "无法确定远程账号名：请显式传 --user"
   },
   "error.fromDirAndPrefixRequired": {
     "description": "from-dir 或 prefix 缺失错误",

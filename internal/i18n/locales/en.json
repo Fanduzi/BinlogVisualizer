@@ -147,6 +147,42 @@
     "description": "Detail store backend flag description",
     "other": "Detail store backend for optional transaction lookup: none or duckdb"
   },
+  "cmd.analyze.flag.host": {
+    "description": "Remote host flag description",
+    "other": "Read binlog events from a live server: host or host:port; selects remote input mode"
+  },
+  "cmd.analyze.flag.port": {
+    "description": "Remote port flag description",
+    "other": "Server port for remote input; a port inside --host wins unless --port is passed"
+  },
+  "cmd.analyze.flag.user": {
+    "description": "Remote user flag description",
+    "other": "Replication account for remote input; defaults to the OS login name"
+  },
+  "cmd.analyze.flag.password": {
+    "description": "Remote password flag description",
+    "other": "Account password for remote input; BINLOGVIZ_MYSQL_PASSWORD fills it when the flag is absent (preferred, keeps it out of the command line)"
+  },
+  "cmd.analyze.flag.serverID": {
+    "description": "Remote server-id flag description",
+    "other": "server_id the pseudo-replica registers with; a nonzero value, random when unset"
+  },
+  "cmd.analyze.flag.startFile": {
+    "description": "Remote start-file flag description",
+    "other": "Binlog file name on the server to begin reading from; without it the read covers the server's whole retained history"
+  },
+  "cmd.analyze.flag.startPos": {
+    "description": "Remote start-pos flag description",
+    "other": "Byte position in --start-file to begin reading from; requires --start-file"
+  },
+  "cmd.analyze.flag.startGTID": {
+    "description": "Remote start-gtid flag description",
+    "other": "Executed GTID set to resume after (MySQL uuid:intervals or MariaDB domain-server-seq); mutually exclusive with --start-file/--start-pos"
+  },
+  "cmd.analyze.flag.sslMode": {
+    "description": "Remote ssl-mode flag description",
+    "other": "TLS mode for remote input: disabled (default), preferred (TLS when the server offers it), or required (TLS or fail)"
+  },
   "cmd.version.short": {
     "description": "Version command short description",
     "other": "Print the binlogviz version"
@@ -154,6 +190,30 @@
   "error.combineArgsWithDir": {
     "description": "Error when combining positional args with from-dir",
     "other": "cannot combine positional binlog files with --from-dir/--prefix"
+  },
+  "error.remoteCombineArgs": {
+    "description": "Error when remote input is combined with local input modes",
+    "other": "remote input (--host) cannot be combined with binlog file arguments, -, --from-dir/--prefix/--index-file, or --start-position/--stop-position"
+  },
+  "error.remoteRequiresHost": {
+    "description": "Error when remote flags are passed without --host",
+    "other": "remote input flags require --host"
+  },
+  "error.remotePosRequiresFile": {
+    "description": "Error when --start-pos is passed without --start-file",
+    "other": "--start-pos requires --start-file"
+  },
+  "error.remoteGTIDConflict": {
+    "description": "Error when --start-gtid is combined with file:pos selectors",
+    "other": "--start-gtid cannot be combined with --start-file/--start-pos"
+  },
+  "error.remotePosBeforeHeader": {
+    "description": "Error when --start-pos is below the binlog header",
+    "other": "--start-pos {{.Pos}} is below the binlog header size 4"
+  },
+  "error.remoteUserMissing": {
+    "description": "Error when the remote account name cannot be determined",
+    "other": "cannot determine the remote account name: pass --user explicitly"
   },
   "error.fromDirAndPrefixRequired": {
     "description": "Error when from-dir or prefix is missing",

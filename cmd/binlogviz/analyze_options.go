@@ -190,7 +190,9 @@ func buildSnapshotMetadata(paths []string, opts *analyzeOptions, startTime, endT
 	}
 
 	inputMode := "explicit"
-	if discovered {
+	if opts.remote {
+		inputMode = "remote"
+	} else if discovered {
 		inputMode = "discovery"
 	} else {
 		inputMode = "files"
