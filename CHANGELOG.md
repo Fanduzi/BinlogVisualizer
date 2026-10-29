@@ -4,6 +4,38 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.36.0
+
+Release date: 2026-10-28
+
+Highlights:
+
+- Generated-column verification fixes: UNSIGNED arithmetic now applies MySQL's unsigned bounds (ERROR 1690 semantics), `/` division results are DECIMAL at `div_precision_increment` scale, and YEAR 0, DATETIME fractional rounding, BINARY `0x00` padding, and `_latin1` introducer literals assign correctly (#450).
+- `CREATE/ALTER/DROP/RENAME USER` reports every named account with the right table attribution (#421); multi-pair `RENAME TABLE` attributes per pair.
+- `analyze --from-dir DIR --index-file NAME` reads a server's `binlog.index` manifest in listed order and fails on missing entries (#256).
+- The release gate is proven on real GitHub runs: e2e-silencing mutations (`if:`, `continue-on-error`) are caught by the static lock, and builds gate on `ci` (checks 1–4, #420).
+- Text and Markdown reports order Top Transactions before Hot Rows (#255). `report_version` 4, `plan_version` 2, and `schema_version` 1 are unchanged.
+
+Related notes:
+
+- [v0.36.0 release notes](docs/releases/release-notes-v0.36.0.md)
+- [v0.36.0 中文发行说明](docs/releases/release-notes-v0.36.0.zh-CN.md)
+
+### Added
+
+- `analyze --from-dir DIR --index-file NAME`: index-manifest discovery, mutually exclusive with `--prefix`; entries resolve relative to the directory, read in listed order, missing entries fail loudly.
+- `landing-overflow` CI job: headless Chromium asserts `scrollWidth` fits the viewport at 320/768/1280px (#451).
+- `darwin verify` CI job on macos-14; difftest nightly workflow with pinned MySQL images (`8.0.46`/`8.4.13`); `go test -count=1` in CI.
+- `internal/detailstore`: the DuckDB adapter moved out of `internal/analyzer` (ADR 0012 step 6, #257); `CGO_ENABLED=0` still builds.
+
+### Fixed
+
+- UNSIGNED `+`, `-`, `*`, `DIV`, `%`, and unary minus in generated-column checks apply `[0, 2^64-1]` bounds in both evaluation domains; out-of-range operands or results fail verification (#450).
+- `CONCAT(7/7)` verifies as `'1.0000'` and `7/2` as `'3.5000'` per `div_precision_increment` (#450).
+- USER DDL fan-out reports every named account (#421); `describe` failure output pins `valid:false`; `--start`/`--end` offset errors are localized; HTML minute-chart labels carry a date prefix across midnight; a timestamp-looking `workload_id` survives `snapshot save`; the GTID ceiling message drops "can need fewer" when wrong; refusal excerpts collapse whitespace.
+- Release gates: `TestFlashbackE2EJobCannotBeSilenced` pins no `if:`/`continue-on-error:` on the e2e job and no `if: always()` on build/release; `TestVetRaceAndGuardWiringPresent` pins vet-race and guard-SQL wiring; `TestBuildVerifiesCheckoutMatchesTag` pins `git rev-parse HEAD` + clean-tree check before builds (#420).
+- `release-prep` runs under `pipefail` and shares `scripts/landing-allowed-numbers.txt` with the Go landing guard (#451). README guard is an allowlist with archive-wide offline link checking (#447). `codehealth-compare` no longer updates the baseline on failure; lint attributes lines to the right file; committed submodules are findings (#454).
+
 ## v0.35.2
 
 Release date: 2026-10-27
