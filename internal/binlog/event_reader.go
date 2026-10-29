@@ -116,6 +116,14 @@ func (r *eventReader) next(pos int64, onEvent replication.OnEventFunc) (int64, e
 	if _, err := r.f.ReadAt(raw, pos); err != nil {
 		return 0, err
 	}
+	return r.dispatch(raw, onEvent)
+}
+
+// dispatch checks and decodes one whole event frame — the part of next that
+// does not care where the bytes came from. remote.go feeds it network frames;
+// next feeds it file bytes. It returns the frame's size.
+func (r *eventReader) dispatch(raw []byte, onEvent replication.OnEventFunc) (int64, error) {
+	eventSize := int64(len(raw))
 	corrupt := func(cause string) error {
 		return &CorruptEventError{Path: r.path, Offset: *r.consumed, Cause: cause}
 	}
