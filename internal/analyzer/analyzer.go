@@ -15,6 +15,7 @@ import (
 	"binlogviz/internal/detailstore"
 	"binlogviz/internal/flashback"
 	"binlogviz/internal/model"
+	"binlogviz/internal/redo"
 )
 
 // Analyzer orchestrates the complete binlog analysis pipeline.
@@ -54,6 +55,7 @@ type Analyzer struct {
 	matchedGTIDs    *matchedGTIDSet
 
 	flash *flashback.Planner
+	redo  *redo.Planner
 }
 
 // New creates a new Analyzer with the given options.
@@ -285,19 +287,13 @@ func (a *Analyzer) observeGTIDFlavor(ev model.NormalizedEvent) error {
 // fan-out to other aggregators is stopped to prevent inconsistent state.
 func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) error {
 	ev = enrichDDLEvent(ev)
-	if a.flash != nil {
-		gtid, _, _ := a.txnBuilder.touchLocation()
-		a.flash.Observe(ev, a.txnBuilder.CurrentTxnKey(), gtid)
-	}
+	a.observePlanners(ev)
 	if err := a.observeGTIDFlavor(ev); err != nil {
 		return err
 	}
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if relation == insideWindow && a.opts.HasObjectFilters() && isWorkload && !a.filter.Allow(workloadEv.Schema, workloadEv.Table) {
-		if a.flash != nil && ev.EventType == "ROWS" {
-			gtid, _, _ := a.txnBuilder.touchLocation()
-			a.flash.NoteSkipped(a.txnBuilder.CurrentTxnKey(), gtid)
-		}
+		a.notePlannerSkipped(ev)
 		a.txnBuilder.clearCurrentQueryContext()
 		if ev.EventType == "DDL" {
 			if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
@@ -309,10 +305,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 		return nil
 	}
 	if relation == insideWindow && ev.EventType == "ROWS" && !a.filter.AllowOperation(ev.Operation) {
-		if a.flash != nil {
-			gtid, _, _ := a.txnBuilder.touchLocation()
-			a.flash.NoteSkipped(a.txnBuilder.CurrentTxnKey(), gtid)
-		}
+		a.notePlannerSkipped(ev)
 		a.txnBuilder.clearCurrentQueryContext()
 		return nil
 	}
@@ -416,9 +409,7 @@ func (a *Analyzer) retainSelectedGroupEvent(ev model.NormalizedEvent) error {
 }
 
 func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
-	if a.flash != nil {
-		a.flash.Note(ev)
-	}
+	a.noteRetained(ev)
 	a.recordEffectivePosition(ev)
 	workloadEv, isWorkload := filteredWorkloadEvent(ev)
 	if isWorkload {
@@ -552,21 +543,7 @@ func (a *Analyzer) reset() {
 	a.gtidGroups = make(map[string]*gtidGroup)
 	a.inputGTIDFlavor = ""
 	a.matchedGTIDs = newMatchedGTIDSet()
-	if a.flash != nil {
-		a.flash.Close()
-		a.flash = nil
-	}
-	if a.opts.Flashback {
-		limit := a.opts.FlashbackConflictLimit
-		a.flash = flashback.New(flashback.Options{
-			SchemaSQL:     a.opts.SchemaSQL,
-			SchemaFileDB:  a.opts.SchemaFileDB,
-			Conflict:      a.opts.FlashbackConflict,
-			Plan:          a.opts.FlashbackPlan,
-			ConflictLimit: limit,
-			Selection:     a.flashSelection(),
-		})
-	}
+	a.initPlanners()
 	if a.store != nil {
 		a.err = a.store.Reset()
 	}
@@ -661,14 +638,6 @@ func (a *Analyzer) recordEffectivePosition(ev model.NormalizedEvent) {
 	if a.selection.EffectiveStopPosition == nil || ev.PositionEnd > *a.selection.EffectiveStopPosition {
 		a.selection.EffectiveStopPosition = cloneInt64(&ev.PositionEnd)
 	}
-}
-
-// Planner is the flashback planner for this run, or nil when flashback is off.
-func (a *Analyzer) Planner() *flashback.Planner {
-	if a == nil {
-		return nil
-	}
-	return a.flash
 }
 
 func cloneInt64(value *int64) *int64 {

@@ -84,6 +84,7 @@ func NewRootCommand() *cobra.Command {
 	}
 	cmd.AddCommand(newAnalyzeCommand())
 	cmd.AddCommand(newFlashbackCommand())
+	cmd.AddCommand(newRedoCommand())
 	cmd.AddCommand(newCompareCommand())
 	cmd.AddCommand(newTrendCommand())
 	cmd.AddCommand(newSnapshotCommand())

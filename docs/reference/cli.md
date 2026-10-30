@@ -1,6 +1,6 @@
 # CLI Reference
 
-This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz flashback`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow export`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
+This document defines the user-facing contract for the `binlogviz` root command, `binlogviz analyze`, `binlogviz flashback`, `binlogviz redo`, `binlogviz compare`, `binlogviz trend`, `binlogviz snapshot`, `binlogviz workflow run`, `binlogviz workflow resume`, `binlogviz workflow status`, `binlogviz workflow clean`, `binlogviz workflow export`, `binlogviz workflow validate`, and `binlogviz workflow describe`.
 
 If you want the fastest operator path instead of the full contract, start with [Quickstart](../recipe/quickstart.md) or [Analyze Local Binlogs](../recipe/analyze-local-binlogs.md).
 
@@ -15,6 +15,9 @@ binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz analyze --from-dir DIR --prefix PREFIX --format json --snapshot-name NAME
 binlogviz flashback <binlog files...>
 binlogviz flashback --from-dir DIR --prefix PREFIX
+binlogviz redo <binlog files...>
+binlogviz redo --from-dir DIR --prefix PREFIX
+binlogviz redo --host HOST --user USER
 binlogviz compare <current.json> <baseline.json>
 binlogviz compare --current-snapshot CURRENT --baseline-snapshot BASELINE
 binlogviz trend <snapshot...>
@@ -219,6 +222,30 @@ JSON is rebuilt from the binary document, including JSON inside a `binlog_transa
 `ON DELETE` / `ON UPDATE CASCADE` child rows are not in the binlog and are not restored. Triggers fire on undo. A later change to a selected row within the scanned binlogs refuses the script with exit 7 (`--conflict refuse`, the default). `--conflict guard` matches each undo against the logged after image instead of the primary key alone, a DELETE undo inserts only when the key is absent, and an UPDATE undo that moves a primary key back changes no row when another row now holds that key (instead of failing with `ERROR 1062`). `--plan` prints a JSON plan (`plan_version` 2: transactions, rows per table, conflicts, guarded statements, `would_refuse`, `refusal`, `warnings`) with the exit code the real run would return. A refusal still prints the plan: `refusal` is `{"kind": "conflict"|"refused", "message": ...}` for exit 7 or 6, and `null` otherwise; after `refused` the counts are zero. Each `warnings` entry is `{"code", "message"}`; the codes are `partial_transaction`, `table_definition_missing`, `generated_column_unverified`, `schema_file_db_mismatch`, `schema_file_table_ambiguous`, `schema_file_case_folded`, `schema_file_case_mismatch` and `mariadb_apply_unsupported`, and do not change with `--lang`. `--conflict-limit N` (default 20, `0` for all) sets how many conflicts the plan and the exit 7 error list; `count` is always the full count. Changes outside the scanned binlogs are not seen. A table filter or `--dml` that keeps only some rows of a transaction prints a warning on stderr. Review the script and test it. Apply it in a single session on the primary (`sql_log_bin=1`) so replicas follow under new GTIDs. A statement that fails rolls the undo back, including under `mysql --force`. Do not cut the script into blocks: `binlogviz flashback verify` rejects a file that is missing a piece or the trailer, and `mysql < flashback.sql` commits nothing. A cut prefix followed by `BEGIN` or DDL does not commit it (ADR 0014). `TIMESTAMP` literals are UTC and the script sets `time_zone='+00:00'`. The remaining limits, including a real column whose logged values equal a checked expression (#166) and a column added and then modified or renamed within the parsed binlogs, are in `docs/concept/limitations.md`. `sql_mode=TRADITIONAL` is handled for `ENUM` index 0 (#168).
 
 Exit 1, one `Error:` line, and no SQL when column names are missing, a row image is incomplete, a column cannot be rendered exactly, a seen table definition cannot be read, `--schema-file` does not match the binlog columns, a generated value contradicts the expression, the selected range contains DDL, or `--sql-context off`. Nothing selected is exit 2 with the same `Error:` line as `analyze` and empty stdout. `--sql-context` otherwise has no effect on the script: flashback does not print original statements, and cell values are not redacted. Auth DDL in the selected range is refused as DDL.
+
+## `redo` Command Syntax
+
+```bash
+binlogviz redo <binlog files...>
+binlogviz redo --from-dir DIR --prefix PREFIX
+binlogviz redo --from-dir DIR --index-file FILE
+binlogviz redo --host db.internal --user replica --start-file binlog.000041 --start-pos 4
+binlogviz redo mysql-bin.000123 --include-table shop.orders --dml insert
+binlogviz redo mysql-bin.000123 --schema-file schema.sql
+cat mysql-bin.000123 | binlogviz redo -
+```
+
+`redo` prints SQL that replays the selected changes in binlog order — the `2sql` direction. stdout is the script, staged until parsing and planning complete, so a refusal or a damaged file leaves nothing behind. It does not connect to a database except to read remote binlogs. Review the script and apply it yourself — to a copy for point-in-time recovery, or for selective replay and audit. Redo is experimental.
+
+Input rules match `analyze`, including remote mode: positional files, stdin `-`, `--from-dir` with `--prefix` or `--index-file`, or the replication input `--host`/`--port`/`--user`/`--password`/`--server-id`/`--start-file`/`--start-pos`/`--start-gtid`/`--ssl-mode`. A remote read is bounded by the binlog manifest captured at connection time — it never follows. Remote mode rejects positional/discovery input and the local position selectors; `--start-pos` needs `--start-file`, and `--start-gtid` is mutually exclusive with `--start-file`/`--start-pos`. Selectors match `analyze`: `--include-schema`, `--exclude-schema`, `--include-table`, `--exclude-table`, `--dml`, `--start`, `--end`, `--start-position`, `--stop-position` (single explicit file only), `--include-gtids`, and `--exclude-gtids`. `--schema-file` and `--schema-file-db` follow the flashback contract — the file must describe each table as it was at incident time and is not a filter.
+
+A logged INSERT emits `INSERT` of the after image, a logged DELETE emits `DELETE` matching the before image, and a logged UPDATE emits `UPDATE` setting the after image and matching the before image — on the primary key when the table map names one, else on every column with `LIMIT 1` and a `no primary key` comment, all matched NULL-safe with `<=>`. Generated columns are omitted from writes when a definition names them, exactly as flashback. Values render through the same literal machinery as undo: JSON rebuilt from the binary document, charset introducers for non-`utf8mb4` text, hex for binary, `b'...'` for BIT, ENUM/SET member labels, and the sql_mode relax-wrap for ENUM index 0, zero dates, and a logged NULL in a generated column.
+
+Transaction boundaries mirror the source stream. A group that logged `BEGIN` emits `BEGIN;`; XID emits `COMMIT;`, a logged ROLLBACK emits `ROLLBACK;`. DDL, ADMIN, and other kept QUERY statements pass through verbatim — implicit-commit work the source never wrapped — with `USE` emitted when the statement's default database differs from the last one emitted. `ROWS_QUERY` annotations become `--` comments, and a GTID event becomes `-- gtid:`/`-- binlog:` comments. A group still open at the end of the input gets a trailer `COMMIT;` plus a stderr warning. XA verbs pass through; a server-generated XA PREPARE marker expands to the `XA END`/`XA PREPARE` pair replay needs. The script opens with `SET` lines matching the flashback session (sql_mode relax, `SET NAMES utf8mb4`, UTC `time_zone`).
+
+The binlog needs `binlog_row_image=FULL`. With `binlog_row_metadata=MINIMAL`, names and type facts come from `--schema-file` or DDL parsed in the scanned files: every comparable fact (base type, signedness, charset, members, precision, FSP) is checked against the row first, and a contradiction, a column-count mismatch, or no resolving definition refuses the script — names alone are not enough. STATEMENT- or MIXED-format input refuses: a statement-format DML event anywhere in the scanned input exits 9 with `details.reason` `statement_format`, since emitting a script would replay changes outside the row selection.
+
+A refusal exits 6 with `details.reason` — `capture` (row image incomplete), `column_type` (a cell cannot be rendered exactly), `names` (MINIMAL with no definition), `schema` (a definition contradicts the row), `generated_unknown`, or `truncated_query` — plus `details.table` when it names one table, and no SQL. Resource ceilings (`BINLOGVIZ_SPILL_BYTES`, `BINLOGVIZ_MEMORY_BYTES`) exit 10. Nothing selected is exit 2, empty stdout. Warnings — a table with no definition, a filter that keeps part of a transaction, the cut-transaction trailer — print on stderr and do not change with `--lang`. There is no `verify`/`apply` for redo, no `--follow`, no reconnect/resume, no snapshot input, and no per-table or per-transaction output splitting (ADR 0022).
 
 ## `compare` Command Syntax
 

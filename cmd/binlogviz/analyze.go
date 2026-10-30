@@ -462,6 +462,11 @@ func runAnalysisStreamingWithSnapshotDeps(
 			rows.SetCaptureFlashback(true)
 		}
 	}
+	if opts.Redo {
+		if rows, ok := parser.(binlog.RedoParser); ok {
+			rows.SetCaptureRedo(true)
+		}
+	}
 
 	var store *detailstore.DuckDBStore
 	if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
@@ -547,48 +552,22 @@ func runAnalysisStreamingWithSnapshotDeps(
 		}
 		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.analysisFinalizeError", map[string]any{"Error": err.Error()}))
 	}
-	if err := applyAnalyzeOutcomeGuards(paths, opts, result, rawEvents, formatObserver); err != nil {
-		return err
-	}
-	applyFileCoverage(result, paths, fileCoverage)
-	aliasAnalysisPaths(result, pathAliases)
-	if err := noteInputFormat(result, formatObserver); err != nil {
-		return err
-	}
-	if opts.Flashback {
-		return writeFlashbackSQL(streamAnalyzer)
-	}
-	if snapshotMeta != nil {
-		result.Snapshot = snapshotMeta
-	}
-	if snapshotName != "" {
-		if err := saveAndWriteJSONReport(*result, reportOpts, snapshotName, snapshotDir); err != nil {
-			return classifyReportWriteErr("json", err)
-		}
-		return nil
-	}
-	// An HTML file, or HTML on a resolved stdout destination, keeps the
-	// previous error kind: a render or write failure returns as-is.
-	// A spill read is its own kind. Every other report goes through
-	// report.Write, which builds the view and then refuses an unknown
-	// format instead of rendering text.
-	if format == "html" && (dest.IsFile || dest.IsStdout) {
-		body, err := report.Render(*result, reportOpts, format)
-		if err != nil {
-			return classifyReportWriteErr(format, err)
-		}
-		if err := writeHTMLAtomically(dest, body); err != nil {
-			return err
-		}
-		if dest.IsFile {
-			printHTMLSaveConfirmation(dest.Path)
-		}
-		return nil
-	}
-	if err := report.Write(os.Stdout, *result, reportOpts, format); err != nil {
-		return classifyReportWriteErr(format, err)
-	}
-	return nil
+	return finishStreamingRun(streamingRun{
+		paths:          paths,
+		opts:           opts,
+		reportOpts:     reportOpts,
+		format:         format,
+		streamAnalyzer: streamAnalyzer,
+		rawEvents:      rawEvents,
+		formatObserver: formatObserver,
+		result:         result,
+		snapshotMeta:   snapshotMeta,
+		fileCoverage:   fileCoverage,
+		snapshotName:   snapshotName,
+		snapshotDir:    snapshotDir,
+		dest:           dest,
+		pathAliases:    pathAliases,
+	})
 }
 
 // asSpill maps a failed activity-spill read to kind spill. Analysis finalize

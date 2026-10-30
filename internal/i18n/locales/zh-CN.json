@@ -2042,5 +2042,109 @@
   "error.flashbackSchemaSameInputs": {
     "description": "另一条输入相同的镜像里生成列的值不同",
     "other": "；另一条输入相同的镜像里 "
+  },
+  "cmd.redo.use": {
+    "description": "redo 命令用法",
+    "other": "redo [binlog 文件... | -] | --from-dir DIR（--prefix PREFIX | --index-file FILE）| --host HOST"
+  },
+  "cmd.redo.short": {
+    "description": "redo 命令简述",
+    "other": "打印重放所选行变更的前向（redo）SQL"
+  },
+  "cmd.redo.long": {
+    "description": "redo 命令详细说明",
+    "other": "按 binlog 顺序打印重放所选 ROW 变更的 SQL：INSERT 重放为 after-image 的 INSERT，DELETE 重放为 before-image 的 DELETE，UPDATE 在匹配 before-image 的位置 SET after-image。事务边界镜像源流：BEGIN 与 COMMIT 出现在源日志记录它们的位置；输入结束时仍未提交的事务由收尾的 COMMIT 提交并在 stderr 给出警告。保留的 QUERY 事件（DDL、ADMIN、未分类）按原文透传并带 USE 上下文；ROWS_QUERY 注释转为 -- 注释。binlog 给出主键名时 UPDATE/DELETE 用主键匹配，否则用全部列加 LIMIT 1 匹配。脚本只有在整个输入解析并规划成功后才输出到 stdout；被拒绝或中断的运行不输出任何内容。像 binlog2sql 的输出一样用管道接 mysql 应用：binlogviz redo mysql-bin.000001 | mysql --default-character-set=utf8mb4。binlog_row_metadata=MINIMAL 的输入需要 --schema-file 提供列名和类型信息，否则运行会被拒绝。statement 格式（STATEMENT/MIXED）的 binlog 会被拒绝。本命令不连接数据库，除非用 --host 读取远程 binlog。远程读取是有界的：停在连接时服务器列出的最后一个 binlog。"
+  },
+  "cmd.redo.example": {
+    "description": "redo 命令示例",
+    "other": "  # 重放一张表在一个时间窗内的变更，先检查再应用。\n  binlogviz redo mysql-bin.000001 --start 2026-10-19T06:00:00Z --end 2026-10-19T06:10:00Z --include-table app.orders\n  # 文件里所有选中的变更，输出为可重放的 SQL。\n  binlogviz redo mysql-bin.000001 --include-table testdb.users"
+  },
+  "cmd.redo.flag.startPosition": {
+    "description": "redo start-position 参数",
+    "other": "起始位置（含边界的事件）"
+  },
+  "cmd.redo.flag.stopPosition": {
+    "description": "redo stop-position 参数",
+    "other": "结束位置（不含边界的事件，到文件尾为止）"
+  },
+  "cmd.redo.flag.includeGtids": {
+    "description": "redo include-gtids 参数",
+    "other": "只重放匹配该 GTID 集合的完整事务组"
+  },
+  "cmd.redo.flag.excludeGtids": {
+    "description": "redo exclude-gtids 参数",
+    "other": "跳过匹配该 GTID 集合的完整事务组"
+  },
+  "cmd.redo.flag.includeSchema": {
+    "description": "redo include-schema 参数",
+    "other": "只重放这些 schema（逗号分隔）"
+  },
+  "cmd.redo.flag.excludeSchema": {
+    "description": "redo exclude-schema 参数",
+    "other": "跳过这些 schema（逗号分隔）"
+  },
+  "cmd.redo.flag.includeTable": {
+    "description": "redo include-table 参数",
+    "other": "只重放这些表（逗号分隔的 TABLE 或 SCHEMA.TABLE）"
+  },
+  "cmd.redo.flag.excludeTable": {
+    "description": "redo exclude-table 参数",
+    "other": "跳过这些表（逗号分隔的 TABLE 或 SCHEMA.TABLE）"
+  },
+  "cmd.redo.flag.schemaFile": {
+    "description": "redo schema file 参数",
+    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE），必须是事故当时的表结构。在 binlog_row_metadata=MINIMAL 时由它提供列名和类型信息；文件标出的生成列在写入时省略。未带库名时用前面的 USE、前面最近的转储头里的 Database、--schema-file-db，或 binlog 里该表唯一的库。可选"
+  },
+  "cmd.redo.flag.schemaFileDB": {
+    "description": "redo 未带库名 schema file 的默认库",
+    "other": "当 --schema-file 里没有 USE 也没有 mysqldump Database 头时，未带库名表使用的库。需要与 --schema-file 一起使用"
+  },
+  "cmd.redo.flag.dml": {
+    "description": "redo dml 参数",
+    "other": "只重放这些 ROW 类型（逗号分隔 insert、update、delete，可组合）"
+  },
+  "error.schemaFileDBRequiresFile": {
+    "description": "--schema-file-db 没有搭配 --schema-file",
+    "other": "--schema-file-db 需要 --schema-file"
+  },
+  "error.redoNames": {
+    "description": "MINIMAL 元数据行且没有可解析的表定义（退出码 6，reason names）",
+    "other": "{{.Table}}：列名和类型信息不可用（binlog_row_metadata 不是 FULL），也没有表定义能解析它们。请用 --schema-file 提供事故当时的表定义，或改用 binlog_row_metadata=FULL（MySQL 8.0.14+）记录的 binlog 重放"
+  },
+  "error.redoNamesMariaDB": {
+    "description": "MariaDB binlog 上 MINIMAL 元数据行且没有可解析的表定义（退出码 6，reason names）",
+    "other": "{{.Table}}：列名和类型信息不可用（binlog_row_metadata 不是 FULL），也没有表定义能解析它们。请用 --schema-file 提供事故当时的表定义，或改用 binlog_row_metadata=FULL（MariaDB 10.5+）记录的 binlog 重放"
+  },
+  "error.redoSchemaCount": {
+    "description": "解析到的表定义与 binlog 行列数不一致（退出码 6，reason schema）",
+    "other": "{{.Table}}：--schema-file 有 {{.File}} 列，但 binlog 行有 {{.Row}} 列；请使用事故当时的转储"
+  },
+  "error.redoTruncatedQuery": {
+    "description": "保留的 QUERY 事件存储文本在模型上限处被截断（退出码 6，reason truncated_query）",
+    "other": "QUERY 文本在存储上限处被截断；只重放前缀会执行另一条不同的语句：{{.Statement}}"
+  },
+  "error.redoGeneratedRow": {
+    "description": "redo 行的可写列全部是生成列（退出码 6，reason generated_row）",
+    "other": "{{.Table}}：每一列都是生成列，没有可写入的列"
+  },
+  "error.redoRowMatch": {
+    "description": "redo 的 UPDATE 或 DELETE 没有可匹配的列（退出码 6，reason row_image）",
+    "other": "{{.Table}}：before-image 里没有 WHERE 子句可以匹配的列"
+  },
+  "error.redoResource": {
+    "description": "redo 暂存触达资源上限（退出码 10，reason spill_limit 或 memory_limit）",
+    "other": "redo 资源不足（{{.Reason}}：已用 {{.Used}}，上限 {{.Limit}} 字节）"
+  },
+  "error.redoStatementFormat": {
+    "description": "解析的输入里存在 statement 格式的 DML（退出码 9，reason statement_format）",
+    "other": "binlog 里有 statement 格式的 DML（STATEMENT 或 MIXED 记录）；redo 无法把它绑定到所选范围，因此不输出任何内容。redo 需要 ROW 格式的 binlog"
+  },
+  "warning.redoSplit": {
+    "description": "表过滤或 --dml 只重放了一个事务组的一部分",
+    "other": "事务 {{.GTID}} 只重放了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"
+  },
+  "warning.redoCutTxn": {
+    "description": "事务组在输入结束时仍未提交，由收尾语句提交",
+    "other": "事务 {{.GTID}} 在输入结束时仍未提交；输出的 COMMIT 重放的是一个源端可能并未提交的前缀"
   }
 }

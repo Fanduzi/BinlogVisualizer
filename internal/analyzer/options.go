@@ -64,8 +64,13 @@ type Options struct {
 	// FlashbackConflictLimit bounds the conflicts listed in the plan and the
 	// exit 7 details: 0 lists the default 20, a negative value lists all.
 	FlashbackConflictLimit int
+	// Redo collects every selected row image for forward (redo) SQL.
+	// Off unless the redo command is running. Analyze output ignores it.
+	// Flashback and Redo are mutually exclusive.
+	Redo bool
 	// SchemaSQL is CREATE/ALTER text from --schema-file. Flashback learns
-	// generated columns from it before binlog DDL. Analyze ignores it.
+	// generated columns from it before binlog DDL. Redo also resolves
+	// MINIMAL-metadata names and type facts from it. Analyze ignores it.
 	SchemaSQL string
 	// SchemaFileDB is the database for unqualified names in SchemaSQL when
 	// the file has no USE and no mysqldump Database header. Analyze ignores it.
