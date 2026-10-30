@@ -13,11 +13,18 @@ const (
 
 // FlashCol is one TABLE_MAP column, aligned with FlashRow.Columns.
 // An empty Base means the type was not available to compare.
+// Typ and Meta carry the wire type id and ColumnMeta cell so the shared
+// literal emitter can be driven from a resolved FlashCol (redo merges
+// schema-file facts into it when the table map is MINIMAL, ADR 0022).
+// Binary marks a binary-charset string or blob column (hex literal path).
 type FlashCol struct {
 	Base     string
+	Typ      byte
+	Meta     uint16
 	Unsigned bool
 	HasSign  bool
 	Charset  string
+	Binary   bool
 	Members  []string
 	Prec     int
 	Scale    int
