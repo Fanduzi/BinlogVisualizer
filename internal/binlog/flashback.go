@@ -157,7 +157,13 @@ func flashColumnMeta(table *replication.TableMapEvent, width int) []model.FlashC
 			meta = table.ColumnMeta[i]
 		}
 		charset := flashCharset(coll, enumColl, i)
-		col := model.FlashCol{Base: flashBaseName(typ, meta, charset), Charset: charset}
+		col := model.FlashCol{
+			Base:    flashBaseName(typ, meta, charset),
+			Typ:     typ,
+			Meta:    meta,
+			Charset: charset,
+			Binary:  charset == "binary",
+		}
 		if unsigned != nil {
 			if bit, ok := unsigned[i]; ok {
 				col.HasSign = true
@@ -339,104 +345,47 @@ func flashLiterals(table *replication.TableMapEvent, labels []string, values []a
 	return lits, nil
 }
 
+// flashLiteral resolves this column's TABLE_MAP facts into emitCol and
+// delegates to the shared emitLiteral dispatch. The redo emitter resolves
+// the same descriptor from schema-merged facts instead (ADR 0022).
 func flashLiteral(table *replication.TableMapEvent, col int, value any, cell jsonCell, unsigned map[int]bool, enums, sets map[int][]string, collation map[int]uint64) (string, string) {
 	if value == nil {
 		return "NULL", ""
 	}
-	if _, ok := value.(*replication.JsonDiff); ok {
-		return "", "partial JSON"
+	ec := emitCol{typ: flashRealType(table, col), meta: columnMeta(table, col)}
+	if unsigned != nil {
+		if bit, ok := unsigned[col]; ok {
+			ec.hasSign = true
+			ec.unsigned = bit
+		}
 	}
-	typ := flashRealType(table, col)
-	switch typ {
-	case mysql.MYSQL_TYPE_TINY, mysql.MYSQL_TYPE_SHORT, mysql.MYSQL_TYPE_INT24, mysql.MYSQL_TYPE_LONG, mysql.MYSQL_TYPE_LONGLONG:
-		bit, ok := false, false
-		if unsigned != nil {
-			bit, ok = unsigned[col]
-		}
-		if !ok {
-			return "", typeName(typ) + " (signedness is unavailable)"
-		}
-		text, ok := sqlInteger(value, typ, bit)
-		if !ok {
-			return "", typeName(typ)
-		}
-		return text, ""
-	case mysql.MYSQL_TYPE_YEAR:
-		switch typed := value.(type) {
-		case int:
-			return strconv.Itoa(typed), ""
-		case int64:
-			return strconv.FormatInt(typed, 10), ""
-		default:
-			return "", "YEAR"
-		}
-	case mysql.MYSQL_TYPE_NEWDECIMAL:
-		text, ok := sqlDecimal(value)
-		if !ok {
-			return "", "DECIMAL"
-		}
-		return text, ""
-	case mysql.MYSQL_TYPE_FLOAT:
-		return "", "FLOAT"
-	case mysql.MYSQL_TYPE_DOUBLE:
-		return "", "DOUBLE"
-	case mysql.MYSQL_TYPE_BIT:
-		var meta uint16
-		if table != nil && col >= 0 && col < len(table.ColumnMeta) {
-			meta = table.ColumnMeta[col]
-		}
-		text, ok := sqlBit(value, meta)
-		if !ok {
-			return "", "BIT"
-		}
-		return text, ""
-	case mysql.MYSQL_TYPE_GEOMETRY:
-		return "", "GEOMETRY"
-	case mysql.MYSQL_TYPE_VECTOR:
-		return "", "VECTOR"
-	case mysql.MYSQL_TYPE_JSON:
-		if _, ok := value.(*replication.JsonDiff); ok {
-			return "", "partial JSON"
-		}
-		text, ok := sqlJSON(value, cell)
-		if !ok {
-			return "", "JSON"
-		}
-		return text, ""
+	switch ec.typ {
 	case mysql.MYSQL_TYPE_ENUM:
-		members := enums[col]
-		if len(members) == 0 {
-			return "", "ENUM (member list is unavailable)"
-		}
-		text, ok := sqlEnum(value, members)
-		if !ok {
-			return "", "ENUM"
-		}
-		return text, ""
+		ec.members = enums[col]
 	case mysql.MYSQL_TYPE_SET:
-		members := sets[col]
-		if len(members) == 0 {
-			return "", "SET (member list is unavailable)"
-		}
-		text, ok := sqlSet(value, members)
-		if !ok {
-			return "", "SET"
-		}
-		return text, ""
-	case mysql.MYSQL_TYPE_DATE, mysql.MYSQL_TYPE_NEWDATE,
-		mysql.MYSQL_TYPE_TIME, mysql.MYSQL_TYPE_TIME2,
-		mysql.MYSQL_TYPE_DATETIME, mysql.MYSQL_TYPE_DATETIME2,
-		mysql.MYSQL_TYPE_TIMESTAMP, mysql.MYSQL_TYPE_TIMESTAMP2:
-		text, ok := sqlTemporal(value)
-		if !ok {
-			return "", typeName(typ)
-		}
-		return text, ""
+		ec.members = sets[col]
 	case mysql.MYSQL_TYPE_VARCHAR, mysql.MYSQL_TYPE_VAR_STRING, mysql.MYSQL_TYPE_STRING, mysql.MYSQL_TYPE_BLOB:
-		return sqlCharacter(typ, col, value, collation, columnMeta(table, col))
-	default:
-		return "", typeName(typ)
+		ec.charset, ec.collErr = flashCollation(collation, col)
 	}
+	return emitLiteral(ec, value, cell)
+}
+
+// flashCollation resolves one character column's collation id to a charset
+// name, or the problem text emitLiteral reports. Collation 63 is the binary
+// charset, which pads BINARY(n) hex literals.
+func flashCollation(collation map[int]uint64, col int) (charset, collErr string) {
+	id, ok := collation[col]
+	if !ok || id == 0 {
+		return "", "collation is unavailable"
+	}
+	if id == mysqlCollationBinary {
+		return "binary", ""
+	}
+	name, known := charsetOfCollation(id)
+	if !known {
+		return "", "charset for collation " + strconv.FormatUint(id, 10) + " is unknown"
+	}
+	return name, ""
 }
 
 func flashRealType(table *replication.TableMapEvent, i int) byte {
@@ -590,33 +539,12 @@ func sqlTemporal(value any) (string, bool) {
 	return quoteSQLString(text), true
 }
 
+// sqlCharacter renders one character or blob column through emitLiteral;
+// tests and the collation table drive it by collation id.
 func sqlCharacter(typ byte, col int, value any, collation map[int]uint64, meta uint16) (string, string) {
-	name := typeName(typ)
-	if collation == nil {
-		return "", name + " (collation is unavailable)"
-	}
-	id, ok := collation[col]
-	if !ok || id == 0 {
-		return "", name + " (collation is unavailable)"
-	}
-	raw, ok := characterBytes(value)
-	if !ok {
-		return "", name
-	}
-	if id == mysqlCollationBinary {
-		return hexLiteral(padBinary(typ, meta, raw)), ""
-	}
-	charset, known := charsetOfCollation(id)
-	if !known {
-		return "", name + " (charset for collation " + strconv.FormatUint(id, 10) + " is unknown)"
-	}
-	if charset == "utf8mb4" {
-		if !utf8.Valid(raw) {
-			return "", name
-		}
-		return quoteSQLString(string(raw)), ""
-	}
-	return charsetHexLiteral(charset, raw), ""
+	ec := emitCol{typ: typ, meta: meta}
+	ec.charset, ec.collErr = flashCollation(collation, col)
+	return emitLiteral(ec, value, jsonCell{})
 }
 
 func characterBytes(value any) ([]byte, bool) {
