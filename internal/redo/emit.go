@@ -20,16 +20,27 @@ import (
 // emitState tracks which transaction groups are open in the emitted script
 // so BEGIN is emitted lazily before a group's first statement and every
 // still-open group is committed at the end. w is nil during the counting
-// pass, which only tracks state.
+// pass, which only tracks state. split non-nil rotates the output across
+// part files at statement-count boundaries (ADR 0025); begun marks the
+// groups that logged BEGIN so a continuing file re-emits it. pending defers
+// a group's BEGIN to its first emitted statement so a file never ends with
+// an empty BEGIN;COMMIT stub, pendFlush holds groups whose deferred BEGIN a
+// foreign record implicitly closed, and commentBuf holds comment lines
+// until the next statement's boundary decision lands them in its file.
 type emitState struct {
-	w         io.Writer
-	open      map[string]bool
-	closed    map[string]bool
-	xa        map[string]bool
-	gtidByKey map[string]string
-	order     []string
-	useCtx    string
-	useSet    bool
+	w          io.Writer
+	split      *fileSplit
+	open       map[string]bool
+	closed     map[string]bool
+	xa         map[string]bool
+	gtidByKey  map[string]string
+	begun      map[string]bool
+	pending    map[string]bool
+	pendFlush  []string
+	commentBuf []string
+	order      []string
+	useCtx     string
+	useSet     bool
 }
 
 // track replays group bookkeeping for one record without emitting. The
@@ -39,15 +50,7 @@ func (st *emitState) track(rec *stagedRecord) {
 	if rec.key == "" {
 		return
 	}
-	// A record for a different group means every group still open is done:
-	// the binlog is single-stream, so its work was implicitly committed
-	// when this group started — no trailer, no cut warning.
-	for k := range st.open {
-		if k != rec.key {
-			delete(st.open, k)
-			st.closed[k] = true
-		}
-	}
+	st.closeForeign(rec.key)
 	switch rec.kind {
 	case recGTID:
 		// A GTID event is the group's head comment; it does not open the
@@ -77,6 +80,28 @@ func (st *emitState) track(rec *stagedRecord) {
 	// group: they open it for the still-open check. Only recBegin emits
 	// BEGIN — a group that never logged BEGIN emits its rows bare.
 	st.openGroup(rec.key)
+}
+
+// closeForeign closes every group still open when a different group's
+// record arrives: the binlog is single-stream, so its work was implicitly
+// committed when this group started — no trailer, no cut warning. A group
+// whose BEGIN is still deferred gets it flushed by the next drainPend so
+// the BEGIN still precedes the record that closed it (split mode).
+func (st *emitState) closeForeign(key string) {
+	if key == "" {
+		return
+	}
+	for k := range st.open {
+		if k == key {
+			continue
+		}
+		if st.pending[k] {
+			st.pendFlush = append(st.pendFlush, k)
+			delete(st.pending, k)
+		}
+		delete(st.open, k)
+		st.closed[k] = true
+	}
 }
 
 // openGroup marks a group open so a later close or the end-of-input trailer
@@ -120,24 +145,33 @@ func writeScriptHead(w io.Writer) error {
 	return nil
 }
 
+// commentLines renders the text a recGTID or recComment record emits,
+// extracted so split mode can buffer the lines for the boundary decision.
+func commentLines(rec *stagedRecord) []string {
+	var lines []string
+	switch rec.kind {
+	case recGTID:
+		if rec.gtid != "" {
+			lines = append(lines, "-- gtid: "+rec.gtid)
+		}
+		if rec.path != "" {
+			lines = append(lines, fmt.Sprintf("-- binlog: %s:%d", rec.path, rec.pos))
+		}
+	case recComment:
+		for _, line := range strings.Split(rec.text, "\n") {
+			lines = append(lines, "-- "+line)
+		}
+	}
+	return lines
+}
+
 // emitRecord renders one staged record. Group bookkeeping matches track.
 func (a *Planner) emitRecord(st *emitState, rec *stagedRecord) error {
 	switch rec.kind {
-	case recGTID:
+	case recGTID, recComment:
 		st.track(rec)
-		if rec.gtid != "" {
-			if err := st.line("-- gtid: " + rec.gtid); err != nil {
-				return err
-			}
-		}
-		if rec.path != "" {
-			return st.line(fmt.Sprintf("-- binlog: %s:%d", rec.path, rec.pos))
-		}
-		return nil
-	case recComment:
-		st.track(rec)
-		for _, line := range strings.Split(rec.text, "\n") {
-			if err := st.line("-- " + line); err != nil {
+		for _, line := range commentLines(rec) {
+			if err := st.line(line); err != nil {
 				return err
 			}
 		}
@@ -145,7 +179,12 @@ func (a *Planner) emitRecord(st *emitState, rec *stagedRecord) error {
 	case recBegin:
 		// The source logged BEGIN here, so it is emitted unconditionally —
 		// even for a group every statement of which the selection dropped.
+		// Split mode marks deferred groups in emitAll and never reaches this
+		// for a keyed BEGIN.
 		st.track(rec)
+		if st.begun != nil && rec.key != "" {
+			st.begun[rec.key] = true
+		}
 		return st.statement("BEGIN")
 	case recStmt:
 		st.track(rec)
@@ -204,19 +243,197 @@ func (st *emitState) statement(sql string) error {
 }
 
 func (st *emitState) line(sql string) error {
-	if st.w == nil {
+	w := st.w
+	if st.split != nil && st.split.w != nil {
+		w = st.split.w
+	}
+	if w == nil {
 		return nil
 	}
-	_, err := fmt.Fprintln(st.w, sql)
+	_, err := fmt.Fprintln(w, sql)
 	return err
 }
 
+// emitAll drives the staged record stream through emitRecord, rotating the
+// output file at statement-count boundaries when st.split is set (ADR 0025).
+// Split mode buffers comment records until the next statement's boundary
+// decision and defers BEGIN to a group's first emitted statement; the order
+// below mirrors PrepareSplit's counting pass exactly — implicit close-out
+// and its BEGIN flushes precede the rotation decision, the group's own
+// deferred BEGIN lands wherever the record lands.
+func (a *Planner) emitAll(st *emitState) error {
+	return a.spill.forward(func(rec *stagedRecord) error {
+		a.settleBinds(rec)
+		if st.split != nil {
+			switch {
+			case rec.kind == recGTID || rec.kind == recComment:
+				// Buffer comments until the next statement's boundary
+				// decision so they land in the same file as what they
+				// describe.
+				st.track(rec)
+				st.commentBuf = append(st.commentBuf, commentLines(rec)...)
+				return nil
+			case rec.kind == recBegin && rec.key != "":
+				// A keyed BEGIN is deferred to the group's first emitted
+				// statement; it emits nothing and counts nothing here —
+				// flushPending counts it where it lands. It must not flush
+				// the comment buffer, which belongs with that statement.
+				st.closeForeign(rec.key)
+				if err := st.drainPend(); err != nil {
+					return err
+				}
+				st.track(rec)
+				if st.begun != nil {
+					st.begun[rec.key] = true
+				}
+				st.pending[rec.key] = true
+				return nil
+			}
+		}
+		st.closeForeign(rec.key)
+		if err := st.drainPend(); err != nil {
+			return err
+		}
+		if err := st.rotateFor(rec); err != nil {
+			return err
+		}
+		if err := st.flushComments(); err != nil {
+			return err
+		}
+		if err := st.flushPending(rec.key); err != nil {
+			return err
+		}
+		if err := a.emitRecord(st, rec); err != nil {
+			return err
+		}
+		if st.split != nil {
+			st.split.count += recStatementCount(rec)
+		}
+		return nil
+	})
+}
+
+// drainPend emits BEGIN for groups implicitly closed while their BEGIN was
+// deferred. It is a no-op outside split mode.
+func (st *emitState) drainPend() error {
+	for range st.pendFlush {
+		if err := st.statement("BEGIN"); err != nil {
+			return err
+		}
+		if st.split != nil {
+			st.split.count++
+		}
+	}
+	st.pendFlush = st.pendFlush[:0]
+	return nil
+}
+
+// flushComments writes the buffered comment lines into the current file —
+// called after the rotation decision so they land with their statement.
+func (st *emitState) flushComments() error {
+	for _, line := range st.commentBuf {
+		if err := st.line(line); err != nil {
+			return err
+		}
+	}
+	st.commentBuf = st.commentBuf[:0]
+	return nil
+}
+
+// flushPending emits the deferred BEGIN of key's group, if any — the group
+// begins in whichever file holds its first emitted statement.
+func (st *emitState) flushPending(key string) error {
+	if !st.pending[key] {
+		return nil
+	}
+	delete(st.pending, key)
+	if err := st.statement("BEGIN"); err != nil {
+		return err
+	}
+	if st.split != nil {
+		st.split.count++
+	}
+	return nil
+}
+
+// recStatementCount is the Prepare counting basis (countEmissions): row
+// records count their rows, statement records count one, comments zero.
+func recStatementCount(rec *stagedRecord) int64 {
+	switch rec.kind {
+	case recRows:
+		return int64(len(rec.rows))
+	case recStmt, recXAPair, recBegin, recClose:
+		return 1
+	}
+	return 0
+}
+
+// splitNeedsRotate reports whether rec belongs in the next file. A group
+// close always lands with its last statement (a file may exceed max by one
+// COMMIT), and a record bigger than max stays whole.
+func (st *emitState) splitNeedsRotate(max, count int64, rec *stagedRecord) bool {
+	n := recStatementCount(rec)
+	if n == 0 || count == 0 || count+n <= max {
+		return false
+	}
+	return !(rec.kind == recClose && st.open[rec.key])
+}
+
+// rotateFor closes the file boundary decision for one record — after the
+// implicit close-out of other groups, which may otherwise look open. A
+// deferred BEGIN belonging to rec's group lands in the same file rec does,
+// so it counts toward the decision.
+func (st *emitState) rotateFor(rec *stagedRecord) error {
+	sp := st.split
+	if sp == nil {
+		return nil
+	}
+	st.closeForeign(rec.key)
+	extra := int64(0)
+	if st.pending[rec.key] {
+		extra = 1
+	}
+	if !st.splitNeedsRotate(sp.max, sp.count+extra, rec) {
+		return nil
+	}
+	return st.rotate(rec)
+}
+
+// rotate ends the current file at a boundary: still-open groups commit,
+// the next file re-opens them with BEGIN so every part is independently
+// appliable (ADR 0025). A group whose BEGIN is still deferred has emitted
+// nothing in this file — it does not span, so it gets no COMMIT here and no
+// continuation in the next file.
+func (st *emitState) rotate(rec *stagedRecord) error {
+	sp := st.split
+	for _, key := range st.order {
+		if st.open[key] && !st.pending[key] {
+			if err := st.statement("COMMIT"); err != nil {
+				return err
+			}
+		}
+	}
+	if err := sp.seal(); err != nil {
+		return err
+	}
+	sp.count = 0
+	return sp.open(st)
+}
+
 // emitTrailers commits every group still open at the end of the input, in
-// first-open order. The matching warnings were built by countEmissions.
+// first-open order. A group whose BEGIN is still deferred emits it first —
+// the mirror of the source's BEGIN;COMMIT pair. The matching warnings were
+// built by countEmissions.
 func (st *emitState) emitTrailers() error {
 	for _, key := range st.order {
 		if !st.open[key] {
 			continue
+		}
+		if st.pending[key] {
+			delete(st.pending, key)
+			if err := st.statement("BEGIN"); err != nil {
+				return err
+			}
 		}
 		if err := st.statement("COMMIT"); err != nil {
 			return err

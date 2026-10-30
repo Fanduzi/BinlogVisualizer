@@ -99,3 +99,4 @@ Cobra 命令层把规范化后的 binlog 事件流式交给分析器，再把稳
 | `internal/snapshot` | 命名 analyze 快照的持久化 | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/snapshot/README.md) |
 | `internal/workflow` | 多步调查 plan 和 manifest | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/workflow/README.md) |
 | `internal/jsonout` | 带版本的 JSON 输出：没有自带版本键的 JSON 输出都以 `schema_version` 开头（ADR 0010） | [ADR 0010](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/adr/0010-every-json-output-is-versioned.md) |
+| `internal/splitout` | 拆分 SQL 输出目录的暂存与 `MANIFEST` 原子发布（ADR 0025） | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/splitout/README.md) |

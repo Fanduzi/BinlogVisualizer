@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"binlogviz/internal/mysqlexpr"
+	"binlogviz/internal/splitout"
 )
 
 // Options configures the analyzer behavior.
@@ -81,6 +82,10 @@ type Options struct {
 	// SchemaFileDB is the database for unqualified names in SchemaSQL when
 	// the file has no USE and no mysqldump Database header. Analyze ignores it.
 	SchemaFileDB string
+	// Split, when set, sends the flashback or redo script to per-table or
+	// statement-bounded files in Split.Dir instead of stdout (ADR 0025).
+	// The analyzer ignores it; the command layer's output finish reads it.
+	Split *splitout.Spec
 }
 
 // HasPositionSelectors reports whether an exact binlog position bound is active.

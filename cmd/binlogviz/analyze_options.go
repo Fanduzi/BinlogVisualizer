@@ -67,6 +67,7 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	result.RowWhere = opts.whereExpr
 	result.SchemaSQL = opts.schemaSQL
 	result.SchemaFileDB = opts.schemaFileDB
+	result.Split = opts.split
 	result.WorkloadID = strings.TrimSpace(opts.workloadID)
 	if mode := analyzer.DetailStoreMode(opts.detailStore); mode != "" {
 		result.DetailStoreMode = mode

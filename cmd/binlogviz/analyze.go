@@ -26,6 +26,7 @@ import (
 	"binlogviz/internal/mysqlexpr"
 	"binlogviz/internal/report"
 	"binlogviz/internal/snapshot"
+	"binlogviz/internal/splitout"
 )
 
 type commandAnalyzer interface {
@@ -112,6 +113,10 @@ type analyzeOptions struct {
 	remoteStartPos         uint32
 	remoteStartGTID        string
 	remoteSSLMode          string
+	splitDir               string
+	filePerTable           bool
+	maxStmtsPerFile        int64
+	split                  *splitout.Spec
 }
 
 func newAnalyzeCommand() *cobra.Command {

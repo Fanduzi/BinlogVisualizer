@@ -50,6 +50,8 @@ type Planner struct {
 	countsReady  bool
 	rowCount     int64
 	stmtCount    int64
+	splitReady   bool
+	splitSpan    []string
 	spillLimit   int64
 	memLimit     int64
 }
@@ -601,6 +603,13 @@ func (a *Planner) WarningList() []model.FlashbackWarning {
 	for _, label := range a.cut {
 		out = append(out, model.NewFlashWarning(model.WarnPartialTransaction, "warning.redoCutTxn", map[string]any{"GTID": label}))
 	}
+	for _, gtid := range a.splitSpan {
+		label := gtid
+		if label == "" {
+			label = "GTID unavailable"
+		}
+		out = append(out, model.NewFlashWarning(model.WarnPartialTransaction, "warning.redoFileSplit", map[string]any{"GTID": label}))
+	}
 	return out
 }
 
@@ -624,11 +633,7 @@ func (a *Planner) WriteTo(w io.Writer) (int64, error) {
 	if err := writeScriptHead(w); err != nil {
 		return 0, err
 	}
-	err = a.spill.forward(func(rec *stagedRecord) error {
-		a.settleBinds(rec)
-		return a.emitRecord(st, rec)
-	})
-	if err != nil {
+	if err := a.emitAll(st); err != nil {
 		return 0, err
 	}
 	if err := st.emitTrailers(); err != nil {

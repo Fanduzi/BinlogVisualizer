@@ -210,6 +210,8 @@ binlogviz flashback mysql-bin.000123 --include-table shop.orders --dml delete
 binlogviz flashback mysql-bin.000123 --include-table shop.orders --where "user_id < 400"
 binlogviz flashback mysql-bin.000123 --schema-file schema.sql
 binlogviz flashback mysql-bin.000123 --schema-file schema.sql --schema-file-db shop
+binlogviz flashback mysql-bin.000123 --output-dir undo/ --file-per-table
+binlogviz flashback mysql-bin.000123 --output-dir undo/ --max-statements-per-file 500
 ```
 
 `flashback` 打印撤销选定行变更的 SQL。stdout 是脚本。除了用 `--host` 读取远程 binlog 之外不连接数据库。输入规则与 `analyze` 一致，包括远程模式：位置参数、stdin `-`、`--from-dir` 加 `--prefix` 或 `--index-file`，或复制协议输入 `--host`/`--port`/`--user`/`--password`/`--server-id`/`--start-file`/`--start-pos`/`--start-gtid`/`--ssl-mode`（凭据、TLS 和起点选择的约定见「远程模式」一节）。远程读取以连接时拿到的 binlog 清单为界——不会跟随。远程模式拒绝位置/发现输入和本地位置选择；`--start-pos` 需要 `--start-file`，`--start-gtid` 与 `--start-file`/`--start-pos` 互斥。远程读取从事务中间开始或结束时，撤销已送达的部分；`partial_transaction` 警告标记的是选择切分，不是窗口截断。flashback 是实验功能：执行生成的 SQL 之前必须先审阅。
@@ -224,6 +226,8 @@ JSON 按二进制文档重建，包括 `binlog_transaction_compression=ON` 的�
 
 `ON DELETE` / `ON UPDATE CASCADE` 的子表行不在 binlog 里，不会被还原。撤销时触发器会执行。选中的行在扫描的 binlog 中之后又被修改时，脚本以退出码 7 拒绝（`--conflict refuse`，默认）。`--conflict guard` 让每条撤销语句匹配日志里的后镜像而不只是主键，DELETE 的撤销只在主键不存在时插入，把主键改回去的 UPDATE 撤销在旧主键已被别的行占用时不改任何行（不再报 `ERROR 1062`）。`--plan` 输出 JSON 计划（`plan_version` 2：事务数、每张表的行数、冲突、加了 guard 的语句数、`would_refuse`、`refusal`、`warnings`），退出码与真正执行时一致。被拒绝时也输出计划：退出码 7 或 6 时 `refusal` 是 `{"kind": "conflict"|"refused", "message": ...}`，否则为 `null`；`refused` 时各计数为 0。`warnings` 每项是 `{"code", "message"}`，代码有 `partial_transaction`、`table_definition_missing`、`generated_column_unverified`、`schema_file_db_mismatch`、`schema_file_table_ambiguous`、`schema_file_case_folded`、`schema_file_case_mismatch` 和 `mariadb_apply_unsupported`，不随 `--lang` 变化。`--conflict-limit N`（默认 20，`0` 表示全部）决定计划和退出码 7 的错误里列出多少处冲突；`count` 始终是完整总数。扫描范围之外的修改看不到。表过滤或 `--dml` 只保留一个事务的部分行时，stderr 打出警告。先审阅并测试脚本，再在主库的同一个会话里执行（`sql_log_bin=1`），副本才会在新 GTID 下跟上。某条语句失败时，撤销会回滚，`mysql --force` 也一样。不要把脚本切成块：`binlogviz flashback verify` 会拒绝缺了一段或没有结尾的文件，`mysql < flashback.sql` 不会提交任何修改。截断的前缀后面再跟 `BEGIN` 或 DDL，也不会把它提交（ADR 0014）。`TIMESTAMP` 字面量是 UTC，脚本会设置 `time_zone='+00:00'`。剩下的限制，包括记下的值恰好等于能核对表达式的真实列（#166）、在解析到的 binlog 里先加上又被修改或改名的列，见 `docs/concept/limitations.zh-CN.md`。`sql_mode=TRADITIONAL` 下的 `ENUM` 序号 0 已经处理（#168）。
 
+`--output-dir DIR` 把一个目录的拆分 SQL 文件写到 `DIR`，而不是向 stdout 输出一份脚本（ADR 0025）。它要求 `--file-per-table` 或 `--max-statements-per-file N` 至少给一个，这两个标志也要求 `--output-dir`。`--file-per-table` 按撤销时倒序扫描首次见到表的顺序为每张选中的表写一组文件，命名为 `<schema>.<table>.sql`（同时按条数拆分时为 `<schema>.<table>-NNNNNN.sql`）。`--max-statements-per-file N` 把撤销流按每个 `part-NNNNNN.sql` 最多 N 条切块；与 `--file-per-table` 组合时限定每张表的文件集。`DIR` 必须不存在或为空，且父目录必须存在——否则是用法错误。每个文件本身就是一份完整的密封脚本：自带过程、XA 事务、摘要和结尾标记，可以独立用 `binlogviz flashback verify` 校验并执行。原子应用单位是单个文件而不是整个运行——不同表的文件顺序无所谓（注意外键），同一流的条数切块必须按 `MANIFEST` 顺序执行。`MANIFEST` 按执行顺序列出文件。目录原子发布：文件先写进同级临时目录，全部 fsync 且 `MANIFEST` 写完后才改名就位，失败不会留下半个文件集。`--max-statements-per-file` 下一个事务的撤销落到多个文件时按 GTID 在 stderr 警告（仅按表拆分时一个事务天然分到各表文件，不警告）。`--plan` 不能与拆分输出组合。
+
 列名缺失、行镜像不完整、某一列无法精确写成字面量、出现过的表定义读不出来、`--schema-file` 和 binlog 的列不一致、生成列的值与表达式矛盾、选定范围内有 DDL，或 `--sql-context off` 时，退出 1，一行 `Error:`，没有 SQL。什么都没选中时退出 2，`Error:` 与 `analyze` 相同，stdout 为空。除此之外 `--sql-context` 不影响脚本：flashback 不打印原始语句，单元格的值不打码。选定范围内的账号 DDL 按 DDL 拒绝。
 
 ## `redo` 命令语法
@@ -236,6 +240,7 @@ binlogviz redo --host db.internal --user replica --start-file binlog.000041 --st
 binlogviz redo mysql-bin.000123 --include-table shop.orders --dml insert
 binlogviz redo mysql-bin.000123 --include-table shop.orders --where "user_id < 400"
 binlogviz redo mysql-bin.000123 --schema-file schema.sql
+binlogviz redo mysql-bin.000123 --output-dir replay/ --max-statements-per-file 500
 cat mysql-bin.000123 | binlogviz redo -
 ```
 
@@ -251,7 +256,9 @@ cat mysql-bin.000123 | binlogviz redo -
 
 binlog 需要 `binlog_row_image=FULL`。`binlog_row_metadata=MINIMAL` 时，列名和类型事实来自 `--schema-file` 或扫描文件里解析到的 DDL：先按行本身核对每一项可比事实（基础类型、符号、字符集、成员表、精度、小数秒位），事实矛盾、列数不一致或没有可解析的定义都拒绝脚本——只有列名不够。STATEMENT 或 MIXED 格式输入被拒绝：扫描到的输入里只要有一条语句格式 DML 就以退出码 9、`details.reason` 为 `statement_format` 结束，因为输出脚本会重演行选择之外的变更。
 
-拒绝以退出码 6 结束并带 `details.reason`——`capture`（行镜像不完整）、`column_type`（单元格无法精确渲染）、`names`（MINIMAL 且无定义）、`schema`（定义与行矛盾）、`generated_unknown`、`truncated_query`——在指向单张表时附带 `details.table`，不输出 SQL。资源上限（`BINLOGVIZ_SPILL_BYTES`、`BINLOGVIZ_MEMORY_BYTES`）退出 10。什么都没选中时退出 2，stdout 为空。警告——表没有定义、过滤只保留事务的一部分、截断事务的补写提交——打在 stderr，不随 `--lang` 变化。redo 没有 `verify`/`apply`，没有 `--follow`，没有断线重连/续传，没有快照输入，也没有按表或按事务拆分输出（ADR 0022）。
+`--output-dir DIR` 把重演拆成 `DIR` 下的 `part-NNNNNN.sql` 文件，而不是向 stdout 输出一份脚本（ADR 0025）。它要求 `--max-statements-per-file N`——每个 part 最多 N 条语句（行语句和事务动词计数，注释不计），该标志也要求 `--output-dir`。`DIR` 必须不存在或为空，且父目录必须存在。part 保持 binlog 顺序，按 `MANIFEST` 顺序执行。每个 part 都可独立执行：开头是会话 `SET` 行和当前的 `USE` 上下文；边界落在事务中间时该 part 以 `COMMIT;` 收尾，下一个 part 用续接注释加 `BEGIN;` 重开事务——跨文件事务按 GTID 在 stderr 警告，且不会有只含 `BEGIN;`/`COMMIT;` 的空 part。目录与 flashback 一样经暂存改名原子发布：失败不会留下半个文件集。`redo` 没有 `--file-per-table`——按表拆分会把一个事务的重演散到多个文件，破坏 binlog 顺序。
+
+拒绝以退出码 6 结束并带 `details.reason`——`capture`（行镜像不完整）、`column_type`（单元格无法精确渲染）、`names`（MINIMAL 且无定义）、`schema`（定义与行矛盾）、`generated_unknown`、`truncated_query`——在指向单张表时附带 `details.table`，不输出 SQL。资源上限（`BINLOGVIZ_SPILL_BYTES`、`BINLOGVIZ_MEMORY_BYTES`）退出 10。什么都没选中时退出 2，stdout 为空。警告——表没有定义、过滤只保留事务的一部分、截断事务的补写提交——打在 stderr，不随 `--lang` 变化。redo 没有 `verify`/`apply`，没有 `--follow`，没有断线重连/续传，没有快照输入，也没有按表或按事务拆分输出（ADR 0022；`--output-dir` 的按条数拆分见 ADR 0025）。
 
 ## `compare` 命令语法
 

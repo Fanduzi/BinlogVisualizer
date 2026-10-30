@@ -24,6 +24,7 @@ import (
 	"binlogviz/internal/redo"
 	"binlogviz/internal/remote"
 	"binlogviz/internal/report"
+	"binlogviz/internal/splitout"
 )
 
 func newRedoCommand() *cobra.Command {
@@ -84,6 +85,9 @@ func newRedoCommand() *cobra.Command {
 			}
 			opts.dmlKinds = kinds
 			if err := compileWhereFlag(opts); err != nil {
+				return err
+			}
+			if err := compileSplitFlags(opts, false, cmd.Flags().Changed("max-statements-per-file")); err != nil {
 				return err
 			}
 			gtidSelector, err := buildGTIDSelector(opts)
@@ -182,6 +186,8 @@ func registerRedoFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.redo.flag.schemaFileDB"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.redo.flag.dml"))
 	cmd.Flags().StringVar(&opts.where, "where", "", i18n.T("cmd.redo.flag.where"))
+	cmd.Flags().StringVar(&opts.splitDir, "output-dir", "", i18n.T("cmd.redo.flag.outputDir"))
+	cmd.Flags().Int64Var(&opts.maxStmtsPerFile, "max-statements-per-file", 0, i18n.T("cmd.redo.flag.maxStatementsPerFile"))
 	cmd.Flags().StringVar(&opts.remoteHost, "host", "", i18n.T("cmd.analyze.flag.host"))
 	cmd.Flags().Uint16Var(&opts.remotePort, "port", 3306, i18n.T("cmd.analyze.flag.port"))
 	cmd.Flags().StringVar(&opts.remoteUser, "user", "", i18n.T("cmd.analyze.flag.user"))
@@ -219,7 +225,7 @@ func redoExit(err error) error {
 // statement_format). Every other refusal is decided by Prepare before a
 // byte reaches stdout; the sealed script is staged and copied out only on
 // success, the same contract flashback.Publish gives undo (ADR 0022).
-func writeRedoSQL(stream commandAnalyzer, observer binlog.FormatObserver) error {
+func writeRedoSQL(stream commandAnalyzer, observer binlog.FormatObserver, spec *splitout.Spec) error {
 	if observer.QueryDMLEvents > 0 {
 		return clierr.WithDetails(clierr.KindUnsupported, clierr.Errorf(clierr.KindUnsupported, "%s", i18n.T("error.redoStatementFormat")), map[string]any{"reason": "statement_format"})
 	}
@@ -234,8 +240,18 @@ func writeRedoSQL(stream commandAnalyzer, observer binlog.FormatObserver) error 
 	if plan.Statements() == 0 {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
+	if spec != nil {
+		// The layout pass fills the file-spanning warnings before the
+		// first file opens (ADR 0025).
+		if err := plan.PrepareSplit(*spec); err != nil {
+			return redoSplitExit(err)
+		}
+	}
 	for _, warning := range plan.Warnings() {
 		fmt.Fprintln(os.Stderr, warning)
+	}
+	if spec != nil {
+		return writeRedoSplit(plan, spec)
 	}
 	err := flashback.Publish(os.Stdout, func(w io.Writer) error {
 		_, werr := plan.WriteTo(w)

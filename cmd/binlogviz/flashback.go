@@ -21,6 +21,7 @@ import (
 	"binlogviz/internal/model"
 	"binlogviz/internal/remote"
 	"binlogviz/internal/report"
+	"binlogviz/internal/splitout"
 )
 
 func newFlashbackCommand() *cobra.Command {
@@ -110,6 +111,9 @@ func newFlashbackCommand() *cobra.Command {
 			}
 			opts.dmlKinds = kinds
 			if err := compileWhereFlag(opts); err != nil {
+				return err
+			}
+			if err := compileSplitFlags(opts, true, cmd.Flags().Changed("max-statements-per-file")); err != nil {
 				return err
 			}
 			gtidSelector, err := buildGTIDSelector(opts)
@@ -257,6 +261,9 @@ func registerFlashbackFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().StringVar(&opts.conflict, "conflict", flashback.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
 	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
 	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
+	cmd.Flags().StringVar(&opts.splitDir, "output-dir", "", i18n.T("cmd.flashback.flag.outputDir"))
+	cmd.Flags().BoolVar(&opts.filePerTable, "file-per-table", false, i18n.T("cmd.flashback.flag.filePerTable"))
+	cmd.Flags().Int64Var(&opts.maxStmtsPerFile, "max-statements-per-file", 0, i18n.T("cmd.flashback.flag.maxStatementsPerFile"))
 	cmd.Flags().StringVar(&opts.remoteHost, "host", "", i18n.T("cmd.analyze.flag.host"))
 	cmd.Flags().Uint16Var(&opts.remotePort, "port", 3306, i18n.T("cmd.analyze.flag.port"))
 	cmd.Flags().StringVar(&opts.remoteUser, "user", "", i18n.T("cmd.analyze.flag.user"))
@@ -305,36 +312,39 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 	cmd.Long = markExperimental(i18n.T("cmd.flashback.long"))
 	cmd.SetUsageTemplate(flashbackUsageTemplate())
 	usage := map[string]string{
-		"start":          "cmd.analyze.flag.start",
-		"end":            "cmd.analyze.flag.end",
-		"start-position": "cmd.flashback.flag.startPosition",
-		"stop-position":  "cmd.flashback.flag.stopPosition",
-		"include-gtids":  "cmd.flashback.flag.includeGtids",
-		"exclude-gtids":  "cmd.flashback.flag.excludeGtids",
-		"from-dir":       "cmd.analyze.flag.fromDir",
-		"prefix":         "cmd.analyze.flag.prefix",
-		"index-file":     "cmd.analyze.flag.indexFile",
-		"sql-context":    "cmd.flashback.flag.sqlContext",
-		"include-schema": "cmd.flashback.flag.includeSchema",
-		"exclude-schema": "cmd.flashback.flag.excludeSchema",
-		"include-table":  "cmd.flashback.flag.includeTable",
-		"exclude-table":  "cmd.flashback.flag.excludeTable",
-		"schema-file":    "cmd.flashback.flag.schemaFile",
-		"schema-file-db": "cmd.flashback.flag.schemaFileDB",
-		"dml":            "cmd.flashback.flag.dml",
-		"where":          "cmd.flashback.flag.where",
-		"conflict":       "cmd.flashback.flag.conflict",
-		"plan":           "cmd.flashback.flag.plan",
-		"conflict-limit": "cmd.flashback.flag.conflictLimit",
-		"host":           "cmd.analyze.flag.host",
-		"port":           "cmd.analyze.flag.port",
-		"user":           "cmd.analyze.flag.user",
-		"password":       "cmd.analyze.flag.password",
-		"server-id":      "cmd.analyze.flag.serverID",
-		"start-file":     "cmd.analyze.flag.startFile",
-		"start-pos":      "cmd.analyze.flag.startPos",
-		"start-gtid":     "cmd.analyze.flag.startGTID",
-		"ssl-mode":       "cmd.analyze.flag.sslMode",
+		"start":                   "cmd.analyze.flag.start",
+		"end":                     "cmd.analyze.flag.end",
+		"start-position":          "cmd.flashback.flag.startPosition",
+		"stop-position":           "cmd.flashback.flag.stopPosition",
+		"include-gtids":           "cmd.flashback.flag.includeGtids",
+		"exclude-gtids":           "cmd.flashback.flag.excludeGtids",
+		"from-dir":                "cmd.analyze.flag.fromDir",
+		"prefix":                  "cmd.analyze.flag.prefix",
+		"index-file":              "cmd.analyze.flag.indexFile",
+		"sql-context":             "cmd.flashback.flag.sqlContext",
+		"include-schema":          "cmd.flashback.flag.includeSchema",
+		"exclude-schema":          "cmd.flashback.flag.excludeSchema",
+		"include-table":           "cmd.flashback.flag.includeTable",
+		"exclude-table":           "cmd.flashback.flag.excludeTable",
+		"schema-file":             "cmd.flashback.flag.schemaFile",
+		"schema-file-db":          "cmd.flashback.flag.schemaFileDB",
+		"dml":                     "cmd.flashback.flag.dml",
+		"where":                   "cmd.flashback.flag.where",
+		"conflict":                "cmd.flashback.flag.conflict",
+		"plan":                    "cmd.flashback.flag.plan",
+		"conflict-limit":          "cmd.flashback.flag.conflictLimit",
+		"output-dir":              "cmd.flashback.flag.outputDir",
+		"file-per-table":          "cmd.flashback.flag.filePerTable",
+		"max-statements-per-file": "cmd.flashback.flag.maxStatementsPerFile",
+		"host":                    "cmd.analyze.flag.host",
+		"port":                    "cmd.analyze.flag.port",
+		"user":                    "cmd.analyze.flag.user",
+		"password":                "cmd.analyze.flag.password",
+		"server-id":               "cmd.analyze.flag.serverID",
+		"start-file":              "cmd.analyze.flag.startFile",
+		"start-pos":               "cmd.analyze.flag.startPos",
+		"start-gtid":              "cmd.analyze.flag.startGTID",
+		"ssl-mode":                "cmd.analyze.flag.sslMode",
 	}
 	for name, key := range usage {
 		if flag := cmd.Flags().Lookup(name); flag != nil {
@@ -419,7 +429,7 @@ func flashbackExit(err error) error {
 	return clierr.Wrap(clierr.KindRefused, err)
 }
 
-func writeFlashbackSQL(stream commandAnalyzer) error {
+func writeFlashbackSQL(stream commandAnalyzer, spec *splitout.Spec) error {
 	src, ok := stream.(*analyzer.Analyzer)
 	if !ok || src == nil || src.Planner() == nil {
 		return clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.flashbackCapture", map[string]any{"Table": "selected range"}))
@@ -441,8 +451,18 @@ func writeFlashbackSQL(stream commandAnalyzer) error {
 	if rows == 0 {
 		return &ExitError{Code: 2, Msg: i18n.T("error.noAnalyzableEvents")}
 	}
+	if spec != nil {
+		// The split layout decides the file-spanning warnings before the
+		// first file opens (ADR 0025).
+		if err := plan.PrepareSplit(*spec); err != nil {
+			return flashbackSplitExit(err)
+		}
+	}
 	for _, warning := range plan.Warnings() {
 		fmt.Fprintln(os.Stderr, warning)
+	}
+	if spec != nil {
+		return writeFlashbackSplit(plan, spec)
 	}
 	// The sealed script is written to a temp file and copied to stdout only
 	// after that write succeeds, so exit 8 does not leave a prefix (ADR 0013).
