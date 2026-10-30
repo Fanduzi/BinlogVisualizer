@@ -208,12 +208,13 @@ binlogviz analyze mysql-bin.000123 \
 binlogviz flashback mysql-bin.000123 \
   --include-table shop.orders \
   --dml delete \
+  --where "user_id < 400" \
   > flashback.sql
 
 binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 ```
 
-`--show-rows` 的上限、DDL 时间线的停止点、flashback 的前提条件、拒绝情形、冲突、执行权限和提交标记见 [找到并撤销误改的行](docs/recipe/flashback.zh-CN.md)。
+`--where` 只保留谓词可证为真的行——`user_id < 400` 只撤一个用户的误改，而不是整表。`--show-rows` 的上限、DDL 时间线的停止点、flashback 的前提条件、拒绝情形、冲突、执行权限和提交标记见 [找到并撤销误改的行](docs/recipe/flashback.zh-CN.md)。
 
 ### 把变更重演成前滚 SQL
 

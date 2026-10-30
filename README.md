@@ -208,12 +208,13 @@ binlogviz analyze mysql-bin.000123 \
 binlogviz flashback mysql-bin.000123 \
   --include-table shop.orders \
   --dml delete \
+  --where "user_id < 400" \
   > flashback.sql
 
 binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 ```
 
-`--show-rows` limits, the DDL Timeline stop points, flashback requirements, refusals, conflicts, apply grants, and commit markers are in [Find and Undo Bad Rows](docs/recipe/flashback.md).
+`--where` keeps only the rows whose predicate is provably true — `user_id < 400` undoes one user's damage, not the whole table. `--show-rows` limits, the DDL Timeline stop points, flashback requirements, refusals, conflicts, apply grants, and commit markers are in [Find and Undo Bad Rows](docs/recipe/flashback.md).
 
 ### Replay the changes as forward SQL
 

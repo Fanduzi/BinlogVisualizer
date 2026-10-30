@@ -154,37 +154,11 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 	if sc.I >= len(sc.S) {
 		return nil, false
 	}
-	switch sc.S[sc.I] {
-	case '(':
-		body, ok := sc.ParenBody()
-		if !ok {
-			return nil, false
-		}
-		return parseExprText(body)
-	case '\'', '"':
-		v, ok, collated := sc.quotedText("utf8mb4")
-		if !ok {
-			return nil, false
-		}
-		return &exprNode{kind: exLit, lit: v, collate: collated}, true
-	}
-	if sc.S[sc.I] == 'X' || sc.S[sc.I] == 'x' {
-		if v, ok, parsed := sc.hexBinary(); parsed {
-			if !ok {
-				return nil, false
-			}
-			return &exprNode{kind: exLit, lit: v, collate: sc.skipCollate()}, true
-		}
+	if n, handled, ok := pexLitPrefix(sc); handled {
+		return n, ok
 	}
 	if sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
-		start := sc.I
-		for sc.I < len(sc.S) && sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
-			sc.I++
-		}
-		if sc.I < len(sc.S) && (sc.S[sc.I] == '.' || sc.S[sc.I] == 'e' || sc.S[sc.I] == 'E') {
-			return nil, false
-		}
-		return &exprNode{kind: exNum, num: sc.S[start:sc.I]}, true
+		return pexNum(sc)
 	}
 	quoted := sc.S[sc.I] == '`'
 	name, ok := sc.Ident()
@@ -200,23 +174,7 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 		}
 	}
 	if sc.PeekByte() == '(' {
-		body, ok := sc.ParenBody()
-		if !ok {
-			return nil, false
-		}
-		call := &exprNode{kind: exCall, name: name, quoted: quoted}
-		if strings.TrimSpace(body) != "" {
-			parts := SplitComma(body)
-			call.nparts = len(parts)
-			for _, part := range parts {
-				arg, ok := parseExprText(part)
-				if !ok {
-					return nil, false
-				}
-				call.args = append(call.args, arg)
-			}
-		}
-		return call, true
+		return pexCall(sc, name, quoted)
 	}
 	collate := sc.skipCollate()
 	if !quoted && isNullWord(name) {
@@ -226,6 +184,96 @@ func pexAtom(sc *Scan) (*exprNode, bool) {
 		return &exprNode{kind: exBool, truth: strings.EqualFold(name, "TRUE"), collate: collate}, true
 	}
 	return &exprNode{kind: exCol, name: strings.ToLower(name), collate: collate}, true
+}
+
+// pexLitPrefix reads the literal atoms that start on one punctuation or
+// prefix byte: a parenthesised subexpression, a quoted string, an X'..'
+// hex binary, or a b'..' bit literal. handled is false when none starts at
+// sc.I and the caller should continue to numbers and identifiers.
+func pexLitPrefix(sc *Scan) (n *exprNode, handled, ok bool) {
+	switch sc.S[sc.I] {
+	case '(':
+		body, ok := sc.ParenBody()
+		if !ok {
+			return nil, true, false
+		}
+		n, ok = parseExprText(body)
+		return n, true, ok
+	case '\'', '"':
+		v, ok, collated := sc.quotedText("utf8mb4")
+		if !ok {
+			return nil, true, false
+		}
+		return &exprNode{kind: exLit, lit: v, collate: collated}, true, true
+	}
+	if sc.S[sc.I] == 'X' || sc.S[sc.I] == 'x' {
+		if v, ok, parsed := sc.hexBinary(); parsed {
+			if !ok {
+				return nil, true, false
+			}
+			return &exprNode{kind: exLit, lit: v, collate: sc.skipCollate()}, true, true
+		}
+	}
+	if (sc.S[sc.I] == 'b' || sc.S[sc.I] == 'B') && sc.I+1 < len(sc.S) && sc.S[sc.I+1] == '\'' {
+		v, ok := sc.bitLiteral()
+		if !ok {
+			return nil, true, false
+		}
+		return &exprNode{kind: exLit, lit: v, collate: sc.skipCollate()}, true, true
+	}
+	return nil, false, false
+}
+
+// pexNum reads a numeric literal at sc.I: integer digits, then a fraction
+// when the '.' is followed by a digit, then an exponent when 'e' carries
+// digits. A bare '.' or 'e' is left for the caller.
+func pexNum(sc *Scan) (*exprNode, bool) {
+	start := sc.I
+	for sc.I < len(sc.S) && sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
+		sc.I++
+	}
+	if sc.I+1 < len(sc.S) && sc.S[sc.I] == '.' && sc.S[sc.I+1] >= '0' && sc.S[sc.I+1] <= '9' {
+		sc.I++
+		for sc.I < len(sc.S) && sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
+			sc.I++
+		}
+	}
+	if sc.I < len(sc.S) && (sc.S[sc.I] == 'e' || sc.S[sc.I] == 'E') {
+		save := sc.I
+		sc.I++
+		if sc.I < len(sc.S) && (sc.S[sc.I] == '+' || sc.S[sc.I] == '-') {
+			sc.I++
+		}
+		exp := sc.I
+		for sc.I < len(sc.S) && sc.S[sc.I] >= '0' && sc.S[sc.I] <= '9' {
+			sc.I++
+		}
+		if sc.I == exp {
+			sc.I = save
+		}
+	}
+	return &exprNode{kind: exNum, num: sc.S[start:sc.I]}, true
+}
+
+// pexCall reads the argument list of the function name just scanned.
+func pexCall(sc *Scan, name string, quoted bool) (*exprNode, bool) {
+	body, ok := sc.ParenBody()
+	if !ok {
+		return nil, false
+	}
+	call := &exprNode{kind: exCall, name: name, quoted: quoted}
+	if strings.TrimSpace(body) != "" {
+		parts := SplitComma(body)
+		call.nparts = len(parts)
+		for _, part := range parts {
+			arg, ok := parseExprText(part)
+			if !ok {
+				return nil, false
+			}
+			call.args = append(call.args, arg)
+		}
+	}
+	return call, true
 }
 
 // dumpSafeIntroducer reports whether a _charset'..' quoted literal in

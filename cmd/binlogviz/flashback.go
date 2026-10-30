@@ -109,6 +109,9 @@ func newFlashbackCommand() *cobra.Command {
 				return err
 			}
 			opts.dmlKinds = kinds
+			if err := compileWhereFlag(opts); err != nil {
+				return err
+			}
 			gtidSelector, err := buildGTIDSelector(opts)
 			if err != nil {
 				return err
@@ -250,6 +253,7 @@ func registerFlashbackFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.flashback.flag.schemaFile"))
 	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.flashback.flag.schemaFileDB"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
+	cmd.Flags().StringVar(&opts.where, "where", "", i18n.T("cmd.flashback.flag.where"))
 	cmd.Flags().StringVar(&opts.conflict, "conflict", flashback.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
 	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
 	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
@@ -318,6 +322,7 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 		"schema-file":    "cmd.flashback.flag.schemaFile",
 		"schema-file-db": "cmd.flashback.flag.schemaFileDB",
 		"dml":            "cmd.flashback.flag.dml",
+		"where":          "cmd.flashback.flag.where",
 		"conflict":       "cmd.flashback.flag.conflict",
 		"plan":           "cmd.flashback.flag.plan",
 		"conflict-limit": "cmd.flashback.flag.conflictLimit",

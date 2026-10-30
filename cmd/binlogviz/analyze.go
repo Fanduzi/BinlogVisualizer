@@ -23,6 +23,7 @@ import (
 	"binlogviz/internal/displaytz"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 	"binlogviz/internal/report"
 	"binlogviz/internal/snapshot"
 )
@@ -94,6 +95,8 @@ type analyzeOptions struct {
 	schemaSQL              string
 	dml                    []string
 	dmlKinds               []string
+	where                  string
+	whereExpr              *mysqlexpr.WhereExpr
 	showRows               bool
 	display                *time.Location
 	topTablesChanged       bool

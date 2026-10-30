@@ -83,6 +83,9 @@ func newRedoCommand() *cobra.Command {
 				return err
 			}
 			opts.dmlKinds = kinds
+			if err := compileWhereFlag(opts); err != nil {
+				return err
+			}
 			gtidSelector, err := buildGTIDSelector(opts)
 			if err != nil {
 				return err
@@ -178,6 +181,7 @@ func registerRedoFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.redo.flag.schemaFile"))
 	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.redo.flag.schemaFileDB"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.redo.flag.dml"))
+	cmd.Flags().StringVar(&opts.where, "where", "", i18n.T("cmd.redo.flag.where"))
 	cmd.Flags().StringVar(&opts.remoteHost, "host", "", i18n.T("cmd.analyze.flag.host"))
 	cmd.Flags().Uint16Var(&opts.remotePort, "port", 3306, i18n.T("cmd.analyze.flag.port"))
 	cmd.Flags().StringVar(&opts.remoteUser, "user", "", i18n.T("cmd.analyze.flag.user"))

@@ -12,7 +12,9 @@ import (
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/clierr"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 	"binlogviz/internal/report"
 	"binlogviz/internal/snapshot"
 	"binlogviz/internal/version"
@@ -62,6 +64,7 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	result.IncludeTables = opts.includeTables
 	result.ExcludeTables = opts.excludeTables
 	result.IncludeDML = append([]string(nil), opts.dmlKinds...)
+	result.RowWhere = opts.whereExpr
 	result.SchemaSQL = opts.schemaSQL
 	result.SchemaFileDB = opts.schemaFileDB
 	result.WorkloadID = strings.TrimSpace(opts.workloadID)
@@ -174,6 +177,23 @@ func validateNonNegativeCounts(opts *analyzeOptions) error {
 	if opts.largeTrxDuration < 0 {
 		return clierr.Errorf(clierr.KindUsage, "invalid --large-trx-duration %s: must be 0 or more", opts.largeTrxDuration)
 	}
+	return nil
+}
+
+// compileWhereFlag parses --where once, before any input is read: a
+// malformed or out-of-subset predicate is a usage error (ADR 0024).
+func compileWhereFlag(opts *analyzeOptions) error {
+	if strings.TrimSpace(opts.where) == "" {
+		return nil
+	}
+	w, err := mysqlexpr.CompileWhere(opts.where)
+	if err != nil {
+		return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.whereInvalid", map[string]any{
+			"Expr":   opts.where,
+			"Detail": err.Error(),
+		}))
+	}
+	opts.whereExpr = w
 	return nil
 }
 

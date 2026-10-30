@@ -75,12 +75,14 @@ func (a *Analyzer) initPlanners() {
 			Plan:          a.opts.FlashbackPlan,
 			ConflictLimit: a.opts.FlashbackConflictLimit,
 			Selection:     a.flashSelection(),
+			Where:         a.opts.RowWhere,
 		})
 	}
 	if a.opts.Redo {
 		a.redo = redo.New(redo.Options{
 			SchemaSQL:    a.opts.SchemaSQL,
 			SchemaFileDB: a.opts.SchemaFileDB,
+			Where:        a.opts.RowWhere,
 		})
 	}
 }

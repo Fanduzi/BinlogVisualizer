@@ -433,7 +433,7 @@
   },
   "warning.flashbackSplit": {
     "description": "Flashback warns when a table or DML filter undoes only part of a transaction",
-    "other": "transaction {{.GTID}} is only partly undone; a table or --dml selection skipped other row changes in that transaction"
+    "other": "transaction {{.GTID}} is only partly undone; a table, --dml, or --where selection skipped other row changes in that transaction"
   },
   "warning.flashbackLine": {
     "description": "Prefix for a flashback warning printed on stderr",
@@ -506,6 +506,10 @@
   "cmd.flashback.flag.dml": {
     "description": "Flashback DML kind filter flag description",
     "other": "Only undo these ROW kinds (comma-separated insert, update, delete; combinable)"
+  },
+  "cmd.flashback.flag.where": {
+    "description": "Flashback row predicate flag description",
+    "other": "Only undo rows matching this predicate (compares the after image for INSERT, the before image for DELETE/UPDATE; ANDed with the other selectors)"
   },
   "cmd.flashback.flag.includeSchema": {
     "description": "Flashback include-schema flag",
@@ -2099,6 +2103,18 @@
     "description": "Redo dml flag",
     "other": "Only replay these ROW kinds (comma-separated insert, update, delete; combinable)"
   },
+  "cmd.redo.flag.where": {
+    "description": "Redo row predicate flag description",
+    "other": "Only replay rows matching this predicate (compares the after image for INSERT, the before image for DELETE/UPDATE; ANDed with the other selectors)"
+  },
+  "error.whereInvalid": {
+    "description": "--where did not compile; the reason follows the expression",
+    "other": "invalid --where {{.Expr}}: {{.Detail}}"
+  },
+  "error.whereColumn": {
+    "description": "--where named a column the row does not have (exit 6, reason where_column)",
+    "other": "{{.Table}}: --where references column '{{.Column}}', which the row does not have"
+  },
   "error.schemaFileDBRequiresFile": {
     "description": "--schema-file-db was passed without --schema-file",
     "other": "--schema-file-db requires --schema-file"
@@ -2137,7 +2153,7 @@
   },
   "warning.redoSplit": {
     "description": "A table or --dml filter replayed only part of a transaction group",
-    "other": "transaction {{.GTID}} is only partly replayed; a table or --dml selection skipped other row changes in that transaction"
+    "other": "transaction {{.GTID}} is only partly replayed; a table, --dml, or --where selection skipped other row changes in that transaction"
   },
   "warning.redoCutTxn": {
     "description": "A transaction group was still open at the end of the input and is committed by the trailer",

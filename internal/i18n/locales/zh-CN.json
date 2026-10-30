@@ -433,7 +433,7 @@
   },
   "warning.flashbackSplit": {
     "description": "表过滤或 --dml 只撤销事务的一部分时警告",
-    "other": "事务 {{.GTID}} 只撤销了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"
+    "other": "事务 {{.GTID}} 只撤销了一部分；表过滤、--dml 或 --where 跳过了该事务中的其他行变更"
   },
   "warning.flashbackLine": {
     "description": "stderr 上 flashback 警告的前缀",
@@ -506,6 +506,10 @@
   "cmd.flashback.flag.dml": {
     "description": "flashback 的 DML 类型过滤说明",
     "other": "只撤销这些 ROW 类型（逗号分隔 insert、update、delete，可组合）"
+  },
+  "cmd.flashback.flag.where": {
+    "description": "flashback 的行谓词说明",
+    "other": "只撤销满足该谓词的行（INSERT 比较后镜像，DELETE/UPDATE 比较前镜像；与其他筛选条件是 AND 关系）"
   },
   "cmd.flashback.flag.includeSchema": {
     "description": "flashback 的 include-schema 说明",
@@ -2099,6 +2103,18 @@
     "description": "redo dml 参数",
     "other": "只重放这些 ROW 类型（逗号分隔 insert、update、delete，可组合）"
   },
+  "cmd.redo.flag.where": {
+    "description": "redo 的行谓词说明",
+    "other": "只重放满足该谓词的行（INSERT 比较后镜像，DELETE/UPDATE 比较前镜像；与其他筛选条件是 AND 关系）"
+  },
+  "error.whereInvalid": {
+    "description": "--where 编译失败；原因跟在表达式后面",
+    "other": "无效的 --where {{.Expr}}：{{.Detail}}"
+  },
+  "error.whereColumn": {
+    "description": "--where 引用了行里没有的列（退出码 6，reason where_column）",
+    "other": "{{.Table}}：--where 引用了行里不存在的列 '{{.Column}}'"
+  },
   "error.schemaFileDBRequiresFile": {
     "description": "--schema-file-db 没有搭配 --schema-file",
     "other": "--schema-file-db 需要 --schema-file"
@@ -2137,7 +2153,7 @@
   },
   "warning.redoSplit": {
     "description": "表过滤或 --dml 只重放了一个事务组的一部分",
-    "other": "事务 {{.GTID}} 只重放了一部分；表过滤或 --dml 跳过了该事务中的其他行变更"
+    "other": "事务 {{.GTID}} 只重放了一部分；表过滤、--dml 或 --where 跳过了该事务中的其他行变更"
   },
   "warning.redoCutTxn": {
     "description": "事务组在输入结束时仍未提交，由收尾语句提交",
