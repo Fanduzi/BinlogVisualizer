@@ -75,7 +75,7 @@ jobs:
     name: darwin verify
     # The test suite is the only gate Linux runs that darwin users also run;
     # keep it green so a Linux-only test helper cannot quietly break them.
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
