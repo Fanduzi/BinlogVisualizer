@@ -74,7 +74,7 @@ DELETE FROM redot.t WHERE id = 2;`)
 	}
 	for _, want := range []string{
 		"XA START",
-		"INSERT INTO `redot`.`t` (`id`, `note`, `b`, `doc`) VALUES (2, 'b', X'BB'",
+		"INSERT INTO `redot`.`t` (`id`, `note`, `b`, `doc`) VALUES (2, \\'b\\', X\\'BB\\'",
 		"DELETE FROM `redot`.`t` WHERE `id` <=> 3;",
 		"UPDATE `redot`.`t` SET",
 		"-- binlogviz-trailer",
