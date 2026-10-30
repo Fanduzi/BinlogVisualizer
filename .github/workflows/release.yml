@@ -100,7 +100,7 @@ jobs:
             build_mode: native
           - goos: darwin
             goarch: arm64
-            runner: macos-14
+            runner: macos-15
             build_mode: native
           - goos: linux
             goarch: amd64

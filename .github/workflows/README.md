@@ -11,7 +11,7 @@
 
 - The release workflow is intentionally limited to the Phase 2 platform matrix:
   - `darwin/amd64` on `macos-15-intel`
-  - `darwin/arm64` on `macos-14`
+  - `darwin/arm64` on `macos-15`
   - `linux/amd64` built in `quay.io/pypa/manylinux2014_x86_64`
   - `linux/arm64` built in `quay.io/pypa/manylinux2014_aarch64`
 - The tag-triggered `release.yml` workflow is the only trusted release path. Local GoReleaser usage is limited to `goreleaser check` and optional single-target validation on the current host.
