@@ -75,8 +75,8 @@ DELETE FROM redot.t WHERE id = 2;`)
 	for _, want := range []string{
 		"XA START",
 		"INSERT INTO `redot`.`t` (`id`, `note`, `b`, `doc`) VALUES (2, \\'b\\', X\\'BB\\'",
-		"DELETE FROM `redot`.`t` WHERE `id` <=> 3;",
-		"UPDATE `redot`.`t` SET",
+		"DELETE FROM `redot`.`t` WHERE `id` <=> 3",
+		"UPDATE `redot`.`t` SET `id` = 1",
 		"-- binlogviz-trailer",
 	} {
 		if !strings.Contains(stdout, want) {
