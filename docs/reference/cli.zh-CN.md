@@ -15,6 +15,8 @@ binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz analyze --from-dir DIR --prefix PREFIX --format json --snapshot-name NAME
 binlogviz flashback <binlog files...>
 binlogviz flashback --from-dir DIR --prefix PREFIX
+binlogviz flashback --from-dir DIR --index-file FILE
+binlogviz flashback --host HOST --user USER
 binlogviz redo <binlog files...>
 binlogviz redo --from-dir DIR --prefix PREFIX
 binlogviz redo --host HOST --user USER
@@ -202,14 +204,16 @@ binlogviz analyze mysql-bin.000123 --details --show-minutes --show-patterns
 ```bash
 binlogviz flashback <binlog files...>
 binlogviz flashback --from-dir DIR --prefix PREFIX
+binlogviz flashback --from-dir DIR --index-file FILE
+binlogviz flashback --host db.internal --user replica --start-file binlog.000041 --start-pos 4
 binlogviz flashback mysql-bin.000123 --include-table shop.orders --dml delete
 binlogviz flashback mysql-bin.000123 --schema-file schema.sql
 binlogviz flashback mysql-bin.000123 --schema-file schema.sql --schema-file-db shop
 ```
 
-`flashback` 打印撤销选定行变更的 SQL。stdout 是脚本。它不连接数据库。输入规则与 `analyze` 相同：位置参数、stdin `-`，或 `--from-dir` 加 `--prefix`。flashback 是实验功能：执行生成的 SQL 之前必须先审阅。
+`flashback` 打印撤销选定行变更的 SQL。stdout 是脚本。除了用 `--host` 读取远程 binlog 之外不连接数据库。输入规则与 `analyze` 一致，包括远程模式：位置参数、stdin `-`、`--from-dir` 加 `--prefix` 或 `--index-file`，或复制协议输入 `--host`/`--port`/`--user`/`--password`/`--server-id`/`--start-file`/`--start-pos`/`--start-gtid`/`--ssl-mode`（凭据、TLS 和起点选择的约定见「远程模式」一节）。远程读取以连接时拿到的 binlog 清单为界——不会跟随。远程模式拒绝位置/发现输入和本地位置选择；`--start-pos` 需要 `--start-file`，`--start-gtid` 与 `--start-file`/`--start-pos` 互斥。远程读取从事务中间开始或结束时，撤销已送达的部分；`partial_transaction` 警告标记的是选择切分，不是窗口截断。flashback 是实验功能：执行生成的 SQL 之前必须先审阅。
 
-选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`、`--include-gtids`、`--exclude-gtids`。`--schema-file` 是可选的表定义 SQL（`mysqldump --no-data`，或一份或多份 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句内部换行写成 `\n` 的输出），不是过滤器。文件必须是事故当时的表结构。普通转储不必带 `USE`：库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或 binlog 里该表唯一的库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`。库名有歧义时只警告，不用这份定义。`Database:` 头里的库名可以带空格。binlog 里的名字全是小写、而文件里只有大小写不同的同名表时（例如转储来自 `lower_case_table_names=0` 的库，binlog 来自 `lower_case_table_names=1` 或 `2` 的库），flashback 采用这张表，警告里写出文件中的表名，行数据仍按它校验。binlog 名字含大写，或文件里有两张只差大小写的表时，不做这种匹配。DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，并用后镜像的主键匹配。顺序是 binlog 逆序。整个撤销是一个 XA 事务，文件本身不会提交。`mysql --force` 不会提交前缀，同一个会话里后面的 `BEGIN`、`START TRANSACTION` 或 DDL 也不会（ADR 0014）。执行需要在 `binlogviz.*` 上具备 `CREATE`、`CREATE ROUTINE` 和 `ALTER ROUTINE`，以及官方 `mysql` 客户端。`verify` 每次执行都会新建一个结束过程，并在结束时删掉它。残留过程用 `DROP DATABASE binlogviz` 清掉。应用方式是 `binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`。
+选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`（仅对单个显式文件）、`--include-gtids`、`--exclude-gtids`。`--schema-file` 是可选的表定义 SQL（`mysqldump --no-data`，或一份或多份 `SHOW CREATE TABLE`，含 `mysql --batch` 把语句内部换行写成 `\n` 的输出），不是过滤器。文件必须是事故当时的表结构。普通转储不必带 `USE`：库名来自 `-- Host: ... Database:` 头、`--schema-file-db`，或 binlog 里该表唯一的库。多份 `SHOW CREATE TABLE` 可以放在同一个文件里，中间没有 `;`。库名有歧义时只警告，不用这份定义。`Database:` 头里的库名可以带空格。binlog 里的名字全是小写、而文件里只有大小写不同的同名表时（例如转储来自 `lower_case_table_names=0` 的库，binlog 来自 `lower_case_table_names=1` 或 `2` 的库），flashback 采用这张表，警告里写出文件中的表名，行数据仍按它校验。binlog 名字含大写，或文件里有两张只差大小写的表时，不做这种匹配。DELETE 变成前镜像的 `INSERT`。INSERT 变成后镜像的 `DELETE`。UPDATE 把每一列设回前镜像，并用后镜像的主键匹配。顺序是 binlog 逆序。整个撤销是一个 XA 事务，文件本身不会提交。`mysql --force` 不会提交前缀，同一个会话里后面的 `BEGIN`、`START TRANSACTION` 或 DDL 也不会（ADR 0014）。执行需要在 `binlogviz.*` 上具备 `CREATE`、`CREATE ROUTINE` 和 `ALTER ROUTINE`，以及官方 `mysql` 客户端。`verify` 每次执行都会新建一个结束过程，并在结束时删掉它。残留过程用 `DROP DATABASE binlogviz` 清掉。应用方式是 `binlogviz flashback verify <file> | mysql --default-character-set=utf8mb4`。注释写原 GTID，没有则写 `GTID unavailable`，以及 `file:start-position`。
 
 binlog 需要 `binlog_row_metadata=FULL` 和 `binlog_row_image=FULL`。没有主键的表按每一列匹配并加 `LIMIT 1`，注释会说明。被删行的 `INSERT` 不用 `LIMIT 1`。
 
