@@ -30,6 +30,10 @@ type Options struct {
 	// Selection is the table and schema filter of the run, or nil when no
 	// such filter is set. It decides which DDL in range refuses (ADR 0015).
 	Selection Selection
+	// Where is the compiled --where row predicate (ADR 0024), or nil. Kept
+	// row events still run every check; only rows whose matched image is
+	// provably selected are staged.
+	Where *mysqlexpr.WhereExpr
 }
 
 // Selection answers whether a table or a schema named by a DDL could hold a
@@ -235,8 +239,18 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 			bind.gen = mysqlexpr.GeneratedNameSet(res.Cols)
 		}
 	}
-	a.appendFlashRows(ev, ev.FlashRows, bind)
-	a.noteFlashbackKept(ev)
+	rows, err := a.selectFlashRows(ev.FlashRows)
+	if err != nil {
+		a.flashErr = err
+		return
+	}
+	if len(rows) < len(ev.FlashRows) {
+		a.noteFlashSplit(ev.TxnKey, ev.TxnGTID, false)
+	}
+	if len(rows) > 0 {
+		a.appendFlashRows(ev, rows, bind)
+		a.noteFlashbackKept(ev)
+	}
 }
 
 func (a *Planner) acceptSchemaRows(label string, rows []model.FlashRow, cols []mysqlexpr.SchemaCol) error {

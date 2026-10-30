@@ -22,6 +22,10 @@ import (
 type Options struct {
 	SchemaSQL    string
 	SchemaFileDB string
+	// Where is the compiled --where row predicate (ADR 0024), or nil. Kept
+	// row events still run every check; only rows whose matched image is
+	// provably selected are staged.
+	Where *mysqlexpr.WhereExpr
 }
 
 // Planner owns the redo pipeline: the schema catalog, the staged records,
@@ -219,8 +223,18 @@ func (a *Planner) noteRows(ev model.NormalizedEvent) {
 			bind.gen = mysqlexpr.GeneratedNameSet(res.Cols)
 		}
 	}
-	a.appendRows(ev, ev.RedoRows, bind)
-	a.noteSplit(ev.TxnKey, ev.TxnGTID, true)
+	rows, err := a.selectRedoRows(ev.RedoRows, bind, ev.ServerFlavor)
+	if err != nil {
+		a.err = err
+		return
+	}
+	if len(rows) < len(ev.RedoRows) {
+		a.noteSplit(ev.TxnKey, ev.TxnGTID, false)
+	}
+	if len(rows) > 0 {
+		a.appendRows(ev, rows, bind)
+		a.noteSplit(ev.TxnKey, ev.TxnGTID, true)
+	}
 }
 
 // positionalNames reports whether the row's labels are @1..@N placeholders

@@ -13,7 +13,7 @@
     "internal/compare/html.go": 1619,
     "internal/detailstore/store_duckdb.go": 834,
     "internal/guard/script.go": 1323,
-    "internal/mysqlexpr/expr.go": 1658,
+    "internal/mysqlexpr/expr.go": 1607,
     "internal/mysqlexpr/schema.go": 1108,
     "internal/report/html.go": 884,
     "internal/report/html_template.go": 2260,
@@ -54,7 +54,7 @@
     "cmd/binlogviz:TestNoPrimaryKeyOnMySQL80FullAndMinimal": 54,
     "cmd/binlogviz:TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries": 45,
     "cmd/binlogviz:assertDMLRowsFixture": 53,
-    "cmd/binlogviz:flashbackTargetGuardE2E": 70,
+    "cmd/binlogviz:flashbackTargetGuardE2E": 66,
     "cmd/binlogviz:landingIssues": 61,
     "internal/analyzer:TestAnalyzerObjectFiltersShareFilteredWorkload": 44,
     "internal/report:TestRenderApplyDelayReplicaSourceAndUnavailable": 55

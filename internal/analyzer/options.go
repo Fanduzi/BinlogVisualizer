@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"binlogviz/internal/mysqlexpr"
 )
 
 // Options configures the analyzer behavior.
@@ -68,6 +70,10 @@ type Options struct {
 	// Off unless the redo command is running. Analyze output ignores it.
 	// Flashback and Redo are mutually exclusive.
 	Redo bool
+	// RowWhere is the compiled --where row predicate (ADR 0024): kept row
+	// events still run every check; only rows whose matched image is
+	// provably selected are staged. nil means no row predicate.
+	RowWhere *mysqlexpr.WhereExpr
 	// SchemaSQL is CREATE/ALTER text from --schema-file. Flashback learns
 	// generated columns from it before binlog DDL. Redo also resolves
 	// MINIMAL-metadata names and type facts from it. Analyze ignores it.

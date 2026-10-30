@@ -667,6 +667,27 @@ func (sc *Scan) hexBinary() (GenVal, bool, bool) {
 	return GenVal{}, false, false
 }
 
+// bitLiteral reads b'0101': the bit literal's numeric value, the same one a
+// BIT column's logged literal carries. The cursor is on b or B followed by a
+// quote; up to 64 bits.
+func (sc *Scan) bitLiteral() (GenVal, bool) {
+	sc.I += 2
+	start := sc.I
+	for sc.I < len(sc.S) && (sc.S[sc.I] == '0' || sc.S[sc.I] == '1') {
+		sc.I++
+	}
+	if sc.I == start || sc.I-start > 64 || sc.I >= len(sc.S) || sc.S[sc.I] != '\'' {
+		return GenVal{}, false
+	}
+	digits := sc.S[start:sc.I]
+	sc.I++
+	var bits uint64
+	for i := 0; i < len(digits); i++ {
+		bits = bits<<1 | uint64(digits[i]-'0')
+	}
+	return genNumVal(strconv.FormatUint(bits, 10))
+}
+
 func isHex(b byte) bool {
 	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
 }
@@ -791,88 +812,6 @@ func generatedRefs(expr string, columns []string) (refs []string, ok bool) {
 		}
 	}
 	return refs, true
-}
-
-func parseLoggedValue(lit string) (GenVal, bool) {
-	s := strings.TrimSpace(lit)
-	switch {
-	case s == "":
-		return GenVal{}, false
-	case strings.EqualFold(s, "NULL"):
-		return genNullVal(), true
-	case s[0] == '\'' || s[0] == '"':
-		sc := &Scan{S: s}
-		v, ok, _ := sc.quotedText("utf8mb4")
-		if !ok {
-			return GenVal{}, false
-		}
-		sc.Skip()
-		if sc.I != len(sc.S) {
-			return GenVal{}, false
-		}
-		return v, true
-	case s[0] == '_' || s[0] == 'X' || s[0] == 'x' || strings.HasPrefix(strings.ToLower(s), "0x"):
-		sc := &Scan{S: s}
-		v, ok := sc.evalAtom()
-		if !ok {
-			return GenVal{}, false
-		}
-		sc.Skip()
-		if sc.I != len(sc.S) {
-			return GenVal{}, false
-		}
-		return v, true
-	case strings.HasPrefix(strings.ToUpper(s), "JSON_") || strings.HasPrefix(strings.ToUpper(s), "CAST(") || strings.HasPrefix(strings.ToUpper(s), "CAST "):
-		return parseJSONLogged(s)
-	default:
-		if v, ok := genNumVal(s); ok {
-			return v, true
-		}
-		return GenVal{}, false
-	}
-}
-
-func loggedEnv(columns, values []string, meta ...[]SchemaCol) map[string]GenVal {
-	var cols []SchemaCol
-	if len(meta) > 0 {
-		cols = meta[0]
-	}
-	byName := make(map[string]SchemaCol, len(cols))
-	for _, col := range cols {
-		byName[strings.ToLower(col.Name)] = col
-	}
-	env := make(map[string]GenVal, len(columns))
-	for i, name := range columns {
-		lit := "NULL"
-		if i < len(values) {
-			lit = values[i]
-		}
-		v, ok := parseLoggedValue(lit)
-		if !ok {
-			env[strings.ToLower(name)] = GenVal{kind: genBad}
-			continue
-		}
-		if col, found := byName[strings.ToLower(name)]; found {
-			v = attachColMeta(v, col)
-		}
-		env[strings.ToLower(name)] = v
-	}
-	return env
-}
-
-func attachColMeta(v GenVal, col SchemaCol) GenVal {
-	v.base = col.base
-	if len(col.members) > 0 {
-		v.members = append([]string(nil), col.members...)
-	}
-	v.prec = col.prec
-	v.scale = col.scale
-	v.hasPrec = col.hasPrec
-	v.unsigned = col.unsigned
-	if v.charset == "" && col.charset != "" {
-		v.charset = col.charset
-	}
-	return v
 }
 
 func exampleImage(im LoggedImage, meta []SchemaCol) string {
