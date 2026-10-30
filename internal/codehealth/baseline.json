@@ -9,7 +9,6 @@
   "generated_files": {},
   "files": {
     "internal/analyzer/activity_spill.go": 988,
-    "internal/analyzer/analyzer.go": 807,
     "internal/analyzer/transactions.go": 953,
     "internal/compare/html.go": 1619,
     "internal/detailstore/store_duckdb.go": 834,
@@ -61,9 +60,6 @@
     "internal/report:TestRenderApplyDelayReplicaSourceAndUnavailable": 55
   },
   "long_functions": {
-    "cmd/binlogviz:newAnalyzeCommand": 151,
-    "cmd/binlogviz:newFlashbackCommand": 157,
-    "cmd/binlogviz:runAnalysisStreamingWithSnapshotDeps": 159,
     "internal/compare:RenderText": 151,
     "internal/report:buildHTMLData": 373
   },
