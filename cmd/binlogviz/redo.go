@@ -107,7 +107,6 @@ func newRedoCommand() *cobra.Command {
 				defer src.Close()
 				parser = binlog.NewRemoteParser(cmd.Context(), src, boundary)
 				paths = []string{runCfg.origin}
-				discovered = true
 				fileCoverage = remoteFileCoverage(runCfg.origin, src.Manifest(), runCfg.cfg.Start.File, runCfg.cfg.GTIDSet != nil)
 				printResolvedPaths(infoWriter(os.Stderr), paths)
 			} else {
