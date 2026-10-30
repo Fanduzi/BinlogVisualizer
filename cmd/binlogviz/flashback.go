@@ -13,9 +13,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"binlogviz/internal/analyzer"
+	"binlogviz/internal/binlog"
+	"binlogviz/internal/detailstore"
 	"binlogviz/internal/displaytz"
 	"binlogviz/internal/flashback"
 	"binlogviz/internal/i18n"
+	"binlogviz/internal/model"
+	"binlogviz/internal/remote"
 	"binlogviz/internal/report"
 )
 
@@ -33,14 +37,17 @@ func newFlashbackCommand() *cobra.Command {
 		SilenceErrors: true,
 		Args: func(cmd *cobra.Command, args []string) error {
 			warn()
-			hasArgs, hasFromDir, hasPrefix := len(args) > 0, opts.fromDir != "", opts.prefix != ""
-			if hasArgs && (hasFromDir || hasPrefix) {
+			hasArgs, hasFromDir, hasPrefix, hasIndex := len(args) > 0, opts.fromDir != "", opts.prefix != "", opts.indexFile != ""
+			if hasArgs && (hasFromDir || hasPrefix || hasIndex) {
 				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.combineArgsWithDir"))
 			}
-			if hasFromDir != hasPrefix {
-				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirAndPrefixRequired"))
+			if (hasFromDir || hasPrefix || hasIndex) && (!hasFromDir || hasPrefix == hasIndex) {
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.fromDirPrefixOrIndex"))
 			}
-			if hasArgs || hasFromDir {
+			if err := validateRemoteArgs(cmd, args, opts); err != nil {
+				return err
+			}
+			if hasArgs || hasFromDir || analyzeRemoteRequested(cmd) {
 				return nil
 			}
 			return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.requiresBinlogOrDir"))
@@ -106,30 +113,14 @@ func newFlashbackCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			opts.remote = analyzeRemoteRequested(cmd)
 			stage = clierr.KindInput
-			paths, discovered, fileCoverage, err := resolveAnalyzePaths(args, opts)
+			in, err := openFlashbackInput(cmd, args, opts)
 			if err != nil {
 				return err
 			}
-			paths, pathAliases, cleanupInputs, err := materializeAnalyzePaths(paths)
-			if cleanupInputs != nil {
-				defer cleanupInputs()
-			}
-			if err != nil {
-				return err
-			}
-			if !discovered {
-				fileCoverage = fileCoverageForPaths(paths)
-			}
-			if discovered {
-				printResolvedPaths(infoWriter(os.Stderr), paths)
-			}
-			if len(paths) == 0 {
-				return clierr.Errorf(clierr.KindInput, "%s", i18n.T("error.noResolvedFiles"))
-			}
-			if err := validateFiles(paths); err != nil {
-				return err
-			}
+			defer in.cleanup()
 			stage = clierr.KindError
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			analyzerOpts.GTIDSelector = gtidSelector
@@ -140,28 +131,17 @@ func newFlashbackCommand() *cobra.Command {
 			if opts.conflictLimit == 0 {
 				analyzerOpts.FlashbackConflictLimit = -1 // --conflict-limit 0 lists every conflict
 			}
-			return runAnalysisWithOutput(paths, analyzerOpts, report.Options{}, "text", nil, fileCoverage, "", "", outputDestination{}, pathAliases)
+			return runAnalysisStreamingFastWithOutput(in.paths, analyzerOpts, report.Options{}, "text", in.parser, func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
+				if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
+					return analyzer.NewWithStore(opts, store)
+				}
+				return analyzer.New(opts)
+			}, func(root string) (*detailstore.DuckDBStore, func() error, string, error) {
+				return createDuckDBTempStore(root)
+			}, "", nil, in.fileCoverage, "", "", outputDestination{}, in.pathAliases)
 		},
 	}
-	cmd.Flags().StringVar(&opts.startTime, "start", "", i18n.T("cmd.analyze.flag.start"))
-	cmd.Flags().StringVar(&opts.endTime, "end", "", i18n.T("cmd.analyze.flag.end"))
-	cmd.Flags().Int64Var(&opts.startPosition, "start-position", 0, i18n.T("cmd.flashback.flag.startPosition"))
-	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, i18n.T("cmd.flashback.flag.stopPosition"))
-	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, i18n.T("cmd.flashback.flag.includeGtids"))
-	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, i18n.T("cmd.flashback.flag.excludeGtids"))
-	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
-	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
-	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.flashback.flag.sqlContext"))
-	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.flashback.flag.includeSchema"))
-	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.flashback.flag.excludeSchema"))
-	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.flashback.flag.includeTable"))
-	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.flashback.flag.excludeTable"))
-	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.flashback.flag.schemaFile"))
-	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.flashback.flag.schemaFileDB"))
-	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
-	cmd.Flags().StringVar(&opts.conflict, "conflict", flashback.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
-	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
-	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
+	registerFlashbackFlags(cmd, opts)
 	// A usage error still runs the warning once: flag parse errors never
 	// reach Args or RunE (ADR 0020's "every run").
 	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
@@ -184,6 +164,104 @@ func newFlashbackCommand() *cobra.Command {
 	cmd.AddCommand(newFlashbackVerifyCommand())
 	refreshFlashbackHelp(cmd)
 	return cmd
+}
+
+// flashbackInput is one run's resolved input: the parser, the paths it
+// feeds, file coverage, and the deferred cleanup the run must call.
+type flashbackInput struct {
+	parser       binlog.Parser
+	paths        []string
+	pathAliases  map[string]string
+	fileCoverage model.FileCoverage
+	cleanup      func()
+}
+
+// openFlashbackInput resolves the run's input half (ADR 0023): remote opens
+// the dump and injects the remote parser; local resolves, materializes, and
+// checks the file list. Flag/config errors stay usage; input failures stay
+// input — the stage boundary the remote and local branches draw inline in
+// redo.go.
+func openFlashbackInput(cmd *cobra.Command, args []string, opts *analyzeOptions) (flashbackInput, error) {
+	in := flashbackInput{parser: binlog.NewParser(), cleanup: func() {}}
+	if opts.remote {
+		runCfg, err := buildRemoteRunConfig(cmd, opts)
+		if err != nil {
+			return in, clierr.Wrap(clierr.KindUsage, err)
+		}
+		src, boundary, err := openRemoteInput(cmd.Context(), runCfg)
+		if err != nil {
+			return in, clierr.Wrap(clierr.KindInput, err)
+		}
+		in.cleanup = src.Close
+		in.parser = binlog.NewRemoteParser(cmd.Context(), src, boundary)
+		in.paths = []string{runCfg.origin}
+		in.fileCoverage = remoteFileCoverage(runCfg.origin, src.Manifest(), runCfg.cfg.Start.File, runCfg.cfg.GTIDSet != nil)
+		printResolvedPaths(infoWriter(os.Stderr), in.paths)
+		return in, nil
+	}
+	paths, discovered, fileCoverage, err := resolveAnalyzePaths(args, opts)
+	if err != nil {
+		return in, clierr.Wrap(clierr.KindInput, err)
+	}
+	paths, pathAliases, cleanupInputs, err := materializeAnalyzePaths(paths)
+	if cleanupInputs != nil {
+		in.cleanup = cleanupInputs
+	}
+	if err != nil {
+		in.cleanup()
+		return in, clierr.Wrap(clierr.KindInput, err)
+	}
+	if !discovered {
+		fileCoverage = fileCoverageForPaths(paths)
+	}
+	if discovered {
+		printResolvedPaths(infoWriter(os.Stderr), paths)
+	}
+	if len(paths) == 0 {
+		return in, clierr.Errorf(clierr.KindInput, "%s", i18n.T("error.noResolvedFiles"))
+	}
+	if err := validateFiles(paths); err != nil {
+		return in, clierr.Wrap(clierr.KindInput, err)
+	}
+	in.paths = paths
+	in.pathAliases = pathAliases
+	in.fileCoverage = fileCoverage
+	return in, nil
+}
+
+// registerFlashbackFlags binds the flashback flag surface: analyze's
+// selectors and input modes including remote, plus the undo-specific
+// conflict and schema-file flags (ADR 0023).
+func registerFlashbackFlags(cmd *cobra.Command, opts *analyzeOptions) {
+	cmd.Flags().StringVar(&opts.startTime, "start", "", i18n.T("cmd.analyze.flag.start"))
+	cmd.Flags().StringVar(&opts.endTime, "end", "", i18n.T("cmd.analyze.flag.end"))
+	cmd.Flags().Int64Var(&opts.startPosition, "start-position", 0, i18n.T("cmd.flashback.flag.startPosition"))
+	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, i18n.T("cmd.flashback.flag.stopPosition"))
+	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, i18n.T("cmd.flashback.flag.includeGtids"))
+	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, i18n.T("cmd.flashback.flag.excludeGtids"))
+	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
+	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
+	cmd.Flags().StringVar(&opts.indexFile, "index-file", "", i18n.T("cmd.analyze.flag.indexFile"))
+	cmd.Flags().StringVar(&opts.sqlContext, "sql-context", string(report.SQLContextSummary), i18n.T("cmd.flashback.flag.sqlContext"))
+	cmd.Flags().StringSliceVar(&opts.includeSchemas, "include-schema", nil, i18n.T("cmd.flashback.flag.includeSchema"))
+	cmd.Flags().StringSliceVar(&opts.excludeSchemas, "exclude-schema", nil, i18n.T("cmd.flashback.flag.excludeSchema"))
+	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.flashback.flag.includeTable"))
+	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.flashback.flag.excludeTable"))
+	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.flashback.flag.schemaFile"))
+	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.flashback.flag.schemaFileDB"))
+	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.flashback.flag.dml"))
+	cmd.Flags().StringVar(&opts.conflict, "conflict", flashback.FlashbackConflictRefuse, i18n.T("cmd.flashback.flag.conflict"))
+	cmd.Flags().BoolVar(&opts.plan, "plan", false, i18n.T("cmd.flashback.flag.plan"))
+	cmd.Flags().IntVar(&opts.conflictLimit, "conflict-limit", 20, i18n.T("cmd.flashback.flag.conflictLimit"))
+	cmd.Flags().StringVar(&opts.remoteHost, "host", "", i18n.T("cmd.analyze.flag.host"))
+	cmd.Flags().Uint16Var(&opts.remotePort, "port", 3306, i18n.T("cmd.analyze.flag.port"))
+	cmd.Flags().StringVar(&opts.remoteUser, "user", "", i18n.T("cmd.analyze.flag.user"))
+	cmd.Flags().StringVar(&opts.remotePassword, "password", "", i18n.T("cmd.analyze.flag.password"))
+	cmd.Flags().Uint32Var(&opts.remoteServerID, "server-id", 0, i18n.T("cmd.analyze.flag.serverID"))
+	cmd.Flags().StringVar(&opts.remoteStartFile, "start-file", "", i18n.T("cmd.analyze.flag.startFile"))
+	cmd.Flags().Uint32Var(&opts.remoteStartPos, "start-pos", 4, i18n.T("cmd.analyze.flag.startPos"))
+	cmd.Flags().StringVar(&opts.remoteStartGTID, "start-gtid", "", i18n.T("cmd.analyze.flag.startGTID"))
+	cmd.Flags().StringVar(&opts.remoteSSLMode, "ssl-mode", string(remote.SSLPreferred), i18n.T("cmd.analyze.flag.sslMode"))
 }
 
 const experimentalMark = "[experimental] "
@@ -231,6 +309,7 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 		"exclude-gtids":  "cmd.flashback.flag.excludeGtids",
 		"from-dir":       "cmd.analyze.flag.fromDir",
 		"prefix":         "cmd.analyze.flag.prefix",
+		"index-file":     "cmd.analyze.flag.indexFile",
 		"sql-context":    "cmd.flashback.flag.sqlContext",
 		"include-schema": "cmd.flashback.flag.includeSchema",
 		"exclude-schema": "cmd.flashback.flag.excludeSchema",
@@ -242,6 +321,15 @@ func refreshFlashbackHelp(cmd *cobra.Command) {
 		"conflict":       "cmd.flashback.flag.conflict",
 		"plan":           "cmd.flashback.flag.plan",
 		"conflict-limit": "cmd.flashback.flag.conflictLimit",
+		"host":           "cmd.analyze.flag.host",
+		"port":           "cmd.analyze.flag.port",
+		"user":           "cmd.analyze.flag.user",
+		"password":       "cmd.analyze.flag.password",
+		"server-id":      "cmd.analyze.flag.serverID",
+		"start-file":     "cmd.analyze.flag.startFile",
+		"start-pos":      "cmd.analyze.flag.startPos",
+		"start-gtid":     "cmd.analyze.flag.startGTID",
+		"ssl-mode":       "cmd.analyze.flag.sslMode",
 	}
 	for name, key := range usage {
 		if flag := cmd.Flags().Lookup(name); flag != nil {

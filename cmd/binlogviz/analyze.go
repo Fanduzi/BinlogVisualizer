@@ -654,17 +654,6 @@ func noteInputFormat(result *model.AnalysisResult, observer binlog.FormatObserve
 	return nil
 }
 
-func runAnalysisWithOutput(paths []string, opts analyzer.Options, reportOpts report.Options, format string, snapshotMeta *model.Snapshot, fileCoverage model.FileCoverage, snapshotName, snapshotDir string, dest outputDestination, pathAliases map[string]string) error {
-	return runAnalysisStreamingFastWithOutput(paths, opts, reportOpts, format, binlog.NewParser(), func(opts analyzer.Options, store *detailstore.DuckDBStore) commandAnalyzer {
-		if opts.DetailStoreMode == analyzer.DetailStoreDuckDB {
-			return analyzer.NewWithStore(opts, store)
-		}
-		return analyzer.New(opts)
-	}, func(root string) (*detailstore.DuckDBStore, func() error, string, error) {
-		return createDuckDBTempStore(root)
-	}, "", snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest, pathAliases)
-}
-
 func runAnalysisStreamingFastWithOutput(
 	paths []string,
 	opts analyzer.Options,
