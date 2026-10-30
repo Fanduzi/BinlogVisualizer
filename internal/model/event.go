@@ -48,6 +48,8 @@ type NormalizedEvent struct {
 	RowImagesOmitted   int
 	// FlashRows is set only when flashback capture is on. Nil otherwise.
 	FlashRows []FlashRow
+	// RedoRows is set only when redo capture is on. Nil otherwise.
+	RedoRows []RedoRow
 	// RowKeys are primary-key identities for UPDATE and DELETE images when
 	// FULL metadata named the key. Empty means the key is not known. Never
 	// filled from column @1.

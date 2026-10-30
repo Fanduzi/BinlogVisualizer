@@ -169,35 +169,35 @@ func TestSQLJSONExactAndRefused(t *testing.T) {
 }
 
 func TestSQLCharacterCharsets(t *testing.T) {
-	lit, problem := sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 8}, 0)
+	lit, problem := testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 8}, 0)
 	if problem != "" || lit != "_latin1 0xE9" {
 		t.Fatalf("latin1 e9: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xC3, 0xA9}, map[int]uint64{0: 8}, 0)
+	lit, problem = testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xC3, 0xA9}, map[int]uint64{0: 8}, 0)
 	if problem != "" || lit != "_latin1 0xC3A9" {
 		t.Fatalf("latin1 c3a9: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x00, 0x41, 0x00, 0x42}, map[int]uint64{0: 54}, 0)
+	lit, problem = testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x00, 0x41, 0x00, 0x42}, map[int]uint64{0: 54}, 0)
 	if problem != "" || lit != "_utf16 0x00410042" {
 		t.Fatalf("utf16: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{}, map[int]uint64{0: 8}, 0)
+	lit, problem = testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{}, map[int]uint64{0: 8}, 0)
 	if problem != "" || lit != "_latin1 X''" {
 		t.Fatalf("empty: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte("雪"), map[int]uint64{0: 255}, 0)
+	lit, problem = testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte("雪"), map[int]uint64{0: 255}, 0)
 	if problem != "" || lit != "'雪'" {
 		t.Fatalf("utf8mb4: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_BLOB, 0, []byte{0xE9}, map[int]uint64{0: 63}, 0)
+	lit, problem = testCharacter(mysql.MYSQL_TYPE_BLOB, 0, []byte{0xE9}, map[int]uint64{0: 63}, 0)
 	if problem != "" || lit != "X'E9'" {
 		t.Fatalf("binary: %s %s", lit, problem)
 	}
-	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x61}, map[int]uint64{0: 99999}, 0)
+	_, problem = testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0x61}, map[int]uint64{0: 99999}, 0)
 	if !strings.Contains(problem, "charset for collation 99999 is unknown") {
 		t.Fatalf("unknown: %s", problem)
 	}
-	_, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 255}, 0)
+	_, problem = testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 255}, 0)
 	if problem != "VARCHAR" {
 		t.Fatalf("invalid utf8: %s", problem)
 	}
@@ -484,4 +484,12 @@ func TestCaptureZeroDateMarksRow(t *testing.T) {
 	if zeroDateLiteral("'00'") || zeroDateLiteral("NULL") || zeroDateLiteral("0") {
 		t.Fatal("short literal read as a zero date")
 	}
+}
+
+// testCharacter renders one character or blob column through emitLiteral;
+// the collation table drives it by collation id.
+func testCharacter(typ byte, col int, value any, collation map[int]uint64, meta uint16) (string, string) {
+	ec := emitCol{typ: typ, meta: meta}
+	ec.charset, ec.collErr = flashCollation(collation, col)
+	return emitLiteral(ec, value, jsonCell{})
 }

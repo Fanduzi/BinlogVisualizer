@@ -21,6 +21,7 @@ import (
 type parser struct {
 	captureRows  bool
 	captureFlash bool
+	captureRedo  bool
 }
 
 type cachedTableName struct {
@@ -78,6 +79,15 @@ func (p *parser) SetCaptureFlashback(on bool) {
 	p.captureFlash = on
 }
 
+// SetCaptureRedo keeps raw cell images on ROW events for forward SQL.
+// Off by default so analyze does not retain them.
+func (p *parser) SetCaptureRedo(on bool) {
+	if p == nil {
+		return
+	}
+	p.captureRedo = on
+}
+
 // ParseFiles reads binlog files and calls handler for each event.
 func (p *parser) ParseFiles(paths []string, handler func(RawEvent) error) error {
 	return p.ParseFilesWithProgress(paths, nil, handler)
@@ -102,7 +112,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 	// is a zone-less wall clock and does not use this location.
 	bp.SetTimestampStringLocation(time.UTC)
 	decodeRows := func(re *replication.RowsEvent, data []byte) error { return re.Decode(data) }
-	if p.captureFlash {
+	if p.captureFlash || p.captureRedo {
 		// This decoder still decodes, and keeps the JSON bytes go-mysql would
 		// otherwise turn into text. Analyze uses plain Decode.
 		decodeRows = decodeRowsKeepJSON
@@ -164,7 +174,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 			}
 
 			if payload, ok := ev.Event.(*streamedPayload); ok {
-				emitted, err := streamTransactionPayload(payload, path, serverVersion, tableNames, p.captureRows, p.captureFlash, func(inner RawEvent) error {
+				emitted, err := streamTransactionPayload(payload, path, serverVersion, tableNames, p.captureRows, p.captureFlash, p.captureRedo, func(inner RawEvent) error {
 					inner.PositionStart, inner.PositionEnd, inner.Position = raw.PositionStart, raw.PositionEnd, uint32(raw.PositionEnd)
 					inner.BinlogBytes = 0
 					if !emittedAny {
@@ -187,7 +197,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 					return nil
 				}
 			}
-			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows, p.captureFlash); ok {
+			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows, p.captureFlash, p.captureRedo); ok {
 				assignPayloadWrapperFileSpan(inners, raw.PositionStart, raw.PositionEnd, raw.BinlogBytes)
 				for i := range inners {
 					if inners[i].ServerVersion != "" {
@@ -200,7 +210,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 				return nil
 			}
 
-			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames, p.captureRows, p.captureFlash)
+			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames, p.captureRows, p.captureFlash, p.captureRedo)
 			if raw.ServerVersion != "" {
 				serverVersion = raw.ServerVersion
 			}
@@ -267,6 +277,7 @@ func rawEventFromHeader(header *replication.EventHeader, path, serverVersion str
 func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any, tableNames map[uint64]cachedTableName, captureRows ...bool) {
 	capture := len(captureRows) > 0 && captureRows[0]
 	flash := len(captureRows) > 1 && captureRows[1]
+	redo := len(captureRows) > 2 && captureRows[2]
 	switch e := event.(type) {
 	case *replication.QueryEvent:
 		raw.Query = stripLeadingSQLComments(string(e.Query))
@@ -318,6 +329,9 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 		}
 		if flash {
 			raw.FlashRows = captureFlashbackRows(e, raw.EventType, raw.Schema, raw.Table)
+		}
+		if redo {
+			raw.RedoRows = captureRedoRows(e, raw.EventType, raw.Schema, raw.Table)
 		}
 		if raw.EventType == kindUpdateRows || raw.EventType == kindDeleteRows {
 			raw.RowKeys = primaryKeyValues(e, raw.EventType, pkMetaForRows(e, tableNames))
@@ -455,6 +469,7 @@ func logicalRowCount(et replication.EventType, imageCount int) int {
 func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName, captureRows ...bool) ([]RawEvent, bool) {
 	capture := len(captureRows) > 0 && captureRows[0]
 	flash := len(captureRows) > 1 && captureRows[1]
+	redo := len(captureRows) > 2 && captureRows[2]
 	if ev == nil {
 		return nil, false
 	}
@@ -468,7 +483,7 @@ func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion s
 		if inner == nil || inner.Header == nil {
 			continue
 		}
-		out = append(out, payloadInnerRaw(inner, path, serverVersion, tableNames, capture, flash))
+		out = append(out, payloadInnerRaw(inner, path, serverVersion, tableNames, capture, flash, redo))
 	}
 	assignPayloadWrapperFileSpan(out, wrapperStart, wrapperEnd, wrapperBytes)
 	return out, len(out) > 0
@@ -479,29 +494,29 @@ func expandTransactionPayload(ev *replication.BinlogEvent, path, serverVersion s
 // time, and returns how many it handed on. emit sets the file span. Every
 // inner RawEvent carries serverVersion as of the payload's start, as the
 // expanded slice did. A corruptCause comes back unwrapped.
-func streamTransactionPayload(payload *streamedPayload, path, serverVersion string, tableNames map[uint64]cachedTableName, capture, flash bool, emit func(RawEvent) error) (int, error) {
+func streamTransactionPayload(payload *streamedPayload, path, serverVersion string, tableNames map[uint64]cachedTableName, capture, flash, redo bool, emit func(RawEvent) error) (int, error) {
 	emitted := 0
 	err := payload.each(func(inner *replication.BinlogEvent) error {
 		if inner == nil || inner.Header == nil {
 			return nil
 		}
 		emitted++
-		return emit(payloadInnerRaw(inner, path, serverVersion, tableNames, capture, flash))
+		return emit(payloadInnerRaw(inner, path, serverVersion, tableNames, capture, flash, redo))
 	})
 	return emitted, err
 }
 
 // payloadInnerRaw builds the RawEvent of one decoded payload inner event.
-func payloadInnerRaw(inner *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName, capture, flash bool) RawEvent {
+func payloadInnerRaw(inner *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName, capture, flash, redo bool) RawEvent {
 	raw := rawEventFromHeader(inner.Header, path, serverVersion)
 	// go-mysql v1.14 decodes payload inners on a fresh parser, so the UTC
 	// location above never reaches them, and neither does SetRowsEventDecodeFunc.
 	// Delete both rewrites when that parser inherits the outer parser.
-	if flash {
+	if flash || redo {
 		keepPayloadJSON(inner)
 	}
 	normalizePayloadTimestampCells(inner.Event, payloadTimestampLocation)
-	applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture, flash)
+	applyBinlogEventMetadata(&raw, inner.Header.EventType, inner.Event, tableNames, capture, flash, redo)
 	return raw
 }
 

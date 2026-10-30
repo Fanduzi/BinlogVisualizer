@@ -1,6 +1,6 @@
 // Package binlog defines raw binlog event types and parser contracts used by the command layer.
 // input: timestamps, producer/transaction provenance, table/query metadata, row counts, file-relative offsets, and parser callback expectations.
-// output: stable RawEvent values with optional provenance, MySQL 8 commit timestamps, optional flashback rows, and XA identity plus Parser, FlashbackParser, and ProgressParser interfaces shared across parsing and analysis code.
+// output: stable RawEvent values with optional provenance, MySQL 8 commit timestamps, optional flashback and redo rows, and XA identity plus Parser, FlashbackParser, RedoParser, and ProgressParser interfaces shared across parsing and analysis code.
 // pos: contract boundary isolating analyzer and CLI orchestration from concrete binlog parser implementations.
 // note: if this file changes, update this header and README.md.
 package binlog
@@ -45,6 +45,8 @@ type RawEvent struct {
 	RowImagesOmitted         int
 	// FlashRows is set only when flashback capture is on. Nil otherwise.
 	FlashRows []model.FlashRow
+	// RedoRows is set only when redo capture is on. Nil otherwise.
+	RedoRows []model.RedoRow
 	// RowKeys are UPDATE/DELETE primary-key identities from FULL metadata.
 	// Nil when the key is not known. Never guessed from column @1.
 	RowKeys  []string
@@ -85,4 +87,10 @@ type RowImageParser interface {
 // Capture stays off unless the flashback command turns it on.
 type FlashbackParser interface {
 	SetCaptureFlashback(on bool)
+}
+
+// RedoParser is implemented by parsers that can keep raw row images for
+// forward (redo) SQL. Capture stays off unless the redo command turns it on.
+type RedoParser interface {
+	SetCaptureRedo(on bool)
 }
