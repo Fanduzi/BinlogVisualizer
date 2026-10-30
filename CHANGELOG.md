@@ -4,6 +4,30 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.37.0
+
+Release date: 2026-10-30
+
+Highlights:
+
+- `analyze --host HOST` streams binlog events from a live MySQL or MariaDB server as a pseudo-replica (replication protocol, pure Go — `CGO_ENABLED=0` still builds), closing the `mysqlbinlog -R`/`binlog2sql`/`my2sql` remote-read gap (#256, ADR 0021).
+- Bounded reads: the connect-time `SHOW BINARY LOGS` snapshot bounds the stream, so a report always terminates at a defined point — including when the last event lands exactly on the manifest boundary.
+- Start positioning via `--start-file`/`--start-pos` or `--start-gtid` (MySQL and MariaDB GTID flavors inferred from set syntax; bare `uuid:N` expands to `uuid:1-N`).
+- `--ssl-mode` defaults to `preferred` (TLS when offered, `mysql`-client style); the password comes from `--password` or `BINLOGVIZ_MYSQL_PASSWORD` and is never logged.
+- Remote failures carry typed reasons (`connect`, `tls`, `auth`, `manifest`, `privilege`, `start_file`, `start_pos`, `stream`) in the `clierr` taxonomy; a mid-read drop fails loudly instead of producing a short report.
+
+Related notes:
+
+- [v0.37.0 release notes](docs/releases/release-notes-v0.37.0.md)
+- [v0.37.0 中文发行说明](docs/releases/release-notes-v0.37.0.zh-CN.md)
+
+### Added
+
+- `analyze --host`: remote input mode — `--port`, `--user`, `--password`, `--server-id` (0 = crypto-random), `--start-file`, `--start-pos`, `--start-gtid`, `--ssl-mode` (`disabled`/`preferred`/`required`, default `preferred`); mutually exclusive with positional files, `-`, `--from-dir`, `--prefix`, `--index-file`, `--start-position`, and `--stop-position`.
+- `internal/remote`: manifest probe, GTID flavor detection, TLS policy, typed error reasons.
+- `internal/binlog`: `FrameSource` seam and remote parser sharing the checked event decode.
+- `TestAnalyzeRemoteMySQL80` live e2e in the `flashback e2e` CI job.
+
 ## v0.36.0
 
 Release date: 2026-10-28
