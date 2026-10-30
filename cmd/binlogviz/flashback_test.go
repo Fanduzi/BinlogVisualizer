@@ -1144,17 +1144,9 @@ COMMIT;`)
 		// #197: the statements of a block run in a new, writable session (an
 		// interactive client that reconnected inside the block) change no row.
 		var dml strings.Builder
-		for _, line := range strings.Split(sql[cut:], "\n") {
-			payload, ok := flashbackPayload(line)
-			if !ok {
-				continue
-			}
-			body := payload
-			if strings.HasPrefix(body, "E\n") || strings.HasPrefix(body, "T\n") || strings.HasPrefix(body, "G\n") {
-				body = body[2:]
-			}
-			if strings.HasPrefix(body, "INSERT ") || strings.HasPrefix(body, "UPDATE ") || strings.HasPrefix(body, "DELETE ") {
-				dml.WriteString(body + ";\n")
+		for _, stmt := range undoStatements(sql[cut:]) {
+			if strings.HasPrefix(stmt, "INSERT ") || strings.HasPrefix(stmt, "UPDATE ") || strings.HasPrefix(stmt, "DELETE ") {
+				dml.WriteString(stmt + ";\n")
 			}
 		}
 		if dml.Len() == 0 {
@@ -1854,6 +1846,25 @@ func flashbackPayload(line string) (string, bool) {
 		}
 	}
 	return b.String(), true
+}
+
+// undoStatements unwraps every SET @binlogviz_sql payload in a flashback script
+// and strips the E/G/T row-count tag, returning bare statement bodies. Assert
+// undo content against these, never against the wrapped script text — the
+// wrapper escapes quotes and drops the trailing semicolon.
+func undoStatements(script string) []string {
+	var stmts []string
+	for _, line := range strings.Split(script, "\n") {
+		payload, ok := flashbackPayload(line)
+		if !ok {
+			continue
+		}
+		if len(payload) > 2 && payload[1] == '\n' && (payload[0] == 'E' || payload[0] == 'G' || payload[0] == 'T') {
+			payload = payload[2:]
+		}
+		stmts = append(stmts, payload)
+	}
+	return stmts
 }
 
 func e2eMySQL(t *testing.T, stdin string) string {

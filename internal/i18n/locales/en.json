@@ -215,10 +215,6 @@
     "description": "Error when the remote account name cannot be determined",
     "other": "cannot determine the remote account name: pass --user explicitly"
   },
-  "error.fromDirAndPrefixRequired": {
-    "description": "Error when from-dir or prefix is missing",
-    "other": "--from-dir and --prefix must be provided together"
-  },
   "error.fromDirPrefixOrIndex": {
     "description": "Error when from-dir is not paired with exactly one selector",
     "other": "--from-dir needs exactly one of --prefix or --index-file; --index-file only works with --from-dir"
