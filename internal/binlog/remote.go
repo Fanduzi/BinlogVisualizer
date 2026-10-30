@@ -37,6 +37,7 @@ type remoteParser struct {
 	boundary     RemoteBoundary
 	captureRows  bool
 	captureFlash bool
+	captureRedo  bool
 }
 
 // NewRemoteParser builds a Parser that reads remote frames until the
@@ -61,6 +62,14 @@ func (p *remoteParser) SetCaptureFlashback(on bool) {
 	p.captureFlash = on
 }
 
+// SetCaptureRedo keeps raw cell images on ROW events for forward SQL.
+func (p *remoteParser) SetCaptureRedo(on bool) {
+	if p == nil {
+		return
+	}
+	p.captureRedo = on
+}
+
 // ParseFiles reads the stream. paths carries one synthetic origin label
 // (remote://host:port) that prefixes each event's real binlog file.
 func (p *remoteParser) ParseFiles(paths []string, handler func(RawEvent) error) error {
@@ -80,7 +89,7 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 	bp := replication.NewBinlogParser()
 	bp.SetTimestampStringLocation(time.UTC)
 	decodeRows := func(re *replication.RowsEvent, data []byte) error { return re.Decode(data) }
-	if p.captureFlash {
+	if p.captureFlash || p.captureRedo {
 		decodeRows = decodeRowsKeepJSON
 	}
 	fault := &rowsFault{}
@@ -164,7 +173,7 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 			raw.Position = uint32(raw.PositionEnd)
 
 			if payload, ok := ev.Event.(*streamedPayload); ok {
-				emitted, err := streamTransactionPayload(payload, path, serverVersion, tableNames, p.captureRows, p.captureFlash, func(inner RawEvent) error {
+				emitted, err := streamTransactionPayload(payload, path, serverVersion, tableNames, p.captureRows, p.captureFlash, p.captureRedo, func(inner RawEvent) error {
 					inner.PositionStart, inner.PositionEnd, inner.Position = raw.PositionStart, raw.PositionEnd, uint32(raw.PositionEnd)
 					inner.BinlogBytes = 0
 					if !emittedAny {
@@ -187,7 +196,7 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 					return nil
 				}
 			}
-			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows, p.captureFlash); ok {
+			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows, p.captureFlash, p.captureRedo); ok {
 				assignPayloadWrapperFileSpan(inners, raw.PositionStart, raw.PositionEnd, raw.BinlogBytes)
 				for i := range inners {
 					if inners[i].ServerVersion != "" {
@@ -200,7 +209,7 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 				return nil
 			}
 
-			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames, p.captureRows, p.captureFlash)
+			applyBinlogEventMetadata(&raw, ev.Header.EventType, ev.Event, tableNames, p.captureRows, p.captureFlash, p.captureRedo)
 			if raw.ServerVersion != "" {
 				serverVersion = raw.ServerVersion
 			}

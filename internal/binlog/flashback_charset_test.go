@@ -54,11 +54,11 @@ func TestCollationCharsetRefusesIdsNoServerUses(t *testing.T) {
 
 // MariaDB 11.4's default utf8mb4_uca1400_ai_ci (2304) renders as a plain string.
 func TestSQLCharacterMariaDBDefaultCollation(t *testing.T) {
-	lit, problem := sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte("雪"), map[int]uint64{0: 2304}, 0)
+	lit, problem := testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte("雪"), map[int]uint64{0: 2304}, 0)
 	if problem != "" || lit != "'雪'" {
 		t.Fatalf("uca1400: %s %s", lit, problem)
 	}
-	lit, problem = sqlCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 1032}, 0)
+	lit, problem = testCharacter(mysql.MYSQL_TYPE_VARCHAR, 0, []byte{0xE9}, map[int]uint64{0: 1032}, 0)
 	if problem != "" || lit != "_latin1 0xE9" {
 		t.Fatalf("latin1 nopad: %s %s", lit, problem)
 	}

@@ -103,6 +103,7 @@ func fillNormalizedEvent(dst *model.NormalizedEvent, raw RawEvent) {
 		RowImagesOmitted:  raw.RowImagesOmitted,
 		RowKeys:           raw.RowKeys,
 		FlashRows:         raw.FlashRows,
+		RedoRows:          raw.RedoRows,
 	}
 }
 
@@ -126,6 +127,7 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = xaEventType
 		dst.XAXID = xaXID
+		dst.QuerySQL = boundQuerySQL(query)
 		return true, nil
 	case hasLoadDataPrefix(query):
 		raw.QuerySQL = raw.Query
@@ -145,6 +147,7 @@ func normalizeQueryEventInto(raw RawEvent, dst *model.NormalizedEvent) (bool, er
 	default:
 		fillNormalizedEvent(dst, raw)
 		dst.EventType = "UNCLASSIFIED_QUERY"
+		dst.QueryTruncated = len(query) > model.MaxStoredSQLBytes
 		dst.QuerySQL = boundQuerySQL(query)
 		return true, nil
 	}

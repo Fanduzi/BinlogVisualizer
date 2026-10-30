@@ -539,14 +539,6 @@ func sqlTemporal(value any) (string, bool) {
 	return quoteSQLString(text), true
 }
 
-// sqlCharacter renders one character or blob column through emitLiteral;
-// tests and the collation table drive it by collation id.
-func sqlCharacter(typ byte, col int, value any, collation map[int]uint64, meta uint16) (string, string) {
-	ec := emitCol{typ: typ, meta: meta}
-	ec.charset, ec.collErr = flashCollation(collation, col)
-	return emitLiteral(ec, value, jsonCell{})
-}
-
 func characterBytes(value any) ([]byte, bool) {
 	switch typed := value.(type) {
 	case []byte:

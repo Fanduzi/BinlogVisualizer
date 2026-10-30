@@ -7,7 +7,8 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 | File | Responsibility |
 |------|----------------|
 | `event.go` | Defines normalized binlog events with optional producer/transaction provenance, query sql_mode, XA identity, LOAD_DATA intent, and optional flashback rows. |
-| `flash.go` | Defines `FlashRow`, TABLE_MAP column metadata used to check a schema file, the ENUM index-0 marker, and the reasons a selected row cannot be rendered as undo SQL. |
+| `flash.go` | Defines `FlashRow`, TABLE_MAP column metadata used to check a schema file (`FlashCol` also carries the `Typ`/`Meta`/`Binary` emit descriptor `internal/binlog.EmitLiteral` renders from), the ENUM index-0 marker, and the reasons a selected row cannot be rendered as undo SQL. |
+| `redo.go` | Defines `RedoRow`: one kept INSERT/UPDATE/DELETE for forward SQL holding the raw decoded before/after images and aligned binary JSON documents. Names stay unresolved at capture — FULL table maps supply them, MINIMAL rows keep `@1..@N` labels for `internal/redo` to merge with a schema definition (ADR 0022). |
 | `flash_warning.go` | `FlashbackWarning`: a stable code plus the localized message for every flashback warning; `Line` adds the localized `warning:` prefix for stderr, the plan prints the code and message (#270, #282). |
 | `transaction.go` | Defines reconstructed transaction evidence with provenance, explicit completeness, optional trusted full replay spans, `StdinInput` when the path was a stdin spool, XA identity, bounded SQL context, optional bounded row images, and optional MySQL 8 commit timestamps plus the transaction-start byte. |
 | `stats.go` | Defines workload, minute-bucket, and table-statistics contracts for analysis outputs, including per-table primary-key presence. `MinuteTableSource` is the spilled per-(table, minute) series when those maps are not on the buckets and tables. |
