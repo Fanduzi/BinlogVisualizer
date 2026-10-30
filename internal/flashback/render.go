@@ -14,6 +14,7 @@ import (
 	"binlogviz/internal/guard"
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
+	"binlogviz/internal/sqlemit"
 )
 
 // renderFlashbackSQL renders groups held in memory (tests and small inputs).
@@ -349,53 +350,15 @@ func keyMoved(row model.FlashRow) bool {
 }
 
 func joinConds(a, b string) string {
-	switch {
-	case a == "":
-		return b
-	case b == "":
-		return a
-	}
-	return a + " AND " + b
+	return sqlemit.JoinConds(a, b)
 }
 
-// relaxedModes lists the sql_mode flags that would reject a value this row
-// stored legally under the session that wrote it. Each flag only turns a
-// stored value into an error, so dropping it for this one statement changes
-// no restored value:
-//   - ENUM index 0 (the error member) needs the strict modes off.
-//   - A zero month or day needs NO_ZERO_DATE and NO_ZERO_IN_DATE off. Strict
-//     stays on, so every other value in the statement is still checked.
-//   - A generated column left out of INSERT or UPDATE SET is recomputed by
-//     the server. When its logged value is NULL the expression may divide by
-//     zero, which ERROR_FOR_DIVISION_BY_ZERO turns into ERROR 1365. Without
-//     that flag x/0 is NULL, the value the binlog holds.
-//
-// TRADITIONAL is removed with any of them: MySQL re-expands that token into
-// all of the flags above.
 func relaxedModes(row model.FlashRow, gen map[string]struct{}) []string {
-	var drops []string
-	if row.NonStrict {
-		drops = append(drops, "STRICT_ALL_TABLES", "STRICT_TRANS_TABLES")
-	}
-	if row.ZeroDate {
-		drops = append(drops, "NO_ZERO_DATE", "NO_ZERO_IN_DATE")
-	}
-	if row.Op != "INSERT" && omittedGeneratedNull(row.Columns, row.Before, gen) {
-		drops = append(drops, "ERROR_FOR_DIVISION_BY_ZERO")
-	}
-	if len(drops) > 0 {
-		drops = append(drops, "TRADITIONAL")
-	}
-	return drops
+	return sqlemit.RelaxedModes(row, gen)
 }
 
 func omittedGeneratedNull(columns, values []string, gen map[string]struct{}) bool {
-	for i, column := range columns {
-		if isGenerated(gen, column) && i < len(values) && values[i] == "NULL" {
-			return true
-		}
-	}
-	return false
+	return sqlemit.OmittedGeneratedNull(columns, values, gen)
 }
 
 // sqlModeWrap names the sql_mode for one statement. The client computes it
@@ -403,36 +366,15 @@ func omittedGeneratedNull(columns, values []string, gen map[string]struct{}) boo
 // CALL only: a routine ignores a session sql_mode set before CALL, and MySQL
 // restores the session mode when the routine returns.
 func sqlModeWrap(statement string, drops []string) string {
-	expr := "CONCAT(',', @@SESSION.sql_mode, ',')"
-	for _, flag := range drops {
-		expr = "REPLACE(" + expr + ", '," + flag + ",', ',')"
-	}
-	return "SET @binlogviz_next_mode = TRIM(BOTH ',' FROM " + expr + ");\n" + statement
+	return "SET @binlogviz_next_mode = " + sqlemit.DroppedModeExpr(drops) + ";\n" + statement
 }
 
 func assignColumns(columns, values []string, gen map[string]struct{}) ([]string, []string) {
-	cols := make([]string, 0, len(columns))
-	vals := make([]string, 0, len(values))
-	for i, column := range columns {
-		if isGenerated(gen, column) {
-			continue
-		}
-		cols = append(cols, column)
-		val := "NULL"
-		if i < len(values) {
-			val = values[i]
-		}
-		vals = append(vals, val)
-	}
-	return cols, vals
+	return sqlemit.AssignColumns(columns, values, gen)
 }
 
 func isGenerated(gen map[string]struct{}, name string) bool {
-	if len(gen) == 0 {
-		return false
-	}
-	_, ok := gen[strings.ToLower(name)]
-	return ok
+	return sqlemit.IsGenerated(gen, name)
 }
 
 func generatedRowError(row model.FlashRow) error {
@@ -458,45 +400,17 @@ func insertedImageMatch(cols, vals []string) string {
 
 // keyMatch is the primary-key match for image.
 func keyMatch(row model.FlashRow, image []string) string {
-	parts := make([]string, 0, len(row.PK))
-	for _, index := range row.PK {
-		if index >= 0 && index < len(row.Columns) && index < len(image) {
-			parts = append(parts, quoteIdent(row.Columns[index])+" <=> "+image[index])
-		}
-	}
-	return strings.Join(parts, " AND ")
+	return sqlemit.KeyMatch(row, image)
 }
 
 // undoWhereImage matches the primary key, or with allColumns (the --conflict
 // guard) every logged column of image, so a row changed later matches nothing.
 func undoWhereImage(row model.FlashRow, head string, image []string, cond string, allColumns bool) (string, error) {
-	pk := !row.NoPK && len(row.PK) > 0
-	indexes := row.PK
-	if !pk || allColumns {
-		indexes = make([]int, len(row.Columns))
-		for i := range indexes {
-			indexes[i] = i
-		}
-	}
-	parts := make([]string, 0, len(indexes))
-	for _, index := range indexes {
-		if index < 0 || index >= len(row.Columns) || index >= len(image) {
-			continue
-		}
-		parts = append(parts, quoteIdent(row.Columns[index])+" <=> "+image[index])
-	}
-	if len(parts) == 0 {
+	statement, ok := sqlemit.WhereImage(row, head, image, cond, allColumns)
+	if !ok {
 		return "", generatedRowError(row)
 	}
-	if cond != "" {
-		parts = append(parts, cond)
-	}
-	statement := head + " WHERE " + strings.Join(parts, " AND ")
-	if !pk {
-		statement += " LIMIT 1"
-		return "-- no primary key on " + flashTable(row.Schema, row.Table) + "; this matches every column and LIMIT 1\n" + statement + ";", nil
-	}
-	return statement + ";", nil
+	return statement, nil
 }
 
 func sqlQuote(s string) string {
@@ -523,15 +437,11 @@ func sqlQuote(s string) string {
 }
 
 func quoteColumnList(columns []string) string {
-	quoted := make([]string, len(columns))
-	for i, column := range columns {
-		quoted[i] = quoteIdent(column)
-	}
-	return strings.Join(quoted, ", ")
+	return sqlemit.QuoteColumnList(columns)
 }
 
 func quoteIdent(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	return sqlemit.QuoteIdent(name)
 }
 
 func omittedGeneratedCols(groups []flashGroup) []guard.Col {

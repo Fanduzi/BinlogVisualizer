@@ -12,6 +12,7 @@ import (
 	"binlogviz/internal/mysqlexpr"
 	"binlogviz/internal/redact"
 	"binlogviz/internal/schemacatalog"
+	"binlogviz/internal/sqlemit"
 )
 
 // GenerationRefusal is an exit-6 flashback refusal with a stable reason.
@@ -217,7 +218,7 @@ func (e *generatedRowRefusal) shownTable() string {
 func flashTable(schema, table string) string {
 	switch {
 	case schema != "" && table != "":
-		return schema + "." + table
+		return sqlemit.TableName(schema, table)
 	case table != "":
 		return table
 	case schema != "":
