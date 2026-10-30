@@ -215,10 +215,6 @@
     "description": "无法确定远程账号名错误",
     "other": "无法确定远程账号名：请显式传 --user"
   },
-  "error.fromDirAndPrefixRequired": {
-    "description": "from-dir 或 prefix 缺失错误",
-    "other": "--from-dir 和 --prefix 必须同时提供"
-  },
   "error.fromDirPrefixOrIndex": {
     "description": "Error when from-dir is not paired with exactly one selector",
     "other": "--from-dir 需要且只能搭配 --prefix 或 --index-file 之一；--index-file 只能与 --from-dir 一起使用"
