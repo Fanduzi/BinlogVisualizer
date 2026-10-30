@@ -215,6 +215,14 @@ binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 
 `--show-rows` 的上限、DDL 时间线的停止点、flashback 的前提条件、拒绝情形、冲突、执行权限和提交标记见 [找到并撤销误改的行](docs/recipe/flashback.zh-CN.md)。
 
+### 把变更重演成前滚 SQL
+
+```bash
+binlogviz redo mysql-bin.000123 --include-table shop.orders > redo.sql
+```
+
+`redo` 打印可重放的前滚 SQL——即 `2sql` 方向——输入和选择条件与 `analyze` 相同，包括有界远端读取。redo 是实验功能：执行前先审阅脚本。[前提条件和拒绝情形](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md#redo-命令语法)。
+
 ## 快照、对比、趋势与 workflow
 
 ### 把两个故障窗口保存成快照后再做对比
@@ -307,6 +315,7 @@ LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.000123
 - [分析本地 Binlog](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.zh-CN.md)
 - [常见错误排查](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.zh-CN.md)
 - [找到并撤销误改的行](docs/recipe/flashback.zh-CN.md)
+- [把变更重演成前滚 SQL（`redo`）](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md#redo-命令语法)
 - [快照、对比、趋势与 workflow](docs/recipe/compare-trend-workflow.zh-CN.md)
 
 ### 需要精确契约和参数行为时

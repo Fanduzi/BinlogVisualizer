@@ -215,6 +215,14 @@ binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 
 `--show-rows` limits, the DDL Timeline stop points, flashback requirements, refusals, conflicts, apply grants, and commit markers are in [Find and Undo Bad Rows](docs/recipe/flashback.md).
 
+### Replay the changes as forward SQL
+
+```bash
+binlogviz redo mysql-bin.000123 --include-table shop.orders > redo.sql
+```
+
+`redo` prints replayable forward SQL — the `2sql` direction — for the same inputs and selectors as `analyze`, including bounded remote reads. Redo is experimental: review the script before applying it. [Requirements and refusals](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax).
+
 ## Snapshots, Compare, Trend, and Workflow
 
 ### Save two incident windows as named snapshots, then compare them
@@ -309,6 +317,7 @@ Supported languages:
 - [Analyze Local Binlogs](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.md)
 - [Troubleshoot Common Errors](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.md)
 - [Find and Undo Bad Rows](docs/recipe/flashback.md)
+- [Replay Changes as Forward SQL (`redo`)](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax)
 - [Snapshots, Compare, Trend, and Workflow](docs/recipe/compare-trend-workflow.md)
 
 ### When you need contracts and exact behavior

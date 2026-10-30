@@ -2042,5 +2042,109 @@
   "error.flashbackSchemaSameInputs": {
     "description": "Another logged image with the same inputs has a different value for the generated column",
     "other": "; another image with the same inputs has "
+  },
+  "cmd.redo.use": {
+    "description": "Redo command usage",
+    "other": "redo [binlog files... | -] | --from-dir DIR (--prefix PREFIX | --index-file FILE) | --host HOST"
+  },
+  "cmd.redo.short": {
+    "description": "Redo command short description",
+    "other": "Print forward (redo) SQL that replays selected row changes"
+  },
+  "cmd.redo.long": {
+    "description": "Redo command long description",
+    "other": "Print SQL that replays selected ROW changes in binlog order: INSERT becomes INSERT of the after-image, DELETE becomes DELETE of the before-image, and UPDATE sets the after-image where the before-image matched. Transaction boundaries mirror the stream: BEGIN and COMMIT appear where the source logged them, and a transaction still open at the end of the input is committed with a stderr warning. Kept QUERY events (DDL, ADMIN, unclassified) pass through verbatim with USE context; ROWS_QUERY annotations become -- comments. UPDATE and DELETE match on the primary key when the binlog names one, otherwise on every column with LIMIT 1. The script goes to stdout only after the whole input parses and plans cleanly; a refused or truncated run writes nothing. Apply it by piping to mysql like binlog2sql output: binlogviz redo mysql-bin.000001 | mysql --default-character-set=utf8mb4. binlog_row_metadata=MINIMAL input needs --schema-file to supply column names and type facts, or the run refuses. Statement-format (STATEMENT/MIXED) binlogs are refused. This command does not connect to a database except to read a remote binlog with --host. A remote read is bounded: it stops at the last binlog the server listed at connect time."
+  },
+  "cmd.redo.example": {
+    "description": "Redo command examples",
+    "other": "  # Replay a window on one table, then review before applying.\n  binlogviz redo mysql-bin.000001 --start 2026-10-19T06:00:00Z --end 2026-10-19T06:10:00Z --include-table app.orders\n  # Every selected change in the file, replayable as SQL.\n  binlogviz redo mysql-bin.000001 --include-table testdb.users"
+  },
+  "cmd.redo.flag.startPosition": {
+    "description": "Redo start-position flag",
+    "other": "Start position (inclusive event boundary)"
+  },
+  "cmd.redo.flag.stopPosition": {
+    "description": "Redo stop-position flag",
+    "other": "Stop position (exclusive event boundary or EOF)"
+  },
+  "cmd.redo.flag.includeGtids": {
+    "description": "Redo include-gtids flag",
+    "other": "Replay complete transaction groups matching this GTID set"
+  },
+  "cmd.redo.flag.excludeGtids": {
+    "description": "Redo exclude-gtids flag",
+    "other": "Skip complete transaction groups matching this GTID set"
+  },
+  "cmd.redo.flag.includeSchema": {
+    "description": "Redo include-schema flag",
+    "other": "Only replay these schemas (comma-separated)"
+  },
+  "cmd.redo.flag.excludeSchema": {
+    "description": "Redo exclude-schema flag",
+    "other": "Skip these schemas (comma-separated)"
+  },
+  "cmd.redo.flag.includeTable": {
+    "description": "Redo include-table flag",
+    "other": "Only replay these tables (comma-separated TABLE or SCHEMA.TABLE)"
+  },
+  "cmd.redo.flag.excludeTable": {
+    "description": "Redo exclude-table flag",
+    "other": "Skip these tables (comma-separated TABLE or SCHEMA.TABLE)"
+  },
+  "cmd.redo.flag.schemaFile": {
+    "description": "Redo schema file flag",
+    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE), as the tables were at incident time. Under binlog_row_metadata=MINIMAL it supplies column names and type facts; generated columns it names are omitted from writes. Unqualified names use a preceding USE, the preceding mysqldump Database header, --schema-file-db, or the only schema of that table in the binlog. Optional"
+  },
+  "cmd.redo.flag.schemaFileDB": {
+    "description": "Redo default database for an unqualified schema file",
+    "other": "Database for unqualified names in --schema-file when the file has no USE and no mysqldump Database header. Requires --schema-file"
+  },
+  "cmd.redo.flag.dml": {
+    "description": "Redo dml flag",
+    "other": "Only replay these ROW kinds (comma-separated insert, update, delete; combinable)"
+  },
+  "error.schemaFileDBRequiresFile": {
+    "description": "--schema-file-db was passed without --schema-file",
+    "other": "--schema-file-db requires --schema-file"
+  },
+  "error.redoNames": {
+    "description": "MINIMAL-metadata row with no resolvable table definition (exit 6, reason names)",
+    "other": "{{.Table}}: column names and type facts are unavailable (binlog_row_metadata is not FULL) and no table definition resolves them. Pass --schema-file with the table as it was at incident time, or redo from binlogs written with binlog_row_metadata=FULL (MySQL 8.0.14+)"
+  },
+  "error.redoNamesMariaDB": {
+    "description": "MINIMAL-metadata row with no resolvable table definition on a MariaDB binlog (exit 6, reason names)",
+    "other": "{{.Table}}: column names and type facts are unavailable (binlog_row_metadata is not FULL) and no table definition resolves them. Pass --schema-file with the table as it was at incident time, or redo from binlogs written with binlog_row_metadata=FULL (MariaDB 10.5+)"
+  },
+  "error.redoSchemaCount": {
+    "description": "A resolved table definition has a different column count than the binlog row (exit 6, reason schema)",
+    "other": "{{.Table}}: --schema-file has {{.File}} columns but the binlog row has {{.Row}}; use a dump from incident time"
+  },
+  "error.redoTruncatedQuery": {
+    "description": "A kept QUERY event's stored text was cut at the model bound (exit 6, reason truncated_query)",
+    "other": "QUERY text was truncated at the stored limit; emitting the prefix would replay a different statement: {{.Statement}}"
+  },
+  "error.redoGeneratedRow": {
+    "description": "Every writable column of a redo row is generated (exit 6, reason generated_row)",
+    "other": "{{.Table}}: every column is generated; nothing remains to write"
+  },
+  "error.redoRowMatch": {
+    "description": "A redo UPDATE or DELETE has no column to match on (exit 6, reason row_image)",
+    "other": "{{.Table}}: the before-image has no column the WHERE clause can match"
+  },
+  "error.redoResource": {
+    "description": "Redo staging hit a resource ceiling (exit 10, reason spill_limit or memory_limit)",
+    "other": "redo ran out of resources ({{.Reason}}: used {{.Used}} of {{.Limit}} bytes)"
+  },
+  "error.redoStatementFormat": {
+    "description": "Statement-format DML exists in the parsed input (exit 9, reason statement_format)",
+    "other": "binlog carries statement-format DML (STATEMENT or MIXED logging); redo cannot bind it to the selection, so nothing is emitted. Redo needs ROW-format binlogs"
+  },
+  "warning.redoSplit": {
+    "description": "A table or --dml filter replayed only part of a transaction group",
+    "other": "transaction {{.GTID}} is only partly replayed; a table or --dml selection skipped other row changes in that transaction"
+  },
+  "warning.redoCutTxn": {
+    "description": "A transaction group was still open at the end of the input and is committed by the trailer",
+    "other": "transaction {{.GTID}} was still open at the end of the input; the emitted COMMIT replays a prefix the source may not have committed"
   }
 }

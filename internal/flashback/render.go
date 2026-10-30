@@ -357,10 +357,6 @@ func relaxedModes(row model.FlashRow, gen map[string]struct{}) []string {
 	return sqlemit.RelaxedModes(row, gen)
 }
 
-func omittedGeneratedNull(columns, values []string, gen map[string]struct{}) bool {
-	return sqlemit.OmittedGeneratedNull(columns, values, gen)
-}
-
 // sqlModeWrap names the sql_mode for one statement. The client computes it
 // from the real session mode. Mode 0 applies @binlogviz_next_mode for that
 // CALL only: a routine ignores a session sql_mode set before CALL, and MySQL
@@ -371,10 +367,6 @@ func sqlModeWrap(statement string, drops []string) string {
 
 func assignColumns(columns, values []string, gen map[string]struct{}) ([]string, []string) {
 	return sqlemit.AssignColumns(columns, values, gen)
-}
-
-func isGenerated(gen map[string]struct{}, name string) bool {
-	return sqlemit.IsGenerated(gen, name)
 }
 
 func generatedRowError(row model.FlashRow) error {

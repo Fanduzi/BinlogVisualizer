@@ -228,7 +228,11 @@ func exampleExitOK(args []string, code int) bool {
 	switch code {
 	case 0, 2:
 		return true
-	case 6, 7:
+	case 6:
+		// A refusal is the expected outcome for commands whose emit surface
+		// refuses the minimal-metadata fixture (undo names, redo names).
+		return containsArg(args, "flashback") || containsArg(args, "redo")
+	case 7:
 		return containsArg(args, "flashback")
 	default:
 		return false

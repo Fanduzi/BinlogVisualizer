@@ -1,6 +1,6 @@
 # CLI 参考
 
-本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz flashback`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow export`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
+本文档定义 `binlogviz` 根命令、`binlogviz analyze`、`binlogviz flashback`、`binlogviz redo`、`binlogviz compare`、`binlogviz trend`、`binlogviz snapshot`、`binlogviz workflow run`、`binlogviz workflow resume`、`binlogviz workflow status`、`binlogviz workflow clean`、`binlogviz workflow export`、`binlogviz workflow validate` 和 `binlogviz workflow describe` 的用户可见契约。
 
 如果你想先走最短运维路径，而不是直接看完整契约，请先阅读[快速开始](../recipe/quickstart.zh-CN.md)或[分析本地 Binlog](../recipe/analyze-local-binlogs.zh-CN.md)。
 
@@ -15,6 +15,9 @@ binlogviz analyze --from-dir DIR --prefix PREFIX
 binlogviz analyze --from-dir DIR --prefix PREFIX --format json --snapshot-name NAME
 binlogviz flashback <binlog files...>
 binlogviz flashback --from-dir DIR --prefix PREFIX
+binlogviz redo <binlog files...>
+binlogviz redo --from-dir DIR --prefix PREFIX
+binlogviz redo --host HOST --user USER
 binlogviz compare <current.json> <baseline.json>
 binlogviz compare --current-snapshot CURRENT --baseline-snapshot BASELINE
 binlogviz trend <snapshot...>
@@ -215,6 +218,30 @@ JSON 按二进制文档重建，包括 `binlog_transaction_compression=ON` 的�
 `ON DELETE` / `ON UPDATE CASCADE` 的子表行不在 binlog 里，不会被还原。撤销时触发器会执行。选中的行在扫描的 binlog 中之后又被修改时，脚本以退出码 7 拒绝（`--conflict refuse`，默认）。`--conflict guard` 让每条撤销语句匹配日志里的后镜像而不只是主键，DELETE 的撤销只在主键不存在时插入，把主键改回去的 UPDATE 撤销在旧主键已被别的行占用时不改任何行（不再报 `ERROR 1062`）。`--plan` 输出 JSON 计划（`plan_version` 2：事务数、每张表的行数、冲突、加了 guard 的语句数、`would_refuse`、`refusal`、`warnings`），退出码与真正执行时一致。被拒绝时也输出计划：退出码 7 或 6 时 `refusal` 是 `{"kind": "conflict"|"refused", "message": ...}`，否则为 `null`；`refused` 时各计数为 0。`warnings` 每项是 `{"code", "message"}`，代码有 `partial_transaction`、`table_definition_missing`、`generated_column_unverified`、`schema_file_db_mismatch`、`schema_file_table_ambiguous`、`schema_file_case_folded`、`schema_file_case_mismatch` 和 `mariadb_apply_unsupported`，不随 `--lang` 变化。`--conflict-limit N`（默认 20，`0` 表示全部）决定计划和退出码 7 的错误里列出多少处冲突；`count` 始终是完整总数。扫描范围之外的修改看不到。表过滤或 `--dml` 只保留一个事务的部分行时，stderr 打出警告。先审阅并测试脚本，再在主库的同一个会话里执行（`sql_log_bin=1`），副本才会在新 GTID 下跟上。某条语句失败时，撤销会回滚，`mysql --force` 也一样。不要把脚本切成块：`binlogviz flashback verify` 会拒绝缺了一段或没有结尾的文件，`mysql < flashback.sql` 不会提交任何修改。截断的前缀后面再跟 `BEGIN` 或 DDL，也不会把它提交（ADR 0014）。`TIMESTAMP` 字面量是 UTC，脚本会设置 `time_zone='+00:00'`。剩下的限制，包括记下的值恰好等于能核对表达式的真实列（#166）、在解析到的 binlog 里先加上又被修改或改名的列，见 `docs/concept/limitations.zh-CN.md`。`sql_mode=TRADITIONAL` 下的 `ENUM` 序号 0 已经处理（#168）。
 
 列名缺失、行镜像不完整、某一列无法精确写成字面量、出现过的表定义读不出来、`--schema-file` 和 binlog 的列不一致、生成列的值与表达式矛盾、选定范围内有 DDL，或 `--sql-context off` 时，退出 1，一行 `Error:`，没有 SQL。什么都没选中时退出 2，`Error:` 与 `analyze` 相同，stdout 为空。除此之外 `--sql-context` 不影响脚本：flashback 不打印原始语句，单元格的值不打码。选定范围内的账号 DDL 按 DDL 拒绝。
+
+## `redo` 命令语法
+
+```bash
+binlogviz redo <binlog files...>
+binlogviz redo --from-dir DIR --prefix PREFIX
+binlogviz redo --from-dir DIR --index-file FILE
+binlogviz redo --host db.internal --user replica --start-file binlog.000041 --start-pos 4
+binlogviz redo mysql-bin.000123 --include-table shop.orders --dml insert
+binlogviz redo mysql-bin.000123 --schema-file schema.sql
+cat mysql-bin.000123 | binlogviz redo -
+```
+
+`redo` 按 binlog 顺序打印重演所选变更的 SQL——即 `2sql` 方向。stdout 是脚本，在解析和规划全部完成之前一直是暂存的，拒绝或文件损坏时什么都不留下。除了读取远端 binlog 之外不连接数据库。请自行审阅脚本并执行——用于时间点恢复的副本回放、选择性重演或审计。redo 是实验功能。
+
+输入规则与 `analyze` 一致，包括远端模式：位置参数、stdin `-`、`--from-dir` 加 `--prefix` 或 `--index-file`，或复制协议输入 `--host`/`--port`/`--user`/`--password`/`--server-id`/`--start-file`/`--start-pos`/`--start-gtid`/`--ssl-mode`。远端读取以连接时拿到的 binlog 清单为界——不会跟随。远端模式拒绝位置/发现输入和本地位置选择；`--start-pos` 需要 `--start-file`，`--start-gtid` 与 `--start-file`/`--start-pos` 互斥。选择条件与 `analyze` 相同：`--include-schema`、`--exclude-schema`、`--include-table`、`--exclude-table`、`--dml`、`--start`、`--end`、`--start-position`、`--stop-position`（仅对单个显式文件）、`--include-gtids`、`--exclude-gtids`。`--schema-file` 和 `--schema-file-db` 遵循 flashback 的契约——必须是事故当时的表结构，且不是过滤器。
+
+日志里的 INSERT 输出后镜像的 `INSERT`，DELETE 输出按前镜像匹配的 `DELETE`，UPDATE 输出把后镜像设为值、按前镜像匹配的 `UPDATE`——表映射给出主键时按主键匹配，否则按全部列匹配并加 `LIMIT 1` 和 `no primary key` 注释，匹配一律用 NULL 安全的 `<=>`。定义点名生成列时写入里省略它们，与 flashback 相同。值的渲染与撤销走同一套字面量机制：JSON 按二进制文档重建，非 `utf8mb4` 文本用字符集引导符，二进制用十六进制，BIT 用 `b'...'`，ENUM/SET 用成员标签；ENUM 序号 0、零值日期、生成列里记下的 NULL 都会包一层 sql_mode 放松。
+
+事务边界如实反映源流。记了 `BEGIN` 的组输出 `BEGIN;`；XID 输出 `COMMIT;`，记了 ROLLBACK 的输出 `ROLLBACK;`。DDL、ADMIN 和其他保留的 QUERY 语句原样透传——源里本就没有事务包装的隐式提交工作——语句的默认库与上次输出不同时会先输出 `USE`。`ROWS_QUERY` 注解变成 `--` 注释，GTID 事件变成 `-- gtid:`/`-- binlog:` 注释。输入结束时仍未关闭的组补一条 `COMMIT;` 并在 stderr 给出警告。XA 动词原样透传；服务器生成的 XA PREPARE 标记展开成回放所需的 `XA END`/`XA PREPARE` 一对。脚本开头是与 flashback 一致的会话 `SET` 行（sql_mode 放松、`SET NAMES utf8mb4`、UTC `time_zone`）。
+
+binlog 需要 `binlog_row_image=FULL`。`binlog_row_metadata=MINIMAL` 时，列名和类型事实来自 `--schema-file` 或扫描文件里解析到的 DDL：先按行本身核对每一项可比事实（基础类型、符号、字符集、成员表、精度、小数秒位），事实矛盾、列数不一致或没有可解析的定义都拒绝脚本——只有列名不够。STATEMENT 或 MIXED 格式输入被拒绝：扫描到的输入里只要有一条语句格式 DML 就以退出码 9、`details.reason` 为 `statement_format` 结束，因为输出脚本会重演行选择之外的变更。
+
+拒绝以退出码 6 结束并带 `details.reason`——`capture`（行镜像不完整）、`column_type`（单元格无法精确渲染）、`names`（MINIMAL 且无定义）、`schema`（定义与行矛盾）、`generated_unknown`、`truncated_query`——在指向单张表时附带 `details.table`，不输出 SQL。资源上限（`BINLOGVIZ_SPILL_BYTES`、`BINLOGVIZ_MEMORY_BYTES`）退出 10。什么都没选中时退出 2，stdout 为空。警告——表没有定义、过滤只保留事务的一部分、截断事务的补写提交——打在 stderr，不随 `--lang` 变化。redo 没有 `verify`/`apply`，没有 `--follow`，没有断线重连/续传，没有快照输入，也没有按表或按事务拆分输出（ADR 0022）。
 
 ## `compare` 命令语法
 
