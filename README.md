@@ -214,7 +214,7 @@ binlogviz flashback mysql-bin.000123 \
 binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 ```
 
-`--where` keeps only the rows whose predicate is provably true — `user_id < 400` undoes one user's damage, not the whole table. `--show-rows` limits, the DDL Timeline stop points, flashback requirements, refusals, conflicts, apply grants, and commit markers are in [Find and Undo Bad Rows](docs/recipe/flashback.md).
+`--where` keeps only the rows whose predicate is provably true — `user_id < 400` undoes one user's damage, not the whole table. `--output-dir` splits the undo into independently verifiable files (ADR 0025). `--show-rows` limits, the DDL Timeline stop points, flashback requirements, refusals, conflicts, apply grants, and commit markers are in [Find and Undo Bad Rows](docs/recipe/flashback.md).
 
 ### Replay the changes as forward SQL
 
@@ -222,7 +222,7 @@ binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 binlogviz redo mysql-bin.000123 --include-table shop.orders > redo.sql
 ```
 
-`redo` prints replayable forward SQL — the `2sql` direction — for the same inputs and selectors as `analyze`, including bounded remote reads. Redo is experimental: review the script before applying it. [Requirements and refusals](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax).
+`redo` prints replayable forward SQL — the `2sql` direction — for the same inputs and selectors as `analyze`, including bounded remote reads. `--output-dir` splits the replay into ordered parts (ADR 0025). Redo is experimental: review the script before applying it. [Requirements and refusals](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax).
 
 ## Snapshots, Compare, Trend, and Workflow
 

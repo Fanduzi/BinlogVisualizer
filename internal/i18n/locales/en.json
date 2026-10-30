@@ -407,6 +407,18 @@
     "description": "Flashback --conflict-limit help",
     "other": "How many conflicts --plan and the exit 7 error list; 0 lists every conflict. The count is always the full count"
   },
+  "cmd.flashback.flag.outputDir": {
+    "description": "Flashback --output-dir help",
+    "other": "Write the undo to this directory as split files instead of stdout; requires --file-per-table or --max-statements-per-file, and the directory must be new or empty"
+  },
+  "cmd.flashback.flag.filePerTable": {
+    "description": "Flashback --file-per-table help",
+    "other": "Split the undo into one sealed script per table (requires --output-dir); each file verifies and applies like the whole script"
+  },
+  "cmd.flashback.flag.maxStatementsPerFile": {
+    "description": "Flashback --max-statements-per-file help",
+    "other": "Bound the undo statements per output file (requires --output-dir); files apply in MANIFEST order"
+  },
   "error.flashbackConflictLimit": {
     "description": "Invalid --conflict-limit value",
     "other": "invalid --conflict-limit {{.Value}}: use 0 (list all) or a positive number"
@@ -434,6 +446,10 @@
   "warning.flashbackSplit": {
     "description": "Flashback warns when a table or DML filter undoes only part of a transaction",
     "other": "transaction {{.GTID}} is only partly undone; a table, --dml, or --where selection skipped other row changes in that transaction"
+  },
+  "warning.flashbackFileSplit": {
+    "description": "One transaction's undo spans multiple output files",
+    "other": "transaction {{.GTID}} spans multiple output files; apply the files in MANIFEST order"
   },
   "warning.flashbackLine": {
     "description": "Prefix for a flashback warning printed on stderr",
@@ -666,6 +682,10 @@
   "progress.htmlSaved": {
     "description": "HTML report saved confirmation",
     "other": "HTML report saved to {{.Path}}"
+  },
+  "progress.splitWrote": {
+    "description": "Split output summary line on stderr",
+    "other": "wrote {{.Count}} SQL files to {{.Dir}}"
   },
   "progress.resolvedFiles": {
     "description": "Resolved binlog files header",
@@ -2107,6 +2127,14 @@
     "description": "Redo row predicate flag description",
     "other": "Only replay rows matching this predicate (compares the after image for INSERT, the before image for DELETE/UPDATE; ANDed with the other selectors)"
   },
+  "cmd.redo.flag.outputDir": {
+    "description": "Redo --output-dir help",
+    "other": "Write the replay to this directory as split files instead of stdout; requires --max-statements-per-file, and the directory must be new or empty"
+  },
+  "cmd.redo.flag.maxStatementsPerFile": {
+    "description": "Redo --max-statements-per-file help",
+    "other": "Bound the statements per output file (requires --output-dir); each part file applies independently, in MANIFEST order"
+  },
   "error.whereInvalid": {
     "description": "--where did not compile; the reason follows the expression",
     "other": "invalid --where {{.Expr}}: {{.Detail}}"
@@ -2118,6 +2146,38 @@
   "error.schemaFileDBRequiresFile": {
     "description": "--schema-file-db was passed without --schema-file",
     "other": "--schema-file-db requires --schema-file"
+  },
+  "error.splitNeedsOutputDir": {
+    "description": "--file-per-table or --max-statements-per-file was passed without --output-dir",
+    "other": "--file-per-table and --max-statements-per-file require --output-dir DIR"
+  },
+  "error.splitOutputNeedsFlag": {
+    "description": "--output-dir was passed without a split mode",
+    "other": "--output-dir requires --file-per-table or --max-statements-per-file; redirect stdout for a single file"
+  },
+  "error.splitMaxInvalid": {
+    "description": "Invalid --max-statements-per-file value",
+    "other": "invalid --max-statements-per-file {{.Value}}: use a positive number"
+  },
+  "error.splitDirNotEmpty": {
+    "description": "Split output directory already has files",
+    "other": "output directory {{.Dir}} is not empty; point --output-dir at a new or empty directory"
+  },
+  "error.splitDirNotDir": {
+    "description": "Split output path exists and is not a directory",
+    "other": "output path {{.Dir}} is not a directory"
+  },
+  "error.splitDirParent": {
+    "description": "Split output directory's parent does not exist",
+    "other": "output directory {{.Dir}}: its parent directory does not exist"
+  },
+  "error.redoFilePerTable": {
+    "description": "--file-per-table is not supported for redo (ADR 0025)",
+    "other": "--file-per-table is not supported for redo: replay keeps binlog order and transaction boundaries. Use --include-table with --max-statements-per-file instead"
+  },
+  "error.splitPlan": {
+    "description": "--plan and split output cannot combine",
+    "other": "--plan prints the JSON plan and cannot be combined with split output"
   },
   "error.redoNames": {
     "description": "MINIMAL-metadata row with no resolvable table definition (exit 6, reason names)",
@@ -2158,5 +2218,9 @@
   "warning.redoCutTxn": {
     "description": "A transaction group was still open at the end of the input and is committed by the trailer",
     "other": "transaction {{.GTID}} was still open at the end of the input; the emitted COMMIT replays a prefix the source may not have committed"
+  },
+  "warning.redoFileSplit": {
+    "description": "One transaction's replay spans multiple output files",
+    "other": "transaction {{.GTID}} spans multiple output files; each file commits its own segment — apply them in MANIFEST order"
   }
 }

@@ -100,3 +100,4 @@ The Cobra command layer streams normalized binlog events into the analyzer, then
 | `internal/snapshot` | Named analyze snapshot persistence | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/snapshot/README.md) |
 | `internal/workflow` | Multi-step investigation plans and manifests | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/workflow/README.md) |
 | `internal/jsonout` | Versioned JSON writer: `schema_version` first on every JSON output without its own key (ADR 0010) | [ADR 0010](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/adr/0010-every-json-output-is-versioned.md) |
+| `internal/splitout` | Staged split-SQL output directories and the `MANIFEST` publish (ADR 0025) | [README](https://github.com/Fanduzi/BinlogVisualizer/blob/main/internal/splitout/README.md) |

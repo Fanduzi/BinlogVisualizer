@@ -47,7 +47,7 @@ func finishStreamingRun(run streamingRun) error {
 		if err := rejectEmptyOrIncompleteBinlog(run.paths, run.rawEvents); err != nil {
 			return err
 		}
-		return writeRedoSQL(run.streamAnalyzer, formatObserver)
+		return writeRedoSQL(run.streamAnalyzer, formatObserver, opts.Split)
 	}
 	if err := applyAnalyzeOutcomeGuards(run.paths, opts, result, run.rawEvents, formatObserver); err != nil {
 		return err
@@ -58,7 +58,7 @@ func finishStreamingRun(run streamingRun) error {
 		return err
 	}
 	if opts.Flashback {
-		return writeFlashbackSQL(run.streamAnalyzer)
+		return writeFlashbackSQL(run.streamAnalyzer, opts.Split)
 	}
 	if run.snapshotMeta != nil {
 		result.Snapshot = run.snapshotMeta

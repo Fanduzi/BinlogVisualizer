@@ -67,12 +67,18 @@ type Planner struct {
 	flashSchemaWarn       []model.FlashbackWarning
 	// flashMariaDB is set when a planned row event came from MariaDB.
 	flashMariaDB    bool
-	flashGenNotes   []string
+	flashGenNotes   []genNote
 	flashReviewed   bool
 	flashReviewErr  error
 	flashSplit      map[string]*flashSplit
 	flashSplitOrder []string
 	flashSplitDone  []string
+	// splitUnits/splitSpan are the enumerated split files and the
+	// transactions spanning their boundaries (ADR 0025), built by
+	// PrepareSplit before the first file opens.
+	splitUnits []splitUnit
+	splitSpan  []string
+	splitReady bool
 
 	// conflictTxn and conflictGTID are the open transaction while Observe
 	// runs, before that event is applied to the transaction builder.
@@ -574,6 +580,13 @@ func (a *Planner) WarningList() []model.FlashbackWarning {
 		}
 		out = append(out, model.NewFlashWarning(model.WarnPartialTransaction, "warning.flashbackSplit", map[string]any{"GTID": gtid}))
 	}
+	for _, gtid := range a.splitSpan {
+		label := gtid
+		if label == "" {
+			label = "GTID unavailable"
+		}
+		out = append(out, model.NewFlashWarning(model.WarnPartialTransaction, "warning.flashbackFileSplit", map[string]any{"GTID": label}))
+	}
 	if a.flashMariaDB {
 		out = append(out, model.NewFlashWarning(model.WarnMariaDBApplyUnsupported, "warning.flashbackMariaDB", nil))
 	}
@@ -643,7 +656,7 @@ func (a *Planner) WriteFlashback(w io.Writer) (int, error) {
 	}
 	err = writeFlashbackScript(w, func(fn func(*flashGroup) error) error {
 		return a.eachFlashGroup(true, fn)
-	}, a.flashGenNotes, cols, a.postImageGuard())
+	}, genNoteTexts(a.flashGenNotes), cols, a.postImageGuard())
 	var rowErr *generatedRowRefusal
 	if errors.As(err, &rowErr) {
 		return 0, rowErr.named(a.refusalTable(rowErr.schema, rowErr.table))

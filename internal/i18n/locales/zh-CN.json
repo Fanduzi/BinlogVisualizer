@@ -407,6 +407,18 @@
     "description": "Flashback --conflict-limit 帮助",
     "other": "--plan 和退出码 7 的错误里列出多少处冲突；0 列出全部。冲突总数始终是完整的"
   },
+  "cmd.flashback.flag.outputDir": {
+    "description": "Flashback --output-dir 帮助",
+    "other": "把撤销脚本以拆分文件的形式写入该目录而不是 stdout；需要 --file-per-table 或 --max-statements-per-file，目录必须不存在或为空"
+  },
+  "cmd.flashback.flag.filePerTable": {
+    "description": "Flashback --file-per-table 帮助",
+    "other": "按表把撤销拆成独立的密封脚本（需要 --output-dir）；每个文件都像完整脚本一样可以验证、可以执行"
+  },
+  "cmd.flashback.flag.maxStatementsPerFile": {
+    "description": "Flashback --max-statements-per-file 帮助",
+    "other": "限制每个输出文件的撤销语句数（需要 --output-dir）；文件按 MANIFEST 顺序执行"
+  },
   "error.flashbackConflictLimit": {
     "description": "--conflict-limit 取值无效",
     "other": "--conflict-limit {{.Value}} 无效：请用 0（列出全部）或正整数"
@@ -434,6 +446,10 @@
   "warning.flashbackSplit": {
     "description": "表过滤或 --dml 只撤销事务的一部分时警告",
     "other": "事务 {{.GTID}} 只撤销了一部分；表过滤、--dml 或 --where 跳过了该事务中的其他行变更"
+  },
+  "warning.flashbackFileSplit": {
+    "description": "一个事务的撤销跨了多个输出文件时警告",
+    "other": "事务 {{.GTID}} 跨了多个输出文件；请按 MANIFEST 顺序执行这些文件"
   },
   "warning.flashbackLine": {
     "description": "stderr 上 flashback 警告的前缀",
@@ -666,6 +682,10 @@
   "progress.htmlSaved": {
     "description": "HTML 报告保存确认",
     "other": "HTML 报告已保存至 {{.Path}}"
+  },
+  "progress.splitWrote": {
+    "description": "拆分输出完成时 stderr 上的汇总行",
+    "other": "已写入 {{.Count}} 个 SQL 文件到 {{.Dir}}"
   },
   "progress.resolvedFiles": {
     "description": "已解析的 binlog 文件标题",
@@ -2107,6 +2127,14 @@
     "description": "redo 的行谓词说明",
     "other": "只重放满足该谓词的行（INSERT 比较后镜像，DELETE/UPDATE 比较前镜像；与其他筛选条件是 AND 关系）"
   },
+  "cmd.redo.flag.outputDir": {
+    "description": "Redo --output-dir 帮助",
+    "other": "把重放脚本以拆分文件的形式写入该目录而不是 stdout；需要 --max-statements-per-file，目录必须不存在或为空"
+  },
+  "cmd.redo.flag.maxStatementsPerFile": {
+    "description": "Redo --max-statements-per-file 帮助",
+    "other": "限制每个输出文件的语句数（需要 --output-dir）；每个分片文件可独立执行，按 MANIFEST 顺序执行"
+  },
   "error.whereInvalid": {
     "description": "--where 编译失败；原因跟在表达式后面",
     "other": "无效的 --where {{.Expr}}：{{.Detail}}"
@@ -2118,6 +2146,38 @@
   "error.schemaFileDBRequiresFile": {
     "description": "--schema-file-db 没有搭配 --schema-file",
     "other": "--schema-file-db 需要 --schema-file"
+  },
+  "error.splitNeedsOutputDir": {
+    "description": "--file-per-table 或 --max-statements-per-file 没有搭配 --output-dir",
+    "other": "--file-per-table 和 --max-statements-per-file 需要 --output-dir DIR"
+  },
+  "error.splitOutputNeedsFlag": {
+    "description": "--output-dir 没有搭配拆分方式",
+    "other": "--output-dir 需要 --file-per-table 或 --max-statements-per-file；单文件请用重定向"
+  },
+  "error.splitMaxInvalid": {
+    "description": "--max-statements-per-file 取值无效",
+    "other": "--max-statements-per-file {{.Value}} 无效：请用正整数"
+  },
+  "error.splitDirNotEmpty": {
+    "description": "拆分输出目录已有内容",
+    "other": "输出目录 {{.Dir}} 非空；--output-dir 请指向不存在或为空的目录"
+  },
+  "error.splitDirNotDir": {
+    "description": "拆分输出路径已存在且不是目录",
+    "other": "输出路径 {{.Dir}} 不是目录"
+  },
+  "error.splitDirParent": {
+    "description": "拆分输出目录的父目录不存在",
+    "other": "输出目录 {{.Dir}}：其父目录不存在"
+  },
+  "error.redoFilePerTable": {
+    "description": "redo 不支持 --file-per-table（ADR 0025）",
+    "other": "redo 不支持 --file-per-table：重放需要保持 binlog 顺序和事务边界。请用 --include-table 搭配 --max-statements-per-file"
+  },
+  "error.splitPlan": {
+    "description": "--plan 与拆分输出不能同时使用",
+    "other": "--plan 输出 JSON 计划，不能与拆分输出同时使用"
   },
   "error.redoNames": {
     "description": "MINIMAL 元数据行且没有可解析的表定义（退出码 6，reason names）",
@@ -2158,5 +2218,9 @@
   "warning.redoCutTxn": {
     "description": "事务组在输入结束时仍未提交，由收尾语句提交",
     "other": "事务 {{.GTID}} 在输入结束时仍未提交；输出的 COMMIT 重放的是一个源端可能并未提交的前缀"
+  },
+  "warning.redoFileSplit": {
+    "description": "一个事务的重放跨了多个输出文件时警告",
+    "other": "事务 {{.GTID}} 跨了多个输出文件；每个文件各自提交自己的一段——请按 MANIFEST 顺序执行"
   }
 }

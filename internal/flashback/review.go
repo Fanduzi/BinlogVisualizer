@@ -95,7 +95,8 @@ func (a *Planner) collectGeneratedReview() error {
 		}
 		b.rev.MarkDivDone()
 	}
-	var mismatches, notes []string
+	var mismatches []string
+	var notes []genNote
 	var warns []model.FlashbackWarning
 	hinted := false
 	var mismatchTable string
@@ -128,7 +129,7 @@ func (a *Planner) collectGeneratedReview() error {
 			if !unknown {
 				continue
 			}
-			notes = append(notes, mysqlexpr.UnverifiedGeneratedComment(table, col))
+			notes = append(notes, genNote{schema: b.schema, table: b.table, text: mysqlexpr.UnverifiedGeneratedComment(table, col)})
 			warns = append(warns, mysqlexpr.UnverifiedGeneratedWarning(table, col))
 		}
 	}

@@ -7,7 +7,8 @@ Forward (redo) SQL for selected row changes and kept QUERY events (ADR 0022). Th
 | File | Responsibility |
 |------|----------------|
 | `planner.go` | One `Planner`: the schema catalog, the staged-record temp file, name binding, deferred MINIMAL resolution, refusal/warning state, split-transaction bookkeeping, and the `Prepare` counting pass. Schema-file SQL loads at `New`; a catalog refusal fires at `Note`, a deferred one at `Prepare` — a refusal writes nothing. |
-| `emit.go` | The write pass. Transaction boundaries mirror the logged stream: explicit BEGIN and XID emit `BEGIN;`/`COMMIT;`, a ROLLBACK close emits `ROLLBACK;`, implicit-commit work (DDL, ADMIN, unclassified QUERY) is never wrapped in a fabricated pair, and a group still open at end-of-input gets a trailer `COMMIT;` plus the cut warning. ROWS_QUERY becomes a `--` comment; `USE` is emitted only when a verbatim statement's default database changes. XA verbs pass through; a server-generated XA PREPARE marker expands to the `XA END`/`XA PREPARE` pair replay needs. |
+| `emit.go` | The write pass. Transaction boundaries mirror the logged stream: explicit BEGIN and XID emit `BEGIN;`/`COMMIT;`, a ROLLBACK close emits `ROLLBACK;`, implicit-commit work (DDL, ADMIN, unclassified QUERY) is never wrapped in a fabricated pair, and a group still open at end-of-input gets a trailer `COMMIT;` plus the cut warning. ROWS_QUERY becomes a `--` comment; `USE` is emitted only when a verbatim statement's default database changes. XA verbs pass through; a server-generated XA PREPARE marker expands to the `XA END`/`XA PREPARE` pair replay needs. Under split output (`emitState.split`) the same pass rotates part files at the statement bound: a keyed BEGIN is deferred until its group's first real statement (never an empty `BEGIN;`/`COMMIT;` stub), a boundary inside a group seals the part with `COMMIT;` and the next part reopens with the GTID continuation comment plus `BEGIN;`, and GTID/annotation comments buffer so they land in the file holding their statement (ADR 0025). |
+| `split.go` | The `part-NNNNNN.sql` file lifecycle on a `splitout.Sink`: `open` writes the session preamble, the current `USE` context, and the continuation `BEGIN;` for a group already begun; `PrepareSplit` runs the refusal set plus the split warning/count pass mirroring emit bookkeeping; `WriteSplit` emits all parts then publishes the directory — count mode only, per-table is refused (`redoFilePerTable`) because per-table files would scatter one transaction's replay (ADR 0025). |
 | `spill.go` | Staged-record storage on an unlinked temp file: rows carry typed cells (decimal, binary, JSON documents, opaque values) serialized beside the record. Resident memory is one record plus the intern tables. |
 | `refusal.go` | The refusal taxonomy: `Refusal` exit-6 codes with `RefusalDetails` — `capture`, `column_type`, `names` (MINIMAL metadata with no resolving definition), `schema` (a definition that contradicts the row), `generated_unknown`, `where_column` (a `--where` name the row does not have, ADR 0024), `truncated_query`. |
 | `resource.go` | `ResourceError`: `spill_limit` (`BINLOGVIZ_SPILL_BYTES`) and `memory_limit` (`BINLOGVIZ_MEMORY_BYTES`). `ValidateResourceEnv` checks the variables before parse; the CLI exits 10. |
@@ -22,6 +23,8 @@ Forward (redo) SQL for selected row changes and kept QUERY events (ADR 0022). Th
 | `(*Planner).Note`, `NoteSkipped` | Records a retained event in stream order, or a skipped row event for the partial-transaction warning. |
 | `(*Planner).Prepare() (int64, error)` | Runs every refusal and counts statements. A refusal returns before `WriteTo` is meaningful; zero statements is exit 2. |
 | `(*Planner).WriteTo(io.Writer) (int64, error)` | Streams the sealed script: session preamble, comments, and statements. Every cell literal renders through `internal/binlog.EmitLiteral`; statement shapes come from `internal/sqlemit`. |
+| `(*Planner).PrepareSplit(spec) error` | Runs `Prepare` then the split pass: marks spanning transactions for the stderr warning and rejects `spec.PerTable` (ADR 0025). |
+| `(*Planner).WriteSplit(sink, spec) (int64, error)` | Emits `part-NNNNNN.sql` files at `spec.MaxStatements` and publishes the directory through the sink. |
 | `(*Planner).Warnings()`, `WarningList()` | Localized stderr warnings: unknown definitions, split transactions, cut-transaction trailers, deferred-schema notes. |
 | `(*Planner).Statements() int64` | Emitted statement count after `Prepare`. |
 | `(*Planner).Close()` | Removes the staged records; the analyzer calls it on reset. |
@@ -29,7 +32,7 @@ Forward (redo) SQL for selected row changes and kept QUERY events (ADR 0022). Th
 
 ## Dependencies
 
-- Upstream: `internal/model` (`RedoRow`, `FlashCol`, `NormalizedEvent`, `FlashbackWarning`), `internal/i18n`.
+- Upstream: `internal/model` (`RedoRow`, `FlashCol`, `NormalizedEvent`, `FlashbackWarning`), `internal/i18n`, `internal/splitout` (ADR 0025).
 - `internal/binlog` for `EmitLiteral` (the shared cell formatter; ADR 0022 keeps one formatter for both directions).
 - `internal/sqlemit` for quoted identifiers, `<=>` WHERE clauses, generated-column omission, and the sql_mode drop expression.
 - `internal/schemacatalog` + `internal/mysqlexpr` for definition resolution, the MINIMAL comparable-fact check (`CheckSchemaCol`), and the fact merge (`FillFlashCol`).

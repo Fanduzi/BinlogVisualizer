@@ -15,6 +15,7 @@ Undo SQL for selected ROW changes (ADR 0012 step 4). `internal/analyzer` holds o
 | `conflict.go` | Conflicts (#259): one 8-byte hash per selected row key; every later row event from another transaction, selected or not, that touches one is a conflict. Default refuses (`FlashbackConflictError`, CLI exit 7); `guard` matches each undo against the after image, and a key-moving UPDATE undo runs only when the old key is free (#270); `WritePlan` prints the JSON plan (`plan_version` 2), including on a refusal (`refusal`); `--conflict-limit` bounds the listed conflicts. |
 | `spill.go` | Row storage (ADR 0008, #258): finished transaction parts (at most `ChunkRows` rows each) go to an unlinked temp file as length-framed records, read forward for checks and last-first for rendering. Binds and column type lists are interned once. Resident memory is one part, not the binlog. |
 | `where.go` | The `Options.Where` row filter (ADR 0024): evaluates the compiled `mysqlexpr.WhereExpr` over each row's matched image (INSERT after, DELETE/UPDATE before) after the event's existing checks and before staging. An unknown predicate column refuses with `where_column`; a row the predicate does not prove is dropped and counted into the split-transaction bookkeeping exactly like a table or DML skip. |
+| `split.go` | Split output (ADR 0025): `PrepareSplit` enumerates the output units on one backward pass — per-table units in backward-first-seen table order, count chunks inside each stream — and marks the transactions whose undo spans files for the stderr warning. `WriteSplit` writes each unit through the same `writeFlashbackScript` seam as the monolith, so every file is its own sealed guard script (procedure, XA, digest, trailer) holding only its row subset — per-file atomicity, not per-run. A split file lists only its own table's generated-column notes. |
 
 ## Interfaces
 
@@ -25,11 +26,13 @@ Undo SQL for selected ROW changes (ADR 0012 step 4). `internal/analyzer` holds o
 | `(*Planner).Note`, `NoteSkipped` | Records a retained event, or a skipped one for the split-transaction warning. The analyzer also passes every in-range DDL the object filter left out of the report. |
 | `(*Planner).Prepare() (int, error)` | Every refusal and the undo row count. Zero rows is an empty script. |
 | `(*Planner).WriteTo(w) (int64, error)` | Streams the script. The count is undo rows, not bytes. |
+| `(*Planner).PrepareSplit(spec) error` | Runs `Prepare`, then enumerates the split units and spanning-transaction warnings (ADR 0025). |
+| `(*Planner).WriteSplit(sink, spec) (int64, error)` | Writes each unit as its own sealed script through `sink.WriteFile`, then publishes the directory. |
 | `(*Planner).WritePlan` | `--plan` JSON. |
 | `(*Planner).SQL` | The whole script in memory. Tests use it; the CLI uses `WriteTo`. |
 | `ChunkRows` | Spill part size (2048). |
 
 ## Dependencies
 
-- Upstream: `internal/model`, `internal/mysqlexpr`, `internal/schemacatalog`, `internal/guard`, `internal/redact`, `internal/clierr`, `internal/i18n`.
+- Upstream: `internal/model`, `internal/mysqlexpr`, `internal/schemacatalog`, `internal/guard`, `internal/redact`, `internal/clierr`, `internal/i18n`, `internal/splitout` (ADR 0025).
 - Downstream: `internal/analyzer` and `cmd/binlogviz`. This package does not import `analyzer`.
