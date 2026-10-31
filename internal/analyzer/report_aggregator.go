@@ -16,20 +16,22 @@ import (
 
 // ReportSnapshot holds a point-in-time view of aggregated report state.
 type ReportSnapshot struct {
-	Summary             model.WorkloadSummary
-	Provenance          model.ReportProvenance
-	SQLContextAvailable bool
-	Tables              []model.TableStats
-	Transactions        []model.Transaction
-	Threads             []model.ThreadStats
-	ThreadsRankedBy     string
-	Patterns            []model.PatternStats
-	Minutes             []model.MinuteBucket
-	Timeseries          model.Timeseries
-	Diagnostics         model.Diagnostics
-	Alerts              []model.Alert
-	Warnings            int
-	PatternDrilldowns   []model.PatternDrilldown
+	Summary               model.WorkloadSummary
+	Provenance            model.ReportProvenance
+	SQLContextAvailable   bool
+	Tables                []model.TableStats
+	Transactions          []model.Transaction
+	Threads               []model.ThreadStats
+	ThreadsRankedBy       string
+	Patterns              []model.PatternStats
+	StatementFingerprints []model.StatementFingerprint
+	FingerprintOverflow   int
+	Minutes               []model.MinuteBucket
+	Timeseries            model.Timeseries
+	Diagnostics           model.Diagnostics
+	Alerts                []model.Alert
+	Warnings              int
+	PatternDrilldowns     []model.PatternDrilldown
 }
 
 // ReportAggregator maintains bounded streaming state for report assembly.
@@ -65,6 +67,8 @@ type ReportAggregator struct {
 	patterns            map[string]*model.PatternStats
 	patternOrder        []string
 	patternRepTxns      map[string]*topN[model.Transaction]
+	fingerprints        map[string]*fingerprintGroup
+	fingerprintOverflow int
 	txnSize             txnSizeTracker
 	operationCounts     map[time.Time]operationMinuteStats
 	applyDelay          applyDelayTracker
@@ -228,6 +232,12 @@ func (a *ReportAggregator) ConsumeTransaction(txn model.Transaction) {
 	if txn.QueryContext != nil && txn.QueryContext.Truncated {
 		a.warnings++
 	}
+	// Fold fingerprint evidence before the completeness early return: partial
+	// and unknown transactions already count their rows in totalRows, so their
+	// retained statements count here too. Clearing keeps the transient field
+	// out of every ranked copy the rest of this function stores.
+	a.consumeFingerprints(txn)
+	txn.RetainedStatements = nil
 	if txn.EffectiveCompleteness() != model.TransactionComplete {
 		if txn.IsPartial() {
 			a.partialTransactions++
@@ -337,6 +347,7 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 	minutes := append([]model.MinuteBucket(nil), a.minutes...)
 	sort.Slice(minutes, func(i, j int) bool { return minutes[i].Minute.Before(minutes[j].Minute) })
 	patterns := a.snapshotPatterns()
+	fingerprints := a.snapshotFingerprints()
 	threads, threadsRankedBy := a.threads.snapshot()
 	alerts := append([]model.Alert(nil), a.alerts...)
 	alerts = append(alerts, detectSpikeAlerts(minutes, a.opts, a.minuteRows)...)
@@ -395,19 +406,21 @@ func (a *ReportAggregator) Snapshot() ReportSnapshot {
 		transactions = append(transactions, incomplete[:remaining]...)
 	}
 	return ReportSnapshot{
-		Summary:             summary,
-		Provenance:          a.snapshotProvenance(),
-		SQLContextAvailable: a.sqlContextAvailable,
-		Transactions:        transactions,
-		Threads:             threads,
-		ThreadsRankedBy:     threadsRankedBy,
-		Patterns:            patterns,
-		Minutes:             minutes,
-		Timeseries:          series,
-		Diagnostics:         diagnostics,
-		Alerts:              alerts,
-		Warnings:            a.warnings,
-		PatternDrilldowns:   BuildPatternDrilldowns(patterns, minutes, drilldownTxns, alerts),
+		Summary:               summary,
+		Provenance:            a.snapshotProvenance(),
+		SQLContextAvailable:   a.sqlContextAvailable,
+		Transactions:          transactions,
+		Threads:               threads,
+		ThreadsRankedBy:       threadsRankedBy,
+		Patterns:              patterns,
+		StatementFingerprints: fingerprints,
+		FingerprintOverflow:   a.fingerprintOverflow,
+		Minutes:               minutes,
+		Timeseries:            series,
+		Diagnostics:           diagnostics,
+		Alerts:                alerts,
+		Warnings:              a.warnings,
+		PatternDrilldowns:     BuildPatternDrilldowns(patterns, minutes, drilldownTxns, alerts),
 	}
 }
 

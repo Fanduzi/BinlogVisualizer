@@ -1249,7 +1249,7 @@
   },
   "cmd.analyze.flag.format": {
     "description": "Output format flag description",
-    "other": "Output format: text, json, markdown, html"
+    "other": "Output format: text, json, markdown, html, csv, tsv"
   },
   "cmd.analyze.flag.output": {
     "description": "Output destination flag description",
@@ -2222,5 +2222,41 @@
   "warning.redoFileSplit": {
     "description": "One transaction's replay spans multiple output files",
     "other": "transaction {{.GTID}} spans multiple output files; each file commits its own segment — apply them in MANIFEST order"
+  },
+  "cmd.analyze.flag.csvDataset": {
+    "description": "CSV dataset flag description",
+    "other": "Dataset for --format csv/tsv: tables, transactions, patterns, fingerprints"
+  },
+  "cmd.analyze.flag.topFingerprints": {
+    "description": "Top fingerprints flag description",
+    "other": "Number of statement fingerprints to show (0 = unlimited). Inherits --top"
+  },
+  "cmd.analyze.flag.showFingerprints": {
+    "description": "Show statement fingerprints flag description",
+    "other": "Show statement fingerprint ranking in text output (Rows_query text; --details implies it)"
+  },
+  "report.text.statementFingerprints": {
+    "description": "Statement fingerprints section header in text report",
+    "other": "Statement Fingerprints"
+  },
+  "report.placeholder.noRowsQueryText": {
+    "description": "Placeholder when the binlog carried no Rows_query statement text",
+    "other": "(no Rows_query statement text captured; binlog_rows_query_log_events may be off)"
+  },
+  "report.placeholder.noFingerprints": {
+    "description": "Placeholder when Rows_query text existed but no statements were retained",
+    "other": "(no retained statement fingerprints)"
+  },
+  "report.text.fingerprintsOmitted": {
+    "description": "Count of fingerprint groups omitted by the display limit",
+    "other": "… and {{.Count}} more fingerprint groups"
+  },
+  "report.text.fingerprintsOverflow": {
+    "description": "Count of statement occurrences dropped at the fingerprint tracker cap",
+    "other": "fingerprint tracker cap reached: {{.Count}} statement occurrences not grouped"
+  },
+  "report.label.sample": {
+    "description": "Sample statement label",
+    "other": "Sample"
   }
 }

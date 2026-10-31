@@ -39,15 +39,19 @@ const (
 	FormatJSON     Format = "json"
 	FormatMarkdown Format = "markdown"
 	FormatHTML     Format = "html"
+	FormatCSV      Format = "csv"
+	FormatTSV      Format = "tsv"
 )
 
 // knownFormats is the list ParseFormat accepts. An empty CLI string is text,
-// not a fifth value. Write renders each entry.
+// not a seventh value. Write renders each entry.
 var knownFormats = []Format{
 	FormatText,
 	FormatJSON,
 	FormatMarkdown,
 	FormatHTML,
+	FormatCSV,
+	FormatTSV,
 }
 
 // ParseFormat validates and returns a Format from a CLI string.
@@ -60,7 +64,43 @@ func ParseFormat(raw string) (Format, error) {
 			return format, nil
 		}
 	}
-	return "", fmt.Errorf("unknown format %q: must be one of text, json, markdown, html", raw)
+	return "", fmt.Errorf("unknown format %q: must be one of text, json, markdown, html, csv, tsv", raw)
+}
+
+// IsDelimited reports whether the format writes a flat CSV/TSV table (ADR 0026).
+func (f Format) IsDelimited() bool {
+	return f == FormatCSV || f == FormatTSV
+}
+
+// CSVDataset selects which report dataset --format csv/tsv writes (ADR 0026).
+type CSVDataset string
+
+const (
+	CSVDatasetTables       CSVDataset = "tables"
+	CSVDatasetTransactions CSVDataset = "transactions"
+	CSVDatasetPatterns     CSVDataset = "patterns"
+	CSVDatasetFingerprints CSVDataset = "fingerprints"
+)
+
+var knownCSVDatasets = []CSVDataset{
+	CSVDatasetTables,
+	CSVDatasetTransactions,
+	CSVDatasetPatterns,
+	CSVDatasetFingerprints,
+}
+
+// ParseCSVDataset validates and returns a dataset name. An empty string is
+// the default tables dataset, matching --csv-dataset's zero value.
+func ParseCSVDataset(raw string) (CSVDataset, error) {
+	if raw == "" {
+		return CSVDatasetTables, nil
+	}
+	for _, dataset := range knownCSVDatasets {
+		if CSVDataset(raw) == dataset {
+			return dataset, nil
+		}
+	}
+	return "", fmt.Errorf("invalid --csv-dataset %q (allowed: tables, transactions, patterns, fingerprints)", raw)
 }
 
 // Options controls report presentation without changing analysis semantics.
@@ -81,10 +121,20 @@ type Options struct {
 	// TopRows limits the Hot Rows section in every format. Zero is unlimited when TopRowsSet is true.
 	TopRows int
 	// TopRowsSet distinguishes an explicit zero limit from an omitted value.
-	TopRowsSet   bool
+	TopRowsSet bool
+	// TopFingerprints limits the statement_fingerprints list and the
+	// fingerprints CSV dataset. Zero is unlimited when TopFingerprintsSet
+	// is true.
+	TopFingerprints int
+	// TopFingerprintsSet distinguishes an explicit zero limit from an omitted value.
+	TopFingerprintsSet bool
+	// CSVDataset selects the dataset --format csv/tsv writes.
+	CSVDataset   CSVDataset
 	Details      bool
 	ShowMinutes  bool
 	ShowPatterns bool
+	// ShowFingerprints prints the STATEMENT FINGERPRINTS text section.
+	ShowFingerprints bool
 	// ShowRows prints bounded row images for listed transactions.
 	// --sql-context off suppresses the values and says so.
 	ShowRows bool
@@ -164,9 +214,16 @@ func normalizeOptions(opts Options) Options {
 	if !opts.TopRowsSet && opts.TopRows <= 0 {
 		opts.TopRows = opts.TopN
 	}
+	if !opts.TopFingerprintsSet && opts.TopFingerprints <= 0 {
+		opts.TopFingerprints = opts.TopN
+	}
+	if opts.CSVDataset == "" {
+		opts.CSVDataset = CSVDatasetTables
+	}
 	if opts.Details {
 		opts.ShowMinutes = true
 		opts.ShowPatterns = true
+		opts.ShowFingerprints = true
 	}
 	return opts
 }

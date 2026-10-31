@@ -13,7 +13,7 @@ func BenchmarkAnalyzeSmallEventSlice(b *testing.B) {
 	events := []model.NormalizedEvent{
 		{
 			Timestamp: time.Date(2026, 3, 9, 0, 0, 0, 0, time.UTC),
-			EventType:  "ROWS",
+			EventType: "ROWS",
 			Schema:    "shop",
 			Table:     "orders",
 			Operation: "INSERT",
@@ -32,7 +32,7 @@ func BenchmarkAnalyzeMediumEventSlice(b *testing.B) {
 	for i := range events {
 		events[i] = model.NormalizedEvent{
 			Timestamp: base.Add(time.Duration(i) * time.Millisecond),
-			EventType:  "ROWS",
+			EventType: "ROWS",
 			Schema:    "shop",
 			Table:     fmt.Sprintf("orders_%d", i),
 			Operation: "INSERT",
@@ -51,7 +51,7 @@ func BenchmarkAnalyzeLargeEventSlice(b *testing.B) {
 	for i := range events {
 		events[i] = model.NormalizedEvent{
 			Timestamp: base.Add(time.Duration(i) * time.Millisecond),
-			EventType:  "ROWS",
+			EventType: "ROWS",
 			Schema:    fmt.Sprintf("db_%d", i/100),
 			Table:     fmt.Sprintf("table_%d", i),
 			Operation: "INSERT",
@@ -70,7 +70,7 @@ func BenchmarkAnalyzeMultipleTables(b *testing.B) {
 	for i := range events {
 		events[i] = model.NormalizedEvent{
 			Timestamp: base,
-			EventType:  "ROWS",
+			EventType: "ROWS",
 			Schema:    fmt.Sprintf("db_%d", i),
 			Table:     fmt.Sprintf("table_%d", i),
 			Operation: "INSERT",
@@ -89,11 +89,11 @@ func BenchmarkAnalyzeDeepTransactions(b *testing.B) {
 	for i := 0; i < 10; i++ {
 		events[i] = model.NormalizedEvent{
 			Timestamp: base,
-			EventType:  "BEGIN",
+			EventType: "BEGIN",
 		}
 		events[i+10] = model.NormalizedEvent{
 			Timestamp: base.Add(100 * time.Millisecond),
-			EventType:  "ROWS",
+			EventType: "ROWS",
 			Schema:    "shop",
 			Table:     fmt.Sprintf("table_%d", i),
 			Operation: "INSERT",
@@ -101,7 +101,7 @@ func BenchmarkAnalyzeDeepTransactions(b *testing.B) {
 		}
 		events[i+20] = model.NormalizedEvent{
 			Timestamp: base.Add(200 * time.Millisecond),
-			EventType:  "XID",
+			EventType: "XID",
 		}
 	}
 	a := analyzer.New(analyzer.Options{})

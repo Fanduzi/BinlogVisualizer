@@ -119,6 +119,10 @@ type Transaction struct {
 	QueryContext     *QueryContext // Full context if available, nil otherwise
 	RowImages        []RowImage    // Bounded row images; nil unless capture was requested
 	RowImagesOmitted int           // Logical rows not stored after MaxRowImagesPerTxn
+	// RetainedStatements is transient aggregation evidence: each retained
+	// Rows_query statement occurrence with its written-row table attribution.
+	// Report aggregation folds it into StatementFingerprints and clears it.
+	RetainedStatements []RetainedStatement
 	// StdinInput is set when the binlog was read from stdin or another non-seekable
 	// stream. The displayed path "stdin" is not a file that mysqlbinlog can open.
 	StdinInput bool

@@ -95,9 +95,9 @@ func TestJSONPatternDrilldown_NestedListsBounded(t *testing.T) {
 	result := model.AnalysisResult{
 		PatternDrilldowns: []model.PatternDrilldown{
 			{
-				PatternKey:  "p1",
-				WhySelected: "dominant",
-				BusiestMinutes: makeBoundedMinutes(3),
+				PatternKey:                 "p1",
+				WhySelected:                "dominant",
+				BusiestMinutes:             makeBoundedMinutes(3),
 				RepresentativeTransactions: makeBoundedTxns(3),
 			},
 		},

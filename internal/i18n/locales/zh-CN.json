@@ -1248,8 +1248,8 @@
     "other": "不可用"
   },
   "cmd.analyze.flag.format": {
-    "description": "Output format flag description",
-    "other": "输出格式: text, json, markdown, html"
+    "description": "输出格式标志描述",
+    "other": "输出格式: text, json, markdown, html, csv, tsv"
   },
   "cmd.analyze.flag.output": {
     "description": "Output destination flag description",
@@ -2222,5 +2222,41 @@
   "warning.redoFileSplit": {
     "description": "一个事务的重放跨了多个输出文件时警告",
     "other": "事务 {{.GTID}} 跨了多个输出文件；每个文件各自提交自己的一段——请按 MANIFEST 顺序执行"
+  },
+  "cmd.analyze.flag.csvDataset": {
+    "description": "CSV 数据集标志描述",
+    "other": "--format csv/tsv 导出的数据集: tables, transactions, patterns, fingerprints"
+  },
+  "cmd.analyze.flag.topFingerprints": {
+    "description": "语句指纹数量标志描述",
+    "other": "显示的语句指纹数量(0 = 不限制);继承 --top"
+  },
+  "cmd.analyze.flag.showFingerprints": {
+    "description": "显示语句指纹标志描述",
+    "other": "在文本输出中显示语句指纹排名(基于 Rows_query 文本;--details 隐含开启)"
+  },
+  "report.text.statementFingerprints": {
+    "description": "文本报告语句指纹章节标题",
+    "other": "语句指纹"
+  },
+  "report.placeholder.noRowsQueryText": {
+    "description": "binlog 未携带 Rows_query 语句文本时的占位符",
+    "other": "(未捕获 Rows_query 语句文本;binlog_rows_query_log_events 可能未开启)"
+  },
+  "report.placeholder.noFingerprints": {
+    "description": "存在 Rows_query 文本但没有语句被保留时的占位符",
+    "other": "(无保留的语句指纹)"
+  },
+  "report.text.fingerprintsOmitted": {
+    "description": "受显示上限而省略的指纹组数量",
+    "other": "… 以及另外 {{.Count}} 个指纹组"
+  },
+  "report.text.fingerprintsOverflow": {
+    "description": "达到指纹跟踪上限而被丢弃的语句发生次数",
+    "other": "已达指纹跟踪上限:{{.Count}} 次语句发生未分组"
+  },
+  "report.label.sample": {
+    "description": "样例语句标签",
+    "other": "样例"
   }
 }

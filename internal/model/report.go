@@ -107,6 +107,12 @@ type AnalysisResult struct {
 	HotRows             HotRowReport
 	Transactions        []Transaction
 	Patterns            []PatternStats
+	// StatementFingerprints ranks literal-normalized Rows_query write-statement
+	// text across the whole workload (not only listed transactions). Empty when
+	// the binlog carried no retained Rows_query text; FingerprintOverflow
+	// counts statement occurrences dropped when the group map hit its cap.
+	StatementFingerprints []StatementFingerprint
+	FingerprintOverflow   int
 	// Minutes is the source-of-truth aggregated minute series.
 	// Timeseries is the chart-ready projection derived from Minutes and may omit raw table context.
 	Minutes []MinuteBucket

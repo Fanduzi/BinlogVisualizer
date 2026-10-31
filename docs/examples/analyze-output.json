@@ -793,6 +793,9 @@
       }
     }
   ],
+  "statement_fingerprints": [],
+  "statement_fingerprints_listed": 0,
+  "statement_fingerprints_omitted": 0,
   "minutes": [
     {
       "minute": "2026-03-15T14:10:00Z",

@@ -39,8 +39,8 @@ type PatternPeakMinute struct {
 
 // PatternRepresentativeTxn is a bounded summary of one example transaction within a pattern.
 type PatternRepresentativeTxn struct {
-	TxnKey     string
-	TotalRows  int
-	Duration   time.Duration
+	TxnKey       string
+	TotalRows    int
+	Duration     time.Duration
 	QuerySummary string
 }

@@ -61,6 +61,11 @@ func Write(w io.Writer, result model.AnalysisResult, opts Options, format string
 		}
 		_, err = io.WriteString(w, text)
 		return err
+	case FormatCSV, FormatTSV:
+		if err := spilledErr(result); err != nil {
+			return err
+		}
+		return writeDelimited(w, result, opts, parsed)
 	}
 	return fmt.Errorf("unhandled format %q", parsed)
 }

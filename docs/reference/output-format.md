@@ -69,6 +69,8 @@ With no `--tz`, or with `--tz UTC`, rendered times keep the historical spelling:
 | `json` | — | Machine-readable JSON. |
 | `markdown` | `md` | GitHub-flavored Markdown with tables. |
 | `html` | — | Self-contained HTML with interactive charts and theme switcher. |
+| `csv` | — | One report dataset as RFC 4180 CSV; `--csv-dataset` selects it. |
+| `tsv` | — | Same datasets with tab delimiters. |
 
 ### `compare`
 
@@ -293,6 +295,17 @@ Example heading:
 === Alerts ===
 ```
 
+### Statement Fingerprints
+
+`Statement Fingerprints` is an opt-in section enabled by `--show-fingerprints` or `--details`; it renders after Next Steps. It ranks normalized `Rows_query` statement shapes — comments stripped, literals folded to `?`, literal lists collapsed to `(?)` — across the whole selected workload, not just the transactions listed under `--top-transactions`. Each entry shows the fingerprint, attributed `rows`, statement `stmts` occurrences, `share` of total rows, per-table counts, and a bounded `Sample` of the first seen statement (`--sql-context off` hides the sample). `--top` limits the list; `--top-fingerprints` overrides it; `0` keeps every tracked group. When the binlog carried no `Rows_query` text the section prints `no Rows_query statement text captured; binlog_rows_query_log_events may be off`; when text existed but nothing was retained it prints `no retained statement fingerprints`. Omitted groups and tracker-cap overflow print their own lines. Tracking keeps at most 8192 distinct groups.
+
+```text
+=== Statement Fingerprints ===
+  1. delete from shop.orders where id in (?)
+     rows=40 stmts=1 share=83.3% tables=shop.orders=40
+     Sample: DELETE FROM shop.orders WHERE id IN (2, 3000000000)
+```
+
 ## JSON Output
 
 Use `--format json` when the result needs to be consumed by scripts, automation, or downstream tools.
@@ -319,6 +332,10 @@ The top-level JSON object always contains these fields:
 | `transactions_listed` | integer | yes | Number of transaction aggregates present in `transactions` |
 | `transactions_omitted` | integer | yes | Number of analyzed transactions omitted from `transactions`; `0` when `--top-transactions 0` is used |
 | `patterns` | array | yes | Top pattern aggregates; empty array when no pattern results exist |
+| `statement_fingerprints` | array | yes | Bounded `Rows_query` statement-shape ranking; empty array when no statement text was captured |
+| `statement_fingerprints_listed` | integer | yes | Number of fingerprint groups present in `statement_fingerprints` |
+| `statement_fingerprints_omitted` | integer | yes | Groups below the `--top-fingerprints` cut; `0` when unlimited |
+| `statement_fingerprints_overflow` | integer | no | Statement occurrences that could not be grouped after the 8192-group tracker cap; omitted when `0` |
 | `minutes` | array | yes | Per-minute aggregates; empty array when no minute buckets exist |
 | `alerts` | array | yes | Detected alerts; empty array when no alerts exist |
 | `warnings` | integer | yes | Count of analysis warnings recorded in the finalized result |
@@ -546,6 +563,19 @@ Named snapshots persist this complete report-v3 payload. Snapshot/compare reader
 | `operations` | object | yes | Aggregate operation-to-row map for the pattern |
 | `sample_query_summary` | string | no | Optional representative query summary when available |
 
+### `statement_fingerprints`
+
+`statement_fingerprints` is always present as an array. It is the `Rows_query` statement-shape ranking behind Statement Fingerprints, limited by `--top` or `--top-fingerprints` the same way as the text section; `statement_fingerprints_listed` and `statement_fingerprints_omitted` count that limit. `statement_fingerprints_overflow` is present when the 8192-group tracker cap dropped occurrences. Aggregation covers the whole selected workload — including transactions not listed under `transactions` — and respects the same filters. The array is empty when the binlog carried no `Rows_query` text; `sql_context.available` distinguishes that case from an empty workload. Entries are ranked by rows, then statements, then fingerprint text.
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `fingerprint` | string | yes | Normalized statement shape; literals are `?`, literal lists are `(?)` |
+| `sample` | string | no | First stored statement text for the group; omitted when `--sql-context off` |
+| `statements` | integer | yes | Statement occurrences that produced this shape |
+| `rows` | integer | yes | Row images attributed to those occurrences |
+| `share_of_rows` | number | yes | Fraction of total analyzed rows attributed to this shape |
+| `tables` | object | yes | Per-table row map for this shape |
+
 ### `pattern_drilldowns`
 
 `pattern_drilldowns` is always present as an array. It contains bounded drilldown summaries for high-signal patterns. It is empty when no pattern crosses the selection threshold.
@@ -699,6 +729,32 @@ The report includes:
 - Interactive donut chart: INSERT / UPDATE / DELETE operation mix
 - Top tables detail table
 - Pattern Drilldowns section for selected high-signal patterns (collapsible cards with signal flags and metric help)
+
+## CSV and TSV Output
+
+`--format csv` and `--format tsv` write exactly one report dataset as a flat delimited table on stdout: one header row plus one record per element, RFC 4180 quoting via the Go `encoding/csv` writer (TSV uses a tab delimiter). Output is deterministic — rows follow the same ranking the JSON report lists. An empty dataset still writes its header row so consumers keep a schema. `--output` is not supported for these formats (usage error, exit 3); redirect stdout instead.
+
+```bash
+# Table aggregates (default dataset)
+binlogviz analyze mysql-bin.000123 --format csv > tables.csv
+
+# Ranked transactions as TSV
+binlogviz analyze mysql-bin.000123 --format tsv --csv-dataset transactions > txns.tsv
+
+# Statement fingerprints from Rows_query text
+binlogviz analyze mysql-bin.000123 --format csv --csv-dataset fingerprints > fps.csv
+```
+
+`--csv-dataset` selects one of four datasets. Passing it with any other `--format` value is a usage error (exit 3), as is an unknown or empty dataset name.
+
+| Dataset | Columns |
+|---------|---------|
+| `tables` (default) | `schema`, `table`, `total_rows`, `insert_rows`, `update_rows`, `update_events`, `delete_rows`, `txn_count`, `event_count`, `binlog_bytes`, `ddl_count`, `key_status` |
+| `transactions` | `txn_key`, `gtid`, `xa_xid`, `thread_id`, `xid`, `start_time`, `end_time`, `duration_ms`, `total_rows`, `event_count`, `binlog_bytes`, `completeness`, `binlog_file_start`, `binlog_file_end`, `pos_start`, `pos_end`, `tables`, `operations`, `query_summary` |
+| `patterns` | `pattern_key`, `label`, `total_rows`, `txn_count`, `event_count`, `share_of_rows`, `share_of_txns`, `avg_rows_per_txn`, `tables`, `operations`, `sample_query_summary` |
+| `fingerprints` | `fingerprint`, `statements`, `rows`, `share_of_rows`, `tables`, `sample` |
+
+Per-map cells such as `tables` and `operations` serialize as `name=count` pairs joined by `;` with names sorted. The `transactions` dataset lists the same bounded top-N `transactions` ranking the JSON report carries; the `fingerprints` dataset lists the `--top-fingerprints` bounded ranking (aggregation itself always covers the whole selected workload). `query_summary`, `sample_query_summary`, and `sample` are blank when `--sql-context off` — the counts stay.
 
 ## Trend Output
 

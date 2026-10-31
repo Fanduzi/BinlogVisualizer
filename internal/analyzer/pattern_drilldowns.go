@@ -13,27 +13,27 @@ import (
 )
 
 const (
-	maxDrilldowns      = 2
-	maxPeakMinutes     = 2
+	maxDrilldowns         = 2
+	maxPeakMinutes        = 2
 	maxRepresentativeTxns = 2
 
 	// Dominance thresholds
-	dominanceRowShare  = 0.30
-	dominanceTxnShare  = 0.30
-	extremeRowShare    = 0.60
-	extremeTxnShare    = 0.60
+	dominanceRowShare = 0.30
+	dominanceTxnShare = 0.30
+	extremeRowShare   = 0.60
+	extremeTxnShare   = 0.60
 
 	// Anomaly thresholds
-	highRowsPerTxnRatio = 3.0 // avg_rows_per_txn > 3x the mean of other top patterns
+	highRowsPerTxnRatio = 3.0  // avg_rows_per_txn > 3x the mean of other top patterns
 	concentrationShare  = 0.50 // top 1-2 minutes cover this share of total rows
 )
 
 // candidate holds a pattern plus its computed signals for drilldown selection.
 type candidate struct {
-	pattern    model.PatternStats
-	dominance  bool
-	anomaly    bool
-	score      float64
+	pattern   model.PatternStats
+	dominance bool
+	anomaly   bool
+	score     float64
 }
 
 // BuildPatternDrilldowns evaluates mixed-signal candidates from finalized analysis results
@@ -150,11 +150,11 @@ func evaluateCandidate(
 func buildDrilldown(c candidate, minutes []model.MinuteBucket, txns []model.Transaction) model.PatternDrilldown {
 	p := c.pattern
 	return model.PatternDrilldown{
-		PatternKey:   p.PatternKey,
-		Label:        p.Label,
-		WhySelected:  formatWhySelected(c),
-		ShareOfRows:  p.ShareOfRows,
-		ShareOfTxns:  p.ShareOfTransactions,
+		PatternKey:    p.PatternKey,
+		Label:         p.Label,
+		WhySelected:   formatWhySelected(c),
+		ShareOfRows:   p.ShareOfRows,
+		ShareOfTxns:   p.ShareOfTransactions,
 		AvgRowsPerTxn: p.AvgRowsPerTxn,
 		SignalFlags: model.PatternSignalFlags{
 			Dominance: c.dominance,

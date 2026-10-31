@@ -136,8 +136,9 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 | `--start-pos` | `4` | `--start-file` 内的字节位置；必须与 `--start-file` 一起使用且不小于 4。 |
 | `--start-gtid` | none | 已执行 GTID 集合，从其后继续读取（MySQL `uuid:intervals` 或 MariaDB `domain-server-seq`）；与 `--start-file`/`--start-pos` 互斥。 |
 | `--ssl-mode` | `preferred` | 远程输入的 TLS 模式：`preferred`（服务器支持时使用 TLS）、`required`（必须 TLS，否则失败）或 `disabled`。 |
-| `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）或 `html`。 |
+| `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）、`html`、`csv` 或 `tsv`。 |
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
+| `--csv-dataset` | `tables` | `--format csv`/`tsv` 写出的数据集：`tables`、`transactions`、`patterns` 或 `fingerprints`。在其他格式下使用该标志是用法错误（exit 3）。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本，也不输出 `--show-rows` 的单元格）或 `full`（存储 SQL，含 DDL 语句文本，上限 4096 字节，截断时带标记）。MySQL 和 MariaDB 账号 DDL 里的口令字面量在任何模式下都会打码。 |
@@ -146,10 +147,12 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 | `--top-transactions` | `10` | 报告中包含的 Top 事务数量；`0` 表示不限制。 |
 | `--top-threads` | 继承 `--top` | 所有格式中的热点线程或会话数量；`0` 表示不限制。 |
 | `--top-rows` | 继承 `--top` | 所有格式中的热点主键数量；`0` 表示不限制。 |
-| `--top` | `10` | 文本明细章节（分钟、写入形态）以及热点线程、热点行的默认 Top-N。`0` 就是这个默认值，不是不限制。 |
-| `--details` | `false` | 在文本报告中同时展开分钟明细和写入形态。 |
+| `--top-fingerprints` | 继承 `--top` | JSON 列表、文本章节和 `fingerprints` CSV/TSV 数据集里的语句指纹组数量；`0` 表示不限制。聚合本身始终覆盖整个已选工作负载。 |
+| `--top` | `10` | 文本明细章节（分钟、写入形态）以及热点线程、热点行、语句指纹的默认 Top-N。`0` 就是这个默认值，不是不限制。 |
+| `--details` | `false` | 在文本报告中同时展开分钟明细、写入形态和语句指纹。 |
 | `--show-minutes` | `false` | 在文本报告中展示分钟级活动。 |
 | `--show-patterns` | `false` | 在文本报告中展示写入形态。 |
+| `--show-fingerprints` | `false` | 在文本报告中展示语句指纹排名。 |
 | `--detail-store` | `none` | 可选事务明细后端：`none` 或 `duckdb`。 |
 | `--detect-spikes` | `false` | 启用写入尖峰检测。 |
 | `--large-trx-rows` | `1000` | 大事务告警的行数阈值。 |
@@ -168,6 +171,8 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 binlog 是 MySQL 8 且 `binlog_row_metadata=FULL` 时，TABLE_MAP 可选元数据会给出每张表的主键（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`），或者说明这张表没有主键。每种输出都会列出没有主键、并且收到了 UPDATE 或 DELETE 行的表，按这些行数排序。副本应用这些行时可能全表扫描。没有主键但只有 INSERT 的表会点名，但不会被排成这种延迟风险。只要有一行 UPDATE 或 DELETE，就会在大事务和尖峰告警旁边给出 `no_primary_key` 警告；没有单独的阈值参数。没有 FULL 元数据时报告不猜测：这些表是 `unknown`，并说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。`--include-table`、schema 过滤、`--dml`，以及时间、位点、GTID 选择，对这一节的作用与对 Top Tables 相同。analyze 报告不生成撤销 SQL。`binlogviz flashback` 会生成。
 
 热点行按主键被 UPDATE 和 DELETE 行镜像碰到的次数排序。每一条有次数、不同事务数、第一次和最后一次事件时间，以及最早和最晚那个事务的 GTID 和 file:byte（事务起点，用来打开 `mysqlbinlog` 或 BinlogServer）。身份只来自 MySQL 8 `binlog_row_metadata=FULL`（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX` 点名的列，不是第 1 列 `@1`）。binlog 里没有主键时，这张表不参与排名，报告说明无法追踪热点行，因为 `binlog_row_metadata` 不是 FULL。没有主键的表不在这一节排名。`--top` 限制条数；`--top-rows` 覆盖它；`0` 保留已追踪的全部键。`--sql-context off` 隐藏键值，次数仍在。过滤与 Top Tables 相同。追踪最多保留 8192 个主键。满了之后，新键替换被碰到次数最少的键，次数从被丢掉的计数加一开始；报告说明达到了上限，并把这一行标成近似。从未被替换的键保持精确。JSON 字段：`hot_rows`、`hot_rows_listed`、`hot_rows_omitted`、`hot_row_track_limit`、`hot_rows_overflow`、`hot_rows_note`、`hot_row_unavailable`。
+
+语句指纹把 MySQL 在每个行块前记录的 `Rows_query` 语句文本（`binlog_rows_query_log_events=ON`）分组：注释被剥离，字符串/数字/十六进制/二进制字面量和占位符变成 `?`，空白折叠，字面量列表折叠成 `(?)`，所以 `DELETE FROM t WHERE id IN (1, 2, 3)` 和 `DELETE FROM t WHERE id IN (7)` 归为同一个形态。每组报告语句发生次数、归因行数、行占比、每表计数和一条有界样例。聚合覆盖整个已选工作负载，包括没有列入 `--top-transactions` 的事务，并遵循同样的过滤条件。组按行数、语句次数、文本排序。追踪最多保留 8192 个不同组；超出的发生次数计入 `statement_fingerprints_overflow` 而不再分组。文本章节由 `--show-fingerprints` 或 `--details` 开启，并在 binlog 没有携带 `Rows_query` 文本时明确说明。`--sql-context off` 隐藏样例，计数仍在。JSON 字段：`statement_fingerprints`、`statement_fingerprints_listed`、`statement_fingerprints_omitted`、`statement_fingerprints_overflow`。`fingerprints` CSV/TSV 数据集输出同一组有界排名。
 
 position selector 使用 `[start, stop)` 语义；discovery、多显式文件、反向/越界/事件中间位置都会失败。position 与时间条件取交集。GTID selector 在有序 rotation 上完成事务组重建后生效；匿名组不匹配任何 active selector（包括仅 exclude 的 selector）。独立的匿名 DDL 和无键上下文会被丢弃，但不会阻止后续匹配的有键事务组被保留。混合/冲突/无法解析的 flavor 会失败；合法但无保留事件的选择以 exit 2 结束且不输出报告。
 

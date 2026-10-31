@@ -1815,6 +1815,54 @@
       ],
       "type": "object"
     },
+    "statement_fingerprints": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "integer"
+          },
+          "sample": {
+            "type": "string"
+          },
+          "share_of_rows": {
+            "type": "number"
+          },
+          "statements": {
+            "type": "integer"
+          },
+          "tables": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "rows",
+          "share_of_rows",
+          "statements"
+        ],
+        "type": "object"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "statement_fingerprints_listed": {
+      "type": "integer"
+    },
+    "statement_fingerprints_omitted": {
+      "type": "integer"
+    },
+    "statement_fingerprints_overflow": {
+      "type": "integer"
+    },
     "summary": {
       "additionalProperties": false,
       "properties": {
@@ -2412,6 +2460,9 @@
     "patterns",
     "report_version",
     "sql_context",
+    "statement_fingerprints",
+    "statement_fingerprints_listed",
+    "statement_fingerprints_omitted",
     "summary",
     "tables",
     "threads",
