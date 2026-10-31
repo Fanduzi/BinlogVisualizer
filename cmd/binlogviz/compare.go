@@ -1,6 +1,6 @@
 // Package binlogviz defines command-layer report comparison.
 // input: two analyze JSON paths or snapshot names, snapshot directory, and text/JSON/HTML format.
-// output: validated compare reports rendered to the command output stream with actionable load errors.
+// output: validated compare reports rendered to the command output stream with localized usage errors and actionable load errors.
 // pos: CLI boundary between report/snapshot loading and the shared compare engine and renderers.
 // note: if this file changes, update this header and cmd/binlogviz/README.md.
 package binlogviz
@@ -20,6 +20,7 @@ import (
 
 	comparepkg "binlogviz/internal/compare"
 	"binlogviz/internal/displaytz"
+	"binlogviz/internal/i18n"
 	snapshotpkg "binlogviz/internal/snapshot"
 )
 
@@ -40,8 +41,8 @@ func newCompareCommand() *cobra.Command {
 	opts := &compareOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "compare [<current.json> <baseline.json>]",
-		Short: "Compare two BinlogViz JSON analysis reports",
+		Use:   i18n.T("cmd.compare.use"),
+		Short: i18n.T("cmd.compare.short"),
 		Example: `  binlogviz analyze mysql-bin.000001 --format json --snapshot-name current --snapshot-dir snaps
   binlogviz analyze mysql-bin.000002 --format json --snapshot-name baseline --snapshot-dir snaps
   binlogviz compare --current-snapshot current --baseline-snapshot baseline --snapshot-dir snaps`,
@@ -52,11 +53,11 @@ func newCompareCommand() *cobra.Command {
 			hasBaselineSnapshot := strings.TrimSpace(opts.baselineSnapshot) != ""
 
 			if hasCurrentSnapshot != hasBaselineSnapshot {
-				return clierr.Errorf(clierr.KindUsage, "current-snapshot and baseline-snapshot must be provided together")
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.compareSnapshotsTogether"))
 			}
 			if hasCurrentSnapshot {
 				if len(args) > 0 {
-					return clierr.Errorf(clierr.KindUsage, "cannot combine file and snapshot compare modes")
+					return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.compareModesCombined"))
 				}
 				return nil
 			}
@@ -67,10 +68,10 @@ func newCompareCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.format, "format", "text", "Compare output format: text, json, or html")
-	cmd.Flags().StringVar(&opts.currentSnapshot, "current-snapshot", "", "Snapshot name to use as the current report")
-	cmd.Flags().StringVar(&opts.baselineSnapshot, "baseline-snapshot", "", "Snapshot name to use as the baseline report")
-	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to load snapshots from")
+	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.compare.flag.format"))
+	cmd.Flags().StringVar(&opts.currentSnapshot, "current-snapshot", "", i18n.T("cmd.compare.flag.currentSnapshot"))
+	cmd.Flags().StringVar(&opts.baselineSnapshot, "baseline-snapshot", "", i18n.T("cmd.compare.flag.baselineSnapshot"))
+	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", i18n.T("cmd.compare.flag.snapshotDir"))
 
 	return cmd
 }
@@ -92,7 +93,7 @@ func renderCompare(result comparepkg.CompareResult, format string, loc *time.Loc
 
 func runCompare(opts *compareOptions, args []string, out io.Writer, loc *time.Location) error {
 	if !slices.Contains(compareFormats, opts.format) {
-		return clierr.Errorf(clierr.KindUsage, "unsupported compare format: %s", opts.format)
+		return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.unsupportedFormat", map[string]any{"Subject": "compare", "Value": opts.format}))
 	}
 
 	current, baseline, err := resolveCompareReports(args, opts)
@@ -146,7 +147,7 @@ func loadCompareReport(side, path string) (comparepkg.InputReport, error) {
 
 	var syntaxErr *json.SyntaxError
 	if errors.As(err, &syntaxErr) {
-		return comparepkg.InputReport{}, clierr.New(clierr.KindCorrupt, "compare wants two JSON reports or --current-snapshot/--baseline-snapshot")
+		return comparepkg.InputReport{}, clierr.New(clierr.KindCorrupt, i18n.T("error.compareInput"))
 	}
 	// A report that cannot be opened or read (missing, permission, a
 	// directory) is an input error, exit 4, as for analyze (#268). One that

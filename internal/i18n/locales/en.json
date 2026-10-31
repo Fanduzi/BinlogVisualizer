@@ -2202,5 +2202,773 @@
   "report.label.sample": {
     "description": "Sample statement label",
     "other": "Sample"
+  },
+  "cmd.workflow.short": {
+    "description": "Workflow command short description",
+    "other": "Run multi-step BinlogViz investigation workflows"
+  },
+  "cmd.workflow.run.use": {
+    "description": "Workflow run usage line",
+    "other": "run <plan.yaml>"
+  },
+  "cmd.workflow.run.short": {
+    "description": "Workflow run short description",
+    "other": "Execute a workflow plan"
+  },
+  "cmd.workflow.resume.use": {
+    "description": "Workflow resume usage line",
+    "other": "resume <output_dir>"
+  },
+  "cmd.workflow.resume.short": {
+    "description": "Workflow resume short description",
+    "other": "Resume a previously run workflow from its output directory"
+  },
+  "cmd.workflow.validate.use": {
+    "description": "Workflow validate usage line",
+    "other": "validate <plan.yaml>"
+  },
+  "cmd.workflow.validate.short": {
+    "description": "Workflow validate short description",
+    "other": "Validate a workflow plan without executing it"
+  },
+  "cmd.workflow.describe.use": {
+    "description": "Workflow describe usage line",
+    "other": "describe <plan.yaml>"
+  },
+  "cmd.workflow.describe.short": {
+    "description": "Workflow describe short description",
+    "other": "Describe a workflow plan without executing it"
+  },
+  "cmd.workflow.status.use": {
+    "description": "Workflow status usage line",
+    "other": "status <output_dir>"
+  },
+  "cmd.workflow.status.short": {
+    "description": "Workflow status short description",
+    "other": "Inspect workflow runtime state without modifying it"
+  },
+  "cmd.workflow.clean.use": {
+    "description": "Workflow clean usage line",
+    "other": "clean <output_dir>"
+  },
+  "cmd.workflow.clean.short": {
+    "description": "Workflow clean short description",
+    "other": "Preview or delete orphaned workflow artifacts safely"
+  },
+  "cmd.workflow.export.use": {
+    "description": "Workflow export usage line",
+    "other": "export <output_dir>"
+  },
+  "cmd.workflow.export.short": {
+    "description": "Workflow export short description",
+    "other": "Bundle workflow artifacts into a read-only archive"
+  },
+  "cmd.workflow.flag.format": {
+    "description": "Workflow output format flag description",
+    "other": "Output format: text or json"
+  },
+  "cmd.workflow.flag.outputDir": {
+    "description": "Workflow output directory override flag description",
+    "other": "Override the plan-defined output directory"
+  },
+  "cmd.workflow.flag.snapshotDir": {
+    "description": "Workflow snapshot directory override flag description",
+    "other": "Override the snapshot storage directory"
+  },
+  "cmd.workflow.flag.rerun": {
+    "description": "Workflow resume rerun flag description",
+    "other": "Explicit step to rerun (repeatable, format: kind:name)"
+  },
+  "cmd.workflow.flag.apply": {
+    "description": "Workflow clean apply flag description",
+    "other": "Move orphaned files into <output_dir>/.trash/<id>/ instead of previewing them"
+  },
+  "cmd.workflow.flag.includeSnapshots": {
+    "description": "Workflow clean include-snapshots flag description",
+    "other": "Also delete superseded snapshots this workflow created (per ledger.jsonl)"
+  },
+  "cmd.workflow.flag.cleanSnapshotDir": {
+    "description": "Workflow clean snapshot-dir flag description",
+    "other": "Snapshot directory for --include-snapshots (default: the standard snapshot dir); must match the manifest's snapshot_dir"
+  },
+  "cmd.workflow.flag.force": {
+    "description": "Workflow clean force flag description",
+    "other": "Also delete unattributed outputs of recorded step kinds, and allow a workflow dir without ledger.jsonl; never deletes snapshots the ledger does not attribute"
+  },
+  "cmd.workflow.flag.output": {
+    "description": "Workflow export output flag description",
+    "other": "Archive output path (default: <output_dir>.zip)"
+  },
+  "cmd.workflow.flag.exportIncludeSnapshots": {
+    "description": "Workflow export include-snapshots flag description",
+    "other": "Include referenced snapshot JSON files in the archive"
+  },
+  "cmd.workflow.yes": {
+    "description": "Affirmative boolean label",
+    "other": "yes"
+  },
+  "cmd.workflow.no": {
+    "description": "Negative boolean label",
+    "other": "no"
+  },
+  "cmd.workflow.warnings": {
+    "description": "Warnings section heading",
+    "other": "Warnings"
+  },
+  "cmd.workflow.validate.valid": {
+    "description": "Workflow plan valid report",
+    "other": "Workflow plan valid\n- workflow: {{.Name}}\n- windows: {{.Windows}}\n- compare jobs: {{.CompareJobs}}\n- trend jobs: {{.TrendJobs}}\n- output root: {{.OutputDir}}\n"
+  },
+  "cmd.workflow.validate.invalid": {
+    "description": "Workflow plan invalid report",
+    "other": "Workflow plan invalid\n- {{.Error}}\n"
+  },
+  "cmd.workflow.describe.header": {
+    "description": "Workflow describe header",
+    "other": "Workflow: {{.Name}}\nOutput Root: {{.OutputDir}}\nSnapshot Save: {{.SnapshotSave}}\n\n"
+  },
+  "cmd.workflow.describe.analyzeWindows": {
+    "description": "Analyze windows section heading",
+    "other": "Analyze Windows"
+  },
+  "cmd.workflow.describe.artifacts": {
+    "description": "Artifacts line",
+    "other": "  artifacts: {{.Artifacts}}\n"
+  },
+  "cmd.workflow.describe.snapshot": {
+    "description": "Snapshot name line",
+    "other": "  snapshot: {{.Name}}\n"
+  },
+  "cmd.workflow.describe.dependsOn": {
+    "description": "Depends-on line",
+    "other": "  depends on: {{.Deps}}\n"
+  },
+  "cmd.workflow.describe.compareJobs": {
+    "description": "Compare jobs section heading",
+    "other": "Compare Jobs"
+  },
+  "cmd.workflow.describe.trendJobs": {
+    "description": "Trend jobs section heading",
+    "other": "Trend Jobs"
+  },
+  "cmd.workflow.status.header": {
+    "description": "Workflow status header",
+    "other": "Workflow Status: {{.Name}}\nOutput Root: {{.OutputDir}}\nManifest Version: {{.Version}}\nMode: {{.Mode}}\nAttempt: {{.Attempt}}\nStatus: {{.Status}}\nRuntime State: {{.RuntimeState}}\nResumable: {{.Resumable}}\n"
+  },
+  "cmd.workflow.status.reason": {
+    "description": "Workflow status resume-error reason line",
+    "other": "Reason: {{.Reason}}\n"
+  },
+  "cmd.workflow.status.steps": {
+    "description": "Steps section heading",
+    "other": "Steps"
+  },
+  "cmd.workflow.status.stepStatus": {
+    "description": "Step status line",
+    "other": "  status: {{.Status}}\n"
+  },
+  "cmd.workflow.status.stepExecution": {
+    "description": "Step execution line",
+    "other": "  execution: {{.Execution}}\n"
+  },
+  "cmd.workflow.status.noArtifacts": {
+    "description": "Step with no artifacts line",
+    "other": "  artifacts: none\n"
+  },
+  "cmd.workflow.status.missing": {
+    "description": "Missing artifact marker",
+    "other": "missing {{.Path}}"
+  },
+  "cmd.workflow.status.stepArtifacts": {
+    "description": "Step artifacts line",
+    "other": "  artifacts: {{.Artifacts}}\n"
+  },
+  "cmd.workflow.status.recommendations": {
+    "description": "Workflow recommendations section heading",
+    "other": "Workflow Recommendations"
+  },
+  "cmd.workflow.status.findings": {
+    "description": "Workflow findings section heading",
+    "other": "Workflow Findings"
+  },
+  "cmd.workflow.status.summaryWarnings": {
+    "description": "Workflow summary warnings section heading",
+    "other": "Workflow Summary Warnings"
+  },
+  "cmd.workflow.status.resumePreview": {
+    "description": "Resume preview section heading",
+    "other": "Resume Preview"
+  },
+  "cmd.workflow.clean.header": {
+    "description": "Workflow clean header",
+    "other": "Workflow Clean: {{.Name}}\nOutput Root: {{.OutputDir}}\nMode: {{.Mode}}\nInclude Snapshots: {{.IncludeSnapshots}}\nArtifact Orphans: {{.ArtifactOrphans}}\nSnapshot Orphans: {{.SnapshotOrphans}}\nDeleted: {{.Deleted}}\nSkipped: {{.Skipped}}\n"
+  },
+  "cmd.workflow.clean.orphanedArtifacts": {
+    "description": "Orphaned artifacts section heading",
+    "other": "Orphaned Artifacts"
+  },
+  "cmd.workflow.clean.orphanedSnapshots": {
+    "description": "Orphaned snapshots section heading",
+    "other": "Orphaned Snapshots"
+  },
+  "cmd.workflow.clean.kept": {
+    "description": "Kept orphans section heading",
+    "other": "Kept (not attributable to this workflow; --force deletes artifacts of recorded kinds)"
+  },
+  "cmd.workflow.clean.deleted": {
+    "description": "Deleted files section heading",
+    "other": "Deleted"
+  },
+  "cmd.workflow.clean.skipped": {
+    "description": "Skipped files section heading",
+    "other": "Skipped"
+  },
+  "cmd.workflow.clean.noneList": {
+    "description": "Empty list marker",
+    "other": "- none"
+  },
+  "cmd.workflow.clean.movedToTrash": {
+    "description": "Moved-to-trash notice",
+    "other": "Moved to trash: {{.Dir}} (clean never empties it; delete it yourself when no longer needed)\n"
+  },
+  "cmd.workflow.export.header": {
+    "description": "Workflow export header",
+    "other": "Workflow Export\nWorkflow: {{.Name}}\nOutput Root: {{.OutputDir}}\nArchive: {{.Archive}}\nFormat: {{.Format}}\nIncluded Files: {{.IncludedFiles}}\nIncluded Snapshots: {{.IncludedSnapshots}}\n"
+  },
+  "progress.workflowNothingToResume": {
+    "description": "Nothing-to-resume notice",
+    "other": "nothing to resume"
+  },
+  "progress.workflowResuming": {
+    "description": "Workflow resume start notice",
+    "other": "workflow \"{{.Name}}\": resuming (attempt {{.Attempt}})\n"
+  },
+  "progress.workflowReuseStep": {
+    "description": "Workflow step reuse notice",
+    "other": "  reuse {{.Kind}} \"{{.Name}}\"\n"
+  },
+  "progress.workflowStarting": {
+    "description": "Workflow start notice",
+    "other": "workflow \"{{.Name}}\": starting\n"
+  },
+  "progress.workflowSnapshotSaved": {
+    "description": "Workflow snapshot saved notice",
+    "other": "  saved snapshot \"{{.Name}}\" to {{.Path}}\n"
+  },
+  "progress.workflowLedgerNotRecorded": {
+    "description": "Workflow ledger not-recorded warning",
+    "other": "workflow: not recorded in ledger: {{.Error}}\n"
+  },
+  "progress.workflowLedgerAppendFailed": {
+    "description": "Workflow ledger append failure warning",
+    "other": "workflow: failed to append ledger: {{.Error}}\n"
+  },
+  "progress.workflowManifestWriteFailed": {
+    "description": "Workflow manifest write failure warning",
+    "other": "workflow: failed to write manifest: {{.Error}}\n"
+  },
+  "progress.workflowManifestWritten": {
+    "description": "Workflow manifest written notice",
+    "other": "workflow: manifest written to {{.Path}}\n"
+  },
+  "progress.workflowIndexWriteFailed": {
+    "description": "Workflow index write failure warning",
+    "other": "workflow: failed to write index: {{.Error}}\n"
+  },
+  "progress.workflowIndexWritten": {
+    "description": "Workflow index written notice",
+    "other": "workflow: index written to {{.Path}}\n"
+  },
+  "progress.workflowFailed": {
+    "description": "Workflow failure notice",
+    "other": "workflow \"{{.Name}}\": failed\n"
+  },
+  "warning.workflowPlanNotIncluded": {
+    "description": "Workflow export plan-not-included warning",
+    "other": "warning: plan.yaml not included in export: {{.Reason}}\n"
+  },
+  "error.unsupportedFormat": {
+    "description": "Unsupported output format error",
+    "other": "unsupported {{.Subject}} format: {{.Value}}"
+  },
+  "error.workflowFormat": {
+    "description": "Unsupported workflow subcommand format error",
+    "other": "unsupported workflow {{.Command}} format \"{{.Value}}\" (allowed: text, json)"
+  },
+  "error.workflowCleanSkipped": {
+    "description": "Workflow clean skipped-files error",
+    "other": "workflow clean could not move {{.Count}} file(s) to trash: {{.Reasons}}"
+  },
+  "error.snapshotNameRequired": {
+    "description": "Snapshot name flag required error",
+    "other": "required flag(s) \"name\" not set"
+  },
+  "error.compareSnapshotsTogether": {
+    "description": "Compare snapshot flags must come together error",
+    "other": "current-snapshot and baseline-snapshot must be provided together"
+  },
+  "error.compareModesCombined": {
+    "description": "Compare file/snapshot mode conflict error",
+    "other": "cannot combine file and snapshot compare modes"
+  },
+  "error.compareInput": {
+    "description": "Compare input requirements error",
+    "other": "compare wants two JSON reports or --current-snapshot/--baseline-snapshot"
+  },
+  "error.trendArgsWithPattern": {
+    "description": "Trend args/pattern conflict error",
+    "other": "cannot combine explicit snapshot arguments with --from-snapshots"
+  },
+  "error.trendMinSnapshots": {
+    "description": "Trend minimum snapshots error",
+    "other": "trend requires at least 2 snapshots"
+  },
+  "error.trendMinSnapshotsPattern": {
+    "description": "Trend minimum snapshots after pattern error",
+    "other": "trend requires at least 2 snapshots after resolving pattern \"{{.Pattern}}\""
+  },
+  "error.workflowResumeNoVersion": {
+    "description": "Resume legacy manifest error",
+    "other": "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead"
+  },
+  "error.workflowResumeVersionUnsupported": {
+    "description": "Resume unsupported manifest version error",
+    "other": "cannot resume: manifest_version {{.Version}} is not supported (only version 2 is supported)"
+  },
+  "error.workflowResumeNoPlanPath": {
+    "description": "Resume missing plan_path error",
+    "other": "cannot resume: manifest has no plan_path"
+  },
+  "error.workflowCompareNoCurrent": {
+    "description": "Workflow compare missing current report error",
+    "other": "compare \"{{.Job}}\": current window \"{{.Window}}\" report not found"
+  },
+  "error.workflowCompareNoBaseline": {
+    "description": "Workflow compare missing baseline report error",
+    "other": "compare \"{{.Job}}\": baseline window \"{{.Window}}\" report not found"
+  },
+  "error.workflowTrendNoSnapshot": {
+    "description": "Workflow trend missing snapshot report error",
+    "other": "trend \"{{.Job}}\": snapshot \"{{.Snapshot}}\" report not found"
+  },
+  "error.workflowStepFormat": {
+    "description": "Workflow step unsupported format error",
+    "other": "unsupported format \"{{.Value}}\""
+  },
+  "cmd.snapshot.short": {
+    "description": "Snapshot command short description",
+    "other": "Manage snapshots"
+  },
+  "cmd.snapshot.save.use": {
+    "description": "Snapshot save usage line",
+    "other": "save <report.json>"
+  },
+  "cmd.snapshot.save.short": {
+    "description": "Snapshot save short description",
+    "other": "Save an analyze JSON report as a named snapshot"
+  },
+  "cmd.snapshot.list.short": {
+    "description": "Snapshot list short description",
+    "other": "List saved snapshots"
+  },
+  "cmd.snapshot.show.use": {
+    "description": "Snapshot show usage line",
+    "other": "show <name>"
+  },
+  "cmd.snapshot.show.short": {
+    "description": "Snapshot show short description",
+    "other": "Show snapshot metadata and summary"
+  },
+  "cmd.snapshot.rename.use": {
+    "description": "Snapshot rename usage line",
+    "other": "rename <old-name> <new-name>"
+  },
+  "cmd.snapshot.rename.short": {
+    "description": "Snapshot rename short description",
+    "other": "Rename a stored snapshot"
+  },
+  "cmd.snapshot.delete.use": {
+    "description": "Snapshot delete usage line",
+    "other": "delete <name>"
+  },
+  "cmd.snapshot.delete.short": {
+    "description": "Snapshot delete short description",
+    "other": "Delete a stored snapshot"
+  },
+  "cmd.snapshot.flag.name": {
+    "description": "Snapshot name flag description",
+    "other": "Snapshot name (required)"
+  },
+  "cmd.snapshot.flag.snapshotDir": {
+    "description": "Snapshot save directory flag description",
+    "other": "Directory to save snapshots"
+  },
+  "cmd.snapshot.flag.snapshotDirLoad": {
+    "description": "Snapshot load directory flag description",
+    "other": "Directory to load snapshots from"
+  },
+  "cmd.snapshot.flag.listFormat": {
+    "description": "Snapshot list format flag description",
+    "other": "Snapshot list output format: text or json"
+  },
+  "cmd.snapshot.flag.showFormat": {
+    "description": "Snapshot show format flag description",
+    "other": "Snapshot show output format: text or json"
+  },
+  "cmd.snapshot.saved": {
+    "description": "Snapshot saved confirmation",
+    "other": "Saved snapshot \"{{.Name}}\" to {{.Path}}\n"
+  },
+  "cmd.snapshot.renamed": {
+    "description": "Snapshot renamed confirmation",
+    "other": "Renamed snapshot \"{{.Old}}\" to \"{{.New}}\" at {{.Path}}\n"
+  },
+  "cmd.snapshot.deleted": {
+    "description": "Snapshot deleted confirmation",
+    "other": "Deleted snapshot \"{{.Name}}\" at {{.Path}}\n"
+  },
+  "cmd.snapshot.listHeader": {
+    "description": "Snapshot list table header",
+    "other": "NAME\tLABEL\tCREATED_AT\tINPUT_MODE\tWINDOW\tDIAGNOSTICS"
+  },
+  "cmd.snapshot.emptyDiagnostics": {
+    "description": "Empty diagnostics mode marker",
+    "other": "(empty)"
+  },
+  "cmd.snapshot.show.name": {
+    "description": "Snapshot show name label",
+    "other": "name: {{.Value}}"
+  },
+  "cmd.snapshot.show.path": {
+    "description": "Snapshot show path label",
+    "other": "path: {{.Value}}"
+  },
+  "cmd.snapshot.show.label": {
+    "description": "Snapshot show label label",
+    "other": "label: {{.Value}}"
+  },
+  "cmd.snapshot.show.createdAt": {
+    "description": "Snapshot show created_at label",
+    "other": "created_at: {{.Value}}"
+  },
+  "cmd.snapshot.show.binlogvizVersion": {
+    "description": "Snapshot show binlogviz_version label",
+    "other": "binlogviz_version: {{.Value}}"
+  },
+  "cmd.snapshot.show.inputMode": {
+    "description": "Snapshot show input_mode label",
+    "other": "input_mode: {{.Value}}"
+  },
+  "cmd.snapshot.show.inputSource": {
+    "description": "Snapshot show input_source label",
+    "other": "input_source: {{.Value}}"
+  },
+  "cmd.snapshot.show.filters": {
+    "description": "Snapshot show filters label",
+    "other": "filters: {{.Value}}"
+  },
+  "cmd.snapshot.show.totalTransactions": {
+    "description": "Snapshot show total_transactions label",
+    "other": "total_transactions: {{.Value}}"
+  },
+  "cmd.snapshot.show.totalRows": {
+    "description": "Snapshot show total_rows label",
+    "other": "total_rows: {{.Value}}"
+  },
+  "cmd.snapshot.show.totalEvents": {
+    "description": "Snapshot show total_events label",
+    "other": "total_events: {{.Value}}"
+  },
+  "cmd.snapshot.show.warnings": {
+    "description": "Snapshot show warnings label",
+    "other": "warnings: {{.Value}}"
+  },
+  "cmd.compare.use": {
+    "description": "Compare usage line",
+    "other": "compare [<current.json> <baseline.json>]"
+  },
+  "cmd.compare.short": {
+    "description": "Compare command short description",
+    "other": "Compare two BinlogViz JSON analysis reports"
+  },
+  "cmd.compare.flag.format": {
+    "description": "Compare format flag description",
+    "other": "Compare output format: text, json, or html"
+  },
+  "cmd.compare.flag.currentSnapshot": {
+    "description": "Compare current-snapshot flag description",
+    "other": "Snapshot name to use as the current report"
+  },
+  "cmd.compare.flag.baselineSnapshot": {
+    "description": "Compare baseline-snapshot flag description",
+    "other": "Snapshot name to use as the baseline report"
+  },
+  "cmd.compare.flag.snapshotDir": {
+    "description": "Compare snapshot-dir flag description",
+    "other": "Directory to load snapshots from"
+  },
+  "cmd.trend.use": {
+    "description": "Trend usage line",
+    "other": "trend [<snapshot...>]"
+  },
+  "cmd.trend.short": {
+    "description": "Trend command short description",
+    "other": "Analyze multiple snapshots as an ordered trend"
+  },
+  "cmd.trend.flag.format": {
+    "description": "Trend format flag description",
+    "other": "Trend output format: text, json, or html"
+  },
+  "cmd.trend.flag.fromSnapshots": {
+    "description": "Trend from-snapshots flag description",
+    "other": "Pattern used to select snapshots by name"
+  },
+  "cmd.trend.flag.baselineSnapshot": {
+    "description": "Trend baseline-snapshot flag description",
+    "other": "Optional snapshot name to use as baseline deltas"
+  },
+  "cmd.trend.flag.snapshotDir": {
+    "description": "Trend snapshot-dir flag description",
+    "other": "Directory to load snapshots from"
+  },
+  "cmd.trend.flag.topTables": {
+    "description": "Trend top-tables flag description",
+    "other": "Number of top tables to include in trend output"
+  },
+  "cmd.trend.flag.order": {
+    "description": "Trend order flag description",
+    "other": "Trend point order: cli (keep argument/selection order) or time (sort by window start_time)"
+  },
+  "cmd.trend.reordered": {
+    "description": "Trend reordered notice",
+    "other": "trend: reordered by window start_time: {{.Names}}\n"
+  },
+  "report.text.compare.summary": {
+    "description": "Compare text report heading",
+    "other": "Compare Summary\n"
+  },
+  "report.text.compare.currentLabel": {
+    "description": "Current report label line",
+    "other": "Current Label: {{.Value}}\n"
+  },
+  "report.text.compare.baselineLabel": {
+    "description": "Baseline report label line",
+    "other": "Baseline Label: {{.Value}}\n"
+  },
+  "report.text.compare.currentWindow": {
+    "description": "Current report window line",
+    "other": "Current Window: {{.Value}}\n"
+  },
+  "report.text.compare.baselineWindow": {
+    "description": "Baseline report window line",
+    "other": "Baseline Window: {{.Value}}\n"
+  },
+  "report.text.compare.currentInputMode": {
+    "description": "Current report input mode line",
+    "other": "Current Input Mode: {{.Value}}\n"
+  },
+  "report.text.compare.baselineInputMode": {
+    "description": "Baseline report input mode line",
+    "other": "Baseline Input Mode: {{.Value}}\n"
+  },
+  "report.text.compare.currentSource": {
+    "description": "Current report source line",
+    "other": "Current Source: {{.Value}}\n"
+  },
+  "report.text.compare.baselineSource": {
+    "description": "Baseline report source line",
+    "other": "Baseline Source: {{.Value}}\n"
+  },
+  "report.text.compare.currentFilters": {
+    "description": "Current report filters line",
+    "other": "Current Filters: {{.Value}}\n"
+  },
+  "report.text.compare.baselineFilters": {
+    "description": "Baseline report filters line",
+    "other": "Baseline Filters: {{.Value}}\n"
+  },
+  "report.text.compare.rows": {
+    "description": "Compare rows delta line",
+    "other": "Rows: {{.Baseline}} -> {{.Current}} ({{.Delta}})\n"
+  },
+  "report.text.compare.transactions": {
+    "description": "Compare transactions delta line",
+    "other": "Transactions: {{.Baseline}} -> {{.Current}} ({{.Delta}})\n"
+  },
+  "report.text.compare.warnings": {
+    "description": "Compare warnings delta line",
+    "other": "Warnings: {{.Baseline}} -> {{.Current}} ({{.Delta}})\n"
+  },
+  "report.text.compare.inputFileSize": {
+    "description": "Compare input file size line",
+    "other": "Input File Size: {{.BaselineLabel}}={{.BaselineSize}} -> {{.CurrentLabel}}={{.CurrentSize}}\n"
+  },
+  "report.text.compare.countedEventBytes": {
+    "description": "Compare counted event bytes line",
+    "other": "Counted Event Bytes: {{.BaselineLabel}}={{.BaselineSize}} -> {{.CurrentLabel}}={{.CurrentSize}}\n"
+  },
+  "report.text.compare.keyFindings": {
+    "description": "Key findings section heading",
+    "other": "Key Findings\n"
+  },
+  "report.text.compare.evidence": {
+    "description": "Evidence references line",
+    "other": "   evidence: {{.Labels}}\n"
+  },
+  "report.text.compare.recommendedNextChecks": {
+    "description": "Recommended next checks section heading",
+    "other": "Recommended Next Checks\n"
+  },
+  "report.text.compare.topTableChanges": {
+    "description": "Top table changes section heading",
+    "other": "Top Table Changes\n"
+  },
+  "report.text.compare.topPatternChanges": {
+    "description": "Top pattern changes section heading",
+    "other": "\nTop Pattern Changes\n"
+  },
+  "report.text.compare.noneList": {
+    "description": "Empty list marker",
+    "other": "- none\n"
+  },
+  "report.text.compare.queryLine": {
+    "description": "Pattern sample query line",
+    "other": "  query: {{.Query}}\n"
+  },
+  "report.text.compare.drilldown": {
+    "description": "Drilldown section heading",
+    "other": "  drilldown:\n"
+  },
+  "report.text.compare.whyLine": {
+    "description": "Drilldown why-selected line",
+    "other": "    why: {{.Why}}\n"
+  },
+  "report.text.compare.operationMix": {
+    "description": "Operation mix section heading",
+    "other": "\nOperation Mix\n"
+  },
+  "report.text.compare.alertChanges": {
+    "description": "Alert changes section heading",
+    "other": "\nAlert Changes\n"
+  },
+  "report.text.compare.addedAlerts": {
+    "description": "Added alerts section heading",
+    "other": "Added Alerts ({{.Count}})\n"
+  },
+  "report.text.compare.removedAlerts": {
+    "description": "Removed alerts section heading",
+    "other": "Removed Alerts ({{.Count}})\n"
+  },
+  "report.text.compare.largestTxn": {
+    "description": "Largest transaction line",
+    "other": "Largest txn: {{.Baseline}} -> {{.Current}}"
+  },
+  "report.text.compare.newSuffix": {
+    "description": "New-identity suffix",
+    "other": " NEW"
+  },
+  "report.text.trend.summary": {
+    "description": "Trend text report heading",
+    "other": "Trend Summary\n"
+  },
+  "report.text.trend.inputMode": {
+    "description": "Trend input mode line",
+    "other": "Input Mode: {{.Value}}\n"
+  },
+  "report.text.trend.baselineSnapshot": {
+    "description": "Trend baseline snapshot line",
+    "other": "Baseline Snapshot: {{.Value}}\n"
+  },
+  "report.text.trend.rows": {
+    "description": "Trend rows delta line",
+    "other": "Rows: {{.First}} -> {{.Last}} ({{.Delta}})\n"
+  },
+  "report.text.trend.transactions": {
+    "description": "Trend transactions delta line",
+    "other": "Transactions: {{.First}} -> {{.Last}} ({{.Delta}})\n"
+  },
+  "report.text.trend.events": {
+    "description": "Trend events delta line",
+    "other": "Events: {{.First}} -> {{.Last}} ({{.Delta}})\n"
+  },
+  "report.text.trend.alerts": {
+    "description": "Trend alerts delta line",
+    "other": "Alerts: {{.First}} -> {{.Last}} ({{.Delta}})\n"
+  },
+  "report.text.trend.keyFindings": {
+    "description": "Key findings section heading",
+    "other": "\nKey Findings\n"
+  },
+  "report.text.trend.evidence": {
+    "description": "Evidence references line",
+    "other": "   evidence: {{.Labels}}\n"
+  },
+  "report.text.trend.recommendedNextChecks": {
+    "description": "Recommended next checks section heading",
+    "other": "\nRecommended Next Checks\n"
+  },
+  "report.text.trend.orderedPoints": {
+    "description": "Ordered points section heading",
+    "other": "\nOrdered Points\n"
+  },
+  "report.text.trend.pointBaselineDelta": {
+    "description": "Point baseline-delta suffix",
+    "other": " | vs baseline rows={{.Rows}} txns={{.Txns}} events={{.Events}} alerts={{.Alerts}}"
+  },
+  "report.text.trend.operationMix": {
+    "description": "Operation mix section heading",
+    "other": "\nOperation Mix\n"
+  },
+  "report.text.trend.topTableMovement": {
+    "description": "Top table movement section heading",
+    "other": "\nTop Table Movement\n"
+  },
+  "report.text.trend.noneList": {
+    "description": "Empty list marker",
+    "other": "- none\n"
+  },
+  "report.text.trend.topPatternTrends": {
+    "description": "Top pattern trends section heading",
+    "other": "\nTop Pattern Trends\n"
+  },
+  "report.text.trend.drilldown": {
+    "description": "Drilldown section heading",
+    "other": "  drilldown:\n"
+  },
+  "report.text.trend.whyLine": {
+    "description": "Drilldown why-selected line",
+    "other": "    why: {{.Why}}\n"
+  },
+  "report.text.trend.aggregateInsights": {
+    "description": "Aggregate insights section heading",
+    "other": "\nAggregate Insights\n"
+  },
+  "report.text.trend.firstSnapshot": {
+    "description": "First snapshot insight line",
+    "other": "- First snapshot: {{.Value}}\n"
+  },
+  "report.text.trend.lastSnapshot": {
+    "description": "Last snapshot insight line",
+    "other": "- Last snapshot: {{.Value}}\n"
+  },
+  "report.text.trend.rowsDelta": {
+    "description": "Rows delta insight line",
+    "other": "- Rows delta: {{.Delta}}\n"
+  },
+  "report.text.trend.txnsDelta": {
+    "description": "Transactions delta insight line",
+    "other": "- Transactions delta: {{.Delta}}\n"
+  },
+  "report.text.trend.eventsDelta": {
+    "description": "Events delta insight line",
+    "other": "- Events delta: {{.Delta}}\n"
+  },
+  "report.text.trend.alertDelta": {
+    "description": "Alert delta insight line",
+    "other": "- Alert delta: {{.Delta}}\n"
+  },
+  "report.text.trend.patternFallback": {
+    "description": "Unnamed pattern fallback label",
+    "other": "pattern"
   }
 }

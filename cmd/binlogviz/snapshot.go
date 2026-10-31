@@ -15,6 +15,7 @@ import (
 
 	comparepkg "binlogviz/internal/compare"
 	"binlogviz/internal/displaytz"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/jsonout"
 	snapshotpkg "binlogviz/internal/snapshot"
 	"binlogviz/internal/version"
@@ -29,7 +30,7 @@ type snapshotOptions struct {
 func newSnapshotCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "snapshot",
-		Short: "Manage snapshots",
+		Short: i18n.T("cmd.snapshot.short"),
 		Example: `  binlogviz analyze mysql-bin.000001 --format json --snapshot-name incident-listed --snapshot-dir snaps
   binlogviz snapshot list --snapshot-dir snaps
   binlogviz snapshot show incident-listed --snapshot-dir snaps`,
@@ -51,8 +52,8 @@ func newSnapshotSaveCommand() *cobra.Command {
 	opts := &snapshotOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "save <report.json>",
-		Short:         "Save an analyze JSON report as a named snapshot",
+		Use:           i18n.T("cmd.snapshot.save.use"),
+		Short:         i18n.T("cmd.snapshot.save.short"),
 		Example:       `  binlogviz snapshot save analyze.json --name incident-saved --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -61,7 +62,7 @@ func newSnapshotSaveCommand() *cobra.Command {
 			// #277: a missing --name is a usage error (exit 3), not cobra's
 			// untyped required-flag error.
 			if opts.name == "" {
-				return clierr.Errorf(clierr.KindUsage, "required flag(s) \"name\" not set")
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.snapshotNameRequired"))
 			}
 			if err := snapshotpkg.ValidateName(opts.name); err != nil {
 				return err
@@ -83,13 +84,13 @@ func newSnapshotSaveCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.ErrOrStderr(), "Saved snapshot %q to %s\n", opts.name, savedPath)
+			_, err = fmt.Fprint(cmd.ErrOrStderr(), i18n.Tf("cmd.snapshot.saved", map[string]any{"Name": opts.name, "Path": savedPath}))
 			return err
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.name, "name", "", "Snapshot name (required)")
-	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to save snapshots")
+	cmd.Flags().StringVar(&opts.name, "name", "", i18n.T("cmd.snapshot.flag.name"))
+	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", i18n.T("cmd.snapshot.flag.snapshotDir"))
 
 	return cmd
 }
@@ -99,7 +100,7 @@ func newSnapshotListCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "List saved snapshots",
+		Short: i18n.T("cmd.snapshot.list.short"),
 		Example: `  binlogviz snapshot list --snapshot-dir snaps
   binlogviz snapshot list --format json --snapshot-dir snaps`,
 		SilenceUsage:  true,
@@ -124,13 +125,13 @@ func newSnapshotListCommand() *cobra.Command {
 					Snapshots:   entries,
 				})
 			default:
-				return clierr.Errorf(clierr.KindUsage, "unsupported snapshot list format: %s", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.unsupportedFormat", map[string]any{"Subject": "snapshot list", "Value": opts.format}))
 			}
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to load snapshots from")
-	cmd.Flags().StringVar(&opts.format, "format", "text", "Snapshot list output format: text or json")
+	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", i18n.T("cmd.snapshot.flag.snapshotDirLoad"))
+	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.snapshot.flag.listFormat"))
 	return cmd
 }
 
@@ -138,8 +139,8 @@ func newSnapshotShowCommand() *cobra.Command {
 	opts := &snapshotOptions{format: "text"}
 
 	cmd := &cobra.Command{
-		Use:   "show <name>",
-		Short: "Show snapshot metadata and summary",
+		Use:   i18n.T("cmd.snapshot.show.use"),
+		Short: i18n.T("cmd.snapshot.show.short"),
 		Example: `  binlogviz snapshot show incident-current --snapshot-dir snaps
   binlogviz snapshot show incident-current --format json --snapshot-dir snaps`,
 		SilenceUsage:  true,
@@ -149,7 +150,7 @@ func newSnapshotShowCommand() *cobra.Command {
 			switch opts.format {
 			case "text", "json":
 			default:
-				return clierr.Errorf(clierr.KindUsage, "unsupported snapshot show format: %s", opts.format)
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.unsupportedFormat", map[string]any{"Subject": "snapshot show", "Value": opts.format}))
 			}
 
 			desc, err := snapshotpkg.DescribeSnapshot(opts.dir, args[0])
@@ -172,8 +173,8 @@ func newSnapshotShowCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to load snapshots from")
-	cmd.Flags().StringVar(&opts.format, "format", "text", "Snapshot show output format: text or json")
+	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", i18n.T("cmd.snapshot.flag.snapshotDirLoad"))
+	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.snapshot.flag.showFormat"))
 	return cmd
 }
 
@@ -181,8 +182,8 @@ func newSnapshotRenameCommand() *cobra.Command {
 	opts := &snapshotOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "rename <old-name> <new-name>",
-		Short:         "Rename a stored snapshot",
+		Use:           i18n.T("cmd.snapshot.rename.use"),
+		Short:         i18n.T("cmd.snapshot.rename.short"),
 		Example:       `  binlogviz snapshot rename incident-current incident-renamed --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -192,12 +193,12 @@ func newSnapshotRenameCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.ErrOrStderr(), "Renamed snapshot %q to %q at %s\n", args[0], args[1], newPath)
+			_, err = fmt.Fprint(cmd.ErrOrStderr(), i18n.Tf("cmd.snapshot.renamed", map[string]any{"Old": args[0], "New": args[1], "Path": newPath}))
 			return err
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to load snapshots from")
+	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", i18n.T("cmd.snapshot.flag.snapshotDirLoad"))
 	return cmd
 }
 
@@ -205,8 +206,8 @@ func newSnapshotDeleteCommand() *cobra.Command {
 	opts := &snapshotOptions{}
 
 	cmd := &cobra.Command{
-		Use:           "delete <name>",
-		Short:         "Delete a stored snapshot",
+		Use:           i18n.T("cmd.snapshot.delete.use"),
+		Short:         i18n.T("cmd.snapshot.delete.short"),
 		Example:       `  binlogviz snapshot delete incident-current --snapshot-dir snaps`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -216,12 +217,12 @@ func newSnapshotDeleteCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprintf(cmd.ErrOrStderr(), "Deleted snapshot %q at %s\n", args[0], deletedPath)
+			_, err = fmt.Fprint(cmd.ErrOrStderr(), i18n.Tf("cmd.snapshot.deleted", map[string]any{"Name": args[0], "Path": deletedPath}))
 			return err
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", "Directory to load snapshots from")
+	cmd.Flags().StringVar(&opts.dir, "snapshot-dir", "", i18n.T("cmd.snapshot.flag.snapshotDirLoad"))
 	return cmd
 }
 
@@ -352,32 +353,32 @@ func asString(value any) string {
 
 func buildSnapshotShowLines(desc snapshotpkg.Descriptor) []string {
 	lines := []string{
-		fmt.Sprintf("name: %s", desc.Name),
-		fmt.Sprintf("path: %s", desc.Path),
+		i18n.Tf("cmd.snapshot.show.name", map[string]any{"Value": desc.Name}),
+		i18n.Tf("cmd.snapshot.show.path", map[string]any{"Value": desc.Path}),
 	}
 	if desc.Label != "" {
-		lines = append(lines, fmt.Sprintf("label: %s", desc.Label))
+		lines = append(lines, i18n.Tf("cmd.snapshot.show.label", map[string]any{"Value": desc.Label}))
 	}
 	if desc.CreatedAt != "" {
-		lines = append(lines, fmt.Sprintf("created_at: %s", desc.CreatedAt))
+		lines = append(lines, i18n.Tf("cmd.snapshot.show.createdAt", map[string]any{"Value": desc.CreatedAt}))
 	}
 	if desc.BinlogvizVersion != "" {
-		lines = append(lines, fmt.Sprintf("binlogviz_version: %s", desc.BinlogvizVersion))
+		lines = append(lines, i18n.Tf("cmd.snapshot.show.binlogvizVersion", map[string]any{"Value": desc.BinlogvizVersion}))
 	}
 	if desc.InputMode != "" {
-		lines = append(lines, fmt.Sprintf("input_mode: %s", desc.InputMode))
+		lines = append(lines, i18n.Tf("cmd.snapshot.show.inputMode", map[string]any{"Value": desc.InputMode}))
 	}
 	if source := formatSnapshotSource(desc.Input); source != "" {
-		lines = append(lines, fmt.Sprintf("input_source: %s", source))
+		lines = append(lines, i18n.Tf("cmd.snapshot.show.inputSource", map[string]any{"Value": source}))
 	}
 	if filters := formatSnapshotFilters(desc.Filters); filters != "" {
-		lines = append(lines, fmt.Sprintf("filters: %s", filters))
+		lines = append(lines, i18n.Tf("cmd.snapshot.show.filters", map[string]any{"Value": filters}))
 	}
 	lines = append(lines,
-		fmt.Sprintf("total_transactions: %d", desc.Summary.TotalTransactions),
-		fmt.Sprintf("total_rows: %d", desc.Summary.TotalRows),
-		fmt.Sprintf("total_events: %d", desc.Summary.TotalEvents),
-		fmt.Sprintf("warnings: %d", desc.Warnings),
+		i18n.Tf("cmd.snapshot.show.totalTransactions", map[string]any{"Value": desc.Summary.TotalTransactions}),
+		i18n.Tf("cmd.snapshot.show.totalRows", map[string]any{"Value": desc.Summary.TotalRows}),
+		i18n.Tf("cmd.snapshot.show.totalEvents", map[string]any{"Value": desc.Summary.TotalEvents}),
+		i18n.Tf("cmd.snapshot.show.warnings", map[string]any{"Value": desc.Warnings}),
 	)
 	return lines
 }
@@ -430,7 +431,7 @@ func writeSnapshotJSON(out io.Writer, payload any) error {
 
 func writeSnapshotListText(out io.Writer, entries []snapshotpkg.Entry) error {
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	if _, err := fmt.Fprintln(tw, "NAME\tLABEL\tCREATED_AT\tINPUT_MODE\tWINDOW\tDIAGNOSTICS"); err != nil {
+	if _, err := fmt.Fprintln(tw, i18n.T("cmd.snapshot.listHeader")); err != nil {
 		return err
 	}
 	for _, entry := range entries {
@@ -505,7 +506,7 @@ func formatListDiagnostics(mode *string) string {
 		return "-"
 	}
 	if *mode == "" {
-		return "(empty)"
+		return i18n.T("cmd.snapshot.emptyDiagnostics")
 	}
 	return *mode
 }

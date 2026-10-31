@@ -1,6 +1,6 @@
 // Package trend renders human-readable trend reports with raw series and gated narratives.
 // input: deterministic Result values with structured comparability evidence and ordered numeric point data.
-// output: text reports leading with any comparability guard before raw deltas, tables, patterns, and diagnostics.
+// output: text reports leading with any comparability guard before raw deltas, tables, patterns, and diagnostics, rendered through report.text.trend.* i18n keys.
 // pos: terminal renderer for the trend pipeline after series-wide comparability assessment.
 // note: if this file changes, update this header and internal/trend/README.md.
 package trend
@@ -10,12 +10,17 @@ import (
 	"strings"
 
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/i18n"
 )
+
+func signedTrendDelta(n int) string {
+	return fmt.Sprintf("%+d", n)
+}
 
 func RenderText(result Result) (string, error) {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "Trend Summary\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.summary"))
 	guarded := hasTrendComparabilityGuard(result.Comparability)
 	if guarded {
 		fmt.Fprintf(&b, "%s [%s]\n", comparepkg.ComparabilityGuardTitle(), result.Comparability.Verdict)
@@ -26,21 +31,21 @@ func RenderText(result Result) (string, error) {
 		}
 		fmt.Fprint(&b, "\n")
 	}
-	fmt.Fprintf(&b, "Input Mode: %s\n", result.InputMode)
+	fmt.Fprint(&b, i18n.Tf("report.text.trend.inputMode", map[string]any{"Value": result.InputMode}))
 	if result.BaselineSnapshot != nil {
-		fmt.Fprintf(&b, "Baseline Snapshot: %s\n", formatSnapshotDisplay(*result.BaselineSnapshot))
+		fmt.Fprint(&b, i18n.Tf("report.text.trend.baselineSnapshot", map[string]any{"Value": formatSnapshotDisplay(*result.BaselineSnapshot)}))
 	}
 	if len(result.Points) > 0 {
 		first := result.Points[0]
 		last := result.Points[len(result.Points)-1]
-		fmt.Fprintf(&b, "Rows: %d -> %d (%+d)\n", first.Summary.TotalRows, last.Summary.TotalRows, result.Insights.RowsDelta)
-		fmt.Fprintf(&b, "Transactions: %d -> %d (%+d)\n", first.Summary.TotalTransactions, last.Summary.TotalTransactions, result.Insights.TxnsDelta)
-		fmt.Fprintf(&b, "Events: %d -> %d (%+d)\n", first.Summary.TotalEvents, last.Summary.TotalEvents, result.Insights.EventsDelta)
-		fmt.Fprintf(&b, "Alerts: %d -> %d (%+d)\n", first.AlertCount, last.AlertCount, result.Insights.AlertCountDelta)
+		fmt.Fprint(&b, i18n.Tf("report.text.trend.rows", map[string]any{"First": first.Summary.TotalRows, "Last": last.Summary.TotalRows, "Delta": signedTrendDelta(result.Insights.RowsDelta)}))
+		fmt.Fprint(&b, i18n.Tf("report.text.trend.transactions", map[string]any{"First": first.Summary.TotalTransactions, "Last": last.Summary.TotalTransactions, "Delta": signedTrendDelta(result.Insights.TxnsDelta)}))
+		fmt.Fprint(&b, i18n.Tf("report.text.trend.events", map[string]any{"First": first.Summary.TotalEvents, "Last": last.Summary.TotalEvents, "Delta": signedTrendDelta(result.Insights.EventsDelta)}))
+		fmt.Fprint(&b, i18n.Tf("report.text.trend.alerts", map[string]any{"First": first.AlertCount, "Last": last.AlertCount, "Delta": signedTrendDelta(result.Insights.AlertCountDelta)}))
 	}
 
 	if len(result.TrendSummary) > 0 && !guarded {
-		fmt.Fprintf(&b, "\nKey Findings\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.keyFindings"))
 		for i, finding := range result.TrendSummary {
 			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, finding.Kind, finding.Summary)
 			if len(finding.EvidenceRefs) > 0 {
@@ -48,13 +53,13 @@ func RenderText(result Result) (string, error) {
 				for _, ref := range finding.EvidenceRefs {
 					labels = append(labels, ref.Label)
 				}
-				fmt.Fprintf(&b, "   evidence: %s\n", strings.Join(labels, ", "))
+				fmt.Fprint(&b, i18n.Tf("report.text.trend.evidence", map[string]any{"Labels": strings.Join(labels, ", ")}))
 			}
 		}
 	}
 
 	if len(result.Recommendations) > 0 {
-		fmt.Fprintf(&b, "\nRecommended Next Checks\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.recommendedNextChecks"))
 		for i, rec := range result.Recommendations {
 			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, rec.Priority, rec.Title)
 			fmt.Fprintf(&b, "   %s\n", rec.Summary)
@@ -63,12 +68,12 @@ func RenderText(result Result) (string, error) {
 				for _, ref := range rec.EvidenceRefs {
 					labels = append(labels, ref.Label)
 				}
-				fmt.Fprintf(&b, "   evidence: %s\n", strings.Join(labels, ", "))
+				fmt.Fprint(&b, i18n.Tf("report.text.trend.evidence", map[string]any{"Labels": strings.Join(labels, ", ")}))
 			}
 		}
 	}
 
-	fmt.Fprintf(&b, "\nOrdered Points\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.orderedPoints"))
 	for _, point := range result.Points {
 		fmt.Fprintf(&b, "- %s | %s | rows=%d txns=%d events=%d alerts=%d",
 			point.Window.StartTime,
@@ -79,17 +84,17 @@ func RenderText(result Result) (string, error) {
 			point.AlertCount,
 		)
 		if point.BaselineDelta != nil {
-			fmt.Fprintf(&b, " | vs baseline rows=%+d txns=%+d events=%+d alerts=%+d",
-				point.BaselineDelta.RowsDelta,
-				point.BaselineDelta.TransactionsDelta,
-				point.BaselineDelta.EventsDelta,
-				point.BaselineDelta.AlertDelta,
-			)
+			fmt.Fprint(&b, i18n.Tf("report.text.trend.pointBaselineDelta", map[string]any{
+				"Rows":   signedTrendDelta(point.BaselineDelta.RowsDelta),
+				"Txns":   signedTrendDelta(point.BaselineDelta.TransactionsDelta),
+				"Events": signedTrendDelta(point.BaselineDelta.EventsDelta),
+				"Alerts": signedTrendDelta(point.BaselineDelta.AlertDelta),
+			}))
 		}
 		fmt.Fprintln(&b)
 	}
 
-	fmt.Fprintf(&b, "\nOperation Mix\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.operationMix"))
 	for _, point := range result.Points {
 		fmt.Fprintf(&b, "- %s: insert=%d (%.1f%%) update=%d (%.1f%%) delete=%d (%.1f%%)\n",
 			point.Snapshot.Name,
@@ -99,9 +104,9 @@ func RenderText(result Result) (string, error) {
 		)
 	}
 
-	fmt.Fprintf(&b, "\nTop Table Movement\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.topTableMovement"))
 	if len(result.TableTrends) == 0 {
-		fmt.Fprintln(&b, "- none")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.noneList"))
 	} else {
 		limit := len(result.TableTrends)
 		if limit > 8 {
@@ -112,9 +117,9 @@ func RenderText(result Result) (string, error) {
 		}
 	}
 
-	fmt.Fprintf(&b, "\nTop Pattern Trends\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.topPatternTrends"))
 	if len(result.PatternTrends) == 0 {
-		fmt.Fprintln(&b, "- none")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.noneList"))
 	} else {
 		drilldownMap := make(map[string]PatternDrilldown, len(result.PatternDrilldowns))
 		for _, d := range result.PatternDrilldowns {
@@ -131,8 +136,8 @@ func RenderText(result Result) (string, error) {
 				trend.DeltaRows,
 			)
 			if dd, ok := drilldownMap[trend.PatternKey]; ok {
-				fmt.Fprintf(&b, "  drilldown:\n")
-				fmt.Fprintf(&b, "    why: %s\n", dd.WhySelected)
+				fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.drilldown"))
+				fmt.Fprint(&b, i18n.Tf("report.text.trend.whyLine", map[string]any{"Why": dd.WhySelected}))
 				for _, kp := range dd.KeyPoints {
 					fmt.Fprintf(&b, "    %s: %s\n", kp.Label, kp.Summary)
 				}
@@ -140,13 +145,13 @@ func RenderText(result Result) (string, error) {
 		}
 	}
 
-	fmt.Fprintf(&b, "\nAggregate Insights\n")
-	fmt.Fprintf(&b, "- First snapshot: %s\n", result.Insights.FirstSnapshot)
-	fmt.Fprintf(&b, "- Last snapshot: %s\n", result.Insights.LastSnapshot)
-	fmt.Fprintf(&b, "- Rows delta: %+d\n", result.Insights.RowsDelta)
-	fmt.Fprintf(&b, "- Transactions delta: %+d\n", result.Insights.TxnsDelta)
-	fmt.Fprintf(&b, "- Events delta: %+d\n", result.Insights.EventsDelta)
-	fmt.Fprintf(&b, "- Alert delta: %+d\n", result.Insights.AlertCountDelta)
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.trend.aggregateInsights"))
+	fmt.Fprint(&b, i18n.Tf("report.text.trend.firstSnapshot", map[string]any{"Value": result.Insights.FirstSnapshot}))
+	fmt.Fprint(&b, i18n.Tf("report.text.trend.lastSnapshot", map[string]any{"Value": result.Insights.LastSnapshot}))
+	fmt.Fprint(&b, i18n.Tf("report.text.trend.rowsDelta", map[string]any{"Delta": signedTrendDelta(result.Insights.RowsDelta)}))
+	fmt.Fprint(&b, i18n.Tf("report.text.trend.txnsDelta", map[string]any{"Delta": signedTrendDelta(result.Insights.TxnsDelta)}))
+	fmt.Fprint(&b, i18n.Tf("report.text.trend.eventsDelta", map[string]any{"Delta": signedTrendDelta(result.Insights.EventsDelta)}))
+	fmt.Fprint(&b, i18n.Tf("report.text.trend.alertDelta", map[string]any{"Delta": signedTrendDelta(result.Insights.AlertCountDelta)}))
 
 	return b.String(), nil
 }
@@ -166,7 +171,7 @@ func formatPatternTrendDisplay(trend PatternTrend) string {
 	case key != "":
 		return key
 	default:
-		return "pattern"
+		return i18n.T("report.text.trend.patternFallback")
 	}
 }
 

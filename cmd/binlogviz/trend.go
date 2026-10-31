@@ -13,6 +13,7 @@ import (
 
 	comparepkg "binlogviz/internal/compare"
 	"binlogviz/internal/displaytz"
+	"binlogviz/internal/i18n"
 	snapshotpkg "binlogviz/internal/snapshot"
 	trendpkg "binlogviz/internal/trend"
 )
@@ -36,8 +37,8 @@ func newTrendCommand() *cobra.Command {
 	opts := &trendOptions{}
 
 	cmd := &cobra.Command{
-		Use:   "trend [<snapshot...>]",
-		Short: "Analyze multiple snapshots as an ordered trend",
+		Use:   i18n.T("cmd.trend.use"),
+		Short: i18n.T("cmd.trend.short"),
 		Example: `  binlogviz analyze mysql-bin.000001 --format json --snapshot-name before --snapshot-dir snaps
   binlogviz analyze mysql-bin.000002 --format json --snapshot-name during --snapshot-dir snaps
   binlogviz analyze mysql-bin.000001 --format json --snapshot-name after --snapshot-dir snaps
@@ -48,10 +49,10 @@ func newTrendCommand() *cobra.Command {
 		Args: func(cmd *cobra.Command, args []string) error {
 			hasPattern := strings.TrimSpace(opts.fromSnapshots) != ""
 			if hasPattern && len(args) > 0 {
-				return clierr.Errorf(clierr.KindUsage, "cannot combine explicit snapshot arguments with --from-snapshots")
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.trendArgsWithPattern"))
 			}
 			if !hasPattern && len(args) < 2 {
-				return clierr.Errorf(clierr.KindUsage, "trend requires at least 2 snapshots")
+				return clierr.Errorf(clierr.KindUsage, "%s", i18n.T("error.trendMinSnapshots"))
 			}
 			return nil
 		},
@@ -60,12 +61,12 @@ func newTrendCommand() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&opts.format, "format", "text", "Trend output format: text, json, or html")
-	cmd.Flags().StringVar(&opts.fromSnapshots, "from-snapshots", "", "Pattern used to select snapshots by name")
-	cmd.Flags().StringVar(&opts.baselineSnapshot, "baseline-snapshot", "", "Optional snapshot name to use as baseline deltas")
-	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", "Directory to load snapshots from")
-	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, "Number of top tables to include in trend output")
-	cmd.Flags().StringVar(&opts.order, "order", "cli", "Trend point order: cli (keep argument/selection order) or time (sort by window start_time)")
+	cmd.Flags().StringVar(&opts.format, "format", "text", i18n.T("cmd.trend.flag.format"))
+	cmd.Flags().StringVar(&opts.fromSnapshots, "from-snapshots", "", i18n.T("cmd.trend.flag.fromSnapshots"))
+	cmd.Flags().StringVar(&opts.baselineSnapshot, "baseline-snapshot", "", i18n.T("cmd.trend.flag.baselineSnapshot"))
+	cmd.Flags().StringVar(&opts.snapshotDir, "snapshot-dir", "", i18n.T("cmd.trend.flag.snapshotDir"))
+	cmd.Flags().IntVar(&opts.topTables, "top-tables", 10, i18n.T("cmd.trend.flag.topTables"))
+	cmd.Flags().StringVar(&opts.order, "order", "cli", i18n.T("cmd.trend.flag.order"))
 
 	return cmd
 }
@@ -87,7 +88,7 @@ func renderTrend(result trendpkg.Result, format string, loc *time.Location) (str
 
 func runTrend(opts *trendOptions, args []string, out, errOut io.Writer, loc *time.Location) error {
 	if !slices.Contains(trendFormats, opts.format) {
-		return clierr.Errorf(clierr.KindUsage, "unsupported trend format: %s", opts.format)
+		return clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.unsupportedFormat", map[string]any{"Subject": "trend", "Value": opts.format}))
 	}
 
 	points, inputMode, resolvedDir, err := resolveTrendInputs(args, opts)
@@ -119,7 +120,7 @@ func runTrend(opts *trendOptions, args []string, out, errOut io.Writer, loc *tim
 		for _, point := range result.Points {
 			names = append(names, point.Snapshot.Name)
 		}
-		fmt.Fprintf(errOut, "trend: reordered by window start_time: %s\n", strings.Join(names, ", "))
+		fmt.Fprint(errOut, i18n.Tf("cmd.trend.reordered", map[string]any{"Names": strings.Join(names, ", ")}))
 	}
 
 	output, err := renderTrend(result, opts.format, loc)
@@ -161,7 +162,7 @@ func resolveTrendInputs(args []string, opts *trendOptions) ([]trendpkg.BuildInpu
 			selected = append(selected, loaded)
 		}
 		if len(selected) < 2 {
-			return nil, "", "", clierr.Errorf(clierr.KindUsage, "trend requires at least 2 snapshots after resolving pattern %q", pattern)
+			return nil, "", "", clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.trendMinSnapshotsPattern", map[string]any{"Pattern": pattern}))
 		}
 		return selected, "pattern", resolvedDir, nil
 	}
