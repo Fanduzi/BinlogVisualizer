@@ -15,7 +15,6 @@
     "internal/guard/script.go": 1323,
     "internal/mysqlexpr/expr.go": 1607,
     "internal/mysqlexpr/schema.go": 1108,
-    "internal/report/html.go": 884,
     "internal/report/html_template.go": 2260,
     "internal/report/json.go": 1375,
     "internal/report/text.go": 1228,
@@ -40,8 +39,7 @@
     "internal/trend/render_test.go": 817
   },
   "complex_functions": {
-    "cmd/binlogviz:writeWorkflowStatusOutput": 41,
-    "internal/report:buildHTMLData": 58
+    "cmd/binlogviz:writeWorkflowStatusOutput": 41
   },
   "test_complex_functions": {
     "cmd/binlogviz:TestAnalyzeReplicaApplyDelayMatchesMysqlbinlog": 50,
@@ -60,12 +58,9 @@
     "internal/report:TestRenderApplyDelayReplicaSourceAndUnavailable": 55
   },
   "long_functions": {
-    "internal/compare:RenderText": 151,
-    "internal/report:buildHTMLData": 373
+    "internal/compare:RenderText": 151
   },
-  "statement_functions": {
-    "internal/report:buildHTMLData": 178
-  },
+  "statement_functions": {},
   "issue_refs": {
     "cmd/binlogviz/analyze.go": 3,
     "cmd/binlogviz/analyze_errors.go": 3,
