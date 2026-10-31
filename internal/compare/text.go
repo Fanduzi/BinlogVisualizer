@@ -1,6 +1,6 @@
 // Package compare renders human-readable text reports for compare results.
 // input: deterministic CompareResult values with structured comparability evidence produced by the compare diff engine.
-// output: fixed-section text compare reports leading with any narrative guard, visible identity/provenance/object-selector evidence, and named byte coverage.
+// output: fixed-section text compare reports leading with any narrative guard, visible identity/provenance/object-selector evidence, and named byte coverage, rendered through report.text.compare.* i18n keys.
 // pos: compare renderer used by the compare command text output path.
 // note: if this file changes, update this header and module README.md.
 package compare
@@ -12,12 +12,17 @@ import (
 	"time"
 
 	"binlogviz/internal/displaytz"
+	"binlogviz/internal/i18n"
 )
+
+func signedDelta(n int) string {
+	return fmt.Sprintf("%+d", n)
+}
 
 func RenderText(result CompareResult) (string, error) {
 	var b strings.Builder
 
-	fmt.Fprintf(&b, "Compare Summary\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.summary"))
 	guarded := hasComparabilityGuard(result.Comparability)
 	if guarded {
 		fmt.Fprintf(&b, "%s [%s]\n", ComparabilityGuardTitle(), result.Comparability.Verdict)
@@ -28,44 +33,44 @@ func RenderText(result CompareResult) (string, error) {
 		}
 		fmt.Fprint(&b, "\n")
 	}
-	fmt.Fprintf(&b, "Current Label: %s\n", result.CurrentLabel)
-	fmt.Fprintf(&b, "Baseline Label: %s\n", result.BaselineLabel)
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.currentLabel", map[string]any{"Value": result.CurrentLabel}))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.baselineLabel", map[string]any{"Value": result.BaselineLabel}))
 	if window := formatSnapshotWindow(result.CurrentSnapshot); window != "" {
-		fmt.Fprintf(&b, "Current Window: %s\n", window)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.currentWindow", map[string]any{"Value": window}))
 	}
 	if window := formatSnapshotWindow(result.BaselineSnapshot); window != "" {
-		fmt.Fprintf(&b, "Baseline Window: %s\n", window)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.baselineWindow", map[string]any{"Value": window}))
 	}
 	if inputMode := formatSnapshotInputMode(result.CurrentSnapshot); inputMode != "" {
-		fmt.Fprintf(&b, "Current Input Mode: %s\n", inputMode)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.currentInputMode", map[string]any{"Value": inputMode}))
 	}
 	if inputMode := formatSnapshotInputMode(result.BaselineSnapshot); inputMode != "" {
-		fmt.Fprintf(&b, "Baseline Input Mode: %s\n", inputMode)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.baselineInputMode", map[string]any{"Value": inputMode}))
 	}
 	if source := formatSnapshotSource(result.CurrentSnapshot); source != "" {
-		fmt.Fprintf(&b, "Current Source: %s\n", source)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.currentSource", map[string]any{"Value": source}))
 	}
 	if source := formatSnapshotSource(result.BaselineSnapshot); source != "" {
-		fmt.Fprintf(&b, "Baseline Source: %s\n", source)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.baselineSource", map[string]any{"Value": source}))
 	}
 	if filters := formatSnapshotFilters(result.CurrentSnapshot); filters != "" {
-		fmt.Fprintf(&b, "Current Filters: %s\n", filters)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.currentFilters", map[string]any{"Value": filters}))
 	}
 	if filters := formatSnapshotFilters(result.BaselineSnapshot); filters != "" {
-		fmt.Fprintf(&b, "Baseline Filters: %s\n", filters)
+		fmt.Fprint(&b, i18n.Tf("report.text.compare.baselineFilters", map[string]any{"Value": filters}))
 	}
-	fmt.Fprintf(&b, "Rows: %d -> %d (%+d)\n", result.Summary.BaselineTotalRows, result.Summary.CurrentTotalRows, result.Summary.TotalRowsDelta)
-	fmt.Fprintf(&b, "Transactions: %d -> %d (%+d)\n", result.Summary.BaselineTotalTransactions, result.Summary.CurrentTotalTransactions, result.Summary.TotalTransactionsDelta)
-	fmt.Fprintf(&b, "Warnings: %d -> %d (%+d)\n", result.Summary.BaselineWarnings, result.Summary.CurrentWarnings, result.Summary.CurrentWarnings-result.Summary.BaselineWarnings)
-	fmt.Fprintf(&b, "Input File Size: %s=%s -> %s=%s\n", result.BaselineLabel, formatOptionalCompareFileSize(result.DiagnosticsDelta.BaselineInputFileBytes), result.CurrentLabel, formatOptionalCompareFileSize(result.DiagnosticsDelta.CurrentInputFileBytes))
-	fmt.Fprintf(&b, "Counted Event Bytes: %s=%s -> %s=%s\n", result.BaselineLabel, formatCompareFileSize(result.DiagnosticsDelta.BaselineCountedEventBytes), result.CurrentLabel, formatCompareFileSize(result.DiagnosticsDelta.CurrentCountedEventBytes))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.rows", map[string]any{"Baseline": result.Summary.BaselineTotalRows, "Current": result.Summary.CurrentTotalRows, "Delta": signedDelta(result.Summary.TotalRowsDelta)}))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.transactions", map[string]any{"Baseline": result.Summary.BaselineTotalTransactions, "Current": result.Summary.CurrentTotalTransactions, "Delta": signedDelta(result.Summary.TotalTransactionsDelta)}))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.warnings", map[string]any{"Baseline": result.Summary.BaselineWarnings, "Current": result.Summary.CurrentWarnings, "Delta": signedDelta(result.Summary.CurrentWarnings - result.Summary.BaselineWarnings)}))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.inputFileSize", map[string]any{"BaselineLabel": result.BaselineLabel, "BaselineSize": formatOptionalCompareFileSize(result.DiagnosticsDelta.BaselineInputFileBytes), "CurrentLabel": result.CurrentLabel, "CurrentSize": formatOptionalCompareFileSize(result.DiagnosticsDelta.CurrentInputFileBytes)}))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.countedEventBytes", map[string]any{"BaselineLabel": result.BaselineLabel, "BaselineSize": formatCompareFileSize(result.DiagnosticsDelta.BaselineCountedEventBytes), "CurrentLabel": result.CurrentLabel, "CurrentSize": formatCompareFileSize(result.DiagnosticsDelta.CurrentCountedEventBytes)}))
 	if line := formatLargestTxnLine(result.DiagnosticsDelta.TxnDiagnostics.LargestTxnDelta); line != "" {
 		fmt.Fprintf(&b, "%s\n", line)
 	}
 	fmt.Fprint(&b, "\n")
 
 	if len(result.KeyFindings) > 0 && !guarded {
-		fmt.Fprintf(&b, "Key Findings\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.keyFindings"))
 		for i, finding := range result.KeyFindings {
 			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, finding.Kind, finding.Summary)
 			if len(finding.EvidenceRefs) > 0 {
@@ -73,14 +78,14 @@ func RenderText(result CompareResult) (string, error) {
 				for _, ref := range finding.EvidenceRefs {
 					labels = append(labels, ref.Label)
 				}
-				fmt.Fprintf(&b, "   evidence: %s\n", strings.Join(labels, ", "))
+				fmt.Fprint(&b, i18n.Tf("report.text.compare.evidence", map[string]any{"Labels": strings.Join(labels, ", ")}))
 			}
 		}
 		fmt.Fprintf(&b, "\n")
 	}
 
 	if len(result.Recommendations) > 0 {
-		fmt.Fprintf(&b, "Recommended Next Checks\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.recommendedNextChecks"))
 		for i, rec := range result.Recommendations {
 			fmt.Fprintf(&b, "%d. [%s] %s\n", i+1, rec.Priority, rec.Title)
 			fmt.Fprintf(&b, "   %s\n", rec.Summary)
@@ -89,24 +94,24 @@ func RenderText(result CompareResult) (string, error) {
 				for _, ref := range rec.EvidenceRefs {
 					labels = append(labels, ref.Label)
 				}
-				fmt.Fprintf(&b, "   evidence: %s\n", strings.Join(labels, ", "))
+				fmt.Fprint(&b, i18n.Tf("report.text.compare.evidence", map[string]any{"Labels": strings.Join(labels, ", ")}))
 			}
 		}
 		fmt.Fprintf(&b, "\n")
 	}
 
-	fmt.Fprintf(&b, "Top Table Changes\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.topTableChanges"))
 	if len(result.TableChanges) == 0 {
-		fmt.Fprintf(&b, "- none\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.noneList"))
 	} else {
 		for _, change := range result.TableChanges {
 			fmt.Fprintf(&b, "- %s.%s: %d -> %d (%+d, %s)\n", change.Schema, change.Table, change.BaselineRows, change.CurrentRows, change.DeltaRows, formatDeltaPercent(change.CurrentRows, change.BaselineRows, change.DeltaPercent))
 		}
 	}
 
-	fmt.Fprintf(&b, "\nTop Pattern Changes\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.topPatternChanges"))
 	if len(result.PatternChanges) == 0 {
-		fmt.Fprintf(&b, "- none\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.noneList"))
 	} else {
 		drilldownMap := make(map[string]PatternDrilldown, len(result.PatternDrilldowns))
 		for _, d := range result.PatternDrilldowns {
@@ -126,11 +131,11 @@ func RenderText(result CompareResult) (string, error) {
 				change.DeltaTxnCount,
 			)
 			if strings.TrimSpace(change.SampleQuerySummary) != "" {
-				fmt.Fprintf(&b, "  query: %s\n", change.SampleQuerySummary)
+				fmt.Fprint(&b, i18n.Tf("report.text.compare.queryLine", map[string]any{"Query": change.SampleQuerySummary}))
 			}
 			if dd, ok := drilldownMap[change.PatternKey]; ok {
-				fmt.Fprintf(&b, "  drilldown:\n")
-				fmt.Fprintf(&b, "    why: %s\n", dd.WhySelected)
+				fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.drilldown"))
+				fmt.Fprint(&b, i18n.Tf("report.text.compare.whyLine", map[string]any{"Why": dd.WhySelected}))
 				for _, kp := range dd.KeyPoints {
 					fmt.Fprintf(&b, "    %s: %s\n", kp.Label, kp.Summary)
 				}
@@ -138,27 +143,27 @@ func RenderText(result CompareResult) (string, error) {
 		}
 	}
 
-	fmt.Fprintf(&b, "\nOperation Mix\n")
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.operationMix"))
 	if len(result.OperationMix) == 0 {
-		fmt.Fprintf(&b, "- none\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.noneList"))
 	} else {
 		for _, change := range result.OperationMix {
 			fmt.Fprintf(&b, "- %s: %d -> %d (%+d)\n", change.Operation, change.Baseline, change.Current, change.Delta)
 		}
 	}
 
-	fmt.Fprintf(&b, "\nAlert Changes\n")
-	fmt.Fprintf(&b, "Added Alerts (%d)\n", len(result.AlertChanges.Added))
+	fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.alertChanges"))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.addedAlerts", map[string]any{"Count": len(result.AlertChanges.Added)}))
 	if len(result.AlertChanges.Added) == 0 {
-		fmt.Fprintf(&b, "- none\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.noneList"))
 	} else {
 		for _, alert := range result.AlertChanges.Added {
 			fmt.Fprintf(&b, "- [%s] %s\n", strings.ToUpper(alert.Type), alert.Message)
 		}
 	}
-	fmt.Fprintf(&b, "Removed Alerts (%d)\n", len(result.AlertChanges.Removed))
+	fmt.Fprint(&b, i18n.Tf("report.text.compare.removedAlerts", map[string]any{"Count": len(result.AlertChanges.Removed)}))
 	if len(result.AlertChanges.Removed) == 0 {
-		fmt.Fprintf(&b, "- none\n")
+		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.noneList"))
 	} else {
 		for _, alert := range result.AlertChanges.Removed {
 			fmt.Fprintf(&b, "- [%s] %s\n", strings.ToUpper(alert.Type), alert.Message)
@@ -172,12 +177,12 @@ func formatLargestTxnLine(delta TxnSizeCompare) string {
 	if txnSizeCompareEmpty(delta) {
 		return ""
 	}
-	line := fmt.Sprintf("Largest txn: %s -> %s",
-		formatTxnSide(delta.BaselineTable, delta.BaselineOp, delta.BaselineRows),
-		formatTxnSide(delta.CurrentTable, delta.CurrentOp, delta.CurrentRows),
-	)
+	line := i18n.Tf("report.text.compare.largestTxn", map[string]any{
+		"Baseline": formatTxnSide(delta.BaselineTable, delta.BaselineOp, delta.BaselineRows),
+		"Current":  formatTxnSide(delta.CurrentTable, delta.CurrentOp, delta.CurrentRows),
+	})
 	if delta.IdentityNew {
-		line += " NEW"
+		line += i18n.T("report.text.compare.newSuffix")
 	}
 	return line
 }

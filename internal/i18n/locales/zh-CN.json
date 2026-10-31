@@ -2202,5 +2202,773 @@
   "report.label.sample": {
     "description": "样例语句标签",
     "other": "样例"
+  },
+  "cmd.workflow.short": {
+    "description": "workflow 命令短说明",
+    "other": "运行多步骤 BinlogViz 调查工作流"
+  },
+  "cmd.workflow.run.use": {
+    "description": "workflow run 用法行",
+    "other": "run <计划.yaml>"
+  },
+  "cmd.workflow.run.short": {
+    "description": "workflow run 短说明",
+    "other": "执行工作流计划"
+  },
+  "cmd.workflow.resume.use": {
+    "description": "workflow resume 用法行",
+    "other": "resume <输出目录>"
+  },
+  "cmd.workflow.resume.short": {
+    "description": "workflow resume 短说明",
+    "other": "从输出目录恢复之前运行过的工作流"
+  },
+  "cmd.workflow.validate.use": {
+    "description": "workflow validate 用法行",
+    "other": "validate <计划.yaml>"
+  },
+  "cmd.workflow.validate.short": {
+    "description": "workflow validate 短说明",
+    "other": "校验工作流计划，不执行"
+  },
+  "cmd.workflow.describe.use": {
+    "description": "workflow describe 用法行",
+    "other": "describe <计划.yaml>"
+  },
+  "cmd.workflow.describe.short": {
+    "description": "workflow describe 短说明",
+    "other": "展示工作流计划内容，不执行"
+  },
+  "cmd.workflow.status.use": {
+    "description": "workflow status 用法行",
+    "other": "status <输出目录>"
+  },
+  "cmd.workflow.status.short": {
+    "description": "workflow status 短说明",
+    "other": "查看工作流运行状态，不做修改"
+  },
+  "cmd.workflow.clean.use": {
+    "description": "workflow clean 用法行",
+    "other": "clean <输出目录>"
+  },
+  "cmd.workflow.clean.short": {
+    "description": "workflow clean 短说明",
+    "other": "预览或安全删除孤立的工作流产物"
+  },
+  "cmd.workflow.export.use": {
+    "description": "workflow export 用法行",
+    "other": "export <输出目录>"
+  },
+  "cmd.workflow.export.short": {
+    "description": "workflow export 短说明",
+    "other": "把工作流产物打包为只读归档"
+  },
+  "cmd.workflow.flag.format": {
+    "description": "workflow 输出格式标志说明",
+    "other": "输出格式：text 或 json"
+  },
+  "cmd.workflow.flag.outputDir": {
+    "description": "workflow 输出目录覆盖标志说明",
+    "other": "覆盖计划里定义的输出目录"
+  },
+  "cmd.workflow.flag.snapshotDir": {
+    "description": "workflow 快照目录覆盖标志说明",
+    "other": "覆盖快照存储目录"
+  },
+  "cmd.workflow.flag.rerun": {
+    "description": "workflow resume 重跑标志说明",
+    "other": "显式指定要重跑的步骤（可重复，格式：kind:name）"
+  },
+  "cmd.workflow.flag.apply": {
+    "description": "workflow clean apply 标志说明",
+    "other": "把孤立文件移入 <输出目录>/.trash/<id>/，而不是仅预览"
+  },
+  "cmd.workflow.flag.includeSnapshots": {
+    "description": "workflow clean include-snapshots 标志说明",
+    "other": "同时删除本工作流创建的已被取代的快照（依据 ledger.jsonl）"
+  },
+  "cmd.workflow.flag.cleanSnapshotDir": {
+    "description": "workflow clean snapshot-dir 标志说明",
+    "other": "--include-snapshots 使用的快照目录（默认：标准快照目录）；必须与清单中的 snapshot_dir 一致"
+  },
+  "cmd.workflow.flag.force": {
+    "description": "workflow clean force 标志说明",
+    "other": "同时删除已记录步骤类型但无法归因的输出，并允许没有 ledger.jsonl 的工作流目录；绝不删除账本未归因的快照"
+  },
+  "cmd.workflow.flag.output": {
+    "description": "workflow export output 标志说明",
+    "other": "归档输出路径（默认：<输出目录>.zip）"
+  },
+  "cmd.workflow.flag.exportIncludeSnapshots": {
+    "description": "workflow export include-snapshots 标志说明",
+    "other": "在归档中包含引用的快照 JSON 文件"
+  },
+  "cmd.workflow.yes": {
+    "description": "肯定布尔标签",
+    "other": "是"
+  },
+  "cmd.workflow.no": {
+    "description": "否定布尔标签",
+    "other": "否"
+  },
+  "cmd.workflow.warnings": {
+    "description": "警告章节标题",
+    "other": "警告"
+  },
+  "cmd.workflow.validate.valid": {
+    "description": "工作流计划有效报告",
+    "other": "工作流计划有效\n- 工作流：{{.Name}}\n- 窗口：{{.Windows}}\n- compare 任务：{{.CompareJobs}}\n- trend 任务：{{.TrendJobs}}\n- 输出根目录：{{.OutputDir}}\n"
+  },
+  "cmd.workflow.validate.invalid": {
+    "description": "工作流计划无效报告",
+    "other": "工作流计划无效\n- {{.Error}}\n"
+  },
+  "cmd.workflow.describe.header": {
+    "description": "workflow describe 头部",
+    "other": "工作流：{{.Name}}\n输出根目录：{{.OutputDir}}\n保存快照：{{if .SnapshotSave}}是{{else}}否{{end}}\n\n"
+  },
+  "cmd.workflow.describe.analyzeWindows": {
+    "description": "分析窗口章节标题",
+    "other": "分析窗口"
+  },
+  "cmd.workflow.describe.artifacts": {
+    "description": "产物行",
+    "other": "  产物：{{.Artifacts}}\n"
+  },
+  "cmd.workflow.describe.snapshot": {
+    "description": "快照名称行",
+    "other": "  快照：{{.Name}}\n"
+  },
+  "cmd.workflow.describe.dependsOn": {
+    "description": "依赖行",
+    "other": "  依赖：{{.Deps}}\n"
+  },
+  "cmd.workflow.describe.compareJobs": {
+    "description": "compare 任务章节标题",
+    "other": "Compare 任务"
+  },
+  "cmd.workflow.describe.trendJobs": {
+    "description": "trend 任务章节标题",
+    "other": "Trend 任务"
+  },
+  "cmd.workflow.status.header": {
+    "description": "workflow status 头部",
+    "other": "工作流状态：{{.Name}}\n输出根目录：{{.OutputDir}}\n清单版本：{{.Version}}\n模式：{{.Mode}}\n尝试次数：{{.Attempt}}\n状态：{{.Status}}\n运行状态：{{.RuntimeState}}\n可恢复：{{.Resumable}}\n"
+  },
+  "cmd.workflow.status.reason": {
+    "description": "workflow status 原因行",
+    "other": "原因：{{.Reason}}\n"
+  },
+  "cmd.workflow.status.steps": {
+    "description": "步骤章节标题",
+    "other": "步骤"
+  },
+  "cmd.workflow.status.stepStatus": {
+    "description": "步骤状态行",
+    "other": "  状态：{{.Status}}\n"
+  },
+  "cmd.workflow.status.stepExecution": {
+    "description": "步骤执行方式行",
+    "other": "  执行方式：{{.Execution}}\n"
+  },
+  "cmd.workflow.status.noArtifacts": {
+    "description": "无产物步骤行",
+    "other": "  产物：无\n"
+  },
+  "cmd.workflow.status.missing": {
+    "description": "缺失产物标记",
+    "other": "缺失 {{.Path}}"
+  },
+  "cmd.workflow.status.stepArtifacts": {
+    "description": "步骤产物行",
+    "other": "  产物：{{.Artifacts}}\n"
+  },
+  "cmd.workflow.status.recommendations": {
+    "description": "工作流建议章节标题",
+    "other": "工作流建议"
+  },
+  "cmd.workflow.status.findings": {
+    "description": "工作流发现章节标题",
+    "other": "工作流发现"
+  },
+  "cmd.workflow.status.summaryWarnings": {
+    "description": "工作流摘要警告章节标题",
+    "other": "工作流摘要警告"
+  },
+  "cmd.workflow.status.resumePreview": {
+    "description": "恢复预览章节标题",
+    "other": "恢复预览"
+  },
+  "cmd.workflow.clean.header": {
+    "description": "workflow clean 头部",
+    "other": "工作流清理：{{.Name}}\n输出根目录：{{.OutputDir}}\n模式：{{.Mode}}\n包含快照：{{.IncludeSnapshots}}\n孤立产物：{{.ArtifactOrphans}}\n孤立快照：{{.SnapshotOrphans}}\n已删除：{{.Deleted}}\n已跳过：{{.Skipped}}\n"
+  },
+  "cmd.workflow.clean.orphanedArtifacts": {
+    "description": "孤立产物章节标题",
+    "other": "孤立产物"
+  },
+  "cmd.workflow.clean.orphanedSnapshots": {
+    "description": "孤立快照章节标题",
+    "other": "孤立快照"
+  },
+  "cmd.workflow.clean.kept": {
+    "description": "保留孤儿章节标题",
+    "other": "保留（无法归因于本工作流；--force 会删除已记录类型的产物）"
+  },
+  "cmd.workflow.clean.deleted": {
+    "description": "已删除章节标题",
+    "other": "已删除"
+  },
+  "cmd.workflow.clean.skipped": {
+    "description": "已跳过章节标题",
+    "other": "已跳过"
+  },
+  "cmd.workflow.clean.noneList": {
+    "description": "空列表标记",
+    "other": "- 无"
+  },
+  "cmd.workflow.clean.movedToTrash": {
+    "description": "移入回收站提示",
+    "other": "已移入回收站：{{.Dir}}（clean 不会清空它；不再需要时请自行删除）\n"
+  },
+  "cmd.workflow.export.header": {
+    "description": "workflow export 头部",
+    "other": "工作流导出\n工作流：{{.Name}}\n输出根目录：{{.OutputDir}}\n归档：{{.Archive}}\n格式：{{.Format}}\n包含文件：{{.IncludedFiles}}\n包含快照：{{.IncludedSnapshots}}\n"
+  },
+  "progress.workflowNothingToResume": {
+    "description": "无可恢复步骤提示",
+    "other": "没有可恢复的步骤"
+  },
+  "progress.workflowResuming": {
+    "description": "工作流恢复开始提示",
+    "other": "工作流 \"{{.Name}}\"：正在恢复（第 {{.Attempt}} 次尝试）\n"
+  },
+  "progress.workflowReuseStep": {
+    "description": "工作流步骤复用提示",
+    "other": "  复用 {{.Kind}} \"{{.Name}}\"\n"
+  },
+  "progress.workflowStarting": {
+    "description": "工作流开始提示",
+    "other": "工作流 \"{{.Name}}\"：开始\n"
+  },
+  "progress.workflowSnapshotSaved": {
+    "description": "工作流快照已保存提示",
+    "other": "  已保存快照 \"{{.Name}}\" 到 {{.Path}}\n"
+  },
+  "progress.workflowLedgerNotRecorded": {
+    "description": "工作流未记录账本警告",
+    "other": "工作流：未记录到账本：{{.Error}}\n"
+  },
+  "progress.workflowLedgerAppendFailed": {
+    "description": "工作流追加账本失败警告",
+    "other": "工作流：追加账本失败：{{.Error}}\n"
+  },
+  "progress.workflowManifestWriteFailed": {
+    "description": "工作流写入清单失败警告",
+    "other": "工作流：写入清单失败：{{.Error}}\n"
+  },
+  "progress.workflowManifestWritten": {
+    "description": "工作流清单已写入提示",
+    "other": "工作流：清单已写入 {{.Path}}\n"
+  },
+  "progress.workflowIndexWriteFailed": {
+    "description": "工作流写入索引失败警告",
+    "other": "工作流：写入索引失败：{{.Error}}\n"
+  },
+  "progress.workflowIndexWritten": {
+    "description": "工作流索引已写入提示",
+    "other": "工作流：索引已写入 {{.Path}}\n"
+  },
+  "progress.workflowFailed": {
+    "description": "工作流失败提示",
+    "other": "工作流 \"{{.Name}}\"：失败\n"
+  },
+  "warning.workflowPlanNotIncluded": {
+    "description": "工作流导出计划未包含警告",
+    "other": "警告：plan.yaml 未包含在导出中：{{.Reason}}\n"
+  },
+  "error.unsupportedFormat": {
+    "description": "不支持的输出格式错误",
+    "other": "不支持的 {{.Subject}} 格式：{{.Value}}"
+  },
+  "error.workflowFormat": {
+    "description": "不支持的工作流子命令格式错误",
+    "other": "不支持的 workflow {{.Command}} 格式 \"{{.Value}}\"（允许：text、json）"
+  },
+  "error.workflowCleanSkipped": {
+    "description": "workflow clean 跳过文件错误",
+    "other": "workflow clean 无法把 {{.Count}} 个文件移入回收站：{{.Reasons}}"
+  },
+  "error.snapshotNameRequired": {
+    "description": "快照名称必填标志错误",
+    "other": "缺少必需标志 \"name\""
+  },
+  "error.compareSnapshotsTogether": {
+    "description": "compare 快照标志须成对错误",
+    "other": "current-snapshot 和 baseline-snapshot 必须一起提供"
+  },
+  "error.compareModesCombined": {
+    "description": "compare 文件/快照模式冲突错误",
+    "other": "不能同时使用文件和快照两种对比方式"
+  },
+  "error.compareInput": {
+    "description": "compare 输入要求错误",
+    "other": "compare 需要两个 JSON 报告，或者使用 --current-snapshot/--baseline-snapshot"
+  },
+  "error.trendArgsWithPattern": {
+    "description": "trend 参数/模式冲突错误",
+    "other": "显式快照参数不能与 --from-snapshots 同时使用"
+  },
+  "error.trendMinSnapshots": {
+    "description": "trend 最少快照数错误",
+    "other": "trend 至少需要 2 个快照"
+  },
+  "error.trendMinSnapshotsPattern": {
+    "description": "trend 模式解析后最少快照数错误",
+    "other": "trend 解析模式 \"{{.Pattern}}\" 后至少需要 2 个快照"
+  },
+  "error.workflowResumeNoVersion": {
+    "description": "恢复旧版清单错误",
+    "other": "无法恢复：清单没有 manifest_version（旧格式）；请重新运行工作流"
+  },
+  "error.workflowResumeVersionUnsupported": {
+    "description": "恢复不支持的清单版本错误",
+    "other": "无法恢复：不支持 manifest_version {{.Version}}（仅支持版本 2）"
+  },
+  "error.workflowResumeNoPlanPath": {
+    "description": "恢复缺少 plan_path 错误",
+    "other": "无法恢复：清单没有 plan_path"
+  },
+  "error.workflowCompareNoCurrent": {
+    "description": "workflow compare 缺少当前报告错误",
+    "other": "compare \"{{.Job}}\"：找不到当前窗口 \"{{.Window}}\" 的报告"
+  },
+  "error.workflowCompareNoBaseline": {
+    "description": "workflow compare 缺少基线报告错误",
+    "other": "compare \"{{.Job}}\"：找不到基线窗口 \"{{.Window}}\" 的报告"
+  },
+  "error.workflowTrendNoSnapshot": {
+    "description": "workflow trend 缺少快照报告错误",
+    "other": "trend \"{{.Job}}\"：找不到快照 \"{{.Snapshot}}\" 的报告"
+  },
+  "error.workflowStepFormat": {
+    "description": "工作流步骤不支持的格式错误",
+    "other": "不支持的格式 \"{{.Value}}\""
+  },
+  "cmd.snapshot.short": {
+    "description": "snapshot 命令短说明",
+    "other": "管理快照"
+  },
+  "cmd.snapshot.save.use": {
+    "description": "snapshot save 用法行",
+    "other": "save <报告.json>"
+  },
+  "cmd.snapshot.save.short": {
+    "description": "snapshot save 短说明",
+    "other": "把 analyze JSON 报告保存为命名快照"
+  },
+  "cmd.snapshot.list.short": {
+    "description": "snapshot list 短说明",
+    "other": "列出已保存的快照"
+  },
+  "cmd.snapshot.show.use": {
+    "description": "snapshot show 用法行",
+    "other": "show <名称>"
+  },
+  "cmd.snapshot.show.short": {
+    "description": "snapshot show 短说明",
+    "other": "查看快照元数据与摘要"
+  },
+  "cmd.snapshot.rename.use": {
+    "description": "snapshot rename 用法行",
+    "other": "rename <旧名称> <新名称>"
+  },
+  "cmd.snapshot.rename.short": {
+    "description": "snapshot rename 短说明",
+    "other": "重命名已保存的快照"
+  },
+  "cmd.snapshot.delete.use": {
+    "description": "snapshot delete 用法行",
+    "other": "delete <名称>"
+  },
+  "cmd.snapshot.delete.short": {
+    "description": "snapshot delete 短说明",
+    "other": "删除已保存的快照"
+  },
+  "cmd.snapshot.flag.name": {
+    "description": "快照名称标志说明",
+    "other": "快照名称（必填）"
+  },
+  "cmd.snapshot.flag.snapshotDir": {
+    "description": "快照保存目录标志说明",
+    "other": "保存快照的目录"
+  },
+  "cmd.snapshot.flag.snapshotDirLoad": {
+    "description": "快照加载目录标志说明",
+    "other": "加载快照的目录"
+  },
+  "cmd.snapshot.flag.listFormat": {
+    "description": "快照列表格式标志说明",
+    "other": "快照列表输出格式：text 或 json"
+  },
+  "cmd.snapshot.flag.showFormat": {
+    "description": "快照详情格式标志说明",
+    "other": "快照详情输出格式：text 或 json"
+  },
+  "cmd.snapshot.saved": {
+    "description": "快照已保存确认",
+    "other": "已保存快照 \"{{.Name}}\" 到 {{.Path}}\n"
+  },
+  "cmd.snapshot.renamed": {
+    "description": "快照已重命名确认",
+    "other": "已将快照 \"{{.Old}}\" 重命名为 \"{{.New}}\"，路径 {{.Path}}\n"
+  },
+  "cmd.snapshot.deleted": {
+    "description": "快照已删除确认",
+    "other": "已删除快照 \"{{.Name}}\"，路径 {{.Path}}\n"
+  },
+  "cmd.snapshot.listHeader": {
+    "description": "快照列表表头",
+    "other": "名称\t标签\t创建时间\t输入模式\t窗口\t诊断"
+  },
+  "cmd.snapshot.emptyDiagnostics": {
+    "description": "空诊断模式标记",
+    "other": "（空）"
+  },
+  "cmd.snapshot.show.name": {
+    "description": "快照详情名称标签",
+    "other": "名称：{{.Value}}"
+  },
+  "cmd.snapshot.show.path": {
+    "description": "快照详情路径标签",
+    "other": "路径：{{.Value}}"
+  },
+  "cmd.snapshot.show.label": {
+    "description": "快照详情标签标签",
+    "other": "标签：{{.Value}}"
+  },
+  "cmd.snapshot.show.createdAt": {
+    "description": "快照详情创建时间标签",
+    "other": "创建时间：{{.Value}}"
+  },
+  "cmd.snapshot.show.binlogvizVersion": {
+    "description": "快照详情 binlogviz 版本标签",
+    "other": "binlogviz 版本：{{.Value}}"
+  },
+  "cmd.snapshot.show.inputMode": {
+    "description": "快照详情输入模式标签",
+    "other": "输入模式：{{.Value}}"
+  },
+  "cmd.snapshot.show.inputSource": {
+    "description": "快照详情输入来源标签",
+    "other": "输入来源：{{.Value}}"
+  },
+  "cmd.snapshot.show.filters": {
+    "description": "快照详情过滤条件标签",
+    "other": "过滤条件：{{.Value}}"
+  },
+  "cmd.snapshot.show.totalTransactions": {
+    "description": "快照详情事务总数标签",
+    "other": "事务总数：{{.Value}}"
+  },
+  "cmd.snapshot.show.totalRows": {
+    "description": "快照详情行数总数标签",
+    "other": "行数总数：{{.Value}}"
+  },
+  "cmd.snapshot.show.totalEvents": {
+    "description": "快照详情事件总数标签",
+    "other": "事件总数：{{.Value}}"
+  },
+  "cmd.snapshot.show.warnings": {
+    "description": "快照详情警告数标签",
+    "other": "警告数：{{.Value}}"
+  },
+  "cmd.compare.use": {
+    "description": "compare 用法行",
+    "other": "compare [<当前.json> <基线.json>]"
+  },
+  "cmd.compare.short": {
+    "description": "compare 命令短说明",
+    "other": "对比两份 BinlogViz JSON 分析报告"
+  },
+  "cmd.compare.flag.format": {
+    "description": "compare 格式标志说明",
+    "other": "对比输出格式：text、json 或 html"
+  },
+  "cmd.compare.flag.currentSnapshot": {
+    "description": "compare current-snapshot 标志说明",
+    "other": "作为当前报告使用的快照名称"
+  },
+  "cmd.compare.flag.baselineSnapshot": {
+    "description": "compare baseline-snapshot 标志说明",
+    "other": "作为基线报告使用的快照名称"
+  },
+  "cmd.compare.flag.snapshotDir": {
+    "description": "compare snapshot-dir 标志说明",
+    "other": "加载快照的目录"
+  },
+  "cmd.trend.use": {
+    "description": "trend 用法行",
+    "other": "trend [<快照...>]"
+  },
+  "cmd.trend.short": {
+    "description": "trend 命令短说明",
+    "other": "把多个快照按顺序做趋势分析"
+  },
+  "cmd.trend.flag.format": {
+    "description": "trend 格式标志说明",
+    "other": "趋势输出格式：text、json 或 html"
+  },
+  "cmd.trend.flag.fromSnapshots": {
+    "description": "trend from-snapshots 标志说明",
+    "other": "按名称选择快照的模式"
+  },
+  "cmd.trend.flag.baselineSnapshot": {
+    "description": "trend baseline-snapshot 标志说明",
+    "other": "可选：作为基线差值参照的快照名称"
+  },
+  "cmd.trend.flag.snapshotDir": {
+    "description": "trend snapshot-dir 标志说明",
+    "other": "加载快照的目录"
+  },
+  "cmd.trend.flag.topTables": {
+    "description": "trend top-tables 标志说明",
+    "other": "趋势输出中包含的热点表数量"
+  },
+  "cmd.trend.flag.order": {
+    "description": "trend order 标志说明",
+    "other": "趋势点顺序：cli（保持参数/选择顺序）或 time（按窗口 start_time 排序）"
+  },
+  "cmd.trend.reordered": {
+    "description": "trend 重排序提示",
+    "other": "trend：已按窗口 start_time 重新排序：{{.Names}}\n"
+  },
+  "report.text.compare.summary": {
+    "description": "对比文本报告标题",
+    "other": "对比概览\n"
+  },
+  "report.text.compare.currentLabel": {
+    "description": "当前报告标签行",
+    "other": "当前标签：{{.Value}}\n"
+  },
+  "report.text.compare.baselineLabel": {
+    "description": "基线报告标签行",
+    "other": "基线标签：{{.Value}}\n"
+  },
+  "report.text.compare.currentWindow": {
+    "description": "当前报告窗口行",
+    "other": "当前时间窗：{{.Value}}\n"
+  },
+  "report.text.compare.baselineWindow": {
+    "description": "基线报告窗口行",
+    "other": "基线时间窗：{{.Value}}\n"
+  },
+  "report.text.compare.currentInputMode": {
+    "description": "当前报告输入模式行",
+    "other": "当前输入模式：{{.Value}}\n"
+  },
+  "report.text.compare.baselineInputMode": {
+    "description": "基线报告输入模式行",
+    "other": "基线输入模式：{{.Value}}\n"
+  },
+  "report.text.compare.currentSource": {
+    "description": "当前报告来源行",
+    "other": "当前来源：{{.Value}}\n"
+  },
+  "report.text.compare.baselineSource": {
+    "description": "基线报告来源行",
+    "other": "基线来源：{{.Value}}\n"
+  },
+  "report.text.compare.currentFilters": {
+    "description": "当前报告过滤条件行",
+    "other": "当前过滤条件：{{.Value}}\n"
+  },
+  "report.text.compare.baselineFilters": {
+    "description": "基线报告过滤条件行",
+    "other": "基线过滤条件：{{.Value}}\n"
+  },
+  "report.text.compare.rows": {
+    "description": "对比行数变化行",
+    "other": "行数：{{.Baseline}} -> {{.Current}}（{{.Delta}}）\n"
+  },
+  "report.text.compare.transactions": {
+    "description": "对比事务变化行",
+    "other": "事务数：{{.Baseline}} -> {{.Current}}（{{.Delta}}）\n"
+  },
+  "report.text.compare.warnings": {
+    "description": "对比警告数变化行",
+    "other": "警告数：{{.Baseline}} -> {{.Current}}（{{.Delta}}）\n"
+  },
+  "report.text.compare.inputFileSize": {
+    "description": "对比输入文件大小行",
+    "other": "输入文件大小：{{.BaselineLabel}}={{.BaselineSize}} -> {{.CurrentLabel}}={{.CurrentSize}}\n"
+  },
+  "report.text.compare.countedEventBytes": {
+    "description": "对比已计数事件字节行",
+    "other": "已计数事件字节数：{{.BaselineLabel}}={{.BaselineSize}} -> {{.CurrentLabel}}={{.CurrentSize}}\n"
+  },
+  "report.text.compare.keyFindings": {
+    "description": "关键发现章节标题",
+    "other": "关键发现\n"
+  },
+  "report.text.compare.evidence": {
+    "description": "证据引用行",
+    "other": "   证据：{{.Labels}}\n"
+  },
+  "report.text.compare.recommendedNextChecks": {
+    "description": "建议后续检查章节标题",
+    "other": "建议后续检查\n"
+  },
+  "report.text.compare.topTableChanges": {
+    "description": "热点表变化章节标题",
+    "other": "热点表变化\n"
+  },
+  "report.text.compare.topPatternChanges": {
+    "description": "模式变化章节标题",
+    "other": "\n模式变化\n"
+  },
+  "report.text.compare.noneList": {
+    "description": "空列表标记",
+    "other": "- 无\n"
+  },
+  "report.text.compare.queryLine": {
+    "description": "模式样例查询行",
+    "other": "  查询：{{.Query}}\n"
+  },
+  "report.text.compare.drilldown": {
+    "description": "钻取章节标题",
+    "other": "  钻取：\n"
+  },
+  "report.text.compare.whyLine": {
+    "description": "钻取选择原因行",
+    "other": "    原因：{{.Why}}\n"
+  },
+  "report.text.compare.operationMix": {
+    "description": "操作类型分布章节标题",
+    "other": "\n操作类型分布\n"
+  },
+  "report.text.compare.alertChanges": {
+    "description": "告警变化章节标题",
+    "other": "\n告警变化\n"
+  },
+  "report.text.compare.addedAlerts": {
+    "description": "新增告警章节标题",
+    "other": "新增告警（{{.Count}}）\n"
+  },
+  "report.text.compare.removedAlerts": {
+    "description": "消失告警章节标题",
+    "other": "消失告警（{{.Count}}）\n"
+  },
+  "report.text.compare.largestTxn": {
+    "description": "最大事务行",
+    "other": "最大事务：{{.Baseline}} -> {{.Current}}"
+  },
+  "report.text.compare.newSuffix": {
+    "description": "新身份后缀",
+    "other": " 新增"
+  },
+  "report.text.trend.summary": {
+    "description": "趋势文本报告标题",
+    "other": "趋势概览\n"
+  },
+  "report.text.trend.inputMode": {
+    "description": "趋势输入模式行",
+    "other": "输入模式：{{.Value}}\n"
+  },
+  "report.text.trend.baselineSnapshot": {
+    "description": "趋势基线快照行",
+    "other": "基线快照：{{.Value}}\n"
+  },
+  "report.text.trend.rows": {
+    "description": "趋势行数变化行",
+    "other": "行数：{{.First}} -> {{.Last}}（{{.Delta}}）\n"
+  },
+  "report.text.trend.transactions": {
+    "description": "趋势事务数变化行",
+    "other": "事务数：{{.First}} -> {{.Last}}（{{.Delta}}）\n"
+  },
+  "report.text.trend.events": {
+    "description": "趋势事件数变化行",
+    "other": "事件数：{{.First}} -> {{.Last}}（{{.Delta}}）\n"
+  },
+  "report.text.trend.alerts": {
+    "description": "趋势告警数变化行",
+    "other": "告警数：{{.First}} -> {{.Last}}（{{.Delta}}）\n"
+  },
+  "report.text.trend.keyFindings": {
+    "description": "关键发现章节标题",
+    "other": "\n关键发现\n"
+  },
+  "report.text.trend.evidence": {
+    "description": "证据引用行",
+    "other": "   证据：{{.Labels}}\n"
+  },
+  "report.text.trend.recommendedNextChecks": {
+    "description": "建议后续检查章节标题",
+    "other": "\n建议后续检查\n"
+  },
+  "report.text.trend.orderedPoints": {
+    "description": "有序快照点章节标题",
+    "other": "\n有序快照点\n"
+  },
+  "report.text.trend.pointBaselineDelta": {
+    "description": "快照点基线差值后缀",
+    "other": " | 对比基线 rows={{.Rows}} txns={{.Txns}} events={{.Events}} alerts={{.Alerts}}"
+  },
+  "report.text.trend.operationMix": {
+    "description": "操作类型分布章节标题",
+    "other": "\n操作类型分布\n"
+  },
+  "report.text.trend.topTableMovement": {
+    "description": "热点表趋势章节标题",
+    "other": "\n热点表趋势\n"
+  },
+  "report.text.trend.noneList": {
+    "description": "空列表标记",
+    "other": "- 无\n"
+  },
+  "report.text.trend.topPatternTrends": {
+    "description": "模式趋势章节标题",
+    "other": "\n模式趋势\n"
+  },
+  "report.text.trend.drilldown": {
+    "description": "钻取章节标题",
+    "other": "  钻取：\n"
+  },
+  "report.text.trend.whyLine": {
+    "description": "钻取选择原因行",
+    "other": "    原因：{{.Why}}\n"
+  },
+  "report.text.trend.aggregateInsights": {
+    "description": "聚合洞察章节标题",
+    "other": "\n聚合洞察\n"
+  },
+  "report.text.trend.firstSnapshot": {
+    "description": "首个快照洞察行",
+    "other": "- 首个快照：{{.Value}}\n"
+  },
+  "report.text.trend.lastSnapshot": {
+    "description": "最后快照洞察行",
+    "other": "- 最后快照：{{.Value}}\n"
+  },
+  "report.text.trend.rowsDelta": {
+    "description": "行数变化洞察行",
+    "other": "- 行数变化：{{.Delta}}\n"
+  },
+  "report.text.trend.txnsDelta": {
+    "description": "事务变化洞察行",
+    "other": "- 事务变化：{{.Delta}}\n"
+  },
+  "report.text.trend.eventsDelta": {
+    "description": "事件变化洞察行",
+    "other": "- 事件变化：{{.Delta}}\n"
+  },
+  "report.text.trend.alertDelta": {
+    "description": "告警变化洞察行",
+    "other": "- 告警变化：{{.Delta}}\n"
+  },
+  "report.text.trend.patternFallback": {
+    "description": "未命名模式兜底标签",
+    "other": "模式"
   }
 }

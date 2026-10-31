@@ -1,7 +1,7 @@
 // Package binlogviz executes a workflow plan: resume with rerun selectors,
 // per-window analyze/compare/trend steps, the manifest, and the index page.
 // input: a parsed workflow.Plan, output/snapshot dirs, and the plan path.
-// output: step artifacts on disk, manifest.json, and index.html.
+// output: step artifacts on disk, manifest.json, index.html, and localized stderr progress.
 // pos: CLI orchestration helper for workflow.go.
 // note: if this file changes, update this header and module README.md.
 package binlogviz
@@ -20,6 +20,7 @@ import (
 	"binlogviz/internal/binlog"
 	"binlogviz/internal/clierr"
 	comparepkg "binlogviz/internal/compare"
+	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
 	"binlogviz/internal/report"
 	"binlogviz/internal/snapshot"
@@ -48,13 +49,13 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 		return workflow.ValidateResumableManifest(mf, "", "", "")
 	}
 	if mf.ManifestVersion == 0 {
-		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest has no manifest_version (legacy format); run a fresh workflow instead")
+		return clierr.Errorf(clierr.KindUnsupported, "%s", i18n.T("error.workflowResumeNoVersion"))
 	}
 	if mf.ManifestVersion != 2 {
-		return clierr.Errorf(clierr.KindUnsupported, "cannot resume: manifest_version %d is not supported (only version 2 is supported)", mf.ManifestVersion)
+		return clierr.Errorf(clierr.KindUnsupported, "%s", i18n.Tf("error.workflowResumeVersionUnsupported", map[string]any{"Version": mf.ManifestVersion}))
 	}
 	if mf.PlanPath == "" {
-		return clierr.Errorf(clierr.KindCorrupt, "cannot resume: manifest has no plan_path")
+		return clierr.Errorf(clierr.KindCorrupt, "%s", i18n.T("error.workflowResumeNoPlanPath"))
 	}
 	// A compare/trend artifact from a newer build would be reused or summarized
 	// without being understood (ADR 0010): unsupported (9).
@@ -101,14 +102,14 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	// Build the resume plan
 	resumePlan, err := workflow.BuildResumePlan(plan, mf, rerunSelectors, outputDir, effectiveSnapshotDir)
 	if errors.Is(err, workflow.ErrNothingToResume) {
-		fmt.Fprintln(stderr, "nothing to resume")
+		fmt.Fprintln(stderr, i18n.T("progress.workflowNothingToResume"))
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprintf(stderr, "workflow %q: resuming (attempt %d)\n", plan.Workflow.Name, resumePlan.UpdatedManifest.Attempt)
+	fmt.Fprint(stderr, i18n.Tf("progress.workflowResuming", map[string]any{"Name": plan.Workflow.Name, "Attempt": resumePlan.UpdatedManifest.Attempt}))
 
 	// Build analyzer and report options from plan defaults
 	analyzerOpts := buildWorkflowAnalyzerOptions(plan)
@@ -155,7 +156,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 				windowReports[planned.Name] = reportInput
 			}
 
-			fmt.Fprintf(stderr, "  reuse %s %q\n", planned.Kind, planned.Name)
+			fmt.Fprint(stderr, i18n.Tf("progress.workflowReuseStep", map[string]any{"Kind": planned.Kind, "Name": planned.Name}))
 			continue
 		}
 
@@ -234,7 +235,7 @@ func findTrendJob(plan workflow.Plan, name string) workflow.TrendJob {
 func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string, stderr io.Writer, loc *time.Location) error {
 	startedAt := time.Now().UTC()
 
-	fmt.Fprintf(stderr, "workflow %q: starting\n", plan.Workflow.Name)
+	fmt.Fprint(stderr, i18n.Tf("progress.workflowStarting", map[string]any{"Name": plan.Workflow.Name}))
 
 	if err := workflow.EnsureLayout(outputDir); err != nil {
 		return clierr.Errorf(clierr.KindOutput, "create output layout: %w", err)
@@ -348,34 +349,34 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 	}
 	entries, hashErrs := workflow.LedgerEntriesForRun(outputDir, *mf, mf.RunID, time.Now())
 	for _, herr := range hashErrs {
-		fmt.Fprintf(stderr, "workflow: not recorded in ledger: %v\n", herr)
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowLedgerNotRecorded", map[string]any{"Error": herr}))
 	}
 	if lerr := workflow.AppendLedger(outputDir, entries); lerr != nil {
-		fmt.Fprintf(stderr, "workflow: failed to append ledger: %v\n", lerr)
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowLedgerAppendFailed", map[string]any{"Error": lerr}))
 	}
 
 	manifestPath := filepath.Join(outputDir, "manifest.json")
 	if writeErr := workflow.WriteManifest(manifestPath, *mf); writeErr != nil {
-		fmt.Fprintf(stderr, "workflow: failed to write manifest: %v\n", writeErr)
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowManifestWriteFailed", map[string]any{"Error": writeErr}))
 		if stepErr == nil {
 			return clierr.Errorf(clierr.KindOutput, "write manifest: %w", writeErr)
 		}
 	} else {
-		fmt.Fprintf(stderr, "workflow: manifest written to %s\n", manifestPath)
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowManifestWritten", map[string]any{"Path": manifestPath}))
 	}
 
 	// Write index.html on both success and failure paths
 	if indexErr := writeWorkflowIndex(outputDir, *mf); indexErr != nil {
-		fmt.Fprintf(stderr, "workflow: failed to write index: %v\n", indexErr)
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowIndexWriteFailed", map[string]any{"Error": indexErr}))
 		if stepErr == nil {
 			return clierr.Errorf(clierr.KindOutput, "write index: %w", indexErr)
 		}
 	} else {
-		fmt.Fprintf(stderr, "workflow: index written to %s\n", filepath.Join(outputDir, "index.html"))
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowIndexWritten", map[string]any{"Path": filepath.Join(outputDir, "index.html")}))
 	}
 
 	if stepErr != nil {
-		fmt.Fprintf(stderr, "workflow %q: failed\n", mf.WorkflowName)
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowFailed", map[string]any{"Name": mf.WorkflowName}))
 	}
 	return stepErr
 }
@@ -483,7 +484,7 @@ func runWorkflowAnalyzeWindow(
 			return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindOutput, "save snapshot %q: %w", w.Name, err)
 		}
 		rec.SnapshotName = w.Name
-		fmt.Fprintf(stderr, "  saved snapshot %q to %s\n", w.Name, savedPath)
+		fmt.Fprint(stderr, i18n.Tf("progress.workflowSnapshotSaved", map[string]any{"Name": w.Name, "Path": savedPath}))
 	}
 
 	rec.Status = "success"
@@ -575,14 +576,14 @@ func runWorkflowCompareJob(
 
 	current, ok := windowReports[job.Current]
 	if !ok {
-		err := clierr.Errorf(clierr.KindError, "compare %q: current window %q report not found", job.Name, job.Current)
+		err := clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.workflowCompareNoCurrent", map[string]any{"Job": job.Name, "Window": job.Current}))
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, err
 	}
 	baseline, ok := windowReports[job.Baseline]
 	if !ok {
-		err := clierr.Errorf(clierr.KindError, "compare %q: baseline window %q report not found", job.Name, job.Baseline)
+		err := clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.workflowCompareNoBaseline", map[string]any{"Job": job.Name, "Window": job.Baseline}))
 		rec.Status = "failed"
 		rec.Error = err.Error()
 		return rec, err
@@ -599,7 +600,7 @@ func runWorkflowCompareJob(
 		case "html":
 			output, err = comparepkg.RenderHTMLIn(result, loc)
 		default:
-			err = clierr.Errorf(clierr.KindUsage, "unsupported format %q", format)
+			err = clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.workflowStepFormat", map[string]any{"Value": format}))
 		}
 		if err != nil {
 			rec.Status = "failed"
@@ -636,7 +637,7 @@ func runWorkflowTrendJob(
 	for _, snapName := range job.Snapshots {
 		reportInput, ok := windowReports[snapName]
 		if !ok {
-			err := clierr.Errorf(clierr.KindError, "trend %q: snapshot %q report not found", job.Name, snapName)
+			err := clierr.Errorf(clierr.KindError, "%s", i18n.Tf("error.workflowTrendNoSnapshot", map[string]any{"Job": job.Name, "Snapshot": snapName}))
 			rec.Status = "failed"
 			rec.Error = err.Error()
 			return rec, err
@@ -668,7 +669,7 @@ func runWorkflowTrendJob(
 		case "html":
 			output, renderErr = trendpkg.RenderHTMLIn(result, loc)
 		default:
-			renderErr = clierr.Errorf(clierr.KindUsage, "unsupported format %q", format)
+			renderErr = clierr.Errorf(clierr.KindUsage, "%s", i18n.Tf("error.workflowStepFormat", map[string]any{"Value": format}))
 		}
 		if renderErr != nil {
 			rec.Status = "failed"

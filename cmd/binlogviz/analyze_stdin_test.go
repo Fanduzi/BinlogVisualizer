@@ -19,6 +19,10 @@ func TestMain(m *testing.M) {
 	if os.Getenv("BINLOGVIZ_SIGNAL_CHILD") == "1" {
 		runStdinInterruptChild()
 	}
+	// Deterministic locale: i18n.Init("") detects LANG/LC_ALL, and command
+	// tests pinning English output must not inherit the machine's locale.
+	_ = os.Setenv("LANG", "en_US.UTF-8")
+	_ = os.Setenv("LC_ALL", "en_US.UTF-8")
 	os.Exit(m.Run())
 }
 
