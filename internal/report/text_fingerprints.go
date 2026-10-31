@@ -33,11 +33,11 @@ func renderStatementFingerprints(buf *strings.Builder, result model.AnalysisResu
 
 	listed := limitFingerprints(result.StatementFingerprints, opts.TopFingerprints)
 	for i, fp := range listed {
-		buf.WriteString(fmt.Sprintf("  %d. %s\n", i+1, model.FormatQuerySummary(fp.Fingerprint, len(fp.Fingerprint))))
-		buf.WriteString(fmt.Sprintf("     rows=%d stmts=%d share=%.1f%% tables=%s\n",
-			fp.Rows, fp.Statements, fp.ShareOfRows*100, delimitedCountMap(fp.Tables)))
+		fmt.Fprintf(buf, "  %d. %s\n", i+1, model.FormatQuerySummary(fp.Fingerprint, len(fp.Fingerprint)))
+		fmt.Fprintf(buf, "     rows=%d stmts=%d share=%.1f%% tables=%s\n",
+			fp.Rows, fp.Statements, fp.ShareOfRows*100, delimitedCountMap(fp.Tables))
 		if opts.SQLContextMode != SQLContextOff && strings.TrimSpace(fp.Sample) != "" {
-			buf.WriteString(fmt.Sprintf("     %s: %s\n", i18n.T("report.label.sample"), fp.Sample))
+			fmt.Fprintf(buf, "     %s: %s\n", i18n.T("report.label.sample"), fp.Sample)
 		}
 	}
 	if omitted := len(result.StatementFingerprints) - len(listed); omitted > 0 {
