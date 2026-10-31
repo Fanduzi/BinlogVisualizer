@@ -4,6 +4,43 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.38.0
+
+Release date: 2026-11-02
+
+Highlights:
+
+- The roadmap epic against `mysqlbinlog`/`binlog2sql`/`my2sql`/`pt-query-digest` is fully delivered (#256 closed): `binlogviz redo` forward SQL, remote flashback reads, `--where` row filtering, `--output-dir` split scripts, CSV/TSV analyze exports, statement fingerprints, and the `--thread-id` selector.
+- `binlogviz redo` replays selected changes as forward SQL — binlog2sql default mode — on every input mode including `--host`, for bounded PITR replay (#459, ADR 0022).
+- `flashback`/`redo --where <expr>` applies row-level predicates on MySQL comparison semantics for surgical undo/replay scope (#462, ADR 0024).
+- `--output-dir` publishes a staged directory of complete SQL scripts atomically: per-table sealed flashback scripts (`--file-per-table`) or size-rotated redo parts (`--max-statements-per-file`) (#463, ADR 0025).
+- `analyze` exports `tables`/`transactions`/`patterns`/`fingerprints` as CSV/TSV and ranks statement fingerprints workload-wide, pt-query-digest style (#464, ADR 0026).
+- `--thread-id` selects transaction groups by binlog connection id across analyze/flashback/redo; `--index-file` manifests are now a closed trust boundary (#465, ADRs 0027–0028).
+
+Related notes:
+
+- [v0.38.0 release notes](docs/releases/release-notes-v0.38.0.md)
+- [v0.38.0 中文发行说明](docs/releases/release-notes-v0.38.0.zh-CN.md)
+
+### Added
+
+- `binlogviz redo`: forward SQL emitter — real UPDATEs, PK `<=>` matching or full-image `LIMIT 1` fallback, DDL bare, `USE` tracking, XA pass-through, BEGIN/COMMIT mirroring, staged output (ADR 0022).
+- `flashback --host`: remote bounded read for flashback; `--index-file`, `--from-dir`/`--prefix` parity across analyze/flashback/redo (ADR 0023).
+- `flashback`/`redo --where`: predicate layer in `internal/mysqlexpr` — before-image semantics for UPDATE/DELETE, after-image for INSERT, conservative three-valued logic, loud refusal on unverifiable columns (ADR 0024).
+- `--output-dir`, `--file-per-table` (flashback), `--max-statements-per-file` (redo): `internal/splitout` atomic directory publication with fsync + MANIFEST-last + rename; every file is independently verifiable/applicable (ADR 0025).
+- `analyze --format csv|tsv --csv-dataset`: RFC 4180 exports with JSON-identical bounding; `statement_fingerprints` in JSON (additive, `report_version` stays 4), `--show-fingerprints` text section (implied by `--details`), `fingerprints` dataset; 8192-group cap with overflow accounting (ADR 0026).
+- `--thread-id` on all three commands: complete-group selection by connection id, `StringSliceVar` repeated/comma-separated values, `selection.thread_ids` in JSON (ADR 0027).
+- `--index-file` hardening: lexical containment, existence, self-reference, duplicate file identity, and post-`EvalSymlinks` containment checks; relay-log inputs documented (ADR 0028).
+- Live e2e coverage: redo replay, remote redo/flashback, `--where`, split round-trips, fingerprints, `--thread-id` — all in the mandatory PASS-verification loop.
+- L2 READMEs for all internal packages; ADRs 0022–0028.
+
+### Fixed
+
+- `codehealth lint` local gate: isolated `GOLANGCI_LINT_CACHE` per run plus root-normalized finding paths fix stale-path false positives/deceptive passes (#466, #467).
+- `undoStatements` shared helper replaces copy-paste across flashback tests (#461).
+- Dead i18n keys (20) removed from both locales; tree is `gofmt -s` clean (#468).
+- CI: macos-14 runners migrated to macos-15 ahead of the GitHub brownout.
+
 ## v0.37.0
 
 Release date: 2026-10-30
