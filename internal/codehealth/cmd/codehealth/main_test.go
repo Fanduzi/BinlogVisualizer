@@ -243,6 +243,37 @@ func TestGolangci(t *testing.T) {
 	}
 }
 
+// Each golangci-lint run gets a fresh cache dir no other tree can share:
+// the cache is content-keyed but replays the positions it first computed,
+// so a shared cache answers with another tree's filenames and every
+// finding diffs as new.
+func TestGolangciIsolatesTheLintCache(t *testing.T) {
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	tool := filepath.Join(bin, "golangci-lint")
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\nprintf %s \"$GOLANGCI_LINT_CACHE\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var dirs []string
+	for range 2 {
+		out, err := golangci(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := string(out)
+		if filepath.Dir(dir) != filepath.Clean(os.TempDir()) || !strings.HasPrefix(filepath.Base(dir), "codehealth-golangci-cache-") {
+			t.Fatalf("GOLANGCI_LINT_CACHE %q is not a fresh temp dir", dir)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("cache dir %s left behind", dir)
+		}
+		dirs = append(dirs, dir)
+	}
+	if dirs[0] == dirs[1] {
+		t.Fatal("two runs shared one lint cache")
+	}
+}
+
 // A failing tool fails the command instead of reading as no findings.
 func TestToolErrorsFail(t *testing.T) {
 	f := newFixture(t, map[string]string{"a.go": "package p\n", ".golangci.yml": "version: \"2\"\n"})
@@ -319,7 +350,10 @@ func TestLint(t *testing.T) {
 		if got, err := os.ReadFile(filepath.Join(root, ".golangci.yml")); err != nil || string(got) != f.read(".golangci.yml") {
 			t.Errorf("base tree lint config %q %v, want this tree's", got, err)
 		}
-		return issues("a.go", 4, "Error return value of `Run` is not checked 1 times")
+		// golangci-lint may emit absolute filenames under the tree it ran
+		// on (its cache keeps first-computed positions); they must still
+		// key to the measured files.
+		return issues(filepath.Join(root, "a.go"), 4, "Error return value of `Run` is not checked 1 times")
 	}
 	f.remove("a.go")
 	f.write("b.go", "package p\n\n// RunMain was Run.\n"+strings.Replace(lintSrc[len("package p\n\n"):], "Run", "RunMain", 1))

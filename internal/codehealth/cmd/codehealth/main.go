@@ -42,11 +42,23 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr, deps{deadcode: codehealth.RunDeadcode, lint: golangci, extract: gitArchive, shell: shell}))
 }
 
-// golangci runs golangci-lint on root with every finding reported.
+// golangci runs golangci-lint on root with every finding reported. The lint
+// cache is content-keyed but keeps the positions it first computed, so a
+// cache shared across trees answers with another tree's filenames — a stale
+// base extraction dir, even a different worktree — and every finding then
+// diffs as new. A fresh cache per run cannot bleed positions across trees;
+// the base and pull-request runs in one lint must not share one either, for
+// the same reason.
 func golangci(root string) ([]byte, error) {
+	cache, err := os.MkdirTemp("", "codehealth-golangci-cache-")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(cache) }()
 	cmd := exec.Command("golangci-lint", "run", "--output.json.path=stdout", "--issues-exit-code=0",
 		"--max-issues-per-linter=0", "--max-same-issues=0", "--show-stats=false", "./...")
 	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GOLANGCI_LINT_CACHE="+cache)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -301,7 +313,7 @@ func (o options) lintTree(root string, generated map[string]string) (codehealth.
 	if err != nil {
 		return m, nil, err
 	}
-	issues, err := codehealth.ParseLint(out)
+	issues, err := codehealth.ParseLint(out, root)
 	return m, issues, err
 }
 
