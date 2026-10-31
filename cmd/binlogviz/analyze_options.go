@@ -18,6 +18,7 @@ import (
 	"binlogviz/internal/report"
 	"binlogviz/internal/snapshot"
 	"binlogviz/internal/version"
+
 	"github.com/spf13/cobra"
 )
 
