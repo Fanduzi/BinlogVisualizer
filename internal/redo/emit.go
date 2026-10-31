@@ -376,7 +376,7 @@ func (st *emitState) splitNeedsRotate(max, count int64, rec *stagedRecord) bool 
 	if n == 0 || count == 0 || count+n <= max {
 		return false
 	}
-	return !(rec.kind == recClose && st.open[rec.key])
+	return rec.kind != recClose || !st.open[rec.key]
 }
 
 // rotateFor closes the file boundary decision for one record — after the
