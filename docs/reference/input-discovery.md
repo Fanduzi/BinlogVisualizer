@@ -15,7 +15,7 @@ Requirements:
 
 - `--from-dir` supplies the directory to scan.
 - `--prefix` supplies the filename prefix that matching files must start with.
-- `--index-file` supplies a server binlog index manifest inside `--from-dir`. Entries resolve relative to the directory (absolute paths are used as-is), read in listed order — a rotated-away or missing entry fails the command rather than silently dropping part of the history. It cannot be combined with `--prefix`.
+- `--index-file` supplies a server binlog index manifest inside `--from-dir`. Entries resolve relative to the directory, read in listed order — a rotated-away or missing entry fails the command rather than silently dropping part of the history. Every entry must resolve to a file inside `--from-dir`: `..` traversal, absolute paths to elsewhere, and in-dir symlinks whose target escapes are refused (absolute paths inside the directory are allowed); an entry that names the index itself or repeats an earlier file by any spelling — `x`/`./x`, absolute, symlink alias, or hardlink — is refused rather than clamping or double-reading. `CRLF` endings, blank lines, and `./` prefixes are accepted. It cannot be combined with `--prefix`.
 - Exactly one of `--prefix` or `--index-file` is required with `--from-dir`.
 - Discovery mode cannot be combined with positional binlog file arguments.
 - Discovery mode cannot be combined with remote mode (`--host`).
@@ -45,6 +45,8 @@ And excludes names such as:
 - `mysql-bin.index` because the suffix is not numeric
 - `mysql-bin.000123.tmp` because the suffix is not digits only
 - `relay-bin.000123` because the prefix does not match
+
+`--prefix relay-bin` does match relay logs (`relay-bin.000123`) the same way `mysql-bin` matches binary logs, and a `relay-log.index` works under `--index-file` — a relay log is a valid input while it exists, though the server purges relay files as soon as they are applied, so in practice they are only readable in transit or on a stopped replica.
 
 ## Numeric Suffix Matching
 

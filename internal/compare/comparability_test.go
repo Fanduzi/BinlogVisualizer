@@ -84,6 +84,13 @@ func TestBuildCompareResultGatesIncompatiblePersistedSelections(t *testing.T) {
 			current:  nil,
 			baseline: positionSelection(100, 200),
 		},
+		{
+			// ADR 0027: --thread-id is requested scope, like a position or
+			// GTID window — different requested id sets do not compare.
+			name:     "thread ids",
+			current:  &InputSelection{ThreadIDs: []uint32{7}},
+			baseline: &InputSelection{ThreadIDs: []uint32{9}},
+		},
 	}
 
 	for _, tt := range tests {
@@ -131,6 +138,20 @@ func TestBuildCompareResultKeepsSamePersistedSelectorsComparable(t *testing.T) {
 	}
 	if len(result.Comparability.Evidence) != 2 || result.Comparability.Evidence[0].Selection == nil || result.Comparability.Evidence[1].Selection == nil || len(result.Comparability.Evidence[0].Selection.MatchedGTIDs) != 1 || result.Comparability.Evidence[0].Selection.MatchedGTIDs[0] != sid+":1" || len(result.Comparability.Evidence[1].Selection.MatchedGTIDs) != 1 || result.Comparability.Evidence[1].Selection.MatchedGTIDs[0] != sid+":2" {
 		t.Fatalf("matched GTID evidence was not retained: %+v", result.Comparability.Evidence)
+	}
+}
+
+// ADR 0027: the same --thread-id set spelled differently (order, repeats)
+// is the same requested scope, so it stays comparable.
+func TestBuildCompareResultCanonicalizesThreadIDs(t *testing.T) {
+	current := comparableInputReport("payments-prod", "mysql", 7, "8.4.0", 1200)
+	baseline := comparableInputReport("payments-prod", "mysql", 19, "8.0.42", 200)
+	current.Selection = &InputSelection{ThreadIDs: []uint32{9, 7, 7}}
+	baseline.Selection = &InputSelection{ThreadIDs: []uint32{7, 9}}
+
+	result := BuildCompareResult(current, baseline)
+	if result.Comparability.Verdict != VerdictComparable || len(result.Comparability.ReasonCodes) != 0 {
+		t.Fatalf("comparability=%+v, want comparable without reasons", result.Comparability)
 	}
 }
 

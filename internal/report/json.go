@@ -102,6 +102,7 @@ type jsonSelection struct {
 	ResolvedGTIDFlavor     string   `json:"resolved_gtid_flavor,omitempty"`
 	MatchedGTIDSet         []string `json:"matched_gtid_set,omitempty"`
 	MatchedTransactions    *int     `json:"matched_transactions,omitempty"`
+	ThreadIDs              []uint32 `json:"thread_ids,omitempty"`
 }
 
 type jsonSQLContext struct {
@@ -596,6 +597,7 @@ func convertSelection(selection *model.AnalysisSelection) *jsonSelection {
 		ResolvedGTIDFlavor:     selection.ResolvedGTIDFlavor,
 		MatchedGTIDSet:         copyStringSlice(selection.MatchedGTIDSet),
 		MatchedTransactions:    cloneJSONInt(selection.MatchedTransactions),
+		ThreadIDs:              append([]uint32(nil), selection.ThreadIDs...),
 	}
 }
 

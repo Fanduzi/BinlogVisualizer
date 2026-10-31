@@ -66,6 +66,7 @@ func buildAnalyzerOptions(opts *analyzeOptions, startTime, endTime time.Time) an
 	result.IncludeTables = opts.includeTables
 	result.ExcludeTables = opts.excludeTables
 	result.IncludeDML = append([]string(nil), opts.dmlKinds...)
+	result.ThreadIDs = append([]uint32(nil), opts.threadIDList...)
 	result.RowWhere = opts.whereExpr
 	result.SchemaSQL = opts.schemaSQL
 	result.SchemaFileDB = opts.schemaFileDB
@@ -143,6 +144,11 @@ func validateAnalyzeOptions(opts *analyzeOptions) error {
 		return err
 	}
 	opts.dmlKinds = kinds
+	threadIDs, err := analyzer.ParseThreadIDs(opts.threadIDs)
+	if err != nil {
+		return err
+	}
+	opts.threadIDList = threadIDs
 	switch analyzer.DetailStoreMode(opts.detailStore) {
 	case analyzer.DetailStoreNone, analyzer.DetailStoreDuckDB:
 	default:

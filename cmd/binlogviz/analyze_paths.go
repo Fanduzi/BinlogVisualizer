@@ -81,9 +81,12 @@ func resolveAnalyzePaths(args []string, opts *analyzeOptions) ([]string, bool, m
 }
 
 // readIndexFilePaths reads a server's binlog.index manifest: one entry per line
-// in write order. Relative entries resolve against --from-dir. Every listed
-// file must exist — a rotated-away entry fails instead of silently dropping
-// part of the history.
+// in write order. Relative entries resolve against --from-dir; absolute entries
+// are allowed only inside it. Every entry must be a distinct existing file
+// inside --from-dir: escapes (.., absolute-to-elsewhere, symlink targets),
+// self-listing, and duplicates refuse instead of clamping or double-reading
+// (ADR 0028). A rotated-away entry fails instead of silently dropping part of
+// the history.
 func readIndexFilePaths(dir, indexName string) ([]string, error) {
 	indexPath := indexName
 	if !filepath.IsAbs(indexPath) {
@@ -93,7 +96,20 @@ func readIndexFilePaths(dir, indexName string) ([]string, error) {
 	if err != nil {
 		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.readIndexFile", map[string]any{"Path": indexPath, "Error": err.Error()}))
 	}
+	indexInfo, err := os.Stat(indexPath)
+	if err != nil {
+		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.readIndexFile", map[string]any{"Path": indexPath, "Error": err.Error()}))
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.readBinlogDir", map[string]any{"Error": err.Error()}))
+	}
+	evalDir, err := filepath.EvalSymlinks(absDir)
+	if err != nil {
+		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.readBinlogDir", map[string]any{"Error": err.Error()}))
+	}
 	var paths []string
+	var seen []indexEntry
 	for _, line := range strings.Split(string(data), "\n") {
 		entry := strings.TrimSpace(line)
 		if entry == "" {
@@ -103,16 +119,56 @@ func readIndexFilePaths(dir, indexName string) ([]string, error) {
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(dir, entry)
 		}
+		// Containment is judged twice: once lexically (a ../ or absolute
+		// escape names itself even when nothing exists there) and once on
+		// the resolved target (an in-dir symlink is the same escape one
+		// indirection down).
+		if resolvedOutside(absDir, path) {
+			return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileOutside", map[string]any{"Index": indexPath, "Entry": entry}))
+		}
 		info, statErr := os.Stat(path)
 		if statErr != nil || info.IsDir() {
 			return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileEntry", map[string]any{"Index": indexPath, "Entry": entry}))
 		}
+		if os.SameFile(indexInfo, info) {
+			return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileSelf", map[string]any{"Index": indexPath, "Entry": entry}))
+		}
+		for _, prior := range seen {
+			if os.SameFile(prior.info, info) {
+				return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileDuplicate", map[string]any{"Index": indexPath, "Entry": entry, "First": prior.entry}))
+			}
+		}
+		evalPath, evalErr := filepath.EvalSymlinks(path)
+		if evalErr != nil {
+			return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileEntry", map[string]any{"Index": indexPath, "Entry": entry}))
+		}
+		if resolvedOutside(evalDir, evalPath) {
+			return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileOutside", map[string]any{"Index": indexPath, "Entry": entry}))
+		}
 		paths = append(paths, path)
+		seen = append(seen, indexEntry{entry: entry, info: info})
 	}
 	if len(paths) == 0 {
 		return nil, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.indexFileEmpty", map[string]any{"Index": indexPath}))
 	}
 	return paths, nil
+}
+
+// indexEntry is one accepted manifest entry, kept so a later spelling of the
+// same file can be refused by identity rather than by name.
+type indexEntry struct {
+	entry string
+	info  os.FileInfo
+}
+
+// resolvedOutside reports whether path escapes dir after Rel resolution.
+// Both arguments are absolute forms by the caller.
+func resolvedOutside(dir, path string) bool {
+	rel, err := filepath.Rel(dir, filepath.Clean(path))
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func fileCoverageForPaths(paths []string) model.FileCoverage {

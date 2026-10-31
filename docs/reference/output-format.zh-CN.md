@@ -312,7 +312,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 |------|------|----------|------|
 | `report_version` | integer | yes | analyze 报告契约版本；当前版本为 `4`；读取端接受 v0-v4 |
 | `provenance` | object | no | 确定性的生产者集合和 `mixed_producers`；没有证据时省略 |
-| `selection` | object | no | 请求的 selector 与实际 position/GTID 证据；未启用 position 或 GTID selector 时省略 |
+| `selection` | object | no | 请求的 selector 与实际 position/GTID 证据；未启用 position、GTID 或 thread-id selector 时省略 |
 | `sql_context` | object | yes | 所选 `mode` 和报告全局源 SQL `available` 标志 |
 | `summary` | object | yes | 总体汇总和时间边界 |
 | `tables` | array | yes | 按确定性顺序排列的完整表聚合结果；人类可读渲染器可以只显示配置的 Top 表；没有表结果时为空数组 |
@@ -392,6 +392,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `include_gtids` | array | no | 规范化的 MySQL set 或 MariaDB 精确身份 |
 | `exclude_gtids` | array | no | 在 include 之后应用的规范化排除项 |
 | `resolved_gtid_flavor` | string | no | selector 与输入一致后得到的 `mysql` 或 `mariadb` |
+| `thread_ids` | array | no | 请求的 `--thread-id` 连接 id，已排序去重。设置了 `--thread-id` 时就出现，无论是否匹配（ADR 0027） |
 | `matched_gtid_set` | array | no | GTID 选择器匹配到的 GTID，按区间集合输出（report_version 4，#379）。MySQL：每个 server UUID 一项，如 `uuid:1-4:6-3000000`，按 UUID 排序。MariaDB：每段连续序号一项，`domain-server-seq` 或 `domain-server-first..last`，按 domain、server、序号排序。多个 server 写同一个 domain（交替写入），且输入里该 domain 没有重复的序号时，区间按该 domain 的序号合并，再对每个 server 各列一次（`0-7-1..9`、`0-8-1..9`），取条目更少的形式；区间里输入中不存在的身份不是事务。每一项都是合法的 `--include-gtids` 输入，整个列表作为 `--include-gtids` 在同一输入上选中的恰好是匹配到的事务。读到两次的 GTID 只出现一次。只有 GTID 选择器有匹配时才出现 |
 | `matched_transactions` | integer | no | GTID 选择器匹配到、且至少有一个事件落在时间和位点窗口内的事务组数，每读到一次计一次：读到两次的 GTID（同一文件传两次，或文件有重叠）计两次，但在 `matched_gtid_set` 里只出现一次。它包含没有保留行的匹配事务组，例如 DDL 事务，或行都在 `--stop-position` 之后的事务组；`summary.total_transactions` 不计这些（它统计有保留行的事务和 XA prepare 事务组），所以两者可能不同。设置了 GTID 选择器时出现；只用位点或时间选择器时没有 |
 

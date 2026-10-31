@@ -15,7 +15,7 @@ binlogviz analyze --from-dir DIR --index-file binlog.index
 
 - `--from-dir` 提供需要扫描的目录。
 - `--prefix` 提供匹配文件必须具备的文件名前缀。
-- `--index-file` 提供 `--from-dir` 目录中的服务器 binlog 索引清单。相对条目按目录解析（绝对路径直接使用），按列出顺序读取——被轮转删除或缺失的条目会让命令失败，而不是静默丢掉一部分历史。不能与 `--prefix` 同时使用。
+- `--index-file` 提供 `--from-dir` 目录中的服务器 binlog 索引清单。相对条目按目录解析，按列出顺序读取——被轮转删除或缺失的条目会让命令失败，而不是静默丢掉一部分历史。每个条目都必须解析为 `--from-dir` 内的文件：`..` 穿越、指向别处的绝对路径、目标逃逸到目录外的符号链接一律拒绝（目录内的绝对路径允许）；清单列出自身、或以任何写法重复列出同一文件——`x`/`./x`、绝对路径、符号链接别名、硬链接——也拒绝，而不是钳制或重复读取。`CRLF` 行尾、空行和 `./` 前缀是接受的。不能与 `--prefix` 同时使用。
 - `--prefix` 与 `--index-file` 必须且只能提供一个。
 - discovery 模式不能与位置参数 binlog 文件参数同时使用。
 - discovery 模式不能与远程模式（`--host`）同时使用。
@@ -45,6 +45,8 @@ discovery 会接受这样的文件名：
 - `mysql-bin.index`，因为后缀不是纯数字
 - `mysql-bin.000123.tmp`，因为后缀不是纯数字
 - `relay-bin.000123`，因为前缀不匹配
+
+`--prefix relay-bin` 会像 `mysql-bin` 匹配二进制日志一样匹配 relay log（`relay-bin.000123`），`relay-log.index` 也可以配合 `--index-file` 使用——relay log 在文件存在期间是合法输入，但服务端在应用完成后会立即清理它，所以实际上只有传输途中或已停止的副本上才能读到。
 
 ## 数字后缀匹配
 
