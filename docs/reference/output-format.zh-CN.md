@@ -63,6 +63,8 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 | `json` | — | 机器可读的 JSON 格式。 |
 | `markdown` | `md` | 含表格的 GitHub Flavored Markdown。 |
 | `html` | — | 含交互式图表和主题切换器的自包含 HTML 文件。 |
+| `csv` | — | 以 RFC 4180 CSV 输出单个报告数据集；由 `--csv-dataset` 选择。 |
+| `tsv` | — | 同样的数据集，以制表符分隔。 |
 
 ### `compare`
 
@@ -281,6 +283,17 @@ Markdown 在 `## 热点行` 下用表格。HTML 使用 `id="hot-rows-table"`。
 === Alerts ===
 ```
 
+### 语句指纹
+
+`语句指纹`是由 `--show-fingerprints` 或 `--details` 开启的可选章节，渲染在「下一步建议」之后。它把归一化的 `Rows_query` 语句形态排名——剥离注释、字面量折叠为 `?`、字面量列表折叠为 `(?)`——覆盖整个已选工作负载，而不只是 `--top-transactions` 列出的事务。每一项显示指纹、归因 `rows`、语句 `stmts` 次数、`share` 行占比、每表计数，以及首次出现语句的有界 `样例`（`--sql-context off` 隐藏样例）。`--top` 限制条数；`--top-fingerprints` 覆盖它；`0` 保留全部已追踪组。binlog 没有携带 `Rows_query` 文本时输出 `未捕获 Rows_query 语句文本;binlog_rows_query_log_events 可能未开启`；有文本但没有语句被保留时输出 `无保留的语句指纹`。被省略的组和追踪上限溢出各自单独一行。追踪最多保留 8192 个不同组。
+
+```text
+=== 语句指纹 ===
+  1. delete from shop.orders where id in (?)
+     rows=40 stmts=1 share=83.3% tables=shop.orders=40
+     样例: DELETE FROM shop.orders WHERE id IN (2, 3000000000)
+```
+
 ## JSON 输出
 
 当结果需要被脚本、自动化流程或下游工具消费时，请使用 `--format json`。
@@ -307,6 +320,10 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `transactions_listed` | integer | yes | `transactions` 中实际列出的事务聚合数量 |
 | `transactions_omitted` | integer | yes | 从 `transactions` 中省略的分析事务数量；使用 `--top-transactions 0` 时为 `0` |
 | `patterns` | array | yes | Top 模式聚合结果；没有模式结果时为空数组 |
+| `statement_fingerprints` | array | yes | 有界的 `Rows_query` 语句形态排名；没有捕获到语句文本时为空数组 |
+| `statement_fingerprints_listed` | integer | yes | `statement_fingerprints` 中列出的指纹组数 |
+| `statement_fingerprints_omitted` | integer | yes | 因 `--top-fingerprints` 限制被省略的组数；不限制时为 `0` |
+| `statement_fingerprints_overflow` | integer | no | 达到 8192 组追踪上限后未能分组的发生次数；为 `0` 时省略 |
 | `minutes` | array | yes | 每分钟聚合结果；没有分钟桶时为空数组 |
 | `alerts` | array | yes | 检测到的告警；没有告警时为空数组 |
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
@@ -534,6 +551,19 @@ report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会�
 | `operations` | object | yes | 该模式的操作到行数聚合映射 |
 | `sample_query_summary` | string | no | 有可用 query summary 时的代表性摘要 |
 
+### `statement_fingerprints`
+
+`statement_fingerprints` 始终以数组形式存在。它是「语句指纹」章节背后的 `Rows_query` 语句形态排名，与文本章节一样受 `--top` 或 `--top-fingerprints` 限制；`statement_fingerprints_listed` 和 `statement_fingerprints_omitted` 统计这个限制。达到 8192 组追踪上限、有发生次数被丢弃时写出 `statement_fingerprints_overflow`。聚合覆盖整个已选工作负载——包括没有列入 `transactions` 的事务——并遵循同样的过滤条件。binlog 没有携带 `Rows_query` 文本时数组为空；`sql_context.available` 用来区分这种情况和空工作负载。条目按行数、语句次数、指纹文本排序。
+
+| Field | Type | Required | Notes |
+|------|------|----------|------|
+| `fingerprint` | string | yes | 归一化语句形态；字面量为 `?`，字面量列表为 `(?)` |
+| `sample` | string | no | 该组首次存储的语句文本；`--sql-context off` 时省略 |
+| `statements` | integer | yes | 产生该形态的语句发生次数 |
+| `rows` | integer | yes | 归因到这些发生的行镜像数 |
+| `share_of_rows` | number | yes | 该形态占总分析行数的比例 |
+| `tables` | object | yes | 该形态的每表行数映射 |
+
 ### `pattern_drilldowns`
 
 `pattern_drilldowns` 始终以数组形式存在。它包含高信号模式的有界 drilldown 摘要。当没有模式达到选择阈值时为空数组。
@@ -687,6 +717,32 @@ binlogviz analyze mysql-bin.000123 --format html --output -
 - 交互式环形图：INSERT / UPDATE / DELETE 操作分布
 - 热点表详情表格
 - 被选中的高信号模式的 Pattern Drilldowns 分区（可折叠卡片，包含信号标志和指标帮助）
+
+## CSV 和 TSV 输出
+
+`--format csv` 和 `--format tsv` 把单个报告数据集写成一张扁平的分隔表输出到 stdout：一行表头加每元素一行记录，使用 Go `encoding/csv` 的 RFC 4180 引用规则（TSV 用制表符分隔）。输出是确定性的——行序与 JSON 报告的排名一致。空数据集也会写出表头，让消费方保留一份结构。这两种格式不支持 `--output`（用法错误，exit 3）；请重定向 stdout。
+
+```bash
+# 表聚合（默认数据集）
+binlogviz analyze mysql-bin.000123 --format csv > tables.csv
+
+# 事务排名，TSV
+binlogviz analyze mysql-bin.000123 --format tsv --csv-dataset transactions > txns.tsv
+
+# 来自 Rows_query 文本的语句指纹
+binlogviz analyze mysql-bin.000123 --format csv --csv-dataset fingerprints > fps.csv
+```
+
+`--csv-dataset` 从四个数据集中选一个。在其他 `--format` 值下传它是用法错误（exit 3），未知或空的数据集名同样如此。
+
+| 数据集 | 列 |
+|---------|---------|
+| `tables`（默认） | `schema`, `table`, `total_rows`, `insert_rows`, `update_rows`, `update_events`, `delete_rows`, `txn_count`, `event_count`, `binlog_bytes`, `ddl_count`, `key_status` |
+| `transactions` | `txn_key`, `gtid`, `xa_xid`, `thread_id`, `xid`, `start_time`, `end_time`, `duration_ms`, `total_rows`, `event_count`, `binlog_bytes`, `completeness`, `binlog_file_start`, `binlog_file_end`, `pos_start`, `pos_end`, `tables`, `operations`, `query_summary` |
+| `patterns` | `pattern_key`, `label`, `total_rows`, `txn_count`, `event_count`, `share_of_rows`, `share_of_txns`, `avg_rows_per_txn`, `tables`, `operations`, `sample_query_summary` |
+| `fingerprints` | `fingerprint`, `statements`, `rows`, `share_of_rows`, `tables`, `sample` |
+
+`tables`、`operations` 等映射单元格序列化为 `name=count` 对，用 `;` 连接且按名字排序。`transactions` 数据集列出的是与 JSON 报告相同的有界 top-N `transactions` 排名；`fingerprints` 数据集列出 `--top-fingerprints` 的有界排名（聚合本身始终覆盖整个已选工作负载）。`--sql-context off` 时 `query_summary`、`sample_query_summary`、`sample` 为空——计数仍在。
 
 ## Trend 输出
 

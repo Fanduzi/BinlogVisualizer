@@ -65,6 +65,9 @@ func renderText(result model.AnalysisResult, opts Options, built view.View) (str
 	if opts.ShowPatterns {
 		renderWriteShapePatterns(&buf, result.Patterns, result.PatternDrilldowns, opts.TopN, opts.SQLContextMode, opts)
 	}
+	if opts.ShowFingerprints {
+		renderStatementFingerprints(&buf, result, opts)
+	}
 
 	return buf.String(), nil
 }

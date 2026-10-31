@@ -18,6 +18,7 @@ import (
 	"binlogviz/internal/report"
 	"binlogviz/internal/snapshot"
 	"binlogviz/internal/version"
+	"github.com/spf13/cobra"
 )
 
 // It starts from DefaultOptions() to ensure spike detection parameters
@@ -111,19 +112,27 @@ func buildReportOptions(opts *analyzeOptions) (report.Options, error) {
 	if !opts.topRowsChanged {
 		topRows = opts.top
 	}
+	topFingerprints := opts.topFingerprints
+	if !opts.topFingerprintsChanged {
+		topFingerprints = opts.top
+	}
 	return report.Options{
-		SQLContextMode:  mode,
-		DiagnosticsMode: diagnostics,
-		TopN:            opts.top,
-		TopTables:       topTables,
-		TopTablesSet:    opts.topTablesChanged,
-		TopThreads:      topThreads,
-		TopThreadsSet:   opts.topThreadsChanged,
-		TopRows:         topRows,
-		TopRowsSet:      opts.topRowsChanged,
-		Details:         opts.details,
-		ShowMinutes:     opts.showMinutes,
-		ShowPatterns:    opts.showPatterns,
+		SQLContextMode:     mode,
+		DiagnosticsMode:    diagnostics,
+		TopN:               opts.top,
+		TopTables:          topTables,
+		TopTablesSet:       opts.topTablesChanged,
+		TopThreads:         topThreads,
+		TopThreadsSet:      opts.topThreadsChanged,
+		TopRows:            topRows,
+		TopRowsSet:         opts.topRowsChanged,
+		TopFingerprints:    topFingerprints,
+		TopFingerprintsSet: opts.topFingerprintsChanged,
+		CSVDataset:         report.CSVDataset(opts.csvDataset),
+		Details:            opts.details,
+		ShowMinutes:        opts.showMinutes,
+		ShowPatterns:       opts.showPatterns,
+		ShowFingerprints:   opts.showFingerprints,
 	}, nil
 }
 
@@ -139,6 +148,9 @@ func validateAnalyzeOptions(opts *analyzeOptions) error {
 		return clierr.Errorf(clierr.KindUsage, "invalid --detail-store %q: expected none or duckdb", opts.detailStore)
 	}
 	if err := validateNonNegativeCounts(opts); err != nil {
+		return err
+	}
+	if err := validateCSVDataset(opts); err != nil {
 		return err
 	}
 	if err := snapshotNameFormatError(opts.format, opts.snapshotName); err != nil {
@@ -162,6 +174,7 @@ func validateNonNegativeCounts(opts *analyzeOptions) error {
 		{"--top-transactions", opts.topTransactions},
 		{"--top-threads", opts.topThreads},
 		{"--top-rows", opts.topRows},
+		{"--top-fingerprints", opts.topFingerprints},
 		{"--top-minutes", opts.topMinutes},
 		{"--large-trx-rows", opts.largeTrxRows},
 		{"--spike-window", opts.spikeWindow},
@@ -195,6 +208,33 @@ func compileWhereFlag(opts *analyzeOptions) error {
 		}))
 	}
 	opts.whereExpr = w
+	return nil
+}
+
+// markAnalyzeFlagsChanged records which flags the user explicitly set —
+// inheritance (a top-* flag left unset follows --top) and explicit-zero
+// semantics both need the distinction (ADR 0026 for --top-fingerprints).
+func markAnalyzeFlagsChanged(cmd *cobra.Command, opts *analyzeOptions) {
+	opts.topTablesChanged = cmd.Flags().Changed("top-tables")
+	opts.topTransactionsChanged = cmd.Flags().Changed("top-transactions")
+	opts.topThreadsChanged = cmd.Flags().Changed("top-threads")
+	opts.topRowsChanged = cmd.Flags().Changed("top-rows")
+	opts.topFingerprintsChanged = cmd.Flags().Changed("top-fingerprints")
+	opts.csvDatasetChanged = cmd.Flags().Changed("csv-dataset")
+	opts.startPositionSet = cmd.Flags().Changed("start-position")
+	opts.stopPositionSet = cmd.Flags().Changed("stop-position")
+}
+
+// validateCSVDataset names the dataset --format csv/tsv writes, and refuses
+// the flag under any other format instead of silently ignoring it — the same
+// contract --output has with --format html (ADR 0026).
+func validateCSVDataset(opts *analyzeOptions) error {
+	if _, err := report.ParseCSVDataset(opts.csvDataset); err != nil {
+		return clierr.Errorf(clierr.KindUsage, "%s", err)
+	}
+	if opts.csvDatasetChanged && !report.Format(opts.format).IsDelimited() {
+		return clierr.Errorf(clierr.KindUsage, "--csv-dataset requires --format csv or tsv")
+	}
 	return nil
 }
 

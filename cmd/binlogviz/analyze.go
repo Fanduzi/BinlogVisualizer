@@ -64,6 +64,8 @@ type analyzeOptions struct {
 	prefix                 string
 	indexFile              string
 	format                 string
+	csvDataset             string
+	csvDatasetChanged      bool
 	output                 string
 	snapshotName           string
 	snapshotDir            string
@@ -77,9 +79,12 @@ type analyzeOptions struct {
 	topThreadsChanged      bool
 	topRows                int
 	topRowsChanged         bool
+	topFingerprints        int
+	topFingerprintsChanged bool
 	details                bool
 	showMinutes            bool
 	showPatterns           bool
+	showFingerprints       bool
 	detectSpikes           bool
 	largeTrxRows           int
 	largeTrxDuration       time.Duration
@@ -167,12 +172,7 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
-			opts.topTablesChanged = cmd.Flags().Changed("top-tables")
-			opts.topTransactionsChanged = cmd.Flags().Changed("top-transactions")
-			opts.topThreadsChanged = cmd.Flags().Changed("top-threads")
-			opts.topRowsChanged = cmd.Flags().Changed("top-rows")
-			opts.startPositionSet = cmd.Flags().Changed("start-position")
-			opts.stopPositionSet = cmd.Flags().Changed("stop-position")
+			markAnalyzeFlagsChanged(cmd, opts)
 			if err := validateAnalyzeSelectionInput(args, opts); err != nil {
 				return err
 			}
@@ -181,6 +181,11 @@ func newAnalyzeCommand() *cobra.Command {
 			// still maps "" to full for the report.Options zero value (#308).
 			if cmd.Flags().Changed("diagnostics") && opts.diagnostics == "" {
 				return clierr.Errorf(clierr.KindUsage, "invalid --diagnostics %q (allowed: full, summary, off)", opts.diagnostics)
+			}
+			// Same contract for --csv-dataset: empty means unset, but an
+			// explicitly-empty value is a usage error.
+			if opts.csvDatasetChanged && opts.csvDataset == "" {
+				return clierr.Errorf(clierr.KindUsage, "invalid --csv-dataset %q (allowed: tables, transactions, patterns, fingerprints)", opts.csvDataset)
 			}
 			reportOpts, err := buildReportOptions(opts)
 			if err != nil {

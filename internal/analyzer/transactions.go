@@ -80,15 +80,21 @@ type inFlightTxn struct {
 	retainedQuerySQL           string
 	retainedQueryTruncated     bool
 	retainedQueryOriginalBytes int
-	unclassifiedPrefix         string
-	sawIgnoredQuery            bool
-	sawSavepointRollback       bool
-	rowImages                  []model.RowImage
-	rowImagesOmitted           int
-	originalCommitUs           uint64
-	immediateCommitUs          uint64
-	txnStartPath               string
-	txnStartPos                int64
+	// stmtSeq increments on every ROWS_QUERY event so identical statements
+	// arriving under separate events still count as separate occurrences.
+	// emittedStmtSeq marks which occurrence the last stmts entry holds.
+	stmtSeq              uint64
+	emittedStmtSeq       uint64
+	stmts                []model.RetainedStatement
+	unclassifiedPrefix   string
+	sawIgnoredQuery      bool
+	sawSavepointRollback bool
+	rowImages            []model.RowImage
+	rowImagesOmitted     int
+	originalCommitUs     uint64
+	immediateCommitUs    uint64
+	txnStartPath         string
+	txnStartPos          int64
 }
 
 type windowRelation uint8
@@ -676,6 +682,7 @@ func (b *TransactionBuilder) handleRowsQuery(ev model.NormalizedEvent, relation 
 	b.current.rowOperation = ev.Operation
 	b.current.queryTruncated = ev.QueryTruncated
 	b.current.queryOriginalBytes = ev.QueryOriginalBytes
+	b.current.stmtSeq++
 }
 
 func (b *TransactionBuilder) startTransaction(isExplicit bool) {
@@ -709,6 +716,8 @@ func (b *TransactionBuilder) accumulateRowEvent(ev model.NormalizedEvent, relati
 	b.current.retainedQuerySQL = b.current.querySQL
 	b.current.retainedQueryTruncated = b.current.queryTruncated
 	b.current.retainedQueryOriginalBytes = b.current.queryOriginalBytes
+
+	b.recordStatementOccurrence(ev)
 
 	// Track table: "schema.table"
 	if ev.Schema != "" && ev.Table != "" {
@@ -809,8 +818,9 @@ func (b *TransactionBuilder) finalizeTransaction() {
 			b.current.retainedQueryTruncated,
 			b.current.retainedQueryOriginalBytes,
 		),
-		RowImages:        b.current.rowImages,
-		RowImagesOmitted: b.current.rowImagesOmitted,
+		RowImages:          b.current.rowImages,
+		RowImagesOmitted:   b.current.rowImagesOmitted,
+		RetainedStatements: b.current.stmts,
 	}
 	if txn.EffectiveCompleteness() != model.TransactionUnknown &&
 		b.current.fullPositionStart > 0 && b.current.fullPositionEnd > b.current.fullPositionStart &&

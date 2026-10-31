@@ -21,6 +21,8 @@ func TestParseFormatAcceptsSupportedFormatsAndDefault(t *testing.T) {
 		{name: "json", raw: "json", want: FormatJSON},
 		{name: "markdown", raw: "markdown", want: FormatMarkdown},
 		{name: "html", raw: "html", want: FormatHTML},
+		{name: "csv", raw: "csv", want: FormatCSV},
+		{name: "tsv", raw: "tsv", want: FormatTSV},
 	}
 
 	for _, tt := range tests {
@@ -132,6 +134,42 @@ func TestNormalizeOptionsDetailsEnablesDetailedTextSections(t *testing.T) {
 	}
 	if !opts.ShowPatterns {
 		t.Fatal("--details should enable write pattern details")
+	}
+	if !opts.ShowFingerprints {
+		t.Fatal("--details should enable statement fingerprints")
+	}
+}
+
+func TestParseCSVDataset(t *testing.T) {
+	for _, raw := range []string{"", "tables", "transactions", "patterns", "fingerprints"} {
+		got, err := ParseCSVDataset(raw)
+		if err != nil {
+			t.Fatalf("ParseCSVDataset(%q) error: %v", raw, err)
+		}
+		want := CSVDataset(raw)
+		if raw == "" {
+			want = CSVDatasetTables
+		}
+		if got != want {
+			t.Fatalf("ParseCSVDataset(%q) = %q, want %q", raw, got, want)
+		}
+	}
+	if _, err := ParseCSVDataset("minutes"); err == nil || !strings.Contains(err.Error(), "invalid --csv-dataset") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestNormalizeOptionsDefaultsCSVDatasetAndFingerprintsLimit(t *testing.T) {
+	opts := normalizeOptions(Options{TopN: 4})
+	if opts.CSVDataset != CSVDatasetTables {
+		t.Fatalf("default dataset = %q, want tables", opts.CSVDataset)
+	}
+	if opts.TopFingerprints != 4 {
+		t.Fatalf("expected fingerprint limit to follow TopN, got %d", opts.TopFingerprints)
+	}
+	opts = normalizeOptions(Options{TopN: 4, TopFingerprintsSet: true})
+	if opts.TopFingerprints != 0 {
+		t.Fatalf("expected explicit zero fingerprint limit to remain unlimited, got %d", opts.TopFingerprints)
 	}
 }
 

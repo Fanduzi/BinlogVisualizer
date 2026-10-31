@@ -23,41 +23,50 @@ const currentReportVersion = 4
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
 type jsonAnalysisResult struct {
-	ReportVersion       int                    `json:"report_version"`
-	WorkloadID          string                 `json:"workload_id,omitempty"`
-	Scope               *jsonSnapshotFilters   `json:"scope,omitempty"`
-	Provenance          *jsonProvenance        `json:"provenance,omitempty"`
-	Selection           *jsonSelection         `json:"selection,omitempty"`
-	SQLContext          jsonSQLContext         `json:"sql_context"`
-	Summary             jsonSummary            `json:"summary"`
-	Timeseries          jsonTimeseries         `json:"timeseries"`
-	DiagnosticsMode     DiagnosticsMode        `json:"diagnostics_mode,omitempty"`
-	Diagnostics         *jsonDiagnostics       `json:"diagnostics,omitempty"`
-	Tables              []jsonTableStats       `json:"tables"`
-	Threads             []jsonThreadStats      `json:"threads"`
-	ThreadsListed       int                    `json:"threads_listed"`
-	ThreadsOmitted      int                    `json:"threads_omitted"`
-	ThreadsRankedBy     string                 `json:"threads_ranked_by,omitempty"`
-	HotRows             []jsonHotRow           `json:"hot_rows"`
-	HotRowsListed       int                    `json:"hot_rows_listed"`
-	HotRowsOmitted      int                    `json:"hot_rows_omitted"`
-	HotRowTrackLimit    int                    `json:"hot_row_track_limit,omitempty"`
-	HotRowsOverflow     bool                   `json:"hot_rows_overflow,omitempty"`
-	HotRowsNote         string                 `json:"hot_rows_note,omitempty"`
-	HotRowUnavailable   []jsonHotRowGap        `json:"hot_row_unavailable,omitempty"`
-	Transactions        []jsonTransaction      `json:"transactions"`
-	TransactionsListed  int                    `json:"transactions_listed"`
-	TransactionsOmitted int                    `json:"transactions_omitted"`
-	Patterns            []jsonPatternStats     `json:"patterns"`
-	Minutes             []jsonMinuteBucket     `json:"minutes"`
-	Alerts              []jsonAlert            `json:"alerts"`
-	Warnings            int                    `json:"warnings"`
-	PatternDrilldowns   []jsonPatternDrilldown `json:"pattern_drilldowns"`
-	Snapshot            *jsonSnapshot          `json:"snapshot,omitempty"`
-	ColumnNamesNote     string                 `json:"column_names_note,omitempty"`
-	RowValuesNote       string                 `json:"row_values_note,omitempty"`
-	PrimaryKeyNote      string                 `json:"primary_key_note,omitempty"`
-	ReplicaApplyDelay   *jsonApplyDelay        `json:"replica_apply_delay,omitempty"`
+	ReportVersion       int                  `json:"report_version"`
+	WorkloadID          string               `json:"workload_id,omitempty"`
+	Scope               *jsonSnapshotFilters `json:"scope,omitempty"`
+	Provenance          *jsonProvenance      `json:"provenance,omitempty"`
+	Selection           *jsonSelection       `json:"selection,omitempty"`
+	SQLContext          jsonSQLContext       `json:"sql_context"`
+	Summary             jsonSummary          `json:"summary"`
+	Timeseries          jsonTimeseries       `json:"timeseries"`
+	DiagnosticsMode     DiagnosticsMode      `json:"diagnostics_mode,omitempty"`
+	Diagnostics         *jsonDiagnostics     `json:"diagnostics,omitempty"`
+	Tables              []jsonTableStats     `json:"tables"`
+	Threads             []jsonThreadStats    `json:"threads"`
+	ThreadsListed       int                  `json:"threads_listed"`
+	ThreadsOmitted      int                  `json:"threads_omitted"`
+	ThreadsRankedBy     string               `json:"threads_ranked_by,omitempty"`
+	HotRows             []jsonHotRow         `json:"hot_rows"`
+	HotRowsListed       int                  `json:"hot_rows_listed"`
+	HotRowsOmitted      int                  `json:"hot_rows_omitted"`
+	HotRowTrackLimit    int                  `json:"hot_row_track_limit,omitempty"`
+	HotRowsOverflow     bool                 `json:"hot_rows_overflow,omitempty"`
+	HotRowsNote         string               `json:"hot_rows_note,omitempty"`
+	HotRowUnavailable   []jsonHotRowGap      `json:"hot_row_unavailable,omitempty"`
+	Transactions        []jsonTransaction    `json:"transactions"`
+	TransactionsListed  int                  `json:"transactions_listed"`
+	TransactionsOmitted int                  `json:"transactions_omitted"`
+	Patterns            []jsonPatternStats   `json:"patterns"`
+	// StatementFingerprints is the workload-level normalized statement ranking
+	// (ADR 0026). Empty when the binlog carried no retained Rows_query text —
+	// sql_context.available explains that. Omitted counts groups beyond
+	// --top-fingerprints; Overflow counts statement occurrences dropped when
+	// the tracker's group map hit its cap.
+	StatementFingerprints         []jsonFingerprint      `json:"statement_fingerprints"`
+	StatementFingerprintsListed   int                    `json:"statement_fingerprints_listed"`
+	StatementFingerprintsOmitted  int                    `json:"statement_fingerprints_omitted"`
+	StatementFingerprintsOverflow int                    `json:"statement_fingerprints_overflow,omitempty"`
+	Minutes                       []jsonMinuteBucket     `json:"minutes"`
+	Alerts                        []jsonAlert            `json:"alerts"`
+	Warnings                      int                    `json:"warnings"`
+	PatternDrilldowns             []jsonPatternDrilldown `json:"pattern_drilldowns"`
+	Snapshot                      *jsonSnapshot          `json:"snapshot,omitempty"`
+	ColumnNamesNote               string                 `json:"column_names_note,omitempty"`
+	RowValuesNote                 string                 `json:"row_values_note,omitempty"`
+	PrimaryKeyNote                string                 `json:"primary_key_note,omitempty"`
+	ReplicaApplyDelay             *jsonApplyDelay        `json:"replica_apply_delay,omitempty"`
 }
 
 // jsonApplyDelay is omitted entirely when commit timestamps are unavailable.
@@ -525,39 +534,44 @@ func RenderJSONToStdoutWithOptions(result model.AnalysisResult, opts Options) er
 func convertToJSON(result model.AnalysisResult, opts Options, built view.View) jsonAnalysisResult {
 	threads, threadsOmitted := limitThreads(result.Threads, opts.TopThreads)
 	hotRows, hotOmitted := limitHotRows(result.HotRows.Rows, opts.TopRows)
+	fingerprintsListed := limitFingerprints(result.StatementFingerprints, opts.TopFingerprints)
 	converted := jsonAnalysisResult{
-		ReportVersion:       currentReportVersion,
-		WorkloadID:          result.WorkloadID,
-		Scope:               convertScope(result.Scope),
-		Provenance:          convertProvenance(result.Provenance),
-		Selection:           convertSelection(result.Selection),
-		SQLContext:          jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
-		Summary:             convertSummary(result.Summary, opts),
-		Timeseries:          convertTimeseries(result.Timeseries, opts),
-		DiagnosticsMode:     reducedDiagnosticsMode(opts.DiagnosticsMode),
-		Diagnostics:         convertDiagnostics(result.Diagnostics, opts, built),
-		Tables:              convertTables(result.Tables),
-		Threads:             convertThreads(threads),
-		ThreadsListed:       len(threads),
-		ThreadsOmitted:      threadsOmitted,
-		ThreadsRankedBy:     result.ThreadsRankedBy,
-		HotRows:             convertHotRows(hotRows, opts),
-		HotRowsListed:       len(hotRows),
-		HotRowsOmitted:      hotOmitted,
-		HotRowTrackLimit:    result.HotRows.TrackLimit,
-		HotRowsOverflow:     result.HotRows.Overflow,
-		HotRowsNote:         hotRowsNote(result.HotRows),
-		HotRowUnavailable:   convertHotRowGaps(result.HotRows.Unavailable),
-		Transactions:        convertTransactions(built.Key, opts, result.Diagnostics.ServerVersion),
-		TransactionsListed:  len(built.Key),
-		TransactionsOmitted: built.Omitted,
-		Patterns:            convertPatterns(result.Patterns, opts.SQLContextMode),
-		Minutes:             convertMinutes(result.Minutes, opts),
-		Alerts:              convertAlerts(result.Alerts, opts),
-		Warnings:            result.Warnings,
-		PatternDrilldowns:   convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode, opts),
-		ReplicaApplyDelay:   convertApplyDelay(result.Diagnostics.ApplyDelay, opts.TopN, opts),
-		Snapshot:            convertSnapshot(result.Snapshot, opts),
+		ReportVersion:                 currentReportVersion,
+		WorkloadID:                    result.WorkloadID,
+		Scope:                         convertScope(result.Scope),
+		Provenance:                    convertProvenance(result.Provenance),
+		Selection:                     convertSelection(result.Selection),
+		SQLContext:                    jsonSQLContext{Mode: opts.SQLContextMode, Available: result.SQLContextAvailable},
+		Summary:                       convertSummary(result.Summary, opts),
+		Timeseries:                    convertTimeseries(result.Timeseries, opts),
+		DiagnosticsMode:               reducedDiagnosticsMode(opts.DiagnosticsMode),
+		Diagnostics:                   convertDiagnostics(result.Diagnostics, opts, built),
+		Tables:                        convertTables(result.Tables),
+		Threads:                       convertThreads(threads),
+		ThreadsListed:                 len(threads),
+		ThreadsOmitted:                threadsOmitted,
+		ThreadsRankedBy:               result.ThreadsRankedBy,
+		HotRows:                       convertHotRows(hotRows, opts),
+		HotRowsListed:                 len(hotRows),
+		HotRowsOmitted:                hotOmitted,
+		HotRowTrackLimit:              result.HotRows.TrackLimit,
+		HotRowsOverflow:               result.HotRows.Overflow,
+		HotRowsNote:                   hotRowsNote(result.HotRows),
+		HotRowUnavailable:             convertHotRowGaps(result.HotRows.Unavailable),
+		Transactions:                  convertTransactions(built.Key, opts, result.Diagnostics.ServerVersion),
+		TransactionsListed:            len(built.Key),
+		TransactionsOmitted:           built.Omitted,
+		Patterns:                      convertPatterns(result.Patterns, opts.SQLContextMode),
+		StatementFingerprints:         convertFingerprints(fingerprintsListed, opts.SQLContextMode),
+		StatementFingerprintsListed:   len(fingerprintsListed),
+		StatementFingerprintsOmitted:  len(result.StatementFingerprints) - len(fingerprintsListed),
+		StatementFingerprintsOverflow: result.FingerprintOverflow,
+		Minutes:                       convertMinutes(result.Minutes, opts),
+		Alerts:                        convertAlerts(result.Alerts, opts),
+		Warnings:                      result.Warnings,
+		PatternDrilldowns:             convertDrilldowns(result.PatternDrilldowns, opts.SQLContextMode, opts),
+		ReplicaApplyDelay:             convertApplyDelay(result.Diagnostics.ApplyDelay, opts.TopN, opts),
+		Snapshot:                      convertSnapshot(result.Snapshot, opts),
 	}
 	if rowValuesSuppressed(opts) {
 		converted.RowValuesNote = i18n.T("report.text.rowValuesSuppressed")

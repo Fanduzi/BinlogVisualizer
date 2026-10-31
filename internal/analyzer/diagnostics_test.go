@@ -173,7 +173,7 @@ func BenchmarkDiagnosticTopSelectorsIncidentScale(b *testing.B) {
 			Duration:    time.Duration(index%300) * time.Second,
 			BinlogBytes: int64(4096 + index*3),
 			Tables: map[string]int{
-				"shop.orders":                     100 + index%50,
+				"shop.orders": 100 + index%50,
 				"shop.orders_archive_" + strconv.Itoa(index%32): 10 + index%9,
 			},
 			Operations: map[string]int{
