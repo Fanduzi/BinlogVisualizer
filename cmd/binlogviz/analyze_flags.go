@@ -23,6 +23,7 @@ func registerAnalyzeFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, "Stop position (exclusive event boundary or EOF)")
 	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, "Include complete transaction groups matching this GTID set")
 	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, "Exclude complete transaction groups matching this GTID set")
+	cmd.Flags().StringSliceVar(&opts.threadIDs, "thread-id", nil, i18n.T("cmd.analyze.flag.threadID"))
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
 	cmd.Flags().StringVar(&opts.indexFile, "index-file", "", i18n.T("cmd.analyze.flag.indexFile"))

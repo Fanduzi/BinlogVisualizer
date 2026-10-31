@@ -187,7 +187,26 @@ func canonicalSelection(selection *InputSelection) *InputSelection {
 	canonical.MatchedGTIDSet = nil
 	canonical.MatchedTransactions = nil
 	canonical.ResolvedGTIDFlavor = strings.ToLower(strings.TrimSpace(canonical.ResolvedGTIDFlavor))
+	canonical.ThreadIDs = normalizedThreadIDs(canonical.ThreadIDs)
 	return canonical
+}
+
+// normalizedThreadIDs puts a --thread-id set in one form before the scope
+// check: duplicates dropped, ascending order (ADR 0027).
+func normalizedThreadIDs(values []uint32) []uint32 {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := make(map[uint32]bool, len(values))
+	out := make([]uint32, 0, len(values))
+	for _, value := range values {
+		if !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 // normalizedGTIDSelectors puts GTID selectors in one form before the scope
@@ -245,6 +264,7 @@ func cloneSelection(selection *InputSelection) *InputSelection {
 		MatchedGTIDs:           append([]string(nil), selection.MatchedGTIDs...),
 		MatchedGTIDSet:         append([]string(nil), selection.MatchedGTIDSet...),
 		MatchedTransactions:    cloneInt(selection.MatchedTransactions),
+		ThreadIDs:              append([]uint32(nil), selection.ThreadIDs...),
 	}
 }
 

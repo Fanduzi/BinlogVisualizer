@@ -7,6 +7,8 @@ package analyzer
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +31,10 @@ type Options struct {
 	StartPosition *int64
 	StopPosition  *int64
 	GTIDSelector  *GTIDSelector
+	// ThreadIDs keeps transaction groups whose first QUERY-carried binlog
+	// thread id is in the set (--thread-id, ADR 0027). Sorted, deduplicated,
+	// nonzero. Empty means no thread selector.
+	ThreadIDs []uint32
 
 	// Report limits (future - CLI flags). TopTables is retained for option
 	// compatibility; table presentation limits are applied after aggregation.
@@ -98,9 +104,14 @@ func (o Options) HasGTIDSelectors() bool {
 	return o.GTIDSelector != nil
 }
 
-// HasSelectionFilters reports whether time or position selection is active.
+// HasThreadIDSelector reports whether the --thread-id group filter is active.
+func (o Options) HasThreadIDSelector() bool {
+	return len(o.ThreadIDs) > 0
+}
+
+// HasSelectionFilters reports whether time, position, or group selection is active.
 func (o Options) HasSelectionFilters() bool {
-	return o.Start != nil || o.End != nil || o.HasPositionSelectors() || o.HasGTIDSelectors()
+	return o.Start != nil || o.End != nil || o.HasPositionSelectors() || o.HasGTIDSelectors() || o.HasThreadIDSelector()
 }
 
 // DefaultOptions returns Options with sensible defaults.
@@ -155,6 +166,39 @@ func ParseDMLKinds(values []string) ([]string, error) {
 			out = append(out, op)
 		}
 	}
+	return out, nil
+}
+
+// ParseThreadIDs validates a --thread-id list (ADR 0027). Empty means no
+// selector. Each token is a positive decimal uint32 connection id; 0 is the
+// unattributed marker and would never match, so it is a usage error like any
+// other unparseable token. The result is sorted and deduplicated.
+func ParseThreadIDs(values []string) ([]uint32, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	seen := map[uint32]bool{}
+	for _, raw := range values {
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			n, err := strconv.ParseUint(part, 10, 32)
+			if err != nil || n == 0 {
+				return nil, fmt.Errorf("invalid --thread-id %q (allowed: positive connection ids)", strings.TrimSpace(part))
+			}
+			seen[uint32(n)] = true
+		}
+	}
+	if len(seen) == 0 {
+		return nil, fmt.Errorf("invalid --thread-id %q (allowed: positive connection ids)", strings.Join(values, ","))
+	}
+	out := make([]uint32, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out, nil
 }
 

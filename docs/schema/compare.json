@@ -341,6 +341,12 @@
                   },
                   "resolved_gtid_flavor": {
                     "type": "string"
+                  },
+                  "thread_ids": {
+                    "items": {
+                      "type": "integer"
+                    },
+                    "type": "array"
                   }
                 },
                 "type": "object"

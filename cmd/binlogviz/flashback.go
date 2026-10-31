@@ -110,6 +110,11 @@ func newFlashbackCommand() *cobra.Command {
 				return err
 			}
 			opts.dmlKinds = kinds
+			threadIDs, err := analyzer.ParseThreadIDs(opts.threadIDs)
+			if err != nil {
+				return err
+			}
+			opts.threadIDList = threadIDs
 			if err := compileWhereFlag(opts); err != nil {
 				return err
 			}
@@ -246,6 +251,7 @@ func registerFlashbackFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().Int64Var(&opts.stopPosition, "stop-position", 0, i18n.T("cmd.flashback.flag.stopPosition"))
 	cmd.Flags().StringSliceVar(&opts.includeGTIDs, "include-gtids", nil, i18n.T("cmd.flashback.flag.includeGtids"))
 	cmd.Flags().StringSliceVar(&opts.excludeGTIDs, "exclude-gtids", nil, i18n.T("cmd.flashback.flag.excludeGtids"))
+	cmd.Flags().StringSliceVar(&opts.threadIDs, "thread-id", nil, i18n.T("cmd.flashback.flag.threadID"))
 	cmd.Flags().StringVar(&opts.fromDir, "from-dir", "", i18n.T("cmd.analyze.flag.fromDir"))
 	cmd.Flags().StringVar(&opts.prefix, "prefix", "", i18n.T("cmd.analyze.flag.prefix"))
 	cmd.Flags().StringVar(&opts.indexFile, "index-file", "", i18n.T("cmd.analyze.flag.indexFile"))

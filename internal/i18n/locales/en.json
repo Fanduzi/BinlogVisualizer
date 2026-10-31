@@ -47,6 +47,10 @@
     "description": "Index-file flag description",
     "other": "Binlog index file inside --from-dir (the server's binlog.index); the listed order is the read order and every entry must exist. Mutually exclusive with --prefix"
   },
+  "cmd.analyze.flag.threadID": {
+    "description": "Thread-id filter flag description",
+    "other": "Only keep transaction groups written under these binlog connection ids (comma-separated thread_id values; ids are reused, not an application identity)"
+  },
   "cmd.analyze.flag.workloadID": {
     "description": "Explicit workload identity flag description",
     "other": "Explicit workload identity used to gate compare and trend narratives"
@@ -230,6 +234,18 @@
   "error.indexFileEmpty": {
     "description": "Error when the binlog index file lists nothing",
     "other": "binlog index {{.Index}} lists no binlog files"
+  },
+  "error.indexFileOutside": {
+    "description": "Error when a binlog index entry escapes --from-dir",
+    "other": "binlog index {{.Index}} lists {{.Entry}}, which resolves outside --from-dir"
+  },
+  "error.indexFileSelf": {
+    "description": "Error when a binlog index lists itself as an entry",
+    "other": "binlog index {{.Index}} lists itself as {{.Entry}}"
+  },
+  "error.indexFileDuplicate": {
+    "description": "Error when a binlog index lists one file twice",
+    "other": "binlog index {{.Index}} lists {{.Entry}}, already listed as {{.First}}"
   },
   "error.requiresBinlogOrDir": {
     "description": "Error when no binlog files or from-dir provided",
@@ -558,6 +574,10 @@
   "cmd.flashback.flag.excludeGtids": {
     "description": "Flashback exclude-gtids flag",
     "other": "Skip complete transaction groups matching this GTID set"
+  },
+  "cmd.flashback.flag.threadID": {
+    "description": "Flashback thread-id flag",
+    "other": "Only undo transaction groups written under these binlog connection ids (comma-separated thread_id values; ids are reused, not an application identity)"
   },
   "cmd.flashback.flag.schemaFile": {
     "description": "Flashback schema file flag",
@@ -2094,6 +2114,10 @@
   "cmd.redo.flag.excludeGtids": {
     "description": "Redo exclude-gtids flag",
     "other": "Skip complete transaction groups matching this GTID set"
+  },
+  "cmd.redo.flag.threadID": {
+    "description": "Redo thread-id flag",
+    "other": "Only replay transaction groups written under these binlog connection ids (comma-separated thread_id values; ids are reused, not an application identity)"
   },
   "cmd.redo.flag.includeSchema": {
     "description": "Redo include-schema flag",

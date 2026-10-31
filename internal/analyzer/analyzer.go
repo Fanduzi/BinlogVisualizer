@@ -1,5 +1,5 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
-// input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID selectors, and object filters.
+// input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID/thread-id selectors, and object filters.
 // output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set (generated columns learned from Options.SchemaSQL and from every parsed CREATE/ALTER, including excluded GTIDs; a refusal when a schema-file generated value contradicts the expression; an unverifiable expression is omitted and the script guard checks the target; a warning when a selected table has no definition; and a split-transaction warning when a table or DML filter keeps only part of a transaction), DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images. Minute buckets stay keyed by minute until Finalize, so an earlier timestamp updates that minute instead of opening a second bucket. The per-(table, minute) series spills past 8192 points (ADR 0019).
 // pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
 // note: if this file changes, update this header and module README.md.
@@ -53,6 +53,13 @@ type Analyzer struct {
 	gtidGroups      map[string]*gtidGroup
 	inputGTIDFlavor string
 	matchedGTIDs    *matchedGTIDSet
+
+	// threadGroups is the --thread-id decision per transaction key, same
+	// lifecycle as gtidGroups. Unlike a GTID the id can arrive late — only
+	// QUERY events carry one — so a group may hold its GTID-class events
+	// until attribution lands or proves absent (ADR 0027, groupselect.go).
+	threadGroups map[string]*threadGroup
+	threadIDSet  map[uint32]struct{}
 
 	flash *flashback.Planner
 	redo  *redo.Planner
@@ -299,7 +306,9 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 			if err := a.txnBuilder.consumeWindowed(ev, relation); err != nil {
 				return err
 			}
-			a.noteFilteredDDL(ev)
+			if err := a.noteFilteredDDL(ev); err != nil {
+				return err
+			}
 			return a.persistCompletedTransactions()
 		}
 		return nil
@@ -321,7 +330,7 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 	ev.RowImages = nil
 	ev = a.withCurrentTxnKey(ev)
 	ev = a.withTxnLocation(ev)
-	if a.opts.HasGTIDSelectors() {
+	if a.opts.HasGTIDSelectors() || a.opts.HasThreadIDSelector() {
 		if relation != insideWindow || ev.TxnKey == "" {
 			return a.persistCompletedTransactions()
 		}
@@ -351,61 +360,28 @@ func (a *Analyzer) consume(ev model.NormalizedEvent, relation windowRelation) er
 
 // noteFilteredDDL hands the planner an in-range DDL that the table or schema
 // filter left out of the report. The filter judges a DDL by its first name
-// only; the planner reads every name (ADR 0015). Under GTID selectors the DDL
-// waits for its group's match, like a retained event.
-func (a *Analyzer) noteFilteredDDL(ev model.NormalizedEvent) {
+// only; the planner reads every name (ADR 0015). Under group selectors the
+// DDL waits for its group's match, like a retained event.
+func (a *Analyzer) noteFilteredDDL(ev model.NormalizedEvent) error {
 	if a.flash == nil {
-		return
+		return nil
 	}
 	ev = a.withDDLHold(ev)
 	ev.RowImages = nil
 	ev = a.withCurrentTxnKey(ev)
-	if !a.opts.HasGTIDSelectors() {
-		a.flash.Note(ev)
-		return
+	if a.opts.HasGTIDSelectors() {
+		if group := a.gtidGroupFor(ev.TxnKey); group == nil || !group.matched {
+			return nil
+		}
 	}
-	if group := a.gtidGroupFor(ev.TxnKey); group != nil && group.matched {
-		a.flash.Note(ev)
+	if a.opts.HasThreadIDSelector() {
+		selected, err := a.threadSelectedDiverted(ev.TxnKey)
+		if err != nil || !selected {
+			return err
+		}
 	}
-}
-
-// gtidGroup is the GTID selector decision for one transaction group.
-type gtidGroup struct {
-	gtid     string
-	matched  bool
-	retained bool // at least one in-window event was aggregated
-}
-
-// gtidGroupFor returns the decision for the open group or a group closed by
-// the current event, or nil for any other key (the old buffer dropped such
-// events too). A Match error counts as not matched here; drain reports it,
-// after the unresolved-boundary check, as before.
-func (a *Analyzer) gtidGroupFor(key string) *gtidGroup {
-	if key == "" {
-		return nil
-	}
-	if group, ok := a.gtidGroups[key]; ok {
-		return group
-	}
-	gtid, ok := a.txnBuilder.groupGTID(key)
-	if !ok {
-		return nil
-	}
-	matched, err := a.opts.GTIDSelector.Match(gtid)
-	group := &gtidGroup{gtid: gtid, matched: err == nil && matched}
-	a.gtidGroups[key] = group
-	return group
-}
-
-// retainSelectedGroupEvent aggregates one in-window event of a group the
-// GTID selectors keep, and drops it otherwise. Nothing is held per event.
-func (a *Analyzer) retainSelectedGroupEvent(ev model.NormalizedEvent) error {
-	group := a.gtidGroupFor(ev.TxnKey)
-	if group == nil || !group.matched {
-		return nil
-	}
-	group.retained = true
-	return a.aggregateRetainedEvent(ev)
+	a.flash.Note(ev)
+	return nil
 }
 
 func (a *Analyzer) aggregateRetainedEvent(ev model.NormalizedEvent) error {
@@ -540,7 +516,15 @@ func (a *Analyzer) reset() {
 		a.selection.IncludeGTIDs = a.opts.GTIDSelector.Include()
 		a.selection.ExcludeGTIDs = a.opts.GTIDSelector.Exclude()
 	}
+	if a.opts.HasThreadIDSelector() {
+		a.selection.ThreadIDs = append([]uint32(nil), a.opts.ThreadIDs...)
+	}
 	a.gtidGroups = make(map[string]*gtidGroup)
+	a.threadIDSet = make(map[uint32]struct{}, len(a.opts.ThreadIDs))
+	for _, id := range a.opts.ThreadIDs {
+		a.threadIDSet[id] = struct{}{}
+	}
+	a.threadGroups = make(map[string]*threadGroup)
 	a.inputGTIDFlavor = ""
 	a.matchedGTIDs = newMatchedGTIDSet()
 	a.initPlanners()
@@ -589,7 +573,7 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		Warnings:              snap.Warnings,
 		PatternDrilldowns:     snap.PatternDrilldowns,
 	}
-	if a.opts.HasPositionSelectors() || a.opts.HasGTIDSelectors() {
+	if a.opts.HasPositionSelectors() || a.opts.HasGTIDSelectors() || a.opts.HasThreadIDSelector() {
 		a.selection.ResolvedGTIDFlavor = a.inputGTIDFlavor
 		a.selection.MatchedGTIDSet = a.matchedGTIDs.strings()
 		if a.opts.HasGTIDSelectors() {
@@ -686,6 +670,11 @@ func (a *Analyzer) persistCompletedTransactions() error {
 	}
 	persisted := make([]model.Transaction, 0, len(drained))
 	for _, txn := range drained {
+		var tGroup *threadGroup
+		if a.opts.HasThreadIDSelector() {
+			tGroup = a.threadGroups[txn.TxnKey]
+			delete(a.threadGroups, txn.TxnKey)
+		}
 		if a.opts.HasGTIDSelectors() {
 			group := a.gtidGroups[txn.TxnKey]
 			delete(a.gtidGroups, txn.TxnKey)
@@ -728,6 +717,15 @@ func (a *Analyzer) persistCompletedTransactions() error {
 				if err := a.matchedGTIDs.add(identity); err != nil {
 					return err
 				}
+			}
+		}
+		if a.opts.HasThreadIDSelector() {
+			keep, err := a.threadKeepsFinalized(txn, tGroup)
+			if err != nil {
+				return err
+			}
+			if !keep {
+				continue
 			}
 		}
 		if retainCompletedTransaction(txn) {

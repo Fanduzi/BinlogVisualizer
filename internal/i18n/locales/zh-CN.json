@@ -43,6 +43,10 @@
     "description": "prefix 标志描述",
     "other": "配合 --from-dir 使用的文件名前缀（数字后缀前可省略 '.'；完整文件名只匹配该文件；单文件请直接传路径）"
   },
+  "cmd.analyze.flag.threadID": {
+    "description": "thread-id 过滤参数",
+    "other": "仅统计这些 binlog 连接 id（thread_id，逗号分隔；id 会被复用，并非应用身份）写入的事务组"
+  },
   "cmd.analyze.flag.indexFile": {
     "description": "Index-file flag description",
     "other": "--from-dir 目录中的 binlog 索引文件（服务器的 binlog.index）；读取顺序按索引列出的顺序，且每个条目都必须存在。与 --prefix 互斥"
@@ -230,6 +234,18 @@
   "error.indexFileEmpty": {
     "description": "Error when the binlog index file lists nothing",
     "other": "binlog 索引 {{.Index}} 没有列出任何 binlog 文件"
+  },
+  "error.indexFileOutside": {
+    "description": "Error when a binlog index entry escapes --from-dir",
+    "other": "binlog 索引 {{.Index}} 列出的 {{.Entry}} 解析到了 --from-dir 之外"
+  },
+  "error.indexFileSelf": {
+    "description": "Error when a binlog index lists itself as an entry",
+    "other": "binlog 索引 {{.Index}} 将自身列为 {{.Entry}}"
+  },
+  "error.indexFileDuplicate": {
+    "description": "Error when a binlog index lists one file twice",
+    "other": "binlog 索引 {{.Index}} 重复列出了 {{.Entry}}（已列为 {{.First}}）"
   },
   "error.requiresBinlogOrDir": {
     "description": "未提供 binlog 文件或 from-dir 错误",
@@ -558,6 +574,10 @@
   "cmd.flashback.flag.excludeGtids": {
     "description": "flashback 的 exclude-gtids 说明",
     "other": "跳过匹配该 GTID 集合的完整事务"
+  },
+  "cmd.flashback.flag.threadID": {
+    "description": "flashback 的 thread-id 说明",
+    "other": "仅撤销这些 binlog 连接 id（thread_id，逗号分隔；id 会被复用，并非应用身份）写入的事务组"
   },
   "cmd.flashback.flag.schemaFile": {
     "description": "flashback 的 schema 文件说明",
@@ -2094,6 +2114,10 @@
   "cmd.redo.flag.excludeGtids": {
     "description": "redo exclude-gtids 参数",
     "other": "跳过匹配该 GTID 集合的完整事务组"
+  },
+  "cmd.redo.flag.threadID": {
+    "description": "redo thread-id 参数",
+    "other": "仅重放这些 binlog 连接 id（thread_id，逗号分隔；id 会被复用，并非应用身份）写入的事务组"
   },
   "cmd.redo.flag.includeSchema": {
     "description": "redo include-schema 参数",

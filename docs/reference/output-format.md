@@ -324,7 +324,7 @@ The top-level JSON object always contains these fields:
 |------|------|----------|------|
 | `report_version` | integer | yes | Analyze report contract version; current version is `4`; readers accept v0-v4 |
 | `provenance` | object | no | Deterministic producer sets plus `mixed_producers`; omitted when producer evidence is unavailable |
-| `selection` | object | no | Requested selectors and effective position/GTID evidence; omitted when no position or GTID selector is active |
+| `selection` | object | no | Requested selectors and effective position/GTID evidence; omitted when no position, GTID, or thread-id selector is active |
 | `sql_context` | object | yes | Selected `mode` and report-wide source-SQL `available` flag |
 | `summary` | object | yes | Overall totals and time bounds |
 | `tables` | array | yes | Complete table aggregates in deterministic order; human renderers may display only the configured top tables; empty array when no table results exist |
@@ -404,6 +404,7 @@ When producer evidence exists, `provenance` contains sorted unique `server_ids`,
 | `include_gtids` | array | no | Canonical MySQL sets or exact MariaDB identities |
 | `exclude_gtids` | array | no | Canonical exclusions applied after include |
 | `resolved_gtid_flavor` | string | no | `mysql` or `mariadb` after selector/input agreement |
+| `thread_ids` | array | no | Requested `--thread-id` connection ids, sorted and deduplicated. Present whenever `--thread-id` is set, matching or not (ADR 0027) |
 | `matched_gtid_set` | array | no | GTIDs the selectors matched, as an interval set (report_version 4, #379). MySQL: one `uuid:1-4:6-3000000` entry per server UUID, sorted by UUID. MariaDB: one entry per run of consecutive sequence numbers, `domain-server-seq` or `domain-server-first..last`, sorted by domain, server, then sequence. When several servers write one domain (alternating writers) and no sequence number of that domain appears twice in the input, the domain's ranges are taken over its sequence numbers and listed once per server (`0-7-1..9`, `0-8-1..9`), whichever form has fewer entries; identities in those ranges that the input does not contain are not transactions. Every entry is valid `--include-gtids` input, and the whole list passed back as `--include-gtids` on the same input selects exactly the matched transactions. A GTID read twice appears once. Present only when GTID selectors matched |
 | `matched_transactions` | integer | no | Number of transaction groups the GTID selectors matched that kept at least one event inside the time and position window, counted once per group read: a GTID read twice (the same file passed twice, or overlapping files) counts twice, though it appears once in `matched_gtid_set`. It includes matched groups with no retained row, such as a DDL transaction or a group whose rows lie past `--stop-position`; `summary.total_transactions` leaves those out (it counts transactions with retained rows, and XA-prepared groups), so the two can differ. Present whenever GTID selectors are set; absent with position or time selectors alone |
 

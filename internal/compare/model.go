@@ -36,6 +36,7 @@ type InputSelection struct {
 	MatchedGTIDs        []string `json:"matched_gtids,omitempty"`
 	MatchedGTIDSet      []string `json:"matched_gtid_set,omitempty"`
 	MatchedTransactions *int     `json:"matched_transactions,omitempty"`
+	ThreadIDs           []uint32 `json:"thread_ids,omitempty"`
 }
 
 type InputSQLContext struct {

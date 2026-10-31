@@ -101,6 +101,8 @@ type analyzeOptions struct {
 	schemaSQL              string
 	dml                    []string
 	dmlKinds               []string
+	threadIDs              []string
+	threadIDList           []uint32
 	where                  string
 	whereExpr              *mysqlexpr.WhereExpr
 	showRows               bool

@@ -82,6 +82,9 @@ type AnalysisSelection struct {
 	// event in the window, once per group read (repeats and row-less groups
 	// included); nil without GTID selectors.
 	MatchedTransactions *int
+	// ThreadIDs is the requested --thread-id set (ADR 0027): sorted,
+	// deduplicated binlog connection ids. nil without the thread selector.
+	ThreadIDs []uint32
 }
 
 // ReportProvenance summarizes the distinct producers observed in a report.
