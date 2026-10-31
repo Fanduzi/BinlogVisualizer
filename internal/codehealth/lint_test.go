@@ -1,7 +1,9 @@
 package codehealth
 
 import (
+	"fmt"
 	"os/exec"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
@@ -82,13 +84,61 @@ func TestDiffLintOneLineBody(t *testing.T) {
 	}
 }
 
+// A finding's file keys to its Measurement file, so ParseLint normalizes
+// every form golangci-lint emits — relative, absolute under the linted
+// root, a ../ escape resolving back into it — to the same repo-relative
+// path. A name resolving outside the root is kept as emitted: golangci-lint
+// still reported a finding there, and a foreign path must not silently key
+// to a measured file.
 func TestParseLint(t *testing.T) {
-	got, err := ParseLint([]byte(`{"Issues":[{"FromLinter":"errcheck","Text":"x","Pos":{"Filename":"a/b.go","Line":3}}],"Report":{}}`))
-	if err != nil || !reflect.DeepEqual(got, []LintIssue{issue("errcheck", "a/b.go", 3, "x")}) {
-		t.Fatalf("parsed %v %v", got, err)
+	root := t.TempDir()
+	escapeIn := filepath.Join("..", filepath.Base(root), "a", "b.go")
+	escapeOut := filepath.Join("..", "..", "outside", "b.go")
+	for _, c := range []struct{ name, in, want string }{
+		{"relative", "a/b.go", "a/b.go"},
+		{"absolute under root", filepath.Join(root, "a", "b.go"), "a/b.go"},
+		{"../ escape into root", escapeIn, "a/b.go"},
+		{"../ escape out of root", escapeOut, escapeOut},
+		{"absolute outside root", filepath.Join(string(filepath.Separator), "other-tree", "a", "b.go"), "/other-tree/a/b.go"},
+	} {
+		data := []byte(fmt.Sprintf(`{"Issues":[{"FromLinter":"errcheck","Text":"x","Pos":{"Filename":%q,"Line":3}}],"Report":{}}`, c.in))
+		got, err := ParseLint(data, root)
+		if err != nil || !reflect.DeepEqual(got, []LintIssue{issue("errcheck", c.want, 3, "x")}) {
+			t.Errorf("%s: parsed %v %v, want File %q", c.name, got, err, c.want)
+		}
 	}
-	if _, err := ParseLint([]byte("level=error msg=typecheck")); err == nil {
+	if _, err := ParseLint([]byte("level=error msg=typecheck"), root); err == nil {
 		t.Fatal("text output accepted")
+	}
+}
+
+// The reported failure shape: golangci-lint's content-keyed cache keeps
+// the positions it first computed, so one run's findings arrive under that
+// tree's absolute prefix while the other run's stay relative. Unnormalized,
+// one side keys to its function and the other keys to no function at all,
+// and the identical finding reads as new. Normalized against the tree each
+// run linted, both name the same repo-relative file and the finding is not
+// new.
+func TestDiffLintNormalizesEachTreePrefix(t *testing.T) {
+	baseRoot := t.TempDir()
+	base := measure(t, tree{"a.go": lintBase}, nil)
+	pr := measure(t, tree{"a.go": lintBase}, nil)
+	lintJSON := func(name string) []byte {
+		return []byte(fmt.Sprintf(`{"Issues":[{"FromLinter":"errcheck","Text":"Error return value of f.Close is not checked","Pos":{"Filename":%q,"Line":4}}]}`, name))
+	}
+	baseIssues, err := ParseLint(lintJSON(filepath.Join(baseRoot, "a.go")), baseRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prIssues, err := ParseLint(lintJSON("a.go"), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if baseIssues[0].File != "a.go" {
+		t.Fatalf("base issue under its own root kept %q, want a.go", baseIssues[0].File)
+	}
+	if got := DiffLint(base, baseIssues, pr, prIssues); len(got) != 0 {
+		t.Fatalf("same finding emitted under different prefixes reported as new: %q", got)
 	}
 }
 

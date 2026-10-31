@@ -18,8 +18,13 @@ type LintIssue struct {
 	Text   string
 }
 
-// ParseLint reads golangci-lint's JSON output (--output.json.path).
-func ParseLint(data []byte) ([]LintIssue, error) {
+// ParseLint reads golangci-lint's JSON output (--output.json.path). root is
+// the tree the tool ran on: a filename landing inside it becomes the
+// repo-relative slash path Measurement keys by, in whatever form
+// golangci-lint emitted — already relative, absolute, or a ../ escape that
+// resolves back in. A filename resolving outside root is kept as emitted:
+// it cannot match a measured function, but still reports.
+func ParseLint(data []byte, root string) ([]LintIssue, error) {
 	var report struct {
 		Issues []struct {
 			FromLinter string
@@ -35,9 +40,41 @@ func ParseLint(data []byte) ([]LintIssue, error) {
 	}
 	out := make([]LintIssue, 0, len(report.Issues))
 	for _, i := range report.Issues {
-		out = append(out, LintIssue{Linter: i.FromLinter, File: filepath.ToSlash(i.Pos.Filename), Line: i.Pos.Line, Text: i.Text})
+		out = append(out, LintIssue{Linter: i.FromLinter, File: lintFile(root, i.Pos.Filename), Line: i.Pos.Line, Text: i.Text})
 	}
 	return out, nil
+}
+
+// lintFile normalizes one golangci-lint filename against root. The emitted
+// name is a path inside root or out of it; ../ prefixes are resolved against
+// root, never against the process's directory. A tree reached through a
+// symlink (macOS /var is /private/var) may be reported by either form, so
+// both the logical and the physical root are tried.
+func lintFile(root, name string) string {
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = filepath.Clean(root)
+	}
+	p := filepath.FromSlash(name)
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(abs, p)
+	}
+	if rel, ok := inside(abs, p); ok {
+		return filepath.ToSlash(rel)
+	}
+	if real, err := filepath.EvalSymlinks(abs); err == nil && real != abs {
+		if rel, ok := inside(real, p); ok {
+			return filepath.ToSlash(rel)
+		}
+	}
+	return filepath.ToSlash(name)
+}
+
+// inside reports p's path relative to base when p lands inside base.
+func inside(base, p string) (string, bool) {
+	rel, err := filepath.Rel(base, p)
+	ok := err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+	return rel, ok
 }
 
 // DiffLint returns the pull request's lint findings that the base revision
