@@ -735,10 +735,6 @@
     "description": "Minute activity section header",
     "other": "Minute Activity"
   },
-  "report.section.alerts": {
-    "description": "Alerts section header",
-    "other": "Alerts"
-  },
   "report.section.findings": {
     "description": "Markdown findings section header",
     "other": "Findings"
@@ -766,10 +762,6 @@
   "report.label.totalRows": {
     "description": "Total rows label",
     "other": "Total Rows"
-  },
-  "report.label.logicalRows": {
-    "description": "Logical row-image count label",
-    "other": "Logical Rows"
   },
   "report.label.format": {
     "description": "Input format label",
@@ -923,10 +915,6 @@
     "description": "Counted event byte coverage label",
     "other": "Counted Event Bytes"
   },
-  "report.label.warnings": {
-    "description": "Warnings label",
-    "other": "Warnings"
-  },
   "report.label.timeRange": {
     "description": "Time range label",
     "other": "Time Range"
@@ -962,10 +950,6 @@
   "report.placeholder.noMinuteActivity": {
     "description": "Placeholder when no minute activity",
     "other": "(no minute activity)"
-  },
-  "report.placeholder.noAlerts": {
-    "description": "Placeholder when no alerts",
-    "other": "(no alerts)"
   },
   "report.text.summary": {
     "description": "Diagnostic text summary section header",
@@ -1111,10 +1095,6 @@
     "description": "Count of tables omitted by the report table display limit",
     "other": "… and {{.Count}} more tables"
   },
-  "report.text.writeSpike": {
-    "description": "Short finding label for a write spike",
-    "other": "Write spike"
-  },
   "report.text.largestTransaction": {
     "description": "Short finding label for largest transaction",
     "other": "Largest transaction"
@@ -1130,10 +1110,6 @@
   "report.text.listedTransaction": {
     "description": "Label for a key transaction that is not a largest, longest, or widest champion",
     "other": "Transaction"
-  },
-  "report.text.ddlDetected": {
-    "description": "Short finding label for detected DDL",
-    "other": "DDL detected"
   },
   "report.text.ddlTargetsInStatements": {
     "description": "DDL timeline note when one statement names several objects",
@@ -1207,21 +1183,9 @@
     "description": "Next action label for the first suspicious binlog location",
     "other": "First suspicious position"
   },
-  "report.format.rowsSummary": {
-    "description": "Rows summary format: table, rows, insert, update, delete, txn",
-    "other": "{{.Schema}}.{{.Table}}: {{.TotalRows}} rows ({{.InsertRows}} insert, {{.UpdateRows}} update, {{.DeleteRows}} delete, {{.TxnCount}} txn)"
-  },
-  "report.format.transactionSummary": {
-    "description": "Transaction summary format",
-    "other": "{{.TxnKey}}: {{.TotalRows}} rows in {{.Duration}} ({{.EventCount}} events)"
-  },
   "report.format.minuteActivity": {
     "description": "Minute activity format",
     "other": "{{.Minute}}: {{.TotalRows}} rows, {{.TxnCount}} txn"
-  },
-  "report.format.alertLine": {
-    "description": "Alert line format",
-    "other": "[{{.Severity}}] {{.Type}}: {{.Message}}"
   },
   "alert.noPrimaryKey.type": {
     "description": "No primary key alert type",
@@ -1430,14 +1394,6 @@
   "report.html.analyze.noTableData": {
     "description": "Analyze empty top tables state",
     "other": "No table data available."
-  },
-  "report.html.analyze.noAlertsDetected": {
-    "description": "Analyze no-alert state",
-    "other": "No alerts detected."
-  },
-  "report.html.analyze.patternDrilldowns": {
-    "description": "Analyze pattern drilldowns section header",
-    "other": "Pattern Drilldowns"
   },
   "report.html.analyze.writeShapePatterns": {
     "description": "Analyze write shape patterns section header",
@@ -1771,14 +1727,6 @@
     "description": "Compare event mix delta section header",
     "other": "Event Mix Delta"
   },
-  "report.html.compare.largestTxnDelta": {
-    "description": "Compare largest transaction delta label",
-    "other": "Largest Transaction Delta"
-  },
-  "report.html.compare.longestTxnDelta": {
-    "description": "Compare longest transaction delta label",
-    "other": "Longest Transaction Delta"
-  },
   "report.html.compare.ddlAdded": {
     "description": "Compare DDL added events label",
     "other": "Added DDL Events"
@@ -1787,10 +1735,6 @@
     "description": "Compare DDL removed events label",
     "other": "Removed DDL Events"
   },
-  "report.html.compare.noDDLChanges": {
-    "description": "Compare empty DDL changes state",
-    "other": "No DDL changes between windows."
-  },
   "report.html.compare.noAddedDDLEvents": {
     "description": "Compare empty added DDL events state",
     "other": "No added DDL events."
@@ -1798,10 +1742,6 @@
   "report.html.compare.noRemovedDDLEvents": {
     "description": "Compare empty removed DDL events state",
     "other": "No removed DDL events."
-  },
-  "report.html.compare.noHotIntervalChanges": {
-    "description": "Compare empty hot interval changes state",
-    "other": "No hot interval changes between windows."
   },
   "report.html.compare.sourceBaseline": {
     "description": "Compare baseline source label",
@@ -1830,10 +1770,6 @@
   "report.html.trend.hotIntervalTrends": {
     "description": "Trend hot interval trends section header",
     "other": "Hot Interval Trends"
-  },
-  "report.html.trend.noDiagnosticData": {
-    "description": "Trend empty diagnostics state",
-    "other": "No diagnostic data available for trend analysis."
   },
   "report.html.compare.largestTxnRows": {
     "description": "Compare largest transaction by rows label",
@@ -1886,10 +1822,6 @@
   "report.html.trend.chartHotCount": {
     "description": "Trend chart Hot Count series name",
     "other": "Hot Count"
-  },
-  "report.html.analyze.fileCoverage": {
-    "description": "File coverage section header",
-    "other": "File Coverage"
   },
   "report.html.analyze.analyzedFiles": {
     "description": "Analyzed files section header",
@@ -1974,18 +1906,6 @@
   "report.html.analyze.copied": {
     "description": "Copy button confirmation",
     "other": "Copied"
-  },
-  "report.html.analyze.widestTag": {
-    "description": "Widest transaction tag",
-    "other": "widest"
-  },
-  "report.html.analyze.largestTag": {
-    "description": "Largest transaction tag",
-    "other": "largest"
-  },
-  "report.html.analyze.longestTag": {
-    "description": "Longest transaction tag",
-    "other": "longest"
   },
   "report.html.analyze.sectionFindings": {
     "description": "Findings and risks section header",
