@@ -20,24 +20,24 @@ import (
 
 // splitFrames cuts a fixture binlog file into the event frames a server
 // would stream, in order.
-func splitFrames(t *testing.T, path string) [][]byte {
-	t.Helper()
+func splitFrames(tb testing.TB, path string) [][]byte {
+	tb.Helper()
 	data, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	if len(data) < binlogMagicSize {
-		t.Fatalf("%s is shorter than the binlog magic", path)
+		tb.Fatalf("%s is shorter than the binlog magic", path)
 	}
 	data = data[binlogMagicSize:]
 	var frames [][]byte
 	for pos := 0; pos < len(data); {
 		if len(data)-pos < replication.EventHeaderSize {
-			t.Fatalf("%s: trailing %d bytes below a header", path, len(data)-pos)
+			tb.Fatalf("%s: trailing %d bytes below a header", path, len(data)-pos)
 		}
 		size := int(binary.LittleEndian.Uint32(data[pos+eventSizeOffset:]))
 		if size <= 0 || pos+size > len(data) {
-			t.Fatalf("%s: event at %d declares size %d out of %d bytes", path, pos, size, len(data))
+			tb.Fatalf("%s: event at %d declares size %d out of %d bytes", path, pos, size, len(data))
 		}
 		frames = append(frames, data[pos:pos+size])
 		pos += size
