@@ -197,7 +197,7 @@ func TestSplitPreservesUnsplitStatements(t *testing.T) {
 		ev("GTID", "k1", "uuid:1"), ev("BEGIN", "k1", "uuid:1"),
 		ev("ROWS", "k1", "uuid:1", row(1)), ev("ROWS", "k1", "uuid:1", row(2)),
 		ev("XID", "k1", "uuid:1"),
-		model.NormalizedEvent{EventType: "DDL", TxnKey: "k2", TxnGTID: "uuid:2",
+		{EventType: "DDL", TxnKey: "k2", TxnGTID: "uuid:2",
 			Schema: "shop", QuerySchema: "shop", QuerySQL: "CREATE TABLE t (id int)"},
 	}
 	_, files := runSplit(t, splitout.Spec{MaxStatements: 2}, events...)
