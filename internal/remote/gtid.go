@@ -29,6 +29,14 @@ func ParseStartGTID(value string) (mysql.GTIDSet, string, error) {
 		return set, mysql.MySQLFlavor, nil
 	}
 	if set, err := mysql.ParseMariadbGTIDSet(text); err == nil {
+		// go-mysql serializes an all-zero GTID as an empty list element.
+		// Check the original entries as merging can hide an all-zero GTID.
+		for _, part := range strings.Split(text, ",") {
+			gtid, parseErr := mysql.ParseMariadbGTID(part)
+			if parseErr != nil || gtid.String() == "" {
+				return nil, "", fmt.Errorf("invalid MariaDB GTID set %q: empty GTID", value)
+			}
+		}
 		return set, mysql.MariaDBFlavor, nil
 	}
 	return nil, "", fmt.Errorf("%q is neither a MySQL GTID set (uuid:intervals) nor a MariaDB one (domain-server-seq)", value)
@@ -38,7 +46,7 @@ func ParseStartGTID(value string) (mysql.GTIDSet, string, error) {
 // interval ranges, MariaDB triples) is left alone: its text already means the
 // executed set literally.
 func expandSingleGTID(text string) (string, bool) {
-	if strings.ContainsAny(text, ", ") {
+	if strings.ContainsAny(text, ", ") || strings.Count(text, ":") != 1 {
 		return "", false
 	}
 	colon := strings.LastIndexByte(text, ':')
