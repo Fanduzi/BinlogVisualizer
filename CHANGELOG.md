@@ -4,6 +4,23 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.39.0
+
+Release date: 2026-11-01
+
+Highlights:
+
+- Localized human-readable workflow, snapshot, compare, and trend messages and compare/trend text reports.
+- Preserve disjoint MySQL GTID intervals ending in a singleton and reject disappearing MariaDB GTID entries before replication connects.
+- Suppress ordinary workflow, snapshot, and trend progress in quiet and JSON-error modes while preserving warnings. Propagate version output failures and retain earlier errors over cleanup failures.
+- Add SQL, redaction, JSON Schema, generated-column review, and fuzz regressions; reduce lint findings without loosening the baseline.
+- Configure a dedicated MySQL 5.7 compatibility CI job that rejects skips and requires the test's root PASS.
+
+Related notes:
+
+- [v0.39.0 release notes](docs/releases/release-notes-v0.39.0.md)
+- [v0.39.0 中文发行说明](docs/releases/release-notes-v0.39.0.zh-CN.md)
+
 ## v0.38.0
 
 Release date: 2026-11-02
