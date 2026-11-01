@@ -14,9 +14,9 @@
 
 BinlogViz is a local CLI for MySQL `ROW` binlog analysis. It is built for DBAs and operators who need to quickly answer practical questions from real binlog files: which tables are absorbing the most writes, which transactions are unusually large, where spikes happened, and how workload changed over a time window.
 
-BinlogViz is a **fast ROW-binlog summary**: hot tables, write shapes, and before/after compare. A 510 MB file is typically a few seconds.
+BinlogViz is a **fast ROW-binlog summary**: hot tables, write shapes, and before/after compare, in one streaming pass over the files.
 
-It is **not** a full STATEMENT/MIXED analyzer — those files come back empty or undercounted (only ROW images are counted). Printed positions are file evidence; use them as `mysqlbinlog --start-position` only when the reported span covers the transaction events, not an XID-only interval.
+It is **not** a full STATEMENT/MIXED analyzer — those files come back empty or undercounted (only ROW images are counted). Printed positions are file evidence, not restore points; [Analyze Behavior](docs/reference/analyze-behavior.md) says when one is safe.
 
 ## Screenshots
 
@@ -39,7 +39,7 @@ brew tap Fanduzi/binlogviz
 brew install --cask binlogviz
 ```
 
-This path installs the prebuilt release artifact and removes the macOS quarantine attribute during installation, so you do not need to install DuckDB separately.
+This path installs the prebuilt release artifact and removes the macOS quarantine attribute during installation. Nothing else is needed: DuckDB is built into the binary for `--detail-store duckdb`.
 
 ### Linux: tarball or install.sh
 
@@ -58,11 +58,9 @@ grep " binlogviz_${VERSION#v}_linux_amd64.tar.gz\$" "binlogviz_${VERSION#v}_chec
   install "binlogviz_${VERSION#v}/binlogviz" /usr/local/bin/binlogviz
 ```
 
-On ARM Linux, use `linux_arm64` in place of `linux_amd64`. On macOS without Homebrew, use the same commands with `darwin_arm64` or `darwin_amd64` in place of `linux_amd64` and `shasum -a 256 -c -` in place of `sha256sum -c -`. A checksum mismatch prints `FAILED` and exits non-zero; stop there. All archives are on [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases).
+On ARM Linux use `linux_arm64`; on macOS without Homebrew use `darwin_arm64`/`darwin_amd64` and `shasum -a 256 -c -`. A checksum mismatch prints `FAILED` and exits non-zero. All archives are on [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases).
 
-`install.sh` installs the latest release, refuses to install when the sha256 does not match `checksums.txt` or no sha256 tool exists (pass `--no-verify` to skip the check on purpose), and accepts `--version vX.Y.Z`, `--bin-dir DIR`, and `--dry-run`.
-
-The tarball unpacks loose files (the binary, both READMEs, `docs/`, `testdata/`, `incident.yaml`), so the commands above unpack it into its own directory. Writing to `/usr/local/bin` needs root: run `sudo sh ./install.sh` and `sudo install …`, or install into a directory you own with `sh ./install.sh --bin-dir ~/.local/bin`.
+`install.sh` verifies the sha256 unless `--no-verify` is passed, and accepts `--version vX.Y.Z`, `--bin-dir DIR`, and `--dry-run`. The tarball holds loose files (binary, READMEs, `LICENSE`, `docs/`, `testdata/`, `incident.yaml`), so unpack it into its own directory. Writing to `/usr/local/bin` needs root: use `sudo`, or `sh ./install.sh --bin-dir ~/.local/bin`.
 
 ### Fallback: Build From Source
 
@@ -162,17 +160,20 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 # Markdown — paste into GitHub issues, wikis, or docs
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
 
-# HTML — redirected stdout receives the document
+# HTML — on a terminal this writes mysql-bin.000123.html in the current directory
+binlogviz analyze mysql-bin.000123 --format html
+
+# HTML — redirected stdout receives the document instead
 binlogviz analyze mysql-bin.000123 --format html > report.html
 
 # HTML — explicit output path
 binlogviz analyze mysql-bin.000123 --format html --output report.html
 
-# HTML — force stdout (or omit --output when stdout is already redirected)
+# HTML — force stdout even on a terminal
 binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
-The HTML report includes interactive charts (rows/txns per minute, top tables, operation mix), optional pattern drilldowns for high-signal write patterns, and a five-theme switcher.
+The HTML report has interactive charts (rows/txns per minute, top tables, operation mix), optional pattern drilldowns, and a five-theme switcher.
 
 ## Find and Undo Bad Rows
 
@@ -348,7 +349,8 @@ The Cobra command layer streams normalized binlog events into the analyzer, then
 
 ## Requirements
 
-- local MySQL `ROW` binlog files
+- `ROW` binlogs from MySQL 5.7+ and MariaDB 10.11+ (the versions tested), on disk, on stdin, or from a live server
+- `flashback`/`redo`: MySQL 8.0+ binlogs written with `FULL` row images and row metadata; the generated script applies to a MySQL target only
 - Go 1.26.10+ if building from source
 
 ## License

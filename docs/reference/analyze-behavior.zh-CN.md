@@ -4,7 +4,7 @@
 
 ## 样例 binlog 与发布包内容
 
-同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。GitHub Release 的每个 tar.gz 也会带上这份文件（`testdata/minimal.binlog`）、discovery 布局副本 `testdata/sample-binlog/mysql-bin.000001`、`from_dir` 指向该目录的 `incident.yaml`、`README.md`、`README_ZH.md`，`docs/agents/USING-BINLOGVIZ.md`（和中文指南），以及 README 链接到的文档页：`docs/reference/analyze-behavior`、`docs/recipe/flashback`、`docs/recipe/compare-trend-workflow` 和 `docs/concept/architecture`，每页都带 `.zh-CN.md` 版本。解压后执行 `./binlogviz analyze testdata/minimal.binlog` 和 `./binlogviz workflow run incident.yaml`，不需要再 clone 仓库。给代理的用法从 `docs/agents/USING-BINLOGVIZ.md` 开始。
+同一份 1500 字节样本在仓库的 `cmd/binlogviz/testdata/minimal.binlog`。GitHub Release 的每个 tar.gz 也会带上这份文件（`testdata/minimal.binlog`）、discovery 布局副本 `testdata/sample-binlog/mysql-bin.000001`、`from_dir` 指向该目录的 `incident.yaml`、`README.md`、`README_ZH.md`、`LICENSE`，`docs/agents/USING-BINLOGVIZ.md`（和中文指南），以及 README 链接到的文档页：`docs/reference/analyze-behavior`、`docs/recipe/flashback`、`docs/recipe/compare-trend-workflow` 和 `docs/concept/architecture`，每页都带 `.zh-CN.md` 版本。解压后执行 `./binlogviz analyze testdata/minimal.binlog` 和 `./binlogviz workflow run incident.yaml`，不需要再 clone 仓库。给代理的用法从 `docs/agents/USING-BINLOGVIZ.md` 开始。
 
 ## 从 stdin 读取 binlog
 
@@ -21,6 +21,10 @@
 ## 热点行
 
 同一份报告还有热点行：被 UPDATE 和 DELETE 行镜像碰到次数最多的主键。每一条给出次数、碰到它的事务数、第一次和最后一次的事件时间，以及最早和最晚那个事务的 GTID 和 file:byte，可以直接拿去跑 `mysqlbinlog` 或 BinlogServer。主键只来自 MySQL 8 `binlog_row_metadata=FULL`。binlog 没有记下主键时，报告会说明这张表无法追踪热点行，不会拿第 1 列 `@1` 来猜。没有主键的表不进这个排名。`--top` 限制这一节；`--top-rows` 覆盖它（`0` 保留已追踪的全部键）。`--sql-context off` 隐藏键值，次数仍在。JSON 字段是 `hot_rows`。追踪最多保留 8192 个主键。超出后，新键替换被碰到次数最少的键；报告会说明达到了上限，继承了被丢掉键的计数的行标成近似。一直留在表里的键计数是精确的。
+
+## 事务位置与 `mysqlbinlog`
+
+每个事务打印 `file:start-position-end-position`。跨度覆盖事务事件时，还会打印一条可直接复制的 `mysqlbinlog --start-position … --stop-position …` 命令。XID-only 区间只有提交标记本身（31 字节）：它打印位置但不给命令，因为从那里重放只能拿到提交、没有行事件。只有当报告给出了那条命令时，才把打印出来的位置当作 `--start-position`；拿它做恢复之前先用 `mysqlbinlog -v` 确认。
 
 ## 退出码
 

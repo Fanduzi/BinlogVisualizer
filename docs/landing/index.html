@@ -6,7 +6,7 @@
     <title>BinlogViz — Turn MySQL ROW Binlogs into Incident-Ready Reports</title>
     <meta
       name="description"
-      content="BinlogViz is a local CLI for MySQL ROW binlog analysis, named snapshot management, and visual compare review. Find hot tables, large transactions, write spikes, incident-window workload changes, and compare saved snapshots or exported JSON reports as text, JSON, or chart-based HTML."
+      content="BinlogViz is a local CLI for MySQL ROW binlog analysis, undo and replay, and visual compare review. Find hot tables, large transactions, write spikes, and incident-window workload changes; read a live server; print SQL that reverses or replays the selected rows; compare saved snapshots or exported JSON reports as text, JSON, or chart-based HTML."
     />
     <style>
       *, *::before, *::after { box-sizing: border-box; }
@@ -1001,7 +1001,7 @@ aggregating workload shape, surfacing abnormal moments, and packaging the result
             <p class="section-label" data-i18n="workflows.label">Core Workflows</p>
             <h2 class="section-title" data-i18n="workflows.title">Start where real binlog investigations actually begin</h2>
             <p class="section-sub" data-i18n="workflows.sub">The value of BinlogViz is clearest at the moment somebody already has binlogs and needs answers fast:
-validate one file, widen to an incident window, then export something a teammate can read without replaying the whole investigation.</p>
+validate one file, widen to an incident window, undo the rows that should not have been written, then export something a teammate can read without replaying the whole investigation.</p>
 
             <div class="grid-3">
               <div class="card">
@@ -1016,8 +1016,8 @@ validate one file, widen to an incident window, then export something a teammate
               </div>
               <div class="card">
                 <div class="card-icon">📄</div>
-                <h3 data-i18n="workflows.cards.handoff.title">Compare and hand the answer off cleanly</h3>
-                <p data-i18n="workflows.cards.handoff.desc">Export JSON reports from analyze, compare current versus baseline, then share the result as HTML for review, JSON for automation, Markdown for docs, or text for terminal-first debugging.</p>
+                <h3 data-i18n="workflows.cards.handoff.title">Undo or replay the bad rows</h3>
+                <p data-i18n="workflows.cards.handoff.desc">Print SQL that reverses the selected INSERT, UPDATE, and DELETE row images, or replays them forward. You review the script and apply it yourself; the tool never connects to write.</p>
               </div>
             </div>
           </div>
@@ -1032,7 +1032,7 @@ That makes the tool easier to reason about and keeps the product story focused o
 
             <div class="workflow-panel">
               <div class="workflow-steps">
-                <div class="step" data-i18n="how.step1">Provide files<span>single file or directory range</span></div>
+                <div class="step" data-i18n="how.step1">Provide input<span>file, directory range, pipe, or live server</span></div>
                 <span class="step-arrow">→</span>
                 <div class="step" data-i18n="how.step2">Apply filters<span>time, schema, table, object focus</span></div>
                 <span class="step-arrow">→</span>
@@ -1305,7 +1305,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
       const translations = {
         en: {
           title: 'BinlogViz — Turn MySQL ROW Binlogs into Incident-Ready Reports',
-          metaDescription: 'BinlogViz is a local CLI for MySQL ROW binlog analysis, named snapshot management, and visual compare review. Find hot tables, large transactions, write spikes, incident-window workload changes, and compare saved snapshots or exported JSON reports as text, JSON, or chart-based HTML.',
+          metaDescription: 'BinlogViz is a local CLI for MySQL ROW binlog analysis, undo and replay, and visual compare review. Find hot tables, large transactions, write spikes, and incident-window workload changes; read a live server; print SQL that reverses or replays the selected rows; compare saved snapshots or exported JSON reports as text, JSON, or chart-based HTML.',
           nav: {
             why: 'Why',
             workflows: 'Workflows',
@@ -1345,18 +1345,18 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           workflows: {
             label: 'Core Workflows',
             title: 'Start where real binlog investigations actually begin',
-            sub: 'The value of BinlogViz is clearest at the moment somebody already has binlogs and needs answers fast:\nvalidate one file, widen to an incident window, then export something a teammate can read without replaying the whole investigation.',
+            sub: 'The value of BinlogViz is clearest at the moment somebody already has binlogs and needs answers fast:\nvalidate one file, widen to an incident window, undo the rows that should not have been written, then export something a teammate can read without replaying the whole investigation.',
             cards: {
-              single: { title: 'Validate one file quickly', desc: 'Use a single binlog to prove the path, preview the default report, and sanity-check event volume fast.' },
+              single: { title: 'Validate one file quickly', desc: 'Use a single binlog to prove the path, preview the default report, and sanity-check event volume. The same command reads a pipe or a live server instead of copied files.' },
               window: { title: 'Constrain the incident window', desc: 'Use time, schema, and table filters to reduce noise and keep the report focused on the event you care about.' },
-              handoff: { title: 'Compare and hand the answer off cleanly', desc: 'Export JSON reports from analyze, compare current versus baseline, then share the result as HTML for review, JSON for automation, Markdown for docs, or text for terminal-first debugging.' }
+              handoff: { title: 'Undo or replay the bad rows', desc: 'Print SQL that reverses the selected INSERT, UPDATE, and DELETE row images, or replays them forward. You review the script and apply it yourself; the tool never connects to write.' }
             }
           },
           how: {
             label: 'How It Works',
             title: 'Resolve files, aggregate in a streaming pass, render the answer in the right surface',
             sub: 'The architecture stays intentionally direct: parse, normalize, analyze, finalize, render.\nThat makes the tool easier to reason about and keeps the product story focused on fast-to-insight investigation instead of infrastructure complexity.',
-            step1: 'Provide files<span>single file or directory range</span>',
+            step1: 'Provide input<span>file, directory range, pipe, or live server</span>',
             step2: 'Apply filters<span>time, schema, table, object focus</span>',
             step3: 'Get a report<span>alerts, summaries, charts, exports</span>',
             points: {
@@ -1367,7 +1367,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           outputs: {
             label: 'Output Surfaces',
             title: 'Analyze locally, compare when needed, hand off in the right surface',
-            sub: 'Output format is part of the product. Analyze can end as text, JSON, Markdown, or self-contained HTML. Compare turns two exported JSON reports into a text summary, structured JSON delta, or chart-based HTML review artifact.',
+            sub: 'Output format is part of the product. Analyze can end as text, JSON, Markdown, or self-contained HTML, and compare turns two saved snapshots or exported JSON reports into a text summary, structured JSON delta, or chart-based HTML review artifact.',
             preview: {
               title: 'Preview the reporting surfaces teams actually use',
               desc: 'Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. Compare reuses text, JSON, and HTML once two analyze JSON reports exist.',
@@ -1462,7 +1462,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
         },
         'zh-CN': {
           title: 'BinlogViz —— 把 MySQL ROW Binlog 变成可交付的事件报告',
-          metaDescription: 'BinlogViz 是一个面向 MySQL ROW binlog 分析、命名快照管理和 visual compare 评审的本地 CLI。可用于发现热点表、大事务、写入尖峰、事故时间窗口内的负载变化，并把已保存快照或导出的 JSON 报告对比成 text、json 或图表化 html。',
+          metaDescription: 'BinlogViz 是一个面向 MySQL ROW binlog 分析、撤销与重放、命名快照管理和 visual compare 评审的本地 CLI。可以发现热点表、大事务、写入尖峰和事故窗口内的负载变化，直接读取存活服务器，打印反向或前滚 SQL，并把快照或导出的 JSON 报告对比成 text、json 或图表化 html。',
           nav: {
             why: '为什么',
             workflows: '场景',
@@ -1502,18 +1502,18 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           workflows: {
             label: '核心工作流',
             title: '从真实 binlog 排查最常开始的地方切入',
-            sub: 'BinlogViz 的价值最清楚地体现在：你已经拿到了 binlog，现在需要尽快得到答案。\n先验证一个文件，再扩大到事故窗口，最后导出一个不用重演调查过程也能看懂的结果。',
+            sub: 'BinlogViz 的价值最清楚地体现在：你已经拿到了 binlog，现在需要尽快得到答案。\n先验证一个文件，再扩大到事故窗口，把不该写进去的行撤回来，最后导出一个不用重演调查过程也能看懂的结果。',
             cards: {
-              single: { title: '先快速验证一个文件', desc: '用单个 binlog 证明链路可用，快速预览默认报告形态，并检查事件规模。' },
+              single: { title: '先快速验证一个文件', desc: '用单个 binlog 证明链路可用，快速预览默认报告形态，并检查事件规模。同一条命令也可以读管道，或直接读存活服务器。' },
               window: { title: '收窄事故时间窗口', desc: '用时间、schema、table 过滤把噪音压下去，让报告聚焦在你真正关心的事件上。' },
-              handoff: { title: '把对比结果顺滑交给别人', desc: '先从 analyze 导出 JSON 报告，再对比 current 与 baseline，然后按场景交付成 HTML 评审稿、JSON 自动化输入、Markdown 文档或终端里的 Text。' }
+              handoff: { title: '撤销或重放误写的行', desc: '打印只反转选中 INSERT、UPDATE、DELETE 行镜像的 SQL，也可以把它们前滚重放。脚本给你审、由你执行，工具本身不会连库写入。' }
             }
           },
           how: {
             label: '工作方式',
             title: '解析文件、流式聚合、在合适的表面上渲染答案',
             sub: '架构刻意保持直接：parse、normalize、analyze、finalize、render。\n这让工具更容易理解，也让产品故事聚焦在“更快得到洞察”，而不是基础设施复杂度。',
-            step1: '提供文件<span>单文件或目录范围</span>',
+            step1: '提供输入<span>单文件、目录范围、管道或存活服务器</span>',
             step2: '应用过滤<span>时间、schema、table、对象聚焦</span>',
             step3: '得到报告<span>alert、汇总、图表、导出</span>',
             points: {
@@ -1524,7 +1524,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
           outputs: {
             label: '输出表面',
             title: '先本地分析，按需对比，再用合适的形式交付',
-            sub: '输出格式本身就是产品的一部分。Analyze 可以落到 text、JSON、Markdown 或自包含 HTML；compare 则把两份导出的 JSON 报告变成文本摘要、结构化 JSON 差异，或图表化 HTML 评审产物。',
+            sub: '输出格式本身就是产品的一部分。Analyze 可以落到 text、JSON、Markdown 或自包含 HTML；compare 则把两份快照或导出的 JSON 报告变成文本摘要、结构化 JSON 差异，或图表化 HTML 评审产物。',
             preview: {
               title: '看团队真正会用到的交付表面',
               desc: '下面的标签页展示一段事故答案如何在终端、自动化、文档和浏览器评审之间流转。只要先导出两份 analyze JSON，compare 就会复用其中的 text、JSON 和 HTML 表面。',

@@ -50,6 +50,7 @@ func TestReleaseArchiveListsBinarySampleAndWorkflowPlan(t *testing.T) {
 		"incident.yaml",
 		"README.md",
 		"README_ZH.md",
+		"LICENSE",
 		"docs/agents/USING-BINLOGVIZ.md",
 		"docs/agents/USING-BINLOGVIZ.zh-CN.md",
 		// The README keeps a command and a link; the detail it links to

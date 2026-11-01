@@ -31,7 +31,7 @@ import (
 
 // TestLargeInputBaseline is the E2 gate: a generated binlog of at least
 // 100MB has a baseline for time and memory, and a regression fails CI.
-// The design is docs/large-input-baseline.md.
+// The design is docs/engineering/large-input-baseline.md.
 //
 // The child writes two MySQL 8.0 binlogs from the hot-rows transaction
 // template (about 12.5MB and at least 100MB, eight times as many
@@ -142,7 +142,7 @@ const largeInputAllocSlack = 1.5
 // several times a clean run: a shared runner moves them, and the one retry
 // does not help when both pairs are slow. Analyze bytes per event does not
 // move under load (1960–1966), so that cap is twice the measurement.
-// Values are filled from the measurement table in docs/large-input-baseline.md.
+// Values are filled from the measurement table in docs/engineering/large-input-baseline.md.
 //
 // CPU is seconds of process user+sys per event (getrusage RUSAGE_SELF).
 const (
@@ -183,7 +183,7 @@ const (
 const slowFaultIters = 170000
 
 // largeInputFaults are the regressions BINLOGVIZ_LARGE_INPUT_FAULT can
-// inject. Each one must fail the gate except pause; docs/large-input-baseline.md
+// inject. Each one must fail the gate except pause; docs/engineering/large-input-baseline.md
 // lists the measurements.
 var largeInputFaults = map[string]bool{
 	"":           true,

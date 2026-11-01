@@ -44,7 +44,7 @@ type Analyzer struct {
 	// group the current event closed, by transaction key. A group's GTID is
 	// fixed by its GTID event, which opens it, so the decision is known before
 	// any of its retained events arrive and they stream straight through
-	// (#376, docs/gtid-filter-streaming.md). Entries leave at drain.
+	// (#376, docs/engineering/gtid-filter-streaming.md). Entries leave at drain.
 	gtidGroups      map[string]*gtidGroup
 	inputGTIDFlavor string
 	matchedGTIDs    *matchedGTIDSet

@@ -11,7 +11,7 @@ import (
 )
 
 // TestFlashbackWarningOrderSameUnderGTIDSelector pins the warning order rule
-// (#378 QA F1, docs/gtid-filter-streaming.md): a GTID selector does not move
+// (#378 QA F1, docs/engineering/gtid-filter-streaming.md): a GTID selector does not move
 // warnings. Retained rows reach the planner as they are read, so a table with
 // no usable definition is listed when the planner settles it, the same as
 // without a selector. An unqualified --schema-file name waits until the

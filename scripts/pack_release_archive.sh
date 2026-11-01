@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # input: a built binlogviz binary path, a destination tar.gz path, and repo extra files (sample ROW fixture, release-oriented incident.yaml, README, the agent usage guide, and the user docs pages the README links to).
-# output: a tar.gz whose members are the binary, testdata/minimal.binlog, testdata/sample-binlog/mysql-bin.000001, incident.yaml, README.md, README_ZH.md, docs/agents/USING-BINLOGVIZ.md plus the zh-CN guide, the README-linked user docs pages (docs/reference/analyze-behavior, docs/recipe/flashback, docs/recipe/compare-trend-workflow, docs/concept/architecture, EN and zh-CN), and docs/schema/*.json.
+# output: a tar.gz whose members are the binary, testdata/minimal.binlog, testdata/sample-binlog/mysql-bin.000001, incident.yaml, README.md, README_ZH.md, LICENSE, docs/agents/USING-BINLOGVIZ.md plus the zh-CN guide, the README-linked user docs pages (docs/reference/analyze-behavior, docs/recipe/flashback, docs/recipe/compare-trend-workflow, docs/concept/architecture, EN and zh-CN), and docs/schema/*.json.
 # pos: shared packing helper used by the GitHub release job, CI smoke, and the packing-contract test so Linux and Darwin archives share one extra-file set.
 # note: if this file changes, update this header and scripts/README.md.
 
@@ -29,10 +29,11 @@ discovery_sample="${repo_root}/cmd/binlogviz/testdata/sample-binlog/mysql-bin.00
 plan="${repo_root}/scripts/release-incident.yaml"
 readme="${repo_root}/README.md"
 readme_zh="${repo_root}/README_ZH.md"
+license="${repo_root}/LICENSE"
 guide="${repo_root}/docs/agents/USING-BINLOGVIZ.md"
 guide_zh="${repo_root}/docs/agents/USING-BINLOGVIZ.zh-CN.md"
 
-for extra in "${sample}" "${discovery_sample}" "${plan}" "${readme}" "${readme_zh}" "${guide}" "${guide_zh}"; do
+for extra in "${sample}" "${discovery_sample}" "${plan}" "${readme}" "${readme_zh}" "${license}" "${guide}" "${guide_zh}"; do
   if [[ ! -f "${extra}" ]]; then
     echo "missing extra file: ${extra}" >&2
     exit 1
@@ -56,6 +57,7 @@ cp "${discovery_sample}" "${staging}/testdata/sample-binlog/mysql-bin.000001"
 cp "${plan}" "${staging}/incident.yaml"
 cp "${readme}" "${staging}/README.md"
 cp "${readme_zh}" "${staging}/README_ZH.md"
+cp "${license}" "${staging}/LICENSE"
 cp "${guide}" "${staging}/docs/agents/USING-BINLOGVIZ.md"
 cp "${guide_zh}" "${staging}/docs/agents/USING-BINLOGVIZ.zh-CN.md"
 cp "${repo_root}/docs/reference/analyze-behavior.md" "${staging}/docs/reference/analyze-behavior.md"
@@ -80,4 +82,4 @@ cp "${repo_root}/docs/schema/workflow-export.json" "${staging}/docs/schema/workf
 cp "${repo_root}/docs/schema/version.json" "${staging}/docs/schema/version.json"
 cp "${repo_root}/docs/schema/flashback-verify.json" "${staging}/docs/schema/flashback-verify.json"
 
-tar -C "${staging}" -czf "${archive}" binlogviz testdata incident.yaml README.md README_ZH.md docs
+tar -C "${staging}" -czf "${archive}" binlogviz testdata incident.yaml README.md README_ZH.md LICENSE docs

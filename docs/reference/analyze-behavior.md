@@ -22,6 +22,10 @@ The default text report includes Top Threads, ranked by rows (or by events, byte
 
 The same report includes Hot Rows: the primary keys touched by the most UPDATE and DELETE row images. Each line has the touch count, how many transactions touched that key, the first and last event time, and the GTID plus file:byte of the first and last transaction, so you can open that group in `mysqlbinlog` or BinlogServer. The key comes only from MySQL 8 `binlog_row_metadata=FULL`. If the binlog does not name the key, the report says hot-row tracking is unavailable for that table and does not guess from column `@1`. Tables with no primary key are not ranked here. `--top` limits the section; `--top-rows` overrides it (`0` keeps every tracked key). `--sql-context off` hides the key values and keeps the counts. JSON uses `hot_rows`. Tracking keeps at most 8192 primary keys. A new key after that replaces the least-touched key; the report says the cap was hit, and a row that inherited a dropped key's count is marked approximate. A key that stayed in the table keeps an exact count.
 
+## Transaction positions and `mysqlbinlog`
+
+Each transaction prints `file:start-position-end-position`. A span that covers the transaction events also prints a copyable `mysqlbinlog --start-position … --stop-position …` command. An XID-only interval is the commit marker alone (31 bytes): it prints the position and no command, because starting a replay there gives the commit without the row events. Use a printed position as `--start-position` only when the report offered that command, and confirm with `mysqlbinlog -v` before pinning a restore to it.
+
 ## Exit codes
 
 `analyze` exits **0** when at least one event was counted, exit 5 (kind corrupt) when the file could not be analyzed (corrupt, truncated, or no Format Description), and **2** when a complete binlog parsed but counted zero events (empty `--start`/`--end` window, or Format Description / rotate only). A schema or table filter that matches nothing is also exit 2, and its `Error:` line says the filter matched no events. `--dml` that matches nothing is the same exit, with `Error: dml filter matched no events`. A filter that matches a view, event, function, procedure, or trigger exits 0 and prints that DDL even when no rows changed. Exit 2 writes nothing to `stdout` and one `Error:` line to `stderr`. If a progress bar is still on the current stderr line, that line is cleared before `Error:`.
@@ -70,7 +74,7 @@ Pull requests and release builds now validate packaged artifacts, not only sourc
 The maintainer-facing smoke path verifies that one built archive can:
 
 - extract successfully
-- include the binary, `testdata/minimal.binlog`, `testdata/sample-binlog/`, `incident.yaml`, `README.md`, `README_ZH.md`, and `docs/agents/USING-BINLOGVIZ.md`
+- include the binary, `testdata/minimal.binlog`, `testdata/sample-binlog/`, `incident.yaml`, `README.md`, `README_ZH.md`, `LICENSE`, and `docs/agents/USING-BINLOGVIZ.md`
 - run `--version`
 - execute `analyze` on the bundled sample
 - save snapshots
