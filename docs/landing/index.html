@@ -434,6 +434,12 @@
         white-space: pre-line;
       }
 
+      .preview-cmd {
+        margin: 0 0 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
       .grid-3,
       .grid-4,
       .surfaces-grid,
@@ -448,6 +454,9 @@
       .grid-3 { grid-template-columns: repeat(3, 1fr); }
       .grid-4, .surfaces-grid { grid-template-columns: repeat(4, 1fr); }
       .proof-grid, .split-grid, .install-grid { grid-template-columns: 1fr 1fr; }
+      /* The output pane holds terminal output: it needs the full column, not
+         half of one, or every line wraps. */
+      .proof-grid { grid-template-columns: 1fr; align-items: start; }
 
       .card,
       .surface-card,
@@ -619,6 +628,12 @@
       }
 
       .tab-pane.active { display: block; }
+
+      .tab-pane pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
 
       .html-preview {
         border: 1px solid var(--border);
@@ -1062,7 +1077,7 @@ That makes the tool easier to reason about and keeps the product story focused o
             <div class="proof-grid">
               <article class="workflow-panel">
                 <h3 data-i18n="outputs.preview.title">Preview the reporting surfaces teams actually use</h3>
-                <p data-i18n="outputs.preview.desc">Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. Compare reuses text, JSON, and HTML once two analyze JSON reports exist.</p>
+                <p data-i18n="outputs.preview.desc">Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. The output shown is a real run against the sample binlog, not a mockup. Compare reuses text, JSON, and HTML once two snapshots or analyze JSON reports exist.</p>
 
                 <div class="tab-shell">
                   <div class="tab-list" role="tablist" aria-label="Output preview tabs" data-i18n-aria-label="outputs.preview.tablistLabel">
@@ -1073,49 +1088,54 @@ That makes the tool easier to reason about and keeps the product story focused o
                   </div>
 
                   <div class="tab-pane active" id="pane-text" role="tabpanel" aria-labelledby="tab-text" tabindex="0">
-<pre data-i18n="outputs.previewBodies.text">=== Workload Summary ===
-transactions: 438
-rows: 1,842,977
-events: 28,194
-time range: 2026-03-15 10:00 → 10:30 UTC
-
-=== Top Tables ===
-orders.payments      814,420 rows
-orders.refunds       242,199 rows
-checkout.ledger      138,501 rows
-
-=== Alerts ===
-large_transaction · txn_1842 · 17,904 rows
-spike · 2026-03-15T10:14:00Z · 4.7× baseline</pre>
+<p class="preview-cmd"><span class="token-prompt">$</span> binlogviz analyze testdata/minimal.binlog --format text</p>
+<pre data-i18n="outputs.previewBodies.text">=== Summary ===
+  Time Range: 2026-03-15 14:10:26 UTC - 2026-03-15 14:10:26 UTC
+  Timestamps: UTC (binlog)
+  Format: ROW images / logical rows (STATEMENT/MIXED Query-DML is not counted)
+  primary key presence unknown (binlog_row_metadata is not FULL)
+  Total Transactions: 4
+  Partial Transactions: 0
+  Unknown Transactions: 0
+  Total Rows: 4
+  Total Events: 22
+  DDL Timeline: 1 (CREATE TABLE)
+  Input File Size: 1.5KB
+  Counted Event Bytes: 342B
+  Largest txn: 289B
+  Top txn bytes: txn-4 289B, txn-2 269B, txn-3 267B
+  Top table bytes: testdb.users 342B</pre>
                   </div>
 
                   <div class="tab-pane" id="pane-json" role="tabpanel" aria-labelledby="tab-json" tabindex="0" hidden>
-<pre data-i18n="outputs.previewBodies.json"><span class="token-brace">{</span>
-  <span class="token-key">"summary"</span><span class="token-brace">:</span> <span class="token-brace">{</span>
-    <span class="token-key">"total_transactions"</span><span class="token-brace">:</span> <span class="token-value">438</span>,
-    <span class="token-key">"total_rows"</span><span class="token-brace">:</span> <span class="token-value">1842977</span>,
-    <span class="token-key">"total_events"</span><span class="token-brace">:</span> <span class="token-value">28194</span>
-  <span class="token-brace">}</span>,
-  <span class="token-key">"alerts"</span><span class="token-brace">:</span> <span class="token-brace">[</span>
-    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"large_transaction"</span> <span class="token-brace">}</span>,
-    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"spike"</span> <span class="token-brace">}</span>
-  <span class="token-brace">]</span>
-<span class="token-brace">}</span></pre>
+<p class="preview-cmd"><span class="token-prompt">$</span> binlogviz analyze testdata/minimal.binlog --format json</p>
+<pre data-i18n="outputs.previewBodies.json">  "summary": {
+    "total_transactions": 4,
+    "partial_transactions": 0,
+    "unknown_transactions": 0,
+    "total_rows": 4,
+    "total_events": 22,
+    "start_time": "2026-03-15T14:10:26Z",
+    "end_time": "2026-03-15T14:10:26Z",
+    "duration": "0s"
+  },</pre>
                   </div>
 
                   <div class="tab-pane" id="pane-markdown" role="tabpanel" aria-labelledby="tab-markdown" tabindex="0" hidden>
-<pre data-i18n="outputs.previewBodies.markdown"><span class="token-key"># BinlogViz Report</span>
+<p class="preview-cmd"><span class="token-prompt">$</span> binlogviz analyze testdata/minimal.binlog --format markdown</p>
+<pre data-i18n="outputs.previewBodies.markdown"># BinlogViz Report
 
-<span class="token-key">## Workload Summary</span>
-| Transactions | Rows | Events |
-| --- | ---: | ---: |
-| 438 | 1,842,977 | 28,194 |
+## Workload Summary
 
-<span class="token-key">## Top Tables</span>
-| Table | Rows | Txns |
-| --- | ---: | ---: |
-| orders.payments | 814,420 | 216 |
-| orders.refunds | 242,199 | 104 |</pre>
+| Field | Value |
+|---|---|
+| Total Transactions | 4 |
+| Partial Transactions | 0 |
+| Unknown Transactions | 0 |
+| Total Rows | 4 |
+| Total Events | 22 |
+| Time Range | 2026-03-15 14:10:26 UTC — 2026-03-15 14:10:26 UTC |
+| Timestamps | UTC (binlog) |</pre>
                   </div>
 
                   <div class="tab-pane" id="pane-html" role="tabpanel" aria-labelledby="tab-html" tabindex="0" hidden>
@@ -1370,7 +1390,7 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
             sub: 'Output format is part of the product. Analyze can end as text, JSON, Markdown, or self-contained HTML, and compare turns two saved snapshots or exported JSON reports into a text summary, structured JSON delta, or chart-based HTML review artifact.',
             preview: {
               title: 'Preview the reporting surfaces teams actually use',
-              desc: 'Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. Compare reuses text, JSON, and HTML once two analyze JSON reports exist.',
+              desc: 'Use the tabs below to see how an incident answer moves across terminals, automation, docs, and browser-based review. The output shown is a real run against the sample binlog, not a mockup. Compare reuses text, JSON, and HTML once two snapshots or analyze JSON reports exist.',
               tablistLabel: 'Output preview tabs'
             },
             tabs: {
@@ -1380,9 +1400,9 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               html: 'HTML'
             },
             previewBodies: {
-              text: '=== Workload Summary ===\ntransactions: 438\nrows: 1,842,977\nevents: 28,194\ntime range: 2026-03-15 10:00 → 10:30 UTC\n\n=== Top Tables ===\norders.payments      814,420 rows\norders.refunds       242,199 rows\ncheckout.ledger      138,501 rows\n\n=== Alerts ===\nlarge_transaction · txn_1842 · 17,904 rows\nspike · 2026-03-15T10:14:00Z · 4.7× baseline',
-              json: '<span class="token-brace">{</span>\n  <span class="token-key">"summary"</span><span class="token-brace">:</span> <span class="token-brace">{</span>\n    <span class="token-key">"total_transactions"</span><span class="token-brace">:</span> <span class="token-value">438</span>,\n    <span class="token-key">"total_rows"</span><span class="token-brace">:</span> <span class="token-value">1842977</span>,\n    <span class="token-key">"total_events"</span><span class="token-brace">:</span> <span class="token-value">28194</span>\n  <span class="token-brace">}</span>,\n  <span class="token-key">"alerts"</span><span class="token-brace">:</span> <span class="token-brace">[</span>\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"large_transaction"</span> <span class="token-brace">}</span>,\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"spike"</span> <span class="token-brace">}</span>\n  <span class="token-brace">]</span>\n<span class="token-brace">}</span>',
-              markdown: '<span class="token-key"># BinlogViz Report</span>\n\n<span class="token-key">## Workload Summary</span>\n| Transactions | Rows | Events |\n| --- | ---: | ---: |\n| 438 | 1,842,977 | 28,194 |\n\n<span class="token-key">## Top Tables</span>\n| Table | Rows | Txns |\n| --- | ---: | ---: |\n| orders.payments | 814,420 | 216 |\n| orders.refunds | 242,199 | 104 |'
+              text: '=== Summary ===\n  Time Range: 2026-03-15 14:10:26 UTC - 2026-03-15 14:10:26 UTC\n  Timestamps: UTC (binlog)\n  Format: ROW images / logical rows (STATEMENT/MIXED Query-DML is not counted)\n  primary key presence unknown (binlog_row_metadata is not FULL)\n  Total Transactions: 4\n  Partial Transactions: 0\n  Unknown Transactions: 0\n  Total Rows: 4\n  Total Events: 22\n  DDL Timeline: 1 (CREATE TABLE)\n  Input File Size: 1.5KB\n  Counted Event Bytes: 342B\n  Largest txn: 289B\n  Top txn bytes: txn-4 289B, txn-2 269B, txn-3 267B\n  Top table bytes: testdb.users 342B',
+              json: '  "summary": {\n    "total_transactions": 4,\n    "partial_transactions": 0,\n    "unknown_transactions": 0,\n    "total_rows": 4,\n    "total_events": 22,\n    "start_time": "2026-03-15T14:10:26Z",\n    "end_time": "2026-03-15T14:10:26Z",\n    "duration": "0s"\n  },',
+              markdown: '# BinlogViz Report\n\n## Workload Summary\n\n| Field | Value |\n|---|---|\n| Total Transactions | 4 |\n| Partial Transactions | 0 |\n| Unknown Transactions | 0 |\n| Total Rows | 4 |\n| Total Events | 22 |\n| Time Range | 2026-03-15 14:10:26 UTC — 2026-03-15 14:10:26 UTC |\n| Timestamps | UTC (binlog) |',
             },
             html: {
               label: 'Self-contained HTML report',
@@ -1537,9 +1557,9 @@ Built for DBA investigation, incident review, and shareable reporting.</p>
               html: 'HTML'
             },
             previewBodies: {
-              text: '=== 工作负载摘要 ===\n事务数: 438\n行数: 1,842,977\n事件数: 28,194\n时间范围: 2026-03-15 10:00 → 10:30 UTC\n\n=== 热点表 ===\norders.payments      814,420 行\norders.refunds       242,199 行\ncheckout.ledger      138,501 行\n\n=== 告警 ===\n大事务 · txn_1842 · 17,904 行\n尖峰 · 2026-03-15T10:14:00Z · 4.7× 基线',
-              json: '<span class="token-brace">{</span>\n  <span class="token-key">"summary"</span><span class="token-brace">:</span> <span class="token-brace">{</span>\n    <span class="token-key">"total_transactions"</span><span class="token-brace">:</span> <span class="token-value">438</span>,\n    <span class="token-key">"total_rows"</span><span class="token-brace">:</span> <span class="token-value">1842977</span>,\n    <span class="token-key">"total_events"</span><span class="token-brace">:</span> <span class="token-value">28194</span>\n  <span class="token-brace">}</span>,\n  <span class="token-key">"alerts"</span><span class="token-brace">:</span> <span class="token-brace">[</span>\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"large_transaction"</span> <span class="token-brace">}</span>,\n    <span class="token-brace">{</span> <span class="token-key">"type"</span><span class="token-brace">:</span> <span class="token-string">"spike"</span> <span class="token-brace">}</span>\n  <span class="token-brace">]</span>\n<span class="token-brace">}</span>',
-              markdown: '<span class="token-key"># BinlogViz 报告</span>\n\n<span class="token-key">## 工作负载摘要</span>\n| 事务数 | 行数 | 事件数 |\n| --- | ---: | ---: |\n| 438 | 1,842,977 | 28,194 |\n\n<span class="token-key">## 热点表</span>\n| 表 | 行数 | 事务数 |\n| --- | ---: | ---: |\n| orders.payments | 814,420 | 216 |\n| orders.refunds | 242,199 | 104 |'
+              text: '=== Summary ===\n  Time Range: 2026-03-15 14:10:26 UTC - 2026-03-15 14:10:26 UTC\n  Timestamps: UTC (binlog)\n  Format: ROW images / logical rows (STATEMENT/MIXED Query-DML is not counted)\n  primary key presence unknown (binlog_row_metadata is not FULL)\n  Total Transactions: 4\n  Partial Transactions: 0\n  Unknown Transactions: 0\n  Total Rows: 4\n  Total Events: 22\n  DDL Timeline: 1 (CREATE TABLE)\n  Input File Size: 1.5KB\n  Counted Event Bytes: 342B\n  Largest txn: 289B\n  Top txn bytes: txn-4 289B, txn-2 269B, txn-3 267B\n  Top table bytes: testdb.users 342B',
+              json: '  "summary": {\n    "total_transactions": 4,\n    "partial_transactions": 0,\n    "unknown_transactions": 0,\n    "total_rows": 4,\n    "total_events": 22,\n    "start_time": "2026-03-15T14:10:26Z",\n    "end_time": "2026-03-15T14:10:26Z",\n    "duration": "0s"\n  },',
+              markdown: '# BinlogViz Report\n\n## Workload Summary\n\n| Field | Value |\n|---|---|\n| Total Transactions | 4 |\n| Partial Transactions | 0 |\n| Unknown Transactions | 0 |\n| Total Rows | 4 |\n| Total Events | 22 |\n| Time Range | 2026-03-15 14:10:26 UTC — 2026-03-15 14:10:26 UTC |\n| Timestamps | UTC (binlog) |',
             },
             html: {
               label: '自包含 HTML 报告',
