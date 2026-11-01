@@ -55,7 +55,7 @@ func newFlashbackVerifyCommand() *cobra.Command {
 					"Error": err.Error(),
 				})))
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			// Hash while reading. SQL output copies the bytes to a temp file
 			// and emits them only after the digest matches, so a refusal
@@ -68,8 +68,8 @@ func newFlashbackVerifyCommand() *cobra.Command {
 				if err != nil {
 					return clierr.Wrap(clierr.KindOutput, err)
 				}
-				defer os.Remove(tmp.Name())
-				defer tmp.Close()
+				defer func() { _ = os.Remove(tmp.Name()) }()
+				defer func() { _ = tmp.Close() }()
 				read = io.TeeReader(src, verifyTemp{tmp})
 			}
 			res, err := guard.Verify(read)
@@ -88,7 +88,7 @@ func newFlashbackVerifyCommand() *cobra.Command {
 					return clierr.Errorf(clierr.KindOutput, "encode flashback verify output: %w", err)
 				}
 				_, err = fmt.Fprintln(out, string(data))
-				return err
+				return clierr.Wrap(clierr.KindOutput, err)
 			}
 			st, err := tmp.Stat()
 			if err != nil {

@@ -28,7 +28,7 @@ func TestBusiestMinuteNamesTheTableThatDroveIt(t *testing.T) {
 	orders := strings.Index(section, "shop.orders  30")
 	catalogSpike := strings.Index(section, "shop.catalog  2")
 	background := strings.Index(section, "2026-03-15 14:00:00 UTC  rows=20  txns=1")
-	if peak < 0 || orders < 0 || catalogSpike < 0 || background < 0 || !(peak < orders && orders < catalogSpike && catalogSpike < background) {
+	if peak < 0 || orders < 0 || catalogSpike < 0 || background < 0 || (peak >= orders || orders >= catalogSpike || catalogSpike >= background) {
 		t.Fatalf("14:05 should lead with shop.orders 30, then shop.catalog 2, ahead of the catalog minutes:\n%s", section)
 	}
 	if strings.Contains(text, "[warning] Write spike") || strings.Contains(text, "[critical] Write spike") {
@@ -63,6 +63,32 @@ func TestBusiestMinuteNamesTheTableThatDroveIt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("json: %v", err)
 	}
+	assertBusiestMinuteJSON(t, raw)
+
+	ordersOnly, _, err := executeAnalyzeLikeMain(t, path, "--include-table", "shop.orders")
+	if err != nil {
+		t.Fatalf("include-table: %v", err)
+	}
+	ordersSection := sectionBetween(ordersOnly, "=== Busiest Minutes ===", "===")
+	if !strings.Contains(ordersSection, "shop.orders  30") || strings.Contains(ordersSection, "shop.catalog") {
+		t.Fatalf("include-table shop.orders should keep only that table:\n%s", ordersSection)
+	}
+
+	catalogOnly, _, err := executeAnalyzeLikeMain(t, path, "--exclude-table", "shop.orders")
+	if err != nil {
+		t.Fatalf("exclude-table: %v", err)
+	}
+	catalogSection := sectionBetween(catalogOnly, "=== Busiest Minutes ===", "===")
+	if strings.Contains(catalogSection, "shop.orders") || !strings.Contains(catalogSection, "shop.catalog  20") {
+		t.Fatalf("exclude-table shop.orders should leave the catalog minutes:\n%s", catalogSection)
+	}
+	if strings.Contains(catalogSection, "rows=32") {
+		t.Fatalf("excluded orders should not leave the 32-row spike minute:\n%s", catalogSection)
+	}
+}
+
+func assertBusiestMinuteJSON(t *testing.T, raw string) {
+	t.Helper()
 	var doc struct {
 		Tables []struct {
 			Schema    string `json:"schema"`
@@ -103,26 +129,5 @@ func TestBusiestMinuteNamesTheTableThatDroveIt(t *testing.T) {
 	}
 	if len(doc.Diagnostics.LargestTransactions) == 0 || doc.Diagnostics.LargestTransactions[0].Tables["shop.catalog"] != 20 {
 		t.Fatalf("largest txn should stay a 20-row catalog batch, got %+v", doc.Diagnostics.LargestTransactions)
-	}
-
-	ordersOnly, _, err := executeAnalyzeLikeMain(t, path, "--include-table", "shop.orders")
-	if err != nil {
-		t.Fatalf("include-table: %v", err)
-	}
-	ordersSection := sectionBetween(ordersOnly, "=== Busiest Minutes ===", "===")
-	if !strings.Contains(ordersSection, "shop.orders  30") || strings.Contains(ordersSection, "shop.catalog") {
-		t.Fatalf("include-table shop.orders should keep only that table:\n%s", ordersSection)
-	}
-
-	catalogOnly, _, err := executeAnalyzeLikeMain(t, path, "--exclude-table", "shop.orders")
-	if err != nil {
-		t.Fatalf("exclude-table: %v", err)
-	}
-	catalogSection := sectionBetween(catalogOnly, "=== Busiest Minutes ===", "===")
-	if strings.Contains(catalogSection, "shop.orders") || !strings.Contains(catalogSection, "shop.catalog  20") {
-		t.Fatalf("exclude-table shop.orders should leave the catalog minutes:\n%s", catalogSection)
-	}
-	if strings.Contains(catalogSection, "rows=32") {
-		t.Fatalf("excluded orders should not leave the 32-row spike minute:\n%s", catalogSection)
 	}
 }

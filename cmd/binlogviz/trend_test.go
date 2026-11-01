@@ -1,8 +1,4 @@
 // Package binlogviz verifies trend command registration and output behavior.
-// input: Cobra root and trend commands plus comparable report-v3 and explicit legacy snapshot fixtures built by tests.
-// output: assertions for trend CLI wiring, snapshot handling, series-wide comparability, legacy fallback, and user-facing output.
-// pos: command-level regression coverage for the trend workflow.
-// note: if this file changes, keep cmd/binlogviz/README.md synchronized.
 package binlogviz
 
 import (
@@ -800,19 +796,7 @@ func trendPatternsJSON(patterns []trendPatternFixture) string {
 
 	encoded := make([]trendPatternFixtureJSON, 0, len(patterns))
 	for _, pattern := range patterns {
-		encoded = append(encoded, trendPatternFixtureJSON{
-			PatternKey:         pattern.PatternKey,
-			Label:              pattern.Label,
-			TotalRows:          pattern.TotalRows,
-			TxnCount:           pattern.TxnCount,
-			EventCount:         pattern.EventCount,
-			ShareOfRows:        pattern.ShareOfRows,
-			ShareOfTxns:        pattern.ShareOfTxns,
-			AvgRowsPerTxn:      pattern.AvgRowsPerTxn,
-			Tables:             pattern.Tables,
-			Operations:         pattern.Operations,
-			SampleQuerySummary: pattern.SampleQuerySummary,
-		})
+		encoded = append(encoded, trendPatternFixtureJSON(pattern))
 	}
 
 	data, err := json.Marshal(encoded)

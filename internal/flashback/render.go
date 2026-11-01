@@ -1,8 +1,4 @@
 // Package flashback renders undo SQL for the planner's kept groups.
-// input: flash groups with row images, schema binds, and review notes.
-// output: the reverse-order script written through guard pieces, or one error and no script.
-// pos: the writer half of the planner; planner.go keeps the selection and intake half.
-// note: if this file changes, update this header and README.md.
 package flashback
 
 import (
@@ -373,10 +369,6 @@ func generatedRowError(row model.FlashRow) error {
 	return &generatedRowRefusal{schema: row.Schema, table: row.Table}
 }
 
-func undoWhere(row model.FlashRow, head string, image []string, cond string) (string, error) {
-	return undoWhereImage(row, head, image, cond, false)
-}
-
 // insertedImageMatch is every column the INSERT writes. A no-PK guard undo
 // uses it so a re-run matches the row it already put back.
 func insertedImageMatch(cols, vals []string) string {
@@ -403,29 +395,6 @@ func undoWhereImage(row model.FlashRow, head string, image []string, cond string
 		return "", generatedRowError(row)
 	}
 	return statement, nil
-}
-
-func sqlQuote(s string) string {
-	var b strings.Builder
-	b.Grow(len(s) + 2)
-	b.WriteByte('\'')
-	for i := 0; i < len(s); i++ {
-		switch s[i] {
-		case '\\', '\'':
-			b.WriteByte('\\')
-			b.WriteByte(s[i])
-		case '\n':
-			b.WriteString(`\n`)
-		case '\r':
-			b.WriteString(`\r`)
-		case 0:
-			b.WriteString(`\0`)
-		default:
-			b.WriteByte(s[i])
-		}
-	}
-	b.WriteByte('\'')
-	return b.String()
 }
 
 func quoteColumnList(columns []string) string {

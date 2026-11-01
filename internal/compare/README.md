@@ -15,7 +15,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 | `replay.go` | Preserves analyze transaction spans and replay commands for compare and trend evidence. |
 | `recommendations.go` | Derives prioritized follow-up recommendations from compare findings. |
 | `drilldown.go` | Selects bounded pattern drilldowns for high-signal compare changes. |
-| `text.go` | Renders human-readable compare output, including named baseline/current input-file and counted-event byte metrics, table drift, pattern drift, and snapshot-aware context such as window, input mode, source summary, and filters, localized through `report.text.compare.*` i18n keys. |
+| `text.go` | Renders human-readable compare output, including named baseline/current input-file and counted-event byte metrics, table drift, pattern drift and drilldowns through a dedicated section helper, and snapshot-aware context such as window, input mode, source summary, and filters, localized through `report.text.compare.*` i18n keys. |
 | `json.go` | Serializes compare results for downstream tools, with `schema_version` (`SchemaVersion`, ADR 0010) first. |
 | `html.go` | Renders the self-contained HTML compare report with snapshot-aware context, byte coverage, pattern drift, and current transaction replay evidence. Theme tokens come from `internal/report` SharedHTMLThemeCSS. |
 | `*_test.go` | Covers loading, diff behavior, findings and drilldowns, renderer output, diagnostics/i18n sections, snapshot-aware context, and contract stability. |
@@ -58,3 +58,7 @@ Compare-input validation, diff construction, and renderer output for text/JSON/H
 - Raw deltas are always available. Ordinary causal findings, recommendations, and drilldowns require `comparable`; guarded results contain exactly one first `comparability_guard` finding, and renderers derive the localized guard directly from the verdict so public rendering remains safe even without a prebuilt finding slice.
 - Only matching non-empty workload IDs prove shared identity. Server IDs/versions, observed schemas, filenames, and flavors remain visible evidence; legacy v0-v2 or insufficient completeness is `unknown`, while explicit identity/flavor/scope conflicts are `not_comparable`.
 - Report-v3 `selection` is part of the canonical comparison scope: omitted selection means the full unselected input, while differing persisted position, GTID, or `thread_ids` selectors produce `incompatible_scope`; matched GTIDs remain retained evidence rather than selector identity, and legacy absence is `unknown` unless known v3 inputs also conflict.
+
+## Update Rule
+
+If members, interfaces, or dependencies change, update this file in the same change.

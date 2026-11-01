@@ -1,10 +1,6 @@
 //go:build cgo
 
 // Package detailstore persists high-cardinality analysis results in DuckDB batches.
-// input: completed transactions with provenance, minute buckets, alerts, and an owned DuckDB path.
-// output: batched DuckDB reconstruction of transaction evidence, minutes, alerts with their GTID, and on-demand SQL.
-// pos: CGO-only DuckDB adapter behind NewDuckDBStore (ADR 0012).
-// note: if this file changes, keep this header and README.md synchronized.
 package detailstore
 
 import (
@@ -394,7 +390,7 @@ WHERE txn_key IN (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	resolved := make(map[string]string, len(wanted))
 	for rows.Next() {
 		var txnKey string
@@ -418,7 +414,7 @@ ORDER BY minute ASC`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	buckets := make([]model.MinuteBucket, 0)
 	indexByMinute := make(map[time.Time]int)
@@ -450,7 +446,7 @@ ORDER BY minute ASC, table_key ASC`)
 	if err != nil {
 		return nil, err
 	}
-	defer tableRows.Close()
+	defer func() { _ = tableRows.Close() }()
 
 	for tableRows.Next() {
 		var minute time.Time
@@ -479,7 +475,7 @@ FROM alerts`)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	alerts := make([]model.Alert, 0)
 	for rows.Next() {
@@ -642,7 +638,7 @@ func (s *DuckDBStore) queryTransactions(query string, capacityHint int) ([]trans
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make([]transactionRow, 0, capacityHint)
 	for rows.Next() {
@@ -739,7 +735,7 @@ FROM transaction_tables`
 	if err != nil {
 		return err
 	}
-	defer tableRows.Close()
+	defer func() { _ = tableRows.Close() }()
 
 	for tableRows.Next() {
 		var txnKey, tableKey string
@@ -774,7 +770,7 @@ FROM transaction_operations`
 	if err != nil {
 		return err
 	}
-	defer opRows.Close()
+	defer func() { _ = opRows.Close() }()
 
 	for opRows.Next() {
 		var txnKey, operation string
@@ -792,14 +788,18 @@ FROM transaction_operations`
 	return opRows.Err()
 }
 
-func (s *DuckDBStore) appendRows(table string, fill func(app *duckdb.Appender) error) error {
+func (s *DuckDBStore) appendRows(table string, fill func(app *duckdb.Appender) error) (retErr error) {
 	conn, err := s.db.Conn(context.Background())
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil && retErr == nil {
+			retErr = err
+		}
+	}()
 
-	return conn.Raw(func(raw any) error {
+	return conn.Raw(func(raw any) (retErr error) {
 		driverConn, ok := raw.(driver.Conn)
 		if !ok {
 			return fmt.Errorf("unexpected driver connection type %T", raw)
@@ -808,7 +808,11 @@ func (s *DuckDBStore) appendRows(table string, fill func(app *duckdb.Appender) e
 		if err != nil {
 			return err
 		}
-		defer appender.Close()
+		defer func() {
+			if err := appender.Close(); err != nil && retErr == nil {
+				retErr = err
+			}
+		}()
 
 		if err := fill(appender); err != nil {
 			return err

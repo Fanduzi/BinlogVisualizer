@@ -1073,7 +1073,7 @@ func spillStatAvailable() bool {
 	if err != nil {
 		return false
 	}
-	f.Close()
+	_ = f.Close()
 	return true
 }
 
@@ -1159,7 +1159,11 @@ func writeScaledBinlog(t *testing.T, shape largeShape, path string, n int) int64
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close synthetic binlog: %v", err)
+		}
+	}()
 	w := bufio.NewWriterSize(f, 1<<20)
 	if _, err := w.Write(tp.magic); err != nil {
 		t.Fatal(err)

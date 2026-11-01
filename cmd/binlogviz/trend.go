@@ -120,7 +120,7 @@ func runTrend(opts *trendOptions, args []string, out, errOut io.Writer, loc *tim
 		for _, point := range result.Points {
 			names = append(names, point.Snapshot.Name)
 		}
-		fmt.Fprint(errOut, i18n.Tf("cmd.trend.reordered", map[string]any{"Names": strings.Join(names, ", ")}))
+		_, _ = fmt.Fprint(infoWriter(errOut), i18n.Tf("cmd.trend.reordered", map[string]any{"Names": strings.Join(names, ", ")}))
 	}
 
 	output, err := renderTrend(result, opts.format, loc)

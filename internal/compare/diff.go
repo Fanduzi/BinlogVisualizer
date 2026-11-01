@@ -1,8 +1,4 @@
 // Package compare computes stable comparison results from validated input reports.
-// input: two validated InputReport values representing current and baseline analyses with optional comparability metadata.
-// output: deterministic CompareResult values with raw deltas, a structured comparability gate, completeness counts, trusted current replay evidence, and byte coverage for renderers. DDL change counts are statements.
-// pos: compare pipeline core between report loading and output rendering.
-// note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 import (
@@ -211,10 +207,6 @@ func preferredPatternLabel(current, fallback string) string {
 		return current
 	}
 	return fallback
-}
-
-func buildAlertChanges(current, baseline []InputAlert) AlertDelta {
-	return buildAlertChangesWithTxns(current, baseline, nil, nil)
 }
 
 func buildAlertChangesFromReports(current, baseline InputReport) AlertDelta {

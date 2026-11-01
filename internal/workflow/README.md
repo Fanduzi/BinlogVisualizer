@@ -18,10 +18,10 @@ Orchestration primitives for `binlogviz workflow run <plan.yaml>`, `binlogviz wo
 | `clean.go` | Orphan discovery and apply-mode deletion for workflow-generated artifacts plus opt-in snapshot cleanup. Gate: `CheckCleanTrust`, latest run `success` (`run_not_successful`), ledger present (`no_ledger` unless Force). Deletes only ledger-attributed files whose sha256 matches; others are `kept_orphans` (Force deletes unattributed outputs of recorded kinds, never snapshots). Kind dirs must be real dirs (`trust_boundary`); the snapshot dir comes from the caller (`snapshot_dir_mismatch`); `ApplyClean` preflights both sides, then moves with `TrashFile` only. |
 | `ledger.go` | Append-only `ledger.jsonl` of every file a run wrote (path, kind, step, run id, sha256); `Attributed` answers whether the workflow wrote exactly these bytes Paths are relative only; absolute/`..`/malformed entries are 5 `untrusted_ledger` (ADR 0009 §8). |
 | `safefs.go` | The only deletion primitive: `TrashFile(root, rel, id)` rejects absolute/`..`/hidden paths and symlinks at every component and renames into `<root>/.trash/<id>/` inside `os.Root`; also `PrepareTrash` (the same checks without moving, used to preflight every target), `CheckKindDir`, `IsPlainFile`. Guarded by `TestWorkflowDeletesOnlyThroughPrimitive`. |
-| `lock.go`, `lock_unix.go`, `lock_other.go` | `LockDir`: exclusive `flock` on `<root>/.lock` for run/resume/clean; a conflict is 6 `locked`. |
+| `lock.go`, `lock_unix.go`, `lock_other.go` | `LockDir`: exclusive `flock` on `<root>/.lock` on Unix; non-Unix uses an exclusive lock file and removes it on release. A conflict is 6 `locked`. |
 | `trust.go` | Manifest trust gate (ADR 0009 §8): `CheckManifestIntegrity` (missing workflow_name is corrupt 5, newer manifest_version is 9) and `CheckCleanTrust` (no recorded steps while artifacts exist is refused 6, then `CheckArtifactVersions`); both carry `details.reason: untrusted_manifest`. |
 | `artifact_version.go` | `CheckArtifactVersions` (ADR 0010): a recorded compare/trend JSON artifact whose `schema_version` is not an integer in 1..`compare.SchemaVersion`/`trend.SchemaVersion` is 9 `unsupported_artifact_version` (details: artifact, step_kind, step_name, schema_version, supported_version); no key is a pre-ADR artifact and passes. Called by `BuildStatus`, `CheckCleanTrust` and `workflow resume`. |
-| `export.go` | Manifest-driven, read-only export bundle assembly and deterministic zip archive writing. |
+| `export.go` | Manifest-driven, read-only export bundle assembly and deterministic zip archive writing; success requires ZIP and file finalization. |
 
 ## Manifest Versioning
 
@@ -111,6 +111,11 @@ Exported from `resume.go`:
 - `ValidateWorkflowPlanPath(outputDir string, planPath string) (string, error)` — Validates that `planPath` resolves to the trusted workflow-local rooted `plan.yaml`, rejects outside-root/symlink-escaped/nested/renamed paths, and returns the canonical absolute path for subsequent file operations.
 - `BuildResumePlan(plan Plan, m Manifest, selectors []string, outputDir string, snapshotDir string) (ResumePlan, error)` — Builds dependency-aware step list with invalidation propagation. Returns `ErrNothingToResume` when every step already succeeded with intact artifacts and no `--rerun` selector was given.
 - `ErrNothingToResume` — Sentinel for a successful root with nothing left to execute.
+
+## Dependencies
+
+- Upstream: `internal/clierr`, `internal/compare`, `internal/displaytz`, `internal/trend`, and the YAML decoder.
+- Downstream: `cmd/binlogviz` orchestrates workflow execution and inspection.
 
 ## Update Rule
 

@@ -1,8 +1,4 @@
 // Package binlog reads binlog events as raw bytes and checks them before any decode.
-// input: a binlog file path, a start offset, and a go-mysql BinlogParser that keeps the Format Description state.
-// output: each event handed to onEvent after its size, CRC32 footer and length fields were checked against the event bytes; a CorruptEventError at the event start otherwise.
-// pos: the only place event bytes enter go-mysql. A Go fatal error (out of memory) or a hang inside a decoder cannot be recovered, so nothing hostile may reach one.
-// note: if this file changes, update this header and README.md.
 package binlog
 
 import (
@@ -43,7 +39,7 @@ func readEvents(bp *replication.BinlogParser, path string, offset int64, consume
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		return err

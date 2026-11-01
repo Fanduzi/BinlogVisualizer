@@ -1,8 +1,4 @@
 // Package analyzer spills the per-(table, minute) series once it no longer fits a small report.
-// input: one row or DDL event at a time, from the table aggregator and the minute aggregator, which share one store.
-// output: per-minute table row counts and per-table activity points, either copied onto the result or read back from an unlinked temp file. Analysis only appends sorted runs. A full buffer is written and cleared; a revisit after that is a new record in the next run. Eight runs of one level merge into one run of the next level, so a record is rewritten about log8 of the run count times. The final merge sums every level. The render reads that one run.
-// pos: the (table, minute) term of analyze and flashback. Minute totals stay in memory. This series does not.
-// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
@@ -15,8 +11,9 @@ import (
 	"sort"
 	"time"
 
-	"binlogviz/internal/model"
 	"golang.org/x/sys/unix"
+
+	"binlogviz/internal/model"
 )
 
 // activityInlineLimit is how many (table, minute) points stay in memory.

@@ -1,8 +1,4 @@
 // Package analyzer validates analyzer orchestration and streaming result semantics.
-// input: analyzer test fixtures expressed as provenance-aware model.NormalizedEvent sequences and analyzer.Options values.
-// output: regression coverage for slice-wrapper compatibility, streaming finalization, provenance/SQL availability, SCHEMA.TABLE filters, filtered DDL boundaries, byte accounting, and failure handling.
-// pos: module-level behavioral test suite for the analyzer entrypoint and its external contracts.
-// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
@@ -1154,27 +1150,7 @@ func TestAnalyzerObjectFiltersShareFilteredWorkload(t *testing.T) {
 	if result.Transactions[0].QuerySummary != "" || result.Transactions[0].QueryContext != nil {
 		t.Fatalf("filtered transaction query evidence = %+v, want excluded-row SQL removed", result.Transactions[0])
 	}
-	if len(result.Patterns) != 1 || len(result.Patterns[0].Tables) != 1 || result.Patterns[0].Tables["dogfood.audit_log"] != 2000 {
-		t.Fatalf("filtered patterns = %+v, want only dogfood.audit_log", result.Patterns)
-	}
-	if len(result.Minutes) != 1 || result.Minutes[0].TotalRows != 2000 || len(result.Minutes[0].TableRows) != 1 || result.Minutes[0].TableRows["dogfood.audit_log"] != 2000 {
-		t.Fatalf("filtered minutes = %+v, want only dogfood.audit_log activity", result.Minutes)
-	}
-	if len(result.Timeseries.RowsSeries) != 1 || result.Timeseries.RowsSeries[0].Value != 2000 || result.Timeseries.InsertEventSeries[0].Value != 1 || result.Timeseries.DDLEventSeries[0].Value != 1 {
-		t.Fatalf("filtered timeseries = %+v, want 2000 rows, one insert, one DDL", result.Timeseries)
-	}
-	if len(result.Diagnostics.DDLEvents) != 1 || result.Diagnostics.DDLEvents[0].Table != "audit_log" || len(result.Diagnostics.LargestTransactions) != 1 || len(result.Diagnostics.LongestTransactions) != 1 || len(result.Diagnostics.WidestTransactions) != 1 || len(result.Diagnostics.HotIntervals) != 1 {
-		t.Fatalf("filtered diagnostics = %+v, want only included workload evidence", result.Diagnostics)
-	}
-	if len(result.Alerts) != 1 || result.Alerts[0].TxnKey != result.Transactions[0].TxnKey {
-		t.Fatalf("filtered alerts = %+v, want one alert for the included transaction", result.Alerts)
-	}
-	if tables, ok := result.Alerts[0].Details["tables"].([]string); !ok || len(tables) != 1 || tables[0] != "dogfood.audit_log" {
-		t.Fatalf("filtered alert tables = %#v, want only dogfood.audit_log", result.Alerts[0].Details["tables"])
-	}
-	if len(result.Diagnostics.Findings) != 1 || result.Diagnostics.Findings[0].TxnKey != result.Transactions[0].TxnKey {
-		t.Fatalf("filtered findings = %+v, want one included transaction finding", result.Diagnostics.Findings)
-	}
+	assertFilteredWorkloadDiagnostics(t, result)
 
 	unfiltered, err := New(DefaultOptions()).Analyze(events)
 	if err != nil {

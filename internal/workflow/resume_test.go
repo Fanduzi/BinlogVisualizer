@@ -146,7 +146,9 @@ func TestValidateResumableManifestRejectsEmptyResolvedFiles(t *testing.T) {
 func TestValidateResumableManifestRejectsPlanHashMismatch(t *testing.T) {
 	dir := t.TempDir()
 	planPath := filepath.Join(dir, "plan.yaml")
-	os.WriteFile(planPath, []byte("version: 1\n"), 0o644)
+	if err := os.WriteFile(planPath, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	m := Manifest{
 		ManifestVersion:    2,
@@ -163,7 +165,9 @@ func TestValidateResumableManifestRejectsPlanHashMismatch(t *testing.T) {
 func TestValidateResumableManifestRejectsMissingPlanSHA256(t *testing.T) {
 	dir := t.TempDir()
 	planPath := filepath.Join(dir, "plan.yaml")
-	os.WriteFile(planPath, []byte("version: 1\n"), 0o644)
+	if err := os.WriteFile(planPath, []byte("version: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	m := Manifest{
 		ManifestVersion:    2,
@@ -296,12 +300,10 @@ func TestBuildResumePlanFailedStepRerunsAutomatically(t *testing.T) {
 		}
 		for _, art := range step.Artifacts {
 			p := filepath.Join(dir, art)
-			os.MkdirAll(filepath.Dir(p), 0o755)
-			os.WriteFile(p, []byte("{}"), 0o644)
+			writeResumeFixture(t, p)
 		}
 		if step.SnapshotName != "" {
-			os.MkdirAll(snapDir, 0o755)
-			os.WriteFile(filepath.Join(snapDir, step.SnapshotName+".json"), []byte("{}"), 0o644)
+			writeResumeFixture(t, filepath.Join(snapDir, step.SnapshotName+".json"))
 		}
 	}
 
@@ -337,12 +339,10 @@ func TestBuildResumePlanMissingArtifactReruns(t *testing.T) {
 		}
 		for _, art := range step.Artifacts {
 			p := filepath.Join(dir, art)
-			os.MkdirAll(filepath.Dir(p), 0o755)
-			os.WriteFile(p, []byte("{}"), 0o644)
+			writeResumeFixture(t, p)
 		}
 		if step.SnapshotName != "" {
-			os.MkdirAll(snapDir, 0o755)
-			os.WriteFile(filepath.Join(snapDir, step.SnapshotName+".json"), []byte("{}"), 0o644)
+			writeResumeFixture(t, filepath.Join(snapDir, step.SnapshotName+".json"))
 		}
 	}
 
@@ -372,13 +372,12 @@ func TestBuildResumePlanMissingSnapshotTriggersAnalyzeRerun(t *testing.T) {
 	for _, step := range m.Steps {
 		for _, art := range step.Artifacts {
 			p := filepath.Join(dir, art)
-			os.MkdirAll(filepath.Dir(p), 0o755)
-			os.WriteFile(p, []byte("{}"), 0o644)
+			writeResumeFixture(t, p)
 		}
 	}
 
 	// Create snapshot for week1 but NOT week2
-	os.WriteFile(filepath.Join(snapDir, "week1.json"), []byte("{}"), 0o644)
+	writeResumeFixture(t, filepath.Join(snapDir, "week1.json"))
 	// week2.json intentionally missing
 
 	// No explicit rerun: missing snapshot should still trigger week2 rerun
@@ -433,6 +432,16 @@ func TestBuildResumePlanSetsAttemptAndMode(t *testing.T) {
 	}
 }
 
+func writeResumeFixture(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // createTestArtifacts writes artifact files for all steps in the manifest
 // and optionally snapshot files if snapDir is non-empty.
 func createTestArtifacts(t *testing.T, dir, snapDir string, steps []StepRecord) {
@@ -440,12 +449,10 @@ func createTestArtifacts(t *testing.T, dir, snapDir string, steps []StepRecord) 
 	for _, step := range steps {
 		for _, art := range step.Artifacts {
 			p := filepath.Join(dir, art)
-			os.MkdirAll(filepath.Dir(p), 0o755)
-			os.WriteFile(p, []byte("{}"), 0o644)
+			writeResumeFixture(t, p)
 		}
 		if snapDir != "" && step.SnapshotName != "" {
-			os.MkdirAll(snapDir, 0o755)
-			os.WriteFile(filepath.Join(snapDir, step.SnapshotName+".json"), []byte("{}"), 0o644)
+			writeResumeFixture(t, filepath.Join(snapDir, step.SnapshotName+".json"))
 		}
 	}
 }

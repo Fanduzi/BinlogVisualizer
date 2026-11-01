@@ -137,8 +137,12 @@ func TestValidateWorkflowPlanPathErrorMessages(t *testing.T) {
 
 	t.Run("nested path", func(t *testing.T) {
 		nested := filepath.Join(root, "sub", "plan.yaml")
-		os.MkdirAll(filepath.Dir(nested), 0o755)
-		os.WriteFile(nested, []byte("version: 1\n"), 0o644)
+		if err := os.MkdirAll(filepath.Dir(nested), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(nested, []byte("version: 1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		_, err := ValidateWorkflowPlanPath(root, nested)
 		if err == nil {
 			t.Fatal("expected error")

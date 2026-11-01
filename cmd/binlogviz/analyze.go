@@ -1,8 +1,4 @@
 // Package binlogviz defines the analyze CLI command and manages command-scoped DuckDB temp-store lifecycle.
-// input: CLI workload-identity, time/position/GTID/filter flags, parser callbacks including Format Description server version, command-owned temporary directory roots, and flashback --schema-file SQL. Path resolution lives in analyze_paths.go, --start/--end parsing in analyze_time.go, option building in analyze_options.go, and failure mapping in analyze_errors.go.
-// output: rendered text/JSON/HTML report-v3 analysis with workload identity/scope, a Top Threads session ranking, selector evidence, selected-file/count coverage, unmapped parser-event counts, optional Ignored QUERY counts, and an optional open-explicit-group count; when Options.Flashback is set, undo SQL is written instead of a report; analyze --help names per-transaction server_id, thread_id, GTID, xid or XA xid, user@host, --sql-context, --diagnostics, and stdin `-`; a terminal or empty stdin `-` fails before parsing, --snapshot-name without json fails before rendering, a saved snapshot always keeps full diagnostics whatever --diagnostics says, DuckDB temp state is cleaned, and the analyze command does not register --schema-file or --schema-file-db. A failed activity-spill read, while the analysis finishes or while rendering, is exit 11 (kind spill), not an output write failure.
-// pos: CLI orchestration layer between input resolution, parser normalization, analyzer execution, and final report rendering. report.Write owns the format switch. An unknown --format is still a usage error before any input is read.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -44,8 +40,6 @@ type aggregateProgress struct {
 	offsets      []int64
 	statusWriter io.Writer
 }
-
-var inspectFirstBinlogTimestamp = readFirstBinlogTimestamp
 
 // analyzeOptions holds the parsed CLI flags for the analyze command.
 type analyzeOptions struct {
@@ -455,7 +449,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 	snapshotDir string,
 	dest outputDestination,
 	pathAliases map[string]string,
-) error {
+) (retErr error) {
 	if err := snapshotNameFormatError(format, snapshotName); err != nil {
 		return err
 	}
@@ -490,7 +484,11 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if err != nil {
 			return clierr.Errorf(clierr.KindOutput, "%s", i18n.Tf("error.createTempStore", map[string]any{"Error": err.Error()}))
 		}
-		defer cleanup()
+		defer func() {
+			if err := cleanup(); err != nil && retErr == nil {
+				retErr = clierr.Errorf(clierr.KindOutput, "cleanup temporary store: %w", err)
+			}
+		}()
 	}
 
 	streamAnalyzer := newAnalyzer(opts, store)

@@ -136,9 +136,6 @@ func TestGeneratedExactTypesAndJSONKinds(t *testing.T) {
 		{"1e20", "1e20"},
 	} {
 		f, ok := parseJSONFloat(tc.in)
-		if !ok || mysqlJSONFloatString(f) != tc.want && tc.in != "1.0" && tc.in != "0.1" {
-			// 1.0 and 0.1 are decimals, not doubles. The float formatter still has a defined result.
-		}
 		if tc.in == "1.0" || tc.in == "0.1" {
 			node, ok := parseJSONSQLString(tc.in)
 			if !ok || node.nkind != jnDec {

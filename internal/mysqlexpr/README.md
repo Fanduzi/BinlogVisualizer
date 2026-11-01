@@ -19,6 +19,7 @@ Generated-column checker, the CREATE/ALTER column parser, and the row-predicate 
 | `userlist.go` | `ParseDropUser` reads a DROP USER account list and `ParseRenameUser` a RENAME USER `old TO new` pair list, accounts keeping their quoted spelling. Analyzer and flashback both call them. |
 | `renametable.go` | `ParseRenameTable` reads a RENAME TABLE `old TO new` pair list through the same identifier reader. Analyzer calls it; a quoted numeric-looking name is still a name. |
 | `where.go` | The `--where` row predicate (ADR 0024): `CompileWhere` parses one expression over the scalar grammar into a `WhereExpr`, and `(*WhereExpr).Match` evaluates it against a caller-supplied column lookup. Comparisons, `IS [NOT]`, `[NOT] IN`, boolean `AND`/`OR`/`XOR`/`NOT`, arithmetic, and the generated-column function set are supported; anything else (BETWEEN, LIKE, qualified names, other functions) fails compilation so the CLI can reject it before reading input. Evaluation is three-valued like MySQL; only a provably-true result matches — an unverifiable comparison (byte-vs-folded text order, non-numeric text coerced to a number) never does. `Columns` reports the bare names the predicate reads. |
+| `review_stream_contract_test.go` | Checks streaming generated-column review lifecycle, dependency clashes, division-increment alternatives, and batch parity. |
 | `fuzz_where_test.go` | Fuzzes `CompileWhere` on grammar and near-miss seeds; a successful compile is also evaluated through `Refs`, `MissingRef` and `Match` on a fixed env — errors are correct, only a panic is a bug (`go test -fuzz=FuzzCompileWhere -fuzztime=20s`). |
 
 ## Interfaces
@@ -36,3 +37,7 @@ Generated-column checker, the CREATE/ALTER column parser, and the row-predicate 
 
 - Upstream: `internal/model` (`FlashbackWarning`, `FlashRow`) and `internal/i18n`.
 - Downstream: `internal/schemacatalog`, `internal/flashback`, `internal/redo`, and `internal/analyzer`.
+
+## Update Rule
+
+If members, interfaces, or dependencies change, update this file in the same change.

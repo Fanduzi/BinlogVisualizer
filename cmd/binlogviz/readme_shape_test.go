@@ -1,8 +1,4 @@
 // Package binlogviz guards the shape of the project READMEs.
-// input: repository README.md and README_ZH.md, plus inline bypass probes.
-// output: a failure when a README grows an unlisted ## heading, a release-shaped token outside an install line or the allowed list, an over-long paragraph, an unclosed fence, or past its line or byte bound.
-// pos: release-doc drift guard; release notes and behavior detail belong in docs/, not in the README (BinlogViz README bloat, v0.21.0 -> v0.35.2).
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -150,7 +146,7 @@ func readmeShapeIssues(body string, wantH2 []string) []readmeIssue {
 			}
 			continue
 		}
-		if m := readmeFenceOpen.FindStringSubmatch(line); m != nil && !(m[1][0] == '`' && strings.Contains(m[2], "`")) {
+		if m := readmeFenceOpen.FindStringSubmatch(line); m != nil && (m[1][0] != '`' || !strings.Contains(m[2], "`")) {
 			flush()
 			fenceChar, fenceLen, fenceStart = m[1][0], len(m[1]), n
 			continue

@@ -142,7 +142,7 @@ func writeSyntheticFile(t *testing.T, path string, body func(emit func([]byte)))
 		t.Fatal(err)
 	}
 	out := bufio.NewWriterSize(f, 1<<20)
-	emit := loadSyntheticTemplate(t).writer(out)
+	emit := loadSyntheticTemplate(t).writer(t, out)
 	body(emit)
 	if err := out.Flush(); err != nil {
 		t.Fatal(err)

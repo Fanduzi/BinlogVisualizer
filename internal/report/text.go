@@ -1,8 +1,4 @@
 // Package report renders human-readable text reports from complete analysis results.
-// input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: completeness-aware UTC-labelled incident briefs with a DDL occurrence timeline counted in statements (a multi-table statement also prints its target count in the report language), open uncommitted DML, committed duration buckets, separate file/count-event bytes, a Top Threads session ranking, ranked complete transactions carrying server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, labelled trusted replay, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, and opt-in minute/pattern detail.
-// pos: text renderer for the CLI output path after analyzer Finalize. Transaction lists come from internal/report/view.
-// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -76,11 +72,11 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, 
 	topN := opts.TopN
 	summary := result.Summary
 	buf.WriteString("=== " + i18n.T("report.text.summary") + " ===\n")
-	buf.WriteString(fmt.Sprintf("  %s: %s - %s\n", i18n.T("report.label.timeRange"), opts.formatTime(summary.StartTime), opts.formatTime(summary.EndTime)))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.timestamps"), opts.timestampBasis()))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary")))
+	fmt.Fprintf(buf, "  %s: %s - %s\n", i18n.T("report.label.timeRange"), opts.formatTime(summary.StartTime), opts.formatTime(summary.EndTime))
+	fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.label.timestamps"), opts.timestampBasis())
+	fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.label.format"), i18n.T("report.text.rowImageSummary"))
 	if label := dmlFilterLabel(result.Scope); label != "" {
-		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.dmlFilter"), label))
+		fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.label.dmlFilter"), label)
 	}
 	if line := primaryKeyView(result.Tables).summaryLine; line != "" {
 		buf.WriteString("  " + line + "\n")
@@ -92,20 +88,20 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, 
 			buf.WriteString("  " + note + "\n")
 		}
 	}
-	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions))
-	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.partialTransactions"), summary.PartialTransactions))
-	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.unknownTransactions"), summary.UnknownTransactions))
-	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows))
-	buf.WriteString(fmt.Sprintf("  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.html.analyze.ddlTimeline"), formatDDLTimelineSummary(result.Diagnostics.DDLEvents)))
+	fmt.Fprintf(buf, "  %s: %d\n", i18n.T("report.label.totalTransactions"), summary.TotalTransactions)
+	fmt.Fprintf(buf, "  %s: %d\n", i18n.T("report.label.partialTransactions"), summary.PartialTransactions)
+	fmt.Fprintf(buf, "  %s: %d\n", i18n.T("report.label.unknownTransactions"), summary.UnknownTransactions)
+	fmt.Fprintf(buf, "  %s: %d\n", i18n.T("report.label.totalRows"), summary.TotalRows)
+	fmt.Fprintf(buf, "  %s: %d\n", i18n.T("report.label.totalEvents"), summary.TotalEvents)
+	fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.html.analyze.ddlTimeline"), formatDDLTimelineSummary(result.Diagnostics.DDLEvents))
 	inputFileSize := i18n.T("time.notAvailable")
 	if bytes, ok := selectedInputFileBytes(result.Diagnostics.FileCoverage); ok {
 		inputFileSize = formatByteSize(bytes)
 	}
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.inputFileSize"), inputFileSize))
-	buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.countedEventBytes"), formatByteSize(countedEventBytes(result))))
+	fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.label.inputFileSize"), inputFileSize)
+	fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.label.countedEventBytes"), formatByteSize(countedEventBytes(result)))
 	if bytes := largestTxnBytes(result); bytes > 0 {
-		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.label.largestTxnBytes"), formatByteSize(bytes)))
+		fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.label.largestTxnBytes"), formatByteSize(bytes))
 	}
 	renderByteContributors(buf, result, byteLeaders, topN)
 	renderSelectedFileLines(buf, result.Diagnostics.FileCoverage, opts)
@@ -117,8 +113,8 @@ func renderActivitySection(buf *strings.Builder, result model.AnalysisResult, op
 	tpsSpark := formatSparkline(result.Timeseries.TPSSeries)
 	rowsSpark := formatSparkline(result.Timeseries.RowsSeries)
 	resolution := formatSparklineResolution(len(result.Timeseries.TPSSeries))
-	buf.WriteString(fmt.Sprintf("  %-8s %s  %s  %s\n", i18n.T("report.text.tpsShort")+":", tpsSpark, formatTPSPeak(result.Summary, result.Timeseries.TPSSeries, opts), resolution))
-	buf.WriteString(fmt.Sprintf("  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", rowsSpark, formatPeakSeries(result.Timeseries.RowsSeries, opts)))
+	fmt.Fprintf(buf, "  %-8s %s  %s  %s\n", i18n.T("report.text.tpsShort")+":", tpsSpark, formatTPSPeak(result.Summary, result.Timeseries.TPSSeries, opts), resolution)
+	fmt.Fprintf(buf, "  %-8s %s  %s\n", i18n.T("report.text.rowsPerMinuteShort")+":", rowsSpark, formatPeakSeries(result.Timeseries.RowsSeries, opts))
 	buf.WriteString("\n")
 }
 
@@ -182,9 +178,9 @@ func renderNoPrimaryKey(buf *strings.Builder, tables []model.TableStats) {
 			nameWidth = len(row.name())
 		}
 	}
-	buf.WriteString(fmt.Sprintf("  %-2s %-*s %6s %6s\n", "#", nameWidth, "Table", "UPDATE", "DELETE"))
+	fmt.Fprintf(buf, "  %-2s %-*s %6s %6s\n", "#", nameWidth, "Table", "UPDATE", "DELETE")
 	for i, row := range view.risks {
-		buf.WriteString(fmt.Sprintf("  %-2d %-*s %6d %6d\n", i+1, nameWidth, row.name(), row.update, row.delete))
+		fmt.Fprintf(buf, "  %-2d %-*s %6d %6d\n", i+1, nameWidth, row.name(), row.update, row.delete)
 	}
 	if len(view.insertOnly) > 0 {
 		buf.WriteString("  " + i18n.Tf("report.text.noPrimaryKeyInsertOnly", map[string]any{
@@ -243,19 +239,19 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 	eventsWidth := maxInt(len("Binlog Events"), maxWidth(rows, func(r tableRow) string { return r.events }))
 	shareWidth := maxInt(len("Row Share"), maxWidth(rows, func(r tableRow) string { return r.share }))
 
-	buf.WriteString(fmt.Sprintf("  %-2s %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
+	fmt.Fprintf(buf, "  %-2s %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
 		"#", nameWidth, "Table",
 		totalWidth, "Affected Rows",
 		insertWidth, "INSERT", updateWidth, "UPDATE", deleteWidth, "DELETE",
 		ddlWidth, "DDL Events", txnsWidth, "Transactions",
-		eventsWidth, "Binlog Events", shareWidth, "Row Share"))
+		eventsWidth, "Binlog Events", shareWidth, "Row Share")
 	for i, row := range rows {
-		buf.WriteString(fmt.Sprintf("  %-2d %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
+		fmt.Fprintf(buf, "  %-2d %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
 			i+1, nameWidth, row.name,
 			totalWidth, row.total,
 			insertWidth, row.insert, updateWidth, row.update, deleteWidth, row.delete,
 			ddlWidth, row.ddl, txnsWidth, row.txns,
-			eventsWidth, row.events, shareWidth, row.share))
+			eventsWidth, row.events, shareWidth, row.share)
 	}
 	if omittedTables > 0 {
 		buf.WriteString("  " + omittedTablesLabel(omittedTables) + "\n")
@@ -364,7 +360,7 @@ func renderNextActions(buf *strings.Builder, result model.AnalysisResult) {
 		buf.WriteString("  " + i18n.T("report.text.openHTML") + "\n")
 	}
 	if location := firstSuspiciousLocation(result); location != "" {
-		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.firstSuspiciousPosition"), location))
+		fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.text.firstSuspiciousPosition"), location)
 	}
 	buf.WriteString("\n")
 }
@@ -415,10 +411,10 @@ func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStat
 	limit := minInt(topN, len(patterns))
 	for i := 0; i < limit; i++ {
 		pattern := patterns[i]
-		buf.WriteString(fmt.Sprintf("  %s: rows=%d txns=%d avg_rows_per_txn=%.1f\n",
-			pattern.Label, pattern.TotalRows, pattern.TxnCount, pattern.AvgRowsPerTxn))
+		fmt.Fprintf(buf, "  %s: rows=%d txns=%d avg_rows_per_txn=%.1f\n",
+			pattern.Label, pattern.TotalRows, pattern.TxnCount, pattern.AvgRowsPerTxn)
 		if mode != SQLContextOff && strings.TrimSpace(pattern.SampleQuerySummary) != "" {
-			buf.WriteString(fmt.Sprintf("    %s: %s\n", i18n.T("report.label.query"), pattern.SampleQuerySummary))
+			fmt.Fprintf(buf, "    %s: %s\n", i18n.T("report.label.query"), pattern.SampleQuerySummary)
 		}
 		if drilldown, ok := ddMap[pattern.PatternKey]; ok {
 			renderDrilldownBlock(buf, drilldown, opts)
@@ -429,14 +425,14 @@ func renderWriteShapePatterns(buf *strings.Builder, patterns []model.PatternStat
 
 func renderDrilldownBlock(buf *strings.Builder, dd model.PatternDrilldown, opts Options) {
 	buf.WriteString("    drilldown:\n")
-	buf.WriteString(fmt.Sprintf("      why: %s\n", dd.WhySelected))
+	fmt.Fprintf(buf, "      why: %s\n", dd.WhySelected)
 
 	for i, minute := range dd.BusiestMinutes {
 		if i >= 2 {
 			break
 		}
-		buf.WriteString(fmt.Sprintf("      workload minute: %s rows=%d txns=%d\n",
-			opts.formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"), minute.TotalRows, minute.TxnCount))
+		fmt.Fprintf(buf, "      workload minute: %s rows=%d txns=%d\n",
+			opts.formatTimeWithLayout(minute.Minute, "2006-01-02 15:04"), minute.TotalRows, minute.TxnCount)
 	}
 
 	for i, txn := range dd.RepresentativeTransactions {
@@ -888,8 +884,8 @@ func renderDDLTimeline(buf *strings.Builder, events []model.DDLEvent, limit int,
 		if location == "" {
 			location = i18n.T("time.notAvailable")
 		}
-		buf.WriteString(fmt.Sprintf("  %s  %s  %s  %s\n",
-			opts.formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location))
+		fmt.Fprintf(buf, "  %s  %s  %s  %s\n",
+			opts.formatTime(event.Timestamp), event.Operation, ddlObjectName(event), location)
 		writeDDLStopLines(buf, event, serverVersion, "    ")
 		if stmt := ddlStatementForMode(event, mode); stmt != "" {
 			buf.WriteString("    " + stmt + "\n")
@@ -946,8 +942,8 @@ func renderOpenDML(buf *strings.Builder, groups []model.OpenDMLGroup) {
 		if location == "" {
 			location = i18n.T("time.notAvailable")
 		}
-		buf.WriteString(fmt.Sprintf("  %s dur=%s rows=%d tables=%s file=%s\n",
-			group.TxnKey, formatDuration(group.Duration), group.TotalRows, tables, location))
+		fmt.Fprintf(buf, "  %s dur=%s rows=%d tables=%s file=%s\n",
+			group.TxnKey, formatDuration(group.Duration), group.TotalRows, tables, location)
 	}
 	buf.WriteString("\n")
 }
@@ -970,7 +966,7 @@ func renderByteContributors(buf *strings.Builder, result model.AnalysisResult, l
 		txnParts = append(txnParts, txn.TxnKey+" "+formatByteSize(txn.BinlogBytes))
 	}
 	if len(txnParts) > 0 {
-		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.topTxnBytes"), strings.Join(txnParts, ", ")))
+		fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.text.topTxnBytes"), strings.Join(txnParts, ", "))
 	}
 	var tableParts []string
 	for _, table := range topTablesByBytes(result.Tables, limit) {
@@ -980,7 +976,7 @@ func renderByteContributors(buf *strings.Builder, result model.AnalysisResult, l
 		tableParts = append(tableParts, fmt.Sprintf("%s.%s %s", table.Schema, table.Table, formatByteSize(table.BinlogBytes)))
 	}
 	if len(tableParts) > 0 {
-		buf.WriteString(fmt.Sprintf("  %s: %s\n", i18n.T("report.text.topTableBytes"), strings.Join(tableParts, ", ")))
+		fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.text.topTableBytes"), strings.Join(tableParts, ", "))
 	}
 }
 
@@ -1023,7 +1019,7 @@ func renderSelectedFileLines(buf *strings.Builder, coverage model.FileCoverage, 
 		if name == "" {
 			name = i18n.T("time.notAvailable")
 		}
-		buf.WriteString(fmt.Sprintf("    %s  %s  %s\n", name, size, formatFileSpan(item, opts)))
+		fmt.Fprintf(buf, "    %s  %s  %s\n", name, size, formatFileSpan(item, opts))
 		if !item.FirstEventAt.IsZero() && !item.LastEventAt.IsZero() {
 			timed++
 			if earliest.IsZero() || item.FirstEventAt.Before(earliest) {

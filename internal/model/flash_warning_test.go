@@ -7,14 +7,6 @@ import (
 	"binlogviz/internal/i18n"
 )
 
-func warningText(ws []FlashbackWarning) string {
-	lines := make([]string, len(ws))
-	for i, w := range ws {
-		lines[i] = w.Line()
-	}
-	return strings.Join(lines, "\n")
-}
-
 // The plan carries a code and an unprefixed message; stderr keeps the
 // localized prefix (#270 item 4, #282 item 4).
 func TestFlashbackWarningLineKeepsLocalizedPrefix(t *testing.T) {

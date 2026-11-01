@@ -53,6 +53,8 @@ These flags are available on the root command and apply before subcommand execut
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--lang` | env-detected | Runtime output language, for example `en` or `zh-CN`. |
+| `--quiet`, `-q` | `false` | Suppress ordinary progress and informational stderr lines. Errors and warnings remain; report stdout is unchanged. |
+| `--error-format` | `text` or `BINLOGVIZ_ERROR_FORMAT` | Error output format: `text` or `json`. An explicit flag overrides the environment; an invalid or empty explicit value is a usage error (exit 3). JSON error mode also suppresses ordinary informational stderr lines, but not warnings. |
 | `--tz` | historical UTC spelling | IANA display zone for rendered timestamps, for example `Asia/Shanghai`. Absent or `UTC` keeps ` UTC` in text, Markdown, and HTML and `Z` in JSON. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. An empty, unknown, or `Local` name is exit 3. See [output-format.md](output-format.md). |
 | `--version`, `-v` | `false` | Print the version string and exit. `binlogviz version` also prints the git commit when the build has one; `binlogviz version --format json` prints `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}` for scripts and agents (`commit` comes from the Go build info, else from `-ldflags -X binlogviz/internal/version.Commit=…`/`CommitTime=…`, and is `""` for a build with neither). Any other `--format` exits 3. |
 
@@ -197,7 +199,7 @@ Rules:
 - the snapshot name must be a single file stem containing only letters, digits, `-`, or `_`
 - `--snapshot-dir` overrides the default home-based snapshot store
 - when `--snapshot-name` is present, the report still goes to `stdout`
-- the save confirmation is written to `stderr`
+- the save confirmation is normally written to `stderr` (see global flags above)
 
 If `--snapshot-dir` is omitted, BinlogViz saves to `~/.binlogviz/snapshots/<name>.json`.
 
@@ -366,7 +368,7 @@ Rules:
 - explicit snapshot mode and pattern mode cannot be combined
 - the resolved trend set must contain at least two snapshots
 - explicit `trend A B` keeps A→B by default (`--order cli`); pattern mode keeps the snapshot-store selection order
-- `--order time` sorts by effective window start time ascending and prints `trend: reordered by window start_time: ...` on stderr when that changes the story
+- `--order time` sorts by effective window start time ascending and normally prints `trend: reordered by window start_time: ...` on stderr when that changes the story
 - trend uses `snapshot.window.start_time` when present and falls back to `summary.start_time` for older snapshots
 - `--baseline-snapshot` is optional and does not automatically become a trend point unless it was selected separately
 - all trend formats include pattern trends; `text` and `json` expose `Top Pattern Trends` / `pattern_trends`, and `html` adds an interactive `Pattern Trends` section
@@ -409,7 +411,7 @@ Rules:
 - `--name` is required
 - `--snapshot-dir` overrides the default `~/.binlogviz/snapshots` location
 - successful saves print no payload to `stdout`
-- successful saves print `Saved snapshot "<name>" to <path>` to `stderr`
+- successful saves normally print `Saved snapshot "<name>" to <path>` to `stderr`
 
 Accepted flags:
 
@@ -452,7 +454,7 @@ Rules:
 
 - both names must pass the same snapshot-name validation as `snapshot save`
 - the command keeps the stored snapshot identity aligned with the new file name
-- successful renames print `Renamed snapshot "<old>" to "<new>" at <path>` to `stderr`
+- successful renames normally print `Renamed snapshot "<old>" to "<new>" at <path>` to `stderr`
 
 ### `snapshot delete`
 
@@ -461,7 +463,7 @@ Rules:
 Rules:
 
 - the name must pass snapshot-name validation
-- successful deletes print `Deleted snapshot "<name>" at <path>` to `stderr`
+- successful deletes normally print `Deleted snapshot "<name>" at <path>` to `stderr`
 
 ## Time and Validation Behavior
 
@@ -1032,7 +1034,7 @@ binlogviz workflow resume <output_dir> --snapshot-dir /tmp/snapshots
 binlogviz workflow resume <output_dir> --rerun analyze:week2 --rerun compare:incident_vs_baseline
 ```
 
-`workflow resume` continues a previously executed workflow from its output directory. It reads the existing `manifest.json`, reuses successful steps, and reruns failed or missing ones. If every step already succeeded with intact artifacts and no `--rerun` selector is given, the command exits 0 and prints one `stderr` line: `nothing to resume`. Use `--rerun` to force work on a successful root.
+`workflow resume` continues a previously executed workflow from its output directory. It reads the existing `manifest.json`, reuses successful steps, and reruns failed or missing ones. If every step already succeeded with intact artifacts and no `--rerun` selector is given, the command exits 0 and normally prints one `stderr` line: `nothing to resume`. Use `--rerun` to force work on a successful root.
 
 ### Flags
 

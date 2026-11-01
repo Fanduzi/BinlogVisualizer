@@ -1,12 +1,7 @@
 // Package i18n verifies locale loading and translation helpers.
-// input: embedded en and zh-CN catalogs including Unclassified QUERY, open BEGIN, and Ignored QUERY keys.
-// output: assertions for Init, T/Tf templates, language switching, and new #74 catalog strings.
-// pos: i18n catalog contract tests for CLI and report labels.
-// note: if this file changes, update this header and module README.md.
 package i18n
 
 import (
-	"os"
 	"sync"
 	"testing"
 )
@@ -236,17 +231,10 @@ func TestDetectLanguageFromEnv(t *testing.T) {
 		},
 	}
 
-	originalLang := os.Getenv("LANG")
-	originalLcAll := os.Getenv("LC_ALL")
-	defer func() {
-		os.Setenv("LANG", originalLang)
-		os.Setenv("LC_ALL", originalLcAll)
-	}()
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Setenv("LANG", tt.langEnv)
-			os.Setenv("LC_ALL", tt.lcAllEnv)
+			t.Setenv("LANG", tt.langEnv)
+			t.Setenv("LC_ALL", tt.lcAllEnv)
 			got := detectLanguageFromEnv()
 			if got != tt.expected {
 				t.Errorf("detectLanguageFromEnv() = %v, want %v", got, tt.expected)

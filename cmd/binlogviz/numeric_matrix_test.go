@@ -1,8 +1,4 @@
 // Package binlogviz proves numeric cells against a live MySQL 8.0 server.
-// input: BINLOGVIZ_FLASHBACK_E2E=1 and a local MySQL 8.0 ROW/GTID/FULL server.
-// output: failure when analyze or flashback disagrees with the value MySQL holds; -v logs the checked value count.
-// pos: command-layer oracle for every integer and numeric type, including compressed transactions.
-// note: if this file changes, update this header and README.md.
 package binlogviz
 
 import (
@@ -89,10 +85,10 @@ func TestNumericDecodeMySQL80(t *testing.T) {
 
 	var exactIncident, bitIncident, floatIncident strings.Builder
 	for _, tbl := range tables {
-		switch {
-		case tbl.group == "bit":
+		switch tbl.group {
+		case "bit":
 			bitIncident.WriteString(tbl.incident)
-		case tbl.group == "float":
+		case "float":
 			floatIncident.WriteString(tbl.incident)
 		default:
 			exactIncident.WriteString(tbl.incident)
@@ -1062,7 +1058,9 @@ func numericCrossCheck(t *testing.T, path string, tables []numericTable, viz map
 		}
 		if m := numericFieldRE.FindStringSubmatch(line); m != nil && table != "" {
 			n := 0
-			fmt.Sscanf(m[1], "%d", &n)
+			if count, err := fmt.Sscanf(m[1], "%d", &n); err != nil || count != 1 {
+				t.Fatalf("parse numeric column %q: count=%d error=%v", m[1], count, err)
+			}
 			tbl := byName[table]
 			var col numericCol
 			if n >= 1 && n <= len(tbl.cols) {

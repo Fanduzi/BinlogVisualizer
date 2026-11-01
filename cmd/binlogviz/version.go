@@ -1,8 +1,4 @@
 // Package binlogviz defines the version CLI command.
-// input: the version package and user invocation of `binlogviz version` or `--version`.
-// output: version information printed to stdout: banner and version, plus the commit when known; or, with --format json, schema_version, version, commit, commit_time, modified, go_version (ADR 0010).
-// pos: user-facing version reporting for installed binaries and troubleshooting.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -50,10 +46,14 @@ func newVersionCommand() *cobra.Command {
 					return clierr.Errorf(clierr.KindOutput, "encode version output: %w", err)
 				}
 				_, err = fmt.Fprintln(out, string(data))
-				return err
+				return clierr.Wrap(clierr.KindOutput, err)
 			case "text":
-				fmt.Fprint(out, asciiLogo)
-				fmt.Fprintf(out, "binlogviz %s\n", build.Version)
+				if _, err := fmt.Fprint(out, asciiLogo); err != nil {
+					return clierr.Wrap(clierr.KindOutput, err)
+				}
+				if _, err := fmt.Fprintf(out, "binlogviz %s\n", build.Version); err != nil {
+					return clierr.Wrap(clierr.KindOutput, err)
+				}
 				if build.Commit != "" {
 					commit := build.Commit
 					if build.Modified {
@@ -62,7 +62,9 @@ func newVersionCommand() *cobra.Command {
 					if build.CommitTime != "" {
 						commit += " (" + build.CommitTime + ")"
 					}
-					fmt.Fprintf(out, "commit %s\n", commit)
+					if _, err := fmt.Fprintf(out, "commit %s\n", commit); err != nil {
+						return clierr.Wrap(clierr.KindOutput, err)
+					}
 				}
 				return nil
 			default:

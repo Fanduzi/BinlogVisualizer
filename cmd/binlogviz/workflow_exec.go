@@ -1,9 +1,5 @@
 // Package binlogviz executes a workflow plan: resume with rerun selectors,
 // per-window analyze/compare/trend steps, the manifest, and the index page.
-// input: a parsed workflow.Plan, output/snapshot dirs, and the plan path.
-// output: step artifacts on disk, manifest.json, index.html, and localized stderr progress.
-// pos: CLI orchestration helper for workflow.go.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -76,7 +72,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	if err != nil {
 		return clierr.Errorf(clierr.KindInput, "open plan file %s: %w", planPath, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	plan, err := workflow.LoadPlan(f)
 	if err != nil {
@@ -102,14 +98,14 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 	// Build the resume plan
 	resumePlan, err := workflow.BuildResumePlan(plan, mf, rerunSelectors, outputDir, effectiveSnapshotDir)
 	if errors.Is(err, workflow.ErrNothingToResume) {
-		fmt.Fprintln(stderr, i18n.T("progress.workflowNothingToResume"))
+		_, _ = fmt.Fprintln(infoWriter(stderr), i18n.T("progress.workflowNothingToResume"))
 		return nil
 	}
 	if err != nil {
 		return err
 	}
 
-	fmt.Fprint(stderr, i18n.Tf("progress.workflowResuming", map[string]any{"Name": plan.Workflow.Name, "Attempt": resumePlan.UpdatedManifest.Attempt}))
+	_, _ = fmt.Fprint(infoWriter(stderr), i18n.Tf("progress.workflowResuming", map[string]any{"Name": plan.Workflow.Name, "Attempt": resumePlan.UpdatedManifest.Attempt}))
 
 	// Build analyzer and report options from plan defaults
 	analyzerOpts := buildWorkflowAnalyzerOptions(plan)
@@ -156,7 +152,7 @@ func executeResume(outputDir, snapshotDir string, rerunSelectors []string, stder
 				windowReports[planned.Name] = reportInput
 			}
 
-			fmt.Fprint(stderr, i18n.Tf("progress.workflowReuseStep", map[string]any{"Kind": planned.Kind, "Name": planned.Name}))
+			_, _ = fmt.Fprint(infoWriter(stderr), i18n.Tf("progress.workflowReuseStep", map[string]any{"Kind": planned.Kind, "Name": planned.Name}))
 			continue
 		}
 
@@ -235,7 +231,7 @@ func findTrendJob(plan workflow.Plan, name string) workflow.TrendJob {
 func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string, stderr io.Writer, loc *time.Location) error {
 	startedAt := time.Now().UTC()
 
-	fmt.Fprint(stderr, i18n.Tf("progress.workflowStarting", map[string]any{"Name": plan.Workflow.Name}))
+	_, _ = fmt.Fprint(infoWriter(stderr), i18n.Tf("progress.workflowStarting", map[string]any{"Name": plan.Workflow.Name}))
 
 	if err := workflow.EnsureLayout(outputDir); err != nil {
 		return clierr.Errorf(clierr.KindOutput, "create output layout: %w", err)
@@ -295,7 +291,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 	// --- Analyze phase ---
 	windowReports := make(map[string]comparepkg.InputReport, len(plan.Windows))
 	for _, w := range plan.Windows {
-		fmt.Fprintf(stderr, "  analyze %q\n", w.Name)
+		_, _ = fmt.Fprintf(infoWriter(stderr), "  analyze %q\n", w.Name)
 		rec, _, reportInput, aerr := runWorkflowAnalyzeWindow(
 			paths, analyzerOpts, reportOpts, plan, w, outputDir, effectiveSnapshotDir, stderr,
 			false, // do not overwrite snapshots on fresh run
@@ -309,7 +305,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 
 	// --- Compare phase ---
 	for _, job := range plan.Compare {
-		fmt.Fprintf(stderr, "  compare %q\n", job.Name)
+		_, _ = fmt.Fprintf(infoWriter(stderr), "  compare %q\n", job.Name)
 		rec, cerr := runWorkflowCompareJob(outputDir, job, windowReports, loc)
 		mf.Steps = append(mf.Steps, rec)
 		if cerr != nil {
@@ -319,7 +315,7 @@ func executeWorkflow(plan workflow.Plan, outputDir, snapshotDir, planPath string
 
 	// --- Trend phase ---
 	for _, job := range plan.Trend {
-		fmt.Fprintf(stderr, "  trend %q\n", job.Name)
+		_, _ = fmt.Fprintf(infoWriter(stderr), "  trend %q\n", job.Name)
 		rec, terr := runWorkflowTrendJob(outputDir, job, windowReports, loc)
 		mf.Steps = append(mf.Steps, rec)
 		if terr != nil {
@@ -349,34 +345,34 @@ func finalizeWorkflow(outputDir string, mf *workflow.Manifest, startedAt time.Ti
 	}
 	entries, hashErrs := workflow.LedgerEntriesForRun(outputDir, *mf, mf.RunID, time.Now())
 	for _, herr := range hashErrs {
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowLedgerNotRecorded", map[string]any{"Error": herr}))
+		_, _ = fmt.Fprint(stderr, i18n.Tf("progress.workflowLedgerNotRecorded", map[string]any{"Error": herr}))
 	}
 	if lerr := workflow.AppendLedger(outputDir, entries); lerr != nil {
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowLedgerAppendFailed", map[string]any{"Error": lerr}))
+		_, _ = fmt.Fprint(stderr, i18n.Tf("progress.workflowLedgerAppendFailed", map[string]any{"Error": lerr}))
 	}
 
 	manifestPath := filepath.Join(outputDir, "manifest.json")
 	if writeErr := workflow.WriteManifest(manifestPath, *mf); writeErr != nil {
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowManifestWriteFailed", map[string]any{"Error": writeErr}))
+		_, _ = fmt.Fprint(stderr, i18n.Tf("progress.workflowManifestWriteFailed", map[string]any{"Error": writeErr}))
 		if stepErr == nil {
 			return clierr.Errorf(clierr.KindOutput, "write manifest: %w", writeErr)
 		}
 	} else {
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowManifestWritten", map[string]any{"Path": manifestPath}))
+		_, _ = fmt.Fprint(infoWriter(stderr), i18n.Tf("progress.workflowManifestWritten", map[string]any{"Path": manifestPath}))
 	}
 
 	// Write index.html on both success and failure paths
 	if indexErr := writeWorkflowIndex(outputDir, *mf); indexErr != nil {
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowIndexWriteFailed", map[string]any{"Error": indexErr}))
+		_, _ = fmt.Fprint(stderr, i18n.Tf("progress.workflowIndexWriteFailed", map[string]any{"Error": indexErr}))
 		if stepErr == nil {
 			return clierr.Errorf(clierr.KindOutput, "write index: %w", indexErr)
 		}
 	} else {
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowIndexWritten", map[string]any{"Path": filepath.Join(outputDir, "index.html")}))
+		_, _ = fmt.Fprint(infoWriter(stderr), i18n.Tf("progress.workflowIndexWritten", map[string]any{"Path": filepath.Join(outputDir, "index.html")}))
 	}
 
 	if stepErr != nil {
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowFailed", map[string]any{"Name": mf.WorkflowName}))
+		_, _ = fmt.Fprint(infoWriter(stderr), i18n.Tf("progress.workflowFailed", map[string]any{"Name": mf.WorkflowName}))
 	}
 	return stepErr
 }
@@ -484,7 +480,7 @@ func runWorkflowAnalyzeWindow(
 			return rec, "", comparepkg.InputReport{}, clierr.Errorf(clierr.KindOutput, "save snapshot %q: %w", w.Name, err)
 		}
 		rec.SnapshotName = w.Name
-		fmt.Fprint(stderr, i18n.Tf("progress.workflowSnapshotSaved", map[string]any{"Name": w.Name, "Path": savedPath}))
+		_, _ = fmt.Fprint(infoWriter(stderr), i18n.Tf("progress.workflowSnapshotSaved", map[string]any{"Name": w.Name, "Path": savedPath}))
 	}
 
 	rec.Status = "success"
@@ -503,7 +499,7 @@ func runWorkflowAnalyzeWindow(
 }
 
 // runAnalyzeToResult runs the analysis pipeline and returns the raw result without rendering.
-func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer) (*model.AnalysisResult, error) {
+func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer) (result *model.AnalysisResult, retErr error) {
 	progress, err := newAggregateProgress(paths, stderr)
 	if err != nil {
 		return nil, clierr.Errorf(clierr.KindError, "build parse progress: %w", err)
@@ -515,7 +511,12 @@ func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer)
 		if err != nil {
 			return nil, clierr.Errorf(clierr.KindOutput, "create temp store: %w", err)
 		}
-		defer cleanup()
+		defer func() {
+			if err := cleanup(); err != nil && retErr == nil {
+				result = nil
+				retErr = clierr.Errorf(clierr.KindOutput, "cleanup temporary store: %w", err)
+			}
+		}()
 		a = analyzer.NewWithStore(opts, store)
 	} else {
 		a = analyzer.New(opts)
@@ -553,7 +554,7 @@ func runAnalyzeToResult(paths []string, opts analyzer.Options, stderr io.Writer)
 	progress.FinishParse()
 	progress.Finalizing()
 
-	result, err := a.Finalize()
+	result, err = a.Finalize()
 	if err != nil {
 		if spill := asSpill(err); spill != nil {
 			return nil, spill

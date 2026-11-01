@@ -119,6 +119,32 @@ func TestRenderApplyDelayReplicaSourceAndUnavailable(t *testing.T) {
 		t.Fatalf("unavailable section grew a clock note:\n%s", unavailableSection)
 	}
 
+	assertApplyDelayJSONVariants(t, replica, source, unavailable)
+
+	md, err := RenderMarkdownWithOptions(replica, Options{TopN: 10, SQLContextMode: SQLContextOff})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(md, "## Replica Apply Delay") || !strings.Contains(md, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:2") || strings.Contains(md, "secret") {
+		t.Fatalf("markdown=\n%s", md)
+	}
+	html, err := RenderHTMLWithOptions(replica, Options{TopN: 10, SQLContextMode: SQLContextOff})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, `id="section-replica-delay"`) || !strings.Contains(html, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:2") || strings.Contains(html, "secret") {
+		t.Fatal("html delay section missing the transaction or leaked SQL")
+	}
+	activity := strings.Index(html, `id="section-activity"`)
+	delayAt := strings.Index(html, `id="section-replica-delay"`)
+	objects := strings.Index(html, `id="section-objects"`)
+	if activity < 0 || delayAt < 0 || objects < 0 || (activity >= delayAt || delayAt >= objects) {
+		t.Fatalf("section order activity=%d delay=%d objects=%d", activity, delayAt, objects)
+	}
+}
+
+func assertApplyDelayJSONVariants(t *testing.T, replica, source, unavailable model.AnalysisResult) {
+	t.Helper()
 	js, err := RenderJSONWithOptions(replica, Options{TopN: 1, SQLContextMode: SQLContextOff})
 	if err != nil {
 		t.Fatal(err)
@@ -170,27 +196,6 @@ func TestRenderApplyDelayReplicaSourceAndUnavailable(t *testing.T) {
 	}
 	if strings.Contains(unavailableJSON, "replica_apply_delay") || strings.Contains(unavailableJSON, "max_delay_us") {
 		t.Fatalf("unavailable json leaked delay fields:\n%s", unavailableJSON)
-	}
-
-	md, err := RenderMarkdownWithOptions(replica, Options{TopN: 10, SQLContextMode: SQLContextOff})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(md, "## Replica Apply Delay") || !strings.Contains(md, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:2") || strings.Contains(md, "secret") {
-		t.Fatalf("markdown=\n%s", md)
-	}
-	html, err := RenderHTMLWithOptions(replica, Options{TopN: 10, SQLContextMode: SQLContextOff})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(html, `id="section-replica-delay"`) || !strings.Contains(html, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:2") || strings.Contains(html, "secret") {
-		t.Fatal("html delay section missing the transaction or leaked SQL")
-	}
-	activity := strings.Index(html, `id="section-activity"`)
-	delayAt := strings.Index(html, `id="section-replica-delay"`)
-	objects := strings.Index(html, `id="section-objects"`)
-	if activity < 0 || delayAt < 0 || objects < 0 || !(activity < delayAt && delayAt < objects) {
-		t.Fatalf("section order activity=%d delay=%d objects=%d", activity, delayAt, objects)
 	}
 }
 

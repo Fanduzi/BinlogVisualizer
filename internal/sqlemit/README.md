@@ -7,6 +7,7 @@ Statement-assembly vocabulary shared by the undo and redo emitters (ADR 0022): q
 | File | Responsibility |
 |------|----------------|
 | `sqlemit.go` | `QuoteIdent`/`QuoteColumnList`, `TableName`, `AssignColumns`/`IsGenerated`/`OmittedGeneratedNull` (generated columns are omitted from writes and recomputed by the server), `KeyMatch`/`WhereImage`/`JoinConds` (NULL-safe `<=>` matching on the PK or every column plus `LIMIT 1`), and `RelaxedModes`/`DroppedModeExpr` (the sql_mode flags a stored value needs relaxed, and the expression that drops them). |
+| `sqlemit_contract_test.go` | Checks quoted identifiers, generated-column omission, row matching, and exact sql_mode expressions. |
 
 ## Exports
 

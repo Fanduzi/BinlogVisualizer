@@ -66,9 +66,7 @@ func (p *Reader) trailing() bool {
 	if p.bad {
 		return false
 	}
-	if ok && !word.Quoted && (strings.EqualFold(word.Text, "RESTRICT") || strings.EqualFold(word.Text, "CASCADE")) {
-		mark = p.mark()
-	} else {
+	if !ok || word.Quoted || (!strings.EqualFold(word.Text, "RESTRICT") && !strings.EqualFold(word.Text, "CASCADE")) {
 		p.rewind(mark)
 	}
 	p.Skip()

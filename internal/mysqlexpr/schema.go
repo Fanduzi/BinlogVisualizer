@@ -1,8 +1,4 @@
 // Package mysqlexpr checks a schema file against TABLE_MAP metadata.
-// input: CREATE/ALTER text from --schema-file or the binlog, plus flashback rows that carry column metadata.
-// output: an error that names the table (as the caller labels it) and the columns that differ. Generated values are checked later, against every logged image. Which definition applies to a table is decided by the schema catalog (internal/schemacatalog).
-// pos: flashback-only helper. Analyze does not call it.
-// note: if this file changes, update this header and module README.md.
 package mysqlexpr
 
 import (
@@ -664,15 +660,6 @@ func exprText(expr string) string {
 		return "(empty)"
 	}
 	return text
-}
-
-func schemaColIndexNames(names []string, want string) int {
-	for i, name := range names {
-		if strings.EqualFold(name, want) {
-			return i
-		}
-	}
-	return -1
 }
 
 // intVal is an exact rational. The final comparison rounds half away from

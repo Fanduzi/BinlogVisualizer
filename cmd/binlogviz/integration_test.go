@@ -1,8 +1,4 @@
 // Package binlogviz validates end-to-end analyze command behavior and DuckDB temp-store lifecycle.
-// input: mock parsers with MySQL/MariaDB provenance, XA/Annotate sequences, SQL context, workload identity/scope, fixture binlogs, CLI-derived analyzer options, and temporary command resources.
-// output: regression coverage for report-v3 workload identity/scope, provenance/selection round trips, XA/LOAD_DATA SQL modes, byte coverage, deadlock-free rendered output capture, temp cleanup, and command/analyzer semantics.
-// pos: command-layer integration test suite covering parse-normalize-analyze-render execution paths.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -1055,31 +1051,7 @@ func TestRunAnalysisJSONPreservesMariaDBXAAndLoadDataBoundaries(t *testing.T) {
 		t.Fatalf("full mode did not expose source LOAD DATA SQL: %+v", load)
 	}
 
-	selector, err := analyzer.ParseGTIDSelector([]string{"0-7-1860"}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	opts := analyzer.DefaultOptions()
-	opts.GTIDSelector = selector
-	selected, _, err := captureStdoutStderrRun(t, func() error {
-		return runAnalysisWithParser([]string{"dummy.binlog"}, opts, "json", mock)
-	})
-	if err != nil {
-		t.Fatalf("select XA COMMIT GTID: %v", err)
-	}
-	var selectedReport struct {
-		Transactions []struct {
-			GTID      string `json:"gtid"`
-			XAXID     string `json:"xa_xid"`
-			TotalRows int    `json:"total_rows"`
-		} `json:"transactions"`
-	}
-	if err := json.Unmarshal([]byte(selected), &selectedReport); err != nil {
-		t.Fatalf("decode selected XA COMMIT: %v\n%s", err, selected)
-	}
-	if len(selectedReport.Transactions) != 1 || selectedReport.Transactions[0].GTID != "0-7-1860" || selectedReport.Transactions[0].XAXID != xid || selectedReport.Transactions[0].TotalRows != 0 {
-		t.Fatalf("selected XA COMMIT = %+v", selectedReport.Transactions)
-	}
+	assertSelectedMariaDBXACommit(t, mock, xid)
 }
 
 func TestRunAnalysisTextSQLContextModes(t *testing.T) {
@@ -1738,29 +1710,6 @@ func copyFile(t *testing.T, src, dst string) {
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		t.Fatalf("write file %s: %v", dst, err)
 	}
-}
-
-func createTestTableStats(count int) []model.TableStats {
-	stats := make([]model.TableStats, count)
-	for i := 0; i < count; i++ {
-		stats[i] = model.TableStats{
-			Schema:    "test",
-			Table:     string(rune('a' + i)),
-			TotalRows: i + 1,
-		}
-	}
-	return stats
-}
-
-func createTestTransactions(count int) []model.Transaction {
-	txns := make([]model.Transaction, count)
-	for i := 0; i < count; i++ {
-		txns[i] = model.Transaction{
-			TxnKey:    string(rune('a' + i)),
-			TotalRows: i + 1,
-		}
-	}
-	return txns
 }
 
 func TestAnalyzeAcceptsDetailStoreFlag(t *testing.T) {

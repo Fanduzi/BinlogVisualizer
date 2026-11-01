@@ -109,12 +109,12 @@ func NewRootCommand() *cobra.Command {
 	cmd.InitDefaultCompletionCmd()
 	setGeneratedExamples(cmd)
 	cmd.Flags().BoolP("version", "v", false, i18n.T("cmd.root.flag.version"))
-	cmd.Run = func(cmd *cobra.Command, args []string) {
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if v, _ := cmd.Flags().GetBool("version"); v {
-			fmt.Println(version.Version)
-			return
+			_, err := fmt.Fprintln(cmd.OutOrStdout(), version.Version)
+			return clierr.Wrap(clierr.KindOutput, err)
 		}
-		cmd.Help()
+		return clierr.Wrap(clierr.KindOutput, cmd.Help())
 	}
 
 	return cmd

@@ -103,7 +103,7 @@ func TestAnalyzeDashOnTTYIsAClearError(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	tty := openTestTTY(t)
 	if !isTerminal(tty) {
-		t.Fatal("pty slave must be a terminal")
+		t.Fatal("pty must be a terminal")
 	}
 	restoreStdin(t, tty)
 

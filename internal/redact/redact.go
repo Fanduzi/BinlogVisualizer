@@ -1,8 +1,4 @@
 // Package redact strips credential literals from SQL that an error or a report quotes.
-// input: a SQL statement that may contain IDENTIFIED BY / WITH … AS|BY or SET PASSWORD.
-// output: the same statement with each secret replaced by <secret>, and a display form with control bytes removed.
-// pos: shared by analyzer messages and the flashback planner so neither imports the other for this.
-// note: if this file changes, keep the credential cases covered by the analyzer and flashback tests.
 package redact
 
 import (
@@ -155,7 +151,7 @@ func takeAuthSecret(sql string, j int) (credSpan, int, bool) {
 	if !ok {
 		return credSpan{}, j, false
 	}
-	return credSpan{start: sec.start, end: sec.end}, sec.end, true
+	return credSpan(sec), sec.end, true
 }
 
 func setPasswordSecret(sql string, setAt int) (credSpan, bool) {
@@ -182,7 +178,7 @@ func setPasswordSecret(sql string, setAt int) (credSpan, bool) {
 	if !ok {
 		return credSpan{}, false
 	}
-	return credSpan{start: sec.start, end: sec.end}, true
+	return credSpan(sec), true
 }
 
 func consumeSecret(sql string, i int) (secretSpan, bool) {

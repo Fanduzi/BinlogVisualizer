@@ -1,8 +1,4 @@
 // Package report verifies incident-brief text rendering and opt-in detail sections.
-// input: synthetic AnalysisResult fixtures with summary, table, minute, pattern, and diagnostic evidence.
-// output: regression coverage for default diagnostic sections, byte coverage, table limits, detail flags, finding/alert-backed suspicious positions, and identity fields printed only when present.
-// pos: text renderer regression suite guarding user-facing CLI report formatting.
-// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -147,7 +143,7 @@ func TestRenderTextIncidentBriefPutsTablesAndTxnsBeforeFindings(t *testing.T) {
 	if tables < 0 || txns < 0 || findings < 0 {
 		t.Fatalf("missing incident-brief sections\n%s", out)
 	}
-	if !(tables < txns && txns < findings) {
+	if tables >= txns || txns >= findings {
 		t.Fatalf("expected tables then txns then findings, got tables=%d txns=%d findings=%d\n%s", tables, txns, findings, out)
 	}
 	if !strings.Contains(out, "ROW images / logical rows") {

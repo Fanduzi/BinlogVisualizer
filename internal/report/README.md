@@ -77,3 +77,7 @@ Analyze report renderers for text, JSON, Markdown, HTML, and delimited CSV/TSV d
 - Rendered transaction evidence and pattern representatives expose transaction keys to the HTML search control.
 - The report emits optional top-level `selection` evidence: requested/effective positions, canonical include/exclude GTIDs, resolved flavor, requested `thread_ids` (sorted, present whenever `--thread-id` is set, ADR 0027), and, under GTID selectors, `matched_gtid_set` (an interval set) and `matched_transactions` (report v4, #379; v3 listed `matched_gtids`). Existing provenance, SQL, completeness, and replay fields are unchanged.
 - Text, Markdown, and HTML print `server_id`, `thread_id`, GTID, `xid` or `xa_xid`, and `user@host` on a transaction only when that value is present. Zero and empty values stay omitted. JSON already omits the same fields.
+
+## Update Rule
+
+If members, interfaces, or dependencies change, update this file in the same change.

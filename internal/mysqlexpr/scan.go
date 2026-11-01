@@ -1,8 +1,4 @@
 // Package mysqlexpr: parsing helpers for CREATE and ALTER text used by the schema catalog (internal/schemacatalog).
-// input: one CREATE/ALTER statement or a whole schema file. mysql --batch SHOW CREATE TABLE writes field newlines as \n. A plain mysqldump header and several SHOW CREATE rows without ';' are read too. A backslash inside a quoted string, including \', is part of that string.
-// output: dump segments, statements, column lists, and ALTER replays; or false when a definition cannot be read. The schema catalog decides what that means for a table.
-// pos: flashback-only helper. Analyze does not call it.
-// note: if this file changes, update this header and module README.md.
 package mysqlexpr
 
 import (
@@ -119,7 +115,7 @@ func SplitSQL(s string) []string {
 		case '/':
 			if i+1 < len(s) && s[i+1] == '*' {
 				i += 2
-				for i+1 < len(s) && !(s[i] == '*' && s[i+1] == '/') {
+				for i+1 < len(s) && (s[i] != '*' || s[i+1] != '/') {
 					i++
 				}
 				if i+1 < len(s) {
@@ -222,7 +218,7 @@ func (sc *Scan) Skip() {
 		case '/':
 			if sc.I+1 < len(sc.S) && sc.S[sc.I+1] == '*' {
 				sc.I += 2
-				for sc.I+1 < len(sc.S) && !(sc.S[sc.I] == '*' && sc.S[sc.I+1] == '/') {
+				for sc.I+1 < len(sc.S) && (sc.S[sc.I] != '*' || sc.S[sc.I+1] != '/') {
 					sc.I++
 				}
 				if sc.I+1 < len(sc.S) {

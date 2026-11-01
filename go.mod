@@ -3,6 +3,7 @@ module binlogviz
 go 1.26.10
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/go-mysql-org/go-mysql v1.14.0
 	github.com/klauspost/compress v1.18.4
 	github.com/marcboeker/go-duckdb v1.8.5
@@ -11,6 +12,7 @@ require (
 	github.com/schollz/progressbar/v3 v3.19.0
 	github.com/shopspring/decimal v1.4.0
 	github.com/spf13/cobra v1.8.1
+	github.com/spf13/pflag v1.0.5
 	golang.org/x/sys v0.41.0
 	golang.org/x/term v0.28.0
 	golang.org/x/text v0.35.0
@@ -32,7 +34,6 @@ require (
 	github.com/pingcap/log v1.1.1-0.20241212030209-7e3ff8601a2a // indirect
 	github.com/pingcap/tidb/pkg/parser v0.0.0-20260219190905-9b9281fa8d6d // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

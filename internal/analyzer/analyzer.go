@@ -1,14 +1,9 @@
 // Package analyzer orchestrates incremental binlog analysis over normalized events.
-// input: analyzer.Options plus ordered model.NormalizedEvent values with optional workload identity, provenance, time/position/GTID/thread-id selectors, and object filters.
-// output: identity-, scope-, and provenance-aware intersected event-window aggregates, selector evidence, retained row/XA transactions with filter-safe DDL boundaries and explicit completeness, optional flashback SQL when Options.Flashback is set (generated columns learned from Options.SchemaSQL and from every parsed CREATE/ALTER, including excluded GTIDs; a refusal when a schema-file generated value contradicts the expression; an unverifiable expression is omitted and the script guard checks the target; a warning when a selected table has no definition; and a split-transaction warning when a table or DML filter keeps only part of a transaction), DDL identity taken from a qualified statement when the session schema differs, Unclassified QUERY failures when a GTID-started non-explicit group's only in-window work is Unclassified QUERY, open-BEGIN and Ignored-only next-GTID failures, an open-explicit-group count for BEGIN groups flushed without a close, and open DML groups when those BEGIN groups wrote row images. Minute buckets stay keyed by minute until Finalize, so an earlier timestamp updates that minute instead of opening a second bucket. The per-(table, minute) series spills past 8192 points (ADR 0019).
-// pos: module entrypoint that coordinates transaction reconstruction, table/minute aggregation, and alert assembly.
-// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -201,13 +196,6 @@ func (a *Analyzer) Finalize() (*model.AnalysisResult, error) {
 	}
 	a.finalized = true
 	return a.result, nil
-}
-
-// isInWindow checks if a timestamp falls within the configured time window.
-// Both Start and End boundaries are inclusive. If Start or End is nil,
-// that boundary is not enforced.
-func (a *Analyzer) isInWindow(ts time.Time) bool {
-	return a.windowRelation(ts) == insideWindow
 }
 
 func (a *Analyzer) windowRelation(ts time.Time) windowRelation {
@@ -600,18 +588,6 @@ func (a *Analyzer) assembleResult() (*model.AnalysisResult, error) {
 		result.Diagnostics.Findings = append(findings, result.Diagnostics.Findings...)
 	}
 	return result, nil
-}
-
-func sortedStringSet(values map[string]struct{}) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	result := make([]string, 0, len(values))
-	for value := range values {
-		result = append(result, value)
-	}
-	sort.Strings(result)
-	return result
 }
 
 func (a *Analyzer) recordEffectivePosition(ev model.NormalizedEvent) {

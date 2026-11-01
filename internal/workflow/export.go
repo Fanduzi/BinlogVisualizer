@@ -325,7 +325,7 @@ func hasDotDotPathSegment(value string) bool {
 }
 
 // WriteExportArchive writes the deterministic bundle to a zip archive.
-func WriteExportArchive(path string, result ExportResult) error {
+func WriteExportArchive(path string, result ExportResult) (retErr error) {
 	inside, err := pathWithinRoot(path, result.OutputDir)
 	if err != nil {
 		return err
@@ -338,7 +338,11 @@ func WriteExportArchive(path string, result ExportResult) error {
 	if err != nil {
 		return clierr.Errorf(clierr.KindOutput, "create export archive: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil && retErr == nil {
+			retErr = clierr.Errorf(clierr.KindOutput, "close export file: %w", err)
+		}
+	}()
 
 	writer := zip.NewWriter(file)
 	entries := stableUniqueExportEntries(result.Entries)
@@ -352,11 +356,11 @@ func WriteExportArchive(path string, result ExportResult) error {
 
 		archiveEntry, err := writer.CreateHeader(header)
 		if err != nil {
-			writer.Close()
+			_ = writer.Close()
 			return clierr.Errorf(clierr.KindOutput, "create archive entry %q: %w", entry.ArchivePath, err)
 		}
 		if _, err := archiveEntry.Write(entry.Body); err != nil {
-			writer.Close()
+			_ = writer.Close()
 			return clierr.Errorf(clierr.KindOutput, "write archive entry %q: %w", entry.ArchivePath, err)
 		}
 	}

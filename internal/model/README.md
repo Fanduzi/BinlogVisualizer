@@ -53,4 +53,7 @@ Shared analysis-result contracts reused across parsing, aggregation, rendering, 
 - `Diagnostics.OpenDMLGroups` lists explicit BEGIN groups that wrote row images and never closed in the analyzed input. `DurationBuckets` counts committed transactions. `LargestByteTransactions` ranks committed transactions by binlog bytes. `OpenDMLNote` is the stable JSON disclaimer.
 - `Timeseries.TPSSeries` is a semantic contract for transactions-per-second rates computed from minute buckets as `TxnCount / 60`; older snapshots that stored raw transactions-per-minute counts must not be compared directly to newer avg-TPS values.
 - `Diagnostics.CountedEventBytes` is the filtered row/DDL event-byte coverage; `FileCoverageItem.Size` is physical input-file size and is unavailable when metadata is missing.
-- Keep this README synchronized when shared model files, exported contracts, or cross-module boundaries change.
+
+## Update Rule
+
+Keep this README synchronized when shared model files, exported contracts, or cross-module boundaries change.

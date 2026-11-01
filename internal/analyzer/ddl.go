@@ -1,8 +1,4 @@
 // Package analyzer builds DDL diagnostics and timeline metadata from normalized events.
-// input: normalized query events, explicit SQL statements, and binlog source metadata.
-// output: deterministic model.DDLEvent slices plus lightweight DDL statement parsing helpers for schema/table/user/privilege/view/trigger/routine/event statements. Every name is read by mysqlexpr's identifier reader (backticks undoubled the same way, a quoted name is not a keyword, a digit-leading name is a name, versioned comments and ANSI_QUOTES follow the event). CREATE/ALTER/DROP USER keep the account spelling. A multi-account DROP USER is one event per account; RENAME USER is one event per "old TO new" pair. A multi-table DROP TABLE is one event per table; a multi-pair RENAME TABLE is one event per pair, named by the old table. Index DDL uses the table after ON. CREATE and DROP TRIGGER use the trigger name. An unquoted name stops at '(', so the no-space form name(col) stays the object name. Unrecognized DDL is kept as generic DDL. Statement text is stored at the 4096-byte cap. Credential literals, including MariaDB IDENTIFIED VIA … USING PASSWORD, are replaced with <secret>. SET PASSWORD is account DDL. A DDL event keeps the holding group's GTID when the analyzer recorded one, and the file offset of that group's first event.
-// pos: analyzer-side DDL extraction layer that feeds later diagnostics and report assembly.
-// note: if this file changes, update this header and README.md.
 package analyzer
 
 import (
@@ -135,9 +131,7 @@ func hasWordPrefixFold(sql, word string) bool {
 
 // ConsumeEvent extracts a DDL event from a normalized event when possible.
 func (a *DDLAggregator) ConsumeEvent(ev model.NormalizedEvent) {
-	for _, ddlEvent := range ddlEventsFor(ev) {
-		a.events = append(a.events, ddlEvent)
-	}
+	a.events = append(a.events, ddlEventsFor(ev)...)
 }
 
 // ddlEventsFor is one timeline row per DROP TABLE target, one row per
@@ -245,16 +239,14 @@ func parsedUserTargets(ev model.NormalizedEvent) []string {
 
 // ConsumeStatement appends a parsed DDL statement directly.
 func (a *DDLAggregator) ConsumeStatement(ts time.Time, binlogPath string, positionStart, positionEnd, binlogBytes int64, sql string) {
-	for _, event := range ddlEventsFor(model.NormalizedEvent{
+	a.events = append(a.events, ddlEventsFor(model.NormalizedEvent{
 		Timestamp:     ts,
 		BinlogPath:    binlogPath,
 		PositionStart: positionStart,
 		PositionEnd:   positionEnd,
 		BinlogBytes:   binlogBytes,
 		QuerySQL:      sql,
-	}) {
-		a.events = append(a.events, event)
-	}
+	})...)
 }
 
 // Snapshot returns collected DDL events sorted by timestamp and source position.

@@ -1,16 +1,6 @@
 // Package binlog verifies that a transaction payload is decompressed once,
 // as a bounded stream, and that its header fields are read as MySQL's
 // net_field_length encoding.
-// input: hand-built payload bodies (zstd frames of zeros up to 128 MiB, size
-// fields with 0xfb, 0xff and a short 0xfe encoding) and the MySQL 8.0
-// transaction payload fixture.
-// output: a corruptCause allocated in proportion to the bytes actually
-// decompressed, never in proportion to the declared size; a decoded payload
-// event carrying the declared size and its inner events.
-// pos: regression for BinlogQA's #293 QA at 1c51a0ae (bomb_gib: 33 KB file,
-// out of memory at 3 GiB), the P3s in #278 comment 6223264959, and the r2
-// many-small P1 (a fixture payload rebuilt with 600k XID events).
-// note: if this file changes, update this header and README.md.
 package binlog
 
 import (
@@ -72,7 +62,6 @@ func TestPayloadBombStopsAtFirstBadInnerEvent(t *testing.T) {
 			t.Fatalf("declared %d: allocated %d MiB for a %d-byte frame", declared, used>>20, len(body))
 		}
 	}
-	zeros = nil
 }
 
 // A frame that expands past the declared size stops at the declared size.

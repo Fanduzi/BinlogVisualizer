@@ -1,7 +1,3 @@
-// input: every non-test Go file in cmd/binlogviz, internal/workflow and internal/snapshot, plus synthetic mutants.
-// output: fails on any file-removing call site (direct, aliased as a function value, via an import alias, os.Root methods, or exec of a process) not in the reviewed allowlist.
-// pos: ADR 0009 §8 deletion guard (QA r2 on #290, P3).
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -78,7 +74,7 @@ func deletionSites(fset *token.FileSet, f *ast.File) []string {
 // Each entry is a file:function:expr site and must say why it is safe.
 var guardAllowlist = map[string]string{
 	"safefs.go:TrashFile:.Rename":                             "the clean primitive: rename into <root>/.trash inside os.Root",
-	"safefs.go:releaseLockFile:os.Remove":                     "non-unix lock file, only <root>/.lock",
+	"lock_other.go:releaseLockFile:os.Remove":                 "non-unix lock file, only <root>/.lock",
 	"analyze.go:createDuckDBTempStore:os.RemoveAll":           "removes the os.MkdirTemp dir it just created",
 	"analyze_output.go:writeHTMLAtomically:os.Remove":         "removes its own temp file after a failed write",
 	"analyze_output.go:writeHTMLAtomically:os.Rename":         "atomic replace of the user-named output file",

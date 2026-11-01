@@ -1,8 +1,4 @@
 // Package report renders the Hot Rows ranking in every analyze format.
-// input: analyzer HotRowReport values plus SQL-context and top-N presentation controls.
-// output: text, Markdown, and shared helpers for JSON and HTML. --sql-context off hides key values and keeps counts.
-// pos: presentation layer for the bounded primary-key ranking.
-// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -103,12 +99,12 @@ func renderHotRows(buf *strings.Builder, report model.HotRowReport, opts Options
 			line += "  " + i18n.T("report.text.hotRowsApproximate")
 		}
 		buf.WriteString(line + "\n")
-		buf.WriteString(fmt.Sprintf("     %s %s  %s\n",
+		fmt.Fprintf(buf, "     %s %s  %s\n",
 			i18n.T("report.text.hotRowsFirst"), opts.formatTime(row.FirstTime),
-			hotRowTxnPlace(row.FirstGTID, row.FirstFile, row.FirstPos)))
-		buf.WriteString(fmt.Sprintf("     %s %s  %s\n",
+			hotRowTxnPlace(row.FirstGTID, row.FirstFile, row.FirstPos))
+		fmt.Fprintf(buf, "     %s %s  %s\n",
 			i18n.T("report.text.hotRowsLast"), opts.formatTime(row.LastTime),
-			hotRowTxnPlace(row.LastGTID, row.LastFile, row.LastPos)))
+			hotRowTxnPlace(row.LastGTID, row.LastFile, row.LastPos))
 	}
 	if omitted > 0 {
 		buf.WriteString("  " + i18n.Tf("report.text.hotRowsOmitted", map[string]any{"Count": omitted}) + "\n")
@@ -144,7 +140,7 @@ func mdHotRows(buf *strings.Builder, report model.HotRowReport, opts Options) {
 			if row.Approximate {
 				touches += " " + i18n.T("report.text.hotRowsApproximate")
 			}
-			buf.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %d | %s | %s | %s | %s |\n",
+			fmt.Fprintf(buf, "| %d | %s | %s | %s | %d | %s | %s | %s | %s |\n",
 				i+1,
 				mdCell(hotRowTable(row)),
 				mdCell(key),
@@ -153,8 +149,7 @@ func mdHotRows(buf *strings.Builder, report model.HotRowReport, opts Options) {
 				mdCell(opts.formatTime(row.FirstTime)),
 				mdCell(opts.formatTime(row.LastTime)),
 				mdCell(hotRowTxnPlace(row.FirstGTID, row.FirstFile, row.FirstPos)),
-				mdCell(hotRowTxnPlace(row.LastGTID, row.LastFile, row.LastPos)),
-			))
+				mdCell(hotRowTxnPlace(row.LastGTID, row.LastFile, row.LastPos)))
 		}
 		buf.WriteString("\n")
 	}

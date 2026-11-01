@@ -1,8 +1,4 @@
 // Package binlogviz verifies analyze HTML destination resolution for TTY, redirect, and --output.
-// input: destination resolver arguments, analyze CLI flags, and fixture binlogs.
-// output: evidence that omitted --output follows TTY vs redirected stdout and that explicit --output is unchanged.
-// pos: CLI output-destination tests for the analyze HTML operator I/O contract.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -149,7 +145,9 @@ func TestFindAvailablePath_NoCollision(t *testing.T) {
 func TestFindAvailablePath_WithCollision(t *testing.T) {
 	dir := t.TempDir()
 	desired := filepath.Join(dir, "report.html")
-	os.WriteFile(desired, []byte("existing"), 0644)
+	if err := os.WriteFile(desired, []byte("existing"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	got := findAvailablePath(desired)
 	expected := filepath.Join(dir, "report.1.html")
@@ -161,9 +159,11 @@ func TestFindAvailablePath_WithCollision(t *testing.T) {
 func TestFindAvailablePath_MultipleCollisions(t *testing.T) {
 	dir := t.TempDir()
 	desired := filepath.Join(dir, "report.html")
-	os.WriteFile(desired, []byte("0"), 0644)
-	os.WriteFile(filepath.Join(dir, "report.1.html"), []byte("1"), 0644)
-	os.WriteFile(filepath.Join(dir, "report.2.html"), []byte("2"), 0644)
+	for i, path := range []string{desired, filepath.Join(dir, "report.1.html"), filepath.Join(dir, "report.2.html")} {
+		if err := os.WriteFile(path, []byte{byte('0' + i)}, 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	got := findAvailablePath(desired)
 	expected := filepath.Join(dir, "report.3.html")
@@ -224,7 +224,9 @@ func TestWriteHTMLAtomically_File(t *testing.T) {
 func TestWriteHTMLAtomically_OverwritesExisting(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "report.html")
-	os.WriteFile(path, []byte("old content"), 0644)
+	if err := os.WriteFile(path, []byte("old content"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	dest := outputDestination{Path: path, IsFile: true}
 	newContent := "<html>new</html>"
