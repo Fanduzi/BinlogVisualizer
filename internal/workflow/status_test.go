@@ -195,7 +195,9 @@ func TestBuildStatusMissingPlanStillBuilds(t *testing.T) {
 	createTestArtifacts(t, root, manifest.SnapshotDir, manifest.Steps)
 	manifest.PlanPath = filepath.Join(root, "plan.yaml")
 	// Delete the plan file so the trust check passes but hash read fails.
-	os.Remove(manifest.PlanPath)
+	if err := os.Remove(manifest.PlanPath); err != nil {
+		t.Fatal(err)
+	}
 
 	status, err := BuildStatus(root, manifest, nil)
 	if err != nil {
@@ -383,7 +385,7 @@ trend:
 	if err != nil {
 		t.Fatalf("open plan: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	plan, err := LoadPlan(f)
 	if err != nil {

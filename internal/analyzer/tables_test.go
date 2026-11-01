@@ -1,8 +1,4 @@
 // Package analyzer verifies per-table aggregation behavior for normalized events.
-// input: synthetic normalized events with schema, table, operation, and row-count metadata.
-// output: assertions for table totals, operation counters, and transaction attribution.
-// pos: focused regression coverage for analyzer table aggregation helpers.
-// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
@@ -85,9 +81,10 @@ func TestTableAggregatorHandlesMultipleTables(t *testing.T) {
 	// Find orders table
 	var orders, users *model.TableStats
 	for i := range stats {
-		if stats[i].Table == "orders" {
+		switch stats[i].Table {
+		case "orders":
 			orders = &stats[i]
-		} else if stats[i].Table == "users" {
+		case "users":
 			users = &stats[i]
 		}
 	}

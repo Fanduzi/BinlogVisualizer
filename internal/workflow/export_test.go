@@ -443,7 +443,7 @@ func TestWriteExportArchiveUsesStableRootedNamesAndMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open zip: %v", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	var gotNames []string
 	for _, file := range zr.File {
@@ -489,7 +489,7 @@ func TestWriteExportArchiveSortsEntriesByArchivePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open zip: %v", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	gotNames := make([]string, 0, len(zr.File))
 	for _, file := range zr.File {
@@ -527,7 +527,7 @@ func TestWriteExportArchiveDedupesDuplicateArchivePaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open zip: %v", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 
 	if got, want := len(zr.File), 1; got != want {
 		t.Fatalf("zip entry count mismatch: got %d want %d", got, want)
@@ -646,7 +646,7 @@ func readZipFileBody(t *testing.T, file *zip.File) string {
 	if err != nil {
 		t.Fatalf("open zip file %s: %v", file.Name, err)
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	body, err := io.ReadAll(reader)
 	if err != nil {

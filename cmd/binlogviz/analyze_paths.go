@@ -1,9 +1,5 @@
 // Package binlogviz resolves analyze's input paths: explicit files, directory
 // discovery with a shared prefix, position/time windows, and readability.
-// input: cobra args plus --from-dir/--prefix/time flags.
-// output: sorted binlog paths, file coverage, or a usage error naming the miss.
-// pos: CLI orchestration helper for analyze.go.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -19,7 +15,6 @@ import (
 	"time"
 
 	"binlogviz/internal/analyzer"
-	"binlogviz/internal/binlog"
 	"binlogviz/internal/clierr"
 	"binlogviz/internal/i18n"
 	"binlogviz/internal/model"
@@ -211,14 +206,6 @@ func discoverBinlogPaths(dir, prefix string) ([]string, error) {
 	return candidates, nil
 }
 
-func discoverBinlogPathsInWindow(dir, prefix string, startTime, endTime time.Time) ([]string, error) {
-	plan, err := discoverBinlogPlanInWindow(dir, prefix, startTime, endTime)
-	if err != nil {
-		return nil, err
-	}
-	return plan.Paths, nil
-}
-
 func discoverBinlogPlanInWindow(dir, prefix string, startTime, endTime time.Time) (analyzePlan, error) {
 	paths, err := discoverBinlogPaths(dir, prefix)
 	if err != nil {
@@ -316,14 +303,6 @@ func sharedBinlogPrefix(prefix string) string {
 		return ""
 	}
 	return prefix[:end]
-}
-
-func readFirstBinlogTimestamp(path string) (time.Time, error) {
-	probe, err := binlog.ProbeFile(path)
-	if err != nil {
-		return time.Time{}, err
-	}
-	return probe.FirstEventAt, nil
 }
 
 func printResolvedPaths(out io.Writer, paths []string) {

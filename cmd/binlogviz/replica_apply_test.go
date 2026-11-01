@@ -1,8 +1,4 @@
 // Package binlogviz checks replica apply delay against a real MySQL 8.0 source and replica pair.
-// input: mysql-8.0.46-replica-apply.binlog, mysql-8.0.46-source-apply.binlog, and their mysqlbinlog -vv dumps, plus minimal.binlog and mariadb-10.11.14-dml.binlog.
-// output: text, Markdown, HTML, and JSON match the dump's original_commit_timestamp and immediate_commit_timestamp lines; filters, --top, and --sql-context off keep that contract.
-// pos: command-layer proof for the replica apply-delay section.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -65,26 +61,7 @@ func TestAnalyzeReplicaApplyDelayMatchesMysqlbinlog(t *testing.T) {
 	if delay.Origin != "replica" || delay.MaxDelayUs != maxUs || delay.P95DelayUs != p95Us || delay.PeakMinute != peak.UTC().Format(time.RFC3339) {
 		t.Fatalf("summary = %+v", delay)
 	}
-	if len(delay.Transactions) != len(dump) {
-		t.Fatalf("listed %d transactions, dump has %d", len(delay.Transactions), len(dump))
-	}
-	ranked := append([]dumpTxn(nil), dump...)
-	sortDump(ranked)
-	for i, txn := range delay.Transactions {
-		want := ranked[i]
-		if txn.GTID != want.GTID || txn.TxnStartPos != want.At || txn.TxnStartFile != fixture {
-			t.Fatalf("txn %d identity = %+v, want gtid=%s file=%s pos=%d", i, txn, want.GTID, fixture, want.At)
-		}
-		if txn.OriginalCommitUs != want.Original || txn.ImmediateCommitUs != want.Immediate || txn.DelayUs != int64(want.Immediate-want.Original) {
-			t.Fatalf("txn %s timestamps orig=%d imm=%d delay=%d, dump orig=%d imm=%d", txn.GTID, txn.OriginalCommitUs, txn.ImmediateCommitUs, txn.DelayUs, want.Original, want.Immediate)
-		}
-		if txn.OriginalCommitTime == "" || txn.ImmediateCommitTime == "" {
-			t.Fatalf("txn %s omitted a commit time", txn.GTID)
-		}
-		if !sameTables(txn.Tables, want.Tables) {
-			t.Fatalf("txn %s tables = %+v, dump %+v", txn.GTID, txn.Tables, want.Tables)
-		}
-	}
+	assertReplicaApplyTransactions(t, fixture, delay, dump)
 	assertNoEmptyJSONStrings(t, payload.ReplicaApplyDelay)
 
 	text, stderr, err := executeAnalyzeLikeMain(t, fixture, "--format", "text", "--top", "30")
@@ -139,6 +116,30 @@ func TestAnalyzeReplicaApplyDelayMatchesMysqlbinlog(t *testing.T) {
 	}
 }
 
+func assertReplicaApplyTransactions(t *testing.T, fixture string, delay applyDelayJSON, dump []dumpTxn) {
+	t.Helper()
+	if len(delay.Transactions) != len(dump) {
+		t.Fatalf("listed %d transactions, dump has %d", len(delay.Transactions), len(dump))
+	}
+	ranked := append([]dumpTxn(nil), dump...)
+	sortDump(ranked)
+	for i, txn := range delay.Transactions {
+		want := ranked[i]
+		if txn.GTID != want.GTID || txn.TxnStartPos != want.At || txn.TxnStartFile != fixture {
+			t.Fatalf("txn %d identity = %+v, want gtid=%s file=%s pos=%d", i, txn, want.GTID, fixture, want.At)
+		}
+		if txn.OriginalCommitUs != want.Original || txn.ImmediateCommitUs != want.Immediate || txn.DelayUs != int64(want.Immediate-want.Original) {
+			t.Fatalf("txn %s timestamps orig=%d imm=%d delay=%d, dump orig=%d imm=%d", txn.GTID, txn.OriginalCommitUs, txn.ImmediateCommitUs, txn.DelayUs, want.Original, want.Immediate)
+		}
+		if txn.OriginalCommitTime == "" || txn.ImmediateCommitTime == "" {
+			t.Fatalf("txn %s omitted a commit time", txn.GTID)
+		}
+		if !sameTables(txn.Tables, want.Tables) {
+			t.Fatalf("txn %s tables = %+v, dump %+v", txn.GTID, txn.Tables, want.Tables)
+		}
+	}
+}
+
 func TestAnalyzeReplicaApplyDelayRespectsTopFiltersAndSQLContext(t *testing.T) {
 	forceEnglishRuntimeOutput(t)
 	fixture := mustFixturePath(t, "mysql-8.0.46-replica-apply.binlog")
@@ -180,19 +181,7 @@ func TestAnalyzeReplicaApplyDelayRespectsTopFiltersAndSQLContext(t *testing.T) {
 		}
 	}
 
-	deletes := filterDump(dump, func(txn dumpTxn) bool { return txn.Deletes["shop.orders"] > 0 })
-	deleteMax, deleteP95, _, deleteTop := rankDump(deletes)
-	if len(deletes) != 1 || deleteTop.GTID != "11458b63-c244-11f1-a0d2-822b383dbcd0:27" || deleteMax != 2055087 || deleteP95 != deleteMax || deleteTop.Deletes["shop.orders"] != 4 {
-		t.Fatalf("delete expectation %+v max=%d", deletes, deleteMax)
-	}
-	deleted, stderr, err := executeAnalyzeLikeMain(t, fixture, "--format", "json", "--top", "30", "--dml", "delete")
-	if err != nil {
-		t.Fatalf("dml delete: %v\n%s", err, stderr)
-	}
-	deletedDelay := decodeApplyDelay(t, decodeApplyPayload(t, deleted).ReplicaApplyDelay)
-	if deletedDelay.MaxDelayUs != deleteMax || len(deletedDelay.Transactions) != 1 || deletedDelay.Transactions[0].GTID != deleteTop.GTID || deletedDelay.Transactions[0].Tables["shop.orders"] != 4 {
-		t.Fatalf("dml delete delay = %+v", deletedDelay)
-	}
+	assertReplicaDeleteFilter(t, fixture, dump)
 
 	only, stderr, err := executeAnalyzeLikeMain(t, fixture, "--format", "json", "--include-gtids", replicaApplyTopGTID)
 	if err != nil {
@@ -233,6 +222,23 @@ func TestAnalyzeReplicaApplyDelayRespectsTopFiltersAndSQLContext(t *testing.T) {
 	quietDelay := decodeApplyDelay(t, decodeApplyPayload(t, quiet).ReplicaApplyDelay)
 	if quietDelay.Transactions[0].TxnStartPos != replicaApplyTopPos || quietDelay.Transactions[0].OriginalCommitUs == 0 || quietDelay.Transactions[0].ImmediateCommitUs == 0 {
 		t.Fatalf("sql-context off dropped timestamps: %+v", quietDelay.Transactions[0])
+	}
+}
+
+func assertReplicaDeleteFilter(t *testing.T, fixture string, dump []dumpTxn) {
+	t.Helper()
+	deletes := filterDump(dump, func(txn dumpTxn) bool { return txn.Deletes["shop.orders"] > 0 })
+	deleteMax, deleteP95, _, deleteTop := rankDump(deletes)
+	if len(deletes) != 1 || deleteTop.GTID != "11458b63-c244-11f1-a0d2-822b383dbcd0:27" || deleteMax != 2055087 || deleteP95 != deleteMax || deleteTop.Deletes["shop.orders"] != 4 {
+		t.Fatalf("delete expectation %+v max=%d", deletes, deleteMax)
+	}
+	deleted, stderr, err := executeAnalyzeLikeMain(t, fixture, "--format", "json", "--top", "30", "--dml", "delete")
+	if err != nil {
+		t.Fatalf("dml delete: %v\n%s", err, stderr)
+	}
+	deletedDelay := decodeApplyDelay(t, decodeApplyPayload(t, deleted).ReplicaApplyDelay)
+	if deletedDelay.MaxDelayUs != deleteMax || len(deletedDelay.Transactions) != 1 || deletedDelay.Transactions[0].GTID != deleteTop.GTID || deletedDelay.Transactions[0].Tables["shop.orders"] != 4 {
+		t.Fatalf("dml delete delay = %+v", deletedDelay)
 	}
 }
 

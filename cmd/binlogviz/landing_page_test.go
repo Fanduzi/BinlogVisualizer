@@ -1,7 +1,3 @@
-// input: every file under docs/landing/, plus inline mutations of the real page.
-// output: a failure when the landing page grows release history, a version string, a date, a checksum, an unlisted file, section, id, heading, link or script, a reveal threshold, an unlisted meta tag, a <template> or <noscript>, a listed heading or section that a reader cannot see as served, content hidden until JS runs, or a file or total past its size cap.
-// pos: release-doc drift guard; the landing page is a version-free product page, so a release never edits it (BinlogViz #443).
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -235,56 +231,8 @@ func landingIssues(files map[string]string, allowed []allowedNumber) []string {
 		body := files[name]
 		where := landingDir + "/" + name
 
-		// Versions: the folded text, comments included, minus the contexts
-		// in the shared allowlist scripts/check-release-prep.sh also reads.
-		text := versionScanText(body)
-		for _, a := range allowed {
-			if !strings.Contains(text, a.context) {
-				add("allowlist", "%s no longer contains allowed number context %q; drop it from %s", where, a.context, landingAllowedNumbersFile)
-			}
-			text = strings.ReplaceAll(text, a.context, "")
-		}
-		var css strings.Builder
-		rest := styleBlock.ReplaceAllStringFunc(text, func(m string) string {
-			css.WriteString(styleBlock.FindStringSubmatch(m)[1] + "\n")
-			return "<style></style>"
-		})
-		rest = styleAttr.ReplaceAllStringFunc(rest, func(m string) string {
-			css.WriteString(styleAttr.FindStringSubmatch(m)[1] + "\n")
-			return ""
-		})
-		seen := map[string]bool{}
-		report := func(view, tok string) {
-			if !seen[view+tok] {
-				seen[view+tok] = true
-				add("version", "%s (%s) names %q; the landing page is version-free so a release never edits it — if %q is not a BinlogViz release, add its context to %s", where, view, tok, tok, landingAllowedNumbersFile)
-			}
-		}
-		for _, v := range []struct{ label, text string }{{"source", rest}, {"text", anyTag.ReplaceAllString(rest, "")}} {
-			for _, tok := range versionTokens(v.text) {
-				if isReleaseShaped(tok) {
-					report(v.label, tok)
-				}
-			}
-		}
-		for _, tok := range versionTokens(css.String()) {
-			if isReleaseShaped(tok) {
-				report("css", tok)
-			}
-		}
-		// Joined view: tags, whitespace, quotes and + removed, so a version or
-		// checksum split across lines, tags or JS concatenation reads as one run.
-		joined := joinStrip.ReplaceAllString(anyTag.ReplaceAllString(text, ""), "")
-		for _, tok := range versionTokens(joined) {
-			if strings.Count(tok, ".") == 2 {
-				report("joined", tok)
-			}
-		}
-		for _, view := range []struct{ label, text string }{{"source", text}, {"joined", joined}} {
-			if m := hexRun.FindString(view.text); m != "" {
-				add("hex", "%s (%s) holds a %d-character hex run %.16s…; checksums belong in the release's checksums.txt", where, view.label, len(m), m)
-			}
-		}
+		text, versionIssues := landingVersionIssues(where, body, allowed)
+		issues = append(issues, versionIssues...)
 		for _, m := range isoDate.FindAllStringSubmatch(text, -1) {
 			date := fmt.Sprintf("%s-%02s", m[1], m[2])
 			if m[3] != "" {
@@ -304,48 +252,7 @@ func landingIssues(files map[string]string, allowed []allowedNumber) []string {
 		// Structure is read from the raw file, script strings included,
 		// so markup built by JS is held to the same lists.
 		raw := body
-		var sections []string
-		for _, m := range sectionTag.FindAllStringSubmatch(raw, -1) {
-			id := ""
-			if a := idAttr.FindStringSubmatch(m[1]); a != nil {
-				id = attrValue(a[1])
-			}
-			sections = append(sections, id)
-		}
-		if !slices.Equal(sections, landingSections) {
-			add("section", "%s sections are %q, want %q; release history goes to GitHub Releases, a new product section goes in landingSections", where, sections, landingSections)
-		}
-		for _, m := range idAttr.FindAllStringSubmatch(raw, -1) {
-			id := attrValue(m[1])
-			ids[id]++
-			if !slices.Contains(landingSections, id) && !slices.Contains(landingOtherIDs, id) {
-				add("id", "%s has unlisted id %q; a legitimate id goes in landingSections or landingOtherIDs", where, id)
-			}
-		}
-		var heads []string
-		for _, m := range h2Tag.FindAllStringSubmatch(raw, -1) {
-			key := ""
-			if a := i18nAttr.FindStringSubmatch(m[1]); a != nil {
-				key = attrValue(a[1])
-			}
-			heads = append(heads, key)
-		}
-		if !slices.Equal(heads, landingHeadings) {
-			add("heading", "%s h2 headings are %q, want %q; a legitimate h2 goes in landingHeadings", where, heads, landingHeadings)
-		}
-
-		// What a reader sees as served: every listed heading and some text
-		// in every listed section, outside comments, <template>, <meta>,
-		// scripts and hidden elements.
-		sectionText, visibleHeads := landingVisible(raw)
-		if !slices.Equal(visibleHeads, landingHeadings) {
-			add("visible", "%s visible h2 headings are %q, want %q; a heading inside a comment, <template>, <script> or a hidden element is not shown", where, visibleHeads, landingHeadings)
-		}
-		for _, id := range landingSections {
-			if strings.TrimSpace(html.UnescapeString(sectionText[id])) == "" {
-				add("visible", "%s section %q shows no text as served", where, id)
-			}
-		}
+		issues = append(issues, landingStructureIssues(where, raw, ids)...)
 		for _, m := range metaTag.FindAllString(raw, -1) {
 			if m = strings.Join(strings.Fields(m), " "); !slices.Contains(landingMetas, m) {
 				add("meta", "%s has unlisted meta tag %s; meta content is not shown on the page — a legitimate meta goes in landingMetas", where, m)
@@ -416,6 +323,114 @@ func landingIssues(files map[string]string, allowed []allowedNumber) []string {
 	}
 	sort.Strings(issues)
 	return issues
+}
+
+func landingStructureIssues(where, raw string, ids map[string]int) []string {
+	var issues []string
+	add := func(rule, format string, args ...any) {
+		issues = append(issues, rule+": "+fmt.Sprintf(format, args...))
+	}
+	var sections []string
+	for _, m := range sectionTag.FindAllStringSubmatch(raw, -1) {
+		id := ""
+		if a := idAttr.FindStringSubmatch(m[1]); a != nil {
+			id = attrValue(a[1])
+		}
+		sections = append(sections, id)
+	}
+	if !slices.Equal(sections, landingSections) {
+		add("section", "%s sections are %q, want %q; release history goes to GitHub Releases, a new product section goes in landingSections", where, sections, landingSections)
+	}
+	for _, m := range idAttr.FindAllStringSubmatch(raw, -1) {
+		id := attrValue(m[1])
+		ids[id]++
+		if !slices.Contains(landingSections, id) && !slices.Contains(landingOtherIDs, id) {
+			add("id", "%s has unlisted id %q; a legitimate id goes in landingSections or landingOtherIDs", where, id)
+		}
+	}
+	var heads []string
+	for _, m := range h2Tag.FindAllStringSubmatch(raw, -1) {
+		key := ""
+		if a := i18nAttr.FindStringSubmatch(m[1]); a != nil {
+			key = attrValue(a[1])
+		}
+		heads = append(heads, key)
+	}
+	if !slices.Equal(heads, landingHeadings) {
+		add("heading", "%s h2 headings are %q, want %q; a legitimate h2 goes in landingHeadings", where, heads, landingHeadings)
+	}
+
+	// What a reader sees as served: every listed heading and some text
+	// in every listed section, outside comments, <template>, <meta>,
+	// scripts and hidden elements.
+	sectionText, visibleHeads := landingVisible(raw)
+	if !slices.Equal(visibleHeads, landingHeadings) {
+		add("visible", "%s visible h2 headings are %q, want %q; a heading inside a comment, <template>, <script> or a hidden element is not shown", where, visibleHeads, landingHeadings)
+	}
+	for _, id := range landingSections {
+		if strings.TrimSpace(html.UnescapeString(sectionText[id])) == "" {
+			add("visible", "%s section %q shows no text as served", where, id)
+		}
+	}
+	return issues
+}
+
+func landingVersionIssues(where, body string, allowed []allowedNumber) (string, []string) {
+	var issues []string
+	add := func(rule, format string, args ...any) {
+		issues = append(issues, rule+": "+fmt.Sprintf(format, args...))
+	}
+	// Versions: the folded text, comments included, minus the contexts
+	// in the shared allowlist scripts/check-release-prep.sh also reads.
+	text := versionScanText(body)
+	for _, a := range allowed {
+		if !strings.Contains(text, a.context) {
+			add("allowlist", "%s no longer contains allowed number context %q; drop it from %s", where, a.context, landingAllowedNumbersFile)
+		}
+		text = strings.ReplaceAll(text, a.context, "")
+	}
+	var css strings.Builder
+	rest := styleBlock.ReplaceAllStringFunc(text, func(m string) string {
+		css.WriteString(styleBlock.FindStringSubmatch(m)[1] + "\n")
+		return "<style></style>"
+	})
+	rest = styleAttr.ReplaceAllStringFunc(rest, func(m string) string {
+		css.WriteString(styleAttr.FindStringSubmatch(m)[1] + "\n")
+		return ""
+	})
+	seen := map[string]bool{}
+	report := func(view, tok string) {
+		if !seen[view+tok] {
+			seen[view+tok] = true
+			add("version", "%s (%s) names %q; the landing page is version-free so a release never edits it — if %q is not a BinlogViz release, add its context to %s", where, view, tok, tok, landingAllowedNumbersFile)
+		}
+	}
+	for _, v := range []struct{ label, text string }{{"source", rest}, {"text", anyTag.ReplaceAllString(rest, "")}} {
+		for _, tok := range versionTokens(v.text) {
+			if isReleaseShaped(tok) {
+				report(v.label, tok)
+			}
+		}
+	}
+	for _, tok := range versionTokens(css.String()) {
+		if isReleaseShaped(tok) {
+			report("css", tok)
+		}
+	}
+	// Joined view: tags, whitespace, quotes and + removed, so a version or
+	// checksum split across lines, tags or JS concatenation reads as one run.
+	joined := joinStrip.ReplaceAllString(anyTag.ReplaceAllString(text, ""), "")
+	for _, tok := range versionTokens(joined) {
+		if strings.Count(tok, ".") == 2 {
+			report("joined", tok)
+		}
+	}
+	for _, view := range []struct{ label, text string }{{"source", text}, {"joined", joined}} {
+		if m := hexRun.FindString(view.text); m != "" {
+			add("hex", "%s (%s) holds a %d-character hex run %.16s…; checksums belong in the release's checksums.txt", where, view.label, len(m), m)
+		}
+	}
+	return text, issues
 }
 
 func readLandingFiles(t *testing.T) map[string]string {

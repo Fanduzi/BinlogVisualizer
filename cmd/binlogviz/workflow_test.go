@@ -1,8 +1,4 @@
 // Package binlogviz verifies workflow command orchestration and operator-facing error output.
-// input: workflow CLI args, plan fixtures, guarded compare/trend artifacts, and cobra command trees.
-// output: regression coverage for workflow run/resume/validate/describe/status/clean/export contracts, including comparability-guard summary propagation and relative output-root resolution.
-// pos: command-layer tests for workflow I/O, including Error-once failure output without Usage dumps.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -2547,7 +2543,7 @@ func TestWorkflowExportIncludeSnapshotsChangesExportedSnapshotCount(t *testing.T
 	if err != nil {
 		t.Fatalf("open zip: %v", err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	if len(zr.File) != decoded.IncludedFiles {
 		t.Fatalf("zip entries = %d, want %d", len(zr.File), decoded.IncludedFiles)
 	}

@@ -282,7 +282,7 @@ func appendStepSummary(path, body string) error {
 		return err
 	}
 	if _, err := f.WriteString(body); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()

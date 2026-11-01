@@ -1,7 +1,7 @@
 package workflow
 
-// safefs.go is the only place workflow code may remove or rename files
-// (enforced by TestWorkflowDeletesOnlyThroughPrimitive). ADR 0009 §8.
+// safefs.go handles workflow artifact moves; lock_other.go removes its lock
+// file (enforced by TestWorkflowDeletesOnlyThroughPrimitive). ADR 0009 §8.
 
 import (
 	"errors"
@@ -147,7 +147,7 @@ func prepareTrash(root, rel, trashID string) (real, dstRel string, err error) {
 	if err != nil {
 		return "", "", clierr.Errorf(clierr.KindOutput, "cannot open %s: %w", real, err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	dstRel = TrashDirName + "/" + trashID + "/" + rel
 	dir := ""
 	for _, part := range strings.Split(filepath.ToSlash(filepath.Dir(dstRel)), "/") {
@@ -182,7 +182,7 @@ func TrashFile(root, rel, trashID string) (string, error) {
 	if err != nil {
 		return "", clierr.Errorf(clierr.KindOutput, "cannot open %s: %w", real, err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if err := r.Rename(rel, dstRel); err != nil {
 		if errors.Is(err, syscall.EXDEV) {
 			return "", clierr.Errorf(clierr.KindOutput, "cannot move %s to trash: %s is on a different filesystem and clean only renames, never copies: %w", filepath.Join(real, filepath.FromSlash(rel)), filepath.Join(real, TrashDirName), err)
@@ -190,12 +190,4 @@ func TrashFile(root, rel, trashID string) (string, error) {
 		return "", clierr.Errorf(clierr.KindOutput, "cannot move %s to trash: %w", filepath.Join(real, filepath.FromSlash(rel)), err)
 	}
 	return filepath.Join(real, TrashDirName, trashID), nil
-}
-
-// releaseLockFile removes the non-unix O_EXCL lock file. It is the only
-// other removal in workflow code and touches nothing but <root>/.lock.
-func releaseLockFile(path string) {
-	if filepath.Base(path) == LockFile {
-		_ = os.Remove(path)
-	}
 }

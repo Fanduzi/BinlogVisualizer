@@ -106,11 +106,11 @@ func renderBusiestMinutes(buf *strings.Builder, minutes []model.MinuteBucket, to
 		buf.WriteString("  " + i18n.T("report.text.busiestMinutesLead") + "\n")
 	}
 	for _, minute := range shown {
-		buf.WriteString(fmt.Sprintf("  %s  rows=%d  txns=%d\n",
-			opts.formatTime(minute.Minute), minute.TotalRows, minute.TxnCount))
+		fmt.Fprintf(buf, "  %s  rows=%d  txns=%d\n",
+			opts.formatTime(minute.Minute), minute.TotalRows, minute.TxnCount)
 		tables, omitted := limitMinuteTables(rankedMinuteTables(minute.TableRows), topN)
 		for _, table := range tables {
-			buf.WriteString(fmt.Sprintf("    %s  %d\n", table.name, table.rows))
+			fmt.Fprintf(buf, "    %s  %d\n", table.name, table.rows)
 		}
 		if omitted > 0 {
 			buf.WriteString("    " + omittedTablesLabel(omitted) + "\n")

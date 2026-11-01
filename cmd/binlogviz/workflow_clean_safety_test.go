@@ -1,7 +1,3 @@
-// input: real workflow runs plus forged ledgers, symlinked kind dirs and files, a held lock, and an export archive.
-// output: clean never deletes outside <root>/{analyze,compare,trend} or directly inside the snapshot dir; deletions are moves into .trash; run/clean/resume are serialized by <root>/.lock; export carries ledger.jsonl.
-// pos: ADR 0009 §8 safety guard (QA r5 P1-A, P1-B on #290).
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -36,7 +32,11 @@ func appendLedgerLine(t *testing.T, outputDir string, entry map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			t.Errorf("close ledger fixture: %v", err)
+		}
+	}()
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestExportRoundTripKeepsLedger(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zr.Close()
+	defer func() { _ = zr.Close() }()
 	root := ""
 	for _, f := range zr.File {
 		dst := filepath.Join(restore, filepath.FromSlash(f.Name))

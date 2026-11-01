@@ -1,8 +1,4 @@
 // Package analyzer tests selector intersection at complete transaction-group boundaries.
-// input: normalized MySQL/MariaDB, anonymous, rotated, XA, and LOAD_DATA transaction sequences.
-// output: selected aggregate/report evidence without transaction fragments, including anonymous-group and unkeyed-event rejection, across storage modes.
-// pos: public Analyzer selection integration coverage for issue #52.
-// note: if this file changes, update this header and module README.md.
 package analyzer
 
 import (
@@ -254,7 +250,7 @@ func TestAnalyzerGTIDSelectionInMemoryAndDuckDBParity(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	got, err := NewWithStore(opts, store).Analyze(events)
 	if err != nil {
 		t.Fatal(err)

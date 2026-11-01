@@ -16,7 +16,7 @@ func Publish(dst io.Writer, write func(io.Writer) error) error {
 		return err
 	}
 	name := f.Name()
-	defer os.Remove(name)
+	defer func() { _ = os.Remove(name) }()
 	bw := bufio.NewWriterSize(f, 1<<16)
 	if err := write(bw); err != nil {
 		_ = f.Close()

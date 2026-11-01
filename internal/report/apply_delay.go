@@ -1,8 +1,4 @@
 // Package report renders replica apply delay in text, Markdown, HTML, and JSON.
-// input: diagnostics apply-delay evidence and the report top-N limit.
-// output: a replica ranking, a one-line source conclusion, or one unavailable line. JSON omits the object when timestamps are absent.
-// pos: shared renderer for the replica apply-delay section.
-// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -43,7 +39,7 @@ func renderApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int, o
 	for _, txn := range shown.Transactions {
 		buf.WriteString("  " + formatApplyDelayTxn(txn, opts) + "\n")
 		for _, table := range rankedMinuteTables(txn.Tables) {
-			buf.WriteString(fmt.Sprintf("    %s  %d\n", table.name, table.rows))
+			fmt.Fprintf(buf, "    %s  %d\n", table.name, table.rows)
 		}
 	}
 	buf.WriteString("\n")
@@ -66,14 +62,13 @@ func mdApplyDelay(buf *strings.Builder, delay *model.ApplyDelay, topN int, opts 
 	buf.WriteString("| GTID | " + i18n.T("report.text.ddlTxnStart") + " | " + i18n.T("report.text.replicaApplyDelayOriginal") + " | " + i18n.T("report.text.replicaApplyDelayImmediate") + " | " + i18n.T("report.text.replicaApplyDelayDelay") + " | " + i18n.T("report.label.drivingTables") + " |\n")
 	buf.WriteString("|---|---|---|---|---|---|\n")
 	for _, txn := range shown.Transactions {
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(buf, "| %s | %s | %s | %s | %s | %s |\n",
 			escapeMD(txn.GTID),
 			escapeMD(ddlTxnStartText(txn.TxnStartPath, txn.TxnStartPos)),
 			escapeMD(opts.formatCommitMicros(txn.OriginalCommit)),
 			escapeMD(opts.formatCommitMicros(txn.ImmediateCommit)),
 			escapeMD(txn.Delay.String()),
-			escapeMD(formatDrivingTables(txn.Tables, topN)),
-		))
+			escapeMD(formatDrivingTables(txn.Tables, topN)))
 	}
 	buf.WriteString("\n")
 }

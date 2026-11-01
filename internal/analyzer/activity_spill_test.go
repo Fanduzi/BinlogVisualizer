@@ -339,7 +339,6 @@ func measureAlternatingShape(t *testing.T, mode string) {
 	}
 	res = nil
 	a = nil
-	events = nil
 	debug.FreeOSMemory()
 	heap := liveHeap(t)
 	rss := processRSS(t)

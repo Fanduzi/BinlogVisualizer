@@ -1,8 +1,4 @@
 // Package snapshot provides filesystem-backed snapshot persistence helpers.
-// input: snapshot names, optional snapshot directories, and JSON report bytes.
-// output: resolved snapshot directories, validated names, and overwrite-safe JSON files on disk.
-// pos: CLI-facing snapshot persistence primitives for future snapshot commands.
-// note: if this file changes, update this header and module README.md.
 package snapshot
 
 import (
@@ -155,7 +151,7 @@ func SaveJSONOverwrite(dir, name string, report []byte) (string, error) {
 	return saveJSON(dir, name, report, true)
 }
 
-func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
+func saveJSON(dir, name string, report []byte, overwrite bool) (savedPath string, retErr error) {
 	if err := ValidateName(name); err != nil {
 		return "", err
 	}
@@ -181,7 +177,12 @@ func saveJSON(dir, name string, report []byte, overwrite bool) (string, error) {
 		}
 		return "", clierr.Wrap(clierr.KindOutput, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil && retErr == nil {
+			savedPath = ""
+			retErr = clierr.Wrap(clierr.KindOutput, err)
+		}
+	}()
 
 	if _, err := file.Write(report); err != nil {
 		return "", clierr.Wrap(clierr.KindOutput, err)

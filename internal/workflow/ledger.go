@@ -1,7 +1,3 @@
-// input: files a workflow run or resume wrote (step artifacts and snapshots).
-// output: an append-only <output_dir>/ledger.jsonl with one line per written file (path, kind, step, run id, sha256), and a reader that answers "did this workflow write exactly this file?".
-// pos: per-file attribution for workflow clean (ADR 0009 §8, #289).
-// note: if this file changes, update this header, ADR 0009 and module README.md.
 package workflow
 
 import (
@@ -62,7 +58,7 @@ func FileSHA256(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err
@@ -112,7 +108,7 @@ func ReadLedger(outputDir string) (Ledger, error) {
 		}
 		return l, clierr.Errorf(clierr.KindInput, "read workflow ledger: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	l.Present = true
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)

@@ -19,6 +19,14 @@ func TestHotRowsOnMySQL80FullAndMinimal(t *testing.T) {
 		t.Fatalf("full analyze: %v\n%s", err, stderr)
 	}
 	full := decodeHotRows(t, stdout)
+	hot := assertFullHotRows(t, fullPath, full)
+	assertHotRowRenderers(t, fullPath, hot)
+	assertHotRowSelectors(t, fullPath, hot)
+	assertHotRowPrivacyAndMinimal(t, fullPath, minimalPath)
+}
+
+func assertFullHotRows(t *testing.T, fullPath string, full hotRowsDoc) hotRowJSON {
+	t.Helper()
 	if full.TrackLimit != 8192 {
 		t.Fatalf("track limit=%d", full.TrackLimit)
 	}
@@ -60,7 +68,11 @@ func TestHotRowsOnMySQL80FullAndMinimal(t *testing.T) {
 	if len(full.Unavailable) != 0 {
 		t.Fatalf("full metadata should rank keys, gaps=%+v", full.Unavailable)
 	}
+	return hot
+}
 
+func assertHotRowRenderers(t *testing.T, fullPath string, hot hotRowJSON) {
+	t.Helper()
 	text, stderr, err := executeAnalyzeLikeMain(t, fullPath, "--top", "20")
 	if err != nil {
 		t.Fatalf("text: %v\n%s", err, stderr)
@@ -91,7 +103,10 @@ func TestHotRowsOnMySQL80FullAndMinimal(t *testing.T) {
 	if !strings.Contains(html, `id="hot-rows-table"`) || !strings.Contains(html, "id=7") || !strings.Contains(html, hot.LastGTID) {
 		t.Fatal("html missing hot rows")
 	}
+}
 
+func assertHotRowSelectors(t *testing.T, fullPath string, hot hotRowJSON) {
+	t.Helper()
 	limited, stderr, err := executeAnalyzeLikeMain(t, fullPath, "--format", "json", "--top", "1")
 	if err != nil {
 		t.Fatalf("top 1: %v\n%s", err, stderr)
@@ -155,7 +170,10 @@ func TestHotRowsOnMySQL80FullAndMinimal(t *testing.T) {
 	if only.Touches != 2 || only.Transactions != 1 || only.FirstGTID != hot.FirstGTID || only.LastGTID != hot.FirstGTID {
 		t.Fatalf("one gtid=%+v", only)
 	}
+}
 
+func assertHotRowPrivacyAndMinimal(t *testing.T, fullPath, minimalPath string) {
+	t.Helper()
 	off, stderr, err := executeAnalyzeLikeMain(t, fullPath, "--format", "json", "--sql-context", "off", "--top", "20")
 	if err != nil {
 		t.Fatalf("sql-context off: %v\n%s", err, stderr)

@@ -167,7 +167,7 @@ func TestDiagnosticsModeMarkerEdges(t *testing.T) {
 	if strings.Contains(stderr, "reduced_diagnostics") {
 		t.Fatalf("null marker was treated as reduced: %s", stderr)
 	}
-	code, stdout, stderr = runRoot(t, "snapshot", "save", nullPath, "--name", "from-null", "--snapshot-dir", dir)
+	code, _, stderr = runRoot(t, "snapshot", "save", nullPath, "--name", "from-null", "--snapshot-dir", dir)
 	if code != 0 {
 		t.Fatalf("null marker snapshot save: exit %d\n%s", code, stderr)
 	}

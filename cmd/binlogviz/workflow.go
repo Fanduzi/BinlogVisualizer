@@ -1,8 +1,4 @@
 // Package binlogviz defines the workflow CLI commands for run, resume, validate, describe, status, clean, and export.
-// input: workflow plan YAML, output directories, cobra flags, and workflow package contracts. Output writers live in workflow_output.go and plan execution in workflow_exec.go.
-// output: workflow artifacts, canonical rooted plan references, localized operator stderr status, and cobra command trees that print Error once without Usage on failure.
-// pos: CLI orchestration layer for multi-step investigation workflows.
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -96,7 +92,7 @@ func newWorkflowStatusCommand() *cobra.Command {
 				if canonicalPlanPath, trustErr := workflow.ValidateWorkflowPlanPath(outputDir, manifest.PlanPath); trustErr == nil {
 					f, err := os.Open(canonicalPlanPath)
 					if err == nil {
-						defer f.Close()
+						defer func() { _ = f.Close() }()
 						loaded, loadErr := workflow.LoadPlan(f)
 						if loadErr == nil {
 							plan = &loaded
@@ -279,7 +275,7 @@ func newWorkflowDescribeCommand() *cobra.Command {
 				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, openErr)
 				return openErr
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			plan, err := workflow.LoadPlan(f)
 			if err != nil {
@@ -324,7 +320,7 @@ func newWorkflowValidateCommand() *cobra.Command {
 				writeWorkflowValidateFailure(cmd.OutOrStdout(), opts.format, openErr)
 				return openErr
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			plan, err := workflow.LoadPlan(f)
 			if err != nil {
@@ -364,7 +360,7 @@ func newWorkflowRunCommand() *cobra.Command {
 			if err != nil {
 				return clierr.Errorf(clierr.KindInput, "open workflow plan: %w", err)
 			}
-			defer f.Close()
+			defer func() { _ = f.Close() }()
 
 			plan, err := workflow.LoadPlan(f)
 			if err != nil {

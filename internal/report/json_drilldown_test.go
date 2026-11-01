@@ -191,7 +191,9 @@ func TestJSONPatternDrilldown_ContractStability(t *testing.T) {
 
 	// Empty result
 	out, _ := RenderJSON(model.AnalysisResult{})
-	json.Unmarshal([]byte(out), &parsed)
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatal(err)
+	}
 	if _, ok := parsed["pattern_drilldowns"]; !ok {
 		t.Fatal("pattern_drilldowns field must always be present")
 	}
@@ -202,7 +204,9 @@ func TestJSONPatternDrilldown_ContractStability(t *testing.T) {
 			{PatternKey: "p1", WhySelected: "test"},
 		},
 	})
-	json.Unmarshal([]byte(out), &parsed)
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatal(err)
+	}
 	drilldowns := parsed["pattern_drilldowns"].([]any)
 	if len(drilldowns) != 1 {
 		t.Fatalf("expected 1 drilldown, got %d", len(drilldowns))

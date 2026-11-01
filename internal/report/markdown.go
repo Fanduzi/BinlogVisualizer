@@ -1,8 +1,4 @@
 // Package report renders Markdown reports from complete analysis results.
-// input: analyzer-produced AnalysisResult values plus optional SQL context presentation controls.
-// output: GitHub-flavored Markdown with UTC-labelled timestamps, completeness-aware tables, a Top Threads session ranking, per-transaction server_id, thread_id, GTID, xid or XA xid, and user@host only when present, query text only when --sql-context allows it, trusted replay evidence, busiest minutes with the tables that produced those rows, replica apply delay after those minutes, DDL timeline, a workload row for the target count when one statement names several tables, optional Ignored QUERY counts, optional open-explicit-group counts, and findings.
-// pos: Markdown renderer for the CLI output path after analyzer Finalize. Transaction rows come from internal/report/view.
-// note: if this file changes, update this header and module README.md.
 package report
 
 import (
@@ -53,41 +49,41 @@ func mdWorkloadSummary(buf *strings.Builder, result model.AnalysisResult, opts O
 	buf.WriteString("## " + i18n.T("report.section.workload") + "\n\n")
 	buf.WriteString("| Field | Value |\n")
 	buf.WriteString("|---|---|\n")
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalTransactions"), formatInt(summary.TotalTransactions)))
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.partialTransactions"), formatInt(summary.PartialTransactions)))
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.unknownTransactions"), formatInt(summary.UnknownTransactions)))
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalRows"), formatInt(summary.TotalRows)))
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.totalEvents"), formatInt(summary.TotalEvents)))
-	buf.WriteString(fmt.Sprintf("| %s | %s — %s |\n", i18n.T("report.label.timeRange"), opts.formatTime(summary.StartTime), opts.formatTime(summary.EndTime)))
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.timestamps"), opts.timestampBasis()))
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.duration"), formatDuration(summary.Duration)))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.totalTransactions"), formatInt(summary.TotalTransactions))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.partialTransactions"), formatInt(summary.PartialTransactions))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.unknownTransactions"), formatInt(summary.UnknownTransactions))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.totalRows"), formatInt(summary.TotalRows))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.totalEvents"), formatInt(summary.TotalEvents))
+	fmt.Fprintf(buf, "| %s | %s — %s |\n", i18n.T("report.label.timeRange"), opts.formatTime(summary.StartTime), opts.formatTime(summary.EndTime))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.timestamps"), opts.timestampBasis())
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.duration"), formatDuration(summary.Duration))
 	format := diagnostics.InputFormatGuess
 	if format == "" {
 		format = i18n.T("time.notAvailable")
 	}
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.format"), escapeMD(format)))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.format"), escapeMD(format))
 	if label := dmlFilterLabel(result.Scope); label != "" {
-		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.dmlFilter"), escapeMD(label)))
+		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.dmlFilter"), escapeMD(label))
 	}
 	if line := primaryKeyView(result.Tables).summaryLine; line != "" {
-		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.primaryKey"), escapeMD(line)))
+		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.primaryKey"), escapeMD(line))
 	}
 	if rowValuesSuppressed(opts) {
-		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.rowValues"), escapeMD(i18n.T("report.text.rowValuesSuppressed"))))
+		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.rowValues"), escapeMD(i18n.T("report.text.rowValuesSuppressed")))
 	} else if showRowValues(opts) {
 		if note := columnNamesNote(result); note != "" {
-			buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.columnNames"), escapeMD(note)))
+			fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.columnNames"), escapeMD(note))
 		}
 	}
-	buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.ignoredQueryDML"), formatInt(diagnostics.IgnoredQueryDMLEvents)))
+	fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.ignoredQueryDML"), formatInt(diagnostics.IgnoredQueryDMLEvents))
 	if diagnostics.IgnoredQueryEvents > 0 {
-		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.ignoredQuery"), formatInt(diagnostics.IgnoredQueryEvents)))
+		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.ignoredQuery"), formatInt(diagnostics.IgnoredQueryEvents))
 	}
 	if diagnostics.OpenExplicitGroups > 0 {
-		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.label.openExplicitGroups"), formatInt(diagnostics.OpenExplicitGroups)))
+		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.openExplicitGroups"), formatInt(diagnostics.OpenExplicitGroups))
 	}
 	if phrase := ddlTargetPhrase(diagnostics.DDLEvents); phrase != "" {
-		buf.WriteString(fmt.Sprintf("| %s | %s |\n", i18n.T("report.html.analyze.ddlEvents"), phrase))
+		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.html.analyze.ddlEvents"), phrase)
 	}
 	buf.WriteString("\n")
 }
@@ -102,15 +98,14 @@ func mdTopTables(buf *strings.Builder, tables []model.TableStats, topN int) {
 	buf.WriteString("| Schema | Table | Total Rows | Inserts | Updates | Deletes | Transactions |\n")
 	buf.WriteString("|---|---|---:|---:|---:|---:|---:|\n")
 	for _, t := range displayedTables {
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(buf, "| %s | %s | %s | %s | %s | %s | %s |\n",
 			escapeMD(t.Schema),
 			escapeMD(t.Table),
 			formatInt(t.TotalRows),
 			formatInt(t.InsertRows),
 			formatInt(t.UpdateRows),
 			formatInt(t.DeleteRows),
-			formatInt(t.TxnCount),
-		))
+			formatInt(t.TxnCount))
 	}
 	if omittedTables > 0 {
 		buf.WriteString("_" + omittedTablesLabel(omittedTables) + "_\n")
@@ -128,7 +123,7 @@ func mdNoPrimaryKey(buf *strings.Builder, tables []model.TableStats) {
 	buf.WriteString("| # | Table | UPDATE | DELETE |\n")
 	buf.WriteString("|---|---|---:|---:|\n")
 	for i, row := range view.risks {
-		buf.WriteString(fmt.Sprintf("| %d | %s | %d | %d |\n", i+1, escapeMD(row.name()), row.update, row.delete))
+		fmt.Fprintf(buf, "| %d | %s | %d | %d |\n", i+1, escapeMD(row.name()), row.update, row.delete)
 	}
 	buf.WriteString("\n")
 	if len(view.insertOnly) > 0 {
@@ -217,13 +212,12 @@ func mdDDLTimeline(buf *strings.Builder, events []model.DDLEvent, mode SQLContex
 		if statement == "" && mode != SQLContextOff {
 			statement = i18n.T("time.notAvailable")
 		}
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(buf, "| %s | %s | %s | %s | %s |\n",
 			opts.formatTime(event.Timestamp),
 			mdCell(event.Operation),
 			mdCell(object),
 			mdCell(statement),
-			mdCell(location),
-		))
+			mdCell(location))
 	}
 	buf.WriteString("\n")
 	for _, event := range events {
@@ -271,7 +265,7 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, o
 		if txnReplayAvailable(t) {
 			replay = "yes"
 		}
-		buf.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(buf, "| %d | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
 			i+1,
 			mdCell(t.TxnKey),
 			t.EffectiveCompleteness(),
@@ -281,8 +275,7 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, o
 			formatDuration(t.Duration),
 			mdCell(span),
 			escapeMD(tables),
-			escapeMD(ops),
-		))
+			escapeMD(ops))
 	}
 	buf.WriteString("\n")
 	for _, t := range transactions {
@@ -292,10 +285,10 @@ func mdTopTransactions(buf *strings.Builder, transactions []model.Transaction, o
 			mdReplayCommand(buf, t.TxnKey, cmd)
 		}
 		if id := formatTxnIdentity(t); id != "" {
-			buf.WriteString(fmt.Sprintf("`%s`: %s\n\n", escapeMD(t.TxnKey), escapeMD(id)))
+			fmt.Fprintf(buf, "`%s`: %s\n\n", escapeMD(t.TxnKey), escapeMD(id))
 		}
 		if query := transactionTextQuery(t, mode); query != "" {
-			buf.WriteString(fmt.Sprintf("> `%s`\n\n", escapeMD(query)))
+			fmt.Fprintf(buf, "> `%s`\n\n", escapeMD(query))
 		}
 		if block := formatRowImageBlock(t, opts); block != "" {
 			buf.WriteString("```text\n" + block + "\n```\n\n")
@@ -345,12 +338,11 @@ func writeMinuteTable(buf *strings.Builder, minutes []model.MinuteBucket, src mo
 	buf.WriteString("| Time | Rows | Transactions | " + i18n.T("report.label.drivingTables") + " |\n")
 	buf.WriteString("|---|---:|---:|---|\n")
 	for _, m := range minutes {
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s |\n",
+		fmt.Fprintf(buf, "| %s | %s | %s | %s |\n",
 			opts.formatTime(m.Minute),
 			formatInt(m.TotalRows),
 			formatInt(m.TxnCount),
-			escapeMD(formatDrivingTables(minuteRows(src, m), topN)),
-		))
+			escapeMD(formatDrivingTables(minuteRows(src, m), topN)))
 	}
 	buf.WriteString("\n")
 }
@@ -396,14 +388,13 @@ func mdFindings(buf *strings.Builder, findings []model.Finding, alerts []model.A
 		if txnKey == "" {
 			txnKey = i18n.T("time.notAvailable")
 		}
-		buf.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(buf, "| %s | %s | %s | %s | %s | %s |\n",
 			mdCell(finding.Severity),
 			mdCell(finding.Kind),
 			mdCell(finding.Message),
 			mdCell(txnKey),
 			opts.formatTime(finding.Minute),
-			mdCell(evidence),
-		))
+			mdCell(evidence))
 	}
 	buf.WriteString("\n")
 }

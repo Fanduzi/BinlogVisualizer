@@ -90,10 +90,6 @@ const (
 	stmtExecute = "EXECUTE binlogviz_fb_stmt_x9q;"
 	stmtDealloc = "DEALLOCATE PREPARE binlogviz_fb_stmt_x9q;"
 
-	finishPrepare = "PREPARE binlogviz_fb_finish_x9q FROM @binlogviz_finish;"
-	finishExecute = "EXECUTE binlogviz_fb_finish_x9q;"
-	finishDealloc = "DEALLOCATE PREPARE binlogviz_fb_finish_x9q;"
-
 	// noCommitSQL is the last line of a published script. It errors so a
 	// client that skips verify cannot treat the run as success. The XA is
 	// already rolled back by then. verify replaces the finish through this line.

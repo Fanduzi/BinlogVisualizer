@@ -431,10 +431,7 @@ func sqlJSONDecimal(payload []byte) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	body := text
-	if strings.HasPrefix(body, "-") {
-		body = body[1:]
-	}
+	body := strings.TrimPrefix(text, "-")
 	intPart, frac, _ := strings.Cut(body, ".")
 	if intPart == "" {
 		intPart = "0"

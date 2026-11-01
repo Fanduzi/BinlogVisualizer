@@ -1,8 +1,4 @@
 // Package compare renders self-contained HTML compare reports.
-// input: deterministic CompareResult values with structured comparability evidence produced by the compare diff engine.
-// output: compare-specific HTML pages leading with any narrative guard and visible evidence before summary cards, deltas, charts, and replay evidence.
-// pos: compare renderer used by the compare command HTML output path.
-// note: if this file changes, keep internal/compare/README.md synchronized.
 package compare
 
 import (
@@ -262,23 +258,11 @@ type htmlHotIntervalItem struct {
 func buildDDLChangeData(delta DiagnosticsDelta) htmlDDLChangeData {
 	added := make([]htmlDDLEvent, 0, len(delta.DDLChanges.Added))
 	for _, evt := range delta.DDLChanges.Added {
-		added = append(added, htmlDDLEvent{
-			Timestamp: evt.Timestamp,
-			Schema:    evt.Schema,
-			Table:     evt.Table,
-			Operation: evt.Operation,
-			Statement: evt.Statement,
-		})
+		added = append(added, htmlDDLEvent(evt))
 	}
 	removed := make([]htmlDDLEvent, 0, len(delta.DDLChanges.Removed))
 	for _, evt := range delta.DDLChanges.Removed {
-		removed = append(removed, htmlDDLEvent{
-			Timestamp: evt.Timestamp,
-			Schema:    evt.Schema,
-			Table:     evt.Table,
-			Operation: evt.Operation,
-			Statement: evt.Statement,
-		})
+		removed = append(removed, htmlDDLEvent(evt))
 	}
 	return htmlDDLChangeData{
 		BaselineCount: delta.DDLChanges.BaselineCount,

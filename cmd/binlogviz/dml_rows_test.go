@@ -69,6 +69,12 @@ func assertDMLRowsFixture(t *testing.T, name string) {
 	matchRowImages(t, viz, mb, omitted)
 	assertKnownCells(t, viz, full)
 
+	assertDMLRowRenderers(t, path, full)
+	assertDMLRowFilters(t, path)
+}
+
+func assertDMLRowRenderers(t *testing.T, path string, full bool) {
+	t.Helper()
 	text, _, err := executeAnalyzeLikeMain(t, path, "--show-rows", "--include-table", "shop.orders", "--dml", "delete")
 	if err != nil {
 		t.Fatalf("text analyze: %v", err)
@@ -104,7 +110,10 @@ func assertDMLRowsFixture(t *testing.T, name string) {
 	if !strings.Contains(html, "19.99") || !strings.Contains(html, "DML filter") {
 		t.Fatalf("html missing row values")
 	}
+}
 
+func assertDMLRowFilters(t *testing.T, path string) {
+	t.Helper()
 	filtered, _, err := executeAnalyzeLikeMain(t, path, "--dml", "delete", "--include-table", "orders", "--format", "json")
 	if err != nil {
 		t.Fatalf("dml filter: %v", err)

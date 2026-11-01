@@ -37,3 +37,7 @@ Undo SQL for selected ROW changes (ADR 0012 step 4). `internal/analyzer` holds o
 
 - Upstream: `internal/model`, `internal/mysqlexpr`, `internal/schemacatalog`, `internal/guard`, `internal/redact`, `internal/clierr`, `internal/i18n`, `internal/splitout` (ADR 0025).
 - Downstream: `internal/analyzer` and `cmd/binlogviz`. This package does not import `analyzer`.
+
+## Update Rule
+
+If members, interfaces, or dependencies change, update this file in the same change.

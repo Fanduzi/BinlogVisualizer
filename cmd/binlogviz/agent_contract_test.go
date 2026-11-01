@@ -1,7 +1,3 @@
-// input: the cobra command tree, every non-test Go file, the repository binlog fixtures, and the flashback refusal fixtures.
-// output: fails if a user-facing command has no runnable Example, if an example does not run, if a command prompts or blocks on stdin, or if flashback --plan on exit 6 omits the refusal.
-// pos: agent usage contract for help examples and non-interactive commands (production-readiness D3, D4).
-// note: if this file changes, update this header and module README.md.
 package binlogviz
 
 import (
@@ -425,11 +421,13 @@ func runStdinGuard(t *testing.T, args []string, blocked bool) (string, error) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if !blocked {
-		w.Close()
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
 	} else {
-		defer w.Close()
+		defer func() { _ = w.Close() }()
 	}
 	cmd := exec.Command(os.Args[0], "-test.run=^TestCommandsDoNotPrompt$", "-test.count=1")
 	cmd.Env = append(os.Environ(), "BINLOGVIZ_STDIN_GUARD=1", "BINLOGVIZ_STDIN_ARGS="+strings.Join(args, "\x1e"))

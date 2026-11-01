@@ -1,15 +1,5 @@
 // Package binlog verifies that hostile values inside events with a correct
 // CRC32 stop the parse before go-mysql decodes them.
-// input: the #274 spike head fixture with the JSON value of its UPDATE rows
-// event (at 493) given a self-referencing offset, and the MySQL 8.0 transaction
-// payload fixture with its declared uncompressed size changed; CRC32 footers
-// recomputed; hand-built payload bodies with a 9-byte uncompressed-size field.
-// output: an error within a time limit, never a fatal out-of-memory, infinite
-// recursion or an unbounded decompression.
-// pos: regression for BinlogQA's #274 QA at 1f01cf51 (json-selfref-m80) and
-// the transaction-payload size gap; #278 (9-byte size field reaches the size
-// checks).
-// note: if this file changes, update this header and README.md.
 package binlog
 
 import (
@@ -89,7 +79,11 @@ func otwPayloadBody(t *testing.T, sizeField []byte, frame []byte) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zw.Close()
+	defer func() {
+		if err := zw.Close(); err != nil {
+			t.Errorf("close fixture encoder: %v", err)
+		}
+	}()
 	body := []byte{replication.OTW_PAYLOAD_COMPRESSION_TYPE_FIELD, 1, byte(replication.ZSTD)}
 	body = append(body, replication.OTW_PAYLOAD_UNCOMPRESSED_SIZE_FIELD, byte(len(sizeField)))
 	body = append(body, sizeField...)

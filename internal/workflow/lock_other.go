@@ -25,3 +25,11 @@ func LockDir(root string) (func(), error) {
 	}
 	return func() { _ = f.Close(); releaseLockFile(path) }, nil
 }
+
+// releaseLockFile removes the non-unix O_EXCL lock file. It is the only
+// other removal in workflow code and touches nothing but <root>/.lock.
+func releaseLockFile(path string) {
+	if filepath.Base(path) == LockFile {
+		_ = os.Remove(path)
+	}
+}

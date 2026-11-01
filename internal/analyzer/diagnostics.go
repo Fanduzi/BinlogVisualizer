@@ -1,8 +1,4 @@
 // Package analyzer builds DBA-oriented findings and evidence strings from analyzer outputs.
-// input: alerts, minute buckets, completed transactions, and DDL timeline entries.
-// output: model.Finding slices with deterministic evidence references.
-// pos: analyzer-side diagnostics enrichment layer consumed by later report assembly.
-// note: if this file changes, update this header and README.md.
 package analyzer
 
 import (
@@ -37,7 +33,7 @@ func matchingDDLEventsForMinute(minute time.Time, ddlEvents []model.DDLEvent) []
 	minute = truncateToMinute(minute)
 	var out []model.DDLEvent
 	for _, ddl := range ddlEvents {
-		if truncateToMinute(ddl.Timestamp) == minute {
+		if truncateToMinute(ddl.Timestamp).Equal(minute) {
 			out = append(out, ddl)
 		}
 	}

@@ -53,6 +53,8 @@ binlogviz workflow describe <plan.yaml> --format json
 | Flag | 默认值 | 说明 |
 |------|--------|------|
 | `--lang` | 按环境变量检测 | 运行时输出语言，例如 `en` 或 `zh-CN`。 |
+| `--quiet`, `-q` | `false` | 不输出普通进度和信息性 stderr 行。错误和警告仍会输出；报告 stdout 不变。 |
+| `--error-format` | `text` 或 `BINLOGVIZ_ERROR_FORMAT` | 错误输出格式：`text` 或 `json`。显式标志优先于环境变量；显式指定无效值或空值是用法错误（exit 3）。JSON 错误模式也不输出普通信息性 stderr 行，但保留警告。 |
 | `--tz` | 历史 UTC 写法 | 渲染时间戳的 IANA 时区，例如 `Asia/Shanghai`。不传或 `UTC` 在文本、Markdown、HTML 里保持 ` UTC`，在 JSON 里保持 `Z`。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。空名、未知名或 `Local` 退出码是 3。 |
 | `--version`, `-v` | `false` | 仅输出版本号并退出。`binlogviz version` 在构建带有 git 信息时还会输出 commit；`binlogviz version --format json` 输出 `{"schema_version": 1, "version", "commit", "commit_time", "modified", "go_version"}`，供脚本和 agent 使用（`commit` 优先取 Go 构建信息，其次取 `-ldflags -X binlogviz/internal/version.Commit=…`/`CommitTime=…` 注入的值，两者都没有时为 `""`）。其他 `--format` 退出码为 3。 |
 
@@ -142,6 +144,7 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 | `--csv-dataset` | `tables` | `--format csv`/`tsv` 写出的数据集：`tables`、`transactions`、`patterns` 或 `fingerprints`。在其他格式下使用该标志是用法错误（exit 3）。 |
 | `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
+| `--workload-id` | none | 写入 analyze 报告的显式 workload identity（report v3 起）。只有属于同一 workload 的快照才使用相同的非空标识。 |
 | `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本，也不输出 `--show-rows` 的单元格）或 `full`（存储 SQL，含 DDL 语句文本，上限 4096 字节，截断时带标记）。MySQL 和 MariaDB 账号 DDL 里的口令字面量在任何模式下都会打码。 |
 | `--diagnostics` | `full` | `analyze --format json` 里 `diagnostics` 写多少。`full` 是现在的对象。`summary` 保留覆盖、计数、未提交组和时长分桶，把 `ddl_events` 限制为前 `--top` 条（默认 10）并写出 `ddl_events_omitted`，并把事务排行、文件分段、热点时段和 findings 置空（这些已经在 `transactions`、`timeseries`、`minutes` 和 `alerts` 里）。`off` 省略 `diagnostics`。文本、Markdown 和 HTML 忽略此标志。显式传入空字符串是用法错误（exit 3）。裁剪后的文档带 `"diagnostics_mode": "summary"` 或 `"off"`。JSON `null` 视为没有该字段。非字符串是损坏文档（exit 5）。它只限制 stdout 的大小：`--snapshot-name` 保存的快照始终是完整的 diagnostics；compare、trend 和 `snapshot save` 会拒绝裁剪过的文档（exit 9，`reduced_diagnostics`）。`snapshot list` 会标出这种文件，而不是拒绝它。 |
 | `--top-tables` | `10` | 人类可读报告中显示的 Top 表数量；JSON 保留全部表聚合结果。 |
@@ -195,7 +198,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
 - 快照名必须是单个文件名 stem，只允许字母、数字、`-`、`_`
 - `--snapshot-dir` 可以覆盖默认的 home-based 快照目录
 - 只要设置了 `--snapshot-name`，报告仍然照常写到 `stdout`
-- 保存成功提示写到 `stderr`
+- 保存成功提示通常写到 `stderr`（见上面的全局参数）
 
 如果省略 `--snapshot-dir`，BinlogViz 会保存到 `~/.binlogviz/snapshots/<name>.json`。
 
@@ -356,7 +359,7 @@ binlogviz trend --from-snapshots 'incident-*' --baseline-snapshot baseline --for
 - 显式快照模式和模式匹配模式不能混用
 - 最终解析出的 trend 集合至少要有两个 snapshot
 - 显式 `trend A B` 默认保持 A→B（`--order cli`）；模式匹配保持 snapshot store 的选取顺序
-- `--order time` 按有效窗口开始时间升序排序；如果因此改写了故事，会在 stderr 打印 `trend: reordered by window start_time: ...`
+- `--order time` 按有效窗口开始时间升序排序；如果因此改写了故事，通常会在 stderr 打印 `trend: reordered by window start_time: ...`
 - trend 优先使用 `snapshot.window.start_time`；对于较旧的快照，会回退到 `summary.start_time`
 - `--baseline-snapshot` 是可选的；除非 baseline 本身也被单独选中，否则它不会自动成为 trend 点
 - 所有 trend 输出都会包含 pattern trends；`text` 和 `json` 会暴露 `Top Pattern Trends` / `pattern_trends`，`html` 会增加一个交互式 `Pattern Trends` 分区
@@ -398,7 +401,7 @@ binlogviz snapshot delete <name>
 - `--name` 是必填参数
 - `--snapshot-dir` 可以覆盖默认的 `~/.binlogviz/snapshots`
 - 成功保存时 `stdout` 不输出报告内容
-- 成功保存时 `stderr` 输出 `Saved snapshot "<name>" to <path>`
+- 成功保存时 `stderr` 通常输出 `Saved snapshot "<name>" to <path>`
 
 支持的 flags：
 
@@ -441,7 +444,7 @@ binlogviz snapshot delete <name>
 
 - 两个名字都必须满足和 `snapshot save` 相同的快照命名校验
 - 命令会在重命名文件的同时保持快照内部 identity 与新文件名一致
-- 成功重命名时 `stderr` 输出 `Renamed snapshot "<old>" to "<new>" at <path>`
+- 成功重命名时 `stderr` 通常输出 `Renamed snapshot "<old>" to "<new>" at <path>`
 
 ### `snapshot delete`
 
@@ -450,7 +453,7 @@ binlogviz snapshot delete <name>
 规则：
 
 - 名字必须满足快照命名校验
-- 成功删除时 `stderr` 输出 `Deleted snapshot "<name>" at <path>`
+- 成功删除时 `stderr` 通常输出 `Deleted snapshot "<name>" at <path>`
 
 ## 时间与校验行为
 
@@ -1012,7 +1015,7 @@ binlogviz workflow resume <output_dir> --snapshot-dir /tmp/snapshots
 binlogviz workflow resume <output_dir> --rerun analyze:week2 --rerun compare:incident_vs_baseline
 ```
 
-`workflow resume` 从已有的输出目录继续执行之前运行过的 workflow。它会读取已有的 `manifest.json`，复用成功步骤，并重跑失败或缺失的步骤。如果所有步骤都已成功、产物完整，且没有指定 `--rerun`，命令以 0 退出，并在 `stderr` 打一行 `nothing to resume`。需要强制重跑时加 `--rerun`。
+`workflow resume` 从已有的输出目录继续执行之前运行过的 workflow。它会读取已有的 `manifest.json`，复用成功步骤，并重跑失败或缺失的步骤。如果所有步骤都已成功、产物完整，且没有指定 `--rerun`，命令以 0 退出，通常在 `stderr` 打一行 `nothing to resume`。需要强制重跑时加 `--rerun`。
 
 ### 参数
 

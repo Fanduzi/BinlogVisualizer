@@ -218,6 +218,54 @@ jobs:
             fi
           done
 
+  mysql57-compat:
+    name: MySQL 5.7 compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      mysql57:
+        image: mysql:5.7.44@sha256:dab0a802b44617303694fb17d166501de279c3031ddeb28c56ecf7fcab5ef0da
+        env:
+          MYSQL_ROOT_PASSWORD: compat57
+        options: >-
+          --health-cmd="mysql --protocol=tcp -h 127.0.0.1 -uroot -pcompat57 --batch --skip-column-names -e 'SELECT 1'"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Verify isolated MySQL 5.7
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(docker exec -e MYSQL_PWD=compat57 "${{ job.services.mysql57.id }}" mysql --protocol=socket -uroot --batch --skip-column-names -e 'SELECT VERSION()')"
+          echo "compatibility server: ${version}"
+          case "$version" in
+            5.7.*) ;;
+            *) echo "expected the isolated MySQL 5.7 service, got ${version}" >&2; exit 1 ;;
+          esac
+      - name: Deprecated-mode compatibility on MySQL 5.7
+        shell: bash
+        env:
+          BINLOGVIZ_FLASHBACK_E2E: "1"
+          BINLOGVIZ_MYSQL: docker exec -i -e MYSQL_PWD=compat57 ${{ job.services.mysql57.id }} mysql --protocol=socket -uroot
+        run: |
+          set -euo pipefail
+          log=$(mktemp)
+          go test -count=1 -timeout 4m -v ./cmd/binlogviz \
+            -run '^TestFlashbackMySQL57DeprecatedMode$' 2>&1 | tee "$log"
+          if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
+            echo "MySQL 5.7 compatibility test skipped" >&2
+            exit 1
+          fi
+          if ! grep -q -E "^--- PASS: TestFlashbackMySQL57DeprecatedMode \\(" "$log"; then
+            echo "missing --- PASS for TestFlashbackMySQL57DeprecatedMode" >&2
+            exit 1
+          fi
+
   flashback-difftest:
     name: flashback difftest
     runs-on: ubuntu-latest

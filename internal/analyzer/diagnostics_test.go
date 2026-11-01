@@ -1,8 +1,4 @@
 // Package analyzer verifies diagnostic finding builders and evidence helpers for DBA-oriented outputs.
-// input: alerts, minute buckets, completed transactions, and DDL timeline events.
-// output: regression coverage for finding mapping, evidence enrichment, and deterministic hot-interval summaries.
-// pos: focused diagnostics contract tests ahead of Analyzer integration wiring.
-// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
@@ -43,6 +39,19 @@ func TestHotIntervalEvidenceIncludesBucketAndDDLRefs(t *testing.T) {
 		if got[index] != want[index] {
 			t.Fatalf("evidence %d: expected %q, got %q", index, want[index], got[index])
 		}
+	}
+}
+
+func TestHotIntervalEvidenceMatchesDDLMinuteAcrossLocations(t *testing.T) {
+	minute := time.Date(2026, 4, 15, 11, 45, 0, 0, time.UTC)
+	zone := time.FixedZone("UTC+8", 8*60*60)
+	events := []model.DDLEvent{
+		{Timestamp: minute.Add(25 * time.Second).In(zone), Operation: "ALTER TABLE", Schema: "app", Table: "orders", BinlogPath: "mysql-bin.000010"},
+		{Timestamp: minute.Add(time.Minute).In(zone), Operation: "DROP TABLE", Schema: "app", Table: "other", BinlogPath: "mysql-bin.000010"},
+	}
+	got := HotIntervalEvidence(model.MinuteBucket{Minute: minute}, events)
+	if len(got) != 5 || got[4] != "ddl=ALTER TABLE app.orders @ mysql-bin.000010" {
+		t.Fatalf("expected only same-minute DDL across time zones, got %v", got)
 	}
 }
 

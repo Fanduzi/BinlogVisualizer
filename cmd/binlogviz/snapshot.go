@@ -84,7 +84,7 @@ func newSnapshotSaveCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprint(cmd.ErrOrStderr(), i18n.Tf("cmd.snapshot.saved", map[string]any{"Name": opts.name, "Path": savedPath}))
+			_, err = fmt.Fprint(infoWriter(cmd.ErrOrStderr()), i18n.Tf("cmd.snapshot.saved", map[string]any{"Name": opts.name, "Path": savedPath}))
 			return err
 		},
 	}
@@ -193,7 +193,7 @@ func newSnapshotRenameCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprint(cmd.ErrOrStderr(), i18n.Tf("cmd.snapshot.renamed", map[string]any{"Old": args[0], "New": args[1], "Path": newPath}))
+			_, err = fmt.Fprint(infoWriter(cmd.ErrOrStderr()), i18n.Tf("cmd.snapshot.renamed", map[string]any{"Old": args[0], "New": args[1], "Path": newPath}))
 			return err
 		},
 	}
@@ -217,7 +217,7 @@ func newSnapshotDeleteCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = fmt.Fprint(cmd.ErrOrStderr(), i18n.Tf("cmd.snapshot.deleted", map[string]any{"Name": args[0], "Path": deletedPath}))
+			_, err = fmt.Fprint(infoWriter(cmd.ErrOrStderr()), i18n.Tf("cmd.snapshot.deleted", map[string]any{"Name": args[0], "Path": deletedPath}))
 			return err
 		},
 	}

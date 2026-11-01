@@ -15,6 +15,7 @@ a shape's required keys.
 |------|----------------|
 | `jsonschema.go` | `Of` (reflection walk mirroring `encoding/json`: `json` tags, `omitempty` drops `required`, anonymous struct embeds flatten, `json:"-"` skips), the `jsonschema:"const:<json>"` tag that pins one field's schema to a value, `Union`/`OneOf` composition, `AddVersion`/`Versioned`/`UnionVersioned`/`OneOfVersioned` version-key wiring, `Marshal` (the published file: `$schema` draft, `$id` `binlogviz:schema/<id>`, `title`), and `Validate` (the first place an instance disagrees). |
 | `jsonschema_test.go` | Verifies the generated schema matches `encoding/json`'s output and rejects field drift, empty `required` is omitted, `Union` keeps only shared required keys, and `OneOf` keeps each branch's own. |
+| `jsonschema_contract_test.go` | Checks rich encoded objects, rejection paths, composition and version documents, and nested validation errors. |
 
 ## Interfaces
 
@@ -31,3 +32,7 @@ a shape's required keys.
 
 - Upstream: standard library only (`encoding/json`, `reflect`).
 - Downstream: `cmd/binlogviz schema` and the per-module `schema.go` files in `internal/report`, `internal/compare`, `internal/flashback`, `internal/trend`, and `internal/workflow` build their published schemas here.
+
+## Update Rule
+
+If members, interfaces, or dependencies change, update this file in the same change.

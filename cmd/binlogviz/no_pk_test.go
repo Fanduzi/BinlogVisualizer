@@ -36,47 +36,7 @@ func TestNoPrimaryKeyOnMySQL80FullAndMinimal(t *testing.T) {
 		}
 	}
 
-	text, _, err := executeAnalyzeLikeMain(t, fullPath)
-	if err != nil {
-		t.Fatalf("full text: %v", err)
-	}
-	section := sectionBetween(text, "=== No Primary Key ===", "===")
-	if section == "" {
-		t.Fatalf("missing no-primary-key section:\n%s", text)
-	}
-	if strings.Index(section, "shop.heap") > strings.Index(section, "shop.log") && strings.Contains(section, "shop.log") {
-		t.Fatalf("heap should rank ahead of log:\n%s", section)
-	}
-	if !strings.Contains(section, "shop.heap") || !strings.Contains(section, "shop.log") {
-		t.Fatalf("section missing lag tables:\n%s", section)
-	}
-	if strings.Contains(rankedPKLines(section), "shop.scratch") || strings.Contains(rankedPKLines(section), "shop.orders") {
-		t.Fatalf("insert-only or pk table was ranked:\n%s", section)
-	}
-	if !strings.Contains(section, "INSERT-only, not a lag risk") || !strings.Contains(section, "shop.scratch (2 INSERT)") {
-		t.Fatalf("insert-only mention missing:\n%s", section)
-	}
-	if strings.Contains(text, "primary key presence unknown") {
-		t.Fatalf("FULL text claimed key presence is unknown:\n%s", text)
-	}
-
-	md, _, err := executeAnalyzeLikeMain(t, fullPath, "--format", "markdown")
-	if err != nil {
-		t.Fatalf("markdown: %v", err)
-	}
-	if !strings.Contains(md, "## No Primary Key") || !strings.Contains(md, "shop.heap") || !strings.Contains(md, "shop.scratch (2 INSERT)") {
-		t.Fatalf("markdown missing no-pk section:\n%s", md)
-	}
-	html, _, err := executeAnalyzeLikeMain(t, fullPath, "--format", "html", "--output", "-")
-	if err != nil {
-		t.Fatalf("html: %v", err)
-	}
-	if !strings.Contains(html, `id="no-primary-key-table"`) || !strings.Contains(html, "shop.heap") || !strings.Contains(html, "shop.scratch (2 INSERT)") {
-		t.Fatal("html missing no-pk table")
-	}
-	if !strings.Contains(html, "no_primary_key") && !strings.Contains(html, "has no primary key") {
-		t.Fatal("html missing the no-pk alert")
-	}
+	assertNoPKFullRenderers(t, fullPath)
 
 	minimalPath := mustFixturePath(t, "mysql-8.0.46-no-pk-minimal.binlog")
 	minimalOut, stderr, err := executeAnalyzeLikeMain(t, minimalPath, "--format", "json", "--top-transactions", "0")
@@ -136,6 +96,51 @@ func TestNoPrimaryKeyOnMySQL80FullAndMinimal(t *testing.T) {
 	}
 	if strings.Count(minDMLText, "primary key presence unknown (binlog_row_metadata is not FULL)") != 1 || strings.Contains(minDMLText, "=== No Primary Key ===") {
 		t.Fatalf("dml minimal text:\n%s", minDMLText)
+	}
+}
+
+func assertNoPKFullRenderers(t *testing.T, fullPath string) {
+	t.Helper()
+	text, _, err := executeAnalyzeLikeMain(t, fullPath)
+	if err != nil {
+		t.Fatalf("full text: %v", err)
+	}
+	section := sectionBetween(text, "=== No Primary Key ===", "===")
+	if section == "" {
+		t.Fatalf("missing no-primary-key section:\n%s", text)
+	}
+	if strings.Index(section, "shop.heap") > strings.Index(section, "shop.log") && strings.Contains(section, "shop.log") {
+		t.Fatalf("heap should rank ahead of log:\n%s", section)
+	}
+	if !strings.Contains(section, "shop.heap") || !strings.Contains(section, "shop.log") {
+		t.Fatalf("section missing lag tables:\n%s", section)
+	}
+	if strings.Contains(rankedPKLines(section), "shop.scratch") || strings.Contains(rankedPKLines(section), "shop.orders") {
+		t.Fatalf("insert-only or pk table was ranked:\n%s", section)
+	}
+	if !strings.Contains(section, "INSERT-only, not a lag risk") || !strings.Contains(section, "shop.scratch (2 INSERT)") {
+		t.Fatalf("insert-only mention missing:\n%s", section)
+	}
+	if strings.Contains(text, "primary key presence unknown") {
+		t.Fatalf("FULL text claimed key presence is unknown:\n%s", text)
+	}
+
+	md, _, err := executeAnalyzeLikeMain(t, fullPath, "--format", "markdown")
+	if err != nil {
+		t.Fatalf("markdown: %v", err)
+	}
+	if !strings.Contains(md, "## No Primary Key") || !strings.Contains(md, "shop.heap") || !strings.Contains(md, "shop.scratch (2 INSERT)") {
+		t.Fatalf("markdown missing no-pk section:\n%s", md)
+	}
+	html, _, err := executeAnalyzeLikeMain(t, fullPath, "--format", "html", "--output", "-")
+	if err != nil {
+		t.Fatalf("html: %v", err)
+	}
+	if !strings.Contains(html, `id="no-primary-key-table"`) || !strings.Contains(html, "shop.heap") || !strings.Contains(html, "shop.scratch (2 INSERT)") {
+		t.Fatal("html missing no-pk table")
+	}
+	if !strings.Contains(html, "no_primary_key") && !strings.Contains(html, "has no primary key") {
+		t.Fatal("html missing the no-pk alert")
 	}
 }
 
@@ -203,6 +208,11 @@ func TestNoPrimaryKeyFiltersMatchTopTables(t *testing.T) {
 		t.Fatalf("time miss exit=%d stdout=%q err=%v\n%s", ExitCode(err), window, err, stderr)
 	}
 
+	assertNoPKSelectionBounds(t, path)
+}
+
+func assertNoPKSelectionBounds(t *testing.T, path string) {
+	t.Helper()
 	base, _, err := executeAnalyzeLikeMain(t, path, "--format", "json", "--top-transactions", "0")
 	if err != nil {
 		t.Fatalf("base json: %v", err)

@@ -1,8 +1,4 @@
 // Package analyzer selects high-signal patterns for bounded drilldown treatment.
-// input: finalized Patterns, Minutes, Transactions, and Alerts from the analysis pipeline.
-// output: at most 2 PatternDrilldown entries with strictly bounded nested summaries.
-// pos: post-pattern selection layer used during analyze Finalize, downstream of BuildPatterns.
-// note: if this file changes, keep internal/analyzer/README.md synchronized.
 package analyzer
 
 import (
@@ -102,13 +98,8 @@ func evaluateCandidate(
 		c.dominance = true
 	}
 
-	// Anomaly checks
-	anomaly := false
-
 	// High rows-per-txn ratio relative to peers (pattern-local signal)
-	if meanRowsPerTxn > 0 && p.AvgRowsPerTxn > meanRowsPerTxn*highRowsPerTxnRatio {
-		anomaly = true
-	}
+	anomaly := meanRowsPerTxn > 0 && p.AvgRowsPerTxn > meanRowsPerTxn*highRowsPerTxnRatio
 
 	// Strong minute concentration is only relevant for dominant patterns:
 	// a non-dominant pattern does not own enough of the workload to make

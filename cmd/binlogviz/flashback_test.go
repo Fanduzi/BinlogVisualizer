@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"unicode/utf8"
 
 	"binlogviz/internal/guard"
 )
@@ -395,59 +394,13 @@ func TestFlashbackRoundTripMySQL80(t *testing.T) {
 		t.Fatal("incident binlog has no TRANSACTION_PAYLOAD_EVENT; binlog_transaction_compression did not wrap the JSON delete")
 	}
 
-	warnSQL, warnErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.gen")
-	if err != nil {
-		t.Fatalf("gen warning path: %v\n%s", err, warnErr)
-	}
-	if !strings.Contains(warnErr, "shop.gen") || !strings.Contains(warnErr, "generated columns cannot be ruled out") || !strings.Contains(warnErr, "--schema-file") {
-		t.Fatalf("gen warning:\n%s", warnErr)
-	}
-	if !strings.Contains(warnSQL, "`virt`") || !strings.Contains(warnSQL, "`stor`") {
-		t.Fatalf("warning path dropped generated columns:\n%s", warnSQL)
-	}
-
-	schemaPath := filepath.Join(dir, "gen.sql")
-	schemaBody := "USE `shop`;\n" + e2eMySQL(t, "SHOW CREATE TABLE shop.gen")
-	if !strings.Contains(schemaBody, "GENERATED") {
-		t.Fatalf("SHOW CREATE TABLE shop.gen:\n%s", schemaBody)
-	}
-	if err := os.WriteFile(schemaPath, []byte(schemaBody), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	genSQL, genErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.gen", "--schema-file", schemaPath)
-	if err != nil {
-		t.Fatalf("gen schema file: %v\n%s\nschema:\n%s", err, genErr, schemaBody)
-	}
-	if strings.Contains(genErr, "generated columns cannot be ruled out") || strings.Contains(genSQL, "`virt`") || strings.Contains(genSQL, "`stor`") {
-		t.Fatalf("schema file sql:\n%s\nstderr:\n%s", genSQL, genErr)
-	}
-
-	cjSQL, cjErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.cj")
-	if err != nil {
-		t.Fatalf("compressed json: %v\n%s", err, cjErr)
-	}
-	if !strings.Contains(cjSQL, "JSON_OBJECT(") || strings.Contains(cjErr, "JSON") {
-		t.Fatalf("compressed json sql:\n%s\nstderr:\n%s", cjSQL, cjErr)
-	}
-
-	esSQL, esErr, err := executeFlashbackLikeMain(t, incidentPath, "--include-table", "shop.es")
-	if err != nil {
-		t.Fatalf("enum: %v\n%s", err, esErr)
-	}
-	if !utf8.ValidString(esSQL) || strings.Contains(esSQL, "café") || strings.Contains(esSQL, "thé") || strings.Contains(esSQL, "中文") || !strings.Contains(esSQL, "INSERT INTO `shop`.`es`") {
-		t.Fatalf("enum sql:\n%s", esSQL)
-	}
+	genSQL, cjSQL, esSQL := prepareFlashbackRoundTripSQL(t, dir, incidentPath)
 
 	sql, stderr, err := executeFlashbackLikeMain(t, append(closed, "--exclude-gtids", executed)...)
 	if err != nil {
 		t.Fatalf("flashback exclude %s: %v\n%s", executed, err, stderr)
 	}
-	if !strings.Contains(sql, "18446744073709551615") || !strings.Contains(sql, "4000000000") || !strings.Contains(sql, "3000000000") || strings.Contains(sql, "-294967296") || strings.Contains(sql, "-1294967296") || !strings.Contains(sql, "JSON_OBJECT(") || !strings.Contains(sql, "_latin1 ") || !strings.Contains(sql, "_utf16 ") {
-		t.Fatalf("live flashback SQL:\n%s", sql)
-	}
-	if strings.Contains(sql, "`virt`") || strings.Contains(sql, "`stor`") {
-		t.Fatalf("wrote generated columns:\n%s", sql)
-	}
+	assertRoundTripFlashbackSQL(t, sql)
 	e2eMySQL(t, committingFlashback(t, sql))
 	restored := e2eMySQL(t, checksumSQL)
 	if restored != beforeSum {
@@ -1100,75 +1053,7 @@ COMMIT;`)
 	if got := e2eMySQL(t, matchSum); got != matchAfter {
 		t.Fatalf("guard apply changed rows\nbefore:\n%s\nafter:\n%s", matchAfter, got)
 	}
-	assertGuardForceKeepsRows(t, "FORCE", sql, matchSum, matchAfter, func(out string) {
-		msg := "binlogviz: schema file does not match the target: p183.t.c, p183.heap.note"
-		errLine := mysqlErrorLine(out, "1231")
-		msgAt := strings.Index(out, msg)
-		errAt := strings.Index(out, errLine)
-		if msgAt < 0 || errLine == "" || errAt < 0 || msgAt > errAt {
-			t.Fatalf("guard message was not printed before the error\n%s", out)
-		}
-		if strings.Contains(errLine, ",") || strings.Contains(errLine, "(2 columns)") || !strings.Contains(errLine, "p183.t.c") || !strings.Contains(errLine, "p183.heap.note") || !strings.Contains(errLine, " | ") {
-			t.Fatalf("error line: %s", errLine)
-		}
-		if mysqlErrorLine(out, "1792") == "" {
-			t.Fatalf("missing read-only refusal\n%s", out)
-		}
-	})
-	assertGuardForceKeepsRows(t, "AUTOCOMMIT0", "SET SESSION autocommit=0;\n"+sql+"COMMIT;\n", matchSum, matchAfter, func(out string) {
-		errLine := mysqlErrorLine(out, "1231")
-		if errLine == "" || !strings.Contains(errLine, "p183.t.c") || !strings.Contains(errLine, "p183.heap.note") || mysqlErrorLine(out, "1792") == "" {
-			t.Fatalf("autocommit=0 guard:\n%s", out)
-		}
-	})
-	// #194/#195: this server evaluates the rendered version check for other servers' version strings.
-	assertGuardVersionChoice(t, sql)
-	// #196: a block cut off from the header stays read-only.
-	if cut := strings.Index(sql, "-- gtid:"); cut > 0 {
-		// The fragment has no procedure. The gate sets the session read-only,
-		// and a following write is ERROR 1792.
-		probe := "INSERT INTO p183.t (id, x) VALUES (999, 'x');\n"
-		assertGuardForceKeepsRows(t, "HEADERLESS", sql[cut:]+probe, matchSum, matchAfter, func(out string) {
-			if mysqlErrorLine(out, "1792") == "" {
-				t.Fatalf("header-less block was not read-only\n%s", out)
-			}
-		})
-		// #197: a stale unlock and another script's token left in the
-		// session do not unlock this script's blocks.
-		stale := "SET @binlogviz_unlock_sql = 'SET SESSION TRANSACTION READ WRITE';\nSET @binlogviz_ok = '0123456789abcdef';\n"
-		assertGuardForceKeepsRows(t, "STALE_TOKEN", stale+sql[cut:]+probe, matchSum, matchAfter, func(out string) {
-			if mysqlErrorLine(out, "1792") == "" {
-				t.Fatalf("stale token unlocked a block\n%s", out)
-			}
-		})
-		// #197: the statements of a block run in a new, writable session (an
-		// interactive client that reconnected inside the block) change no row.
-		var dml strings.Builder
-		for _, stmt := range undoStatements(sql[cut:]) {
-			if strings.HasPrefix(stmt, "INSERT ") || strings.HasPrefix(stmt, "UPDATE ") || strings.HasPrefix(stmt, "DELETE ") {
-				dml.WriteString(stmt + ";\n")
-			}
-		}
-		if dml.Len() == 0 {
-			t.Fatalf("no undo statements in:\n%s", sql)
-		}
-		assertGuardForceKeepsRows(t, "RECONNECT_DML", dml.String(), matchSum, matchAfter, func(out string) {
-			if mysqlErrorLine(out, "1242") == "" {
-				t.Fatalf("token mismatch was not an error\n%s", out)
-			}
-		})
-	}
-	// #196: a server that refuses new prepared statements still cannot write.
-	prevPrep := strings.TrimSpace(e2eMySQL(t, "SELECT @@GLOBAL.max_prepared_stmt_count"))
-	e2eMySQL(t, "SET GLOBAL max_prepared_stmt_count = 0")
-	restorePrep := func() { e2eMySQL(t, "SET GLOBAL max_prepared_stmt_count = "+prevPrep) }
-	t.Cleanup(func() { _, _ = e2eMySQLResult(t, "SET GLOBAL max_prepared_stmt_count = "+prevPrep) })
-	assertGuardForceKeepsRows(t, "NOPREPARE", sql, matchSum, matchAfter, func(out string) {
-		if mysqlErrorLine(out, "1461") == "" {
-			t.Fatalf("max_prepared_stmt_count=0 guard:\n%s", out)
-		}
-	})
-	restorePrep()
+	assertTargetGuardFailureModes(t, sql, matchSum, matchAfter)
 	heap := e2eMySQL(t, "SELECT x, note, n FROM p183.heap ORDER BY note")
 	if !strings.Contains(heap, "kept-note") || !strings.Contains(heap, "DUP") {
 		t.Fatalf("duplicate rows:\n%s", heap)
@@ -1218,32 +1103,7 @@ COMMIT;`)
 		t.Fatalf("json restored\nwant:\n%s\ngot:\n%s\nsql:\n%s", stored, got, sql)
 	}
 
-	const wideSum = "CHECKSUM TABLE p186.guardwide"
-	wideAfter := e2eMySQL(t, wideSum)
-	var wideSchema strings.Builder
-	wideSchema.WriteString("USE `p186`;\nCREATE TABLE `guardwide` (\n  `id` int NOT NULL,\n")
-	for i := 1; i <= 12; i++ {
-		fmt.Fprintf(&wideSchema, "  `col_%02d` varchar(40) GENERATED ALWAYS AS (md5(`id`)) STORED,\n", i)
-	}
-	wideSchema.WriteString("  PRIMARY KEY (`id`)\n);\n")
-	wideFile := filepath.Join(t.TempDir(), "p186.sql")
-	if err := os.WriteFile(wideFile, []byte(wideSchema.String()), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	wideSQL, stderr, err := executeFlashbackLikeMain(t, asciiPath, "--schema-file", wideFile, "--include-table", "p186.guardwide")
-	if err != nil {
-		t.Fatalf("wide guard: %v\n%s", err, stderr)
-	}
-	assertGuardForceKeepsRows(t, "WIDE_FORCE", wideSQL, wideSum, wideAfter, func(out string) {
-		errLine := mysqlErrorLine(out, "1231")
-		if errLine == "" || !strings.Contains(errLine, "(12 columns)") || !strings.Contains(errLine, "p186.guardwide.col_01") || !strings.Contains(errLine, "p186.guardwide.col_05") || strings.Contains(errLine, "p186.guardwide.col_06") || strings.Contains(errLine, ",") {
-			t.Fatalf("wide error line: %s\n%s", errLine, out)
-		}
-		if !strings.Contains(out, "p186.guardwide.col_12") || mysqlErrorLine(out, "1792") == "" {
-			t.Fatalf("wide guard output:\n%s", out)
-		}
-	})
-	assertGuardForceKeepsRows(t, "WIDE_AUTOCOMMIT0", "SET SESSION autocommit=0;\n"+wideSQL+"COMMIT;\n", wideSum, wideAfter, nil)
+	assertWideTargetGuard(t, asciiPath)
 }
 
 func wideGuardCols() string {

@@ -57,3 +57,7 @@ Deleting the tag changes the digest, so the seal covers it.
 
 - Upstream: standard library only (`crypto/sha256`, `crypto/rand`, `bufio`, `io`).
 - Downstream: `internal/flashback` — the planner walks spilled rows and collects the omitted `Col`s, `render` emits pieces through `Write`, and `--output-dir` split files carry per-file cols; `cmd/binlogviz flashback verify` calls `Verify`/`CopyApply`.
+
+## Update Rule
+
+If members, interfaces, or dependencies change, update this file in the same change.

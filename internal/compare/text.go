@@ -1,8 +1,4 @@
 // Package compare renders human-readable text reports for compare results.
-// input: deterministic CompareResult values with structured comparability evidence produced by the compare diff engine.
-// output: fixed-section text compare reports leading with any narrative guard, visible identity/provenance/object-selector evidence, and named byte coverage, rendered through report.text.compare.* i18n keys.
-// pos: compare renderer used by the compare command text output path.
-// note: if this file changes, update this header and module README.md.
 package compare
 
 import (
@@ -109,39 +105,7 @@ func RenderText(result CompareResult) (string, error) {
 		}
 	}
 
-	fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.topPatternChanges"))
-	if len(result.PatternChanges) == 0 {
-		fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.noneList"))
-	} else {
-		drilldownMap := make(map[string]PatternDrilldown, len(result.PatternDrilldowns))
-		for _, d := range result.PatternDrilldowns {
-			drilldownMap[d.PatternKey] = d
-		}
-		for _, change := range result.PatternChanges {
-			fmt.Fprintf(
-				&b,
-				"- %s: %d -> %d (%+d, %s), txns %d -> %d (%+d)\n",
-				change.Label,
-				change.BaselineRows,
-				change.CurrentRows,
-				change.DeltaRows,
-				formatDeltaPercent(change.CurrentRows, change.BaselineRows, change.DeltaPercent),
-				change.BaselineTxnCount,
-				change.CurrentTxnCount,
-				change.DeltaTxnCount,
-			)
-			if strings.TrimSpace(change.SampleQuerySummary) != "" {
-				fmt.Fprint(&b, i18n.Tf("report.text.compare.queryLine", map[string]any{"Query": change.SampleQuerySummary}))
-			}
-			if dd, ok := drilldownMap[change.PatternKey]; ok {
-				fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.drilldown"))
-				fmt.Fprint(&b, i18n.Tf("report.text.compare.whyLine", map[string]any{"Why": dd.WhySelected}))
-				for _, kp := range dd.KeyPoints {
-					fmt.Fprintf(&b, "    %s: %s\n", kp.Label, kp.Summary)
-				}
-			}
-		}
-	}
+	renderComparePatternsText(&b, result)
 
 	fmt.Fprintf(&b, "%s", i18n.T("report.text.compare.operationMix"))
 	if len(result.OperationMix) == 0 {
@@ -171,6 +135,42 @@ func RenderText(result CompareResult) (string, error) {
 	}
 
 	return b.String(), nil
+}
+
+func renderComparePatternsText(b *strings.Builder, result CompareResult) {
+	fmt.Fprintf(b, "%s", i18n.T("report.text.compare.topPatternChanges"))
+	if len(result.PatternChanges) == 0 {
+		fmt.Fprintf(b, "%s", i18n.T("report.text.compare.noneList"))
+	} else {
+		drilldownMap := make(map[string]PatternDrilldown, len(result.PatternDrilldowns))
+		for _, d := range result.PatternDrilldowns {
+			drilldownMap[d.PatternKey] = d
+		}
+		for _, change := range result.PatternChanges {
+			fmt.Fprintf(
+				b,
+				"- %s: %d -> %d (%+d, %s), txns %d -> %d (%+d)\n",
+				change.Label,
+				change.BaselineRows,
+				change.CurrentRows,
+				change.DeltaRows,
+				formatDeltaPercent(change.CurrentRows, change.BaselineRows, change.DeltaPercent),
+				change.BaselineTxnCount,
+				change.CurrentTxnCount,
+				change.DeltaTxnCount,
+			)
+			if strings.TrimSpace(change.SampleQuerySummary) != "" {
+				fmt.Fprint(b, i18n.Tf("report.text.compare.queryLine", map[string]any{"Query": change.SampleQuerySummary}))
+			}
+			if dd, ok := drilldownMap[change.PatternKey]; ok {
+				fmt.Fprintf(b, "%s", i18n.T("report.text.compare.drilldown"))
+				fmt.Fprint(b, i18n.Tf("report.text.compare.whyLine", map[string]any{"Why": dd.WhySelected}))
+				for _, kp := range dd.KeyPoints {
+					fmt.Fprintf(b, "    %s: %s\n", kp.Label, kp.Summary)
+				}
+			}
+		}
+	}
 }
 
 func formatLargestTxnLine(delta TxnSizeCompare) string {

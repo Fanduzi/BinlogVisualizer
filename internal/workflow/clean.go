@@ -141,7 +141,7 @@ func DiscoverCleanCandidatesWithOptions(outputDir string, manifest Manifest, opt
 			if entry.IsDir() {
 				continue
 			}
-			if ext := filepath.Ext(entry.Name()); ext != ".json" && !(ext == ".html" && kind != "analyze") {
+			if ext := filepath.Ext(entry.Name()); ext != ".json" && (ext != ".html" || kind == "analyze") {
 				continue
 			}
 			rel := kind + "/" + entry.Name()

@@ -339,7 +339,7 @@ func TestProcedureDropsItselfBeforeRollbackSignal(t *testing.T) {
 	msg := strings.Index(finish, rollbackMessage)
 	restore := strings.Index(finish, "SET SESSION sql_mode = IFNULL(@binlogviz_saved_mode")
 	bad := strings.Index(finish, "SET SESSION sql_mode = IFNULL(@binlogviz_fail")
-	if drop < 0 || mark < 0 || msg < 0 || restore < 0 || bad < 0 || !(drop < mark && mark < msg && msg < restore && restore < bad) {
+	if drop < 0 || mark < 0 || msg < 0 || restore < 0 || bad < 0 || (drop >= mark || mark >= msg || msg >= restore || restore >= bad) {
 		t.Fatalf("client must drop, then mark a commit, then say so, then restore the mode, then fail\n%s", finish)
 	}
 }

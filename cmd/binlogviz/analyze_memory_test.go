@@ -117,7 +117,7 @@ func runAnalyzeMem(t *testing.T, dir string, n int) analyzeMemRun {
 	t.Helper()
 	path := filepath.Join(dir, "mysql-bin."+strconv.Itoa(n))
 	size := writeSyntheticBinlog(t, path, n)
-	defer os.Remove(path)
+	defer func() { _ = os.Remove(path) }()
 	r := measureAnalyzeHeap(t, path, analyzer.DefaultOptions(), n)
 	r.txns, r.fileBytes = n, size
 	return r
@@ -230,7 +230,7 @@ func writeSyntheticBinlog(t *testing.T, path string, n int) int64 {
 	t.Helper()
 	tp := loadSyntheticTemplate(t)
 	var out bytes.Buffer
-	emit := tp.writer(&out)
+	emit := tp.writer(t, &out)
 	for i := 0; i < n; i++ {
 		for j := range tp.tmpl {
 			emit(tp.event(j, i, i))
@@ -264,14 +264,22 @@ func (tp syntheticTemplate) sid() string {
 
 // writer writes the magic and header events to out and returns an emit
 // function that appends one event with end_log_pos and CRC32 fixed.
-func (tp syntheticTemplate) writer(out io.Writer) func([]byte) {
-	out.Write(tp.magic)
+func (tp syntheticTemplate) writer(t testing.TB, out io.Writer) func([]byte) {
+	t.Helper()
+	write := func(p []byte) {
+		t.Helper()
+		n, err := out.Write(p)
+		if err != nil || n != len(p) {
+			t.Fatalf("write synthetic binlog: wrote %d of %d bytes: %v", n, len(p), err)
+		}
+	}
+	write(tp.magic)
 	pos := uint32(len(tp.magic))
 	emit := func(ev []byte) {
 		pos += uint32(len(ev))
 		binary.LittleEndian.PutUint32(ev[13:], pos)
 		binary.LittleEndian.PutUint32(ev[len(ev)-4:], crc32.ChecksumIEEE(ev[:len(ev)-4]))
-		out.Write(ev)
+		write(ev)
 	}
 	for _, ev := range tp.header {
 		emit(append([]byte(nil), ev...))

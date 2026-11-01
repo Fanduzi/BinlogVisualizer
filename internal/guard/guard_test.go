@@ -230,6 +230,8 @@ func TestGuardMatchOnServer(t *testing.T) {
 		if err != nil || !strings.Contains(out, "n\n1\n") {
 			t.Fatalf("matching target: %v\n%s", err, out)
 		}
-		s.run(t, "DROP DATABASE bvguard_ok;\n")
+		if out, err := s.run(t, "DROP DATABASE bvguard_ok;\n"); err != nil {
+			t.Fatalf("cleanup: %v\n%s", err, out)
+		}
 	}
 }
