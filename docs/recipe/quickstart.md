@@ -2,9 +2,9 @@
 
 This guide is the shortest path from installation to a useful `binlogviz analyze` run.
 
-**What it is:** a fast ROW-binlog summary — hot tables, write shapes, before/after compare. A 510 MB file is typically a few seconds.
+**What it is:** a fast ROW-binlog summary — hot tables, write shapes, before/after compare, read in one streaming pass.
 
-**What it is not:** a STATEMENT/MIXED full-file analyzer (those runs come back empty or undercounted). Printed positions are file evidence; use them as `mysqlbinlog --start-position` only when the span covers the transaction events, not an XID-only interval.
+**What it is not:** a STATEMENT/MIXED full-file analyzer (those runs come back empty or undercounted). Printed positions are file evidence, not restore points — see [Transaction positions](../reference/analyze-behavior.md#transaction-positions-and-mysqlbinlog).
 
 ## 1. Install or Verify BinlogViz
 

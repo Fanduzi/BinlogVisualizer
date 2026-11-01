@@ -23,7 +23,7 @@ Related notes:
 
 ## v0.38.0
 
-Release date: 2026-11-02
+Release date: 2026-10-31
 
 Highlights:
 
@@ -84,7 +84,7 @@ Related notes:
 
 ## v0.36.0
 
-Release date: 2026-10-28
+Release date: 2026-10-29
 
 Highlights:
 

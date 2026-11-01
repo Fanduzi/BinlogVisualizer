@@ -66,7 +66,7 @@ var (
 	landingMetas = []string{
 		`<meta charset="UTF-8" />`,
 		`<meta name="viewport" content="width=device-width, initial-scale=1.0" />`,
-		`<meta name="description" content="BinlogViz is a local CLI for MySQL ROW binlog analysis, named snapshot management, and visual compare review. Find hot tables, large transactions, write spikes, incident-window workload changes, and compare saved snapshots or exported JSON reports as text, JSON, or chart-based HTML." />`,
+		`<meta name="description" content="BinlogViz is a local CLI for MySQL ROW binlog analysis, undo and replay, and visual compare review. Find hot tables, large transactions, write spikes, and incident-window workload changes; read a live server; print SQL that reverses or replays the selected rows; compare saved snapshots or exported JSON reports as text, JSON, or chart-based HTML." />`,
 	}
 )
 

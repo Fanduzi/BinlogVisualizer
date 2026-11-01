@@ -1,7 +1,7 @@
 // Package binlogviz checks that text, Markdown, JSON, and HTML list one ordered sequence of key transactions.
 // input: analyze on committed ROW fixtures under internal/binlog/testdata, including a window that clips one transaction (partial_start evidence).
 // output: a failure when any format's ordered key-transaction sequence differs from JSON, or when HTML evidence names a transaction outside it.
-// pos: the A3 check in docs/production-readiness.md. It runs under go test ./...
+// pos: the A3 check in docs/engineering/production-readiness.md. It runs under go test ./...
 // note: if this file changes, update this header and that checklist row.
 package binlogviz
 

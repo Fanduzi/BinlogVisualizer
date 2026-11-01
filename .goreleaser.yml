@@ -36,6 +36,7 @@ archives:
     files:
       - README.md
       - README_ZH.md
+      - LICENSE
       - src: docs/agents/USING-BINLOGVIZ.md
         dst: docs/agents/USING-BINLOGVIZ.md
       - src: docs/agents/USING-BINLOGVIZ.zh-CN.md

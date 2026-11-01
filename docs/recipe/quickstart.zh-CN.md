@@ -2,9 +2,9 @@
 
 本指南提供从安装到第一次拿到有价值 `binlogviz analyze` 结果的最短路径。
 
-**适用：** ROW binlog 的热表摘要、写入形态、上线前后 compare。510 MB 级大约数秒。
+**适用：** ROW binlog 的热表摘要、写入形态、上线前后 compare，对文件做一次流式扫描。
 
-**不适用：** STATEMENT / 默认 MIXED（会空或只统计 ROW 子集）。报告位置是文件证据；只有跨度覆盖事务事件、而不是只有 XID 区间时，才当作 `mysqlbinlog --start-position`。
+**不适用：** STATEMENT / 默认 MIXED（会空或只统计 ROW 子集）。报告里的位置是文件证据，不是恢复点——见 [事务位置与 mysqlbinlog](../reference/analyze-behavior.zh-CN.md#事务位置与-mysqlbinlog)。
 
 ## 1. 安装或验证 BinlogViz
 

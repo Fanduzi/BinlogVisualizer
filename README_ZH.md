@@ -14,9 +14,9 @@
 
 BinlogViz 是一个面向 DBA 和运维人员的本地 MySQL `ROW` binlog 分析 CLI。它专门用于回答真实运维问题：哪些表写入最重、哪些事务异常大、尖峰发生在哪些分钟、某个故障窗口内的负载究竟发生了什么。
 
-BinlogViz 做的是 **ROW binlog 的快速摘要**：热表、写入形态、上线前后 compare。510 MB 级文件通常只要数秒。
+BinlogViz 做的是 **ROW binlog 的快速摘要**：热表、写入形态、上线前后 compare，对文件做一次流式扫描。
 
-它**不是** STATEMENT / MIXED 全量分析器——这类文件会空成功或只统计到 ROW 子集。报告里的位置是文件证据；只有当跨度覆盖事务事件、而不是只有 XID 区间时，才把它当作 `mysqlbinlog --start-position`。
+它**不是** STATEMENT / MIXED 全量分析器——这类文件会空成功或只统计到 ROW 子集。报告里的位置是文件证据，不是恢复点；什么时候可以拿来用见 [Analyze 行为细节](docs/reference/analyze-behavior.zh-CN.md)。
 
 ## 截图
 
@@ -39,7 +39,7 @@ brew tap Fanduzi/binlogviz
 brew install --cask binlogviz
 ```
 
-这条路径会安装预编译 release artifact，并在安装时移除 macOS quarantine 属性；用户不需要额外安装 DuckDB。
+这条路径会安装预编译 release artifact，并在安装时移除 macOS quarantine 属性。不需要其他依赖：DuckDB 已经编进二进制，供 `--detail-store duckdb` 使用。
 
 ### Linux：tarball 或 install.sh
 
@@ -58,11 +58,9 @@ grep " binlogviz_${VERSION#v}_linux_amd64.tar.gz\$" "binlogviz_${VERSION#v}_chec
   install "binlogviz_${VERSION#v}/binlogviz" /usr/local/bin/binlogviz
 ```
 
-ARM Linux 把 `linux_amd64` 换成 `linux_arm64`。macOS 不用 Homebrew 时，把上面命令里的 `linux_amd64` 换成 `darwin_arm64` 或 `darwin_amd64`，把 `sha256sum -c -` 换成 `shasum -a 256 -c -`。checksum 不符时会打印 `FAILED` 并以非零退出，此时不要继续。所有归档见 [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases)。
+ARM Linux 用 `linux_arm64`；macOS 不用 Homebrew 时用 `darwin_arm64`/`darwin_amd64`，并把 `sha256sum -c -` 换成 `shasum -a 256 -c -`。checksum 不符时会打印 `FAILED` 并以非零退出。所有归档见 [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases)。
 
-`install.sh` 安装最新版本；sha256 与 `checksums.txt` 不符或找不到 sha256 工具时拒绝安装（确实要跳过校验时传 `--no-verify`）；支持 `--version vX.Y.Z`、`--bin-dir DIR` 和 `--dry-run`。
-
-tarball 解压出来是散落的文件（二进制、两份 README、`docs/`、`testdata/`、`incident.yaml`），所以上面的命令先解压到单独的目录。写入 `/usr/local/bin` 需要 root：用 `sudo sh ./install.sh` 和 `sudo install …`，或者用 `sh ./install.sh --bin-dir ~/.local/bin` 装到你自己有权限的目录。
+`install.sh` 默认校验 sha256（`--no-verify` 跳过），支持 `--version vX.Y.Z`、`--bin-dir DIR` 和 `--dry-run`。tarball 解压出来是散落的文件（二进制、两份 README、`LICENSE`、`docs/`、`testdata/`、`incident.yaml`），所以先解压到单独的目录。写入 `/usr/local/bin` 需要 root：用 `sudo`，或者用 `sh ./install.sh --bin-dir ~/.local/bin` 装到自己有权限的目录。
 
 ### 备选：从源码构建
 
@@ -162,17 +160,20 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 # Markdown — 粘贴到 GitHub issue、wiki 或文档
 binlogviz analyze mysql-bin.000123 --format markdown > report.md
 
-# HTML — 默认写入文件（例如 mysql-bin.000123.html）
+# HTML — 在终端里运行会写入当前目录的 mysql-bin.000123.html
 binlogviz analyze mysql-bin.000123 --format html
+
+# HTML — 重定向后文档走 stdout，不生成文件
+binlogviz analyze mysql-bin.000123 --format html > report.html
 
 # HTML — 指定输出路径
 binlogviz analyze mysql-bin.000123 --format html --output report.html
 
-# HTML — 输出到 stdout 以供管道使用（旧行为）
+# HTML — 即使有终端也强制走 stdout
 binlogviz analyze mysql-bin.000123 --format html --output -
 ```
 
-HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）、高信号写入模式的可选模式钻取（Pattern Drilldowns），以及五主题切换器。
+HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操作类型分布）、可选模式钻取，以及五主题切换器。
 
 ## 找到并撤销误改的行
 
@@ -346,7 +347,8 @@ Cobra 命令层把规范化后的 binlog 事件流式交给分析器，再把结
 
 ## 环境要求
 
-- 本地 MySQL `ROW` 格式 binlog 文件
+- MySQL 5.7+ 和 MariaDB 10.11+（已实测的版本）的 `ROW` binlog，来自磁盘、stdin，或直接读取存活服务器
+- `flashback`/`redo`：需要 MySQL 8.0+ 且写入时带 `FULL` 行镜像和行元数据的 binlog；生成的脚本只能在 MySQL 目标上执行
 - 如果从源码构建，需要 Go 1.26.10+
 
 ## License
