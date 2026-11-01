@@ -177,6 +177,8 @@ The HTML report has interactive charts (rows/txns per minute, top tables, operat
 
 ## Find and Undo Bad Rows
 
+`flashback` and `redo` print SQL; you review it and run it. Neither connects to a database to write, and both are experimental.
+
 ### Find the bad DELETE and see its rows
 
 ```bash
@@ -198,7 +200,7 @@ The report's DDL Timeline lists each `DROP TABLE`, `TRUNCATE`, and `ALTER` with 
 
 ### Undo the bad rows
 
-Find the transaction with `analyze`, the DDL Timeline, or `--show-rows`. Then print SQL that reverses only those row changes — from local binlogs or a live server (`--host` plus the remote flags; the read is bounded by the manifest at connect time). Review the script. Apply it yourself. Flashback does not connect to a database except to read remote binlogs. Flashback is experimental: review the generated SQL before applying it.
+Find the transaction with `analyze`, the DDL Timeline, or `--show-rows`, then print SQL that reverses only those row changes — from local binlogs or a live server (`--host` plus the remote flags; the read is bounded by the manifest at connect time).
 
 ```bash
 binlogviz analyze mysql-bin.000123 \
@@ -223,7 +225,7 @@ binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 binlogviz redo mysql-bin.000123 --include-table shop.orders > redo.sql
 ```
 
-`redo` prints replayable forward SQL — the `2sql` direction — for the same inputs and selectors as `analyze`, including bounded remote reads. `--output-dir` splits the replay into ordered parts (ADR 0025). Redo is experimental: review the script before applying it. [Requirements and refusals](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax).
+`redo` prints replayable forward SQL — the `2sql` direction — for the same inputs and selectors as `analyze`, including bounded remote reads. `--output-dir` splits the replay into ordered parts (ADR 0025). [Requirements and refusals](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax).
 
 ## Snapshots, Compare, Trend, and Workflow
 

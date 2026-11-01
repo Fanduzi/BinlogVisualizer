@@ -177,6 +177,8 @@ HTML 报告包含交互式图表（每分钟行数/事务数、热点表、操�
 
 ## 找到并撤销误改的行
 
+`flashback` 和 `redo` 只打印 SQL：你审阅、你自己执行，两者都不会连库写入，并且都是实验功能。
+
 ### 找到误删并看到被删的行
 
 ```bash
@@ -198,7 +200,7 @@ binlogviz analyze mysql-bin.000123
 
 ### 撤销误改的行
 
-先用 `analyze`、DDL 时间线或 `--show-rows` 找到那个事务，再打印只撤销这些行变更的 SQL——本地 binlog 或在线服务器（`--host` 加远程参数；读取以连接时的 binlog 清单为界）都可以。先审脚本，再自己执行。除了用 `--host` 读取远程 binlog 之外，flashback 不连接数据库。flashback 是实验功能：执行生成的 SQL 之前必须先审阅。
+先用 `analyze`、DDL 时间线或 `--show-rows` 找到那个事务，再打印只撤销这些行变更的 SQL——本地 binlog 或在线服务器（`--host` 加远程参数；读取以连接时的 binlog 清单为界）都可以。
 
 ```bash
 binlogviz analyze mysql-bin.000123 \
@@ -223,7 +225,7 @@ binlogviz flashback verify flashback.sql | mysql --default-character-set=utf8mb4
 binlogviz redo mysql-bin.000123 --include-table shop.orders > redo.sql
 ```
 
-`redo` 打印可重放的前滚 SQL——即 `2sql` 方向——输入和选择条件与 `analyze` 相同，包括有界远端读取。`--output-dir` 把重演拆成有序的部分文件（ADR 0025）。redo 是实验功能：执行前先审阅脚本。[前提条件和拒绝情形](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md#redo-命令语法)。
+`redo` 打印可重放的前滚 SQL——即 `2sql` 方向——输入和选择条件与 `analyze` 相同，包括有界远端读取。`--output-dir` 把重演拆成有序的部分文件（ADR 0025）。[前提条件和拒绝情形](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md#redo-命令语法)。
 
 ## 快照、对比、趋势与 workflow
 
