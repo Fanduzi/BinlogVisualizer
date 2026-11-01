@@ -48,6 +48,21 @@ A `No Primary Key` section lists tables that received UPDATE or DELETE rows and 
 
 On a replica binlog from MySQL 8.0 or newer with `log_replica_updates`, `Replica Apply Delay` follows Busiest Minutes. Delay is immediate commit time minus original commit time, and it assumes the source and replica clocks agree. The section gives the max and p95 delay, the minute where delay peaked, and the slowest transactions: GTID, transaction start file:byte, both commit times, delay, and the tables in that transaction. `--top` limits that list. A source binlog, where the two timestamps are equal, is one line and no table. MySQL 5.7 and MariaDB print `commit timestamps unavailable`.
 
+## Measured throughput
+
+Measured 2026-11-01 with a binary built from this tree, on an Apple M4 Pro laptop with the input on the internal SSD. Both binlogs were written by a local MySQL 8.0.45 with `binlog_row_image=FULL` and `binlog_row_metadata=FULL`. Every run used `-q` and wrote the report to `/dev/null`; peak RSS is `maximum resident set size` from `/usr/bin/time -l`, over three runs.
+
+| Workload | Input | Transactions | Rows | Events | Warm wall time | Peak RSS |
+|---|---|---|---|---|---|---|
+| Bulk load, three large transactions | 141,910,241 bytes | 3 | 640,001 | 17,475 | 0.45 s | 40 MB |
+| 40,000 small transactions | 99,478,756 bytes | 40,002 | 2,052,815 | 200,518 | 1.27 s | 40 MB |
+
+The first run over freshly written files took 1.6 s instead of 0.45 s on the bulk file, because the pages were not in the page cache yet.
+
+Cost follows events, not bytes. The bulk file runs at about 312 MB/s and the small-transaction file at about 78 MB/s, so a 500 MB range of ordinary small transactions lands near 6.5 s on this machine while the same bytes of bulk load land near 1.6 s. RSS stayed at 40 MB for text and JSON, and 51 MB for `--format html` on the bulk file.
+
+This is generated data on one machine, not a capture of your workload. Use it to see the shape of the cost, then measure your own with the command above.
+
 ## Analyze performance gate
 
 For incident triage, the target for a 1 GB single-binlog `analyze` run is 10 seconds on the target DBA environment. Runs above 15 seconds should be treated as performance failures and profiled with `pprof`. Hot-row tracking does not keep a map of every row in that file: it keeps at most 8192 primary keys. Past that, a new key replaces the least-touched key and the report marks the inherited count approximate.
