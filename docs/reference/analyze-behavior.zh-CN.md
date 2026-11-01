@@ -50,7 +50,7 @@ MySQL 8.0 及以上、并且打开了 `log_replica_updates` 的副本 binlog，�
 
 ## 实测吞吐
 
-2026-11-01 用本仓库源码构建的二进制实测，机器是 Apple M4 Pro 笔记本，输入放在内置 SSD 上。两份 binlog 都由本机 MySQL 8.0.45 写出，`binlog_row_image=FULL`、`binlog_row_metadata=FULL`。每次都用 `-q` 并把报告写到 `/dev/null`；峰值 RSS 取 `/usr/bin/time -l` 的 `maximum resident set size`，三次运行取一致值。
+2026-11-01 用本仓库源码构建的二进制实测，机器是 Apple M4 Pro 笔记本，输入放在内置 SSD 上。两份 binlog 都由本机 MySQL 8.0.45 写出，`binlog_row_image=FULL`、`binlog_row_metadata=FULL`。每次都用 `-q` 并把报告写到 `/dev/null`；峰值 RSS 取 `/usr/bin/time -l` 的 `maximum resident set size`。text 跑了三次，JSON 和 HTML 各一次。
 
 | 负载 | 输入 | 事务数 | 行数 | 事件数 | 热缓存耗时 | 峰值 RSS |
 |---|---|---|---|---|---|---|

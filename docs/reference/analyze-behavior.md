@@ -50,7 +50,7 @@ On a replica binlog from MySQL 8.0 or newer with `log_replica_updates`, `Replica
 
 ## Measured throughput
 
-Measured 2026-11-01 with a binary built from this tree, on an Apple M4 Pro laptop with the input on the internal SSD. Both binlogs were written by a local MySQL 8.0.45 with `binlog_row_image=FULL` and `binlog_row_metadata=FULL`. Every run used `-q` and wrote the report to `/dev/null`; peak RSS is `maximum resident set size` from `/usr/bin/time -l`, over three runs.
+Measured 2026-11-01 with a binary built from this tree, on an Apple M4 Pro laptop with the input on the internal SSD. Both binlogs were written by a local MySQL 8.0.45 with `binlog_row_image=FULL` and `binlog_row_metadata=FULL`. Every run used `-q` and wrote the report to `/dev/null`; peak RSS is `maximum resident set size` from `/usr/bin/time -l`. Text ran three times, JSON and HTML once each.
 
 | Workload | Input | Transactions | Rows | Events | Warm wall time | Peak RSS |
 |---|---|---|---|---|---|---|
