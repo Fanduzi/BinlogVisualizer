@@ -30,9 +30,11 @@ Before pushing a new release tag:
 - Update every versioned release surface in the same release-preparation commit:
   - `CHANGELOG.md`
   - `install.sh`
-  - both release note files:
+  - both release note files, shaped like `docs/releases/TEMPLATE.md`:
     - `docs/releases/release-notes-vX.Y.Z.md`
     - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`
+    - From v0.40.0 on each opens with `## Install or upgrade` / `## 安装或升级`;
+      `make release-check` fails the release without it.
   - the `Recently released` table in `docs/releases/README.md`
 - Do not add release notes, a per-version section, or new behavior detail to `README.md` / `README_ZH.md`. Release notes go in the two release note files and `CHANGELOG.md`. Behavior detail goes in `docs/reference/` or `docs/recipe/` (for example `docs/reference/analyze-behavior.md`, `docs/recipe/flashback.md`, `docs/recipe/compare-trend-workflow.md`, and their `.zh-CN.md` pages); the README keeps the command and a link. The README install examples resolve the latest release and need no edit per release. `TestReadmeStaysConcise` is an allowlist guard: the `##` headings must equal each file's fixed list, and no release-shaped token may appear outside install-command lines and the allowed tokens (Go toolchain, MySQL server). Relative links in any Markdown file the release archive ships must resolve inside the archive; `TestReleaseArchiveReadmeLinksStayInside` fails the PR otherwise.
 - Do not edit `docs/landing/` for a release. The landing page names no version and installs the latest release. `TestLandingPageHasNoReleaseHistory` fails the PR on a release-shaped version token (the same rule `make release-check` uses — `vX.Y`, `vX.Y.Z` or `X.Y.Z`, comments included, minus the shared `scripts/landing-allowed-numbers.txt` contexts), an unlisted section, id, link or script, hidden content, or a landing directory over its size cap.

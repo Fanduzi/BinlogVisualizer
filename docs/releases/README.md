@@ -45,7 +45,12 @@ A note states no install command and no download link: the README install lines 
 
 ## Adding a note
 
+Start from [TEMPLATE.md](TEMPLATE.md). From v0.40.0 on, both files must carry a
+`## Install or upgrade` section before the engineering detail, because the GitHub release body
+is these notes and the first thing a reader needs is the upgrade line. The section order in
+the template is the order the release page should read in.
+
 Both files, the `CHANGELOG.md` section, and the table above belong in the release-preparation
 commit. `make release-check VERSION=vX.Y.Z` (and the `release-prep` job in
-`.github/workflows/release.yml`) fails the release when a surface is missing or names a
-different version.
+`.github/workflows/release.yml`) fails the release when a surface is missing, names a
+different version, or (from v0.40.0 on) has no install section.

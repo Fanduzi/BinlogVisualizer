@@ -12,9 +12,15 @@ trap 'rm -rf "$work"' EXIT
 
 notes_en() { echo "docs/releases/release-notes-v$1.md"; }
 notes_zh() { echo "docs/releases/release-notes-v$1.zh-CN.md"; }
-write_notes() { # version title-version
+write_notes() { # version title-version (title only: an incomplete note)
   printf '# BinlogViz v%s Release Notes\n' "$2" > "$(notes_en "$1")"
   printf '# BinlogViz v%s 发布说明\n' "$2" > "$(notes_zh "$1")"
+}
+# A note shaped like one a human can read: the upgrade line comes first.
+write_notes_full() { # version title-version
+  write_notes "$1" "$2"
+  printf '\n## Install or upgrade\n\nUpgrade with `brew upgrade --cask binlogviz`, or rerun install.sh.\n' >> "$(notes_en "$1")"
+  printf '\n## 安装或升级\n\n用 `brew upgrade --cask binlogviz` 升级，或重新运行 install.sh。\n' >> "$(notes_zh "$1")"
 }
 write_changelog() { printf '# Changelog\n\n## [Unreleased]\n\n## v%s\n\n- A change.\n' "$1" > CHANGELOG.md; }
 # The README installs releases/latest; a pinned tag only appears when $2 is set.
@@ -26,7 +32,7 @@ write_readme() {
   fi
 }
 write_release() {
-  write_notes "$1" "$1"; write_changelog "$1"
+  write_notes_full "$1" "$1"; write_changelog "$1"
   write_readme README.md; write_readme README_ZH.md
 }
 extra_cases() {
@@ -49,6 +55,8 @@ git_q init -q
 write_release 1.0.0
 write_landing
 git_q add -A && git_q commit -qm v1.0.0 && git_q tag v1.0.0
+# Also tag it below the floor, so the pre-v0.40.0 note shape can be tested.
+git_q tag v0.39.0
 git_q tag base
 
 failures=0
@@ -85,6 +93,13 @@ reset_complete; rm "$(notes_zh 1.1.0)"
 expect 1 "missing Chinese notes fail" "release notes missing"
 reset_complete; write_notes 1.1.0 1.0.0
 expect 1 "notes titled for another version fail" "do not open with a title"
+reset_complete; write_notes 1.1.0 1.1.0
+expect 1 "notes without an install section fail from v0.40.0 on" "have no '## Install or upgrade' section"
+reset_complete; write_notes 1.1.0 1.1.0
+printf '\n## Install or upgrade\n\nRerun install.sh.\n' >> "$(notes_en 1.1.0)"
+expect 1 "the Chinese note needs the section too" "$(notes_zh 1.1.0) have no '## Install or upgrade' section"
+reset_complete; write_notes 0.39.1 0.39.1; write_changelog 0.39.1
+expect pass "a note below v0.40.0 keeps its older shape" "all release surfaces ready for v0.39.1" v0.39.1
 reset_complete; write_changelog 1.0.0
 expect 1 "CHANGELOG without the section fails" "has no '## v1.1.0' section"
 reset_complete; write_readme README.md 1.0.0

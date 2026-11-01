@@ -11,7 +11,9 @@ usage: check-release-prep.sh vX.Y.Z [git-ref]
 
 Checks that the release surfaces are ready for vX.Y.Z:
   0. this clone has release tags, and one of them is older than vX.Y.Z
-  1. release notes exist in English and Chinese and name the version
+  1. release notes exist in English and Chinese and name the version; from
+     v0.40.0 on, each also carries a '## Install or upgrade' section so the
+     published release body starts with what a reader does
   2. CHANGELOG.md has a non-empty section for the version (outside code
      fences and HTML comments)
   3. README.md and README_ZH.md install pins name the version (and no other)
@@ -47,6 +49,11 @@ NOTES_EN="docs/releases/release-notes-${TAG}.md"
 NOTES_EN_TITLE_RE="^# BinlogViz v${VER_RE} Release Notes"
 NOTES_ZH="docs/releases/release-notes-${TAG}.zh-CN.md"
 NOTES_ZH_TITLE_RE="^# BinlogViz v${VER_RE} 发布说明"
+# From this version on a note must carry an install or upgrade section: the
+# GitHub release body is these notes, and a reader needs the upgrade line
+# before the engineering record. Earlier notes keep their original shape.
+NOTES_INSTALL_FROM="0.40.0"
+NOTES_INSTALL_RE="^##[[:space:]]+(Install or upgrade|安装或升级)"
 # Install snippets resolve releases/latest (#281, #285), so a README carries no
 # pin; any pinned tag that does appear must be this release.
 # A pin is matched with its whole version (extra segments, suffixes, quotes),
@@ -115,6 +122,32 @@ check_note() {
 }
 check_note "$NOTES_EN" "$NOTES_EN_TITLE_RE"
 check_note "$NOTES_ZH" "$NOTES_ZH_TITLE_RE"
+
+# True when version $1 is at least version $2, comparing X.Y.Z numerically.
+version_ge() {
+  awk -v a="$1" -v b="$2" 'BEGIN {
+    n = split(a, x, "."); m = split(b, y, ".")
+    for (i = 1; i <= 3; i++) {
+      ai = (i <= n) ? x[i] + 0 : 0
+      bi = (i <= m) ? y[i] + 0 : 0
+      if (ai > bi) exit 0
+      if (ai < bi) exit 1
+    }
+    exit 0
+  }'
+}
+
+# 1b. A release body that opens with CI detail is not a release note.
+if version_ge "$VER" "$NOTES_INSTALL_FROM"; then
+  for path in "$NOTES_EN" "$NOTES_ZH"; do
+    has_file "$path" || continue
+    if grep -Eq "$NOTES_INSTALL_RE" <<<"$(read_file "$path")"; then
+      pass "release notes $path carry an install or upgrade section"
+    else
+      fail "release notes $path have no '## Install or upgrade' section; the release body is these notes, so it starts with what a reader does"
+    fi
+  done
+fi
 
 # 2. CHANGELOG section for the version, with at least one line of body before
 # the next '## ' heading. Headings and body inside ``` fences or <!-- -->
