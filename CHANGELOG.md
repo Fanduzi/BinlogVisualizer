@@ -4,6 +4,23 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.40.0
+
+Release date: 2026-11-02
+
+Highlights:
+
+- The zh-CN text report is fully localized: table headers, and column padding measured in terminal cells, so a CJK schema or table name stays aligned.
+- Top Transactions prints each transaction once, labelled with every ranking it won, one `mysqlbinlog` command and one set of row images.
+- Release archives carry `LICENSE`; the v0.38.0 and v0.36.0 release dates now match their tags, and three stale `退出 1` exit codes in the zh docs are corrected.
+- README leads with where the tool sits next to `mysqlbinlog`, `pt-query-digest`, and `binlog2sql`/`my2sql`, what a first run prints, and measured cost on two real binlogs.
+- From this release on, `check-release-prep.sh` requires an install or upgrade section in both notes.
+
+Related notes:
+
+- [v0.40.0 release notes](docs/releases/release-notes-v0.40.0.md)
+- [v0.40.0 中文发行说明](docs/releases/release-notes-v0.40.0.zh-CN.md)
+
 ## v0.39.0
 
 Release date: 2026-11-01
