@@ -1516,7 +1516,7 @@ func e2eIncidentBinlog(t *testing.T) string {
 	names := binlogNames(t, e2eMySQL(t, "SHOW BINARY LOGS"))
 	name := names[len(names)-2]
 	dst := filepath.Join(t.TempDir(), name)
-	e2eCopy(t, datadir+"/"+name, dst)
+	e2eCopy(t, e2eDatadirPrefix()+datadir+"/"+name, dst)
 	return dst
 }
 
@@ -1784,14 +1784,4 @@ func mysqlErrorLine(out, code string) string {
 		}
 	}
 	return ""
-}
-
-func e2eCopy(t *testing.T, src, dst string) {
-	t.Helper()
-	if out, err := exec.Command("sudo", "cp", src, dst).CombinedOutput(); err != nil {
-		t.Fatalf("cp %s: %v\n%s", src, err, out)
-	}
-	if out, err := exec.Command("sudo", "chmod", "a+r", dst).CombinedOutput(); err != nil {
-		t.Fatalf("chmod %s: %v\n%s", dst, err, out)
-	}
 }

@@ -35,11 +35,11 @@ func TestMySQL57CompatibilityRequiresActualPass(t *testing.T) {
 	job := mysql57CompatibilityJob(t)
 	for _, want := range []string{
 		"go test -count=1 -timeout 4m -v ./cmd/binlogviz",
-		`-run '^TestFlashbackMySQL57DeprecatedMode$'`,
+		`-run '^TestFlashbackMySQL57DeprecatedMode$|^TestFlashbackMinimalMetadataMySQL57$'`,
 		`if grep -E '^[[:space:]]*--- SKIP:' "$log"; then`,
 		`echo "MySQL 5.7 compatibility test skipped" >&2` + "\n            exit 1",
-		`if ! grep -q -E "^--- PASS: TestFlashbackMySQL57DeprecatedMode \\(" "$log"; then`,
-		`echo "missing --- PASS for TestFlashbackMySQL57DeprecatedMode" >&2` + "\n            exit 1",
+		`for name in TestFlashbackMySQL57DeprecatedMode TestFlashbackMinimalMetadataMySQL57; do`,
+		`if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then`,
 		"set -euo pipefail",
 	} {
 		if !strings.Contains(job, want) {
