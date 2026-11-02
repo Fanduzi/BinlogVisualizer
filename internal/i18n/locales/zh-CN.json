@@ -3038,5 +3038,9 @@
   "report.text.columnNamesFromSchema": {
     "description": "由 schema 文件给出列名时的摘要说明",
     "other": "列名来自 --schema-file（binlog 没有行元数据）"
+  },
+  "error.flashbackSchemaWidth": {
+    "description": "Refusal when the schema file describes a different column count than the row",
+    "other": "{{.Table}}: --schema-file 的定义有 {{.File}} 列，而这行 binlog 有 {{.Row}} 列。请用与事故当时表结构一致的转储，或者用 --exclude-table 把这张表排除。"
   }
 }

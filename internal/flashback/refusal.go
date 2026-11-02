@@ -63,6 +63,12 @@ func flashRowError(row model.FlashRow, table, flavor string) error {
 			key = "error.flashbackNamesMariaDB"
 		}
 		return refuse("row_metadata", table, fmt.Errorf("%s", i18n.Tf(key, map[string]any{"Table": table})))
+	case model.FlashProblemSchema:
+		return refuse("schema", table, fmt.Errorf("%s", i18n.Tf("error.flashbackSchemaWidth", map[string]any{
+			"Table": table,
+			"File":  row.ProblemFileCols,
+			"Row":   row.ProblemRowCols,
+		})))
 	case model.FlashProblemImage:
 		return refuse("row_image", table, fmt.Errorf("%s", i18n.Tf("error.flashbackImage", map[string]any{"Table": table})))
 	case model.FlashProblemType:

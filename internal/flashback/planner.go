@@ -252,6 +252,7 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 		a.flashErr = err
 		return
 	}
+	rows = applyDefinitionKey(rows, res)
 	if len(rows) < len(ev.FlashRows) {
 		a.noteFlashSplit(ev.TxnKey, ev.TxnGTID, false)
 	}
@@ -551,6 +552,39 @@ func (a *Planner) Warnings() []string {
 	out := make([]string, len(list))
 	for i, w := range list {
 		out[i] = w.Line()
+	}
+	return out
+}
+
+// applyDefinitionKey re-derives the undo address for rows whose key came from
+// the definition, using the definition this planner resolved. The planner also
+// observes CREATE and ALTER in the parsed files, so a key-changing ALTER drops
+// the key here even though the capture-side catalog was built from
+// --schema-file alone. Without this the script would address a row by a key the
+// definition no longer owns (ADR 0030).
+func applyDefinitionKey(rows []model.FlashRow, res schemacatalog.Resolution) []model.FlashRow {
+	if res.Kind != schemacatalog.Exact && res.Kind != schemacatalog.Fold {
+		return rows
+	}
+	needed := false
+	for i := range rows {
+		if rows[i].PKFromSchema {
+			needed = true
+			break
+		}
+	}
+	if !needed {
+		return rows
+	}
+	pk := schemacatalog.PrimaryKeyIndexes(res.Cols)
+	out := append([]model.FlashRow(nil), rows...)
+	for i := range out {
+		if !out[i].PKFromSchema {
+			continue
+		}
+		out[i].PK = append([]int(nil), pk...)
+		out[i].NoPK = len(pk) == 0
+		out[i].PKFromSchema = len(pk) > 0
 	}
 	return out
 }

@@ -42,7 +42,7 @@ func captureRowImages(ev *replication.RowsEvent, kind, schema, table string, res
 	if names != model.RowNamesFull && !flashNamesComplete(ev.Table, width) {
 		// ADR 0030: a definition supplied by --schema-file names the columns
 		// show-rows would otherwise print as @1..@N.
-		if cols, _, ok := resolveFlashColumns(resolver, schema, table, width); ok {
+		if cols, _, ok := resolveFlashColumns(resolver, schema, table); ok && len(cols) == width {
 			labels = flashLabelsFromCols(cols)
 			namesFrom = model.RowNamesFromSchema
 		}

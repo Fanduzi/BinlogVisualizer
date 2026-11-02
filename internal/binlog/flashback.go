@@ -41,9 +41,15 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string,
 	var defPK []int
 	fromDef := false
 	if names != model.RowNamesFull || !flashNamesComplete(ev.Table, width) {
-		defCols, defPK, fromDef = resolveFlashColumns(resolver, schema, table, width)
+		defCols, defPK, fromDef = resolveFlashColumns(resolver, schema, table)
 		if !fromDef {
 			base.ProblemKind = model.FlashProblemNames
+			return []model.FlashRow{base}
+		}
+		if len(defCols) != width {
+			base.ProblemKind = model.FlashProblemSchema
+			base.ProblemFileCols = len(defCols)
+			base.ProblemRowCols = width
 			return []model.FlashRow{base}
 		}
 		labels = flashLabelsFromCols(defCols)
