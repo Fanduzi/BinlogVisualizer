@@ -59,10 +59,10 @@ var (
 	// order. A release or changelog section fails here whatever it says.
 	readmeH2 = map[string][]string{
 		"README.md": {"Screenshots", "Installation", "Quick Start", "Find and Undo Bad Rows",
-			"Snapshots, Compare, Trend, and Workflow", "What BinlogViz Helps You See",
+			"Snapshots, Compare, Trend, and Workflow", "How BinlogViz Compares",
 			"Language Support", "Documentation by Task", "Architecture", "Requirements", "License"},
 		"README_ZH.md": {"截图", "安装", "快速开始", "找到并撤销误改的行",
-			"快照、对比、趋势与 workflow", "BinlogViz 适合回答什么问题",
+			"快照、对比、趋势与 workflow", "和其它工具怎么分工",
 			"多语言支持", "按任务阅读文档", "架构", "环境要求", "License"},
 	}
 )

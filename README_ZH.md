@@ -41,26 +41,16 @@ brew install --cask binlogviz
 
 这条路径会安装预编译 release artifact，并在安装时移除 macOS quarantine 属性。不需要其他依赖：DuckDB 已经编进二进制，供 `--detail-store duckdb` 使用。
 
-### Linux：tarball 或 install.sh
+### Linux：install.sh 或 tarball
 
 ```bash
-# install.sh（当前版本）
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
 sh ./install.sh            # latest release; pin with --version vX.Y.Z
-
-# 或 linux/amd64 tarball：先解析最新 tag，校验 checksum，再解压
-VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Fanduzi/BinlogVisualizer/releases/latest)"; VERSION="${VERSION##*/}"
-curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_linux_amd64.tar.gz"
-curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_checksums.txt"
-grep " binlogviz_${VERSION#v}_linux_amd64.tar.gz\$" "binlogviz_${VERSION#v}_checksums.txt" | sha256sum -c - &&
-  mkdir -p "binlogviz_${VERSION#v}" &&
-  tar -xzf "binlogviz_${VERSION#v}_linux_amd64.tar.gz" -C "binlogviz_${VERSION#v}" &&
-  install "binlogviz_${VERSION#v}/binlogviz" /usr/local/bin/binlogviz
 ```
 
-ARM Linux 用 `linux_arm64`；macOS 不用 Homebrew 时用 `darwin_arm64`/`darwin_amd64`，并把 `sha256sum -c -` 换成 `shasum -a 256 -c -`。checksum 不符时会打印 `FAILED` 并以非零退出。所有归档见 [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases)。
+`install.sh` 会下载本平台的归档，用 `checksums.txt` 校验 sha256（确实要跳过时传 `--no-verify`），然后安装二进制。它支持 `--version vX.Y.Z`、`--bin-dir DIR` 和 `--dry-run`。写入 `/usr/local/bin` 需要 root：用 `sudo`，或者用 `sh ./install.sh --bin-dir ~/.local/bin` 装到自己有权限的目录。
 
-`install.sh` 默认校验 sha256（`--no-verify` 跳过），支持 `--version vX.Y.Z`、`--bin-dir DIR` 和 `--dry-run`。tarball 解压出来是散落的文件（二进制、两份 README、`LICENSE`、`docs/`、`testdata/`、`incident.yaml`），所以先解压到单独的目录。写入 `/usr/local/bin` 需要 root：用 `sudo`，或者用 `sh ./install.sh --bin-dir ~/.local/bin` 装到自己有权限的目录。
+Linux 和 macOS 的 amd64/arm64 归档见 [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases)；每个归档解压出来是散落的文件（二进制、两份 README、`LICENSE`、`docs/`、`testdata/`、`incident.yaml`），所以先解压到单独的目录。
 
 ### 备选：从源码构建
 
@@ -93,6 +83,8 @@ binlogviz version
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
 binlogviz analyze minimal.binlog
 ```
+
+它会打印 Summary、热点表、热点线程、DDL 时间线、重点事务和关键发现。这次运行完整的 76 行报告在[这里](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/examples/analyze-output.txt)，同一份报告的 [JSON](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/examples/analyze-output.json) 也在旁边。
 
 Release 归档也带这份样本，以及解压后即可运行的 `incident.yaml`。归档内容、stdin 输入、热点线程、热点行和退出码见 [Analyze 行为细节](docs/reference/analyze-behavior.zh-CN.md)。
 
@@ -229,119 +221,59 @@ binlogviz redo mysql-bin.000123 --include-table shop.orders > redo.sql
 
 ## 快照、对比、趋势与 workflow
 
-### 把两个故障窗口保存成快照后再做对比
+窗口只需读一次：存成快照之后，compare 和 trend 不必再扫 binlog。`--workload-id` 决定 compare 和 trend 能不能谈原因、而不只是谈原始差值，所以两张快照要传同一个。
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
-  --start "2026-03-15T10:00:00Z" \
-  --end "2026-03-15T10:30:00Z" \
-  --format json \
-  --snapshot-name incident_current
-
+  --start "2026-03-15T10:00:00Z" --end "2026-03-15T10:30:00Z" \
+  --workload-id orders-production --format json --snapshot-name incident_current
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
-  --start "2026-03-08T10:00:00Z" \
-  --end "2026-03-08T10:30:00Z" \
-  --format json \
-  --snapshot-name incident_baseline
+  --start "2026-03-08T10:00:00Z" --end "2026-03-08T10:30:00Z" \
+  --workload-id orders-production --format json --snapshot-name incident_baseline
 
-binlogviz snapshot list
-binlogviz snapshot list --format json
-binlogviz snapshot show incident_current
-binlogviz snapshot show incident_current --format json
-binlogviz compare \
-  --current-snapshot incident_current \
-  --baseline-snapshot incident_baseline \
-  --format html > compare.html
-
-# 用完之后再重命名或删除快照
-binlogviz snapshot rename incident_current incident_current_renamed
-binlogviz snapshot delete incident_current_renamed
+binlogviz compare --current-snapshot incident_current \
+  --baseline-snapshot incident_baseline --format html > compare.html
+binlogviz trend --from-snapshots 'incident_*' \
+  --baseline-snapshot incident_baseline --format html > trend.html
 ```
 
-当设置 `--snapshot-name` 时，`analyze --format json` 仍然会把 JSON 报告写到 `stdout`，同时把同一份载荷保存到 `~/.binlogviz/snapshots/<name>.json`。保存成功提示会打印到 `stderr`。
-
-### 把多个快照当作一条时间线查看趋势
-
-```bash
-binlogviz trend incident_week1 incident_week2 incident_week3 --format text
-
-binlogviz trend --from-snapshots 'incident_week*' \
-  --baseline-snapshot baseline_weekly \
-  --format html > trend.html
-```
-
-### 用一份 plan 文件跑多步调查
-
-仓库自带一份可运行的 `incident.yaml`，指向 1500 字节的 ROW 样本，在仓库根目录即可运行：
+`--snapshot-name` 仍然把 JSON 报告写到 `stdout`，同时把同一份载荷存到 `~/.binlogviz/snapshots/<name>.json`；`snapshot list`、`show`、`rename`、`delete` 管理它们。多步调查可以用一份 plan 文件跑，仓库自带一份指向样本、可直接运行的 `incident.yaml`：
 
 ```bash
 binlogviz workflow run incident.yaml
-tree artifacts/incident
 ```
 
-compare 的可比性、trend 的排序，以及 `workflow resume`、`status`、`clean`、`export`、`validate`、`describe` 的生命周期见 [快照、对比、趋势与 workflow](docs/recipe/compare-trend-workflow.zh-CN.md)。
+可比性、trend 排序，以及 `workflow resume`、`status`、`clean`、`export`、`validate`、`describe` 的生命周期见 [快照、对比、趋势与 workflow](docs/recipe/compare-trend-workflow.zh-CN.md)。
 
-## BinlogViz 适合回答什么问题
+## 和其它工具怎么分工
 
-BinlogViz 重点服务这些 DBA 常见问题：
+它和 DBA 手上已有的工具并排使用，不替代它们。区别在于各自收什么、给什么：
 
-- **哪些表承受了最重的写入负载？**
-- **哪个主键被 UPDATE 或 DELETE 的次数最多？**
-- **哪些 UPDATE 或 DELETE 打到了没有主键的表？**
-- **这份副本当时落后多少，是哪些事务造成的？**见 [为什么副本在延迟？](docs/reference/analyze-behavior.zh-CN.md#为什么副本在延迟)。
-- **哪些事务大到值得优先排查？**
-- **某个分钟级尖峰是否真实发生过？**
-- **指定故障窗口内到底发生了什么变化？**
-- **当前窗口和可信基线相比，负载差异到底在哪里？**
-- **结果能否安全交给脚本、管道或其他工具？**
+| 工具 | 收 → 给 | 什么时候用它 |
+|---|---|---|
+| `mysqlbinlog` | binlog → 解码后的事件 | 需要精确的事件流或字节区间。BinlogViz 会为它排出的重点事务直接打印可复制的 `mysqlbinlog` 命令。 |
+| `pt-query-digest` | 慢查询日志 → 查询摘要 | 问题是“哪些 SQL 慢”。它不读 binlog。 |
+| `binlog2sql`、`my2sql` | binlog → 撤销或前滚 SQL；`my2sql` 还有统计 | 你想从一条流里得到脚本。BinlogViz 同样能做撤销和重放，另外多出报告、快照和对比这三层，以及给生成的脚本配一个校验器。 |
+
+这张表说的是输入输出的边界，不是这些工具的性能对比。本工具在真实 binlog 上的实测成本见 [Analyze 行为细节](docs/reference/analyze-behavior.zh-CN.md)，副本延迟问题见 [为什么副本在延迟？](docs/reference/analyze-behavior.zh-CN.md#为什么副本在延迟)。
 
 ## 多语言支持
 
-BinlogViz 支持多语言运行时输出，包括错误信息、报告和进度提示。
+运行时输出——错误、报告、进度和文本表格——支持英文和简体中文。用 `--lang zh-CN` 指定，或者让 `LANG=zh_CN.UTF-8` 决定；默认是 `en`。
 
 ```bash
 binlogviz --lang zh-CN analyze mysql-bin.000123
-LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.000123
 ```
 
-支持的语言：
-
-- `en` - English（默认）
-- `zh-CN` - 简体中文
-
-`--help` 当前仍然是英文，因为 help 文本生成早于语言初始化；运行时输出已支持本地化。
+`--help` 仍是英文，因为 help 文本在语言初始化之前就生成了。
 
 ## 按任务阅读文档
 
-### 建议先读这些
-
-- [快速开始](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/quickstart.zh-CN.md)
-- [分析本地 Binlog](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.zh-CN.md)
-- [常见错误排查](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.zh-CN.md)
-- [找到并撤销误改的行](docs/recipe/flashback.zh-CN.md)
-- [把变更重演成前滚 SQL（`redo`）](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md#redo-命令语法)
-- [快照、对比、趋势与 workflow](docs/recipe/compare-trend-workflow.zh-CN.md)
-
-### 需要精确契约和参数行为时
-
-- [CLI 参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md)
-- [输入发现参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/input-discovery.zh-CN.md)
-- [输出格式参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.zh-CN.md)
-- [Analyze 行为细节](docs/reference/analyze-behavior.zh-CN.md)
-
-### 需要理解内部设计或分析模型时
-
-- [产品架构](docs/concept/architecture.zh-CN.md)
-- [DuckDB 临时存储](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.zh-CN.md)
-- [分析模型](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/analysis-model.zh-CN.md)
-- [限制与边界](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.zh-CN.md)
-
-### 发布与补充资料
-
-- [示例输出](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/examples)
-- [发行说明](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/releases)
-- [变更记录](https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md)
-- [安全策略](https://github.com/Fanduzi/BinlogVisualizer/blob/main/SECURITY.md)
+- **第一次跑：** [快速开始](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/quickstart.zh-CN.md)、[分析本地 binlog](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.zh-CN.md)、[常见错误排查](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.zh-CN.md)
+- **恢复数据：** [找到并撤销误改的行](docs/recipe/flashback.zh-CN.md)、[重放为前滚 SQL](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md#redo-command-syntax)、[快照、对比、趋势与 workflow](docs/recipe/compare-trend-workflow.zh-CN.md)
+- **精确契约：** [CLI 参考](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.zh-CN.md)、[输出格式](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.zh-CN.md)、[输入发现](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/input-discovery.zh-CN.md)、[Analyze 行为细节](docs/reference/analyze-behavior.zh-CN.md)
+- **模型与边界：** [产品架构](docs/concept/architecture.zh-CN.md)、[分析模型](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/analysis-model.zh-CN.md)、[限制与边界](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.zh-CN.md)、[DuckDB 临时存储](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.zh-CN.md)
+- **其它：** [全部文档](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/README.md)、[示例输出](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/examples)、[发行说明](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/releases)、[变更记录](https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md)、[安全策略](https://github.com/Fanduzi/BinlogVisualizer/blob/main/SECURITY.md)
 
 ## 架构
 

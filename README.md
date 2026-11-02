@@ -41,26 +41,16 @@ brew install --cask binlogviz
 
 This path installs the prebuilt release artifact and removes the macOS quarantine attribute during installation. Nothing else is needed: DuckDB is built into the binary for `--detail-store duckdb`.
 
-### Linux: tarball or install.sh
+### Linux: install.sh or a tarball
 
 ```bash
-# install.sh (current release)
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
 sh ./install.sh            # latest release; pin with --version vX.Y.Z
-
-# or the linux/amd64 tarball: resolve the latest tag, verify the checksum, unpack
-VERSION="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/Fanduzi/BinlogVisualizer/releases/latest)"; VERSION="${VERSION##*/}"
-curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_linux_amd64.tar.gz"
-curl -fsSLO "https://github.com/Fanduzi/BinlogVisualizer/releases/download/${VERSION}/binlogviz_${VERSION#v}_checksums.txt"
-grep " binlogviz_${VERSION#v}_linux_amd64.tar.gz\$" "binlogviz_${VERSION#v}_checksums.txt" | sha256sum -c - &&
-  mkdir -p "binlogviz_${VERSION#v}" &&
-  tar -xzf "binlogviz_${VERSION#v}_linux_amd64.tar.gz" -C "binlogviz_${VERSION#v}" &&
-  install "binlogviz_${VERSION#v}/binlogviz" /usr/local/bin/binlogviz
 ```
 
-On ARM Linux use `linux_arm64`; on macOS without Homebrew use `darwin_arm64`/`darwin_amd64` and `shasum -a 256 -c -`. A checksum mismatch prints `FAILED` and exits non-zero. All archives are on [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases).
+`install.sh` downloads the archive for this platform, verifies the sha256 against `checksums.txt` (pass `--no-verify` to skip it on purpose), and installs the binary. It accepts `--version vX.Y.Z`, `--bin-dir DIR`, and `--dry-run`. `/usr/local/bin` needs root: use `sudo`, or `sh ./install.sh --bin-dir ~/.local/bin`.
 
-`install.sh` verifies the sha256 unless `--no-verify` is passed, and accepts `--version vX.Y.Z`, `--bin-dir DIR`, and `--dry-run`. The tarball holds loose files (binary, READMEs, `LICENSE`, `docs/`, `testdata/`, `incident.yaml`), so unpack it into its own directory. Writing to `/usr/local/bin` needs root: use `sudo`, or `sh ./install.sh --bin-dir ~/.local/bin`.
+Tarballs for amd64/arm64 on Linux and macOS are on [GitHub Releases](https://github.com/Fanduzi/BinlogVisualizer/releases); each unpacks loose files (binary, READMEs, `LICENSE`, `docs/`, `testdata/`, `incident.yaml`), so unpack into its own directory.
 
 ### Fallback: Build From Source
 
@@ -93,6 +83,8 @@ binlogviz version
 curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/cmd/binlogviz/testdata/minimal.binlog
 binlogviz analyze minimal.binlog
 ```
+
+That prints a Summary, Top Tables, Top Threads, DDL Timeline, Top Transactions and Alerts section. The whole 76-line report of this exact run is [here](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/examples/analyze-output.txt), next to the same report as [JSON](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/examples/analyze-output.json).
 
 Release archives ship the same sample and an `incident.yaml` that runs from the extract directory. Archive contents, stdin input, Top Threads, Hot Rows, and exit codes are in [Analyze Behavior Details](docs/reference/analyze-behavior.md).
 
@@ -229,121 +221,59 @@ binlogviz redo mysql-bin.000123 --include-table shop.orders > redo.sql
 
 ## Snapshots, Compare, Trend, and Workflow
 
-### Save two incident windows as named snapshots, then compare them
+Save a window once, then compare or trend it later without re-reading the binlogs. `--workload-id` is what lets `compare` and `trend` speak about causes rather than only raw deltas, so pass the same one to both snapshots.
 
 ```bash
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
-  --start "2026-03-15T10:00:00Z" \
-  --end "2026-03-15T10:30:00Z" \
-  --workload-id orders-production \
-  --format json \
-  --snapshot-name incident_current
-
+  --start "2026-03-15T10:00:00Z" --end "2026-03-15T10:30:00Z" \
+  --workload-id orders-production --format json --snapshot-name incident_current
 binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. \
-  --start "2026-03-08T10:00:00Z" \
-  --end "2026-03-08T10:30:00Z" \
-  --workload-id orders-production \
-  --format json \
-  --snapshot-name incident_baseline
+  --start "2026-03-08T10:00:00Z" --end "2026-03-08T10:30:00Z" \
+  --workload-id orders-production --format json --snapshot-name incident_baseline
 
-binlogviz snapshot list
-binlogviz snapshot list --format json
-binlogviz snapshot show incident_current
-binlogviz snapshot show incident_current --format json
-binlogviz compare \
-  --current-snapshot incident_current \
-  --baseline-snapshot incident_baseline \
-  --format html > compare.html
-
-# rename or delete a snapshot after you are done with it
-binlogviz snapshot rename incident_current incident_current_renamed
-binlogviz snapshot delete incident_current_renamed
+binlogviz compare --current-snapshot incident_current \
+  --baseline-snapshot incident_baseline --format html > compare.html
+binlogviz trend --from-snapshots 'incident_*' \
+  --baseline-snapshot incident_baseline --format html > trend.html
 ```
 
-When `--snapshot-name` is set, `analyze --format json` still writes the JSON report to `stdout` and also saves the same payload under `~/.binlogviz/snapshots/<name>.json`. The save confirmation is printed to `stderr`.
-
-### Review multiple snapshots as one ordered trend
-
-```bash
-binlogviz trend incident_week1 incident_week2 incident_week3 --format text
-
-binlogviz trend --from-snapshots 'incident_week*' \
-  --baseline-snapshot baseline_weekly \
-  --format html > trend.html
-```
-
-### Run a multi-step investigation from one plan file
-
-The repository ships a runnable `incident.yaml` that points at the 1500-byte ROW sample, so this works from the repository root:
+`--snapshot-name` still writes the JSON report to `stdout` and saves the same payload under `~/.binlogviz/snapshots/<name>.json`; `snapshot list`, `show`, `rename`, and `delete` manage them. A multi-step investigation runs from one plan file, and the repository ships a runnable `incident.yaml` that points at the sample:
 
 ```bash
 binlogviz workflow run incident.yaml
-tree artifacts/incident
 ```
 
-Compare comparability, trend ordering, and the `workflow resume`, `status`, `clean`, `export`, `validate`, and `describe` lifecycle are in [Snapshots, Compare, Trend, and Workflow](docs/recipe/compare-trend-workflow.md).
+Comparability, trend ordering, and the `workflow resume`, `status`, `clean`, `export`, `validate`, and `describe` lifecycle are in [Snapshots, Compare, Trend, and Workflow](docs/recipe/compare-trend-workflow.md).
 
-## What BinlogViz Helps You See
+## How BinlogViz Compares
 
-BinlogViz is optimized for these common DBA questions:
+It sits next to the tools a DBA already has and does not replace them. What differs is what each one takes and gives back:
 
-- **Which tables are taking the heaviest write load?**
-- **Which primary key was updated or deleted the most?**
-- **Which UPDATE or DELETE rows hit a table with no primary key?**
-- **How far behind was this replica, and which transactions caused it?** See [Why is my replica lagging?](docs/reference/analyze-behavior.md#why-is-my-replica-lagging).
-- **Which transactions are large enough to deserve attention?**
-- **Did a spike happen at a specific minute?**
-- **What changed inside a known incident window?**
-- **How does the current window differ from a trusted baseline report?**
-- **Can I hand the result to another script or pipeline safely?**
+| Tool | Takes → gives | Reach for it when |
+|---|---|---|
+| `mysqlbinlog` | binlog → decoded events | You need the exact event stream or a byte range. BinlogViz prints ready-to-copy `mysqlbinlog` commands for the transactions it ranks. |
+| `pt-query-digest` | slow query log → query digest | The question is which queries are slow. It does not read binlogs. |
+| `binlog2sql`, `my2sql` | binlog → undo or redo SQL, and for `my2sql` stats | You want a script from one stream. BinlogViz covers undo and replay as well, and adds the report, snapshot, and compare surfaces plus a verifier for the script it prints. |
+
+This is a map of inputs and outputs, not a benchmark of those tools. [Analyze Behavior](docs/reference/analyze-behavior.md) has this tool's measured cost on two real binlogs, and [Why is my replica lagging?](docs/reference/analyze-behavior.md#why-is-my-replica-lagging) covers the replica question.
 
 ## Language Support
 
-BinlogViz supports multiple languages for runtime output such as errors, reports, and progress messages.
+Runtime output — errors, reports, progress, and the text tables — is English or Simplified Chinese. Pick it with `--lang zh-CN` or let `LANG=zh_CN.UTF-8` decide; `en` is the default.
 
 ```bash
 binlogviz --lang zh-CN analyze mysql-bin.000123
-LANG=zh_CN.UTF-8 binlogviz analyze mysql-bin.000123
 ```
 
-Supported languages:
-
-- `en` - English (default)
-- `zh-CN` - Simplified Chinese
-
-`--help` output currently remains in English because help text is generated before language initialization. Runtime output is localized.
+`--help` stays in English, because help text is built before the language is initialized.
 
 ## Documentation by Task
 
-### Start with these
-
-- [Quickstart](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/quickstart.md)
-- [Analyze Local Binlogs](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.md)
-- [Troubleshoot Common Errors](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.md)
-- [Find and Undo Bad Rows](docs/recipe/flashback.md)
-- [Replay Changes as Forward SQL (`redo`)](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax)
-- [Snapshots, Compare, Trend, and Workflow](docs/recipe/compare-trend-workflow.md)
-
-### When you need contracts and exact behavior
-
-- [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md)
-- [Input Discovery Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/input-discovery.md)
-- [Output Format Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.md)
-- [Analyze Behavior Details](docs/reference/analyze-behavior.md)
-
-### When you need internals or operating model detail
-
-- [Architecture](docs/concept/architecture.md)
-- [DuckDB Temp Store](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.md)
-- [Analysis Model](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/analysis-model.md)
-- [Limitations](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.md)
-
-### Release and supporting material
-
-- [Examples](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/examples)
-- [Release Notes](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/releases)
-- [Changelog](https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md)
-- [Security Policy](https://github.com/Fanduzi/BinlogVisualizer/blob/main/SECURITY.md)
+- **First run:** [Quickstart](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/quickstart.md), [Analyze Local Binlogs](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/analyze-local-binlogs.md), [Troubleshoot Common Errors](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/recipe/troubleshoot-common-errors.md)
+- **Recovery:** [Find and Undo Bad Rows](docs/recipe/flashback.md), [Replay as Forward SQL](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md#redo-command-syntax), [Snapshots, Compare, Trend, and Workflow](docs/recipe/compare-trend-workflow.md)
+- **Contracts:** [CLI Reference](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/cli.md), [Output Format](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/output-format.md), [Input Discovery](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/reference/input-discovery.md), [Analyze Behavior](docs/reference/analyze-behavior.md)
+- **Model and limits:** [Architecture](docs/concept/architecture.md), [Analysis Model](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/analysis-model.md), [Limitations](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/limitations.md), [DuckDB Temp Store](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/concept/duckdb-temp-store.md)
+- **Elsewhere:** [all docs](https://github.com/Fanduzi/BinlogVisualizer/blob/main/docs/README.md), [examples](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/examples), [release notes](https://github.com/Fanduzi/BinlogVisualizer/tree/main/docs/releases), [changelog](https://github.com/Fanduzi/BinlogVisualizer/blob/main/CHANGELOG.md), [security policy](https://github.com/Fanduzi/BinlogVisualizer/blob/main/SECURITY.md)
 
 ## Architecture
 
