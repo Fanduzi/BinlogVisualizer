@@ -187,12 +187,12 @@ jobs:
           # A skip or a -run miss still exits 0. -v prints --- PASS; require every name.
           log=$(mktemp)
           BINLOGVIZ_FLASHBACK_E2E=1 go test -count=1 -timeout 12m -v ./cmd/binlogviz \
-            -run 'TestFlashbackRoundTripMySQL80|TestNumericDecodeMySQL80|TestFlashbackFailedApplyDropsAndSignals|TestAnalyzeRemoteMySQL80|TestRedoReplayMySQL80|TestRedoRemoteMySQL80|TestFlashbackRemoteMySQL80|TestRedoWhereReplayMySQL80|TestFlashbackWhereMySQL80|TestSplitFlashbackPerTableRoundTrip|TestSplitRedoPartsRoundTrip|TestAnalyzeFingerprintsMySQL80|TestAnalyzeThreadIDMySQL80' 2>&1 | tee "$log"
+            -run 'TestFlashbackRoundTripMySQL80|TestFlashbackMinimalMetadataMySQL80|TestNumericDecodeMySQL80|TestFlashbackFailedApplyDropsAndSignals|TestAnalyzeRemoteMySQL80|TestRedoReplayMySQL80|TestRedoRemoteMySQL80|TestFlashbackRemoteMySQL80|TestRedoWhereReplayMySQL80|TestFlashbackWhereMySQL80|TestSplitFlashbackPerTableRoundTrip|TestSplitRedoPartsRoundTrip|TestAnalyzeFingerprintsMySQL80|TestAnalyzeThreadIDMySQL80' 2>&1 | tee "$log"
           if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
             echo "MySQL e2e skipped" >&2
             exit 1
           fi
-          for name in TestFlashbackRoundTripMySQL80 TestNumericDecodeMySQL80 TestFlashbackFailedApplyDropsAndSignals TestAnalyzeRemoteMySQL80 TestRedoReplayMySQL80 TestRedoRemoteMySQL80 TestFlashbackRemoteMySQL80 TestRedoWhereReplayMySQL80 TestFlashbackWhereMySQL80 TestSplitFlashbackPerTableRoundTrip TestSplitRedoPartsRoundTrip TestAnalyzeFingerprintsMySQL80 TestAnalyzeThreadIDMySQL80; do
+          for name in TestFlashbackRoundTripMySQL80 TestFlashbackMinimalMetadataMySQL80 TestNumericDecodeMySQL80 TestFlashbackFailedApplyDropsAndSignals TestAnalyzeRemoteMySQL80 TestRedoReplayMySQL80 TestRedoRemoteMySQL80 TestFlashbackRemoteMySQL80 TestRedoWhereReplayMySQL80 TestFlashbackWhereMySQL80 TestSplitFlashbackPerTableRoundTrip TestSplitRedoPartsRoundTrip TestAnalyzeFingerprintsMySQL80 TestAnalyzeThreadIDMySQL80; do
             if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then
               echo "missing --- PASS for ${name}" >&2
               exit 1
@@ -227,6 +227,10 @@ jobs:
         image: mysql:5.7.44@sha256:dab0a802b44617303694fb17d166501de279c3031ddeb28c56ecf7fcab5ef0da
         env:
           MYSQL_ROOT_PASSWORD: compat57
+        # The undo e2e reads a binlog, which the image does not enable by
+        # default; log_bin is not settable at runtime in 5.7.
+        command: >-
+          --server-id=1 --log-bin=mysql-bin --binlog-format=ROW --binlog-row-image=FULL
         options: >-
           --health-cmd="mysql --protocol=tcp -h 127.0.0.1 -uroot -pcompat57 --batch --skip-column-names -e 'SELECT 1'"
           --health-interval=10s
@@ -252,19 +256,24 @@ jobs:
         env:
           BINLOGVIZ_FLASHBACK_E2E: "1"
           BINLOGVIZ_MYSQL: docker exec -i -e MYSQL_PWD=compat57 ${{ job.services.mysql57.id }} mysql --protocol=socket -uroot
+          # The datadir lives in the container, so the test copies the binlog
+          # out with docker cp instead of reading this filesystem.
+          BINLOGVIZ_E2E_DATADIR_PREFIX: "${{ job.services.mysql57.id }}:"
         run: |
           set -euo pipefail
           log=$(mktemp)
           go test -count=1 -timeout 4m -v ./cmd/binlogviz \
-            -run '^TestFlashbackMySQL57DeprecatedMode$' 2>&1 | tee "$log"
+            -run '^TestFlashbackMySQL57DeprecatedMode$|^TestFlashbackMinimalMetadataMySQL57$' 2>&1 | tee "$log"
           if grep -E '^[[:space:]]*--- SKIP:' "$log"; then
             echo "MySQL 5.7 compatibility test skipped" >&2
             exit 1
           fi
-          if ! grep -q -E "^--- PASS: TestFlashbackMySQL57DeprecatedMode \\(" "$log"; then
-            echo "missing --- PASS for TestFlashbackMySQL57DeprecatedMode" >&2
-            exit 1
-          fi
+          for name in TestFlashbackMySQL57DeprecatedMode TestFlashbackMinimalMetadataMySQL57; do
+            if ! grep -q -E "^--- PASS: ${name} \\(" "$log"; then
+              echo "missing --- PASS for ${name}" >&2
+              exit 1
+            fi
+          done
 
   flashback-difftest:
     name: flashback difftest
