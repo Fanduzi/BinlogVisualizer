@@ -39,6 +39,17 @@ Status: accepted (2026-11-02). Issue #482. `redo` already accepts `--schema-file
 - **Positional `INSERT … VALUES` without a definition.** Already rejected in ADR 0022 for redo and rejected here for the same reason: the literals need type facts only a definition supplies.
 - **A live-server key lookup instead of a dump.** Rejected for now: it needs database credentials at undo time and makes the undo depend on today's schema, which is precisely the drift the dump rule exists to avoid.
 
+## Where capture has to happen
+
+Literal rendering currently happens inside the parser: `internal/binlog/parser.go:331` calls `captureFlashbackRows`, which turns raw cells into exact SQL literals with the table-map facts. The parser has no schema catalog and streams before the planner exists, so it cannot merge a definition's facts — which is why the MINIMAL row is refused there rather than resolved later.
+
+Two shapes were considered for moving that work:
+
+- **Defer rendering to the planner.** The capture keeps raw cells and the planner renders after it resolves the definition. Cleanest layering, but `FlashRow.Before`/`After` are rendered literals today and flow into conflict hashing, the spill, and row images, so the change reaches further than the decision it serves.
+- **Capture with a resolved definition in hand.** The capture asks for the table's resolved columns before rendering, from a resolver built from `--schema-file` and updated by `CREATE`/`ALTER` as they stream. Narrower, and it keeps the existing spill and conflict paths untouched.
+
+The implementation takes the second shape unless a prototype shows the resolver cannot be kept current, in which case the first is the fallback and this ADR is amended.
+
 ## Consequences
 
 - `docs/concept/limitations.md` states the new source of names and keys, and restates that the dump must describe the table at incident time; a drifted dump produces wrong rows and only the guard's `EXTRA` check can catch the generated-column half.
