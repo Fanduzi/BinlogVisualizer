@@ -3018,5 +3018,9 @@
   "report.text.rankedTransaction": {
     "description": "同时赢得多个榜单时的事务标签；Ranks 是用斜杠连接的档位词",
     "other": "{{.Ranks}}事务"
+  },
+  "warning.flashbackSchemaKey": {
+    "description": "后续 ALTER 改动了定义里的主键时的警告",
+    "other": "{{.Table}}: schema 定义里的 PRIMARY KEY 被后续 ALTER 改动过，这里没有建模；撤销会改为匹配全部列并 LIMIT 1，而不是用主键"
   }
 }

@@ -17,6 +17,7 @@ const (
 	WarnSchemaFileTableAmbiguous  = "schema_file_table_ambiguous"
 	WarnSchemaFileCaseFolded      = "schema_file_case_folded"
 	WarnSchemaFileCaseMismatch    = "schema_file_case_mismatch"
+	WarnSchemaFileKeyUnmodelled   = "schema_file_key_unmodelled"
 	// WarnMariaDBApplyUnsupported: the binlog is from MariaDB. The undo
 	// values are exact, but the script stops on a MariaDB server.
 	WarnMariaDBApplyUnsupported = "mariadb_apply_unsupported"

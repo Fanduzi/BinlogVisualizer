@@ -115,27 +115,6 @@ func (g *Catalog) Resolve(schema, table string) Resolution {
 	return g.Peek(schema, table)
 }
 
-// FlashColumns is the resolver hook the undo capture uses when the binlog has
-// no column names (ADR 0030): the definition's columns in table order. It
-// reports false when no definition covers the table, which leaves the existing
-// row_metadata refusal in place. Primary-key indexes are added by the key
-// capture step; until then the undo takes its documented no-key path.
-func (g *Catalog) FlashColumns(schema, table string) ([]mysqlexpr.SchemaCol, []int, bool) {
-	if g == nil {
-		return nil, nil, false
-	}
-	res := g.Resolve(schema, table)
-	switch res.Kind {
-	case Exact, Fold:
-		if len(res.Cols) == 0 {
-			return nil, nil, false
-		}
-		return res.Cols, nil, true
-	default:
-		return nil, nil, false
-	}
-}
-
 // peek reports the current binding of schema.table without binding anything.
 func (g *Catalog) Peek(schema, table string) Resolution {
 	if g == nil {
@@ -210,6 +189,9 @@ type Catalog struct {
 	// foldMiss maps a binlog key to schema-file tables that differ only in
 	// letter case but were not used.
 	foldMiss map[string][]string
+	// keyNotes holds one warning per definition whose declared PRIMARY KEY was
+	// changed by a later ALTER (ADR 0030).
+	keyNotes []model.FlashbackWarning
 }
 
 // noteScript reads mysqldump --no-data output or SHOW CREATE TABLE text.
@@ -456,6 +438,9 @@ func (g *Catalog) alterPending(table, rest string) {
 }
 
 func (g *Catalog) applyAlter(key, action string) {
+	if mysqlexpr.AlterChangesPrimaryKey(action) {
+		g.dropDefinitionKey(key)
+	}
 	if mysqlexpr.AlterNoColumnChange(action) {
 		return
 	}
@@ -773,6 +758,7 @@ func (g *Catalog) schemaWarnings() []model.FlashbackWarning {
 	}
 	var out []model.FlashbackWarning
 	out = append(out, g.foldNotes...)
+	out = append(out, g.keyNotes...)
 	if g.ambiguousDB && g.sawUnqualified {
 		out = append(out, model.NewFlashWarning(model.WarnSchemaFileDBMismatch, "warning.flashbackSchemaDB", map[string]any{
 			"Header": g.headerDB,
