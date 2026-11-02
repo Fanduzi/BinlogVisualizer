@@ -232,7 +232,7 @@ func (a *Planner) WriteSplit(sink *splitout.Sink, spec splitout.Spec) (int64, er
 					}
 					return fn(&fg)
 				})
-			}, u.notes, u.cols, a.postImageGuard())
+			}, append(append([]string(nil), u.notes...), a.keySourceNotes()...), u.cols, a.postImageGuard())
 		})
 		if err != nil {
 			var rowErr *generatedRowRefusal

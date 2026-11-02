@@ -3022,5 +3022,9 @@
   "warning.flashbackSchemaKey": {
     "description": "后续 ALTER 改动了定义里的主键时的警告",
     "other": "{{.Table}}: schema 定义里的 PRIMARY KEY 被后续 ALTER 改动过，这里没有建模；撤销会改为匹配全部列并 LIMIT 1，而不是用主键"
+  },
+  "warning.flashbackSchemaKeySource": {
+    "description": "撤销按 schema 文件声明的主键定位行时的警告",
+    "other": "{{.Table}}: binlog 没有行元数据，撤销按 --schema-file 里声明的 PRIMARY KEY 定位行。这份主键的好坏取决于那份转储。"
   }
 }

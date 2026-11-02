@@ -64,6 +64,8 @@ type Planner struct {
 	flashErr              error
 	flashCat              *schemacatalog.Catalog
 	flashUnknown          []string
+	flashKeyTables        map[string]struct{}
+	flashKeyOrder         []string
 	flashSchemaWarn       []model.FlashbackWarning
 	// flashMariaDB is set when a planned row event came from MariaDB.
 	flashMariaDB    bool
@@ -254,6 +256,7 @@ func (a *Planner) noteFlashback(ev model.NormalizedEvent) {
 		a.noteFlashSplit(ev.TxnKey, ev.TxnGTID, false)
 	}
 	if len(rows) > 0 {
+		a.noteSchemaKeyRows(rows)
 		a.appendFlashRows(ev, rows, bind)
 		a.noteFlashbackKept(ev)
 	}
@@ -552,6 +555,39 @@ func (a *Planner) Warnings() []string {
 	return out
 }
 
+// noteSchemaKeyRows records the tables whose undo address came from the schema
+// definition, once each, so the run can say so on stderr, in --plan, and in the
+// script comment (ADR 0030).
+func (a *Planner) noteSchemaKeyRows(rows []model.FlashRow) {
+	for i := range rows {
+		if !rows[i].PKFromSchema {
+			continue
+		}
+		table := flashTable(rows[i].Schema, rows[i].Table)
+		if a.flashKeyTables == nil {
+			a.flashKeyTables = map[string]struct{}{}
+		}
+		if _, seen := a.flashKeyTables[table]; seen {
+			continue
+		}
+		a.flashKeyTables[table] = struct{}{}
+		a.flashKeyOrder = append(a.flashKeyOrder, table)
+	}
+}
+
+// keySourceNotes are the script comments naming tables whose undo address came
+// from --schema-file.
+func (a *Planner) keySourceNotes() []string {
+	if a == nil {
+		return nil
+	}
+	notes := make([]string, 0, len(a.flashKeyOrder))
+	for _, table := range a.flashKeyOrder {
+		notes = append(notes, "-- primary key from --schema-file for "+table+": the binlog carries no row metadata. Verify it describes the table at incident time.\n")
+	}
+	return notes
+}
+
 // FlashbackWarningList reports schema-file notes, tables whose definitions
 // were not seen, transactions a table or --dml filter undid only in part,
 // then a MariaDB binlog (the script does not apply on MariaDB).
@@ -563,6 +599,9 @@ func (a *Planner) WarningList() []model.FlashbackWarning {
 	var out []model.FlashbackWarning
 	out = append(out, a.flashCat.Warnings()...)
 	out = append(out, a.flashSchemaWarn...)
+	for _, table := range a.flashKeyOrder {
+		out = append(out, model.NewFlashWarning(model.WarnSchemaFileKey, "warning.flashbackSchemaKeySource", map[string]any{"Table": table}))
+	}
 	for _, table := range a.flashUnknown {
 		out = append(out, model.NewFlashWarning(model.WarnTableDefinitionMissing, "warning.flashbackGenerated", map[string]any{"Table": table}))
 	}
@@ -656,7 +695,7 @@ func (a *Planner) WriteFlashback(w io.Writer) (int, error) {
 	}
 	err = writeFlashbackScript(w, func(fn func(*flashGroup) error) error {
 		return a.eachFlashGroup(true, fn)
-	}, genNoteTexts(a.flashGenNotes), cols, a.postImageGuard())
+	}, append(genNoteTexts(a.flashGenNotes), a.keySourceNotes()...), cols, a.postImageGuard())
 	var rowErr *generatedRowRefusal
 	if errors.As(err, &rowErr) {
 		return 0, rowErr.named(a.refusalTable(rowErr.schema, rowErr.table))
