@@ -9,6 +9,9 @@ const (
 	FlashProblemType = "type"
 	// FlashProblemCapture means a selected row event had no flashback image.
 	FlashProblemCapture = "capture"
+	// FlashProblemSchema means a definition resolved but describes a different
+	// number of columns than the row: a dump that does not match this table.
+	FlashProblemSchema = "schema"
 )
 
 // FlashCol is one TABLE_MAP column, aligned with FlashRow.Columns.
@@ -58,4 +61,8 @@ type FlashRow struct {
 	ProblemKind   string
 	ProblemColumn string
 	ProblemType   string
+	// ProblemFileCols and ProblemRowCols carry both counts for a schema-width
+	// refusal, so the message can name them instead of blaming a missing dump.
+	ProblemFileCols int
+	ProblemRowCols  int
 }

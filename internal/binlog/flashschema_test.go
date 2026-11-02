@@ -63,8 +63,11 @@ func TestCaptureFlashbackRowsRejectsMismatchedDefinitionWidth(t *testing.T) {
 		Table:       table,
 		Rows:        [][]any{{int64(7), "paid"}},
 	}, kindDeleteRows, "shop", "orders", catalog)
-	if len(rows) != 1 || rows[0].ProblemKind != model.FlashProblemNames {
-		t.Fatalf("a wider definition must not be stretched, got %+v", rows)
+	if len(rows) != 1 || rows[0].ProblemKind != model.FlashProblemSchema {
+		t.Fatalf("a wider definition is a schema mismatch, not a missing one: %+v", rows)
+	}
+	if rows[0].ProblemFileCols != 3 || rows[0].ProblemRowCols != 2 {
+		t.Fatalf("both counts must travel for the message: %+v", rows[0])
 	}
 }
 

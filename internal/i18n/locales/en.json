@@ -3038,5 +3038,9 @@
   "report.text.columnNamesFromSchema": {
     "description": "Summary note when a schema file named the columns",
     "other": "column names come from --schema-file (the binlog has no row metadata)"
+  },
+  "error.flashbackSchemaWidth": {
+    "description": "Refusal when the schema file describes a different column count than the row",
+    "other": "{{.Table}}: the --schema-file definition describes {{.File}} columns, but the binlog row has {{.Row}}. Use a dump that matches the table at incident time, or leave the table out with --exclude-table."
   }
 }

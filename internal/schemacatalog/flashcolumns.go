@@ -14,10 +14,11 @@ import (
 )
 
 // FlashColumns is the resolver hook the undo capture uses when the binlog has
-// no column names (ADR 0030): the definition's columns in table order. It
-// reports false when no definition covers the table, which leaves the existing
-// row_metadata refusal in place. Primary-key indexes are added by the key
-// capture step; until then the undo takes its documented no-key path.
+// no column names (ADR 0030): the definition's columns in table order, and the
+// primary-key column indexes it declares (empty when it declares no key, which
+// sends the undo to its all-columns + LIMIT 1 path). It reports false when no
+// definition covers the table, which leaves the existing row_metadata refusal
+// in place.
 func (g *Catalog) FlashColumns(schema, table string) ([]mysqlexpr.SchemaCol, []int, bool) {
 	if g == nil {
 		return nil, nil, false
@@ -28,16 +29,15 @@ func (g *Catalog) FlashColumns(schema, table string) ([]mysqlexpr.SchemaCol, []i
 		if len(res.Cols) == 0 {
 			return nil, nil, false
 		}
-		return res.Cols, primaryKeyIndexes(res.Cols), true
+		return res.Cols, PrimaryKeyIndexes(res.Cols), true
 	default:
 		return nil, nil, false
 	}
 }
 
-// primaryKeyIndexes lists the columns the definition declares as the primary
-// key, in table order. An empty result means the definition declares no key,
-// which sends the undo to its all-columns + LIMIT 1 path (ADR 0030).
-func primaryKeyIndexes(cols []mysqlexpr.SchemaCol) []int {
+// PrimaryKeyIndexes lists the columns a definition declares as its primary key,
+// in table order. An empty result means it declares no key (ADR 0030).
+func PrimaryKeyIndexes(cols []mysqlexpr.SchemaCol) []int {
 	var pk []int
 	for i := range cols {
 		if cols[i].Primary {

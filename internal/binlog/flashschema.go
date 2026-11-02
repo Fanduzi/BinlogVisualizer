@@ -31,15 +31,15 @@ type FlashSchemaParser interface {
 	SetFlashSchemaResolver(r FlashSchemaResolver)
 }
 
-// resolveFlashColumns asks the resolver for a definition that describes width
-// columns. A definition of the wrong width cannot name this row, so it counts
-// as unresolved rather than being stretched.
-func resolveFlashColumns(r FlashSchemaResolver, schema, table string, width int) ([]mysqlexpr.SchemaCol, []int, bool) {
-	if r == nil || width <= 0 {
+// resolveFlashColumns asks the resolver for the table's definition. The caller
+// compares the column count: a definition of the wrong width is a schema
+// mismatch, which is a different refusal from "no definition covers this".
+func resolveFlashColumns(r FlashSchemaResolver, schema, table string) ([]mysqlexpr.SchemaCol, []int, bool) {
+	if r == nil {
 		return nil, nil, false
 	}
 	cols, pk, ok := r.FlashColumns(schema, table)
-	if !ok || len(cols) != width {
+	if !ok || len(cols) == 0 {
 		return nil, nil, false
 	}
 	return cols, pk, true

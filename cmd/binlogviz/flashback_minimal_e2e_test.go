@@ -21,6 +21,23 @@ func TestFlashbackMinimalMetadataMySQL57(t *testing.T) {
 	e2eMinimalMetadataUndo(t, "5.7")
 }
 
+// e2eBinlogPosition returns the position after the statements written so far,
+// so a later run can select what follows without selecting the DDL.
+func e2eBinlogPosition(t *testing.T) string {
+	t.Helper()
+	out := e2eMySQL(t, "SHOW MASTER STATUS")
+	fields := strings.Fields(out)
+	for i, f := range fields {
+		if f == "mysql-bin." || strings.HasPrefix(f, "mysql-bin.") {
+			if i+1 < len(fields) {
+				return fields[i+1]
+			}
+		}
+	}
+	t.Fatalf("no position in SHOW MASTER STATUS:\n%s", out)
+	return ""
+}
+
 func e2eMinimalMetadataUndo(t *testing.T, prefixes ...string) {
 	t.Helper()
 	if os.Getenv("BINLOGVIZ_FLASHBACK_E2E") == "" {
@@ -104,5 +121,55 @@ DELETE FROM minmeta.t WHERE id=3;`)
 	}
 	if strings.Contains(out, "@1=") {
 		t.Fatalf("--show-rows must print named columns:\n%s", out)
+	}
+}
+
+// The dump describes the incident-time key; a later ALTER changed it. The
+// planner observes that ALTER (it is in the parsed file, outside the selected
+// range), so the undo must stop addressing the row by the stale key and match
+// every column instead — and say so (ADR 0030).
+func TestFlashbackStaleDefinitionKeyMySQL80(t *testing.T) {
+	if os.Getenv("BINLOGVIZ_FLASHBACK_E2E") == "" {
+		t.Skip("set BINLOGVIZ_FLASHBACK_E2E=1 to round-trip on a local MySQL server")
+	}
+	forceEnglishRuntimeOutput(t)
+	if ver := mysqlVersion(e2eMySQL(t, "SELECT @@version")); strings.HasPrefix(ver, "5.7") {
+		t.Skip("the ALTER-and-restart path is exercised on 8.0")
+	}
+	const ddl = "CREATE TABLE stale.k (id INT NOT NULL, note VARCHAR(8) NOT NULL, PRIMARY KEY (note)) DEFAULT CHARSET=utf8mb4"
+
+	e2eMySQL(t, `
+SET GLOBAL binlog_format = 'ROW';
+SET GLOBAL binlog_row_image = 'FULL';
+SET GLOBAL binlog_row_metadata = 'MINIMAL';`)
+	t.Cleanup(func() { e2eMySQL(t, "SET GLOBAL binlog_row_metadata = 'FULL'") })
+	e2eMySQL(t, "DROP DATABASE IF EXISTS stale")
+	e2eMySQL(t, "CREATE DATABASE stale")
+	e2eMySQL(t, ddl)
+	e2eMySQL(t, "ALTER TABLE stale.k DROP PRIMARY KEY, ADD PRIMARY KEY (id)")
+	pos := e2eBinlogPosition(t)
+	e2eMySQL(t, `
+INSERT INTO stale.k VALUES (1,'a'),(2,'b'),(3,'c');
+UPDATE stale.k SET note='bb' WHERE id=2;
+DELETE FROM stale.k WHERE id=3;`)
+
+	path := e2eIncidentBinlog(t)
+	schemaPath := filepath.Join(t.TempDir(), "schema.sql")
+	if err := os.WriteFile(schemaPath, []byte(ddl+";\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sql, stderr, err := executeFlashbackLikeMain(t, path, "--include-schema", "stale", "--schema-file", schemaPath, "--start-position", pos)
+	if err != nil {
+		t.Fatalf("flashback: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, "changed by a later ALTER") {
+		t.Fatalf("the refusal to trust the stale key must be announced:\n%s", stderr)
+	}
+	if strings.Contains(stderr, "addresses the row by the PRIMARY KEY declared in --schema-file") {
+		t.Fatalf("the run claims to use a key it dropped:\n%s", stderr)
+	}
+	if !flashbackScriptHas(sql, "`id` <=>") {
+		t.Fatalf("a dropped key must match every column, not the stale key:\n%s", sql)
 	}
 }
