@@ -43,10 +43,9 @@ func TestCaptureFlashbackRowsSchemaDefinitionNamesMinimalColumns(t *testing.T) {
 	if len(row.Before) != 2 || row.Before[0] != "7" || row.Before[1] != "'paid'" {
 		t.Fatalf("literals: %#v", row.Before)
 	}
-	// Key capture is the next step of the goal; until it lands the undo takes
-	// its documented no-key path, so this asserts the current contract only.
-	if !row.NoPK || len(row.PK) != 0 {
-		t.Fatalf("key capture is not wired yet, want the no-key path, got PK=%v NoPK=%v", row.PK, row.NoPK)
+	// The definition declares PRIMARY KEY (id), so undo addresses the row by it.
+	if row.NoPK || len(row.PK) != 1 || row.PK[0] != 0 {
+		t.Fatalf("the definition's key must become the undo address, got PK=%v NoPK=%v", row.PK, row.NoPK)
 	}
 }
 

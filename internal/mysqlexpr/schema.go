@@ -18,14 +18,17 @@ import (
 type SchemaCol struct {
 	Name      string
 	Generated bool
-	Expr      string
-	base      string
-	unsigned  bool
-	charset   string
-	members   []string
-	prec      int
-	scale     int
-	hasPrec   bool
+	// Primary marks a column the definition declares as part of the primary
+	// key, inline or in a table-level PRIMARY KEY constraint (ADR 0030).
+	Primary  bool
+	Expr     string
+	base     string
+	unsigned bool
+	charset  string
+	members  []string
+	prec     int
+	scale    int
+	hasPrec  bool
 }
 
 func CloneSchemaCols(cols []SchemaCol) []SchemaCol {
@@ -50,21 +53,6 @@ func GeneratedNameSet(cols []SchemaCol) map[string]struct{} {
 		}
 	}
 	return out
-}
-
-func ParseSchemaColumns(body string) ([]SchemaCol, bool) {
-	var cols []SchemaCol
-	for _, part := range SplitComma(body) {
-		if strings.TrimSpace(part) == "" || isTableConstraint(part) {
-			continue
-		}
-		col, ok := parseSchemaColumn(part)
-		if !ok {
-			return nil, false
-		}
-		cols = append(cols, col)
-	}
-	return cols, true
 }
 
 func parseSchemaColumn(def string) (SchemaCol, bool) {
@@ -244,6 +232,8 @@ func annotateSchemaColumn(col *SchemaCol, def string) {
 			switch strings.ToUpper(word) {
 			case "UNSIGNED":
 				col.unsigned = true
+			case "PRIMARY":
+				col.Primary = true
 			case "CHARSET":
 				if name, ok := sc.Ident(); ok {
 					col.charset = strings.ToLower(strings.Trim(name, "`"))
