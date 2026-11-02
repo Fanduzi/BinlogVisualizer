@@ -8,9 +8,15 @@ This guide is the shortest path from installation to a useful `binlogviz analyze
 
 ## 1. Install or Verify BinlogViz
 
-Use a release artifact if you want a tagged binary, or build from source if you are working locally.
+Install the latest release. Homebrew is macOS only; Linux uses `install.sh`, which verifies the downloaded archive against `checksums.txt`:
 
-For the current install commands and artifact examples, see the project [README](../../README.md#installation).
+```bash
+brew tap Fanduzi/binlogviz && brew install --cask binlogviz   # macOS
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
+sh ./install.sh                                               # Linux; --bin-dir DIR writes somewhere you own
+```
+
+Building from source, pinned versions, and the tarball commands are in the project [README](../../README.md#installation).
 
 To verify the binary you installed:
 
