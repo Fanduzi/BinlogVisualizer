@@ -67,3 +67,29 @@ func TestCaptureFlashbackRowsRejectsMismatchedDefinitionWidth(t *testing.T) {
 		t.Fatalf("a wider definition must not be stretched, got %+v", rows)
 	}
 }
+
+// --show-rows prints the same labels the undo uses: a definition names the
+// columns when the table map has none, and the image records where they came
+// from so the report can say so (ADR 0030).
+func TestCaptureRowImagesUsesDefinitionNames(t *testing.T) {
+	table := flashTable(t, []byte{mysql.MYSQL_TYPE_LONG, mysql.MYSQL_TYPE_VARCHAR}, nil, nil, 0x00, 0)
+	event := &replication.RowsEvent{ColumnCount: 2, Table: table, Rows: [][]any{{int64(7), "paid"}}}
+
+	plain, _ := captureRowImages(event, kindDeleteRows, "shop", "orders", nil)
+	if len(plain) != 1 || plain[0].Columns[0] != "@1" || plain[0].NamesFrom != "" {
+		t.Fatalf("without a definition the labels stay positional: %+v", plain)
+	}
+
+	catalog := schemacatalog.New("")
+	catalog.LoadFile("CREATE TABLE shop.orders (id INT NOT NULL, status VARCHAR(16), PRIMARY KEY (id)) DEFAULT CHARSET=utf8mb4;")
+	named, _ := captureRowImages(event, kindDeleteRows, "shop", "orders", catalog)
+	if len(named) != 1 {
+		t.Fatalf("images: %+v", named)
+	}
+	if named[0].Columns[0] != "id" || named[0].Columns[1] != "status" {
+		t.Fatalf("columns must come from the definition: %#v", named[0].Columns)
+	}
+	if named[0].NamesFrom != model.RowNamesFromSchema {
+		t.Fatalf("the image must record where the names came from, got %q", named[0].NamesFrom)
+	}
+}

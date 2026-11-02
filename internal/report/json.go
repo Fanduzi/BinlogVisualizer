@@ -354,9 +354,11 @@ type jsonRowImage struct {
 	Op      string   `json:"op"`
 	Columns []string `json:"columns"`
 	Names   string   `json:"names"`
-	Before  []any    `json:"before,omitempty"`
-	After   []any    `json:"after,omitempty"`
-	Changed []string `json:"changed,omitempty"`
+	// NamesFrom is set when the labels came from --schema-file (ADR 0030).
+	NamesFrom string   `json:"names_from,omitempty"`
+	Before    []any    `json:"before,omitempty"`
+	After     []any    `json:"after,omitempty"`
+	Changed   []string `json:"changed,omitempty"`
 }
 
 type jsonActor struct {
@@ -1239,14 +1241,15 @@ func convertRowImages(images []model.RowImage) []jsonRowImage {
 	out := make([]jsonRowImage, len(images))
 	for i, image := range images {
 		out[i] = jsonRowImage{
-			Schema:  image.Schema,
-			Table:   image.Table,
-			Op:      image.Op,
-			Columns: append([]string(nil), image.Columns...),
-			Names:   image.Names,
-			Before:  jsonCells(image.Before),
-			After:   jsonCells(image.After),
-			Changed: append([]string(nil), image.Changed...),
+			Schema:    image.Schema,
+			Table:     image.Table,
+			Op:        image.Op,
+			Columns:   append([]string(nil), image.Columns...),
+			Names:     image.Names,
+			NamesFrom: image.NamesFrom,
+			Before:    jsonCells(image.Before),
+			After:     jsonCells(image.After),
+			Changed:   append([]string(nil), image.Changed...),
 		}
 	}
 	return out

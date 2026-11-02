@@ -259,6 +259,10 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
+			if err := readAnalyzeSchemaFile(opts); err != nil {
+				return err
+			}
+
 			// Build analyzer options
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			analyzerOpts.GTIDSelector = gtidSelector
@@ -472,9 +476,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if rows, ok := parser.(binlog.FlashbackParser); ok {
 			rows.SetCaptureFlashback(true)
 		}
-		if setter, ok := parser.(binlog.FlashSchemaParser); ok {
-			setter.SetFlashSchemaResolver(flashSchemaResolver(opts.SchemaSQL, opts.SchemaFileDB))
-		}
+	}
+	if setter, ok := parser.(binlog.FlashSchemaParser); ok {
+		setter.SetFlashSchemaResolver(flashSchemaResolver(opts.SchemaSQL, opts.SchemaFileDB))
 	}
 	if opts.Redo {
 		if rows, ok := parser.(binlog.RedoParser); ok {
@@ -759,6 +763,23 @@ func createDuckDBTempStore(root string) (*detailstore.DuckDBStore, func() error,
 		return removeErr
 	}
 	return store, cleanup, path, nil
+}
+
+// readAnalyzeSchemaFile reads --schema-file into the SQL text the analyzer and
+// the row-image capture use (ADR 0030), the way flashback reads its own flag.
+func readAnalyzeSchemaFile(opts *analyzeOptions) error {
+	if opts.schemaFile == "" {
+		return nil
+	}
+	body, err := os.ReadFile(opts.schemaFile)
+	if err != nil {
+		return clierr.Wrap(clierr.KindInput, clierr.Errorf(clierr.KindInput, "%s", i18n.Tf("error.flashbackSchemaFile", map[string]any{
+			"Path":  opts.schemaFile,
+			"Error": err.Error(),
+		})))
+	}
+	opts.schemaSQL = string(body)
+	return nil
 }
 
 // flashSchemaResolver builds the definition lookup undo capture uses when the

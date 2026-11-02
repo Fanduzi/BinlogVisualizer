@@ -93,7 +93,7 @@ func TestMediumintUnsignedPrimaryKeyAndFlashback(t *testing.T) {
 		ColumnCount: 2,
 		Table:       table,
 		Rows:        [][]any{row},
-	}, kindDeleteRows, "p169", "mpk")
+	}, kindDeleteRows, "p169", "mpk", nil)
 	if omitted != 0 || len(images) != 1 || images[0].Before[0].Text != "9000000" {
 		t.Fatalf("show-rows: %+v omitted %d", images, omitted)
 	}
@@ -185,7 +185,7 @@ func TestBitDoesNotConsumeSignednessBit(t *testing.T) {
 		ColumnCount: 3,
 		Table:       table,
 		Rows:        [][]any{row},
-	}, kindWriteRows, "numx", "bits")
+	}, kindWriteRows, "numx", "bits", nil)
 	if images[0].After[1].Text != "255" || images[0].After[2].Text != "9000000" {
 		t.Fatalf("cells %#v", cells(images[0].After))
 	}

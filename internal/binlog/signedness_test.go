@@ -109,7 +109,7 @@ func TestYearBeforeUnsignedIntegers(t *testing.T) {
 		ColumnCount: uint64(len(types)),
 		Table:       table,
 		Rows:        [][]any{row},
-	}, kindDeleteRows, "p164", "sg")
+	}, kindDeleteRows, "p164", "sg", nil)
 	if omitted != 0 || len(images) != 1 {
 		t.Fatalf("images omitted=%d %#v", omitted, images)
 	}
@@ -212,7 +212,7 @@ func TestSignednessBitsForFloatDoubleDecimalAndMediumint(t *testing.T) {
 		ColumnCount: uint64(len(types)),
 		Table:       table,
 		Rows:        [][]any{row},
-	}, kindWriteRows, "p164", "wide")
+	}, kindWriteRows, "p164", "wide", nil)
 	if images[0].After[4].Text != "1000000" || images[0].After[5].Text != "4000000000" || images[0].After[6].Text != "18446744073709551615" {
 		t.Fatalf("show-rows: %#v", cells(images[0].After))
 	}
