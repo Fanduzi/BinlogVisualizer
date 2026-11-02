@@ -25,7 +25,7 @@ page is the contract.
 | [DuckDB Temp Store](concept/duckdb-temp-store.md) | The opt-in `--detail-store duckdb` path |
 | [JSON Schemas](schema/) | One schema per versioned JSON output; `binlogviz schema` prints them |
 | [Release notes](releases/) | What changed in each version |
-| [Example outputs](examples/) | A real text and JSON report |
+| [Example outputs](examples/) | Real text, JSON, and Markdown reports of the sample binlog |
 | [Agent usage guide](agents/USING-BINLOGVIZ.md) | Driving BinlogViz from an AI agent |
 
 ## If you work on BinlogViz

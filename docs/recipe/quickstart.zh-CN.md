@@ -8,9 +8,15 @@
 
 ## 1. 安装或验证 BinlogViz
 
-如果你需要带发布版本号的二进制，优先使用 release artifact；如果你是在本地开发或验证，也可以直接从源码构建。
+安装最新版本。Homebrew 仅用于 macOS；Linux 用 `install.sh`，它会用 `checksums.txt` 校验下载到的归档：
 
-当前安装命令和 artifact 示例，请查看项目 [README](../../README_ZH.md#安装)。
+```bash
+brew tap Fanduzi/binlogviz && brew install --cask binlogviz   # macOS
+curl -fsSLO https://raw.githubusercontent.com/Fanduzi/BinlogVisualizer/main/install.sh
+sh ./install.sh                                               # Linux；--bin-dir DIR 装到你有权限的目录
+```
+
+从源码构建、固定版本号以及 tarball 命令见项目 [README](../../README_ZH.md#安装)。
 
 安装完成后，可以这样验证二进制：
 
