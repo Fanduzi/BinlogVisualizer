@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
@@ -21,6 +22,7 @@ import (
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
 	"binlogviz/internal/report"
+	"binlogviz/internal/schemacatalog"
 	"binlogviz/internal/snapshot"
 	"binlogviz/internal/splitout"
 )
@@ -470,6 +472,9 @@ func runAnalysisStreamingWithSnapshotDeps(
 		if rows, ok := parser.(binlog.FlashbackParser); ok {
 			rows.SetCaptureFlashback(true)
 		}
+		if setter, ok := parser.(binlog.FlashSchemaParser); ok {
+			setter.SetFlashSchemaResolver(flashSchemaResolver(opts.SchemaSQL, opts.SchemaFileDB))
+		}
 	}
 	if opts.Redo {
 		if rows, ok := parser.(binlog.RedoParser); ok {
@@ -754,4 +759,16 @@ func createDuckDBTempStore(root string) (*detailstore.DuckDBStore, func() error,
 		return removeErr
 	}
 	return store, cleanup, path, nil
+}
+
+// flashSchemaResolver builds the definition lookup undo capture uses when the
+// binlog has no column names (ADR 0030). Without --schema-file there is no
+// definition, and a MINIMAL row keeps its row_metadata refusal.
+func flashSchemaResolver(schemaSQL, schemaFileDB string) binlog.FlashSchemaResolver {
+	if strings.TrimSpace(schemaSQL) == "" {
+		return nil
+	}
+	catalog := schemacatalog.New(schemaFileDB)
+	catalog.LoadFile(schemaSQL)
+	return catalog
 }

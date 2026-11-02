@@ -1040,6 +1040,10 @@ func (p *heapParser) SetCaptureFlashback(on bool) {
 	p.inner.(binlog.FlashbackParser).SetCaptureFlashback(on)
 }
 
+func (p *heapParser) SetFlashSchemaResolver(r binlog.FlashSchemaResolver) {
+	p.inner.(binlog.FlashSchemaParser).SetFlashSchemaResolver(r)
+}
+
 func (p *heapParser) SetCaptureRowImages(on bool) {
 	p.inner.(binlog.RowImageParser).SetCaptureRowImages(on)
 }

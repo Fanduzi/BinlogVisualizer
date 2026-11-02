@@ -16,12 +16,13 @@ import (
 	"github.com/shopspring/decimal"
 
 	"binlogviz/internal/model"
+	"binlogviz/internal/mysqlexpr"
 )
 
 // mysqlCollationBinary is the collation id for the binary charset.
 const mysqlCollationBinary uint64 = 63
 
-func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string) []model.FlashRow {
+func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string, resolver FlashSchemaResolver) []model.FlashRow {
 	docs := recallFlashJSON(ev)
 	base := model.FlashRow{Schema: schema, Table: table, Op: operationFromKind(kind)}
 	if ev == nil || ev.Table == nil || len(ev.Rows) == 0 {
@@ -33,9 +34,19 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 		width = len(ev.Rows[0])
 	}
 	labels, names := columnLabels(ev.Table, width)
+	// ADR 0030: when the table map carries no names, a definition supplied by
+	// --schema-file names the columns and carries the facts MINIMAL lacks. A
+	// FULL table map is never overridden by a definition.
+	var defCols []mysqlexpr.SchemaCol
+	var defPK []int
+	fromDef := false
 	if names != model.RowNamesFull || !flashNamesComplete(ev.Table, width) {
-		base.ProblemKind = model.FlashProblemNames
-		return []model.FlashRow{base}
+		defCols, defPK, fromDef = resolveFlashColumns(resolver, schema, table, width)
+		if !fromDef {
+			base.ProblemKind = model.FlashProblemNames
+			return []model.FlashRow{base}
+		}
+		labels = flashLabelsFromCols(defCols)
 	}
 	meta := pkMetaFrom(ev.Table)
 	if len(ev.Table.PrimaryKey) > 0 && len(meta.indexes) == 0 {
@@ -58,13 +69,25 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 	enums := ev.Table.EnumStrValueMap()
 	sets := ev.Table.SetStrValueMap()
 	collation := ev.Table.CollationMap()
+	renderLiterals := func(cols []model.FlashCol, values []any, cells []jsonCell) ([]string, *model.FlashRow) {
+		if fromDef {
+			return flashLiteralsFromCols(cols, labels, values, cells, schema, table)
+		}
+		return flashLiterals(ev.Table, labels, values, cells, unsigned, enums, sets, collation, schema, table)
+	}
 	out := make([]model.FlashRow, 0, logical)
 	for i := 0; i < logical; i++ {
 		row := base
 		row.Columns = labels
 		row.Cols = flashColumnMeta(ev.Table, width)
-		row.NoPK = noPK
-		row.PK = append([]int(nil), meta.indexes...)
+		if fromDef {
+			mergeFlashColumns(row.Cols, defCols)
+			row.NoPK = len(defPK) == 0
+			row.PK = append([]int(nil), defPK...)
+		} else {
+			row.NoPK = noPK
+			row.PK = append([]int(nil), meta.indexes...)
+		}
 		var beforeRow, afterRow []any
 		var beforeSkips, afterSkips []int
 		beforeIndex, afterIndex := -1, -1
@@ -90,10 +113,10 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string)
 		}
 		var problem *model.FlashRow
 		if beforeRow != nil {
-			row.Before, problem = flashLiterals(ev.Table, labels, beforeRow, jsonCellsAt(docs, beforeIndex), unsigned, enums, sets, collation, schema, table)
+			row.Before, problem = renderLiterals(row.Cols, beforeRow, jsonCellsAt(docs, beforeIndex))
 		}
 		if problem == nil && afterRow != nil {
-			row.After, problem = flashLiterals(ev.Table, labels, afterRow, jsonCellsAt(docs, afterIndex), unsigned, enums, sets, collation, schema, table)
+			row.After, problem = renderLiterals(row.Cols, afterRow, jsonCellsAt(docs, afterIndex))
 		}
 		if problem != nil {
 			return append(out, *problem)

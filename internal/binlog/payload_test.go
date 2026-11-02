@@ -15,7 +15,7 @@ import (
 )
 
 func TestExpandTransactionPayloadUsesWrapperSpanNotUncompressedLogPos(t *testing.T) {
-	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{})
+	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{}, nil)
 	if !ok {
 		t.Fatal("expected successful expand")
 	}
@@ -33,7 +33,7 @@ func TestExpandTransactionPayloadUsesWrapperSpanNotUncompressedLogPos(t *testing
 }
 
 func TestExpandTransactionPayloadEmitsInnerKindsNotWrapper(t *testing.T) {
-	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{})
+	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{}, nil)
 	if !ok {
 		t.Fatal("expected successful expand")
 	}
@@ -52,7 +52,7 @@ func TestExpandTransactionPayloadEmitsInnerKindsNotWrapper(t *testing.T) {
 }
 
 func TestExpandTransactionPayloadInnerRowsNormalizeAsUnwrapped(t *testing.T) {
-	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{})
+	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", map[uint64]cachedTableName{}, nil)
 	if !ok {
 		t.Fatal("expected successful expand")
 	}
@@ -63,7 +63,7 @@ func TestExpandTransactionPayloadInnerRowsNormalizeAsUnwrapped(t *testing.T) {
 }
 
 func TestSuccessfulPayloadExpandDoesNotIncrementUnmappedEvents(t *testing.T) {
-	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", nil)
+	raws, ok := expandTransactionPayload(decodedPayloadWrapper(), "mysql-bin.000001", "8.0.36", nil, nil)
 	if !ok {
 		t.Fatal("expected successful expand")
 	}
@@ -84,7 +84,7 @@ func TestFailedPayloadExpandLeavesWrapperUnmapped(t *testing.T) {
 		Header: &replication.EventHeader{EventType: replication.TRANSACTION_PAYLOAD_EVENT, EventSize: 40, LogPos: 120},
 		Event:  &replication.TransactionPayloadEvent{},
 	}
-	raws, ok := expandTransactionPayload(ev, "mysql-bin.000001", "8.0.36", nil)
+	raws, ok := expandTransactionPayload(ev, "mysql-bin.000001", "8.0.36", nil, nil)
 	if ok {
 		t.Fatalf("empty payload must not count as a successful expand, got %v", eventTypes(raws))
 	}
@@ -229,7 +229,7 @@ func TestExpandTransactionPayloadTimestampsAreUTC(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			payloadTimestampLocation = tc.loc
 			localTS := utc.In(tc.loc).Format(layout)
-			raws, ok := expandTransactionPayload(timestampPayload(localTS), "mysql-bin.000001", "8.0.36", nil, true)
+			raws, ok := expandTransactionPayload(timestampPayload(localTS), "mysql-bin.000001", "8.0.36", nil, nil, true)
 			if !ok || len(raws) != 1 || len(raws[0].RowImages) != 2 {
 				t.Fatalf("expand = %d events, ok=%v", len(raws), ok)
 			}
