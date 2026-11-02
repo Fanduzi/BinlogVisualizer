@@ -223,7 +223,7 @@ func TestFlashbackRefusalJSONReasons(t *testing.T) {
 			if !strings.Contains(body.Error.Message, tc.msg) {
 				t.Fatalf("message %s", body.Error.Message)
 			}
-			if tc.reason == "row_metadata" && (!strings.Contains(body.Error.Message, "--schema-file does not supply row metadata") || !strings.Contains(body.Error.Message, "Restore the table from a backup")) {
+			if tc.reason == "row_metadata" && (!strings.Contains(body.Error.Message, "pass --schema-file") || !strings.Contains(body.Error.Message, "restore from a backup")) {
 				t.Fatalf("metadata message is not actionable: %s", body.Error.Message)
 			}
 		})
