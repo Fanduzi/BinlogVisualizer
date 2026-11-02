@@ -1095,18 +1095,6 @@
     "description": "报告表格显示限制省略的表数量",
     "other": "… 还有 {{.Count}} 张表未显示"
   },
-  "report.text.largestTransaction": {
-    "description": "最大事务发现短标签",
-    "other": "最大事务"
-  },
-  "report.text.longestTransaction": {
-    "description": "最长事务发现短标签",
-    "other": "最长事务"
-  },
-  "report.text.widestTransaction": {
-    "description": "最宽事务发现短标签",
-    "other": "最宽事务"
-  },
   "report.text.listedTransaction": {
     "description": "不是最大、最长或最宽冠军的重点事务标签",
     "other": "事务"
@@ -2970,5 +2958,65 @@
   "report.text.trend.patternFallback": {
     "description": "未命名模式兜底标签",
     "other": "模式"
+  },
+  "report.text.rankLargest": {
+    "description": "多榜单事务标签里的紧凑档位词",
+    "other": "最大"
+  },
+  "report.text.rankLongest": {
+    "description": "多榜单事务标签里的紧凑档位词",
+    "other": "最长"
+  },
+  "report.text.rankWidest": {
+    "description": "多榜单事务标签里的紧凑档位词",
+    "other": "最宽"
+  },
+  "report.text.colTable": {
+    "description": "表名列表头",
+    "other": "表"
+  },
+  "report.text.colAffectedRows": {
+    "description": "影响行数列头",
+    "other": "影响行数"
+  },
+  "report.text.colDDLEvents": {
+    "description": "DDL 事件列头",
+    "other": "DDL 事件"
+  },
+  "report.text.colTransactions": {
+    "description": "事务数列头",
+    "other": "事务数"
+  },
+  "report.text.colBinlogEvents": {
+    "description": "binlog 事件数列头",
+    "other": "binlog 事件"
+  },
+  "report.text.colRowShare": {
+    "description": "影响行数占比列头",
+    "other": "行占比"
+  },
+  "report.text.colRows": {
+    "description": "线程表行数列头",
+    "other": "行数"
+  },
+  "report.text.colEvents": {
+    "description": "线程表事件数列头",
+    "other": "事件数"
+  },
+  "report.text.colBytes": {
+    "description": "线程表字节数列头",
+    "other": "字节"
+  },
+  "report.text.colTxns": {
+    "description": "线程表事务数列头",
+    "other": "事务"
+  },
+  "report.text.colShare": {
+    "description": "线程表占比列头",
+    "other": "占比"
+  },
+  "report.text.rankedTransaction": {
+    "description": "同时赢得多个榜单时的事务标签；Ranks 是用斜杠连接的档位词",
+    "other": "{{.Ranks}}事务"
   }
 }

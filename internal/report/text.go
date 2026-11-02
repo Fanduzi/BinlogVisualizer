@@ -172,15 +172,16 @@ func renderNoPrimaryKey(buf *strings.Builder, tables []model.TableStats) {
 	}
 	buf.WriteString("=== " + i18n.T("report.text.noPrimaryKey") + " ===\n")
 	buf.WriteString("  " + i18n.T("report.text.noPrimaryKeyLead") + "\n")
-	nameWidth := len("Table")
+	hdrName := i18n.T("report.text.colTable")
+	nameWidth := displayWidth(hdrName)
 	for _, row := range view.risks {
-		if len(row.name()) > nameWidth {
-			nameWidth = len(row.name())
+		if w := displayWidth(row.name()); w > nameWidth {
+			nameWidth = w
 		}
 	}
-	fmt.Fprintf(buf, "  %-2s %-*s %6s %6s\n", "#", nameWidth, "Table", "UPDATE", "DELETE")
+	fmt.Fprintf(buf, "  %s %s %s %s\n", padRight("#", 2), padRight(hdrName, nameWidth), padLeft("UPDATE", 6), padLeft("DELETE", 6))
 	for i, row := range view.risks {
-		fmt.Fprintf(buf, "  %-2d %-*s %6d %6d\n", i+1, nameWidth, row.name(), row.update, row.delete)
+		fmt.Fprintf(buf, "  %s %s %s %s\n", padRight(fmt.Sprintf("%d", i+1), 2), padRight(row.name(), nameWidth), padLeft(fmt.Sprintf("%d", row.update), 6), padLeft(fmt.Sprintf("%d", row.delete), 6))
 	}
 	if len(view.insertOnly) > 0 {
 		buf.WriteString("  " + i18n.Tf("report.text.noPrimaryKeyInsertOnly", map[string]any{
@@ -207,7 +208,13 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 	}
 
 	rows := make([]tableRow, len(displayedTables))
-	nameWidth := len("Table")
+	hdrName := i18n.T("report.text.colTable")
+	hdrTotal := i18n.T("report.text.colAffectedRows")
+	hdrDDL := i18n.T("report.text.colDDLEvents")
+	hdrTxns := i18n.T("report.text.colTransactions")
+	hdrEvents := i18n.T("report.text.colBinlogEvents")
+	hdrShare := i18n.T("report.text.colRowShare")
+	nameWidth := displayWidth(hdrName)
 	for i, table := range displayedTables {
 		name := table.Schema + "." + table.Table
 		share := 0.0
@@ -225,33 +232,33 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 			events: fmt.Sprintf("%d", table.EventCount),
 			share:  fmt.Sprintf("%.1f%%", share),
 		}
-		if len(name) > nameWidth {
-			nameWidth = len(name)
+		if w := displayWidth(name); w > nameWidth {
+			nameWidth = w
 		}
 	}
 
-	totalWidth := maxInt(len("Affected Rows"), maxWidth(rows, func(r tableRow) string { return r.total }))
-	insertWidth := maxInt(len("INSERT"), maxWidth(rows, func(r tableRow) string { return r.insert }))
-	updateWidth := maxInt(len("UPDATE"), maxWidth(rows, func(r tableRow) string { return r.update }))
-	deleteWidth := maxInt(len("DELETE"), maxWidth(rows, func(r tableRow) string { return r.delete }))
-	ddlWidth := maxInt(len("DDL Events"), maxWidth(rows, func(r tableRow) string { return r.ddl }))
-	txnsWidth := maxInt(len("Transactions"), maxWidth(rows, func(r tableRow) string { return r.txns }))
-	eventsWidth := maxInt(len("Binlog Events"), maxWidth(rows, func(r tableRow) string { return r.events }))
-	shareWidth := maxInt(len("Row Share"), maxWidth(rows, func(r tableRow) string { return r.share }))
+	totalWidth := maxInt(displayWidth(hdrTotal), maxWidth(rows, func(r tableRow) string { return r.total }))
+	insertWidth := maxInt(displayWidth("INSERT"), maxWidth(rows, func(r tableRow) string { return r.insert }))
+	updateWidth := maxInt(displayWidth("UPDATE"), maxWidth(rows, func(r tableRow) string { return r.update }))
+	deleteWidth := maxInt(displayWidth("DELETE"), maxWidth(rows, func(r tableRow) string { return r.delete }))
+	ddlWidth := maxInt(displayWidth(hdrDDL), maxWidth(rows, func(r tableRow) string { return r.ddl }))
+	txnsWidth := maxInt(displayWidth(hdrTxns), maxWidth(rows, func(r tableRow) string { return r.txns }))
+	eventsWidth := maxInt(displayWidth(hdrEvents), maxWidth(rows, func(r tableRow) string { return r.events }))
+	shareWidth := maxInt(displayWidth(hdrShare), maxWidth(rows, func(r tableRow) string { return r.share }))
 
-	fmt.Fprintf(buf, "  %-2s %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
-		"#", nameWidth, "Table",
-		totalWidth, "Affected Rows",
-		insertWidth, "INSERT", updateWidth, "UPDATE", deleteWidth, "DELETE",
-		ddlWidth, "DDL Events", txnsWidth, "Transactions",
-		eventsWidth, "Binlog Events", shareWidth, "Row Share")
+	fmt.Fprintf(buf, "  %s %s %s %s %s %s %s %s %s %s\n",
+		padRight("#", 2), padRight(hdrName, nameWidth),
+		padLeft(hdrTotal, totalWidth),
+		padLeft("INSERT", insertWidth), padLeft("UPDATE", updateWidth), padLeft("DELETE", deleteWidth),
+		padLeft(hdrDDL, ddlWidth), padLeft(hdrTxns, txnsWidth),
+		padLeft(hdrEvents, eventsWidth), padLeft(hdrShare, shareWidth))
 	for i, row := range rows {
-		fmt.Fprintf(buf, "  %-2d %-*s %*s %*s %*s %*s %*s %*s %*s %*s\n",
-			i+1, nameWidth, row.name,
-			totalWidth, row.total,
-			insertWidth, row.insert, updateWidth, row.update, deleteWidth, row.delete,
-			ddlWidth, row.ddl, txnsWidth, row.txns,
-			eventsWidth, row.events, shareWidth, row.share)
+		fmt.Fprintf(buf, "  %s %s %s %s %s %s %s %s %s %s\n",
+			padRight(fmt.Sprintf("%d", i+1), 2), padRight(row.name, nameWidth),
+			padLeft(row.total, totalWidth),
+			padLeft(row.insert, insertWidth), padLeft(row.update, updateWidth), padLeft(row.delete, deleteWidth),
+			padLeft(row.ddl, ddlWidth), padLeft(row.txns, txnsWidth),
+			padLeft(row.events, eventsWidth), padLeft(row.share, shareWidth))
 	}
 	if omittedTables > 0 {
 		buf.WriteString("  " + omittedTablesLabel(omittedTables) + "\n")
@@ -263,7 +270,7 @@ func renderTopTablesTable(buf *strings.Builder, tables []model.TableStats, topN 
 func maxWidth(rows []tableRow, extract func(tableRow) string) int {
 	max := 0
 	for _, row := range rows {
-		if w := len(extract(row)); w > max {
+		if w := displayWidth(extract(row)); w > max {
 			max = w
 		}
 	}
@@ -286,36 +293,28 @@ func renderTopTransactions(buf *strings.Builder, result model.AnalysisResult, op
 	widest := indexTxnKeys(built.Text.Widest)
 	serverVersion := result.Diagnostics.ServerVersion
 	for _, txn := range built.Key {
-		labeled := false
+		// One block per transaction, even when it wins several rankings: the
+		// replay command and the row images belong to the transaction, not to
+		// the ranking that surfaced it.
+		ranks := make([]string, 0, 3)
 		if txn.TxnKey != "" && largest[txn.TxnKey] {
-			labeled = true
-			line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
-				i18n.T("report.text.largestTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
-			if table := dominantTableName(txn.Tables); table != "" {
-				line += " table=" + table
-			}
-			if txn.BinlogBytes > 0 {
-				line += " bytes=" + formatByteSize(txn.BinlogBytes)
-			}
-			appendTxnBlock(&lines, appendTxnIdentity(line, txn), txn, mode, serverVersion, opts)
+			ranks = append(ranks, i18n.T("report.text.rankLargest"))
 		}
 		if txn.TxnKey != "" && longest[txn.TxnKey] {
-			labeled = true
-			line := fmt.Sprintf("  %s: %s dur=%s rows=%d file=%s",
-				i18n.T("report.text.longestTransaction"), txn.TxnKey, formatDuration(txn.Duration), txn.TotalRows, formatSuspiciousLocation(txn))
-			appendTxnBlock(&lines, appendTxnIdentity(line, txn), txn, mode, serverVersion, opts)
+			ranks = append(ranks, i18n.T("report.text.rankLongest"))
 		}
 		if txn.TxnKey != "" && widest[txn.TxnKey] {
-			labeled = true
-			line := fmt.Sprintf("  %s: %s tables=%d rows=%d file=%s",
-				i18n.T("report.text.widestTransaction"), txn.TxnKey, len(txn.Tables), txn.TotalRows, formatSuspiciousLocation(txn))
-			appendTxnBlock(&lines, appendTxnIdentity(line, txn), txn, mode, serverVersion, opts)
+			ranks = append(ranks, i18n.T("report.text.rankWidest"))
 		}
-		if labeled {
-			continue
+		label := i18n.T("report.text.listedTransaction")
+		if len(ranks) > 0 {
+			label = i18n.Tf("report.text.rankedTransaction", map[string]any{"Ranks": strings.Join(ranks, "/")})
 		}
-		line := fmt.Sprintf("  %s: %s rows=%d tables=%d file=%s",
-			i18n.T("report.text.listedTransaction"), txn.TxnKey, txn.TotalRows, len(txn.Tables), formatTxnEvidenceLocation(txn))
+		line := fmt.Sprintf("  %s: %s rows=%d tables=%d", label, txn.TxnKey, txn.TotalRows, len(txn.Tables))
+		if isLongest := txn.TxnKey != "" && longest[txn.TxnKey]; isLongest || txn.Duration > 0 {
+			line += " dur=" + formatDuration(txn.Duration)
+		}
+		line += " file=" + formatTxnEvidenceLocation(txn)
 		if table := dominantTableName(txn.Tables); table != "" {
 			line += " table=" + table
 		}
@@ -605,23 +604,24 @@ func writeThreadTable(buf *strings.Builder, cols threadColumnSet, rows []threadT
 		value func(threadTextRow) string
 	}
 	columns := []col{
-		{true, "#", 1, func(r threadTextRow) string { return r.rank }},
-		{cols.thread, "thread_id", len("thread_id"), func(r threadTextRow) string { return r.thread }},
-		{cols.server, "server_id", len("server_id"), func(r threadTextRow) string { return r.server }},
-		{cols.actor, "user@host", len("user@host"), func(r threadTextRow) string { return r.actor }},
-		{cols.schema, "schema", len("schema"), func(r threadTextRow) string { return r.schema }},
-		{cols.rows, "rows", len("rows"), func(r threadTextRow) string { return r.rows }},
-		{cols.events, "events", len("events"), func(r threadTextRow) string { return r.events }},
-		{cols.bytes, "bytes", len("bytes"), func(r threadTextRow) string { return r.bytes }},
-		{cols.txns, "txns", len("txns"), func(r threadTextRow) string { return r.txns }},
-		{true, "share", len("share"), func(r threadTextRow) string { return r.share }},
+		{true, "#", 0, func(r threadTextRow) string { return r.rank }},
+		{cols.thread, "thread_id", 0, func(r threadTextRow) string { return r.thread }},
+		{cols.server, "server_id", 0, func(r threadTextRow) string { return r.server }},
+		{cols.actor, "user@host", 0, func(r threadTextRow) string { return r.actor }},
+		{cols.schema, "schema", 0, func(r threadTextRow) string { return r.schema }},
+		{cols.rows, i18n.T("report.text.colRows"), 0, func(r threadTextRow) string { return r.rows }},
+		{cols.events, i18n.T("report.text.colEvents"), 0, func(r threadTextRow) string { return r.events }},
+		{cols.bytes, i18n.T("report.text.colBytes"), 0, func(r threadTextRow) string { return r.bytes }},
+		{cols.txns, i18n.T("report.text.colTxns"), 0, func(r threadTextRow) string { return r.txns }},
+		{true, i18n.T("report.text.colShare"), 0, func(r threadTextRow) string { return r.share }},
 	}
 	for i := range columns {
 		if !columns[i].show {
 			continue
 		}
+		columns[i].width = displayWidth(columns[i].title)
 		for _, row := range rows {
-			if w := len(columns[i].value(row)); w > columns[i].width {
+			if w := displayWidth(columns[i].value(row)); w > columns[i].width {
 				columns[i].width = w
 			}
 		}
@@ -632,7 +632,7 @@ func writeThreadTable(buf *strings.Builder, cols threadColumnSet, rows []threadT
 		if !column.show {
 			continue
 		}
-		fmt.Fprintf(&header, " %-*s", column.width, column.title)
+		header.WriteString(" " + padRight(column.title, column.width))
 	}
 	buf.WriteString(strings.TrimRight(header.String(), " ") + "\n")
 	for _, row := range rows {
@@ -642,7 +642,7 @@ func writeThreadTable(buf *strings.Builder, cols threadColumnSet, rows []threadT
 			if !column.show {
 				continue
 			}
-			fmt.Fprintf(&line, " %-*s", column.width, column.value(row))
+			line.WriteString(" " + padRight(column.value(row), column.width))
 		}
 		buf.WriteString(strings.TrimRight(line.String(), " ") + "\n")
 	}

@@ -133,7 +133,6 @@ func TestAnalyzeTextShowsCommittedDuration(t *testing.T) {
 	for _, want := range []string{
 		"Committed duration:",
 		">=30s=1",
-		"Longest transaction:",
 		"dur=45.0s",
 		"exceeds duration threshold (45s)",
 		"Top txn bytes:",

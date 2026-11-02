@@ -1095,18 +1095,6 @@
     "description": "Count of tables omitted by the report table display limit",
     "other": "… and {{.Count}} more tables"
   },
-  "report.text.largestTransaction": {
-    "description": "Short finding label for largest transaction",
-    "other": "Largest transaction"
-  },
-  "report.text.longestTransaction": {
-    "description": "Short finding label for longest transaction",
-    "other": "Longest transaction"
-  },
-  "report.text.widestTransaction": {
-    "description": "Short finding label for widest transaction",
-    "other": "Widest transaction"
-  },
   "report.text.listedTransaction": {
     "description": "Label for a key transaction that is not a largest, longest, or widest champion",
     "other": "Transaction"
@@ -2970,5 +2958,65 @@
   "report.text.trend.patternFallback": {
     "description": "Unnamed pattern fallback label",
     "other": "pattern"
+  },
+  "report.text.rankLargest": {
+    "description": "Compact rank word joined into a multi-rank transaction label",
+    "other": "Largest"
+  },
+  "report.text.rankLongest": {
+    "description": "Compact rank word joined into a multi-rank transaction label",
+    "other": "Longest"
+  },
+  "report.text.rankWidest": {
+    "description": "Compact rank word joined into a multi-rank transaction label",
+    "other": "Widest"
+  },
+  "report.text.colTable": {
+    "description": "Table name column header",
+    "other": "Table"
+  },
+  "report.text.colAffectedRows": {
+    "description": "Affected rows column header",
+    "other": "Affected Rows"
+  },
+  "report.text.colDDLEvents": {
+    "description": "DDL events column header",
+    "other": "DDL Events"
+  },
+  "report.text.colTransactions": {
+    "description": "Transaction count column header",
+    "other": "Transactions"
+  },
+  "report.text.colBinlogEvents": {
+    "description": "Binlog event count column header",
+    "other": "Binlog Events"
+  },
+  "report.text.colRowShare": {
+    "description": "Share of affected rows column header",
+    "other": "Row Share"
+  },
+  "report.text.colRows": {
+    "description": "Rows column header in the thread table",
+    "other": "rows"
+  },
+  "report.text.colEvents": {
+    "description": "Events column header in the thread table",
+    "other": "events"
+  },
+  "report.text.colBytes": {
+    "description": "Bytes column header in the thread table",
+    "other": "bytes"
+  },
+  "report.text.colTxns": {
+    "description": "Transactions column header in the thread table",
+    "other": "txns"
+  },
+  "report.text.colShare": {
+    "description": "Share column header in the thread table",
+    "other": "share"
+  },
+  "report.text.rankedTransaction": {
+    "description": "Transaction label for one that wins several rankings; Ranks is a slash-joined list",
+    "other": "{{.Ranks}} transaction"
   }
 }

@@ -217,7 +217,7 @@ Columns that have no data in the displayed rows are omitted. A field the binlog 
 
 ### 4. Top Transactions
 
-The `Top Transactions` section lists the `--top-transactions` ranking, the same transactions as Markdown, JSON `transactions`, and the HTML transaction lookup. A listed transaction that is also one of the capped largest, longest, or widest champions keeps that label. The committed-duration buckets stay in this section.
+The `Top Transactions` section lists the `--top-transactions` ranking, the same transactions as Markdown, JSON `transactions`, and the HTML transaction lookup. A transaction is printed once, with its replay command and row images; when it is also one of the capped largest, longest, or widest champions, those labels are joined in front of it (`Largest/Longest transaction: ...`). The committed-duration buckets stay in this section.
 
 Useful fields shown in text output include:
 
