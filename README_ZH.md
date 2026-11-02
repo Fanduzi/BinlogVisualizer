@@ -282,7 +282,7 @@ Cobra 命令层把规范化后的 binlog 事件流式交给分析器，再把结
 ## 环境要求
 
 - MySQL 5.7+ 和 MariaDB 10.11+（已实测的版本）的 `ROW` binlog，来自磁盘、stdin，或直接读取存活服务器
-- `flashback`/`redo`：需要 MySQL 8.0+ 且写入时带 `FULL` 行镜像和行元数据的 binlog；生成的脚本只能在 MySQL 目标上执行
+- `flashback`/`redo`：需要写入时带 `FULL` 行镜像的 binlog；列名和主键优先取记录下来的 `FULL` 行元数据，没有时来自 `--schema-file`（所以 MySQL 8.x 的 `MINIMAL` 与 5.7 配上转储也能撤销）；生成的脚本只能在 MySQL 目标上执行
 - 如果从源码构建，需要 Go 1.26.10+
 
 ## License

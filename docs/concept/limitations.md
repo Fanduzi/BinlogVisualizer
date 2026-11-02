@@ -68,7 +68,7 @@ If your workflow requires complete long-form SQL archival or forensic preservati
 
 `--show-rows` is off by default. When it is on, listed transactions carry a bounded image: DELETE before-image, UPDATE columns that differ, INSERT after-image. The report keeps at most 32 logical rows per transaction. Strings and blobs stop at 64 bytes. Integers, decimals, and `BIT` values are printed in full, so a `DECIMAL(65)` is not cut into a wrong number. A cut uses `… [truncated: shown of original bytes]`, and the transaction says how many rows were left out.
 
-Column names are taken from the binlog when `binlog_row_metadata=FULL` (MySQL 8.0.1+). Otherwise columns are `@1`..`@N`, and the report says names are missing. Without that metadata, an integer whose signed and unsigned readings differ is printed as both, the same way `mysqlbinlog -v` does. With FULL metadata, a column is printed with the signedness the binlog recorded.
+Column names are taken from the binlog when `binlog_row_metadata=FULL` (MySQL 8.0.1+), otherwise from `--schema-file` when it covers the table, and the report says which. With neither, columns are `@1`..`@N` and the report says names are missing. Without that metadata, an integer whose signed and unsigned readings differ is printed as both, the same way `mysqlbinlog -v` does. With FULL metadata, a column is printed with the signedness the binlog recorded.
 
 `--sql-context off` does not print those cells. Auth-DDL `<secret>` redaction is unchanged; it applies to statement text, not to row cells. `mysqlbinlog_cmd` on the same transaction is the cross-check. The analyze report does not print undo SQL. `binlogviz flashback` does; see below.
 

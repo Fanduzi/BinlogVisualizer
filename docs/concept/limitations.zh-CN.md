@@ -68,7 +68,7 @@ SQL 上下文是有界的，而且面向展示。
 
 `--show-rows` 默认关闭。打开后，列出的事务带有界行镜像：DELETE 是前镜像，UPDATE 只列出变化的列，INSERT 是后镜像。每个事务最多保留 32 个逻辑行。字符串和二进制值最多 64 字节。整数、小数和 `BIT` 会完整打印，因此 `DECIMAL(65)` 不会被截成一个错误的数。被截断时使用 `… [truncated: shown of original bytes]`，事务上会写明省略了多少行。
 
-列名来自 binlog，前提是 `binlog_row_metadata=FULL`（MySQL 8.0.1+）。否则列是 `@1`..`@N`，报告会说明没有列名。没有这份元数据时，有符号和无符号读数不同的整数会两种都打印，和 `mysqlbinlog -v` 一样。有 FULL 元数据时，按 binlog 记录的有无符号打印。
+列名来自 binlog 的前提是 `binlog_row_metadata=FULL`（MySQL 8.0.1+）；否则来自 `--schema-file`（当它覆盖这张表时），报告会说明来源。两者都没有时列是 `@1`..`@N`，报告会说明没有列名。没有这份元数据时，有符号和无符号读数不同的整数会两种都打印，和 `mysqlbinlog -v` 一样。有 FULL 元数据时，按 binlog 记录的有无符号打印。
 
 `--sql-context off` 不打印这些单元格。账号 DDL 的 `<secret>` 打码不变；它作用于语句文本，不是行单元格。同一事务上的 `mysqlbinlog_cmd` 用来对照。analyze 报告不打印撤销 SQL。`binlogviz flashback` 会打印，见下一节。
 

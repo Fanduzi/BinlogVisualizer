@@ -282,7 +282,7 @@ The Cobra command layer streams normalized binlog events into the analyzer, then
 ## Requirements
 
 - `ROW` binlogs from MySQL 5.7+ and MariaDB 10.11+ (the versions tested), on disk, on stdin, or from a live server
-- `flashback`/`redo`: MySQL 8.0+ binlogs written with `FULL` row images and row metadata; the generated script applies to a MySQL target only
+- `flashback`/`redo`: binlogs written with `FULL` row images; column names and the key come from `FULL` row metadata when recorded, otherwise from `--schema-file` (so MySQL 8.x `MINIMAL` and 5.7 work with a dump); the generated script applies to a MySQL target only
 - Go 1.26.10+ if building from source
 
 ## License
