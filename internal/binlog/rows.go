@@ -20,7 +20,7 @@ import (
 	"binlogviz/internal/model"
 )
 
-func captureRowImages(ev *replication.RowsEvent, kind, schema, table string) ([]model.RowImage, int) {
+func captureRowImages(ev *replication.RowsEvent, kind, schema, table string, resolver FlashSchemaResolver) ([]model.RowImage, int) {
 	if ev == nil || len(ev.Rows) == 0 {
 		return nil, 0
 	}
@@ -38,6 +38,15 @@ func captureRowImages(ev *replication.RowsEvent, kind, schema, table string) ([]
 		width = len(ev.Rows[0])
 	}
 	labels, names := columnLabels(ev.Table, width)
+	namesFrom := ""
+	if names != model.RowNamesFull && !flashNamesComplete(ev.Table, width) {
+		// ADR 0030: a definition supplied by --schema-file names the columns
+		// show-rows would otherwise print as @1..@N.
+		if cols, _, ok := resolveFlashColumns(resolver, schema, table, width); ok {
+			labels = flashLabelsFromCols(cols)
+			namesFrom = model.RowNamesFromSchema
+		}
+	}
 	var unsigned map[int]bool
 	if ev.Table != nil {
 		unsigned = unsignedMap(ev.Table)
@@ -64,11 +73,12 @@ func captureRowImages(ev *replication.RowsEvent, kind, schema, table string) ([]
 			afterSkips = skipsAt(ev.SkippedColumns, i)
 		}
 		img := model.RowImage{
-			Schema:  schema,
-			Table:   table,
-			Op:      op,
-			Columns: labels,
-			Names:   names,
+			Schema:    schema,
+			Table:     table,
+			Op:        op,
+			Columns:   labels,
+			Names:     names,
+			NamesFrom: namesFrom,
 		}
 		if beforeRow != nil {
 			img.Before = formatImage(beforeRow, skipSet(beforeSkips), labels, ev.Table, unsigned, nil)

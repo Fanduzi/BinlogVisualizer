@@ -3026,5 +3026,17 @@
   "warning.flashbackSchemaKeySource": {
     "description": "Warning when the undo addresses a row by the primary key the schema file declares",
     "other": "{{.Table}}: the binlog has no row metadata, so the undo addresses the row by the PRIMARY KEY declared in --schema-file. It is only as good as that dump."
+  },
+  "cmd.analyze.flag.schemaFile": {
+    "description": "SQL file of table definitions for --show-rows",
+    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE), as the tables were at incident time. With --show-rows it names the columns when the binlog carries no row metadata. Optional; analyze stays offline"
+  },
+  "cmd.analyze.flag.schemaFileDB": {
+    "description": "Database for unqualified names in --schema-file",
+    "other": "Database for unqualified names in --schema-file when the file has no USE and no mysqldump Database header. Optional"
+  },
+  "report.text.columnNamesFromSchema": {
+    "description": "Summary note when a schema file named the columns",
+    "other": "column names come from --schema-file (the binlog has no row metadata)"
   }
 }

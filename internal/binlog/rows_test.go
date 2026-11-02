@@ -65,7 +65,7 @@ func TestCaptureRowImagesInsertUpdateDelete(t *testing.T) {
 	inserts, omitted := captureRowImages(&replication.RowsEvent{
 		ColumnCount: 2,
 		Rows:        [][]any{{int32(1), nil}},
-	}, kindWriteRows, "shop", "orders")
+	}, kindWriteRows, "shop", "orders", nil)
 	if omitted != 0 || len(inserts) != 1 || inserts[0].Op != "INSERT" || inserts[0].Names != model.RowNamesPositional {
 		t.Fatalf("insert = %+v omitted %d", inserts, omitted)
 	}
@@ -85,7 +85,7 @@ func TestCaptureRowImagesInsertUpdateDelete(t *testing.T) {
 			ColumnName:  [][]byte{[]byte("id"), []byte("note")},
 			ColumnType:  []byte{mysql.MYSQL_TYPE_LONG, mysql.MYSQL_TYPE_VARCHAR},
 		},
-	}, kindUpdateRows, "shop", "orders")
+	}, kindUpdateRows, "shop", "orders", nil)
 	if len(updates) != 1 || updates[0].Names != model.RowNamesFull || updates[0].Columns[0] != "id" {
 		t.Fatalf("update names = %+v", updates[0])
 	}
@@ -100,7 +100,7 @@ func TestCaptureRowImagesInsertUpdateDelete(t *testing.T) {
 		ColumnCount: 1,
 		Rows:        [][]any{{int32(wideID())}},
 		Table:       unsignedLongTable(),
-	}, kindDeleteRows, "shop", "orders")
+	}, kindDeleteRows, "shop", "orders", nil)
 	if deletes[0].Op != "DELETE" || deletes[0].After != nil || deletes[0].Before[0].Text != "3000000000" {
 		t.Fatalf("delete = %+v", deletes[0])
 	}
@@ -114,7 +114,7 @@ func TestCaptureRowImagesCapsPerEvent(t *testing.T) {
 	images, omitted := captureRowImages(&replication.RowsEvent{
 		ColumnCount: 1,
 		Rows:        rows,
-	}, kindWriteRows, "shop", "orders")
+	}, kindWriteRows, "shop", "orders", nil)
 	if len(images) != model.MaxRowImagesPerTxn || omitted != 1 {
 		t.Fatalf("kept %d omitted %d", len(images), omitted)
 	}

@@ -3026,5 +3026,17 @@
   "warning.flashbackSchemaKeySource": {
     "description": "撤销按 schema 文件声明的主键定位行时的警告",
     "other": "{{.Table}}: binlog 没有行元数据，撤销按 --schema-file 里声明的 PRIMARY KEY 定位行。这份主键的好坏取决于那份转储。"
+  },
+  "cmd.analyze.flag.schemaFile": {
+    "description": "供 --show-rows 使用的表定义 SQL 文件",
+    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE），应为事故当时的表结构。配合 --show-rows 时，如果 binlog 没有行元数据，就用它给出列名。可选；analyze 仍然离线运行"
+  },
+  "cmd.analyze.flag.schemaFileDB": {
+    "description": "--schema-file 中未限定名的默认库",
+    "other": "当 --schema-file 里既没有 USE 也没有 mysqldump 的 Database 头时，用于其中的未限定表名。可选"
+  },
+  "report.text.columnNamesFromSchema": {
+    "description": "由 schema 文件给出列名时的摘要说明",
+    "other": "列名来自 --schema-file（binlog 没有行元数据）"
   }
 }

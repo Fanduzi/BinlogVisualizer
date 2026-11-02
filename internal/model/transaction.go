@@ -52,6 +52,9 @@ const (
 	RowNamesFull = "full"
 	// RowNamesPositional means the binlog had no column names; labels are @1..@N.
 	RowNamesPositional = "positional"
+	// RowNamesFromSchema marks labels taken from --schema-file, because the
+	// binlog carried no row metadata (ADR 0030).
+	RowNamesFromSchema = "schema_file"
 )
 
 // RowCell is one decoded column. Null is SQL NULL.
@@ -68,9 +71,12 @@ type RowImage struct {
 	Op      string
 	Columns []string
 	Names   string // RowNamesFull or RowNamesPositional
-	Before  []RowCell
-	After   []RowCell
-	Changed []string // UPDATE column labels whose before and after differ
+	// NamesFrom names the definition that supplied the labels when the binlog
+	// had none: RowNamesFromSchema, or empty (ADR 0030).
+	NamesFrom string
+	Before    []RowCell
+	After     []RowCell
+	Changed   []string // UPDATE column labels whose before and after differ
 }
 
 // QueryContext holds bounded SQL context from Rows_query_log_event.

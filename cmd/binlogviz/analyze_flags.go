@@ -57,6 +57,8 @@ func registerAnalyzeFlags(cmd *cobra.Command, opts *analyzeOptions) {
 	cmd.Flags().StringSliceVar(&opts.includeTables, "include-table", nil, i18n.T("cmd.analyze.flag.includeTable"))
 	cmd.Flags().StringSliceVar(&opts.dml, "dml", nil, i18n.T("cmd.analyze.flag.dml"))
 	cmd.Flags().BoolVar(&opts.showRows, "show-rows", false, i18n.T("cmd.analyze.flag.showRows"))
+	cmd.Flags().StringVar(&opts.schemaFile, "schema-file", "", i18n.T("cmd.analyze.flag.schemaFile"))
+	cmd.Flags().StringVar(&opts.schemaFileDB, "schema-file-db", "", i18n.T("cmd.analyze.flag.schemaFileDB"))
 	cmd.Flags().StringSliceVar(&opts.excludeTables, "exclude-table", nil, i18n.T("cmd.analyze.flag.excludeTable"))
 	cmd.Flags().StringVar(&opts.detailStore, "detail-store", string(analyzer.DetailStoreNone), i18n.T("cmd.analyze.flag.detailStore"))
 	cmd.Flags().StringVar(&opts.remoteHost, "host", "", i18n.T("cmd.analyze.flag.host"))

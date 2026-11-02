@@ -23,25 +23,42 @@ func rowValuesSuppressed(opts Options) bool {
 	return opts.ShowRows && opts.SQLContextMode == SQLContextOff
 }
 
+// columnNamesNote says where the labels came from when the binlog had none.
+// A row that a definition named is no longer "unavailable"; a row nothing named
+// still is (ADR 0030).
 func columnNamesNote(result model.AnalysisResult) string {
-	if positionalRowNames(result.Transactions) ||
-		positionalRowNames(result.Diagnostics.LargestTransactions) ||
-		positionalRowNames(result.Diagnostics.LongestTransactions) ||
-		positionalRowNames(result.Diagnostics.WidestTransactions) {
+	missing, fromSchema := rowNameSources(result)
+	if missing {
 		return i18n.T("report.text.columnNamesMissing")
+	}
+	if fromSchema {
+		return i18n.T("report.text.columnNamesFromSchema")
 	}
 	return ""
 }
 
-func positionalRowNames(txns []model.Transaction) bool {
-	for _, txn := range txns {
-		for _, image := range txn.RowImages {
-			if image.Names != model.RowNamesFull {
-				return true
+func rowNameSources(result model.AnalysisResult) (missing, fromSchema bool) {
+	sets := [][]model.Transaction{
+		result.Transactions,
+		result.Diagnostics.LargestTransactions,
+		result.Diagnostics.LongestTransactions,
+		result.Diagnostics.WidestTransactions,
+	}
+	for _, txns := range sets {
+		for _, txn := range txns {
+			for _, image := range txn.RowImages {
+				if image.Names == model.RowNamesFull {
+					continue
+				}
+				if image.NamesFrom == model.RowNamesFromSchema {
+					fromSchema = true
+					continue
+				}
+				missing = true
 			}
 		}
 	}
-	return false
+	return missing, fromSchema
 }
 
 func appendRowImageLines(lines *[]string, txn model.Transaction, opts Options) {

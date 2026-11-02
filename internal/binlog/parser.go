@@ -336,7 +336,7 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 		raw.KeyStatus = rowsKeyStatus(e, tableNames)
 		raw.RowCount = logicalRowCount(et, len(e.Rows))
 		if capture {
-			raw.RowImages, raw.RowImagesOmitted = captureRowImages(e, raw.EventType, raw.Schema, raw.Table)
+			raw.RowImages, raw.RowImagesOmitted = captureRowImages(e, raw.EventType, raw.Schema, raw.Table, raw.flashSchema)
 		}
 		if flash {
 			raw.FlashRows = captureFlashbackRows(e, raw.EventType, raw.Schema, raw.Table, raw.flashSchema)
