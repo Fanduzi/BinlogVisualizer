@@ -84,6 +84,7 @@ func captureFlashbackRows(ev *replication.RowsEvent, kind, schema, table string,
 			mergeFlashColumns(row.Cols, defCols)
 			row.NoPK = len(defPK) == 0
 			row.PK = append([]int(nil), defPK...)
+			row.PKFromSchema = len(defPK) > 0
 		} else {
 			row.NoPK = noPK
 			row.PK = append([]int(nil), meta.indexes...)

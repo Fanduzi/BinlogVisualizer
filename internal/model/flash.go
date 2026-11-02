@@ -41,14 +41,17 @@ type FlashCol struct {
 // set when a DATE, DATETIME or TIMESTAMP value has a zero month or day
 // ('0000-00-00', '2026-00-15'), which NO_ZERO_DATE and NO_ZERO_IN_DATE reject.
 type FlashRow struct {
-	Schema        string
-	Table         string
-	Op            string
-	Columns       []string
-	Cols          []FlashCol
-	Before        []string
-	After         []string
-	PK            []int
+	Schema  string
+	Table   string
+	Op      string
+	Columns []string
+	Cols    []FlashCol
+	Before  []string
+	After   []string
+	PK      []int
+	// PKFromSchema marks a key that came from the schema definition rather than
+	// from the binlog, which under MINIMAL cannot name one (ADR 0030).
+	PKFromSchema  bool
 	NoPK          bool
 	NonStrict     bool
 	ZeroDate      bool

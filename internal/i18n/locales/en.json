@@ -3022,5 +3022,9 @@
   "warning.flashbackSchemaKey": {
     "description": "Warning when a later ALTER changed the definition's primary key",
     "other": "{{.Table}}: the schema definition's PRIMARY KEY was changed by a later ALTER and is not modelled; undo will match every column and LIMIT 1 instead of a key"
+  },
+  "warning.flashbackSchemaKeySource": {
+    "description": "Warning when the undo addresses a row by the primary key the schema file declares",
+    "other": "{{.Table}}: the binlog has no row metadata, so the undo addresses the row by the PRIMARY KEY declared in --schema-file. It is only as good as that dump."
   }
 }
