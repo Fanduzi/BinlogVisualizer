@@ -84,7 +84,7 @@ func TestYearBeforeUnsignedIntegers(t *testing.T) {
 		ColumnCount: uint64(len(types)),
 		Table:       table,
 		Rows:        [][]any{row},
-	}, kindDeleteRows, "p164", "sg")
+	}, kindDeleteRows, "p164", "sg", nil)
 	if len(deleted) != 1 || deleted[0].ProblemKind != "" {
 		t.Fatalf("sg: %+v", deleted)
 	}
@@ -141,7 +141,7 @@ func TestYearPrimaryKeyUnsignedAndTwoYears(t *testing.T) {
 		ColumnCount: uint64(len(types)),
 		Table:       table,
 		Rows:        [][]any{original, updated},
-	}, kindUpdateRows, "p164", "evpk2")
+	}, kindUpdateRows, "p164", "evpk2", nil)
 	if upd[0].ProblemKind != "" {
 		t.Fatalf("update: %+v", upd[0])
 	}
@@ -156,7 +156,7 @@ func TestYearPrimaryKeyUnsignedAndTwoYears(t *testing.T) {
 		ColumnCount: uint64(len(types)),
 		Table:       table,
 		Rows:        [][]any{junk},
-	}, kindWriteRows, "p164", "evpk2")
+	}, kindWriteRows, "p164", "evpk2", nil)
 	if ins[0].ProblemKind != "" || ins[0].After[3] != "3000000000" {
 		t.Fatalf("insert: %+v after %#v", ins[0], ins[0].After)
 	}
@@ -220,7 +220,7 @@ func TestSignednessBitsForFloatDoubleDecimalAndMediumint(t *testing.T) {
 		ColumnCount: uint64(len(types)),
 		Table:       table,
 		Rows:        [][]any{row},
-	}, kindWriteRows, "p164", "wide")
+	}, kindWriteRows, "p164", "wide", nil)
 	if refused[0].ProblemKind != model.FlashProblemType || refused[0].ProblemType != "FLOAT" {
 		t.Fatalf("float still refused: %+v", refused[0])
 	}
@@ -282,7 +282,7 @@ func TestYearSignednessInsideTransactionPayload(t *testing.T) {
 			},
 		},
 	}
-	raws, ok := expandTransactionPayload(ev, "mysql-bin.000001", "8.0.46", map[uint64]cachedTableName{}, true, true)
+	raws, ok := expandTransactionPayload(ev, "mysql-bin.000001", "8.0.46", map[uint64]cachedTableName{}, nil, true, true)
 	if !ok || len(raws) != 2 {
 		t.Fatalf("payload: ok=%v n=%d", ok, len(raws))
 	}

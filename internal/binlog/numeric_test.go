@@ -85,7 +85,7 @@ func TestMediumintUnsignedPrimaryKeyAndFlashback(t *testing.T) {
 		ColumnCount: 2,
 		Table:       table,
 		Rows:        [][]any{row},
-	}, kindDeleteRows, "p169", "mpk")
+	}, kindDeleteRows, "p169", "mpk", nil)
 	if len(deleted) != 1 || deleted[0].ProblemKind != "" || deleted[0].Before[0] != "9000000" {
 		t.Fatalf("flash: %+v", deleted)
 	}
@@ -126,7 +126,7 @@ func TestMediumintUnsignedInsideTransactionPayload(t *testing.T) {
 			},
 		},
 	}
-	raws, ok := expandTransactionPayload(ev, "mysql-bin.000001", "8.0.46", map[uint64]cachedTableName{}, true, true)
+	raws, ok := expandTransactionPayload(ev, "mysql-bin.000001", "8.0.46", map[uint64]cachedTableName{}, nil, true, true)
 	if !ok || len(raws) != 2 {
 		t.Fatalf("payload ok=%v n=%d", ok, len(raws))
 	}

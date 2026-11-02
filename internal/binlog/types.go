@@ -45,6 +45,10 @@ type RawEvent struct {
 	RowImagesOmitted         int
 	// FlashRows is set only when flashback capture is on. Nil otherwise.
 	FlashRows []model.FlashRow
+	// flashSchema resolves a table definition when the binlog has no column
+	// names (ADR 0030). Set by the parser from its own resolver; nil keeps the
+	// row_metadata refusal.
+	flashSchema FlashSchemaResolver
 	// RedoRows is set only when redo capture is on. Nil otherwise.
 	RedoRows []model.RedoRow
 	// RowKeys are UPDATE/DELETE primary-key identities from FULL metadata.

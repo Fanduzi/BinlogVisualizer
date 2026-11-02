@@ -38,6 +38,7 @@ type remoteParser struct {
 	captureRows  bool
 	captureFlash bool
 	captureRedo  bool
+	flashSchema  FlashSchemaResolver
 }
 
 // NewRemoteParser builds a Parser that reads remote frames until the
@@ -55,6 +56,13 @@ func (p *remoteParser) SetCaptureRowImages(on bool) {
 }
 
 // SetCaptureFlashback keeps exact cell literals on ROW events for undo SQL.
+func (p *remoteParser) SetFlashSchemaResolver(r FlashSchemaResolver) {
+	if p == nil {
+		return
+	}
+	p.flashSchema = r
+}
+
 func (p *remoteParser) SetCaptureFlashback(on bool) {
 	if p == nil {
 		return
@@ -169,11 +177,12 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 			}
 
 			raw := rawEventFromHeader(ev.Header, path, serverVersion)
+			raw.flashSchema = p.flashSchema
 			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = start, end, end-start
 			raw.Position = uint32(raw.PositionEnd)
 
 			if payload, ok := ev.Event.(*streamedPayload); ok {
-				emitted, err := streamTransactionPayload(payload, path, serverVersion, tableNames, p.captureRows, p.captureFlash, p.captureRedo, func(inner RawEvent) error {
+				emitted, err := streamTransactionPayload(payload, path, serverVersion, tableNames, p.flashSchema, p.captureRows, p.captureFlash, p.captureRedo, func(inner RawEvent) error {
 					inner.PositionStart, inner.PositionEnd, inner.Position = raw.PositionStart, raw.PositionEnd, uint32(raw.PositionEnd)
 					inner.BinlogBytes = 0
 					if !emittedAny {
@@ -196,7 +205,7 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 					return nil
 				}
 			}
-			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.captureRows, p.captureFlash, p.captureRedo); ok {
+			if inners, ok := expandTransactionPayload(ev, path, serverVersion, tableNames, p.flashSchema, p.captureRows, p.captureFlash, p.captureRedo); ok {
 				assignPayloadWrapperFileSpan(inners, raw.PositionStart, raw.PositionEnd, raw.BinlogBytes)
 				for i := range inners {
 					if inners[i].ServerVersion != "" {

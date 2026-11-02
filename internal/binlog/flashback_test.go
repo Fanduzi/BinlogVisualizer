@@ -24,7 +24,7 @@ func TestCaptureFlashbackDeleteInsertAndUnsigned(t *testing.T) {
 		ColumnCount: 2,
 		Table:       table,
 		Rows:        [][]any{{int64(-1), `it's "bad" \ 雪`}},
-	}, kindDeleteRows, "shop", "wide")
+	}, kindDeleteRows, "shop", "wide", nil)
 	if len(deleted) != 1 || deleted[0].ProblemKind != "" {
 		t.Fatalf("delete image: %+v", deleted)
 	}
@@ -40,7 +40,7 @@ func TestCaptureFlashbackDeleteInsertAndUnsigned(t *testing.T) {
 		ColumnCount: 2,
 		Table:       signed,
 		Rows:        [][]any{{int64(-9223372036854775808), "x"}},
-	}, kindWriteRows, "shop", "wide")
+	}, kindWriteRows, "shop", "wide", nil)
 	if inserted[0].ProblemKind != "" || inserted[0].After[0] != "-9223372036854775808" {
 		t.Fatalf("signed min: %+v", inserted[0])
 	}
@@ -55,7 +55,7 @@ func TestCaptureFlashbackRefusesNamesImageAndFloat(t *testing.T) {
 		ColumnCount: 1,
 		Table:       unnamed,
 		Rows:        [][]any{{int32(1)}},
-	}, kindWriteRows, "shop", "orders")
+	}, kindWriteRows, "shop", "orders", nil)
 	if len(rows) != 1 || rows[0].ProblemKind != model.FlashProblemNames {
 		t.Fatalf("names: %+v", rows)
 	}
@@ -66,7 +66,7 @@ func TestCaptureFlashbackRefusesNamesImageAndFloat(t *testing.T) {
 		Table:          table,
 		Rows:           [][]any{{int32(1), "a"}, {int32(1), "b"}},
 		SkippedColumns: [][]int{nil, {1}},
-	}, kindUpdateRows, "shop", "orders")
+	}, kindUpdateRows, "shop", "orders", nil)
 	if partial[0].ProblemKind != model.FlashProblemImage {
 		t.Fatalf("image: %+v", partial)
 	}
@@ -76,7 +76,7 @@ func TestCaptureFlashbackRefusesNamesImageAndFloat(t *testing.T) {
 		ColumnCount: 2,
 		Table:       floated,
 		Rows:        [][]any{{int32(1), float32(1.5)}},
-	}, kindWriteRows, "shop", "orders")
+	}, kindWriteRows, "shop", "orders", nil)
 	if bad[0].ProblemKind != model.FlashProblemType || bad[0].ProblemColumn != "ratio" || bad[0].ProblemType != "FLOAT" {
 		t.Fatalf("float: %+v", bad[0])
 	}
@@ -97,7 +97,7 @@ func TestCaptureFlashbackEnumSetBlobAndNoPK(t *testing.T) {
 		ColumnCount: 4,
 		Table:       table,
 		Rows:        [][]any{{int32(7), int64(2), int64(5), []byte{0xde, 0xad, 0xff}}},
-	}, kindDeleteRows, "shop", "wide")
+	}, kindDeleteRows, "shop", "wide", nil)
 	if rows[0].ProblemKind != "" {
 		t.Fatalf("problem: %+v", rows[0])
 	}
@@ -114,7 +114,7 @@ func TestCaptureFlashbackEnumSetBlobAndNoPK(t *testing.T) {
 		ColumnCount: 2,
 		Table:       heap,
 		Rows:        [][]any{{nil, nil}},
-	}, kindWriteRows, "shop", "heap")
+	}, kindWriteRows, "shop", "heap", nil)
 	if !heapRows[0].NoPK || heapRows[0].After[0] != "NULL" || heapRows[0].After[1] != "NULL" {
 		t.Fatalf("heap: %+v", heapRows[0])
 	}
@@ -423,7 +423,7 @@ func TestCaptureEnumIndexZeroMarksNonStrict(t *testing.T) {
 		ColumnCount: 2,
 		Table:       table,
 		Rows:        [][]any{{int32(1), int64(0)}},
-	}, kindDeleteRows, "shop", "ezero")
+	}, kindDeleteRows, "shop", "ezero", nil)
 	if len(zero) != 1 || zero[0].ProblemKind != "" || !zero[0].NonStrict || zero[0].Before[1] != "0" {
 		t.Fatalf("enum 0: %+v before %#v", zero, zero[0].Before)
 	}
@@ -434,7 +434,7 @@ func TestCaptureEnumIndexZeroMarksNonStrict(t *testing.T) {
 		ColumnCount: 2,
 		Table:       table,
 		Rows:        [][]any{{int32(2), int64(1)}},
-	}, kindDeleteRows, "shop", "ezero")
+	}, kindDeleteRows, "shop", "ezero", nil)
 	if len(member) != 1 || member[0].NonStrict || member[0].Before[1] != "1" {
 		t.Fatalf("enum 1: %+v before %#v", member, member[0].Before)
 	}
@@ -476,7 +476,7 @@ func TestCaptureZeroDateMarksRow(t *testing.T) {
 			ColumnCount: 3,
 			Table:       table,
 			Rows:        [][]any{{int32(1), c.d, c.dt}},
-		}, kindDeleteRows, "shop", "zd")
+		}, kindDeleteRows, "shop", "zd", nil)
 		if len(rows) != 1 || rows[0].ProblemKind != "" || rows[0].ZeroDate != c.zero {
 			t.Fatalf("%s %s: %+v", c.d, c.dt, rows)
 		}
