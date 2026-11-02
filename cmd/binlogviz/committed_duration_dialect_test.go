@@ -82,16 +82,15 @@ func TestAnalyzeCommittedDurationFixtureAlertsBelowThreshold(t *testing.T) {
 	}
 }
 
+// longestTransactionLine returns the ranked transaction line that carries a
+// duration: one block per transaction, labelled by every ranking it won.
 func longestTransactionLine(t *testing.T, stdout string) string {
 	t.Helper()
-	const label = "Longest transaction:"
-	idx := strings.Index(stdout, label)
-	if idx < 0 {
-		t.Fatalf("longest-duration ranking missing:\n%s", stdout)
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.Contains(line, " dur=") && strings.Contains(line, " rows=") && strings.Contains(line, " file=") {
+			return strings.TrimSpace(line)
+		}
 	}
-	rest := stdout[idx:]
-	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-		rest = rest[:nl]
-	}
-	return rest
+	t.Fatalf("longest-duration ranking missing:\n%s", stdout)
+	return ""
 }

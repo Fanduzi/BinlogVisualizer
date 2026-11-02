@@ -205,7 +205,7 @@ Markdown 在 `## 热点行` 下用表格。HTML 使用 `id="hot-rows-table"`。
 
 ### 4. Top Transactions
 
-`Top Transactions` 列出 `--top-transactions` 的排行，和 Markdown、JSON `transactions`、HTML 事务查找是同一批。落在截断后的最大、最长或最宽冠军里的事务仍带这个标签。已提交时长分桶仍写在这一节。
+`Top Transactions` 列出 `--top-transactions` 的排行，和 Markdown、JSON `transactions`、HTML 事务查找是同一批。每个事务只打印一次，回放命令和行镜像跟着它走；如果它同时落在截断后的最大、最长或最宽冠军里，这些标签会合在前面（`最大/最长事务: ...`）。已提交时长分桶仍写在这一节。
 
 文本输出中常见字段包括：
 

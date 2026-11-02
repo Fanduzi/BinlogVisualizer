@@ -64,7 +64,7 @@ func TestRenderTextCleanReportOmitsFirstSuspiciousPosition(t *testing.T) {
 	if strings.Contains(out, "First suspicious position") {
 		t.Fatalf("clean report must not label transaction evidence as suspicious:\n%s", out)
 	}
-	if !strings.Contains(out, "Largest transaction: txn-largest") {
+	if !strings.Contains(out, "txn-largest") || !strings.Contains(out, "Largest") {
 		t.Fatalf("clean report must retain normal largest transaction evidence:\n%s", out)
 	}
 }
