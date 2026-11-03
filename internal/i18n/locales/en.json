@@ -3055,8 +3055,8 @@
     "description": "Warning when a snapshot is saved without a workload id",
     "other": "snapshot requested without --workload-id: a saved snapshot cannot be compared causally, so compare and trend will report unknown comparability and suppress causal findings. Pass --workload-id to keep it comparable"
   },
-  "report.text.primaryKeyNoKeyFromDefinition": {
-    "description": "Summary and section note when the definition declares no key",
-    "other": "the --schema-file definition declares no primary key for the tables with rows (the binlog has no row metadata)"
+  "report.text.primaryKeyMarkedFromDefinition": {
+    "description": "Section note naming the tables whose key came from a schema file",
+    "other": "the key for the tables marked --schema-file was read from that definition; the binlog recorded no row metadata"
   }
 }

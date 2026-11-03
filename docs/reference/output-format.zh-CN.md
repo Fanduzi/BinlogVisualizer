@@ -329,7 +329,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
 | `pattern_drilldowns` | array | yes | 高信号模式的有界 drilldown 摘要；无模式达到阈值时为空数组 |
 | `snapshot` | object | no | 仅在 `analyze` 使用 `--snapshot-name` 时出现 |
-| `primary_key_note` | string | no | 至少有一张收到行事件的表没有 FULL 主键元数据时出现。这句话说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL；当这些表的主键都由定义回答时，会写明来源是 `--schema-file`（ADR 0031）。每张有行变更的表都是 `has_pk` 或 `no_pk` 时省略 |
+| `primary_key_note` | string | no | 至少有一张收到行事件的表没有 FULL 主键元数据时出现。这句话说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL；当这些表的主键都由定义回答时会写明来源是 `--schema-file`，只有部分来自定义时会说明是哪些表（ADR 0031）。每张有行变更的表都是 `has_pk` 或 `no_pk` 时省略 |
 | `replica_apply_delay` | object | no | MySQL 8 提交时间戳上的应用延迟。没有计入的事务同时带上两个时间戳时省略。不会是空对象，也不会用 `0` 代替缺失的时间戳。见下文。 |
 
 ### `replica_apply_delay`
@@ -413,6 +413,7 @@ report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会�
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes | 对该表写入过 row image 的不同事务数。仅含 DDL 的组不计入。 |
 | `key_status` | string | no | 收到行事件的表为 `has_pk`、`no_pk` 或 `unknown`。没有行事件时省略。`has_pk` 表示 FULL 元数据里有 `SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`。`no_pk` 表示有 FULL 元数据，但这两个字段都没有。`unknown` 表示 `binlog_row_metadata` 不是 FULL，不是在说这张表没有主键。`update_rows` 和 `delete_rows` 是过滤后的计数。`no_pk` 的表只有在 `update_rows` 或 `delete_rows` 大于 0 时才算复制延迟风险 |
+| `key_source` | string | no | `key_status` 为 `unknown` 且由 `--schema-file` 回答时为 `schema_file`（ADR 0031），否则省略 |
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。`diagnostics.open_explicit_groups` 在出现时，统计输入结束时仍没有 `COMMIT` 或 plain `ROLLBACK` 的 `BEGIN` 组；计数为 0 时省略。这种未关闭的 `BEGIN` 如果后面又来了 GTID，不会产出报告：analyze 以 exit 1 失败，错误是「显式 BEGIN 未关闭」。
 

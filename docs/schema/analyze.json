@@ -1943,6 +1943,9 @@
           "insert_rows": {
             "type": "integer"
           },
+          "key_source": {
+            "type": "string"
+          },
           "key_status": {
             "type": "string"
           },
