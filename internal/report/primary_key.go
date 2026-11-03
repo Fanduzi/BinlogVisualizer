@@ -142,7 +142,10 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 		return pkView{summaryLine: note, note: note}
 	}
 	if fromDefinition {
-		return pkView{summaryLine: i18n.T("report.text.primaryKeyFromDefinition")}
+		// The JSON note and the HTML section carry the same sentence the summary
+		// shows, so every surface names the source (ADR 0031).
+		line := i18n.T("report.text.primaryKeyFromDefinition")
+		return pkView{summaryLine: line, note: line}
 	}
 	return pkView{summaryLine: i18n.T("report.text.primaryKeyPresent")}
 }

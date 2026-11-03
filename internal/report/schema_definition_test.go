@@ -20,6 +20,10 @@ func TestPrimaryKeyViewUsesDefinitionOnlyWhereTheBinlogCannot(t *testing.T) {
 	if !strings.Contains(view.summaryLine, "--schema-file") {
 		t.Fatalf("the summary must name the source: %q", view.summaryLine)
 	}
+	// The JSON note and the HTML section carry the same sentence.
+	if !strings.Contains(view.note, "--schema-file") {
+		t.Fatalf("the note must name the source too: %q", view.note)
+	}
 
 	view = primaryKeyView(rows, func(string, string) ([]string, bool) { return nil, true })
 	if len(view.risks) != 1 || view.risks[0].update != 3 || view.risks[0].delete != 1 {
