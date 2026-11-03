@@ -15,6 +15,7 @@ one short section per version, newest first, and links to these files.
 
 | Version | Released |
 |---|---|
+| [v0.41.0](release-notes-v0.41.0.md) | 2026-11-03 |
 | [v0.40.0](release-notes-v0.40.0.md) | 2026-11-02 |
 | [v0.39.0](release-notes-v0.39.0.md) | 2026-11-01 |
 | [v0.38.0](release-notes-v0.38.0.md) | 2026-10-31 |
