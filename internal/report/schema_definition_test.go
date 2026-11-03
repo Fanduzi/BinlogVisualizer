@@ -93,6 +93,27 @@ func TestPrimaryKeyViewUsesDefinitionOnlyWhereTheBinlogCannot(t *testing.T) {
 		t.Fatalf("a mixed run explains the row, not the run: line %q note %q", view.summaryLine, view.note)
 	}
 
+	// Partial coverage with a keyless covered table and an uncovered one: the
+	// summary keeps the unknown warning and claims no source, while the section
+	// marks the table the definition answered (ADR 0031).
+	partialWithRisk := []model.TableStats{
+		{Schema: "shop", Table: "heap", UpdateRows: 2, DeleteRows: 1},
+		{Schema: "shop", Table: "log", UpdateRows: 1},
+	}
+	view = primaryKeyView(partialWithRisk, func(_, table string) ([]string, bool) { return nil, table == "heap" })
+	if len(view.risks) != 1 || view.risks[0].table != "heap" || !strings.Contains(view.risks[0].name(), "--schema-file") {
+		t.Fatalf("the covered keyless table is the risk and is marked: %+v", view.risks)
+	}
+	if strings.Contains(view.summaryLine, "--schema-file") {
+		t.Fatalf("partial coverage must not claim a source: %q", view.summaryLine)
+	}
+	if !strings.Contains(view.summaryLine, "unknown") {
+		t.Fatalf("partial coverage keeps the unknown warning in the summary: %q", view.summaryLine)
+	}
+	if !strings.Contains(view.note, "unknown") || !strings.Contains(view.note, "marked --schema-file") {
+		t.Fatalf("the section note must carry both facts: %q", view.note)
+	}
+
 	mixed := []model.TableStats{{Schema: "shop", Table: "a", UpdateRows: 1}, {Schema: "shop", Table: "b", UpdateRows: 1}}
 	partial := func(_, table string) ([]string, bool) { return []string{"id"}, table == "a" }
 	if view := primaryKeyView(mixed, partial); view.note == "" {

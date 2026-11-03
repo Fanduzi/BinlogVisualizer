@@ -135,47 +135,43 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 	})
 
 	var note string
+	unknownNote := ""
 	if unknown {
 		if known {
-			note = i18n.T("report.text.primaryKeyUnknownSome")
+			unknownNote = i18n.T("report.text.primaryKeyUnknownSome")
 		} else {
-			note = i18n.T("report.text.primaryKeyUnknown")
+			unknownNote = i18n.T("report.text.primaryKeyUnknown")
 		}
 	}
-	// The source sentence is true only when the binlog answered nothing: a mixed
-	// run has tables whose key came from metadata, so it must not claim one
-	// source for all of them (ADR 0031).
-	// A run states one source only when the binlog answered nothing; a mixed run
-	// marks the rows the definition answered instead (ADR 0031).
+	// A run states one source only when the definition answered every table:
+	// under partial coverage a source claim is false for the tables it does not
+	// cover, and the unknown wording stays (ADR 0031).
 	source := ""
-	if fromDefinition && !fromBinlog {
+	if fromDefinition && !fromBinlog && !unknown {
 		source = i18n.T("report.text.primaryKeyFromDefinition")
 	}
-	note = joinNote(note, source)
+	note = joinNote(unknownNote, source)
 	if marked {
 		note = joinNote(note, i18n.T("report.text.primaryKeyMarkedFromDefinition"))
 	}
 	if len(risks) > 0 {
-		// The summary and the section both name the source (ADR 0031).
-		return pkView{summaryLine: source, note: note, risks: risks, insertOnly: insertOnly}
+		// The summary repeats the unknown warning when coverage is partial; a
+		// source claim would be false for the uncovered tables (ADR 0031).
+		summary := source
+		if summary == "" {
+			summary = unknownNote
+		}
+		return pkView{summaryLine: summary, note: note, risks: risks, insertOnly: insertOnly}
 	}
 	if len(insertOnly) > 0 {
 		line := i18n.Tf("report.text.primaryKeyInsertOnly", map[string]any{
 			"Tables": formatInsertOnlyTables(insertOnly),
 		})
-		if source != "" {
-			line = source + "; " + line
-		} else if note != "" {
-			line = note + "; " + line
-		}
-		return pkView{summaryLine: line, note: note}
+		return pkView{summaryLine: joinNote(note, line), note: note}
 	}
 	if note != "" {
-		return pkView{summaryLine: note, note: note}
-	}
-	if note != "" {
-		// Both the summary line and the note name the source, so the JSON field
-		// and the HTML section say the same thing (ADR 0031).
+		// The summary line, the JSON field, and the HTML section say the same
+		// thing (ADR 0031).
 		return pkView{summaryLine: note, note: note}
 	}
 	return pkView{summaryLine: i18n.T("report.text.primaryKeyPresent")}
