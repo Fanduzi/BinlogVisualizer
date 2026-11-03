@@ -74,9 +74,14 @@ type RowImage struct {
 	// NamesFrom names the definition that supplied the labels when the binlog
 	// had none: RowNamesFromSchema, or empty (ADR 0030).
 	NamesFrom string
-	Before    []RowCell
-	After     []RowCell
-	Changed   []string // UPDATE column labels whose before and after differ
+	// NamesFileCols and NamesRowCols carry both counts when a definition covers
+	// the table but describes a different number of columns, so the report can
+	// say why it fell back to @1..@N instead of staying silent (ADR 0031).
+	NamesFileCols int
+	NamesRowCols  int
+	Before        []RowCell
+	After         []RowCell
+	Changed       []string // UPDATE column labels whose before and after differ
 }
 
 // QueryContext holds bounded SQL context from Rows_query_log_event.

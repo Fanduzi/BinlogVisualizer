@@ -3042,5 +3042,17 @@
   "error.flashbackSchemaWidth": {
     "description": "Refusal when the schema file describes a different column count than the row",
     "other": "{{.Table}}: --schema-file 的定义有 {{.File}} 列，而这行 binlog 有 {{.Row}} 列。请用与事故当时表结构一致的转储，或者用 --exclude-table 把这张表排除。"
+  },
+  "report.text.primaryKeyFromDefinition": {
+    "description": "由 --schema-file 提供主键时的摘要行",
+    "other": "主键来自 --schema-file（binlog 没有行元数据）"
+  },
+  "report.text.columnNamesMismatch": {
+    "description": "定义覆盖该表但与这一行列数不符时的摘要说明",
+    "other": "列名不可用：--schema-file 的定义有 {{.File}} 列，这一行有 {{.Row}} 列；列显示为 @1..@N"
+  },
+  "warning.snapshotWorkloadID": {
+    "description": "存快照时未给 workload id 的警告",
+    "other": "快照未带 --workload-id 保存：compare 和 trend 会报 unknown 可比性并抑制因果结论。要保留可比性请传 --workload-id"
   }
 }

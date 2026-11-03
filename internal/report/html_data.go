@@ -267,7 +267,7 @@ func buildHTMLHotRows(d *htmlReportData, result model.AnalysisResult, opts Optio
 
 func buildHTMLScopeNotes(d *htmlReportData, result model.AnalysisResult, opts Options) {
 	d.DMLFilter = dmlFilterLabel(result.Scope)
-	pk := primaryKeyView(result.Tables)
+	pk := primaryKeyView(result.Tables, opts.DefinitionKeys)
 	if len(pk.risks) == 0 {
 		d.PrimaryKeyNote = pk.summaryLine
 	} else {

@@ -27,7 +27,10 @@ func rowValuesSuppressed(opts Options) bool {
 // A row that a definition named is no longer "unavailable"; a row nothing named
 // still is (ADR 0030).
 func columnNamesNote(result model.AnalysisResult) string {
-	missing, fromSchema := rowNameSources(result)
+	missing, fromSchema, fileCols, rowCols := rowNameSources(result)
+	if fileCols > 0 {
+		return i18n.Tf("report.text.columnNamesMismatch", map[string]any{"File": fileCols, "Row": rowCols})
+	}
 	if missing {
 		return i18n.T("report.text.columnNamesMissing")
 	}
@@ -37,7 +40,7 @@ func columnNamesNote(result model.AnalysisResult) string {
 	return ""
 }
 
-func rowNameSources(result model.AnalysisResult) (missing, fromSchema bool) {
+func rowNameSources(result model.AnalysisResult) (missing, fromSchema bool, fileCols, rowCols int) {
 	sets := [][]model.Transaction{
 		result.Transactions,
 		result.Diagnostics.LargestTransactions,
@@ -54,11 +57,15 @@ func rowNameSources(result model.AnalysisResult) (missing, fromSchema bool) {
 					fromSchema = true
 					continue
 				}
+				if image.NamesFileCols > 0 && fileCols == 0 {
+					fileCols, rowCols = image.NamesFileCols, image.NamesRowCols
+					continue
+				}
 				missing = true
 			}
 		}
 	}
-	return missing, fromSchema
+	return missing, fromSchema, fileCols, rowCols
 }
 
 func appendRowImageLines(lines *[]string, txn model.Transaction, opts Options) {

@@ -348,19 +348,6 @@ type jsonTransaction struct {
 	RowsOmitted        int            `json:"rows_omitted,omitempty"`
 }
 
-type jsonRowImage struct {
-	Schema  string   `json:"schema,omitempty"`
-	Table   string   `json:"table,omitempty"`
-	Op      string   `json:"op"`
-	Columns []string `json:"columns"`
-	Names   string   `json:"names"`
-	// NamesFrom is set when the labels came from --schema-file (ADR 0030).
-	NamesFrom string   `json:"names_from,omitempty"`
-	Before    []any    `json:"before,omitempty"`
-	After     []any    `json:"after,omitempty"`
-	Changed   []string `json:"changed,omitempty"`
-}
-
 type jsonActor struct {
 	User string `json:"user,omitempty"`
 	Host string `json:"host,omitempty"`
@@ -581,7 +568,7 @@ func convertToJSON(result model.AnalysisResult, opts Options, built view.View) j
 	} else if showRowValues(opts) {
 		converted.ColumnNamesNote = columnNamesNote(result)
 	}
-	converted.PrimaryKeyNote = primaryKeyView(result.Tables).note
+	converted.PrimaryKeyNote = primaryKeyView(result.Tables, opts.DefinitionKeys).note
 	return converted
 }
 
@@ -1232,42 +1219,6 @@ func convertSnapshotFilters(filters model.SnapshotFilters) jsonSnapshotFilters {
 		ExcludeTables:  copyStringSlice(filters.ExcludeTables),
 		DML:            copyStringSlice(filters.IncludeDML),
 	}
-}
-
-func convertRowImages(images []model.RowImage) []jsonRowImage {
-	if len(images) == 0 {
-		return nil
-	}
-	out := make([]jsonRowImage, len(images))
-	for i, image := range images {
-		out[i] = jsonRowImage{
-			Schema:    image.Schema,
-			Table:     image.Table,
-			Op:        image.Op,
-			Columns:   append([]string(nil), image.Columns...),
-			Names:     image.Names,
-			NamesFrom: image.NamesFrom,
-			Before:    jsonCells(image.Before),
-			After:     jsonCells(image.After),
-			Changed:   append([]string(nil), image.Changed...),
-		}
-	}
-	return out
-}
-
-func jsonCells(cells []model.RowCell) []any {
-	if cells == nil {
-		return nil
-	}
-	out := make([]any, len(cells))
-	for i, cell := range cells {
-		if cell.Null {
-			out[i] = nil
-			continue
-		}
-		out[i] = cell.Text
-	}
-	return out
 }
 
 func convertDrilldowns(drilldowns []model.PatternDrilldown, mode SQLContextMode, opts Options) []jsonPatternDrilldown {

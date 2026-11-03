@@ -45,7 +45,7 @@ func renderText(result model.AnalysisResult, opts Options, built view.View) (str
 	renderDDLTimeline(&buf, result.Diagnostics.DDLEvents, opts.TopN, opts.SQLContextMode, result.Diagnostics.ServerVersion, opts)
 	renderOpenDML(&buf, result.Diagnostics.OpenDMLGroups)
 	renderTopTablesTable(&buf, result.Tables, opts.TopTables)
-	renderNoPrimaryKey(&buf, result.Tables)
+	renderNoPrimaryKey(&buf, result.Tables, opts.DefinitionKeys)
 	renderTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	renderTopTransactions(&buf, result, opts, built)
 	renderHotRows(&buf, result.HotRows, opts)
@@ -78,7 +78,7 @@ func renderDiagnosticSummary(buf *strings.Builder, result model.AnalysisResult, 
 	if label := dmlFilterLabel(result.Scope); label != "" {
 		fmt.Fprintf(buf, "  %s: %s\n", i18n.T("report.label.dmlFilter"), label)
 	}
-	if line := primaryKeyView(result.Tables).summaryLine; line != "" {
+	if line := primaryKeyView(result.Tables, opts.DefinitionKeys).summaryLine; line != "" {
 		buf.WriteString("  " + line + "\n")
 	}
 	if rowValuesSuppressed(opts) {
@@ -165,8 +165,8 @@ func collectTopFindingLines(result model.AnalysisResult, topN int) []string {
 	return lines
 }
 
-func renderNoPrimaryKey(buf *strings.Builder, tables []model.TableStats) {
-	view := primaryKeyView(tables)
+func renderNoPrimaryKey(buf *strings.Builder, tables []model.TableStats, def DefinitionKeys) {
+	view := primaryKeyView(tables, def)
 	if len(view.risks) == 0 {
 		return
 	}

@@ -105,6 +105,10 @@ func ParseCSVDataset(raw string) (CSVDataset, error) {
 
 // Options controls report presentation without changing analysis semantics.
 type Options struct {
+	// DefinitionKeys reports what --schema-file declares for a table: its
+	// primary-key columns and whether the definition covers it at all. It is
+	// consulted only where the binlog cannot answer (ADR 0031).
+	DefinitionKeys DefinitionKeys
 	SQLContextMode SQLContextMode
 	// DiagnosticsMode caps analyze JSON diagnostics. Zero means full.
 	DiagnosticsMode DiagnosticsMode

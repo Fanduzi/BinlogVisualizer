@@ -464,6 +464,9 @@
                     "names_from": {
                       "type": "string"
                     },
+                    "names_note": {
+                      "type": "string"
+                    },
                     "op": {
                       "type": "string"
                     },
@@ -642,6 +645,9 @@
                       "type": "string"
                     },
                     "names_from": {
+                      "type": "string"
+                    },
+                    "names_note": {
                       "type": "string"
                     },
                     "op": {
@@ -825,6 +831,9 @@
                       "type": "string"
                     },
                     "names_from": {
+                      "type": "string"
+                    },
+                    "names_note": {
                       "type": "string"
                     },
                     "op": {
@@ -1070,6 +1079,9 @@
                       "type": "string"
                     },
                     "names_from": {
+                      "type": "string"
+                    },
+                    "names_note": {
                       "type": "string"
                     },
                     "op": {
@@ -2382,6 +2394,9 @@
                   "type": "string"
                 },
                 "names_from": {
+                  "type": "string"
+                },
+                "names_note": {
                   "type": "string"
                 },
                 "op": {

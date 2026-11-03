@@ -30,7 +30,7 @@ func renderMarkdown(result model.AnalysisResult, opts Options, built view.View) 
 
 	mdWorkloadSummary(&buf, result, opts)
 	mdTopTables(&buf, result.Tables, opts.TopTables)
-	mdNoPrimaryKey(&buf, result.Tables)
+	mdNoPrimaryKey(&buf, result.Tables, opts.DefinitionKeys)
 	mdTopThreads(&buf, result.Threads, result.ThreadsRankedBy, opts.TopThreads)
 	mdTopTransactions(&buf, built.Key, opts, result.Diagnostics.ServerVersion)
 	mdHotRows(&buf, result.HotRows, opts)
@@ -65,7 +65,7 @@ func mdWorkloadSummary(buf *strings.Builder, result model.AnalysisResult, opts O
 	if label := dmlFilterLabel(result.Scope); label != "" {
 		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.dmlFilter"), escapeMD(label))
 	}
-	if line := primaryKeyView(result.Tables).summaryLine; line != "" {
+	if line := primaryKeyView(result.Tables, opts.DefinitionKeys).summaryLine; line != "" {
 		fmt.Fprintf(buf, "| %s | %s |\n", i18n.T("report.label.primaryKey"), escapeMD(line))
 	}
 	if rowValuesSuppressed(opts) {
@@ -113,8 +113,8 @@ func mdTopTables(buf *strings.Builder, tables []model.TableStats, topN int) {
 	buf.WriteString("\n")
 }
 
-func mdNoPrimaryKey(buf *strings.Builder, tables []model.TableStats) {
-	view := primaryKeyView(tables)
+func mdNoPrimaryKey(buf *strings.Builder, tables []model.TableStats, def DefinitionKeys) {
+	view := primaryKeyView(tables, def)
 	if len(view.risks) == 0 {
 		return
 	}

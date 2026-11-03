@@ -142,7 +142,7 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 | `--format` | `text` | 报告输出格式：`text`、`json`、`markdown`（别名 `md`）、`html`、`csv` 或 `tsv`。 |
 | `--output`, `-o` | auto | HTML 输出文件路径。仅支持 `--format html`。默认：TTY 下写入推导出的 cwd 文件；stdout 被重定向时写入 stdout。使用 `-` 强制 stdout。 |
 | `--csv-dataset` | `tables` | `--format csv`/`tsv` 写出的数据集：`tables`、`transactions`、`patterns` 或 `fingerprints`。在其他格式下使用该标志是用法错误（exit 3）。 |
-| `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。 |
+| `--snapshot-name` | none | 把本次 JSON analyze 输出保存成 `<name>.json`。要求同时使用 `--format json`。没给 `--workload-id` 时保存会打印一行 stderr 警告：`compare` 和 `trend` 对这份快照会报 unknown 可比性。 |
 | `--snapshot-dir` | home-based default | 保存快照时使用的目录。默认值：`~/.binlogviz/snapshots`。 |
 | `--workload-id` | none | 写入 analyze 报告的显式 workload identity（report v3 起）。只有属于同一 workload 的快照才使用相同的非空标识。 |
 | `--sql-context` | `summary` | 所有格式中的查询文本，包括默认文本、DDL 语句和 `--show-patterns`：`summary`（一行有界摘要）、`off`（不输出查询文本，也不输出 `--show-rows` 的单元格）或 `full`（存储 SQL，含 DDL 语句文本，上限 4096 字节，截断时带标记）。MySQL 和 MariaDB 账号 DDL 里的口令字面量在任何模式下都会打码。 |
@@ -171,7 +171,7 @@ binlogviz analyze --host mariadb.internal --user replica --start-gtid '0-1-300'
 | `--exclude-table` | none | 跳过指定对象（逗号分隔）。`TABLE` 或 `SCHEMA.TABLE`，也包括 VIEW、EVENT、FUNCTION、PROCEDURE、TRIGGER 的名字。 |
 | `--dml` | none | 只统计这些 ROW 类型（逗号分隔）：`insert`、`update`、`delete`，可组合。与 schema、table、时间、位点、GTID 过滤一起生效。没有匹配时退出 2：`Error: dml filter matched no events`。 |
 | `--show-rows` | `false` | 为列出的事务打印有界行值（DELETE 前镜像，UPDATE 变化列，INSERT 后镜像）。列名优先取 binlog 的 `binlog_row_metadata=FULL`，没有时取 `--schema-file` 的定义，两者都没有则列是 `@1`..`@N`，JSON 里该行带 `names_from`。`--sql-context off` 省略这些值。 |
-| `--schema-file` | 无 | 表定义 SQL 文件（`mysqldump --no-data`，或一份或多份 `SHOW CREATE TABLE`），必须描述事故当时的表结构。配合 `--show-rows` 时，binlog 没有行元数据就用它给出列名。可选；`analyze` 仍然离线运行。 |
+| `--schema-file` | 无 | 表定义 SQL 文件（`mysqldump --no-data`，或一份或多份 `SHOW CREATE TABLE`），必须描述事故当时的表结构。配合 `--show-rows` 时，binlog 没有行元数据就用它给出列名；binlog 说不了主键时，摘要会说明主键来自这份文件（ADR 0031）。定义覆盖该表但列数不符时，会写出两个列数（`names_note`），不会静默忽略。可选；`analyze` 仍然离线运行。 |
 | `--schema-file-db` | 无 | 当 `--schema-file` 里既没有 `USE` 也没有 mysqldump `Database:` 头时，其中未限定表名所用的库。 |
 
 binlog 是 MySQL 8 且 `binlog_row_metadata=FULL` 时，TABLE_MAP 可选元数据会给出每张表的主键（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`），或者说明这张表没有主键。每种输出都会列出没有主键、并且收到了 UPDATE 或 DELETE 行的表，按这些行数排序。副本应用这些行时可能全表扫描。没有主键但只有 INSERT 的表会点名，但不会被排成这种延迟风险。只要有一行 UPDATE 或 DELETE，就会在大事务和尖峰告警旁边给出 `no_primary_key` 警告；没有单独的阈值参数。没有 FULL 元数据时报告不猜测：这些表是 `unknown`，并说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。`--include-table`、schema 过滤、`--dml`，以及时间、位点、GTID 选择，对这一节的作用与对 Top Tables 相同。analyze 报告不生成撤销 SQL。`binlogviz flashback` 会生成。

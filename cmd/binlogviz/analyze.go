@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/schollz/progressbar/v3"
@@ -22,7 +21,6 @@ import (
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
 	"binlogviz/internal/report"
-	"binlogviz/internal/schemacatalog"
 	"binlogviz/internal/snapshot"
 	"binlogviz/internal/splitout"
 )
@@ -259,16 +257,14 @@ func newAnalyzeCommand() *cobra.Command {
 				return err
 			}
 
-			if err := readAnalyzeSchemaFile(opts); err != nil {
+			if err := prepareAnalyzeRun(opts); err != nil {
 				return err
 			}
 
 			// Build analyzer options
 			analyzerOpts := buildAnalyzerOptions(opts, startTime, endTime)
 			analyzerOpts.GTIDSelector = gtidSelector
-			if opts.showRows && reportOpts.SQLContextMode != report.SQLContextOff {
-				analyzerOpts.CaptureRowImages = true
-			}
+			enableRowImageCapture(&analyzerOpts, opts, reportOpts)
 			snapshotMeta := buildSnapshotMetadata(displayPaths(paths, pathAliases), opts, startTime, endTime, discovered)
 
 			// Execute the analysis pipeline
@@ -477,9 +473,7 @@ func runAnalysisStreamingWithSnapshotDeps(
 			rows.SetCaptureFlashback(true)
 		}
 	}
-	if setter, ok := parser.(binlog.FlashSchemaParser); ok {
-		setter.SetFlashSchemaResolver(flashSchemaResolver(opts.SchemaSQL, opts.SchemaFileDB))
-	}
+	applySchemaCatalog(parser, &reportOpts, opts)
 	if opts.Redo {
 		if rows, ok := parser.(binlog.RedoParser); ok {
 			rows.SetCaptureRedo(true)
@@ -780,16 +774,4 @@ func readAnalyzeSchemaFile(opts *analyzeOptions) error {
 	}
 	opts.schemaSQL = string(body)
 	return nil
-}
-
-// flashSchemaResolver builds the definition lookup undo capture uses when the
-// binlog has no column names (ADR 0030). Without --schema-file there is no
-// definition, and a MINIMAL row keeps its row_metadata refusal.
-func flashSchemaResolver(schemaSQL, schemaFileDB string) binlog.FlashSchemaResolver {
-	if strings.TrimSpace(schemaSQL) == "" {
-		return nil
-	}
-	catalog := schemacatalog.New(schemaFileDB)
-	catalog.LoadFile(schemaSQL)
-	return catalog
 }
