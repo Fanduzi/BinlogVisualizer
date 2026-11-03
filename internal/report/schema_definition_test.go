@@ -29,10 +29,32 @@ func TestPrimaryKeyViewUsesDefinitionOnlyWhereTheBinlogCannot(t *testing.T) {
 	if len(view.risks) != 1 || view.risks[0].update != 3 || view.risks[0].delete != 1 {
 		t.Fatalf("a definition-declared no-key table is a risk with its counts: %+v", view.risks)
 	}
+	// The no-key section must say the definition is the source, not only count
+	// the rows (ADR 0031).
+	if !strings.Contains(view.note, "--schema-file") || !strings.Contains(view.note, "no primary key") {
+		t.Fatalf("the no-key section must name the source: %q", view.note)
+	}
+	if !strings.Contains(view.summaryLine, "--schema-file") {
+		t.Fatalf("the summary must name the source too: %q", view.summaryLine)
+	}
 
 	known := []model.TableStats{{Schema: "shop", Table: "t", UpdateRows: 1, KeyStatus: model.KeyStatusHasPK}}
 	if view := primaryKeyView(known, func(string, string) ([]string, bool) { return nil, true }); len(view.risks) != 0 || strings.Contains(view.summaryLine, "--schema-file") {
 		t.Fatalf("binlog metadata must win where it speaks: %+v", view)
+	}
+
+	// A mixed run: one table's key comes from binlog metadata, another's from the
+	// definition. Neither source sentence may claim both.
+	mixedSources := []model.TableStats{
+		{Schema: "shop", Table: "full", UpdateRows: 1, KeyStatus: model.KeyStatusHasPK},
+		{Schema: "shop", Table: "minimal", UpdateRows: 1},
+	}
+	view = primaryKeyView(mixedSources, func(_, table string) ([]string, bool) { return []string{"id"}, table == "minimal" })
+	if len(view.risks) != 0 {
+		t.Fatalf("no risk expected: %+v", view.risks)
+	}
+	if strings.Contains(view.summaryLine, "--schema-file") || strings.Contains(view.note, "--schema-file") {
+		t.Fatalf("a mixed run must not claim one source: line %q note %q", view.summaryLine, view.note)
 	}
 
 	mixed := []model.TableStats{{Schema: "shop", Table: "a", UpdateRows: 1}, {Schema: "shop", Table: "b", UpdateRows: 1}}

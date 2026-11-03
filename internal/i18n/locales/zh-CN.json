@@ -3053,6 +3053,10 @@
   },
   "warning.snapshotWorkloadID": {
     "description": "存快照时未给 workload id 的警告",
-    "other": "快照未带 --workload-id 保存：compare 和 trend 会报 unknown 可比性并抑制因果结论。要保留可比性请传 --workload-id"
+    "other": "请求保存快照时没有 --workload-id：这样存下的快照无法做因果对比，compare 和 trend 会报 unknown 可比性并抑制因果结论。要保留可比性请传 --workload-id"
+  },
+  "report.text.primaryKeyNoKeyFromDefinition": {
+    "description": "Summary and section note when the definition declares no key",
+    "other": "--schema-file 的定义声明这些有行变更的表没有主键（binlog 没有行元数据）"
   }
 }
