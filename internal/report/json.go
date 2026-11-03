@@ -272,6 +272,9 @@ type jsonTableStats struct {
 	DeleteRows   int    `json:"delete_rows"`
 	TxnCount     int    `json:"txn_count"`
 	KeyStatus    string `json:"key_status,omitempty"`
+	// KeySource names the definition that answered the key when the binlog
+	// could not (ADR 0031).
+	KeySource string `json:"key_source,omitempty"`
 }
 
 type jsonThreadStats struct {
@@ -536,7 +539,7 @@ func convertToJSON(result model.AnalysisResult, opts Options, built view.View) j
 		Timeseries:                    convertTimeseries(result.Timeseries, opts),
 		DiagnosticsMode:               reducedDiagnosticsMode(opts.DiagnosticsMode),
 		Diagnostics:                   convertDiagnostics(result.Diagnostics, opts, built),
-		Tables:                        convertTables(result.Tables),
+		Tables:                        convertTables(result.Tables, opts.DefinitionKeys),
 		Threads:                       convertThreads(threads),
 		ThreadsListed:                 len(threads),
 		ThreadsOmitted:                threadsOmitted,
@@ -900,7 +903,19 @@ func convertSummary(s model.WorkloadSummary, opts Options) jsonSummary {
 	}
 }
 
-func convertTables(tables []model.TableStats) []jsonTableStats {
+// tableKeySource reports where this table's key answer came from, when the
+// binlog could not answer.
+func tableKeySource(table model.TableStats, def DefinitionKeys) string {
+	if def == nil || tableKeyStatus(table) != model.KeyStatusUnknown {
+		return ""
+	}
+	if _, covered := def(table.Schema, table.Table); covered {
+		return "schema_file"
+	}
+	return ""
+}
+
+func convertTables(tables []model.TableStats, def DefinitionKeys) []jsonTableStats {
 	if tables == nil {
 		return []jsonTableStats{}
 	}
@@ -916,6 +931,7 @@ func convertTables(tables []model.TableStats) []jsonTableStats {
 			DeleteRows:   t.DeleteRows,
 			TxnCount:     t.TxnCount,
 			KeyStatus:    tableKeyStatus(t),
+			KeySource:    tableKeySource(t, def),
 		}
 	}
 	return result

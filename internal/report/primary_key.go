@@ -15,17 +15,23 @@ type pkTable struct {
 	update int
 	delete int
 	insert int
+	// fromDefinition marks a row whose key answer came from --schema-file, so
+	// the reader can see which tables the dump is speaking for (ADR 0031).
+	fromDefinition bool
 }
 
 func (t pkTable) name() string {
+	name := t.table
 	switch {
 	case t.schema != "" && t.table != "":
-		return t.schema + "." + t.table
-	case t.table != "":
-		return t.table
-	default:
-		return t.schema
+		name = t.schema + "." + t.table
+	case t.table == "":
+		name = t.schema
 	}
+	if t.fromDefinition {
+		name += " [--schema-file]"
+	}
+	return name
 }
 
 // DefinitionKeys reports the primary-key columns a schema definition declares
@@ -50,7 +56,7 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 	known := false
 	fromDefinition := false
 	fromBinlog := false
-	definedNoKey := false
+	marked := false
 	for _, table := range tables {
 		if table.InsertRows+table.UpdateRows+table.DeleteRows == 0 {
 			continue
@@ -96,8 +102,9 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 				row.update = table.UpdateRows
 				row.delete = table.DeleteRows
 				row.insert = table.InsertRows
-				definedNoKey = true
+				row.fromDefinition = true
 			}
+			marked = marked || row.fromDefinition
 			if row.update+row.delete > 0 {
 				risks = append(risks, row)
 				continue
@@ -138,17 +145,15 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 	// The source sentence is true only when the binlog answered nothing: a mixed
 	// run has tables whose key came from metadata, so it must not claim one
 	// source for all of them (ADR 0031).
+	// A run states one source only when the binlog answered nothing; a mixed run
+	// marks the rows the definition answered instead (ADR 0031).
 	source := ""
 	if fromDefinition && !fromBinlog {
 		source = i18n.T("report.text.primaryKeyFromDefinition")
-		if definedNoKey {
-			source = i18n.T("report.text.primaryKeyNoKeyFromDefinition")
-		}
-		if note == "" {
-			note = source
-		} else {
-			note = source + "; " + note
-		}
+	}
+	note = joinNote(note, source)
+	if marked {
+		note = joinNote(note, i18n.T("report.text.primaryKeyMarkedFromDefinition"))
 	}
 	if len(risks) > 0 {
 		// The summary and the section both name the source (ADR 0031).
@@ -174,6 +179,18 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 		return pkView{summaryLine: note, note: note}
 	}
 	return pkView{summaryLine: i18n.T("report.text.primaryKeyPresent")}
+}
+
+// joinNote appends sentence to note, keeping the note readable.
+func joinNote(note, sentence string) string {
+	switch {
+	case sentence == "":
+		return note
+	case note == "":
+		return sentence
+	default:
+		return note + "; " + sentence
+	}
 }
 
 func formatInsertOnlyTables(tables []pkTable) string {

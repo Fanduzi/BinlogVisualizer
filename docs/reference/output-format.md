@@ -341,7 +341,7 @@ The top-level JSON object always contains these fields:
 | `warnings` | integer | yes | Count of analysis warnings recorded in the finalized result |
 | `pattern_drilldowns` | array | yes | Bounded drilldown summaries for high-signal patterns; empty array when nothing qualifies |
 | `snapshot` | object | no | Present only when `analyze` is invoked with `--snapshot-name` |
-| `primary_key_note` | string | no | Present when at least one row table has no FULL primary-key metadata. The sentence says presence is unknown because `binlog_row_metadata` is not FULL, and names `--schema-file` as the source when a definition answered for every such table (ADR 0031). Omitted when every row table is `has_pk` or `no_pk` |
+| `primary_key_note` | string | no | Present when at least one row table has no FULL primary-key metadata. The sentence says presence is unknown because `binlog_row_metadata` is not FULL, names `--schema-file` as the source when a definition answered for every such table, and says which tables the definition answered when only some came from it (ADR 0031). Omitted when every row table is `has_pk` or `no_pk` |
 | `replica_apply_delay` | object | no | MySQL 8 commit-timestamp apply delay. Omitted when no counted transaction carried both timestamps. Never an empty object and never a stand-in `0` for a missing timestamp. See below. |
 
 ### `replica_apply_delay`
@@ -425,6 +425,7 @@ Report_version 3 listed every matched identity in `matched_gtids` instead, so it
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes | Distinct transactions that wrote row images to this table. A DDL-only group does not increment it. |
 | `key_status` | string | no | `has_pk`, `no_pk`, or `unknown` for a table that received row events. Omitted when the table had no row events. `has_pk` means FULL metadata included `SIMPLE_PRIMARY_KEY` or `PRIMARY_KEY_WITH_PREFIX`. `no_pk` means FULL metadata was present and neither field was. `unknown` means `binlog_row_metadata` is not FULL; it is not a claim that the table lacks a key. `update_rows` and `delete_rows` are the filtered counts. A `no_pk` table is a replica lag risk only when `update_rows` or `delete_rows` is greater than zero |
+| `key_source` | string | no | `schema_file` when `--schema-file` answered where `key_status` is `unknown` (ADR 0031). Omitted otherwise |
 
 `diagnostics.input_format_guess` is `ROW`, `STATEMENT`, `MIXED`, or empty when there is not enough signal. `diagnostics.ignored_query_dml_events` counts QUERY-event DML that had no corresponding row images. `diagnostics.open_explicit_groups`, when present, counts `BEGIN` groups that reached end of input without `COMMIT` or plain `ROLLBACK`. It is omitted when zero. A later GTID after that open `BEGIN` does not produce a report: analyze exits 1 with `open BEGIN without close`.
 
