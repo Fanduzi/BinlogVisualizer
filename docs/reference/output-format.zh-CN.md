@@ -329,7 +329,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
 | `pattern_drilldowns` | array | yes | 高信号模式的有界 drilldown 摘要；无模式达到阈值时为空数组 |
 | `snapshot` | object | no | 仅在 `analyze` 使用 `--snapshot-name` 时出现 |
-| `primary_key_note` | string | no | 至少有一张收到行事件的表没有 FULL 主键元数据时出现。这句话说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL。每张有行变更的表都是 `has_pk` 或 `no_pk` 时省略 |
+| `primary_key_note` | string | no | 至少有一张收到行事件的表没有 FULL 主键元数据时出现。这句话说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL；当这些表的主键都由定义回答时，会写明来源是 `--schema-file`（ADR 0031）。每张有行变更的表都是 `has_pk` 或 `no_pk` 时省略 |
 | `replica_apply_delay` | object | no | MySQL 8 提交时间戳上的应用延迟。没有计入的事务同时带上两个时间戳时省略。不会是空对象，也不会用 `0` 代替缺失的时间戳。见下文。 |
 
 ### `replica_apply_delay`
@@ -458,7 +458,7 @@ report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会�
 | `query_sql` | string | no | 仅在 `--sql-context full` 且存在受限 SQL 上下文时出现。存储被截断时追加 `… [truncated: <shown> of <original> bytes]` |
 | `query_truncated` | boolean | no | 没有 query 上下文时省略。出现时，只有存储 SQL 碰到 4096 字节上限才为 true。更短语句的 160 字符摘要仍是 false |
 | `query_original_bytes` | integer | no | 没有 query 上下文时省略；出现时表示原始 SQL 的字节长度 |
-| `rows` | array | no | 仅在 `--show-rows` 且 `--sql-context` 不是 `off` 时出现。每个元素是一行逻辑变更：`op`（`INSERT`、`UPDATE`、`DELETE`）、`columns`、`names`（`full` 或 `positional`）、`names_from`（列名来自 `--schema-file` 时为 `schema_file`，否则省略）、`before`、`after`、`changed`（UPDATE 中前后不同的列名）。单元格是字符串，SQL NULL 为 JSON `null`。每个事务最多 32 条 |
+| `rows` | array | no | 仅在 `--show-rows` 且 `--sql-context` 不是 `off` 时出现。每个元素是一行逻辑变更：`op`（`INSERT`、`UPDATE`、`DELETE`）、`columns`、`names`（`full` 或 `positional`）、`names_from`（列名来自 `--schema-file` 时为 `schema_file`，否则省略）、`names_note`（定义覆盖该表但列数不符时出现，句子给出两个列数）、`before`、`after`、`changed`（UPDATE 中前后不同的列名）。单元格是字符串，SQL NULL 为 JSON `null`。每个事务最多 32 条 |
 | `rows_omitted` | integer | no | 超过该上限后未保存的逻辑行数 |
 
 事务行数、操作数、事件数和保留位置继续采用 inclusive 的逐事件窗口语义。相邻解析事件只能帮助确定物理边界，不能增加窗口外 workload。`partial_start` 表示物理起点在所选窗口外，`partial_end` 表示物理终点在窗口外，`partial_both` 表示两端均在窗口外。缺失或旧版边界元数据一律为 `unknown`，不会推断为完整。`transactions` 先列出完整事务排行榜，再按 `txn-N` 的自然数字顺序用有界的 partial/unknown 证据填充剩余位置；后者不参与完整事务排名，也不会进入大小直方图、模式或普通大事务告警。

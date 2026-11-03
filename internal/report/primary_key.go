@@ -28,6 +28,11 @@ func (t pkTable) name() string {
 	}
 }
 
+// DefinitionKeys reports the primary-key columns a schema definition declares
+// for a table, and whether the definition covers that table. Nil columns with
+// covered=true mean the definition declares no key (ADR 0031).
+type DefinitionKeys func(schema, table string) (columns []string, covered bool)
+
 // pkView is the primary-key section shared by every analyze format.
 // summaryLine is the single extra line used when there is no lag ranking.
 // note is the unknown-metadata sentence, including when a lag section is also shown.
@@ -38,11 +43,12 @@ type pkView struct {
 	insertOnly  []pkTable
 }
 
-func primaryKeyView(tables []model.TableStats) pkView {
+func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 	var risks, insertOnly []pkTable
 	rowTables := 0
 	unknown := false
 	known := false
+	fromDefinition := false
 	for _, table := range tables {
 		if table.InsertRows+table.UpdateRows+table.DeleteRows == 0 {
 			continue
@@ -51,6 +57,20 @@ func primaryKeyView(tables []model.TableStats) pkView {
 		status := table.KeyStatus
 		if status == "" {
 			status = model.KeyStatusUnknown
+		}
+		// The binlog wins wherever it says something; the definition only fills
+		// the gap it leaves (ADR 0031).
+		viaDefinition := false
+		if status == model.KeyStatusUnknown && def != nil {
+			if columns, covered := def(table.Schema, table.Table); covered {
+				viaDefinition = true
+				fromDefinition = true
+				if len(columns) > 0 {
+					status = model.KeyStatusHasPK
+				} else {
+					status = model.KeyStatusNoPK
+				}
+			}
 		}
 		switch status {
 		case model.KeyStatusHasPK:
@@ -63,6 +83,11 @@ func primaryKeyView(tables []model.TableStats) pkView {
 				update: table.NoPKUpdateRows,
 				delete: table.NoPKDeleteRows,
 				insert: table.NoPKInsertRows,
+			}
+			if viaDefinition {
+				row.update = table.UpdateRows
+				row.delete = table.DeleteRows
+				row.insert = table.InsertRows
 			}
 			if row.update+row.delete > 0 {
 				risks = append(risks, row)
@@ -115,6 +140,9 @@ func primaryKeyView(tables []model.TableStats) pkView {
 	}
 	if note != "" {
 		return pkView{summaryLine: note, note: note}
+	}
+	if fromDefinition {
+		return pkView{summaryLine: i18n.T("report.text.primaryKeyFromDefinition")}
 	}
 	return pkView{summaryLine: i18n.T("report.text.primaryKeyPresent")}
 }

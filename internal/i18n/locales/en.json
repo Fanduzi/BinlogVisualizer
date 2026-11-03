@@ -3042,5 +3042,17 @@
   "error.flashbackSchemaWidth": {
     "description": "Refusal when the schema file describes a different column count than the row",
     "other": "{{.Table}}: the --schema-file definition describes {{.File}} columns, but the binlog row has {{.Row}}. Use a dump that matches the table at incident time, or leave the table out with --exclude-table."
+  },
+  "report.text.primaryKeyFromDefinition": {
+    "description": "Summary line when --schema-file supplied the primary key",
+    "other": "primary key from --schema-file (the binlog has no row metadata)"
+  },
+  "report.text.columnNamesMismatch": {
+    "description": "Summary note when a definition covers the table but not this row",
+    "other": "column names unavailable: the --schema-file definition describes {{.File}} columns, this row has {{.Row}}; columns shown as @1..@N"
+  },
+  "warning.snapshotWorkloadID": {
+    "description": "Warning when a snapshot is saved without a workload id",
+    "other": "snapshot saved without --workload-id: compare and trend will report unknown comparability and suppress causal findings. Pass --workload-id to keep them comparable"
   }
 }

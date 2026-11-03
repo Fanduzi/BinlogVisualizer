@@ -39,12 +39,17 @@ func captureRowImages(ev *replication.RowsEvent, kind, schema, table string, res
 	}
 	labels, names := columnLabels(ev.Table, width)
 	namesFrom := ""
+	mismatchFileCols, mismatchRowCols := 0, 0
 	if names != model.RowNamesFull && !flashNamesComplete(ev.Table, width) {
 		// ADR 0030: a definition supplied by --schema-file names the columns
 		// show-rows would otherwise print as @1..@N.
-		if cols, _, ok := resolveFlashColumns(resolver, schema, table); ok && len(cols) == width {
-			labels = flashLabelsFromCols(cols)
-			namesFrom = model.RowNamesFromSchema
+		if cols, _, ok := resolveFlashColumns(resolver, schema, table); ok {
+			if len(cols) == width {
+				labels = flashLabelsFromCols(cols)
+				namesFrom = model.RowNamesFromSchema
+			} else {
+				mismatchFileCols, mismatchRowCols = len(cols), width
+			}
 		}
 	}
 	var unsigned map[int]bool
@@ -73,12 +78,14 @@ func captureRowImages(ev *replication.RowsEvent, kind, schema, table string, res
 			afterSkips = skipsAt(ev.SkippedColumns, i)
 		}
 		img := model.RowImage{
-			Schema:    schema,
-			Table:     table,
-			Op:        op,
-			Columns:   labels,
-			Names:     names,
-			NamesFrom: namesFrom,
+			Schema:        schema,
+			Table:         table,
+			Op:            op,
+			Columns:       labels,
+			Names:         names,
+			NamesFrom:     namesFrom,
+			NamesFileCols: mismatchFileCols,
+			NamesRowCols:  mismatchRowCols,
 		}
 		if beforeRow != nil {
 			img.Before = formatImage(beforeRow, skipSet(beforeSkips), labels, ev.Table, unsigned, nil)
