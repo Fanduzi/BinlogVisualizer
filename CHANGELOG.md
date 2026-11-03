@@ -4,6 +4,23 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.41.0
+
+Release date: 2026-11-03
+
+Highlights:
+
+- `--schema-file` now supplies the column names, type facts, and primary key for undo when the binlog has none, so `flashback` works on MySQL 8.x `binlog_row_metadata=MINIMAL` (the default) and on MySQL 5.7, aligned with `redo`.
+- The key a definition declares is labelled on stderr, in the script header, and in `--plan`; an `ALTER` that changes it drops the key with a `schema_file_key_unmodelled` warning and the undo matches every column instead.
+- `analyze --show-rows --schema-file` prints the definition's column names, the summary names the source, and the JSON image carries `names_from` (`report_version` stays 4). `analyze` gains `--schema-file` and `--schema-file-db`.
+- Fixed: a key-changing `ALTER` used to print both the unmodelled and the key-source warning while emitting keyed SQL; a width mismatch is now a `schema` refusal naming both counts instead of "no definition covers this table".
+- Three live-server cases are now required in CI (8.0 MINIMAL, stale key, 5.7.44); a SKIP fails the job.
+
+Related notes:
+
+- [v0.41.0 release notes](docs/releases/release-notes-v0.41.0.md)
+- [v0.41.0 中文发行说明](docs/releases/release-notes-v0.41.0.zh-CN.md)
+
 ## v0.40.0
 
 Release date: 2026-11-02
