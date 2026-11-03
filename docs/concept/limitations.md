@@ -70,6 +70,8 @@ If your workflow requires complete long-form SQL archival or forensic preservati
 
 Column names are taken from the binlog when `binlog_row_metadata=FULL` (MySQL 8.0.1+), otherwise from `--schema-file` when it covers the table, and the report says which. With neither, columns are `@1`..`@N` and the report says names are missing. Without that metadata, an integer whose signed and unsigned readings differ is printed as both, the same way `mysqlbinlog -v` does. With FULL metadata, a column is printed with the signedness the binlog recorded.
 
+`--schema-file` is a secondary source of key presence: where `binlog_row_metadata` answers, it wins; a table the binlog cannot answer is answered by the definition, and the report names `--schema-file` only when every table with rows came from it, so a mixed run states no single source. A definition that covers the table but describes a different column count is stated with both counts (`names_note`) and the labels stay `@1`..`@N`. A snapshot saved with `--snapshot-name` and no `--workload-id` prints one stderr warning: `compare` and `trend` report unknown comparability for it.
+
 `--sql-context off` does not print those cells. Auth-DDL `<secret>` redaction is unchanged; it applies to statement text, not to row cells. `mysqlbinlog_cmd` on the same transaction is the cross-check. The analyze report does not print undo SQL. `binlogviz flashback` does; see below.
 
 ## Flashback SQL

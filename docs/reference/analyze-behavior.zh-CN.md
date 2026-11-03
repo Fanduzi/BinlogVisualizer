@@ -44,7 +44,7 @@
 binlogviz analyze mysql-bin.000123
 ```
 
-「无主键」一节列出收到了 UPDATE 或 DELETE、并且没有主键的表，按这些行数排序。副本应用这些行时可能全表扫描。`主键是否存在未知（binlog_row_metadata 不是 FULL）` 表示 binlog 没有记下主键信息，不是在说某张表没有主键。没有主键但只有 INSERT 的表会点名，但不会被排成这种风险。
+「无主键」一节列出收到了 UPDATE 或 DELETE、并且没有主键的表，按这些行数排序。副本应用这些行时可能全表扫描。`主键是否存在未知（binlog_row_metadata 不是 FULL）` 表示 binlog 没有记下主键信息，不是在说某张表没有主键。没有主键但只有 INSERT 的表会点名，但不会被排成这种风险。如果主键信息来自 `--schema-file`（binlog 没有记录），这一节和摘要都会写明来源，计数用该表平时的 UPDATE 与 DELETE 行数。
 
 MySQL 8.0 及以上、并且打开了 `log_replica_updates` 的副本 binlog，在最忙分钟之后有「副本应用延迟」。延迟是本机提交时间减去原始提交时间，并假设源库和副本的时钟一致。这一节给出最大延迟、p95、延迟达到峰值的分钟，以及最慢的事务：GTID、事务起点 file:byte、两个提交时间、延迟，以及该事务里的表。`--top` 限制列出几条。两个时间戳相同的源库 binlog 只说一行，没有表。MySQL 5.7 和 MariaDB 打印 `提交时间戳不可用`。
 

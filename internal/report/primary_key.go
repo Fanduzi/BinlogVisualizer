@@ -49,6 +49,8 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 	unknown := false
 	known := false
 	fromDefinition := false
+	fromBinlog := false
+	definedNoKey := false
 	for _, table := range tables {
 		if table.InsertRows+table.UpdateRows+table.DeleteRows == 0 {
 			continue
@@ -75,8 +77,14 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 		switch status {
 		case model.KeyStatusHasPK:
 			known = true
+			if !viaDefinition {
+				fromBinlog = true
+			}
 		case model.KeyStatusNoPK:
 			known = true
+			if !viaDefinition {
+				fromBinlog = true
+			}
 			row := pkTable{
 				schema: table.Schema,
 				table:  table.Table,
@@ -88,6 +96,7 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 				row.update = table.UpdateRows
 				row.delete = table.DeleteRows
 				row.insert = table.InsertRows
+				definedNoKey = true
 			}
 			if row.update+row.delete > 0 {
 				risks = append(risks, row)
@@ -126,14 +135,32 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 			note = i18n.T("report.text.primaryKeyUnknown")
 		}
 	}
+	// The source sentence is true only when the binlog answered nothing: a mixed
+	// run has tables whose key came from metadata, so it must not claim one
+	// source for all of them (ADR 0031).
+	source := ""
+	if fromDefinition && !fromBinlog {
+		source = i18n.T("report.text.primaryKeyFromDefinition")
+		if definedNoKey {
+			source = i18n.T("report.text.primaryKeyNoKeyFromDefinition")
+		}
+		if note == "" {
+			note = source
+		} else {
+			note = source + "; " + note
+		}
+	}
 	if len(risks) > 0 {
-		return pkView{note: note, risks: risks, insertOnly: insertOnly}
+		// The summary and the section both name the source (ADR 0031).
+		return pkView{summaryLine: source, note: note, risks: risks, insertOnly: insertOnly}
 	}
 	if len(insertOnly) > 0 {
 		line := i18n.Tf("report.text.primaryKeyInsertOnly", map[string]any{
 			"Tables": formatInsertOnlyTables(insertOnly),
 		})
-		if note != "" {
+		if source != "" {
+			line = source + "; " + line
+		} else if note != "" {
 			line = note + "; " + line
 		}
 		return pkView{summaryLine: line, note: note}
@@ -141,11 +168,10 @@ func primaryKeyView(tables []model.TableStats, def DefinitionKeys) pkView {
 	if note != "" {
 		return pkView{summaryLine: note, note: note}
 	}
-	if fromDefinition {
-		// The JSON note and the HTML section carry the same sentence the summary
-		// shows, so every surface names the source (ADR 0031).
-		line := i18n.T("report.text.primaryKeyFromDefinition")
-		return pkView{summaryLine: line, note: line}
+	if note != "" {
+		// Both the summary line and the note name the source, so the JSON field
+		// and the HTML section say the same thing (ADR 0031).
+		return pkView{summaryLine: note, note: note}
 	}
 	return pkView{summaryLine: i18n.T("report.text.primaryKeyPresent")}
 }

@@ -3053,6 +3053,10 @@
   },
   "warning.snapshotWorkloadID": {
     "description": "Warning when a snapshot is saved without a workload id",
-    "other": "snapshot saved without --workload-id: compare and trend will report unknown comparability and suppress causal findings. Pass --workload-id to keep them comparable"
+    "other": "snapshot requested without --workload-id: a saved snapshot cannot be compared causally, so compare and trend will report unknown comparability and suppress causal findings. Pass --workload-id to keep it comparable"
+  },
+  "report.text.primaryKeyNoKeyFromDefinition": {
+    "description": "Summary and section note when the definition declares no key",
+    "other": "the --schema-file definition declares no primary key for the tables with rows (the binlog has no row metadata)"
   }
 }
