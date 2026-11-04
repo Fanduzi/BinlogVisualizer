@@ -25,7 +25,7 @@
   },
   "cmd.analyze.long": {
     "description": "Analyze command long description",
-    "other": "Analyze binlog files. Pass - to read one binary binlog from a pipe; stdin is copied to a temporary file because parsing needs seek. Default text, JSON, markdown, and HTML rank Top Threads by rows, events, bytes, or transactions and show thread_id plus user@host and schema when the binlog has them. They also list Hot Rows: the primary keys touched by the most UPDATE and DELETE row images, when binlog_row_metadata=FULL names the key. Default text and JSON name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host is shown only when the binlog has it. A field the binlog does not have stays absent."
+    "other": "Analyze binlog files. Pass - to read one binary binlog from a pipe; stdin is copied to a temporary file because parsing needs seek. Default text, JSON, markdown, and HTML rank Top Threads by rows, events, bytes, or transactions and show thread_id plus user@host and schema when the binlog has them. They also list Hot Rows: the primary keys touched by the most UPDATE and DELETE row images, from binlog_row_metadata=FULL when the binlog records one and from --schema-file's declared key otherwise (such rows are marked [--schema-file]). Default text and JSON name, per transaction, server_id, thread_id, GTID, and xid or XA xid when the events have them. user@host is shown only when the binlog has it. A field the binlog does not have stays absent."
   },
   "cmd.analyze.flag.start": {
     "description": "Start time flag description",
@@ -3028,8 +3028,8 @@
     "other": "{{.Table}}: the binlog has no row metadata, so the undo addresses the row by the PRIMARY KEY declared in --schema-file. It is only as good as that dump."
   },
   "cmd.analyze.flag.schemaFile": {
-    "description": "SQL file of table definitions for --show-rows",
-    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE), as the tables were at incident time. With --show-rows it names the columns when the binlog carries no row metadata. Optional; analyze stays offline"
+    "description": "SQL file of table definitions for --show-rows and Hot Rows",
+    "other": "SQL file of table definitions (mysqldump --no-data or SHOW CREATE TABLE), as the tables were at incident time. With --show-rows it names the columns when the binlog carries no row metadata, and it supplies the Hot Rows key when the binlog records none (such rows are marked [--schema-file]). Optional; analyze stays offline"
   },
   "cmd.analyze.flag.schemaFileDB": {
     "description": "Database for unqualified names in --schema-file",
