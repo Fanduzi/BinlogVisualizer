@@ -7,6 +7,7 @@ package binlogviz
 
 import (
 	"os"
+	"strings"
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
@@ -64,7 +65,8 @@ func finishStreamingRun(run streamingRun) error {
 		result.Snapshot = run.snapshotMeta
 	}
 	if run.snapshotName != "" {
-		if err := saveAndWriteJSONReport(*result, run.reportOpts, run.snapshotName, run.snapshotDir); err != nil {
+		warnNoWorkload := run.snapshotName != "" && strings.TrimSpace(opts.WorkloadID) == ""
+		if err := saveAndWriteJSONReport(*result, run.reportOpts, run.snapshotName, run.snapshotDir, warnNoWorkload); err != nil {
 			return classifyReportWriteErr("json", err)
 		}
 		return nil

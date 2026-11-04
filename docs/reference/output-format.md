@@ -341,7 +341,7 @@ The top-level JSON object always contains these fields:
 | `warnings` | integer | yes | Count of analysis warnings recorded in the finalized result |
 | `pattern_drilldowns` | array | yes | Bounded drilldown summaries for high-signal patterns; empty array when nothing qualifies |
 | `snapshot` | object | no | Present only when `analyze` is invoked with `--snapshot-name` |
-| `primary_key_note` | string | no | Present when at least one row table has no FULL primary-key metadata. The sentence says presence is unknown because `binlog_row_metadata` is not FULL, names `--schema-file` as the source when a definition answered for every such table, and says which tables the definition answered when only some came from it (ADR 0031). Omitted when every row table is `has_pk` or `no_pk` |
+| `primary_key_note` | string | no | Present when the binlog could not answer for every row table: it says presence is unknown (for some or all tables), adds that the key came from `--schema-file` when a definition answered every table, and names the marked tables when only some answers came from it (ADR 0031). Omitted when the binlog answered for every row table |
 | `replica_apply_delay` | object | no | MySQL 8 commit-timestamp apply delay. Omitted when no counted transaction carried both timestamps. Never an empty object and never a stand-in `0` for a missing timestamp. See below. |
 
 ### `replica_apply_delay`
