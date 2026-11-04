@@ -31,5 +31,15 @@ func TestSnapshotWithoutWorkloadIDWarnsOnStderr(t *testing.T) {
 	if strings.Contains(stderr, "warning: ") {
 		t.Fatalf("no warning expected with --workload-id:\n%s", stderr)
 	}
+	// A run that saves no snapshot must stay quiet: the warning is about a file
+	// that exists.
+	code, _, stderr = runRoot(t, "analyze", fixture, "--format", "json", "--snapshot-name", "empty",
+		"--snapshot-dir", dir, "--start", "2030-01-01T00:00:00Z")
+	if code == 0 {
+		t.Fatalf("an empty window must not succeed")
+	}
+	if strings.Contains(stderr, "warning: ") {
+		t.Fatalf("no snapshot was saved, so no warning is due:\n%s", stderr)
+	}
 	_ = filepath.Join
 }

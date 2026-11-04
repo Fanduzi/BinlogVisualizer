@@ -329,7 +329,7 @@ JSON 报告会以稳定、适合脚本处理的 snake_case 字段名暴露最终
 | `warnings` | integer | yes | 最终结果中记录的分析警告数量 |
 | `pattern_drilldowns` | array | yes | 高信号模式的有界 drilldown 摘要；无模式达到阈值时为空数组 |
 | `snapshot` | object | no | 仅在 `analyze` 使用 `--snapshot-name` 时出现 |
-| `primary_key_note` | string | no | 至少有一张收到行事件的表没有 FULL 主键元数据时出现。这句话说明主键是否存在未知，因为 `binlog_row_metadata` 不是 FULL；当这些表的主键都由定义回答时会写明来源是 `--schema-file`，只有部分来自定义时会说明是哪些表（ADR 0031）。每张有行变更的表都是 `has_pk` 或 `no_pk` 时省略 |
+| `primary_key_note` | string | no | 当 binlog 无法为每张有行变更的表给出答案时出现：说明主键是否存在未知（部分或全部）；定义回答了每张表时写明主键来自 `--schema-file`；只有部分答案来自定义时点名这些表（ADR 0031）。每张有行变更的表都由 binlog 回答时省略 |
 | `replica_apply_delay` | object | no | MySQL 8 提交时间戳上的应用延迟。没有计入的事务同时带上两个时间戳时省略。不会是空对象，也不会用 `0` 代替缺失的时间戳。见下文。 |
 
 ### `replica_apply_delay`

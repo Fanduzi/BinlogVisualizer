@@ -689,7 +689,7 @@ func runAnalysisStreamingFastWithOutput(
 	return runAnalysisStreamingWithSnapshotDeps(paths, opts, reportOpts, format, parser, nil, newAnalyzer, newTempStore, tempRoot, snapshotMeta, fileCoverage, snapshotName, snapshotDir, dest, pathAliases)
 }
 
-func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string) error {
+func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Options, snapshotName, snapshotDir string, warnNoWorkloadID bool) error {
 	result.Snapshot = resolveAnalyzeSnapshotMetadata(result.Snapshot, result.Summary)
 
 	// The snapshot is an archive and always keeps full diagnostics; only the
@@ -717,6 +717,10 @@ func saveAndWriteJSONReport(result model.AnalysisResult, reportOpts report.Optio
 	}
 	if _, err := fmt.Fprintf(infoWriter(os.Stderr), "Saved snapshot %q to %s\n", snapshotName, savedPath); err != nil {
 		return err
+	}
+	if warnNoWorkloadID {
+		// Now that the file exists, the consequence is a fact.
+		fmt.Fprintf(os.Stderr, "warning: %s\n", i18n.T("warning.snapshotWorkloadID"))
 	}
 	_, err = fmt.Fprint(os.Stdout, payload)
 	return err

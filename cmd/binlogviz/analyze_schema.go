@@ -7,13 +7,10 @@
 package binlogviz
 
 import (
-	"fmt"
-	"os"
 	"strings"
 
 	"binlogviz/internal/analyzer"
 	"binlogviz/internal/binlog"
-	"binlogviz/internal/i18n"
 	"binlogviz/internal/report"
 	"binlogviz/internal/schemacatalog"
 )
@@ -65,14 +62,9 @@ func applySchemaCatalog(parser binlog.Parser, reportOpts *report.Options, opts a
 	reportOpts.DefinitionKeys = definitionKeys(catalog)
 }
 
-// prepareAnalyzeRun reads --schema-file into the options and warns when a
-// snapshot is requested without a workload identity.
+// prepareAnalyzeRun reads --schema-file into the options.
 func prepareAnalyzeRun(opts *analyzeOptions) error {
-	if err := readAnalyzeSchemaFile(opts); err != nil {
-		return err
-	}
-	warnSnapshotWithoutWorkloadID(opts)
-	return nil
+	return readAnalyzeSchemaFile(opts)
 }
 
 // enableRowImageCapture turns on the bounded row images --show-rows prints,
@@ -81,13 +73,4 @@ func enableRowImageCapture(analyzerOpts *analyzer.Options, opts *analyzeOptions,
 	if opts.showRows && reportOpts.SQLContextMode != report.SQLContextOff {
 		analyzerOpts.CaptureRowImages = true
 	}
-}
-
-// warnSnapshotWithoutWorkloadID says once, at save time, that the snapshot
-// cannot be compared causally. It stays a warning: the flag is optional.
-func warnSnapshotWithoutWorkloadID(opts *analyzeOptions) {
-	if opts.snapshotName == "" || strings.TrimSpace(opts.workloadID) != "" {
-		return
-	}
-	fmt.Fprintf(os.Stderr, "warning: %s\n", i18n.T("warning.snapshotWorkloadID"))
 }
