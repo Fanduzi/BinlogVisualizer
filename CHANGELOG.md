@@ -4,6 +4,20 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.43.0
+
+Release date: 2026-11-04
+
+Highlights:
+
+- Hot Rows ranks the primary key `--schema-file` declares when the binlog carries no row metadata (MySQL 8 `binlog_row_metadata=MINIMAL`, MySQL 5.7). The section says the keys come from the file, each such row is marked `[--schema-file]`, and JSON carries `hot_rows_key_source` plus per-row `key_source`.
+- A key the binlog answered stays unmarked, even when `binlog_row_metadata` switched mid-window, so no run claims a source it cannot back.
+- `key_status` and the `no_primary_key` alert still report only what the binlog recorded (ADR 0032).
+
+Related notes:
+
+- [v0.43.0 release notes](docs/releases/release-notes-v0.43.0.md)
+
 ## v0.42.0
 
 Release date: 2026-11-04
