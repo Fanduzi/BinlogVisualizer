@@ -1229,6 +1229,9 @@
           "key_hidden": {
             "type": "boolean"
           },
+          "key_source": {
+            "type": "string"
+          },
           "last_file": {
             "type": "string"
           },

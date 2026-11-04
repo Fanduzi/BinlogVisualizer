@@ -29,20 +29,21 @@ type hotKey struct {
 }
 
 type hotAcc struct {
-	key       hotKey
-	touches   int
-	inherited int
-	txns      int
-	lastTxn   string
-	firstAt   time.Time
-	lastAt    time.Time
-	firstGTID string
-	lastGTID  string
-	firstFile string
-	lastFile  string
-	firstPos  int64
-	lastPos   int64
-	heapIdx   int
+	key        hotKey
+	touches    int
+	inherited  int
+	txns       int
+	lastTxn    string
+	firstAt    time.Time
+	lastAt     time.Time
+	firstGTID  string
+	lastGTID   string
+	firstFile  string
+	lastFile   string
+	firstPos   int64
+	lastPos    int64
+	heapIdx    int
+	fromSchema bool
 }
 
 type hotHeap []*hotAcc
@@ -95,9 +96,6 @@ type hotRowAggregator struct {
 	evictions   int
 	ranked      map[string]struct{}
 	unavailable map[string]model.HotRowGap
-	// keySource records that a --schema-file definition supplied the keys for
-	// at least one ranked row (ADR 0032).
-	keySource string
 }
 
 func newHotRowAggregator(limit int) *hotRowAggregator {
@@ -131,9 +129,16 @@ func (a *hotRowAggregator) Consume(ev model.NormalizedEvent) {
 			a.noteUnavailable(ev.Schema, ev.Table, model.HotRowReasonMetadata)
 			return
 		}
-		a.keySource = model.HotRowKeySourceSchemaFile
 		a.observeKeys(ev)
 	}
+}
+
+// hotRowSource names where one ranked key's identity came from.
+func hotRowSource(acc *hotAcc) string {
+	if acc.fromSchema {
+		return model.HotRowKeySourceSchemaFile
+	}
+	return ""
 }
 
 // observeKeys ranks every key an event carries, noting a table whose images
@@ -156,6 +161,7 @@ func (a *hotRowAggregator) observe(ev model.NormalizedEvent, pk string) {
 	a.clearUnavailable(ev.Schema, ev.Table)
 	key := hotKey{schema: ev.Schema, table: ev.Table, pk: pk}
 	if acc, ok := a.byKey[key]; ok {
+		acc.fromSchema = acc.fromSchema || ev.RowKeysFromSchema
 		acc.touches++
 		if ev.TxnKey == "" || ev.TxnKey != acc.lastTxn {
 			acc.txns++
@@ -169,18 +175,19 @@ func (a *hotRowAggregator) observe(ev model.NormalizedEvent, pk string) {
 		return
 	}
 	acc := &hotAcc{
-		key:       key,
-		touches:   1,
-		txns:      1,
-		lastTxn:   ev.TxnKey,
-		firstAt:   ev.Timestamp,
-		lastAt:    ev.Timestamp,
-		firstGTID: ev.TxnGTID,
-		lastGTID:  ev.TxnGTID,
-		firstFile: ev.TxnStartPath,
-		lastFile:  ev.TxnStartPath,
-		firstPos:  ev.TxnStartPos,
-		lastPos:   ev.TxnStartPos,
+		key:        key,
+		touches:    1,
+		txns:       1,
+		lastTxn:    ev.TxnKey,
+		firstAt:    ev.Timestamp,
+		lastAt:     ev.Timestamp,
+		firstGTID:  ev.TxnGTID,
+		lastGTID:   ev.TxnGTID,
+		firstFile:  ev.TxnStartPath,
+		lastFile:   ev.TxnStartPath,
+		firstPos:   ev.TxnStartPos,
+		lastPos:    ev.TxnStartPos,
+		fromSchema: ev.RowKeysFromSchema,
 	}
 	if len(a.byKey) < a.limit {
 		a.byKey[key] = acc
@@ -252,6 +259,7 @@ func (a *hotRowAggregator) Snapshot() model.HotRowReport {
 			LastFile:     acc.lastFile,
 			LastPos:      acc.lastPos,
 			Approximate:  acc.inherited > 0,
+			KeySource:    hotRowSource(acc),
 		})
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -279,11 +287,23 @@ func (a *hotRowAggregator) Snapshot() model.HotRowReport {
 		}
 		return gaps[i].Table < gaps[j].Table
 	})
+	// A run states one source only when every ranked key came from the
+	// definition; a mixed window marks the rows instead (ADR 0032).
+	keySource := ""
+	if len(rows) > 0 {
+		keySource = model.HotRowKeySourceSchemaFile
+		for _, row := range rows {
+			if row.KeySource != model.HotRowKeySourceSchemaFile {
+				keySource = ""
+				break
+			}
+		}
+	}
 	return model.HotRowReport{
 		Rows:        rows,
 		Unavailable: gaps,
 		TrackLimit:  a.limit,
 		Overflow:    a.overflow,
-		KeySource:   a.keySource,
+		KeySource:   keySource,
 	}
 }

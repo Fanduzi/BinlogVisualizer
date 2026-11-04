@@ -310,6 +310,8 @@ type jsonHotRow struct {
 	LastFile     string `json:"last_file,omitempty"`
 	LastPos      int64  `json:"last_pos,omitempty"`
 	Approximate  bool   `json:"approximate,omitempty"`
+	// KeySource is schema_file when this key came from --schema-file (ADR 0032).
+	KeySource string `json:"key_source,omitempty"`
 }
 
 type jsonHotRowGap struct {
@@ -1078,6 +1080,7 @@ func convertHotRows(rows []model.HotRow, opts Options) []jsonHotRow {
 			LastFile:     hotRowFile(row.LastFile),
 			LastPos:      row.LastPos,
 			Approximate:  row.Approximate,
+			KeySource:    row.KeySource,
 		}
 		if hidden {
 			item.KeyHidden = true
