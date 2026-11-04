@@ -505,6 +505,7 @@ report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会�
 | `table` | string | 是 | 表名 |
 | `primary_key` | string | 否 | `id=7` 或 `sku=BOLT, wh=1`。`--sql-context off` 时省略 |
 | `key_hidden` | boolean | 否 | `--sql-context off` 隐藏了键值时为 true。次数仍在 |
+| `key_source` | string | 否 | 该键的每一次接触都需要 `--schema-file` 时为 `schema_file`；binlog 回答过其中任何一次时省略（ADR 0032） |
 | `touches` | integer | 是 | 带这个键的 UPDATE 和 DELETE 行镜像数。`approximate` 为 true 时才不是精确值 |
 | `transactions` | integer | 是 | 碰到该键的不同事务数。从未被替换的键是精确的 |
 | `first_time` | string | 否 | 第一次碰到的 RFC3339 UTC 时间 |
