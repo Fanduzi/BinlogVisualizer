@@ -497,7 +497,7 @@ report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会�
 
 ### `hot_rows`
 
-`hot_rows` 始终是数组，对应热点行，并用与文本相同的 `--top` 或 `--top-rows` 截断。`hot_rows_listed` 和 `hot_rows_omitted` 记录这个上限。analyze 追踪了键时 `hot_row_track_limit` 为 `8192`。新键替换了被碰到次数最少的键时，`hot_rows_overflow` 为 true，`hot_rows_note` 重复上限说明。`hot_row_unavailable` 列出收到了 UPDATE 或 DELETE、但 binlog 里没有主键的表。每条有 `schema`、`table`、`reason`（`metadata` 或 `values`）和 `message`。
+`hot_rows` 始终是数组，对应热点行，并用与文本相同的 `--top` 或 `--top-rows` 截断。`hot_rows_listed` 和 `hot_rows_omitted` 记录这个上限。analyze 追踪了键时 `hot_row_track_limit` 为 `8192`。新键替换了被碰到次数最少的键时，`hot_rows_overflow` 为 true，`hot_rows_note` 重复上限说明。排名用的主键因为 binlog 没有行元数据而来自 `--schema-file` 时，`hot_rows_key_source` 为 `schema_file`（ADR 0032），否则省略。`hot_row_unavailable` 列出收到了 UPDATE 或 DELETE、但 binlog 里没有主键的表。每条有 `schema`、`table`、`reason`（`metadata` 或 `values`）和 `message`。
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|

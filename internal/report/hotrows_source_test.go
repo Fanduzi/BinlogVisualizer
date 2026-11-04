@@ -27,6 +27,14 @@ func TestHotRowsNameTheDefinitionSource(t *testing.T) {
 		t.Fatalf("the section must name the source:\n%s", out)
 	}
 
+	md, err := RenderMarkdown(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(md, i18n.T("report.text.hotRowsFromSchema")) {
+		t.Fatalf("the Markdown section must name the source:\n%s", md)
+	}
+
 	opts := DefaultOptions()
 	converted := convertToJSON(result, opts, newView(result, opts))
 	if converted.HotRowsKeySource != model.HotRowKeySourceSchemaFile {
