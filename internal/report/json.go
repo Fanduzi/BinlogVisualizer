@@ -23,32 +23,35 @@ const currentReportVersion = 4
 // jsonAnalysisResult is the JSON-serializable representation of AnalysisResult.
 // Field names use snake_case for script-friendly output.
 type jsonAnalysisResult struct {
-	ReportVersion       int                  `json:"report_version"`
-	WorkloadID          string               `json:"workload_id,omitempty"`
-	Scope               *jsonSnapshotFilters `json:"scope,omitempty"`
-	Provenance          *jsonProvenance      `json:"provenance,omitempty"`
-	Selection           *jsonSelection       `json:"selection,omitempty"`
-	SQLContext          jsonSQLContext       `json:"sql_context"`
-	Summary             jsonSummary          `json:"summary"`
-	Timeseries          jsonTimeseries       `json:"timeseries"`
-	DiagnosticsMode     DiagnosticsMode      `json:"diagnostics_mode,omitempty"`
-	Diagnostics         *jsonDiagnostics     `json:"diagnostics,omitempty"`
-	Tables              []jsonTableStats     `json:"tables"`
-	Threads             []jsonThreadStats    `json:"threads"`
-	ThreadsListed       int                  `json:"threads_listed"`
-	ThreadsOmitted      int                  `json:"threads_omitted"`
-	ThreadsRankedBy     string               `json:"threads_ranked_by,omitempty"`
-	HotRows             []jsonHotRow         `json:"hot_rows"`
-	HotRowsListed       int                  `json:"hot_rows_listed"`
-	HotRowsOmitted      int                  `json:"hot_rows_omitted"`
-	HotRowTrackLimit    int                  `json:"hot_row_track_limit,omitempty"`
-	HotRowsOverflow     bool                 `json:"hot_rows_overflow,omitempty"`
-	HotRowsNote         string               `json:"hot_rows_note,omitempty"`
-	HotRowUnavailable   []jsonHotRowGap      `json:"hot_row_unavailable,omitempty"`
-	Transactions        []jsonTransaction    `json:"transactions"`
-	TransactionsListed  int                  `json:"transactions_listed"`
-	TransactionsOmitted int                  `json:"transactions_omitted"`
-	Patterns            []jsonPatternStats   `json:"patterns"`
+	ReportVersion    int                  `json:"report_version"`
+	WorkloadID       string               `json:"workload_id,omitempty"`
+	Scope            *jsonSnapshotFilters `json:"scope,omitempty"`
+	Provenance       *jsonProvenance      `json:"provenance,omitempty"`
+	Selection        *jsonSelection       `json:"selection,omitempty"`
+	SQLContext       jsonSQLContext       `json:"sql_context"`
+	Summary          jsonSummary          `json:"summary"`
+	Timeseries       jsonTimeseries       `json:"timeseries"`
+	DiagnosticsMode  DiagnosticsMode      `json:"diagnostics_mode,omitempty"`
+	Diagnostics      *jsonDiagnostics     `json:"diagnostics,omitempty"`
+	Tables           []jsonTableStats     `json:"tables"`
+	Threads          []jsonThreadStats    `json:"threads"`
+	ThreadsListed    int                  `json:"threads_listed"`
+	ThreadsOmitted   int                  `json:"threads_omitted"`
+	ThreadsRankedBy  string               `json:"threads_ranked_by,omitempty"`
+	HotRows          []jsonHotRow         `json:"hot_rows"`
+	HotRowsListed    int                  `json:"hot_rows_listed"`
+	HotRowsOmitted   int                  `json:"hot_rows_omitted"`
+	HotRowTrackLimit int                  `json:"hot_row_track_limit,omitempty"`
+	HotRowsOverflow  bool                 `json:"hot_rows_overflow,omitempty"`
+	HotRowsNote      string               `json:"hot_rows_note,omitempty"`
+	// HotRowsKeySource names where the ranked keys came from when it was not
+	// the binlog metadata (ADR 0032).
+	HotRowsKeySource    string             `json:"hot_rows_key_source,omitempty"`
+	HotRowUnavailable   []jsonHotRowGap    `json:"hot_row_unavailable,omitempty"`
+	Transactions        []jsonTransaction  `json:"transactions"`
+	TransactionsListed  int                `json:"transactions_listed"`
+	TransactionsOmitted int                `json:"transactions_omitted"`
+	Patterns            []jsonPatternStats `json:"patterns"`
 	// StatementFingerprints is the workload-level normalized statement ranking
 	// (ADR 0026). Empty when the binlog carried no retained Rows_query text —
 	// sql_context.available explains that. Omitted counts groups beyond
@@ -545,6 +548,7 @@ func convertToJSON(result model.AnalysisResult, opts Options, built view.View) j
 		ThreadsOmitted:                threadsOmitted,
 		ThreadsRankedBy:               result.ThreadsRankedBy,
 		HotRows:                       convertHotRows(hotRows, opts),
+		HotRowsKeySource:              result.HotRows.KeySource,
 		HotRowsListed:                 len(hotRows),
 		HotRowsOmitted:                hotOmitted,
 		HotRowTrackLimit:              result.HotRows.TrackLimit,

@@ -82,6 +82,9 @@ func renderHotRows(buf *strings.Builder, report model.HotRowReport, opts Options
 	}
 	buf.WriteString("=== " + i18n.T("report.text.hotRows") + " ===\n")
 	buf.WriteString("  " + i18n.T("report.text.hotRowsLead") + "\n")
+	if report.KeySource == model.HotRowKeySourceSchemaFile {
+		buf.WriteString("  " + i18n.T("report.text.hotRowsFromSchema") + "\n")
+	}
 	rows, omitted := limitHotRows(report.Rows, opts.TopRows)
 	if hotRowKeysHidden(opts) && len(rows) > 0 {
 		buf.WriteString("  " + i18n.T("report.text.hotRowsHidden") + "\n")

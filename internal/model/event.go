@@ -51,9 +51,12 @@ type NormalizedEvent struct {
 	// RedoRows is set only when redo capture is on. Nil otherwise.
 	RedoRows []RedoRow
 	// RowKeys are primary-key identities for UPDATE and DELETE images when
-	// FULL metadata named the key. Empty means the key is not known. Never
-	// filled from column @1.
+	// FULL metadata named the key, or when --schema-file declared it. Empty
+	// means the key is not known. Never filled from column @1.
 	RowKeys []string
+	// RowKeysFromSchema marks identities the definition supplied, because the
+	// binlog carried no row metadata (ADR 0032).
+	RowKeysFromSchema bool
 	// TxnGTID, TxnStartPath, and TxnStartPos are set by the analyzer from the
 	// open transaction group. The parser leaves them empty. TxnStartPos is
 	// the group's first event (the GTID event when one exists).

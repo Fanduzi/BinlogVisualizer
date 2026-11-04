@@ -8,6 +8,8 @@
 package binlog
 
 import (
+	"github.com/go-mysql-org/go-mysql/replication"
+
 	"binlogviz/internal/model"
 	"binlogviz/internal/mysqlexpr"
 )
@@ -96,4 +98,98 @@ func flashLiteralsFromCols(cols []model.FlashCol, labels []string, values []any,
 		lits[i] = lit
 	}
 	return lits, nil
+}
+
+// definitionKey is one table's key metadata from --schema-file. ok=false records
+// that the definition does not answer there, so the lookup runs once per table
+// and never per row (ADR 0032).
+type definitionKey struct {
+	meta pkMeta
+	ok   bool
+}
+
+// flashKeyMeta builds the key metadata RowKeys needs from a resolved definition.
+func flashKeyMeta(cols []mysqlexpr.SchemaCol, metas []model.FlashCol, pk []int) pkMeta {
+	meta := pkMeta{
+		indexes: make([]int, 0, len(pk)),
+		names:   make([]string, 0, len(pk)),
+		sign:    make([]*bool, 0, len(pk)),
+		types:   make([]byte, 0, len(pk)),
+	}
+	for _, idx := range pk {
+		if idx < 0 || idx >= len(cols) {
+			return pkMeta{}
+		}
+		meta.indexes = append(meta.indexes, idx)
+		meta.names = append(meta.names, cols[idx].Name)
+		var typ byte
+		var sign *bool
+		if idx < len(metas) {
+			typ = metas[idx].Typ
+			if metas[idx].HasSign {
+				unsigned := metas[idx].Unsigned
+				sign = &unsigned
+			}
+		}
+		meta.types = append(meta.types, typ)
+		meta.sign = append(meta.sign, sign)
+	}
+	return meta
+}
+
+// rowKeys returns the UPDATE/DELETE key identities for one rows event and
+// whether a definition supplied them instead of the table map. The binlog's own
+// metadata always wins (ADR 0032).
+func rowKeys(resolver FlashSchemaResolver, cache map[string]definitionKey, e *replication.RowsEvent, kind string, tableNames map[uint64]cachedTableName) ([]string, bool) {
+	if e == nil {
+		return nil, false
+	}
+	if meta := pkMetaForRows(e, tableNames); len(meta.indexes) > 0 {
+		return primaryKeyValues(e, kind, meta), false
+	}
+	meta, ok := definitionKeyFor(resolver, cache, e, tableNames)
+	if !ok {
+		return nil, false
+	}
+	return primaryKeyValues(e, kind, meta), true
+}
+
+// definitionKeyFor resolves the key a schema definition declares for this
+// event's table, or reports that it cannot, once per table.
+func definitionKeyFor(resolver FlashSchemaResolver, cache map[string]definitionKey, e *replication.RowsEvent, tableNames map[uint64]cachedTableName) (pkMeta, bool) {
+	if resolver == nil || e == nil || e.Table == nil {
+		return pkMeta{}, false
+	}
+	schema, table := string(e.Table.Schema), string(e.Table.Table)
+	if cached, ok := tableNames[e.TableID]; ok {
+		if schema == "" {
+			schema = cached.schema
+		}
+		if table == "" {
+			table = cached.table
+		}
+	}
+	if schema == "" || table == "" {
+		return pkMeta{}, false
+	}
+	key := schema + "\x00" + table
+	if entry, seen := cache[key]; seen {
+		return entry.meta, entry.ok
+	}
+	entry := definitionKey{}
+	width := int(e.ColumnCount)
+	if width == 0 && len(e.Rows) > 0 {
+		width = len(e.Rows[0])
+	}
+	if cols, pk, ok := resolver.FlashColumns(schema, table); ok && len(pk) > 0 && width > 0 && len(cols) == width {
+		metas := flashColumnMeta(e.Table, width)
+		mergeFlashColumns(metas, cols)
+		if meta := flashKeyMeta(cols, metas, pk); len(meta.indexes) > 0 {
+			entry = definitionKey{meta: meta, ok: true}
+		}
+	}
+	if cache != nil {
+		cache[key] = entry
+	}
+	return entry.meta, entry.ok
 }

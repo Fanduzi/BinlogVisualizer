@@ -56,4 +56,10 @@ type HotRowReport struct {
 	Unavailable []HotRowGap
 	TrackLimit  int
 	Overflow    bool
+	// KeySource names where the ranked keys came from when it was not the
+	// binlog's own metadata: HotRowKeySourceSchemaFile (ADR 0032).
+	KeySource string
 }
+
+// HotRowKeySourceSchemaFile marks keys read from --schema-file.
+const HotRowKeySourceSchemaFile = "schema_file"

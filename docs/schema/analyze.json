@@ -1270,6 +1270,9 @@
         "null"
       ]
     },
+    "hot_rows_key_source": {
+      "type": "string"
+    },
     "hot_rows_listed": {
       "type": "integer"
     },

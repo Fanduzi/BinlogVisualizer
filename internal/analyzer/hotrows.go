@@ -95,6 +95,9 @@ type hotRowAggregator struct {
 	evictions   int
 	ranked      map[string]struct{}
 	unavailable map[string]model.HotRowGap
+	// keySource records that a --schema-file definition supplied the keys for
+	// at least one ranked row (ADR 0032).
+	keySource string
 }
 
 func newHotRowAggregator(limit int) *hotRowAggregator {
@@ -120,19 +123,32 @@ func (a *hotRowAggregator) Consume(ev model.NormalizedEvent) {
 	case model.KeyStatusNoPK:
 		return
 	case model.KeyStatusHasPK:
-		added := 0
-		for _, key := range ev.RowKeys {
-			if key == "" {
-				continue
-			}
-			a.observe(ev, key)
-			added++
-		}
-		if added == 0 {
-			a.noteUnavailable(ev.Schema, ev.Table, model.HotRowReasonValues)
-		}
+		a.observeKeys(ev)
 	default:
-		a.noteUnavailable(ev.Schema, ev.Table, model.HotRowReasonMetadata)
+		// The binlog could not name the key; a definition can, and the report
+		// says so (ADR 0032). key_status and the no-key alert stay metadata-only.
+		if !ev.RowKeysFromSchema || len(ev.RowKeys) == 0 {
+			a.noteUnavailable(ev.Schema, ev.Table, model.HotRowReasonMetadata)
+			return
+		}
+		a.keySource = model.HotRowKeySourceSchemaFile
+		a.observeKeys(ev)
+	}
+}
+
+// observeKeys ranks every key an event carries, noting a table whose images
+// did not carry the key columns.
+func (a *hotRowAggregator) observeKeys(ev model.NormalizedEvent) {
+	added := 0
+	for _, key := range ev.RowKeys {
+		if key == "" {
+			continue
+		}
+		a.observe(ev, key)
+		added++
+	}
+	if added == 0 {
+		a.noteUnavailable(ev.Schema, ev.Table, model.HotRowReasonValues)
 	}
 }
 
@@ -268,5 +284,6 @@ func (a *hotRowAggregator) Snapshot() model.HotRowReport {
 		Unavailable: gaps,
 		TrackLimit:  a.limit,
 		Overflow:    a.overflow,
+		KeySource:   a.keySource,
 	}
 }

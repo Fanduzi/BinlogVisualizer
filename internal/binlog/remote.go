@@ -39,6 +39,7 @@ type remoteParser struct {
 	captureFlash bool
 	captureRedo  bool
 	flashSchema  FlashSchemaResolver
+	schemaKeys   map[string]definitionKey
 }
 
 // NewRemoteParser builds a Parser that reads remote frames until the
@@ -61,6 +62,7 @@ func (p *remoteParser) SetFlashSchemaResolver(r FlashSchemaResolver) {
 		return
 	}
 	p.flashSchema = r
+	p.schemaKeys = map[string]definitionKey{}
 }
 
 func (p *remoteParser) SetCaptureFlashback(on bool) {
@@ -178,6 +180,7 @@ func (p *remoteParser) parseRemote(origin string, handler func(RawEvent) error) 
 
 			raw := rawEventFromHeader(ev.Header, path, serverVersion)
 			raw.flashSchema = p.flashSchema
+			raw.schemaKeys = p.schemaKeys
 			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes = start, end, end-start
 			raw.Position = uint32(raw.PositionEnd)
 

@@ -1249,6 +1249,7 @@ const htmlReportTemplateTail = `
         </div>
       </div>
       <div class="section-desc" style="padding:0 16px 8px">{{.HotRowsLead}}</div>
+      {{if .HotRowsSource}}<div class="section-desc" style="padding:0 16px 8px">{{.HotRowsSource}}</div>{{end}}
       {{if .HotRowsHidden}}<div class="section-desc" style="padding:0 16px 8px">{{.HotRowsHidden}}</div>{{end}}
       {{if .HotRows}}
       <div class="table-container">
