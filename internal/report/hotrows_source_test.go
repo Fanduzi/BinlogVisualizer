@@ -86,3 +86,24 @@ func TestHotRowsNameTheDefinitionSource(t *testing.T) {
 		t.Fatalf("no source field without a definition: %q", got.HotRowsKeySource)
 	}
 }
+
+// A table whose definition declares no key has no key source to name.
+func TestTableKeySourceNeedsADeclaredKey(t *testing.T) {
+	def := func(schema, table string) ([]string, bool) {
+		switch table {
+		case "counters":
+			return []string{"id"}, true
+		case "heap":
+			return nil, true
+		}
+		return nil, false
+	}
+	withKey := model.TableStats{Schema: "shop", Table: "counters", KeyStatus: model.KeyStatusUnknown}
+	if got := tableKeySource(withKey, def); got != "schema_file" {
+		t.Fatalf("a declared key is named: %q", got)
+	}
+	noKey := model.TableStats{Schema: "shop", Table: "heap", KeyStatus: model.KeyStatusUnknown}
+	if got := tableKeySource(noKey, def); got != "" {
+		t.Fatalf("a table the definition declares without a key has no key source: %q", got)
+	}
+}

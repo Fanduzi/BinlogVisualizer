@@ -20,7 +20,7 @@
 
 ## 热点行
 
-同一份报告还有热点行：被 UPDATE 和 DELETE 行镜像碰到次数最多的主键。每一条给出次数、碰到它的事务数、第一次和最后一次的事件时间，以及最早和最晚那个事务的 GTID 和 file:byte，可以直接拿去跑 `mysqlbinlog` 或 BinlogServer。主键仅在 binlog 记录时来自 MySQL 8 `binlog_row_metadata=FULL`；没有记录时来自 `--schema-file` 声明的主键，这样的行会标 `[--schema-file]`（JSON 每行带 `key_source`，当每一条排上的键都来自定义时另有 `hot_rows_key_source`）。混合窗口不声称单一来源，只标记由定义回答的行。两者都没有时，报告会说明这张表无法追踪热点行，不会拿第 1 列 `@1` 来猜。`key_status` 与 `no_primary_key` 告警仍然只反映 binlog 元数据记下的内容（ADR 0032）。没有主键的表不进这个排名。`--top` 限制这一节；`--top-rows` 覆盖它（`0` 保留已追踪的全部键）。`--sql-context off` 隐藏键值，次数仍在。JSON 字段是 `hot_rows`。追踪最多保留 8192 个主键。超出后，新键替换被碰到次数最少的键；报告会说明达到了上限，继承了被丢掉键的计数的行标成近似。一直留在表里的键计数是精确的。
+同一份报告还有热点行：被 UPDATE 和 DELETE 行镜像碰到次数最多的主键。每一条给出次数、碰到它的事务数、第一次和最后一次的事件时间，以及最早和最晚那个事务的 GTID 和 file:byte，可以直接拿去跑 `mysqlbinlog` 或 BinlogServer。主键仅在 binlog 记录时来自 MySQL 8 `binlog_row_metadata=FULL`；没有记录时来自 `--schema-file` 声明的主键，这样的行会标 `[--schema-file]`（JSON 每行带 `key_source`，当每一条排上的键都来自定义时另有 `hot_rows_key_source`）。混合窗口不声称单一来源，只标记由定义回答的行；binlog 也回答过的键不标。两者都没有时，报告会说明这张表无法追踪热点行，不会拿第 1 列 `@1` 来猜。`key_status` 与 `no_primary_key` 告警仍然只反映 binlog 元数据记下的内容（ADR 0032）。没有主键的表不进这个排名。`--top` 限制这一节；`--top-rows` 覆盖它（`0` 保留已追踪的全部键）。`--sql-context off` 隐藏键值，次数仍在。JSON 字段是 `hot_rows`。追踪最多保留 8192 个主键。超出后，新键替换被碰到次数最少的键；报告会说明达到了上限，继承了被丢掉键的计数的行标成近似。一直留在表里的键计数是精确的。
 
 ## 事务位置与 `mysqlbinlog`
 

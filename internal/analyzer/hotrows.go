@@ -29,21 +29,21 @@ type hotKey struct {
 }
 
 type hotAcc struct {
-	key        hotKey
-	touches    int
-	inherited  int
-	txns       int
-	lastTxn    string
-	firstAt    time.Time
-	lastAt     time.Time
-	firstGTID  string
-	lastGTID   string
-	firstFile  string
-	lastFile   string
-	firstPos   int64
-	lastPos    int64
-	heapIdx    int
-	fromSchema bool
+	key           hotKey
+	touches       int
+	inherited     int
+	txns          int
+	lastTxn       string
+	firstAt       time.Time
+	lastAt        time.Time
+	firstGTID     string
+	lastGTID      string
+	firstFile     string
+	lastFile      string
+	firstPos      int64
+	lastPos       int64
+	heapIdx       int
+	schemaTouches int
 }
 
 type hotHeap []*hotAcc
@@ -133,9 +133,10 @@ func (a *hotRowAggregator) Consume(ev model.NormalizedEvent) {
 	}
 }
 
-// hotRowSource names where one ranked key's identity came from.
+// hotRowSource names where one ranked key's identity came from. A key the
+// binlog also answered stays unmarked: the definition did not supply it.
 func hotRowSource(acc *hotAcc) string {
-	if acc.fromSchema {
+	if acc.schemaTouches > 0 && acc.schemaTouches == acc.touches {
 		return model.HotRowKeySourceSchemaFile
 	}
 	return ""
@@ -161,7 +162,9 @@ func (a *hotRowAggregator) observe(ev model.NormalizedEvent, pk string) {
 	a.clearUnavailable(ev.Schema, ev.Table)
 	key := hotKey{schema: ev.Schema, table: ev.Table, pk: pk}
 	if acc, ok := a.byKey[key]; ok {
-		acc.fromSchema = acc.fromSchema || ev.RowKeysFromSchema
+		if ev.RowKeysFromSchema {
+			acc.schemaTouches++
+		}
 		acc.touches++
 		if ev.TxnKey == "" || ev.TxnKey != acc.lastTxn {
 			acc.txns++
@@ -175,19 +178,21 @@ func (a *hotRowAggregator) observe(ev model.NormalizedEvent, pk string) {
 		return
 	}
 	acc := &hotAcc{
-		key:        key,
-		touches:    1,
-		txns:       1,
-		lastTxn:    ev.TxnKey,
-		firstAt:    ev.Timestamp,
-		lastAt:     ev.Timestamp,
-		firstGTID:  ev.TxnGTID,
-		lastGTID:   ev.TxnGTID,
-		firstFile:  ev.TxnStartPath,
-		lastFile:   ev.TxnStartPath,
-		firstPos:   ev.TxnStartPos,
-		lastPos:    ev.TxnStartPos,
-		fromSchema: ev.RowKeysFromSchema,
+		key:       key,
+		touches:   1,
+		txns:      1,
+		lastTxn:   ev.TxnKey,
+		firstAt:   ev.Timestamp,
+		lastAt:    ev.Timestamp,
+		firstGTID: ev.TxnGTID,
+		lastGTID:  ev.TxnGTID,
+		firstFile: ev.TxnStartPath,
+		lastFile:  ev.TxnStartPath,
+		firstPos:  ev.TxnStartPos,
+		lastPos:   ev.TxnStartPos,
+	}
+	if ev.RowKeysFromSchema {
+		acc.schemaTouches = 1
 	}
 	if len(a.byKey) < a.limit {
 		a.byKey[key] = acc
