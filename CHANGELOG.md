@@ -4,6 +4,22 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.42.0
+
+Release date: 2026-11-04
+
+Highlights:
+
+- The analyze report explains where the primary key came from: with `--schema-file` and no binlog row metadata, the Summary names the definition, tables it answered are marked `[--schema-file]` in the No Primary Key section, and every JSON table entry carries `key_source`.
+- Partial coverage keeps the "presence unknown" wording instead of crediting the definition for tables it does not cover; the binlog still answers first wherever it can.
+- A definition whose column count does not match the row is stated with both counts (`names_note`), not silently replaced by `@1`..`@N`.
+- `analyze --snapshot-name` without `--workload-id` warns once, after the snapshot is written, that compare and trend will report unknown comparability.
+
+Related notes:
+
+- [v0.42.0 release notes](docs/releases/release-notes-v0.42.0.md)
+- [v0.42.0 中文发行说明](docs/releases/release-notes-v0.42.0.zh-CN.md)
+
 ## v0.41.0
 
 Release date: 2026-11-03
