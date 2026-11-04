@@ -244,6 +244,9 @@ func buildHTMLHotRows(d *htmlReportData, result model.AnalysisResult, opts Optio
 		if key == "" {
 			key = i18n.T("report.text.hotRowsHiddenKey")
 		}
+		if row.KeySource == model.HotRowKeySourceSchemaFile {
+			key += " [--schema-file]"
+		}
 		d.HotRows[i] = htmlHotRow{
 			Rank:         i + 1,
 			Table:        hotRowTable(row),

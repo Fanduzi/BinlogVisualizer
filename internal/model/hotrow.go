@@ -38,6 +38,9 @@ type HotRow struct {
 	LastFile     string
 	LastPos      int64
 	Approximate  bool
+	// KeySource is HotRowKeySourceSchemaFile when this key's identity came from
+	// --schema-file. A mixed window can rank both kinds (ADR 0032).
+	KeySource string
 }
 
 // HotRowGap is a table that had UPDATE or DELETE images and no usable primary key.

@@ -94,6 +94,9 @@ func renderHotRows(buf *strings.Builder, report model.HotRowReport, opts Options
 		if key := hotRowKey(row, opts); key != "" {
 			title += " " + key
 		}
+		if row.KeySource == model.HotRowKeySourceSchemaFile {
+			title += " [--schema-file]"
+		}
 		buf.WriteString(title + "\n")
 		line := fmt.Sprintf("     %s=%d  %s=%d",
 			i18n.T("report.text.hotRowsTouches"), row.Touches,
@@ -141,6 +144,9 @@ func mdHotRows(buf *strings.Builder, report model.HotRowReport, opts Options) {
 			key := hotRowKey(row, opts)
 			if key == "" {
 				key = i18n.T("report.text.hotRowsHiddenKey")
+			}
+			if row.KeySource == model.HotRowKeySourceSchemaFile {
+				key += " [--schema-file]"
 			}
 			touches := fmt.Sprintf("%d", row.Touches)
 			if row.Approximate {

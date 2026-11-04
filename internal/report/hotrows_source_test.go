@@ -14,7 +14,10 @@ func TestHotRowsNameTheDefinitionSource(t *testing.T) {
 	forceEnglishReportLocale(t)
 	result := productTextFixture()
 	result.HotRows = model.HotRowReport{
-		Rows:       []model.HotRow{{Schema: "shop", Table: "t", PrimaryKey: "id=7", Touches: 2, Transactions: 1}},
+		Rows: []model.HotRow{{
+			Schema: "shop", Table: "t", PrimaryKey: "id=7", Touches: 2, Transactions: 1,
+			KeySource: model.HotRowKeySourceSchemaFile,
+		}},
 		KeySource:  model.HotRowKeySourceSchemaFile,
 		TrackLimit: 8192,
 	}
@@ -35,10 +38,39 @@ func TestHotRowsNameTheDefinitionSource(t *testing.T) {
 		t.Fatalf("the Markdown section must name the source:\n%s", md)
 	}
 
+	if !strings.Contains(out, "id=7 [--schema-file]") {
+		t.Fatalf("the ranked row must be marked:\n%s", out)
+	}
+	if !strings.Contains(md, "id=7 [--schema-file]") {
+		t.Fatalf("the Markdown row must be marked:\n%s", md)
+	}
+
 	opts := DefaultOptions()
 	converted := convertToJSON(result, opts, newView(result, opts))
 	if converted.HotRowsKeySource != model.HotRowKeySourceSchemaFile {
 		t.Fatalf("JSON must carry the source, got %q", converted.HotRowsKeySource)
+	}
+	if len(converted.HotRows) != 1 || converted.HotRows[0].KeySource != model.HotRowKeySourceSchemaFile {
+		t.Fatalf("the JSON row must carry its source: %+v", converted.HotRows)
+	}
+
+	// A mixed window: no run-wide claim, only the definition row is marked.
+	result.HotRows.KeySource = ""
+	result.HotRows.Rows = append(result.HotRows.Rows, model.HotRow{
+		Schema: "shop", Table: "full", PrimaryKey: "id=9", Touches: 1, Transactions: 1,
+	})
+	out, err = RenderText(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, i18n.T("report.text.hotRowsFromSchema")) {
+		t.Fatalf("a mixed window must not claim one source:\n%s", out)
+	}
+	if !strings.Contains(out, "id=7 [--schema-file]") || strings.Contains(out, "id=9 [--schema-file]") {
+		t.Fatalf("only the definition row is marked:\n%s", out)
+	}
+	if got := convertToJSON(result, opts, newView(result, opts)); got.HotRowsKeySource != "" {
+		t.Fatalf("a mixed window must omit the run-wide field: %q", got.HotRowsKeySource)
 	}
 
 	// Without a definition the line is absent and the field is omitted.

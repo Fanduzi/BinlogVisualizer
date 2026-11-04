@@ -70,7 +70,7 @@ SQL 上下文是有界的，而且面向展示。
 
 列名来自 binlog 的前提是 `binlog_row_metadata=FULL`（MySQL 8.0.1+）；否则来自 `--schema-file`（当它覆盖这张表时），报告会说明来源。两者都没有时列是 `@1`..`@N`，报告会说明没有列名。没有这份元数据时，有符号和无符号读数不同的整数会两种都打印，和 `mysqlbinlog -v` 一样。有 FULL 元数据时，按 binlog 记录的有无符号打印。
 
-定义声明为无主键的表会出现在「无主键」一节，但不会产生 `no_primary_key` 告警：告警来自 binlog 元数据，定义只是次级来源（ADR 0031）。热点行是唯一也接受定义主键的排名，因为它需要在读取每个事件时就知道身份（ADR 0032）；报告里的 `key_status` 仍然只反映元数据。`--schema-file` 是主键存在性的次级来源：`binlog_row_metadata` 能回答的地方以它为准；binlog 回答不了的表由定义回答，并且只有所有有行变更的表都来自定义时，报告才写明来源是 `--schema-file`，混合场景不声称任何单一来源。定义覆盖该表但列数不符时，会写出两个列数（`names_note`），列名仍是 `@1`..`@N`。用 `--snapshot-name` 存快照而没有给 `--workload-id` 时，会打印一行 stderr 警告：`compare` 和 `trend` 对这份快照会报 unknown 可比性。
+定义声明为无主键的表会出现在「无主键」一节，但不会产生 `no_primary_key` 告警：告警来自 binlog 元数据，定义只是次级来源（ADR 0031）。热点行是唯一也接受定义主键的排名，因为它需要在读取每个事件时就知道身份（ADR 0032）；主键来自文件的行会标 `[--schema-file]`，混合窗口不声称单一来源，报告里的 `key_status` 仍然只反映元数据。`--schema-file` 是主键存在性的次级来源：`binlog_row_metadata` 能回答的地方以它为准；binlog 回答不了的表由定义回答，并且只有所有有行变更的表都来自定义时，报告才写明来源是 `--schema-file`，混合场景不声称任何单一来源。定义覆盖该表但列数不符时，会写出两个列数（`names_note`），列名仍是 `@1`..`@N`。用 `--snapshot-name` 存快照而没有给 `--workload-id` 时，会打印一行 stderr 警告：`compare` 和 `trend` 对这份快照会报 unknown 可比性。
 
 `--sql-context off` 不打印这些单元格。账号 DDL 的 `<secret>` 打码不变；它作用于语句文本，不是行单元格。同一事务上的 `mysqlbinlog_cmd` 用来对照。analyze 报告不打印撤销 SQL。`binlogviz flashback` 会打印，见下一节。
 
