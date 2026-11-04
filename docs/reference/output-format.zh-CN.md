@@ -173,7 +173,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 - 最早和最晚那个事务的 GTID 和 `file:byte`（事务起点，用来打开 `mysqlbinlog` 或 BinlogServer）
 - 追踪上限被突破、该键继承了被丢掉键的计数时，标成 `近似`
 
-身份在 binlog 记录时来自 MySQL 8 `binlog_row_metadata=FULL`（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`）；没有记录时来自 `--schema-file` 声明的主键，该行标 `[--schema-file]`（binlog 也回答过的键不标）（JSON 每行带 `key_source`，整份排名都来自定义时另有 `hot_rows_key_source`）。报告不会拿第 1 列 `@1` 来猜。两者都没有、表又收到 UPDATE 或 DELETE 时，这一节写 `{{表}} 无法追踪热点行：binlog 里没有主键列（binlog_row_metadata 不是 FULL）`。已知主键列但某次行镜像没带上时，说明行镜像里没有主键列。`--top` 限制条数。`--top-rows` 覆盖它。`0` 保留已追踪的全部键。`--sql-context off` 隐藏键值（`主键值已隐藏（--sql-context off）`），次数、时间、GTID 和文件位置仍在。过滤与 Top Tables 相同。
+身份在 binlog 记录时来自 MySQL 8 `binlog_row_metadata=FULL`（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`）；没有记录时来自 `--schema-file` 声明的主键，该行标 `[--schema-file]`（binlog 也回答过的键不标；JSON 每行带 `key_source`，整份排名都来自定义时另有 `hot_rows_key_source`）。报告不会拿第 1 列 `@1` 来猜。两者都没有、表又收到 UPDATE 或 DELETE 时，这一节写 `{{表}} 无法追踪热点行：binlog 里没有主键列（binlog_row_metadata 不是 FULL）`。已知主键列但某次行镜像没带上时，说明行镜像里没有主键列。`--top` 限制条数。`--top-rows` 覆盖它。`0` 保留已追踪的全部键。`--sql-context off` 隐藏键值（`主键值已隐藏（--sql-context off）`），次数、时间、GTID 和文件位置仍在。过滤与 Top Tables 相同。
 
 追踪最多保留 8192 个主键。满了之后，新键替换被碰到次数最少的键，次数从被丢掉的计数加一开始。报告会说明达到了上限。继承了被丢掉计数的行标成近似。从未被替换的键保持精确。
 
@@ -413,7 +413,7 @@ report_version 3 用 `matched_gtids` 逐个列出匹配到的事务身份，会�
 | `delete_rows` | integer | yes |
 | `txn_count` | integer | yes | 对该表写入过 row image 的不同事务数。仅含 DDL 的组不计入。 |
 | `key_status` | string | no | 收到行事件的表为 `has_pk`、`no_pk` 或 `unknown`。没有行事件时省略。`has_pk` 表示 FULL 元数据里有 `SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`。`no_pk` 表示有 FULL 元数据，但这两个字段都没有。`unknown` 表示 `binlog_row_metadata` 不是 FULL，不是在说这张表没有主键。`update_rows` 和 `delete_rows` 是过滤后的计数。`no_pk` 的表只有在 `update_rows` 或 `delete_rows` 大于 0 时才算复制延迟风险 |
-| `key_source` | string | no | `key_status` 为 `unknown` 且由 `--schema-file` 回答时为 `schema_file`（ADR 0031），否则省略 |
+| `key_source` | string | no | `key_status` 为 `unknown` 且 `--schema-file` 声明了这张表的主键时为 `schema_file`（ADR 0031）；定义覆盖但没有主键的表没有该字段，其余情况省略 |
 
 `diagnostics.input_format_guess` 为 `ROW` / `STATEMENT` / `MIXED`，信号不足时为空。`diagnostics.ignored_query_dml_events` 统计没有对应 row image 的 Query-DML。`diagnostics.open_explicit_groups` 在出现时，统计输入结束时仍没有 `COMMIT` 或 plain `ROLLBACK` 的 `BEGIN` 组；计数为 0 时省略。这种未关闭的 `BEGIN` 如果后面又来了 GTID，不会产出报告：analyze 以 exit 1 失败，错误是「显式 BEGIN 未关闭」。
 
