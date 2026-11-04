@@ -173,7 +173,7 @@ binlogviz analyze --from-dir /var/lib/mysql --prefix mysql-bin. --format json > 
 - 最早和最晚那个事务的 GTID 和 `file:byte`（事务起点，用来打开 `mysqlbinlog` 或 BinlogServer）
 - 追踪上限被突破、该键继承了被丢掉键的计数时，标成 `近似`
 
-身份只来自 MySQL 8 `binlog_row_metadata=FULL`（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`）。报告不会拿第 1 列 `@1` 来猜。收到 UPDATE 或 DELETE、但 binlog 里没有主键时，这一节写 `{{表}} 无法追踪热点行：binlog 里没有主键列（binlog_row_metadata 不是 FULL）`。已知主键列但某次行镜像没带上时，说明行镜像里没有主键列。`--top` 限制条数。`--top-rows` 覆盖它。`0` 保留已追踪的全部键。`--sql-context off` 隐藏键值（`主键值已隐藏（--sql-context off）`），次数、时间、GTID 和文件位置仍在。过滤与 Top Tables 相同。
+身份在 binlog 记录时来自 MySQL 8 `binlog_row_metadata=FULL`（`SIMPLE_PRIMARY_KEY` 或 `PRIMARY_KEY_WITH_PREFIX`）；没有记录时来自 `--schema-file` 声明的主键，该行标 `[--schema-file]`（JSON 每行带 `key_source`，整份排名都来自定义时另有 `hot_rows_key_source`）。报告不会拿第 1 列 `@1` 来猜。两者都没有、表又收到 UPDATE 或 DELETE 时，这一节写 `{{表}} 无法追踪热点行：binlog 里没有主键列（binlog_row_metadata 不是 FULL）`。已知主键列但某次行镜像没带上时，说明行镜像里没有主键列。`--top` 限制条数。`--top-rows` 覆盖它。`0` 保留已追踪的全部键。`--sql-context off` 隐藏键值（`主键值已隐藏（--sql-context off）`），次数、时间、GTID 和文件位置仍在。过滤与 Top Tables 相同。
 
 追踪最多保留 8192 个主键。满了之后，新键替换被碰到次数最少的键，次数从被丢掉的计数加一开始。报告会说明达到了上限。继承了被丢掉计数的行标成近似。从未被替换的键保持精确。
 

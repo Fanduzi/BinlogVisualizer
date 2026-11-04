@@ -25,7 +25,7 @@
   },
   "cmd.analyze.long": {
     "description": "analyze 命令详细描述",
-    "other": "分析 binlog 文件。用 - 从管道读取一份二进制 binlog；解析需要 seek，因此会先把 stdin 复制到临时文件。默认文本、JSON、markdown 和 HTML 按行数、事件数、字节或事务数排出热点线程，并在 binlog 带有 thread_id、user@host 或 schema 时写出来。它们也会列出热点行：当 binlog_row_metadata=FULL 给出主键时，按被 UPDATE 和 DELETE 行镜像碰到的次数给主键排序。默认文本和 JSON 按事务给出事件里实际有的 server_id、thread_id、GTID，以及 xid 或 XA xid。只有 binlog 里有 user@host 时才显示。binlog 没有的字段保持缺席。"
+    "other": "分析 binlog 文件。用 - 从管道读取一份二进制 binlog；解析需要 seek，因此会先把 stdin 复制到临时文件。默认文本、JSON、markdown 和 HTML 按行数、事件数、字节或事务数排出热点线程，并在 binlog 带有 thread_id、user@host 或 schema 时写出来。它们也会列出热点行：按被 UPDATE 和 DELETE 行镜像碰到的次数给主键排序；主键在 binlog 记录时来自 binlog_row_metadata=FULL，否则来自 --schema-file 声明的主键（这类行标 [--schema-file]）。默认文本和 JSON 按事务给出事件里实际有的 server_id、thread_id、GTID，以及 xid 或 XA xid。只有 binlog 里有 user@host 时才显示。binlog 没有的字段保持缺席。"
   },
   "cmd.analyze.flag.start": {
     "description": "开始时间标志描述",
@@ -3028,8 +3028,8 @@
     "other": "{{.Table}}: binlog 没有行元数据，撤销按 --schema-file 里声明的 PRIMARY KEY 定位行。这份主键的好坏取决于那份转储。"
   },
   "cmd.analyze.flag.schemaFile": {
-    "description": "供 --show-rows 使用的表定义 SQL 文件",
-    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE），应为事故当时的表结构。配合 --show-rows 时，如果 binlog 没有行元数据，就用它给出列名。可选；analyze 仍然离线运行"
+    "description": "供 --show-rows 和热点行使用的表定义 SQL 文件",
+    "other": "表定义 SQL 文件（mysqldump --no-data 或 SHOW CREATE TABLE），应为事故当时的表结构。配合 --show-rows 时，如果 binlog 没有行元数据，就用它给出列名；binlog 没有记录主键时，也用它给出热点行排序用的主键（这类行标 [--schema-file]）。可选；analyze 仍然离线运行"
   },
   "cmd.analyze.flag.schemaFileDB": {
     "description": "--schema-file 中未限定名的默认库",
