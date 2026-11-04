@@ -26,10 +26,15 @@ MINIMAL binlog, because the identity has to exist while the event is read.
 2. **The binlog always wins.** A table map that names a key is used as before; the
    definition is consulted only where `pkMetaForRows` returns nothing.
 3. **The event says where the key came from** (`RowKeysFromSchema`). The Hot Rows
-   aggregator ranks those keys under `unknown` status and records
-   `KeySource: "schema_file"`.
-4. **The report labels it.** The Hot Rows section prints one line, HTML does the
-   same, and JSON adds `hot_rows_key_source`.
+   aggregator ranks those keys under `unknown` status and counts the touches the
+   definition answered for each key. A key is attributed to the definition only
+   when every image of it needed the definition; a key the binlog also answered
+   stays unmarked, because the binlog did answer for part of it.
+4. **The report labels it.** A key only the definition could answer is marked
+   `[--schema-file]` in text, Markdown and HTML, and `hot_rows[].key_source` in
+   JSON. The run-wide line and `hot_rows_key_source` appear only when every ranked
+   key is marked; a window with both kinds marks rows and claims no single
+   source.
 5. **`key_status` and `no_primary_key` stay metadata-only.** A definition-declared
    key does not rewrite a table's `key_status` and a definition-declared keyless
    table still raises no alert. The two surfaces answer different questions: the
@@ -55,3 +60,5 @@ MINIMAL binlog, because the identity has to exist while the event is read.
   column.
 - The documented split (alerts from metadata, Hot Rows from metadata or the
   definition) is stated in `limitations.md` and `analyze-behavior.md`.
+- Switching `binlog_row_metadata` mid-window is handled: a key touched under both
+  settings is not claimed by the definition and the run claims no single source.

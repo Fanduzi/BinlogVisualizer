@@ -60,6 +60,31 @@ func TestHotRowsUseSchemaFileKeys(t *testing.T) {
 		t.Fatalf("only the definition row is marked: %+v", byTable)
 	}
 
+	// A key the binlog also answered is not marked: the definition did not
+	// supply that key's identity for every image (ADR 0032).
+	a = newHotRowAggregator(10)
+	a.Consume(ev)
+	a.Consume(model.NormalizedEvent{
+		Operation: "DELETE", Schema: "shop", Table: "t",
+		KeyStatus: model.KeyStatusHasPK, RowKeys: []string{"id=7"},
+	})
+	overlap := a.Snapshot()
+	if overlap.KeySource != "" {
+		t.Fatalf("an overlapping key must not be claimed: %q", overlap.KeySource)
+	}
+	for _, row := range overlap.Rows {
+		switch row.PrimaryKey {
+		case "id=7":
+			if row.KeySource != "" {
+				t.Fatalf("the binlog answered id=7 too: %+v", row)
+			}
+		case "id=9":
+			if row.KeySource != model.HotRowKeySourceSchemaFile {
+				t.Fatalf("id=9 came only from the definition: %+v", row)
+			}
+		}
+	}
+
 	// key_status and the no-key alert stay metadata-only: a binlog that says a
 	// table has no key is not re-decided by a definition.
 	noPK := ev

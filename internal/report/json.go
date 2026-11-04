@@ -915,7 +915,7 @@ func tableKeySource(table model.TableStats, def DefinitionKeys) string {
 	if def == nil || tableKeyStatus(table) != model.KeyStatusUnknown {
 		return ""
 	}
-	if _, covered := def(table.Schema, table.Table); covered {
+	if cols, covered := def(table.Schema, table.Table); covered && len(cols) > 0 {
 		return "schema_file"
 	}
 	return ""
