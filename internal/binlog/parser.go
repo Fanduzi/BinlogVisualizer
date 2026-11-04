@@ -23,6 +23,8 @@ type parser struct {
 	captureFlash bool
 	captureRedo  bool
 	flashSchema  FlashSchemaResolver
+	// schemaKeys caches the key metadata a definition supplied, per table (ADR 0032).
+	schemaKeys map[string]definitionKey
 }
 
 type cachedTableName struct {
@@ -78,6 +80,7 @@ func (p *parser) SetFlashSchemaResolver(r FlashSchemaResolver) {
 		return
 	}
 	p.flashSchema = r
+	p.schemaKeys = map[string]definitionKey{}
 }
 
 // SetCaptureFlashback keeps exact cell literals on ROW events for undo SQL.
@@ -175,6 +178,7 @@ func (p *parser) parseFiles(paths []string, startOffset int64, onProgress func(P
 
 			raw := rawEventFromHeader(ev.Header, path, serverVersion)
 			raw.flashSchema = p.flashSchema
+			raw.schemaKeys = p.schemaKeys
 			raw.PositionStart, raw.PositionEnd, raw.BinlogBytes, cursor = deriveEventPositionRange(ev.Header, cursor)
 			raw.Position = uint32(raw.PositionEnd)
 
@@ -345,7 +349,7 @@ func applyBinlogEventMetadata(raw *RawEvent, et replication.EventType, event any
 			raw.RedoRows = captureRedoRows(e, raw.EventType, raw.Schema, raw.Table)
 		}
 		if raw.EventType == kindUpdateRows || raw.EventType == kindDeleteRows {
-			raw.RowKeys = primaryKeyValues(e, raw.EventType, pkMetaForRows(e, tableNames))
+			raw.RowKeys, raw.RowKeysFromSchema = rowKeys(raw.flashSchema, raw.schemaKeys, e, raw.EventType, tableNames)
 		}
 	case *replication.FormatDescriptionEvent:
 		raw.ServerVersion = e.ServerVersion
@@ -521,6 +525,7 @@ func streamTransactionPayload(payload *streamedPayload, path, serverVersion stri
 func payloadInnerRaw(inner *replication.BinlogEvent, path, serverVersion string, tableNames map[uint64]cachedTableName, schema FlashSchemaResolver, capture, flash, redo bool) RawEvent {
 	raw := rawEventFromHeader(inner.Header, path, serverVersion)
 	raw.flashSchema = schema
+	raw.schemaKeys = map[string]definitionKey{}
 	// go-mysql v1.14 decodes payload inners on a fresh parser, so the UTC
 	// location above never reaches them, and neither does SetRowsEventDecodeFunc.
 	// Delete both rewrites when that parser inherits the outer parser.

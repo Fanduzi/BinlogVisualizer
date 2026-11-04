@@ -99,6 +99,7 @@ type htmlReportData struct {
 	ThreadShowTxns         bool
 	HasHotRows             bool
 	HotRowsLead            string
+	HotRowsSource          string
 	HotRows                []htmlHotRow
 	HotRowsHidden          string
 	HotRowsOmitted         string

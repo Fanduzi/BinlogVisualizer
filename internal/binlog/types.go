@@ -51,10 +51,15 @@ type RawEvent struct {
 	flashSchema FlashSchemaResolver
 	// RedoRows is set only when redo capture is on. Nil otherwise.
 	RedoRows []model.RedoRow
-	// RowKeys are UPDATE/DELETE primary-key identities from FULL metadata.
+	// RowKeys are UPDATE/DELETE primary-key identities from FULL metadata, or
+	// from --schema-file when the table map carried no key.
 	// Nil when the key is not known. Never guessed from column @1.
-	RowKeys  []string
-	Position uint32 // Legacy next-event position retained for existing callers and error messages.
+	RowKeys []string
+	// RowKeysFromSchema marks keys the definition supplied (ADR 0032).
+	RowKeysFromSchema bool
+	// schemaKeys is the parser's per-run key cache, shared by every event.
+	schemaKeys map[string]definitionKey
+	Position   uint32 // Legacy next-event position retained for existing callers and error messages.
 }
 
 // Parser defines the interface for parsing binlog files.

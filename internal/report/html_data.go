@@ -231,6 +231,9 @@ func buildHTMLHotRows(d *htmlReportData, result model.AnalysisResult, opts Optio
 	}
 	d.HasHotRows = true
 	d.HotRowsLead = i18n.T("report.text.hotRowsLead")
+	if result.HotRows.KeySource == model.HotRowKeySourceSchemaFile {
+		d.HotRowsSource = i18n.T("report.text.hotRowsFromSchema")
+	}
 	listed, omitted := limitHotRows(result.HotRows.Rows, opts.TopRows)
 	if hotRowKeysHidden(opts) && len(listed) > 0 {
 		d.HotRowsHidden = i18n.T("report.text.hotRowsHidden")

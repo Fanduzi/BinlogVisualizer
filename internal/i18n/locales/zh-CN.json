@@ -3058,5 +3058,9 @@
   "report.text.primaryKeyMarkedFromDefinition": {
     "description": "说明哪些表的主键来自 schema 文件",
     "other": "标了 --schema-file 的表，其主键来自那份定义；binlog 没有记录行元数据"
+  },
+  "report.text.hotRowsFromSchema": {
+    "description": "Hot Rows source line when the keys came from --schema-file",
+    "other": "主键来自 --schema-file（binlog 没有行元数据）"
   }
 }

@@ -3058,5 +3058,9 @@
   "report.text.primaryKeyMarkedFromDefinition": {
     "description": "Section note naming the tables whose key came from a schema file",
     "other": "the key for the tables marked --schema-file was read from that definition; the binlog recorded no row metadata"
+  },
+  "report.text.hotRowsFromSchema": {
+    "description": "Hot Rows source line when the keys came from --schema-file",
+    "other": "primary keys come from --schema-file (the binlog has no row metadata)"
   }
 }
