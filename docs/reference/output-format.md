@@ -517,6 +517,7 @@ Named snapshots persist this complete report-v3 payload. Snapshot/compare reader
 | `table` | string | yes | Table name |
 | `primary_key` | string | no | `id=7` or `sku=BOLT, wh=1`. Omitted when `--sql-context off` |
 | `key_hidden` | boolean | no | True when `--sql-context off` hid the key. Counts stay |
+| `key_source` | string | no | `schema_file` when every touch of this key needed `--schema-file`; omitted when the binlog answered any of them (ADR 0032) |
 | `touches` | integer | yes | UPDATE and DELETE row images that carried this key. Exact unless `approximate` is true |
 | `transactions` | integer | yes | Distinct transactions that touched this key. Exact for a key that was never replaced |
 | `first_time` | string | no | RFC3339 UTC time of the first touch |
