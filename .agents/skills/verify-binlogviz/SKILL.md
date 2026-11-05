@@ -7,7 +7,7 @@ description: "Drive BinlogViz (CLI) the way a DBA would — analyze/snapshot/com
 
 Cold-agent guide for proving `binlogviz` (Cobra CLI) against real ROW binlog fixtures. Primary surface is the CLI. HTML reports (`--format html`) opened in a browser are optional extra evidence, not required for CLI proof.
 
-Repo root for this skill: the checkout that contains `.agents/skills/verify-binlogviz/` (expected: `/workspace/binlogviz-src`).
+Repo root for this skill: the checkout that contains `.agents/skills/verify-binlogviz/`.
 
 ## Launch
 
@@ -20,7 +20,7 @@ Resolve `BINLOGVIZ` in this order:
 3. Fallback release: `/home/box/bin/binlogviz` (currently 0.23.6)
 
 ```bash
-cd /workspace/binlogviz-src
+cd "$(git rev-parse --show-toplevel)"
 # Prefer a fresh build when the toolchain is present:
 go build -o binlogviz .   # may fail without g++/libstdc++; then use fallback
 export BINLOGVIZ="${BINLOGVIZ:-$(pwd)/binlogviz}"
@@ -35,7 +35,7 @@ Teardown: nothing for the binary. Scratch snapshot / workflow dirs are removed b
 ## Doctor
 
 ```bash
-cd /workspace/binlogviz-src
+cd "$(git rev-parse --show-toplevel)"
 .agents/skills/verify-binlogviz/helpers/doctor.sh
 ```
 
@@ -44,7 +44,7 @@ Read-only. EXIT `0` when: binary exists+executable, `version` works, `cmd/binlog
 ## Drive
 
 ```bash
-cd /workspace/binlogviz-src
+cd "$(git rev-parse --show-toplevel)"
 HELPERS=.agents/skills/verify-binlogviz/helpers
 DRIVE="$HELPERS/drive.sh"
 
@@ -87,7 +87,7 @@ Exit codes from binlogviz (observe these in `meta.txt`):
 
 Absolute base (under this repo):
 
-`/workspace/binlogviz-src/.agents/skills/verify-binlogviz/evidence/<RUN_ID>/`
+`$(git rev-parse --show-toplevel)/.agents/skills/verify-binlogviz/evidence/<RUN_ID>/`
 
 Proof standards:
 
@@ -96,7 +96,7 @@ Proof standards:
 - For snapshot/compare/trend: also list files under the isolated `--snapshot-dir` (side effect)
 - For workflow: also list the workflow `--output-dir` / plan `output_dir`
 - HTML open-in-browser is optional extra evidence; text/json CLI output is enough for CLI claims
-- Seed fixtures for recipes: `cmd/binlogviz/testdata/minimal.binlog` (ROW), `cmd/binlogviz/testdata/sample-binlog/` + repo-root `incident.yaml` for workflow. Dogfood under `/workspace/binlogviz-dogfood/` is OK for extra proofs; **skill recipes must work from repo fixtures only**
+- Seed fixtures for recipes: `cmd/binlogviz/testdata/minimal.binlog` (ROW), `cmd/binlogviz/testdata/sample-binlog/` + repo-root `incident.yaml` for workflow. A scratch directory outside the repo is OK for extra proofs; **skill recipes must work from repo fixtures only**
 
 ## Cleanup
 
