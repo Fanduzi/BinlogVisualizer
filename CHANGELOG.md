@@ -4,6 +4,18 @@ This file records user-visible changes for tagged releases.
 
 ## [Unreleased]
 
+## v0.43.1
+
+Release date: 2026-11-05
+
+Fixes:
+
+- `--help` follows `--lang`: the description, subcommand list, and every flag usage line are in the requested language for analyze, compare, trend, snapshot, workflow, schema, redo, version, and help itself. `flashback` already did; nothing else about the report changed.
+
+Related notes:
+
+- [v0.43.1 release notes](docs/releases/release-notes-v0.43.1.md)
+
 ## v0.43.0
 
 Release date: 2026-11-04
