@@ -4,8 +4,9 @@
 // Note: This package uses global state and is designed for CLI usage where
 // initialization happens once at startup. Thread safety is ensured via sync.RWMutex.
 // Command descriptions (cobra Use/Short fields) are evaluated when the command is
-// built, before --lang is applied, so help stays English unless that command
-// refreshes its strings. flashback does.
+// built, before --lang is applied. The root help func builds the tree again in the
+// requested language, and flashback refreshes its strings in place, so --lang
+// reaches --help as well as runtime output.
 // Runtime output (errors, reports, progress) is properly localized.
 package i18n
 

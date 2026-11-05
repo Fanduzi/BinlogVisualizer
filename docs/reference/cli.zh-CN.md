@@ -52,7 +52,7 @@ binlogviz workflow describe <plan.yaml> --format json
 
 | Flag | 默认值 | 说明 |
 |------|--------|------|
-| `--lang` | 按环境变量检测 | 运行时输出语言，例如 `en` 或 `zh-CN`。 |
+| `--lang` | 按环境变量检测 | 输出语言，例如 `en` 或 `zh-CN`；`--help` 也跟随它。 |
 | `--quiet`, `-q` | `false` | 不输出普通进度和信息性 stderr 行。错误和警告仍会输出；报告 stdout 不变。 |
 | `--error-format` | `text` 或 `BINLOGVIZ_ERROR_FORMAT` | 错误输出格式：`text` 或 `json`。显式标志优先于环境变量；显式指定无效值或空值是用法错误（exit 3）。JSON 错误模式也不输出普通信息性 stderr 行，但保留警告。 |
 | `--tz` | 历史 UTC 写法 | 渲染时间戳的 IANA 时区，例如 `Asia/Shanghai`。不传或 `UTC` 在文本、Markdown、HTML 里保持 ` UTC`，在 JSON 里保持 `Z`。没有时区的 --start 或 --end，在设置了 --tz 时按 --tz 读取，包括 --tz UTC；没有设置 --tz 时，按运行 binlogviz 的机器的本地时区读取。空名、未知名或 `Local` 退出码是 3。 |
