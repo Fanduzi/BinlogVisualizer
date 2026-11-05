@@ -41,4 +41,4 @@ PLAN=incident.yaml
 - Default plan `output_dir: ./artifacts/incident` pollutes the working tree — always pass `--output-dir` under skill `scratch/` for verify.
 - Fixture timestamps are historical; the sample plan uses wide windows (2025–2099) on purpose.
 - `cleanup.sh` removes `scratch/` only; if a run wrote to `./artifacts/` by mistake, remove that manually (do not delete evidence).
-- Extra dogfood samples under `/workspace/binlogviz-dogfood/` are optional; recipes must work with repo fixtures alone.
+- Extra dogfood samples in a scratch directory outside the repo are optional; recipes must work with repo fixtures alone.

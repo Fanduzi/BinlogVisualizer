@@ -11,7 +11,10 @@ This page is the short checklist. If they disagree, fix them in the same PR.
 - At most one release per day, and only when `main` has at least one
   user-visible change since the last tag. A P0/P1 fix may ship as a hotfix
   right away. Never release once per PR.
-- `main` moves only by fast-forward. No merge commits, no force-push.
+- `main` takes the prep commit through the PR with a rebase merge
+  (`gh pr merge --rebase`), so history stays linear; squash and merge commits are
+  both disabled on the protected branch. Never push to `main` directly and never
+  force-push.
 - Tags are annotated, with the message `Release vX.Y.Z` and the tagger
   `Fan() <18501341937@163.com>`, on the prep commit. A pushed tag is never moved
   or deleted; a bad release is fixed by the next patch. If only the Homebrew
@@ -39,13 +42,14 @@ Then build and smoke-test a packaged archive the way `ci.yml` does
 
 ## 2. The prep PR
 
-One commit, `docs: prepare BinlogViz vX.Y.Z`:
+One commit, `docs: prepare vX.Y.Z release notes and changelog`:
 
 | File | Change |
 |---|---|
-| `docs/releases/release-notes-vX.Y.Z.md` | `# BinlogViz vX.Y.Z Release Notes`, release date, Overview, New Features, Bug Fixes, Compatibility Notes, Breaking Changes. 15 to 40 lines. |
-| `docs/releases/release-notes-vX.Y.Z.zh-CN.md` | `# BinlogViz vX.Y.Z 发布说明`, same content. |
-| `CHANGELOG.md` | Rename `## [Unreleased]` to `## [vX.Y.Z] - YYYY-MM-DD` (15 lines at most) and add a fresh empty `## [Unreleased]`. |
+| `docs/releases/release-notes-vX.Y.Z.md` | `# BinlogViz vX.Y.Z Release Notes`, release date, then `## Install or upgrade` first — required since v0.40.0 and enforced by `scripts/check-release-prep.sh` — followed by the sections the notes use: highlights, fixes, compatibility, known issues, tests and CI, verification. |
+| `docs/releases/release-notes-vX.Y.Z.zh-CN.md` | `# BinlogViz vX.Y.Z 发布说明`, the same sections in the same order. |
+| `CHANGELOG.md` | A `## vX.Y.Z` section with a `Release date:` line, a few user-facing bullets, and a `Related notes:` link to the English file. Keep `## [Unreleased]` above it, empty. |
+| `docs/releases/README.md` | Add the version to the recent-version table. |
 
 Do not change `README.md`, `README_ZH.md`, `install.sh` or
 `docs/landing/index.html` for a release. They install from `releases/latest`

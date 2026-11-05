@@ -1,6 +1,6 @@
 ---
 name: binlogviz-release
-description: Release BinlogViz. One prep PR (bilingual notes, the CHANGELOG Unreleased section renamed to the version), make release-check, fast-forward land, annotated "Release vX.Y.Z" tag by Fan(), watch release.yml, verify assets and the Homebrew cask, then check the Cloudflare Pages deploy and that the version-free landing page is live. Use when asked to release, tag or ship BinlogViz (发布, 发版, 上线, 打tag).
+description: Release BinlogViz. One prep PR (bilingual notes, a short CHANGELOG section for the version), make release-check, rebase-merge land, annotated "Release vX.Y.Z" tag by Fan(), watch release.yml, verify assets and the Homebrew cask, then check the Cloudflare Pages deploy and that the version-free landing page is live. Use when asked to release, tag or ship BinlogViz (发布, 发版, 上线, 打tag).
 ---
 
 # BinlogViz Release
@@ -25,9 +25,10 @@ Passing tests does not make a release. Verify the whole chain:
 - Never force-push. Never move, delete or recreate a pushed tag or a published
   GitHub Release. A broken release is fixed by the next patch version. If only
   the Homebrew sync failed, re-run that one job.
-- `main` moves only by fast-forward:
-  `gh api -X PATCH repos/Fanduzi/BinlogVisualizer/git/refs/heads/main -f sha=<sha> -F force=false`.
-  No merge button, no `git push origin main`, no merge commits.
+- `main` takes the prep commit through the PR with a rebase merge
+  (`gh pr merge <n> --rebase --delete-branch`). The protected branch allows only
+  rebase merges, so history stays linear; squash and merge commits are both
+  disabled. No `git push origin main`, no force-push.
 - Do not land while another agent is still pushing to the branch.
 - Push only the one tag: `git push origin vX.Y.Z`. Never `--tags`.
 - Never commit delivery evidence (QA transcripts, `docs/agents/delivery-*.md`,
@@ -117,7 +118,8 @@ QA must have covered the regression corpus.
 
 ## Step 3: The prep PR (one PR, one commit)
 
-Branch `release/vX.Y.Z`. One commit, `docs: prepare BinlogViz vX.Y.Z`.
+Branch `release-vX.Y.Z`. One commit, `docs: prepare vX.Y.Z release notes and
+changelog`.
 Release surfaces only; no code.
 
 ### 3a. Release notes (EN and zh)
@@ -128,68 +130,77 @@ The paths and H1 lines are fixed by `release.yml` and
 - `docs/releases/release-notes-vX.Y.Z.md`, H1 `# BinlogViz vX.Y.Z Release Notes`
 - `docs/releases/release-notes-vX.Y.Z.zh-CN.md`, H1 `# BinlogViz vX.Y.Z 发布说明`
 
-15 to 40 lines each. No QA transcript, no PR dump, and no benchmark tables
-beyond one headline number.
+No QA transcript, no PR dump, and no benchmark tables beyond a headline
+number. `## Install or upgrade` comes first: `scripts/check-release-prep.sh`
+fails without it from v0.40.0 on.
 
-English template:
+English template (v0.42.0 and v0.43.0 are the reference):
 
 ```markdown
 # BinlogViz vX.Y.Z Release Notes
 
 Release date: YYYY-MM-DD
 
-## Overview
+## Install or upgrade
 
-<one or two sentences: what this release is for>
+    brew upgrade --cask binlogviz          # macOS
+    # Linux: rerun install.sh, which resolves the latest release
 
-## New Features
+<one line: additive only / report_version, plan_version, schema_version unchanged>
+
+## Highlights
 
 - <one bullet per user-visible change>
 
-## Bug Fixes
+## Fixes
 
-- <one bullet each, or "None.">
+- <one bullet each>
 
-## Compatibility Notes
+## Compatibility
 
 - report_version / plan_version / schema_version: <unchanged | N to M>
-- Exit codes and CLI flags: <unchanged | what changed>
-- Known issues: <#NNN, one line each, or "None.">
+- Flags, exit codes, and existing output: <unchanged | what changed>
 
-## Breaking Changes
+## Known issues / out of scope
 
-None.
+- <what this version still does not do, or "None.">
+
+## Tests and CI
+
+- <the tests that prove it, and the gates>
+
+## Verification
+
+<the tagged commit's parent carries the merged PRs; main passed ci and lint>
 ```
 
-Chinese template:
-
-```markdown
-# BinlogViz vX.Y.Z 发布说明
-
-发布日期：YYYY-MM-DD
-
-## 概述
-
-## 新功能
-
-## Bug 修复
-
-## 兼容性说明
-
-## 破坏性变更
-
-无。
-```
+Chinese template mirrors it section for section: `# BinlogViz vX.Y.Z 发布说明`,
+`发布日期：YYYY-MM-DD`, `## 安装或升级`, `## 亮点`, `## 修复`, `## 兼容性`,
+`## 已知问题 / 不在本次范围`, `## 测试与 CI`, `## 验证`.
 
 ### 3b. CHANGELOG.md
 
-Keep a Changelog style. PRs append their user-visible changes to
-`## [Unreleased]` as they land. The prep commit:
+PRs append their user-visible changes to `## [Unreleased]` as they land. The
+prep commit adds a version section, keeps `## [Unreleased]` above it empty, and
+ends the section with the notes link, as v0.42.0 and v0.43.0 do:
 
-1. Renames `## [Unreleased]` to `## [vX.Y.Z] - YYYY-MM-DD`.
-2. Adds a fresh, empty `## [Unreleased]` above it.
-3. Trims the entry to at most 15 lines, user-facing only (`### Added`,
-   `### Changed`, `### Fixed`), and ends it with links to both notes files.
+```markdown
+## vX.Y.Z
+
+Release date: YYYY-MM-DD
+
+Highlights:
+
+- <one bullet per user-visible change>
+
+Fixes:
+
+- <one bullet each>
+
+Related notes:
+
+- [vX.Y.Z release notes](docs/releases/release-notes-vX.Y.Z.md)
+```
 
 Do not rewrite older entries in a release PR.
 
@@ -252,16 +263,17 @@ job in `release.yml` runs the same check on the tag before any build starts.
    `gh api -X PATCH repos/Fanduzi/BinlogVisualizer/pulls/N -F body=@body.md`.
 2. All PR checks are green on the head SHA.
 3. A quick QA pass on the prep PR: content and links.
-4. Land by fast-forward only:
+4. Land with a rebase merge, which keeps history linear:
 
 ```bash
-gh api repos/Fanduzi/BinlogVisualizer/compare/main...release/vX.Y.Z --jq '.behind_by,.ahead_by'   # 0 and 1
-PREP_SHA=$(gh api repos/Fanduzi/BinlogVisualizer/git/refs/heads/release/vX.Y.Z --jq .object.sha)
-gh api -X PATCH repos/Fanduzi/BinlogVisualizer/git/refs/heads/main -f sha=$PREP_SHA -F force=false
-gh api -X DELETE repos/Fanduzi/BinlogVisualizer/git/refs/heads/release/vX.Y.Z
+gh pr merge N --rebase --delete-branch
+gh pr view N --json state,mergeCommit     # MERGED, plus the new main SHA
 ```
 
-5. Push CI on `main` at `$PREP_SHA` is green, including `verify` and
+   `gh` warns "Not possible to fast-forward" on a rebase merge; the result is
+   still a linear `main`. Confirm with `gh pr view`.
+
+5. Push CI on `main` at the merge commit is green, including `verify` and
    `Cloudflare Pages`.
 
 ## Step 4: Tag
@@ -309,7 +321,8 @@ d=$(mktemp -d) && cd "$d"
 gh release download vX.Y.Z -R Fanduzi/BinlogVisualizer -p 'binlogviz_X.Y.Z_linux_amd64.tar.gz' -p 'binlogviz_X.Y.Z_checksums.txt'
 sha256sum -c --ignore-missing binlogviz_X.Y.Z_checksums.txt   # ": OK"
 tar -xzf binlogviz_X.Y.Z_linux_amd64.tar.gz
-./binlogviz --version                                        # reports X.Y.Z and commit $PREP_SHA
+./binlogviz --version                                        # reports X.Y.Z
+./binlogviz version --format json                            # version, commit, modified
 ./binlogviz analyze testdata/minimal.binlog --format text >/dev/null
 gh api repos/Fanduzi/homebrew-binlogviz/contents/Casks/binlogviz.rb --jq .content | base64 -d | grep -E 'version|sha256|url'
 ```
@@ -349,7 +362,7 @@ Before the tag:
 - [ ] Clean tree; behind 0; the tag and release do not exist
 - [ ] Batch commits by Fan(), no AI-tool attribution
 - [ ] Step 2 gates pass
-- [ ] One prep commit: EN and zh notes, `Unreleased` renamed (≤ 15 lines)
+- [ ] One prep commit: EN and zh notes with the install section first, a short CHANGELOG section for the version
 - [ ] README, install.sh and landing page untouched; no evidence files committed
 - [ ] `make release-check VERSION=vX.Y.Z` passes
 - [ ] Prep PR green, checked, fast-forwarded; push CI and Cloudflare Pages green
