@@ -108,6 +108,7 @@ func NewRootCommand() *cobra.Command {
 	cmd.InitDefaultHelpCmd()
 	cmd.InitDefaultCompletionCmd()
 	setGeneratedExamples(cmd)
+	installLocalizedHelp(cmd)
 	cmd.Flags().BoolP("version", "v", false, i18n.T("cmd.root.flag.version"))
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		if v, _ := cmd.Flags().GetBool("version"); v {

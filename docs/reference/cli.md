@@ -52,7 +52,7 @@ These flags are available on the root command and apply before subcommand execut
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--lang` | env-detected | Runtime output language, for example `en` or `zh-CN`. |
+| `--lang` | env-detected | Output language, for example `en` or `zh-CN`; it also applies to `--help`. |
 | `--quiet`, `-q` | `false` | Suppress ordinary progress and informational stderr lines. Errors and warnings remain; report stdout is unchanged. |
 | `--error-format` | `text` or `BINLOGVIZ_ERROR_FORMAT` | Error output format: `text` or `json`. An explicit flag overrides the environment; an invalid or empty explicit value is a usage error (exit 3). JSON error mode also suppresses ordinary informational stderr lines, but not warnings. |
 | `--tz` | historical UTC spelling | IANA display zone for rendered timestamps, for example `Asia/Shanghai`. Absent or `UTC` keeps ` UTC` in text, Markdown, and HTML and `Z` in JSON. A --start or --end value with no zone is read in the --tz zone when --tz is set, including --tz UTC, and in the local timezone of the machine running binlogviz when --tz is not set. An empty, unknown, or `Local` name is exit 3. See [output-format.md](output-format.md). |
